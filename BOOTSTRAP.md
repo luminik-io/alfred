@@ -221,7 +221,9 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/my.fleet.lucius.plist
 
 ## 8. Troubleshooting
 
-**`claude: command not found` in the launchd log.** The plist's `PATH` does not include the fnm-managed Node bin (or wherever your `claude` lives). Either add it to the plist's `EnvironmentVariables` block (the template's `__PATH__` token is rendered from your shell PATH at deploy time), or set `CLAUDE_BIN=<absolute-path>` in `~/.alfredrc` so `agent_runner.claude_invoke` uses it directly. `which claude` shows the path.
+**`claude: command not found` in the launchd log.** The plist's `PATH` does not include the fnm-managed Node bin (or wherever your `claude` lives). Set `CLAUDE_BIN=<absolute-path>` in `~/.alfredrc`, or expose the binary through a stable directory already rendered into launchd PATH, such as `~/.local/bin`. `which claude` shows the path.
+
+**`codex: command not found` in the launchd log.** Rerun `deploy.sh` after installing Codex. If `codex` is visible in your interactive shell, deploy links it into `~/.local/bin/codex`, which the renderer adds to launchd PATH. Otherwise set `CODEX_BIN=<absolute-path>` in `~/.alfredrc`.
 
 **Slack posts silently fail.** The webhook cache may be stale (URL rotated) or AWS Secrets Manager may be unreachable. Run `aws secretsmanager get-secret-value --secret-id slack/staging/internal-webhook-url --region us-east-1` against the agent's profile (`AWS_PROFILE=huntress-cron`, etc.) and confirm it returns the URL. To force a refresh, delete `~/.hermes/state/slack-webhook.cache`.
 

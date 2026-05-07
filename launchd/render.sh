@@ -32,16 +32,23 @@ TEMPLATE="$SCRIPT_DIR/_template.plist"
 CONF="$SCRIPT_DIR/agents.conf"
 OUT_DIR="${1:-$SCRIPT_DIR/_generated}"
 
+if [[ ! -f "$CONF" && -f "$SCRIPT_DIR/agents.conf.example" ]]; then
+  echo "render.sh: no agents.conf found; using agents.conf.example (copy it to agents.conf for a real fleet)" >&2
+  CONF="$SCRIPT_DIR/agents.conf.example"
+fi
+
 : "${HERMES_HOME:=$HOME/.hermes}"
 : "${WORKSPACE_ROOT:=${WORKSPACE_ROOT:-$HOME/Workspace}}"
 
 JAVA_HOME_DEFAULT="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
 JAVA_BIN="$JAVA_HOME_DEFAULT/bin"
 FNM_BIN="$HOME/.local/share/fnm/aliases/default/bin"
-BREW_PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+LOCAL_BIN="$HOME/.local/bin"
+BREW_PATH="$LOCAL_BIN:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 JAVA_PATH="$JAVA_BIN:$FNM_BIN:$BREW_PATH"
 
 mkdir -p "$OUT_DIR"
+find "$OUT_DIR" -maxdepth 1 -type f -name '*.plist' -delete
 
 render_one() {
   local label="$1" script="$2" schedule="$3" needs_java="$4" log_stem="$5"
