@@ -172,22 +172,17 @@ def test_env_int_clamps_out_of_range_default(monkeypatch) -> None:
     monkeypatch.delenv("ALFRED_LUCIUS_TURN_CAP", raising=False)
     # Default above maximum: must be clamped to maximum.
     assert (
-        agent_runner.env_int(
-            "ALFRED_LUCIUS_TURN_CAP", default=99999, minimum=100, maximum=8000
-        )
+        agent_runner.env_int("ALFRED_LUCIUS_TURN_CAP", default=99999, minimum=100, maximum=8000)
         == 8000
     )
     # Default below minimum: must be clamped to minimum.
     assert (
-        agent_runner.env_int("ALFRED_LUCIUS_TURN_CAP", default=1, minimum=100, maximum=8000)
-        == 100
+        agent_runner.env_int("ALFRED_LUCIUS_TURN_CAP", default=1, minimum=100, maximum=8000) == 100
     )
 
     # Same protection on the unparseable path.
     monkeypatch.setenv("ALFRED_LUCIUS_TURN_CAP", "garbage")
     assert (
-        agent_runner.env_int(
-            "ALFRED_LUCIUS_TURN_CAP", default=99999, minimum=100, maximum=8000
-        )
+        agent_runner.env_int("ALFRED_LUCIUS_TURN_CAP", default=99999, minimum=100, maximum=8000)
         == 8000
     )
