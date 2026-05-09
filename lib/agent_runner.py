@@ -1767,6 +1767,138 @@ def set_repo_paused(repo_slug: str, paused: bool) -> list[str]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Fleet-wide agent enable/disable
+#
+# Single source of truth for "is agent X enabled". State lives at
+# ``$HERMES_HOME/state/fleet/enabled.txt`` — newline-separated codenames,
+# ``#`` comments allowed. Operators edit this with vi at 2am, so a flat
+# text file beats JSON for survival under "I just want to add one line".
+#
+# When the file exists it is AUTHORITATIVE: codename listed → enabled,
+# codename not listed → disabled. When the file is missing the helper
+# returns ``default`` (callers pick: True for opt-out agents, False for
+# opt-in agents like a brand-new feature being burned in).
+# ---------------------------------------------------------------------------
+FLEET_DIR = STATE_ROOT / "fleet"
+FLEET_ENABLED_FILE = FLEET_DIR / "enabled.txt"
+
+
+def _read_enabled_codenames() -> list[str]:
+    """Parse ``FLEET_ENABLED_FILE`` into the list of enabled codenames.
+
+    Skips blank lines and ``#``-prefixed comments. Inline comments are
+    also stripped (``batman # MVP burn-in``). Returns ``[]`` when the
+    file is missing or unreadable — callers decide the default-enabled
+    behaviour via ``is_agent_enabled``'s ``default`` keyword.
+    """
+    if not FLEET_ENABLED_FILE.exists():
+        return []
+    try:
+        text = FLEET_ENABLED_FILE.read_text()
+    except OSError:
+        return []
+    out: list[str] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "#" in line:
+            line = line.split("#", 1)[0].strip()
+        if line:
+            out.append(line)
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for c in out:
+        if c not in seen:
+            seen.add(c)
+            deduped.append(c)
+    return deduped
+
+
+def is_agent_enabled(codename: str, *, default: bool = True) -> bool:
+    """Return True iff ``codename`` is enabled via the fleet state file.
+
+    File missing → ``default`` (True for opt-out agents, False for
+    opt-in agents like Batman until burn-in).
+    File present and codename listed → True.
+    File present and codename not listed → False.
+
+    The file is authoritative when it exists — callers must NOT fall
+    back to legacy markers in that case, otherwise an operator who
+    explicitly disabled an agent will see it silently re-enabled by a
+    stale marker. Pre-existing-marker fallback belongs upstream of
+    this helper, only when the fleet file is missing.
+    """
+    if not FLEET_ENABLED_FILE.exists():
+        return default
+    return codename in _read_enabled_codenames()
+
+
+def list_enabled_agents() -> list[str]:
+    """Return the parsed list of codenames in ``FLEET_ENABLED_FILE``.
+
+    Empty list when the file is missing — callers that want
+    ``default-enabled`` semantics should consult ``is_agent_enabled``
+    per codename.
+    """
+    return _read_enabled_codenames()
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    """tmp+rename atomic write. Leaves no half-written file on crash."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    try:
+        tmp.write_text(text)
+        tmp.replace(path)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+
+def _write_enabled_codenames(codenames: list[str]) -> None:
+    """Persist a list of codenames to ``FLEET_ENABLED_FILE`` atomically.
+    Sorts for stable diffs and dedupes silently."""
+    deduped = sorted({c.strip() for c in codenames if c and c.strip()})
+    header = (
+        "# Fleet enable list — managed by `alfred enable/disable <agent>`.\n"
+        "# One codename per line. Blank lines and `#`-comments are ignored.\n"
+        "# Edit by hand at your own risk; the CLI is the supported path.\n"
+    )
+    body = "\n".join(deduped)
+    _atomic_write(FLEET_ENABLED_FILE, header + body + ("\n" if body else ""))
+
+
+def enable_agent(codename: str) -> list[str]:
+    """Add ``codename`` to ``FLEET_ENABLED_FILE``. Idempotent. Returns
+    the new sorted list of enabled codenames."""
+    codename = codename.strip()
+    if not codename:
+        raise ValueError("enable_agent: codename must be non-empty")
+    current = set(_read_enabled_codenames())
+    current.add(codename)
+    out = sorted(current)
+    _write_enabled_codenames(out)
+    return out
+
+
+def disable_agent(codename: str) -> list[str]:
+    """Remove ``codename`` from ``FLEET_ENABLED_FILE``. Idempotent.
+    Returns the new sorted list of enabled codenames."""
+    codename = codename.strip()
+    if not codename:
+        raise ValueError("disable_agent: codename must be non-empty")
+    current = set(_read_enabled_codenames())
+    current.discard(codename)
+    out = sorted(current)
+    _write_enabled_codenames(out)
+    return out
+
+
 def _parse_claim_comment(body: str) -> dict:
     """Parse 'codename=X firing_id=Y outcome=Z ts=W' from a claim/release comment body."""
     out: dict = {}
