@@ -170,7 +170,7 @@ def main() -> int:
     )
     try:
         preflight(spec)
-    except Exception as e:  # noqa: BLE001 — preflight raises PreflightFailed
+    except Exception as e:
         print(f"[BATMAN-PREFLIGHT-FAIL] {e}", file=sys.stderr)
         return 0
 

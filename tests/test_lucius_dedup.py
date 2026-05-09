@@ -193,19 +193,15 @@ def test_reuse_or_make_worktree_replaces_stale_existing(monkeypatch, tmp_path):
 
     fresh_path = tmp_path / "fresh"
     fresh_path.mkdir()
-    monkeypatch.setattr(
-        ar, "make_worktree", lambda *a, **kw: (fresh_path, "lucius/275-fresh")
-    )
+    monkeypatch.setattr(ar, "make_worktree", lambda *a, **kw: (fresh_path, "lucius/275-fresh"))
 
-    wt, branch, reused = ar.reuse_or_make_worktree("backend", "lucius", "275")
+    wt, _branch, reused = ar.reuse_or_make_worktree("backend", "lucius", "275")
     assert removed == [existing]
     assert wt == fresh_path
     assert reused is False
 
 
-def test_reuse_or_make_worktree_replaces_when_branch_unavailable(
-    monkeypatch, tmp_path
-):
+def test_reuse_or_make_worktree_replaces_when_branch_unavailable(monkeypatch, tmp_path):
     """A worktree whose HEAD we cannot read is treated as wedged and replaced."""
     import agent_runner as ar
 
@@ -219,9 +215,7 @@ def test_reuse_or_make_worktree_replaces_when_branch_unavailable(
 
     fresh_path = tmp_path / "fresh"
     fresh_path.mkdir()
-    monkeypatch.setattr(
-        ar, "make_worktree", lambda *a, **kw: (fresh_path, "lucius/275-fresh")
-    )
-    wt, branch, reused = ar.reuse_or_make_worktree("backend", "lucius", "275")
+    monkeypatch.setattr(ar, "make_worktree", lambda *a, **kw: (fresh_path, "lucius/275-fresh"))
+    wt, _branch, reused = ar.reuse_or_make_worktree("backend", "lucius", "275")
     assert wt == fresh_path
     assert reused is False

@@ -1043,18 +1043,14 @@ def reuse_or_make_worktree(
         # because git's --force already handles the locked / dirty
         # case; if even that fails we walk over to make_worktree which
         # uses a fresh ts and lands at a different path.
-        try:
+        with contextlib.suppress(Exception):
             remove_worktree(local_repo, existing)
-        except Exception:  # noqa: BLE001
-            pass
         wt, branch = make_worktree(local_repo, agent, target, base=base)
         return wt, branch, False
     branch = _worktree_branch(existing) or ""
     if not branch:
-        try:
+        with contextlib.suppress(Exception):
             remove_worktree(local_repo, existing)
-        except Exception:  # noqa: BLE001
-            pass
         wt, branch = make_worktree(local_repo, agent, target, base=base)
         return wt, branch, False
     # Reuse: refresh local view of main inside the worktree so the
@@ -2090,10 +2086,8 @@ def _atomic_write(path: Path, text: str) -> None:
         tmp.replace(path)
     finally:
         if tmp.exists():
-            try:
+            with contextlib.suppress(OSError):
                 tmp.unlink()
-            except OSError:
-                pass
 
 
 def _write_enabled_codenames(codenames: list[str]) -> None:

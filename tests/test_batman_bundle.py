@@ -109,10 +109,7 @@ def test_parse_plan_h2_block_with_comma_separated_payload():
 def test_parse_plan_h2_rollout_order_block():
     import batman as bm
 
-    body = (
-        "## Affected Repos\n- backend\n- frontend\n"
-        "## Rollout Order\n- frontend\n- backend\n"
-    )
+    body = "## Affected Repos\n- backend\n- frontend\n## Rollout Order\n- frontend\n- backend\n"
     plan = bm.parse_plan_from_issue(body)
     assert plan.affected_repos == ["frontend", "backend"]
 
@@ -164,11 +161,7 @@ def test_parse_plan_explicit_list_wins_over_stray_h3():
 def test_parse_plan_backfills_affected_when_only_h3_present():
     import batman as bm
 
-    body = (
-        "## Acceptance Criteria\n"
-        "### backend\nDo backend\n"
-        "### frontend\nDo frontend\n"
-    )
+    body = "## Acceptance Criteria\n### backend\nDo backend\n### frontend\nDo frontend\n"
     plan = bm.parse_plan_from_issue(body)
     assert "backend" in plan.affected_repos
     assert "frontend" in plan.affected_repos
@@ -271,9 +264,7 @@ def test_claim_bundle_succeeds_when_all_claims_succeed(monkeypatch):
 
     monkeypatch.setattr(bm, "claim_issue", lambda *a, **kw: True)
     released: list = []
-    monkeypatch.setattr(
-        bm, "release_issue", lambda *a, **kw: released.append((a, kw)) or True
-    )
+    monkeypatch.setattr(bm, "release_issue", lambda *a, **kw: released.append((a, kw)) or True)
 
     ok = bm.claim_bundle(bundle, codename="batman", firing_id="f-1")
     assert ok is True

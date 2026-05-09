@@ -124,8 +124,6 @@ def test_gh_pr_create_does_not_recreate_standard_labels(monkeypatch, tmp_path):
         c
         for c in cmds
         if c[:3] == ["gh", "label", "create"]
-        and (
-            "Auto-created by gh_pr_create on first use" in (c[-3] if len(c) >= 3 else "")
-        )
+        and ("Auto-created by gh_pr_create on first use" in (c[-3] if len(c) >= 3 else ""))
     ]
     assert adhoc_creates == []

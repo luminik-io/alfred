@@ -84,9 +84,7 @@ def check_paused_repos() -> Finding:
     paused = list_paused_repos()
     if not paused:
         return Finding("paused-repos", "green", "no repos paused")
-    return Finding(
-        "paused-repos", "yellow", f"{len(paused)} repo(s) paused: {', '.join(paused)}"
-    )
+    return Finding("paused-repos", "yellow", f"{len(paused)} repo(s) paused: {', '.join(paused)}")
 
 
 def check_global_block() -> Finding:
@@ -160,7 +158,7 @@ def run_all_checks() -> list[Finding]:
     for fn in CHECKS:
         try:
             findings.append(fn())
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             findings.append(
                 Finding(
                     fn.__name__.removeprefix("check_"),
@@ -204,7 +202,7 @@ def main() -> int:
     spec = PreflightSpec(agent=AGENT)
     try:
         preflight(spec)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         print(f"[FLEET-DOCTOR-PREFLIGHT-FAIL] {e}", file=sys.stderr)
         return 0
 

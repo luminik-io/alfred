@@ -204,7 +204,7 @@ def release_bundle(
                 outcome=outcome,
                 transition_to=transition_to,
             )
-        except Exception as e:  # noqa: BLE001 — release is fire-and-forget
+        except Exception as e:
             print(
                 f"[BATMAN-RELEASE-WARN] {repo}#{issue['number']}: {type(e).__name__}: {e}",
                 file=sys.stderr,
@@ -451,13 +451,13 @@ def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
 
 __all__ = [
     "BUNDLE_LABEL_PREFIX",
-    "LARGE_FEATURE_LABEL",
     "DEFAULT_ROLLOUT_ORDER",
+    "LARGE_FEATURE_LABEL",
     "Bundle",
     "PlanShape",
     "claim_bundle",
-    "release_bundle",
     "list_issues_by_bundle_label",
-    "parse_plan_from_issue",
     "parse_plan_from_bundle",
+    "parse_plan_from_issue",
+    "release_bundle",
 ]

@@ -39,7 +39,6 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 
 from agent_runner import HERMES_HOME, codename_with_role, run
 
@@ -278,9 +277,7 @@ def firing_thread_root(
         return None
 
     header_text = _format_root_text(codename, summary_one_liner, sev)
-    context_text = _truncate(
-        f"firing_id={firing_id} · started {_now_utc_short()}", SECTION_MAX
-    )
+    context_text = _truncate(f"firing_id={firing_id} · started {_now_utc_short()}", SECTION_MAX)
     blocks: list[dict] = [
         {"type": "header", "text": {"type": "plain_text", "text": header_text}},
         {"type": "divider"},
@@ -437,12 +434,12 @@ def firing_thread_close(
 
 
 __all__ = [
-    "HOME_CHANNEL_ENV",
     "HOME_CHANNEL_DEFAULT",
+    "HOME_CHANNEL_ENV",
     "SEVERITY_COLOUR",
     "SEVERITY_EMOJI",
     "ThreadHandle",
-    "firing_thread_root",
-    "firing_thread_reply",
     "firing_thread_close",
+    "firing_thread_reply",
+    "firing_thread_root",
 ]
