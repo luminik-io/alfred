@@ -954,6 +954,117 @@ def remove_worktree(local_repo: str, wt: Path) -> None:
     run(["git", "worktree", "remove", "--force", str(wt)], cwd=str(repo_path), timeout=30)
 
 
+def find_existing_worktree(local_repo: str, agent: str, target: str) -> Path | None:
+    """Locate a previous-firing worktree for ``(agent, local_repo, target)``.
+
+    Returns the most recent matching path under ``WORKTREE_ROOT`` or
+    ``None`` if no leftover worktree exists. The glob pattern matches
+    the on-disk naming convention written by ``make_worktree``:
+    ``eng-<agent>-<repo>-<target>-<ts>``. Sorting by mtime keeps the
+    dedup deterministic when (rare) more than one stale worktree
+    exists for the same target.
+    """
+    if not WORKTREE_ROOT.exists():
+        return None
+    pattern = f"eng-{agent}-{local_repo}-{target}-*"
+    matches = sorted(
+        (p for p in WORKTREE_ROOT.glob(pattern) if p.is_dir()),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return matches[0] if matches else None
+
+
+def _worktree_branch(wt: Path) -> str | None:
+    """Return the branch checked out inside ``wt`` or ``None`` on error."""
+    res = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=str(wt), timeout=10)
+    if res.returncode != 0:
+        return None
+    branch = (res.stdout or "").strip()
+    return branch or None
+
+
+def _worktree_is_stale(local_repo: str, wt: Path, base: str = "origin/main") -> bool:
+    """Heuristic: is this worktree's branch detached from current ``base``?
+
+    A worktree is stale when its branch is on ``HEAD`` (detached) OR
+    when base has moved past it AND it has no commits ahead. The first
+    half catches a wedged worktree we cannot resume on; the second
+    catches the common case where the planner reset the issue label
+    after a no-commit firing and main has since moved on. We always
+    reuse a worktree that is ahead of base by any amount so prior work
+    survives across firings.
+    """
+    repo_path = WORKSPACE / local_repo
+    # Refresh local view of base so the comparison is honest.
+    run(["git", "fetch", "origin", "main"], cwd=str(repo_path), timeout=60)
+    branch = _worktree_branch(wt)
+    if not branch or branch == "HEAD":
+        return True
+    behind_ahead = run(
+        ["git", "rev-list", "--left-right", "--count", f"{base}...{branch}"],
+        cwd=str(wt),
+        timeout=10,
+    )
+    if behind_ahead.returncode != 0:
+        return True
+    parts = (behind_ahead.stdout or "").strip().split()
+    if len(parts) != 2:
+        return True
+    try:
+        behind, ahead = int(parts[0]), int(parts[1])
+    except ValueError:
+        return True
+    return ahead == 0 and behind > 0
+
+
+def reuse_or_make_worktree(
+    local_repo: str, agent: str, target: str, *, base: str = "origin/main"
+) -> tuple[Path, str, bool]:
+    """Reuse a previous-firing worktree when one exists; else fall back to fresh.
+
+    Returns ``(path, branch, reused)`` where ``reused`` is ``True``
+    when we landed on a leftover worktree from a prior firing. Closes
+    the runner-side dedup hole: every firing of a long-running issue
+    (max-turns, partial commits) lands on the SAME worktree, so commits
+    stack up and pre-push checks see the full state instead of a
+    clean slate.
+
+    Stale worktrees (``_worktree_is_stale``) are removed before the
+    ``make_worktree`` fallback so ``WORKTREE_ROOT`` does not accumulate
+    dead branches on every firing miss.
+    """
+    existing = find_existing_worktree(local_repo, agent, target)
+    if existing is None:
+        wt, branch = make_worktree(local_repo, agent, target, base=base)
+        return wt, branch, False
+    if _worktree_is_stale(local_repo, existing, base=base):
+        # Best-effort cleanup. ``remove_worktree`` swallows failures
+        # because git's --force already handles the locked / dirty
+        # case; if even that fails we walk over to make_worktree which
+        # uses a fresh ts and lands at a different path.
+        try:
+            remove_worktree(local_repo, existing)
+        except Exception:  # noqa: BLE001
+            pass
+        wt, branch = make_worktree(local_repo, agent, target, base=base)
+        return wt, branch, False
+    branch = _worktree_branch(existing) or ""
+    if not branch:
+        try:
+            remove_worktree(local_repo, existing)
+        except Exception:  # noqa: BLE001
+            pass
+        wt, branch = make_worktree(local_repo, agent, target, base=base)
+        return wt, branch, False
+    # Reuse: refresh local view of main inside the worktree so the
+    # resumed firing sees the latest base; the caller decides whether
+    # to rebase. Best-effort fetch keeps the path clean if the network
+    # is briefly unavailable.
+    run(["git", "fetch", "origin", "main"], cwd=str(existing), timeout=60)
+    return existing, branch, True
+
+
 # ---------- Claude invocation ----------
 
 # stop_reason discipline (ported from pi-mono):
@@ -1735,6 +1846,67 @@ def gh_pr_comment(repo_slug: str, num: int, body: str) -> bool:
         timeout=30,
     )
     return res.returncode == 0
+
+
+def find_open_authored_pr_for_issue(
+    repo_slug: str, issue_num: int, *, label: str = "agent:authored"
+) -> dict | None:
+    """Return the first open agent-authored PR that references ``issue_num``.
+
+    Runner-side mirror of the prompt's Step 1.5 dedup. We search any
+    open PR whose title or body mentions ``#<issue_num>`` (this is how
+    Conventional-Commits ``Closes #N`` / ``Fixes #N`` link ends up in
+    the body) and only consider PRs carrying ``label`` so a human PR
+    that happens to reference the issue does NOT lock the queue. We
+    skip the issue if the agent is going to step on its own toes; we
+    do NOT block the queue on third-party PRs.
+
+    Returns the PR JSON dict (with ``number``, ``url``, ``state``,
+    ``labels``, ``title``, ``body``) or ``None`` if no such PR exists.
+    Falls back to ``None`` on any ``gh`` failure so a transient
+    network blip does not lock out the picker.
+    """
+    prs = gh_json(
+        [
+            "gh",
+            "pr",
+            "list",
+            "-R",
+            _full_repo(repo_slug),
+            "--state",
+            "open",
+            "--search",
+            f'"#{issue_num}" in:title,body',
+            "--json",
+            "number,url,state,labels,title,body",
+            "--limit",
+            "10",
+        ],
+        default=[],
+    )
+    for pr in prs or []:
+        pr_labels = {label_obj.get("name") for label_obj in pr.get("labels", [])}
+        if label and label not in pr_labels:
+            continue
+        # Be defensive: ``gh``'s text search substring-matches, so a
+        # PR mentioning ``#12345`` matches a search for ``#12``. Re-
+        # validate the body+title contain the exact issue token
+        # followed by a non-digit (or end-of-text) so we never lock
+        # issue #12 behind a PR that closes #1234.
+        token = f"#{issue_num}"
+        haystack = f" {pr.get('title', '')} {pr.get('body', '') or ''} "
+        idx = haystack.find(token)
+        valid = False
+        while idx >= 0:
+            after = haystack[idx + len(token) : idx + len(token) + 1]
+            if not after.isdigit():
+                valid = True
+                break
+            idx = haystack.find(token, idx + 1)
+        if not valid:
+            continue
+        return pr
+    return None
 
 
 # ---------- Issue claim state machine ----------
