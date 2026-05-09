@@ -101,8 +101,14 @@ def _list_large_features() -> list[dict]:
     """Cross-repo search for open ``agent:large-feature`` issues.
 
     Filters out issues that look claimed (``agent:in-flight``) or
-    blocked (``do-not-pickup``). Returns ``[]`` on missing GH_ORG so a
-    half-configured fleet exits cleanly instead of stack-tracing.
+    blocked (``do-not-pickup``). Returns ``[]`` on missing GH_ORG or
+    empty ``BATMAN_SCAN_REPOS`` so a half-configured fleet exits
+    cleanly instead of org-wide blasting issues into the picker.
+
+    The post-search filter (URL prefix match) keeps results scoped to
+    the operator-configured repos even though ``gh search`` only takes
+    ``--owner``, not ``--repo`` per call. Hits in repos outside the
+    scan list are dropped silently.
     """
     if not GH_ORG:
         return []
@@ -125,15 +131,18 @@ def _list_large_features() -> list[dict]:
             "20",
         ]
     )
-    rows = gh_json(
-        cmd,
-        default=[],
-    )
+    rows = gh_json(cmd, default=[])
     if not isinstance(rows, list):
         return []
+    allowed_prefixes = tuple(
+        f"https://github.com/{repo}/" for repo in repo_args
+    )
     skip_labels = {"agent:in-flight", "agent:pr-open", "do-not-pickup"}
     eligible: list[dict] = []
     for r in rows:
+        url = r.get("url") or ""
+        if not url.startswith(allowed_prefixes):
+            continue
         labels = {label.get("name") for label in r.get("labels", []) if isinstance(label, dict)}
         if labels & skip_labels:
             continue
