@@ -313,6 +313,7 @@ def test_gh_repo_from_url_filters_cross_org():
 # Issue picker: BATMAN_SCAN_REPOS gate (Codex P1 on alfred-os PR #15)
 # ---------------------------------------------------------------------------
 
+
 def _import_batman_runner():
     """Re-import bin/batman.py with the current env so module-level
     constants (GH_ORG, etc.) re-evaluate against the test fixtures.
@@ -323,6 +324,7 @@ def _import_batman_runner():
     under a different sys.modules key.
     """
     import importlib.util
+
     repo_root = Path(__file__).resolve().parent.parent
     lib_dir = repo_root / "lib"
     bin_dir = repo_root / "bin"
@@ -352,9 +354,13 @@ def test_list_large_features_returns_empty_when_scan_repos_unset(monkeypatch):
     runner = _import_batman_runner()
     # Even if gh search would have returned issues, the early return
     # short-circuits before any subprocess call.
-    monkeypatch.setattr(runner, "gh_json",
-                        lambda *_a, **_k: [{"number": 1, "url": "https://github.com/myorg/x/issues/1",
-                                            "labels": []}])
+    monkeypatch.setattr(
+        runner,
+        "gh_json",
+        lambda *_a, **_k: [
+            {"number": 1, "url": "https://github.com/myorg/x/issues/1", "labels": []}
+        ],
+    )
     assert runner._list_large_features() == []
 
 
@@ -384,12 +390,21 @@ def test_list_large_features_skip_labels_still_apply(monkeypatch):
     monkeypatch.setenv("GH_ORG", "myorg")
     runner = _import_batman_runner()
     fake_rows = [
-        {"number": 1, "url": "https://github.com/myorg/backend/issues/1",
-         "labels": [{"name": "agent:large-feature"}]},
-        {"number": 2, "url": "https://github.com/myorg/backend/issues/2",
-         "labels": [{"name": "agent:large-feature"}, {"name": "do-not-pickup"}]},
-        {"number": 3, "url": "https://github.com/myorg/backend/issues/3",
-         "labels": [{"name": "agent:large-feature"}, {"name": "agent:in-flight"}]},
+        {
+            "number": 1,
+            "url": "https://github.com/myorg/backend/issues/1",
+            "labels": [{"name": "agent:large-feature"}],
+        },
+        {
+            "number": 2,
+            "url": "https://github.com/myorg/backend/issues/2",
+            "labels": [{"name": "agent:large-feature"}, {"name": "do-not-pickup"}],
+        },
+        {
+            "number": 3,
+            "url": "https://github.com/myorg/backend/issues/3",
+            "labels": [{"name": "agent:large-feature"}, {"name": "agent:in-flight"}],
+        },
     ]
     monkeypatch.setattr(runner, "gh_json", lambda *_a, **_k: fake_rows)
     out = runner._list_large_features()

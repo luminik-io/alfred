@@ -134,9 +134,7 @@ def _list_large_features() -> list[dict]:
     rows = gh_json(cmd, default=[])
     if not isinstance(rows, list):
         return []
-    allowed_prefixes = tuple(
-        f"https://github.com/{repo}/" for repo in repo_args
-    )
+    allowed_prefixes = tuple(f"https://github.com/{repo}/" for repo in repo_args)
     skip_labels = {"agent:in-flight", "agent:pr-open", "do-not-pickup"}
     eligible: list[dict] = []
     for r in rows:
