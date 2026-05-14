@@ -100,7 +100,11 @@
 /* ------------------------------------------------------------------ */
 /* Site header — glass at ~88% opacity                                 */
 /* ------------------------------------------------------------------ */
-.header {
+/* Scoped to the `header` element specifically: Starlight's site header
+   is `<header class="header">`, but Expressive Code code-frame title
+   bars are `<figcaption class="header">`. A bare `.header` selector
+   would bleed the glass treatment onto every framed code block. */
+header.header {
   background: color-mix(in srgb, var(--sl-color-bg-nav) 88%, transparent);
   -webkit-backdrop-filter: blur(14px) saturate(1.15);
   backdrop-filter: blur(14px) saturate(1.15);
@@ -111,13 +115,13 @@
 }
 
 @supports not (backdrop-filter: blur(1px)) {
-  .header {
+  header.header {
     background: var(--sl-color-bg-nav);
   }
 }
 
-.header .site-title img,
-.header a[href] img {
+header.header .site-title img,
+header.header a[href] img {
   filter: drop-shadow(0 0 12px var(--alfred-accent-glow));
 }
 
