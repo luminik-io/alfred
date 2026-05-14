@@ -1,6 +1,6 @@
 # Roadmap
 
-What's shipped, what's next, what's deliberately out of scope. Living doc; updated on every release.
+What's shipped, what's next, where Alfred is going, and the design boundaries that stay. Living doc; updated on every release.
 
 ## Shipped (v0.2.1)
 
@@ -53,44 +53,46 @@ The default install ships a working engineering agent fleet. After `bash install
 - **`alfred new-codename` scaffold**: single command to add a fresh codename agent (script template + agents.conf entry + label registration).
 - **MCP server adapter**: expose read-only fleet status plus carefully scoped `claim_issue` / `release_issue` / `slack_post(severity)` tools so other Claude Code consumers can call them directly. This should use `${ALFRED_HOME}` and remain optional, not a required Hermes dependency.
 
-## Future categories (post-v0.2, out of scope today)
+## Beyond engineering — the solo builder's agent OS
 
-These are agent categories the framework supports in principle but the v0.2 engineering release ships zero of. Each requires its own integration surface and is bigger than a single PR. Tracked here so contributors know where to slot proposals.
+The default install ships the **engineering fleet**. But the harness underneath it — `claude_invoke`, `slack_post`, the issue-claim state machine, per-agent spend caps, per-firing worktrees, the codename pattern — is department-agnostic. The private fleet Alfred OS was extracted from already runs content, sales, and ops agents on the same substrate. That is the direction: Alfred OS as the solo builder's whole agent OS, one department at a time.
 
-- **Sales / SDR agents**: prospect identification, LinkedIn / event-page scraping, outreach drafts. Human-in-the-loop on send.
-- **Content agents**: blog / LinkedIn / SEO drafts, site-page generation, content-drift detection. Human-in-the-loop on publish.
-- **Personal-assistant agents**: inbox triage, calendar, daily digest. Generates Gmail drafts; never sends.
-- **Finance-ops agents**: invoice generation, bank reconciliation, subscription audit. Generates drafts; never moves money.
-- **Product-ops / SRE agents**: uptime monitoring, release notes, customer-health signals.
+Each department is its own integration surface (Apollo / Reddit / Gmail / Stripe / Sentry SDKs) and its own per-codename prompt design. They land incrementally — one codename per PR, with prompt + tests + docs. PRs welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-The framework's primitives (`claude_invoke`, `slack_post`, `claim_issue`, `gh_pr_create`) are category-agnostic. The work for each new category is the integration layer (Apollo / Reddit / Gmail / Wise / Sentry SDKs) and the per-codename prompt design.
+- **Content** — blog / LinkedIn / SEO drafts, site-page generation, content-drift detection. Human-in-the-loop on publish.
+- **Sales / SDR** — prospect identification, event-page sourcing, outreach drafts. Human-in-the-loop on send.
+- **Personal assistant** — inbox triage, calendar, daily digest. Drafts only; never sends.
+- **Finance ops** — invoice generation, bank reconciliation, subscription audit. Drafts only; never moves money.
+- **Product ops / SRE** — uptime monitoring, release notes, customer-health signals.
 
-PRs in any of these categories are welcome: see [`CONTRIBUTING.md`](CONTRIBUTING.md). Bias: incremental + scoped. One codename per PR, with prompt + tests + docs.
+## On the horizon
+
+Substrate work that makes a growing fleet observable and self-improving.
+
+- **A memory layer.** Today each firing is near-stateless apart from GitHub labels. A doc- or SQLite-shaped recall/reflect layer would let an agent start a firing with what the last firings on the same code learned. Optional, zero-dependency, per-fleet.
+- **`alfred serve` — a local read-model + UI.** A small local app over `state/` and the per-firing transcripts: a live firing feed, per-agent cost and success trends, the trace tree for one firing. Read-only and local — the operator's pane of glass, not a hosted dashboard.
 
 ## Considered, not committed
 
-- **First-class GitHub App**: instead of the operator's gh PAT, ship a GitHub App definition with scoped permissions per agent. Bigger onboarding surface; defer until there's demonstrated demand.
-- **Pluggable spend backends**: today `SpendState` writes JSON files. Filesystem / Redis / sqlite interface would help multi-host operators. Single-host is the design, so this stays speculative.
-- **Plugin system for skills**: instead of operator-installed Claude Code skills, ship a `skills/` directory and an installer. Pushes maintenance onto the framework; current decision is to stay out.
-- **Web dashboard**: rejected once already; listed here so the rejection is visible.
+- **First-class GitHub App** instead of the operator's `gh` PAT — scoped per-agent permissions. Bigger onboarding surface; defer until there's demonstrated demand.
+- **Pluggable spend backends** (filesystem / sqlite / Redis). Single-host is the design, so this stays speculative.
+- **Plugin system for skills.** Today skills are operator-installed Claude Code skills; a bundled `skills/` directory would push maintenance onto the framework.
+- **`pipx` / PyPI install.** Git clone is the supported path today; a packaged install would widen the audience.
 
-## Out of scope (deliberately)
+## Design boundaries
 
-Not bugs. Design decisions.
+Alfred has a deliberate shape. These are not missing features — they are the design.
 
-- **Multi-tenant.** One operator, one Mac, one config.
-- **Web UI.** Slack is the human surface.
-- **Long-running orchestration loop.** Cron is the orchestrator. Long-running Python has worse failure isolation.
-- **Hosted LLM gateway.** Alfred has local CLI engine adapters and simple per-agent engine selection; it does not run a hosted inference service.
-- **Browser automation built in.** If your fleet needs a browser, install Playwright in your codename's bin script.
-- **Vector DB for memory.** A doc-shaped memory layer is the operator's choice. The framework doesn't ship one.
-- **Anything Anthropic ships natively.** Agent Teams, Memory Tool, MCP server registry: when those mature, lean on them rather than re-implement.
-- **Hosted SaaS.** This is software you install. We won't run agents for you.
-- **PyPI publishing.** Git clone is the supported install path.
+- **Single operator.** One person, one host, one config. Alfred is not multi-tenant and will not become a hosted SaaS. It is software you install and run yourself.
+- **The OS schedules; Alfred runs.** No long-running orchestration loop. `launchd` / `systemd` own cadence; each firing is a fresh, isolated process — better failure isolation, and it survives reboots.
+- **Local CLIs, not a model gateway.** Alfred shells out to `claude` / `codex` on your own subscription. It does not run inference for you.
+- **Lean on the platform.** When Anthropic ships a capability natively (Agent Teams, the Memory Tool), Alfred adopts it rather than re-implementing it.
+- **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script. The core stays lean.
 
 ## Influence
 
-- **Strong**: working PR for an in-flight feature.
-- **Medium**: well-scoped feature request issue with use case + proposal.
+- **Strong**: a working PR for something already on the in-flight or roadmap list.
+- **Medium**: a well-scoped feature request with a real use case and a proposal.
 - **Low**: "would be cool if" comments.
-- **None**: scope-broadening requests (multi-tenant, hosted, web UI).
+
+Want to take Alfred somewhere new — a new department, a substrate change? Open a discussion first, so the design fits before the code does.
