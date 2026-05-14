@@ -11,8 +11,8 @@
     ALFRED_HOME            runtime home (defaults to ~/.alfred)
     WORKSPACE_ROOT         parent dir of per-repo checkouts (defaults to ~/code)
     BUG_TRIAGE_REPOS       comma-sep list of repo slugs the agent watches
-    FEATURE_DEV_CODENAME   codename of the feature-dev agent (default "Lucius")
-                          , referenced in flow comments
+    FEATURE_DEV_CODENAME   codename of the feature-dev agent (default "Lucius"),
+                          referenced in flow comments
 -->
 
 # ${AGENT_CODENAME}, Bug Triage

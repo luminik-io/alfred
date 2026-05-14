@@ -429,8 +429,8 @@ def slack_post(text: str, *, severity: str = SLACK_SEVERITY_INFO) -> bool:
 
     1. ``SLACK_WEBHOOK_URL`` env var, simplest path; set it once in your
        launchd plist or shell profile.
-    2. Disk cache at ``${ALFRED_HOME}/state/slack-webhook.cache`` (30-day TTL)
-      , written by step 3 the first time it succeeds, so subsequent calls
+    2. Disk cache at ``${ALFRED_HOME}/state/slack-webhook.cache`` (30-day TTL),
+      written by step 3 the first time it succeeds, so subsequent calls
        skip the AWS round-trip.
     3. AWS Secrets Manager, secret id from ``SLACK_WEBHOOK_SECRET_ID``
        (default ``alfred/slack-webhook``), region from
@@ -697,8 +697,8 @@ def doctor_mode() -> bool:
 #
 # ``--dry-run`` is a low-commitment "watch it work" path. Unlike doctor_mode
 # (which short-circuits a runner to a preflight-only check), dry-run runs the
-# WHOLE firing lifecycle, pick, claim, worktree, invoke, act, release, report
-# , but stubs every side-effecting boundary so it costs nothing:
+# WHOLE firing lifecycle, pick, claim, worktree, invoke, act, release, report,
+# but stubs every side-effecting boundary so it costs nothing:
 #
 #   * the LLM is never invoked (claude_invoke / codex_invoke return a clearly
 #     marked synthetic ClaudeResult);

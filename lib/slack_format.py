@@ -345,8 +345,8 @@ def firing_thread_reply(
 ) -> bool:
     """Post an in-thread reply with a severity-colour attachment.
 
-     Returns ``False`` on missing handle (caller never got a thread root
-    , silent skip) or any API error. Severity colour stripe goes on the
+     Returns ``False`` on missing handle (caller never got a thread root,
+    silent skip) or any API error. Severity colour stripe goes on the
      attachment so the reply carries the same green/yellow/red as the
      root.
 
