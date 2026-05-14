@@ -200,21 +200,23 @@ The cast matters for two reasons. Codenames appear in PR titles, Slack messages,
 
 See [Architecture → Codename pattern](https://alfred.luminik.io/concepts/codename-pattern/) for more.
 
-## What Alfred does not do
+## Design boundaries
 
-- ❌ Multi-tenant. Single operator, one host, one config.
-- ❌ A web UI. Slack is the human surface.
-- ❌ Long-running orchestration loops. The OS scheduler is the orchestrator.
-- ❌ Hosted model gateways. Alfred shells out to local CLIs (`claude`, optional `codex`, optional Ollama); it does not run a multi-tenant inference gateway.
-- ❌ Browser automation runtimes. If your fleet needs a browser, install Playwright in your codename agent's bin script.
-- ❌ Bundled vector databases or memory stores. Some fleets use gbrain or a doc-shaped memory layer. Alfred doesn't ship one; that's a per-fleet decision.
-- ❌ Anything Anthropic ships natively (Agent Teams, Memory Tool). When those mature, lean on them rather than re-implementing in Alfred.
+Alfred has a deliberate shape. These are not missing features — they are the design.
+
+- **Single operator.** One person, one host, one config. Alfred is not multi-tenant and will not become a hosted SaaS — it is software you install and run yourself.
+- **The OS schedules; Alfred runs.** No long-running orchestration loop. `launchd` / `systemd` own cadence; each firing is a fresh, isolated process — better failure isolation, and it survives reboots.
+- **Local CLIs, not a model gateway.** Alfred shells out to `claude` / optional `codex` / optional Ollama on your own subscription. It does not run a hosted inference service.
+- **Lean on the platform.** When Anthropic ships a capability natively (Agent Teams, the Memory Tool), Alfred adopts it rather than re-implementing it.
+- **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script — the core stays lean.
+
+The engineering fleet ships today. Content, sales, and ops departments — plus a memory layer and a local `alfred serve` UI — are the roadmap: [`ROADMAP.md`](ROADMAP.md).
 
 ## Status
 
-**v0.2.1**. Complete local engineering-agent fleet for one operator, with the first public launch cleanup pass applied. APIs in `agent_runner` are stable for the operator's own use; expect rough edges if you fork. There is no roadmap to make Alfred multi-tenant.
+**v0.2.1**. A complete local engineering-agent fleet for one operator, with the first public launch cleanup pass applied. APIs in `agent_runner` are stable for the operator's own use; expect rough edges if you fork.
 
-Maintained on weekends. Issues triaged on a best-effort basis. PRs that match the design constraints (see [`CONTRIBUTING.md`](CONTRIBUTING.md)) get reviewed; PRs that broaden scope get politely declined.
+Maintained on weekends. Issues triaged on a best-effort basis. PRs that match the design boundaries above (see also [`CONTRIBUTING.md`](CONTRIBUTING.md)) get reviewed. Want to take Alfred somewhere new — a new department, a substrate change? Open a discussion first.
 
 ## License
 
