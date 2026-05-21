@@ -1,6 +1,6 @@
 ---
 title: Changelog
-description: Recent Alfred OS releases. Full history in CHANGELOG.md.
+description: Recent Alfred releases. Full history in CHANGELOG.md.
 ---
 
 Recent releases. The canonical, complete history lives in [`CHANGELOG.md`](https://github.com/luminik-io/alfred-os/blob/main/CHANGELOG.md) on GitHub. It follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format and [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Tagged releases are at [github.com/luminik-io/alfred-os/releases](https://github.com/luminik-io/alfred-os/releases).
@@ -19,12 +19,12 @@ What's about to ship. See the [`[Unreleased]`](https://github.com/luminik-io/alf
 
 ## 0.2.1 (2026-05-12)
 
-First public launch cleanup pass.
+Public launch hardening release.
 
 - Checked-in CodeQL workflow (Actions, Python, Ruby, JS/TS) with PR, push, scheduled, and manual triggers.
 - Optional [Hermes integration guide](/guides/hermes/).
 - Stopped Lucius from logging GitHub issue-author trust details to stdout/Slack (CodeQL clear-text-logging fix).
-- Public repo metadata moved to the sharper `alfred-os` positioning; squash-only merges + Dependabot.
+- Public repo metadata moved to clearer Alfred positioning; squash-only merges + Dependabot.
 
 ## 0.2.0 (2026-05-12)
 

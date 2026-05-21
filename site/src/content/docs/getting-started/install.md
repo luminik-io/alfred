@@ -27,11 +27,18 @@ Single-repo starter fleet:
   --slack-webhook skip
 ```
 
-`alfred-init.py` writes the fleet config, seeds prompt templates into
-`~/.alfred/prompts/`, creates the standard GitHub labels on selected repos,
-runs deploy, and runs doctor. For a framework-only install with no agents
-configured, run `bash deploy.sh && bash bin/doctor.sh`; doctor should report
-`0 passed, 0 failed`.
+This is the zero-guess path for a solo builder or an AI coding tool setting up
+one repo. It assumes `GH_ORG` is set, `gh auth login` has completed, and
+`claude` has completed first-run auth. The repo owner must match `GH_ORG`; the
+runtime agents store the bare repo name in `~/.alfredrc` and build
+`GH_ORG/repo` at firing time. The command enables Drake, Lucius, Ras al Ghul,
+and agent-cleanup; assigns the selected repo to each repo-operating agent;
+skips Slack safely; seeds prompt templates into `~/.alfred/prompts/`; creates
+standard GitHub labels on the selected repo; writes
+`launchd/agents.conf`; updates `~/.alfredrc`; runs deploy; and runs doctor.
+
+For a framework-only install with no agents configured, run `bash deploy.sh &&
+bash bin/doctor.sh`; doctor should report `0 passed, 0 failed`.
 
 ## What `install.sh` does
 
@@ -72,7 +79,8 @@ Per-stage skips: `--skip-brew`, `--skip-npm`.
 
 For `alfred-init.py`, `--agents starter` means Drake, Lucius, Ras al Ghul, and
 agent-cleanup. Use `--agents all` only when you want every scheduled agent.
-Use `--repos owner/repo` for the common single-repo case.
+Use `--repos owner/repo` for the common single-repo case. `owner` must match
+`GH_ORG`.
 
 ## After install
 

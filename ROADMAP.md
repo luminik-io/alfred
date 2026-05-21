@@ -57,7 +57,7 @@ The default install ships a working engineering agent fleet. After `bash install
 
 ## Beyond engineering: the solo builder's agent OS
 
-The default install ships the **engineering fleet**. But the harness underneath it (`claude_invoke`, `slack_post`, the issue-claim state machine, per-agent spend caps, per-firing worktrees, the codename pattern) is department-agnostic. The private fleet Alfred OS was extracted from already runs content, sales, and ops agents on the same substrate. That is the direction: Alfred OS as the solo builder's whole agent OS, one department at a time.
+The default install ships the **engineering fleet**. But the harness underneath it (`claude_invoke`, `slack_post`, the issue-claim state machine, per-agent spend caps, per-firing worktrees, the codename pattern) is department-agnostic. Alfred was extracted from a private fleet that already runs content, sales, and ops agents on the same substrate. That is the direction: Alfred as the solo builder's whole agent OS, one department at a time.
 
 Each department is its own integration surface (Apollo / Reddit / Gmail / Stripe / Sentry SDKs) and its own per-codename prompt design. They land incrementally, one codename per PR, with prompt + tests + docs. PRs welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 

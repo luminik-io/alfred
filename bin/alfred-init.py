@@ -182,6 +182,7 @@ SETUP_LABELS: list[tuple[str, str, str]] = [
     ("agent:pr-open", "fbca04", "A PR exists for this issue."),
     ("agent:done", "0e8a16", "Issue shipped."),
     ("agent:authored", "1d76db", "PR authored by an Alfred agent."),
+    ("done-already", "0e8a16", "Issue was already implemented before Alfred picked it up."),
     ("agent:large-feature", "ff6b00", "Multi-repo feature candidate for Batman."),
     ("batman-pr-open", "5319e7", "A Batman bundle PR is open in this repo."),
     ("do-not-pickup", "5319e7", "Operator override: agents must not claim this issue."),
@@ -471,6 +472,18 @@ def repo_local_names(repos: list[str]) -> list[str]:
     return out
 
 
+def repo_runtime_values(repos: list[str]) -> list[str]:
+    """Return repo tokens suitable for the current agent env-var contract.
+
+    The wizard stores selected repos as GitHub slugs (owner/repo) so label
+    setup can call gh with an unambiguous -R value. Most shipped runners read
+    ALFRED_<AGENT>_REPOS as local repo names under GH_ORG and then build
+    owner/repo themselves, so the generated ~/.alfredrc must strip the owner.
+    """
+
+    return repo_local_names(repos)
+
+
 def selected_repo_union(state: WizardState) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
@@ -587,11 +600,12 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
         out[f"AGENT_CODENAME_{role.upper()}"] = codename
         repos = state.role_to_repos.get(role, [])
         if repos:
+            runtime_repos = repo_runtime_values(repos)
             if role == "cross_repo_coordinator":
-                out["BATMAN_SCAN_REPOS"] = ",".join(repos)
-                out["BATMAN_ROLLOUT_ORDER"] = ",".join(repo_local_names(repos))
+                out["BATMAN_SCAN_REPOS"] = ",".join(runtime_repos)
+                out["BATMAN_ROLLOUT_ORDER"] = ",".join(runtime_repos)
             else:
-                out[f"ALFRED_{default_slug}_REPOS"] = ",".join(repos)
+                out[f"ALFRED_{default_slug}_REPOS"] = ",".join(runtime_repos)
         for k, v in state.role_to_extras.get(role, {}).items():
             out[k] = v
         if state.use_aws and codename in state.aws_agent_profiles:
@@ -865,6 +879,16 @@ def step_5_pick_agents(
         warn("No agent runners discovered in bin/. Did parallel agents land yet?")
         warn("Falling back to the full catalog.")
         available = list(AGENT_CATALOG.keys())
+    if state.enabled_roles and not agents_arg:
+        configured = [
+            role for role in AGENT_CATALOG if role in state.enabled_roles and role in available
+        ]
+        if not configured:
+            fail("--config agents did not match any discovered agents.")
+            sys.exit(1)
+        state.enabled_roles = configured
+        ok(f"Enabled {len(state.enabled_roles)} agents from --config.")
+        return
     if agents_arg:
         state.enabled_roles = roles_from_agents_arg(agents_arg, available)
         if not state.enabled_roles:
@@ -935,6 +959,19 @@ def step_7_repos(
         )
         if not arg_repos and repos_arg.strip().lower() != "none":
             fail(f"--repos did not match any visible repo: {repos_arg}")
+            sys.exit(1)
+        outside_org = [
+            repo
+            for repo in arg_repos
+            if "/" in repo
+            and state.gh_org
+            and repo.split("/", 1)[0].lower() != state.gh_org.lower()
+        ]
+        if outside_org:
+            fail(
+                "--repos must belong to GH_ORG for the shipped agents. "
+                f"Set GH_ORG accordingly or use bare repo names. Outside scope: {', '.join(outside_org)}"
+            )
             sys.exit(1)
 
     for role in repo_roles:
@@ -1245,9 +1282,13 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
     if "aws_agent_profiles" in cfg:
         state.aws_agent_profiles = dict(cfg["aws_agent_profiles"])
     if "agents" in cfg:
-        # cfg["agents"] is a list of codenames.
-        wanted = set(cfg["agents"])
-        state.enabled_roles = [r for r, (cn, _, _, _) in AGENT_CATALOG.items() if cn in wanted]
+        # cfg["agents"] is a list of codenames or role keys.
+        wanted = {str(item).lower() for item in cfg["agents"]}
+        state.enabled_roles = [
+            r
+            for r, (cn, _, _, _) in AGENT_CATALOG.items()
+            if cn.lower() in wanted or r.lower() in wanted
+        ]
     if "repos" in cfg:
         repos = cfg["repos"]
         if isinstance(repos, str):

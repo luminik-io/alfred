@@ -7,7 +7,7 @@ Alfred core should stay boring: local Python runners, `launchd` scheduling,
 git worktrees, GitHub CLI, model CLIs, and optional Slack delivery.
 
 `ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`.
-Alfred OS uses `ALFRED_HOME` only for its runtime path.
+Alfred uses `ALFRED_HOME` only for its runtime path.
 
 ## Bundling policy
 

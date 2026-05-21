@@ -80,7 +80,7 @@ Each codename has:
 - **A launchd entry**: one line in `launchd/agents.conf` (label, script, schedule, java flag).
 - **(Optional) A prompt file**: `prompts/<role>.md` in this repo or `$ALFRED_HOME/prompts/<codename>.md` in your fleet. Long-form context the runner inlines into `claude -p`.
 - **(Optional) An IAM identity**: if it touches AWS. See [AWS setup](/guides/aws/).
-- **A row in your fleet's CLAUDE.md** documenting role + trigger + scope.
+- **A row in your repo guidance file** (`AGENTS.md` or `CLAUDE.md`) documenting role + trigger + scope.
 
 The role implementation lives in `bin/<role>.py` (the filename never changes). The operator-chosen codename flows in at runtime through the launchd plist:
 

@@ -26,6 +26,9 @@ Single-repo starter fleet, suitable for an AI coding tool to run end to end:
   --slack-webhook skip
 ```
 
+The repo owner must match `GH_ORG`; the runtime agents store the bare repo name
+in `~/.alfredrc` and build `GH_ORG/repo` at firing time.
+
 The rest of this doc explains what each step does and what to do when something fails.
 
 ## What `install.sh` does
@@ -151,9 +154,9 @@ agent.
 - Runs `bash deploy.sh`, then `bash bin/doctor.sh`.
 
 Batman is included in the catalog as an opt-in cross-repo coordinator. In the
-OSS release it posts bundle plans for `agent:large-feature` work; the private
-Luminik repo has the fuller approval-and-execution chain. Enable Batman when
-you are ready for multi-repo planning, not for a first single-repo setup.
+public release it posts bundle plans for `agent:large-feature` work; teams can
+layer their own approval-and-execution chain on top. Enable Batman when you are
+ready for multi-repo planning, not for a first single-repo setup.
 
 ### 7. Framework-only deploy + verify
 

@@ -23,14 +23,14 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 - Robin is correctly described and wired as bug triage in the installer catalog.
 - `alfred-status` and `bin/doctor.sh` now read the `systemd --user` timer roster on Linux, falling back to the same agent-discovery logic the launchd path uses.
 - `docs/LINUX.md` rewritten: Linux is now a supported host, not a set of interim workarounds.
-- Refreshed README, roadmap, docs site status, and release checklist after the v0.2.1 public launch cleanup.
+- Refreshed README, roadmap, docs site status, and release checklist for the public docs launch.
 - Switched the public docs URL to `https://alfred.luminik.io/` and made docs-site links root-relative for the custom domain.
 - Moved Claude account routing fully into `alfred claude`; the standalone helper is no longer shipped.
 - Standardized the public runtime root on `ALFRED_HOME` / `~/.alfred` across code, examples, tests, docs, and the docs site.
 
 ## [0.2.1] - 2026-05-12
 
-Patch release for the first public launch cleanup pass.
+Public launch hardening release.
 
 ### Added
 

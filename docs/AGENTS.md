@@ -51,9 +51,10 @@ arrows are observability (someone reports). Operator interaction is via the
 `alfred` CLI, Slack, and the optional `examples/bin/label_state.py` helper for
 issue-claim overrides.
 
-## Default topology (engineering)
+## Shipped topology (engineering)
 
-The default install ships these agents. Schedules are sensible defaults; override per-agent in `agents.conf`.
+The repo ships these agents. Schedules are sensible defaults; override
+per-agent in `agents.conf`.
 
 The recommended starter fleet is intentionally smaller: Drake, Lucius, Ras al
 Ghul, and agent-cleanup. That gives a solo builder planning, implementation,

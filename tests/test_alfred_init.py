@@ -189,7 +189,7 @@ def test_env_assignments_includes_codenames_and_repos(init_mod, tmp_path):
     out = init_mod.env_assignments_for(state)
     assert out["GH_ORG"] == "acme"
     assert out["AGENT_CODENAME_FEATURE_DEV"] == "lucius"
-    assert out["ALFRED_LUCIUS_REPOS"] == "acme/foo,acme/bar"
+    assert out["ALFRED_LUCIUS_REPOS"] == "foo,bar"
 
 
 def test_env_assignments_batman_uses_scan_repos(init_mod, tmp_path):
@@ -201,7 +201,7 @@ def test_env_assignments_batman_uses_scan_repos(init_mod, tmp_path):
     )
     out = init_mod.env_assignments_for(state)
     assert out["AGENT_CODENAME_CROSS_REPO_COORDINATOR"] == "batman"
-    assert out["BATMAN_SCAN_REPOS"] == "acme/api,acme/web"
+    assert out["BATMAN_SCAN_REPOS"] == "api,web"
     assert out["BATMAN_ROLLOUT_ORDER"] == "api,web"
     assert "ALFRED_BATMAN_REPOS" not in out
 
@@ -381,6 +381,117 @@ def test_apply_config_overrides(init_mod, tmp_path):
     assert state.aws_agent_profiles == {"huntress": "huntress-cron"}
     assert "feature_dev" in state.enabled_roles
     assert "planner" in state.enabled_roles
+
+
+def test_pick_agents_keeps_configured_agents(init_mod, tmp_path):
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path,
+    )
+    state.enabled_roles = ["bug_triage"]
+    init_mod.step_5_pick_agents(
+        state,
+        ["feature_dev", "planner", "bug_triage"],
+        agents_arg=None,
+        non_interactive=True,
+    )
+    assert state.enabled_roles == ["bug_triage"]
+
+
+def test_repos_arg_rejects_repos_outside_gh_org(init_mod, tmp_path):
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path,
+        gh_org="acme",
+    )
+    state.enabled_roles = ["feature_dev"]
+    state.repos = ["acme/api"]
+    with pytest.raises(SystemExit):
+        init_mod.step_7_repos(
+            state,
+            repos_arg="other/api",
+            non_interactive=True,
+        )
+
+
+def test_noninteractive_single_repo_starter_main(monkeypatch, tmp_path, init_mod):
+    repo_root = tmp_path / "repo"
+    bin_dir = repo_root / "bin"
+    prompts_dir = repo_root / "prompts"
+    bin_dir.mkdir(parents=True)
+    prompts_dir.mkdir()
+    for name in ["lucius.py", "drake.py", "rasalghul.py", "agent-cleanup.py"]:
+        (bin_dir / name).write_text("# runner\n")
+    for name in ["feature-dev.md", "planner.md", "code-review.md"]:
+        (prompts_dir / name).write_text(f"{name} template\n")
+    (repo_root / "deploy.sh").write_text("#!/bin/sh\n")
+    (repo_root / "launchd").mkdir()
+    (bin_dir / "doctor.sh").write_text("#!/bin/sh\n")
+
+    alfred_home = tmp_path / "alfred"
+    alfred_home.mkdir()
+    alfredrc = tmp_path / ".alfredrc"
+    alfredrc.write_text("GH_ORG=acme\n")
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
+    monkeypatch.setenv("ALFREDRC", str(alfredrc))
+    monkeypatch.delenv("ALFRED_NONINTERACTIVE", raising=False)
+    monkeypatch.delenv("ALFRED_DOCTOR", raising=False)
+
+    label_repos: list[str] = []
+    subprocesses: list[tuple[str, ...]] = []
+
+    def fake_have(_name):
+        return True
+
+    def fake_run(cmd, **_kwargs):
+        subprocesses.append(tuple(str(part) for part in cmd))
+        if cmd[:2] == ["claude", "--version"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="1.0.0\n", stderr="")
+        if cmd[:2] == ["claude", "-p"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="hi\n", stderr="")
+        if cmd[:3] == ["gh", "auth", "status"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if cmd[:3] == ["gh", "repo", "list"]:
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout='[{"nameWithOwner":"acme/niyora"}]', stderr=""
+            )
+        if cmd[:3] == ["gh", "label", "create"]:
+            label_repos.append(cmd[cmd.index("-R") + 1])
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if cmd[0] == "bash":
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr(init_mod, "have", fake_have)
+    monkeypatch.setattr(init_mod, "run", fake_run)
+
+    rc = init_mod.main(
+        [
+            "--repo-root",
+            str(repo_root),
+            "--non-interactive",
+            "--agents",
+            "starter",
+            "--repos",
+            "acme/niyora",
+            "--slack-webhook",
+            "skip",
+        ]
+    )
+
+    assert rc == 0
+    generated_rc = alfredrc.read_text()
+    assert "ALFRED_LUCIUS_REPOS=niyora\n" in generated_rc
+    assert "ALFRED_DRAKE_REPOS=niyora\n" in generated_rc
+    assert "ALFRED_RASALGHUL_REPOS=niyora\n" in generated_rc
+    assert "acme/niyora" in set(label_repos)
+    assert (alfred_home / "prompts" / "lucius.md").exists()
+    assert (alfred_home / "prompts" / "drake.md").exists()
+    assert (alfred_home / "prompts" / "rasalghul.md").exists()
+    assert any(cmd[0] == "bash" and cmd[1].endswith("deploy.sh") for cmd in subprocesses)
+    assert any(cmd[0] == "bash" and cmd[1].endswith("doctor.sh") for cmd in subprocesses)
 
 
 def test_starter_roles_and_agents_arg(init_mod):

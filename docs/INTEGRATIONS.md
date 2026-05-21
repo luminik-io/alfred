@@ -28,7 +28,7 @@ transcripts, Slack cache files, and per-firing worktrees:
 `-- prompts/
 ```
 
-Alfred OS uses `ALFRED_HOME` only for its runtime path.
+Alfred uses `ALFRED_HOME` only for its runtime path.
 
 ## Bundling Policy
 

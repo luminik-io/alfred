@@ -141,6 +141,9 @@ prompts into `~/.alfred/prompts/`; and creates the GitHub labels the runners
 expect. Add Slack later by re-running the wizard or setting
 `SLACK_WEBHOOK_URL` in `~/.alfredrc`.
 
+The repo owner must match `GH_ORG`; the runtime stores bare repo names and
+builds `GH_ORG/repo` during agent firings.
+
 If you only want a framework-only deploy with no scheduled agents yet, skip the wizard and run:
 
 ```sh

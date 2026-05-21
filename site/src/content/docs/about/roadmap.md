@@ -36,7 +36,7 @@ Full roadmap at [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main
 
 ## Beyond engineering: the solo builder's agent OS
 
-The default install ships the engineering fleet. The harness underneath it is department-agnostic. The private fleet Alfred OS was extracted from already runs content, sales, and ops agents on the same substrate. That's the direction: Alfred OS as the solo builder's whole agent OS, one department at a time.
+The default install ships the engineering fleet. The harness underneath it is department-agnostic. Alfred was extracted from a private fleet that already runs content, sales, and ops agents on the same substrate. That's the direction: Alfred as the solo builder's whole agent OS, one department at a time.
 
 - **Content**: blog / LinkedIn / SEO drafts, site-page generation, content-drift detection. Human-in-the-loop on publish.
 - **Sales / SDR**: prospect identification, event-page sourcing, outreach drafts. Human-in-the-loop on send.

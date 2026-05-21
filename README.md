@@ -15,13 +15,6 @@ A local engineering-fleet runtime: Claude Code-first agents scheduled by the hos
 
 Docs site: https://alfred.luminik.io
 
-<!-- TODO(operator): a hero GIF or annotated screenshot belongs here, directly
-     under the intro: the single biggest "what is this" signal for someone
-     landing cold. Good candidates: an asciinema recording of
-     `examples/bin/echo_summarise.py --dry-run` (safe to record, no secrets),
-     or a screenshot of `alfred status`. The "Quick start" section below has
-     the dry-run output as text; a recorded version is the visual upgrade. -->
-
 ## Why use it
 
 Alfred is for the operator who wants a small agent fleet working while they
@@ -74,10 +67,6 @@ The same works for `examples/bin/hello.py` and `bin/lucius.py`, and via the
 `ALFRED_DRY_RUN=1` env var instead of the flag. See [`docs/DRY_RUN.md`](docs/DRY_RUN.md)
 for what is stubbed versus real.
 
-<!-- TODO(operator): a screenshot of a real #alfred Slack thread (severity
-     stripe, firing root + replies + close) is the other half of "what it
-     looks like running". Drop it here or in docs/. -->
-
 ### Full install
 
 About 30 minutes from a fresh Mac or Debian/Ubuntu host.
@@ -105,7 +94,9 @@ guessing at prompts or labels:
 
 The starter fleet is Drake, Lucius, Ras al Ghul, and agent-cleanup: plan
 issues, implement labelled issues, review PRs, and clean stale state. Slack is
-optional. `alfred-init.py` now seeds prompt templates into
+optional. The `--repos` owner must match `GH_ORG`; the runtime agents store the
+bare repo name in `~/.alfredrc` and build `GH_ORG/repo` at firing time.
+`alfred-init.py` now seeds prompt templates into
 `~/.alfred/prompts/`, creates the standard GitHub labels on selected repos,
 writes `launchd/agents.conf`, updates `~/.alfredrc`, runs deploy, and runs
 doctor.
@@ -156,7 +147,7 @@ configured LLM CLIs.
 
 `ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`,
 where deployed scripts, state, logs, Codex artifacts, prompt overrides, and
-worktrees live. Alfred OS uses `ALFRED_HOME` only for its runtime path.
+worktrees live. Alfred uses `ALFRED_HOME` only for its runtime path.
 
 Hermes, gbrain, MCP servers, canon files, dashboards, and skill packs can be
 useful companion layers, but they are not bundled into Alfred and should not be
@@ -189,7 +180,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 | [`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py) | Full lifecycle reference: pick / claim / claude / act / release / report. |
 | [`examples/bin/label_state.py`](examples/bin/label_state.py) | Operator CLI for the issue claim state machine. |
 | [`examples/git-hooks/pre-push`](examples/git-hooks/pre-push) | Refuses push if a referenced issue is in-flight. Symmetric guard. |
-| [`Formula/alfred-os.rb`](Formula/alfred-os.rb) | Draft Homebrew formula. Published after the first public tag has a real tarball checksum. |
+| [`Formula/alfred-os.rb`](Formula/alfred-os.rb) | Homebrew formula pinned to the latest public release tarball. |
 | [`site/`](site/) | Astro Starlight docs site, with GitHub Pages publishing gated by the release repo variable. |
 
 ## Documentation
@@ -236,9 +227,9 @@ The engineering fleet ships today. Content, sales, and ops departments, plus a m
 
 ## Status
 
-**v0.2.1**. A complete local engineering-agent fleet for one operator, with the first public launch cleanup pass applied. APIs in `agent_runner` are stable for the operator's own use; expect rough edges if you fork.
+**v0.2.1**. Alfred is usable today as a local engineering-agent fleet for one operator: install, starter setup, prompt seeding, GitHub label setup, launchd/systemd deployment, doctor, dry-run, Slack reporting, and Claude/Codex engine routing.
 
-Maintained on weekends. Issues triaged on a best-effort basis. PRs that match the design boundaries above (see also [`CONTRIBUTING.md`](CONTRIBUTING.md)) get reviewed. Want to take Alfred somewhere new, like a new department or a substrate change? Open a discussion first.
+The design boundary is stable: one operator, one machine, local CLIs, isolated worktrees, GitHub as the coordination surface. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or substrate change, should start as a discussion.
 
 ## License
 
