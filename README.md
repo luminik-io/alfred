@@ -11,14 +11,19 @@
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-A local engineering-fleet runtime: Claude Code-first agents with optional Codex routing, scheduled by the host's per-user scheduler (`launchd` on macOS, `systemd --user` on Linux). Each firing runs as a fresh subprocess in its own git worktree. Per-agent IAM. Per-day spend caps. Fleet-wide provider-limit block.
+Alfred turns GitHub issues into scheduled local coding-agent runs. It uses
+Claude Code by default, can route selected agents to Codex, and runs from the
+host's per-user scheduler (`launchd` on macOS, `systemd --user` on Linux).
+Each firing gets a fresh git worktree, GitHub label state, spend guards, and a
+Slack report.
 
 Docs site: https://alfred.luminik.io
 
 ## Why use it
 
-Alfred is for the operator who wants a small agent fleet working while they
-sleep without turning their product into a hosted agent platform.
+Alfred is for the operator who wants a small agent fleet working while they are
+away from the screen without turning their product into a hosted agent
+platform.
 
 - Label a GitHub issue, then let a narrow codename agent draft the plan, write
   the code, open the PR, review the PR, or fix review comments.

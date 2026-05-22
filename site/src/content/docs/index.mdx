@@ -1,12 +1,12 @@
 ---
 title: Alfred
-description: A local agent-fleet runtime for solo builders. Claude Code and Codex-capable development agents scheduled by launchd or systemd, on a machine you control.
+description: Turn GitHub issues into scheduled local agent runs. Claude Code and Codex-capable development agents, launched by launchd or systemd, on a machine you control.
 template: splash
 head:
   - tag: title
     content: "Alfred: the solo builder's agent OS"
 hero:
-  tagline: Run a small fleet of Claude Code and Codex agents from a machine you control.
+  tagline: Run Claude Code and Codex agents against real repos from a machine you control.
   image:
     file: ../../assets/alfred-logo.png
     alt: Alfred shield logo
@@ -23,15 +23,15 @@ hero:
 
 import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-## Design notes
+## Why Alfred exists
 
-Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume one long-running Python process, in-memory state, and a human at a REPL. Wrong shape for unattended work.
+Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume one long-running Python process, in-memory state, and a human at a REPL. That can be useful for interactive experiments. It is not the shape Alfred uses for unattended repo work.
 
 - **Long-running loops** have no failure isolation. One bad run trashes the others.
 - **In-memory state** can't survive an OS reboot. Always-on hosts still restart.
 - **Chat-first interfaces** put the operator on the critical path.
 
-Alfred's shape: each agent is a fresh subprocess in its own git worktree, dispatched by the host scheduler (`launchd` on macOS, `systemd --user` on Linux), isolated by per-agent IAM, bounded by per-day spend caps with a fleet-wide Claude-provider-limit block.
+Alfred's shape: each agent is a fresh subprocess in its own git worktree, dispatched by the host scheduler (`launchd` on macOS, `systemd --user` on Linux), isolated by per-agent IAM, bounded by per-day spend caps with a fleet-wide Claude provider-limit block.
 
 `ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`. No external agent gateway, memory database, skill registry, or dashboard service is required.
 
