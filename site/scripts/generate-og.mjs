@@ -47,13 +47,6 @@ async function findChrome() {
   return null;
 }
 
-function card(title, items, dotColor) {
-  return `<section class="card">
-    <div class="card-title"><span style="background:${dotColor}"></span>${title}</div>
-    <ul>${items.map((item) => `<li>${item}</li>`).join("")}</ul>
-  </section>`;
-}
-
 function html({ fontCss, logoData }) {
   return `<!doctype html>
 <html>
@@ -75,66 +68,113 @@ function html({ fontCss, logoData }) {
       position: relative;
       width: 1200px;
       height: 630px;
-      padding: 58px 70px;
+      padding: 54px 68px;
       background:
-        radial-gradient(circle at 17% 16%, rgba(42, 110, 255, 0.32), transparent 38%),
+        radial-gradient(circle at 16% 17%, rgba(42, 110, 255, 0.36), transparent 38%),
         radial-gradient(circle at 92% 88%, rgba(244, 180, 62, 0.22), transparent 30%),
         linear-gradient(180deg, #071025 0%, #050913 100%);
     }
     .frame {
       position: relative;
-      width: 1060px;
-      height: 514px;
-      padding: 42px;
-      border: 2px solid rgba(87, 137, 255, 0.78);
-      border-right-color: rgba(244, 180, 62, 0.52);
+      width: 1064px;
+      height: 522px;
+      padding: 50px 62px;
+      overflow: hidden;
+      border: 1px solid rgba(87, 137, 255, 0.72);
+      border-right-color: rgba(244, 180, 62, 0.46);
       border-radius: 34px;
       background:
         linear-gradient(90deg, rgba(9, 20, 43, 0.92), rgba(7, 12, 26, 0.96)),
         linear-gradient(135deg, rgba(31, 105, 255, 0.10), transparent 55%);
       box-shadow: 0 28px 80px rgba(0, 0, 0, 0.32);
     }
+    .frame::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      opacity: 0.32;
+      background-image:
+        linear-gradient(rgba(94, 137, 239, 0.18) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(94, 137, 239, 0.18) 1px, transparent 1px);
+      background-size: 150px 108px;
+    }
+    .mark-bg {
+      position: absolute;
+      right: 40px;
+      top: 126px;
+      width: 390px;
+      height: 390px;
+      opacity: 0.20;
+      object-fit: contain;
+    }
+    .content {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
     .brand {
       display: flex;
       align-items: center;
-      gap: 28px;
+      gap: 24px;
     }
     .logo-tile {
       display: grid;
       place-items: center;
-      width: 86px;
-      height: 86px;
+      width: 80px;
+      height: 80px;
       border: 1px solid #283A62;
-      border-radius: 22px;
+      border-radius: 20px;
       background: #07111F;
     }
     .logo-tile img {
-      width: 70px;
-      height: 70px;
+      width: 64px;
+      height: 64px;
       object-fit: contain;
     }
     h1 {
       margin: 0;
-      font-size: 64px;
+      font-size: 60px;
       line-height: 0.92;
       font-weight: 700;
       letter-spacing: 0;
     }
     .tagline {
-      margin: 12px 0 0;
+      margin: 11px 0 0;
       color: #C7D4F5;
-      font-size: 23px;
+      font-size: 22px;
       line-height: 1.2;
+      font-weight: 600;
+    }
+    .hero {
+      max-width: 720px;
+    }
+    .hero h2 {
+      margin: 0;
+      max-width: 760px;
+      color: #F8FBFF;
+      font-size: 54px;
+      line-height: 1.08;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+    .hero p {
+      margin: 20px 0 0;
+      max-width: 740px;
+      color: #C7D4F5;
+      font-size: 24px;
+      line-height: 1.35;
       font-weight: 600;
     }
     .chips {
       display: flex;
-      gap: 18px;
-      margin-top: 24px;
+      flex-wrap: wrap;
+      gap: 14px;
     }
     .chip {
-      min-width: 158px;
-      padding: 9px 24px;
+      padding: 12px 22px;
       border: 1px solid #314573;
       border-radius: 999px;
       color: #CED9F6;
@@ -143,100 +183,47 @@ function html({ fontCss, logoData }) {
       font-weight: 700;
       text-align: center;
     }
-    .flow {
-      display: grid;
-      grid-template-columns: 260px 62px 322px 62px 304px;
-      align-items: center;
-      gap: 0;
-      margin-top: 28px;
-    }
-    .card {
-      min-height: 132px;
-      padding: 22px 28px;
-      border: 1px solid #31508A;
-      border-radius: 24px;
-      background:
-        linear-gradient(135deg, rgba(22, 38, 72, 0.98), rgba(12, 21, 42, 0.98)),
-        linear-gradient(135deg, transparent 0 62%, rgba(64, 28, 94, 0.18) 62% 100%);
-    }
-    .card-title {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      color: #F6F9FF;
-      font-size: 23px;
-      font-weight: 700;
-      line-height: 1.1;
-    }
-    .card-title span {
-      display: block;
-      width: 18px;
-      height: 18px;
-      border-radius: 999px;
-    }
-    ul {
-      margin: 18px 0 0;
-      padding: 0;
-      list-style: none;
-      color: #B7C5EB;
-      font-size: 17px;
-      line-height: 1.35;
-      font-weight: 700;
-    }
-    .arrow {
-      color: #5C8DFF;
-      font-size: 58px;
-      font-weight: 500;
-      text-align: center;
-    }
-    .footer-pill {
-      position: absolute;
-      left: 300px;
-      right: 300px;
-      bottom: 25px;
-      color: #B7C5EB;
-      font-size: 18px;
-      line-height: 1.2;
-      font-weight: 700;
-      text-align: center;
-    }
     .url,
     .meta {
-      position: absolute;
-      bottom: 25px;
       color: #91A8DD;
-      font-size: 20px;
+      font-size: 18px;
       font-weight: 700;
     }
-    .url { left: 42px; }
-    .meta { right: 42px; }
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
   </style>
 </head>
 <body>
   <main class="canvas">
     <section class="frame">
-      <div class="brand">
-        <div class="logo-tile"><img src="${logoData}" alt="" /></div>
-        <div>
-          <h1>Alfred</h1>
-          <p class="tagline">Autonomous repo teammates for Claude Code and Codex.</p>
+      <img class="mark-bg" src="${logoData}" alt="" />
+      <div class="content">
+        <div class="brand">
+          <div class="logo-tile"><img src="${logoData}" alt="" /></div>
+          <div>
+            <h1>Alfred</h1>
+            <p class="tagline">Local AI agents for real software work.</p>
+          </div>
+        </div>
+        <div class="hero">
+          <h2>Run Claude Code and Codex as development teammates.</h2>
+          <p>Turn GitHub issues, specs, and PR feedback into autonomous local runs with visible output.</p>
+        </div>
+        <div class="chips">
+          <div class="chip">GitHub-native</div>
+          <div class="chip">multi-repo</div>
+          <div class="chip">clean worktrees</div>
+          <div class="chip">PRs + Slack reports</div>
+        </div>
+        <div class="footer">
+          <div class="url">alfred.luminik.io</div>
+          <div class="meta">MIT · Python · macOS/Linux</div>
         </div>
       </div>
-      <div class="chips">
-        <div class="chip">GitHub-native</div>
-        <div class="chip">multi-repo</div>
-        <div class="chip">spec-driven</div>
-      </div>
-      <div class="flow">
-        ${card("Scope", ["GitHub issues", "specs", "PR feedback"], "#47D18C")}
-        <div class="arrow">→</div>
-        ${card("Alfred runtime", ["scheduler", "state machine", "clean worktree", "engine routing"], "#5B8CFF")}
-        <div class="arrow">→</div>
-        ${card("Engines + output", ["Claude Code or Codex", "PRs, reviews, tests", "Slack summaries"], "#F4B43E")}
-      </div>
-      <div class="footer-pill">Planned, claimed, reviewed, and reported back.</div>
-      <div class="url">alfred.luminik.io</div>
-      <div class="meta">MIT · Python · macOS/Linux</div>
     </section>
   </main>
 </body>

@@ -11,11 +11,11 @@
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-Alfred runs autonomous coding agents as repo teammates. It turns GitHub issues,
-specs, and PR feedback into scheduled local runs: Drake plans work, Lucius
-claims issues in fresh worktrees, Claude Code or Codex does the bounded task,
-and the fleet opens PRs, reviews them, fixes comments, adds tests, and reports
-to Slack.
+Alfred runs autonomous coding agents as development teammates. It turns GitHub
+issues, specs, and PR feedback into scheduled local runs: Drake plans work,
+Lucius claims issues in fresh worktrees, Claude Code or Codex does the bounded
+task, and the fleet opens PRs, reviews them, fixes comments, adds tests, and
+reports to Slack.
 
 Docs site: https://alfred.luminik.io
 

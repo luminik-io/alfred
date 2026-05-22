@@ -28,7 +28,7 @@ const STRUCTURED_DATA = JSON.stringify({
       url: SITE_URL,
       description:
         "Documentation for Alfred, the open-source runtime and coordination layer for AI " +
-        "agents as repo teammates.",
+        "agents as development teammates.",
     },
     {
       "@type": "SoftwareApplication",
@@ -217,7 +217,7 @@ export default defineConfig({
     starlight({
       title: "Alfred",
       description:
-        "Run AI agents as repo teammates with Claude Code and Codex. " +
+        "Run AI agents as development teammates with Claude Code and Codex. " +
         "GitHub issues, specs, worktrees, PRs, reviews, tests, and Slack reports.",
       logo: {
         src: "./src/assets/alfred-logo-transparent.png",
