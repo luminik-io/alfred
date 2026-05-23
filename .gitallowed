@@ -5,3 +5,11 @@
 # entry so it doesn't double-flag pattern literals as actual secrets.
 bin/scrub-check\.sh
 \.github/workflows/.*\.yml
+# Documentation prose and SQL schema files. The pre-commit git-secrets
+# scan flagged short config-format examples and standard SQL constraints
+# in these files as false positives; this allowlist exempts them.
+\.alfredrc\.example
+bin/agent-launch
+bin/alfred-init\.py
+lib/fleet_brain/schema\.py
+systemd/render\.sh
