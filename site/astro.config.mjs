@@ -385,6 +385,7 @@ export default defineConfig({
             { label: "Workspace patterns", slug: "getting-started/workspace-patterns" },
             { label: "Your first agent", slug: "getting-started/tutorial" },
             { label: "Dry-run mode", slug: "getting-started/dry-run" },
+            { label: "Operating the fleet", slug: "getting-started/operating-the-fleet" },
           ],
         },
         {
@@ -395,6 +396,8 @@ export default defineConfig({
             { label: "The agent fleet", slug: "concepts/fleet" },
             { label: "Codename pattern", slug: "concepts/codename-pattern" },
             { label: "Issue claim state machine", slug: "concepts/state-machine" },
+            { label: "State and memory", slug: "concepts/state-and-memory" },
+            { label: "Engine routing", slug: "concepts/engine-routing" },
             { label: "Severity routing", slug: "concepts/severity-routing" },
           ],
         },
