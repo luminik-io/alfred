@@ -30,11 +30,16 @@ stateDiagram-v2
     agent_implement --> needs_human_scope : 3+ failed attempts
 
     agent_in_flight : agent:in-flight
+    agent_in_flight --> plan_pending : Batman posts plan to Slack
     agent_in_flight --> agent_implement : release(transition_to=None)
     agent_in_flight --> agent_pr_open : release(transition_to=agent:pr-open)
     agent_in_flight --> agent_implement : stale-claim sweep (>4h)
     agent_in_flight --> race_yield : earlier claim detected
     race_yield --> agent_implement : yield + post race-yielded comment
+
+    plan_pending : agent:plan-pending-approval
+    plan_pending --> agent_in_flight : operator approves via reaction
+    plan_pending --> agent_implement : operator rejects or timeout
 
     agent_pr_open : agent:pr-open
     agent_pr_open --> agent_done : automerge / human merge
@@ -54,8 +59,18 @@ stateDiagram-v2
 |---|---|---|
 | `agent:implement` | Eligible for autonomous pickup | Drake (or human) |
 | `agent:in-flight` | An agent is actively working it | `claim_issue()` |
+| `agent:plan-pending-approval` | Plan posted to operator, waiting on go/no-go | Slack approval gate (`lib/slack_approval.py`) before reaction resolves |
 | `agent:pr-open` | A PR exists for this issue | `release_issue(transition_to=...)` |
 | `agent:done` | Closed and shipped | external (PR merge handler) |
+
+The `agent:plan-pending-approval` label is set by Batman when it posts a
+plan to Slack and is waiting for the operator's reaction. The
+[Slack approval gate](/guides/slack/#optional-plan-mode-approval-gate)
+polls one message's reactions, and on the operator's reply the agent
+either transitions back to `agent:in-flight` (approved, worker pickup) or
+returns to `agent:implement` (rejected or timed out). See
+[`docs/SLACK_APPROVAL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_APPROVAL.md)
+for the full setup walkthrough.
 
 ### Sticky modifiers (orthogonal)
 
