@@ -353,29 +353,27 @@ def _try_invoke_via_proxy(
     # the test layout, so under launchd this fell through to fallback and
     # the proxy never engaged — exactly the Keychain workaround the proxy
     # was built for.
-    # type: ignore on both branches because mypy walks lib/claude_proxy
-    # under TWO module names (`claude_proxy.X` via lib/ on path, and
-    # `lib.claude_proxy.X` via repo root) and raises "Source file found
-    # twice"; the pyproject `exclude = ["^lib/claude_proxy/"]` keeps
-    # those files from being type-checked but does NOT stop import
-    # resolution from re-discovering them on this side of the boundary.
-    # Both imports are wrapped in ImportError so the wrong shape still
-    # falls back to direct subprocess at runtime.
+    # Dual-import: try the deployed shape (`claude_proxy.X` with lib/ on
+    # sys.path) first, fall back to the test-harness shape
+    # (`lib.claude_proxy.X` with repo root on sys.path), then degrade to
+    # direct subprocess. Both branches resolve the same file at runtime.
+    # mypy handles the dual resolution via the `claude_proxy*` /
+    # `lib.claude_proxy*` follow_imports = "skip" override in pyproject.
     try:
-        from claude_proxy.client import (  # type: ignore[import-not-found]
+        from claude_proxy.client import (
             ProxyUnavailable,
             invoke_collected,
             proxy_available,
         )
-        from claude_proxy.protocol import InvokeRequest  # type: ignore[import-not-found]
+        from claude_proxy.protocol import InvokeRequest
     except ImportError:
         try:
-            from lib.claude_proxy.client import (  # type: ignore[import-not-found, no-redef]
+            from lib.claude_proxy.client import (
                 ProxyUnavailable,
                 invoke_collected,
                 proxy_available,
             )
-            from lib.claude_proxy.protocol import InvokeRequest  # type: ignore[import-not-found, no-redef]
+            from lib.claude_proxy.protocol import InvokeRequest
         except ImportError:
             return None
 
