@@ -75,7 +75,7 @@ echo '{"type":"health"}' | nc -U $ALFRED_HOME/run/claude-proxy.sock
 # -> {"claude_bin":"/opt/homebrew/bin/claude","uptime_seconds":42,"pid":1234,"type":"health.ok"}
 ```
 
-End-to-end check (this actually invokes `claude -p "say ok"`):
+End-to-end check (spawns a real `claude -p "say ok"`):
 
 ```sh
 echo '{"type":"probe"}' | nc -U $ALFRED_HOME/run/claude-proxy.sock
