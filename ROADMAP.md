@@ -1,104 +1,99 @@
 # Roadmap
 
-What's shipped, what's next, where Alfred is going, and the design boundaries that stay. Living doc; updated on every release.
+What's shipped, what's actively being built, what's committed for next quarter, and what's on the horizon. Living doc; updated on every release.
 
-## Shipped in v0.3.0
+The roadmap has four tiers. Each tier has a different honesty contract:
 
-The default install ships a working engineering agent fleet. After `bash install.sh && ./bin/alfred-init.py`, an operator has:
+- **Shipped** is in the tree. You can `git log` it.
+- **In flight** has actual work behind it this quarter. IC assigned, scope locked.
+- **Next** is committed for the following quarter. Design first, code second.
+- **Horizon** is candid about being speculative. No quarter, no IC.
 
-**Substrate**
-- `lib/agent_runner.py`: preflight, lock, spend, Claude/Codex engine adapters, gh, slack, event-log, commit-trailer.
-- Issue claim state machine: `agent:in-flight` → `agent:pr-open` → `agent:done` with race resolution + stale-claim sweep.
-- Slack severity routing: `info` / `warn` / `alert`.
-- Host scheduling through macOS launchd or Linux `systemd --user`, both using the same `agents.conf` format.
-- Dry-run mode for watching a full agent firing with LLM, GitHub, Slack, and git mutations stubbed.
-- `bin/doctor.sh`, `alfred claude`, `deploy.sh`.
+Effort sizing is uniform across tiers: **S** is roughly a week of focused work, **M** is two to four weeks, **L** is a quarter.
 
-**Engineering agents** (Batman codenames by default; renameable per role at install time)
-- `lucius`: feature dev (picks `agent:implement` issues, opens PRs).
-- `drake`: issue planner (files `agent:implement` issues from specs / roadmap).
-- `batman`: opt-in cross-repo coordinator (plans `agent:large-feature` bundles in OSS).
-- `bane`: test coverage (writes tests for low-coverage changed files).
-- `rasalghul`: multi-axis PR review.
-- `nightwing`: review-fix (lands P0/P1 fixes on `agent:authored` PRs).
-- `robin`: bug triage (severity classification, repro requests).
-- `huntress`: post-deploy E2E smoke (Playwright against staging).
-- `gordon`: daily ECS drift + Sentry top-N read.
-- `automerge`: squash-merge of clean `agent:authored` PRs.
-- `agent-cleanup`: daily housekeeping (worktrees, stuck locks, stale claims).
-- `code-map-refresh`: cross-repo contract scan.
-- `agent-morning-brief`, `fleet-recap`: Slack digest cron.
+## Shipped
 
-**Operator surface**
-- `alfred-init`: interactive and non-interactive installer wizard (Slack webhook, AWS choice, starter/all/custom agent selection, per-role codename, explicit repo selection, prompt seeding, GitHub label setup).
-- `alfred` CLI: `agents / enable / disable / enabled-agents / pause / resume / run / engine status / engine set / codex status / codex probe / auth status / auth probe`.
-- AI-assisted install guide and non-interactive `alfred-init.py --repos` path for Claude Code, Codex, or another local assistant.
-- Example state-machine CLI (`examples/bin/label_state.py`): `claim / release / dedup-check / status-issue / repo / sweep-claims`.
-- Pre-push git hook (`examples/git-hooks/pre-push`): refuses pushes that race in-flight agents.
+What is in the OSS tree today.
 
-**Project hygiene**
-- CI (pytest 3.11/3.12/3.13 + ruff + mypy + shellcheck + scrub-check) on every PR.
-- Release automation (tag → GitHub release with auto-extracted changelog notes + brew sha256).
-- Code of conduct, security policy, support, issue templates, PR template, dependabot.
-- Astro Starlight docs site at `alfred.luminik.io` (env-overridable for forks/custom domains).
-- Homebrew formula pinned to the latest public release tarball.
+### v0.4.0 (staging)
 
-## Next
+Substrate, observability, and approval primitives. Currently being staged on the `positioning/operations-room` branch.
 
-- **Bot token operations**: `lib/slack_format.py` already supports threaded Block Kit messages when a bot token is configured. Follow-up work: `slack_set_channel_topic()` for fleet status, reactions API for ack-without-replying, and a documented daily-thread routing policy.
-- **Drake-style proactive title-token dedup**: runner-level guard before invoking the planner. Catches "two issues for the same work"; complements the issue-claim state machine which catches "two actors on the same issue."
-- **`claim_pr` / `release_pr`**: extend the state machine to PR-level work (review-fix agents that race to land patches on the same PR).
-- **Spend dashboards**: render a weekly recap (turns, cost, success rate per agent) for `fleet-recap`.
-- **`alfred new-codename` scaffold**: single command to add a fresh codename agent (script template + agents.conf entry + label registration).
-- **Full OSS Batman execution chain**: approval gate, sequenced worktrees, per-repo PR chain, and cleanup. The current OSS Batman is deliberately plan-only; private fleets can layer execution on top today.
-- **MCP server adapter**: expose read-only fleet status plus carefully scoped `claim_issue` / `release_issue` / `slack_post(severity)` tools so other Claude Code consumers can call them directly. This should use `${ALFRED_HOME}` and remain optional.
-- **Optional Hermes bridge**: Hermes now has persistent `/goal`, gateway-driven cron, Kanban worker profiles, MCP, skills, memory, and dashboards. Alfred should integrate by exposing status/events and by accepting GitHub issue/label handoffs, not by making Hermes a setup dependency or letting Hermes mutate Alfred worktrees/state directly.
-- **Per-agent model catalog**: internal Alfred has a model-routing surface. The OSS version should expose that only after the defaults, billing implications, and docs are clean enough for first-time operators.
+- `lib/agent_runner.py` decomposed into a 10-file `lib/agent_runner/` package (preflight, lock, spend, engines, gh, slack, event-log, commit-trailer, transcripts, dedup). Public import surface preserved.
+- `alfred-metrics` CLI: per-agent firings, cost, success rate, p50/p95 turn count from on-disk state.
+- `alfred-logs` CLI: tail and filter per-firing transcripts without grepping `state/` by hand.
+- `alfred-label-state` CLI: read-only inspector for the issue-claim state machine across all configured repos.
+- Cross-repo PR primitive: `lib/cross_repo_pr.py` for bundles that need to land coordinated PRs across more than one repo.
+- Damian spec-bundle planner: a planner codename that turns a spec document into an `agent:large-feature` bundle that Batman can execute.
+- `slack_approval`: reaction-based approval gate. An agent posts a proposal, the operator reacts with the configured emoji, the agent proceeds.
+- `slop-detector`: PR-time linter for AI-authored prose patterns. Used by the new `curator` codename.
+- `curator` codename: documentation hygiene agent. Runs slop-detector against docs PRs, flags drift between code and docs.
+- fleet-brain v1: a SQLite-backed memory layer. Per-fleet, optional, zero external dependency. Backs the `MemoryProvider` protocol.
+- `MemoryProvider` protocol plus `gbrain` bridge: agents can read and write to a memory store through a stable interface; the OSS reference is fleet-brain, and operators can drop in their own.
+- `Connector` protocol with reference implementations for Linear (issue handoff) and Sentry (read-only error pulls).
+- Batman execute-after-approval: once a bundle plan is approved, Batman now executes the per-repo PR sequence rather than stopping at the plan.
+- `alfred serve` v1: read-only local dashboard over `state/` and per-firing transcripts. Live firing feed, per-agent trends, single-firing trace tree.
+- `/shipped/` page on the docs site: rolling proof page populated from real run data, not marketing copy.
+- Three new concept pages on the docs site covering the memory protocol, the connector protocol, and the approval gate.
 
-## Beyond engineering
+### v0.3.0 and earlier
 
-The default install ships the **engineering fleet**. The same scheduler,
-worktree, Slack, state-machine, spend-cap, and engine-routing primitives can
-support other departments, but each department needs its own integrations,
-prompts, tests, and approval rules.
+See [`CHANGELOG.md`](CHANGELOG.md) for the full ledger.
 
-Each department lands incrementally, one codename per PR, with prompt + tests +
-docs. PRs welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+## In flight (this quarter)
 
-- **Content**: blog / LinkedIn / SEO drafts, site-page generation, content-drift detection. Human-in-the-loop on publish.
-- **Sales / SDR**: prospect identification, event-page sourcing, outreach drafts. Human-in-the-loop on send.
-- **Personal assistant**: inbox triage, calendar, daily digest. Drafts only; never sends.
-- **Finance ops**: invoice generation, bank reconciliation, subscription audit. Drafts only; never moves money.
-- **Product ops / SRE**: uptime monitoring, release notes, customer-health signals.
+Items with active work and a committed IC.
 
-## On the horizon
+- **Plan-review gate as a runtime feature.** Promote `plan() -> review_plan() -> execute() -> review_diff()` from an architecture note to the default lifecycle for codenames that opt in. Today the review step exists in prose; the runtime makes it enforceable. IC: core. Effort: M. Issue: TBD.
+- **Public unattended-SLA log.** A 30-day rolling proof page under `/shipped/` covering firings, success rate, and unattended hours. Once the underlying page lands in v0.4.0, this widens it from a snapshot to a trailing window. IC: core. Effort: S. Issue: TBD.
+- **Cross-platform menubar app.** A small native menubar (macOS first, Linux tray second) that surfaces fleet status and click-throughs to the local `alfred serve` UI. Read-only. IC: core. Effort: M. Issue: TBD.
+- **fleet-brain v2.** Replace the SQLite layer with PGLite plus Apache AGE for graph queries and pgvector for semantic recall, exposed through an MCP server adapter so other Claude Code consumers can read fleet memory. IC: core. Effort: L. Issue: TBD.
 
-Substrate work that makes a growing fleet observable and self-improving.
+## Next (next quarter)
 
-- **A memory layer.** Today each firing is near-stateless apart from GitHub labels. A doc- or SQLite-shaped recall/reflect layer would let an agent start a firing with what the last firings on the same code learned. Optional, zero-dependency, per-fleet.
-- **`alfred serve`, a local read-model + UI.** A small local app over `state/` and the per-firing transcripts: a live firing feed, per-agent cost and success trends, the trace tree for one firing. Read-only and local, the operator's pane of glass rather than a hosted dashboard.
+Committed for the following quarter. Design first, then code.
+
+- **Multi-engine routing v2.** Add Gemini and Ollama adapters alongside the current Claude and Codex engines. Per-codename engine selection stays the existing surface; the work is the adapter contract plus auth probes plus billing posture docs. Effort: M. Issue: TBD.
+- **Spec linter and template generator.** `alfred spec lint` checks a spec file for missing acceptance criteria, missing test plan, and other lifecycle gaps. `alfred spec new` scaffolds a fresh spec from a template. Effort: S. Issue: TBD.
+- **Better Batman v2.** Post-approval per-repo execution sweep with bundle-completion detection: Batman keeps watch on the PR chain it opened, reports per-repo progress, and closes the bundle once every PR has landed or been explicitly dropped. Effort: M. Issue: TBD.
+- **`alfred dry-run <codename>` for every shipped codename.** Today dry-run is wired through specific runners; widen it so every codename in the tree runs end-to-end with no side effects. Effort: S. Issue: TBD.
+
+## Horizon (no committed quarter)
+
+Candidly speculative. No IC, no quarter, no committed effort estimate.
+
+- Content-fleet codename pack (Scribe, Herald, Curator) for blog, LinkedIn, and SEO drafts.
+- Sales-fleet codename pack for prospect identification, event-page sourcing, and outreach drafts.
+- Marketing and SEO-fleet codename pack for site-page generation, content-drift detection, and search-visibility monitoring.
+- Ops-fleet codename pack for uptime, release notes, and customer-health signals.
+- Personal-assistant codename pack for inbox triage, calendar, and daily digest.
+
+**How these reach OSS.** Cross-department codename packs build in the private operator orchestrator first, validated against real production usage, then port to OSS once generalised. See the private-to-public boundary workflow for the rules each port has to clear (no operator paths, no internal infra, no customer data, scrubbed prompts).
 
 ## Considered, not committed
 
-- **First-class GitHub App** instead of the operator's `gh` PAT, with scoped per-agent permissions. Bigger onboarding surface; defer until there's demonstrated demand.
-- **Pluggable spend backends** (filesystem / sqlite / Redis). Single-host is the design, so this stays speculative.
-- **Plugin system for skills.** Today skills are operator-installed Claude Code skills; a bundled `skills/` directory would push maintenance onto the framework.
-- **`pipx` / PyPI install.** Git clone is the supported path today; a packaged install would widen the audience.
+Decisions on the table that did not make the cut. Listed so contributors do not re-pitch them.
+
+- **Plugin or skill marketplace bundled into Alfred.** Considered and decided against. Skills are operator-installed Claude Code skills; a bundled marketplace would push maintenance onto the framework. The convention-only resolver stays.
+- **Hosted Alfred SaaS.** Not on the roadmap. Alfred is operator-hosted by design; multi-tenant is a different product.
+- **First-class GitHub App** instead of the operator's `gh` PAT. Larger onboarding surface; deferred until there is demonstrated demand.
+- **Pluggable spend backends** (filesystem, sqlite, Redis). Single-host is the design, so this stays speculative.
+- **`pipx` / PyPI install.** Git clone is the supported path today; a packaged install would widen the audience but the install story is fine.
 
 ## Design boundaries
 
 Alfred has a deliberate shape. These are not missing features; they are the design.
 
 - **Single operator.** One person, one host, one config. Alfred is not multi-tenant and will not become a hosted SaaS. It is software you install and run yourself.
-- **The OS schedules; Alfred runs.** No long-running orchestration loop. `launchd` / `systemd` own cadence; each firing is a fresh, isolated process. That means better failure isolation, and it survives reboots.
-- **Local CLIs, not a model gateway.** Alfred shells out to `claude` / `codex` through your local CLI auth. The default path uses subscription-backed CLI accounts and does not require provider API keys.
+- **The OS schedules; Alfred runs.** No long-running orchestration loop. `launchd` and `systemd` own cadence; each firing is a fresh, isolated process. Better failure isolation, and it survives reboots.
+- **Local CLIs, not a model gateway.** Alfred shells out to `claude` and `codex` through your local CLI auth. The default path uses subscription-backed CLI accounts and does not require provider API keys.
 - **Lean on the platform.** When Anthropic ships a capability natively (Agent Teams, the Memory Tool), Alfred adopts it rather than re-implementing it.
 - **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script. The core stays lean.
 
 ## Influence
 
-- **Strong**: a working PR for something already on the in-flight or roadmap list.
-- **Medium**: a well-scoped feature request with a real use case and a proposal.
-- **Low**: "would be cool if" comments.
+- **Strong.** A working PR for something already on the in-flight or next list.
+- **Medium.** A well-scoped feature request with a real use case and a proposal.
+- **Low.** "Would be cool if" comments.
 
-Want to take Alfred somewhere new, like a new department or runtime change? Open a discussion first, so the design fits before the code does.
+Want to take Alfred somewhere new, like a new department or a runtime change? Open a discussion first, so the design fits before the code does.
