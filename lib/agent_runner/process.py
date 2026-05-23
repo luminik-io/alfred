@@ -283,19 +283,40 @@ def claude_invoke_streaming(
 ) -> ClaudeResult:
     """Streaming counterpart of :func:`claude_invoke`. Same return shape.
 
-    A full streaming implementation can pipe
-    ``--output-format stream-json`` through a parser that writes a
-    per-firing JSONL transcript under
-    ``${ALFRED_HOME}/state/transcripts/<agent>/<YYYY-MM>/<firing_id>.jsonl``
-    so post-hoc tool/skill aggregation works.
+    Two transports are supported, selected by env var:
 
-    The OSS framework currently delegates to plain :func:`claude_invoke`
-    for simplicity; the ``agent`` and ``firing_id`` keyword arguments
-    are accepted (so callers don't have to change when streaming lands)
-    but currently unused.
+    1. ``ALFRED_CLAUDE_PROXY_SOCKET`` set + socket reachable -> route the
+       invocation through ``claude-proxy``, the long-running unix-socket
+       daemon documented in ``docs/CLAUDE_PROXY.md``. The proxy lives in
+       the Aqua session so its spawned ``claude`` child inherits Keychain
+       access; this is the workaround for the macOS launchd Keychain ACL
+       problem described in ``docs/MACOS_KEYCHAIN.md``.
+    2. Otherwise -> direct subprocess via :func:`claude_invoke`, the
+       legacy default.
+
+    The proxy path is best-effort: if the connection fails for any
+    reason (stale socket, daemon restarting, peer-uid mismatch) the
+    function silently falls back to the direct subprocess path so the
+    caller never sees a transport-layer error. The ``agent`` and
+    ``firing_id`` kwargs are still accepted for forward compatibility
+    with a future per-firing JSONL transcript writer.
     """
     if max_turns is None:
         max_turns = _CLAUDE_UNLIMITED_TURNS
+
+    proxy_result = _try_invoke_via_proxy(
+        prompt,
+        workdir=workdir,
+        allowed_tools=allowed_tools,
+        max_turns=max_turns,
+        timeout=timeout,
+        resume_session=resume_session,
+        model=model,
+        session_id=firing_id,
+    )
+    if proxy_result is not None:
+        return proxy_result
+
     return claude_invoke(
         prompt,
         workdir=workdir,
@@ -304,6 +325,103 @@ def claude_invoke_streaming(
         timeout=timeout,
         resume_session=resume_session,
         model=model,
+    )
+
+
+def _try_invoke_via_proxy(
+    prompt: str,
+    *,
+    workdir: Path,
+    allowed_tools: str,
+    max_turns: int,
+    timeout: int,
+    resume_session: str | None,
+    model: str | None,
+    session_id: str,
+) -> ClaudeResult | None:
+    """Attempt the proxy transport; return ``None`` to signal fallback.
+
+    Returns:
+        A :class:`ClaudeResult` on success (proxy spawned ``claude``, we
+        parsed its stream-JSON output), ``None`` when the proxy is not
+        available or the connection failed. Never raises.
+    """
+    # Import locally so the OSS framework still works in environments where
+    # ``lib/claude_proxy`` is absent (vendored installs, partial copies).
+    try:
+        from lib.claude_proxy.client import (
+            ProxyUnavailable,
+            invoke_collected,
+            proxy_available,
+        )
+        from lib.claude_proxy.protocol import InvokeRequest
+    except ImportError:
+        return None
+
+    if not proxy_available():
+        return None
+
+    request = InvokeRequest(
+        prompt=prompt,
+        workdir=str(workdir),
+        allowed_tools=allowed_tools,
+        session_id=session_id,
+        claude_args=["--permission-mode", "bypassPermissions"],
+        timeout_seconds=timeout,
+        max_turns=max_turns,
+        model=model,
+        resume_session=resume_session,
+    )
+    try:
+        stream = invoke_collected(request)
+    except ProxyUnavailable:
+        return None
+    except OSError:
+        return None
+
+    return _claude_result_from_proxy_events(stream.events, fallback_exit=stream.exit_code)
+
+
+def _claude_result_from_proxy_events(
+    events: list[dict], fallback_exit: int
+) -> ClaudeResult:
+    """Translate a list of stream-json events into a ClaudeResult.
+
+    The upstream ``claude --output-format stream-json`` emits a final
+    ``result`` event with the same envelope shape ``claude --output-format
+    json`` would have produced; we pick that out and reuse the existing
+    parser. If the stream ended before a ``result`` event arrived (proxy
+    error, timeout, child killed) we synthesize a parse-failed envelope
+    so the caller's retry / classification logic keeps working.
+    """
+    result_event: dict | None = None
+    proxy_error: dict | None = None
+    for ev in events:
+        kind = ev.get("type")
+        if kind == "result":
+            result_event = ev
+        elif kind == "proxy.error":
+            proxy_error = ev
+
+    if result_event is not None:
+        return _build_claude_result(
+            result_event,
+            fallback_text=(proxy_error or {}).get("detail", ""),
+        )
+
+    detail = (proxy_error or {}).get("detail") or (proxy_error or {}).get("reason") or (
+        f"claude exited {fallback_exit} without a result event"
+    )
+    return ClaudeResult(
+        success=False,
+        subtype="parse-failed",
+        num_turns=0,
+        cost_usd=0.0,
+        session_id=None,
+        result_text=detail,
+        raw={},
+        stop_reason="error",
+        error_message=detail,
     )
 
 
