@@ -61,7 +61,7 @@ const loaded = rows.filter((r) => r.load === "live").length;
 const total = rows.length;
 ---
 
-<figure class="fleet m-reveal" aria-label="Live alfred status output from a real Alfred fleet">
+<figure class="fleet m-figure m-reveal" aria-label="Live alfred status output from a real Alfred fleet">
   <div class="fleet__head">
     <span class="m-mono fleet__cmd"><span class="fleet__prompt">$</span> alfred status</span>
     <span class="m-mono m-mute">{loaded}/{total} loaded &middot; live operator output</span>
@@ -110,11 +110,17 @@ const total = rows.length;
 
 <style>
   .fleet {
-    margin: 32px 0;
-    border: 1px solid var(--alfred-border-strong);
-    background: linear-gradient(180deg, var(--alfred-surface-2) 0%, var(--alfred-surface) 100%);
-    border-radius: var(--radius);
+    /* Outer sizing/background comes from .m-figure. We zero its padding
+       here because the head and body rows render full-width inside this
+       panel and own their own inner padding. */
+    padding: 0;
     overflow: hidden;
+    /* The terminal-style row has fixed ch widths (~109ch). Without
+       min-width: 0 the figure's intrinsic min-content sets the parent
+       grid track's min, pushing the .fleet__state span past the
+       viewport at 375px. min-width: 0 lets .fleet__body's overflow-x
+       scroll instead. */
+    min-width: 0;
   }
   .fleet__head {
     display: flex;

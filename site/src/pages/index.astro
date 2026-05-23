@@ -62,12 +62,13 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
     state: "warn",
   },
   {
-    title: "Batman coordinates across repos",
-    body: "Reads a large agent:large-feature issue, drafts a bundle plan across as many repos as you set, and files child agent:implement issues per repo.",
+    title: "Batman coordinates and executes across repos",
+    body: "Reads a large agent:large-feature issue, drafts a bundle plan across every affected repo, posts to Slack for approval, then runs the rollout end-to-end. Files scoped child issues per repo, opens worktrees, and tracks each PR through to merge.",
     log: [
       "[10:30] batman drafted bundle:billing-v2",
-      "[10:30] batman filed 4 child issues",
-      "[10:31] batman handed off to lucius",
+      "[10:31] batman posted plan to Slack for approval",
+      "[10:34] operator approved with :white_check_mark:",
+      "[10:34] batman filed 4 child issues, opened 4 worktrees",
     ],
     state: "info",
   },
@@ -103,7 +104,7 @@ const why = [
     eyebrow="AN AUTONOMOUS ENGINEERING TEAM"
     headline="A team of coding agents that ships while you're away."
     sub="Alfred plans across your repos or monorepo packages, implements with the Claude Code and Codex subscriptions you already pay for, and reports to Slack while you focus on something else."
-    primaryCta={{ label: "Install (30 min)", href: "/docs/getting-started/install/" }}
+    primaryCta={{ label: "Install (30 min)", href: "/getting-started/install/" }}
     secondaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
   >
     <div slot="panel" class="hero-panel">
@@ -159,7 +160,7 @@ const why = [
       />
       <SpecsDrivenFlow />
       <p style="margin-top:24px;">
-        <a class="m-link" href="/docs/guides/specs-driven-development/">Read the specs-driven guide</a>
+        <a class="m-link" href="/guides/specs-driven-development/">Read the specs-driven guide</a>
       </p>
     </div>
   </section>
@@ -174,7 +175,7 @@ const why = [
       <BatmanFanOut />
       <div class="batman-cta">
         <a class="m-btn" href="/multi-repo/">See multi-repo planning</a>
-        <a class="m-btn m-btn--ghost" href="/docs/guides/multi-repo-worked-example/">Read the worked example</a>
+        <a class="m-btn m-btn--ghost" href="/guides/multi-repo-worked-example/">Read the worked example</a>
       </div>
     </div>
   </section>
@@ -207,7 +208,7 @@ const why = [
           alt="Slack message from the Alfred bot showing Batman drafting a plan for issue #504, with affected repos backend, frontend, mobile, and a rollout order. The plan is in draft, awaiting approval."
           tag="batman firing"
           meta="2026-05-12 11:44 UTC"
-          caption="Batman reads one agent:large-feature issue, drafts a rollout plan across backend, frontend, and mobile, and stops before execution. The operator approves in Slack."
+          caption="Batman reads one agent:large-feature issue, drafts a rollout plan across backend, frontend, and mobile, and posts to Slack for approval. Once the operator reacts with the configured emoji, Batman files the child issues and runs the rollout."
         />
         <SlackProof
           src="/proof/slack-shipped-summary.png"
@@ -219,7 +220,7 @@ const why = [
       </div>
 
       <p style="margin-top:36px;">
-        <a class="m-link" href="/docs/reference/output-samples/">Read every output Alfred produces</a>
+        <a class="m-link" href="/reference/output-samples/">Read every output Alfred produces</a>
       </p>
     </div>
   </section>
@@ -277,8 +278,9 @@ const why = [
           <MetricRow label="operators" value="1" state="live" />
         </div>
         <div class="built-by__cta">
-          <a class="m-btn" href="/docs/getting-started/install/">Install (30 min)</a>
+          <a class="m-btn" href="/getting-started/install/">Install (30 min)</a>
           <a class="m-btn m-btn--ghost" href="/for-solo-founders/">For solo founders</a>
+          <a class="m-btn m-btn--ghost" href="https://github.com/luminik-io/alfred-os">GitHub</a>
         </div>
       </div>
     </div>
@@ -298,10 +300,16 @@ const why = [
 
   .job-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    /* minmax(0, 1fr) overrides the default min-content min so cards
+       cannot push the grid wider than the parent at 768px. */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 20px;
   }
-  @media (max-width: 720px) { .job-grid { grid-template-columns: 1fr; } }
+  /* Go single-column below 900px so the iPad-portrait (768) view
+     stops looking like a half-baked desktop and the cards breathe.
+     Keep minmax(0, 1fr) here too: bare 1fr is shorthand for
+     minmax(auto, 1fr) which reintroduces min-content. */
+  @media (max-width: 900px) { .job-grid { grid-template-columns: minmax(0, 1fr); } }
 
   .why-grid {
     display: grid;

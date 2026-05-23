@@ -1,0 +1,180 @@
+{
+  "$schema": "https://alfred.luminik.io/schemas/slop-rules.v1.json",
+  "name": "alfred-default",
+  "version": "1.0.0",
+  "description": "Opinionated default AI-slop rule pack. Catches the vocabulary, phrases, and rhythms most often produced by LLM-authored marketing copy. Tune to taste.",
+  "severities": ["DRIFT", "CAUTION", "TYPO"],
+  "skip_dirs": [
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    ".astro",
+    ".cache",
+    ".next",
+    ".turbo",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".mypy_cache",
+    "__pycache__",
+    ".venv",
+    "venv"
+  ],
+  "include_globs": ["*.md", "*.mdx", "*.astro", "*.html", "*.tsx", "*.jsx", "*.txt"],
+  "rules": [
+    {
+      "id": "word.seamless",
+      "type": "word",
+      "severity": "CAUTION",
+      "value": "seamless",
+      "reason": "LLM-cliche adjective. Say what the integration actually does."
+    },
+    {
+      "id": "word.seamlessly",
+      "type": "word",
+      "severity": "CAUTION",
+      "value": "seamlessly",
+      "reason": "LLM-cliche adverb. Describe the mechanism."
+    },
+    {
+      "id": "word.unlock",
+      "type": "word",
+      "severity": "CAUTION",
+      "value": "unlock",
+      "reason": "LLM-cliche verb. Name the concrete outcome."
+    },
+    {
+      "id": "word.leverage",
+      "type": "word",
+      "severity": "CAUTION",
+      "value": "leverage",
+      "reason": "LLM-cliche. 'Use' is fine. 'Leverage' is corporate filler."
+    },
+    {
+      "id": "word.transform",
+      "type": "word",
+      "severity": "CAUTION",
+      "value": "transform",
+      "reason": "LLM-cliche. Name the before and after."
+    },
+    {
+      "id": "word.synergy",
+      "type": "word",
+      "severity": "CAUTION",
+      "value": "synergy",
+      "reason": "Empty corporate filler."
+    },
+    {
+      "id": "word.cutting-edge",
+      "type": "word",
+      "severity": "CAUTION",
+      "value": "cutting-edge",
+      "reason": "LLM-cliche. Cite the specific technique."
+    },
+    {
+      "id": "word.revolutionize",
+      "type": "word",
+      "severity": "CAUTION",
+      "value": "revolutionize",
+      "reason": "LLM-cliche verb."
+    },
+    {
+      "id": "word.streamline",
+      "type": "word",
+      "severity": "CAUTION",
+      "value": "streamline",
+      "reason": "LLM-cliche. Name the step removed."
+    },
+    {
+      "id": "word.empower",
+      "type": "word",
+      "severity": "CAUTION",
+      "value": "empower",
+      "reason": "LLM-cliche verb."
+    },
+    {
+      "id": "word.delve",
+      "type": "word",
+      "severity": "CAUTION",
+      "value": "delve",
+      "reason": "Strong LLM tell."
+    },
+    {
+      "id": "phrase.dive-in",
+      "type": "phrase",
+      "severity": "CAUTION",
+      "value": "dive in",
+      "reason": "LLM-cliche transition phrase."
+    },
+    {
+      "id": "phrase.in-the-loop",
+      "type": "phrase",
+      "severity": "CAUTION",
+      "value": "in the loop",
+      "reason": "Vague corporate filler."
+    },
+    {
+      "id": "phrase.your-stack",
+      "type": "phrase",
+      "severity": "CAUTION",
+      "value": "your stack",
+      "reason": "Generic SaaS-copy filler. Name the integration."
+    },
+    {
+      "id": "phrase.your-journey",
+      "type": "phrase",
+      "severity": "CAUTION",
+      "value": "your journey",
+      "reason": "LLM-cliche metaphor."
+    },
+    {
+      "id": "phrase.game-changer",
+      "type": "phrase",
+      "severity": "CAUTION",
+      "value": "game changer",
+      "reason": "Corporate cliche."
+    },
+    {
+      "id": "phrase.world-class",
+      "type": "phrase",
+      "severity": "CAUTION",
+      "value": "world class",
+      "reason": "Empty claim."
+    },
+    {
+      "id": "phrase.best-in-class",
+      "type": "phrase",
+      "severity": "CAUTION",
+      "value": "best in class",
+      "reason": "Empty claim."
+    },
+    {
+      "id": "phrase.part-i-did-not-see-coming",
+      "type": "phrase",
+      "severity": "DRIFT",
+      "value": "the part I did not see coming",
+      "reason": "LinkedIn-LLM hook phrase. Strong AI-authored tell."
+    },
+    {
+      "id": "phrase.it-is-not-just",
+      "type": "phrase",
+      "severity": "CAUTION",
+      "value": "it is not just",
+      "reason": "LLM contrastive setup. Rewrite the claim directly."
+    },
+    {
+      "id": "pattern.x-y-the-z",
+      "type": "regex",
+      "severity": "CAUTION",
+      "value": "(?m)^[A-Z][^.\\n]{2,40}\\.\\s+[A-Z][^.\\n]{2,40}\\.\\s+The\\s+[A-Z][^.\\n]{2,40}\\.\\s*$",
+      "reason": "'X. Y. The Z.' three-beat rhythm, classic LLM cadence."
+    },
+    {
+      "id": "pattern.em-dash",
+      "type": "regex",
+      "severity": "CAUTION",
+      "value": "[—–]",
+      "reason": "Em or en dash. Use ' - ' (hyphen with spaces) or restructure."
+    }
+  ]
+}

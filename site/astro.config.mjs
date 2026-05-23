@@ -2,6 +2,7 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import mermaid from "astro-mermaid";
+import { mdMirror } from "./src/integrations/md-mirror.ts";
 
 // Alfred site config.
 //
@@ -232,6 +233,9 @@ export default defineConfig({
           "https://github.com/luminik-io/alfred-os/edit/main/site/",
       },
       lastUpdated: true,
+      // Use the custom marketing 404 at src/pages/404.astro instead of
+      // Starlight's docs-shell default (which read as a broken docs page).
+      disable404Route: true,
       tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 4 },
       customCss: ["./src/styles/custom.css"],
       components: {
@@ -385,6 +389,7 @@ export default defineConfig({
             { label: "Workspace patterns", slug: "getting-started/workspace-patterns" },
             { label: "Your first agent", slug: "getting-started/tutorial" },
             { label: "Dry-run mode", slug: "getting-started/dry-run" },
+            { label: "Operating the fleet", slug: "getting-started/operating-the-fleet" },
           ],
         },
         {
@@ -395,6 +400,8 @@ export default defineConfig({
             { label: "The agent fleet", slug: "concepts/fleet" },
             { label: "Codename pattern", slug: "concepts/codename-pattern" },
             { label: "Issue claim state machine", slug: "concepts/state-machine" },
+            { label: "State and memory", slug: "concepts/state-and-memory" },
+            { label: "Engine routing", slug: "concepts/engine-routing" },
             { label: "Severity routing", slug: "concepts/severity-routing" },
           ],
         },
@@ -435,5 +442,11 @@ export default defineConfig({
         },
       ],
     }),
+    // md-mirror runs at astro:build:done (AFTER starlight has produced
+    // the static HTML). It walks dist/ and emits a .md sibling for every
+    // page so AI crawlers (ChatGPT, Claude, Perplexity) can ingest raw
+    // markdown instead of converting our HTML themselves. See
+    // src/integrations/md-mirror.ts for opt-out mechanisms.
+    mdMirror({ excludePaths: ["404"] }),
   ],
 });

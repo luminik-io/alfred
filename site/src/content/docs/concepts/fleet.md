@@ -24,6 +24,7 @@ flowchart LR
     end
 
     drake["drake<br/><i>planner · every 2h</i>"]
+    damian["damian<br/><i>spec-bundle-planner · opt-in</i>"]
     batman["batman<br/><i>cross-repo coordinator · opt-in</i>"]
     lucius["lucius<br/><i>feature-dev · every 20m</i>"]
     bane["bane<br/><i>test-coverage · every 4h</i>"]
@@ -35,6 +36,7 @@ flowchart LR
     automerge["automerge<br/><i>squash-merge · every 15m</i>"]
 
     drake -- "files" --> issues
+    damian -- "files bundles" --> issues
     batman -- "plans bundles" --> issues
     robin -- "triages" --> issues
     issues -- "claim_issue" --> lucius
@@ -49,7 +51,7 @@ flowchart LR
     huntress -- "smoke-test fails" --> robin
     gordon -- "drift / Sentry" --> slack
 
-    lucius & bane & rasalghul & nightwing & robin & huntress & gordon & drake & batman & automerge -. "status" .-> slack
+    lucius & bane & rasalghul & nightwing & robin & huntress & gordon & drake & damian & batman & automerge -. "status" .-> slack
     ops_cli -. "enable / disable / claim helpers" .-> issues
 ```
 
@@ -78,7 +80,8 @@ Ghul, and agent-cleanup. Pick `all` only when you want the full roster.
 |---|---|---|---|
 | **lucius** | feature-dev | every 20 min | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs the configured engine with the issue body + repo context, pushes a PR labelled `agent:authored`. |
 | **drake** | planner | every 2 h | Reads specs, roadmap, cross-repo open-issue list, and a code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in a rolling 24 h. |
-| **batman** | cross-repo coordinator | every 1 h, opt-in | Picks `agent:large-feature` / `agent:bundle:<slug>` issues and posts a bundle plan. OSS ships this as plan-only; custom fleets can layer approval and execution on top. |
+| **damian** | spec-bundle-planner | daily 09:00, opt-in | Walks `DAMIAN_SPEC_DIR`, identifies multi-repo features, and files `agent:bundle:<slug>` siblings across the affected repos. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to drake. |
+| **batman** | cross-repo coordinator | every 1 h, opt-in | Picks `agent:large-feature` / `agent:bundle:<slug>` issues and runs the plan-approve-execute-report cycle. Batman in OSS now ships plan + approval + execution. The default approval gate is Slack reaction-based. Toggle `BATMAN_AUTO_EXECUTE=1` to skip the gate (not recommended for fresh operators). See [docs/BATMAN.md](https://github.com/luminik-io/alfred-os/blob/main/docs/BATMAN.md). |
 | **bane** | test-coverage | every 4 h | Picks the lowest-coverage actively-changed file, writes tests, opens a PR. Never touches non-test files. |
 | **rasalghul** | code-review | every 30 min | Multi-axis review (correctness, security, performance, maintainability) on every fresh PR. Posts as a comment. |
 | **nightwing** | review-fix | every 45 min | Lands fixes for P0/P1 reviewer comments (CodeRabbit, Codex, rasalghul) on `agent:authored` PRs. |
@@ -97,6 +100,7 @@ These ship with plain-English names because they are fleet infrastructure, not r
 | **code-map-refresh** | indexing | every 6 h | Scans configured repos and writes `$ALFRED_HOME/state/code-map.json`. Drake and code-map-aware review prompts can read it for cross-repo context. |
 | **agent-morning-brief** | reporting | daily 07:00 | Slack post: yesterday's shipped PRs, in-flight work, doctor status, anything red. |
 | **fleet-recap** | reporting | 07:30 + 22:00 | Aggregates per-agent spend, firings, and success rate. Posts to Slack. |
+| **curator** | content-quality | weekly | Opt-in. Fires the [slop detector](https://github.com/luminik-io/alfred-os/blob/main/docs/SLOP_DETECTOR.md) against `ALFRED_SLOP_TARGET_PATH`, posts findings to Slack. Read-only. Standalone CLI also available as `alfred slop-detect`. |
 
 ## Adding a codename for your own role
 
@@ -118,9 +122,34 @@ The primitives in `lib/agent_runner.py` cover the common patterns: lock, preflig
 
 The default install is engineering-only. Future categories are tracked in [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main/ROADMAP.md): sales/SDR agents, content agents, personal-assistant agents, finance-ops agents, and product-ops/SRE agents. Each needs its own integration surface (Apollo, Reddit, Gmail, and so on) and its own prompt/test/docs package. PRs proposing individual agents in these categories are welcome when they keep the core runtime optional and single-operator.
 
+## Memory
+
+Every codename can recall what the last firings learned about a repo, file class, or issue type. The store is a single SQLite file in your `$ALFRED_HOME`; it never leaves the host. The next firing prepends the relevant lessons to its prompt context, so the fleet stops re-discovering the same conventions on every run.
+
+- Reflect (write): an agent files a lesson via `brain.reflect(codename=..., repo=..., body=..., tags=[...])`, or via a JSON line in `$ALFRED_HOME/state/memory-outbox/<codename>.jsonl` consumed by `fleet-ingest.py`.
+- Recall (read): `brain.recall(codename, repo)` returns the most-recent-first lessons.
+- Operator: `python3 bin/alfred-brain.py status`, `lessons`, `reflect`, `firings`, `forget`, `export`.
+
+Full reference: [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/FLEET_BRAIN.md). The v1 storage is intentionally SQLite-only; a richer graph + vector store is on the roadmap.
+
 ## See also
 
 - [Codename pattern](/concepts/codename-pattern/): why narrow specialists named after a fictional cast.
 - [Architecture](/concepts/architecture/): the runtime boundary and the five non-negotiables.
 - [Issue claim state machine](/concepts/state-machine/): the coordination primitive every agent shares.
 - [How it works](/concepts/how-it-works/): one firing traced end to end.
+
+## Memory
+
+Each firing can start by asking the local memory layer what earlier firings learned about this codename and repo, and end by filing a new lesson for next time. The shipping default is the in-tree `fleet_brain` SQLite store under `$ALFRED_HOME`. Nothing leaves the host.
+
+The runner depends on a small `MemoryProvider` Protocol (`recall` + optional `reflect`), not on a concrete backend. Operators who maintain a separate personal knowledge base can chain it as a fallback by setting:
+
+```sh
+ALFRED_MEMORY_PROVIDERS=fleet,gbrain
+ALFRED_GBRAIN_BIN=/usr/local/bin/gbrain
+```
+
+The chain consults `fleet` first and falls through to `gbrain` only when the fleet-brain has nothing for that (codename, repo). The `gbrain` provider is read-only and **not** bundled; it is the operator's optional personal knowledge base CLI, and the shim degrades to empty when the binary is missing.
+
+The OSS default is fleet-brain only. Full details live in [`docs/MEMORY_PROVIDERS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/MEMORY_PROVIDERS.md).

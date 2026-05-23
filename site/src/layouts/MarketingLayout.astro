@@ -60,11 +60,34 @@ const orgSchema = {
       logo: `${SITE_URL}/brand/alfred-og.png`,
     },
     {
+      "@type": "Person",
+      name: "Prasad Subrahmanya",
+      url: "https://prasad.tech",
+      sameAs: [
+        "https://github.com/prasadus92",
+        "https://www.linkedin.com/in/prasadus",
+      ],
+    },
+    {
       "@type": "WebSite",
       name: "Alfred",
       url: SITE_URL,
       description:
         "Alfred runs a fleet of autonomous coding agents on Claude Code and Codex, on hardware you already own.",
+    },
+    {
+      "@type": "SoftwareApplication",
+      name: "Alfred OS",
+      applicationCategory: "DeveloperApplication",
+      operatingSystem: "macOS, Linux",
+      url: SITE_URL,
+      description:
+        "Open-source local runtime for autonomous engineering agents on Claude Code and Codex. Coordinates a named fleet (Drake, Lucius, Ras al Ghul, Batman) via GitHub labels, isolated git worktrees, and a Slack approval gate.",
+      downloadUrl: "https://github.com/luminik-io/alfred-os",
+      license: "https://github.com/luminik-io/alfred-os/blob/main/LICENSE",
+      isAccessibleForFree: true,
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      author: { "@type": "Organization", name: "DataRavel Inc." },
     },
   ],
 };
@@ -94,6 +117,13 @@ const nav = [
     <meta name="theme-color" content="#0A0E14" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    {/* Quicksand is bundled via @fontsource (see marketing.css). We used
+        to ship a Google Fonts CDN <link> as a belt-and-braces fallback,
+        but it caused duplicate @font-face declarations and a noisy
+        document.fonts.check() false-positive in QA. The @fontsource
+        package is self-hostable and reliable enough on its own. If it
+        ever fails to load, system-ui is an acceptable fallback. */}
 
     {/* Open Graph */}
     <meta property="og:title" content={title} />
@@ -205,19 +235,19 @@ const nav = [
             <h4>Docs</h4>
             <ul>
               <li><a href="/docs/">Overview</a></li>
-              <li><a href="/docs/getting-started/install/">Install</a></li>
-              <li><a href="/docs/concepts/architecture/">Architecture</a></li>
-              <li><a href="/docs/concepts/fleet/">The fleet</a></li>
-              <li><a href="/docs/reference/cli/">Operator CLI</a></li>
+              <li><a href="/getting-started/install/">Install</a></li>
+              <li><a href="/concepts/architecture/">Architecture</a></li>
+              <li><a href="/concepts/fleet/">The fleet</a></li>
+              <li><a href="/reference/cli/">Operator CLI</a></li>
             </ul>
           </div>
           <div class="m-footer__col">
             <h4>Project</h4>
             <ul>
               <li><a href="https://github.com/luminik-io/alfred-os" rel="noopener">GitHub</a></li>
-              <li><a href="/docs/about/changelog/">Changelog</a></li>
-              <li><a href="/docs/about/roadmap/">Roadmap</a></li>
-              <li><a href="/docs/about/contributing/">Contributing</a></li>
+              <li><a href="/about/changelog/">Changelog</a></li>
+              <li><a href="/about/roadmap/">Roadmap</a></li>
+              <li><a href="/about/contributing/">Contributing</a></li>
               <li><a href="https://github.com/luminik-io/alfred-os/blob/main/LICENSE" rel="noopener">MIT license</a></li>
             </ul>
           </div>
@@ -226,7 +256,13 @@ const nav = [
         <StatusStrip />
 
         <div class="m-footer__base">
-          <span>© DataRavel Inc. · Alfred is open source, MIT.</span>
+          <span class="m-footer__attribution">
+            Alfred OS is open source under the <a href="https://github.com/luminik-io/alfred-os/blob/main/LICENSE" rel="noopener">MIT License</a>.
+            Built by Prasad Subrahmanya
+            &middot; <a href="https://github.com/prasadus92" rel="noopener">GitHub</a>
+            &middot; <a href="https://prasad.tech" rel="noopener">prasad.tech</a>
+            &middot; <a href="https://www.linkedin.com/in/prasadus" rel="noopener">LinkedIn</a>
+          </span>
           <span class="m-mono m-mute">alfred.luminik.io</span>
         </div>
       </div>

@@ -90,6 +90,32 @@ Or store the token in AWS Secrets Manager at `alfred/slack-bot-token` and leave
 
 Required only for Socket Mode (slash commands, button clicks). See [Slack setup → Optional: app-level token](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md#optional-app-level-token-xapp-1-).
 
+## Optional: plan-mode approval gate
+
+If you want the operator to approve every Batman plan in Slack (instead of
+the file-polling fallback), wire up `lib/slack_approval.py`. It reuses the
+bot token resolved above, posts the plan, and polls reactions on that one
+message until the configured operator reacts with `:white_check_mark:` (or
+`:x:` to reject).
+
+```sh
+# the only Slack user whose reactions count
+export ALFRED_OPERATOR_SLACK_USER_ID=U0123ABCDEF
+
+# enable the AWS Secrets Manager resolver if you store the bot token there
+export ALFRED_SECRETS_BACKEND=aws
+```
+
+Required Slack scopes (in addition to `chat:write`): `reactions:read`,
+`channels:read`, `groups:read`. Install the optional `[slack]` extra
+(`pip install 'alfred-os[slack]'`).
+
+Full walkthrough at [`docs/SLACK_APPROVAL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_APPROVAL.md):
+app manifest snippet, env var reference, fallback strategy ordering,
+operator-only check semantics, and the
+[`agent:plan-pending-approval`](/concepts/state-machine/) label transition
+the gate drives.
+
 ## Rotating
 
 If you accidentally paste the URL somewhere it shouldn't be:
