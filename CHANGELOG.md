@@ -4,9 +4,76 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ## [Next]
 
+## [0.4.0] - 2026-05-23
+
+Substrate, observability, planning, approval, memory, and connector primitives. The largest single release since 0.1.0; lays down building blocks the next two quarters of roadmap items will compose.
+
 ### Added
 
-- `alfred serve` v1: a localhost-only, read-only FastAPI dashboard over `$ALFRED_HOME/state` (`bin/alfred-serve.py`). Three views: fleet status with HTMX auto-refresh every 10 seconds, recent firings (last 50, filter by codename), and single-firing detail with the raw event stream. Pulls in `fastapi`, `uvicorn`, `jinja2` behind a new `[serve]` optional dependency group so the base package stays stdlib-only. Reader is injected as a `typing.Protocol` so the app can be tested without touching disk. See `docs/SERVE.md`.
+#### Runner and observability
+
+- `lib/agent_runner.py` decomposed from a single monolith into a 10-file `lib/agent_runner/` package: preflight, lock, spend, engines, gh, slack, event-log, commit-trailer, transcripts, dedup. Public import surface preserved. 380 new unit tests covering the split modules.
+- `alfred metrics` (`bin/alfred-metrics.py`): per-agent rollup of firings, cost, turns, tool-use, and Codex tokens. `--since 7d`, `--codename`, `--by-day`, `--json`. Reads `$ALFRED_STATE_DIR` only.
+- `alfred logs` (`bin/alfred-logs.py`): tail and filter per-firing stream-JSON transcripts. `--last N`, `--firing-id ID`, `--show-tool-calls`, `--json`. See `docs/CLI.md`.
+- `lib/transcripts.py` and `lib/metrics.py`: `TranscriptReader` and `MetricsAggregator` protocols + filesystem-backed implementations, used by the two new CLIs and exposed for downstream code.
+
+#### State machine and multi-repo
+
+- `lib/labels.py`: `LabelClient` protocol + `GhCliLabelClient` implementation. Atomic transitions across the issue-claim state machine (`agent:queued` to `agent:implement` to `agent:in-flight` to `agent:pr-open` to `agent:done`), with race resolution and conflict detection.
+- `lib/cross_repo_pr.py`: cross-repo PR coordinator. Opens stacked PRs across multiple repos with a shared spec id, links them via PR-body cross-references, marks the spec done only when all PRs merge.
+- `lib/multi_worktree.py`: managed pool of git worktrees under `$ALFRED_HOME/wt`. Per-firing reservation, completion cleanup, crash recovery.
+- `bin/alfred-label-state`: operator-facing CLI for the issue-claim state machine. `claim`, `release`, `dedup-check`, `status-issue`, `repo pause/resume/list`, `sweep-claims`. Pre-push hook recipe in `docs/STATE_MACHINE.md`.
+
+#### Planning and execution
+
+- Damian spec-bundle planner (`lib/damian_planner.py` + `bin/damian.py`): walks a spec directory, identifies multi-repo features, files `agent:bundle:<slug>` siblings across the affected repos. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to drake.
+- Batman now executes approved plans (`lib/batman.py` from 505 to 1383 lines; `bin/batman.py` from 261 to 472 lines). Once a Damian-style plan is approved (Slack reaction, label transition, or `BATMAN_AUTO_EXECUTE=1`), Batman drives the fan-out implementation across the listed repos. Previously Batman halted at plan-only. The `BATMAN_AUTO_EXECUTE` env contract: `0` = always ask, `approval-gate` = read approval signals, `1` = always execute. See `docs/BATMAN.md`.
+
+#### Approvals
+
+- `lib/slack_approval.py` + `docs/SLACK_APPROVAL.md`: reaction-based approval gate. An agent posts a proposal, the operator reacts with the configured emoji, the agent proceeds. `ApprovalGate` is a `typing.Protocol` so the same call site can swap Slack for any other channel. New env vars: `ALFRED_OPERATOR_SLACK_USER_ID`, `ALFRED_APPROVAL_EMOJI` (defaults to `:white_check_mark:`).
+
+#### Quality gates
+
+- `lib/slop_detector.py` + `bin/slop-detector.py` + `bin/curator.py`: PR-time linter for AI-authored prose patterns. 21 default rules covering banned vocabulary (seamless, unlock, leverage, transform), em-dashes, hedged numbers, marketing fluff. Rules are JSON-configurable; see `examples/slop-rules.json` and `docs/SLOP_DETECTOR.md`.
+
+#### Memory
+
+- `lib/fleet_brain/`: v1 SQLite-backed memory store. Per-codename and per-repo `recall` / `reflect`, atomic writes, ULID ids via the standard library, zero external dependencies. 948 lines of package code, 33 tests. Architecture and the v2 path (PGLite + Apache AGE + pgvector) in `docs/FLEET_BRAIN.md`. CLIs: `bin/alfred-brain.py`, `bin/fleet-ingest.py`.
+- `lib/memory/`: `MemoryProvider` Protocol + `FleetBrainProvider`, `ChainedMemoryProvider`, and `NullMemoryProvider` implementations. Optional read-only `gbrain` subprocess shim for operators with a personal knowledge base. Chain order is env-driven: `ALFRED_MEMORY_PROVIDERS=fleet,gbrain`; default is fleet-brain only; `null` disables memory. See `docs/MEMORY_PROVIDERS.md`.
+
+#### Connectors
+
+- `lib/connectors/`: `Connector` Protocol + reference Linear and Sentry implementations. Pull-mode adapters from non-GitHub sources into the engineering fleet's `agent:implement` queue. Linear uses a stdlib GraphQL POST; Sentry uses a stdlib REST GET; both rely on env-only credentials (`LINEAR_API_KEY`, `SENTRY_AUTH_TOKEN`). One bad connector cannot break the sync. See `docs/CONNECTORS.md`, `bin/connector-sync.py`, `examples/connectors.yaml`.
+
+#### Dashboards and proof
+
+- `alfred serve` v1 (`bin/alfred-serve.py` + `lib/server/`): localhost-only, read-only FastAPI dashboard over `$ALFRED_HOME/state`. Three views: fleet status with HTMX auto-refresh, recent firings, single-firing detail. Reader injected as `typing.Protocol`. New `[serve]` optional dependency group for `fastapi`, `uvicorn`, `jinja2`. See `docs/SERVE.md`.
+- `/shipped/` page on the docs site (`site/src/pages/shipped.astro`): rolling proof page populated from real fleet output. Cold-fork mode renders an explainer when there is no operator data yet. Privacy posture: field allowlist, repo denylist for `luminik-*` basenames, title and reviewer scrub. `bin/alfred-shipped-public.py` is the emitter; see `docs/SHIPPED_PAGE.md`.
+
+#### Documentation
+
+- Three new concept pages: state and memory, engine routing, operating the fleet. Mirrored across `docs/` (GitHub-rendered) and `site/src/content/docs/` (Starlight). Linked into the sidebar under Concepts and Getting Started.
+- ROADMAP rewritten into a four-tier model: Shipped, In flight, Next, Horizon. Mirrored in `site/src/content/docs/about/roadmap.md`.
+
+### Changed
+
+- Core dependencies: `slack-sdk>=3.27` and `boto3>=1.34` moved from optional `[slack]` and `[aws]` extras into the base `dependencies` list. Slack and AWS are integral enough that the optional-extras split was adding install friction for new operators with no payoff.
+- `pyproject.toml` adds the new `[serve]` optional-dependency group (FastAPI + uvicorn + Jinja2).
+- `.gitignore` adds `.claude/` and `screenshots/` so per-agent worktrees, launch configs, and local verification screenshots stay out of the public repo.
+- `.gitallowed` added so `git secrets` pre-commit hooks understand that `bin/scrub-check.sh` and CI workflows reference secret-pattern regexes by design.
+
+### Fixed
+
+- `lib/labels.py`: added `PLAN_PENDING_APPROVAL` constant (`agent:plan-pending-approval`) plus a backward-compat `LABEL_AGENT_PLAN_PENDING_APPROVAL` alias for code that imports the long-form name. Required by `lib/slack_approval.py` and `lib/batman.py`.
+- `tests/unit/__init__.py` and `tests/unit/agent_runner/__init__.py`: promote the agent-runner unit test directory to a package so pytest can disambiguate `tests/test_transcripts.py` from `tests/unit/agent_runner/test_transcripts.py`.
+- `docs/BATMAN.md`: replaced operator-specific channel literal with `#your-fleet-channel` placeholder per the private-to-public boundary policy.
+
+### Verification
+
+- 689 tests pass on Python 3.11.
+- `bash bin/scrub-check.sh` returns `scrub-check: clean`.
+- `cd site && npm run build` builds 45 pages with 0 errors and 0 content warnings.
 
 ## [0.3.0] - 2026-05-21
 
