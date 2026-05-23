@@ -138,3 +138,18 @@ Full reference: [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os/
 - [Architecture](/concepts/architecture/): the runtime boundary and the five non-negotiables.
 - [Issue claim state machine](/concepts/state-machine/): the coordination primitive every agent shares.
 - [How it works](/concepts/how-it-works/): one firing traced end to end.
+
+## Memory
+
+Each firing can start by asking the local memory layer what earlier firings learned about this codename and repo, and end by filing a new lesson for next time. The shipping default is the in-tree `fleet_brain` SQLite store under `$ALFRED_HOME`. Nothing leaves the host.
+
+The runner depends on a small `MemoryProvider` Protocol (`recall` + optional `reflect`), not on a concrete backend. Operators who maintain a separate personal knowledge base can chain it as a fallback by setting:
+
+```sh
+ALFRED_MEMORY_PROVIDERS=fleet,gbrain
+ALFRED_GBRAIN_BIN=/usr/local/bin/gbrain
+```
+
+The chain consults `fleet` first and falls through to `gbrain` only when the fleet-brain has nothing for that (codename, repo). The `gbrain` provider is read-only and **not** bundled; it is the operator's optional personal knowledge base CLI, and the shim degrades to empty when the binary is missing.
+
+The OSS default is fleet-brain only. Full details live in [`docs/MEMORY_PROVIDERS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/MEMORY_PROVIDERS.md).
