@@ -62,12 +62,13 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
     state: "warn",
   },
   {
-    title: "Batman coordinates across repos",
-    body: "Reads a large agent:large-feature issue, drafts a bundle plan across as many repos as you set, and files child agent:implement issues per repo.",
+    title: "Batman coordinates and executes across repos",
+    body: "Reads a large agent:large-feature issue, drafts a bundle plan across every affected repo, posts to Slack for approval, then runs the rollout end-to-end. Files scoped child issues per repo, opens worktrees, and tracks each PR through to merge.",
     log: [
       "[10:30] batman drafted bundle:billing-v2",
-      "[10:30] batman filed 4 child issues",
-      "[10:31] batman handed off to lucius",
+      "[10:31] batman posted plan to Slack for approval",
+      "[10:34] operator approved with :white_check_mark:",
+      "[10:34] batman filed 4 child issues, opened 4 worktrees",
     ],
     state: "info",
   },
@@ -207,7 +208,7 @@ const why = [
           alt="Slack message from the Alfred bot showing Batman drafting a plan for issue #504, with affected repos backend, frontend, mobile, and a rollout order. The plan is in draft, awaiting approval."
           tag="batman firing"
           meta="2026-05-12 11:44 UTC"
-          caption="Batman reads one agent:large-feature issue, drafts a rollout plan across backend, frontend, and mobile, and stops before execution. The operator approves in Slack."
+          caption="Batman reads one agent:large-feature issue, drafts a rollout plan across backend, frontend, and mobile, and posts to Slack for approval. Once the operator reacts with the configured emoji, Batman files the child issues and runs the rollout."
         />
         <SlackProof
           src="/proof/slack-shipped-summary.png"
