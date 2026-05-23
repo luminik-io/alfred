@@ -74,7 +74,7 @@ const fmtGeneratedAt = (iso: string): string => {
 
 <MarketingLayout
   title="Shipped | Alfred"
-  description="Weekly roundup of pull requests the Alfred fleet merged for the operator. Real numbers, real repos, regenerated every week from the operator's own ~/.alfred/state."
+  description="Illustrative example of the weekly /shipped/ roundup an Alfred fleet produces. Shape of the page, the schema, and the emitter that generates it. Self-host operators emit their own from $ALFRED_HOME/state."
   path="/shipped/"
   keywords={[
     "alfred shipped",
@@ -86,12 +86,12 @@ const fmtGeneratedAt = (iso: string): string => {
   <section class="m-section m-section--soft">
     <div class="m-container">
       <SectionHeader
-        eyebrow="SHIPPED"
-        title="A weekly roundup of the work Alfred merged."
+        eyebrow="SHIPPED — ILLUSTRATIVE EXAMPLE"
+        title="What the weekly /shipped/ page looks like."
         lede={
           isColdFork
-            ? "This page renders the operator's own fleet output. After you run Alfred for a week, populate it from your state directory and the numbers below light up."
-            : "Headline numbers, every merged PR, and a 12-week trend. Regenerated from the operator's ~/.alfred/state every Saturday morning."
+            ? "The /shipped/ page renders your own fleet output once you have run Alfred for a week. The empty-state explainer below shows the shape and the emit command."
+            : "The numbers and PR titles below are an illustrative sample shipped with the repo to show the page shape. Self-host operators run the emitter against their own state to populate the real version. The schema, the emitter, and the privacy posture are real."
         }
       />
 
@@ -158,16 +158,16 @@ cd site && npm run build`}</code></pre>
 
       <div class="shipped-how">
         <article class="m-card">
-          <h3 class="m-h3">Operator mode</h3>
-          <p>The operator runs <code>alfred shipped --emit-public-json site/src/data/shipped/weekly.json</code>. The emitter reads agent state from <code>$ALFRED_HOME/state/</code>, applies the public allowlist, and writes the file. The next site build picks it up.</p>
+          <h3 class="m-h3">What you see here</h3>
+          <p>This page ships an illustrative <code>weekly.json</code> sample so you can see the shape, the schema, and the privacy posture before you install. The operator name reads <code>example-fleet</code> and the repos read <code>your-org/*</code>. Numbers and PR titles are representative, not live output from a real Luminik fleet.</p>
         </article>
         <article class="m-card">
-          <h3 class="m-h3">Cold-fork mode</h3>
-          <p>Anyone who clones <a class="m-link" href="https://github.com/luminik-io/alfred-os">alfred-os</a> gets a placeholder feed with <code>your-org</code> repos. The page detects zero merged PRs and renders the explainer instead of fake numbers.</p>
+          <h3 class="m-h3">Self-host emit</h3>
+          <p>When you run Alfred yourself, <code>alfred shipped --emit-public-json site/src/data/shipped/weekly.json</code> reads <code>$ALFRED_HOME/state/</code>, applies a field allowlist and partner-name redaction, and writes a fresh feed. The next site build picks it up. You decide whether to publish the result.</p>
         </article>
         <article class="m-card">
-          <h3 class="m-h3">Privacy</h3>
-          <p>The emitter never reads PR diffs or issue bodies. Only metadata (repo, number, title, codename, merge timestamp, lines changed, files changed, reviewer codenames) is allowed past the boundary. Human reviewer names collapse to <code>human</code>.</p>
+          <h3 class="m-h3">Privacy posture</h3>
+          <p>The emitter never reads PR diffs or issue bodies. Only metadata (repo, number, title, codename, merge timestamp, lines changed, files changed, reviewer codenames) passes the boundary. Repos outside an allowlist are dropped. Partner names (event-platform integrations, CRM vendor specifics) are redacted from titles. Human reviewer names collapse to <code>human</code>.</p>
         </article>
       </div>
     </div>

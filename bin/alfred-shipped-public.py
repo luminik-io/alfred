@@ -109,6 +109,47 @@ PRIVATE_TOKEN_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Partner-name redaction. Real PR titles from operators frequently mention the
+# external platform an integration targets (event-data platforms, CRMs, mail
+# providers). These names are operator-private business context even when the
+# platform itself is public, so the emitter neutralises them to category words
+# before publishing. Extend this list as new integrations land.
+PARTNER_TOKENS: dict[str, str] = {
+    # Event-data platforms (Spec 28 extractors)
+    "Brella": "vendor",
+    "Cvent": "vendor",
+    "Grip": "vendor",
+    "Swapcard": "vendor",
+    "Whova": "vendor",
+    "Eventbrite": "vendor",
+    "Hopin": "vendor",
+    "Bizzabo": "vendor",
+    "Pheedloop": "vendor",
+    # CRMs and outreach platforms
+    "Salesforce": "CRM",
+    "HubSpot": "CRM",
+    "Apollo": "outreach platform",
+    "Outreach": "outreach platform",
+    "Salesloft": "outreach platform",
+    # Mail / observability
+    "Resend": "email provider",
+    "Sendgrid": "email provider",
+    "Mailgun": "email provider",
+    "Postmark": "email provider",
+    "Sentry": "error tracker",
+    "Datadog": "telemetry",
+    "Honeycomb": "telemetry",
+    # Auth / SSO
+    "WorkOS": "SSO",
+    "Auth0": "SSO",
+    "Clerk": "SSO",
+}
+
+PARTNER_TOKEN_RE = re.compile(
+    r"\b(" + "|".join(re.escape(name) for name in PARTNER_TOKENS) + r")\b",
+    re.IGNORECASE,
+)
+
 PLACEHOLDER_REPO_MAP: dict[str, str] = {
     "backend": "your-backend",
     "frontend": "your-frontend",
@@ -237,13 +278,37 @@ def is_private_repo(repo: str) -> bool:
 
 
 def scrub_title(title: str) -> str:
-    """Replace any literal private repo token in a free-text title."""
+    """Scrub a free-text PR title for public emission.
 
-    def repl(match: re.Match[str]) -> str:
+    Applies two passes:
+
+    1. ``PRIVATE_TOKEN_RE``: any literal private repo token (an operator-private
+       basename such as the ones listed in the regex above) is replaced with
+       the matching ``your-*`` placeholder.
+    2. ``PARTNER_TOKEN_RE``: third-party platform names that the operator
+       integrates with (event-data platforms, CRMs, mail / observability
+       providers, SSO) collapse to a neutral category word so the public title
+       reads as feature texture rather than business context.
+
+    The order matters: repo-name redaction runs first so a title that mentions
+    both a partner (e.g. a CRM vendor) and a private repo token becomes a
+    fully neutralised title like ``CRM action in your-nango``.
+    """
+
+    def repl_private(match: re.Match[str]) -> str:
         token = match.group(1).lower()
         return PLACEHOLDER_REPO_MAP.get(token, "your-repo")
 
-    return PRIVATE_TOKEN_RE.sub(repl, title or "")
+    def repl_partner(match: re.Match[str]) -> str:
+        matched = match.group(1)
+        for canonical, replacement in PARTNER_TOKENS.items():
+            if canonical.lower() == matched.lower():
+                return replacement
+        return matched
+
+    out = PRIVATE_TOKEN_RE.sub(repl_private, title or "")
+    out = PARTNER_TOKEN_RE.sub(repl_partner, out)
+    return out
 
 
 def scrub_reviewer(name: str) -> str:

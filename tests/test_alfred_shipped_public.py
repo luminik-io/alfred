@@ -232,6 +232,32 @@ def test_scrub_rewrites_private_token_in_title(mod):
     assert mod.scrub_title("Wire billing-v2 settings panel") == "Wire billing-v2 settings panel"
 
 
+def test_scrub_redacts_partner_names_in_title(mod):
+    # Event-data platforms collapse to "vendor".
+    assert mod.scrub_title("Brella extractor: retry on 5xx") == "vendor extractor: retry on 5xx"
+    assert mod.scrub_title("Cvent attendee sync") == "vendor attendee sync"
+    assert mod.scrub_title("Add Whova mapping") == "Add vendor mapping"
+    # CRMs collapse to "CRM".
+    assert mod.scrub_title("Add Salesforce action: opportunity-by-id") == "Add CRM action: opportunity-by-id"
+    assert mod.scrub_title("HubSpot webhook handler") == "CRM webhook handler"
+    # Outreach platforms collapse to "outreach platform".
+    assert mod.scrub_title("Apollo sequence push") == "outreach platform sequence push"
+    # Email providers collapse.
+    assert mod.scrub_title("Wire Resend transactional client") == "Wire email provider transactional client"
+    # Observability collapses.
+    assert mod.scrub_title("Capture Sentry breadcrumbs") == "Capture error tracker breadcrumbs"
+    # Case-insensitive match.
+    assert mod.scrub_title("brella retry") == "vendor retry"
+    # Combined private-token + partner-token redaction.
+    pre = "lumi" + "nik"
+    assert (
+        mod.scrub_title(f"Salesforce action in {pre}-nango")
+        == "CRM action in your-nango"
+    )
+    # No collateral damage on unrelated text.
+    assert mod.scrub_title("Add billing-v2 settings panel") == "Add billing-v2 settings panel"
+
+
 def test_scrub_reviewer_collapses_humans_and_passes_codenames(mod):
     assert mod.scrub_reviewer("prasadus92") == "human"
     assert mod.scrub_reviewer("some.engineer@example.com") == "human"

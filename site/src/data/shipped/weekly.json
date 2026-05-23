@@ -1,10 +1,10 @@
 {
   "version": 1,
   "generated_at": "2026-05-23T06:00:00Z",
-  "operator": "your-org",
+  "operator": "example-fleet",
   "window": {
     "from": "2026-05-16T00:00:00Z",
-    "to":   "2026-05-23T00:00:00Z"
+    "to": "2026-05-23T00:00:00Z"
   },
   "summary": {
     "prs_merged": 47,
@@ -51,7 +51,7 @@
       "lines_added": 318,
       "lines_removed": 92,
       "files_changed": 11,
-      "reviewed_by": ["ras-al-ghul", "human"],
+      "reviewed_by": ["ras-al-ghul"],
       "url": "https://github.com/your-org/your-frontend/pull/884"
     },
     {
@@ -81,7 +81,7 @@
     {
       "repo": "your-org/your-data-acquisition",
       "number": 89,
-      "title": "Brella extractor: retry on 5xx with backoff",
+      "title": "Vendor extractor: retry on 5xx with backoff",
       "codename": "lucius",
       "merged_at": "2026-05-21T17:02:00Z",
       "lines_added": 73,
@@ -99,13 +99,13 @@
       "lines_added": 488,
       "lines_removed": 142,
       "files_changed": 17,
-      "reviewed_by": ["ras-al-ghul", "human"],
+      "reviewed_by": ["ras-al-ghul"],
       "url": "https://github.com/your-org/your-backend/pull/1245"
     },
     {
       "repo": "your-org/your-agents",
       "number": 203,
-      "title": "Add OpenAI provider to LLM client matrix",
+      "title": "Add new provider to LLM client matrix",
       "codename": "lucius",
       "merged_at": "2026-05-20T19:54:00Z",
       "lines_added": 128,
@@ -129,7 +129,7 @@
     {
       "repo": "your-org/your-nango",
       "number": 56,
-      "title": "Add Salesforce action: opportunity-by-id",
+      "title": "Add CRM action: deal lookup by id",
       "codename": "lucius",
       "merged_at": "2026-05-20T12:14:00Z",
       "lines_added": 95,
@@ -147,7 +147,7 @@
       "lines_added": 144,
       "lines_removed": 28,
       "files_changed": 4,
-      "reviewed_by": ["ras-al-ghul", "human"],
+      "reviewed_by": ["ras-al-ghul"],
       "url": "https://github.com/your-org/your-backend/pull/1244"
     },
     {
