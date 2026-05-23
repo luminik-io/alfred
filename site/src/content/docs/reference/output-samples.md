@@ -101,8 +101,8 @@ firing of every enabled agent (no LLM spend) and reports preflight status.
 ```
 $ bash bin/doctor.sh
 [doctor] alfred-os doctor starting
-[doctor] ALFRED_HOME=/Users/prasad/.alfred
-[doctor] WORKSPACE_ROOT=/Users/prasad/code
+[doctor] ALFRED_HOME=~/.alfred
+[doctor] WORKSPACE_ROOT=~/code
 [doctor] GH_ORG=luminik-io
 
 [doctor] preflight ............................. ok
@@ -110,7 +110,7 @@ $ bash bin/doctor.sh
 [doctor]   git ........................... ok (git 2.43.0)
 [doctor]   claude ........................ ok (Claude Code 1.2.4)
 [doctor]   codex ......................... ok (codex 0.3.1)
-[doctor]   gh auth ....................... ok (prasad@luminik.io)
+[doctor]   gh auth ....................... ok (operator@example.com)
 
 [doctor] workspace repos ......................... ok
 [doctor]   ~/code/luminik-backend ........ ok (origin: luminik-io/luminik-backend)
@@ -136,8 +136,8 @@ every firing until the cause is fixed.
 ```
 $ bash bin/doctor.sh
 [doctor] alfred-os doctor starting
-[doctor] ALFRED_HOME=/Users/prasad/.alfred
-[doctor] WORKSPACE_ROOT=/Users/prasad/code
+[doctor] ALFRED_HOME=~/.alfred
+[doctor] WORKSPACE_ROOT=~/code
 [doctor] GH_ORG=luminik-io
 
 [doctor] preflight ............................. ok
@@ -151,7 +151,7 @@ $ bash bin/doctor.sh
 [doctor]   ~/code/luminik-backend ........ ok
 [doctor]   ~/code/luminik-frontend ....... ok
 [doctor]   ~/code/luminik-mobile ......... MISSING
-[doctor]     expected: /Users/prasad/code/luminik-mobile
+[doctor]     expected: ~/code/luminik-mobile
 [doctor]     hint: git clone https://github.com/luminik-io/luminik-mobile
 
 [doctor] agents (doctor-mode firings) ............ partial
@@ -261,7 +261,7 @@ manually, bypassing the schedule. `--force` overrides the paused-agent check.
 ```
 $ alfred run echo --force
 [alfred] firing echo (override: --force)
-[alfred] env: ALFRED_HOME=/Users/prasad/.alfred AGENT_CODENAME=echo
+[alfred] env: ALFRED_HOME=~/.alfred AGENT_CODENAME=echo
 [echo] preflight ok
 [echo] hello from echo at 2026-06-01T15:04:11Z
 [echo] firing complete, exit 0
