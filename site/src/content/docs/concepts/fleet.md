@@ -118,6 +118,16 @@ The primitives in `lib/agent_runner.py` cover the common patterns: lock, preflig
 
 The default install is engineering-only. Future categories are tracked in [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main/ROADMAP.md): sales/SDR agents, content agents, personal-assistant agents, finance-ops agents, and product-ops/SRE agents. Each needs its own integration surface (Apollo, Reddit, Gmail, and so on) and its own prompt/test/docs package. PRs proposing individual agents in these categories are welcome when they keep the core runtime optional and single-operator.
 
+## Memory
+
+Every codename can recall what the last firings learned about a repo, file class, or issue type. The store is a single SQLite file in your `$ALFRED_HOME`; it never leaves the host. The next firing prepends the relevant lessons to its prompt context, so the fleet stops re-discovering the same conventions on every run.
+
+- Reflect (write): an agent files a lesson via `brain.reflect(codename=..., repo=..., body=..., tags=[...])`, or via a JSON line in `$ALFRED_HOME/state/memory-outbox/<codename>.jsonl` consumed by `fleet-ingest.py`.
+- Recall (read): `brain.recall(codename, repo)` returns the most-recent-first lessons.
+- Operator: `python3 bin/alfred-brain.py status`, `lessons`, `reflect`, `firings`, `forget`, `export`.
+
+Full reference: [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/FLEET_BRAIN.md). The v1 storage is intentionally SQLite-only; a richer graph + vector store is on the roadmap.
+
 ## See also
 
 - [Codename pattern](/concepts/codename-pattern/): why narrow specialists named after a fictional cast.

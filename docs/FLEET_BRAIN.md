@@ -1,0 +1,167 @@
+# fleet-brain — Alfred's memory layer
+
+Alfred's brain is the per-host store of what the fleet has learned. Every firing can read from it (recall) and write to it (reflect). The next firing of any agent starts with the lessons relevant to its codename and repo prepended to the prompt.
+
+The brain is a single SQLite file in your `$ALFRED_HOME`. It never leaves your machine. The only outbound surface is the prompt context Alfred prepends to a firing, which goes to Claude Code or Codex on your existing CLI auth. No telemetry, no phone-home, no cloud sync.
+
+## Why it exists
+
+Most agent fleets are amnesiac: every firing starts from zero, re-discovers the same repo conventions, and re-makes the same mistakes. The brain closes that loop. After a firing learns that `your-org/api` keeps GraphQL schemas in `src/schema.graphql`, the next firing knows it without re-reading the repo.
+
+The peer-review note: no other agent-fleet OSS has a brain. Treat it as the moat.
+
+## Quick start
+
+```python
+from fleet_brain import FleetBrain
+
+brain = FleetBrain()  # opens $ALFRED_HOME/fleet-brain.db, runs migrations
+
+brain.reflect(
+    codename="lucius",
+    repo="your-org/api",
+    body="GraphQL schema lives in src/schema.graphql; tests live next to it.",
+    tags=["graphql", "layout"],
+)
+
+# Next firing prepends these to the system prompt.
+lessons = brain.recall(codename="lucius", repo="your-org/api")
+for L in lessons:
+    print(L.body)
+```
+
+## Entity model
+
+| Entity      | What it is                                      | Stored in           |
+|-------------|-------------------------------------------------|---------------------|
+| `Lesson`    | One recall-able fact a firing learned           | `lessons`           |
+| tags        | Many-to-many taxonomy buckets on a lesson       | `lesson_tags`       |
+| `RepoNote`  | Free-text running summary for one repository    | `repo_notes`        |
+| `FiringLog` | One firing's audit row (status, summary, cost)  | `firing_logs`       |
+
+`severity` on a lesson follows the fleet's Slack severity routing:
+
+- `info` — recall-only context.
+- `warning` — worth bubbling into a future prompt.
+- `blocker` — the next firing must read this before doing anything.
+
+`status` on a firing log is one of `ok`, `blocked`, `partial`, `silent`.
+
+## CLI
+
+The operator surface is `bin/alfred-brain.py`. (Future: `alfred brain status` will shell out to this; for now invoke directly.)
+
+```
+python3 bin/alfred-brain.py status
+python3 bin/alfred-brain.py lessons <codename> <repo>
+python3 bin/alfred-brain.py lessons - your-org/api          # widen codename
+python3 bin/alfred-brain.py reflect <codename> <repo> <body> [--tag T --severity warning]
+python3 bin/alfred-brain.py firings [--codename C] [--status S]
+python3 bin/alfred-brain.py forget <id>
+python3 bin/alfred-brain.py forget --before 30d
+python3 bin/alfred-brain.py export [--out PATH]
+```
+
+Sample session:
+
+```
+$ python3 bin/alfred-brain.py reflect lucius your-org/api \
+    "GraphQL schema lives in src/schema.graphql" \
+    --tag graphql --tag layout
+alfred-brain: reflected lesson 01HZAQ...
+
+$ python3 bin/alfred-brain.py lessons lucius your-org/api
+01HZAQ...  2026-05-23 12:00  lucius/your-org/api
+  [graphql,layout] GraphQL schema lives in src/schema.graphql
+
+$ python3 bin/alfred-brain.py status
+alfred-brain: db = ~/.alfred/fleet-brain.db
+  lessons     1
+  firings     0
+  repo_notes  0
+  tags        2
+  codenames   1
+  repos       1
+```
+
+## Configuration
+
+| Env var                    | Default                              |
+|----------------------------|--------------------------------------|
+| `ALFRED_FLEET_BRAIN_DB`    | `$ALFRED_HOME/fleet-brain.db`        |
+| `ALFRED_HOME`              | `~/.alfred`                          |
+| `ALFRED_BRAIN_LOG_LEVEL`   | `WARNING` (CLI), `INFO` (ingest)     |
+
+Setting `ALFRED_FLEET_BRAIN_DB` explicitly is the cleanest way to keep the brain on a separate disk, encrypt it, or pin it to a portable drive.
+
+## The outbox + ingest loop
+
+Agents do not write to the brain synchronously. Each codename appends one JSON record per line to `$ALFRED_HOME/state/memory-outbox/<codename>.jsonl`. The `bin/fleet-ingest.py` drainer reads those files, dispatches each record into the brain, and tracks a per-file watermark so re-running is idempotent.
+
+The drainer is opt-in. To enable it, add this line to `launchd/agents.conf`:
+
+```
+my.fleet.fleet-ingest    fleet-ingest.py    interval:900    no    my.fleet.fleet-ingest    Memory outbox drainer
+```
+
+Outbox record shapes:
+
+```json
+{"event": "reflect", "codename": "lucius", "repo": "your-org/api",
+ "body": "...", "tags": ["graphql"], "firing_id": "01HZ...",
+ "severity": "info", "ts": "2026-05-23T12:00:00Z"}
+
+{"event": "firing_log", "firing_id": "01HZ...", "codename": "lucius",
+ "repo": "your-org/api", "status": "ok", "summary": "...",
+ "started_at": "...", "finished_at": "...", "cost_cents": 12,
+ "pr_url": "...", "sentinel": null}
+
+{"event": "note_repo", "repo": "your-org/api", "body": "..."}
+```
+
+Unknown event values are logged and skipped. The cursor still advances so one malformed line never wedges the drain.
+
+## Privacy + GC
+
+The brain is local-only. Treat it as you would treat your shell history: it is the operator's data, not the fleet's data, and nothing in the OSS surface ever transmits it.
+
+GC controls:
+
+- `alfred-brain.py forget <id>` — delete one lesson.
+- `alfred-brain.py forget --before 30d` — delete every lesson older than 30 days.
+- Delete the SQLite file to start over. The next `FleetBrain()` call recreates the schema.
+
+## Architecture notes
+
+- `lib/fleet_brain/schema.py` — `CREATE TABLE IF NOT EXISTS` statements. Idempotent on every connection.
+- `lib/fleet_brain/store.py` — `Store` Protocol plus the `SQLiteStore` implementation. Connections are short-lived (per call); the `:memory:` path caches a single handle for test ergonomics.
+- `lib/fleet_brain/__init__.py` — the public `FleetBrain` class. Dependency-inverted on `Store` so a future PGLite/AGE-backed implementation drops in.
+- `bin/alfred-brain.py` — operator CLI.
+- `bin/fleet-ingest.py` — outbox drainer.
+
+## v2 roadmap: PGLite + Apache AGE
+
+The internal Alfred fleet runs a richer brain: PGLite (Postgres in WASM) with the Apache AGE graph extension and pgvector for embeddings, fronted by a localhost HTTP bridge. That stack supports:
+
+- Cypher graph traversal (cross-firing blast-radius, cross-repo dependency walks).
+- Bi-temporal queries (`valid_from`, `valid_to`, `recorded_from`, `recorded_to` on every vertex and edge).
+- Semantic recall via 1024-d vector embeddings.
+- An MCP server so any Claude Code agent can query the brain via tools.
+
+It also drags in a Node.js process tree, an AGE migration story, and a bridge daemon. The v1 SQLite brain is a deliberate scope cut: same entity model, same public API, no graph or vector layer. The `Store` Protocol means swapping in a PGLite-backed implementation later does not touch `FleetBrain` or the runners.
+
+What is deferred to v2:
+
+- AGE graph queries (`MATCH (a:Agent)-[:FIRED_AS]->(f:Firing)` and friends).
+- Vector embeddings for semantic recall (`brain.recall(query="graphql auth")`).
+- The MCP server adapter.
+- Bi-temporal columns on every entity.
+- HTTP bridge so non-Python tooling can read the brain.
+
+See `ROADMAP.md` and the site roadmap for current status.
+
+## See also
+
+- [`docs/STATE_MACHINE.md`](STATE_MACHINE.md) — issue claim state, which `FiringLog.status` mirrors.
+- [`docs/AGENTS.md`](AGENTS.md) — the fleet's codename roster.
+- `lib/fleet_brain/__init__.py` — the public API reference docstrings.
