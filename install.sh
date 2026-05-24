@@ -66,10 +66,11 @@ note()  { printf "${C_DIM}     %s${C_OFF}\n" "$*"; }
 NONINTERACTIVE="${ALFRED_NONINTERACTIVE:-}"
 SKIP_NPM="${ALFRED_SKIP_NPM:-}"
 SKIP_BREW="${ALFRED_SKIP_BREW:-}"
+SKIP_PYTHON_VENV="${ALFRED_SKIP_PYTHON_VENV:-}"
 
 usage() {
   cat <<EOF
-Usage: $0 [--non-interactive] [--skip-brew] [--skip-npm]
+Usage: $0 [--non-interactive] [--skip-brew] [--skip-npm] [--skip-python-venv]
 
 Environment overrides:
   GH_ORG          Pre-fill the GitHub org/user for your fleet
@@ -81,6 +82,7 @@ Environment overrides:
   ALFRED_NONINTERACTIVE=1   Same as --non-interactive
   ALFRED_SKIP_NPM=1         Skip Claude Code install via npm
   ALFRED_SKIP_BREW=1        Skip Homebrew package install
+  ALFRED_SKIP_PYTHON_VENV=1 Skip \$ALFRED_HOME/venv provisioning
 EOF
 }
 
@@ -89,6 +91,7 @@ while [[ $# -gt 0 ]]; do
     --non-interactive) NONINTERACTIVE=1; shift;;
     --skip-brew)       SKIP_BREW=1; shift;;
     --skip-npm)        SKIP_NPM=1; shift;;
+    --skip-python-venv) SKIP_PYTHON_VENV=1; shift;;
     -h|--help)         usage; exit 0;;
     *) die "unknown arg: $1 (try --help)";;
   esac
@@ -332,10 +335,10 @@ fi
 # --------------------------------------------------------------------------
 step "Python dependency venv (\$ALFRED_HOME/venv)"
 ALFRED_VENV="$ALFRED_HOME/venv"
-if [[ -n "$SKIP_BREW" ]]; then
-  warn "Skipping venv setup per --skip-brew (use --skip-brew=false to install deps)."
+if [[ -n "$SKIP_PYTHON_VENV" ]]; then
+  warn "Skipping venv setup per --skip-python-venv. slack_sdk and boto3 must already be importable from the agent shebang interpreter."
 elif ! command -v uv >/dev/null 2>&1; then
-  warn "uv not on PATH; cannot bootstrap \$ALFRED_HOME/venv. Add ~/.local/bin to PATH and re-run."
+  warn "uv not on PATH; cannot bootstrap \$ALFRED_HOME/venv. Add ~/.local/bin to PATH and re-run, or pass --skip-python-venv if deps are already importable."
 else
   if [[ ! -x "$ALFRED_VENV/bin/python" ]]; then
     note "uv venv --python 3.11 $ALFRED_VENV"
