@@ -6,7 +6,8 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Added
 
-- `CLAUDE_CODE_OAUTH_TOKEN` is the supported way to authenticate `claude` from launchd / systemd contexts. Run `claude setup-token` once to mint a 1-year subscription token, export the value in `~/.alfredrc`, and `claude` reads it directly without touching the macOS Keychain or filesystem credential cache. See `docs/CLAUDE_CODE.md`.
+- `alfred setup-token` (`bin/alfred-setup-token.py`): one-command bootstrap of the long-lived OAuth token. Detects whether `CLAUDE_CODE_OAUTH_TOKEN` is already set in the env or `~/.alfredrc`; if not, spawns `claude setup-token` interactively, parses the printed token, writes a single `export` line to `~/.alfredrc`, and tightens the file to 0600. Re-runs (`--force`) replace the existing block in place so rotation is idempotent. `--check-only` reports status without touching auth. `alfred-init` step 1 now offers to run this automatically when the token is missing.
+- `CLAUDE_CODE_OAUTH_TOKEN` is the supported way to authenticate `claude` from launchd / systemd contexts. Run `claude setup-token` once (or `alfred setup-token` for the automated path) to mint a 1-year subscription token, export the value in `~/.alfredrc`, and `claude` reads it directly without touching the macOS Keychain or filesystem credential cache. See `docs/CLAUDE_CODE.md`.
 - `ALFRED_FLEET_OVERLAY` hook in `agent_runner/__init__.py`: imports an operator-supplied module (default name `fleet_overlay`) at end of package init so a fleet can populate `GH_REPO_TO_LOCAL`, `STANDARD_LABELS`, and `HANDOFFS` from one place instead of forking every `bin/*.py`. Silently absent when no overlay is on the path.
 - `preflight()` now consults `GH_REPO_TO_LOCAL` (with fallback to the slug) when resolving local checkout paths, so multi-repo workspaces with renames (`org/myorg-backend` checked out at `product/backend/`) stop reporting bogus "missing checkout" errors.
 
