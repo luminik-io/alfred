@@ -21,6 +21,7 @@ from __future__ import annotations
 import contextlib
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -414,6 +415,8 @@ for lock_dir in Path("/tmp").glob("agent-lock-*"):
                 capture_output=True,
                 timeout=5,
             )
+        with contextlib.suppress(OSError):
+            os.kill(old_pid, signal.SIGTERM)
     shutil.rmtree(lock_dir, ignore_errors=True)
     locks_unlocked += 1
 
