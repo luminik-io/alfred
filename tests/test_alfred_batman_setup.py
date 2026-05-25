@@ -145,6 +145,27 @@ def test_non_interactive_writes_supplied_values_without_live_calls(tmp_path, mon
     assert "Skipping lifecycle doctor" in capsys.readouterr().err
 
 
+def test_non_interactive_blank_channel_preserves_runtime_fallback(tmp_path, monkeypatch):
+    mod = _load_module(monkeypatch, tmp_path)
+    rc = tmp_path / ".alfredrc"
+    out = mod.main(
+        [
+            "--non-interactive",
+            "--skip-token-setup",
+            "--skip-doctor",
+            "--alfredrc",
+            str(rc),
+            "--mode",
+            "0",
+            "--parent-repo",
+            "acme/specs",
+        ]
+    )
+
+    assert out == 0
+    assert "BATMAN_SLACK_CHANNEL" not in rc.read_text()
+
+
 def test_invalid_slack_token_is_rejected(tmp_path, monkeypatch):
     mod = _load_module(monkeypatch, tmp_path)
     assert mod.validate_slack_bot_token("not-a-token") is not None

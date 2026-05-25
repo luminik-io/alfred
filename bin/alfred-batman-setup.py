@@ -451,7 +451,11 @@ def step_channel(
     channel = normalize_channel(args.slack_channel or values[BATMAN_CHANNEL_ENV])
     if args.force or not channel:
         channel = normalize_channel(
-            ask("Channel name or id", channel or "alfred", non_interactive=non_interactive)
+            ask(
+                "Channel name or id (blank uses SLACK_HOME_CHANNEL fallback)",
+                channel,
+                non_interactive=non_interactive,
+            )
         )
     if channel:
         state.updates[BATMAN_CHANNEL_ENV] = channel
