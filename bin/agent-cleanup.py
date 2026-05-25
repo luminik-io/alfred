@@ -171,7 +171,15 @@ def dirty_worktree_reason(wt: Path) -> str | None:
         return "not-a-git-worktree"
     try:
         res = subprocess.run(
-            ["git", "-C", str(wt), "status", "--porcelain", "--untracked-files=all"],
+            [
+                "git",
+                "-C",
+                str(wt),
+                "status",
+                "--porcelain=v1",
+                "--branch",
+                "--untracked-files=all",
+            ],
             capture_output=True,
             text=True,
             timeout=15,
@@ -180,8 +188,13 @@ def dirty_worktree_reason(wt: Path) -> str | None:
         return f"git-status-failed:{exc.__class__.__name__}"
     if res.returncode != 0:
         return f"git-status-failed:{res.stderr.strip()[:120] or res.returncode}"
-    if res.stdout.strip():
+    lines = res.stdout.splitlines()
+    branch_line = lines[0] if lines and lines[0].startswith("## ") else ""
+    changed_lines = [line for line in lines if not line.startswith("## ")]
+    if changed_lines:
         return "dirty"
+    if "[ahead " in branch_line:
+        return "ahead-of-upstream"
     return None
 
 

@@ -140,6 +140,26 @@ def test_sweep_extra_paths_skips_dirty_worktrees(cleanup, tmp_path, monkeypatch)
     assert dirty.exists()
 
 
+def test_dirty_worktree_reason_preserves_ahead_branches(cleanup, tmp_path, monkeypatch):
+    wt = tmp_path / "ahead-wt"
+    wt.mkdir()
+    (wt / ".git").write_text("placeholder")
+
+    def fake_run(cmd, **kwargs):
+        assert cmd[:4] == ["git", "-C", str(wt), "status"]
+        assert "--branch" in cmd
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout="## feature...origin/main [ahead 1]\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(cleanup.subprocess, "run", fake_run)
+
+    assert cleanup.dirty_worktree_reason(wt) == "ahead-of-upstream"
+
+
 def test_sweep_extra_paths_handles_missing_directory(cleanup, tmp_path):
     stats = cleanup.sweep_extra_paths(
         paths=str(tmp_path / "does-not-exist"),
