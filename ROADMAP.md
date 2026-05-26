@@ -50,6 +50,7 @@ Items with active work and a committed IC.
 - **Public unattended-SLA emit format.** Extend `alfred-shipped-public` with a 30-day rolling window covering firings, success rate, and unattended hours. Operators who want a public proof page can render this on their own site. IC: core. Effort: S. Issue: TBD.
 - **Cross-platform menubar app.** A small native menubar (macOS first, Linux tray second) that surfaces fleet status and click-throughs to the local `alfred serve` UI. Read-only. IC: core. Effort: M. Issue: TBD.
 - **fleet-brain v2.** Replace the SQLite layer with PGLite plus Apache AGE for graph queries and pgvector for semantic recall, exposed through an MCP server adapter so other Claude Code consumers can read fleet memory. IC: core. Effort: L. Issue: TBD.
+- **Memory quality loop.** Add evidence-linked lesson promotion, repeated-failure routing, spec-to-issue memory, and lightweight candidate quality checks before promotion. IC: core. Effort: M. Issue: TBD.
 
 ## Next (next quarter)
 

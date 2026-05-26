@@ -182,13 +182,23 @@ alfred brain status
 alfred brain lessons lucius your-org/api
 alfred brain lessons - your-org/api
 alfred brain reflect lucius your-org/api "Use request fixtures for API tests" --tag tests
+alfred brain propose lucius your-org/api "Use request fixtures for API tests" --tag tests
+alfred brain candidates
+alfred brain promote <candidate-id>
+alfred brain reject <candidate-id> --note "too vague"
 alfred brain firings --codename lucius
+alfred brain files your-org/api
+alfred brain failures --codename huntress
+alfred brain doctor
 alfred brain forget <lesson-id>
 alfred brain export --out ~/alfred-brain.json
+alfred mcp serve
 ```
 
 Runtime memory is on by default through the local `fleet` provider. Set
-`ALFRED_MEMORY_PROVIDERS=null` to disable prompt recall and reflection.
+`ALFRED_MEMORY_PROVIDERS=null` to disable prompt recall and reflection. Set
+`ALFRED_MEMORY_REFLECTION_MODE=candidate` when you want engine-written lessons
+to enter the review queue before future recall.
 
 ## `alfred labels`
 

@@ -234,6 +234,27 @@ GC controls:
 - `bin/alfred-mcp.py`: read-only JSON-RPC stdio bridge.
 - `bin/fleet-ingest.py`: outbox drainer.
 
+## What to build next
+
+The v1 brain is intentionally small: local lessons, file touches, failure
+events, reviewable candidates, and read-only MCP access. The useful next work
+is not "more storage"; it is closing feedback loops:
+
+1. **Evidence-linked lesson promotion.** Every promoted lesson should point to
+   the firing, PR, issue, file touch, or operator note that made it trustworthy.
+   That keeps memory from becoming folklore.
+2. **Failure-pattern routing.** Repeated `FailureEvent` groups should become
+   concrete operator actions: pause one codename, file a setup issue, suggest a
+   missing browser install, or mark a flaky external dependency.
+3. **Spec and bundle memory.** Batman and specs-driven workflows should remember
+   which specs generated which issues, which PRs landed, and which acceptance
+   criteria needed follow-up.
+4. **Semantic recall.** Substring matching is enough for v1. v2 should support
+   query-based recall across lessons, plans, and failure summaries.
+5. **Memory quality gates.** Candidate promotion should run lightweight checks:
+   no secrets, source attached, confidence present, not contradicted by a newer
+   lesson, and scoped to a codename/repo when possible.
+
 ## v2 roadmap: PGLite + Apache AGE
 
 The internal Alfred fleet runs a richer brain: PGLite (Postgres in WASM) with the Apache AGE graph extension and pgvector for embeddings, fronted by a localhost HTTP bridge. That stack supports:
