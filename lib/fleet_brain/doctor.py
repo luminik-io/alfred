@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,9 @@ _REQUIRED_TABLES = {
     "file_touches",
     "memory_candidates",
     "failure_events",
+    "github_items",
+    "bundle_items",
+    "worker_heartbeats",
     "schema_version",
 }
 
@@ -31,6 +35,10 @@ def run_memory_doctor(db_path: str | Path | None = None) -> dict[str, Any]:
         "memory_candidates": 0,
         "memory_candidates_open": 0,
         "failure_events": 0,
+        "github_items": 0,
+        "bundle_items": 0,
+        "worker_heartbeats": 0,
+        "workers_running": 0,
         "repo_notes": 0,
         "tags": 0,
         "codenames": 0,
@@ -69,12 +77,22 @@ def run_memory_doctor(db_path: str | Path | None = None) -> dict[str, Any]:
         missing = sorted(_REQUIRED_TABLES - tables)
         if missing:
             missing_set = set(missing)
-            additive_v3 = {"memory_candidates", "failure_events"}
-            if version is not None and version < SCHEMA_VERSION and missing_set <= additive_v3:
+            additive_since_v2 = {
+                "memory_candidates",
+                "failure_events",
+                "github_items",
+                "bundle_items",
+                "worker_heartbeats",
+            }
+            if (
+                version is not None
+                and version < SCHEMA_VERSION
+                and missing_set <= additive_since_v2
+            ):
                 check(
                     "tables",
                     "warn",
-                    "additive schema tables missing; initialize the brain once to apply v3",
+                    "additive schema tables missing; initialize the brain once to apply v4",
                 )
             else:
                 check("tables", "fail", f"missing tables: {', '.join(missing)}")
@@ -96,6 +114,30 @@ def run_memory_doctor(db_path: str | Path | None = None) -> dict[str, Any]:
                 check("failure_events", "warn", f"{failures} failure events recorded")
             else:
                 check("failure_events", "ok", f"{failures} failure events recorded")
+
+            running = stats["workers_running"]
+            stale_workers = _count_stale_workers(conn)
+            if stale_workers:
+                check("stale_workers", "warn", f"{stale_workers} running worker(s) look stale")
+            else:
+                check("stale_workers", "ok", f"{running} running worker heartbeat(s)")
+
+            github_items = stats["github_items"]
+            if github_items:
+                age = _latest_age_minutes(conn, "github_items", "last_seen_at")
+                if age is not None and age > 180:
+                    check("github_poll", "warn", f"latest GitHub poll is {age}m old")
+                else:
+                    detail = "fresh" if age is None else f"latest poll {age}m old"
+                    check("github_poll", "ok", f"{github_items} cached item(s), {detail}")
+            else:
+                check("github_poll", "warn", "no cached GitHub items yet")
+
+            bundles = stats["bundle_items"]
+            if bundles:
+                check("bundles", "ok", f"{bundles} cached bundle item(s)")
+            else:
+                check("bundles", "ok", "no bundle items cached")
     finally:
         conn.close()
 
@@ -120,6 +162,10 @@ def _stats(conn: sqlite3.Connection) -> dict[str, int]:
         "memory_candidates": _count(conn, "memory_candidates"),
         "memory_candidates_open": _count_where(conn, "memory_candidates", "status = 'candidate'"),
         "failure_events": _count(conn, "failure_events"),
+        "github_items": _count(conn, "github_items"),
+        "bundle_items": _count(conn, "bundle_items"),
+        "worker_heartbeats": _count(conn, "worker_heartbeats"),
+        "workers_running": _count_where(conn, "worker_heartbeats", "status = 'running'"),
         "repo_notes": _count(conn, "repo_notes"),
         "tags": _count_distinct(conn, "lesson_tags", "tag"),
         "codenames": _count_distinct(conn, "lessons", "codename"),
@@ -137,6 +183,41 @@ def _count_where(conn: sqlite3.Connection, table: str, where: str) -> int:
 
 def _count_distinct(conn: sqlite3.Connection, table: str, column: str) -> int:
     return int(conn.execute(f"SELECT COUNT(DISTINCT {column}) FROM {table}").fetchone()[0])
+
+
+def _count_stale_workers(conn: sqlite3.Connection) -> int:
+    cutoff = datetime.now(UTC) - timedelta(minutes=60)
+    count = 0
+    rows = conn.execute(
+        "SELECT heartbeat_at FROM worker_heartbeats WHERE status = 'running'"
+    ).fetchall()
+    for (raw,) in rows:
+        seen = _parse_iso(raw)
+        if seen is not None and seen < cutoff:
+            count += 1
+    return count
+
+
+def _latest_age_minutes(conn: sqlite3.Connection, table: str, column: str) -> int | None:
+    row = conn.execute(f"SELECT MAX({column}) FROM {table}").fetchone()
+    if row is None or row[0] is None:
+        return None
+    seen = _parse_iso(row[0])
+    if seen is None:
+        return None
+    return max(0, int((datetime.now(UTC) - seen).total_seconds() // 60))
+
+
+def _parse_iso(raw: object) -> datetime | None:
+    if not isinstance(raw, str):
+        return None
+    try:
+        seen = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if seen.tzinfo is None:
+        seen = seen.replace(tzinfo=UTC)
+    return seen.astimezone(UTC)
 
 
 def _report(

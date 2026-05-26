@@ -43,6 +43,9 @@ for L in lessons:
 | `FileTouch` | One repo file an agent touched during a firing  | `file_touches`      |
 | `MemoryCandidate` | Proposed lesson awaiting review before recall | `memory_candidates` |
 | `FailureEvent` | Normalized non-success outcome for diagnosis | `failure_events` |
+| `GitHubItem` | Cached issue/PR state from `fleet-github-poll.py` | `github_items` |
+| `BundleItem` | Membership in an `agent:bundle:<slug>` rollout | `bundle_items` |
+| `WorkerHeartbeat` | Last-seen liveness row for stale-worker checks | `worker_heartbeats` |
 
 `severity` on a lesson follows the fleet's Slack severity routing:
 
@@ -70,7 +73,12 @@ alfred brain reject <candidate-id> --note "too vague"
 alfred brain firings [--codename C] [--status S]
 alfred brain files <repo> [--codename C] [--path P]
 alfred brain failures [--codename C] [--repo R] [--subtype S]
+alfred brain github [--repo R] [--kind issue|pr] [--bundle slug]
+alfred brain bundles [bundle-slug]
+alfred brain workers [--stale]
+alfred brain promotions
 alfred brain doctor [--json]
+alfred github-poll --repo your-org/api --repo your-org/web
 alfred brain forget <id>
 alfred brain forget --before 30d
 alfred brain export [--out PATH]
@@ -95,6 +103,9 @@ alfred-brain: db = ~/.alfred/fleet-brain.db
   file_touches 0
   candidates  0 (0 open)
   failures    0
+  github      0
+  bundles     0
+  workers     0 (0 running)
   repo_notes  0
   tags        2
   codenames   1
@@ -199,6 +210,32 @@ file starts failing and you want the recent agent history for it.
 Failure events give the same kind of local trail for runner problems. Query
 them with `alfred brain failures`, then run `alfred brain doctor` when you want
 a quick health summary without opening SQLite manually.
+
+## GitHub poller, bundles, and stale workers
+
+`bin/fleet-github-poll.py` pulls issue and PR state through `gh` and stores it
+locally in the brain. It is intentionally pull-based: no webhook endpoint, no
+GitHub App, no long-running service.
+
+```sh
+alfred github-poll --repo your-org/api --repo your-org/web
+alfred brain github --state open
+alfred brain bundles billing
+```
+
+Any label named `agent:bundle:<slug>` or `bundle:<slug>` is mirrored into
+`bundle_items`, so Batman-style work can be inspected without re-querying
+GitHub every time. Outbox imports can also write `github_item`, `bundle_item`,
+and `worker_heartbeat` records directly.
+
+Workers can publish liveness through `alfred brain heartbeat`. `alfred brain
+workers --stale` reports running firings whose last heartbeat is older than
+the threshold, and `alfred brain doctor` includes that signal alongside memory
+candidate backlog, failure history, GitHub poll freshness, and bundle counts.
+
+`alfred brain promotions` is the review loop for memory quality. It lists
+high-confidence candidates with evidence, tags, or warning/blocker severity so
+the operator can promote the useful lessons and reject noise.
 
 ## Read-only MCP bridge
 

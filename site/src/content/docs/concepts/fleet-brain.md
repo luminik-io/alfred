@@ -20,6 +20,9 @@ Full source doc: [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os
 | `Lesson` | A recallable fact about a codename, repo, convention, or recurring failure. |
 | `MemoryCandidate` | A proposed lesson awaiting operator review. |
 | `FailureEvent` | A normalized non-success outcome, useful for spotting repeated setup or runtime failures. |
+| `GitHubItem` | Cached issue/PR state pulled through the local GitHub CLI. |
+| `BundleItem` | Membership in an `agent:bundle:<slug>` rollout. |
+| `WorkerHeartbeat` | Last-seen liveness row for stale-worker detection. |
 | `FiringLog` | A compact audit row for one firing. |
 | `FileTouch` | A repo-relative file path touched by an agent, optionally tied to a firing or PR. |
 | `RepoNote` | Free-text notes about one repository. |
@@ -40,6 +43,11 @@ alfred brain promote <candidate-id>
 alfred brain reject <candidate-id> --note "too vague"
 alfred brain failures --codename huntress
 alfred brain files your-org/api
+alfred github-poll --repo your-org/api
+alfred brain github --state open
+alfred brain bundles billing
+alfred brain workers --stale
+alfred brain promotions
 alfred brain doctor
 alfred mcp serve
 ```
@@ -58,6 +66,11 @@ export ALFRED_MEMORY_REFLECTION_MODE=candidate
 
 Then use `alfred brain candidates` to promote useful lessons and reject noisy
 ones.
+
+The GitHub poller keeps issue, PR, and bundle state in the same local memory
+store. The doctor command uses that cache to report poll freshness, open bundle
+shape, stale worker heartbeats, repeated failures, and high-confidence memory
+candidates that are ready for review.
 
 ## MCP access
 
@@ -85,10 +98,8 @@ operator-owned.
 
 The next useful layer is reliability, not more mystery:
 
-- Link every promoted lesson to evidence: firing id, PR, issue, file touch, or
-  operator note.
-- Turn repeated failure patterns into actions: pause a codename, file a setup
-  issue, or suggest a missing local dependency.
+- Auto-route repeated failure patterns into actions: pause a codename, file a
+  setup issue, or suggest a missing local dependency.
 - Let Batman and specs-driven workflows remember which specs generated which
   issues and PRs.
 - Add semantic recall for lessons, plans, and failure summaries.

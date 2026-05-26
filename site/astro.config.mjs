@@ -371,7 +371,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             property: "og:image:alt",
-            content: "Alfred. An autonomous engineering team for Claude Code and Codex agents.",
+            content: "Alfred. An autonomous engineering team for solo builders.",
           },
         },
         {
@@ -385,7 +385,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             name: "twitter:image:alt",
-            content: "Alfred, autonomous engineering agents for Claude Code and Codex.",
+            content: "Alfred, an autonomous engineering team for solo builders.",
           },
         },
         {

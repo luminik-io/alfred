@@ -41,6 +41,12 @@ Outbox record shape (JSON per line)::
      "firing_id": "01HZ...", "subtype": "error_timeout", "summary": "...",
      "engine": "claude", "severity": "warning"}
 
+    {"event": "github_item", "repo": "your-org/api", "number": 42,
+     "kind": "pr", "state": "open", "title": "...", "labels": ["agent:bundle:x"]}
+
+    {"event": "worker_heartbeat", "codename": "lucius", "firing_id": "01HZ...",
+     "status": "running", "repo": "your-org/api", "pid": 12345}
+
 Unknown ``event`` values are logged and skipped; the cursor still
 advances so a malformed line doesn't wedge the drain forever.
 """
@@ -114,6 +120,9 @@ class Counts:
     notes: int = 0
     candidates: int = 0
     failures: int = 0
+    github_items: int = 0
+    bundles: int = 0
+    worker_heartbeats: int = 0
     skipped: int = 0
     errors: int = 0
 
@@ -126,6 +135,9 @@ class Counts:
             "notes": self.notes,
             "candidates": self.candidates,
             "failures": self.failures,
+            "github_items": self.github_items,
+            "bundles": self.bundles,
+            "worker_heartbeats": self.worker_heartbeats,
             "skipped": self.skipped,
             "errors": self.errors,
         }
@@ -201,6 +213,50 @@ def dispatch(brain: FleetBrain, record: dict[str, Any]) -> list[str]:
             created_at=_parse_ts(record.get("ts")),
         )
         return ["failure"]
+    if event == "github_item":
+        item = brain.upsert_github_item(
+            repo=record["repo"],
+            number=int(record["number"]),
+            kind=record["kind"],
+            state=record.get("state", "unknown"),
+            title=record.get("title", ""),
+            url=record.get("url", ""),
+            labels=_string_list(record.get("labels") or record.get("label_names")),
+            updated_at=_parse_ts(record.get("updated_at") or record.get("ts")),
+            last_seen_at=_parse_ts(record.get("last_seen_at") or record.get("seen_at")),
+            closed_at=_parse_ts(record.get("closed_at")),
+            merged_at=_parse_ts(record.get("merged_at")),
+            head_ref=record.get("head_ref"),
+            base_ref=record.get("base_ref"),
+            bundle_slug=record.get("bundle_slug") or _bundle_slug(record.get("labels") or []),
+        )
+        return ["github_item", "bundle"] if item.bundle_slug else ["github_item"]
+    if event == "bundle_item":
+        brain.upsert_bundle_item(
+            bundle_slug=record["bundle_slug"],
+            repo=record["repo"],
+            item_kind=record.get("item_kind") or record.get("kind"),
+            number=int(record["number"]),
+            state=record.get("state", "unknown"),
+            title=record.get("title", ""),
+            url=record.get("url", ""),
+            labels=_string_list(record.get("labels") or record.get("label_names")),
+            updated_at=_parse_ts(record.get("updated_at") or record.get("ts")),
+            last_seen_at=_parse_ts(record.get("last_seen_at") or record.get("seen_at")),
+        )
+        return ["bundle"]
+    if event == "worker_heartbeat":
+        brain.upsert_worker_heartbeat(
+            codename=record["codename"],
+            firing_id=record["firing_id"],
+            status=record.get("status", "running"),
+            repo=record.get("repo"),
+            pid=record.get("pid"),
+            detail=record.get("detail", ""),
+            started_at=_parse_ts(record.get("started_at") or record.get("ts")),
+            heartbeat_at=_parse_ts(record.get("heartbeat_at") or record.get("ts")),
+        )
+        return ["worker_heartbeat"]
     raise ValueError(f"unknown event: {event!r}")
 
 
@@ -266,6 +322,29 @@ def _coerce_change_type(value: Any) -> str:
     return aliases.get(text, "unknown")
 
 
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    labels: list[str] = []
+    for item in value:
+        if isinstance(item, dict):
+            text = str(item.get("name") or "").strip()
+        else:
+            text = str(item or "").strip()
+        if text:
+            labels.append(text)
+    return labels
+
+
+def _bundle_slug(labels: Any) -> str | None:
+    for label in _string_list(labels):
+        if label.startswith("agent:bundle:"):
+            return label.removeprefix("agent:bundle:").strip() or None
+        if label.startswith("bundle:"):
+            return label.removeprefix("bundle:").strip() or None
+    return None
+
+
 def _parse_ts(s: Any) -> datetime | None:
     if not s or not isinstance(s, str):
         return None
@@ -324,6 +403,12 @@ def drain_file(brain: FleetBrain, path: Path, cursor: dict[str, int], max_record
                 counts.candidates += 1
             elif kind == "failure":
                 counts.failures += 1
+            elif kind == "github_item":
+                counts.github_items += 1
+            elif kind == "bundle":
+                counts.bundles += 1
+            elif kind == "worker_heartbeat":
+                counts.worker_heartbeats += 1
         cursor[path.name] = i + 1
     return counts
 

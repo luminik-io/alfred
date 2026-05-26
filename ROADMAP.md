@@ -15,6 +15,16 @@ Effort sizing is uniform across tiers: **S** is roughly a week of focused work, 
 
 What is in the OSS tree today.
 
+### v0.4.1 — unreleased
+
+Reliability and first-run trust polish.
+
+- `alfred dry-run <codename>`: scheduler-free dry-run resolution for every shipped codename. Native dry-run runners execute with side effects stubbed; every other codename gets a safe no-side-effect simulation.
+- `fleet-github-poll.py` and `alfred github-poll`: local GitHub issue/PR polling into fleet-brain.
+- Bundle memory: `agent:bundle:<slug>` and `bundle:<slug>` labels are mirrored into `bundle_items` for Batman-style rollout inspection.
+- Worker heartbeat memory: `alfred brain heartbeat`, `alfred brain workers --stale`, and richer doctor output for stale-worker detection.
+- Memory promotion loop: `alfred brain promotions` surfaces high-confidence candidates with evidence before they enter recall.
+
 ### v0.4.0 — 2026-05-23
 
 Substrate, observability, planning, approval, memory, and connector primitives. Merged to `main` on 2026-05-23 via PRs #89 and #90; tagged as `v0.4.0`.
@@ -58,7 +68,7 @@ Committed for the following quarter. Design first, then code.
 
 - **Multi-engine routing v2.** Add Gemini and Ollama adapters alongside the current Claude and Codex engines. Per-codename engine selection stays the existing surface; the work is the adapter contract plus auth probes plus billing posture docs. Effort: M. Issue: TBD.
 - **Better Batman v2.** Post-approval per-repo execution sweep with bundle-completion detection: Batman keeps watch on the PR chain it opened, reports per-repo progress, and closes the bundle once every PR has landed or been explicitly dropped. Effort: M. Issue: TBD.
-- **`alfred dry-run <codename>` for every shipped codename.** Today dry-run is wired through specific runners; widen it so every codename in the tree runs end-to-end with no side effects. Effort: S. Issue: TBD.
+- **Native lifecycle dry-run for every shipped runner.** `alfred dry-run <codename>` now resolves every codename safely; next step is making every individual runner support the full synthetic lifecycle, not just the safe simulation. Effort: S. Issue: TBD.
 - **`alfred serve` v2.** v0.4.0 shipped a read-only localhost dashboard ([`docs/SERVE.md`](docs/SERVE.md)) with three views: fleet status, recent firings, single-firing detail. v2 adds per-agent cost and success trends, full trace tree per firing, and transcript pretty-printing. Cross-platform precursor to any future native menu-bar UI. Effort: S. Issue: TBD.
 
 ## Horizon (no committed quarter)

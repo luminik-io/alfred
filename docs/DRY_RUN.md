@@ -47,6 +47,23 @@ From a fresh checkout (no deploy needed), put `lib/` on `PYTHONPATH`:
 PYTHONPATH=lib python3 examples/bin/echo_summarise.py --dry-run
 ```
 
+After install, the operator CLI resolves any codename without touching the host
+scheduler:
+
+```sh
+alfred dry-run lucius
+alfred dry-run drake
+alfred dry-run all
+alfred dry-run lucius --native
+```
+
+By default, Alfred resolves the label, script, schedule, and role, then prints
+the firing boundaries it would cross without invoking GitHub, Slack, AWS,
+Playwright, an LLM, or a real worktree. Pass `--native` when you want a runner
+that declares native dry-run support to execute under `ALFRED_DRY_RUN=1`.
+Codenames that do not yet declare native dry-run support still get the
+simulation.
+
 ## What is stubbed vs real
 
 Everything that does **not** touch the outside world runs for real: the lock,

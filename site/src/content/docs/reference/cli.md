@@ -138,6 +138,8 @@ alfred disable <codename>
 alfred enabled-agents
 alfred status
 alfred clear-lock <codename> [--check] [--force]
+alfred dry-run <codename>|all [--native] [--simulate] [--json]
+alfred github-poll --repo <owner/repo>
 alfred brain status
 alfred brain lessons <codename> <repo>
 alfred brain reflect <codename> <repo> <body>
@@ -173,6 +175,13 @@ and operator overrides. `shipped` reports merged PRs, issues, LOC, and
 model/config changes across `ALFRED_SHIPPED_SUMMARY_REPOS` or explicit `--repo`
 values.
 
+`dry-run` is the scheduler-free trust check. It resolves any codename and prints
+a no-side-effect firing trace. Pass `--native` when you want a runner with
+native dry-run support to execute under `ALFRED_DRY_RUN=1`; other codenames use
+a safe simulation that never invokes an engine, scheduler, Slack, GitHub,
+Playwright, AWS, or a worktree mutation.
+`github-poll` pulls issue and PR state through `gh` into the fleet brain.
+
 ## `alfred brain`
 
 Inspect and seed the local fleet-brain memory layer.
@@ -189,6 +198,10 @@ alfred brain reject <candidate-id> --note "too vague"
 alfred brain firings --codename lucius
 alfred brain files your-org/api
 alfred brain failures --codename huntress
+alfred brain github --state open
+alfred brain bundles <bundle-slug>
+alfred brain workers --stale
+alfred brain promotions
 alfred brain doctor
 alfred brain forget <lesson-id>
 alfred brain export --out ~/alfred-brain.json

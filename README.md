@@ -89,6 +89,15 @@ The same works for `examples/bin/hello.py` and `bin/lucius.py`, and via the
 `ALFRED_DRY_RUN=1` env var instead of the flag. See [`docs/DRY_RUN.md`](docs/DRY_RUN.md)
 for what is stubbed versus real.
 
+After install, the operator CLI resolves every codename without touching the
+host scheduler:
+
+```sh
+alfred dry-run lucius
+alfred dry-run drake
+alfred dry-run all
+```
+
 ### Full install
 
 About 30 minutes from a fresh Mac or Debian/Ubuntu host.
@@ -279,7 +288,7 @@ surface area: [`ROADMAP.md`](ROADMAP.md).
 
 ## Status
 
-**Latest release: v0.4.0.** Alfred ships a local engineering-agent fleet for one operator: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution. v0.4.0 lands the substrate the next quarters of roadmap items compose on: the `agent_runner` package decomposition, `alfred-metrics` and `alfred-logs` CLIs, multi-repo coordination (Batman + `cross_repo_pr`), Damian spec-bundle planning, the `slack_approval` gate, `fleet-brain` v1 memory, memory reliability tools (`alfred brain candidates`, `alfred brain failures`, `alfred brain doctor`, `alfred mcp serve`), the `Connector` protocol with Linear and Sentry implementations, `alfred spec`, and the read-only `alfred serve` dashboard. See [CHANGELOG.md](CHANGELOG.md) for the full ledger.
+**Latest release: v0.4.0.** Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution. v0.4.0 lands the substrate the next quarters of roadmap items compose on: the `agent_runner` package decomposition, `alfred-metrics` and `alfred-logs` CLIs, multi-repo coordination (Batman + `cross_repo_pr`), Damian spec-bundle planning, the `slack_approval` gate, `fleet-brain` v1 memory, memory reliability tools (`alfred brain candidates`, `alfred brain failures`, `alfred brain doctor`, `alfred mcp serve`), the `Connector` protocol with Linear and Sentry implementations, `alfred spec`, and the read-only `alfred serve` dashboard. See [CHANGELOG.md](CHANGELOG.md) for the full ledger.
 
 The design boundary is stable: one operator, one local host, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
 

@@ -38,6 +38,9 @@ Severity = Literal["info", "warning", "blocker"]
 FiringStatus = Literal["ok", "blocked", "partial", "silent"]
 FileChangeType = Literal["added", "modified", "deleted", "renamed", "unknown"]
 MemoryCandidateStatus = Literal["candidate", "validated", "rejected", "retired"]
+GitHubItemKind = Literal["issue", "pr"]
+GitHubItemState = Literal["open", "closed", "merged", "unknown"]
+WorkerStatus = Literal["running", "ok", "failed", "stale", "cancelled"]
 
 
 @dataclass(frozen=True)
@@ -119,6 +122,59 @@ class FailureEvent:
     repo: str | None = None
     firing_id: str | None = None
     engine: str | None = None
+
+
+@dataclass(frozen=True)
+class GitHubItem:
+    """Cached GitHub issue/PR state collected by the poller."""
+
+    id: str
+    repo: str
+    number: int
+    kind: GitHubItemKind
+    state: GitHubItemState
+    title: str
+    url: str
+    labels: list[str]
+    updated_at: datetime
+    last_seen_at: datetime
+    closed_at: datetime | None = None
+    merged_at: datetime | None = None
+    head_ref: str | None = None
+    base_ref: str | None = None
+    bundle_slug: str | None = None
+
+
+@dataclass(frozen=True)
+class BundleItem:
+    """One issue/PR member of an ``agent:bundle:<slug>`` bundle."""
+
+    id: str
+    bundle_slug: str
+    repo: str
+    item_kind: GitHubItemKind
+    number: int
+    state: GitHubItemState
+    title: str
+    url: str
+    labels: list[str]
+    updated_at: datetime
+    last_seen_at: datetime
+
+
+@dataclass(frozen=True)
+class WorkerHeartbeat:
+    """Last-seen liveness row for a worker firing."""
+
+    id: str
+    codename: str
+    firing_id: str
+    status: WorkerStatus
+    started_at: datetime
+    heartbeat_at: datetime
+    repo: str | None = None
+    pid: int | None = None
+    detail: str = ""
 
 
 @dataclass(frozen=True)
@@ -256,6 +312,35 @@ class Store(Protocol):
         subtype: str | None = None,
         limit: int = 50,
     ) -> list[FailureEvent]: ...
+
+    def upsert_github_item(self, item: GitHubItem) -> GitHubItem: ...
+
+    def list_github_items(
+        self,
+        repo: str | None = None,
+        kind: GitHubItemKind | None = None,
+        state: GitHubItemState | None = None,
+        bundle_slug: str | None = None,
+        limit: int = 50,
+    ) -> list[GitHubItem]: ...
+
+    def upsert_bundle_item(self, item: BundleItem) -> BundleItem: ...
+
+    def list_bundle_items(
+        self,
+        bundle_slug: str | None = None,
+        state: GitHubItemState | None = None,
+        limit: int = 50,
+    ) -> list[BundleItem]: ...
+
+    def upsert_worker_heartbeat(self, heartbeat: WorkerHeartbeat) -> WorkerHeartbeat: ...
+
+    def list_worker_heartbeats(
+        self,
+        codename: str | None = None,
+        status: WorkerStatus | None = None,
+        limit: int = 50,
+    ) -> list[WorkerHeartbeat]: ...
 
     def stats(self) -> dict[str, int]: ...
 
@@ -774,6 +859,192 @@ class SQLiteStore:
             rows = conn.execute(sql, params).fetchall()
             return [_row_to_failure_event(r) for r in rows]
 
+    # ----- GitHub state -------------------------------------------------
+
+    def upsert_github_item(self, item: GitHubItem) -> GitHubItem:
+        with self._connect() as conn, conn:
+            conn.execute(
+                "INSERT INTO github_items "
+                "(id, repo, number, kind, state, title, url, labels_json, updated_at, "
+                " last_seen_at, closed_at, merged_at, head_ref, base_ref, bundle_slug) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT (id) DO UPDATE SET "
+                "  state = excluded.state, "
+                "  title = excluded.title, "
+                "  url = excluded.url, "
+                "  labels_json = excluded.labels_json, "
+                "  updated_at = excluded.updated_at, "
+                "  last_seen_at = excluded.last_seen_at, "
+                "  closed_at = excluded.closed_at, "
+                "  merged_at = excluded.merged_at, "
+                "  head_ref = excluded.head_ref, "
+                "  base_ref = excluded.base_ref, "
+                "  bundle_slug = excluded.bundle_slug",
+                (
+                    item.id,
+                    item.repo,
+                    int(item.number),
+                    item.kind,
+                    item.state,
+                    item.title,
+                    item.url,
+                    _tags_to_json(item.labels),
+                    _to_iso(item.updated_at),
+                    _to_iso(item.last_seen_at),
+                    _to_iso(item.closed_at) if item.closed_at else None,
+                    _to_iso(item.merged_at) if item.merged_at else None,
+                    item.head_ref,
+                    item.base_ref,
+                    item.bundle_slug,
+                ),
+            )
+        return item
+
+    def list_github_items(
+        self,
+        repo: str | None = None,
+        kind: GitHubItemKind | None = None,
+        state: GitHubItemState | None = None,
+        bundle_slug: str | None = None,
+        limit: int = 50,
+    ) -> list[GitHubItem]:
+        wheres: list[str] = []
+        params: list[object] = []
+        if repo:
+            wheres.append("repo = ?")
+            params.append(repo)
+        if kind:
+            wheres.append("kind = ?")
+            params.append(kind)
+        if state:
+            wheres.append("state = ?")
+            params.append(state)
+        if bundle_slug:
+            wheres.append("bundle_slug = ?")
+            params.append(bundle_slug)
+        where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+        sql = (
+            "SELECT id, repo, number, kind, state, title, url, labels_json, updated_at, "
+            "last_seen_at, closed_at, merged_at, head_ref, base_ref, bundle_slug "
+            f"FROM github_items {where_clause} "
+            "ORDER BY updated_at DESC LIMIT ?"
+        )
+        params.append(int(limit))
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+            return [_row_to_github_item(r) for r in rows]
+
+    # ----- bundle items -------------------------------------------------
+
+    def upsert_bundle_item(self, item: BundleItem) -> BundleItem:
+        with self._connect() as conn, conn:
+            conn.execute(
+                "INSERT INTO bundle_items "
+                "(id, bundle_slug, repo, item_kind, number, state, title, url, "
+                " labels_json, updated_at, last_seen_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT (id) DO UPDATE SET "
+                "  state = excluded.state, "
+                "  title = excluded.title, "
+                "  url = excluded.url, "
+                "  labels_json = excluded.labels_json, "
+                "  updated_at = excluded.updated_at, "
+                "  last_seen_at = excluded.last_seen_at",
+                (
+                    item.id,
+                    item.bundle_slug,
+                    item.repo,
+                    item.item_kind,
+                    int(item.number),
+                    item.state,
+                    item.title,
+                    item.url,
+                    _tags_to_json(item.labels),
+                    _to_iso(item.updated_at),
+                    _to_iso(item.last_seen_at),
+                ),
+            )
+        return item
+
+    def list_bundle_items(
+        self,
+        bundle_slug: str | None = None,
+        state: GitHubItemState | None = None,
+        limit: int = 50,
+    ) -> list[BundleItem]:
+        wheres: list[str] = []
+        params: list[object] = []
+        if bundle_slug:
+            wheres.append("bundle_slug = ?")
+            params.append(bundle_slug)
+        if state:
+            wheres.append("state = ?")
+            params.append(state)
+        where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+        sql = (
+            "SELECT id, bundle_slug, repo, item_kind, number, state, title, url, "
+            "labels_json, updated_at, last_seen_at "
+            f"FROM bundle_items {where_clause} "
+            "ORDER BY updated_at DESC LIMIT ?"
+        )
+        params.append(int(limit))
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+            return [_row_to_bundle_item(r) for r in rows]
+
+    # ----- worker heartbeats -------------------------------------------
+
+    def upsert_worker_heartbeat(self, heartbeat: WorkerHeartbeat) -> WorkerHeartbeat:
+        with self._connect() as conn, conn:
+            conn.execute(
+                "INSERT INTO worker_heartbeats "
+                "(id, codename, firing_id, status, started_at, heartbeat_at, repo, pid, detail) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT (id) DO UPDATE SET "
+                "  status = excluded.status, "
+                "  heartbeat_at = excluded.heartbeat_at, "
+                "  repo = excluded.repo, "
+                "  pid = excluded.pid, "
+                "  detail = excluded.detail",
+                (
+                    heartbeat.id,
+                    heartbeat.codename,
+                    heartbeat.firing_id,
+                    heartbeat.status,
+                    _to_iso(heartbeat.started_at),
+                    _to_iso(heartbeat.heartbeat_at),
+                    heartbeat.repo,
+                    heartbeat.pid,
+                    heartbeat.detail,
+                ),
+            )
+        return heartbeat
+
+    def list_worker_heartbeats(
+        self,
+        codename: str | None = None,
+        status: WorkerStatus | None = None,
+        limit: int = 50,
+    ) -> list[WorkerHeartbeat]:
+        wheres: list[str] = []
+        params: list[object] = []
+        if codename:
+            wheres.append("codename = ?")
+            params.append(codename)
+        if status:
+            wheres.append("status = ?")
+            params.append(status)
+        where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+        sql = (
+            "SELECT id, codename, firing_id, status, started_at, heartbeat_at, repo, pid, detail "
+            f"FROM worker_heartbeats {where_clause} "
+            "ORDER BY heartbeat_at DESC LIMIT ?"
+        )
+        params.append(int(limit))
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+            return [_row_to_worker_heartbeat(r) for r in rows]
+
     # ----- stats ---------------------------------------------------------
 
     def stats(self) -> dict[str, int]:
@@ -787,6 +1058,12 @@ class SQLiteStore:
                 "SELECT COUNT(*) FROM memory_candidates WHERE status = 'candidate'"
             ).fetchone()
             (failure_events,) = conn.execute("SELECT COUNT(*) FROM failure_events").fetchone()
+            (github_items,) = conn.execute("SELECT COUNT(*) FROM github_items").fetchone()
+            (bundle_items,) = conn.execute("SELECT COUNT(*) FROM bundle_items").fetchone()
+            (worker_heartbeats,) = conn.execute("SELECT COUNT(*) FROM worker_heartbeats").fetchone()
+            (running_workers,) = conn.execute(
+                "SELECT COUNT(*) FROM worker_heartbeats WHERE status = 'running'"
+            ).fetchone()
             (notes,) = conn.execute("SELECT COUNT(*) FROM repo_notes").fetchone()
             (tags,) = conn.execute("SELECT COUNT(DISTINCT tag) FROM lesson_tags").fetchone()
             (codenames,) = conn.execute("SELECT COUNT(DISTINCT codename) FROM lessons").fetchone()
@@ -798,6 +1075,10 @@ class SQLiteStore:
             "memory_candidates": int(memory_candidates),
             "memory_candidates_open": int(open_candidates),
             "failure_events": int(failure_events),
+            "github_items": int(github_items),
+            "bundle_items": int(bundle_items),
+            "worker_heartbeats": int(worker_heartbeats),
+            "workers_running": int(running_workers),
             "repo_notes": int(notes),
             "tags": int(tags),
             "codenames": int(codenames),
@@ -870,4 +1151,85 @@ def _row_to_failure_event(row: tuple) -> FailureEvent:
         engine=engine,
         severity=severity,
         created_at=_from_iso(created_at),
+    )
+
+
+def _row_to_github_item(row: tuple) -> GitHubItem:
+    (
+        item_id,
+        repo,
+        number,
+        kind,
+        state,
+        title,
+        url,
+        labels_json,
+        updated_at,
+        last_seen_at,
+        closed_at,
+        merged_at,
+        head_ref,
+        base_ref,
+        bundle_slug,
+    ) = row
+    return GitHubItem(
+        id=item_id,
+        repo=repo,
+        number=int(number),
+        kind=kind,
+        state=state,
+        title=title,
+        url=url,
+        labels=_tags_from_json(labels_json),
+        updated_at=_from_iso(updated_at),
+        last_seen_at=_from_iso(last_seen_at),
+        closed_at=_from_iso(closed_at) if closed_at else None,
+        merged_at=_from_iso(merged_at) if merged_at else None,
+        head_ref=head_ref,
+        base_ref=base_ref,
+        bundle_slug=bundle_slug,
+    )
+
+
+def _row_to_bundle_item(row: tuple) -> BundleItem:
+    (
+        item_id,
+        bundle_slug,
+        repo,
+        item_kind,
+        number,
+        state,
+        title,
+        url,
+        labels_json,
+        updated_at,
+        last_seen_at,
+    ) = row
+    return BundleItem(
+        id=item_id,
+        bundle_slug=bundle_slug,
+        repo=repo,
+        item_kind=item_kind,
+        number=int(number),
+        state=state,
+        title=title,
+        url=url,
+        labels=_tags_from_json(labels_json),
+        updated_at=_from_iso(updated_at),
+        last_seen_at=_from_iso(last_seen_at),
+    )
+
+
+def _row_to_worker_heartbeat(row: tuple) -> WorkerHeartbeat:
+    item_id, codename, firing_id, status, started_at, heartbeat_at, repo, pid, detail = row
+    return WorkerHeartbeat(
+        id=item_id,
+        codename=codename,
+        firing_id=firing_id,
+        status=status,
+        started_at=_from_iso(started_at),
+        heartbeat_at=_from_iso(heartbeat_at),
+        repo=repo,
+        pid=int(pid) if pid is not None else None,
+        detail=detail or "",
     )

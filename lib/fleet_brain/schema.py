@@ -27,6 +27,9 @@ The schema deliberately mirrors the entity model documented in
   operator before they become prompt context.
 * ``failure_events`` — normalized non-success outcomes, so repeated
   runner failures become searchable instead of Slack-only noise.
+* ``github_items`` — cached GitHub issue/PR state from the poller.
+* ``bundle_items`` — issue/PR membership keyed by ``agent:bundle:<slug>``.
+* ``worker_heartbeats`` — last-seen worker liveness for stale-run detection.
 * ``lesson_tags`` — many-to-many over ``lessons`` so a lesson can
   be filed under several taxonomy buckets without splitting rows.
 * ``schema_version`` — single-row record of the applied schema
@@ -38,7 +41,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Final
 
-SCHEMA_VERSION: Final[int] = 3
+SCHEMA_VERSION: Final[int] = 4
 
 # Each CREATE statement is a string in this tuple. We execute them
 # one at a time so a syntax error in one statement does not silently
@@ -142,6 +145,58 @@ _CREATE_STATEMENTS: Final[tuple[str, ...]] = (
         CHECK (severity IN ('info', 'warning', 'blocker'))
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS github_items (
+        id           TEXT    NOT NULL PRIMARY KEY,
+        repo         TEXT    NOT NULL,
+        number       INTEGER NOT NULL,
+        kind         TEXT    NOT NULL,
+        state        TEXT    NOT NULL,
+        title        TEXT    NOT NULL DEFAULT '',
+        url          TEXT    NOT NULL DEFAULT '',
+        labels_json  TEXT    NOT NULL DEFAULT '[]',
+        updated_at   TEXT    NOT NULL,
+        last_seen_at TEXT    NOT NULL,
+        closed_at    TEXT,
+        merged_at    TEXT,
+        head_ref     TEXT,
+        base_ref     TEXT,
+        bundle_slug  TEXT,
+        CHECK (kind IN ('issue', 'pr')),
+        CHECK (state IN ('open', 'closed', 'merged', 'unknown'))
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS bundle_items (
+        id           TEXT    NOT NULL PRIMARY KEY,
+        bundle_slug  TEXT    NOT NULL,
+        repo         TEXT    NOT NULL,
+        item_kind    TEXT    NOT NULL,
+        number       INTEGER NOT NULL,
+        state        TEXT    NOT NULL,
+        title        TEXT    NOT NULL DEFAULT '',
+        url          TEXT    NOT NULL DEFAULT '',
+        labels_json  TEXT    NOT NULL DEFAULT '[]',
+        updated_at   TEXT    NOT NULL,
+        last_seen_at TEXT    NOT NULL,
+        CHECK (item_kind IN ('issue', 'pr')),
+        CHECK (state IN ('open', 'closed', 'merged', 'unknown'))
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS worker_heartbeats (
+        id           TEXT    NOT NULL PRIMARY KEY,
+        codename     TEXT    NOT NULL,
+        firing_id    TEXT    NOT NULL,
+        status       TEXT    NOT NULL DEFAULT 'running',
+        started_at   TEXT    NOT NULL,
+        heartbeat_at TEXT    NOT NULL,
+        repo         TEXT,
+        pid          INTEGER,
+        detail       TEXT    NOT NULL DEFAULT '',
+        CHECK (status IN ('running', 'ok', 'failed', 'stale', 'cancelled'))
+    )
+    """,
     # Indexes — recall is read-heavy on (codename, repo) and recent-first,
     # so we cover that path explicitly.
     """
@@ -203,6 +258,34 @@ _CREATE_STATEMENTS: Final[tuple[str, ...]] = (
     """
     CREATE INDEX IF NOT EXISTS failure_events_firing_idx
         ON failure_events (firing_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS github_items_repo_kind_updated_idx
+        ON github_items (repo, kind, updated_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS github_items_state_updated_idx
+        ON github_items (state, updated_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS github_items_bundle_idx
+        ON github_items (bundle_slug, updated_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS bundle_items_slug_updated_idx
+        ON bundle_items (bundle_slug, updated_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS bundle_items_repo_state_idx
+        ON bundle_items (repo, state, updated_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS worker_heartbeats_status_idx
+        ON worker_heartbeats (status, heartbeat_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS worker_heartbeats_codename_idx
+        ON worker_heartbeats (codename, heartbeat_at DESC)
     """,
 )
 
