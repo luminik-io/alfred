@@ -23,6 +23,9 @@ Subcommands today:
   alfred run <codename>       Kick a single agent now (one-shot), killing
                               any in-flight firing first. Honors the pause
                               marker unless ``--force`` is passed.
+  alfred dry-run <codename>   Bypass the scheduler and simulate one firing.
+                              Pass ``--native`` to execute supported runners
+                              with ALFRED_DRY_RUN=1.
   alfred enable <codename>    Add ``codename`` to the runner-level fleet
                               gate file.
                               Idempotent.
@@ -100,8 +103,60 @@ import scheduler  # noqa: E402
 OPT_IN_AGENTS = {"batman"}
 ENGINE_AGENTS = ("bane", "batman", "drake", "lucius", "nightwing", "rasalghul", "robin")
 ENGINE_SCRIPTS = tuple(f"{agent}.py" for agent in ENGINE_AGENTS)
+NATIVE_DRY_RUN_SCRIPTS = {"lucius.py", "hello.py", "echo_summarise.py"}
 PRIMARY_CLAUDE_DIR = Path.home() / ".claude"
 SECONDARY_CLAUDE_DIR = Path.home() / ".claude-secondary"
+
+DEFAULT_AGENT_CATALOG: dict[str, dict[str, str]] = {
+    "lucius": {"script": "lucius.py", "schedule": "interval:1200", "role": "feature dev"},
+    "drake": {"script": "drake.py", "schedule": "interval:7200", "role": "issue planner"},
+    "bane": {"script": "bane.py", "schedule": "interval:14400", "role": "test coverage"},
+    "rasalghul": {"script": "rasalghul.py", "schedule": "interval:1800", "role": "PR review"},
+    "nightwing": {"script": "nightwing.py", "schedule": "interval:2700", "role": "CI repair"},
+    "robin": {"script": "robin.py", "schedule": "interval:10800", "role": "bug triage"},
+    "batman": {"script": "batman.py", "schedule": "interval:3600", "role": "cross-repo coordinator"},
+    "huntress": {"script": "huntress.py", "schedule": "interval:1800", "role": "staging smoke runner"},
+    "gordon": {"script": "gordon.py", "schedule": "cron:8:00", "role": "ops morning"},
+    "automerge": {"script": "automerge.py", "schedule": "interval:900", "role": "PR automerge"},
+    "agent-cleanup": {"script": "agent-cleanup.py", "schedule": "cron:3:00", "role": "agent cleanup"},
+    "cleanup": {"script": "agent-cleanup.py", "schedule": "cron:3:00", "role": "agent cleanup"},
+    "code-map-refresh": {
+        "script": "code-map-refresh.py",
+        "schedule": "interval:21600",
+        "role": "code map refresh",
+    },
+    "agent-morning-brief": {
+        "script": "agent-morning-brief.py",
+        "schedule": "cron:7:00",
+        "role": "morning brief",
+    },
+    "morning-brief": {
+        "script": "agent-morning-brief.py",
+        "schedule": "cron:7:00",
+        "role": "morning brief",
+    },
+    "fleet-doctor": {"script": "fleet-doctor.py", "schedule": "cron:7:30", "role": "fleet doctor"},
+    "fleet-recap-morning": {
+        "script": "fleet-recap.sh",
+        "schedule": "cron:7:45",
+        "role": "fleet recap morning",
+    },
+    "fleet-recap-evening": {
+        "script": "fleet-recap.sh",
+        "schedule": "cron:22:00",
+        "role": "fleet recap evening",
+    },
+    "shipped-summary-daily": {
+        "script": "alfred-shipped-summary.py",
+        "schedule": "cron:7:35",
+        "role": "shipped summary daily",
+    },
+    "shipped-summary-weekly": {
+        "script": "alfred-shipped-summary.py",
+        "schedule": "cron:1:7:35",
+        "role": "shipped summary weekly",
+    },
+}
 
 
 def _default_enabled(codename: str) -> bool:
@@ -273,6 +328,29 @@ def _label_map() -> dict[str, str]:
     return out
 
 
+def _record_map() -> dict[str, dict[str, str]]:
+    """codename -> agents.conf record, falling back to the built-in catalog."""
+    out: dict[str, dict[str, str]] = {}
+    for record in _parse_agents_conf(_agents_conf_path()):
+        codename = _codename_from_label(record["label"])
+        if codename:
+            out.setdefault(codename, record)
+    for codename, defaults in DEFAULT_AGENT_CATALOG.items():
+        out.setdefault(
+            codename,
+            {
+                "label": f"alfred.{codename}",
+                "script": defaults["script"],
+                "schedule": defaults["schedule"],
+                "needs_java": "no",
+                "log_stem": f"alfred.{codename}",
+                "role": defaults["role"],
+                "disabled": "no",
+            },
+        )
+    return out
+
+
 def _resolve_label(name: str) -> str | None:
     """Accept a codename or a full label; return the full label or None."""
     mapping = _label_map()
@@ -282,6 +360,28 @@ def _resolve_label(name: str) -> str | None:
     if name in mapping.values():
         return name
     return None
+
+
+def _resolve_agent_record(name: str) -> dict[str, str] | None:
+    records = _record_map()
+    if name in records:
+        return records[name]
+    for record in records.values():
+        if name == record["label"]:
+            return record
+    normalized = _normalize_agent_name(name)
+    return records.get(normalized)
+
+
+def _script_path(script: str) -> Path:
+    path = Path(script)
+    if path.is_absolute():
+        return path
+    for base in (_HERE, _HERE.parent / "examples" / "bin"):
+        candidate = base / script
+        if candidate.exists():
+            return candidate
+    return _HERE / script
 
 
 def _pause_dir() -> Path:
@@ -391,6 +491,70 @@ def cmd_run(args: argparse.Namespace) -> int:
     suffix = f" ({detail})" if detail else ""
     print(f"  kicked {codename}{suffix}")
     return 0
+
+
+def cmd_dry_run(args: argparse.Namespace) -> int:
+    if args.codename == "all":
+        rc = 0
+        for codename in sorted(_record_map()):
+            child_args = argparse.Namespace(
+                codename=codename,
+                native=args.native,
+                simulate=args.simulate,
+                json=False,
+            )
+            rc = cmd_dry_run(child_args) or rc
+            print("")
+        return rc
+    record = _resolve_agent_record(args.codename)
+    if record is None:
+        print(f"alfred dry-run: unknown agent '{args.codename}'", file=sys.stderr)
+        return 1
+    codename = _codename_from_label(record["label"])
+    script = _script_path(record["script"])
+    native = args.native and script.name in NATIVE_DRY_RUN_SCRIPTS and not args.simulate
+    payload = {
+        "codename": codename,
+        "label": record["label"],
+        "script": str(script),
+        "role": record.get("role") or "-",
+        "schedule": record.get("schedule") or "-",
+        "mode": "native" if native else "simulated",
+        "side_effects": "stubbed" if native else "none",
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2))
+        return 0
+    print(f"alfred dry-run: {codename}")
+    print(f"  role: {payload['role']}")
+    print(f"  label: {payload['label']}")
+    print(f"  script: {payload['script']}")
+    print(f"  schedule: {payload['schedule']}")
+    if not script.exists():
+        print("  status: script missing; deploy or install the runner first")
+        return 1
+    if not native:
+        print("  mode: safe simulation")
+        print("  would: resolve config, acquire the agent lock, run preflight, and enter the runner")
+        print("  would not: call the host scheduler, mutate GitHub, post Slack, invoke an LLM, or edit files")
+        if args.native:
+            print("  note: native lifecycle dry-run is not declared for this runner yet")
+        else:
+            print("  note: pass --native to execute supported runner dry-run hooks")
+        return 0
+    env = os.environ.copy()
+    env.update(
+        {
+            "ALFRED_DRY_RUN": "1",
+            "AGENT_CODENAME": codename,
+            "LAUNCHD_LABEL": record["label"],
+            "PYTHONPATH": str(_HERE.parent / "lib"),
+        }
+    )
+    cmd = [sys.executable, str(script), "--dry-run"]
+    print("  mode: native lifecycle dry-run")
+    print(f"  exec: {shlex.join(cmd)}")
+    return subprocess.run(cmd, check=False, env=env).returncode
 
 
 def _normalize_agent_name(agent: str) -> str:
@@ -646,6 +810,21 @@ def cmd_brain(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-brain.py"
     forwarded = args.brain_args or ["status"]
     return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+
+
+def cmd_github_poll(args: argparse.Namespace) -> int:
+    script = _HERE / "fleet-github-poll.py"
+    cmd = [sys.executable, str(script)]
+    for repo in args.repo or []:
+        cmd.extend(["--repo", repo])
+    cmd.extend(["--state", args.state, "--limit", str(args.limit)])
+    if args.db:
+        cmd.extend(["--db", args.db])
+    if args.dry_run:
+        cmd.append("--dry-run")
+    if args.json:
+        cmd.append("--json")
+    return subprocess.run(cmd, check=False).returncode
 
 
 def cmd_mcp(args: argparse.Namespace) -> int:
@@ -1336,6 +1515,24 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--force", action="store_true", help="run even if the agent is paused")
     p_run.set_defaults(func=cmd_run)
 
+    p_dry_run = sub.add_parser(
+        "dry-run",
+        help="simulate one agent firing without scheduler or external side effects",
+    )
+    p_dry_run.add_argument("codename", help="agent codename, full label, or 'all'")
+    p_dry_run.add_argument(
+        "--native",
+        action="store_true",
+        help="prefer native lifecycle dry-run when the runner declares support",
+    )
+    p_dry_run.add_argument(
+        "--simulate",
+        action="store_true",
+        help="force no-side-effect simulation even when native dry-run exists",
+    )
+    p_dry_run.add_argument("--json", action="store_true")
+    p_dry_run.set_defaults(func=cmd_dry_run)
+
     p_clear_lock = sub.add_parser("clear-lock", help="diagnose and clear stale agent locks")
     p_clear_lock.add_argument("codename", nargs="?", help="agent codename")
     p_clear_lock.add_argument("--all", action="store_true", help="sweep every /tmp/agent-lock-*")
@@ -1512,6 +1709,15 @@ def main(argv: list[str] | None = None) -> int:
     p_brain = sub.add_parser("brain", help="inspect and seed local fleet-brain memory")
     p_brain.add_argument("brain_args", nargs=argparse.REMAINDER)
     p_brain.set_defaults(func=cmd_brain)
+
+    p_github_poll = sub.add_parser("github-poll", help="poll GitHub issues/PRs into fleet-brain")
+    p_github_poll.add_argument("--repo", action="append")
+    p_github_poll.add_argument("--state", choices=["open", "closed", "all"], default="all")
+    p_github_poll.add_argument("--limit", type=int, default=100)
+    p_github_poll.add_argument("--db")
+    p_github_poll.add_argument("--dry-run", action="store_true")
+    p_github_poll.add_argument("--json", action="store_true")
+    p_github_poll.set_defaults(func=cmd_github_poll)
 
     p_mcp = sub.add_parser("mcp", help="serve read-only Alfred MCP tools")
     p_mcp.add_argument("mcp_args", nargs=argparse.REMAINDER)

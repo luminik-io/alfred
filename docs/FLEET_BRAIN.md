@@ -43,6 +43,9 @@ for L in lessons:
 | `FileTouch` | One repo file an agent touched during a firing  | `file_touches`      |
 | `MemoryCandidate` | Proposed lesson awaiting review before recall | `memory_candidates` |
 | `FailureEvent` | Normalized non-success outcome for diagnosis | `failure_events` |
+| `GitHubItem` | Cached issue/PR state from `fleet-github-poll.py` | `github_items` |
+| `BundleItem` | Membership in an `agent:bundle:<slug>` rollout | `bundle_items` |
+| `WorkerHeartbeat` | Last-seen liveness row for stale-worker checks | `worker_heartbeats` |
 
 `severity` on a lesson follows the fleet's Slack severity routing:
 
@@ -70,7 +73,12 @@ alfred brain reject <candidate-id> --note "too vague"
 alfred brain firings [--codename C] [--status S]
 alfred brain files <repo> [--codename C] [--path P]
 alfred brain failures [--codename C] [--repo R] [--subtype S]
+alfred brain github [--repo R] [--kind issue|pr] [--bundle slug]
+alfred brain bundles [bundle-slug]
+alfred brain workers [--stale]
+alfred brain promotions
 alfred brain doctor [--json]
+alfred github-poll --repo your-org/api --repo your-org/web
 alfred brain forget <id>
 alfred brain forget --before 30d
 alfred brain export [--out PATH]
@@ -95,6 +103,9 @@ alfred-brain: db = ~/.alfred/fleet-brain.db
   file_touches 0
   candidates  0 (0 open)
   failures    0
+  github      0
+  bundles     0
+  workers     0 (0 running)
   repo_notes  0
   tags        2
   codenames   1
@@ -200,6 +211,32 @@ Failure events give the same kind of local trail for runner problems. Query
 them with `alfred brain failures`, then run `alfred brain doctor` when you want
 a quick health summary without opening SQLite manually.
 
+## GitHub poller, bundles, and stale workers
+
+`bin/fleet-github-poll.py` pulls issue and PR state through `gh` and stores it
+locally in the brain. It is intentionally pull-based: no webhook endpoint, no
+GitHub App, no long-running service.
+
+```sh
+alfred github-poll --repo your-org/api --repo your-org/web
+alfred brain github --state open
+alfred brain bundles billing
+```
+
+Any label named `agent:bundle:<slug>` or `bundle:<slug>` is mirrored into
+`bundle_items`, so Batman-style work can be inspected without re-querying
+GitHub every time. Outbox imports can also write `github_item`, `bundle_item`,
+and `worker_heartbeat` records directly.
+
+Workers can publish liveness through `alfred brain heartbeat`. `alfred brain
+workers --stale` reports running firings whose last heartbeat is older than
+the threshold, and `alfred brain doctor` includes that signal alongside memory
+candidate backlog, failure history, GitHub poll freshness, and bundle counts.
+
+`alfred brain promotions` is the review loop for memory quality. It lists
+high-confidence candidates with evidence, tags, or warning/blocker severity so
+the operator can promote the useful lessons and reject noise.
+
 ## Read-only MCP bridge
 
 `alfred mcp serve` exposes a small JSON-RPC stdio surface for local MCP clients
@@ -233,6 +270,27 @@ GC controls:
 - `bin/alfred-brain.py`: operator CLI.
 - `bin/alfred-mcp.py`: read-only JSON-RPC stdio bridge.
 - `bin/fleet-ingest.py`: outbox drainer.
+
+## What to build next
+
+The v1 brain is intentionally small: local lessons, file touches, failure
+events, reviewable candidates, and read-only MCP access. The useful next work
+is not "more storage"; it is closing feedback loops:
+
+1. **Evidence-linked lesson promotion.** Every promoted lesson should point to
+   the firing, PR, issue, file touch, or operator note that made it trustworthy.
+   That keeps memory from becoming folklore.
+2. **Failure-pattern routing.** Repeated `FailureEvent` groups should become
+   concrete operator actions: pause one codename, file a setup issue, suggest a
+   missing browser install, or mark a flaky external dependency.
+3. **Spec and bundle memory.** Batman and specs-driven workflows should remember
+   which specs generated which issues, which PRs landed, and which acceptance
+   criteria needed follow-up.
+4. **Semantic recall.** Substring matching is enough for v1. v2 should support
+   query-based recall across lessons, plans, and failure summaries.
+5. **Memory quality gates.** Candidate promotion should run lightweight checks:
+   no secrets, source attached, confidence present, not contradicted by a newer
+   lesson, and scoped to a codename/repo when possible.
 
 ## v2 roadmap: PGLite + Apache AGE
 

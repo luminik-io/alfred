@@ -61,7 +61,7 @@ import logging
 import os
 import re
 import sys
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Resolve lib/ relative to this script regardless of how it was invoked.
@@ -92,6 +92,9 @@ def cmd_status(args: argparse.Namespace) -> int:
     print(f"  file_touches {s['file_touches']}")
     print(f"  candidates  {s['memory_candidates']} ({s['memory_candidates_open']} open)")
     print(f"  failures    {s['failure_events']}")
+    print(f"  github      {s['github_items']}")
+    print(f"  bundles     {s['bundle_items']}")
+    print(f"  workers     {s['worker_heartbeats']} ({s['workers_running']} running)")
     print(f"  repo_notes  {s['repo_notes']}")
     print(f"  tags        {s['tags']}")
     print(f"  codenames   {s['codenames']}")
@@ -339,6 +342,123 @@ def cmd_failures(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_github(args: argparse.Namespace) -> int:
+    brain = _build_brain(args)
+    items = brain.list_github_items(
+        repo=args.repo,
+        kind=args.kind,
+        state=args.state,
+        bundle_slug=args.bundle,
+        limit=args.limit,
+    )
+    if args.json:
+        print(json.dumps([_github_item_to_dict(item) for item in items], indent=2))
+        return 0
+    if not items:
+        print("alfred-brain: no GitHub items cached", file=sys.stderr)
+        return 0
+    for item in items:
+        updated = item.updated_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M")
+        bundle = f" bundle={item.bundle_slug}" if item.bundle_slug else ""
+        print(
+            f"{updated}  {item.repo}#{item.number}  {item.kind}/{item.state}{bundle}  {item.title}"
+        )
+        if item.url:
+            print(f"  {item.url}")
+    return 0
+
+
+def cmd_bundles(args: argparse.Namespace) -> int:
+    brain = _build_brain(args)
+    items = brain.list_bundle_items(
+        bundle_slug=args.bundle,
+        state=args.state,
+        limit=args.limit,
+    )
+    if args.json:
+        print(json.dumps([_bundle_item_to_dict(item) for item in items], indent=2))
+        return 0
+    if not items:
+        print("alfred-brain: no bundle items cached", file=sys.stderr)
+        return 0
+    for item in items:
+        updated = item.updated_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M")
+        print(
+            f"{updated}  bundle={item.bundle_slug}  {item.repo}#{item.number}  "
+            f"{item.item_kind}/{item.state}  {item.title}"
+        )
+    return 0
+
+
+def cmd_workers(args: argparse.Namespace) -> int:
+    brain = _build_brain(args)
+    if args.stale:
+        workers = brain.list_stale_workers(max_age_minutes=args.max_age_minutes)
+    else:
+        workers = brain.list_worker_heartbeats(
+            codename=args.codename,
+            status=args.status,
+            limit=args.limit,
+        )
+    if args.json:
+        print(json.dumps([_worker_to_dict(worker) for worker in workers], indent=2))
+        return 0
+    if not workers:
+        print("alfred-brain: no worker heartbeats match", file=sys.stderr)
+        return 0
+    now = datetime.now(UTC)
+    for worker in workers:
+        age_m = int((now - worker.heartbeat_at.astimezone(UTC)).total_seconds() // 60)
+        repo = f" repo={worker.repo}" if worker.repo else ""
+        pid = f" pid={worker.pid}" if worker.pid is not None else ""
+        print(
+            f"{worker.codename} firing={worker.firing_id} status={worker.status} "
+            f"age={max(age_m, 0)}m{repo}{pid}"
+        )
+        if worker.detail:
+            print(f"  {worker.detail}")
+    return 0
+
+
+def cmd_heartbeat(args: argparse.Namespace) -> int:
+    brain = _build_brain(args)
+    worker = brain.upsert_worker_heartbeat(
+        codename=args.codename,
+        firing_id=args.firing_id,
+        status=args.status,
+        repo=args.repo,
+        pid=args.pid,
+        detail=args.detail or "",
+    )
+    if args.json:
+        print(json.dumps(_worker_to_dict(worker), indent=2))
+    else:
+        print(f"alfred-brain: heartbeat {worker.codename}/{worker.firing_id} {worker.status}")
+    return 0
+
+
+def cmd_promotions(args: argparse.Namespace) -> int:
+    brain = _build_brain(args)
+    suggestions = brain.suggest_memory_promotions(
+        min_confidence=args.min_confidence,
+        limit=args.limit,
+    )
+    if args.json:
+        print(json.dumps(suggestions, indent=2))
+        return 0
+    if not suggestions:
+        print("alfred-brain: no promotion suggestions", file=sys.stderr)
+        return 0
+    for item in suggestions:
+        reasons = ", ".join(item["reasons"])
+        print(
+            f"{item['candidate_id']}  score={item['score']:.2f}  "
+            f"{item['codename']}/{item['repo']}  {reasons}"
+        )
+        print(f"  {item['body']}")
+    return 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     report = run_memory_doctor(args.db or os.environ.get("ALFRED_FLEET_BRAIN_DB"))
     if args.json:
@@ -440,6 +560,56 @@ def _failure_to_dict(event) -> dict[str, object]:  # type: ignore[no-untyped-def
     }
 
 
+def _github_item_to_dict(item) -> dict[str, object]:  # type: ignore[no-untyped-def]
+    return {
+        "id": item.id,
+        "repo": item.repo,
+        "number": item.number,
+        "kind": item.kind,
+        "state": item.state,
+        "title": item.title,
+        "url": item.url,
+        "labels": item.labels,
+        "updated_at": item.updated_at.astimezone(UTC).isoformat(),
+        "last_seen_at": item.last_seen_at.astimezone(UTC).isoformat(),
+        "closed_at": item.closed_at.astimezone(UTC).isoformat() if item.closed_at else None,
+        "merged_at": item.merged_at.astimezone(UTC).isoformat() if item.merged_at else None,
+        "head_ref": item.head_ref,
+        "base_ref": item.base_ref,
+        "bundle_slug": item.bundle_slug,
+    }
+
+
+def _bundle_item_to_dict(item) -> dict[str, object]:  # type: ignore[no-untyped-def]
+    return {
+        "id": item.id,
+        "bundle_slug": item.bundle_slug,
+        "repo": item.repo,
+        "item_kind": item.item_kind,
+        "number": item.number,
+        "state": item.state,
+        "title": item.title,
+        "url": item.url,
+        "labels": item.labels,
+        "updated_at": item.updated_at.astimezone(UTC).isoformat(),
+        "last_seen_at": item.last_seen_at.astimezone(UTC).isoformat(),
+    }
+
+
+def _worker_to_dict(worker) -> dict[str, object]:  # type: ignore[no-untyped-def]
+    return {
+        "id": worker.id,
+        "codename": worker.codename,
+        "firing_id": worker.firing_id,
+        "status": worker.status,
+        "started_at": worker.started_at.astimezone(UTC).isoformat(),
+        "heartbeat_at": worker.heartbeat_at.astimezone(UTC).isoformat(),
+        "repo": worker.repo,
+        "pid": worker.pid,
+        "detail": worker.detail,
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="alfred-brain",
@@ -538,6 +708,49 @@ def build_parser() -> argparse.ArgumentParser:
     p_failures.add_argument("--limit", type=int, default=50)
     p_failures.add_argument("--json", action="store_true")
     p_failures.set_defaults(func=cmd_failures)
+
+    p_github = sub.add_parser("github", help="list cached GitHub issue/PR state")
+    p_github.add_argument("--repo")
+    p_github.add_argument("--kind", choices=["issue", "pr"])
+    p_github.add_argument("--state", choices=["open", "closed", "merged", "unknown"])
+    p_github.add_argument("--bundle")
+    p_github.add_argument("--limit", type=int, default=50)
+    p_github.add_argument("--json", action="store_true")
+    p_github.set_defaults(func=cmd_github)
+
+    p_bundles = sub.add_parser("bundles", help="list cached bundle memberships")
+    p_bundles.add_argument("bundle", nargs="?")
+    p_bundles.add_argument("--state", choices=["open", "closed", "merged", "unknown"])
+    p_bundles.add_argument("--limit", type=int, default=50)
+    p_bundles.add_argument("--json", action="store_true")
+    p_bundles.set_defaults(func=cmd_bundles)
+
+    p_workers = sub.add_parser("workers", help="list worker heartbeats")
+    p_workers.add_argument("--codename")
+    p_workers.add_argument("--status", choices=["running", "ok", "failed", "stale", "cancelled"])
+    p_workers.add_argument("--stale", action="store_true", help="show stale running workers only")
+    p_workers.add_argument("--max-age-minutes", type=int, default=60)
+    p_workers.add_argument("--limit", type=int, default=50)
+    p_workers.add_argument("--json", action="store_true")
+    p_workers.set_defaults(func=cmd_workers)
+
+    p_heartbeat = sub.add_parser("heartbeat", help="record one worker heartbeat")
+    p_heartbeat.add_argument("codename")
+    p_heartbeat.add_argument("firing_id")
+    p_heartbeat.add_argument(
+        "--status", choices=["running", "ok", "failed", "stale", "cancelled"], default="running"
+    )
+    p_heartbeat.add_argument("--repo")
+    p_heartbeat.add_argument("--pid", type=int)
+    p_heartbeat.add_argument("--detail")
+    p_heartbeat.add_argument("--json", action="store_true")
+    p_heartbeat.set_defaults(func=cmd_heartbeat)
+
+    p_promotions = sub.add_parser("promotions", help="suggest high-confidence memory promotions")
+    p_promotions.add_argument("--min-confidence", type=float, default=0.75)
+    p_promotions.add_argument("--limit", type=int, default=20)
+    p_promotions.add_argument("--json", action="store_true")
+    p_promotions.set_defaults(func=cmd_promotions)
 
     p_doctor = sub.add_parser("doctor", help="memory-layer health checks")
     p_doctor.add_argument("--json", action="store_true")

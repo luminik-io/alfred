@@ -16,9 +16,19 @@ Effort sizing is uniform across tiers: **S** is roughly a week of focused work, 
 
 ## Shipped
 
-### v0.4.0 (staging)
+### v0.4.1: unreleased
 
-Substrate, observability, and approval primitives. Currently being staged on the `positioning/operations-room` branch.
+Reliability and first-run trust polish.
+
+- `alfred dry-run <codename>`: scheduler-free dry-run resolution for every shipped codename. Native dry-run runners execute with side effects stubbed; every other codename gets a safe no-side-effect simulation.
+- `fleet-github-poll.py` and `alfred github-poll`: local GitHub issue/PR polling into fleet-brain.
+- Bundle memory: `agent:bundle:<slug>` and `bundle:<slug>` labels are mirrored into `bundle_items` for Batman-style rollout inspection.
+- Worker heartbeat memory: `alfred brain heartbeat`, `alfred brain workers --stale`, and richer doctor output for stale-worker detection.
+- Memory promotion loop: `alfred brain promotions` surfaces high-confidence candidates with evidence before they enter recall.
+
+### v0.4.0: 2026-05-23
+
+Substrate, observability, planning, approval, memory, and connector primitives. Merged to `main` on 2026-05-23 and now forms the base for the next quarter of work.
 
 - `lib/agent_runner.py` decomposed into a 10-file `lib/agent_runner/` package (preflight, lock, spend, engines, gh, slack, event-log, commit-trailer, transcripts, dedup). Public import surface preserved.
 - `alfred-metrics` CLI: per-agent firings, cost, success rate, p50/p95 turn count from on-disk state.
@@ -37,7 +47,7 @@ Substrate, observability, and approval primitives. Currently being staged on the
 - Batman execute-after-approval: once a bundle plan is approved, Batman now executes the per-repo PR sequence rather than stopping at the plan.
 - [`alfred serve`](/concepts/architecture/) v1: read-only local dashboard over `state/` and per-firing transcripts. Live firing feed, per-agent trends, single-firing trace tree.
 - `alfred-shipped-public` emitter: a self-host CLI that reads `$ALFRED_HOME/state`, scrubs against a public field allowlist and a partner-name redaction table, and writes a `weekly.json` that operators can publish on their own site if they want a public proof page. The canonical alfred-os site does not host a live rendering; operators decide whether to publish.
-- Three new concept pages covering the memory protocol, the connector protocol, and the approval gate.
+- Concept pages covering state, memory, engine routing, the connector protocol, and the approval gate.
 
 ### v0.3.0 and earlier
 
@@ -50,7 +60,8 @@ Items with active work and a committed IC.
 - **Plan-review gate as a runtime feature.** Promote `plan() -> review_plan() -> execute() -> review_diff()` from an architecture note to the default lifecycle for codenames that opt in. Today the review step exists in prose; the runtime makes it enforceable. IC: core. Effort: M. Issue: TBD.
 - **Public unattended-SLA emit format.** Extend `alfred-shipped-public` with a 30-day rolling window covering firings, success rate, and unattended hours. Operators who want a public proof page can render this on their own site. IC: core. Effort: S. Issue: TBD.
 - **Cross-platform menubar app.** A small native menubar (macOS first, Linux tray second) that surfaces fleet status and click-throughs to the local `alfred serve` UI. Read-only. IC: core. Effort: M. Issue: TBD.
-- **fleet-brain v2.** Replace the SQLite layer with PGLite plus Apache AGE for graph queries and pgvector for semantic recall, exposed through an MCP server adapter so other Claude Code consumers can read fleet memory. IC: core. Effort: L. Issue: TBD.
+- **fleet-brain v2.** Replace the SQLite layer with PGLite plus Apache AGE for graph queries and pgvector for semantic recall, exposed through an MCP server adapter so local clients can read fleet memory. IC: core. Effort: L. Issue: TBD.
+- **Memory quality loop.** Add evidence-linked lesson promotion, repeated-failure routing, spec-to-issue memory, and lightweight candidate quality checks before promotion. IC: core. Effort: M. Issue: TBD.
 
 ## Next (next quarter)
 
@@ -58,7 +69,7 @@ Committed for the following quarter. Design first, then code.
 
 - **Multi-engine routing v2.** Add Gemini and Ollama adapters alongside the current Claude and Codex engines. Per-codename engine selection stays the existing surface; the work is the adapter contract plus auth probes plus billing posture docs. Effort: M. Issue: TBD.
 - **Better Batman v2.** Post-approval per-repo execution sweep with bundle-completion detection: Batman keeps watch on the PR chain it opened, reports per-repo progress, and closes the bundle once every PR has landed or been explicitly dropped. Effort: M. Issue: TBD.
-- **`alfred dry-run <codename>` for every shipped codename.** Today dry-run is wired through specific runners; widen it so every codename in the tree runs end-to-end with no side effects. Effort: S. Issue: TBD.
+- **Native lifecycle dry-run for every shipped runner.** `alfred dry-run <codename>` now resolves every codename safely; next step is making every individual runner support the full synthetic lifecycle, not just the safe simulation. Effort: S. Issue: TBD.
 
 ## Horizon (no committed quarter)
 

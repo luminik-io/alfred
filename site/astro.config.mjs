@@ -371,7 +371,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             property: "og:image:alt",
-            content: "Alfred. An autonomous engineering team for Claude Code and Codex agents.",
+            content: "Alfred. An autonomous engineering team for solo builders.",
           },
         },
         {
@@ -385,7 +385,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             name: "twitter:image:alt",
-            content: "Alfred, autonomous engineering agents for Claude Code and Codex.",
+            content: "Alfred, an autonomous engineering team for solo builders.",
           },
         },
         {
@@ -484,6 +484,7 @@ export default defineConfig({
             { label: "Codename pattern", slug: "concepts/codename-pattern" },
             { label: "Issue claim state machine", slug: "concepts/state-machine" },
             { label: "State and memory", slug: "concepts/state-and-memory" },
+            { label: "Fleet brain", slug: "concepts/fleet-brain" },
             { label: "Engine routing", slug: "concepts/engine-routing" },
             { label: "Severity routing", slug: "concepts/severity-routing" },
           ],

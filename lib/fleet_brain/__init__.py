@@ -52,11 +52,15 @@ from pathlib import Path
 from typing import Any
 
 from .store import (
+    BundleItem,
     FailureEvent,
     FileChangeType,
     FileTouch,
     FiringLog,
     FiringStatus,
+    GitHubItem,
+    GitHubItemKind,
+    GitHubItemState,
     Lesson,
     MemoryCandidate,
     MemoryCandidateStatus,
@@ -64,17 +68,23 @@ from .store import (
     Severity,
     SQLiteStore,
     Store,
+    WorkerHeartbeat,
+    WorkerStatus,
     default_db_path,
     new_id,
 )
 
 __all__ = [
+    "BundleItem",
     "FailureEvent",
     "FileChangeType",
     "FileTouch",
     "FiringLog",
     "FiringStatus",
     "FleetBrain",
+    "GitHubItem",
+    "GitHubItemKind",
+    "GitHubItemState",
     "Lesson",
     "MemoryCandidate",
     "MemoryCandidateStatus",
@@ -82,6 +92,8 @@ __all__ = [
     "SQLiteStore",
     "Severity",
     "Store",
+    "WorkerHeartbeat",
+    "WorkerStatus",
     "default_db_path",
     "new_id",
 ]
@@ -109,6 +121,8 @@ class FleetBrain:
     * :meth:`record_file_touch`: record a file changed by an agent.
     * :meth:`propose_memory`: stage a lesson candidate for review.
     * :meth:`record_failure`: normalize non-success outcomes for later diagnosis.
+    * :meth:`upsert_github_item`: cache GitHub issue/PR state from a poller.
+    * :meth:`upsert_worker_heartbeat`: record worker liveness.
     * :meth:`note_repo`: upsert a free-text repo summary.
     * :meth:`forget`: remove a lesson by id.
     * :meth:`export`: JSON-serializable snapshot for backup or
@@ -373,6 +387,141 @@ class FleetBrain:
         )
         return self.store.insert_failure_event(event)
 
+    def upsert_github_item(
+        self,
+        *,
+        repo: str,
+        number: int,
+        kind: GitHubItemKind,
+        state: GitHubItemState,
+        title: str = "",
+        url: str = "",
+        labels: Iterable[str] | None = None,
+        updated_at: datetime | None = None,
+        last_seen_at: datetime | None = None,
+        closed_at: datetime | None = None,
+        merged_at: datetime | None = None,
+        head_ref: str | None = None,
+        base_ref: str | None = None,
+        bundle_slug: str | None = None,
+    ) -> GitHubItem:
+        """Cache one GitHub issue or PR row.
+
+        The poller is deliberately pull-based and idempotent: every run
+        replaces the cached row for ``repo#number`` / ``kind`` with the
+        latest shape it saw.
+        """
+        if not repo or not int(number):
+            raise ValueError("upsert_github_item: repo and number are required")
+        if kind not in ("issue", "pr"):
+            raise ValueError(f"upsert_github_item: unknown kind {kind!r}")
+        if state not in ("open", "closed", "merged", "unknown"):
+            raise ValueError(f"upsert_github_item: unknown state {state!r}")
+        now = datetime.now(UTC)
+        clean_labels = sorted(
+            {str(label).strip() for label in (labels or []) if str(label).strip()}
+        )
+        resolved_bundle = (bundle_slug or "").strip() or _bundle_slug_from_labels(clean_labels)
+        item = GitHubItem(
+            id=f"{repo}#{int(number)}:{kind}",
+            repo=repo.strip(),
+            number=int(number),
+            kind=kind,
+            state=state,
+            title=(title or "").strip(),
+            url=(url or "").strip(),
+            labels=clean_labels,
+            updated_at=updated_at or now,
+            last_seen_at=last_seen_at or now,
+            closed_at=closed_at,
+            merged_at=merged_at,
+            head_ref=head_ref,
+            base_ref=base_ref,
+            bundle_slug=resolved_bundle,
+        )
+        persisted = self.store.upsert_github_item(item)
+        if persisted.bundle_slug:
+            self.store.upsert_bundle_item(
+                BundleItem(
+                    id=f"{persisted.bundle_slug}:{persisted.repo}#{persisted.number}:{persisted.kind}",
+                    bundle_slug=persisted.bundle_slug,
+                    repo=persisted.repo,
+                    item_kind=persisted.kind,
+                    number=persisted.number,
+                    state=persisted.state,
+                    title=persisted.title,
+                    url=persisted.url,
+                    labels=persisted.labels,
+                    updated_at=persisted.updated_at,
+                    last_seen_at=persisted.last_seen_at,
+                )
+            )
+        return persisted
+
+    def upsert_bundle_item(
+        self,
+        *,
+        bundle_slug: str,
+        repo: str,
+        item_kind: GitHubItemKind,
+        number: int,
+        state: GitHubItemState,
+        title: str = "",
+        url: str = "",
+        labels: Iterable[str] | None = None,
+        updated_at: datetime | None = None,
+        last_seen_at: datetime | None = None,
+    ) -> BundleItem:
+        """Upsert bundle membership without requiring a full GitHub row."""
+        if not bundle_slug or not repo or not int(number):
+            raise ValueError("upsert_bundle_item: bundle_slug, repo, and number are required")
+        now = datetime.now(UTC)
+        item = BundleItem(
+            id=f"{bundle_slug}:{repo}#{int(number)}:{item_kind}",
+            bundle_slug=bundle_slug.strip(),
+            repo=repo.strip(),
+            item_kind=item_kind,
+            number=int(number),
+            state=state,
+            title=(title or "").strip(),
+            url=(url or "").strip(),
+            labels=sorted({str(label).strip() for label in (labels or []) if str(label).strip()}),
+            updated_at=updated_at or now,
+            last_seen_at=last_seen_at or now,
+        )
+        return self.store.upsert_bundle_item(item)
+
+    def upsert_worker_heartbeat(
+        self,
+        *,
+        codename: str,
+        firing_id: str,
+        status: WorkerStatus = "running",
+        started_at: datetime | None = None,
+        heartbeat_at: datetime | None = None,
+        repo: str | None = None,
+        pid: int | None = None,
+        detail: str = "",
+    ) -> WorkerHeartbeat:
+        """Record the latest liveness signal for one worker firing."""
+        if not codename or not firing_id:
+            raise ValueError("upsert_worker_heartbeat: codename and firing_id are required")
+        if status not in ("running", "ok", "failed", "stale", "cancelled"):
+            raise ValueError(f"upsert_worker_heartbeat: unknown status {status!r}")
+        now = datetime.now(UTC)
+        heartbeat = WorkerHeartbeat(
+            id=f"{codename.strip()}:{firing_id.strip()}",
+            codename=codename.strip(),
+            firing_id=firing_id.strip(),
+            status=status,
+            started_at=started_at or now,
+            heartbeat_at=heartbeat_at or now,
+            repo=repo.strip() if repo else None,
+            pid=int(pid) if pid is not None else None,
+            detail=(detail or "").strip(),
+        )
+        return self.store.upsert_worker_heartbeat(heartbeat)
+
     # ----- read paths ---------------------------------------------------
 
     def recall(
@@ -456,6 +605,102 @@ class FleetBrain:
             limit=clamped,
         )
 
+    def list_github_items(
+        self,
+        repo: str | None = None,
+        kind: GitHubItemKind | None = None,
+        state: GitHubItemState | None = None,
+        bundle_slug: str | None = None,
+        limit: int = 50,
+    ) -> list[GitHubItem]:
+        clamped = max(1, min(int(limit), 500))
+        return self.store.list_github_items(
+            repo=repo,
+            kind=kind,
+            state=state,
+            bundle_slug=bundle_slug,
+            limit=clamped,
+        )
+
+    def list_bundle_items(
+        self,
+        bundle_slug: str | None = None,
+        state: GitHubItemState | None = None,
+        limit: int = 50,
+    ) -> list[BundleItem]:
+        clamped = max(1, min(int(limit), 500))
+        return self.store.list_bundle_items(bundle_slug=bundle_slug, state=state, limit=clamped)
+
+    def list_worker_heartbeats(
+        self,
+        codename: str | None = None,
+        status: WorkerStatus | None = None,
+        limit: int = 50,
+    ) -> list[WorkerHeartbeat]:
+        clamped = max(1, min(int(limit), 500))
+        return self.store.list_worker_heartbeats(
+            codename=codename,
+            status=status,
+            limit=clamped,
+        )
+
+    def list_stale_workers(self, *, max_age_minutes: int = 60) -> list[WorkerHeartbeat]:
+        """Return running worker heartbeats older than ``max_age_minutes``."""
+        cutoff = datetime.now(UTC) - timedelta(minutes=max(1, int(max_age_minutes)))
+        return [
+            hb
+            for hb in self.list_worker_heartbeats(status="running", limit=500)
+            if hb.heartbeat_at < cutoff
+        ]
+
+    def suggest_memory_promotions(
+        self,
+        *,
+        min_confidence: float = 0.75,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Return reviewable candidates that look safe to promote.
+
+        This is intentionally advisory. Alfred still keeps the human
+        promotion step unless an operator explicitly scripts around it.
+        """
+        rows = self.list_memory_candidates(status="candidate", limit=500)
+        suggestions: list[dict[str, Any]] = []
+        trusted_bodies = {
+            (lesson.repo, _canonical_memory_body(lesson.body)) for lesson in self.list_lessons()
+        }
+        for candidate in rows:
+            canonical = _canonical_memory_body(candidate.body)
+            if (candidate.repo, canonical) in trusted_bodies:
+                continue
+            score = float(candidate.confidence)
+            reasons: list[str] = []
+            if candidate.confidence >= min_confidence:
+                reasons.append(f"confidence {candidate.confidence:.2f}")
+            if candidate.evidence:
+                score += 0.08
+                reasons.append("has evidence")
+            if candidate.tags:
+                score += 0.03
+                reasons.append("tagged")
+            if candidate.severity in {"warning", "blocker"}:
+                score += 0.04
+                reasons.append(f"severity {candidate.severity}")
+            if not reasons or score < min_confidence:
+                continue
+            suggestions.append(
+                {
+                    "candidate_id": candidate.id,
+                    "codename": candidate.codename,
+                    "repo": candidate.repo,
+                    "body": candidate.body,
+                    "score": round(min(score, 1.0), 3),
+                    "reasons": reasons,
+                }
+            )
+        suggestions.sort(key=lambda item: float(item["score"]), reverse=True)
+        return suggestions[: max(1, min(int(limit), 100))]
+
     def stats(self) -> dict[str, int]:
         return self.store.stats()
 
@@ -486,6 +731,27 @@ class FleetBrain:
             check("recent_failures", "warn", f"{len(recent_failures)} recorded failure(s)")
         else:
             check("recent_failures", "ok", "no recorded failures")
+
+        stale_workers = self.list_stale_workers(max_age_minutes=60)
+        if stale_workers:
+            check("stale_workers", "warn", f"{len(stale_workers)} running worker(s) look stale")
+        else:
+            check("stale_workers", "ok", f"{stats.get('workers_running', 0)} running worker(s)")
+
+        github_items = stats.get("github_items", 0)
+        if github_items:
+            check("github_poll", "ok", f"{github_items} cached GitHub issue/PR item(s)")
+        else:
+            check("github_poll", "warn", "no cached GitHub poll data yet")
+
+        bundle_items = stats.get("bundle_items", 0)
+        check("bundles", "ok", f"{bundle_items} cached bundle item(s)")
+
+        suggestions = self.suggest_memory_promotions(limit=5)
+        if suggestions:
+            check("promotion_loop", "warn", f"{len(suggestions)} candidate(s) look promotable")
+        else:
+            check("promotion_loop", "ok", "no high-confidence candidates waiting")
 
         if stats.get("lessons", 0) == 0 and open_candidates == 0:
             check("recall_seed", "warn", "no trusted lessons or candidates yet")
@@ -559,6 +825,11 @@ class FleetBrain:
                 for C in self.list_memory_candidates(status=None, limit=10_000)
             ],
             "failure_events": [_serialize(asdict(F)) for F in self.list_failures(limit=10_000)],
+            "github_items": [_serialize(asdict(G)) for G in self.list_github_items(limit=10_000)],
+            "bundle_items": [_serialize(asdict(B)) for B in self.list_bundle_items(limit=10_000)],
+            "worker_heartbeats": [
+                _serialize(asdict(H)) for H in self.list_worker_heartbeats(limit=10_000)
+            ],
         }
 
     def _all_repo_notes(self) -> list[RepoNote]:
@@ -591,3 +862,16 @@ def _serialize(d: dict[str, Any]) -> dict[str, Any]:
         else:
             out[k] = v
     return out
+
+
+def _canonical_memory_body(body: str) -> str:
+    return " ".join((body or "").strip().lower().split())
+
+
+def _bundle_slug_from_labels(labels: list[str]) -> str | None:
+    for label in labels:
+        if label.startswith("agent:bundle:"):
+            return label.removeprefix("agent:bundle:").strip() or None
+        if label.startswith("bundle:"):
+            return label.removeprefix("bundle:").strip() or None
+    return None

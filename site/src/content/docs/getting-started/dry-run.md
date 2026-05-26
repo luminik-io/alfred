@@ -27,6 +27,21 @@ PYTHONPATH=lib python3 examples/bin/echo_summarise.py --dry-run
 
 You get a step-numbered trace of the full lifecycle and an exit code of 0. The same works for `examples/bin/hello.py` (the minimal agent) and `bin/lucius.py` (the feature-dev agent).
 
+After install, use the operator CLI:
+
+```sh
+alfred dry-run lucius
+alfred dry-run drake
+alfred dry-run all
+alfred dry-run lucius --native
+```
+
+Every configured codename resolves through this command. By default Alfred
+prints a safe simulation that never touches the scheduler, GitHub, Slack, AWS,
+Playwright, an LLM, or a real worktree. Pass `--native` when you want a runner
+that declares native dry-run support to execute with every side-effecting seam
+stubbed.
+
 ## Activating it
 
 Two equivalent switches:

@@ -124,6 +124,34 @@ def test_alfred_run_all_is_refused(tmp_path):
     assert "intentionally not supported" in res.stderr
 
 
+def test_alfred_dry_run_simulates_any_codename_without_scheduler(tmp_path):
+    home = tmp_path / "home"
+    alfred_home = tmp_path / "alfred"
+    home.mkdir()
+    alfred_home.mkdir()
+    _seed_conf(alfred_home, "my.fleet.drake\tdrake.py\tinterval:600\tno\t\tPlanner\n")
+
+    res = _run_alfred(["dry-run", "drake"], home=home, alfred_home=alfred_home)
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert "alfred dry-run: drake" in res.stdout
+    assert "mode: safe simulation" in res.stdout
+    assert "would not: call the host scheduler" in res.stdout
+
+
+def test_alfred_dry_run_json_reports_resolved_script(tmp_path):
+    home = tmp_path / "home"
+    alfred_home = tmp_path / "alfred"
+    home.mkdir()
+    alfred_home.mkdir()
+
+    res = _run_alfred(
+        ["dry-run", "lucius", "--simulate", "--json"], home=home, alfred_home=alfred_home
+    )
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert '"codename": "lucius"' in res.stdout
+    assert '"mode": "simulated"' in res.stdout
+
+
 def test_alfred_run_honors_pause_marker(tmp_path):
     home = tmp_path / "home"
     alfred_home = tmp_path / "alfred"

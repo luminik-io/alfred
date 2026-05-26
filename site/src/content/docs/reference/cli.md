@@ -138,6 +138,8 @@ alfred disable <codename>
 alfred enabled-agents
 alfred status
 alfred clear-lock <codename> [--check] [--force]
+alfred dry-run <codename>|all [--native] [--simulate] [--json]
+alfred github-poll --repo <owner/repo>
 alfred brain status
 alfred brain lessons <codename> <repo>
 alfred brain reflect <codename> <repo> <body>
@@ -173,6 +175,13 @@ and operator overrides. `shipped` reports merged PRs, issues, LOC, and
 model/config changes across `ALFRED_SHIPPED_SUMMARY_REPOS` or explicit `--repo`
 values.
 
+`dry-run` is the scheduler-free trust check. It resolves any codename and prints
+a no-side-effect firing trace. Pass `--native` when you want a runner with
+native dry-run support to execute under `ALFRED_DRY_RUN=1`; other codenames use
+a safe simulation that never invokes an engine, scheduler, Slack, GitHub,
+Playwright, AWS, or a worktree mutation.
+`github-poll` pulls issue and PR state through `gh` into the fleet brain.
+
 ## `alfred brain`
 
 Inspect and seed the local fleet-brain memory layer.
@@ -182,13 +191,27 @@ alfred brain status
 alfred brain lessons lucius your-org/api
 alfred brain lessons - your-org/api
 alfred brain reflect lucius your-org/api "Use request fixtures for API tests" --tag tests
+alfred brain propose lucius your-org/api "Use request fixtures for API tests" --tag tests
+alfred brain candidates
+alfred brain promote <candidate-id>
+alfred brain reject <candidate-id> --note "too vague"
 alfred brain firings --codename lucius
+alfred brain files your-org/api
+alfred brain failures --codename huntress
+alfred brain github --state open
+alfred brain bundles <bundle-slug>
+alfred brain workers --stale
+alfred brain promotions
+alfred brain doctor
 alfred brain forget <lesson-id>
 alfred brain export --out ~/alfred-brain.json
+alfred mcp serve
 ```
 
 Runtime memory is on by default through the local `fleet` provider. Set
-`ALFRED_MEMORY_PROVIDERS=null` to disable prompt recall and reflection.
+`ALFRED_MEMORY_PROVIDERS=null` to disable prompt recall and reflection. Set
+`ALFRED_MEMORY_REFLECTION_MODE=candidate` when you want engine-written lessons
+to enter the review queue before future recall.
 
 ## `alfred labels`
 

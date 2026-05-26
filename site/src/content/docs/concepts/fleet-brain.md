@@ -1,0 +1,112 @@
+---
+title: Fleet brain
+description: "Alfred's local memory layer: lessons, reviewable candidates, failure history, and read-only MCP access."
+---
+
+Alfred's fleet brain is the per-host store of what the fleet has learned. It is
+not a cloud service and it is not a hidden agent loop. It is a local SQLite file
+under `$ALFRED_HOME/fleet-brain.db`, read and written by short-lived firings.
+
+Engine-aware runners recall up to three relevant lessons before invoking the
+configured engine. After the firing, they can reflect durable lessons back into
+the brain. Operators can choose direct writes, a review queue, or memory off.
+
+Full source doc: [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/FLEET_BRAIN.md).
+
+## What it stores
+
+| Entity | Purpose |
+|---|---|
+| `Lesson` | A recallable fact about a codename, repo, convention, or recurring failure. |
+| `MemoryCandidate` | A proposed lesson awaiting operator review. |
+| `FailureEvent` | A normalized non-success outcome, useful for spotting repeated setup or runtime failures. |
+| `GitHubItem` | Cached issue/PR state pulled through the local GitHub CLI. |
+| `BundleItem` | Membership in an `agent:bundle:<slug>` rollout. |
+| `WorkerHeartbeat` | Last-seen liveness row for stale-worker detection. |
+| `FiringLog` | A compact audit row for one firing. |
+| `FileTouch` | A repo-relative file path touched by an agent, optionally tied to a firing or PR. |
+| `RepoNote` | Free-text notes about one repository. |
+
+The important distinction: state files under `$ALFRED_HOME/state/` tell Alfred
+what is paused, claimed, blocked, or recently run. The fleet brain stores
+lessons and history that should influence future firings.
+
+## Operator commands
+
+```sh
+alfred brain status
+alfred brain lessons lucius your-org/api
+alfred brain reflect lucius your-org/api "Run npm test before opening frontend PRs" --tag tests
+alfred brain propose lucius your-org/api "Use request fixtures for API tests" --tag tests
+alfred brain candidates
+alfred brain promote <candidate-id>
+alfred brain reject <candidate-id> --note "too vague"
+alfred brain failures --codename huntress
+alfred brain files your-org/api
+alfred github-poll --repo your-org/api
+alfred brain github --state open
+alfred brain bundles billing
+alfred brain workers --stale
+alfred brain promotions
+alfred brain doctor
+alfred mcp serve
+```
+
+Runtime memory is on by default through the local `fleet` provider. Turn it off:
+
+```sh
+export ALFRED_MEMORY_PROVIDERS=null
+```
+
+Run in review-first mode:
+
+```sh
+export ALFRED_MEMORY_REFLECTION_MODE=candidate
+```
+
+Then use `alfred brain candidates` to promote useful lessons and reject noisy
+ones.
+
+The GitHub poller keeps issue, PR, and bundle state in the same local memory
+store. The doctor command uses that cache to report poll freshness, open bundle
+shape, stale worker heartbeats, repeated failures, and high-confidence memory
+candidates that are ready for review.
+
+## MCP access
+
+`alfred mcp serve` exposes a small read-only JSON-RPC stdio surface for local
+MCP clients. It returns allowlisted summaries only: no raw prompts, transcripts,
+stdout, stderr, webhook URLs, or result blobs.
+
+Available tools include:
+
+- `alfred_brain_status`
+- `alfred_memory_recall`
+- `alfred_memory_candidates`
+- `alfred_recent_file_touches`
+- `alfred_failure_patterns`
+- `alfred_memory_doctor`
+
+## Privacy model
+
+The brain never leaves your host unless you export or back it up yourself. The
+only prompt-boundary effect is recall: Alfred prepends selected lessons to the
+next engine invocation. Treat the brain like shell history: useful, local, and
+operator-owned.
+
+## Next memory work
+
+The next useful layer is reliability, not more mystery:
+
+- Auto-route repeated failure patterns into actions: pause a codename, file a
+  setup issue, or suggest a missing local dependency.
+- Let Batman and specs-driven workflows remember which specs generated which
+  issues and PRs.
+- Add semantic recall for lessons, plans, and failure summaries.
+- Add lightweight memory-quality checks before candidate promotion.
+
+See also:
+
+- [State and memory](/concepts/state-and-memory/)
+- [Operator CLI](/reference/cli/)
+- [`docs/MEMORY_PROVIDERS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/MEMORY_PROVIDERS.md)

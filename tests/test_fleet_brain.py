@@ -75,6 +75,9 @@ def test_ensure_schema_is_idempotent(db_path: Path) -> None:
             "file_touches",
             "memory_candidates",
             "failure_events",
+            "github_items",
+            "bundle_items",
+            "worker_heartbeats",
             "schema_version",
         }.issubset(names)
     finally:
@@ -365,6 +368,76 @@ def test_failure_event_record_and_query(brain: FleetBrain) -> None:
 
 
 # ---------------------------------------------------------------------------
+# GitHub poller cache, bundles, worker heartbeats
+# ---------------------------------------------------------------------------
+
+
+def test_github_item_upsert_populates_bundle(brain: FleetBrain) -> None:
+    item = brain.upsert_github_item(
+        repo="org/api",
+        number=42,
+        kind="pr",
+        state="open",
+        title="feat: add endpoint",
+        url="https://github.com/org/api/pull/42",
+        labels=["agent:bundle:billing", "agent:authored"],
+        head_ref="lucius/42",
+        base_ref="main",
+    )
+    assert item.id == "org/api#42:pr"
+    assert item.bundle_slug == "billing"
+
+    items = brain.list_github_items(repo="org/api", kind="pr", state="open")
+    assert len(items) == 1
+    assert items[0].labels == ["agent:authored", "agent:bundle:billing"]
+
+    bundle_items = brain.list_bundle_items(bundle_slug="billing")
+    assert len(bundle_items) == 1
+    assert bundle_items[0].repo == "org/api"
+    assert bundle_items[0].item_kind == "pr"
+
+
+def test_worker_heartbeat_and_stale_detection(brain: FleetBrain) -> None:
+    now = datetime.now(UTC)
+    fresh = brain.upsert_worker_heartbeat(
+        codename="lucius",
+        firing_id="fresh",
+        repo="org/api",
+        pid=123,
+        heartbeat_at=now,
+    )
+    stale = brain.upsert_worker_heartbeat(
+        codename="bane",
+        firing_id="stale",
+        heartbeat_at=now - timedelta(minutes=90),
+    )
+
+    assert fresh.id == "lucius:fresh"
+    assert stale.status == "running"
+    assert [w.firing_id for w in brain.list_stale_workers(max_age_minutes=60)] == ["stale"]
+
+
+def test_memory_promotion_suggestions(brain: FleetBrain) -> None:
+    low = brain.propose_memory(
+        codename="lucius",
+        repo="org/api",
+        body="Speculative, no evidence.",
+        confidence=0.4,
+    )
+    high = brain.propose_memory(
+        codename="lucius",
+        repo="org/api",
+        body="Use fixtures for API tests.",
+        tags=["tests"],
+        evidence="Seen in three recent PRs.",
+        confidence=0.8,
+    )
+    suggestions = brain.suggest_memory_promotions()
+    assert [s["candidate_id"] for s in suggestions] == [high.id]
+    assert low.id not in {s["candidate_id"] for s in suggestions}
+
+
+# ---------------------------------------------------------------------------
 # Repo note
 # ---------------------------------------------------------------------------
 
@@ -390,6 +463,14 @@ def test_export_round_trip_shape(brain: FleetBrain) -> None:
     brain.record_file_touch(repo="org/api", path="src/api.py", codename="lucius")
     brain.propose_memory(codename="lucius", repo="org/api", body="candidate")
     brain.record_failure(codename="lucius", subtype="error_timeout", summary="timeout")
+    brain.upsert_github_item(
+        repo="org/api",
+        number=1,
+        kind="issue",
+        state="open",
+        labels=["agent:bundle:billing"],
+    )
+    brain.upsert_worker_heartbeat(codename="lucius", firing_id="fid")
     payload = brain.export()
     # Must be JSON-roundtrippable.
     s = json.dumps(payload, default=str)
@@ -404,6 +485,9 @@ def test_export_round_trip_shape(brain: FleetBrain) -> None:
     assert data["file_touches"][0]["path"] == "src/api.py"
     assert len(data["memory_candidates"]) == 1
     assert len(data["failure_events"]) == 1
+    assert len(data["github_items"]) == 1
+    assert len(data["bundle_items"]) == 1
+    assert len(data["worker_heartbeats"]) == 1
 
 
 def test_forget_by_id(brain: FleetBrain) -> None:
@@ -609,6 +693,14 @@ def test_stats_reports_counts(brain: FleetBrain) -> None:
     brain.record_file_touch(repo="org/api", path="src/api.py", codename="lucius")
     brain.propose_memory(codename="lucius", repo="org/api", body="candidate")
     brain.record_failure(codename="lucius", subtype="error_timeout", summary="timeout")
+    brain.upsert_github_item(
+        repo="org/api",
+        number=1,
+        kind="issue",
+        state="open",
+        labels=["agent:bundle:billing"],
+    )
+    brain.upsert_worker_heartbeat(codename="lucius", firing_id="fid")
     s = brain.stats()
     assert s["lessons"] == 2
     assert s["firings"] == 1
@@ -616,6 +708,10 @@ def test_stats_reports_counts(brain: FleetBrain) -> None:
     assert s["memory_candidates"] == 1
     assert s["memory_candidates_open"] == 1
     assert s["failure_events"] == 1
+    assert s["github_items"] == 1
+    assert s["bundle_items"] == 1
+    assert s["worker_heartbeats"] == 1
+    assert s["workers_running"] == 1
     assert s["repo_notes"] == 1
     assert s["tags"] == 2
     assert s["codenames"] == 2

@@ -40,6 +40,13 @@ def ingest_mod() -> ModuleType:
     return _load("fleet_ingest", repo / "bin" / "fleet-ingest.py")
 
 
+@pytest.fixture(scope="module")
+def github_poll_mod() -> ModuleType:
+    repo = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(repo / "lib"))
+    return _load("fleet_github_poll", repo / "bin" / "fleet-github-poll.py")
+
+
 @pytest.fixture()
 def brain_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     db = tmp_path / "brain.db"
@@ -63,6 +70,9 @@ def test_cli_status_empty(
     assert "file_touches 0" in out
     assert "candidates  0 (0 open)" in out
     assert "failures    0" in out
+    assert "github      0" in out
+    assert "bundles     0" in out
+    assert "workers     0 (0 running)" in out
     assert str(brain_db) in out
 
 
@@ -278,6 +288,49 @@ def test_cli_failures_and_doctor(
     assert report["db"] == str(brain_db)
 
 
+def test_cli_workers_github_bundles_and_promotions(
+    cli_mod: ModuleType, brain_db: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+    from fleet_brain import FleetBrain
+
+    brain = FleetBrain(db_path=brain_db)
+    candidate = brain.propose_memory(
+        codename="lucius",
+        repo="org/api",
+        body="Prefer request fixtures.",
+        tags=["tests"],
+        evidence="Observed in recent PRs.",
+        confidence=0.85,
+    )
+    brain.upsert_github_item(
+        repo="org/api",
+        number=42,
+        kind="pr",
+        state="open",
+        title="feat: endpoint",
+        labels=["agent:bundle:billing"],
+    )
+    brain.upsert_worker_heartbeat(codename="lucius", firing_id="fid-1", repo="org/api")
+    capsys.readouterr()
+
+    assert cli_mod.main(["promotions", "--json"]) == 0
+    promotions = json.loads(capsys.readouterr().out)
+    assert promotions[0]["candidate_id"] == candidate.id
+
+    assert cli_mod.main(["github", "--json"]) == 0
+    github_items = json.loads(capsys.readouterr().out)
+    assert github_items[0]["bundle_slug"] == "billing"
+
+    assert cli_mod.main(["bundles", "billing", "--json"]) == 0
+    bundles = json.loads(capsys.readouterr().out)
+    assert bundles[0]["repo"] == "org/api"
+
+    assert cli_mod.main(["workers", "--json"]) == 0
+    workers = json.loads(capsys.readouterr().out)
+    assert workers[0]["firing_id"] == "fid-1"
+
+
 # ---------------------------------------------------------------------------
 # fleet-ingest.py
 # ---------------------------------------------------------------------------
@@ -352,6 +405,26 @@ def test_ingest_drains_outbox(
                         "engine": "claude",
                     }
                 ),
+                json.dumps(
+                    {
+                        "event": "github_item",
+                        "repo": "org/api",
+                        "number": 7,
+                        "kind": "issue",
+                        "state": "open",
+                        "title": "bundle issue",
+                        "labels": ["agent:bundle:billing"],
+                    }
+                ),
+                json.dumps(
+                    {
+                        "event": "worker_heartbeat",
+                        "codename": "lucius",
+                        "firing_id": "fid-1",
+                        "status": "running",
+                        "repo": "org/api",
+                    }
+                ),
                 "",  # blank line
                 "{not-json",
                 json.dumps({"event": "unknown_kind", "x": 1}),
@@ -376,6 +449,9 @@ def test_ingest_drains_outbox(
     assert brain.get_repo_note("org/api") is not None
     assert brain.list_memory_candidates()[0].body == "candidate-from-outbox"
     assert brain.list_failures()[0].subtype == "error_timeout"
+    assert brain.list_github_items()[0].number == 7
+    assert brain.list_bundle_items(bundle_slug="billing")[0].number == 7
+    assert brain.list_worker_heartbeats()[0].firing_id == "fid-1"
 
     # Re-running consumes nothing new (cursor advanced).
     rc = ingest_mod.main([])
@@ -390,3 +466,55 @@ def test_ingest_handles_missing_outbox(
     # No outbox dir created — should exit 0 cleanly.
     rc = ingest_mod.main([])
     assert rc == 0
+
+
+def test_github_poll_records_issues_prs_and_bundles(
+    github_poll_mod: ModuleType, brain_db: Path
+) -> None:
+    from subprocess import CompletedProcess
+
+    calls: list[list[str]] = []
+
+    def fake_runner(cmd: list[str]) -> CompletedProcess[str]:
+        calls.append(cmd)
+        if cmd[1] == "issue":
+            payload = [
+                {
+                    "number": 10,
+                    "title": "implement bundle",
+                    "state": "OPEN",
+                    "labels": [{"name": "agent:bundle:billing"}],
+                    "updatedAt": "2026-05-26T12:00:00Z",
+                    "closedAt": None,
+                    "url": "https://github.com/org/api/issues/10",
+                }
+            ]
+        else:
+            payload = [
+                {
+                    "number": 11,
+                    "title": "feat: bundle",
+                    "state": "OPEN",
+                    "labels": [{"name": "agent:bundle:billing"}],
+                    "updatedAt": "2026-05-26T12:05:00Z",
+                    "closedAt": None,
+                    "mergedAt": None,
+                    "url": "https://github.com/org/api/pull/11",
+                    "headRefName": "lucius/11",
+                    "baseRefName": "main",
+                }
+            ]
+        return CompletedProcess(cmd, 0, stdout=json.dumps(payload), stderr="")
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+    from fleet_brain import FleetBrain
+
+    brain = FleetBrain(db_path=brain_db)
+    counts = github_poll_mod.poll_repos(["org/api"], brain=brain, runner=fake_runner)
+    assert counts == {"repos": 1, "issues": 1, "prs": 1, "errors": 0}
+    assert len(calls) == 2
+    assert {item.kind for item in brain.list_github_items(bundle_slug="billing")} == {
+        "issue",
+        "pr",
+    }
+    assert len(brain.list_bundle_items(bundle_slug="billing")) == 2
