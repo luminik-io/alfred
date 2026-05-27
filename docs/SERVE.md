@@ -1,11 +1,13 @@
 # `alfred serve`
 
-A small, localhost-only, read-only dashboard over `$ALFRED_HOME/state` and the
-local fleet brain. Three core views, no auth, no writes. The operator's pane of
-glass for "what is the fleet doing right now".
+A small, localhost-only, read-only dashboard over `$ALFRED_HOME/state`,
+saved Batman plans, and the local fleet brain. Four core views, no auth,
+no writes. The operator's pane of glass for "what is the fleet doing right
+now".
 
 Status: v0.4.0 shipped the first dashboard. v0.4.1 adds reliability-governor
-cards and action summaries as a cross-platform precursor to any future native
+cards, human-readable timestamps, mobile card layouts, a saved-plan inbox,
+and action summaries as a cross-platform precursor to any future native
 menu-bar UI.
 
 ## Install
@@ -71,6 +73,12 @@ $ALFRED_HOME/state/codenames/<codename>/...
 $ALFRED_HOME/state/firings/<firing_id>.json
 ```
 
+Batman plan drafts are read from:
+
+```
+$ALFRED_HOME/batman-plans/*.md
+```
+
 ## Views
 
 ### `GET /` - Fleet status
@@ -82,7 +90,8 @@ Summary cards plus one row per codename:
 - stale-worker count
 - memory-promotion suggestions
 - status dot (idle, live, error)
-- last-run timestamp
+- last-run timestamp, rendered for scanning with the raw UTC value in the
+  browser title
 - firings-today count (read from the per-day spend ledger)
 - last firing id (linked to the detail view) plus a one-line summary
 
@@ -96,6 +105,17 @@ The most recent 50 firings across all codenames, newest first. Each row links to
 Filters:
 
 - `?codename=<name>` restricts the list to one codename. The clickable filter strip at the top of the page renders one link per known codename plus an "all" reset.
+
+### `GET /plans` - Saved Batman plans
+
+Lists saved Batman plan drafts from `$ALFRED_HOME/batman-plans`. Each card
+shows status, affected repos, parent issue, update time, and a local detail
+link.
+
+### `GET /plans/{plan_id}` - Single saved plan
+
+Renders the saved markdown exactly as it exists on disk. This keeps the local
+cockpit aligned with the Slack plan that the operator is approving or editing.
 
 ### `GET /firings/{firing_id}` - Single firing detail
 
@@ -117,8 +137,9 @@ lib/server/
   __init__.py       # re-exports public surface
   reader.py         # FleetReader Protocol + FilesystemReader
   app.py            # create_app(reader) -> FastAPI
-  views.py          # three GET routes
-  templates/        # base + 4 pages + 1 HTMX partial
+  formatting.py     # timestamp and firing-id presentation helpers
+  views.py          # fleet, firings, plans, detail, health routes
+  templates/        # base + pages + 1 HTMX partial
   static/style.css  # Operations Room theme
 bin/alfred-serve.py # argparse driver, runs uvicorn
 ```
@@ -137,4 +158,6 @@ That said: the dashboard surfaces repo URLs, file paths, and event payloads that
 pytest tests/test_server.py -q
 ```
 
-Covers empty state, populated state via `tmp_path`, codename filter, HTMX partial swap, 404 on unknown firing, path-traversal rejection, malformed-JSONL tolerance, and `/healthz`.
+Covers empty state, populated state via `tmp_path`, codename filter, HTMX
+partial swap, 404 on unknown firing, path-traversal rejection, saved plan
+listing, timestamp formatting, malformed-JSONL tolerance, and `/healthz`.

@@ -714,7 +714,7 @@ class FleetBrain:
             latest = rows[-1]
             if _is_non_actionable_failure_pattern(subtype, latest.summary):
                 continue
-            classification = _classify_failure_pattern(subtype, latest.summary, agent)
+            classification = _classify_failure_pattern(subtype, latest.summary)
             action = _suggest_failure_action(
                 classification=classification,
                 codename=agent,
@@ -1041,8 +1041,8 @@ def _serialize(d: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _classify_failure_pattern(subtype: str, summary: str, codename: str) -> str:
-    text = f"{subtype} {summary} {codename}".lower()
+def _classify_failure_pattern(subtype: str, summary: str) -> str:
+    text = f"{subtype} {summary}".lower()
     if any(token in text for token in ("executable doesn't exist", "playwright", "chromium")):
         return "local_setup"
     if any(token in text for token in ("auth", "token", "sso", "accessdenied", "permission")):

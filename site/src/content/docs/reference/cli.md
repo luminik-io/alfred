@@ -217,8 +217,8 @@ to enter the review queue before future recall.
 
 ## `alfred serve`
 
-Runs the read-only localhost dashboard over fleet state and reliability
-governor actions.
+Runs the read-only localhost dashboard over fleet state, reliability
+governor actions, recent firings, and saved Batman plans.
 
 ```sh
 alfred serve --port 7000

@@ -4,7 +4,7 @@
 <section class="ops-hero">
   <div>
     <span class="status-pill status-pill--{{ reliability.status }}">{{ reliability.status }}</span>
-    <h1>Alfred</h1>
+    <h1>Fleet</h1>
     <p>{{ agents|length }} agents, {{ total_today }} firing{{ '' if total_today == 1 else 's' }} today.</p>
   </div>
   <div class="hero-actions" aria-label="Page actions">
@@ -13,6 +13,7 @@
     <a href="#action-queue" role="button" class="secondary">Action queue</a>
     {% endif %}
     <a href="/firings" role="button" class="secondary">Recent firings</a>
+    <a href="/plans" role="button" class="secondary">Plans</a>
   </div>
 </section>
 

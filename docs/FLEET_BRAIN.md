@@ -147,8 +147,17 @@ export ALFRED_MEMORY_PROVIDERS=fleet,gbrain
 export ALFRED_GBRAIN_BIN=/usr/local/bin/gbrain
 ```
 
+To add an already-running Redis Agent Memory Server as an optional fallback:
+
+```sh
+export ALFRED_MEMORY_PROVIDERS=fleet,redis
+export ALFRED_REDIS_MEMORY_URL=http://127.0.0.1:8000
+export ALFRED_REDIS_MEMORY_NAMESPACE=alfred
+```
+
 The fleet-brain remains the first writable provider, so reflection never writes
-to the optional fallback.
+to the optional fallback unless you put that fallback before `fleet` in
+`ALFRED_MEMORY_PROVIDERS`.
 
 By default, engine-returned reflection blocks are trusted and written as
 lessons. If you want a review queue first, set:
@@ -302,7 +311,9 @@ loops:
    which specs generated which issues, which PRs landed, and which acceptance
    criteria needed follow-up.
 4. **Semantic recall.** Substring matching is enough for v1. v2 should support
-   query-based recall across lessons, plans, and failure summaries.
+   query-based recall across lessons, plans, and failure summaries. Operators
+   who already run Redis AMS can pilot that shape through the optional `redis`
+   provider before Alfred grows a default semantic backend.
 5. **Memory quality gates.** Candidate promotion should run lightweight checks:
    no secrets, source attached, confidence present, not contradicted by a newer
    lesson, and scoped to a codename/repo when possible.

@@ -248,7 +248,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 - [Dry-run mode](docs/DRY_RUN.md): watch a full firing lifecycle with no LLM call, no spend, and no side effects.
 - [Architecture](ARCHITECTURE.md): design rationale.
 - [State machine](docs/STATE_MACHINE.md): `agent:in-flight` → `agent:pr-open` → `agent:done` lifecycle.
-- [Fleet brain](docs/FLEET_BRAIN.md): local memory, reviewable lesson candidates, failure history, reliability governor, and read-only MCP access.
+- [Fleet brain](docs/FLEET_BRAIN.md): local memory, reviewable lesson candidates, failure history, reliability governor, optional Redis AMS bridge, and read-only MCP access.
 - [Claude Code and Codex](docs/CLAUDE_CODE.md): install, Pro vs Max, account routing, engine routing.
 - [Codex provider](docs/CODEX_PROVIDER.md): Codex engine modes, probe commands, runtime contract, and billing posture.
 - [Slack setup](docs/SLACK_SETUP.md): webhook + AWS storage + (optional) bot token.
@@ -283,12 +283,12 @@ Alfred has a deliberate shape. These are not missing features; they are the desi
 - **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script; the core stays lean.
 
 The engineering fleet ships today. The local memory layer, reliability
-governor, and `alfred serve` v1 also ship today; content, sales, and ops
+governor, and `alfred serve` also ship today; content, sales, and ops
 departments are the next larger surface area: [`ROADMAP.md`](ROADMAP.md).
 
 ## Status
 
-**Latest release: v0.4.0.** Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution. The next unreleased v0.4.1 line adds fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, and dashboard action cards. See [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the full ledger.
+**Latest release: v0.4.0.** Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution. The next unreleased v0.4.1 line adds fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, and a mobile-friendly local cockpit with saved Batman plans. See [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the full ledger.
 
 The design boundary is stable: one operator, one local host, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
 

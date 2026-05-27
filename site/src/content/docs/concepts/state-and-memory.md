@@ -98,7 +98,7 @@ summarized with `alfred brain governor`. The governor classifies local setup
 problems, provider limits, auth failures, timeouts, and agent-quality loops,
 then returns a read-only action list for the operator and dashboard.
 
-The brain ships on by default through the local `fleet` provider. Set `ALFRED_MEMORY_PROVIDERS=null` to disable it, or `ALFRED_MEMORY_PROVIDERS=fleet,gbrain` to add a read-only fallback provider. See [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/FLEET_BRAIN.md) for the full design, schema, and CLI.
+The brain ships on by default through the local `fleet` provider. Set `ALFRED_MEMORY_PROVIDERS=null` to disable it, `ALFRED_MEMORY_PROVIDERS=fleet,gbrain` to add a read-only fallback provider, or `ALFRED_MEMORY_PROVIDERS=fleet,redis` to consult an already-running Redis Agent Memory Server. See [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/FLEET_BRAIN.md) for the full design, schema, and CLI.
 
 Use `alfred brain doctor` for a read-only health check, `alfred brain governor`
 for the current action queue, and `alfred mcp serve` when a local MCP client

@@ -739,6 +739,24 @@ def test_failure_patterns_classify_repeated_setup_failures(brain: FleetBrain) ->
     assert patterns[0]["severity"] == "blocker"
 
 
+def test_failure_patterns_ignore_classifier_tokens_in_codename(brain: FleetBrain) -> None:
+    for idx in range(2):
+        brain.record_failure(
+            codename="playwright-runner",
+            repo="org/web",
+            firing_id=f"fid-{idx}",
+            subtype="rate_limit",
+            summary="provider quota exhausted",
+            engine="claude",
+        )
+
+    patterns = brain.list_failure_patterns(window_days=7, min_count=2)
+
+    assert len(patterns) == 1
+    assert patterns[0]["classification"] == "provider_limit"
+    assert patterns[0]["suggested_action"] == "retry_later"
+
+
 def test_failure_patterns_ignore_informational_terminal_events(brain: FleetBrain) -> None:
     for idx in range(3):
         brain.record_failure(
