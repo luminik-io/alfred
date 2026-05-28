@@ -159,7 +159,8 @@ def register_routes(app: FastAPI) -> None:
         action = _first(form, "action")
         chat_message = _first(form, "chat_message")
         assistant_result: PlanningAssistantResult | None = None
-        if action == "refine":
+        should_refine = action == "refine" or (action in {"save", "save_spec"} and chat_message)
+        if should_refine:
             assistant_result = refine_issue_draft(
                 draft,
                 [chat_message],

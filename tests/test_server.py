@@ -403,6 +403,37 @@ def test_planning_view_assesses_and_saves_draft(tmp_path: Path) -> None:
     assert len(specs) == 1
     assert "## Implementation Guardrails" in specs[0].read_text(encoding="utf-8")
 
+    spec_with_chat = client.post(
+        "/planning",
+        data={
+            "title": "Add Slack plan revision flow",
+            "problem": (
+                "Operators and teammates need to discuss a Batman plan before implementation "
+                "so Alfred does not ship the wrong workflow."
+            ),
+            "user": "Repo owner or teammate",
+            "current_behavior": "Batman posts a plan and waits for emoji approval.",
+            "desired_behavior": (
+                "Batman keeps implementation paused when a plan needs revision "
+                "and accepts thread feedback before child issues are filed."
+            ),
+            "repos": "luminik-io/alfred-os\nexample-org/web",
+            "acceptance_criteria": "Slack plan messages tell the operator how to reply.",
+            "test_plan": "Run Batman unit tests and manually inspect the Slack payload.",
+            "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
+            "chat_message": (
+                "acceptance: saved specs include chat amendments\nremove repo: example-org/web"
+            ),
+            "action": "save_spec",
+        },
+    )
+    assert spec_with_chat.status_code == 200
+    specs = list((tmp_path / "spec-drafts").glob("*.md"))
+    assert specs
+    saved_spec = max(specs, key=lambda path: path.stat().st_mtime).read_text(encoding="utf-8")
+    assert "saved specs include chat amendments" in saved_spec
+    assert "example-org/web" not in saved_spec
+
 
 def test_planning_refine_engine_uses_existing_workspace_root(
     tmp_path: Path,
