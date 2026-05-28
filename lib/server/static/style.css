@@ -151,7 +151,7 @@ button {
 }
 
 .ops-main {
-  width: min(100%, 68rem);
+  width: min(100%, 76rem);
   padding-top: 2rem;
   padding-bottom: 3rem;
 }
@@ -198,6 +198,39 @@ button {
   justify-content: flex-end;
 }
 
+.signal-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: -0.35rem 0 1.3rem;
+}
+
+.signal-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 3.25rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--ops-line);
+  border-radius: 8px;
+  background: rgba(18, 26, 37, 0.62);
+}
+
+.signal-item small {
+  color: var(--ops-muted);
+  font-family: var(--ops-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.signal-item strong {
+  font-family: var(--ops-display);
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -234,6 +267,23 @@ button {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.85rem;
   margin: 0 0 1.25rem;
+}
+
+.ops-dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.dashboard-primary,
+.dashboard-secondary {
+  min-width: 0;
+}
+
+.dashboard-secondary {
+  position: sticky;
+  top: calc(var(--ops-header-offset) + 1rem);
 }
 
 .ops-panel {
@@ -293,6 +343,10 @@ button {
 
 .section-heading a {
   font-weight: 700;
+}
+
+.section-heading--compact {
+  margin-top: 0;
 }
 
 .action-list {
@@ -474,6 +528,89 @@ pre code {
   background: var(--ops-warn);
 }
 
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  max-width: 100%;
+  min-height: 1.85rem;
+  gap: 0.35rem;
+  padding: 0.12rem 0.5rem;
+  border: 1px solid var(--ops-line);
+  border-radius: 999px;
+  background: rgba(198, 208, 224, 0.06);
+  color: var(--ops-soft);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.status-chip .dot {
+  margin-right: 0;
+}
+
+.status-chip--live,
+.status-chip--ok {
+  border-color: rgba(17, 215, 191, 0.35);
+}
+
+.status-chip--running {
+  border-color: rgba(242, 184, 75, 0.45);
+}
+
+.status-chip--error {
+  border-color: rgba(255, 110, 110, 0.45);
+}
+
+.activity-list {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 1.25rem;
+}
+
+.activity-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 0.35rem 0.75rem;
+  align-items: center;
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid var(--ops-line);
+  border-radius: 8px;
+  background: var(--ops-surface);
+  color: var(--ops-fg);
+  text-decoration: none;
+}
+
+.activity-item:hover {
+  border-color: rgba(17, 215, 191, 0.45);
+  color: var(--ops-fg);
+}
+
+.activity-item .status-chip {
+  grid-column: 1 / -1;
+}
+
+.activity-item strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-item time {
+  color: var(--ops-muted);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.activity-item small {
+  grid-column: 1 / -1;
+  color: var(--ops-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .dim {
   color: var(--ops-muted);
   display: block;
@@ -569,6 +706,15 @@ pre code {
   text-align: center;
   padding: 2rem 1rem;
   color: var(--ops-muted);
+}
+
+.empty--compact {
+  padding: 1rem;
+  text-align: left;
+}
+
+.empty--compact p {
+  margin-bottom: 0.35rem;
 }
 
 .codename-filter {
@@ -847,6 +993,14 @@ pre code {
     justify-content: flex-start;
   }
 
+  .ops-dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-secondary {
+    position: static;
+  }
+
   .ops-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -889,11 +1043,18 @@ pre code {
     font-size: 3.1rem;
   }
 
-  .hero-actions a {
-    flex: 1 1 100%;
+  .hero-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .hero-actions a:first-child {
+    grid-column: 1 / -1;
   }
 
   .ops-grid,
+  .signal-strip,
   .action-item,
   .section-heading,
   .plan-card,
@@ -905,6 +1066,10 @@ pre code {
 
   .ops-grid {
     grid-template-columns: 1fr;
+  }
+
+  .signal-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .action-item {
@@ -1028,4 +1193,5 @@ pre code {
   .view-tabs a {
     padding: 0 0.35rem;
   }
+
 }

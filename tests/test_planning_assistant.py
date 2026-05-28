@@ -247,7 +247,7 @@ def test_render_operator_feedback_ack_is_concise_for_slack() -> None:
     assert "[ALFRED-PLAN-FEEDBACK]" in block
     assert "Add acceptance criterion" in block
     assert "Should we keep this limited to Batman?" in block
-    assert "Reply with more changes" in block
+    assert "keep replying in this thread" in block
 
 
 def test_render_plan_revision_ack_shows_scope_and_blocks_questions() -> None:
@@ -260,7 +260,7 @@ def test_render_plan_revision_ack_shows_scope_and_blocks_questions() -> None:
     assert "[ALFRED-PLAN-REVISION]" in block
     assert "Execution scope if approved now" in block
     assert "example-org/mobile" in block
-    assert "Open questions still need a decision" in block
+    assert "Needs a decision before execution" in block
     assert "will not execute" in block
     assert plan_feedback_requires_resolution(["question: Should we include the onboarding state?"])
 

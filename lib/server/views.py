@@ -53,6 +53,8 @@ def register_routes(app: FastAPI) -> None:
                 },
             )
         reliability = reader.reliability_report()
+        recent_firings = reader.list_recent_firings(limit=5)
+        recent_plans = reader.list_plans(limit=4)
         return templates.TemplateResponse(
             request,
             "fleet.html",
@@ -60,6 +62,9 @@ def register_routes(app: FastAPI) -> None:
                 "agents": agents,
                 "total_today": sum(a.firings_today for a in agents),
                 "reliability": reliability,
+                "recent_firings": recent_firings,
+                "recent_plans": recent_plans,
+                "fleet_counts": _fleet_counts(agents, recent_firings),
             },
         )
 
@@ -294,6 +299,17 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, Path):
         return str(value)
     return value
+
+
+def _fleet_counts(agents: list[Any], recent_firings: list[Any]) -> dict[str, int]:
+    return {
+        "live": sum(1 for agent in agents if getattr(agent, "status", "") == "live"),
+        "idle": sum(1 for agent in agents if getattr(agent, "status", "") == "idle"),
+        "error": sum(1 for agent in agents if getattr(agent, "status", "") == "error"),
+        "running": sum(
+            1 for firing in recent_firings if getattr(firing, "status", "") == "running"
+        ),
+    }
 
 
 def _draft_from_form(form: dict[str, list[str]]) -> IssueDraft:

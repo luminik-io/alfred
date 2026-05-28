@@ -1244,25 +1244,27 @@ def _render_plan_markdown(
     child_label = "child issue" if child_count == 1 else "child issues"
 
     lines: list[str] = []
-    lines.append(f"*Batman plan · `{slug}` · needs approval*")
+    lines.append(f"*Plan approval needed* · `{slug}`")
     lines.append(f"*Parent:* {_issue_link(parent_repo, parent_issue)}")
-    lines.append(f"*Title:* {parent_title}")
-    lines.append(
-        "*Decision:* react :white_check_mark: to approve, :x: to reject, "
-        "or reply in this thread with changes before approving."
-    )
-    lines.append(
-        "*Reply commands:* `acceptance:`, `test:`, `add repo:`, "
-        "`remove repo:`, `question:`, or plain language."
-    )
+    lines.append(f"*Work:* {parent_title}")
     if blockers:
         lines.append("*Readiness:* needs scope before implementation")
     else:
         lines.append("*Readiness:* ready for approval")
+    lines.append(
+        "*How to steer:* reply in this thread with changes before approval. "
+        "Plain language works."
+    )
+    lines.append(
+        "*Useful shortcuts:* `acceptance:`, `test:`, `add repo:`, "
+        "`remove repo:`, `question:`"
+    )
+    lines.append("*Decision:* react :white_check_mark: to approve, :x: to reject.")
     lines.append("")
 
     lines.append(
-        f"*Execution scope if approved now:* {repo_count} {repo_label}, {child_count} {child_label}"
+        f"*Scope if approved now:* {repo_count} {repo_label}, "
+        f"{child_count} {child_label}"
     )
     if children:
         for c in children:

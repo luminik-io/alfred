@@ -8,7 +8,7 @@
       <h1>{{ firing.firing_id|short_firing_id }}</h1>
       <p>
         <a href="/firings?codename={{ firing.codename }}">{{ firing.codename }}</a>
-        <span class="dot dot-{{ firing.status }}" aria-hidden="true"></span> {{ firing.status }}
+        <span class="status-chip status-chip--{{ firing.status }}"><span class="dot dot-{{ firing.status }}" aria-hidden="true"></span>{{ firing.status }}</span>
       </p>
     </div>
   </div>

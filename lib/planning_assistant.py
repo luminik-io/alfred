@@ -338,22 +338,23 @@ def render_operator_feedback_ack(feedback: Iterable[str]) -> str:
     amendments = _summarize_amendments(clean)
     questions = _explicit_questions_from_messages(clean)
     lines = [
-        "[ALFRED-PLAN-FEEDBACK] Plan update captured.",
+        "[ALFRED-PLAN-FEEDBACK] Captured plan changes.",
         "",
-        f"*Captured:* {len(amendments)} update(s)",
+        f"*Captured:* {len(amendments)} change(s)",
         "",
-        "*Applied to the draft:*",
+        "*Applied now:*",
     ]
     lines.extend(f"- {item}" for item in amendments[:6])
     if len(amendments) > 6:
         lines.append(f"- ...and {len(amendments) - 6} more update(s).")
     if questions:
-        lines.extend(["", "*Open questions now block execution:*"])
+        lines.extend(["", "*Needs a decision before execution:*"])
         lines.extend(f"- {question}" for question in questions[:4])
     lines.extend(
         [
             "",
-            "*Next:* Reply with more changes, or react :white_check_mark: when the plan is ready.",
+            "*Next:* keep replying in this thread to shape the work. React "
+            ":white_check_mark: only when the plan is ready to run.",
         ]
     )
     return "\n".join(lines)
@@ -374,11 +375,11 @@ def render_plan_revision_ack(
     questions = _explicit_questions_from_messages(clean)
     repos = tuple(str(repo).strip() for repo in revised_repos if str(repo).strip())
     lines = [
-        "[ALFRED-PLAN-REVISION] Plan updated.",
+        "[ALFRED-PLAN-REVISION] Plan revised.",
         "",
-        f"*Captured so far:* {len(amendments)} update(s)",
+        f"*Captured so far:* {len(amendments)} change(s)",
         "",
-        "*Applied to the current draft:*",
+        "*Current draft now includes:*",
     ]
     lines.extend(f"- {item}" for item in amendments[:8])
     if len(amendments) > 8:
@@ -395,14 +396,15 @@ def render_plan_revision_ack(
         if len(repos) > 10:
             lines.append(f"- ...and {len(repos) - 10} more repo(s).")
     if questions:
-        lines.extend(["", "*Open questions still need a decision before execution:*"])
+        lines.extend(["", "*Needs a decision before execution:*"])
         lines.extend(f"- {question}" for question in questions[:6])
         lines.append("")
         lines.append("Alfred will not execute until these are resolved in this thread.")
     lines.extend(
         [
             "",
-            "*Next:* Reply with more changes, or react :white_check_mark: when the plan is ready.",
+            "*Next:* keep replying with changes, or react :white_check_mark: "
+            "when this is the right plan.",
         ]
     )
     return "\n".join(lines)
