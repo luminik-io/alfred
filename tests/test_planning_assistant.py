@@ -179,6 +179,18 @@ def test_recall_planning_memory_falls_back_to_repo_recent_lessons() -> None:
     assert provider.calls[1][1] is None
 
 
+def test_recall_planning_memory_swallows_provider_fallback_errors() -> None:
+    class Provider:
+        name = "test"
+
+        def recall(self, *, repo=None, query=None, limit=3):
+            if query is not None:
+                raise TypeError("query is not supported")
+            raise RuntimeError("memory store is unavailable")
+
+    assert recall_planning_memory(_draft(), Provider()) == ()
+
+
 def test_render_planning_memory_is_prompt_safe() -> None:
     block = render_planning_memory(
         [

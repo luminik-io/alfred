@@ -256,6 +256,7 @@ def register_routes(app: FastAPI) -> None:
                 draft,
                 spec_path=spec_path,
                 spec_body=assistant_result.spec_body,
+                memory_provider=memory_provider,
             )
         return templates.TemplateResponse(
             request,
@@ -363,11 +364,11 @@ def _planning_memory_provider(request: Request):
         return None
 
 
-def _planning_memory_writer(request: Request):
+def _planning_memory_writer(request: Request, *, provider=None):
     configured = getattr(request.app.state, "planning_memory_writer", None)
     if configured is not None:
         return configured
-    provider = _planning_memory_provider(request)
+    provider = provider or _planning_memory_provider(request)
     brain = getattr(provider, "brain", None)
     return brain if brain is not None else provider
 
@@ -378,10 +379,11 @@ def _propose_planning_memory_candidate(
     *,
     spec_path: Path,
     spec_body: str,
+    memory_provider=None,
 ) -> tuple[str, ...]:
     if _env_disabled("ALFRED_PLANNING_MEMORY_CANDIDATES"):
         return ()
-    writer = _planning_memory_writer(request)
+    writer = _planning_memory_writer(request, provider=memory_provider)
     if writer is None or not hasattr(writer, "propose_memory"):
         return ()
     body = _memory_candidate_body(draft)

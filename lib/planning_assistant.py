@@ -119,12 +119,12 @@ def recall_planning_memory(
         for use_query in (query, None):
             if len(out) >= limit:
                 break
-            try:
-                lessons = provider.recall(repo=repo, query=use_query, limit=limit)
-            except TypeError:
-                lessons = provider.recall(repo=repo, limit=limit)
-            except Exception:
-                lessons = []
+            lessons = _safe_memory_recall(
+                provider,
+                repo=repo,
+                query=use_query,
+                limit=limit,
+            )
             for lesson in lessons or []:
                 item = _memory_item_from_lesson(lesson, fallback_repo=repo or "")
                 if item is None:
@@ -139,6 +139,24 @@ def recall_planning_memory(
             if out and use_query is not None:
                 break
     return tuple(out)
+
+
+def _safe_memory_recall(
+    provider: Any,
+    *,
+    repo: str | None,
+    query: str | None,
+    limit: int,
+) -> Iterable[Any]:
+    try:
+        return provider.recall(repo=repo, query=query, limit=limit) or ()
+    except TypeError:
+        try:
+            return provider.recall(repo=repo, limit=limit) or ()
+        except Exception:
+            return ()
+    except Exception:
+        return ()
 
 
 def apply_repository_scope_feedback(
