@@ -72,13 +72,9 @@ def test_refine_issue_draft_preserves_mixed_freeform_notes() -> None:
     assert "the plan can be revised" in result.draft.acceptance_criteria[-1]
     assert "Operator note: Use friendlier language" in result.draft.open_questions
     assert any(
-        "Add acceptance criterion: the plan can be revised" in item
-        for item in result.amendments
+        "Add acceptance criterion: the plan can be revised" in item for item in result.amendments
     )
-    assert (
-        "Capture operator note: Use friendlier language for non-engineers."
-        in result.amendments
-    )
+    assert "Capture operator note: Use friendlier language for non-engineers." in result.amendments
 
 
 def test_refine_issue_draft_accepts_injected_refiner_patch() -> None:
