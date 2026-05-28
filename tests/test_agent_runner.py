@@ -1073,6 +1073,91 @@ def test_force_release_stale_claim_reports_comment_failure(monkeypatch):
     )
 
 
+def test_stale_unreleased_claim_comment_does_not_block_forever(monkeypatch):
+    import agent_runner as ar
+
+    comments_data = [
+        {
+            "createdAt": "2026-05-09T13:34:44Z",
+            "body": "<!-- agent-claim:codename=lucius firing_id=old-fid ts=2026-05-09T13:34:43Z -->",
+        },
+        {
+            "createdAt": "2026-05-28T19:17:08Z",
+            "body": "<!-- agent-claim:codename=batman firing_id=new-fid ts=2026-05-28T19:17:07Z -->",
+        },
+    ]
+    monkeypatch.setattr(
+        ar,
+        "_issue_state",
+        lambda repo, num: {"comments": comments_data, "labels": [], "state": "OPEN"},
+    )
+
+    assert (
+        ar._detect_contested_claim("myrepo", 42, codename="batman", firing_id="new-fid")
+        is None
+    )
+
+
+def test_fresh_unreleased_claim_still_wins_race(monkeypatch):
+    import agent_runner as ar
+
+    comments_data = [
+        {
+            "createdAt": "2099-01-01T00:00:00Z",
+            "body": "<!-- agent-claim:codename=lucius firing_id=old-fid ts=2099-01-01T00:00:00Z -->",
+        },
+        {
+            "createdAt": "2099-01-01T00:01:00Z",
+            "body": "<!-- agent-claim:codename=batman firing_id=new-fid ts=2099-01-01T00:01:00Z -->",
+        },
+    ]
+    monkeypatch.setattr(
+        ar,
+        "_issue_state",
+        lambda repo, num: {"comments": comments_data, "labels": [], "state": "OPEN"},
+    )
+
+    assert (
+        ar._detect_contested_claim("myrepo", 42, codename="batman", firing_id="new-fid")
+        == "lucius:old-fid"
+    )
+
+
+def test_find_stale_claims_catches_label_drift(monkeypatch):
+    import agent_runner as ar
+
+    def fake_gh_json(cmd, default=None):
+        if "--label" in cmd and cmd[cmd.index("--label") + 1] == "agent:implement":
+            return [{"number": 42, "title": "stale drift"}]
+        return []
+
+    monkeypatch.setattr(ar, "GH_ORG", "example")
+    monkeypatch.setattr(ar, "gh_json", fake_gh_json)
+    monkeypatch.setattr(
+        ar,
+        "_issue_state",
+        lambda repo, num: {
+            "state": "OPEN",
+            "labels": [{"name": "agent:implement"}],
+            "comments": [
+                {
+                    "createdAt": "2026-05-09T13:34:44Z",
+                    "body": "<!-- agent-claim:codename=lucius firing_id=old-fid ts=2026-05-09T13:34:43Z -->",
+                },
+            ],
+        },
+    )
+
+    stale = ar.find_stale_claims("myrepo", max_age_hours=4)
+    assert len(stale) == 1
+    assert stale[0]["repo"] == "myrepo"
+    assert stale[0]["number"] == 42
+    assert stale[0]["title"] == "stale drift"
+    assert stale[0]["codename"] == "lucius"
+    assert stale[0]["firing_id"] == "old-fid"
+    assert stale[0]["label_drift"] is True
+
+
 def test_claim_issue_rolls_back_when_claim_comment_fails(monkeypatch):
     import agent_runner as ar
 
