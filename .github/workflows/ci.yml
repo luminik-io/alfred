@@ -154,6 +154,10 @@ jobs:
         working-directory: clients/desktop
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
 
+      - name: Test native shell
+        working-directory: clients/desktop/src-tauri
+        run: cargo test
+
       - name: Build native shell
         working-directory: clients/desktop
         run: npm run tauri -- build --no-bundle --ci

@@ -183,11 +183,9 @@ fn validate_api_path<'a>(
 
 fn is_allowed_read_path(path: &str) -> bool {
     let allowed = ["/api/status", "/api/actions", "/api/firings", "/api/plans"];
-    allowed.iter().any(|prefix| {
-        path == *prefix
-            || path.starts_with(&format!("{prefix}?"))
-            || path.starts_with(&format!("{prefix}/"))
-    })
+    allowed
+        .iter()
+        .any(|prefix| path == *prefix || path.starts_with(&format!("{prefix}/")))
 }
 
 fn is_allowed_followup_action(path: &str) -> bool {
