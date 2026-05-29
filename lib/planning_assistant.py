@@ -711,13 +711,13 @@ def _parse_line(line: str) -> tuple[str, str] | None:
         "questions": "open_questions",
         "open question": "open_questions",
         "open questions": "open_questions",
-        "resolve question": "open_questions",
-        "resolve questions": "open_questions",
-        "resolved question": "open_questions",
-        "resolved questions": "open_questions",
-        "clear question": "open_questions",
-        "clear questions": "open_questions",
-        "clear open questions": "open_questions",
+        "resolve question": "resolved_open_questions",
+        "resolve questions": "resolved_open_questions",
+        "resolved question": "resolved_open_questions",
+        "resolved questions": "resolved_open_questions",
+        "clear question": "resolved_open_questions",
+        "clear questions": "resolved_open_questions",
+        "clear open questions": "resolved_open_questions",
     }
     target = mapping.get(field)
     if target is None:
@@ -750,6 +750,8 @@ def _apply_action(draft: IssueDraft, action: tuple[str, str]) -> IssueDraft:
         return replace(
             draft, open_questions=_append_paragraphs(draft.open_questions, _split_items(value))
         )
+    if key == "resolved_open_questions":
+        return replace(draft, open_questions=_normalized_resolved_questions(value))
     if key == "test_plan":
         return replace(draft, test_plan=_append_paragraphs(draft.test_plan, [value]))
     if key == "out_of_scope":
@@ -808,6 +810,8 @@ def _summarize_amendments(messages: tuple[str, ...]) -> tuple[str, ...]:
                 summaries.append(f"Add acceptance criterion: {value}")
             elif key == "open_questions":
                 summaries.append(f"Track open question: {value}")
+            elif key == "resolved_open_questions":
+                summaries.append(f"Resolve open questions: {value}")
             else:
                 summaries.append(f"Update {key.replace('_', ' ')}: {value}")
     if not summaries:

@@ -97,6 +97,19 @@ def test_refine_issue_draft_can_clear_existing_open_questions() -> None:
     )
 
 
+def test_refine_issue_draft_clear_alias_resolves_any_explanation() -> None:
+    result = refine_issue_draft(
+        replace(_draft(), open_questions="Should this include the docs site?"),
+        ["clear questions: already answered in Slack"],
+    )
+
+    assert result.draft.open_questions == "None."
+    assert result.readiness.ok is True
+    assert not any(
+        finding.code == "open_questions_unresolved" for finding in result.readiness.findings
+    )
+
+
 def test_refine_issue_draft_preserves_mixed_freeform_notes() -> None:
     result = refine_issue_draft(
         _draft(),
