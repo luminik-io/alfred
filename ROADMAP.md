@@ -34,6 +34,12 @@ Reliability and first-run trust polish.
 - Slack planning listener: optional Socket Mode listener for trusted DMs, app
   mentions, and registered plan/report threads. It writes local planning drafts
   and feedback context without making chat text an approval mechanism.
+- Native local client preview: `clients/desktop` ships a Tauri Mac/Linux shell
+  over the local Alfred runtime. It opens to "what needs attention?", shows
+  Plans, Runs, Agents, Memory, and Setup, opens external links outside the app,
+  can start the local runtime, run safe dry-runs and memory checks, and can
+  convert trusted follow-ups into planning drafts or mark them handled without
+  bypassing Slack approval.
 
 ### v0.4.0: 2026-05-23
 
@@ -68,7 +74,7 @@ Items with active work and a committed IC.
 
 - **Plan-review gate as a runtime feature.** Promote `plan() -> review_plan() -> execute() -> review_diff()` from an architecture note to the default lifecycle for codenames that opt in. Today the review step exists in prose; the runtime makes it enforceable. IC: core. Effort: M. Issue: TBD.
 - **Public unattended-SLA emit format.** Extend `alfred-shipped-public` with a 30-day rolling window covering firings, success rate, and unattended hours. Operators who want a public proof page can render this on their own site. IC: core. Effort: S. Issue: TBD.
-- **Native local client v2.** Slack remains the primary planning and collaboration UI. The native Mac/Linux client should wrap Alfred's local control surface for install checks, health, logs, credentials, memory review, safe pause/resume, dry-run launch, and recovery. Favor a direct-host model inspired by Hermes Desktop: no extra gateway, no local mirror, no second source of truth. Borrow Ivy Tendril's plan lifecycle clarity, project verification profiles, plan-health doctor, and recommendations inbox without adopting a second scheduler or source-of-truth database. Stabilize `alfred serve` JSON APIs first so a Tauri shell can stay thin rather than becoming a second runtime. IC: core. Effort: M. Issue: TBD.
+- **Native local client v2.** Slack remains the primary planning and collaboration UI. Build on the preview client with signed Mac builds, Linux artifacts, guided install, credentials, health, logs, safe pause/resume, lock clearing, dry-run launch, recovery, and memory promotion actions. Favor a direct-host model inspired by Hermes Desktop: no extra gateway, no local mirror, no second source of truth. Borrow Ivy Tendril's plan lifecycle clarity, project verification profiles, plan-health doctor, and recommendations inbox without adopting a second scheduler or source-of-truth database. Keep `alfred serve` JSON APIs stable so the Tauri shell stays thin rather than becoming a second runtime. IC: core. Effort: M. Issue: TBD.
 - **fleet-brain v2.** Replace the SQLite layer with PGLite plus Apache AGE for graph queries and pgvector for semantic recall, exposed through an MCP server adapter so other Claude Code consumers can read fleet memory. IC: core. Effort: L. Issue: TBD.
 - **Memory quality loop v2.** Add evidence-linked lesson promotion, approved follow-up execution for governor findings, spec-to-issue memory, and lightweight candidate quality checks before promotion. IC: core. Effort: M. Issue: TBD.
 

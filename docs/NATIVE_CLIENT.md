@@ -1,12 +1,13 @@
 # Native local client
 
-Status: design target. The shipped surface is still Slack, CLI, and
-`alfred serve`.
+Status: native preview shipped under `clients/desktop`. Slack is still the
+primary collaboration surface, the desktop app is the guided local control
+center, and the CLI remains the durable power-user and automation surface.
 
 ## Decision
 
-Build the native Mac/Linux client as a thin local control plane, not a second
-Alfred runtime.
+Build the native Mac/Linux client as a thin local control plane and installer,
+not a second Alfred runtime.
 
 Slack remains the primary collaboration UI because it already has threads,
 reactions, search, mobile push, and shared context. The native client should
@@ -15,7 +16,8 @@ memory review, safe pause/resume, dry-run launch, and recovery.
 
 The client must not become a hosted gateway, a shadow database, or a softer
 copy of Slack. It reads and writes through the same local APIs, state files,
-and CLI commands the operator can inspect by hand.
+and CLI commands the operator can inspect by hand. Users should be able to run
+Alfred with or without the client.
 
 ## Product Principles
 
@@ -27,8 +29,9 @@ and CLI commands the operator can inspect by hand.
   should have a Slack thread link where discussion happened.
 - Actionable, not chatty: the home screen answers "what needs me right now?"
   before showing logs or historical data.
-- Explain before acting: write actions show the exact command, target, and
-  rollback path before running.
+- Explain before acting: write actions show the target, expected effect, and
+  rollback path before running. The underlying command is audit detail, not the
+  primary interface.
 - Accessible to technical and non-technical operators: use product language
   first, shell commands second. The app can reveal details without making them
   the default.
@@ -113,6 +116,8 @@ Every destructive or state-changing action should have a dry-run preview.
 
 Setup is a guided doctor:
 
+- install or repair the CLI
+- start the local runtime
 - GitHub auth
 - Slack bot/webhook
 - engine CLIs
@@ -166,7 +171,8 @@ Interaction rules:
 
 - Every card has one primary action and at most one secondary action.
 - Links to GitHub and Slack open outside the app.
-- State-changing actions show a command preview, affected path, and rollback.
+- State-changing actions show an affected path, rollback, and command audit
+  detail after or before the action.
 - Tables collapse into cards before they become horizontally cramped.
 - Timestamps render as "5m ago", "yesterday 12:24", or "May 27, 12:24" with
   exact UTC in the tooltip.
@@ -174,11 +180,47 @@ Interaction rules:
 - The app never hides the local source of truth: every run links to its event
   file or transcript when available.
 
-## API Shape To Stabilize First
+## Current Tauri Preview
 
-Before a native shell, `alfred serve` should expose JSON endpoints.
+The first client lives at `clients/desktop`:
 
-Read-only endpoints are the first contract:
+- Tauri v2 + React + Vite + TypeScript.
+- Brand fonts and logo from the Alfred site system.
+- Local API calls through Rust commands, not browser `fetch`.
+- API calls are restricted to `http://localhost`, `http://127.0.0.1`, or
+  `http://[::1]` and to the `/api/status`, `/api/actions`, `/api/firings`,
+  `/api/plans`, and follow-up action contracts.
+- Links to Slack, GitHub, and local serve detail pages open outside the app.
+- The app opens to "What needs attention?" and has Now, Plans, Runs, Agents,
+  Memory, and Setup tabs.
+- Follow-up plan cards can call the local `Plan next pass` and `Mark handled`
+  endpoints. These actions only move local follow-up files or create local
+  planning drafts.
+- The Setup tab can start the local runtime, run `alfred status --json`, run
+  auth checks, list agents, run the memory doctor, check Redis memory, and
+  dry-run an agent through a narrow native allowlist.
+- Setup includes a local action console. It is intentionally not an arbitrary
+  shell: it runs curated Alfred actions and shows terminal-style output inside
+  the client. Browser preview is read-only instead of presenting copy-command
+  fallbacks.
+- Pause, resume, lock clearing, and memory promotion should become write
+  actions only after they return preview/result payloads.
+
+Run it locally:
+
+```bash
+cd clients/desktop
+npm install
+npm run tauri dev
+```
+
+The Setup tab can start `alfred serve --no-browser` for you. If port 7000 is
+taken, run `alfred serve --port 7010 --no-browser`; the app also probes that
+fallback on first load.
+
+## API Shape To Stabilize Next
+
+The client uses these local API contracts today:
 
 ```text
 GET  /api/status
@@ -187,11 +229,27 @@ GET  /api/firings
 GET  /api/firings/{firing_id}
 GET  /api/plans
 GET  /api/plans/{plan_id}
+POST /api/plans/{plan_id}/convert-followup
+POST /api/plans/{plan_id}/mark-handled
 GET  /api/planning-drafts
 GET  /api/slack/threads
 ```
 
-Write endpoints should come next, behind command previews:
+The native client also has a narrow local command allowlist:
+
+```text
+alfred serve --port <port> --no-browser
+alfred status --json
+alfred agents
+alfred enabled-agents
+alfred auth status
+alfred dry-run <codename>
+alfred brain doctor --json
+alfred brain status --json
+alfred brain redis-status --json
+```
+
+Broader write endpoints should come next, behind command previews:
 
 ```text
 GET  /api/agents
@@ -211,17 +269,19 @@ state file they changed.
 
 ## Native Shell Recommendation
 
-Start with Tauri for Mac and Linux once the API contracts above are stable.
-It keeps the app small, lets the UI reuse the existing site design tokens, and
-does not force Alfred into a bundled Node/Electron runtime. Electron remains a
-fallback only if terminal embedding or OS integration becomes the deciding
-constraint.
+Stay on Tauri for Mac and Linux. It keeps the app small, lets the UI reuse the
+existing site design tokens, and does not force Alfred into a bundled
+Node/Electron runtime. Electron remains a fallback only if terminal embedding
+or OS integration becomes the deciding constraint.
 
 Distribution sequence:
 
-1. `alfred serve` API contracts with tests.
-2. Tauri shell with read-only Command Center, Plans, Runs, and Memory.
-3. Safe write actions with dry-run previews.
+1. `alfred serve` read APIs plus local follow-up action contracts with tests.
+   Done.
+2. Tauri shell with Command Center, Plans, Runs, Agents, Memory, Setup, safe
+   local follow-up actions, runtime launch, status, memory checks, Redis check,
+   and dry-run launch. Done.
+3. Guided install and broader safe write actions with dry-run previews.
 4. Signed Mac builds and Linux AppImage/deb artifacts.
 
 ## Inspiration
