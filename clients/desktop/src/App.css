@@ -625,8 +625,35 @@ code {
   border-radius: var(--radius);
 }
 
+.cli-fallback summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.cli-fallback summary::-webkit-details-marker {
+  display: none;
+}
+
+.cli-fallback summary::after {
+  content: "+";
+  margin-left: auto;
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+.cli-fallback[open] summary::after {
+  content: "-";
+}
+
 .cli-fallback strong {
   color: var(--bright);
+}
+
+.cli-fallback span {
+  color: var(--muted);
 }
 
 .cli-fallback p {

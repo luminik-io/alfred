@@ -4,14 +4,14 @@ Native Mac/Linux control center for a local Alfred install.
 
 Slack remains Alfred's collaboration surface. This app is for local trust and
 repair: what needs attention, which plans are waiting, which runs failed, which
-memory candidates need review, and which local commands are safe to run next.
+memory candidates need review, and which local actions are safe to run next.
 
 The app is the friendly path into Alfred. The CLI remains fully supported for
 automation, debugging, and users who prefer a terminal.
 
-The Setup tab keeps the same dual path: it shows the install/repair command,
-can start the local runtime for you, runs common Alfred checks in-app, and
-still exposes copyable CLI commands as a fallback.
+The Setup tab keeps the same dual path: it can start the local runtime, runs
+common Alfred checks in-app, and keeps copyable CLI commands tucked behind an
+advanced fallback for users who want to inspect the underlying runtime.
 
 ## Run locally
 

@@ -246,13 +246,19 @@ function App() {
             </button>
           </div>
           <small>
-            Run <code>alfred serve --no-browser</code>, then keep this URL on
+            Use Start runtime in the client, then keep this URL on
             <code>127.0.0.1</code>.
           </small>
         </div>
       </section>
 
-      {error ? <ConnectionBanner error={error} /> : null}
+      {error ? (
+        <ConnectionBanner
+          error={error}
+          nativeBusy={nativeBusy}
+          onStartRuntime={startRuntime}
+        />
+      ) : null}
 
       <section className="metric-grid" aria-label="Summary metrics">
         {stats.map((stat) => (
@@ -316,7 +322,16 @@ function StatusPill({ snapshot, error }: { snapshot: Snapshot | null; error: str
   );
 }
 
-function ConnectionBanner({ error }: { error: string }) {
+function ConnectionBanner({
+  error,
+  nativeBusy,
+  onStartRuntime,
+}: {
+  error: string;
+  nativeBusy: string | null;
+  onStartRuntime: () => void;
+}) {
+  const canRun = supportsNativeActions();
   return (
     <section className="notice-panel notice-panel--warn">
       <AlertTriangle size={20} aria-hidden="true" />
@@ -324,7 +339,19 @@ function ConnectionBanner({ error }: { error: string }) {
         <strong>Alfred serve is not reachable yet.</strong>
         <p>{error}</p>
       </div>
-      <CopyButton label="Copy start command" value="alfred serve --no-browser" />
+      {canRun ? (
+        <button
+          className="icon-button"
+          type="button"
+          disabled={nativeBusy === "runtime:start"}
+          onClick={onStartRuntime}
+        >
+          <Play size={16} aria-hidden="true" />
+          <span>{nativeBusy === "runtime:start" ? "Starting" : "Start runtime"}</span>
+        </button>
+      ) : (
+        <CopyButton label="CLI fallback" value="alfred serve --no-browser" />
+      )}
     </section>
   );
 }
@@ -510,7 +537,7 @@ function AgentsView({
                   </button>
                 ) : (
                   <CopyButton
-                    label="Copy dry-run"
+                    label="CLI fallback"
                     value={`alfred dry-run ${agent.codename}`}
                     icon={<Play size={16} aria-hidden="true" />}
                   />
@@ -572,8 +599,8 @@ function MemoryView({
           </dl>
         ) : (
           <EmptyState
-          title="No memory errors reported."
-          body="Use the command below for a deeper local memory health report."
+            title="No memory errors reported."
+            body="Use the action below for a deeper local memory health report."
           />
         )}
         <div className="button-stack">
@@ -602,8 +629,8 @@ function MemoryView({
             </>
           ) : (
             <>
-              <CopyButton label="Copy memory command" value="alfred brain doctor --json" />
-              <CopyButton label="Copy Redis check" value="alfred brain redis-status --json" />
+              <CopyButton label="CLI memory check" value="alfred brain doctor --json" />
+              <CopyButton label="CLI Redis check" value="alfred brain redis-status --json" />
             </>
           )}
         </div>
@@ -761,17 +788,18 @@ function SetupView({
             </p>
           ) : null}
         </div>
-        <div className="cli-fallback">
-          <div>
+        <details className="cli-fallback">
+          <summary>
             <strong>CLI fallback</strong>
-            <p>The same actions stay available in a terminal when the client is not running.</p>
-          </div>
+            <span>The same actions stay available in a terminal.</span>
+          </summary>
+          <p>The client runs safe Alfred actions directly. Use these only when the client is not running or you want to inspect the underlying CLI.</p>
           <div className="cli-chip-list">
             {commands.map((item) => (
               <CopyButton key={item.command} label={item.title} value={item.command} />
             ))}
           </div>
-        </div>
+        </details>
       </div>
       <div className="panel">
         <PanelHeader eyebrow="Links" title="Open locally" />
@@ -834,7 +862,7 @@ function AttentionCard({ item }: { item: AttentionItem }) {
       </div>
       <div className="card-actions">
         {item.href ? <ExternalButton label="Open" href={item.href} icon={<ExternalLink size={16} />} /> : null}
-        {item.command ? <CopyButton label="Copy" value={item.command} /> : null}
+        {item.command ? <CopyButton label="CLI fallback" value={item.command} /> : null}
       </div>
     </article>
   );
@@ -849,7 +877,7 @@ function SignalCard({ signal }: { signal: ReliabilitySignal }) {
         <strong>{signal.title || signal.action || signal.codename || "Memory candidate"}</strong>
         <p>{signal.message || signal.summary || signal.reason || "Review evidence before promotion."}</p>
       </div>
-      {signal.command ? <CopyButton label="Copy" value={signal.command} /> : null}
+      {signal.command ? <CopyButton label="CLI fallback" value={signal.command} /> : null}
     </article>
   );
 }
