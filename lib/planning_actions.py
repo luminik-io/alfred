@@ -59,16 +59,13 @@ def archive_followup(
     target_path: Path | None = None,
 ) -> Path:
     path = Path(plan.path)
+    content = path.read_text(encoding="utf-8").rstrip()
     handled_dir = path.parent / "handled"
     handled_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     archive_path = handled_dir / path.name
     if archive_path.exists():
         archive_path = handled_dir / f"{path.stem}-{stamp}{path.suffix}"
-    try:
-        content = path.read_text(encoding="utf-8").rstrip()
-    except OSError:
-        content = ""
     metadata = [
         "",
         "---",

@@ -777,7 +777,12 @@ def _readiness_label(plan: PlanDraft) -> str:
     if plan.readiness_score is None and plan.readiness_ok is None:
         return ""
     score = "?" if plan.readiness_score is None else str(plan.readiness_score)
-    state = "ready" if plan.readiness_ok else "needs scope"
+    if plan.readiness_ok is True:
+        state = "ready"
+    elif plan.readiness_ok is False:
+        state = "needs scope"
+    else:
+        state = "not checked"
     return f"{state} ({score}/10)"
 
 

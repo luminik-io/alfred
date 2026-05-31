@@ -4,17 +4,22 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[1]
 LIB = REPO / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
+from planning_actions import mark_followup_handled  # noqa: E402
+from server.reader import FilesystemReader, PlanDraft  # noqa: E402
 from slack_control import (  # noqa: E402
     RunResult,
     SlackControlHandler,
     is_control_message,
     is_valid_codename,
     parse_control_command,
+    render_plan_detail,
 )
 from slack_trust import SlackTrustStore  # noqa: E402
 
@@ -309,6 +314,51 @@ def test_operator_can_mark_followup_handled(tmp_path: Path) -> None:
     archived = tmp_path / "followups" / "handled" / followup.name
     assert archived.exists()
     assert not followup.exists()
+
+
+def test_followup_archive_read_failure_preserves_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    followup = _write_followup(tmp_path)
+    plan = FilesystemReader(tmp_path).get_plan(followup.stem)
+    assert plan is not None
+    real_read_text = Path.read_text
+
+    def fail_followup_read(self: Path, *args, **kwargs):
+        if self == followup:
+            raise OSError("permission denied")
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fail_followup_read)
+
+    with pytest.raises(OSError):
+        mark_followup_handled(plan)
+
+    assert followup.exists()
+    assert not (tmp_path / "followups" / "handled").exists()
+
+
+def test_plan_detail_distinguishes_unknown_readiness() -> None:
+    plan = PlanDraft(
+        plan_id="draft-1",
+        title="Draft with score only",
+        status="draft",
+        parent=None,
+        affected_repos=None,
+        updated_at=None,
+        path="/tmp/draft-1.json",
+        preview="Awaiting review.",
+        content="Awaiting review.",
+        source="planning",
+        readiness_score=7,
+        readiness_ok=None,
+    )
+
+    text = render_plan_detail(plan)
+
+    assert "not checked (7/10)" in text
+    assert "needs scope" not in text
 
 
 def test_bad_plan_id_returns_usage_not_fallthrough() -> None:
