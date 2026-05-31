@@ -507,7 +507,14 @@ def _readiness_refusal(draft_payload: dict[str, Any], *, min_score: int) -> Brid
             "refused_readiness_missing",
             "draft has no readiness report; revise it in Slack or Compose before filing",
         )
-    ok = bool(readiness.get("ok"))
+    raw_ok = readiness.get("ok")
+    if not isinstance(raw_ok, bool):
+        return BridgeOutcome(
+            False,
+            "refused_readiness_missing",
+            "draft readiness ok flag is missing or invalid; revise it before filing",
+        )
+    ok = raw_ok
     raw_score = readiness.get("score")
     if isinstance(raw_score, bool) or not isinstance(raw_score, int | float | str):
         return BridgeOutcome(
@@ -531,8 +538,12 @@ def _readiness_refusal(draft_payload: dict[str, Any], *, min_score: int) -> Brid
         clean_questions = [str(item).strip() for item in questions if str(item).strip()]
         if clean_questions:
             detail += ". Answer first: " + "; ".join(clean_questions[:3])
-    if not ok:
+    findings = readiness.get("findings")
+    has_findings = isinstance(findings, list) and bool(findings)
+    if not ok and has_findings:
         detail += ". Readiness still has blocking findings."
+    elif not ok:
+        detail += ". Readiness is not marked ready."
     return BridgeOutcome(False, "refused_not_ready", detail)
 
 

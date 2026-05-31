@@ -268,6 +268,18 @@ def test_convert_refuses_draft_without_readiness_report() -> None:
     assert creator.calls == []
 
 
+def test_convert_refuses_draft_without_readiness_ok_flag() -> None:
+    creator = RecordingCreator()
+    bridge = SlackIssueBridge(config=_config(), issue_creator=creator)
+    payload = _ready_payload()
+    del payload["readiness"]["ok"]
+    outcome = bridge.convert(payload, trusted=True)
+    assert outcome.created is False
+    assert outcome.status == "refused_readiness_missing"
+    assert "ok flag" in outcome.detail
+    assert creator.calls == []
+
+
 def test_convert_idempotent_when_already_converted() -> None:
     creator = RecordingCreator()
     bridge = SlackIssueBridge(config=_config(), issue_creator=creator)

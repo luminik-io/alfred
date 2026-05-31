@@ -31,5 +31,6 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 }));
 
 afterEach(() => {
+  storage.clear();
   cleanup();
 });
