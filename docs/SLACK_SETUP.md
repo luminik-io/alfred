@@ -337,6 +337,8 @@ from chat by **leading a message with a known verb**. These are handled by
 | `memory promote <id>` | Operator-only. Promote a candidate into future recall. |
 | `memory reject <id>` | Operator-only. Reject a noisy candidate. |
 | `memory redis` | Check the optional Redis Agent Memory Server bridge. |
+| `memory sync` | Preview reviewed-lesson sync to Redis AMS. |
+| `memory sync now` | Operator-only. Write reviewed lessons to Redis AMS. |
 | `pause <codename>` | Stop scheduled firings for one agent (or `all`). |
 | `resume <codename>` | Reverse a pause. |
 | `trusted` | Show the operator and trusted Slack users Alfred currently accepts. |

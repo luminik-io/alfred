@@ -104,6 +104,8 @@ Trusted users can inspect the same local planning queue from Slack:
 | `memory promote <id>` | Operator-only. Promotes a candidate into future recall. |
 | `memory reject <id>` | Operator-only. Rejects a noisy candidate. |
 | `memory redis` | Checks the optional Redis Agent Memory Server bridge. |
+| `memory sync` | Previews reviewed-lesson sync to Redis AMS. |
+| `memory sync now` | Operator-only. Writes reviewed lessons to Redis AMS. |
 
 These commands do not start work, approve execution, file GitHub issues, or
 merge PRs. They are the Slack-native bridge between "someone replied with useful

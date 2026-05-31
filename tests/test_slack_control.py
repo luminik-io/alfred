@@ -620,6 +620,23 @@ def test_memory_sync_defaults_to_dry_run() -> None:
     assert runner.calls[-1] == ["/fake/alfred", "brain", "redis-sync", "--json", "--dry-run"]
 
 
+def test_memory_sync_json_failure_is_reported() -> None:
+    class FailingJsonSyncRunner(FakeRunner):
+        def _brain(self, argv: list[str]) -> RunResult:
+            if argv and argv[0] == "redis-sync":
+                return RunResult(
+                    returncode=2,
+                    stdout=json.dumps({"dry_run": True, "matched": 1, "synced": 0}),
+                    stderr="redis unavailable",
+                )
+            return super()._brain(argv)
+
+    result = _handler(FailingJsonSyncRunner()).handle("memory sync", trusted=True)
+
+    assert result.action == "memory_sync_failed"
+    assert "redis unavailable" in result.text
+
+
 def test_pause_invokes_cli_with_exact_argv() -> None:
     runner = FakeRunner()
     result = _handler(runner).handle("pause lucius", trusted=True)

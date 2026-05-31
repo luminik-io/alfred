@@ -595,7 +595,7 @@ class SlackControlHandler:
             argv.append("--dry-run")
         result = self._run_brain(argv)
         payload = _json_or_none(result.stdout)
-        if result.returncode != 0 and payload is None:
+        if result.returncode != 0:
             err = (result.stderr or result.stdout or "unknown error").strip()
             return ControlResult(
                 True,
