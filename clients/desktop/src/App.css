@@ -148,15 +148,13 @@ code {
 }
 
 .topnav {
+  flex: 1 1 auto;
+  justify-content: center;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.topnav::-webkit-scrollbar {
-  display: none;
+  overflow: visible;
 }
 
 .nav-button {
@@ -199,6 +197,13 @@ code {
 
 .nav-button--active svg {
   color: var(--accent);
+}
+
+.nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .nav-badge {
@@ -1107,6 +1112,19 @@ code {
   border-color: var(--accent);
 }
 
+.server-connect-form {
+  display: grid;
+  gap: 8px;
+}
+
+.server-connect-form label {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 .console-note {
   margin: 0;
   color: var(--muted);
@@ -1570,6 +1588,25 @@ dd {
 }
 
 @media (max-width: 1040px) {
+  .nav-button {
+    width: 42px;
+    padding: 0;
+  }
+
+  .nav-button--active::after {
+    left: 10px;
+    right: 10px;
+  }
+
+  .nav-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
   .hero-strip,
   .inspect-layout,
   .dashboard-grid,
@@ -1606,16 +1643,17 @@ dd {
   }
 }
 
-@media (max-width: 780px) {
+@media (max-width: 920px) {
   .app-shell {
     --shell-gutter: 18px;
     padding-bottom: 36px;
   }
 
   .topbar {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 12px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px 14px;
     padding-top: 14px;
     padding-bottom: 10px;
   }
@@ -1627,7 +1665,8 @@ dd {
 
   .topnav {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     width: 100%;
     overflow: visible;
   }
@@ -1638,10 +1677,21 @@ dd {
     padding: 0 10px;
   }
 
+  .nav-label {
+    position: static;
+    width: auto;
+    height: auto;
+    clip: auto;
+    white-space: nowrap;
+  }
+
   .topbar__status {
-    width: 100%;
+    justify-self: end;
     flex-wrap: wrap;
   }
+}
+
+@media (max-width: 780px) {
 
   .hero-strip {
     padding-top: 24px;
@@ -1719,8 +1769,20 @@ dd {
   }
 
   .topbar__status {
+    grid-column: 1 / -1;
     display: grid;
     grid-template-columns: 1fr 1fr auto;
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  .nav-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
   }
 
   .trusted-form__row {

@@ -91,11 +91,13 @@ function App() {
                 key={item.key}
                 className={active ? "nav-button nav-button--active" : "nav-button"}
                 type="button"
+                aria-label={item.label}
                 aria-current={active ? "page" : undefined}
+                title={item.label}
                 onClick={() => setTab(item.key)}
               >
                 <Icon size={17} aria-hidden="true" />
-                <span>{item.label}</span>
+                <span className="nav-label">{item.label}</span>
                 {badge ? (
                   <span className="nav-badge" aria-label={`${badge} unread`}>
                     {badge > 9 ? "9+" : badge}
@@ -210,6 +212,8 @@ function App() {
       ) : null}
       {tab === "setup" ? (
         <SetupView
+          baseUrl={baseUrl}
+          loading={loading}
           actionNotice={actionNotice}
           trustedSlack={snapshot?.trustedSlack || null}
           busyTrustedUser={busyTrustedUser}
@@ -218,6 +222,7 @@ function App() {
           onRemoveTrustedUser={removeTrustedUser}
           onRunLocalAction={runLocalAction}
           onStartRuntime={startRuntime}
+          onConnectServer={(url) => void refresh(url)}
           onSwitch={setTab}
         />
       ) : null}

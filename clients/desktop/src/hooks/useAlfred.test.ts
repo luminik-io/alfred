@@ -30,8 +30,14 @@ const rememberBaseUrlMock = hooks.rememberBaseUrlMock;
 vi.mock("../api", () => ({
   FALLBACK_BASE_URL: hooks.FALLBACK_BASE_URL,
   initialBaseUrl: () => hooks.DEFAULT_BASE_URL,
+  alternateDefaultBaseUrl: (value: string) => {
+    const normalized = value.trim().replace(/\/$/, "");
+    if (normalized === hooks.DEFAULT_BASE_URL) return hooks.FALLBACK_BASE_URL;
+    if (normalized === hooks.FALLBACK_BASE_URL) return hooks.DEFAULT_BASE_URL;
+    return null;
+  },
   isDefaultBaseUrl: (value: string) =>
-    value.trim().replace(/\/$/, "") === hooks.DEFAULT_BASE_URL,
+    [hooks.DEFAULT_BASE_URL, hooks.FALLBACK_BASE_URL].includes(value.trim().replace(/\/$/, "")),
   rememberBaseUrl: (value: string) => hooks.rememberBaseUrlMock(value),
   loadSnapshot: (baseUrl: string) => hooks.loadSnapshotMock(baseUrl),
   runNativeAction: () => hooks.runNativeActionMock(),
@@ -168,6 +174,30 @@ describe("useAlfred fallback port", () => {
     expect(loadSnapshotMock).toHaveBeenCalledWith(DEFAULT_BASE_URL);
     expect(loadSnapshotMock).toHaveBeenCalledWith(FALLBACK_BASE_URL);
     expect(rememberBaseUrlMock).toHaveBeenLastCalledWith(FALLBACK_BASE_URL);
+  });
+
+  it("tries preferred 7010 when a saved legacy 7000 endpoint fails", async () => {
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("bane")]));
+
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    loadSnapshotMock.mockImplementation(async (baseUrl: string) => {
+      if (baseUrl === FALLBACK_BASE_URL) {
+        throw new Error("connection refused");
+      }
+      return snapshot([agent("lucius")]);
+    });
+
+    await act(async () => {
+      await result.current.refresh(FALLBACK_BASE_URL);
+    });
+
+    expect(result.current.baseUrl).toBe(DEFAULT_BASE_URL);
+    expect(result.current.error).toBeNull();
+    expect(loadSnapshotMock).toHaveBeenCalledWith(FALLBACK_BASE_URL);
+    expect(loadSnapshotMock).toHaveBeenCalledWith(DEFAULT_BASE_URL);
+    expect(rememberBaseUrlMock).toHaveBeenLastCalledWith(DEFAULT_BASE_URL);
   });
 });
 

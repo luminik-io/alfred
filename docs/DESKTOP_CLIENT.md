@@ -14,10 +14,10 @@ The app is a Tauri shell around a React UI. It opens on Home and keeps primary n
 |---|---|---|
 | **Home** | The decision queue: blocked plans, follow-ups, stale workers, repeated failures, memory candidates, and recent runs. | Draft work, refresh state, pause or resume all scheduled firings through the native allowlist, and jump to the right surface. |
 | **Compose** | Plain-language planning intake backed by the same readiness engine as Slack. | Draft or refine a plan before it is converted into an issue or spec. |
-| **Plans** | Saved Batman plans, Slack drafts, local compose drafts, and captured follow-ups. | Convert a follow-up into a planning draft, mark it handled, or open the local detail view. |
+| **Plans** | Saved Batman plans, Slack drafts, local compose drafts, and captured follow-ups. | Convert a follow-up into a planning draft, mark it handled, or inspect the saved detail in-app. |
 | **Memory** | Reviewable memory candidates, promotion suggestions, memory errors, Redis status, Redis sync preview, and failure-pattern harvest. | Promote or reject candidates, run the memory doctor, check Redis AMS, preview sync, and queue repeated-failure lessons. |
 | **Fleet** | Service state and per-agent controls. | Pause, resume, run once, or dry-run a codename through the native allowlist. |
-| **Logs** | Notifications and firing timelines in one readable stream. | Mark activity seen and open local traces, Slack, or GitHub links outside the app. |
+| **Logs** | Notifications and firing timelines in one readable stream. | Mark activity seen, inspect firing traces in-app, and open explicit Slack or GitHub links outside the app. |
 | **Setup gear** | A command console for fleet, auth, agent, memory, Redis, runtime, and Slack collaborator checks. | Start the local runtime, run curated checks in-app, and add or remove local trusted Slack collaborators. |
 
 Plans carry their origin so the Slack collaboration trail stays visible while the app keeps a clean local draft inbox.
@@ -28,22 +28,25 @@ The client reads the fleet's own state over the `alfred serve` JSON seam and run
 
 - **Read path.** The UI loads `/api/status`, `/api/actions`, `/api/memory/candidates`, `/api/firings`, `/api/plans`, and `/api/slack/trusted-users` from `alfred serve`. In the desktop shell these go through a Tauri command (`fetch_alfred_json`) that only allows Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`.
 - **Local actions.** State-changing controls use a narrow native allowlist: start the local runtime, fleet status, list agents, auth status, brain doctor, Redis status, Redis sync preview, memory harvest, safe agent dry-runs, pause, resume, run once, local memory review endpoints (`promote`, `reject`), local follow-up planning endpoints (`convert-followup`, `mark-handled`), and local Slack collaborator edits. There is no arbitrary shell execution. Each action surfaces the result and command audit detail.
-- **Outside links.** Links to Slack, GitHub, and `alfred serve` open outside the app through Tauri's opener plugin rather than inside a webview.
+- **Outside links.** Slack and GitHub links open outside the app through Tauri's opener plugin. Local Alfred plans and firings stay in the native inspector panes.
 
 When run in a plain browser (development preview), the app stays read-only: native actions are unavailable and only the JSON read path works.
 
 ## Run it locally
 
-Start the runtime first (or start it from the Setup gear):
-
-```sh
-alfred serve --no-browser
-```
-
-If port 7000 is taken:
+Start the runtime from the Setup gear, or run the same port manually:
 
 ```sh
 alfred serve --port 7010 --no-browser
+```
+
+The app probes `7010` first because macOS can reserve `7000` for Control Center.
+If you already have an older `alfred serve` running on `7000`, the app probes
+that as the legacy fallback and the Setup gear lets you point the client at a
+custom local URL.
+
+```sh
+alfred serve --no-browser
 ```
 
 Then run the desktop shell:
@@ -54,7 +57,7 @@ npm install
 npm run tauri dev
 ```
 
-The client defaults to `http://127.0.0.1:7000` and falls back to `7010`.
+The client defaults to `http://127.0.0.1:7010` and falls back to `7000`.
 
 ## Build native installers
 

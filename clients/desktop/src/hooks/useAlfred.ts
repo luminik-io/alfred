@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  FALLBACK_BASE_URL,
   addTrustedSlackUser,
+  alternateDefaultBaseUrl,
   convertFollowupToDraft,
   errorDetail,
   initialBaseUrl,
-  isDefaultBaseUrl,
   loadSnapshot,
   markFollowupHandled,
   promoteMemoryCandidate,
@@ -78,12 +77,13 @@ export function useAlfred() {
           setBaseUrl(targetBaseUrl);
           rememberBaseUrl(targetBaseUrl);
         } catch (firstErr) {
-          if (isDefaultBaseUrl(targetBaseUrl)) {
-            const next = await loadSnapshot(FALLBACK_BASE_URL);
+          const alternateBaseUrl = alternateDefaultBaseUrl(targetBaseUrl);
+          if (alternateBaseUrl) {
+            const next = await loadSnapshot(alternateBaseUrl);
             if (id !== reqRef.current) return;
             setSnapshot(next);
-            setBaseUrl(FALLBACK_BASE_URL);
-            rememberBaseUrl(FALLBACK_BASE_URL);
+            setBaseUrl(alternateBaseUrl);
+            rememberBaseUrl(alternateBaseUrl);
           } else {
             throw firstErr;
           }

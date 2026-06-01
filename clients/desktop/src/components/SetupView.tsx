@@ -11,7 +11,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { supportsNativeActions } from "../api";
 import type { ActionNotice, NativeActionRequest, TabKey } from "../lib/uiTypes";
@@ -19,6 +19,8 @@ import type { TrustedSlackUsersResponse } from "../types";
 import { ExternalButton, PanelHeader } from "./atoms";
 
 export function SetupView({
+  baseUrl,
+  loading,
   actionNotice,
   trustedSlack,
   busyTrustedUser,
@@ -27,8 +29,11 @@ export function SetupView({
   onRemoveTrustedUser,
   onRunLocalAction,
   onStartRuntime,
+  onConnectServer,
   onSwitch,
 }: {
+  baseUrl: string;
+  loading: boolean;
   actionNotice: ActionNotice;
   trustedSlack: TrustedSlackUsersResponse | null;
   busyTrustedUser: string | null;
@@ -37,13 +42,19 @@ export function SetupView({
   onRemoveTrustedUser: (userId: string) => void;
   onRunLocalAction: (request: NativeActionRequest) => void;
   onStartRuntime: () => void;
+  onConnectServer: (url: string) => void;
   onSwitch: (tab: TabKey) => void;
 }) {
   const canRun = supportsNativeActions();
   const [consoleAgent, setConsoleAgent] = useState("lucius");
+  const [serverUrl, setServerUrl] = useState(baseUrl);
   const [trustedUserId, setTrustedUserId] = useState("");
   const trustedUsers = trustedSlack?.users || [];
   const canAddTrusted = Boolean(trustedUserId.trim()) && !busyTrustedUser;
+
+  useEffect(() => {
+    setServerUrl(baseUrl);
+  }, [baseUrl]);
 
   return (
     <section className="dashboard-grid">
@@ -55,6 +66,28 @@ export function SetupView({
           terminal-style result in this app.
         </p>
         <div className="console-panel" aria-label="Local Alfred command console">
+          <form
+            className="server-connect-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const nextUrl = serverUrl.trim();
+              if (nextUrl) onConnectServer(nextUrl);
+            }}
+          >
+            <label htmlFor="server-url">Local server URL</label>
+            <div className="server-row">
+              <input
+                id="server-url"
+                value={serverUrl}
+                onChange={(event) => setServerUrl(event.currentTarget.value)}
+                placeholder="http://127.0.0.1:7010"
+                spellCheck={false}
+              />
+              <button className="secondary-button" type="submit" disabled={loading || !serverUrl.trim()}>
+                <span>{loading ? "Checking" : "Use URL"}</span>
+              </button>
+            </div>
+          </form>
           <div className="console-panel__actions">
             <button
               className="icon-button"

@@ -49,11 +49,11 @@ flowchart TB
 |---|---|
 | Home | The decision queue: repeated failures, blocked plans, follow-ups, memory candidates, recent plans, recent runs, and fleet-wide pause/resume actions. |
 | Compose | Plain-language planning intake backed by the same readiness engine as Slack. |
-| Plans | Saved Batman plans, Slack drafts, local compose drafts, and captured follow-ups. |
+| Plans | Saved Batman plans, Slack drafts, local compose drafts, captured follow-ups, and an in-app inspector for saved plan detail. |
 | Memory | Reviewable memory candidates, promotion suggestions, memory errors, Redis status, Redis sync preview, and failure-pattern harvest. |
 | Fleet | Per-agent service state, safe dry-runs, pause, resume, and run-once actions. |
-| Logs | Notifications and firing timelines, including engine context, worktree path, issue links, and PR links. |
-| Setup gear | Start the local runtime and run fleet/auth/agent/memory/Redis checks in-app. |
+| Logs | Notifications and firing timelines, including engine context, worktree path, issue links, PR links, and in-app firing traces. |
+| Setup gear | Start or reconnect to the local runtime and run fleet/auth/agent/memory/Redis checks in-app. |
 
 ## Boundary
 
@@ -64,7 +64,8 @@ gateway, public port, shadow database, or separate scheduler.
 
 The boundary is enforced in the Tauri layer. The fetch command only allows
 Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or
-`http://[::1]`. Links to Slack, GitHub, and `alfred serve` open outside the app.
+`http://[::1]`. Local plan/run details stay in native inspector panes; explicit
+Slack and GitHub links open outside the app.
 State-changing controls use a narrow native allowlist (start runtime, run
 checks, safe dry-runs, pause, resume, run once, and local follow-up planning)
 and surface command audit detail with the result. There is no arbitrary shell
@@ -73,11 +74,14 @@ execution. In a plain browser preview, native actions are unavailable.
 ## Run it locally
 
 ```sh
-alfred serve --no-browser
+alfred serve --port 7010 --no-browser
 cd clients/desktop
 npm install
 npm run tauri dev
 ```
+
+The app probes `7010` first and falls back to `7000` for older local runtimes;
+Setup lets you enter a custom localhost URL when needed.
 
 ## Native installers
 

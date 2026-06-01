@@ -148,8 +148,9 @@ The frontend does not call arbitrary URLs. The Tauri command only allows an
 allowlisted set of Alfred JSON API paths on `http://localhost`,
 `http://127.0.0.1`, or `http://[::1]`: read-only GET paths plus a narrow set of
 POST endpoints (follow-up planning actions and the Compose draft endpoint
-`POST /api/plans/draft`). Links to Slack, GitHub, and `alfred serve` open
-outside the app through Tauri's opener plugin.
+`POST /api/plans/draft`). Local plan and firing detail stays in native
+inspector panes; explicit Slack and GitHub links open outside the app through
+Tauri's opener plugin.
 
 State-changing controls use a narrow native allowlist. The app can start the
 local runtime, run fleet/auth/agent checks, pause, resume, run once, run safe
