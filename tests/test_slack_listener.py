@@ -28,6 +28,15 @@ class Poster:
         return {"ok": True}
 
 
+class MemoryProvider:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def propose_memory(self, **kwargs):
+        self.calls.append(kwargs)
+        return SimpleNamespace(id=f"cand-{len(self.calls)}")
+
+
 def test_bridge_ack_for_not_ready_draft_is_actionable() -> None:
     text = render_bridge_outcome_ack(
         SimpleNamespace(
@@ -286,6 +295,40 @@ def test_plan_prefixed_prose_still_creates_planning_draft(tmp_path: Path) -> Non
     assert result.handled is True
     assert result.action == "draft_created"
     assert list((tmp_path / "planning-drafts").glob("*.json"))
+
+
+def test_ready_slack_draft_queues_reviewable_memory_candidate(tmp_path: Path) -> None:
+    provider = MemoryProvider()
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        memory_provider=provider,
+    )
+
+    result = listener.handle_payload(
+        _dm(
+            "title: Queue Slack planning memories\n"
+            "problem: Operators need Alfred to preserve useful Slack planning decisions without manual notes.\n"
+            "desired: Alfred queues a reviewable memory candidate after a scoped Slack draft is saved.\n"
+            "repo: luminik-io/alfred-os\n"
+            "acceptance: the local draft records the memory candidate id for review\n"
+            "test: run the Slack listener unit test and verify no lesson is promoted automatically\n"
+            "out of scope: automatic promotion\n"
+            "question: none",
+            event_id="EvMemory",
+        )
+    )
+
+    assert result.handled is True
+    assert result.action == "draft_created"
+    assert provider.calls
+    assert provider.calls[0]["repo"] == "luminik-io/alfred-os"
+    assert provider.calls[0]["source"] == "slack-draft"
+    assert provider.calls[0]["tags"] == ["slack", "planning"]
+    draft = json.loads(Path(result.draft_path).read_text(encoding="utf-8"))
+    assert draft["memory_candidate_ids"] == ["cand-1"]
 
 
 def test_operator_can_trust_collaborator_without_listener_restart(
