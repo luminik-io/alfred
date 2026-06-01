@@ -45,8 +45,14 @@ Reliability and first-run trust polish.
   context without making chat text an approval mechanism.
 - Native local client preview: `clients/desktop` ships a Tauri Mac/Linux shell
   over `alfred serve` JSON APIs. It opens to "what needs attention?", shows
-  Home, Compose, Fleet, Logs, and Setup gear surfaces, opens external links
-  outside the app, and keeps Slack as the collaboration surface.
+  Home, Compose, Plans, Memory, Fleet, Logs, and Setup gear surfaces, keeps
+  local plan/run detail in native inspector panes, opens only explicit
+  Slack/GitHub links outside the app, supports responsive primary navigation,
+  and keeps Slack as the collaboration surface.
+- Goal contract design: Alfred-owned goals define outcome, verification,
+  constraints, gates, evidence, and blocked state across Slack, CLI, native
+  client, planner, evaluator, and memory. Engine-native goal modes are execution
+  hints, not the source of truth.
 
 ### v0.4.0: 2026-05-23
 
@@ -81,7 +87,7 @@ Items with active work and a committed IC.
 
 - **Plan-review gate as a runtime feature.** Promote `plan() -> review_plan() -> execute() -> review_diff()` from an architecture note to the default lifecycle for codenames that opt in. Today the review step exists in prose; the runtime makes it enforceable. IC: core. Effort: M. Issue: TBD.
 - **Public unattended-SLA emit format.** Extend `alfred-shipped-public` with a 30-day rolling window covering firings, success rate, and unattended hours. Operators who want a public proof page can render this on their own site. IC: core. Effort: S. Issue: TBD.
-- **Local client v2.** Keep Slack as the collaboration surface and build on the preview Tauri shell with signed Mac builds, Linux artifacts, setup checks, credentials, safe pause/resume, dry-run launch, doctor execution, and memory promotion actions. No extra gateway, no local mirror, no second source of truth. IC: core. Effort: M. Issue: TBD.
+- **Local client v2.** Keep Slack as the collaboration surface and build on the preview Tauri shell with signed Mac builds, Linux artifacts, setup checks, credentials, safe pause/resume, dry-run launch, doctor execution, memory promotion actions, and a first-class Goals inbox/evidence inspector. No extra gateway, no local mirror, no second source of truth. IC: core. Effort: M. Issue: TBD.
 - **fleet-brain v2.** Replace the SQLite layer with PGLite plus Apache AGE for graph queries and pgvector for semantic recall, exposed through an MCP server adapter so local clients can read fleet memory. IC: core. Effort: L. Issue: TBD.
 - **Memory quality loop v2.** Add evidence-linked lesson promotion, approved follow-up execution for governor findings, spec-to-issue memory, and lightweight candidate quality checks before promotion. IC: core. Effort: M. Issue: TBD.
 

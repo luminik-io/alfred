@@ -40,8 +40,6 @@ function App() {
   const [tab, setTab] = useState<TabKey>("home");
   const {
     baseUrl,
-    serverInput,
-    setServerInput,
     snapshot,
     error,
     errorRaw,
@@ -93,11 +91,13 @@ function App() {
                 key={item.key}
                 className={active ? "nav-button nav-button--active" : "nav-button"}
                 type="button"
+                aria-label={item.label}
                 aria-current={active ? "page" : undefined}
+                title={item.label}
                 onClick={() => setTab(item.key)}
               >
                 <Icon size={17} aria-hidden="true" />
-                <span>{item.label}</span>
+                <span className="nav-label">{item.label}</span>
                 {badge ? (
                   <span className="nav-badge" aria-label={`${badge} unread`}>
                     {badge > 9 ? "9+" : badge}
@@ -112,7 +112,7 @@ function App() {
           <button
             className="connect-chip"
             type="button"
-            onClick={() => void refresh(serverInput)}
+            onClick={() => void refresh()}
             disabled={loading}
             aria-label={error ? "Reconnect to Alfred serve" : "Refresh fleet state"}
             title={baseUrl}
@@ -151,12 +151,10 @@ function App() {
           attention={attention}
           baseUrl={baseUrl}
           stats={stats}
-          serverInput={serverInput}
-          setServerInput={setServerInput}
           nativeBusy={nativeBusy}
           loading={loading}
           onRunLocalAction={runLocalAction}
-          onRefresh={(value) => void refresh(value ?? serverInput)}
+          onRefresh={() => void refresh()}
           onSwitch={setTab}
         />
       ) : null}
@@ -167,12 +165,12 @@ function App() {
           actionNotice={actionNotice}
           busyPlanAction={busyPlanAction}
           onFollowupAction={runFollowupAction}
+          onSwitch={setTab}
         />
       ) : null}
       {tab === "plans" ? (
         <PlansView
           plans={snapshot?.plans || []}
-          baseUrl={baseUrl}
           actionNotice={actionNotice}
           busyPlanAction={busyPlanAction}
           onFollowupAction={runFollowupAction}
@@ -209,12 +207,13 @@ function App() {
             seen={seenIds}
             onMarkAllSeen={markActivitySeen}
           />
-          <RunsView firings={snapshot?.firings || []} baseUrl={baseUrl} />
+          <RunsView firings={snapshot?.firings || []} />
         </section>
       ) : null}
       {tab === "setup" ? (
         <SetupView
           baseUrl={baseUrl}
+          loading={loading}
           actionNotice={actionNotice}
           trustedSlack={snapshot?.trustedSlack || null}
           busyTrustedUser={busyTrustedUser}
@@ -223,6 +222,8 @@ function App() {
           onRemoveTrustedUser={removeTrustedUser}
           onRunLocalAction={runLocalAction}
           onStartRuntime={startRuntime}
+          onConnectServer={(url) => void refresh(url)}
+          onSwitch={setTab}
         />
       ) : null}
     </main>

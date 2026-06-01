@@ -1,6 +1,5 @@
 import {
   CheckCircle2,
-  ExternalLink,
   GitPullRequest,
   ListChecks,
   MemoryStick,
@@ -12,16 +11,16 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { supportsNativeActions } from "../api";
-import { localUrl } from "../lib/links";
-import type { ActionNotice, NativeActionRequest } from "../lib/uiTypes";
+import type { ActionNotice, NativeActionRequest, TabKey } from "../lib/uiTypes";
 import type { TrustedSlackUsersResponse } from "../types";
 import { ExternalButton, PanelHeader } from "./atoms";
 
 export function SetupView({
   baseUrl,
+  loading,
   actionNotice,
   trustedSlack,
   busyTrustedUser,
@@ -30,8 +29,11 @@ export function SetupView({
   onRemoveTrustedUser,
   onRunLocalAction,
   onStartRuntime,
+  onConnectServer,
+  onSwitch,
 }: {
   baseUrl: string;
+  loading: boolean;
   actionNotice: ActionNotice;
   trustedSlack: TrustedSlackUsersResponse | null;
   busyTrustedUser: string | null;
@@ -40,12 +42,19 @@ export function SetupView({
   onRemoveTrustedUser: (userId: string) => void;
   onRunLocalAction: (request: NativeActionRequest) => void;
   onStartRuntime: () => void;
+  onConnectServer: (url: string) => void;
+  onSwitch: (tab: TabKey) => void;
 }) {
   const canRun = supportsNativeActions();
   const [consoleAgent, setConsoleAgent] = useState("lucius");
+  const [serverUrl, setServerUrl] = useState(baseUrl);
   const [trustedUserId, setTrustedUserId] = useState("");
   const trustedUsers = trustedSlack?.users || [];
   const canAddTrusted = Boolean(trustedUserId.trim()) && !busyTrustedUser;
+
+  useEffect(() => {
+    setServerUrl(baseUrl);
+  }, [baseUrl]);
 
   return (
     <section className="dashboard-grid">
@@ -57,6 +66,28 @@ export function SetupView({
           terminal-style result in this app.
         </p>
         <div className="console-panel" aria-label="Local Alfred command console">
+          <form
+            className="server-connect-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const nextUrl = serverUrl.trim();
+              if (nextUrl) onConnectServer(nextUrl);
+            }}
+          >
+            <label htmlFor="server-url">Local server URL</label>
+            <div className="server-row">
+              <input
+                id="server-url"
+                value={serverUrl}
+                onChange={(event) => setServerUrl(event.currentTarget.value)}
+                placeholder="http://127.0.0.1:7010"
+                spellCheck={false}
+              />
+              <button className="secondary-button" type="submit" disabled={loading || !serverUrl.trim()}>
+                <span>{loading ? "Checking" : "Use URL"}</span>
+              </button>
+            </div>
+          </form>
           <div className="console-panel__actions">
             <button
               className="icon-button"
@@ -153,7 +184,7 @@ export function SetupView({
             action, then the result panel shows the command, exit status, stdout, and stderr.
           </p>
           <div className="cli-chip-list">
-            <code>alfred serve --port 7000 --no-browser</code>
+            <code>alfred serve --port 7010 --no-browser</code>
             <code>alfred status --json</code>
             <code>alfred auth status</code>
             <code>alfred agents</code>
@@ -229,14 +260,16 @@ export function SetupView({
         </div>
       </div>
       <div className="panel">
-        <PanelHeader eyebrow="Links" title="Open locally" />
+        <PanelHeader eyebrow="Shortcuts" title="Stay in Alfred" />
         <div className="link-stack">
-          <ExternalButton label="Open serve" href={baseUrl} icon={<ExternalLink size={16} />} />
-          <ExternalButton
-            label="Open plans"
-            href={localUrl(baseUrl, "/plans")}
-            icon={<ListChecks size={16} />}
-          />
+          <button className="secondary-button" type="button" onClick={() => onSwitch("plans")}>
+            <ListChecks size={16} aria-hidden="true" />
+            <span>Planning inbox</span>
+          </button>
+          <button className="secondary-button" type="button" onClick={() => onSwitch("memory")}>
+            <MemoryStick size={16} aria-hidden="true" />
+            <span>Memory review</span>
+          </button>
           <ExternalButton
             label="Open GitHub"
             href="https://github.com/luminik-io/alfred-os"

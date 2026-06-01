@@ -16,8 +16,8 @@ import type {
   TrustedSlackUsersResponse,
 } from "./types";
 
-const DEFAULT_BASE_URL = "http://127.0.0.1:7000";
-export const FALLBACK_BASE_URL = "http://127.0.0.1:7010";
+export const DEFAULT_BASE_URL = "http://127.0.0.1:7010";
+export const FALLBACK_BASE_URL = "http://127.0.0.1:7000";
 const BASE_URL_KEY = "alfred-desktop.base-url";
 
 declare global {
@@ -119,10 +119,24 @@ export function rememberBaseUrl(value: string): void {
 }
 
 export function isDefaultBaseUrl(value: string): boolean {
+  return Boolean(alternateDefaultBaseUrl(value));
+}
+
+export function alternateDefaultBaseUrl(value: string): string | null {
   try {
-    return normalizedBaseUrl(value) === `${DEFAULT_BASE_URL}/`;
+    const normalized = normalizedBaseUrl(value);
+    if (normalized === `${DEFAULT_BASE_URL}/`) {
+      return FALLBACK_BASE_URL;
+    }
+    if (normalized === `${FALLBACK_BASE_URL}/`) {
+      return DEFAULT_BASE_URL;
+    }
+    return null;
   } catch {
-    return value.trim() === DEFAULT_BASE_URL;
+    const trimmed = value.trim();
+    if (trimmed === DEFAULT_BASE_URL) return FALLBACK_BASE_URL;
+    if (trimmed === FALLBACK_BASE_URL) return DEFAULT_BASE_URL;
+    return null;
   }
 }
 
@@ -258,7 +272,7 @@ export async function runNativeAction(
   return invoke<NativeCommandResult>("run_alfred_action", { action, target });
 }
 
-export async function startLocalRuntime(port = 7000): Promise<NativeCommandResult> {
+export async function startLocalRuntime(port = 7010): Promise<NativeCommandResult> {
   if (!isTauri()) {
     throw new Error("The desktop app is needed to start Alfred locally.");
   }

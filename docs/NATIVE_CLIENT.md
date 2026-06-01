@@ -195,9 +195,10 @@ The first client lives at `clients/desktop`:
 - API calls are restricted to `http://localhost`, `http://127.0.0.1`, or
   `http://[::1]` and to the `/api/status`, `/api/actions`, `/api/firings`,
   `/api/plans`, compose-draft, and follow-up action contracts.
-- Links to Slack, GitHub, and local serve detail pages open outside the app.
-- The app opens to Home and has Home, Compose, Fleet, and Logs tabs, with Setup
-  behind the gear.
+- Local plan and firing details stay in native inspector panes; only explicit
+  Slack and GitHub links open outside the app.
+- The app opens to Home and has Home, Compose, Plans, Memory, Fleet, and Logs
+  tabs, with Setup behind the gear.
 - Home shows the decision queue, recent plans, recent runs, memory candidates,
   and fleet-wide pause/resume actions.
 - Compose combines plain-language planning intake with saved plans and
@@ -213,8 +214,9 @@ The first client lives at `clients/desktop`:
   shell: it runs curated Alfred actions and shows terminal-style output inside
   the client. Browser preview is read-only instead of presenting copy-command
   fallbacks.
-- Pause, resume, lock clearing, and memory promotion should become write
-  actions only after they return preview/result payloads.
+- Pause, resume, dry-run, follow-up handling, and memory promotion are native
+  write actions behind the allowlist; destructive actions still need explicit
+  preview or confirmation before they run.
 
 Run it locally:
 
@@ -224,9 +226,9 @@ npm install
 npm run tauri dev
 ```
 
-The Setup gear can start `alfred serve --no-browser` for you. If port 7000 is
-taken, run `alfred serve --port 7010 --no-browser`; the app also probes that
-fallback on first load.
+The Setup gear can start `alfred serve --port 7010 --no-browser` for you. The
+app prefers 7010 because macOS can reserve 7000 for Control Center; if you
+manually run the CLI default on 7000, the app probes that as a fallback.
 
 ## API Shape To Stabilize Next
 

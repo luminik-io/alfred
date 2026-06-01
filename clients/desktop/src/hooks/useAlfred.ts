@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  FALLBACK_BASE_URL,
   addTrustedSlackUser,
+  alternateDefaultBaseUrl,
   convertFollowupToDraft,
   errorDetail,
   initialBaseUrl,
-  isDefaultBaseUrl,
   loadSnapshot,
   markFollowupHandled,
   promoteMemoryCandidate,
@@ -42,7 +41,6 @@ export type UseAlfred = ReturnType<typeof useAlfred>;
 
 export function useAlfred() {
   const [baseUrl, setBaseUrl] = useState(initialBaseUrl);
-  const [serverInput, setServerInput] = useState(initialBaseUrl);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorRaw, setErrorRaw] = useState<string | null>(null);
@@ -77,16 +75,15 @@ export function useAlfred() {
           if (id !== reqRef.current) return;
           setSnapshot(next);
           setBaseUrl(targetBaseUrl);
-          setServerInput(targetBaseUrl);
           rememberBaseUrl(targetBaseUrl);
         } catch (firstErr) {
-          if (isDefaultBaseUrl(targetBaseUrl)) {
-            const next = await loadSnapshot(FALLBACK_BASE_URL);
+          const alternateBaseUrl = alternateDefaultBaseUrl(targetBaseUrl);
+          if (alternateBaseUrl) {
+            const next = await loadSnapshot(alternateBaseUrl);
             if (id !== reqRef.current) return;
             setSnapshot(next);
-            setBaseUrl(FALLBACK_BASE_URL);
-            setServerInput(FALLBACK_BASE_URL);
-            rememberBaseUrl(FALLBACK_BASE_URL);
+            setBaseUrl(alternateBaseUrl);
+            rememberBaseUrl(alternateBaseUrl);
           } else {
             throw firstErr;
           }
@@ -280,7 +277,7 @@ export function useAlfred() {
     try {
       const result = await startLocalRuntime();
       setNativeResult(result);
-      window.setTimeout(() => void refresh("http://127.0.0.1:7000"), 900);
+      window.setTimeout(() => void refresh("http://127.0.0.1:7010"), 900);
     } catch (err) {
       setNativeError(err instanceof Error ? err.message : String(err));
       setNativeErrorRaw(errorDetail(err));
@@ -289,7 +286,7 @@ export function useAlfred() {
     }
   }, [refresh]);
 
-  const attention = useMemo(() => buildAttention(snapshot, baseUrl), [snapshot, baseUrl]);
+  const attention = useMemo(() => buildAttention(snapshot), [snapshot]);
   const stats = useMemo(() => buildStats(snapshot), [snapshot]);
 
   const feed = useMemo(() => buildFeed(snapshot), [snapshot]);
@@ -338,8 +335,6 @@ export function useAlfred() {
 
   return {
     baseUrl,
-    serverInput,
-    setServerInput,
     snapshot,
     error,
     errorRaw,

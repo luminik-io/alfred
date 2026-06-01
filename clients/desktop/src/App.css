@@ -23,9 +23,7 @@
   --blue: #5789ff;
   --radius: 8px;
   --shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
-  /* Typography tokens. --font-mono was referenced (cli-fallback summary) but
-     never defined; --font-display centralizes the Space Grotesk display face
-     that was inlined across the sheet. */
+  /* Shared typography tokens. */
   --font-body: "Quicksand", system-ui, sans-serif;
   --font-display: "Space Grotesk Variable", "Quicksand", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -74,8 +72,7 @@ button:disabled {
   opacity: 0.72;
 }
 
-/* Keyboard focus must be visible. There was no :focus-visible anywhere before,
-   so tabbing through the app was invisible. Mouse clicks keep no ring. */
+/* Keyboard focus ring. */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -96,9 +93,21 @@ code {
 }
 
 .app-shell {
-  width: min(1240px, 100%);
+  --shell-gutter: clamp(20px, 3.2vw, 72px);
+  width: 100%;
   margin: 0 auto;
-  padding: 0 28px 48px;
+  padding: 0 var(--shell-gutter) 56px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .topbar {
@@ -110,8 +119,8 @@ code {
   justify-content: space-between;
   gap: 20px;
   min-height: 76px;
-  margin: 0 -28px;
-  padding: 0 28px;
+  margin: 0 calc(var(--shell-gutter) * -1);
+  padding: 0 var(--shell-gutter);
   background: color-mix(in srgb, var(--black) 88%, transparent);
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(16px) saturate(1.1);
@@ -139,15 +148,13 @@ code {
 }
 
 .topnav {
+  flex: 1 1 auto;
+  justify-content: center;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.topnav::-webkit-scrollbar {
-  display: none;
+  overflow: visible;
 }
 
 .nav-button {
@@ -164,9 +171,7 @@ code {
   font-weight: 700;
 }
 
-/* Hover is a subtle surface lift. The active tab is visually distinct: accent
-   text + an accent underline bar, so the current section reads at a glance and
-   is not confused with whatever the pointer is hovering. */
+/* Top navigation states. */
 .nav-button:hover {
   color: var(--bright);
   background: var(--surface-2);
@@ -194,6 +199,13 @@ code {
   color: var(--accent);
 }
 
+.nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .nav-badge {
   display: inline-flex;
   align-items: center;
@@ -210,8 +222,7 @@ code {
   line-height: 1;
 }
 
-/* Slim top-header status group: a connection pill + a compact connect/refresh
-   affordance that lives on every tab (the full connection panel is Now-only). */
+/* Compact status group in the sticky header. */
 .topbar__status {
   display: inline-flex;
   align-items: center;
@@ -362,31 +373,17 @@ code {
 
 .hero-strip {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.46fr);
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 0.42fr);
   gap: 32px;
-  align-items: end;
-  padding: 56px 0 28px;
-}
-
-.hero-strip h1 {
-  max-width: 760px;
-  margin: 0 0 12px;
-  color: var(--bright);
-  font-family: var(--font-display);
-  font-size: clamp(2.5rem, 6vw, 4.7rem);
-  line-height: 1;
-  letter-spacing: 0;
+  align-items: center;
+  padding: 32px 0 22px;
 }
 
 .hero-strip p {
   max-width: 720px;
   margin: 0;
   color: var(--text);
-  font-size: 1.08rem;
-}
-
-.hero-strip--home {
-  align-items: center;
+  font-size: 1rem;
 }
 
 .section-kicker {
@@ -400,6 +397,10 @@ code {
   text-transform: uppercase;
 }
 
+.home-brief {
+  min-width: 0;
+}
+
 .home-actions {
   display: flex;
   flex-wrap: wrap;
@@ -411,6 +412,60 @@ code {
   display: grid;
   justify-items: end;
   gap: 12px;
+  width: 100%;
+}
+
+.runtime-strip,
+.fleet-quick-panel {
+  width: min(100%, 520px);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+
+.runtime-strip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+}
+
+.runtime-strip span,
+.fleet-quick-panel span {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.runtime-strip code {
+  justify-self: end;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fleet-quick-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+}
+
+.fleet-quick-panel strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--bright);
+}
+
+.fleet-quick-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .compose-stack,
@@ -518,9 +573,7 @@ code {
   background: #5bf5df;
 }
 
-/* Destructive affirmative (Yes, pause / Yes, run): never the benign teal. It
-   carries the amber confirm-bar tint so a state-changing confirm is visually
-   distinct from a Refresh/Draft-it primary. */
+/* Destructive affirmative actions. */
 .danger-button {
   padding: 0 14px;
   color: var(--black);
@@ -532,8 +585,7 @@ code {
   background: color-mix(in srgb, var(--warn) 86%, #fff);
 }
 
-/* Service re-activation (Resume): an amber-outlined action, distinct from both
-   the benign teal primary and the plain secondary. */
+/* Service re-activation action. */
 .warn-button {
   padding: 0 12px;
   color: var(--warn);
@@ -819,6 +871,17 @@ code {
   grid-template-columns: minmax(0, 1fr) minmax(320px, 0.55fr);
 }
 
+.inspect-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(360px, 0.6fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.plan-grid--compact {
+  align-content: start;
+}
+
 .panel {
   min-width: 0;
   padding: 22px;
@@ -904,6 +967,12 @@ code {
   color: var(--error);
 }
 
+.plan-card--selected,
+.run-card--selected {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-strong));
+  background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+}
+
 .attention-card span {
   display: block;
   color: var(--muted);
@@ -945,6 +1014,50 @@ code {
 
 .card-actions--start {
   justify-content: flex-start;
+}
+
+.detail-panel {
+  position: sticky;
+  top: 96px;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+
+.detail-panel__head span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.detail-panel__head h3 {
+  margin: 0;
+  color: var(--bright);
+  font-family: var(--font-display);
+  font-size: 1.18rem;
+  line-height: 1.25;
+}
+
+.detail-pre {
+  max-height: min(58vh, 720px);
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: rgba(0, 0, 0, 0.26);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
 .button-stack {
@@ -997,6 +1110,19 @@ code {
 
 .console-agent-row input:focus {
   border-color: var(--accent);
+}
+
+.server-connect-form {
+  display: grid;
+  gap: 8px;
+}
+
+.server-connect-form label {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .console-note {
@@ -1462,10 +1588,34 @@ dd {
 }
 
 @media (max-width: 1040px) {
+  .nav-button {
+    width: 42px;
+    padding: 0;
+  }
+
+  .nav-button--active::after {
+    left: 10px;
+    right: 10px;
+  }
+
+  .nav-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
   .hero-strip,
+  .inspect-layout,
   .dashboard-grid,
   .dashboard-grid--memory {
     grid-template-columns: 1fr;
+  }
+
+  .detail-panel {
+    position: static;
   }
 
   .metric-grid,
@@ -1479,17 +1629,33 @@ dd {
   }
 }
 
-@media (max-width: 780px) {
+@media (min-width: 1440px) {
+  .dashboard-grid {
+    grid-template-columns: minmax(520px, 1.35fr) repeat(2, minmax(320px, 0.75fr));
+  }
+
+  .dashboard-grid > .panel:last-child {
+    grid-column: 2 / -1;
+  }
+
+  .panel--wide {
+    grid-row: span 2;
+  }
+}
+
+@media (max-width: 920px) {
   .app-shell {
-    padding: 0 18px 36px;
+    --shell-gutter: 18px;
+    padding-bottom: 36px;
   }
 
   .topbar {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 12px;
-    margin: 0 -18px;
-    padding: 14px 18px 10px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px 14px;
+    padding-top: 14px;
+    padding-bottom: 10px;
   }
 
   .brand img {
@@ -1499,7 +1665,8 @@ dd {
 
   .topnav {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     width: 100%;
     overflow: visible;
   }
@@ -1510,17 +1677,24 @@ dd {
     padding: 0 10px;
   }
 
+  .nav-label {
+    position: static;
+    width: auto;
+    height: auto;
+    clip: auto;
+    white-space: nowrap;
+  }
+
   .topbar__status {
-    width: 100%;
+    justify-self: end;
     flex-wrap: wrap;
   }
+}
+
+@media (max-width: 780px) {
 
   .hero-strip {
-    padding-top: 34px;
-  }
-
-  .hero-strip h1 {
-    font-size: clamp(2.25rem, 14vw, 3.5rem);
+    padding-top: 24px;
   }
 
   .notice-panel {
@@ -1544,13 +1718,24 @@ dd {
   .run-card,
   .command-row,
   .console-agent-row,
-  .home-actions {
+  .home-actions,
+  .runtime-strip,
+  .fleet-quick-panel {
     grid-template-columns: 1fr;
   }
 
   .home-actions {
     display: grid;
     justify-content: stretch;
+  }
+
+  .runtime-strip code {
+    justify-self: start;
+  }
+
+  .fleet-quick-actions {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .card-actions {
@@ -1584,8 +1769,20 @@ dd {
   }
 
   .topbar__status {
+    grid-column: 1 / -1;
     display: grid;
     grid-template-columns: 1fr 1fr auto;
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  .nav-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
   }
 
   .trusted-form__row {

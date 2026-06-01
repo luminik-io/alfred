@@ -218,7 +218,7 @@ flowchart TB
     ui -.->|open outside the app| slackthread
 ```
 
-The boundary is enforced in the Tauri layer, not just by convention. The fetch command only allows Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`; links to Slack, GitHub, and `alfred serve` open *outside* the app through Tauri's opener plugin. State-changing controls use a narrow native allowlist (start the runtime, run fleet/auth/agent/memory/Redis checks, safe agent dry-runs, pause/resume/run, and local follow-up planning) and surface command audit detail with the result. There is no arbitrary shell execution. See [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md) and [`SERVE.md`](SERVE.md) for the full client and API contracts, and [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) for the tab-by-tab control surface and how to build native installers.
+The boundary is enforced in the Tauri layer, not just by convention. The fetch command only allows Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`; local plans and firing traces stay in native inspector panes, while explicit Slack and GitHub links open *outside* the app through Tauri's opener plugin. State-changing controls use a narrow native allowlist (start the runtime, run fleet/auth/agent/memory/Redis checks, safe agent dry-runs, pause/resume/run, and local follow-up planning) and surface command audit detail with the result. There is no arbitrary shell execution. See [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md) and [`SERVE.md`](SERVE.md) for the full client and API contracts, and [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) for the tab-by-tab control surface and how to build native installers.
 
 ## Disk guardian
 

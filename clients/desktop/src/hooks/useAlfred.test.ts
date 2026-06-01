@@ -8,15 +8,15 @@ import type { AgentSummary, NativeCommandResult, Snapshot } from "../types";
 // deterministic. trayEvents/notifications/derive/fleetControl stay real (pure).
 // vi.mock is hoisted above module init, so the mocks and constants the factory
 // needs are declared via vi.hoisted.
-const DEFAULT_BASE_URL = "http://127.0.0.1:7000";
-const FALLBACK_BASE_URL = "http://127.0.0.1:7010";
+const DEFAULT_BASE_URL = "http://127.0.0.1:7010";
+const FALLBACK_BASE_URL = "http://127.0.0.1:7000";
 
 const hooks = vi.hoisted(() => ({
   loadSnapshotMock: vi.fn(),
   runNativeActionMock: vi.fn(),
   rememberBaseUrlMock: vi.fn(),
-  DEFAULT_BASE_URL: "http://127.0.0.1:7000",
-  FALLBACK_BASE_URL: "http://127.0.0.1:7010",
+  DEFAULT_BASE_URL: "http://127.0.0.1:7010",
+  FALLBACK_BASE_URL: "http://127.0.0.1:7000",
 }));
 
 const loadSnapshotMock = hooks.loadSnapshotMock as ReturnType<
@@ -30,8 +30,14 @@ const rememberBaseUrlMock = hooks.rememberBaseUrlMock;
 vi.mock("../api", () => ({
   FALLBACK_BASE_URL: hooks.FALLBACK_BASE_URL,
   initialBaseUrl: () => hooks.DEFAULT_BASE_URL,
+  alternateDefaultBaseUrl: (value: string) => {
+    const normalized = value.trim().replace(/\/$/, "");
+    if (normalized === hooks.DEFAULT_BASE_URL) return hooks.FALLBACK_BASE_URL;
+    if (normalized === hooks.FALLBACK_BASE_URL) return hooks.DEFAULT_BASE_URL;
+    return null;
+  },
   isDefaultBaseUrl: (value: string) =>
-    value.trim().replace(/\/$/, "") === hooks.DEFAULT_BASE_URL,
+    [hooks.DEFAULT_BASE_URL, hooks.FALLBACK_BASE_URL].includes(value.trim().replace(/\/$/, "")),
   rememberBaseUrl: (value: string) => hooks.rememberBaseUrlMock(value),
   loadSnapshot: (baseUrl: string) => hooks.loadSnapshotMock(baseUrl),
   runNativeAction: () => hooks.runNativeActionMock(),
@@ -152,7 +158,7 @@ describe("useAlfred refresh race", () => {
 });
 
 describe("useAlfred fallback port", () => {
-  it("retries on 7010 when the default 7000 fails", async () => {
+  it("retries on 7000 when the preferred 7010 endpoint fails", async () => {
     // Initial mount refresh: default rejects, fallback resolves.
     loadSnapshotMock.mockImplementation(async (baseUrl: string) => {
       if (baseUrl === DEFAULT_BASE_URL) {
@@ -168,6 +174,30 @@ describe("useAlfred fallback port", () => {
     expect(loadSnapshotMock).toHaveBeenCalledWith(DEFAULT_BASE_URL);
     expect(loadSnapshotMock).toHaveBeenCalledWith(FALLBACK_BASE_URL);
     expect(rememberBaseUrlMock).toHaveBeenLastCalledWith(FALLBACK_BASE_URL);
+  });
+
+  it("tries preferred 7010 when a saved legacy 7000 endpoint fails", async () => {
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("bane")]));
+
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    loadSnapshotMock.mockImplementation(async (baseUrl: string) => {
+      if (baseUrl === FALLBACK_BASE_URL) {
+        throw new Error("connection refused");
+      }
+      return snapshot([agent("lucius")]);
+    });
+
+    await act(async () => {
+      await result.current.refresh(FALLBACK_BASE_URL);
+    });
+
+    expect(result.current.baseUrl).toBe(DEFAULT_BASE_URL);
+    expect(result.current.error).toBeNull();
+    expect(loadSnapshotMock).toHaveBeenCalledWith(FALLBACK_BASE_URL);
+    expect(loadSnapshotMock).toHaveBeenCalledWith(DEFAULT_BASE_URL);
+    expect(rememberBaseUrlMock).toHaveBeenLastCalledWith(DEFAULT_BASE_URL);
   });
 });
 
