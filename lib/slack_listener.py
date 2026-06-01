@@ -642,49 +642,50 @@ class SlackPlanningListener:
         now = _utc_now()
         try:
             revision_dir.mkdir(parents=True, exist_ok=True)
-            existing = _read_json_object(path) or {}
-            existing_revisions = existing.get("revisions")
-            revisions = existing_revisions if isinstance(existing_revisions, list) else []
-            stored_count = existing.get("revision_count")
-            revision_count = (
-                stored_count + 1
-                if isinstance(stored_count, int) and not isinstance(stored_count, bool)
-                else len(revisions) + 1
-            )
-            revision = {
-                "author": feedback.author,
-                "text": feedback.text,
-                "ts": feedback.ts,
-                "captured_at": now,
-                "requires_resolution": requires_resolution,
-                "revised_repos": list(revised_repos),
-            }
-            payload = {
-                "source": "slack-plan-thread",
-                "kind": "plan_revision",
-                "created_at": existing.get("created_at") or now,
-                "updated_at": now,
-                "revision_count": revision_count,
-                "record": {
-                    "channel": record.channel,
-                    "thread_ts": record.thread_ts,
-                    "codename": record.codename,
-                    "firing_id": record.firing_id,
-                    "title": record.title,
-                    "parent_repo": record.parent_repo,
-                    "parent_issue": record.parent_issue,
-                    "plan_path": record.plan_path,
-                },
-                "feedback": list(all_feedback),
-                "latest": revision,
-                "revisions": [*revisions, revision][-_MAX_STORED_REVISIONS:],
-            }
-            tmp = path.with_name(f"{path.name}.tmp")
-            tmp.write_text(
-                json.dumps(payload, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
-            )
-            tmp.replace(path)
+            with _draft_revision_lock(path):
+                existing = _read_json_object(path) or {}
+                existing_revisions = existing.get("revisions")
+                revisions = existing_revisions if isinstance(existing_revisions, list) else []
+                stored_count = existing.get("revision_count")
+                revision_count = (
+                    stored_count + 1
+                    if isinstance(stored_count, int) and not isinstance(stored_count, bool)
+                    else len(revisions) + 1
+                )
+                revision = {
+                    "author": feedback.author,
+                    "text": feedback.text,
+                    "ts": feedback.ts,
+                    "captured_at": now,
+                    "requires_resolution": requires_resolution,
+                    "revised_repos": list(revised_repos),
+                }
+                payload = {
+                    "source": "slack-plan-thread",
+                    "kind": "plan_revision",
+                    "created_at": existing.get("created_at") or now,
+                    "updated_at": now,
+                    "revision_count": revision_count,
+                    "record": {
+                        "channel": record.channel,
+                        "thread_ts": record.thread_ts,
+                        "codename": record.codename,
+                        "firing_id": record.firing_id,
+                        "title": record.title,
+                        "parent_repo": record.parent_repo,
+                        "parent_issue": record.parent_issue,
+                        "plan_path": record.plan_path,
+                    },
+                    "feedback": list(all_feedback),
+                    "latest": revision,
+                    "revisions": [*revisions, revision][-_MAX_STORED_REVISIONS:],
+                }
+                tmp = path.with_name(f"{path.name}.tmp")
+                tmp.write_text(
+                    json.dumps(payload, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+                tmp.replace(path)
             return path, revision_count
         except OSError as exc:
             print(
@@ -1343,8 +1344,6 @@ def _clean_slack_text(text: str) -> str:
 
 
 def _read_draft_payload(path: Path | None) -> dict[str, Any] | None:
-    if path is None:
-        return None
     return _read_json_object(path)
 
 
