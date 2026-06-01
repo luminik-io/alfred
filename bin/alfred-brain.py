@@ -792,7 +792,7 @@ def _looks_like_duplicate_candidate(exc: Exception) -> bool:
     if not isinstance(exc, sqlite3.IntegrityError):
         return False
     text = str(exc).lower()
-    return "memory_candidates" in text and ("unique" in text or "constraint" in text)
+    return "memory_candidates" in text and "unique" in text
 
 
 def _pattern_keys_from_tags(tags: object) -> set[str]:
