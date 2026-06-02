@@ -416,7 +416,7 @@ def evaluate_pretooluse(
         if isinstance(edit, dict):
             hit = _banned_name_in(str(edit.get("new_string", "")))
             if hit:
-                return ("deny", f"Blocked: writing the banned name '{hit}' " "(OSS scrub rule).")
+                return ("deny", f"Blocked: writing the banned name '{hit}' (OSS scrub rule).")
     return ALLOW
 
 
