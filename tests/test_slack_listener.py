@@ -13,6 +13,7 @@ if str(LIB) not in sys.path:
 
 from slack_listener import (  # noqa: E402
     SlackPlanningListener,
+    _repos_from_text,
     draft_from_slack_text,
     render_bridge_outcome_ack,
 )
@@ -62,6 +63,18 @@ class LegacyMemoryProvider:
             }
         )
         return len(self.calls)
+
+
+def test_repos_from_text_handles_github_urls() -> None:
+    # Slack wraps bare links as <https://github.com/org/repo>; the owner/repo
+    # must come from the URL path, not be mis-parsed as "github.com/org".
+    assert _repos_from_text("please fix <https://github.com/org/repo> today") == ["org/repo"]
+    assert _repos_from_text("see https://github.com/org/repo/issues/5") == ["org/repo"]
+    assert _repos_from_text("clone https://github.com/org/repo.git") == ["org/repo"]
+    # Bare owner/repo tokens still work, and order/dedupe is preserved.
+    assert _repos_from_text("work on org/api and acme/web and org/api") == ["org/api", "acme/web"]
+    # A URL repo plus a bare repo: both captured, URL first, no github.com noise.
+    assert _repos_from_text("<https://github.com/org/api> and acme/web") == ["org/api", "acme/web"]
 
 
 def test_bridge_ack_for_not_ready_draft_is_actionable() -> None:
