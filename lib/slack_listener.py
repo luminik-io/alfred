@@ -1317,10 +1317,17 @@ def _list_field(fields: dict[str, str], key: str) -> list[str]:
 
 
 def _repos_from_text(text: str) -> list[str]:
-    repos = re.findall(r"\b[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\b", text)
+    # Slack commonly wraps a bare GitHub link as <https://github.com/org/repo>.
+    # A naive owner/repo scan matches "github.com/org" first, saving an invalid
+    # scope, so pull the real org/repo out of any github.com URL and strip the
+    # URLs before scanning for bare owner/repo tokens.
+    url_repos = re.findall(r"github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)", text)
+    text_wo_urls = re.sub(r"https?://\S+", " ", text)
+    bare_repos = re.findall(r"\b[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\b", text_wo_urls)
     seen: set[str] = set()
     out: list[str] = []
-    for repo in repos:
+    for repo in [*url_repos, *bare_repos]:
+        repo = repo[:-4] if repo.endswith(".git") else repo
         if repo not in seen:
             seen.add(repo)
             out.append(repo)
