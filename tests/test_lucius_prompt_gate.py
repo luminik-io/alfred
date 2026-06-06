@@ -63,6 +63,10 @@ def test_missing_file_is_not_auto_seed(lucius, tmp_path):
     assert lucius._is_unmodified_auto_seed(tmp_path / "nope.md") is False
 
 
+def test_lucius_pr_body_link_closes_issue(lucius):
+    assert lucius.issue_closing_line(42) == "Closes #42"
+
+
 def test_operator_prompt_guidance_skips_untouched_seed_end_to_end(lucius):
     # Drive the real injection path: PROMPT_PATH points at ALFRED_HOME/prompts.
     lucius.PROMPT_PATH.parent.mkdir(parents=True, exist_ok=True)
