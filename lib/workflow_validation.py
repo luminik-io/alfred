@@ -73,9 +73,9 @@ def changed_workflow_files(
     if not worktree.exists():
         return ()
     commands = (
-        ("git", "diff", "--name-only", f"{base}..HEAD"),
-        ("git", "diff", "--name-only", "--cached"),
-        ("git", "diff", "--name-only"),
+        ("git", "diff", "--name-only", "--diff-filter=ACMRTUXB", f"{base}...HEAD"),
+        ("git", "diff", "--name-only", "--diff-filter=ACMRTUXB", "--cached"),
+        ("git", "diff", "--name-only", "--diff-filter=ACMRTUXB"),
     )
     changed: set[str] = set()
     for cmd in commands:
@@ -84,7 +84,7 @@ def changed_workflow_files(
             continue
         for line in (res.stdout or "").splitlines():
             path = line.strip()
-            if _is_workflow_path(path):
+            if _is_workflow_path(path) and (worktree / path).is_file():
                 changed.add(path)
     return tuple(sorted(changed))
 

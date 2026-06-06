@@ -36,6 +36,7 @@ from agent_runner import (
     codex_invoke,
     codex_sandbox_for_agent,
     commit_trailer,
+    create_recovery_ref,
     doctor_mode,
     engine_preflight_bins,
     gh_json,
@@ -298,6 +299,47 @@ def fixed_comment_ids_from_pr_comments(comments: list[dict]) -> set[int]:
             except ValueError:
                 continue
     return fixed
+
+
+def preserve_workflow_validation_failure(
+    wt: Path,
+    *,
+    head_ref: str,
+    pr_num: int,
+    comment_id: int,
+    workflow_validation,
+    events: EventLog,
+) -> tuple[str, str | None]:
+    """Warn and create a recovery ref for unpushed review-fix workflow changes."""
+    recovery_ref = create_recovery_ref(wt, branch=head_ref)
+    detail = short(
+        workflow_validation.stderr
+        or workflow_validation.stdout
+        or workflow_validation.reason
+        or "workflow validation failed",
+        260,
+    )
+    files = ", ".join(workflow_validation.files) or "(unknown workflow)"
+    ref_part = f"; recovery_ref={recovery_ref}" if recovery_ref else ""
+    reason = (
+        f"workflow validation failed for comment {comment_id}; files={files}{ref_part}. {detail}"
+    )
+    print(
+        f"[{AGENT.upper()}-WORKFLOW-VALIDATION-FAILED] comment {comment_id}: "
+        f"files={files}{ref_part}. {detail}"
+    )
+    slack_post(
+        f"[{AGENT.upper()}-WORKFLOW-VALIDATION-FAILED] PR {pr_num} "
+        f"comment {comment_id}; files={files}{ref_part}. {detail}",
+        severity="warn",
+    )
+    events.emit(
+        "workflow_validation_failed",
+        comment_id=comment_id,
+        files=list(workflow_validation.files),
+        recovery_ref=recovery_ref,
+    )
+    return reason, recovery_ref
 
 
 def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
@@ -590,6 +632,8 @@ def main() -> int:
     fix_summary = []
     total_turns = 0
     engine_counts: dict[str, int] = {}
+    preserved_failure_reason = ""
+    preserved_recovery_ref: str | None = None
 
     for c in comments:
         cbody = c["body"]
@@ -736,29 +780,15 @@ def main() -> int:
         # Push + reply on the PR
         workflow_validation = validate_changed_workflows(wt)
         if not workflow_validation.ok:
-            detail = short(
-                workflow_validation.stderr
-                or workflow_validation.stdout
-                or workflow_validation.reason
-                or "workflow validation failed",
-                260,
-            )
-            files = ", ".join(workflow_validation.files) or "(unknown workflow)"
-            print(
-                f"[{AGENT.upper()}-WORKFLOW-VALIDATION-FAILED] comment {cid}: "
-                f"files={files}. {detail}"
-            )
-            slack_post(
-                f"[{AGENT.upper()}-WORKFLOW-VALIDATION-FAILED] PR {pr_num} "
-                f"comment {cid}; files={files}. {detail}",
-                severity="warn",
-            )
-            events.emit(
-                "workflow_validation_failed",
+            preserved_failure_reason, preserved_recovery_ref = preserve_workflow_validation_failure(
+                wt,
+                head_ref=head_ref,
+                pr_num=pr_num,
                 comment_id=cid,
-                files=list(workflow_validation.files),
+                workflow_validation=workflow_validation,
+                events=events,
             )
-            continue
+            break
         push = run(["git", "push", "origin", f"HEAD:{head_ref}"], cwd=str(wt), timeout=60)
         if push.returncode != 0:
             print(f"[{AGENT.upper()}-PUSH-FAIL] comment {cid}: {short(push.stderr, 200)}")
@@ -780,10 +810,26 @@ def main() -> int:
     save_fixed_ids(fixed_ids)
     save_no_commit_streaks(no_commit_streaks)
     spend.increment(firings_today=1, turns_today=total_turns)
-    remove_worktree(repo, wt)
     engine_summary = (
         ", ".join(f"{engine}:{count}" for engine, count in sorted(engine_counts.items())) or "none"
     )
+
+    if preserved_failure_reason:
+        spend.increment(failures_today=1, consecutive_failures=1)
+        msg = (
+            f"{AGENT.title()}: preserved local worktree for PR {pr_num}; "
+            f"{preserved_failure_reason} worktree={wt}"
+        )
+        print(msg)
+        events.emit(
+            "firing_complete",
+            outcome="workflow-validation-failed",
+            preserved_worktree=str(wt),
+            recovery_ref=preserved_recovery_ref,
+        )
+        return 1
+
+    remove_worktree(repo, wt)
 
     if fixes_landed == 0:
         # No fixes landed but the firing completed cleanly. Count as no-op

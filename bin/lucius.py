@@ -8,6 +8,7 @@ import json
 import os
 import shlex
 import sys
+import time
 import tomllib
 from pathlib import Path
 
@@ -73,6 +74,8 @@ if "--dry-run" in sys.argv:
 # renamed agent renders cleanly.
 AGENT = os.environ.get("AGENT_CODENAME", "lucius")
 LUCIUS_ENGINE = agent_engine(AGENT, default="hybrid")
+DEPENDENCY_WARNING_LEDGER = ALFRED_HOME / "state" / AGENT / "dependency-lookup-warnings.json"
+DEPENDENCY_WARNING_TTL_SECONDS = int(os.environ.get("ALFRED_DEPENDENCY_WARNING_TTL_S", "21600"))
 PROMPT_PATH = ALFRED_HOME / "prompts" / f"{AGENT}.md"
 # The shipped starter template for the feature-dev role (what alfred-init seeds
 # as <codename>.md). Used to detect an untouched seed by content comparison.
@@ -259,7 +262,7 @@ def _default_node_pre_push_command(local_dir: Path) -> str:
                 (local_dir / "package-lock.json").exists()
                 or (local_dir / "npm-shrinkwrap.json").exists()
             )
-            else "npm install"
+            else "npm install --package-lock=false"
         )
         manager = "npm"
         typecheck = "npx tsc --noEmit"
@@ -721,9 +724,17 @@ def dependency_lockfile_drift(wt: Path) -> list[str]:
             continue
         if not _package_dependencies_changed(wt, path):
             continue
+        package_dir = Path(path).parent
         existing_locks = [
             candidate for candidate in _lockfile_candidates(path) if (wt / candidate).exists()
         ]
+        if str(package_dir) != ".":
+            local_prefix = f"{package_dir}/"
+            local_locks = [
+                lockfile for lockfile in existing_locks if lockfile.startswith(local_prefix)
+            ]
+            if local_locks:
+                existing_locks = local_locks
         if existing_locks and not any(lockfile in changed for lockfile in existing_locks):
             drift.append(
                 f"{path} changed dependency fields but no lockfile changed "
@@ -758,6 +769,37 @@ def run_pre_push_checks(repo: str, wt: Path) -> PrePushResult:
     )
 
 
+def _dependency_warning_key(repo: str, issue_num: object, gh_repo: str, dep_number: int) -> str:
+    return f"{repo}#{issue_num}->{gh_repo}#{dep_number}"
+
+
+def _should_warn_dependency_lookup_failure(key: str, *, now: float | None = None) -> bool:
+    """Return True when a dependency lookup failure should notify Slack."""
+    now = time.time() if now is None else now
+    try:
+        raw = json.loads(DEPENDENCY_WARNING_LEDGER.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raw = {}
+    ledger = {}
+    for k, v in raw.items():
+        try:
+            ledger[str(k)] = float(v)
+        except (TypeError, ValueError):
+            continue
+    last = ledger.get(key)
+    if last is not None and now - last < DEPENDENCY_WARNING_TTL_SECONDS:
+        return False
+    cutoff = now - (DEPENDENCY_WARNING_TTL_SECONDS * 4)
+    ledger = {k: v for k, v in ledger.items() if v >= cutoff}
+    ledger[key] = now
+    try:
+        DEPENDENCY_WARNING_LEDGER.parent.mkdir(parents=True, exist_ok=True)
+        DEPENDENCY_WARNING_LEDGER.write_text(json.dumps(ledger, sort_keys=True), encoding="utf-8")
+    except OSError:
+        return True
+    return True
+
+
 def issue_has_open_dependencies(repo: str, issue: dict) -> bool:
     """True when an issue declares dependencies that are not closed yet."""
     for dep in issue_dependencies(issue, default_repo=repo):
@@ -783,7 +825,9 @@ def issue_has_open_dependencies(repo: str, issue: dict) -> bool:
                 f"could not resolve dependency {gh_repo}#{dep.number}"
             )
             print(msg)
-            slack_post(msg, severity="warn")
+            key = _dependency_warning_key(repo, issue_num, gh_repo, dep.number)
+            if _should_warn_dependency_lookup_failure(key):
+                slack_post(msg, severity="warn")
             return True
         if dep_state != "CLOSED":
             return True

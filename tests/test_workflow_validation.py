@@ -19,8 +19,12 @@ def test_changed_workflow_files_detects_unstaged_yaml(tmp_path):
     workflow.write_text("name: CI\n", encoding="utf-8")
 
     def fake_run(cmd, **_kwargs):
-        assert cmd[0:3] == ["git", "diff", "--name-only"]
-        return subprocess.CompletedProcess(cmd, 0, stdout=".github/workflows/ci.yml\nREADME.md\n")
+        assert cmd[0:4] == ["git", "diff", "--name-only", "--diff-filter=ACMRTUXB"]
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout=".github/workflows/ci.yml\n.github/workflows/deleted.yml\nREADME.md\n",
+        )
 
     assert changed_workflow_files(worktree, run_cmd=fake_run) == (".github/workflows/ci.yml",)
 
@@ -45,7 +49,9 @@ def test_validate_changed_workflows_passes_when_no_workflows(tmp_path):
 
 def test_validate_changed_workflows_fails_closed_when_actionlint_missing(tmp_path, monkeypatch):
     worktree = tmp_path / "repo"
-    (worktree / ".github" / "workflows").mkdir(parents=True)
+    workflows = worktree / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text("name: CI\n", encoding="utf-8")
 
     def fake_run(cmd, **_kwargs):
         if "diff" in cmd:
@@ -63,7 +69,9 @@ def test_validate_changed_workflows_fails_closed_when_actionlint_missing(tmp_pat
 
 def test_validate_changed_workflows_passes_with_actionlint(tmp_path):
     worktree = tmp_path / "repo"
-    (worktree / ".github" / "workflows").mkdir(parents=True)
+    workflows = worktree / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text("name: CI\n", encoding="utf-8")
     calls: list[list[str]] = []
 
     def fake_run(cmd, **_kwargs):
@@ -85,7 +93,9 @@ def test_validate_changed_workflows_passes_with_actionlint(tmp_path):
 
 def test_validate_changed_workflows_reports_actionlint_failure(tmp_path):
     worktree = tmp_path / "repo"
-    (worktree / ".github" / "workflows").mkdir(parents=True)
+    workflows = worktree / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text("name: CI\n", encoding="utf-8")
 
     def fake_run(cmd, **_kwargs):
         if "diff" in cmd:
@@ -105,7 +115,9 @@ def test_validate_changed_workflows_reports_actionlint_failure(tmp_path):
 
 def test_validate_changed_workflows_reports_actionlint_timeout(tmp_path):
     worktree = tmp_path / "repo"
-    (worktree / ".github" / "workflows").mkdir(parents=True)
+    workflows = worktree / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text("name: CI\n", encoding="utf-8")
 
     def fake_run(cmd, **kwargs):
         if "diff" in cmd:

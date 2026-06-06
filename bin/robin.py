@@ -247,6 +247,17 @@ def labels_to_add_for_triage(
     ], gate_labels
 
 
+def labels_to_add_when_refetch_fails(severity: str, extra: object) -> list[str]:
+    """Fail closed on `agent:implement` when Robin cannot re-check live labels."""
+    raw_extra = extra if isinstance(extra, (list, tuple, set)) else []
+    clean_extra = [
+        label
+        for label in raw_extra
+        if isinstance(label, str) and label != label_constants.IMPLEMENT
+    ]
+    return [severity] + [label for label in clean_extra if label in ALLOWED_EXTRA_LABELS]
+
+
 def parse_triage_payload(text: str) -> dict:
     """Parse Robin's LLM JSON payload, tolerating fenced JSON and short prose wrappers."""
     stripped = (text or "").strip()
@@ -482,6 +493,7 @@ Output - print EXACTLY this JSON to stdout, nothing else:
         if not severity.startswith("severity:"):
             continue
 
+        raw_extra = extra if isinstance(extra, (list, tuple, set)) else []
         current = gh_json(
             [
                 "gh",
@@ -493,14 +505,22 @@ Output - print EXACTLY this JSON to stdout, nothing else:
                 "--json",
                 "labels",
             ],
-            default={"labels": []},
+            default=None,
         )
-        labels_to_add, current_gate_labels = labels_to_add_for_triage(
-            severity,
-            extra,
-            issue_label_names(current),
-        )
-        raw_extra = extra if isinstance(extra, (list, tuple, set)) else []
+        if not isinstance(current, dict) or not isinstance(current.get("labels"), list):
+            labels_to_add = labels_to_add_when_refetch_fails(severity, extra)
+            current_gate_labels = ["refetch-failed"]
+            events.emit(
+                "triage_refetch_failed",
+                repo=f"{GH_ORG}/{repo}",
+                number=num,
+            )
+        else:
+            labels_to_add, current_gate_labels = labels_to_add_for_triage(
+                severity,
+                extra,
+                issue_label_names(current),
+            )
         if current_gate_labels and label_constants.IMPLEMENT in raw_extra:
             events.emit(
                 "triage_implement_stripped",
