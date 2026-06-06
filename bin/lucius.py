@@ -187,18 +187,18 @@ def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
             out[repo] = user_cfg[repo]
             continue
         local_dir = WORKSPACE / local_repo_dir(repo)
+        # Default by suffix
+        if repo.endswith("-backend") or repo.endswith("-api"):
+            out[repo] = "./gradlew check"
+            continue
         node_default = _default_node_pre_push_command(local_dir)
         if node_default:
             out[repo] = node_default
             continue
-        # Default by suffix
-        if repo.endswith("-backend") or repo.endswith("-api"):
-            out[repo] = "./gradlew check"
+        if (local_dir / "pyproject.toml").exists():
+            out[repo] = "uv run ruff check . && uv run mypy . && uv run pytest"
         else:
-            if (local_dir / "pyproject.toml").exists():
-                out[repo] = "uv run ruff check . && uv run mypy . && uv run pytest"
-            else:
-                out[repo] = ""
+            out[repo] = ""
     return out
 
 
@@ -750,6 +750,7 @@ def run_pre_push_checks(repo: str, wt: Path) -> PrePushResult:
 def issue_has_open_dependencies(repo: str, issue: dict) -> bool:
     """True when an issue declares dependencies that are not closed yet."""
     for dep in issue_dependencies(issue, default_repo=repo):
+        gh_repo = dep.repo if "/" in dep.repo else f"{GH_ORG}/{dep.repo}"
         state = gh_json(
             [
                 "gh",
@@ -757,7 +758,7 @@ def issue_has_open_dependencies(repo: str, issue: dict) -> bool:
                 "view",
                 str(dep.number),
                 "-R",
-                f"{GH_ORG}/{dep.repo}",
+                gh_repo,
                 "--json",
                 "state",
             ],

@@ -542,6 +542,25 @@ def test_lucius_infers_node_pre_push_from_package_json(monkeypatch, tmp_path):
     assert command == "npm ci && npm run typecheck && npm run lint && CI=1 npm test"
 
 
+def test_lucius_prefers_gradle_for_backend_suffix_over_package_json(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    repo = tmp_path / "workspace" / "service"
+    repo.mkdir(parents=True)
+    (repo / "package.json").write_text(
+        json.dumps({"scripts": {"test": "jest"}}),
+        encoding="utf-8",
+    )
+    (repo / "package-lock.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(lucius, "WORKSPACE", tmp_path / "workspace")
+    monkeypatch.setattr(lucius, "LUCIUS_REPOS", ["service-backend"])
+    monkeypatch.setattr(lucius, "local_repo_dir", lambda _repo: "service")
+
+    command = lucius._load_pre_push_config("lucius")["service-backend"]
+
+    assert command == "./gradlew check"
+
+
 def test_lucius_dependency_lockfile_drift_detects_dependency_change(monkeypatch, tmp_path):
     lucius = load_bin_module("lucius.py", monkeypatch)
     (tmp_path / "package.json").write_text(
@@ -617,6 +636,28 @@ def test_lucius_push_blocks_when_pre_push_fails(monkeypatch, tmp_path):
         }
     ]
     assert posts and "Missing: niyora-sync" in posts[0]
+
+
+def test_lucius_dependency_check_preserves_cross_org_refs(monkeypatch):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    monkeypatch.setattr(lucius, "GH_ORG", "acme")
+    calls: list[list[str]] = []
+
+    def fake_gh_json(cmd, *, default):
+        calls.append(list(cmd))
+        return {"state": "CLOSED"}
+
+    monkeypatch.setattr(lucius, "gh_json", fake_gh_json)
+    issue = {
+        "number": 42,
+        "url": "https://github.com/acme/backend/issues/42",
+        "body": "Depends on: other-org/shared#9, api#7, #6",
+    }
+
+    assert lucius.issue_has_open_dependencies("backend", issue) is False
+
+    repos = [cmd[cmd.index("-R") + 1] for cmd in calls]
+    assert repos == ["acme/api", "acme/backend", "other-org/shared"]
 
 
 def test_huntress_redacts_logs_and_creates_private_run_dir(monkeypatch):

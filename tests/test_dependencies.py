@@ -24,9 +24,20 @@ Blocked by: https://github.com/acme/agents/issues/56
 """
 
     assert parse_dependency_refs(body, default_repo="backend") == (
-        IssueRef("agents", 56),
+        IssueRef("acme/agents", 56),
+        IssueRef("acme/frontend", 34),
         IssueRef("backend", 12),
-        IssueRef("frontend", 34),
+    )
+
+
+def test_parse_dependency_refs_qualifies_bare_refs_with_default_owner():
+    body = """
+Depends on: #12, frontend#34
+"""
+
+    assert parse_dependency_refs(body, default_repo="acme/backend") == (
+        IssueRef("acme/backend", 12),
+        IssueRef("acme/frontend", 34),
     )
 
 

@@ -11,10 +11,12 @@ DEPENDENCY_LINE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 URL_REF = re.compile(
-    r"https://github\.com/[^/\s#]+/(?P<repo>[^/\s#]+)/(?:issues|pull)/(?P<number>\d+)",
+    r"https://github\.com/(?P<owner>[^/\s#]+)/(?P<repo>[^/\s#]+)/(?:issues|pull)/(?P<number>\d+)",
     re.IGNORECASE,
 )
-QUALIFIED_REF = re.compile(r"(?<![\w.-])(?:[^/\s#]+/)?(?P<repo>[\w.-]+)#(?P<number>\d+)\b")
+QUALIFIED_REF = re.compile(
+    r"(?<![\w.-])(?:(?P<owner>[\w.-]+)/)?(?P<repo>[\w.-]+)#(?P<number>\d+)\b"
+)
 LOCAL_REF = re.compile(r"(?<![\w/.-])#(?P<number>\d+)\b")
 
 
@@ -26,8 +28,11 @@ class IssueRef:
 
 def repo_from_issue_url(url: str) -> str:
     """Return the repo slug from a GitHub issue or PR URL."""
-    match = re.search(r"github\.com/[^/]+/(?P<repo>[^/]+)/(?:issues|pull)/\d+", url)
-    return match.group("repo") if match else ""
+    match = re.search(
+        r"github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/\d+",
+        url,
+    )
+    return _repo_slug(match.group("repo"), owner=match.group("owner")) if match else ""
 
 
 def parse_dependency_refs(body: str, *, default_repo: str = "") -> tuple[IssueRef, ...]:
@@ -37,12 +42,26 @@ def parse_dependency_refs(body: str, *, default_repo: str = "") -> tuple[IssueRe
         text = line.group("refs")
         consumed: list[tuple[int, int]] = []
         for match in URL_REF.finditer(text):
-            refs.add(IssueRef(match.group("repo"), int(match.group("number"))))
+            refs.add(
+                IssueRef(
+                    _repo_slug(match.group("repo"), owner=match.group("owner")),
+                    int(match.group("number")),
+                )
+            )
             consumed.append(match.span())
         for match in QUALIFIED_REF.finditer(text):
             if _inside_any(match.span(), consumed):
                 continue
-            refs.add(IssueRef(match.group("repo"), int(match.group("number"))))
+            refs.add(
+                IssueRef(
+                    _repo_slug(
+                        match.group("repo"),
+                        owner=match.group("owner"),
+                        default_repo=default_repo,
+                    ),
+                    int(match.group("number")),
+                )
+            )
             consumed.append(match.span())
         if default_repo:
             for match in LOCAL_REF.finditer(text):
@@ -111,3 +130,16 @@ def sort_issues_by_dependencies(issues: Iterable[dict]) -> list[dict]:
 def _inside_any(span: tuple[int, int], spans: list[tuple[int, int]]) -> bool:
     start, end = span
     return any(start >= used_start and end <= used_end for used_start, used_end in spans)
+
+
+def _repo_slug(repo: str, *, owner: str | None = None, default_repo: str = "") -> str:
+    """Return a bare repo or ``owner/repo`` slug without losing explicit owners."""
+    clean_repo = (repo or "").strip()
+    clean_owner = (owner or "").strip()
+    if clean_owner:
+        return f"{clean_owner}/{clean_repo}"
+    if "/" in default_repo:
+        default_owner = default_repo.split("/", 1)[0].strip()
+        if default_owner:
+            return f"{default_owner}/{clean_repo}"
+    return clean_repo
