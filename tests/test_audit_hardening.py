@@ -106,6 +106,82 @@ def test_robin_parse_triage_payload_skips_unrelated_json_before_triages(monkeypa
     assert parsed["triages"][0]["repo"] == "specs"
 
 
+def test_robin_skips_feature_and_bundle_candidates(monkeypatch):
+    monkeypatch.setenv("GH_ORG", "myorg")
+    robin = load_bin_module("robin.py", monkeypatch)
+    monkeypatch.setattr(robin, "TRIAGE_REPOS", ["backend"])
+    monkeypatch.setattr(robin, "_load_touched", lambda: set())
+    monkeypatch.setattr(robin, "is_repo_paused", lambda repo: False)
+
+    def fake_gh_json(_cmd, *, default):
+        return [
+            {
+                "number": 1,
+                "title": "bug",
+                "body": "",
+                "labels": [],
+                "createdAt": "2026-06-06T11:00:00Z",
+                "author": {"login": "user"},
+            },
+            {
+                "number": 2,
+                "title": "feature",
+                "body": "",
+                "labels": [{"name": "feature"}],
+                "createdAt": "2026-06-06T12:00:00Z",
+                "author": {"login": "user"},
+            },
+            {
+                "number": 3,
+                "title": "large feature",
+                "body": "",
+                "labels": [{"name": "agent:large-feature"}],
+                "createdAt": "2026-06-06T13:00:00Z",
+                "author": {"login": "user"},
+            },
+            {
+                "number": 4,
+                "title": "bundle",
+                "body": "",
+                "labels": [{"name": "agent:bundle:checkout"}],
+                "createdAt": "2026-06-06T14:00:00Z",
+                "author": {"login": "user"},
+            },
+        ]
+
+    monkeypatch.setattr(robin, "gh_json", fake_gh_json)
+
+    candidates = robin.list_untriaged()
+
+    assert [(repo, issue["number"]) for repo, issue in candidates] == [("backend", 1)]
+
+
+def test_robin_strips_implement_when_current_labels_are_gated(monkeypatch):
+    robin = load_bin_module("robin.py", monkeypatch)
+
+    labels, gate_labels = robin.labels_to_add_for_triage(
+        "severity:p1",
+        ["agent:implement", "bug"],
+        {"feature"},
+    )
+
+    assert labels == ["severity:p1", "bug"]
+    assert gate_labels == ["feature"]
+
+
+def test_robin_keeps_implement_for_ungated_bug(monkeypatch):
+    robin = load_bin_module("robin.py", monkeypatch)
+
+    labels, gate_labels = robin.labels_to_add_for_triage(
+        "severity:p1",
+        ["agent:implement", "bug"],
+        set(),
+    )
+
+    assert labels == ["severity:p1", "agent:implement", "bug"]
+    assert gate_labels == []
+
+
 def test_automerge_blocks_ship_ready_review_older_than_commit(monkeypatch):
     automerge = load_bin_module("automerge.py", monkeypatch)
     monkeypatch.setattr(automerge, "unresolved_reviewer_threads", lambda *a, **kw: [])

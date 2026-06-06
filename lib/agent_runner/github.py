@@ -38,6 +38,8 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+import labels as label_constants
+
 from .config import dry_run_log, is_dry_run
 from .paths import (
     GH_ORG,
@@ -987,12 +989,7 @@ def claim_issue(repo_slug: str, num: int, *, codename: str, firing_id: str) -> b
     if state.get("state") != "OPEN":
         return False
     labels = {lbl["name"] for lbl in state.get("labels", [])}
-    blockers = labels & {
-        "agent:in-flight",
-        "agent:pr-open",
-        "do-not-pickup",
-        "needs:human-scope",
-    }
+    blockers = label_constants.pickup_blocking_labels(labels)
     if blockers:
         return False
     ensure_labels(repo_slug, LIFECYCLE_LABELS)

@@ -73,12 +73,39 @@ def test_has_blocker_detects_each_blocker():
     for blocker in (
         labels.IN_FLIGHT,
         labels.PR_OPEN,
+        labels.LEGACY_PR_OPEN,
         labels.DO_NOT_PICKUP,
         labels.NEEDS_HUMAN_SCOPE,
+        labels.NEEDS_HUMAN_REVIEW,
+        labels.NEEDS_INFO,
+        labels.DONE,
+        labels.DONE_ALREADY,
+        labels.LARGE_FEATURE,
+        labels.PLAN_PENDING_APPROVAL,
     ):
         assert labels.has_blocker({blocker})
+        assert labels.has_pickup_blocker({blocker})
+    assert labels.has_blocker({labels.bundle_label("checkout")})
+    assert labels.has_pickup_blocker({labels.bundle_label("checkout")})
     assert not labels.has_blocker({labels.IMPLEMENT})
+    assert not labels.has_pickup_blocker({labels.IMPLEMENT})
     assert not labels.has_blocker(set())
+
+
+def test_robin_triage_blockers_include_feature_and_bundle_labels():
+    blockers = labels.robin_triage_blocking_labels(
+        {
+            labels.FEATURE,
+            labels.ENHANCEMENT,
+            labels.bundle_label("checkout"),
+            labels.IMPLEMENT,
+        }
+    )
+    assert blockers == [
+        labels.bundle_label("checkout"),
+        labels.ENHANCEMENT,
+        labels.FEATURE,
+    ]
 
 
 def test_bundle_labels_extraction_and_sort():

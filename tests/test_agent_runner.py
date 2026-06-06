@@ -1398,6 +1398,32 @@ def test_claim_issue_rolls_back_when_claim_comment_fails(monkeypatch):
     ]
 
 
+def test_claim_issue_refuses_bundle_label(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setattr(ar, "is_repo_paused", lambda repo: False)
+    monkeypatch.setattr(
+        ar,
+        "_issue_state",
+        lambda repo, num: {
+            "labels": [
+                {"name": "agent:implement"},
+                {"name": "agent:bundle:checkout"},
+            ],
+            "state": "OPEN",
+            "comments": [],
+            "number": num,
+        },
+    )
+    monkeypatch.setattr(
+        ar,
+        "gh_issue_edit",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("should not edit")),
+    )
+
+    assert not ar.claim_issue("myrepo", 62, codename="lucius", firing_id="fid-1")
+
+
 def test_release_issue_reports_comment_failure(monkeypatch):
     import agent_runner as ar
 
