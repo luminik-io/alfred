@@ -7,8 +7,10 @@ Date: 2026-06-07
 Alfred should use a layered chat architecture:
 
 1. **Chat SDK by Vercel** for multi-messenger transport.
-   Use it when adding Slack, Teams, Google Chat, Discord, Telegram, WhatsApp,
-   GitHub, Linear, or browser/web channels behind one normalized bot runtime.
+   Chat SDK is public beta as of 2026-06-07, so Alfred should adopt it
+   incrementally behind a sidecar boundary. Use it when adding Slack, Teams,
+   Google Chat, Discord, Telegram, WhatsApp, or browser/web channels behind
+   one normalized bot runtime.
 
 2. **Vercel AI SDK UI protocol** for streaming messages and tool results.
    This keeps the browser/native client on a common transport shape, even if
@@ -33,7 +35,10 @@ Alfred has two different jobs that should not be collapsed:
 
 Chat SDK is the right fit for the first job. Its official README describes a
 single TypeScript bot runtime for Slack, Teams, Google Chat, Discord, Telegram,
-GitHub, Linear, and WhatsApp. Its adapter docs show platform adapters,
+GitHub, Linear, and WhatsApp. For Alfred, GitHub and Linear remain
+issue-tracker and workflow event sources unless we explicitly opt into command
+intake from comments. They should not blur the existing issue queue, label,
+and PR-review layers. Chat SDK's adapter docs show platform adapters,
 normalized webhooks, cross-platform cards/actions, and a web adapter that
 speaks the AI SDK UI stream protocol.
 
@@ -105,6 +110,7 @@ actions unless it goes through the same typed command and approval path.
 ## Source Notes
 
 - Chat SDK: https://github.com/vercel/chat
+- Chat SDK public beta announcement: https://vercel.com/blog/chat-sdk-brings-agents-to-your-users
 - Chat SDK adapters: https://chat-sdk.dev/docs/adapters
 - Chat SDK Slack primitives: https://chat-sdk.dev/docs/slack-primitives
 - Chat SDK AI tools changelog: https://vercel.com/changelog/chat-sdk-now-includes-ai-sdk-tools
