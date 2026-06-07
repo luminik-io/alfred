@@ -785,7 +785,7 @@ def main() -> int:
             continue
 
         # Push + reply on the PR
-        workflow_validation = validate_changed_workflows(wt, base="origin/main")
+        workflow_validation = validate_changed_workflows(wt, base=f"origin/{head_ref}")
         if not workflow_validation.ok:
             preserved_failure_reason, preserved_recovery_ref = preserve_workflow_validation_failure(
                 wt,
@@ -834,7 +834,7 @@ def main() -> int:
             preserved_worktree=str(wt),
             recovery_ref=preserved_recovery_ref,
         )
-        return 1
+        return 0
 
     remove_worktree(repo, wt)
 

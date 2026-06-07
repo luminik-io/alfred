@@ -1235,6 +1235,109 @@ def test_nightwing_workflow_validation_failure_posts_slack(monkeypatch):
     ]
 
 
+def test_nightwing_validation_failure_compares_to_pr_head_and_exits_cleanly(monkeypatch, tmp_path):
+    monkeypatch.setenv("GH_ORG", "acme")
+    monkeypatch.setenv("ALFRED_NIGHTWING_REPOS", "service-web")
+    nightwing = load_bin_module("nightwing.py", monkeypatch)
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    validation_bases: list[str | None] = []
+    removed: list[str] = []
+    event_rows: list[tuple[str, dict]] = []
+
+    class FakeEvents:
+        firing_id = "fid-nightwing"
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def emit(self, name, **kwargs):
+            event_rows.append((name, kwargs))
+
+    class FakeSpend:
+        def __init__(self, *args, **kwargs):
+            self.state = {"turns_today": 0}
+
+        def increment(self, **kwargs):
+            pass
+
+    monkeypatch.setattr(nightwing, "with_lock", lambda _agent: None)
+    monkeypatch.setattr(nightwing, "preflight", lambda _spec: None)
+    monkeypatch.setattr(nightwing, "_refresh_pre_push_config", lambda: None)
+    monkeypatch.setattr(nightwing, "doctor_mode", lambda: False)
+    monkeypatch.setattr(nightwing, "is_globally_blocked", lambda: None)
+    monkeypatch.setattr(nightwing, "EventLog", FakeEvents)
+    monkeypatch.setattr(nightwing, "SpendState", FakeSpend)
+    monkeypatch.setattr(nightwing, "load_fixed_ids", lambda: set())
+    monkeypatch.setattr(nightwing, "save_fixed_ids", lambda _ids: None)
+    monkeypatch.setattr(nightwing, "load_no_commit_streaks", lambda: {})
+    monkeypatch.setattr(nightwing, "save_no_commit_streaks", lambda _streaks: None)
+    monkeypatch.setattr(nightwing, "reset_label_present", lambda *_args: False)
+    monkeypatch.setattr(nightwing, "local_repo_dir", lambda _repo: tmp_path / "repo")
+    monkeypatch.setattr(
+        nightwing,
+        "pick_target",
+        lambda _fixed_ids: (
+            "service-web",
+            {"number": 123, "headRefName": "feature/fix"},
+            [
+                {
+                    "body": "Please fix the workflow.",
+                    "path": ".github/workflows/ci.yml",
+                    "line": 7,
+                    "user": "reviewer",
+                    "id": 456,
+                    "severity": "P1",
+                }
+            ],
+        ),
+    )
+    monkeypatch.setattr(nightwing, "make_worktree_from_branch", lambda *_args, **_kwargs: wt)
+    monkeypatch.setattr(nightwing, "build_prompt", lambda *args, **kwargs: "prompt")
+    monkeypatch.setattr(
+        nightwing,
+        "invoke_agent_engine",
+        lambda *args, **kwargs: (
+            SimpleNamespace(success=True, subtype="success", num_turns=2),
+            "codex",
+        ),
+    )
+    monkeypatch.setattr(
+        nightwing,
+        "run",
+        lambda args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout="base-sha\n" if args[-1] == "origin/feature/fix" else "new-sha\n",
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(
+        nightwing,
+        "validate_changed_workflows",
+        lambda _wt, **kwargs: (
+            validation_bases.append(kwargs.get("base"))
+            or SimpleNamespace(
+                ok=False,
+                files=(".github/workflows/ci.yml",),
+                stdout="",
+                stderr="invalid workflow",
+                reason="actionlint failed",
+            )
+        ),
+    )
+    monkeypatch.setattr(nightwing, "create_recovery_ref", lambda _wt, *, branch: "recovery/ref")
+    monkeypatch.setattr(nightwing, "slack_post", lambda *args, **kwargs: None)
+    monkeypatch.setattr(nightwing, "remove_worktree", lambda repo, path: removed.append(str(path)))
+
+    assert nightwing.main() == 0
+    assert validation_bases == ["origin/feature/fix"]
+    assert removed == []
+    assert any(
+        name == "firing_complete" and payload["outcome"] == "workflow-validation-failed"
+        for name, payload in event_rows
+    )
+
+
 def test_huntress_redacts_logs_and_creates_private_run_dir(monkeypatch):
     huntress = load_bin_module("huntress.py", monkeypatch)
 

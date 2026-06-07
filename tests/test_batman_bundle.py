@@ -191,7 +191,7 @@ def test_parse_plan_from_bundle_solo_delegates_to_issue_parser():
     assert plan.affected_repos == ["backend", "frontend"]
 
 
-def test_parse_plan_from_bundle_multi_uses_per_issue_repo():
+def test_parse_plan_from_bundle_multi_uses_per_issue_repo_with_default_rollout():
     """Multi-issue bundle: each issue's repo IS its affected repo."""
     import batman as bm
 
@@ -204,10 +204,28 @@ def test_parse_plan_from_bundle_multi_uses_per_issue_repo():
         bundle_label="agent:bundle:auth-rework",
     )
     plan = bm.parse_plan_from_bundle(bundle)
-    # The picker has already dependency-sorted bundle issues; preserve that order.
-    assert plan.affected_repos == ["frontend", "backend", "mobile"]
+    assert plan.affected_repos == ["backend", "frontend", "mobile"]
     assert plan.repo_criteria["backend"] == "Do the backend thing"
     assert plan.repo_criteria["frontend"] == "Do the frontend thing"
+
+
+def test_parse_plan_from_bundle_preserves_dependency_sorted_issue_order():
+    import batman as bm
+
+    bundle = bm.Bundle(
+        issues=[
+            _issue(3, "mobile", body="Do the mobile thing"),
+            _issue(1, "backend", body="Do the backend thing"),
+            _issue(
+                2,
+                "frontend",
+                body="Depends on: mobile#3\n\nDo the frontend thing",
+            ),
+        ],
+        bundle_label="agent:bundle:auth-rework",
+    )
+    plan = bm.parse_plan_from_bundle(bundle)
+    assert plan.affected_repos == ["mobile", "backend", "frontend"]
 
 
 # ---------------------------------------------------------------------------
