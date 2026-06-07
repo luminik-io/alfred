@@ -87,6 +87,34 @@ def test_validate_changed_workflows_passes_when_no_workflows(tmp_path):
     assert result.reason == ""
 
 
+def test_validate_changed_workflows_fails_closed_when_base_diff_fails(tmp_path):
+    worktree = tmp_path / "repo"
+    worktree.mkdir()
+
+    def fake_run(cmd, **_kwargs):
+        if cmd == [
+            "git",
+            "diff",
+            "--name-only",
+            "--diff-filter=ACMRTUXB",
+            "origin/main...HEAD",
+        ]:
+            return subprocess.CompletedProcess(cmd, 128, stdout="", stderr="bad revision")
+        if cmd[0:4] == ["git", "diff", "--name-only", "--diff-filter=ACMRTUXB"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="")
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    result = validate_changed_workflows(
+        worktree,
+        run_cmd=fake_run,
+        actionlint_bin="/bin/actionlint",
+    )
+
+    assert result.ok is False
+    assert result.reason == "workflow diff failed"
+    assert result.stderr == "bad revision"
+
+
 def test_validate_changed_workflows_fails_closed_when_actionlint_missing(tmp_path, monkeypatch):
     worktree = tmp_path / "repo"
     workflows = worktree / ".github" / "workflows"

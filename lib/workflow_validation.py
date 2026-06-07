@@ -23,6 +23,16 @@ class WorkflowValidationResult:
     stderr: str = ""
 
 
+class WorkflowDiffFailed(RuntimeError):
+    """Raised when the committed workflow diff cannot be computed."""
+
+    def __init__(self, command: Sequence[str], stdout: str, stderr: str) -> None:
+        super().__init__("workflow diff failed")
+        self.command = tuple(command)
+        self.stdout = stdout
+        self.stderr = stderr
+
+
 def _is_workflow_path(path: str) -> bool:
     return path.startswith(".github/workflows/") and path.rsplit(".", 1)[-1].lower() in {
         "yml",
@@ -81,6 +91,7 @@ def changed_workflow_files(
     worktree: Path,
     *,
     base: str | None = None,
+    fail_on_base_error: bool = False,
     run_cmd: RunCmd = subprocess.run,
 ) -> tuple[str, ...]:
     """Return changed workflow YAML files in ``worktree``."""
@@ -93,9 +104,11 @@ def changed_workflow_files(
         ("git", "diff", "--name-only", "--diff-filter=ACMRTUXB"),
     )
     changed: set[str] = set()
-    for cmd in commands:
+    for index, cmd in enumerate(commands):
         res = _run(cmd, cwd=worktree, timeout=10, run_cmd=run_cmd)
         if res.returncode != 0:
+            if index == 0 and fail_on_base_error:
+                raise WorkflowDiffFailed(cmd, res.stdout or "", res.stderr or "")
             continue
         for line in (res.stdout or "").splitlines():
             path = line.strip()
@@ -112,7 +125,20 @@ def validate_changed_workflows(
     run_cmd: RunCmd = subprocess.run,
 ) -> WorkflowValidationResult:
     """Run actionlint when workflow YAML changed."""
-    files = changed_workflow_files(worktree, base=base, run_cmd=run_cmd)
+    try:
+        files = changed_workflow_files(
+            worktree,
+            base=base,
+            fail_on_base_error=True,
+            run_cmd=run_cmd,
+        )
+    except WorkflowDiffFailed as exc:
+        return WorkflowValidationResult(
+            ok=False,
+            reason="workflow diff failed",
+            stdout=exc.stdout,
+            stderr=exc.stderr or f"git diff failed: {' '.join(exc.command)}",
+        )
     if not files:
         return WorkflowValidationResult(ok=True)
 
