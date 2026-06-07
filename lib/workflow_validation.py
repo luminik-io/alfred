@@ -63,17 +63,31 @@ def _run(
         )
 
 
+def _remote_default_ref(worktree: Path, *, run_cmd: RunCmd) -> str:
+    res = _run(
+        ("git", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"),
+        cwd=worktree,
+        timeout=10,
+        run_cmd=run_cmd,
+    )
+    ref = (res.stdout or "").strip()
+    if res.returncode == 0 and ref.startswith("origin/"):
+        return ref
+    return "origin/main"
+
+
 def changed_workflow_files(
     worktree: Path,
     *,
-    base: str = "origin/main",
+    base: str | None = None,
     run_cmd: RunCmd = subprocess.run,
 ) -> tuple[str, ...]:
     """Return changed workflow YAML files in ``worktree``."""
     if not worktree.exists():
         return ()
+    comparison_base = base or _remote_default_ref(worktree, run_cmd=run_cmd)
     commands = (
-        ("git", "diff", "--name-only", "--diff-filter=ACMRTUXB", f"{base}...HEAD"),
+        ("git", "diff", "--name-only", "--diff-filter=ACMRTUXB", f"{comparison_base}...HEAD"),
         ("git", "diff", "--name-only", "--diff-filter=ACMRTUXB", "--cached"),
         ("git", "diff", "--name-only", "--diff-filter=ACMRTUXB"),
     )
@@ -92,7 +106,7 @@ def changed_workflow_files(
 def validate_changed_workflows(
     worktree: Path,
     *,
-    base: str = "origin/main",
+    base: str | None = None,
     actionlint_bin: str | None = None,
     run_cmd: RunCmd = subprocess.run,
 ) -> WorkflowValidationResult:

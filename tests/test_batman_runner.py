@@ -255,6 +255,7 @@ def test_lifecycle_empty_plan_fails_before_approval(monkeypatch, capsys):
     slack_posts = []
     cleared = []
     issue_edits = []
+    ensured = []
 
     plan = SimpleNamespace(
         bundle_slug="empty-plan",
@@ -298,6 +299,7 @@ def test_lifecycle_empty_plan_fails_before_approval(monkeypatch, capsys):
         "gh_issue_edit",
         lambda repo, number, **kw: issue_edits.append((repo, number, kw)),
     )
+    monkeypatch.setattr(runner, "ensure_labels", lambda repo: ensured.append(repo))
 
     out = runner._run_lifecycle(
         config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent"),
@@ -315,6 +317,7 @@ def test_lifecycle_empty_plan_fails_before_approval(monkeypatch, capsys):
         ("clear", "myorg/parent", 83),
         ("unset", "myorg/parent", 83),
     ]
+    assert ensured == ["myorg/parent"]
     assert issue_edits == [
         (
             "myorg/parent",

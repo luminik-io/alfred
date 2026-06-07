@@ -56,6 +56,7 @@ from agent_runner import (  # noqa: E402
     PreflightSpec,
     agent_engine,
     doctor_mode,
+    ensure_labels,
     gh_issue_comment,
     gh_issue_edit,
     gh_json,
@@ -389,6 +390,7 @@ def _run_lifecycle(
         )
         _clear_pending_envelope(parent_repo, parent_issue_number)
         _unset_pending_approval_label(parent_repo, parent_issue_number)
+        ensure_labels(parent_repo)
         gh_issue_edit(
             parent_repo,
             parent_issue_number,
