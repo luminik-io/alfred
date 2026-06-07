@@ -52,6 +52,7 @@ import labels as label_constants  # noqa: E402
 from agent_runner import (  # noqa: E402
     GH_ORG,
     GH_REPO_TO_LOCAL,
+    LIFECYCLE_LABELS,
     STATE_ROOT,
     PreflightSpec,
     agent_engine,
@@ -390,7 +391,7 @@ def _run_lifecycle(
         )
         _clear_pending_envelope(parent_repo, parent_issue_number)
         _unset_pending_approval_label(parent_repo, parent_issue_number)
-        ensure_labels(parent_repo)
+        ensure_labels(parent_repo, LIFECYCLE_LABELS)
         gh_issue_edit(
             parent_repo,
             parent_issue_number,
