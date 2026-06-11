@@ -10,7 +10,7 @@ Bundle primitives live in ``lib/batman.py`` so the parsing /
 claim-rollback / plan-shape logic stays unit-testable. This file is the
 runner skeleton: preflight, find a bundle, post a plan summary, exit.
 The full execution chain (worktrees + Claude invocation + cross-repo
-PR chaining + founder approval gate) is intentionally NOT in alfred-os
+PR chaining + operator approval gate) is intentionally NOT in alfred-os
 yet. Fleets with extra coordination requirements can layer those
 site-specific extensions on top.
 
@@ -67,6 +67,7 @@ from agent_runner import (  # noqa: E402
     with_lock,
 )
 from batman import (  # noqa: E402
+    APPROVAL_MODE_FILE,
     BUNDLE_LABEL_PREFIX,
     EXEC_GATE_DISABLED,
     EXEC_NO_CHILDREN,
@@ -332,7 +333,8 @@ def _run_lifecycle(
     # slack_approval / slack_sdk dependency.
     reporter = SlackReporter(firing_id=firing_id, codename=CODENAME)
     gate = None
-    if config.gate_enabled:
+    file_only_approval = config.approval_mode == APPROVAL_MODE_FILE
+    if config.gate_enabled and not file_only_approval:
         try:
             from slack_approval import (
                 SlackApproval,
@@ -439,14 +441,20 @@ def _run_lifecycle(
 
     # Decide whether to execute. The matrix:
     #   auto_execute=0 (off):        halt after plan, no execute.
-    #   auto_execute=approval-gate:  poll Slack; execute only on :white_check_mark:.
+    #   auto_execute=approval-gate:  poll the configured approval surface.
     #   auto_execute=1 (force):      execute immediately, no gate.
     if not config.execute_enabled:
         print("[BATMAN-HALT-AFTER-PLAN] BATMAN_AUTO_EXECUTE=0; not filing children")
         return 0
 
     if config.gate_enabled:
-        if envelope is None or gate is None:
+        if envelope is None and file_only_approval:
+            envelope = ApprovalEnvelope(
+                channel="file",
+                message_ts=f"issue-{parent_issue_number}",
+                plan=plan,
+            )
+        if envelope is None or (gate is None and not file_only_approval):
             # We could not stand up the gate; do NOT silently execute.
             print(
                 "[BATMAN-HALT-NO-GATE] approval-gate requested but unavailable; "

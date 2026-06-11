@@ -770,6 +770,26 @@ def test_seed_prompt_templates_does_not_overwrite(init_mod, tmp_path):
     assert created[0].read_text() == "custom\n"
 
 
+def test_seed_prompt_templates_copies_shared_compose_prompt(init_mod, tmp_path):
+    repo_root = tmp_path / "repo"
+    (repo_root / "prompts").mkdir(parents=True)
+    (repo_root / "prompts" / "spec-interrogator.md").write_text("compose prompt\n")
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=repo_root,
+    )
+
+    created = init_mod.seed_prompt_templates(state)
+
+    prompt = tmp_path / "alfred" / "prompts" / "spec-interrogator.md"
+    assert created == [prompt]
+    assert prompt.read_text() == "compose prompt\n"
+    prompt.write_text("custom compose prompt\n")
+    assert init_mod.seed_prompt_templates(state) == []
+    assert prompt.read_text() == "custom compose prompt\n"
+
+
 def test_write_opt_in_gate_for_batman(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",

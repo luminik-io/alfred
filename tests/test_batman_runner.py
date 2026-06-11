@@ -393,6 +393,63 @@ def test_lifecycle_prints_awaiting_approval_sentinel(monkeypatch, capsys):
     assert "timeout_s=60" in captured.out
 
 
+def test_lifecycle_file_approval_mode_waits_without_slack_gate(monkeypatch, capsys):
+    runner = _load_runner()
+    awaited = []
+    reports = []
+    plan = SimpleNamespace(
+        bundle_slug="ready-plan",
+        children=(SimpleNamespace(repo="myorg/backend"),),
+        affected_repos=("myorg/backend",),
+        readiness_blockers=(),
+    )
+
+    class FakeLifecycle:
+        def __init__(self, **kwargs):
+            assert kwargs["gate"] is None
+
+        def plan(self, **_kwargs):
+            return plan
+
+        def request_approval(self, _plan):
+            return None
+
+        def await_approval(self, envelope):
+            awaited.append(envelope)
+            return SimpleNamespace(
+                approved=False,
+                verdict="approval_timeout",
+                elapsed_s=0,
+                detail="no marker",
+            )
+
+        def report(self, _plan, result):
+            reports.append(result)
+
+    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
+
+    out = runner._run_lifecycle(
+        config=runner.BatmanLifecycleConfig(
+            parent_repo="myorg/parent",
+            auto_execute="approval-gate",
+            approval_mode=runner.APPROVAL_MODE_FILE,
+            approval_timeout_s=0,
+        ),
+        parent_issue={"number": 83, "title": "ready", "body": ""},
+        firing_id="fid-ready",
+    )
+
+    captured = capsys.readouterr()
+    assert out == 0
+    assert len(awaited) == 1
+    assert awaited[0].channel == "file"
+    assert awaited[0].message_ts == "issue-83"
+    assert "[BATMAN-AWAITING-APPROVAL]" in captured.out
+    assert "channel=file" in captured.out
+    assert reports and reports[0].reason == "approval_timeout"
+
+
 # ---------------------------------------------------------------------------
 # Issue #115: idempotent approval state.
 # ---------------------------------------------------------------------------

@@ -276,16 +276,18 @@ The same flow is also available through the operator CLI after deploy:
 
 ```sh
 alfred batman setup
+alfred batman setup --mode approval-gate --approval-mode file
 alfred setup-batman --check-only
 ```
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `BATMAN_AUTO_EXECUTE` | `0` | Controls the gate. Values: `0` (halt after plan, the safe default), `approval-gate` (require Slack approval), `1` (execute without a gate). |
+| `BATMAN_AUTO_EXECUTE` | `0` | Controls the gate. Values: `0` (halt after plan, the safe default), `approval-gate` (require approval), `1` (execute without a gate). |
 | `BATMAN_PARENT_REPO` | (unset) | `owner/repo` Batman reads parent issues from. When unset, the legacy cross-repo bundle scan path runs instead. |
 | `BATMAN_PICKER` | `oldest` | `oldest` (FIFO by `createdAt`) or `newest`. |
 | `BATMAN_BUNDLE_SLUG_PREFIX` | empty | Optional prefix prepended to the derived slug. Useful when several teams share a Slack channel and want their bundles distinguishable. |
 | `BATMAN_APPROVAL_TIMEOUT_S` | `86400` | Wall-clock seconds the gate will wait for a reaction. |
+| `BATMAN_APPROVAL_MODE` | `slack-or-file` | Approval surface when `BATMAN_AUTO_EXECUTE=approval-gate`. Values: `slack-or-file` (Slack reactions plus Alfred client approve/decline), `slack` (Slack only), `file` (Alfred client/file marker only). |
 | `BATMAN_REPORT_FEEDBACK_TIMEOUT_S` | `60` | Seconds Batman waits after posting a report so trusted Slack replies can be captured as follow-up context. Set `0` to skip the wait. |
 | `BATMAN_SLACK_CHANNEL` | empty | Channel to post the plan and report to. When empty, falls back to the framework's default channel (`slack_format._home_channel`). |
 
@@ -301,7 +303,7 @@ The Slack approval gate also reads these (from `slack_approval`):
 | Value | Plan posted? | Approval polled? | Children filed? |
 |-------|--------------|------------------|-----------------|
 | `0` (default) | yes | no | no, halt after plan |
-| `approval-gate` | yes | yes, Slack reactions | only on `:white_check_mark:` |
+| `approval-gate` | yes | yes, according to `BATMAN_APPROVAL_MODE` | only after approval |
 | `1` | yes | no | yes, immediately |
 
 The default (`0`) preserves the historical alfred-os behaviour: Batman
@@ -314,8 +316,9 @@ issues already).
 - Batman never edits code. The only writes are GitHub issue creates and
   Slack posts.
 - Approval is a hard gate when `BATMAN_AUTO_EXECUTE=approval-gate`: if
-  the Slack post cannot capture a `message_ts`, Batman halts rather
-  than executing without a captured approval anchor.
+  Slack mode cannot capture a `message_ts`, Batman halts rather than
+  executing without a captured approval anchor. In `file` mode, Batman
+  waits for the Alfred client marker instead.
 - Only the configured operator's reaction counts. A teammate reacting
   with `:white_check_mark:` is ignored.
 - Partial-execute failures do not crash. Every target is attempted,

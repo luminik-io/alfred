@@ -556,6 +556,13 @@ from planning_assistant import (  # noqa: E402
     render_post_pr_feedback_ack,
     render_post_pr_followup_block,
 )
+from server.plan_approvals import (  # noqa: E402
+    DECISION_APPROVE,
+    DECISION_DECLINE,
+)
+from server.plan_approvals import (  # noqa: E402
+    record_decision as record_plan_decision,
+)
 
 logger = logging.getLogger("alfred.batman.lifecycle")
 
@@ -576,6 +583,7 @@ ENV_PARENT_REPO = "BATMAN_PARENT_REPO"
 ENV_PICKER = "BATMAN_PICKER"
 ENV_BUNDLE_SLUG_PREFIX = "BATMAN_BUNDLE_SLUG_PREFIX"
 ENV_APPROVAL_TIMEOUT_S = "BATMAN_APPROVAL_TIMEOUT_S"
+ENV_APPROVAL_MODE = "BATMAN_APPROVAL_MODE"
 ENV_SLACK_CHANNEL = "BATMAN_SLACK_CHANNEL"
 ENV_REPORT_FEEDBACK_TIMEOUT_S = "BATMAN_REPORT_FEEDBACK_TIMEOUT_S"
 
@@ -583,6 +591,15 @@ AUTO_EXECUTE_OFF = "0"
 AUTO_EXECUTE_GATE = "approval-gate"
 AUTO_EXECUTE_FORCE = "1"
 VALID_AUTO_EXECUTE = (AUTO_EXECUTE_OFF, AUTO_EXECUTE_GATE, AUTO_EXECUTE_FORCE)
+
+APPROVAL_MODE_SLACK_OR_FILE = "slack-or-file"
+APPROVAL_MODE_SLACK = "slack"
+APPROVAL_MODE_FILE = "file"
+VALID_APPROVAL_MODES = (
+    APPROVAL_MODE_SLACK_OR_FILE,
+    APPROVAL_MODE_SLACK,
+    APPROVAL_MODE_FILE,
+)
 
 
 def _non_negative_int(
@@ -741,6 +758,108 @@ class ApprovalResult:
     feedback: tuple[str, ...] = ()
 
 
+def _approval_marker_paths(issue_num: int) -> tuple[Path, Path]:
+    base = _alfred_runtime_home() / "batman" / "approvals"
+    return base / f"{issue_num}.approved", base / f"{issue_num}.rejected"
+
+
+def _approval_state_root() -> Path:
+    return _alfred_runtime_home() / "state"
+
+
+def _result_with_elapsed(result: ApprovalResult, elapsed_s: float) -> ApprovalResult:
+    return ApprovalResult(
+        approved=result.approved,
+        verdict=result.verdict,
+        detail=result.detail,
+        elapsed_s=elapsed_s,
+        feedback=result.feedback,
+    )
+
+
+def _record_consumed_file_decision(
+    plan: BundlePlan,
+    decision: str,
+    *,
+    detail: str = "",
+) -> None:
+    try:
+        record_plan_decision(
+            _approval_state_root(),
+            plan.parent_issue_number,
+            decision,
+            reason=detail,
+            source="Batman file approval",
+        )
+    except OSError as exc:
+        logger.warning(
+            "could not persist consumed Batman approval for issue %s: %s",
+            plan.parent_issue_number,
+            exc,
+        )
+
+
+def _consume_file_approval(plan: BundlePlan) -> ApprovalResult | None:
+    """Consume the in-app approval marker for a Batman plan, if one exists."""
+
+    approved, rejected = _approval_marker_paths(plan.parent_issue_number)
+    if approved.exists():
+        _record_consumed_file_decision(plan, DECISION_APPROVE)
+        approved.unlink(missing_ok=True)
+        rejected.unlink(missing_ok=True)
+        return ApprovalResult(
+            approved=True,
+            verdict=EXEC_OK,
+            detail="approved via Alfred client",
+        )
+    if rejected.exists():
+        try:
+            detail = rejected.read_text(encoding="utf-8").strip()
+        except OSError:
+            detail = ""
+        _record_consumed_file_decision(plan, DECISION_DECLINE, detail=detail[:300])
+        rejected.unlink(missing_ok=True)
+        approved.unlink(missing_ok=True)
+        return ApprovalResult(
+            approved=False,
+            verdict=EXEC_REJECTED,
+            detail=(detail[:300] or "declined via Alfred client"),
+        )
+    return None
+
+
+def wait_for_approval_file(
+    plan: BundlePlan,
+    *,
+    timeout_s: int,
+    poll_interval_s: int = 2,
+    _now: Callable[[], float] | None = None,
+    _sleep: Callable[[float], None] | None = None,
+) -> ApprovalResult:
+    """Poll Alfred's file-based plan decision marker until timeout."""
+
+    import time
+
+    now = _now or time.monotonic
+    sleep = _sleep or time.sleep
+    start = now()
+    deadline = start + max(0, timeout_s)
+    interval = max(0.1, float(poll_interval_s))
+    while True:
+        result = _consume_file_approval(plan)
+        if result is not None:
+            return _result_with_elapsed(result, max(0.0, now() - start))
+        current = now()
+        if current >= deadline:
+            return ApprovalResult(
+                approved=False,
+                verdict=EXEC_APPROVAL_TIMEOUT,
+                detail="no file approval marker received",
+                elapsed_s=max(0.0, current - start),
+            )
+        sleep(min(interval, max(0.0, deadline - current)))
+
+
 @dataclass(frozen=True)
 class ExecuteResult:
     """Outcome of ``BatmanLifecycle.execute``.
@@ -789,6 +908,7 @@ class BatmanLifecycleConfig:
     picker: str = "oldest"
     bundle_slug_prefix: str = ""
     approval_timeout_s: int = 86400
+    approval_mode: str = APPROVAL_MODE_SLACK_OR_FILE
     slack_channel: str = ""
 
     @classmethod
@@ -807,12 +927,25 @@ class BatmanLifecycleConfig:
             timeout = int((e.get(ENV_APPROVAL_TIMEOUT_S) or "86400").strip() or "86400")
         except ValueError:
             timeout = 86400
+        raw_mode = (
+            e.get(ENV_APPROVAL_MODE) or APPROVAL_MODE_SLACK_OR_FILE
+        ).strip().lower() or APPROVAL_MODE_SLACK_OR_FILE
+        if raw_mode not in VALID_APPROVAL_MODES:
+            logger.warning(
+                "%s=%r not in %s; treating as %s",
+                ENV_APPROVAL_MODE,
+                raw_mode,
+                VALID_APPROVAL_MODES,
+                APPROVAL_MODE_SLACK_OR_FILE,
+            )
+            raw_mode = APPROVAL_MODE_SLACK_OR_FILE
         return cls(
             auto_execute=raw_auto,
             parent_repo=(e.get(ENV_PARENT_REPO) or "").strip(),
             picker=((e.get(ENV_PICKER) or "oldest").strip() or "oldest"),
             bundle_slug_prefix=(e.get(ENV_BUNDLE_SLUG_PREFIX) or "").strip(),
             approval_timeout_s=max(0, timeout),
+            approval_mode=raw_mode,
             slack_channel=(e.get(ENV_SLACK_CHANNEL) or "").strip(),
         )
 
@@ -967,6 +1100,7 @@ class ApprovalGate(Protocol):
         *,
         timeout_s: int = 900,
         poll_interval_s: int = 30,
+        kill_check: Callable[[], bool] | None = None,
         feedback_callback: Callable | None = None,
     ) -> object: ...  # pragma: no cover
 
@@ -1039,8 +1173,8 @@ def _parse_repo_lines(block: str) -> list[str]:
 
     Accepts two shapes (issue #116):
 
-    - ``owner/repo`` (canonical) — kept verbatim.
-    - bare ``repo`` — qualified with ``GH_ORG`` when set, so the
+    - ``owner/repo`` (canonical): kept verbatim.
+    - bare ``repo``: qualified with ``GH_ORG`` when set, so the
       operator's natural shorthand works under the common
       "one-org fleet" setup. Without ``GH_ORG`` the bare line is
       skipped with a stderr warning rather than silently dropped.
@@ -1655,6 +1789,7 @@ class SlackReporter:
             f"({len(plan.children)} child issue(s), "
             f"{len(plan.affected_repos)} repo(s))"
         )
+        plan_path = self._write_plan_copy(plan)
         handle = self._thread_root(
             codename=self._codename,
             firing_id=self._firing_id,
@@ -1678,7 +1813,7 @@ class SlackReporter:
         ts = getattr(handle, "ts", None)
         if not ch_id or not ts:
             return None
-        self._register_plan_thread(plan, channel=str(ch_id), ts=str(ts))
+        self._register_plan_thread(plan, channel=str(ch_id), ts=str(ts), plan_path=plan_path)
         return (ch_id, ts)
 
     def post_plan_feedback(
@@ -1755,12 +1890,19 @@ class SlackReporter:
             return True
         return False
 
-    def _register_plan_thread(self, plan: BundlePlan, *, channel: str, ts: str) -> None:
+    def _register_plan_thread(
+        self,
+        plan: BundlePlan,
+        *,
+        channel: str,
+        ts: str,
+        plan_path: Path | None = None,
+    ) -> None:
         try:
             from slack_thread_registry import SlackThreadRecord, SlackThreadRegistry
         except Exception:  # pragma: no cover - optional local state helper
             return
-        plan_path = self._write_plan_copy(plan)
+        plan_path = plan_path or self._write_plan_copy(plan)
         try:
             SlackThreadRegistry().register(
                 SlackThreadRecord(
@@ -1818,7 +1960,7 @@ class SlackReporter:
         try:
             root = _alfred_runtime_home() / "batman-plans"
             root.mkdir(parents=True, exist_ok=True)
-            path = root / f"{_safe_filename(self._firing_id)}-{_safe_filename(plan.bundle_slug)}.md"
+            path = root / f"{plan.parent_issue_number}-plan.md"
             path.write_text(plan.plan_markdown, encoding="utf-8")
             return path
         except OSError as exc:
@@ -2001,13 +2143,33 @@ class BatmanLifecycle:
     ) -> ApprovalResult:
         """Block until the operator approves, rejects, or the wall-clock
         timeout expires. Treats a missing gate as "no approval"."""
+        timeout = timeout_s if timeout_s is not None else self.config.approval_timeout_s
+        file_enabled = self.config.approval_mode in (
+            APPROVAL_MODE_SLACK_OR_FILE,
+            APPROVAL_MODE_FILE,
+        )
+        file_result = _consume_file_approval(envelope.plan) if file_enabled else None
+        if file_result is not None:
+            self.operator_feedback = file_result.feedback
+            return file_result
+        if self.config.approval_mode == APPROVAL_MODE_FILE:
+            file_result = wait_for_approval_file(envelope.plan, timeout_s=timeout)
+            self.operator_feedback = file_result.feedback
+            return file_result
         if self.gate is None:
             return ApprovalResult(
                 approved=False,
                 verdict=EXEC_GATE_DISABLED,
                 detail="no SlackApproval injected",
             )
-        timeout = timeout_s if timeout_s is not None else self.config.approval_timeout_s
+
+        def file_kill_check() -> bool:
+            nonlocal file_result
+            if not file_enabled:
+                return False
+            file_result = _consume_file_approval(envelope.plan)
+            return file_result is not None
+
         feedback_callback: Callable[[tuple[object, ...]], None] | None = None
         accumulated_feedback: list[str] = []
         post_plan_feedback = getattr(self.reporter, "post_plan_feedback", None)
@@ -2044,8 +2206,17 @@ class BatmanLifecycle:
             envelope.channel,
             envelope.message_ts,
             timeout_s=timeout,
+            poll_interval_s=5 if file_enabled else 30,
+            kill_check=file_kill_check if file_enabled else None,
             feedback_callback=feedback_callback,
         )
+        if file_result is not None:
+            file_result = _result_with_elapsed(
+                file_result,
+                float(getattr(raw, "elapsed_s", file_result.elapsed_s)),
+            )
+            self.operator_feedback = file_result.feedback
+            return file_result
         approved = bool(getattr(raw, "approved", False))
         verdict_raw = getattr(raw, "verdict", "unknown")
         feedback = _approval_feedback(raw)
@@ -2159,11 +2330,15 @@ class BatmanLifecycle:
 
 
 __all__ = [
+    "APPROVAL_MODE_FILE",
+    "APPROVAL_MODE_SLACK",
+    "APPROVAL_MODE_SLACK_OR_FILE",
     "AUTO_EXECUTE_FORCE",
     "AUTO_EXECUTE_GATE",
     "AUTO_EXECUTE_OFF",
     "BUNDLE_LABEL_PREFIX",
     "DEFAULT_ROLLOUT_ORDER",
+    "ENV_APPROVAL_MODE",
     "ENV_APPROVAL_TIMEOUT_S",
     "ENV_AUTO_EXECUTE",
     "ENV_BUNDLE_SLUG_PREFIX",
@@ -2201,4 +2376,5 @@ __all__ = [
     "parse_plan_from_bundle",
     "parse_plan_from_issue",
     "release_bundle",
+    "wait_for_approval_file",
 ]

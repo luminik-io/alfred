@@ -34,6 +34,8 @@ alfred-os = "alfred_os_cli:main"
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0",
+  "httpx>=0.27",
+  "httpx2>=0.1",
   "ruff>=0.5",
   "mypy>=1.10",
 ]
