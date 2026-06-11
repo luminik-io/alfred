@@ -2087,6 +2087,29 @@ def test_api_schedule_returns_cron_and_interval_runs(
     assert by_codename["cold-backup"]["cadence"] == "Sunday 02:00"
 
 
+def test_api_schedule_reads_deployed_runtime_conf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    home = tmp_path / "alfred-home"
+    conf = home / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\topus\tSingle-repo engineer\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+    runs = client.get("/api/schedule").json()["runs"]
+
+    assert [run["codename"] for run in runs] == ["lucius"]
+    assert runs[0]["cadence"] == "every 20m"
+
+
 def test_api_schedule_empty_when_conf_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

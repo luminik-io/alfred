@@ -305,6 +305,7 @@ fn validate_api_path<'a>(
         is_allowed_read_path(path_part)
     } else if method == Method::POST {
         is_allowed_compose_draft(path_part)
+            || is_allowed_conversation_control(path_part)
             || is_allowed_compose_converse(path_part)
             || is_allowed_followup_action(path_part)
             || is_allowed_plan_decision(path_part)
@@ -343,6 +344,12 @@ fn is_allowed_read_path(path: &str) -> bool {
 fn is_allowed_compose_draft(path: &str) -> bool {
     // POST /api/plans/draft is the in-app spec/plan authoring endpoint.
     path == "/api/plans/draft"
+}
+
+fn is_allowed_conversation_control(path: &str) -> bool {
+    // POST /api/conversation/control records UX-facing chat control actions
+    // before Compose falls through to the conversational or classic draft path.
+    path == "/api/conversation/control"
 }
 
 fn is_allowed_compose_converse(path: &str) -> bool {
@@ -801,6 +808,14 @@ mod tests {
 
     #[test]
     fn plan_decision_and_compose_converse_are_allowlisted() {
+        let (path, _query) = validate_api_path("/api/conversation/control", &Method::POST)
+            .expect("conversation control should be accepted for POST");
+        assert_eq!(path, "/api/conversation/control");
+        assert!(is_allowed_conversation_control("/api/conversation/control"));
+        assert!(!is_allowed_conversation_control(
+            "/api/conversation/control/extra"
+        ));
+
         // POST /api/plans/{id}/decision (approve/decline) is on the contract,
         // with the {id} segment parameterized like the follow-up actions.
         let (path, query) = validate_api_path("/api/plans/batman-42/decision", &Method::POST)

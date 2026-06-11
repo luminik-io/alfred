@@ -72,24 +72,34 @@ class ScheduledRun:
 
 
 def agents_conf_path() -> Path | None:
-    """Resolve ``launchd/agents.conf`` from the repo, or ``None`` if absent.
+    """Resolve ``launchd/agents.conf``, or ``None`` if absent.
 
-    Precedence mirrors the other ``agents.conf`` readers in the fleet:
-    an explicit ``ALFRED_REPO`` wins, then ``WORKSPACE_ROOT`` resolves an
-    ``alfred-os`` checkout under the workspace, finally falling back to
-    ``~/code/alfred-os``.
+    An explicit ``ALFRED_REPO`` wins. Otherwise prefer the installed runtime
+    home (``ALFRED_HOME`` / ``HERMES_HOME``), because ``deploy.sh`` copies the
+    launchd config there. Source-checkout fallbacks remain for development.
     """
     alfred_repo = os.environ.get("ALFRED_REPO")
-    if not alfred_repo:
-        workspace = os.environ.get("WORKSPACE_ROOT", os.path.expanduser("~/code"))
-        alfred_repo = str(Path(workspace) / "alfred-os")
-    repo = Path(alfred_repo)
-    public = repo / "launchd" / "agents.conf"
-    if public.is_file():
-        return public
-    legacy = repo / "infra" / "agents" / "launchd" / "agents.conf"
-    conf = legacy
-    return conf if conf.is_file() else None
+    if alfred_repo:
+        return _first_agents_conf(Path(alfred_repo))
+
+    runtime_home = os.environ.get("ALFRED_HOME") or os.environ.get("HERMES_HOME")
+    if runtime_home:
+        deployed = _first_agents_conf(Path(runtime_home))
+        if deployed is not None:
+            return deployed
+
+    workspace = os.environ.get("WORKSPACE_ROOT", os.path.expanduser("~/code"))
+    return _first_agents_conf(Path(workspace) / "alfred-os")
+
+
+def _first_agents_conf(base: Path) -> Path | None:
+    for conf in (
+        base / "launchd" / "agents.conf",
+        base / "infra" / "agents" / "launchd" / "agents.conf",
+    ):
+        if conf.is_file():
+            return conf
+    return None
 
 
 def upcoming_runs(
