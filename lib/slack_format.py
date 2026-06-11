@@ -10,7 +10,7 @@ agent firings.
 Three public entry points, all return ``False`` (or ``None`` for the
 root) on missing token / network error / no channel configured. They
 mirror the silent-skip pattern of ``slack_post`` so a caller without
-Slack configured never blows up — at worst, the firing runs with no
+Slack configured never blows up. At worst, the firing runs with no
 operator visibility.
 
 Design notes
@@ -20,7 +20,7 @@ Design notes
   on the per-firing state (Lucius / Batman both keep one) and pass it to
   every reply call. ``channel`` + ``ts`` is what Slack's
   ``chat.postMessage`` needs to thread a reply, and what
-  ``slack_approval.SlackApproval`` polls for the approval flow —
+  ``slack_approval.SlackApproval`` polls for the approval flow,
   same surface, two readers.
 - Block Kit ``header`` block has a hard 150-char text limit. The
   per-block plain-text limit is 3000. We truncate aggressively in both
@@ -84,12 +84,12 @@ _GITHUB_ISSUE_OR_PR_RE = re.compile(
 
 @dataclass
 class ThreadHandle:
-    """One per firing — stash on the firing's per-run state (EventLog
+    """One per firing. Stash on the firing's per-run state (EventLog
     or local var) and pass to every ``firing_thread_reply`` /
     ``firing_thread_close`` call so all replies thread to the same root.
 
     ``channel`` is the Slack channel id resolved by the API at post time
-    (``C0123ABC...``) — we keep that, not the human-readable name, so
+    (``C0123ABC...``). We keep that, not the human-readable name, so
     later API calls (post + reactions.get) don't have to re-resolve.
     ``ts`` is the message timestamp ``chat.postMessage`` returned;
     Slack's threading model uses it as ``thread_ts``.
@@ -135,7 +135,7 @@ def _home_channel(channel: str | None = None) -> str:
 def _truncate(text: str, limit: int) -> str:
     """Hard-truncate ``text`` to ``limit`` chars, signalling the cut.
 
-    Always leaves at least one visible char of the original — a 1-char
+    Always leaves at least one visible char of the original. A 1-char
     limit-equivalent message is still preferable to ``...[truncated]``
     alone.
     """
@@ -157,12 +157,12 @@ def _coerce_severity(severity: str) -> str:
 def _api_post(method: str, payload: dict, *, token: str) -> dict:
     """Tiny ``application/json`` Slack Web API wrapper.
 
-    Block Kit requires a JSON body — the ``slack_approval`` module's
+    Block Kit requires a JSON body. The ``slack_approval`` module's
     ``_api_call`` form-encodes its parameters, which Slack accepts for
     plain-text posts but rejects for ``blocks`` / ``attachments``. Keep
     this caller separate so the two code paths don't fight over content
     type. Returns the parsed response or a synthetic ``{"ok": False}``
-    on transport failure — never raises.
+    on transport failure. Never raises.
     """
     url = f"{SLACK_API}/{method}"
     headers = {
@@ -214,7 +214,7 @@ def build_chat_postmessage_payload(
 
     if blocks is not None:
         # Block-Kit caller. The body is in the blocks; the top-level
-        # ``text`` is the notification preview only — must NOT echo
+        # ``text`` is the notification preview only. It must NOT echo
         # any block content, or Slack stacks it on top of the rendered
         # Block Kit.
         payload["text"] = (notification_preview or "alfred fleet update").strip()
@@ -239,7 +239,7 @@ def build_chat_postmessage_payload(
 
 
 def _get_permalink(channel: str, ts: str, *, token: str) -> str | None:
-    """Best-effort ``chat.getPermalink``. None on failure — the link is
+    """Best-effort ``chat.getPermalink``. None on failure. The link is
     convenience, not load-bearing."""
     url = f"{SLACK_API}/chat.getPermalink"
     qs = urllib.parse.urlencode({"channel": channel, "message_ts": ts})
@@ -259,16 +259,16 @@ def _get_permalink(channel: str, ts: str, *, token: str) -> str | None:
 
 
 def _now_utc_short() -> str:
-    """``2026-05-09 14:32 UTC`` — short, unambiguous, easy to scan in
+    """``2026-05-09 14:32 UTC``: short, unambiguous, easy to scan in
     Slack's small-text context block."""
     return datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
 def _format_root_text(codename: str, summary_one_liner: str, severity: str) -> str:
-    """Header-block plain text: ``<emoji> <codename> (<role>) — <summary>``.
+    """Header-block plain text: ``<emoji> <codename> (<role>): <summary>``.
 
     Roles come from ``codename_with_role`` (``ALFRED_<NAME>_ROLE`` env
-    var). When unset the codename appears alone — operators on a forked
+    var). When unset the codename appears alone, so operators on a forked
     install without role wiring still get readable posts.
     """
     label = codename_with_role(codename)
@@ -292,12 +292,12 @@ def firing_thread_root(
     Returns a ``ThreadHandle`` on success, ``None`` on any failure
     (missing bot token, missing channel, transport error, Slack-side
     refusal). Callers that need any visibility at all should fall back
-    to ``slack_post`` on the ``None`` branch — the legacy webhook path
+    to ``slack_post`` on the ``None`` branch. The legacy webhook path
     still posts top-level even without the bot token.
 
     Block layout:
 
-      header    ``<emoji> <codename> (<role>) — <one-liner>``
+      header    ``<emoji> <codename> (<role>): <one-liner>``
       divider
       context   ``firing_id=<id> · <UTC start ts>``
       [summary] optional small-text context block giving a plain-English
@@ -308,7 +308,7 @@ def firing_thread_root(
       [body]    optional mrkdwn section, only when ``body`` is supplied
                 (Batman uses this for the plan preview so the owner's
                 reaction lands on the same message that carries the
-                plan they're approving — one source of truth per firing).
+                plan they're approving, one source of truth per firing).
 
     Severity colour goes on an attachment so the thread root carries the
     same vertical stripe as its replies.
@@ -381,12 +381,12 @@ def firing_thread_reply(handle: ThreadHandle | None, *, text: str, severity: str
     """Post an in-thread reply with a severity-colour attachment.
 
     Returns ``False`` on missing handle (caller never got a thread root
-    — silent skip) or any API error. Severity colour stripe goes on the
+    (silent skip) or any API error. Severity colour stripe goes on the
     attachment so the reply carries the same green/yellow/red as the
     root.
 
     Callers can pass ``None`` for the handle to express "post nothing,
-    we have no thread" — useful for callers that try-and-fall-through
+    we have no thread". Useful for callers that try-and-fall-through
     rather than branching on the root post's return.
     """
     if handle is None:
