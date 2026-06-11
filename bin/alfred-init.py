@@ -512,6 +512,12 @@ def seed_prompt_templates(state: WizardState) -> list[Path]:
     prompt_root = state.alfred_home / "prompts"
     prompt_root.mkdir(parents=True, exist_ok=True)
     template_root = state.repo_root / "prompts"
+    for shared_name in ("spec-interrogator.md",):
+        src = template_root / shared_name
+        dest = prompt_root / shared_name
+        if src.exists() and not dest.exists():
+            shutil.copyfile(src, dest)
+            created.append(dest)
     for role in state.enabled_roles:
         template_name = PROMPT_TEMPLATE_BY_ROLE.get(role)
         if not template_name:

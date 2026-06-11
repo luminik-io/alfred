@@ -32,6 +32,7 @@ OPERATOR_USER_ENV = "ALFRED_OPERATOR_SLACK_USER_ID"
 BATMAN_CHANNEL_ENV = "BATMAN_SLACK_CHANNEL"
 BATMAN_PARENT_REPO_ENV = "BATMAN_PARENT_REPO"
 BATMAN_AUTO_EXECUTE_ENV = "BATMAN_AUTO_EXECUTE"
+BATMAN_APPROVAL_MODE_ENV = "BATMAN_APPROVAL_MODE"
 BATMAN_PICKER_ENV = "BATMAN_PICKER"
 BATMAN_BUNDLE_PREFIX_ENV = "BATMAN_BUNDLE_SLUG_PREFIX"
 BATMAN_TIMEOUT_ENV = "BATMAN_APPROVAL_TIMEOUT_S"
@@ -40,6 +41,14 @@ MODE_HALT = "0"
 MODE_APPROVAL_GATE = "approval-gate"
 MODE_AUTO = "1"
 VALID_MODES = (MODE_HALT, MODE_APPROVAL_GATE, MODE_AUTO)
+APPROVAL_MODE_SLACK_OR_FILE = "slack-or-file"
+APPROVAL_MODE_SLACK = "slack"
+APPROVAL_MODE_FILE = "file"
+VALID_APPROVAL_MODES = (
+    APPROVAL_MODE_SLACK_OR_FILE,
+    APPROVAL_MODE_SLACK,
+    APPROVAL_MODE_FILE,
+)
 VALID_PICKERS = ("oldest", "newest")
 
 BANNER = "# alfred-batman-setup, generated below this line. Safe to re-run."
@@ -265,12 +274,19 @@ def required_missing(values: dict[str, str]) -> list[str]:
         missing.append(TOKEN_ENV)
     if not values.get(BATMAN_PARENT_REPO_ENV):
         missing.append(BATMAN_PARENT_REPO_ENV)
-    if values.get(BATMAN_AUTO_EXECUTE_ENV) == MODE_APPROVAL_GATE:
+    if approval_requires_slack(values):
         if not values.get(SLACK_BOT_TOKEN_ENV):
             missing.append(SLACK_BOT_TOKEN_ENV)
         if not values.get(OPERATOR_USER_ENV):
             missing.append(OPERATOR_USER_ENV)
     return missing
+
+
+def approval_requires_slack(values: dict[str, str]) -> bool:
+    return (
+        values.get(BATMAN_AUTO_EXECUTE_ENV) == MODE_APPROVAL_GATE
+        and values.get(BATMAN_APPROVAL_MODE_ENV, APPROVAL_MODE_SLACK_OR_FILE) != APPROVAL_MODE_FILE
+    )
 
 
 def render_check_only(state: BatmanSetupState) -> int:
@@ -283,6 +299,7 @@ def render_check_only(state: BatmanSetupState) -> int:
         BATMAN_CHANNEL_ENV,
         BATMAN_PARENT_REPO_ENV,
         BATMAN_AUTO_EXECUTE_ENV,
+        BATMAN_APPROVAL_MODE_ENV,
         BATMAN_PICKER_ENV,
         BATMAN_TIMEOUT_ENV,
     ):
@@ -301,6 +318,10 @@ def render_check_only(state: BatmanSetupState) -> int:
 
 def collect_values(state: BatmanSetupState) -> dict[str, str]:
     mode = state.value(BATMAN_AUTO_EXECUTE_ENV, MODE_HALT).lower() or MODE_HALT
+    approval_mode = (
+        state.value(BATMAN_APPROVAL_MODE_ENV, APPROVAL_MODE_SLACK_OR_FILE).lower()
+        or APPROVAL_MODE_SLACK_OR_FILE
+    )
     picker = state.value(BATMAN_PICKER_ENV, "oldest").lower() or "oldest"
     return {
         TOKEN_ENV: state.value(TOKEN_ENV),
@@ -310,6 +331,9 @@ def collect_values(state: BatmanSetupState) -> dict[str, str]:
         BATMAN_PARENT_REPO_ENV: state.value(BATMAN_PARENT_REPO_ENV)
         or infer_parent_repo(state.env, state.rc),
         BATMAN_AUTO_EXECUTE_ENV: mode if mode in VALID_MODES else MODE_HALT,
+        BATMAN_APPROVAL_MODE_ENV: (
+            approval_mode if approval_mode in VALID_APPROVAL_MODES else APPROVAL_MODE_SLACK_OR_FILE
+        ),
         BATMAN_PICKER_ENV: picker if picker in VALID_PICKERS else "oldest",
         BATMAN_BUNDLE_PREFIX_ENV: state.value(BATMAN_BUNDLE_PREFIX_ENV),
         BATMAN_TIMEOUT_ENV: state.value(BATMAN_TIMEOUT_ENV, "900") or "900",
@@ -399,7 +423,7 @@ def step_slack_token(
             else:
                 fail(f"Slack auth.test failed: {resp.get('error', 'unknown')}")
                 raise SystemExit(1)
-    elif values[BATMAN_AUTO_EXECUTE_ENV] == MODE_APPROVAL_GATE:
+    elif approval_requires_slack(values):
         fail(f"{SLACK_BOT_TOKEN_ENV} is required for approval-gate mode")
         raise SystemExit(1)
     else:
@@ -433,7 +457,7 @@ def step_operator_user(
             else:
                 fail(f"Slack users.info failed: {resp.get('error', 'unknown')}")
                 raise SystemExit(1)
-    elif values[BATMAN_AUTO_EXECUTE_ENV] == MODE_APPROVAL_GATE:
+    elif approval_requires_slack(values):
         fail(f"{OPERATOR_USER_ENV} is required for approval-gate mode")
         raise SystemExit(1)
     else:
@@ -498,7 +522,7 @@ def step_mode(
     non_interactive: bool,
 ) -> None:
     step("Approval gate behaviour")
-    print("  a) approval-gate: post a plan, wait for your Slack approval, then file children")
+    print("  a) approval-gate: post a plan, wait for approval, then file children")
     print("  b) 1: execute immediately after planning")
     print("  c) 0: halt after plan")
     configured_mode = state.value(BATMAN_AUTO_EXECUTE_ENV)
@@ -519,6 +543,38 @@ def step_mode(
         raise SystemExit(1)
     state.updates[BATMAN_AUTO_EXECUTE_ENV] = mode
     ok(f"{BATMAN_AUTO_EXECUTE_ENV}={mode}")
+
+
+def step_approval_mode(
+    state: BatmanSetupState,
+    args: argparse.Namespace,
+    *,
+    values: dict[str, str],
+    non_interactive: bool,
+) -> None:
+    if state.value(BATMAN_AUTO_EXECUTE_ENV) != MODE_APPROVAL_GATE:
+        return
+    step("Approval surface")
+    print("  a) slack-or-file: Slack reactions plus Alfred client approve/decline")
+    print("  b) slack: Slack reactions only")
+    print("  c) file: Alfred client/file marker only")
+    default_mode = (
+        args.approval_mode or values[BATMAN_APPROVAL_MODE_ENV] or APPROVAL_MODE_SLACK_OR_FILE
+    )
+    mode_map = {
+        "a": APPROVAL_MODE_SLACK_OR_FILE,
+        "b": APPROVAL_MODE_SLACK,
+        "c": APPROVAL_MODE_FILE,
+    }
+    raw = default_mode
+    if args.force or not args.approval_mode:
+        raw = ask("Choice", default_mode, non_interactive=non_interactive).lower()
+    mode = mode_map.get(raw, raw)
+    if mode not in VALID_APPROVAL_MODES:
+        fail(f"{BATMAN_APPROVAL_MODE_ENV}: expected one of {', '.join(VALID_APPROVAL_MODES)}")
+        raise SystemExit(1)
+    state.updates[BATMAN_APPROVAL_MODE_ENV] = mode
+    ok(f"{BATMAN_APPROVAL_MODE_ENV}={mode}")
 
 
 def step_optional_knobs(
@@ -601,6 +657,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--parent-repo", default="", help="owner/repo that holds Batman parent issues"
     )
     parser.add_argument("--mode", choices=VALID_MODES, default="", help="Batman execution mode")
+    parser.add_argument(
+        "--approval-mode",
+        choices=VALID_APPROVAL_MODES,
+        default="",
+        help="approval surface for approval-gate mode",
+    )
     parser.add_argument("--picker", choices=VALID_PICKERS, default="", help="parent issue picker")
     parser.add_argument("--bundle-slug-prefix", default=None, help="optional bundle slug prefix")
     parser.add_argument(
@@ -633,15 +695,20 @@ def main(argv: list[str] | None = None) -> int:
         skip_token_setup=args.skip_token_setup,
     )
     values = collect_values(state)
-    step_slack_scopes()
     step_mode(state, args, values=values, non_interactive=non_interactive)
     values = collect_values(state)
-    step_slack_token(state, args, values=values, non_interactive=non_interactive)
+    step_approval_mode(state, args, values=values, non_interactive=non_interactive)
     values = collect_values(state)
-    step_operator_user(state, args, values=values, non_interactive=non_interactive)
-    values = collect_values(state)
-    step_channel(state, args, values=values, non_interactive=non_interactive)
-    values = collect_values(state)
+    if approval_requires_slack(values):
+        step_slack_scopes()
+        step_slack_token(state, args, values=values, non_interactive=non_interactive)
+        values = collect_values(state)
+        step_operator_user(state, args, values=values, non_interactive=non_interactive)
+        values = collect_values(state)
+        step_channel(state, args, values=values, non_interactive=non_interactive)
+        values = collect_values(state)
+    else:
+        warn("Skipping Slack approval setup for this Batman mode.")
     step_parent_repo(state, args, values=values, non_interactive=non_interactive)
     values = collect_values(state)
     step_optional_knobs(state, args, values=values)
@@ -653,8 +720,13 @@ def main(argv: list[str] | None = None) -> int:
     print("\nDone. Next steps:")
     print("  1. Read docs/BATMAN_PARENT_ISSUE_TEMPLATE.md for the parent issue format.")
     print(f"  2. File an agent:large-feature issue in {state.updates[BATMAN_PARENT_REPO_ENV]}.")
-    print("  3. Watch the configured Slack channel for Batman's plan post.")
-    print("  4. React with :white_check_mark: to approve, or :x: to reject.")
+    if state.updates.get(BATMAN_AUTO_EXECUTE_ENV) != MODE_APPROVAL_GATE:
+        print("  3. Review Batman's drafted plan before filing child work.")
+    elif state.updates.get(BATMAN_APPROVAL_MODE_ENV) == APPROVAL_MODE_FILE:
+        print("  3. Approve or decline Batman plans from the Alfred client.")
+    else:
+        print("  3. Watch the configured Slack channel for Batman's plan post.")
+        print("  4. React with :white_check_mark: to approve, or :x: to reject.")
     return 0
 
 

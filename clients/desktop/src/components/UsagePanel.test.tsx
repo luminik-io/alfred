@@ -54,7 +54,7 @@ function shipped(): ShippedBoard {
   return {
     generated_at: "2026-06-03T17:00:00Z",
     lookback_days: 14,
-    repos: ["luminik-io/alfred"],
+    repos: ["example-org/alfred"],
     columns: { queued: [], in_progress: [], shipped: [] },
     counts: { queued: 0, in_progress: 0, shipped: 12 },
     errors: [],

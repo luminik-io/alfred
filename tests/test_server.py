@@ -60,7 +60,7 @@ def test_json_api_status_firings_and_plans(tmp_path: Path) -> None:
     (plans / "61-plan.md").write_text(
         "# Batman Plan for Issue #61\n\n"
         "**Status:** Draft (awaiting approval)\n\n"
-        "**Issue URL:** https://github.com/luminik-io/alfred/issues/61\n\n"
+        "**Issue URL:** https://github.com/example-org/alfred/issues/61\n\n"
         "**Affected Repos:** backend, frontend\n",
         encoding="utf-8",
     )
@@ -147,7 +147,7 @@ def test_api_memory_candidates_promote_and_reject(
                     "id": 101,
                     "source": "slack",
                     "agent": "lucius",
-                    "repo": "luminik-io/alfred",
+                    "repo": "example-org/alfred",
                     "topic": "planning",
                     "body": "Keep Slack memories reviewable.",
                     "evidence": [{"source": "slack"}],
@@ -167,7 +167,7 @@ def test_api_memory_candidates_promote_and_reject(
             return {
                 "id": candidate_id,
                 "agent": "lucius",
-                "repo": "luminik-io/alfred",
+                "repo": "example-org/alfred",
                 "status": "promoted",
             }
 
@@ -182,7 +182,7 @@ def test_api_memory_candidates_promote_and_reject(
             return {
                 "id": candidate_id,
                 "agent": "lucius",
-                "repo": "luminik-io/alfred",
+                "repo": "example-org/alfred",
                 "status": "rejected",
                 "review_note": note,
             }
@@ -271,7 +271,7 @@ def test_json_api_lists_slack_planning_drafts(tmp_path: Path) -> None:
                     "title": "Add threaded plan revisions",
                     "problem": "Operators need to revise Alfred plans before implementation.",
                     "desired_behavior": "Replies update the saved plan draft.",
-                    "repos": ["luminik-io/alfred"],
+                    "repos": ["example-org/alfred"],
                 },
                 "spec_body": "# Spec\n\nThread replies update readiness.",
                 "readiness": {"ok": True, "score": 92, "questions": []},
@@ -302,7 +302,7 @@ def test_json_api_lists_slack_followups(tmp_path: Path) -> None:
         "# Follow-up for Improve planning loop\n\n"
         "- Captured: 2026-05-29T06:45:00Z\n"
         "- Thread: C1 / 1716480000.000000\n"
-        "- Parent: [luminik-io/alfred#120](https://github.com/luminik-io/alfred/issues/120)\n\n"
+        "- Parent: [example-org/alfred#120](https://github.com/example-org/alfred/issues/120)\n\n"
         "## Slack Follow-up Feedback\n\n"
         "### Items\n\n"
         "- `change`: add a manual docs smoke test\n",
@@ -320,7 +320,7 @@ def test_json_api_lists_slack_followups(tmp_path: Path) -> None:
     payload = detail.json()
     assert payload["source"] == "followup"
     assert payload["title"] == "Follow-up for Improve planning loop"
-    assert payload["parent"] == "https://github.com/luminik-io/alfred/issues/120"
+    assert payload["parent"] == "https://github.com/example-org/alfred/issues/120"
     assert "manual docs smoke test" in payload["preview"]
     assert "manual docs smoke test" in payload["content"]
 
@@ -334,7 +334,7 @@ def test_followup_can_be_converted_to_planning_draft(tmp_path: Path) -> None:
         "# Follow-up for Improve planning loop\n\n"
         "- Captured: 2026-05-29T06:45:00Z\n"
         "- Thread: C1 / 1716480000.000000\n"
-        "- Parent: [luminik-io/alfred#120](https://github.com/luminik-io/alfred/issues/120)\n\n"
+        "- Parent: [example-org/alfred#120](https://github.com/example-org/alfred/issues/120)\n\n"
         "## Slack Follow-up Feedback\n\n"
         "### Items\n\n"
         "- `change`: add a manual docs smoke test\n",
@@ -356,7 +356,7 @@ def test_followup_can_be_converted_to_planning_draft(tmp_path: Path) -> None:
     assert payload["source"] == "planning"
     assert payload["converted_from"]["plan_id"] == "slack-C1-1716480000.000000"
     assert payload["draft"]["title"] == "Follow up: Improve planning loop"
-    assert payload["draft"]["repos"] == ["luminik-io/alfred"]
+    assert payload["draft"]["repos"] == ["example-org/alfred"]
     assert "Captured Follow-up Context" in payload["spec_body"]
     assert "manual docs smoke test" in payload["spec_body"]
     assert not source.exists()
@@ -408,7 +408,7 @@ def test_followup_actions_reject_cross_origin_posts(tmp_path: Path) -> None:
     source = followups / "slack-C1-1716480000.000000.md"
     source.write_text(
         "# Follow-up for Improve planning loop\n\n"
-        "- Parent: [luminik-io/alfred#120](https://github.com/luminik-io/alfred/issues/120)\n\n"
+        "- Parent: [example-org/alfred#120](https://github.com/example-org/alfred/issues/120)\n\n"
         "Cross-origin pages should not be able to mutate this inbox.\n",
         encoding="utf-8",
     )
@@ -441,7 +441,7 @@ def test_followup_conversion_removes_draft_when_archive_fails(
     source = followups / "slack-C1-1716480000.000000.md"
     source.write_text(
         "# Follow-up for Improve planning loop\n\n"
-        "- Parent: [luminik-io/alfred#120](https://github.com/luminik-io/alfred/issues/120)\n\n"
+        "- Parent: [example-org/alfred#120](https://github.com/example-org/alfred/issues/120)\n\n"
         "Archive failure should not leave a draft behind.\n",
         encoding="utf-8",
     )
@@ -472,7 +472,7 @@ def test_followup_can_be_marked_handled(tmp_path: Path) -> None:
     source = followups / "slack-C1-1716480000.000000.md"
     source.write_text(
         "# Follow-up for Improve planning loop\n\n"
-        "- Parent: [luminik-io/alfred#120](https://github.com/luminik-io/alfred/issues/120)\n\n"
+        "- Parent: [example-org/alfred#120](https://github.com/example-org/alfred/issues/120)\n\n"
         "Already answered in the PR thread.\n",
         encoding="utf-8",
     )
@@ -503,7 +503,7 @@ def test_plan_detail_embeds_token_and_html_form_post_uses_it(tmp_path: Path) -> 
     followups.mkdir(parents=True)
     (followups / "slack-C1-1716480000.000000.md").write_text(
         "# Follow-up for Improve planning loop\n\n"
-        "- Parent: [luminik-io/alfred#120](https://github.com/luminik-io/alfred/issues/120)\n\n"
+        "- Parent: [example-org/alfred#120](https://github.com/example-org/alfred/issues/120)\n\n"
         "Already answered in the PR thread.\n",
         encoding="utf-8",
     )
@@ -535,7 +535,7 @@ def test_html_form_post_without_token_is_forbidden(tmp_path: Path) -> None:
     source = followups / "slack-C1-1716480000.000000.md"
     source.write_text(
         "# Follow-up for Improve planning loop\n\n"
-        "- Parent: [luminik-io/alfred#120](https://github.com/luminik-io/alfred/issues/120)\n\n"
+        "- Parent: [example-org/alfred#120](https://github.com/example-org/alfred/issues/120)\n\n"
         "Header-less callers must not be able to mutate this inbox.\n",
         encoding="utf-8",
     )
@@ -560,7 +560,7 @@ def test_html_form_post_with_malformed_token_body_is_forbidden(tmp_path: Path) -
     source = followups / "slack-C1-1716480000.000000.md"
     source.write_text(
         "# Follow-up for Improve planning loop\n\n"
-        "- Parent: [luminik-io/alfred#120](https://github.com/luminik-io/alfred/issues/120)\n\n"
+        "- Parent: [example-org/alfred#120](https://github.com/example-org/alfred/issues/120)\n\n"
         "Malformed form bodies must not mutate this inbox.\n",
         encoding="utf-8",
     )
@@ -594,7 +594,7 @@ def test_json_plan_empty_body_does_not_return_raw_slack_event(tmp_path: Path) ->
                     "title": "Clarify plan intake",
                     "problem": "Operators need a clean preview.",
                     "desired_behavior": "",
-                    "repos": ["luminik-io/alfred"],
+                    "repos": ["example-org/alfred"],
                 },
                 "issue_body": "",
                 "spec_body": "",
@@ -686,7 +686,7 @@ def test_planning_save_spec_applies_pending_chat_message(tmp_path: Path) -> None
                 "Batman keeps implementation paused when a plan needs revision "
                 "and accepts thread feedback before child issues are filed."
             ),
-            "repos": "luminik-io/alfred\nexample-org/web",
+            "repos": "example-org/alfred\nexample-org/web",
             "acceptance_criteria": "Slack plan messages tell the operator how to reply.",
             "test_plan": "Run Batman tests and manually inspect the Slack payload.",
             "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
@@ -786,7 +786,7 @@ def test_planning_page_surfaces_memory_and_queues_spec_candidate(
                 "Batman keeps implementation paused when a plan needs revision "
                 "and accepts thread feedback before child issues are filed."
             ),
-            "repos": "luminik-io/alfred",
+            "repos": "example-org/alfred",
             "acceptance_criteria": "Slack plan messages tell the operator how to reply.",
             "test_plan": "Run Batman unit tests and manually inspect the Slack payload.",
             "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
@@ -800,7 +800,7 @@ def test_planning_page_surfaces_memory_and_queues_spec_candidate(
     assert "Memory review queued" in response.text
     assert len(memory.candidates) == 1
     assert memory.candidates[0]["source"] == "planning-ui"
-    assert memory.candidates[0]["repo"] == "luminik-io/alfred"
+    assert memory.candidates[0]["repo"] == "example-org/alfred"
 
 
 def test_planning_memory_candidate_uses_writable_provider_inside_tuple_chain(
@@ -856,7 +856,7 @@ def test_planning_memory_candidate_uses_writable_provider_inside_tuple_chain(
                 "Batman keeps implementation paused when a plan needs revision "
                 "and accepts thread feedback before child issues are filed."
             ),
-            "repos": "luminik-io/alfred",
+            "repos": "example-org/alfred",
             "acceptance_criteria": "Slack plan messages tell the operator how to reply.",
             "test_plan": "Run Batman unit tests and manually inspect the Slack payload.",
             "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
@@ -866,7 +866,7 @@ def test_planning_memory_candidate_uses_writable_provider_inside_tuple_chain(
 
     assert response.status_code == 200
     assert chain.writable.candidates
-    assert chain.writable.candidates[0]["repo"] == "luminik-io/alfred"
+    assert chain.writable.candidates[0]["repo"] == "example-org/alfred"
 
 
 def test_planning_memory_candidate_old_api_object_id_is_extracted(
@@ -886,7 +886,7 @@ def test_planning_memory_candidate_old_api_object_id_is_extracted(
         title="Add Slack plan revision flow",
         problem="Operators need to discuss a plan before implementation.",
         desired_behavior="Alfred saves the refined plan.",
-        repos=["luminik-io/alfred"],
+        repos=["example-org/alfred"],
         acceptance_criteria=["Saved spec queues a memory candidate."],
         test_plan="Unit test the fallback.",
     )
@@ -1018,7 +1018,7 @@ def test_compose_draft_iterates_on_same_draft_id(tmp_path: Path) -> None:
             "text": (
                 "desired: A Compose tab posts intent to the draft API and renders "
                 "the readiness score plus clarifying questions.\n"
-                "repo: luminik-io/alfred\n"
+                "repo: example-org/alfred\n"
                 "acceptance: Submitting intent renders the readiness score.\n"
                 "test: Vitest covers the compose submit path with a mocked api."
             ),
@@ -1030,7 +1030,7 @@ def test_compose_draft_iterates_on_same_draft_id(tmp_path: Path) -> None:
     assert second["draft_id"] == draft_id
     assert second["revision_count"] == 2
     assert second["readiness"]["score"] > first["readiness"]["score"]
-    assert "luminik-io/alfred" in second["draft"]["repos"]
+    assert "example-org/alfred" in second["draft"]["repos"]
 
     drafts = client.get("/api/plans/drafts").json()["rows"]
     matching = [row for row in drafts if row["draft_id"] == draft_id]
@@ -1241,6 +1241,30 @@ _INTERROGATOR_PROMPT = REPO_ROOT / "prompts" / "spec-interrogator.md"
 
 def _use_interrogator_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ALFRED_SPEC_INTERROGATOR_PROMPT", str(_INTERROGATOR_PROMPT))
+
+
+def test_compose_interrogator_prompt_prefers_runtime_home(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ALFRED_SPEC_INTERROGATOR_PROMPT", raising=False)
+    home = tmp_path / "alfred"
+    prompt = home / "prompts" / "spec-interrogator.md"
+    prompt.parent.mkdir(parents=True)
+    prompt.write_text("runtime prompt\n", encoding="utf-8")
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+
+    assert server_views._compose_interrogator_prompt_path() == prompt
+
+
+def test_compose_interrogator_prompt_falls_back_to_source_checkout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ALFRED_SPEC_INTERROGATOR_PROMPT", raising=False)
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "missing-runtime"))
+
+    assert server_views._compose_interrogator_prompt_path() == _INTERROGATOR_PROMPT
 
 
 def _stub_converse_turn(
@@ -2107,7 +2131,7 @@ def _write_batman_plan(tmp_path: Path, issue_num: int, *, title: str) -> Path:
         f"# Batman Plan for Issue #{issue_num}\n\n"
         f"**Title:** {title}\n\n"
         "**Status:** Draft (awaiting approval)\n\n"
-        f"**Issue URL:** https://github.com/luminik-io/alfred/issues/{issue_num}\n\n"
+        f"**Issue URL:** https://github.com/example-org/alfred/issues/{issue_num}\n\n"
         "**Affected Repos:** backend, frontend\n",
         encoding="utf-8",
     )
@@ -2245,7 +2269,7 @@ def test_plan_decision_refuses_non_batman_plan(tmp_path: Path) -> None:
     followups.mkdir(parents=True)
     (followups / "slack-C1-1716480000.000000.md").write_text(
         "# Follow-up for Improve planning loop\n\n"
-        "- Parent: [luminik-io/alfred#120](https://github.com/luminik-io/alfred/issues/120)\n",
+        "- Parent: [example-org/alfred#120](https://github.com/example-org/alfred/issues/120)\n",
         encoding="utf-8",
     )
     client = TestClient(create_app(FilesystemReader(state_root=state)))

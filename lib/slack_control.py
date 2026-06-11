@@ -1183,8 +1183,8 @@ def render_help() -> str:
             '- "Dry-run Lucius."',
             '- "Pause Nightwing for a bit."',
             '- "Change Lucius to every 20 minutes."',
-            '- "Assign luminik-io/alfred#123 to Alfred."',
-            '- "Queue luminik-io/alfred#123 for Alfred."',
+            '- "Assign example-org/alfred#123 to Alfred."',
+            '- "Queue example-org/alfred#123 for Alfred."',
             '- "Put that issue on hold."',
             '- "Remember for Alfred: Slack confirmations must stay explicit."',
             "",
@@ -1603,8 +1603,8 @@ def render_remember_usage() -> str:
             "*Usage:* `remember [owner/repo:] <lesson>`",
             "",
             "Examples:",
-            "- `remember luminik-io/alfred: Slack planning replies must stay reviewable.`",
-            "- `memory remember luminik-io/alfred: keep the namespace discoverable.`",
+            "- `remember example-org/alfred: Slack planning replies must stay reviewable.`",
+            "- `memory remember example-org/alfred: keep the namespace discoverable.`",
             "- `remember Keep memory candidates out of prompt context until promoted.`",
         ]
     )

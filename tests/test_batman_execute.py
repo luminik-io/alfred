@@ -43,6 +43,7 @@ def _isolated_sys_path(tmp_path, monkeypatch):
         "BATMAN_PICKER",
         "BATMAN_BUNDLE_SLUG_PREFIX",
         "BATMAN_APPROVAL_TIMEOUT_S",
+        "BATMAN_APPROVAL_MODE",
         "BATMAN_SLACK_CHANNEL",
     ):
         monkeypatch.delenv(k, raising=False)
@@ -131,9 +132,17 @@ class FakeGate:
         *,
         timeout_s=86400,
         poll_interval_s=30,
+        kill_check=None,
         feedback_callback=None,
     ):
         self.calls.append((channel, message_ts))
+        if kill_check is not None and kill_check():
+            return FakeApprovalResult(
+                approved=False,
+                verdict="rejected",
+                detail="killed",
+                elapsed_s=0.25,
+            )
         if feedback_callback is not None and self._result.feedback:
             feedback_callback(self._result.feedback)
         return self._result
@@ -331,6 +340,131 @@ def test_approval_timeout_returns_no_execute():
     assert verdict.verdict == EXEC_APPROVAL_TIMEOUT
     # Approval failed -> execute MUST NOT run. No children filed.
     assert gh.issued == []
+
+
+def test_in_app_approval_marker_grants_without_slack_poll(tmp_path: Path):
+    from batman import EXEC_OK, BatmanLifecycle, BatmanLifecycleConfig
+    from slack_approval import APPROVAL_TIMEOUT
+
+    gh = FakeGitHubClient()
+    reporter = FakeReporter()
+    gate = FakeGate(FakeApprovalResult(approved=False, verdict=APPROVAL_TIMEOUT))
+
+    lifecycle = BatmanLifecycle(
+        config=BatmanLifecycleConfig(
+            auto_execute="approval-gate",
+            parent_repo="your-org/your-product",
+            slack_channel="alfred-fleet",
+        ),
+        gate=gate,
+        gh_client=gh,
+        reporter=reporter,
+    )
+    plan = lifecycle.plan(
+        body=SAMPLE_BODY,
+        title=SAMPLE_TITLE,
+        parent_repo="your-org/your-product",
+        parent_issue_number=42,
+    )
+    envelope = lifecycle.request_approval(plan)
+    assert envelope is not None
+    marker = tmp_path / "alfred" / "batman" / "approvals" / "42.approved"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("", encoding="utf-8")
+
+    verdict = lifecycle.await_approval(envelope)
+
+    assert verdict.approved is True
+    assert verdict.verdict == EXEC_OK
+    assert "Alfred client" in verdict.detail
+    assert gate.calls == []
+    assert not marker.exists()
+
+
+def test_in_app_approval_marker_interrupts_active_slack_wait(tmp_path: Path):
+    from batman import EXEC_OK, BatmanLifecycle, BatmanLifecycleConfig
+
+    gh = FakeGitHubClient()
+    reporter = FakeReporter()
+    marker = tmp_path / "alfred" / "batman" / "approvals" / "42.approved"
+
+    class MarkerGate:
+        calls = 0
+
+        def await_approval(self, *_args, kill_check=None, **_kwargs):
+            self.calls += 1
+            marker.parent.mkdir(parents=True)
+            marker.write_text("", encoding="utf-8")
+            assert kill_check is not None
+            assert kill_check() is True
+            return FakeApprovalResult(
+                approved=False,
+                verdict="rejected",
+                detail="killed",
+                elapsed_s=1.5,
+            )
+
+    gate = MarkerGate()
+    lifecycle = BatmanLifecycle(
+        config=BatmanLifecycleConfig(
+            auto_execute="approval-gate",
+            parent_repo="your-org/your-product",
+            slack_channel="alfred-fleet",
+        ),
+        gate=gate,
+        gh_client=gh,
+        reporter=reporter,
+    )
+    plan = lifecycle.plan(
+        body=SAMPLE_BODY,
+        title=SAMPLE_TITLE,
+        parent_repo="your-org/your-product",
+        parent_issue_number=42,
+    )
+    envelope = lifecycle.request_approval(plan)
+    assert envelope is not None
+
+    verdict = lifecycle.await_approval(envelope)
+
+    assert verdict.approved is True
+    assert verdict.verdict == EXEC_OK
+    assert verdict.elapsed_s == 1.5
+    assert gate.calls == 1
+    assert not marker.exists()
+
+
+def test_file_approval_mode_consumes_rejection_marker_without_slack(tmp_path: Path):
+    from batman import EXEC_REJECTED, BatmanLifecycle, BatmanLifecycleConfig
+
+    lifecycle = BatmanLifecycle(
+        config=BatmanLifecycleConfig(
+            auto_execute="approval-gate",
+            parent_repo="your-org/your-product",
+            approval_mode="file",
+            approval_timeout_s=0,
+        ),
+        gate=None,
+        gh_client=FakeGitHubClient(),
+        reporter=FakeReporter(),
+    )
+    plan = lifecycle.plan(
+        body=SAMPLE_BODY,
+        title=SAMPLE_TITLE,
+        parent_repo="your-org/your-product",
+        parent_issue_number=42,
+    )
+    envelope = lifecycle.request_approval(plan)
+    assert envelope is not None
+    marker = tmp_path / "alfred" / "batman" / "approvals" / "42.rejected"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("declined via Alfred client: scope too broad\n", encoding="utf-8")
+
+    verdict = lifecycle.await_approval(envelope)
+
+    assert verdict.approved is False
+    assert verdict.verdict == EXEC_REJECTED
+    assert "scope too broad" in verdict.detail
+    assert not marker.exists()
 
 
 # ---------- scenario 3: operator rejects ----------
@@ -745,7 +879,34 @@ def test_slack_reporter_registers_plan_thread(tmp_path, monkeypatch):
     assert record.parent_repo == "your-org/parent"
     assert record.parent_issue == 77
     assert record.plan_path
+    assert Path(record.plan_path) == tmp_path / "alfred" / "batman-plans" / "77-plan.md"
     assert Path(record.plan_path).exists()
+
+
+def test_slack_reporter_writes_local_plan_copy_when_slack_post_fails(tmp_path, monkeypatch):
+    from batman import SlackReporter, parse_parent_issue
+
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
+    fallback_posts = []
+    reporter = SlackReporter(
+        firing_id="20260528-120000-test",
+        thread_root=lambda **_kwargs: None,
+        fallback_post=lambda message, **kwargs: fallback_posts.append((message, kwargs)),
+        report_feedback_timeout_s=0,
+    )
+    plan = parse_parent_issue(
+        body="Repos:\n- your-org/backend\n\nChildren:\n- backend: add a clear setup page\n",
+        title="Bundle: setup-page",
+        parent_repo="your-org/parent",
+        parent_issue_number=77,
+    )
+
+    assert reporter.post_plan(plan, channel="alfred") is None
+
+    plan_path = tmp_path / "alfred" / "batman-plans" / "77-plan.md"
+    assert plan_path.exists()
+    assert "setup-page" in plan_path.read_text(encoding="utf-8")
+    assert fallback_posts
 
 
 # ---------- bonus: parser robustness ----------
@@ -838,6 +999,8 @@ Done when:
 
 def test_config_from_env_validates_auto_execute(monkeypatch):
     from batman import (
+        APPROVAL_MODE_FILE,
+        APPROVAL_MODE_SLACK_OR_FILE,
         AUTO_EXECUTE_FORCE,
         AUTO_EXECUTE_GATE,
         AUTO_EXECUTE_OFF,
@@ -860,3 +1023,12 @@ def test_config_from_env_validates_auto_execute(monkeypatch):
     cfg = BatmanLifecycleConfig.from_env()
     assert cfg.auto_execute == AUTO_EXECUTE_OFF
     assert cfg.execute_enabled is False
+
+    monkeypatch.setenv("BATMAN_AUTO_EXECUTE", "approval-gate")
+    monkeypatch.setenv("BATMAN_APPROVAL_MODE", "file")
+    cfg = BatmanLifecycleConfig.from_env()
+    assert cfg.approval_mode == APPROVAL_MODE_FILE
+
+    monkeypatch.setenv("BATMAN_APPROVAL_MODE", "nonsense")
+    cfg = BatmanLifecycleConfig.from_env()
+    assert cfg.approval_mode == APPROVAL_MODE_SLACK_OR_FILE

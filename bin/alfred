@@ -1514,6 +1514,7 @@ def cmd_batman_setup(args: argparse.Namespace) -> int:
         ("slack_channel", "--slack-channel"),
         ("parent_repo", "--parent-repo"),
         ("mode", "--mode"),
+        ("approval_mode", "--approval-mode"),
         ("picker", "--picker"),
         ("bundle_slug_prefix", "--bundle-slug-prefix"),
     ):
@@ -1710,6 +1711,12 @@ def main(argv: list[str] | None = None) -> int:
         )
         parser.add_argument(
             "--mode", choices=["0", "approval-gate", "1"], default="", help="Batman execution mode"
+        )
+        parser.add_argument(
+            "--approval-mode",
+            choices=["slack-or-file", "slack", "file"],
+            default="",
+            help="approval surface for approval-gate mode",
         )
         parser.add_argument(
             "--picker", choices=["oldest", "newest"], default="", help="parent issue picker"

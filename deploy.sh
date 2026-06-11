@@ -54,9 +54,10 @@ export ALFRED_HOME WORKSPACE_ROOT
 RUNTIME_BIN="$ALFRED_HOME/bin"
 RUNTIME_LIB="$ALFRED_HOME/lib"
 RUNTIME_LAUNCHD="$ALFRED_HOME/launchd"
+RUNTIME_PROMPTS="$ALFRED_HOME/prompts"
 LOCAL_BIN="${HOME}/.local/bin"
 
-mkdir -p "$RUNTIME_BIN" "$RUNTIME_LIB" "$RUNTIME_LAUNCHD" "$LOCAL_BIN"
+mkdir -p "$RUNTIME_BIN" "$RUNTIME_LIB" "$RUNTIME_LAUNCHD" "$RUNTIME_PROMPTS" "$LOCAL_BIN"
 
 echo "[alfred-os/deploy] ALFRED_HOME=$ALFRED_HOME WORKSPACE_ROOT=$WORKSPACE_ROOT"
 
@@ -85,6 +86,12 @@ for f in "$REPO_DIR/bin/"*; do
   cp "$f" "$RUNTIME_BIN/"
   chmod +x "$RUNTIME_BIN/$(basename "$f")"
 done
+
+if [ -f "$REPO_DIR/prompts/spec-interrogator.md" ]; then
+  cp "$REPO_DIR/prompts/spec-interrogator.md" "$RUNTIME_PROMPTS/spec-interrogator.md"
+  chmod 644 "$RUNTIME_PROMPTS/spec-interrogator.md"
+  echo "[alfred-os/deploy] copied prompts/spec-interrogator.md"
+fi
 
 if [ -f "$RUNTIME_BIN/alfred" ]; then
   ln -sfn "$RUNTIME_BIN/alfred" "$LOCAL_BIN/alfred"

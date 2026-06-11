@@ -155,11 +155,11 @@ describe("OnboardingView", () => {
   it("keeps already selected repositories that are missing from the visible gh list", async () => {
     vi.spyOn(api, "loadSetupRepos").mockResolvedValue({
       repos: [REPOS.repos[0]],
-      selected: ["luminik-io/alfred"],
+      selected: ["example-org/alfred"],
     });
     const save = vi.spyOn(api, "saveSetupRepos").mockResolvedValue({
       ok: true,
-      repos: ["luminik-io/alfred", "octocat/web"],
+      repos: ["example-org/alfred", "octocat/web"],
       env_path: "/home/.alfred/.env",
       keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
     });
@@ -175,7 +175,7 @@ describe("OnboardingView", () => {
     await waitFor(() =>
       expect(save).toHaveBeenCalledWith(
         "http://127.0.0.1:7010",
-        expect.arrayContaining(["luminik-io/alfred", "octocat/web"]),
+        expect.arrayContaining(["example-org/alfred", "octocat/web"]),
       ),
     );
   });

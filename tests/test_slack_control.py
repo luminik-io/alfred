@@ -92,7 +92,7 @@ class FakeRunner:
                         {
                             "id": 101,
                             "agent": "lucius",
-                            "repo": "luminik-io/alfred",
+                            "repo": "example-org/alfred",
                             "body": "Keep Slack memory candidates reviewable.",
                             "confidence": 0.82,
                             "status": "pending",
@@ -108,7 +108,7 @@ class FakeRunner:
                         {
                             "candidate_id": 102,
                             "agent": "drake",
-                            "repo": "luminik-io/alfred",
+                            "repo": "example-org/alfred",
                             "body": "Specs need acceptance criteria before implementation.",
                             "score": 0.91,
                         }
@@ -153,7 +153,7 @@ class FakeRunner:
                                 "candidate_id": 104 if "--apply" in argv else None,
                                 "agent": "huntress",
                                 "codename": "huntress",
-                                "repo": "luminik-io/alfred",
+                                "repo": "example-org/alfred",
                                 "body": "When huntress repeatedly hits error_timeout, check local setup.",
                             }
                         ],
@@ -220,7 +220,7 @@ def test_leading_verb_parses() -> None:
     assert parse_control_command("memory").verb == "memory"
     cmd = parse_control_command("memory promote 101")
     assert cmd is not None and cmd.verb == "memory" and cmd.arg == "promote 101"
-    cmd = parse_control_command("remember luminik-io/alfred: keep it reviewable")
+    cmd = parse_control_command("remember example-org/alfred: keep it reviewable")
     assert cmd is not None and cmd.verb == "remember"
     cmd = parse_control_command("pause lucius")
     assert cmd is not None and cmd.verb == "pause" and cmd.arg == "lucius"
@@ -312,7 +312,7 @@ def test_is_control_message_detects_leading_verb() -> None:
     assert is_control_message("plans")
     assert is_control_message("plan followup-1")
     assert is_control_message("memory")
-    assert is_control_message("remember luminik-io/alfred: keep it reviewable")
+    assert is_control_message("remember example-org/alfred: keep it reviewable")
     assert is_control_message("trusted")
     assert is_control_message("trust <@U2DEF>")
     assert not is_control_message("ship the docs")
@@ -345,7 +345,7 @@ def _write_followup(state_root: Path, name: str = "slack-C1-1716480000") -> Path
             [
                 "# Follow-up for PR feedback",
                 "",
-                "- Parent: https://github.com/luminik-io/alfred/pull/123",
+                "- Parent: https://github.com/example-org/alfred/pull/123",
                 "- Thread: C1 / 1716480000.000000",
                 "",
                 "Please tighten the docs and add a smoke test before we call this done.",
@@ -414,7 +414,7 @@ def test_plan_command_shows_followup_detail(tmp_path: Path) -> None:
     assert result.action == "plan"
     assert "captured follow-up" in result.text
     assert f"draft {followup.stem}" in result.text
-    assert "https://github.com/luminik-io/alfred/pull/123" in result.text
+    assert "https://github.com/example-org/alfred/pull/123" in result.text
 
 
 def test_trusted_user_can_convert_followup_to_local_draft(tmp_path: Path) -> None:
@@ -571,7 +571,7 @@ def test_remember_queues_reviewable_memory_candidate() -> None:
     handler = _handler(runner)
 
     result = handler.handle(
-        "remember luminik-io/alfred: Slack memory stays reviewable.",
+        "remember example-org/alfred: Slack memory stays reviewable.",
         trusted=True,
         actor_user_id="UTEAM",
     )
@@ -594,7 +594,7 @@ def test_memory_remember_alias_queues_reviewable_memory_candidate() -> None:
     handler = _handler(runner)
 
     result = handler.handle(
-        "memory remember luminik-io/alfred: Slack memory stays reviewable.",
+        "memory remember example-org/alfred: Slack memory stays reviewable.",
         trusted=True,
         actor_user_id="UTEAM",
     )
@@ -837,7 +837,7 @@ def test_memory_harvest_renderer_reports_overflow() -> None:
                                     "candidate_id": None,
                                     "agent": "huntress",
                                     "codename": "huntress",
-                                    "repo": "luminik-io/alfred",
+                                    "repo": "example-org/alfred",
                                     "body": f"Repeated failure pattern {idx}",
                                 }
                                 for idx in range(10)
@@ -870,7 +870,7 @@ def test_memory_harvest_apply_with_only_duplicates_is_not_labeled_queued() -> No
                                     "candidate_id": None,
                                     "agent": "huntress",
                                     "codename": "huntress",
-                                    "repo": "luminik-io/alfred",
+                                    "repo": "example-org/alfred",
                                     "body": "Repeated failure pattern already queued.",
                                 }
                             ],

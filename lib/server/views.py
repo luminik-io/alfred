@@ -902,10 +902,10 @@ def register_routes(app: FastAPI) -> None:
         """Record an in-app go/no-go on a genuine Batman plan.
 
         Writes the same ``{issue_num}.approved`` / ``.rejected`` marker
-        Batman's file-poll fallback watches (see ``bin/batman.py``
-        ``wait_for_approval_file``), so the operator can approve or decline
-        without a Slack round-trip and Batman picks it up identically to a
-        reaction. Token-gated via ``_authorized_mutation`` and same-origin so a
+        Batman's approval gate watches (see ``lib.batman``), so the operator
+        can approve or decline without a Slack round-trip and Batman consumes
+        it through the real go/no-go path. Token-gated via
+        ``_authorized_mutation`` and same-origin so a
         drive-by localhost page cannot arm or stop work on the operator's
         behalf.
         """
@@ -1983,7 +1983,17 @@ def _compose_interrogator_prompt_path() -> Path:
     override = os.environ.get("ALFRED_SPEC_INTERROGATOR_PROMPT")
     if override:
         return Path(override)
-    return Path(__file__).resolve().parents[2] / "prompts" / "spec-interrogator.md"
+    relative = Path("prompts") / "spec-interrogator.md"
+    candidates: list[Path] = []
+    runtime_home = os.environ.get("ALFRED_HOME") or os.environ.get("HERMES_HOME")
+    if runtime_home:
+        candidates.append(Path(runtime_home) / relative)
+    candidates.append(Path(__file__).resolve().parents[2] / relative)
+    candidates.append(Path.cwd() / relative)
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return candidates[0]
 
 
 def _fleet_counts(agents: list[Any], recent_firings: list[Any]) -> dict[str, int]:

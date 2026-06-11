@@ -157,14 +157,14 @@ def test_known_plan_thread_reply_is_captured_and_acknowledged(tmp_path: Path) ->
             channel="C1",
             thread_ts="1716480000.000000",
             title="Improve Slack planning",
-            parent_repo="luminik-io/alfred",
+            parent_repo="example-org/alfred",
             parent_issue=120,
             plan_path=str(plan_path),
             metadata={
-                "affected_repos": ["luminik-io/alfred", "luminik-io/alfred-os"],
+                "affected_repos": ["example-org/alfred", "luminik-io/alfred-os"],
                 "child_count": 2,
                 "children_by_repo": {
-                    "luminik-io/alfred": 1,
+                    "example-org/alfred": 1,
                     "luminik-io/alfred-os": 1,
                 },
             },
@@ -192,7 +192,7 @@ def test_known_plan_thread_reply_is_captured_and_acknowledged(tmp_path: Path) ->
     assert (
         "Execution scope if approved now (1 repo, 1 child issue(s))" in poster.messages[0]["text"]
     )
-    assert "`luminik-io/alfred`" in poster.messages[0]["text"]
+    assert "`example-org/alfred`" in poster.messages[0]["text"]
     assert "Alfred will not execute" in poster.messages[0]["text"]
     feedback_files = list((tmp_path / "threads" / "feedback").glob("*.jsonl"))
     assert feedback_files
@@ -200,11 +200,11 @@ def test_known_plan_thread_reply_is_captured_and_acknowledged(tmp_path: Path) ->
     record = registry.lookup("C1", "1716480000.000000")
     assert record is not None
     assert record.status == "needs_resolution"
-    assert record.metadata["revised_repos"] == ["luminik-io/alfred"]
+    assert record.metadata["revised_repos"] == ["example-org/alfred"]
     revision_path = Path(record.metadata["plan_revision_path"])
     revision = json.loads(revision_path.read_text(encoding="utf-8"))
     assert revision["latest"]["requires_resolution"] is True
-    assert revision["latest"]["revised_repos"] == ["luminik-io/alfred"]
+    assert revision["latest"]["revised_repos"] == ["example-org/alfred"]
     assert revision["record"]["plan_path"] == str(plan_path)
 
     resolved = listener.handle_payload(_thread_reply("open questions: none", event_id="Ev2"))
@@ -228,7 +228,7 @@ def test_known_plan_thread_question_is_answered_without_revising_plan(tmp_path: 
         "\n".join(
             [
                 "*Alfred plan ready* · `onboarding`",
-                "*Parent:* <https://github.com/luminik-io/alfred/issues/779|luminik-io/alfred#779>",
+                "*Parent:* <https://github.com/example-org/alfred/issues/779|example-org/alfred#779>",
                 "*Work:* Improve onboarding state persistence",
                 "*Readiness:* ready for approval",
                 "",
@@ -245,7 +245,7 @@ def test_known_plan_thread_question_is_answered_without_revising_plan(tmp_path: 
             channel="C1",
             thread_ts="1716480000.000000",
             title="Improve onboarding state persistence",
-            parent_repo="luminik-io/alfred",
+            parent_repo="example-org/alfred",
             parent_issue=779,
             plan_path=str(plan_path),
             metadata={
@@ -302,11 +302,11 @@ def test_plan_thread_structured_command_ending_in_question_mark_revises_plan(
             channel="C1",
             thread_ts="1716480000.000000",
             title="Improve onboarding",
-            parent_repo="luminik-io/alfred",
+            parent_repo="example-org/alfred",
             parent_issue=779,
             plan_path=str(plan_path),
             metadata={
-                "affected_repos": ["luminik-io/alfred"],
+                "affected_repos": ["example-org/alfred"],
                 "child_count": 1,
             },
         )
@@ -346,11 +346,11 @@ def test_plan_thread_resolved_question_ending_in_question_mark_clears_blocker(
             channel="C1",
             thread_ts="1716480000.000000",
             title="Improve onboarding",
-            parent_repo="luminik-io/alfred",
+            parent_repo="example-org/alfred",
             parent_issue=779,
             plan_path=str(plan_path),
             metadata={
-                "affected_repos": ["luminik-io/alfred"],
+                "affected_repos": ["example-org/alfred"],
                 "child_count": 1,
             },
         )
@@ -392,9 +392,9 @@ def test_report_thread_reply_writes_followup_context(tmp_path: Path) -> None:
             codename="batman",
             firing_id="firing-1",
             title="Improve planning loop",
-            parent_repo="luminik-io/alfred",
+            parent_repo="example-org/alfred",
             parent_issue=120,
-            metadata={"created": ["https://github.com/luminik-io/alfred/pull/12"]},
+            metadata={"created": ["https://github.com/example-org/alfred/pull/12"]},
         )
     )
     listener = SlackPlanningListener(
@@ -413,7 +413,7 @@ def test_report_thread_reply_writes_followup_context(tmp_path: Path) -> None:
     assert len(followups) == 1
     text = followups[0].read_text(encoding="utf-8")
     assert "Slack Follow-up Feedback" in text
-    assert "https://github.com/luminik-io/alfred/pull/12" in text
+    assert "https://github.com/example-org/alfred/pull/12" in text
     assert "manual docs smoke test" in text
     record = registry.lookup("C1", "1716480000.000000")
     assert record is not None
@@ -432,9 +432,9 @@ def test_report_thread_followup_write_failure_is_acknowledged(tmp_path: Path, mo
             codename="batman",
             firing_id="firing-1",
             title="Improve planning loop",
-            parent_repo="luminik-io/alfred",
+            parent_repo="example-org/alfred",
             parent_issue=120,
-            metadata={"created": ["https://github.com/luminik-io/alfred/pull/12"]},
+            metadata={"created": ["https://github.com/example-org/alfred/pull/12"]},
         )
     )
     original_write_text = Path.write_text
@@ -557,7 +557,7 @@ def test_ready_slack_draft_queues_reviewable_memory_candidate(tmp_path: Path) ->
             "title: Queue Slack planning memories\n"
             "problem: Operators need Alfred to preserve useful Slack planning decisions without manual notes.\n"
             "desired: Alfred queues a reviewable memory candidate after a scoped Slack draft is saved.\n"
-            "repo: luminik-io/alfred\n"
+            "repo: example-org/alfred\n"
             "acceptance: the local draft records the memory candidate id for review\n"
             "test: run the Slack listener unit test and verify no lesson is promoted automatically\n"
             "out of scope: automatic promotion\n"
@@ -569,12 +569,12 @@ def test_ready_slack_draft_queues_reviewable_memory_candidate(tmp_path: Path) ->
     assert result.handled is True
     assert result.action == "draft_created"
     assert provider.calls
-    assert provider.calls[0]["repo"] == "luminik-io/alfred"
+    assert provider.calls[0]["repo"] == "example-org/alfred"
     assert provider.calls[0]["source"] == "slack-draft"
     assert provider.calls[0]["tags"] == ["slack", "planning"]
     draft = json.loads(Path(result.draft_path).read_text(encoding="utf-8"))
     assert draft["memory_candidate_ids"] == ["cand-1"]
-    assert draft["memory_candidate_keys"] == ["slack-planning:luminik-io/alfred"]
+    assert draft["memory_candidate_keys"] == ["slack-planning:example-org/alfred"]
 
 
 def test_ready_slack_revision_reuses_existing_memory_candidate(tmp_path: Path) -> None:
@@ -596,7 +596,7 @@ def test_ready_slack_revision_reuses_existing_memory_candidate(tmp_path: Path) -
                     "<@UALFRED> title: Queue Slack planning memories\n"
                     "problem: Operators need Alfred to preserve useful Slack planning decisions without manual notes.\n"
                     "desired: Alfred queues a reviewable memory candidate after a scoped Slack draft is saved.\n"
-                    "repo: luminik-io/alfred\n"
+                    "repo: example-org/alfred\n"
                     "acceptance: the local draft records the memory candidate id for review\n"
                     "test: run the Slack listener unit test and verify no lesson is promoted automatically\n"
                     "out of scope: automatic promotion\n"
@@ -630,7 +630,7 @@ def test_ready_slack_revision_reuses_existing_memory_candidate(tmp_path: Path) -
     assert len(provider.calls) == 1
     payload = json.loads(Path(created.draft_path).read_text(encoding="utf-8"))
     assert payload["memory_candidate_ids"] == ["cand-1"]
-    assert payload["memory_candidate_keys"] == ["slack-planning:luminik-io/alfred"]
+    assert payload["memory_candidate_keys"] == ["slack-planning:example-org/alfred"]
 
 
 def test_slack_memory_candidate_queue_requires_ready_draft(tmp_path: Path) -> None:
@@ -668,7 +668,7 @@ def test_slack_memory_candidate_queue_can_be_disabled(
             "title: Queue Slack planning memories\n"
             "problem: Operators need Alfred to preserve useful Slack planning decisions without manual notes.\n"
             "desired: Alfred queues a reviewable memory candidate after a scoped Slack draft is saved.\n"
-            "repo: luminik-io/alfred\n"
+            "repo: example-org/alfred\n"
             "acceptance: the local draft records the memory candidate id for review\n"
             "test: run the Slack listener unit test and verify no lesson is promoted automatically\n"
             "out of scope: automatic promotion\n"
@@ -698,7 +698,7 @@ def test_slack_memory_candidate_queue_supports_legacy_writer(tmp_path: Path) -> 
             "title: Queue Slack planning memories\n"
             "problem: Operators need Alfred to preserve useful Slack planning decisions without manual notes.\n"
             "desired: Alfred queues a reviewable memory candidate after a scoped Slack draft is saved.\n"
-            "repo: luminik-io/alfred\n"
+            "repo: example-org/alfred\n"
             "acceptance: the local draft records the memory candidate id for review\n"
             "test: run the Slack listener unit test and verify no lesson is promoted automatically\n"
             "out of scope: automatic promotion\n"
@@ -887,7 +887,7 @@ def test_draft_thread_reply_can_resolve_open_questions(tmp_path: Path) -> None:
                 "text": (
                     "<@UALFRED> title: Improve Slack planning\n"
                     "problem: Operators need a safe way to discuss Alfred work before agents build.\n"
-                    "repo: luminik-io/alfred\n"
+                    "repo: example-org/alfred\n"
                     "desired: Alfred saves a draft and keeps work paused until questions are resolved.\n"
                     "acceptance: unresolved questions keep the draft in needs-scope state\n"
                     "test: run listener revision tests\n"
@@ -1098,7 +1098,7 @@ def test_listener_once_uses_env_trusted_users_by_default(
                     "text": (
                         "<@UALFRED> title: Improve Slack planning\n"
                         "problem: Operators need local listener tests to match the live listener.\n"
-                        "repo: luminik-io/alfred\n"
+                        "repo: example-org/alfred\n"
                         "desired: The once command honors the configured operator by default."
                     ),
                     "ts": "1716480099.000001",

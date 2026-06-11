@@ -1,11 +1,13 @@
 """File-based go/no-go signalling for Batman plans.
 
-Batman's plan-approval poll has a file fallback (``BATMAN_APPROVAL_MODE=file``):
-it watches ``$ALFRED_HOME/batman/approvals/{issue_num}.approved`` and
-``{issue_num}.rejected`` (see ``bin/batman.py`` ``wait_for_approval_file`` and
-``lib/slack_approval.py``). The desktop client's in-app approve/decline writes
-the exact same files so the operator can decide a plan without a Slack
-round-trip and Batman picks it up identically to a Slack reaction.
+Batman's plan-approval poll has a file-aware mode
+(``BATMAN_APPROVAL_MODE=slack-or-file`` by default, or ``file`` for installs
+without Slack): it watches
+``$ALFRED_HOME/batman/approvals/{issue_num}.approved`` and
+``{issue_num}.rejected`` (see ``lib.batman.wait_for_approval_file``). The
+desktop client's in-app approve/decline writes the exact same files so the
+operator can decide a plan without a Slack round-trip and Batman picks it up
+through the real approval gate.
 
 This module is the single place that knows that contract. ``views.py`` calls
 ``write_decision`` from the decision endpoint; ``server/reader.py`` calls
@@ -44,7 +46,7 @@ _ISSUE_NUM_RE = re.compile(r"^(\d+)")
 def approvals_dir(state_root: Path) -> Path:
     """Directory Batman's file-poll fallback watches.
 
-    Mirrors ``ALFRED_HOME / "batman" / "approvals"`` in ``bin/batman.py``:
+    Mirrors ``ALFRED_HOME / "batman" / "approvals"`` in ``lib.batman``:
     the reader's ``state_root`` is ``$ALFRED_HOME/state``, so the approvals
     directory is its sibling ``batman/approvals``.
     """

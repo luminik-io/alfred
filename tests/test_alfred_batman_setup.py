@@ -26,6 +26,7 @@ def _load_module(monkeypatch: pytest.MonkeyPatch | None = None, tmp_path: Path |
         monkeypatch.delenv("ALFRED_OPERATOR_SLACK_USER_ID", raising=False)
         monkeypatch.delenv("BATMAN_PARENT_REPO", raising=False)
         monkeypatch.delenv("BATMAN_AUTO_EXECUTE", raising=False)
+        monkeypatch.delenv("BATMAN_APPROVAL_MODE", raising=False)
     spec = importlib.util.spec_from_file_location(
         "alfred_batman_setup", REPO / "bin" / "alfred-batman-setup.py"
     )
@@ -105,6 +106,24 @@ def test_check_only_approval_gate_requires_slack_token_and_user(tmp_path, monkey
     assert "ALFRED_OPERATOR_SLACK_USER_ID" in captured.err
 
 
+def test_check_only_file_approval_mode_does_not_require_slack(tmp_path, monkeypatch, capsys):
+    mod = _load_module(monkeypatch, tmp_path)
+    rc = tmp_path / ".alfredrc"
+    rc.write_text(
+        "export CLAUDE_CODE_OAUTH_TOKEN=token-present\n"
+        "export BATMAN_AUTO_EXECUTE=approval-gate\n"
+        "export BATMAN_APPROVAL_MODE=file\n"
+        "export BATMAN_PARENT_REPO=acme/specs\n"
+    )
+    out = mod.main(["--check-only", "--alfredrc", str(rc)])
+
+    captured = capsys.readouterr()
+    assert out == 0
+    assert "SLACK_BOT_TOKEN" in captured.out
+    assert "SLACK_BOT_TOKEN" not in captured.err
+    assert "ALFRED_OPERATOR_SLACK_USER_ID" not in captured.err
+
+
 def test_non_interactive_writes_supplied_values_without_live_calls(tmp_path, monkeypatch, capsys):
     mod = _load_module(monkeypatch, tmp_path)
     rc = tmp_path / ".alfredrc"
@@ -136,6 +155,7 @@ def test_non_interactive_writes_supplied_values_without_live_calls(tmp_path, mon
     assert out == 0
     text = rc.read_text()
     assert "export BATMAN_AUTO_EXECUTE=approval-gate" in text
+    assert "export BATMAN_APPROVAL_MODE=slack-or-file" in text
     assert f"export SLACK_BOT_TOKEN={token}" in text
     assert "export ALFRED_OPERATOR_SLACK_USER_ID=U123ABC" in text
     assert "export BATMAN_SLACK_CHANNEL=alfred" in text
@@ -143,6 +163,36 @@ def test_non_interactive_writes_supplied_values_without_live_calls(tmp_path, mon
     assert "export BATMAN_PICKER=newest" in text
     assert "export BATMAN_APPROVAL_TIMEOUT_S=120" in text
     assert "Skipping lifecycle doctor" in capsys.readouterr().err
+
+
+def test_non_interactive_file_approval_mode_skips_slack_values(tmp_path, monkeypatch, capsys):
+    mod = _load_module(monkeypatch, tmp_path)
+    rc = tmp_path / ".alfredrc"
+    out = mod.main(
+        [
+            "--non-interactive",
+            "--skip-token-setup",
+            "--skip-doctor",
+            "--alfredrc",
+            str(rc),
+            "--mode",
+            "approval-gate",
+            "--approval-mode",
+            "file",
+            "--parent-repo",
+            "acme/specs",
+        ]
+    )
+
+    assert out == 0
+    text = rc.read_text()
+    assert "export BATMAN_AUTO_EXECUTE=approval-gate" in text
+    assert "export BATMAN_APPROVAL_MODE=file" in text
+    assert "SLACK_BOT_TOKEN" not in text
+    assert "ALFRED_OPERATOR_SLACK_USER_ID" not in text
+    captured = capsys.readouterr()
+    assert "Skipping Slack approval setup" in captured.err
+    assert "Approve or decline Batman plans from the Alfred client" in captured.out
 
 
 def test_non_interactive_blank_channel_preserves_runtime_fallback(tmp_path, monkeypatch):
