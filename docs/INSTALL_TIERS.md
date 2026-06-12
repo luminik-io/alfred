@@ -35,11 +35,11 @@ claude
 `alfred serve` is the localhost JSON API over `$ALFRED_HOME/state`. It binds to `127.0.0.1` by default and is the seam the desktop client reads through. Its Python dependencies are an optional extra so a pure-fleet install stays small:
 
 ```sh
-pip install 'alfred-os[serve]'   # FastAPI + uvicorn + jinja2
-alfred serve --no-browser        # listens on http://127.0.0.1:7000
+pip install 'alfred-os[serve]'   # FastAPI + uvicorn
+alfred serve                     # headless JSON/SSE API on http://127.0.0.1:7000
 ```
 
-If port 7000 is taken, use `alfred serve --port 7010 --no-browser`. Binding to `0.0.0.0` is allowed but discouraged: the dashboard exposes paths and event payloads that may carry repo URLs or other operator context. The fleet runs fine without `serve` ever starting; it is only needed when you want the dashboard or the desktop client.
+If port 7000 is taken, use `alfred serve --port 7010`. Binding to `0.0.0.0` is allowed but discouraged: the API exposes paths and event payloads that may carry repo URLs or other operator context. The fleet runs fine without `serve` ever starting; it is only needed when you want the local API or the desktop client.
 
 ## `client`: the desktop control plane
 
@@ -48,7 +48,7 @@ The desktop client is an optional Tauri app under `clients/desktop`. It is a thi
 It talks to core only over the `alfred serve` JSON seam, restricted to `http://localhost`, `http://127.0.0.1`, or `http://[::1]` and a fixed set of Alfred JSON paths plus a narrow native command allowlist. It opens no public port, runs no relay, and keeps `$ALFRED_HOME` as the single source of truth. You can run Alfred entirely without it.
 
 ```sh
-alfred serve --no-browser       # or let the Setup gear start it for you
+alfred serve                    # or let the Setup gear start it for you
 cd clients/desktop
 npm install
 npm run tauri dev

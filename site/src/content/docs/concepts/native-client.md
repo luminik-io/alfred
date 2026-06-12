@@ -7,10 +7,10 @@ The native Alfred client is a local control plane, not a second Alfred.
 Slack remains the primary collaboration UI: plans, replies, approvals, and
 post-PR follow-up belong in Slack threads.
 
-The first Tauri preview lives under `clients/desktop` and wraps the local
-Alfred runtime: Home, Compose, Fleet, Logs, Setup, health signals, plans,
-firings, memory review, safe next actions, native runtime launch, and local
-follow-up handling.
+The Tauri client lives under `clients/desktop` and wraps the local
+Alfred runtime as a lifecycle: Home, Ask, Pipeline, Fleet, and Lessons, plus
+health signals, plans, firings, memory review, safe next actions, native
+runtime launch, and local follow-up handling.
 
 The client is for trust and operations:
 

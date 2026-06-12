@@ -74,7 +74,7 @@ execution. In a plain browser preview, native actions are unavailable.
 ## Run it locally
 
 ```sh
-alfred serve --port 7010 --no-browser
+alfred serve --port 7010
 cd clients/desktop
 npm install
 npm run tauri dev

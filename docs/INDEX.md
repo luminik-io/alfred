@@ -27,8 +27,11 @@ Current map of the public docs. Trust code first, then this index.
 - [`FLEET_BRAIN.md`](FLEET_BRAIN.md): local memory schema, reviewable lesson candidates, failure history, CLI, and read-only MCP bridge.
 - [`MEMORY_PROVIDERS.md`](MEMORY_PROVIDERS.md): provider chaining for the default fleet brain and optional read-only fallback stores.
 - [`SLACK_UX.md`](SLACK_UX.md): Slack-native message shape, planning replies, approval flow, and anti-patterns.
-- [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md): Mac/Linux client direction, Slack-native boundary, and local API shape.
+- [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md): Mac/Linux client (lifecycle IA: Home / Ask / Pipeline / Fleet / Lessons), Slack-native boundary, and local API shape.
 - [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md): the desktop control surface tab by tab, the `alfred serve` seam and native allowlist, and building native installers.
+- [`DESIGN_SPEC.md`](DESIGN_SPEC.md): canonical product design for the native client (soul, personas, object model, lifecycle IA, visual system, screens, first-run journey).
+- [`ARCHITECTURE_RFC.md`](ARCHITECTURE_RFC.md): code-organization RFC: target package shape, the config-driven generic runner, the typed event envelope and fail-closed gates, and the refactoring roadmap.
+- [`../decisions/0002-surface-architecture-and-design-direction.md`](../decisions/0002-surface-architecture-and-design-direction.md): ADR 0002, one runtime four doors, headless serve, and the client design direction.
 - [`GOALS.md`](GOALS.md): durable goal contract for Slack, CLI, client, planning readiness, evaluator, and memory integration.
 - [`PLAIN_MODE.md`](PLAIN_MODE.md): the non-technical intake profile (`ALFRED_INTAKE_PROFILE=plain`).
 - [`ENGINE_ROUTING.md`](ENGINE_ROUTING.md): per-codename Claude, Codex, or hybrid routing; precedence chain; default matrix; multi-engine roadmap.

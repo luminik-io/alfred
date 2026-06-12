@@ -35,8 +35,8 @@ state machine that keeps multiple agents from stepping on each other.
   unresolved review comments, Batman drafts multi-repo rollouts.
 - Coordinate through ordinary repo primitives: GitHub issues and pull
   requests, labels, specs, isolated git worktrees, commit trailers, and Slack
-  summaries. The local dashboard and desktop app inspect those same sources;
-  they do not become a hosted control plane.
+  summaries. The headless local API and desktop app inspect those same
+  sources; they do not become a hosted control plane.
 - Treat Slack as the planning surface: teammates can reply in a Batman plan
   thread with scope changes, questions, and acceptance criteria while the
   operator keeps approval authority. Registered plan-thread replies persist
@@ -259,7 +259,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 | [`examples/git-hooks/pre-push`](examples/git-hooks/pre-push) | Refuses push if a referenced issue is in-flight. Symmetric guard. |
 | [`Formula/alfred-os.rb`](Formula/alfred-os.rb) | Homebrew formula pinned to the latest public release tarball. |
 | [`site/`](site/) | Astro Starlight docs site, with GitHub Pages publishing gated by the release repo variable. |
-| [`clients/desktop/`](clients/desktop/) | Tauri Mac/Linux client. A local control center over `alfred serve` JSON APIs, with in-app Plans, Memory, Fleet, and Logs inspectors plus explicit Slack and GitHub external links. Builds native installers (`.app`/`.dmg`, `.AppImage`/`.deb`) from the Tauri bundle config. |
+| [`clients/desktop/`](clients/desktop/) | Tauri Mac/Linux client. A local control center over the headless `alfred serve` JSON/SSE API, organized as a lifecycle (Home, Ask, Pipeline, Fleet, Lessons) with explicit Slack and GitHub external links. Builds native installers (`.app`/`.dmg`, `.AppImage`/`.deb`) from the Tauri bundle config. |
 | [`lib/slack_control.py`](lib/slack_control.py), [`lib/slack_trust.py`](lib/slack_trust.py) | Trusted Slack control/query commands (`status`/`runs`/`plans`/`plan`/`draft`/`handled`/`memory`/`remember`/`pause`/`resume`/`trusted`/`trust`/`untrust`/`help`), codename-, plan-id-, and memory-id-validated, no shell, with local collaborator state under `$ALFRED_HOME/state/slack-trust`. |
 | [`lib/slack_thread_status.py`](lib/slack_thread_status.py), [`bin/alfred-slack-thread-sync.py`](bin/alfred-slack-thread-sync.py) | In-thread fleet progress: read-only issue/PR/CI sweep that posts only the new lifecycle states back to the originating Slack thread. |
 
@@ -327,9 +327,11 @@ content, sales, and ops departments are the next larger surface area:
 Additional unreleased work adds Slack-driven memory curation, automatic
 reviewable memory candidates from ready Slack drafts and repeated-failure
 harvests, explicit Redis AMS memory sync, operator-managed trusted Slack plan
-collaborators, revision previews in approval threads, Planning intake in the
-local cockpit, and a native client with Home, Compose, Plans, Memory, Fleet,
-Logs, and Setup gear surfaces for local trust and repair.
+collaborators, revision previews in approval threads, a conversational Slack
+layer (natural-language intent, a read-only tier-2 escalation, and a persona
+voice), a headless `alfred serve` JSON/SSE API with no server-rendered
+dashboard, and a native client organized as a lifecycle (Home, Ask, Pipeline,
+Fleet, Lessons) over that API.
 Slack remains the primary collaboration UI.
 
 The design boundary is stable: one operator, one local host, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.

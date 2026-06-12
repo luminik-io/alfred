@@ -244,7 +244,6 @@ recent firings, saved Alfred plans, and local Planning drafts.
 
 ```sh
 alfred serve --port 7000
-alfred serve --port 7000 --no-browser
 ```
 
 ## `alfred labels`

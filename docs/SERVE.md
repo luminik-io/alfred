@@ -1,15 +1,12 @@
 # `alfred serve`
 
-A small, localhost-only dashboard over `$ALFRED_HOME/state`, saved Batman
-plans, the local fleet brain, and local planning drafts. It is read-only for
-runtime state and can write issue/spec drafts under `$ALFRED_HOME/planning-drafts`.
-The operator's pane of glass for "what is the fleet doing right now".
-
-Status: v0.4.0 shipped the first dashboard. v0.4.1 adds reliability-governor
-cards, human-readable timestamps, responsive table shells, mobile card
-layouts, a sticky header, a saved-plan inbox, a Planning intake page, external
-issue/PR links that open in a separate tab, and action summaries as a
-cross-platform precursor to the Tauri client under `clients/desktop`.
+A small, localhost-only headless JSON/SSE API over `$ALFRED_HOME/state`, saved
+Batman plans, the local fleet brain, and local planning drafts. It is read-only
+for runtime state and can write issue/spec drafts under
+`$ALFRED_HOME/planning-drafts`. Per ADR 0002 there is no server-rendered web
+UI: the native client (and its Vite browser dev mode) is the only GUI, and the
+CLI covers everything else. Mutating POSTs require the per-launch
+`X-Alfred-Token` header.
 
 ## Install
 
@@ -19,7 +16,7 @@ The server lives behind an optional dependency group so the base `alfred-os` pac
 pip install 'alfred-os[serve]'
 ```
 
-The group pulls in `fastapi`, `uvicorn`, and `jinja2`. Pico.css and HTMX are loaded from a CDN by the bundled templates; no JS or CSS build step is required.
+The group pulls in `fastapi` and `uvicorn`. There is no template engine, bundled CSS, or JS build step; the process serves JSON and SSE only.
 
 ## Run
 
@@ -43,10 +40,9 @@ Defaults:
 | -------------- | ------------- | ------------------------------------------------------------- |
 | `--host`       | `127.0.0.1`   | bind address. Use `0.0.0.0` only on a trusted LAN.            |
 | `--port`       | `7000`        | bind port.                                                    |
-| `--no-browser` | off           | skip the auto-open browser tab on localhost binds.            |
 | `--log-level`  | `info`        | uvicorn log level (`debug` / `info` / `warning` / `error`).   |
 
-The dashboard auto-refreshes the fleet table every 10 seconds via HTMX. Detail views are static, refresh manually.
+The native client (and its Vite browser dev mode) consumes the JSON routes and the SSE stream; there is no server-rendered page to open.
 
 ## What it reads
 

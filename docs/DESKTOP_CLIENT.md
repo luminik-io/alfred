@@ -37,7 +37,7 @@ When run in a plain browser (development preview), the app stays read-only: nati
 Start the runtime from the Setup gear, or run the same port manually:
 
 ```sh
-alfred serve --port 7010 --no-browser
+alfred serve --port 7010
 ```
 
 The app probes `7010` first because macOS can reserve `7000` for Control Center.
@@ -46,7 +46,7 @@ that as the legacy fallback and the Setup gear lets you point the client at a
 custom local URL.
 
 ```sh
-alfred serve --no-browser
+alfred serve
 ```
 
 Then run the desktop shell:

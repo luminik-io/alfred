@@ -51,7 +51,7 @@ Core needs no desktop, no browser, and no Slack. A headless Debian or Ubuntu box
 
 ```sh
 pip install 'alfred-os[serve]'   # FastAPI + uvicorn
-alfred serve --port 7010 --no-browser
+alfred serve --port 7010
 ```
 
 It binds to `127.0.0.1` by default. Binding to `0.0.0.0` is allowed but discouraged, since the dashboard exposes paths and event payloads that may carry repo context.
@@ -63,7 +63,7 @@ The optional desktop client (Tauri, under `clients/desktop`) is a thin local con
 The client talks to core only over the `alfred serve` JSON seam, restricted to `http://localhost`, `http://127.0.0.1`, or `http://[::1]` and a fixed set of Alfred JSON paths plus a narrow native command allowlist. No public port, no relay, no shadow database. You can run Alfred entirely without it.
 
 ```sh
-alfred serve --port 7010 --no-browser   # or let the Setup gear start it
+alfred serve --port 7010   # or let the Setup gear start it
 cd clients/desktop
 npm install
 npm run tauri dev

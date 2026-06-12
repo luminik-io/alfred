@@ -197,8 +197,8 @@ The first client lives at `clients/desktop`:
   `/api/plans`, compose-draft, and follow-up action contracts.
 - Local plan and firing details stay in native inspector panes; only explicit
   Slack and GitHub links open outside the app.
-- The app opens to Home and has Home, Compose, Plans, Memory, Fleet, and Logs
-  tabs, with Setup behind the gear.
+- The app opens to Home and has Home, Ask, Pipeline, Fleet, and Lessons
+  lifecycle tabs, with Setup behind the gear.
 - Home shows the decision queue, recent plans, recent runs, memory candidates,
   and fleet-wide pause/resume actions.
 - Compose combines plain-language planning intake with saved plans and
@@ -226,7 +226,7 @@ npm install
 npm run tauri dev
 ```
 
-The Setup gear can start `alfred serve --port 7010 --no-browser` for you. The
+The Setup gear can start `alfred serve --port 7010` for you. The
 app prefers 7010 because macOS can reserve 7000 for Control Center; if you
 manually run the CLI default on 7000, the app probes that as a fallback.
 
@@ -253,7 +253,7 @@ GET  /api/slack/threads
 The native client also has a narrow local command allowlist:
 
 ```text
-alfred serve --port <port> --no-browser
+alfred serve --port <port>
 alfred status --json
 alfred agents
 alfred enabled-agents
@@ -292,7 +292,7 @@ Distribution sequence:
 
 1. `alfred serve` read APIs plus local follow-up action contracts with tests.
    Done.
-2. Tauri shell with Home, Compose, Plans, Memory, Fleet, Logs, Setup, safe
+2. Tauri shell with Home, Ask, Pipeline, Fleet, Lessons, Setup, safe
    local follow-up actions, runtime launch, status, pause/resume/run controls,
    memory checks, candidate promote/reject, Redis status, Redis sync preview,
    failure-pattern harvest, and dry-run launch. Done.
