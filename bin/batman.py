@@ -430,8 +430,7 @@ def _run_lifecycle_body(
         bundle=plan.bundle_slug,
         children=len(plan.children),
         detail=(
-            f"{parent_repo}#{parent_issue_number} "
-            f"({', '.join(plan.affected_repos) or 'no repos'})"
+            f"{parent_repo}#{parent_issue_number} ({', '.join(plan.affected_repos) or 'no repos'})"
         ),
     )
 
