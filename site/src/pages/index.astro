@@ -33,8 +33,8 @@ type JobState = "live" | "warn" | "idle" | "info";
 
 const jobs: { title: string; body: string; log: string[]; state: JobState }[] = [
   {
-    title: "Drake triages your specs",
-    body: "Reads files under /specs/, asks the gaps you forgot, and files scoped agent:implement issues a coding agent can pick up without a human in the loop.",
+    title: "Drake turns requests into tasks",
+    body: "Reads the plans you write in plain text, asks about the details you left out, then files small, well-defined tasks on GitHub that a coding agent can pick up on its own.",
     log: [
       "[09:02] drake  read /specs/billing-v2.md",
       "[09:02] drake  filed your-backend#247 agent:implement",
@@ -43,8 +43,8 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
     state: "live",
   },
   {
-    title: "Lucius implements scoped issues",
-    body: "Picks up an agent:implement issue, opens a fresh git worktree, runs Claude Code or Codex with full repo context, and opens a pull request with tests.",
+    title: "Lucius writes the code",
+    body: "Picks up one of those tasks, makes its own copy of the repo to work in, runs Claude Code or Codex with the full project in context, and opens a pull request with tests.",
     log: [
       "[12:04] lucius claimed your-backend#247",
       "[12:04] lucius worktree ~/.alfred/wt/12042118/",
@@ -53,8 +53,8 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
     state: "live",
   },
   {
-    title: "Ras al Ghul reviews open PRs",
-    body: "Reads diffs, runs the project test suite in a separate worktree, files inline review comments, and labels PRs ready or needs-changes.",
+    title: "Ra's al Ghul reviews the pull request",
+    body: "Reads the changes, runs your test suite in its own copy of the repo, leaves comments on the lines that need work, and marks the pull request ready or needs changes.",
     log: [
       "[12:18] ras-al reviewed PR#1247",
       "[12:18] ras-al filed 2 inline nits",
@@ -63,8 +63,8 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
     state: "warn",
   },
   {
-    title: "Batman coordinates and executes across repos",
-    body: "Reads a large agent:large-feature issue, drafts a bundle plan across every affected repo, posts to Slack for discussion and approval, then runs the rollout end-to-end. Trusted teammates can refine scope in-thread, while only the operator can approve.",
+    title: "Batman plans work that spans repos",
+    body: "Reads a big feature request, drafts a plan that covers every repo it touches, and posts it to Slack for you to discuss and approve. Once you say yes, it splits the work into tasks and starts each one. Teammates you trust can refine the plan in the thread; only you can approve it.",
     log: [
       "[10:30] batman drafted bundle:billing-v2",
       "[10:31] batman posted plan to Slack for approval",
@@ -77,28 +77,28 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
 
 const why = [
   {
-    title: "Runs while you don't",
-    body: "Schedulers fire every 20 minutes around the clock. Agents pick up scoped work, open pull requests, and post a Slack summary. You read the result in the morning.",
+    title: "Works while you are away",
+    body: "Every 20 minutes, around the clock, your agents check for new tasks, write the code, open pull requests, and post a short summary to Slack. You read the result in the morning.",
   },
   {
-    title: "Self-hosted on your own machine",
-    body: "No cloud agent vendor. No API key billing. Alfred runs on a Mac or Linux box you already own, under launchd or systemd, using the Claude Code and Codex subscriptions you already pay for.",
+    title: "Runs on a machine you already own",
+    body: "There is no cloud service to sign up for and no per-token API bill. Alfred runs on a Mac or Linux computer you already have, using the Claude Code and Codex subscriptions you already pay for.",
   },
   {
-    title: "Slack-native planning",
-    body: "The plan thread is the collaboration UI. Reply with acceptance criteria, repo changes, open questions, or plain-English direction, then turn follow-up into the next scoped draft from Slack.",
+    title: "You plan and approve in Slack",
+    body: "Planning happens in a Slack thread. Reply with what you want, what should change, or questions of your own, and Alfred turns the discussion into the next task. Nothing big runs until you approve it.",
   },
   {
-    title: "Local memory, with review",
-    body: "Alfred recalls promoted repo lessons while plans are drafted, proposes new lessons as reviewable candidates, and keeps raw logs and unapproved memory out of future prompts.",
+    title: "Remembers what it learns, once you approve it",
+    body: "Alfred keeps notes about each repo on your machine. New lessons wait for your approval before they shape future work, so a wrong guess never gets treated as fact.",
   },
   {
-    title: "Multi-repo and monorepo, both",
-    body: "Batman plans rollouts across nine repos at once. The same runner opens a worktree of a Turborepo, Nx, or Cargo workspace and ships a per-package PR.",
+    title: "Works on one repo or many at once",
+    body: "Alfred can plan a single feature across several repos at the same time. It works the same way inside a monorepo, whether you use Turborepo, Nx, or Cargo workspaces.",
   },
   {
-    title: "Open source, MIT",
-    body: "Every line lives at github.com/luminik-io/alfred-os. Fork it, audit it, run it offline. No vendor lock, no telemetry pipe, no managed control plane.",
+    title: "Open source, MIT licensed",
+    body: "Every line is on GitHub at github.com/luminik-io/alfred-os. Fork it, read it, run it offline. No lock-in, no tracking, no service you have to stay signed up for.",
   },
 ];
 
@@ -147,8 +147,8 @@ const why = [
     <div class="m-container">
       <SectionHeader
         eyebrow="WHAT IT DOES FOR YOU"
-        title="Four codenames carry the engineering loop."
-        lede="The starter fleet is intentionally narrow. Add Bane, Nightwing, and the rest when you need them."
+        title="Four agents carry the work from request to merge."
+        lede="Each agent has one job, named plainly below. You start with these four and add more, like Bane and Nightwing, when you need them."
       />
       <div class="job-grid">
         {jobs.map((j, i) => (
@@ -164,8 +164,8 @@ const why = [
     <div class="m-container">
       <SectionHeader
         eyebrow="WHY ALFRED IS DIFFERENT"
-        title="A control surface, not another chat window."
-        lede="Most coding agents wait for you to type. Alfred is built for the work that keeps coming after the keyboard closes."
+        title="It keeps working after you close the laptop."
+        lede="Most coding agents sit and wait for you to type the next thing. Alfred is built to pick up work on its own and keep going while you are doing something else."
       />
       <div class="why-grid">
         {why.map((w, i) => (
@@ -182,28 +182,28 @@ const why = [
     <div class="m-container">
       <SectionHeader
         eyebrow="LOCAL MEMORY"
-        title="The fleet remembers what actually happened."
-        lede="Alfred keeps operational memory on your machine: lessons you approve, files agents touched, failure patterns, GitHub queues, bundle state, and worker heartbeats. Slack and the local client expose the review queue before anything enters future prompts."
+        title="Your agents remember what actually happened."
+        lede="Alfred keeps notes on your own machine: lessons you have approved, which files agents changed, what went wrong before, and what is in progress right now. You see and approve new lessons in Slack or the desktop app before they ever shape future work."
       />
       <div class="memory-grid">
         <div class="memory-copy">
           <div class="memory-point">
             <span class="memory-point__kicker m-mono">01</span>
-            <h3 class="m-h3">Lessons need evidence.</h3>
-            <p>Agents and trusted Slack users can propose durable lessons, but they do not become prompt context until you promote them. That keeps memory useful without turning model guesses into truth.</p>
+            <h3 class="m-h3">Lessons wait for your approval.</h3>
+            <p>Agents and trusted teammates can suggest a lesson worth keeping, but it does nothing until you approve it. That keeps the notes useful and stops a wrong guess from being treated as fact.</p>
           </div>
           <div class="memory-point">
             <span class="memory-point__kicker m-mono">02</span>
-            <h3 class="m-h3">Failures become patterns.</h3>
-            <p>Setup blockers, engine timeouts, stale workers, and repeated test failures land in one local brain so the next diagnosis starts with history instead of Slack archaeology.</p>
+            <h3 class="m-h3">Past problems are easy to find.</h3>
+            <p>Setup blockers, timeouts, and repeated test failures all land in one place. The next time something breaks, your agents start from what happened before instead of digging back through old Slack messages.</p>
           </div>
           <div class="memory-point">
             <span class="memory-point__kicker m-mono">03</span>
-            <h3 class="m-h3">Redis stays optional.</h3>
-            <p>Already run Redis Agent Memory Server? Alfred can check it and sync reviewed lessons explicitly, while the default install stays local and dependency-light.</p>
+            <h3 class="m-h3">A shared memory server is optional.</h3>
+            <p>If you already run the Redis Agent Memory Server, Alfred can connect to it and sync the lessons you have approved. If you do not, the default setup keeps everything on your machine with nothing extra to install.</p>
           </div>
           <p class="memory-link">
-            <a class="m-link" href="/concepts/fleet-brain/">Read the fleet-brain design</a>
+            <a class="m-link" href="/concepts/fleet-brain/">How local memory works</a>
           </p>
         </div>
         <CodeBlock
@@ -243,13 +243,13 @@ const why = [
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
-        eyebrow="SPECS-DRIVEN DEVELOPMENT"
-        title="The spec is the contract. Alfred is the team that delivers it."
-        lede="Write specs once in plain markdown. Drake reads them, asks the gaps you forgot, and files scoped agent:implement issues into the right repos. Lucius picks them up. PRs come back. No prompt copy-paste, no chat-window state."
+        eyebrow="WRITE THE PLAN ONCE"
+        title="You write the plan. Alfred is the team that builds it."
+        lede="Write what you want once, in plain text. Drake reads it, asks about the parts you left out, and files small tasks in the right repos. Lucius picks them up and the pull requests come back. You never copy a prompt into a chat window."
       />
       <SpecsDrivenFlow />
       <p style="margin-top:24px;">
-        <a class="m-link" href="/guides/specs-driven-development/">Read the specs-driven guide</a>
+        <a class="m-link" href="/guides/specs-driven-development/">How writing the plan works</a>
       </p>
     </div>
   </section>
@@ -258,12 +258,12 @@ const why = [
     <div class="m-container">
       <SectionHeader
         eyebrow="THE BATMAN AGENT"
-        title="One large feature. Many repos. One coordinated plan."
-        lede="Most coding agents work one repo at a time. Batman is the agent that holds a whole feature in its head: backend service, frontend page, mobile screen, infra job. It drafts the rollout, posts the plan to Slack for approval, then files scoped child issues across every affected repo so Lucius can pick them up in parallel."
+        title="One big feature, planned across every repo it touches."
+        lede="Most coding agents work on one repo at a time. Batman holds a whole feature in view at once: the backend service, the web page, the mobile screen, the background job. It drafts the plan, posts it to Slack for approval, then splits it into a task per repo so Lucius can work on them all in parallel."
       />
       <BatmanFanOut />
       <div class="batman-cta">
-        <a class="m-btn" href="/multi-repo/">See multi-repo planning</a>
+        <a class="m-btn" href="/multi-repo/">See planning across repos</a>
         <a class="m-btn m-btn--ghost" href="/guides/multi-repo-worked-example/">Read the worked example</a>
       </div>
     </div>
@@ -273,12 +273,12 @@ const why = [
     <div class="m-container">
       <SectionHeader
         eyebrow="HOW IT WORKS"
-        title="One firing, end to end."
-        lede="Scheduler trigger to pull request. Five stages, every time, on a 20 minute cadence."
+        title="One run, from start to finish."
+        lede="From the moment a run starts to the pull request it opens. The same five stages happen every time, every 20 minutes."
       />
       <FiringLifecycle />
       <p style="margin-top:32px;">
-        <a class="m-link" href="/how-it-works/">Read the full lifecycle</a>
+        <a class="m-link" href="/how-it-works/">See every step in a run</a>
       </p>
     </div>
   </section>
@@ -286,30 +286,30 @@ const why = [
   <section class="m-section m-section--soft" id="real-production">
     <div class="m-container">
       <SectionHeader
-        eyebrow="REAL PRODUCTION"
-        title="What lands in Slack while you're away."
-        lede="The two Slack posts below are real captures from the operator's own setup. A Batman bundle plan waiting for approval, and a daily shipped summary. Your numbers will vary with your fleet shape, repo size, and how aggressive you let the agents be."
+        eyebrow="REAL OUTPUT"
+        title="What lands in Slack while you are away."
+        lede="The two Slack posts below are real, captured from one builder's own setup: a Batman plan waiting for approval, and a summary of a day's work. Your own numbers will depend on how many agents you run, how big your repos are, and how much you let the agents do on their own."
       />
 
       <div class="proof-grid">
         <SlackProof
           src="/proof/slack-batman-plan.png"
           alt="Slack message from the Alfred bot showing Batman drafting a plan for issue #504, with affected repos backend, frontend, mobile, and a rollout order. The plan is in draft, awaiting approval."
-          tag="batman firing"
+          tag="batman plan"
           meta="2026-05-12 11:44 UTC"
-          caption="Batman reads one agent:large-feature issue, drafts a rollout plan across backend, frontend, and mobile, and posts to Slack for approval. Once the operator reacts with the configured emoji, Batman files the child issues and runs the rollout."
+          caption="Batman reads one big feature request, drafts a plan across the backend, web, and mobile repos, and posts it to Slack for approval. Once you react with the agreed emoji, Batman files the tasks and starts the work."
         />
         <SlackProof
           src="/proof/slack-shipped-summary.png"
           alt="Slack message from the Alfred bot summarising one day of shipped work: 153 PRs merged, 44 issues opened, 144 issues closed, +44,351 lines added across your-frontend, your-agents, your-mobile, your-nango, your-backend, and your-data-acquisition."
-          tag="shipped summary"
+          tag="daily summary"
           meta="2026-05-20 20:45 CET"
-          caption="One solo builder's day, six repos. You read this summary in the morning. Every PR has a human review on the way to main; your throughput will depend on your fleet, repo size, and how scoped your issues are."
+          caption="One solo builder's day across six repos. You read this summary in the morning. Every pull request still gets a human review before it merges; how much gets done depends on how many agents you run, how big your repos are, and how small you keep each task."
         />
       </div>
 
       <p style="margin-top:36px;">
-        <a class="m-link" href="/reference/output-samples/">Read every output Alfred produces</a>
+        <a class="m-link" href="/reference/output-samples/">See more examples of what Alfred posts</a>
       </p>
     </div>
   </section>
@@ -317,9 +317,9 @@ const why = [
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
-        eyebrow="THE FLEET, RIGHT NOW"
-        title="What `alfred status` prints."
-        lede="Live output captured from the operator's production fleet, 2026-05-23. Twenty agents, three paused on purpose, one waiting on a Batman approval, zero dollars in LLM spend."
+        eyebrow="YOUR AGENTS, RIGHT NOW"
+        title="What `alfred status` shows."
+        lede="Real output from one builder's setup on 2026-05-23: twenty agents, three paused on purpose, one waiting on a Batman approval, and nothing extra spent on API calls."
       />
       <FleetStatus />
     </div>
@@ -329,8 +329,8 @@ const why = [
     <div class="m-container">
       <SectionHeader
         eyebrow="GET STARTED"
-        title="Dry-run first. No spend, no LLM call."
-        lede="Verify the runner lifecycle on your machine before any agent picks up real work."
+        title="Try a test run first. Nothing spent, nothing called."
+        lede="Check that everything works on your machine with a test run, before any agent touches real work or makes a paid call."
       />
       <CodeBlock
         title="terminal"
@@ -356,15 +356,15 @@ const why = [
     <div class="m-container built-by">
       <SectionHeader
         eyebrow="BUILT BY LUMINIK"
-        title="Used in production by the team that wrote it."
-        lede="Luminik runs Alfred against nine repos with 21 launchd-managed agents. The engineering loop ships pull requests every day before the operator opens their laptop."
+        title="Used every day by the team that built it."
+        lede="Luminik runs Alfred across nine repos with 21 agents. They open pull requests every day, before anyone on the team opens their laptop."
       />
       <div class="built-by__panel m-card">
         <div class="built-by__metrics">
-          <MetricRow label="agents in fleet" value="21" state="live" />
-          <MetricRow label="repos in scope" value="9" state="live" />
-          <MetricRow label="cadence" value="every 20 min" glyph="arrow" state="info" />
-          <MetricRow label="operators" value="1" state="live" />
+          <MetricRow label="agents" value="21" state="live" />
+          <MetricRow label="repos" value="9" state="live" />
+          <MetricRow label="runs" value="every 20 min" glyph="arrow" state="info" />
+          <MetricRow label="people" value="1" state="live" />
         </div>
         <div class="built-by__cta">
           <a class="m-btn" href="/getting-started/install/">Install (30 min)</a>

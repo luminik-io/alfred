@@ -7,7 +7,7 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
 const layouts = [
   {
     title: "Nx + pnpm",
-    note: "Each agent:implement issue targets one package. Lucius runs pnpm --filter @org/api test.",
+    note: "Each task names one package to change. Lucius runs the tests for just that package with pnpm --filter @org/api test.",
     tree: [
       "monorepo/",
       "├── apps/",
@@ -25,7 +25,7 @@ const layouts = [
   },
   {
     title: "Turborepo",
-    note: "Bane runs the affected pipeline per package. turbo run test --filter=...HEAD~1 is the test gate.",
+    note: "Bane runs tests only for the packages that changed, using turbo run test --filter=...HEAD~1.",
     tree: [
       "monorepo/",
       "├── apps/",
@@ -41,7 +41,7 @@ const layouts = [
   },
   {
     title: "Cargo workspaces",
-    note: "cargo test -p service-auth scopes the run. Lucius opens the worktree at the workspace root.",
+    note: "Lucius makes its copy of the repo at the workspace root and tests one crate with cargo test -p service-auth.",
     tree: [
       "workspace/",
       "├── crates/",
@@ -57,13 +57,13 @@ const layouts = [
 
 <MarketingLayout
   title="Monorepo support | Alfred"
-  description="Drake files issues that target one package, Lucius opens a worktree of the whole monorepo, and Bane runs per-package tests."
+  description="Drake files tasks that each name one package, Lucius works on its own copy of the whole monorepo, and Bane runs the tests for just the package that changed."
   path="/monorepo/"
 >
   <Hero
     eyebrow="MONOREPO"
     headline="Yes, Alfred works on a monorepo."
-    sub="Drake files issues that target one package, Lucius opens a worktree of the whole monorepo, and Bane runs per-package tests."
+    sub="Drake files tasks that each name one package, Lucius works on its own copy of the whole monorepo, and Bane runs the tests for just the package that changed."
     headlineSize="lg"
     primaryCta={{ label: "Read the worked example", href: "/getting-started/workspace-patterns/" }}
     secondaryCta={{ label: "Install (30 min)", href: "/getting-started/install/" }}
@@ -72,9 +72,9 @@ const layouts = [
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
-        eyebrow="THREE LAYOUTS, SAME RUNNER"
-        title="The worktree is the monorepo."
-        lede="Each firing opens a fresh worktree of the entire repo. Per-package scoping happens in the issue body and the test command."
+        eyebrow="THREE LAYOUTS, SAME APPROACH"
+        title="Each run gets its own copy of the whole repo."
+        lede="Every run opens a fresh copy of the entire monorepo. The task says which package to change, and the test command says which package to test."
       />
       <div class="layouts">
         {layouts.map((l) => (
@@ -91,27 +91,27 @@ const layouts = [
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
-        eyebrow="HONEST TRADEOFFS"
-        title="What works, what to watch."
-        lede="Monorepos make some things easier (one repo, one worktree) and some things harder (test scope, lockfile churn)."
+        eyebrow="THE TRADEOFFS"
+        title="What works well, and what to watch."
+        lede="A monorepo makes some things easier (one repo to work in) and some things harder (knowing what to test, and lockfiles that change a lot)."
       />
       <div class="tradeoffs">
         <article class="m-card">
           <h3 class="m-h3">Works well</h3>
           <ul class="tradeoffs__list">
-            <li>Per-package issues with a clear "target package" line.</li>
-            <li>Bane runs the affected test command, not the full pipeline.</li>
-            <li>One repo means Batman bundle plans collapse to one repo.</li>
-            <li>Spend stays predictable when tests are scoped.</li>
+            <li>Tasks that name one package and a single goal.</li>
+            <li>Bane tests only the package that changed, not everything.</li>
+            <li>Batman plans land in one repo, so there is less to coordinate.</li>
+            <li>Costs stay predictable when each task tests just one package.</li>
           </ul>
         </article>
         <article class="m-card">
           <h3 class="m-h3">Watch out for</h3>
           <ul class="tradeoffs__list">
-            <li>Lockfile churn across packages. Cap concurrent in-flight to 2 or 3.</li>
-            <li>Cross-package refactors. File them as agent:large-feature so Batman plans, not Lucius.</li>
-            <li>Slow root test commands. Set a per-package test gate in the issue body.</li>
-            <li>Shared design-system edits land everywhere. Review carefully.</li>
+            <li>Lockfiles that change across packages. Let only two or three tasks run at once.</li>
+            <li>Changes that span packages. Mark them agent:large-feature so Batman plans them, not Lucius.</li>
+            <li>Slow tests at the repo root. Tell each task to test only its own package.</li>
+            <li>Edits to a shared design system reach every package. Review those closely.</li>
           </ul>
         </article>
       </div>
@@ -121,8 +121,8 @@ const layouts = [
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
-        eyebrow="ISSUE TEMPLATE"
-        title="One agent:implement issue, one package."
+        eyebrow="WHAT A TASK LOOKS LIKE"
+        title="One task, one package."
       />
       <CodeBlock
         title="monorepo#412 (agent:implement)"
