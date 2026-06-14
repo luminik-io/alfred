@@ -352,7 +352,14 @@ def assign_issue(
         return _error_result(repo, number, str(exc), dry_run=dry_run)
 
     decision = decide_assignment(issue)
-    if decision.route == ROUTE_BLOCKED and not dry_run:
+    # A blocked route never assigns. The operator-approval gate
+    # (ROUTE_PENDING_APPROVAL) is also a non-assigning hold: its decision carries
+    # no label changes, so without this branch it would fall through to the
+    # "not changed -> ok=True" path below and the native Work "assign" action
+    # would report success while the gate label remains and Lucius still skips
+    # it. Report it as a failed assignment held for operator approval instead of
+    # silently releasing the gate.
+    if decision.route in (ROUTE_BLOCKED, ROUTE_PENDING_APPROVAL) and not dry_run:
         return AssignmentResult(
             ok=False,
             repo=repo,
@@ -431,6 +438,12 @@ def render_assignment_detail(
         )
     if decision.route == ROUTE_ALREADY_ROUTED:
         return f"{target} is already routed to {decision.agent}. Reason: {decision.reason}."
+    if decision.route == ROUTE_PENDING_APPROVAL:
+        return (
+            f"{target} is held for operator approval "
+            f"(`{label_constants.PLAN_PENDING_APPROVAL}`); it was not assigned. "
+            f"Reason: {decision.reason}."
+        )
     return f"{target} was not assigned. Reason: {decision.reason}."
 
 
@@ -621,6 +634,7 @@ __all__ = [
     "ROUTE_BLOCKED",
     "ROUTE_HUMAN_SCOPE",
     "ROUTE_LUCIUS",
+    "ROUTE_PENDING_APPROVAL",
     "AssignmentDecision",
     "AssignmentResult",
     "IssueSnapshot",

@@ -531,7 +531,16 @@ def pick_issue() -> tuple[str, dict] | tuple[None, None]:
                 "-R",
                 f"{GH_ORG}/{repo}",
                 "--label",
-                "agent:implement",
+                label_constants.IMPLEMENT,
+                # Exclude the operator-approval gate at the source. A gated plan
+                # carries BOTH agent:implement AND agent:plan-pending-approval;
+                # the gate label is the pickup blocker, cleared on approval.
+                # Filtering it here (rather than only in the Python loop below)
+                # keeps gated issues from consuming the --limit window, so enough
+                # accumulated pending approvals can never starve an approved
+                # issue out of the fetched page.
+                "--search",
+                f"-label:{label_constants.PLAN_PENDING_APPROVAL}",
                 "--state",
                 "open",
                 "--json",
