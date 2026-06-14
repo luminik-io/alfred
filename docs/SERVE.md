@@ -232,9 +232,11 @@ POST /api/slack/trusted-users/{user_id}/remove
 Read endpoints intentionally mirror the HTML pages.
 
 `GET /api/usage` is served by `alfred serve` today and backs the desktop client's
-capacity rail. It reports the operator's real Claude and Codex subscription
-headroom for the rolling 5-hour and weekly windows, read from the engines' own
-local CLI state files on the host. Alfred drives Claude Code and Codex through
+capacity rail. It reports the operator's real Claude subscription headroom for
+the rolling 5-hour and weekly windows, plus Codex's latest-day token usage. Codex
+exposes no rolling-window or weekly headroom, so the API reports its latest-day
+token total rather than inventing a Codex quota percentage. All of it is read
+from the engines' own local CLI state files on the host. Alfred drives Claude Code and Codex through
 their local subscription CLIs rather than API keys, so there is no billing API
 and no per-token dollar figure (it is meaningless under a Max or Pro
 subscription). A provider whose local state cannot be read degrades to

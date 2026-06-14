@@ -67,10 +67,10 @@ keep skipping it until the operator approves and the label is cleared.
 
 Where the label comes from depends on the path:
 
-- **Autonomously planned single-repo plans** are filed with this gate label by
-  the planner (Drake), so the operator approves before any work begins (the
-  planner files single-repo plans with this gate label; ships with the companion
-  code update).
+- **Autonomously planned single-repo plans** are filed with both `agent:implement`
+  and this gate label by the planner (Drake, in
+  [`prompts/planner.md`](../prompts/planner.md)), so the operator approves before
+  any work begins.
 - **Approved Slack / Compose drafts are different.** The human has already
   approved the draft inside Slack, so `SlackIssueBridge.convert()`
   ([`lib/slack_issue_bridge.py`](../lib/slack_issue_bridge.py)) files the issue
