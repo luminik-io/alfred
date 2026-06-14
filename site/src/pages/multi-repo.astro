@@ -9,26 +9,26 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
 ---
 
 <MarketingLayout
-  title="Multi-repo planning | Alfred"
-  description="Batman drafts a bundle plan across as many repos as you set, files scoped agent:implement issues per repo, and Lucius picks them up in parallel."
+  title="Planning across repos | Alfred"
+  description="Batman drafts one plan that covers as many repos as you set, files a task in each repo, and Lucius works on them all at the same time."
   path="/multi-repo/"
 >
   <Hero
-    eyebrow="MULTI-REPO PLANNING"
-    headline="Plan once. Ship across every repo."
-    sub="Batman drafts a bundle plan across as many repos as you set, files scoped agent:implement issues per repo, and Lucius picks them up in parallel."
+    eyebrow="PLANNING ACROSS REPOS"
+    headline="Plan once. Build across every repo."
+    sub="Batman drafts one plan that covers as many repos as you set, files a task in each repo, and Lucius works on them all at the same time."
     headlineSize="lg"
     primaryCta={{ label: "Read the worked example", href: "/guides/specs-driven-development/" }}
     secondaryCta={{ label: "Install (30 min)", href: "/getting-started/install/" }}
   >
     <div slot="panel" class="panel">
       <div class="panel__head">
-        <span class="m-eyebrow">BUNDLE STATE</span>
+        <span class="m-eyebrow">PLAN PROGRESS</span>
         <span class="m-mono m-mute">bundle:billing-v2</span>
       </div>
       <MetricRow label="repos in plan" value="4" state="live" />
-      <MetricRow label="child issues" value="11" state="live" />
-      <MetricRow label="in flight" value="3" state="warn" />
+      <MetricRow label="tasks filed" value="11" state="live" />
+      <MetricRow label="in progress" value="3" state="warn" />
       <MetricRow label="PRs open" value="6" state="info" glyph="arrow" />
       <MetricRow label="done" value="2" state="live" />
     </div>
@@ -37,17 +37,17 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
   <section class="m-section m-section--soft">
     <div class="m-container">
       <SectionHeader
-        eyebrow="THE FAN-OUT"
-        title="One parent issue becomes one PR per repo."
-        lede="The diagram below is the actual state Batman keeps. Each child is a separate scoped issue in its own repo, picked up by Lucius on the next interval, and merged independently."
+        eyebrow="HOW THE WORK SPLITS UP"
+        title="One request becomes one pull request per repo."
+        lede="The diagram below shows what Batman keeps track of. Each repo gets its own task, Lucius picks it up on the next run, and each pull request merges on its own."
       />
       <BatmanFanOut />
       <SlackProof
         src="/proof/slack-batman-plan.png"
-        alt="Slack message from the Alfred bot. Batman drafted a plan for issue #504 across backend, frontend, and mobile repos, with a rollout order and a plan preview. The status badge is green. The plan is in draft awaiting approval."
-        tag="batman firing"
+        alt="Slack message from the Alfred bot. Batman drafted a plan for issue #504 across the backend, web, and mobile repos, with the order to roll them out and a preview of the plan. The status badge is green. The plan is a draft waiting for approval."
+        tag="batman plan"
         meta="2026-05-12 11:44 UTC"
-        caption="This is a real Batman plan posted to Slack on 2026-05-12. The rollout was approved a few minutes later. Lucius picked up the backend child first; frontend and mobile followed on the next two intervals."
+        caption="A real Batman plan posted to Slack on 2026-05-12. It was approved a few minutes later. Lucius started on the backend task first; the web and mobile tasks followed on the next two runs."
       />
     </div>
   </section>
@@ -56,12 +56,12 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
     <div class="m-container">
       <SectionHeader
         eyebrow="WHAT BATMAN FILES"
-        title="A bundle plan, then scoped child issues, then a rollout."
-        lede="Batman reads one large agent:large-feature issue, drafts the rollout, and posts to Slack for approval. You react with the configured emoji. Batman then files scoped child issues, opens a worktree per repo, and runs the rollout end-to-end. The approval gate is configurable via BATMAN_AUTO_EXECUTE (0 = always ask, approval-gate = read Slack reaction, 1 = always execute)."
+        title="A plan, then a task per repo, then the work."
+        lede="Batman reads one big feature request, drafts the plan, and posts it to Slack for approval. You react with the agreed emoji. Batman then files a task in each repo, makes a copy of each one to work in, and runs the whole thing. You choose how much approval it needs with the BATMAN_AUTO_EXECUTE setting: always ask, wait for your Slack reaction, or always go ahead."
       />
       <div class="example-grid">
         <div>
-          <h3 class="m-h3" style="margin-bottom:12px;">Bundle plan body</h3>
+          <h3 class="m-h3" style="margin-bottom:12px;">The plan Batman drafts</h3>
           <CodeBlock
             title="your-platform#812 (agent:large-feature)"
             lines={[
@@ -84,7 +84,7 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
           />
         </div>
         <div>
-          <h3 class="m-h3" style="margin-bottom:12px;">Child issue body</h3>
+          <h3 class="m-h3" style="margin-bottom:12px;">A task it files in one repo</h3>
           <CodeBlock
             title="your-backend#247 (agent:implement)"
             lines={[
@@ -102,7 +102,7 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
               "Done when:",
               "  - PR open against main",
               "  - Tests green",
-              "  - Ras al Ghul approves",
+              "  - Ra's al Ghul approves",
             ]}
           />
         </div>
@@ -113,26 +113,26 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
-        eyebrow="THE BUNDLE STATE MACHINE"
+        eyebrow="HOW THE PLAN STAYS ORGANIZED"
         title="One label per stage. No database."
-        lede="Same label discipline as a single-repo firing, with an extra label that ties children back to the parent."
+        lede="The same GitHub labels as a single-repo run, plus one extra label that ties each task back to the plan it came from."
       />
       <div class="states">
         <div class="m-card states__row">
           <code class="m-mono states__tag">agent:large-feature</code>
-          <p>You file this. Batman picks it up, drafts a bundle plan, and posts to Slack for approval.</p>
+          <p>You add this to a feature request. Batman picks it up, drafts a plan, and posts it to Slack for approval.</p>
         </div>
         <div class="m-card states__row">
           <code class="m-mono states__tag">bundle:&lt;slug&gt;</code>
-          <p>Applied to every child issue Batman files. Ties them back to the parent plan.</p>
+          <p>Added to every task Batman files, so each one points back to the plan it belongs to.</p>
         </div>
         <div class="m-card states__row">
           <code class="m-mono states__tag">agent:implement</code>
-          <p>Children land with this label. Lucius picks them up in parallel across repos.</p>
+          <p>Each task starts with this label. Lucius works on them across repos at the same time.</p>
         </div>
         <div class="m-card states__row">
           <code class="m-mono states__tag">agent:done</code>
-          <p>Applied per child when the PR merges. The parent closes when every child is done.</p>
+          <p>Added to a task when its pull request merges. The feature request closes once every task is done.</p>
         </div>
       </div>
     </div>
@@ -141,9 +141,9 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
-        eyebrow="VERIFY THE BUNDLE"
-        title="Dry-run the planner first."
-        lede="Batman will not file child issues without operator approval. Dry-run shows the plan it would file."
+        eyebrow="CHECK THE PLAN FIRST"
+        title="Do a test run of the planner."
+        lede="Batman never files tasks without your approval. A test run shows you the plan it would file, so you can see it before anything happens."
       />
       <CodeBlock
         title="terminal"
