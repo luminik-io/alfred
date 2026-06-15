@@ -23,11 +23,21 @@ import DownloadTracker from "../components/marketing/DownloadTracker.astro";
 
 const REPO = "https://github.com/luminik-io/alfred-os";
 const RELEASES_LATEST = `${REPO}/releases/latest`;
+
+// Both OS cards point at the latest-release page for now, where the visitor
+// picks the file for their machine. The signed per-OS assets do not exist
+// yet, so we are honest in the copy that each button opens the release page.
+//
+// TODO(v0.5.0): once the signed assets ship with stable names, swap each
+// button's href to the direct per-OS asset and flip data-download-kind from
+// "intent" to "asset" so the click counts as a real download. For example:
+//   macOS: `${REPO}/releases/latest/download/Alfred.dmg`
+//   Linux: `${REPO}/releases/latest/download/alfred.AppImage` (and the .deb)
 ---
 
 <MarketingLayout
   title="Download Alfred | macOS, Linux, or from source"
-  description="Get Alfred for macOS or Linux, or install it from source with one line. Open source, MIT. Pick the build for your machine and start a fleet of coding agents on hardware you already own."
+  description="Get Alfred for macOS or Linux, or install it from source in a few commands. Open source, MIT. Pick the build for your machine and start a team of coding agents on hardware you already own."
   path="/download/"
 >
   <Hero
@@ -44,7 +54,7 @@ const RELEASES_LATEST = `${REPO}/releases/latest`;
       <SectionHeader
         eyebrow="PICK YOUR BUILD"
         title="Two ready-made builds, or install from source."
-        lede="The macOS and Linux builds come from the latest release. If a signed build is not up yet, the button takes you to the releases page, where the newest files are always listed."
+        lede="Both buttons open the latest release on GitHub, where you pick the file for your machine. The macOS and Linux files live on that page, so the newest build is always one click away. If you would rather work from the code, install from source below."
       />
 
       <div class="dl-grid">
@@ -65,10 +75,12 @@ const RELEASES_LATEST = `${REPO}/releases/latest`;
             rel="noopener"
             data-download-os="macos"
             data-download-source="download-page"
-          >Download for macOS</a>
+            data-download-kind="intent"
+          >Get the macOS build</a>
           <p class="dl-card__note m-mute">
-            No signed build in the latest release yet? You will see it here as
-            soon as it ships. Until then, install from source below.
+            Opens the latest release, where you grab the macOS file. No signed
+            build up yet? You will see it there as soon as it ships. Until then,
+            install from source below.
           </p>
         </article>
 
@@ -89,10 +101,12 @@ const RELEASES_LATEST = `${REPO}/releases/latest`;
             rel="noopener"
             data-download-os="linux"
             data-download-source="download-page"
-          >Download for Linux</a>
+            data-download-kind="intent"
+          >Get the Linux build</a>
           <p class="dl-card__note m-mute">
-            No packaged build in the latest release yet? You will see it here as
-            soon as it ships. Until then, install from source below.
+            Opens the latest release, where you grab the AppImage or the .deb.
+            No packaged build up yet? You will see it there as soon as it ships.
+            Until then, install from source below.
           </p>
         </article>
       </div>
@@ -103,15 +117,16 @@ const RELEASES_LATEST = `${REPO}/releases/latest`;
     <div class="m-container">
       <SectionHeader
         eyebrow="FROM SOURCE"
-        title="Rather work from the code? One line gets you running."
-        lede="Built for the developer crowd. Run the installer straight from the repo, or use the Homebrew tap on macOS. Both put the operator commands on your PATH."
+        title="Rather work from the code? A few commands get you running."
+        lede="Built for the developer crowd. Clone the repo and run the installer, or use the Homebrew tap on macOS. Both put the operator commands on your PATH."
       />
 
       <div class="dl-source">
         <div class="dl-source__col">
-          <h3 class="m-h3">The one-line installer</h3>
+          <h3 class="m-h3">Install from source (three commands)</h3>
           <p class="dl-source__lede">
-            Works on macOS and Debian or Ubuntu Linux. Safe to re-run.
+            Clone the repo, step in, and run the installer. Works on macOS and
+            Debian or Ubuntu Linux. Safe to re-run.
           </p>
           <CodeBlock
             title="install from source"
@@ -196,12 +211,13 @@ const RELEASES_LATEST = `${REPO}/releases/latest`;
         style="font-size:16px;padding:16px 28px;"
         data-download-os="other"
         data-download-source="download-page-footer"
+        data-download-kind="intent"
       >See the latest release</a>
     </div>
   </section>
-</MarketingLayout>
 
-<DownloadTracker />
+  <DownloadTracker />
+</MarketingLayout>
 
 <style>
   .dl-grid {
