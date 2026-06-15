@@ -93,37 +93,33 @@ on the site:
 
 | Use | Family | Where |
 |---|---|---|
-| Display / headings | **Space Grotesk** (variable) | `--font-heading`, `--font-display`, `.m-display-*` |
-| Body / UI | **Quicksand** (400 / 500 / 600 / 700) | `--font-sans`, `--font-body` |
-| Mono / code / labels | **JetBrains Mono** | `--font-mono` |
+| Display / headings | **Instrument Sans** (variable) | `--font-heading`, `--font-display`, `.m-display-*` |
+| Body / UI | **Quicksand** (variable, 400 to 700) | `--font-sans`, `--font-body` |
+| Mono / code / labels | **Fragment Mono** | `--font-mono` |
 
+This is the operator font directive of 2026-06-13 and it must not be reverted.
 Both surfaces bundle the fonts locally through `@fontsource` (no runtime call to
 a font CDN). The full stacks, straight from the code:
 
-- `--font-display` / `--font-heading`: `"Space Grotesk Variable", "Quicksand",
+- `--font-display` / `--font-heading`: `"Instrument Sans Variable",
   ui-sans-serif, system-ui, sans-serif`
-- `--font-body` / `--font-sans`: `"Quicksand", ui-sans-serif, system-ui,
-  sans-serif`
-- `--font-mono`: `"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace`
+- `--font-body` / `--font-sans`: `"Quicksand Variable", "Instrument Sans
+  Variable", ui-sans-serif, system-ui, sans-serif`
+- `--font-mono`: `"Fragment Mono", ui-monospace, "SF Mono", Menlo, monospace`
 
 How they are used in practice:
 
-- Space Grotesk carries headings, large display numbers, card titles, metric
-  values, and the agent monogram marks. It gives the product its slightly
-  technical, precise headline voice.
+- Instrument Sans carries headings, large display numbers, card titles, metric
+  values, and the agent monogram marks. It gives the product its clean, precise
+  headline voice.
 - Quicksand is the default for body copy and most UI text. It is the rounded,
   friendly base that keeps the dense dashboards readable.
-- JetBrains Mono is for code, log lines, agent codenames, timestamps, and small
+- Fragment Mono is for code, log lines, agent codenames, timestamps, and small
   uppercase labels where a fixed width and a technical feel help.
 
 The marketing display sizes are tokenized and scale down on narrow screens:
 `--text-display-xl` is 72px on desktop and steps to 44px then 34px at the small
 breakpoints, so headlines never overflow.
-
-(Historical note: earlier planning called the stack "Instrument Sans plus
-Fragment Mono". The shipped code does not use those faces anywhere. The real,
-consistent stack across the app and the site is Space Grotesk plus Quicksand
-plus JetBrains Mono, documented above.)
 
 ## Glass and surfaces
 
@@ -201,7 +197,7 @@ layout.
 
 1. Use the token colors (`index.css` for the app, `custom.css` /
    `marketing.css` for the site). Define new tokens in both light and dark.
-2. Headings in Space Grotesk, body in Quicksand, code and labels in JetBrains
+2. Headings in Instrument Sans, body in Quicksand, code and labels in Fragment
    Mono, all through the font tokens.
 3. Build panels from the glass system and reuse the radius token.
 4. Keep transitions short (120 to 200ms) and add a `prefers-reduced-motion`
