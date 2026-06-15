@@ -10,13 +10,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import worker, { clampCount, normalizePayload, ingest } from "../src/worker.js";
+import worker, {
+  clampCount,
+  normalizePayload,
+  ingest,
+  computeTotals,
+} from "../src/worker.js";
 
 // --------------------------------------------------------------------------
 // In-memory KV stub. Implements just the surface the Worker uses:
-//   get(key)                -> string | null
-//   get(key, {type:"json"}) -> parsed | null
-//   put(key, value)         -> void
+//   get(key)                  -> string | null
+//   get(key, {type:"json"})   -> parsed | null
+//   put(key, value, {expirationTtl}) -> void   (TTL ignored in-memory)
+//   delete(key)               -> void
+//   list({prefix, cursor})    -> { keys: [{name}], list_complete, cursor }
+// list() returns a single complete page (no pagination) for the test scale.
 // --------------------------------------------------------------------------
 function makeKV() {
   const store = new Map();
@@ -37,8 +45,24 @@ function makeKV() {
     async put(key, value) {
       store.set(key, value);
     },
+    async delete(key) {
+      store.delete(key);
+    },
+    async list(opts) {
+      const prefix = (opts && opts.prefix) || "";
+      const keys = [...store.keys()]
+        .filter((k) => k.startsWith(prefix))
+        .map((name) => ({ name }));
+      return { keys, list_complete: true, cursor: undefined };
+    },
   };
 }
+
+// Helper: the derived public total, the way /stats computes it. The old tests
+// read these straight off ingest's return value (the running aggregate); under
+// the derived-on-read model ingest returns only the install's own snapshot, so
+// global assertions go through computeTotals instead.
+const totalsOf = (kv) => computeTotals(kv);
 
 const FIXED = new Date("2026-06-15T00:00:00.000Z");
 
@@ -129,7 +153,8 @@ test("ingest folds the first send into empty totals", async () => {
     loc_added: 1200,
   }).value;
 
-  const agg = await ingest(kv, payload, FIXED);
+  await ingest(kv, payload, FIXED);
+  const agg = await totalsOf(kv);
   assert.equal(agg.prs_opened, 10);
   assert.equal(agg.prs_merged, 7);
   assert.equal(agg.prs_reviewed, 4);
@@ -151,7 +176,8 @@ test("ingest is idempotent: re-sending the same period does not double count", a
     }).value;
 
   await ingest(kv, make(), FIXED);
-  const agg = await ingest(kv, make(), FIXED); // identical re-send
+  await ingest(kv, make(), FIXED); // identical re-send
+  const agg = await totalsOf(kv);
 
   assert.equal(agg.prs_opened, 10, "re-send must not double count");
   assert.equal(agg.prs_merged, 7);
@@ -179,7 +205,8 @@ test("ingest applies only the delta when a period's cumulative count grows", asy
   }).value;
 
   await ingest(kv, first, FIXED);
-  const agg = await ingest(kv, grown, FIXED);
+  await ingest(kv, grown, FIXED);
+  const agg = await totalsOf(kv);
 
   assert.equal(agg.prs_opened, 8);
   assert.equal(agg.prs_merged, 5);
@@ -206,11 +233,13 @@ test("lifetime contract: daily re-sends of a stable period never inflate the agg
 
   await ingest(kv, day(40, 30), FIXED); // first report
   await ingest(kv, day(40, 30), FIXED); // identical daily re-send: +0
-  let agg = await ingest(kv, day(40, 30), FIXED); // and again: still +0
+  await ingest(kv, day(40, 30), FIXED); // and again: still +0
+  let agg = await totalsOf(kv);
   assert.equal(agg.prs_opened, 40, "identical re-sends must not inflate");
   assert.equal(agg.prs_merged, 30);
 
-  agg = await ingest(kv, day(42, 31), FIXED); // real growth: +2 / +1
+  await ingest(kv, day(42, 31), FIXED); // real growth: +2 / +1
+  agg = await totalsOf(kv);
   assert.equal(agg.prs_opened, 42, "only the increase is folded in");
   assert.equal(agg.prs_merged, 31);
   assert.equal(agg.installs, 1, "still one install across all re-sends");
@@ -236,13 +265,153 @@ test("ingest counts distinct installs and sums across them", async () => {
   }).value;
 
   await ingest(kv, a, FIXED);
-  const agg = await ingest(kv, b, FIXED);
+  await ingest(kv, b, FIXED);
+  const agg = await totalsOf(kv);
 
   assert.equal(agg.prs_opened, 10);
   assert.equal(agg.prs_merged, 5);
   assert.equal(agg.prs_reviewed, 3);
   assert.equal(agg.loc_added, 100);
   assert.equal(agg.installs, 2, "two distinct installs counted");
+});
+
+// --------------------------------------------------------------------------
+// Concurrent ingest: the whole point of deriving totals on read. Two ingests
+// landing "at the same time" must BOTH be reflected in the derived total, with
+// no count lost. Under the old incremental-aggregate design two concurrent
+// ingests could both read the same "agg" and the last put would win, silently
+// dropping one install's delta; deriving on read removes that race entirely.
+// --------------------------------------------------------------------------
+test("concurrent ingests from two installs are both reflected in the derived total", async () => {
+  const kv = makeKV();
+  const a = normalizePayload({
+    install_id: "install-concur-a0",
+    period: "lifetime",
+    prs_opened: 7,
+    prs_merged: 4,
+    prs_reviewed: 2,
+    loc_added: 70,
+  }).value;
+  const b = normalizePayload({
+    install_id: "install-concur-b0",
+    period: "lifetime",
+    prs_opened: 5,
+    prs_merged: 3,
+    prs_reviewed: 1,
+    loc_added: 30,
+  }).value;
+
+  // Fire both at once. With derived-on-read there is no shared running total to
+  // clobber, so the order they resolve in cannot lose either install's counts.
+  await Promise.all([ingest(kv, a, FIXED), ingest(kv, b, FIXED)]);
+
+  const agg = await totalsOf(kv);
+  assert.equal(agg.prs_opened, 12, "both installs' prs_opened summed, none lost");
+  assert.equal(agg.prs_merged, 7);
+  assert.equal(agg.prs_reviewed, 3);
+  assert.equal(agg.loc_added, 100);
+  assert.equal(agg.installs, 2, "two distinct installs counted");
+});
+
+test("interleaved ingests cannot lose a count (the old read-modify-write race)", async () => {
+  // Reproduce the EXACT interleaving that broke the old incremental aggregate:
+  // both installs are "in flight" before either has finished writing. We drive
+  // the two ingests as concurrent promises whose individual KV operations are
+  // forced to yield to the event loop between steps, so their writes interleave.
+  // Because each ingest writes only its OWN install key and the total is summed
+  // on read, the interleaving is harmless: both records exist and both are
+  // counted. The old design would have lost whichever delta wrote first.
+  const base = makeKV();
+  let yields = 0;
+  const yieldingKv = {
+    store: base.store,
+    async get(key, opts) {
+      await Promise.resolve();
+      yields += 1;
+      return base.get(key, opts);
+    },
+    async put(key, value) {
+      await Promise.resolve();
+      yields += 1;
+      return base.put(key, value);
+    },
+    async delete(key) {
+      await Promise.resolve();
+      yields += 1;
+      return base.delete(key);
+    },
+    async list(opts) {
+      await Promise.resolve();
+      return base.list(opts);
+    },
+  };
+
+  const mk = (id, opened) =>
+    normalizePayload({
+      install_id: id,
+      period: "lifetime",
+      prs_opened: opened,
+      prs_merged: 0,
+      prs_reviewed: 0,
+      loc_added: 0,
+    }).value;
+
+  await Promise.all([
+    ingest(yieldingKv, mk("install-race-aaaa", 11), FIXED),
+    ingest(yieldingKv, mk("install-race-bbbb", 13), FIXED),
+  ]);
+
+  assert.ok(yields > 0, "the KV operations actually interleaved via the event loop");
+  const agg = await totalsOf(base);
+  assert.equal(agg.prs_opened, 24, "no count lost across interleaved writes (11 + 13)");
+  assert.equal(agg.installs, 2, "both interleaved installs counted");
+});
+
+test("the public total always equals the sum of installs' latest lifetime values", async () => {
+  // The invariant the derived-on-read model guarantees: regardless of report
+  // order, re-sends, or growth, GET /stats equals the sum over install records
+  // of each install's CURRENT stored counts.
+  const kv = makeKV();
+  const send = (id, opened, merged) =>
+    ingest(
+      kv,
+      normalizePayload({
+        install_id: id,
+        period: "lifetime",
+        prs_opened: opened,
+        prs_merged: merged,
+        prs_reviewed: 0,
+        loc_added: 0,
+      }).value,
+      FIXED,
+    );
+
+  await send("install-inv-aaaa", 5, 2);
+  await send("install-inv-bbbb", 9, 4);
+  await send("install-inv-aaaa", 8, 3); // a grows (latest-wins replace)
+  await send("install-inv-cccc", 1, 0);
+  await send("install-inv-bbbb", 9, 4); // b idempotent re-send
+
+  // Independently sum the stored install records and compare to the derived API.
+  let sumOpened = 0;
+  let sumMerged = 0;
+  let count = 0;
+  for (const [key, value] of kv.store.entries()) {
+    if (!key.startsWith("install:")) continue;
+    const rec = JSON.parse(value);
+    sumOpened += rec.prs_opened;
+    sumMerged += rec.prs_merged;
+    count += 1;
+  }
+
+  const agg = await totalsOf(kv);
+  assert.equal(agg.prs_opened, sumOpened, "derived total equals sum of records");
+  assert.equal(agg.prs_merged, sumMerged);
+  assert.equal(agg.installs, count);
+  // Concretely: a=8/3, b=9/4, c=1/0 -> 18 opened, 7 merged, 3 installs.
+  assert.equal(agg.prs_opened, 18);
+  assert.equal(agg.prs_merged, 7);
+  assert.equal(agg.installs, 3);
 });
 
 test("install-keyed model: a changed period does not re-add a constant lifetime total", async () => {
@@ -264,7 +433,8 @@ test("install-keyed model: a changed period does not re-add a constant lifetime 
 
   await ingest(kv, report("2026-06", 8, 3), FIXED);
   // A different period label carrying the SAME cumulative total must add zero.
-  const agg = await ingest(kv, report("2026-07", 8, 3), FIXED);
+  await ingest(kv, report("2026-07", 8, 3), FIXED);
+  const agg = await totalsOf(kv);
 
   assert.equal(agg.prs_opened, 8, "a new period label must not re-add the lifetime total");
   assert.equal(agg.prs_merged, 3);
@@ -322,11 +492,107 @@ test("ingest never pushes a total negative on a downward correction", async () =
   }).value;
 
   await ingest(kv, high, FIXED);
-  const agg = await ingest(kv, corrected, FIXED);
+  await ingest(kv, corrected, FIXED);
+  const agg = await totalsOf(kv);
 
   assert.equal(agg.prs_opened, 2);
   assert.equal(agg.prs_merged, 1);
   assert.ok(agg.prs_opened >= 0 && agg.prs_merged >= 0);
+});
+
+// --------------------------------------------------------------------------
+// /stats derived-on-read cache: a pure read optimization that can never change
+// the derived answer, only avoid recomputing it within the TTL.
+// --------------------------------------------------------------------------
+test("GET /stats writes a derived-totals cache and serves it on the next read", async () => {
+  const kv = makeKV();
+  const env = { TELEMETRY: kv };
+  await ingest(
+    kv,
+    normalizePayload({ install_id: "install-cache001", prs_opened: 4 }).value,
+    FIXED,
+  );
+
+  // First read populates the cache.
+  const first = await worker.fetch(req("GET", "/stats"), env);
+  assert.equal((await first.json()).prs_opened, 4);
+  assert.ok(kv.store.has("stats:cache"), "first /stats read populates the cache");
+
+  // Tamper the cache to a sentinel value: a cache HIT must return it verbatim,
+  // proving the second read came from the cache and did not re-list installs.
+  kv.store.set(
+    "stats:cache",
+    JSON.stringify({
+      prs_opened: 999,
+      prs_merged: 0,
+      prs_reviewed: 0,
+      loc_added: 0,
+      installs: 1,
+      updated_at: FIXED.toISOString(),
+    }),
+  );
+  const second = await worker.fetch(req("GET", "/stats"), env);
+  assert.equal((await second.json()).prs_opened, 999, "served from cache");
+});
+
+test("a new ingest invalidates the stats cache so the next /stats recomputes", async () => {
+  const kv = makeKV();
+  const env = { TELEMETRY: kv };
+  await ingest(
+    kv,
+    normalizePayload({ install_id: "install-cache002", prs_opened: 4 }).value,
+    FIXED,
+  );
+  await worker.fetch(req("GET", "/stats"), env); // populate cache
+  assert.ok(kv.store.has("stats:cache"));
+
+  // A fresh report through the HTTP path must drop the cache so the number is
+  // not stuck behind the TTL.
+  await worker.fetch(
+    req("POST", "/ingest", { install_id: "install-cache003", prs_opened: 6 }),
+    env,
+  );
+  assert.equal(kv.store.has("stats:cache"), false, "ingest invalidated the cache");
+
+  const res = await worker.fetch(req("GET", "/stats"), env);
+  const body = await res.json();
+  assert.equal(body.prs_opened, 10, "recomputed total reflects both installs");
+  assert.equal(body.installs, 2);
+});
+
+test("STATS_CACHE_TTL_SECONDS=0 disables the cache (always recompute)", async () => {
+  const kv = makeKV();
+  const env = { TELEMETRY: kv, STATS_CACHE_TTL_SECONDS: "0" };
+  await ingest(
+    kv,
+    normalizePayload({ install_id: "install-cache004", prs_opened: 3 }).value,
+    FIXED,
+  );
+  const res = await worker.fetch(req("GET", "/stats"), env);
+  assert.equal((await res.json()).prs_opened, 3);
+  assert.equal(kv.store.has("stats:cache"), false, "no cache key written when TTL is 0");
+});
+
+test("GET /stats sums many installs derived-on-read (no incremented aggregate)", async () => {
+  const kv = makeKV();
+  const env = { TELEMETRY: kv };
+  for (let i = 0; i < 5; i++) {
+    await worker.fetch(
+      req("POST", "/ingest", {
+        install_id: `install-many-${String(i).padStart(4, "0")}`,
+        prs_opened: 2,
+        prs_merged: 1,
+      }),
+      env,
+    );
+  }
+  const res = await worker.fetch(req("GET", "/stats"), env);
+  const body = await res.json();
+  assert.equal(body.prs_opened, 10, "5 installs x 2 opened, summed on read");
+  assert.equal(body.prs_merged, 5);
+  assert.equal(body.installs, 5);
+  // No legacy "agg" key is ever written under the derived model.
+  assert.equal(kv.store.has("agg"), false, "no incremented aggregate key exists");
 });
 
 // --------------------------------------------------------------------------

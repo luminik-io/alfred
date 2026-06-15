@@ -26,13 +26,14 @@ What is sent (the entire payload)::
 The four counts are CUMULATIVE LIFETIME totals (everything the local brain has
 ever cached), not a per-run or per-month delta. The agent/worker contract is
 "latest-wins per install": the Worker keys exactly ONE record on ``install_id``
-and replaces it on every report, then maintains the public aggregate as
-``aggregate += new - previous_for_that_install``. Re-sending the same lifetime
-total for the same install therefore adds zero, forever, no matter how often or
-for how long an install reports. ``period`` is advisory metadata only (always
-the constant ``"lifetime"`` here); the Worker does NOT use it as part of the
-storage key, so a calendar rollover can never re-add a constant lifetime total.
-This contract is the whole reason the public counter stays honest.
+and replaces it on every report, and the public total is DERIVED on read by
+summing every install's latest record. Re-sending the same lifetime total for
+the same install therefore changes nothing, forever, no matter how often or for
+how long an install reports (the record is replaced with an identical value, so
+the sum is unchanged). ``period`` is advisory metadata only (always the constant
+``"lifetime"`` here); the Worker does NOT use it as part of the storage key, so a
+calendar rollover can never re-add a constant lifetime total. This contract is
+the whole reason the public counter stays honest.
 
 What is NEVER sent: repo names, file paths, code, commit text, branch names,
 hostnames, IP addresses, Slack handles, codenames, or anything that identifies

@@ -17,8 +17,8 @@ phones home to a Luminik-operated endpoint.
 
 | Endpoint | Method | Purpose |
 | --- | --- | --- |
-| `/ingest` | `POST` | One install reports its cumulative lifetime counts. The Worker keeps exactly one record per install (latest-wins) and the aggregate is the sum of every install's latest counts. Server-to-server only: requires `application/json`, no browser CORS, Origin allowlist, optional shared token, per-IP rate limit. |
-| `/stats` | `GET` | Returns the public aggregate totals. The only route with browser CORS, scoped to your site origin. |
+| `/ingest` | `POST` | One install reports its cumulative lifetime counts. The Worker keeps exactly one record per install (latest-wins) and writes only that install's key. Server-to-server only: requires `application/json`, no browser CORS, Origin allowlist, optional shared token, per-IP rate limit. |
+| `/stats` | `GET` | Returns the public totals, **derived on read** by summing every install's latest counts (behind a short cache). The only route with browser CORS, scoped to your site origin. |
 | `/` | `GET` | A small JSON service descriptor. |
 
 ### Ingest payload (exactly what an install sends)
@@ -51,28 +51,36 @@ All state lives in one Workers KV namespace bound as `TELEMETRY`:
 
 | Key | Value | Why it exists |
 | --- | --- | --- |
-| `agg` | `{prs_opened, prs_merged, prs_reviewed, loc_added, installs, updated_at}` | The public aggregate. The only thing `/stats` reads. |
-| `install:<install_id>` | `{prs_opened, prs_merged, prs_reviewed, loc_added, seen_at}` | The single latest snapshot for one install, replaced on every report. It drives the latest-wins upsert, and its presence is also the distinct-install marker (no separate key). |
+| `install:<install_id>` | `{prs_opened, prs_merged, prs_reviewed, loc_added, seen_at}` | The single latest snapshot for one install, replaced on every report. It is the only source of truth: `/stats` sums these on read. Its presence is also the distinct-install marker (no separate key). |
+| `stats:cache` | `{prs_opened, prs_merged, prs_reviewed, loc_added, installs, updated_at}` | Optional short-lived cache of the derived totals (TTL `STATS_CACHE_TTL_SECONDS`, default 30s). A pure read optimization so a burst of `/stats` reads does not re-list every install. Never written by `/ingest`; deleting it only forces a recompute. |
 
 **Never stored, never logged:** IP addresses, user agents, repo names, file
 paths, code, commit text, handles, or anything that identifies a person or
 machine.
 
-### Data model: latest-wins per install (no double count)
+### Data model: latest-wins per install, totals derived on read (no double count, no lost count)
 
 The Worker stores **one record per install**, keyed by `install_id`, and
-replaces it on every report. The public aggregate is the sum over all installs
-of each install's latest counts, maintained incrementally as
-`aggregate += new - previous_for_that_install`. So:
+replaces it on every report. `/ingest` writes **only** that one install's key:
+there is no shared running aggregate. The public total is **derived on read** by
+`/stats`, which lists the `install:*` keys and sums each install's latest counts
+(behind a short cache). So:
 
-- The first report from an install adds its full counts.
-- A re-send of the same lifetime total adds zero, forever, no matter how often
-  or for how long the install reports.
-- A re-send with higher numbers adds only the difference.
-- A downward correction subtracts, and the aggregate never goes negative.
+- The first report from an install contributes its full counts to the sum.
+- A re-send of the same lifetime total replaces the record with an identical
+  value, so the sum is unchanged, forever, no matter how often or for how long
+  the install reports.
+- A re-send with higher numbers replaces the record, so only the increase shows
+  up in the sum.
+- A downward correction replaces the record with the lower value; the sum is
+  always over non-negative per-install counts, so the total never goes negative.
 
 Because the key is the `install_id` alone (never a per-period bucket), a calendar
-rollover cannot re-add a constant lifetime total. This is the core no-double-count
+rollover cannot re-add a constant lifetime total. And because the total is summed
+from independent per-install records rather than incremented, two installs
+reporting at the same instant write disjoint keys and **neither can lose the
+other's counts**. The public total always equals the sum of installs' latest
+values by construction. This is the core no-double-count, no-lost-count
 guarantee and what lets an install safely post every day.
 
 ### Write protection and the abuse surface
@@ -99,9 +107,10 @@ what it can and cannot guarantee. The controls, in layers:
 4. **Per-IP rate limit.** A coarse fixed-window counter (default 60/hour, set
    `INGEST_RATE_LIMIT`) slows a single source spraying distinct `install_id`s.
 5. **Per-install count cap.** Each field is clamped to `[0, 100000]`, so a single
-   forged `install_id` can move the aggregate by at most that much, once.
+   forged `install_id` can move the total by at most that much, once.
 6. **Latest-wins idempotency.** Re-sends from the same `install_id` replace its
-   record rather than adding, so they cannot inflate the total.
+   record rather than adding, and the total is summed from records on read, so
+   they cannot inflate it.
 
 **Residual surface, stated plainly:** with `INGEST_TOKEN` unset the counter is a
 fully public community counter, open to server-side writes by design. The
@@ -117,13 +126,21 @@ best-effort and unverified.
 
 ### Concurrency note
 
-The aggregate is maintained with a read-modify-write on KV without a
-cross-request lock. For a low-frequency proof counter (each install posts at
-most once a day) the practical risk of a lost update is negligible, and because
-each install's stored record is its full current truth, that install's next
-report self-heals any single dropped delta. If you need exactness, port the
-aggregate to a Durable Object or D1 transaction; the endpoint contract stays the
-same.
+There is no cross-request read-modify-write to race. `/ingest` writes only its
+own `install:<id>` key (an idempotent latest-wins upsert), and `/stats` derives
+the total by summing those keys on read. Two installs posting in the same instant
+write disjoint keys, so neither can clobber the other and no count is ever lost.
+The public total is, by construction, always the sum of every install's latest
+stored value.
+
+An earlier design kept a single incremented `agg` key (`agg += new - prior`).
+That was racy: Cloudflare KV has no atomic read-modify-write, so two concurrent
+ingests could both read the same `agg` and the last `put` would win, permanently
+dropping one install's delta. Deriving on read removes that failure mode without
+a Durable Object. The `stats:cache` key bounds the per-read list cost and is only
+a read optimization (short TTL, never written by `/ingest`), so it cannot
+introduce a write race; at worst it serves a value up to `STATS_CACHE_TTL_SECONDS`
+old, which is fine for a vanity counter.
 
 ## Deploy steps (operator)
 
@@ -165,15 +182,26 @@ You need a Cloudflare account (the free plan is enough) and
    Wrangler prints the Worker URL, e.g.
    `https://alfred-proof-telemetry.<your-subdomain>.workers.dev`.
 
-5. **Wire the install reporter** (only on hosts you want reporting; still
-   off unless `ALFRED_TELEMETRY_ENABLED=1`):
+5. **Wire the install reporter** (only on hosts you want reporting). The
+   reporter is a hard no-op unless `ALFRED_TELEMETRY_ENABLED=1`, so that master
+   switch MUST be set or nothing is ever sent:
 
    ```sh
    # in ~/.alfredrc on that host
+   ALFRED_TELEMETRY_ENABLED=1   # master on-switch; without it the reporter sends nothing
    ALFRED_TELEMETRY_URL=https://alfred-proof-telemetry.<your-subdomain>.workers.dev/ingest
    # only if you set INGEST_TOKEN above; must match it exactly
    ALFRED_TELEMETRY_TOKEN=the-same-random-value
    ```
+
+   **Supported path: opt in through `alfred-init`.** Running `alfred-init` and
+   answering yes to the telemetry prompt sets all three vars above for you AND
+   writes the `alfred.proof-telemetry` job row into `agents.conf`, so the
+   reporter is actually scheduled to run (it posts once a day). Setting the env
+   vars by hand without that scheduler row means the switch is on but nothing
+   ever fires the reporter, so no reports are sent. Re-running `alfred-init`
+   later and answering no removes the opt-in; you can also disable any time by
+   removing `ALFRED_TELEMETRY_ENABLED` from `~/.alfredrc`.
 
 6. **Point the site counter at the read endpoint:** set the build-time env var
    when building the site:
@@ -195,9 +223,12 @@ curl -sX POST https://<your-worker-url>/ingest \
 curl -s https://<your-worker-url>/stats
 ```
 
-To clear the smoke-test data, delete the `agg` key and the
-`install:<your-install-id>` record from the KV namespace in the dashboard, or
-`wrangler kv key delete --binding TELEMETRY agg` and friends.
+To clear the smoke-test data, delete the `install:<your-install-id>` record from
+the KV namespace in the dashboard, or
+`wrangler kv key delete --binding TELEMETRY install:smoke-test-0001`. The total
+is derived from the install records, so removing the record removes its
+contribution; the short-lived `stats:cache` key expires on its own (or delete it
+to recompute immediately).
 
 ## Local development
 
@@ -212,9 +243,13 @@ wrangler dev      # local Worker against the preview KV namespace
 `npm test` runs `node --test` over `test/`. It covers input clamping, payload
 validation, the latest-wins-per-install upsert and its idempotent re-sends, the
 lifetime no-double-count contract (including a changed period label not
-re-adding a constant total), distinct-install counting, summing across installs,
-the simple-request rejection (text/plain and form bodies refused), the Origin
-allowlist on `/ingest`, the write gate (token accept/reject and open-write
-mode), the per-IP rate limit, the `/ingest` CORS lockdown, and the HTTP surface
-(ingest -> stats round-trip, scoped `/stats` CORS, 400/404). No network or real
-Cloudflare account is touched.
+re-adding a constant total), distinct-install counting, derived-on-read summing
+across installs, concurrent and interleaved ingests both landing in the derived
+total (no count lost), the "total equals the sum of installs' latest values"
+invariant, the derived-stats cache (populate, serve-from-cache, invalidate on
+ingest, and `STATS_CACHE_TTL_SECONDS=0` disabling it), the simple-request
+rejection (text/plain and form bodies refused), the Origin allowlist on
+`/ingest`, the write gate (token accept/reject and open-write mode), the per-IP
+rate limit, the `/ingest` CORS lockdown, and the HTTP surface (ingest -> stats
+round-trip, scoped `/stats` CORS, 400/404). No network or real Cloudflare
+account is touched.

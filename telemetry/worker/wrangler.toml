@@ -24,7 +24,7 @@ ALLOWED_ORIGIN = "https://alfred.example.com"
 # Optional shared write gate for POST /ingest. When set, every ingest must send
 # a matching `X-Ingest-Token` header (opted-in hosts put their value in
 # ALFRED_TELEMETRY_TOKEN). Leave it UNSET for a fully open public counter; the
-# CORS lock, per-IP rate limit, and {install_id, period} idempotency still
+# CORS lock, per-IP rate limit, and per-install latest-wins idempotency still
 # apply. Prefer a Worker SECRET over a plaintext var here:
 #   wrangler secret put INGEST_TOKEN
 # INGEST_TOKEN = "set-via-`wrangler secret put`-not-here"
@@ -34,7 +34,15 @@ ALLOWED_ORIGIN = "https://alfred.example.com"
 # bump against a single source spraying install_ids.
 # INGEST_RATE_LIMIT = "60"
 
-# Workers KV namespace that holds the running aggregate. Create it with:
+# Optional cache TTL (seconds) for the totals GET /stats derives by summing the
+# per-install records. Defaults to 30. A read optimization only: a higher value
+# cuts list cost on busy read bursts at the price of staleness; 0 disables the
+# cache and recomputes on every read. It can never change the derived answer.
+# STATS_CACHE_TTL_SECONDS = "30"
+
+# Workers KV namespace that holds the per-install records (and a short-lived
+# derived-stats cache). GET /stats sums the install records on read; there is no
+# incremented running aggregate. Create it with:
 #   wrangler kv namespace create TELEMETRY
 # then paste the returned id below (and the preview id for `wrangler dev`).
 [[kv_namespaces]]

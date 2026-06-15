@@ -6,26 +6,36 @@
  *   POST /ingest   one install reports its CUMULATIVE LIFETIME counts. The
  *                  Worker stores exactly ONE record per install (keyed by
  *                  install_id) and replaces it on every report (latest-wins
- *                  upsert). The public aggregate is the sum over all installs
- *                  of each install's latest counts, maintained incrementally as
- *                  aggregate += new - previous_for_this_install. Re-sending the
- *                  same lifetime total is therefore idempotent: it adds zero,
- *                  forever, no matter how many times or for how long an install
- *                  reports. Browser-hostile by design: simple requests are
- *                  rejected, cross-origin browser writes are blocked, an
- *                  optional shared INGEST_TOKEN hardens it, and a per-IP rate
- *                  limit plus a per-install count cap bound forged-id abuse.
- *   GET  /stats    returns the public aggregate totals plus a distinct-install
- *                  count. This is the only route with browser CORS, scoped to
+ *                  upsert). That upsert is the WHOLE write: ingest touches only
+ *                  this one install's key and never a shared running total, so
+ *                  two concurrent ingests write disjoint keys and can never lose
+ *                  each other's counts. Re-sending the same lifetime total is
+ *                  idempotent: the stored record is replaced with an identical
+ *                  value, so the derived total is unchanged, forever, no matter
+ *                  how many times or for how long an install reports.
+ *                  Browser-hostile by design: simple requests are rejected,
+ *                  cross-origin browser writes are blocked, an optional shared
+ *                  INGEST_TOKEN hardens it, and a per-IP rate limit plus a
+ *                  per-install count cap bound forged-id abuse.
+ *   GET  /stats    returns the public totals plus a distinct-install count. The
+ *                  totals are DERIVED ON READ: the Worker lists the install:*
+ *                  keys and sums each install's stored latest counts. Nothing is
+ *                  ever incremented, so the public total always equals the sum
+ *                  of installs' latest lifetime values by construction, with no
+ *                  read-modify-write race to lose counts. A short KV-backed
+ *                  cache (STATS_CACHE_TTL_SECONDS) bounds the per-read list cost.
+ *                  This is the only route with browser CORS, scoped to
  *                  ALLOWED_ORIGIN so the marketing site can read it.
  *
  * The contract with the agent client (lib/proof_telemetry.py) is
  * "latest-wins per install", not "accumulate per period". The client reports a
  * single cumulative lifetime total; the Worker treats install_id as the unit of
  * de-duplication and the stored counts as that install's current truth, never
- * an increment. The `period` field on the payload is advisory metadata only
- * (the client always sends "lifetime"); it is NOT part of the storage key, so a
- * calendar rollover can never re-add a constant lifetime total.
+ * an increment. The public total is then DERIVED by summing those per-install
+ * truths on read, never accumulated on write. The `period` field on the payload
+ * is advisory metadata only (the client always sends "lifetime"); it is NOT
+ * part of the storage key, so a calendar rollover can never re-add a constant
+ * lifetime total.
  *
  * Abuse posture (be honest about a public community counter). /ingest:
  *   - Rejects "simple" requests: the body MUST be Content-Type application/json.
@@ -39,7 +49,8 @@
  *     This is the difference between a private counter and an open one.
  *   - A coarse per-IP rate limit and a per-install count cap (MAX_PER_FIELD)
  *     bound how far a single source, or a flood of forged install_ids, can move
- *     the aggregate. The latest-wins idempotency means a re-send never inflates.
+ *     the derived total. The latest-wins idempotency means a re-send never
+ *     inflates.
  *   With INGEST_TOKEN unset the counter is open to server-side writes by design
  *   (CORS does not gate curl/python); see README.md for the residual surface and
  *   why the display threshold + caps keep it best-effort-honest. Operators who
@@ -50,14 +61,20 @@
  * snapshot needed for the latest-wins upsert.
  *
  * What is stored (the ENTIRE stored shape):
- *   key "agg"          -> JSON aggregate, the only thing /stats reads:
- *                         { prs_opened, prs_merged, prs_reviewed, loc_added,
- *                           installs, updated_at }
  *   key "install:<id>" -> JSON latest snapshot for one install, the single
  *                         record per install. Replaced on every report:
  *                         { prs_opened, prs_merged, prs_reviewed, loc_added,
  *                           seen_at }. Its presence also IS the distinct-install
  *                         marker, so there is no separate "known install" key.
+ *                         These per-install records are the ONLY source of
+ *                         truth: /stats sums them on read.
+ *   key "stats:cache"  -> OPTIONAL short-lived cache of the derived totals, so a
+ *                         burst of /stats reads does not re-list every install
+ *                         each time. JSON { ...totals, installs, updated_at }
+ *                         with a TTL of STATS_CACHE_TTL_SECONDS. Purely a read
+ *                         optimization: deleting it only forces a recompute, it
+ *                         can never change the derived answer. It is NEVER a
+ *                         write target of /ingest, so it cannot race ingests.
  *   key "rl:<h>:<win>" -> short-lived per-source ingest counter for the rate
  *                         limit. <h> is a non-reversible hash of the client IP,
  *                         never the raw IP, and the bucket self-expires after
@@ -70,13 +87,18 @@
  * token the install generates for itself; the Worker treats it as a bare
  * grouping key and never resolves it to anything.
  *
- * The aggregate is maintained without a cross-request lock. Two installs
- * posting in the same instant could in principle interleave their
- * read-modify-write of "agg"; for a low-frequency proof counter (each install
- * posts at most once a day) the practical loss is negligible, and because each
- * install's record is the full current truth, the very next report from that
- * install self-heals any single dropped delta. If exactness ever matters, swap
- * KV for a Durable Object or D1 transaction; see the README.
+ * Concurrency: there is no cross-request read-modify-write to race. Each
+ * /ingest writes only its own install:<id> key (an idempotent latest-wins
+ * upsert), and /stats DERIVES the total by summing those keys. Two installs
+ * posting in the same instant write disjoint keys, so neither can clobber the
+ * other and no count is ever lost; the public total is, by construction, always
+ * the sum of every install's latest stored value. The "stats:cache" key is only
+ * a read-side optimization with a short TTL and is never written by /ingest, so
+ * it cannot introduce a write race either. The historical incremental-aggregate
+ * design (a single "agg" key updated as agg += new - prior) was removed for
+ * exactly this reason: Cloudflare KV has no atomic read-modify-write, so two
+ * concurrent ingests could both read the same agg and the last put would win,
+ * permanently dropping one install's delta. Deriving on read sidesteps that.
  */
 
 // Hard caps. A single install's cumulative count above these is almost
@@ -101,6 +123,31 @@ const EMPTY_AGG = {
   installs: 0,
   updated_at: null,
 };
+
+// Prefix for the per-install records. Listing this prefix yields every install,
+// which is what /stats sums on read. Kept as a constant so the list() prefix and
+// the per-key builder cannot drift apart.
+const INSTALL_PREFIX = "install:";
+
+// Short-lived cache of the derived totals. Purely a read optimization so a burst
+// of /stats reads does not re-list every install each time; it is never written
+// by /ingest and deleting it only forces a recompute. Default TTL is small so
+// the public number is near-live; override with STATS_CACHE_TTL_SECONDS (0
+// disables caching entirely, always recomputing from the install records).
+const STATS_CACHE_KEY = "stats:cache";
+const DEFAULT_STATS_CACHE_TTL_SECONDS = 30;
+
+function statsCacheTtl(env) {
+  const raw = env && env.STATS_CACHE_TTL_SECONDS;
+  if (raw === undefined || raw === null || raw === "") {
+    return DEFAULT_STATS_CACHE_TTL_SECONDS;
+  }
+  const n = Number(raw);
+  // A non-negative integer; 0 disables the cache. Anything malformed falls back
+  // to the default rather than silently disabling caching.
+  if (!Number.isFinite(n) || n < 0) return DEFAULT_STATS_CACHE_TTL_SECONDS;
+  return Math.floor(n);
+}
 
 /**
  * Coerce one count field: integer, non-negative, clamped to MAX_PER_FIELD.
@@ -137,80 +184,165 @@ export function normalizePayload(raw) {
   return { ok: true, value: { install_id: installId, period, counts } };
 }
 
-function aggKey() {
-  return "agg";
-}
 // One record per install, keyed by install_id. Replaced on every report
 // (latest-wins). Its presence is also the distinct-install marker.
 function installKey(installId) {
-  return `install:${installId}`;
-}
-
-async function readAgg(kv) {
-  const stored = await kv.get(aggKey(), { type: "json" });
-  if (!stored || typeof stored !== "object") {
-    return { ...EMPTY_AGG };
-  }
-  const agg = { ...EMPTY_AGG };
-  for (const field of COUNT_FIELDS) {
-    const n = Number(stored[field]);
-    agg[field] = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
-  }
-  const installs = Number(stored.installs);
-  agg.installs = Number.isFinite(installs) && installs > 0 ? Math.floor(installs) : 0;
-  agg.updated_at = typeof stored.updated_at === "string" ? stored.updated_at : null;
-  return agg;
+  return `${INSTALL_PREFIX}${installId}`;
 }
 
 /**
- * Fold one normalized payload into the running aggregate, idempotently.
+ * Coerce one stored per-install snapshot into a clean { ...counts, seen_at }.
+ * Defensive: a hand-edited or partially written record must never poison the
+ * derived total. Unknown/negative/non-numeric counts become 0.
+ */
+function normalizeSnapshot(stored) {
+  const out = {};
+  for (const field of COUNT_FIELDS) {
+    out[field] = clampCount(stored && stored[field]);
+  }
+  out.seen_at =
+    stored && typeof stored.seen_at === "string" ? stored.seen_at : null;
+  return out;
+}
+
+/**
+ * Compute the public totals by listing every install:* record and summing its
+ * stored latest counts. This is the ONLY source of the public number, and it is
+ * race-free: it reads independent per-install keys and never any shared running
+ * total, so concurrent ingests can never make it lose a count. The returned
+ * shape matches EMPTY_AGG: { ...COUNT_FIELDS, installs, updated_at }, where
+ * `installs` is the distinct record count and `updated_at` is the most recent
+ * `seen_at` across all records.
  *
- * Latest-wins per install. The delta applied is
- * (new counts - the counts currently stored for THIS install_id). So the first
- * report from an install adds its full counts; a re-send of the same lifetime
- * total adds zero; a re-send with higher numbers adds only the difference; a
- * downward correction subtracts. Counts are the install's cumulative lifetime
- * total, never an increment, which is what makes every re-send safe regardless
- * of how often or for how long the install reports. The stored record is keyed
- * only by install_id, so no calendar bucket can ever re-add a constant total.
+ * Cost: one list() per 1000 keys plus one get() per install. For the expected
+ * scale (tens to low-hundreds of installs, gated by the site display threshold)
+ * this is cheap, and /stats caches the result for STATS_CACHE_TTL_SECONDS so a
+ * read burst does not re-list each time. KV list() is paginated via `cursor`;
+ * we follow it so a namespace larger than one page is summed in full.
+ */
+export async function computeTotals(kv) {
+  const totals = { ...EMPTY_AGG };
+  let cursor;
+  // Bound the number of list pages we will walk so a pathologically large
+  // namespace (far beyond any believable opt-in fleet) cannot run the read
+  // unbounded. Each page is up to 1000 keys; 1000 pages is a million installs,
+  // orders of magnitude past the expected scale.
+  const MAX_LIST_PAGES = 1000;
+  for (let page = 0; page < MAX_LIST_PAGES; page++) {
+    const listed = await kv.list({ prefix: INSTALL_PREFIX, cursor });
+    const keys = (listed && listed.keys) || [];
+    for (const entry of keys) {
+      const name = entry && entry.name;
+      if (typeof name !== "string") continue;
+      const stored = await kv.get(name, { type: "json" });
+      if (!stored || typeof stored !== "object") continue;
+      const snap = normalizeSnapshot(stored);
+      totals.installs += 1;
+      for (const field of COUNT_FIELDS) {
+        totals[field] += snap[field];
+      }
+      if (
+        snap.seen_at &&
+        (totals.updated_at === null || snap.seen_at > totals.updated_at)
+      ) {
+        totals.updated_at = snap.seen_at;
+      }
+    }
+    if (listed && listed.list_complete === false && listed.cursor) {
+      cursor = listed.cursor;
+    } else {
+      break;
+    }
+  }
+  return totals;
+}
+
+/**
+ * Read the public totals, derived from the per-install records, behind a short
+ * KV-backed cache. The cache (STATS_CACHE_KEY) is a pure read optimization with
+ * a TTL of STATS_CACHE_TTL_SECONDS: a hit avoids re-listing every install, a
+ * miss recomputes from scratch and refreshes it. The cache is NEVER written by
+ * /ingest, so it cannot race a write; the worst it can do is serve a value up to
+ * the TTL stale, which for a vanity counter is fine. Setting the TTL to 0
+ * disables the cache and always recomputes.
+ */
+export async function readStats(kv, env) {
+  const ttl = statsCacheTtl(env);
+  if (ttl > 0) {
+    const cached = await kv.get(STATS_CACHE_KEY, { type: "json" });
+    if (cached && typeof cached === "object") {
+      const totals = { ...EMPTY_AGG };
+      for (const field of COUNT_FIELDS) {
+        const n = Number(cached[field]);
+        totals[field] = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+      }
+      const installs = Number(cached.installs);
+      totals.installs =
+        Number.isFinite(installs) && installs > 0 ? Math.floor(installs) : 0;
+      totals.updated_at =
+        typeof cached.updated_at === "string" ? cached.updated_at : null;
+      return totals;
+    }
+  }
+  const totals = await computeTotals(kv);
+  if (ttl > 0) {
+    // Refresh the cache. Best-effort: a failed cache write only costs a recompute
+    // next read, never correctness.
+    try {
+      await kv.put(STATS_CACHE_KEY, JSON.stringify(totals), {
+        expirationTtl: ttl,
+      });
+    } catch {
+      /* cache write is best-effort; ignore */
+    }
+  }
+  return totals;
+}
+
+/**
+ * Upsert one normalized payload as this install's latest snapshot, idempotently.
  *
- * Pure-ish: all KV effects go through the passed `kv`. Returns the updated
- * aggregate (without the bookkeeping keys).
+ * Latest-wins per install: the stored record is REPLACED with the new counts, so
+ * a re-send of the same lifetime total stores an identical value (the derived
+ * total is unchanged), a re-send with higher numbers stores the higher value,
+ * and a downward correction stores the lower value. Counts are the install's
+ * cumulative lifetime total, never an increment. The record is keyed only by
+ * install_id, so no calendar bucket can ever re-add a constant total.
+ *
+ * CRUCIALLY this writes ONLY the install's own key (plus an optional cache
+ * invalidation). It never touches a shared running total, so two concurrent
+ * ingests write disjoint keys and neither can lose the other's counts. The
+ * public total is derived on read by summing every install record (see
+ * computeTotals), so it always equals the sum of installs' latest values.
+ *
+ * Returns the stored snapshot for this install (not the global total; the global
+ * total is derived separately so the write stays a single cheap, race-free put).
  */
 export async function ingest(kv, payload, now = new Date()) {
   const { install_id: installId, counts } = payload;
 
-  const prior = (await kv.get(installKey(installId), { type: "json" })) || null;
-  const agg = await readAgg(kv);
-
-  // Distinct-install accounting: the per-install record's presence IS the
-  // marker, so the first time we see an install (no prior record) is the only
-  // time we increment.
-  if (!prior) {
-    agg.installs += 1;
-  }
-
-  for (const field of COUNT_FIELDS) {
-    const priorVal = prior ? clampCount(prior[field]) : 0;
-    const delta = counts[field] - priorVal;
-    const next = agg[field] + delta;
-    // Floor at zero defensively; a downward correction should never push the
-    // public total negative.
-    agg[field] = next > 0 ? next : 0;
-  }
-
   const iso = now.toISOString();
-  agg.updated_at = iso;
+  const snapshot = {};
+  for (const field of COUNT_FIELDS) {
+    snapshot[field] = clampCount(counts[field]);
+  }
+  snapshot.seen_at = iso;
 
-  // Persist the install's new latest snapshot (for next-time idempotency) and
-  // the new aggregate. Order: snapshot first, then aggregate, so a crash
-  // between the two leaves the aggregate trailing (recoverable on the install's
-  // next report) rather than ahead (which would double count).
-  const snapshot = { ...counts, seen_at: iso };
+  // The entire write: replace this install's record. No shared-state read,
+  // no read-modify-write, nothing another ingest could clobber.
   await kv.put(installKey(installId), JSON.stringify(snapshot));
-  await kv.put(aggKey(), JSON.stringify(agg));
 
-  return agg;
+  // Invalidate the derived-stats cache so the next /stats recomputes and this
+  // report shows up promptly rather than waiting out the TTL. Best-effort: if
+  // the delete fails the value is at worst TTL-stale, never wrong. This is a
+  // delete, not a write of a total, so it still introduces no cross-ingest race.
+  try {
+    await kv.delete(STATS_CACHE_KEY);
+  } catch {
+    /* cache invalidation is best-effort; ignore */
+  }
+
+  return snapshot;
 }
 
 function publicView(agg) {
@@ -404,8 +536,10 @@ export default {
     if (path === "/stats" && request.method === "GET") {
       const cors = statsCorsHeaders(env);
       if (!kv) return jsonResponse({ error: "telemetry store unavailable" }, 503, env, { cors });
-      const agg = await readAgg(kv);
-      return jsonResponse(publicView(agg), 200, env, { cors });
+      // Totals are derived on read (sum of every install record), behind a short
+      // cache. Never an incremented running total, so no race can lose counts.
+      const totals = await readStats(kv, env);
+      return jsonResponse(publicView(totals), 200, env, { cors });
     }
 
     if (path === "/ingest" && request.method === "POST") {
@@ -438,8 +572,13 @@ export default {
       if (!parsed.ok) {
         return jsonResponse({ error: parsed.error }, 400, env);
       }
-      const agg = await ingest(kv, parsed.value);
-      return jsonResponse({ ok: true, totals: publicView(agg) }, 200, env);
+      await ingest(kv, parsed.value);
+      // Report the fresh derived total back. ingest just invalidated the stats
+      // cache, so this recomputes from the install records and includes the
+      // write we just made. computeTotals (not readStats) so the response always
+      // reflects this report rather than a possibly-cached older value.
+      const totals = await computeTotals(kv);
+      return jsonResponse({ ok: true, totals: publicView(totals) }, 200, env);
     }
 
     if (path === "/" && request.method === "GET") {

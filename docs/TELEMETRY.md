@@ -127,14 +127,15 @@ phones home. The server half is a self-hostable Cloudflare Worker in
 [`telemetry/worker/`](../telemetry/worker/):
 
 - `POST /ingest` upserts one install's cumulative counts (latest-wins, keyed by
-  `install_id`) and maintains the running aggregate as the sum of every install's
-  latest counts.
-- `GET /stats` returns the public aggregate totals (CORS for your site origin).
+  `install_id`), writing only that install's record.
+- `GET /stats` returns the public totals, derived on read by summing every
+  install's latest counts behind a short cache (CORS for your site origin).
 
-It stores only the aggregate plus one latest snapshot per `install_id` (which
-both drives the latest-wins upsert and serves as the distinct-install marker).
-No IPs, no PII. The exact stored shape and the deploy steps are in
-[`telemetry/worker/README.md`](../telemetry/worker/README.md).
+It stores one latest snapshot per `install_id` (which both feeds the derived
+total and serves as the distinct-install marker), plus a short-lived cache of the
+derived totals. There is no incremented running aggregate, so concurrent reports
+cannot lose counts. No IPs, no PII. The exact stored shape and the deploy steps
+are in [`telemetry/worker/README.md`](../telemetry/worker/README.md).
 
 ### Write protection
 
