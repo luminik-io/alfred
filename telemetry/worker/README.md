@@ -104,14 +104,19 @@ what it can and cannot guarantee. The controls, in layers:
    `X-Ingest-Token` header. Opted-in hosts put their value in
    `ALFRED_TELEMETRY_TOKEN`. This is the difference between a private counter
    (only your hosts can write) and an open one.
-4. **Per-IP rate limit.** A coarse fixed-window counter (default 60/hour, set
-   `INGEST_RATE_LIMIT`) slows a single source spraying distinct `install_id`s.
-   The bucket key never holds the raw IP: it is a **keyed** hash (HMAC-SHA-256 of
-   the IP under a server-side salt, `RATE_LIMIT_SALT`), so a KV reader cannot
-   brute-force the ~4 billion dotted-quad space back to the IP without the salt.
-   If `RATE_LIMIT_SALT` is unset the Worker fails safe with a per-isolate
-   ephemeral random salt (the IP is still unrecoverable from the key); set the
-   salt for stable buckets that survive isolate recycling.
+4. **Per-IP rate limit (best-effort).** A coarse fixed-window counter (default
+   60/hour, set `INGEST_RATE_LIMIT`) slows a single source spraying distinct
+   `install_id`s. It is intentionally **approximate under burst**: Cloudflare KV
+   has no atomic increment, so a tight burst of concurrent requests from one IP
+   can each read the same counter value before any write lands and slip past the
+   limit (it under-counts, never over-counts). That is acceptable because this
+   limiter is a speed bump, not the inflation bound (see step 5, step 6, and the
+   Concurrency note). The bucket key never holds the raw IP: it is a **keyed**
+   hash (HMAC-SHA-256 of the IP under a server-side salt, `RATE_LIMIT_SALT`), so
+   a KV reader cannot brute-force the ~4 billion dotted-quad space back to the IP
+   without the salt. If `RATE_LIMIT_SALT` is unset the Worker fails safe with a
+   per-isolate ephemeral random salt (the IP is still unrecoverable from the
+   key); set the salt for stable buckets that survive isolate recycling.
 5. **Per-install count cap.** Each field is clamped to `[0, 100000]`, so a single
    forged `install_id` can move the total by at most that much, once.
 6. **Latest-wins idempotency.** Re-sends from the same `install_id` replace its
@@ -122,22 +127,28 @@ what it can and cannot guarantee. The controls, in layers:
 fully public community counter, open to server-side writes by design. The
 content-type gate and Origin allowlist stop browsers, but they do not gate
 `curl`/`python`: a determined actor who rotates IPs and generates fresh
-`install_id`s can still push numbers up, bounded by the per-install count cap and
-the rate limit each step. The per-install idempotent upsert, the IP rate limit,
-the count caps, and the site's display threshold together bound inflation, but
-they make the open counter best-effort, not verified. If the counter's
-credibility matters, **set `INGEST_TOKEN`** so only your opted-in hosts can write
-(the hard gate). If you intentionally run it fully open, present the numbers as
-best-effort and unverified.
+`install_id`s can still push numbers up. The hard bound on how far does **not**
+depend on the (best-effort) rate limit: each distinct `install_id` contributes
+at most `MAX_PER_FIELD` (100000) per field, **once**, because a re-send replaces
+that install's record rather than adding (latest-wins) and the total is summed
+from records on read. So even if a burst slips past the per-IP limiter, the
+ceiling is set by how many distinct `install_id` records an actor can create,
+each capped and idempotent, not by how fast they can POST. The IP rate limit is
+a speed bump that makes that more expensive, not the thing that bounds the
+total. Together with the site's display threshold these keep the open counter
+best-effort, not verified. If the counter's credibility matters, **set
+`INGEST_TOKEN`** so only your opted-in hosts can write (the hard gate). If you
+intentionally run it fully open, present the numbers as best-effort and
+unverified.
 
 ### Concurrency note
 
-There is no cross-request read-modify-write to race. `/ingest` writes only its
-own `install:<id>` key (an idempotent latest-wins upsert), and `/stats` derives
-the total by summing those keys on read. Two installs posting in the same instant
-write disjoint keys, so neither can clobber the other and no count is ever lost.
-The public total is, by construction, always the sum of every install's latest
-stored value.
+The **counts** have no cross-request read-modify-write to race. `/ingest` writes
+only its own `install:<id>` key (an idempotent latest-wins upsert), and `/stats`
+derives the total by summing those keys on read. Two installs posting in the same
+instant write disjoint keys, so neither can clobber the other and no count is
+ever lost. The public total is, by construction, always the sum of every
+install's latest stored value.
 
 An earlier design kept a single incremented `agg` key (`agg += new - prior`).
 That was racy: Cloudflare KV has no atomic read-modify-write, so two concurrent
@@ -147,6 +158,21 @@ a Durable Object. The `stats:cache` key bounds the per-read list cost and is onl
 a read optimization (short TTL, never written by `/ingest`), so it cannot
 introduce a write race; at worst it serves a value up to `STATS_CACHE_TTL_SECONDS`
 old, which is fine for a vanity counter.
+
+The **one** remaining read-modify-write is the per-IP rate-limit counter
+(`rl:<h>:<win>`), and it is deliberately best-effort. KV has no atomic increment,
+so a tight burst of concurrent requests from one IP can each read the same value
+before any `put` lands and slip past `INGEST_RATE_LIMIT` (it under-counts, never
+over-counts). This is safe by design: the limiter is a coarse speed bump, and
+inflation is bounded **without** it by the per-install idempotent upsert, the
+`MAX_PER_FIELD` cap, the derive-on-read total, and the display threshold (see
+"Residual surface" above), so an approximate limiter cannot move the credible
+ceiling. We considered making it atomic and chose not to: the Cloudflare Workers
+Rate Limiting binding only supports a fixed 10s or 60s period and so cannot
+express this env-configurable per-hour window, and a Durable Object is
+unwarranted weight (and complexity) for a soft speed bump on an opt-in,
+free-tier counter whose abuse bound does not depend on the limiter. Operators who
+need a hard write gate set `INGEST_TOKEN`.
 
 ## Deploy steps (operator)
 

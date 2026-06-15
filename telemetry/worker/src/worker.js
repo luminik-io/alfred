@@ -91,7 +91,7 @@
  * install generates for itself; the Worker treats it as a bare grouping key and
  * never resolves it to anything.
  *
- * Concurrency: there is no cross-request read-modify-write to race. Each
+ * Concurrency: the COUNTS have no cross-request read-modify-write to race. Each
  * /ingest writes only its own install:<id> key (an idempotent latest-wins
  * upsert), and /stats DERIVES the total by summing those keys. Two installs
  * posting in the same instant write disjoint keys, so neither can clobber the
@@ -103,6 +103,16 @@
  * exactly this reason: Cloudflare KV has no atomic read-modify-write, so two
  * concurrent ingests could both read the same agg and the last put would win,
  * permanently dropping one install's delta. Deriving on read sidesteps that.
+ *   The ONE remaining read-modify-write is the per-IP rate-limit counter
+ * (rl:<h>:<win>), and it is deliberately best-effort: KV has no atomic
+ * increment, so a tight burst from one IP can slip past the configured limit
+ * (it under-counts, never over-counts). That is safe because the limiter is a
+ * coarse speed bump, not the inflation bound. Inflation is bounded WITHOUT the
+ * limiter by the per-install idempotent upsert + the MAX_PER_FIELD per-field
+ * cap + the derive-on-read total + the site display threshold, so an
+ * approximate limiter cannot move the credible ceiling. See checkRateLimit and
+ * README "Concurrency note" for the full rationale and the rejected
+ * atomic-limiter alternatives.
  */
 
 // Hard caps. A single install's cumulative count above these is almost
@@ -557,6 +567,23 @@ function checkIngestToken(request, env) {
 // limit is intentionally generous (a legitimate host posts once a day) and only
 // engages when the platform gives us a client IP; it is a speed bump on top of
 // the token + count cap + idempotency, not the primary control.
+//
+// APPROXIMATE UNDER BURST, BY DESIGN. This is the one read-modify-write in the
+// Worker, and Cloudflare KV has no atomic increment: a burst of concurrent
+// requests from one IP can each read the same `current` before any put lands,
+// so the effective ceiling under a tight burst is higher than the configured
+// limit (it under-counts, never over-counts). That is acceptable here because
+// the limiter is explicitly best-effort and is NOT what bounds inflation. The
+// real, limiter-independent bound is the per-install latest-wins idempotency +
+// the MAX_PER_FIELD per-field cap + the derive-on-read total + the site's
+// display threshold: a forged install_id can move the total by at most
+// MAX_PER_FIELD once, and a re-send replaces rather than adds, no matter how
+// many requests slip past this speed bump. Operators who need a hard write gate
+// set INGEST_TOKEN. An atomic limiter (the Workers Rate Limiting binding or a
+// Durable Object) was considered and deliberately NOT adopted: the binding's
+// fixed 10s/60s period cannot express this env-configurable per-hour window,
+// and a Durable Object is unwarranted weight for a soft speed bump on an opt-in
+// free-tier counter whose abuse bound does not depend on the limiter.
 const RATE_LIMIT_WINDOW_SECONDS = 3600;
 const RATE_LIMIT_MAX_PER_WINDOW = 60;
 
@@ -632,6 +659,12 @@ async function checkRateLimit(kv, request, env, now = Date.now()) {
   // IP is never written to KV AND cannot be recovered from the key without the
   // server-side salt. The TTL drops the bucket after the window anyway.
   const key = `rl:${await hashIp(ip, env)}:${window}`;
+  // Best-effort read-modify-write: KV has no atomic increment, so concurrent
+  // requests from one IP can read the same `current` and the puts coalesce,
+  // letting a tight burst exceed `max`. This is a deliberate tradeoff (see the
+  // RATE_LIMIT_WINDOW_SECONDS comment): the limiter is a coarse speed bump, and
+  // inflation is bounded by the per-install idempotent upsert + MAX_PER_FIELD
+  // cap + derive-on-read total regardless of how many requests slip past here.
   const current = Number(await kv.get(key)) || 0;
   if (current >= max) {
     return { ok: false, status: 429, error: "rate limit exceeded" };

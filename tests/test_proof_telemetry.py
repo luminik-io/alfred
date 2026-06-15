@@ -16,6 +16,7 @@ the HTTP poster are injected.
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,6 +26,23 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "lib"))
 
 import proof_telemetry as pt  # noqa: E402
+
+
+def _load_cli_wrapper():
+    """Load the ``bin/proof-telemetry.py`` scheduler wrapper as a module.
+
+    The filename has a hyphen, so it is not importable by name; load it from
+    its path. This is the script doctor.sh / launchd actually invoke, and the
+    home of the ALFRED_DOCTOR fast path under test.
+    """
+    path = _REPO / "bin" / "proof-telemetry.py"
+    spec = importlib.util.spec_from_file_location("proof_telemetry_cli", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+cli = _load_cli_wrapper()
 
 
 # ---------------------------------------------------------------------------
@@ -870,3 +888,64 @@ def test_report_once_does_not_mint_fresh_id_per_call_on_persist_failure(tmp_path
     assert r2["status"] == "no_install_id" and r2["sent"] is False
     assert poster.calls == [], "persist failure must never POST an ephemeral id"
     assert not (state / "telemetry-install-id").exists()
+
+
+# ---------------------------------------------------------------------------
+# ALFRED_DOCTOR fast path: bin/doctor.sh runs every agent with ALFRED_DOCTOR=1
+# and must get a quick recognized sentinel, never a real telemetry POST.
+# ---------------------------------------------------------------------------
+def test_doctor_fast_path_disabled_emits_disabled_sentinel(monkeypatch, capsys):
+    monkeypatch.setenv("ALFRED_DOCTOR", "1")
+    monkeypatch.delenv(pt.ENABLE_ENV, raising=False)
+    # If the fast path fell through to report_once, this would blow up loudly.
+    monkeypatch.setattr(pt, "report_once", _fail_if_called("report_once must not run under doctor"))
+    rc = cli.main([])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "[PROOF-TELEMETRY-DISABLED]" in out
+    # doctor.sh classifies any ``*-DISABLED`` sentinel as "⚪ disabled" (healthy).
+    assert "DISABLED]" in out
+
+
+def test_doctor_fast_path_enabled_without_url_emits_no_url(monkeypatch, capsys):
+    monkeypatch.setenv("ALFRED_DOCTOR", "1")
+    monkeypatch.setenv(pt.ENABLE_ENV, "1")
+    monkeypatch.delenv(pt.URL_ENV, raising=False)
+    monkeypatch.setattr(pt, "report_once", _fail_if_called("report_once must not run under doctor"))
+    rc = cli.main([])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "[PROOF-TELEMETRY-NO-URL]" in out
+
+
+def test_doctor_fast_path_enabled_with_url_emits_doctor_ok_without_posting(monkeypatch, capsys):
+    monkeypatch.setenv("ALFRED_DOCTOR", "1")
+    monkeypatch.setenv(pt.ENABLE_ENV, "1")
+    monkeypatch.setenv(pt.URL_ENV, "https://telemetry.example.com/ingest")
+    # The whole point: an ENABLED install under a health check must NOT report.
+    monkeypatch.setattr(pt, "report_once", _fail_if_called("doctor must never trigger a report"))
+    rc = cli.main([])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "[PROOF-TELEMETRY-DOCTOR-OK]" in out
+    # doctor.sh greps for ``DOCTOR-OK`` to mark the agent ✅ ok.
+    assert "DOCTOR-OK" in out
+
+
+def test_doctor_fast_path_takes_precedence_over_dry_run(monkeypatch, capsys):
+    # Even with --dry-run, ALFRED_DOCTOR=1 short-circuits to the fast path so a
+    # doctor sweep never builds a payload or reads the brain.
+    monkeypatch.setenv("ALFRED_DOCTOR", "1")
+    monkeypatch.delenv(pt.ENABLE_ENV, raising=False)
+    rc = cli.main(["--dry-run"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "[PROOF-TELEMETRY-DISABLED]" in out
+    assert "DRY-RUN" not in out
+
+
+def _fail_if_called(message):
+    def _boom(*args, **kwargs):
+        raise AssertionError(message)
+
+    return _boom

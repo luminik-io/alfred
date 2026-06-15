@@ -1213,6 +1213,65 @@ test("the rate limit still enforces with a configured RATE_LIMIT_SALT", async ()
   }
 });
 
+// The per-IP limiter is documented as best-effort: KV has no atomic increment,
+// so a concurrent burst from one IP can slip past the limit (Codex finding on
+// worker.js:639). These two tests pin the intended contract: serial traffic is
+// still enforced (the common case), and a concurrent burst is tolerated without
+// error AND cannot inflate the public total beyond the per-install cap, because
+// inflation is bounded by latest-wins idempotency, not by the limiter.
+test("rate limit enforces on serial traffic (the common, non-burst case)", async () => {
+  const env = { TELEMETRY: makeKV(), INGEST_RATE_LIMIT: "2" };
+  const ip = "203.0.113.55";
+  // Serial requests resolve their read-modify-write one at a time, so the
+  // counter is exact here and the limit holds precisely.
+  for (let i = 0; i < 2; i++) {
+    const ok = await worker.fetch(
+      ingestReqFromIp({ ...SAMPLE_PAYLOAD, install_id: `install-ser${i}00000` }, ip),
+      env,
+    );
+    assert.equal(ok.status, 200, `serial request ${i} within the limit should pass`);
+  }
+  const blocked = await worker.fetch(
+    ingestReqFromIp({ ...SAMPLE_PAYLOAD, install_id: "install-serblock0" }, ip),
+    env,
+  );
+  assert.equal(blocked.status, 429, "serial traffic over the limit is rejected exactly");
+});
+
+test("concurrent burst from one IP is tolerated best-effort and cannot inflate the total", async () => {
+  // Fire a burst concurrently: the non-atomic KV read-modify-write means some
+  // requests can read the same counter value and slip past the limit. The
+  // contract is NOT that the limit is exact under burst (it is documented
+  // best-effort); it is that the Worker never errors and the public total stays
+  // bounded by the per-install latest-wins records, not by request volume.
+  const env = { TELEMETRY: makeKV(), INGEST_RATE_LIMIT: "2" };
+  const ip = "203.0.113.66";
+  const burst = Array.from({ length: 8 }, (_, i) =>
+    worker.fetch(
+      ingestReqFromIp({ ...SAMPLE_PAYLOAD, install_id: `install-burst${i}0000` }, ip),
+      env,
+    ),
+  );
+  const results = await Promise.all(burst);
+  for (const r of results) {
+    assert.ok(
+      r.status === 200 || r.status === 429,
+      "every burst request resolves cleanly (200 or 429), never an error",
+    );
+  }
+  // The credibility bound: even if every burst write landed, the public total is
+  // the SUM of distinct install records, each capped at MAX_PER_FIELD and
+  // idempotent. Re-sends from the same install replace rather than add, so the
+  // total can never exceed (distinct installs) * cap regardless of the limiter.
+  const stats = await (await worker.fetch(req("GET", "/stats"), env)).json();
+  const distinctInstalls = stats.installs;
+  assert.ok(distinctInstalls <= 8, "at most one record per distinct install_id");
+  assert.ok(
+    stats.prs_opened <= distinctInstalls * 100000,
+    "the derived total is bounded by per-install caps, not by request count",
+  );
+});
+
 test("GET /stats on an empty store returns zeroed totals", async () => {
   const env = { TELEMETRY: makeKV() };
   const res = await worker.fetch(req("GET", "/stats"), env);

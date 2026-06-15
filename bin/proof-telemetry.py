@@ -13,9 +13,17 @@ does nothing until the operator deliberately turns it on.
 Exit code is always 0. Telemetry is best-effort; a failure here must never
 surface as a scheduler error or break anything else on the host.
 
+Under ``ALFRED_DOCTOR=1`` the script takes a doctor fast path: it does a
+lightweight config check and exits 0 WITHOUT building a payload, reading the
+brain, or touching the network. This mirrors the other ``bin/*.py`` agents so
+``bin/doctor.sh`` (which runs every configured agent under ``ALFRED_DOCTOR=1``)
+sees a recognized sentinel instead of an accidental ``[PROOF-TELEMETRY-SENT]``
+/ ``[PROOF-TELEMETRY-FAILED]`` from a real report during a health check.
+
 Sentinels (printed to stdout, picked up by log scrapers):
 
     [PROOF-TELEMETRY-DISABLED]      master switch off (the default)
+    [PROOF-TELEMETRY-DOCTOR-OK]     doctor fast path, enabled and config present
     [PROOF-TELEMETRY-NO-URL]        enabled but ALFRED_TELEMETRY_URL unset
     [PROOF-TELEMETRY-NO-INSTALL-ID] enabled but the install id could not be
                                     persisted; report skipped so an ephemeral id
@@ -40,6 +48,7 @@ for candidate in (HERE.parent / "lib", Path(os.environ.get("ALFRED_HOME", "")) /
 
 _SENTINELS = {
     "disabled": "[PROOF-TELEMETRY-DISABLED]",
+    "doctor_ok": "[PROOF-TELEMETRY-DOCTOR-OK]",
     "no_url": "[PROOF-TELEMETRY-NO-URL]",
     "no_install_id": "[PROOF-TELEMETRY-NO-INSTALL-ID]",
     "sent": "[PROOF-TELEMETRY-SENT]",
@@ -48,7 +57,44 @@ _SENTINELS = {
 }
 
 
+def _doctor_fast_path() -> int:
+    """Lightweight health check for ``bin/doctor.sh`` (ALFRED_DOCTOR=1).
+
+    doctor.sh invokes every configured agent with ``ALFRED_DOCTOR=1`` and
+    expects a quick sentinel, NOT real work. Without this short-circuit an
+    enabled install would run the full report path during a health check and
+    emit ``[PROOF-TELEMETRY-SENT]`` / ``[PROOF-TELEMETRY-FAILED]``, which
+    doctor.sh treats as "unexpected output" (a hard failure).
+
+    The fast path does no payload build, no brain read, and no network POST:
+
+      * switch off (the default)  -> ``[PROOF-TELEMETRY-DISABLED]`` (⚪ disabled)
+      * enabled but URL unset      -> ``[PROOF-TELEMETRY-NO-URL]`` (a real,
+        actionable config gap the operator should see)
+      * enabled and URL present    -> ``[PROOF-TELEMETRY-DOCTOR-OK]`` (✅ ok)
+    """
+    try:
+        import proof_telemetry
+    except Exception as exc:  # an import error must not break the doctor sweep
+        print(f"{_SENTINELS['error']} import failed: {exc}")
+        return 0
+
+    if not proof_telemetry.is_enabled():
+        print(f"{_SENTINELS['disabled']} (doctor: switch is off)")
+        return 0
+    if not proof_telemetry.telemetry_url():
+        print(f"{_SENTINELS['no_url']} (doctor: enabled but ALFRED_TELEMETRY_URL unset)")
+        return 0
+    print(f"{_SENTINELS['doctor_ok']} (doctor: enabled, config present, no report sent)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
+    # Doctor fast path first: bin/doctor.sh runs every agent under
+    # ALFRED_DOCTOR=1 and must never trigger a real telemetry POST.
+    if os.environ.get("ALFRED_DOCTOR") == "1":
+        return _doctor_fast_path()
+
     parser = argparse.ArgumentParser(description="Opt-in proof-telemetry reporter.")
     parser.add_argument(
         "--dry-run",
