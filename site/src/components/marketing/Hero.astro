@@ -48,7 +48,7 @@ const hasPanel = Astro.slots.has("panel");
       <p class="m-body-lg hero__sub">{sub}</p>
       {(primaryCta || secondaryCta || tertiaryCta) && (
         <div class="hero__ctas">
-          {primaryCta && <a class="m-btn" href={primaryCta.href} {...primaryCta.data}>{primaryCta.label}</a>}
+          {primaryCta && <a class="m-btn" href={primaryCta.href} rel="noopener" {...primaryCta.data}>{primaryCta.label}</a>}
           {secondaryCta && (
             <a class="m-btn m-btn--ghost" href={secondaryCta.href} rel="noopener" {...secondaryCta.data}>{secondaryCta.label}</a>
           )}
