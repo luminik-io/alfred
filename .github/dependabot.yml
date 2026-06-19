@@ -11,6 +11,7 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "deps"
+      - "agent:authored"
     commit-message:
       prefix: "chore(deps)"
       include: "scope"
@@ -26,6 +27,7 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "deps"
+      - "agent:authored"
     commit-message:
       prefix: "chore(actions)"
       include: "scope"
@@ -41,6 +43,7 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "deps"
+      - "agent:authored"
       - "site"
     commit-message:
       prefix: "chore(site)"
