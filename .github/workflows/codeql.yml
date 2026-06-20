@@ -1,8 +1,10 @@
 name: CodeQL
 
 on:
-  push:
-    branches: [main]
+  # The push trigger is dropped: every commit that reaches main has already
+  # been analyzed by the pull_request run on the same diff, so re-running on
+  # push just doubles the CodeQL spend. The weekly cron still re-scans main
+  # against refreshed CodeQL queries.
   pull_request:
     branches: [main]
   schedule:
@@ -21,11 +23,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Only languages with actual source in this repo are analyzed. ruby is
+        # dropped: the sole .rb file is Formula/alfred-os.rb, a declarative
+        # Homebrew package descriptor with no application/runtime code for
+        # CodeQL to find vulnerabilities in. actions (workflow YAML),
+        # javascript-typescript (desktop client + Astro site), and python (lib/)
+        # all have real code and stay.
         language:
           - actions
           - javascript-typescript
           - python
-          - ruby
 
     steps:
       - uses: actions/checkout@v7

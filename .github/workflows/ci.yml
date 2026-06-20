@@ -1,9 +1,12 @@
 name: CI
 
 on:
+  # The push trigger is dropped. Every commit reaches main through a PR
+  # (direct pushes to main are forbidden by repo guardrails), so the PR run
+  # already gates the exact diff that merges. Re-running the full suite on the
+  # merge commit just doubles CI spend. The gitleaks workflow still runs on
+  # push to main as the secret-scan safety net.
   pull_request:
-    branches: [main]
-  push:
     branches: [main]
   workflow_dispatch:
 
@@ -15,6 +18,28 @@ permissions:
   contents: read
 
 jobs:
+  # Detect whether the heavy Tauri desktop client was touched. Its cargo
+  # test/build + frontend build is the most expensive job here and most PRs
+  # never touch clients/desktop, so it is gated on an actual change to that
+  # tree (or to this workflow). The cheap lint/test/scrub jobs always run.
+  changes:
+    name: detect changed paths
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      desktop: ${{ steps.filter.outputs.desktop }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            desktop:
+              - 'clients/desktop/**'
+              - '.github/workflows/ci.yml'
+
   lint-python:
     name: Lint (ruff + mypy)
     runs-on: ubuntu-latest
@@ -37,7 +62,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.11", "3.12", "3.13"]
+        # Pre-launch, the fleet runs on a single Python (3.13); there is no
+        # external multi-version support commitment yet. Testing only the
+        # primary version cuts this job's run count by 3x. Restore the
+        # 3.11/3.12 entries here if/when broader version support is promised.
+        python: ["3.13"]
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -107,6 +136,8 @@ jobs:
 
   desktop-client:
     name: Desktop client
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
