@@ -31,7 +31,7 @@ const hasPublicActivity =
   >
     <div slot="panel" class="impact-panel">
       <div class="impact-panel__head">
-        <span class="m-eyebrow">Last {productProof.window.days} days</span>
+        <span class="impact-panel__window">Last {productProof.window.days} days</span>
         <span class="m-mono m-mute">updated {productProofGenerated}</span>
       </div>
       <ImpactCounter
@@ -44,6 +44,7 @@ const hasPublicActivity =
           files_changed: productProof.summary.files_changed,
           updated_at: productProof.generated_at,
         }}
+        live={false}
       />
     </div>
   </Hero>
@@ -70,6 +71,12 @@ const hasPublicActivity =
     gap: 12px;
     padding-bottom: 12px;
     border-bottom: 1px solid var(--alfred-border);
+  }
+  .impact-panel__window {
+    color: var(--alfred-text-bright);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0;
   }
   @media (max-width: 520px) {
     .impact-panel__head {

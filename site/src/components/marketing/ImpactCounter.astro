@@ -26,9 +26,11 @@ interface Props {
   variant?: "card" | "plain";
   /** Static totals used before a live endpoint responds. */
   seed?: CounterTotals;
+  /** Fetch the public telemetry endpoint when configured. */
+  live?: boolean;
 }
 
-const { threshold = 0, variant = "card", seed = {} } = Astro.props;
+const { threshold = 0, variant = "card", seed = {}, live = true } = Astro.props;
 const numberOrZero = (value: unknown) => {
   const n = Number(value ?? 0);
   return Number.isFinite(n) && n > 0 ? n : 0;
@@ -53,8 +55,9 @@ const hasSeed =
   seedTotals.lines_changed > 0;
 const fmt = (n: number) => n.toLocaleString("en-US");
 
-// Build-time public env var. Empty default keeps forks offline.
-const statsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim();
+// Build-time public env var. Empty default keeps forks offline. A parent can
+// disable live fetches when its seed has a different reporting window.
+const statsUrl = live ? (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim() : "";
 ---
 
 <section

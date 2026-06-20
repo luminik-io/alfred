@@ -5,8 +5,8 @@ description: Aggregate usage-count reference for Alfred.
 
 Alfred can send anonymous aggregate usage totals to an ingest endpoint you
 configure. Reporting is enabled unless you opt out, but nothing is sent until
-`ALFRED_TELEMETRY_URL` exists. The totals help the Impact page show how Alfred
-is being used without exposing private work.
+`ALFRED_TELEMETRY_URL` exists. The totals can power public counters that show
+how Alfred is being used without exposing private work.
 
 ## CLI
 
@@ -45,7 +45,7 @@ people, hostnames, or billing data are sent.
 
 ## Public Counter
 
-The `/impact/` page can use build-time seed totals and replace them with live
+Site counters can use build-time seed totals and replace them with live
 aggregate totals from `PUBLIC_ALFRED_TELEMETRY_STATS_URL`.
 
 Build-time seed totals can include line counts from GitHub. Anonymous local

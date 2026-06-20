@@ -180,7 +180,8 @@ Use doctor and dry-run to verify the machine before trusting scheduled work:
 
 ```sh
 alfred auth status
-alfred doctor
+bash bin/doctor.sh       # source checkout
+# or: alfred-doctor      # Homebrew install
 alfred dry-run lucius
 ```
 
