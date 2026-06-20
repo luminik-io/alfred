@@ -19,6 +19,8 @@ the HTTP poster are injected.
 from __future__ import annotations
 
 import importlib.util
+import os
+import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -363,6 +365,36 @@ def test_report_once_disabled_does_not_create_install_id(tmp_path, monkeypatch):
     poster = RecordingPoster()
     pt.report_once(env={pt.ENABLE_ENV: "0"}, brain=FakeBrain(), poster=poster)
     assert not (tmp_path / "state" / "telemetry-install-id").exists()
+
+
+def test_direct_dry_run_loads_alfredrc_opt_out(tmp_path):
+    home = tmp_path / "home"
+    alfred_home = tmp_path / "alfred"
+    home.mkdir()
+    alfred_home.mkdir()
+    (home / ".alfredrc").write_text(
+        "ALFRED_TELEMETRY_ENABLED=0\nALFRED_TELEMETRY_URL=https://telemetry.example.com/ingest\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["ALFRED_HOME"] = str(alfred_home)
+    env["PYTHONPATH"] = str(_REPO / "lib")
+    for key in (pt.ENABLE_ENV, pt.URL_ENV, pt.TOKEN_ENV):
+        env.pop(key, None)
+
+    result = subprocess.run(
+        [sys.executable, str(_REPO / "bin" / "proof-telemetry.py"), "--dry-run"],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=15,
+    )
+
+    assert result.returncode == 0
+    assert "[PROOF-TELEMETRY-DISABLED]" in result.stdout
+    assert not (alfred_home / "state" / "telemetry-install-id").exists()
 
 
 def test_report_once_enabled_without_url_is_a_no_op():

@@ -706,10 +706,15 @@ def cmd_telemetry_off(args: argparse.Namespace) -> int:
     conf = _telemetry_agents_conf_path(args.agents_conf)
     current = _telemetry_values(alfredrc)
     clear_result = _clear_previous_telemetry_report(current)
+    clear_status = str(clear_result.get("status") or "")
+    clear_done = clear_status in {"sent", "no_url", "no_install_id"}
     values = {"ALFRED_TELEMETRY_ENABLED": "0"}
+    keeps_endpoint = not args.forget_endpoint and bool(current.get("ALFRED_TELEMETRY_URL"))
     if not args.forget_endpoint and current.get("ALFRED_TELEMETRY_URL"):
         values["ALFRED_TELEMETRY_URL"] = current["ALFRED_TELEMETRY_URL"]
-    if args.keep_token and current.get("ALFRED_TELEMETRY_TOKEN"):
+    if (args.keep_token or (not clear_done and keeps_endpoint)) and current.get(
+        "ALFRED_TELEMETRY_TOKEN"
+    ):
         values["ALFRED_TELEMETRY_TOKEN"] = current["ALFRED_TELEMETRY_TOKEN"]
     _write_telemetry_rc_block(alfredrc, values)
     removed = _remove_telemetry_scheduler_row(conf)
@@ -717,9 +722,9 @@ def cmd_telemetry_off(args: argparse.Namespace) -> int:
     if args.delete_install_id and install_id_path.exists():
         install_id_path.unlink()
     print("alfred: telemetry disabled")
-    if clear_result.get("status") == "sent":
+    if clear_status == "sent":
         print("alfred: cleared previous usage totals")
-    elif clear_result.get("status") not in {"no_url", "no_install_id"}:
+    elif not clear_done:
         print("warning: could not clear previous usage totals", file=sys.stderr)
     print(f"alfred: wrote {alfredrc}")
     print(f"alfred: {'removed' if removed else 'no'} scheduler row at {conf}")

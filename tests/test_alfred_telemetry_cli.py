@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def _capture_server():
+def _capture_server(*, status: int = 200):
     received: list[dict[str, object]] = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -27,9 +27,10 @@ def _capture_server():
                     "body": json.loads(raw),
                 }
             )
-            self.send_response(200)
+            self.send_response(status)
             self.end_headers()
-            self.wfile.write(b'{"ok":true}')
+            body = b'{"ok":true}' if status < 400 else b'{"ok":false}'
+            self.wfile.write(body)
 
         def log_message(self, *args):  # pragma: no cover - keep test output quiet
             return None
@@ -193,6 +194,40 @@ def test_telemetry_off_clears_previous_usage_totals(tmp_path):
                 },
             }
         ]
+    finally:
+        server.shutdown()
+
+
+def test_telemetry_off_preserves_token_when_clear_fails(tmp_path):
+    server, received = _capture_server(status=500)
+    try:
+        endpoint = f"http://127.0.0.1:{server.server_port}/ingest"
+        alfredrc = tmp_path / ".alfredrc"
+        alfredrc.write_text(
+            "ALFRED_TELEMETRY_ENABLED=1\n"
+            f"ALFRED_TELEMETRY_URL={endpoint}\n"
+            "ALFRED_TELEMETRY_TOKEN=shared-secret\n",
+            encoding="utf-8",
+        )
+        agents_conf = tmp_path / "agents.conf"
+        agents_conf.write_text(
+            "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+            "alfred.proof-telemetry\tAnonymous usage totals\n",
+            encoding="utf-8",
+        )
+        install_id = tmp_path / "alfred" / "state" / "telemetry-install-id"
+        install_id.parent.mkdir(parents=True)
+        install_id.write_text("install-cli-test\n", encoding="utf-8")
+
+        result = _run(tmp_path, "off", alfredrc=alfredrc, agents_conf=agents_conf)
+
+        assert result.returncode == 0
+        assert "could not clear previous usage totals" in result.stderr
+        assert received and received[0]["token"] == "shared-secret"
+        rc_text = alfredrc.read_text(encoding="utf-8")
+        assert "ALFRED_TELEMETRY_ENABLED=0" in rc_text
+        assert f"ALFRED_TELEMETRY_URL={endpoint}" in rc_text
+        assert "ALFRED_TELEMETRY_TOKEN=shared-secret" in rc_text
     finally:
         server.shutdown()
 
