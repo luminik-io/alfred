@@ -15,10 +15,9 @@ reactions, search, mobile push, and shared context. The native client should
 make Alfred easier to trust and repair: setup checks, health, logs, approvals,
 memory review, safe pause/resume, dry-run launch, and recovery.
 
-The client must not become a hosted gateway, a shadow database, or a softer
-copy of Slack. It reads and writes through the same local APIs, state files,
-and CLI commands you can inspect by hand. Users should be able to run
-Alfred with or without the client.
+The client reads and writes through the same local APIs, state files, and CLI
+commands Alfred already uses. Users should be able to run Alfred with or
+without the client, and Slack remains the collaboration surface.
 
 ## Product Principles
 
@@ -219,8 +218,9 @@ The shipped client lives at `clients/desktop`:
 - Local plan and firing details stay in native inspector panes; only explicit
   Slack and GitHub links open outside the app.
 - The app opens to Inbox and has Inbox, Ask, Work, Agents, and Setup surfaces.
-- Releases publish a signed and notarized macOS DMG plus app zip, and Linux
-  AppImage and Debian artifacts. Local `npm run tauri -- build` still produces
+- Public releases start as draft GitHub Releases. Signed and notarized macOS
+  assets, plus Linux AppImage and Debian packages, are attached before the
+  release is published. Local `npm run tauri -- build` still produces
   host-native bundles for inspection.
 - Inbox shows the decision queue, the Claude and Codex capacity rail (backed by
   the live `GET /api/usage` endpoint), recent plans, recent runs,
@@ -262,20 +262,40 @@ The client uses these local API contracts today:
 
 ```text
 GET  /api/status
+GET  /api/schedule
 GET  /api/actions
+GET  /api/shipped
 GET  /api/usage             # served; backs the capacity rail
 GET  /api/usage/providers   # served; flat per-engine re-projection of /api/usage
 GET  /api/firings
 GET  /api/firings/{firing_id}
+GET  /api/firings/{firing_id}/tail
 GET  /api/plans
+GET  /api/plans/drafts
 GET  /api/plans/{plan_id}
 POST /api/plans/{plan_id}/convert-followup
 POST /api/plans/{plan_id}/mark-handled
+POST /api/plans/{plan_id}/discard
+POST /api/plans/{plan_id}/decision
+POST /api/plans/{plan_id}/file-issue
+POST /api/plans/draft
+POST /api/compose/converse
+POST /api/compose/converse/stream
 GET  /api/memory/candidates
 POST /api/memory/candidates/{id}/promote
 POST /api/memory/candidates/{id}/reject
-GET  /api/planning-drafts
-GET  /api/slack/threads
+POST /api/queue
+GET  /api/setup/status
+GET  /api/setup/repos
+POST /api/setup/repos
+GET  /api/setup/playbooks
+POST /api/setup/playbook
+POST /api/setup/demo
+POST /api/setup/demo/clear
+GET  /api/slack/trusted-users
+POST /api/slack/trusted-users
+POST /api/slack/trusted-users/{user_id}/remove
+POST /api/conversation/control
 ```
 
 `GET /api/usage` is served by `alfred serve` today and backs the capacity rail.
@@ -346,13 +366,13 @@ Distribution sequence:
 Two Hermes Desktop projects are useful reference points:
 
 - `dodo-reach/hermes-desktop`: the strongest lesson is restraint. The app keeps
-  the host as source of truth and avoids a gateway, mirror, or extra sync layer.
+  the host as source of truth and keeps sync layers out of the critical path.
 - `fathah/hermes-desktop`: the strongest lesson is guided setup. A local client
   can make install, providers, memory, tools, schedules, and logs approachable.
 - `Ivy-Interactive/Ivy-Tendril`: the strongest lesson is plan lifecycle
   legibility. Borrow the durable plan states, per-project verification
   profiles, plan health doctor, repair/prune workflow, and recommendations
-  inbox. Do not borrow a second scheduler, hosted gateway, or heavyweight
-  database as the source of truth.
+  inbox. Keep Alfred's existing scheduler and local state as the source of
+  truth.
 
 Alfred should borrow these ideas while staying Slack-native.

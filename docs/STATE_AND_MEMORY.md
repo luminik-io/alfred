@@ -2,9 +2,9 @@
 
 What Alfred remembers between firings, what it forgets, and where every byte of that memory lives on disk.
 
-Alfred is built on the premise that the host filesystem is a fine state store for a single-operator fleet. Every firing reads its inputs from scratch, writes its outputs to plain JSON or JSONL files under `$ALFRED_HOME/state/`, and exits. There is no daemon holding state in RAM, no required Redis, no Postgres, no shared cluster. If you delete `$ALFRED_HOME/state/`, the next firing rebuilds whatever it still needs.
+Alfred is built on the premise that the host filesystem is a fine state store for a single-operator fleet. Every firing reads its inputs from scratch, writes operational state to plain JSON or JSONL files under `$ALFRED_HOME/state/`, writes durable lessons to `$ALFRED_HOME/fleet-brain.db`, and exits. There is no daemon holding state in RAM, no required Redis, no Postgres, no shared cluster. If you delete `$ALFRED_HOME/state/` and `$ALFRED_HOME/fleet-brain.db`, the next firing rebuilds whatever it still needs from GitHub and local config.
 
-This page is the map of that directory and the contract each file carries.
+This page maps the local state files, the fleet-brain database, and the contract each part carries.
 
 ## The state tree
 
@@ -78,13 +78,13 @@ $ALFRED_HOME/state/
 | Engine session id from `claude -p` | written to the result; not resumed | n/a | n/a |
 | Lessons in the fleet brain | yes | yes | yes |
 
-The contract is intentionally narrow: anything an agent must remember between firings is a JSON or JSONL file on disk. Anything else is reconstructed from GitHub, the repo checkout, or the operator's `~/.alfredrc`.
+The contract is intentionally narrow: operational state is JSON or JSONL on disk, while durable lessons live in the local fleet-brain SQLite file. Anything else is reconstructed from GitHub, the repo checkout, or the operator's `~/.alfredrc`.
 
 ## The fleet brain
 
 The state files above are operational memory. They tell Alfred what is blocked, what is paused, what spend is left, and which worktree to clean up. They are not where the fleet remembers *lessons* (repo conventions, recurring bugs, the operator's preferred PR style).
 
-That role belongs to the fleet brain: a single SQLite file under `$ALFRED_HOME/fleet-brain.db` with a `reflect` / `recall` API. Engine-aware runners that know their target repo recall up to three lessons before invoking the engine, then record any durable lessons the engine returns in a machine-readable reflection block.
+That role belongs to the fleet brain: a single SQLite file under `$ALFRED_HOME/fleet-brain.db` with a `reflect` / `recall` API. Engine-aware runners that know their target repo recall up to three lessons before invoking the engine. If the engine returns a machine-readable memory reflection block, Alfred strips it from the user-facing result and queues those entries as reviewable candidates by default. Set `ALFRED_MEMORY_REFLECTION_MODE=direct` only when direct lesson writes are intentional.
 
 The same brain stores recent file touches when an agent or outbox import knows
 which repo-relative paths changed. Use `alfred brain files <repo>` to inspect
@@ -101,7 +101,9 @@ The brain ships on by default through the local `fleet` provider. Set
 `ALFRED_MEMORY_PROVIDERS=null` to disable it,
 `ALFRED_MEMORY_PROVIDERS=fleet,gbrain` to add a read-only fallback provider, or
 `ALFRED_MEMORY_PROVIDERS=fleet,redis` to consult an already-running Redis Agent
-Memory Server. See [Fleet brain](./FLEET_BRAIN.md) for the full design, schema,
+Memory Server. Keep `fleet` in the chain if you want reviewable memory
+candidates, because Redis is a mirror and recall surface, not the candidate
+review queue. See [Fleet brain](./FLEET_BRAIN.md) for the full design, schema,
 and CLI.
 
 The optional `memory-harvest.py` scheduled wrapper runs the same safe loop as

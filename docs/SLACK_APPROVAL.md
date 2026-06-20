@@ -1,10 +1,10 @@
 # Slack approval gate
 
 Alfred agents can pause in plan mode and wait for an explicit go/no-go from
-the operator before writing any code. The gate lives in
+the configured approver before writing any code. The gate lives in
 [`lib/slack_approval.py`](../lib/slack_approval.py). It posts the plan to a
 Slack channel, polls reactions on that one message, and resolves only when
-the configured operator reacts with an approve or reject emoji.
+the configured approver reacts with an approve or reject emoji.
 
 This guide walks through the full setup. If you already have a Slack bot
 token wired up via [`docs/SLACK_SETUP.md`](SLACK_SETUP.md), skip to
@@ -131,8 +131,8 @@ The secret id is configurable via `ALFRED_SLACK_BOT_TOKEN_SECRET_ID`
 (default `alfred/slack-bot-token`) and the region via
 `ALFRED_SLACK_BOT_TOKEN_SECRET_REGION` (default `us-east-1`).
 
-`boto3` is an optional dependency; install with
-`pip install alfred-os[aws]` or `pip install boto3`.
+`boto3` ships with the standard Alfred package. If you build a stripped-down
+environment by hand, install it with `pip install boto3`.
 
 ### Option C: pre-seeded disk cache
 
@@ -161,14 +161,13 @@ thread without getting approval authority:
 export ALFRED_TRUSTED_SLACK_USER_IDS=U045TEAM1,U078TEAM2
 ```
 
-## 4. Install `slack-sdk`
+## 4. Check `slack-sdk`
 
-The default Slack client wraps `slack_sdk.WebClient`. It is an optional
-dependency declared under the `[slack]` extra:
+The default Slack client wraps `slack_sdk.WebClient`. `slack-sdk` ships with
+the standard Alfred package. If you build a stripped-down environment by hand,
+install it directly:
 
 ```sh
-pip install 'alfred-os[slack]'
-# or
 pip install slack-sdk
 ```
 

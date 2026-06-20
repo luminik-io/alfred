@@ -371,6 +371,11 @@ while IFS=$'\t' read -r label script_name; do
     # Disabled agents don't run, so a missing preflight is by design.
     printf "⚪ disabled\n"
     pass=$((pass + 1))
+  elif echo "$output" | grep -qE "\[[A-Za-z0-9_-]+-NO-URL\]"; then
+    # Optional reporter is scheduled, but no ingest endpoint is configured.
+    # This is a clean no-op state, not an agent crash.
+    printf "⚪ no URL\n"
+    pass=$((pass + 1))
   elif echo "$output" | grep -qE "\[[A-Za-z0-9_-]+-PAUSED\]"; then
     # Operator-paused agents are intentionally quiet. Count them as healthy so
     # doctor can be used on machines where noisy jobs are deliberately paused.

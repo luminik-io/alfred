@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Scheduler-facing wrapper for the opt-in proof-telemetry reporter.
+"""Scheduler-facing wrapper for the anonymous proof-telemetry reporter.
 
-This is the script a launchd/cron entry points at. It is a hard NO-OP unless
-the operator has opted in by setting ``ALFRED_TELEMETRY_ENABLED=1``. With the
-switch off (the default) it prints a one-line sentinel and exits 0 without
-generating an install id, reading the brain, or touching the network.
+This is the script a launchd/cron entry points at. The reporter is enabled by
+default once an ingest endpoint is configured. Operators can opt out by setting
+``ALFRED_TELEMETRY_ENABLED=0`` or by running ``alfred telemetry off``. With the
+switch off it prints a one-line sentinel and exits 0 without generating an
+install id, reading the brain, or touching the network.
 
-Mirrors the off-by-default posture of ``memory-harvest.py`` and the opt-in
-``damian`` runner: the scheduler entry can be present and loaded, yet the job
-does nothing until the operator deliberately turns it on.
+The scheduler entry can be present and loaded. If no ingest URL is configured,
+the job reports a clean no-url sentinel and sends nothing.
 
 Exit code is always 0. Telemetry is best-effort; a failure here must never
 surface as a scheduler error or break anything else on the host.
@@ -22,12 +22,14 @@ sees a recognized sentinel instead of an accidental ``[PROOF-TELEMETRY-SENT]``
 
 Sentinels (printed to stdout, picked up by log scrapers):
 
-    [PROOF-TELEMETRY-DISABLED]      master switch off (the default)
+    [PROOF-TELEMETRY-DISABLED]      master switch explicitly off
     [PROOF-TELEMETRY-DOCTOR-OK]     doctor fast path, enabled and config present
     [PROOF-TELEMETRY-NO-URL]        enabled but ALFRED_TELEMETRY_URL unset
     [PROOF-TELEMETRY-NO-INSTALL-ID] enabled but the install id could not be
                                     persisted; report skipped so an ephemeral id
                                     does not inflate the install count
+    [PROOF-TELEMETRY-STALE-COUNTS]  local brain read was incomplete; previous
+                                    accepted totals stay in place
     [PROOF-TELEMETRY-SENT]          payload posted and accepted
     [PROOF-TELEMETRY-FAILED]        enabled and attempted, post did not succeed
     [PROOF-TELEMETRY-ERROR]         unexpected internal error, swallowed
@@ -51,10 +53,44 @@ _SENTINELS = {
     "doctor_ok": "[PROOF-TELEMETRY-DOCTOR-OK]",
     "no_url": "[PROOF-TELEMETRY-NO-URL]",
     "no_install_id": "[PROOF-TELEMETRY-NO-INSTALL-ID]",
+    "stale_counts": "[PROOF-TELEMETRY-STALE-COUNTS]",
     "sent": "[PROOF-TELEMETRY-SENT]",
     "failed": "[PROOF-TELEMETRY-FAILED]",
     "error": "[PROOF-TELEMETRY-ERROR]",
 }
+
+
+def _valid_env_key(key: str) -> bool:
+    return bool(key) and not key[0].isdigit() and all(ch.isalnum() or ch == "_" for ch in key)
+
+
+def _load_alfredrc_env() -> None:
+    """Load ``~/.alfredrc`` for direct CLI invocations.
+
+    Scheduled runs go through ``agent-launch``, which already exports this file.
+    Direct commands such as ``proof-telemetry.py --dry-run`` need the same view
+    of the opt-out switch without forcing users to invoke the launcher.
+    """
+    path = Path.home() / ".alfredrc"
+    if not path.exists():
+        return
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.startswith("export "):
+            line = line.removeprefix("export ").lstrip()
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not _valid_env_key(key) or key in os.environ:
+            continue
+        quoted_single = value.startswith("'") and value.endswith("'")
+        if quoted_single or (value.startswith('"') and value.endswith('"')):
+            value = value[1:-1]
+        if not quoted_single:
+            value = value.replace("${HOME}", str(Path.home())).replace("$HOME", str(Path.home()))
+        os.environ[key] = value
 
 
 def _doctor_fast_path() -> int:
@@ -68,7 +104,7 @@ def _doctor_fast_path() -> int:
 
     The fast path does no payload build, no brain read, and no network POST:
 
-      * switch off (the default)  -> ``[PROOF-TELEMETRY-DISABLED]`` (⚪ disabled)
+      * switch explicitly off      -> ``[PROOF-TELEMETRY-DISABLED]`` (disabled)
       * enabled but URL unset      -> ``[PROOF-TELEMETRY-NO-URL]`` (a real,
         actionable config gap the operator should see)
       * enabled and URL present    -> ``[PROOF-TELEMETRY-DOCTOR-OK]`` (✅ ok)
@@ -90,17 +126,19 @@ def _doctor_fast_path() -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _load_alfredrc_env()
+
     # Doctor fast path first: bin/doctor.sh runs every agent under
     # ALFRED_DOCTOR=1 and must never trigger a real telemetry POST.
     if os.environ.get("ALFRED_DOCTOR") == "1":
         return _doctor_fast_path()
 
-    parser = argparse.ArgumentParser(description="Opt-in proof-telemetry reporter.")
+    parser = argparse.ArgumentParser(description="Anonymous proof-telemetry reporter.")
     parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Build the payload and print it, but never POST. Useful to see "
-        "exactly what would be sent before opting in.",
+        "exactly what would be sent.",
     )
     args = parser.parse_args(argv)
 

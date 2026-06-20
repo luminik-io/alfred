@@ -2,7 +2,12 @@
 
 Alfred's brain is the per-host store of what the fleet has learned. Engine-aware firings that know their target repo can read from it (recall) and write to it (reflect). The next firing starts with the lessons relevant to its codename and repo prepended to the prompt.
 
-The brain is a single SQLite file in your `$ALFRED_HOME`. It never leaves your machine. The only outbound surface is the prompt context Alfred prepends to a firing, which goes to Claude Code or Codex on your existing CLI auth. No telemetry, no phone-home, no cloud sync.
+The brain is a single SQLite file in your `$ALFRED_HOME`. Raw lessons, prompts,
+paths, candidate text, and firing history stay on your machine. The normal
+outbound surface is the prompt context Alfred prepends to a firing, which goes
+to Claude Code or Codex on your existing CLI auth. If you configure Alfred's
+optional usage counter, it sends aggregate counts only and can be disabled with
+`alfred telemetry off`.
 
 ## Why it exists
 
@@ -381,9 +386,11 @@ loops:
    no secrets, source attached, confidence present, not contradicted by a newer
    lesson, and scoped to a codename/repo when possible.
 
-## v2 roadmap: PGLite + Apache AGE
+## v2 direction: PGLite + Apache AGE
 
-The internal Alfred fleet runs a richer brain: PGLite (Postgres in WASM) with the Apache AGE graph extension and pgvector for embeddings, fronted by a localhost HTTP bridge. That stack supports:
+The public v1 brain is SQLite-first. A future storage backend can use PGLite
+(Postgres in WASM), Apache AGE, and pgvector behind the same `Store` boundary
+when Alfred needs:
 
 - Cypher graph traversal (cross-firing blast-radius, cross-repo dependency walks).
 - Bi-temporal queries (`valid_from`, `valid_to`, `recorded_from`, `recorded_to` on every vertex and edge).

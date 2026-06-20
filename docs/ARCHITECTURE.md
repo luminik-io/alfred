@@ -10,7 +10,7 @@ If a diagram and the code ever disagree, the code wins. File references are inli
 - [Model dispatch and tiers](#model-dispatch-and-tiers): which engine runs a prompt.
 - [Distributed locking](#distributed-locking): GitHub labels plus a local mkdir lock plus the global poison pill.
 - [Slack conversational flow](#slack-conversational-flow): control commands, DM to labeled issue, and in-thread fleet progress.
-- [Desktop control plane](#desktop-control-plane): the client to `alfred serve` to fleet seam.
+- [Desktop app](#desktop-app): the client to `alfred serve` to fleet seam.
 - [Disk guardian](#disk-guardian): the ENOSPC back-off.
 - [Layered install and distribution](#layered-install-and-distribution): tiers, desktop bundles, and the release workflow.
 
@@ -186,9 +186,9 @@ The in-thread progress sweep is strictly read-only on GitHub (`gh issue view`, `
 
 The planning-assistant refinement is LLM-backed only when `ALFRED_PLANNING_ASSISTANT_ENGINE` is set (via `engine_refiner_from_env`); otherwise it falls back to a deterministic heuristic refiner. Either way the output is a scored draft with concrete missing-scope questions, never an executed action. When `ALFRED_INTAKE_PROFILE=plain` is set, the same structured draft is produced but the conversational surface drops all jargon (see [`PLAIN_MODE.md`](PLAIN_MODE.md)).
 
-## Desktop control plane
+## Desktop app
 
-Alfred Desktop (`clients/desktop`) is a Tauri app and the optional `client` tier. It is a thin local control surface, not a second runtime: it reads the fleet's own state over the `alfred serve` JSON API and runs a narrow set of safe local actions through a native command allowlist. There is no hosted gateway, no public port, and no shadow database.
+Alfred Desktop (`clients/desktop`) is a Tauri app and the optional `client` tier. It is a thin local control surface, not a second runtime: it reads the fleet's own state over the `alfred serve` JSON API and runs a narrow set of safe local actions through a native command allowlist. It opens no public port and keeps `$ALFRED_HOME` as the source of truth.
 
 Code: `clients/desktop/src/` (React UI, `api.ts`, `types.ts`), `clients/desktop/src-tauri/` (Tauri shell + native command allowlist), `lib/server/` (`alfred serve`).
 
@@ -251,7 +251,7 @@ The probe is `critical` only when free space is below the absolute floor (`ALFRE
 
 ## Layered install and distribution
 
-Alfred installs in tiers. `core` is the standalone base and runs headless; `client` and `slack` are optional surfaces that talk to core through seams the operator can inspect by hand.
+Alfred installs in tiers. `core` is the standalone base and runs headless; `client` and `slack` are optional surfaces that talk to core through local files, GitHub, Slack, and `alfred serve`.
 
 ```mermaid
 flowchart TB
@@ -263,7 +263,7 @@ flowchart TB
     end
 
     subgraph client["client (optional)"]
-        desktop["Tauri desktop control plane<br/>clients/desktop"]
+        desktop["Alfred Desktop<br/>clients/desktop"]
     end
 
     subgraph slack["slack (optional)"]
@@ -285,10 +285,10 @@ flowchart TB
 ```
 
 - **`core`** is the fleet (`lib/agent_runner/` plus the `bin/*.py` runners), the Alfred CLI (`bin/alfred`), the host scheduler (launchd on macOS, `systemd --user` on Linux), and `alfred serve`, a localhost JSON API over `$ALFRED_HOME/state`. Core is headless and Linux-friendly: nothing here needs a desktop, a browser, or Slack. This is the only tier you must install.
-- **`client`** is the Tauri desktop control plane under `clients/desktop`: fleet service control, a command center, plan/run/memory views, and safe local actions. It is a thin control plane, not a second runtime. It talks to core over the `alfred serve` JSON seam, restricted to `http://localhost` / `http://127.0.0.1` / `http://[::1]` and a fixed set of read paths plus a narrow native command allowlist. Run Alfred with or without it.
+- **`client`** is Alfred Desktop under `clients/desktop`: fleet service control, a command center, plan/run/memory views, and safe local actions. It is a thin local control surface, not a second runtime. It talks to core over the `alfred serve` JSON seam, restricted to `http://localhost` / `http://127.0.0.1` / `http://[::1]` and a fixed set of read paths plus a narrow native command allowlist. Run Alfred with or without it.
 - **`slack`** is the planning listener plus the issue bridge. The listener (`lib/slack_listener.py`) runs in Socket Mode; the bridge (`lib/slack_issue_bridge.py`) is off by default and only ever files a labeled issue. The `serve` extra (`pip install 'alfred-os[serve]'`) pulls in FastAPI and uvicorn for `alfred serve`; `slack-sdk` and `boto3` are in the base install since v0.4.0.
 
-The boundary matters: Alfred Desktop and any future surface read and write the same `$ALFRED_HOME` state, GitHub, and Slack threads the operator can inspect directly. There is no hosted gateway, no public port, and no shadow database. See [`INSTALL_TIERS.md`](INSTALL_TIERS.md) for how to install each tier and [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md) and [`SERVE.md`](SERVE.md) for the client and API contracts.
+The boundary matters: Alfred Desktop and any future surface read and write the same `$ALFRED_HOME` state, GitHub issues and PRs, and Slack threads. The desktop app adds a safer local UI; it does not replace the fleet. See [`INSTALL_TIERS.md`](INSTALL_TIERS.md) for how to install each tier and [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md) and [`SERVE.md`](SERVE.md) for the client and API contracts.
 
 Distribution follows the same shape. The fleet and CLI install from source; Alfred Desktop builds native installers; tagged releases are published from CI; and a secret scan gates every push.
 
@@ -325,7 +325,7 @@ flowchart TD
     ci -.->|secret scan gate| ghrel
 ```
 
-- **Desktop bundles.** `clients/desktop/src-tauri/tauri.conf.json` builds `.app` and `.dmg` on macOS, plus `.AppImage` and `.deb` on Linux. CI builds the client with `--no-bundle` to prove the binary compiles without requiring code signing or packaging. Releases publish a signed and notarized macOS DMG and app zip, plus Linux AppImage and Debian artifacts (see [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md)).
+- **Desktop bundles.** `clients/desktop/src-tauri/tauri.conf.json` builds `.app` and `.dmg` on macOS 11+ Apple silicon, plus `.AppImage` and `.deb` on Linux. CI builds the client with `--no-bundle` to prove the binary compiles without requiring code signing or packaging. Public releases start as drafts; signed macOS assets and Linux packages are attached before publish (see [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md)).
 - **Tag-triggered release.** `.github/workflows/release.yml` runs on a `v*.*.*` tag (or `workflow_dispatch`). It verifies the tag matches the `VERSION` file, extracts the matching `CHANGELOG.md` section as release notes, creates or edits the GitHub Release, and prints the source-tarball `sha256` for the Homebrew formula (`Formula/alfred-os.rb`).
 - **Secret-scan gate.** `.github/workflows/gitleaks.yml` runs the free gitleaks binary (no org license needed) on every push and PR to `main`, scanning full history with `.gitleaks.toml`. The same scan runs on the internal repo, so nothing with a leaked secret reaches a release.
 

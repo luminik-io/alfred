@@ -5,8 +5,8 @@ intent that an agent can read before it acts: a GitHub issue, a spec file, a
 roadmap, an `AGENTS.md` or `CLAUDE.md` file, or a dedicated specs repo.
 
 Specs-driven Alfred means the important context lives outside the chat
-transcript. Agents read the spec, turn it into scoped GitHub work, execute in
-clean worktrees, and return PRs, reviews, tests, and Slack reports.
+transcript. Agents read the spec, turn it into scoped implementation tasks,
+execute in clean worktrees, and return PRs, reviews, tests, and Slack reports.
 
 ## Why Specs Matter
 
@@ -179,7 +179,7 @@ Then edit the seeded prompts under `~/.alfred/prompts/` to mention the specs
 checkout:
 
 ```md
-Read product intent from ~/code/product/specs before filing issues or reviewing
+Read product intent from your specs repo before filing issues or reviewing
 PRs. Treat code as truth when specs and implementation disagree.
 ```
 

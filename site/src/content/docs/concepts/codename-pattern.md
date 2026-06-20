@@ -11,9 +11,9 @@ One codename agent, one job, 150-300 lines:
 
 | Codename (Batman cast) | Single job |
 |---|---|
+| **Batman** | Architect cross-repo `agent:large-feature` work, wait for approval, then drive the approved rollout into scoped child issues. Opt-in in OSS. |
 | **Lucius** (Lucius Fox) | Pick the oldest `agent:implement` issue, claim it, ask Claude to implement, push a branch, open a PR. |
 | **Drake** (Tim Drake) | Read specs + roadmap + code-reality grep, file the next well-scoped `agent:implement` issue. |
-| **Batman** | Plan cross-repo `agent:large-feature` bundles. Opt-in in OSS. |
 | **Bane** | Pick the lowest-coverage actively-changed file, write tests, open a PR. |
 | **Ra's al Ghul** | Multi-axis review on every fresh PR. |
 | **Nightwing** | Apply P0/P1 reviewer comments on `agent:authored` PRs. |
@@ -24,8 +24,8 @@ One codename agent, one job, 150-300 lines:
 
 What the pattern is not:
 
-- Not "one agent does everything". A single Lucius doing feature dev + tests + review + triage + smoke would be unmaintainable, prompt-engineering hell.
-- Not "the smallest possible unit of work per agent". A separate codename for "create branch", "commit", "push" is surgery for the sake of it.
+- Not "one agent does everything". A single Lucius doing feature dev, tests, review, triage, and smoke would become hard to operate and harder to review.
+- Not "the smallest possible unit of work per agent". A separate codename for "create branch", "commit", and "push" is too small to be a useful role.
 
 The right granularity is one human role. If you'd hire a junior to do this job and review their work, it's a codename.
 

@@ -19,14 +19,14 @@ Effort sizing is uniform across tiers: **S** is roughly a week of focused work, 
 ### v0.5.1: 2026-06-17
 
 Reliability, first-run trust polish, the first packaged native client, and the
-public download path for signed desktop artifacts.
+public download path for desktop artifacts.
 
 - Public download page: `/download/` links to stable latest-release assets for
   `Alfred.dmg`, `Alfred.app.zip`, `Alfred.AppImage`, and `Alfred.deb`.
 - Native runtime alignment: `alfred serve` defaults to 7010, Alfred Desktop
   stops probing legacy 7000 after a 7010 failure, and stale saved 7000 URLs are
   normalized before any browser or Tauri request.
-- Launch polish: the docs/site describe signed macOS and Linux artifacts, the
+- Launch polish: the docs/site describe signed macOS artifacts and Linux packages, the
   current Inbox / Ask / Work / Agents / Setup app IA, and the desktop health
   pill now says "Needs attention" consistently.
 - Audit cleanup: high-severity frontend audit findings were cleared across the
@@ -76,20 +76,20 @@ public download path for signed desktop artifacts.
   `alfred serve`, preview Redis AMS sync, queue failure-pattern memories, and
   can convert trusted follow-ups into planning drafts or mark them handled
   without bypassing Slack approval.
-- Signed desktop packages: the release pipeline publishes a signed and
-  notarized macOS DMG plus app zip, and Linux AppImage and Debian artifacts
+- Desktop packages: the release pipeline publishes a signed and notarized
+  macOS DMG plus app zip, and Linux AppImage and Debian artifacts
   under stable release asset names.
-- Goal contract design: `docs/GOALS.md` defines Alfred-owned durable goals
+- Goal contract design: `docs/GOALS.md` defines durable goals in Alfred
   across Slack, CLI, native client, planner, evaluator, and memory. Engine
   native goal modes can be used as execution hints, but Slack threads,
-  approval gates, and the evidence ledger remain Alfred-owned.
+  approval gates, and the evidence ledger remain part of Alfred.
 - Plain intake mode: `ALFRED_INTAKE_PROFILE=plain` turns the planning assistant into a non-technical front door. A teammate can describe work in plain language; the assistant asks at most one or two plain questions, hides specs, scope, readiness scores, and PRs, and renders a "Here's what I'll do ... OK to go ahead?" plan framed around reviewing a preview. The same structured draft is built invisibly, so the downstream bridge and fleet are unchanged. Default (unset) stays technical. See [`docs/PLAIN_MODE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/PLAIN_MODE.md).
 
 ### v0.4.0: 2026-05-23
 
 Substrate, observability, planning, approval, memory, and connector primitives. Merged to `main` on 2026-05-23 and now forms the base for the next quarter of work.
 
-- `lib/agent_runner.py` decomposed into a 10-file `lib/agent_runner/` package (preflight, lock, spend, engines, gh, slack, event-log, commit-trailer, transcripts, dedup). Public import surface preserved.
+- The old single-file runner decomposed into a focused `lib/agent_runner/` package (preflight, lock, spend, engines, gh, Slack, event log, commit trailers, transcripts, dedup). Public imports are preserved through `from agent_runner import ...`.
 - `alfred-metrics` CLI: per-agent firings, cost, success rate, p50/p95 turn count from on-disk state.
 - `alfred-logs` CLI: tail and filter per-firing transcripts without grepping `state/` by hand.
 - `alfred-label-state` CLI: read-only inspector for the issue-claim state machine across all configured repos.
@@ -105,7 +105,7 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 - `Connector` protocol with reference implementations for Linear (issue handoff) and Sentry (read-only error pulls).
 - Batman execute-after-approval: once a bundle plan is approved, Batman files the approved per-repo child issues and reports status rather than stopping at the plan.
 - [`alfred serve`](/concepts/architecture/) v1: read-only local dashboard over `state/` and per-firing transcripts. Live firing feed, per-agent trends, single-firing trace tree.
-- `alfred-shipped-public` emitter: a self-host CLI that reads `$ALFRED_HOME/state`, scrubs against a public field allowlist and a partner-name redaction table, and writes a `weekly.json` you can publish on your own site. The canonical site also has `/impact/`, a separate opt-in usage counter backed by the telemetry collector.
+- `alfred-shipped-public` emitter: a self-host CLI that reads `$ALFRED_HOME/state`, scrubs against a public field allowlist and a partner-name redaction table, and writes a `weekly.json` you can publish on your own site. The canonical site also has `/impact/`, backed by aggregate usage totals and public GitHub examples.
 - Concept pages covering state, memory, engine routing, the connector protocol, and the approval gate.
 
 ### v0.3.0 and earlier

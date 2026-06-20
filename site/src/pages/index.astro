@@ -36,7 +36,7 @@ type JobState = "live" | "warn" | "idle" | "info";
 const jobs: { title: string; body: string; log: string[]; state: JobState }[] = [
   {
     title: "Architect: Batman drives cross-repo features",
-    body: "Owns large work that touches more than one repo: reads the parent issue or Slack plan, checks the affected repos, gets approval, files the repo-level work, and keeps the bundle moving.",
+    body: "Leads large work that touches more than one repo: reads the parent issue or Slack plan, checks the affected repos, gets approval, files the repo-level work, and keeps the bundle moving.",
     log: [
       "[10:30] batman drafted bundle:billing-v2",
       "[10:31] batman posted plan to Slack",
@@ -87,7 +87,7 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
   },
   {
     title: "Fixer: Nightwing handles review comments",
-    body: "Finds agent-authored PRs with unresolved high-priority review comments, applies the fix in a clean worktree, and pushes the update back to the PR branch.",
+    body: "Finds Alfred PRs with unresolved high-priority review comments, applies the fix in a clean worktree, and pushes the update back to the PR branch.",
     log: [
       "[16:01] nightwing found P1 on PR#1247",
       "[16:08] nightwing pushed fix",
@@ -120,7 +120,7 @@ const why = [
   },
   {
     title: "Open source, MIT licensed",
-    body: "Every line is on GitHub at github.com/luminik-io/alfred-os. Fork it, read it, run it offline, or audit the code. Product telemetry is off unless you opt in.",
+    body: "Every line is on GitHub at github.com/luminik-io/alfred-os. Fork it, read it, run it locally, or audit the code.",
   },
 ];
 
@@ -134,7 +134,7 @@ const why = [
   <Hero
     eyebrow="AUTONOMOUS CODING AGENTS"
     headline="Coding agents that keep shipping while you are away."
-    sub="Start from a Slack message, GitHub issue, or rough plan. You give Alfred the goal and approval rules; Alfred keeps the Claude and Codex loop moving until there is a PR, a review finding, or a Slack decision for you. Run it on an awake Mac mini, MacBook, or Linux box."
+    sub="Start from a Slack message, GitHub issue, or rough plan. Alfred keeps Claude and Codex moving until there is a PR, review finding, or Slack decision."
     primaryCta={{ label: "Download", href: "/download/", data: { "data-download-os": "other", "data-download-source": "home-hero", "data-download-kind": "intent" } }}
     secondaryCta={{ label: "Install", href: "/getting-started/install/" }}
     tertiaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
@@ -268,7 +268,7 @@ const why = [
       <SectionHeader
         eyebrow="FROM ROUGH REQUEST TO SCOPED WORK"
         title="Batman architects the rollout. Lucius ships the PRs. Drake keeps smaller work scoped."
-        lede="Start with a Slack thread, a GitHub issue, or a plain-text plan. Batman owns multi-repo features, Lucius handles repo-local implementation, and Drake turns smaller requests into clear tasks."
+        lede="Start with a Slack thread, a GitHub issue, or a plain-text plan. Batman leads multi-repo features, Lucius handles repo-local implementation, and Drake turns smaller requests into clear tasks."
       />
       <SpecsDrivenFlow />
       <p style="margin-top:24px;">
@@ -327,7 +327,7 @@ const why = [
           alt="Slack message from the Alfred bot summarising one private Luminik setup: 153 PRs merged, 44 issues opened, 144 issues closed, and 44,351 lines added across six repos."
           tag="daily summary"
           meta="2026-05-20 20:45 CET"
-          caption="A private Luminik setup summary across six repos. It is shown as a product example; the impact page shows current aggregate totals and open-source links you can inspect."
+          caption="A real Luminik setup summary across six repos. The impact page keeps the current totals up to date."
         />
       </div>
 
@@ -342,7 +342,7 @@ const why = [
       <SectionHeader
         eyebrow="YOUR AGENTS, RIGHT NOW"
         title="What `alfred status` shows."
-        lede="Real output from one builder's setup on 2026-05-23: twenty agents, three paused on purpose, one waiting on a Batman approval, and nothing extra spent on API calls."
+        lede="Real output from one builder's setup on 2026-05-23: twenty agents, three paused on purpose, and one waiting on a Batman approval."
       />
       <FleetStatus />
     </div>
@@ -352,8 +352,8 @@ const why = [
     <div class="m-container">
       <SectionHeader
         eyebrow="GET STARTED"
-        title="Try a test run first. Nothing spent, nothing called."
-        lede="Check that everything works on your machine with a test run, before any agent touches real work or makes a paid call."
+        title="Check the wiring before real work starts."
+        lede="Run doctor for setup health, then dry-run one agent to see the path it would take without touching GitHub, Slack, an engine, or your files."
       />
       <CodeBlock
         title="terminal"
@@ -370,7 +370,7 @@ const why = [
           "  role: feature dev",
           "  mode: safe simulation",
           "  would: resolve config, acquire the agent lock, run preflight, and enter the runner",
-          "  would not: call the host scheduler, mutate GitHub, post Slack, invoke an LLM, or edit files",
+          "  would not: mutate GitHub, post Slack, invoke an engine, or edit files",
         ]}
       />
     </div>
@@ -381,12 +381,12 @@ const why = [
       <SectionHeader
         eyebrow="BUILT BY LUMINIK"
         title="Used every day by Luminik."
-        lede={`In the last ${productProof.window.days} days, Alfred helped merge ${productProof.summary.agent_prs_merged.toLocaleString("en-US")} agent-identified PRs across ${productProof.summary.repos_scanned} Luminik repos. The impact page shows aggregate product totals and open-source links you can inspect.`}
+        lede={`In the last ${productProof.window.days} days, Alfred helped merge ${productProof.summary.agent_prs_merged.toLocaleString("en-US")} PRs across ${productProof.summary.repos_scanned} Luminik repos. The impact page shows aggregate product totals and public examples.`}
       />
       <div class="built-by__panel m-card">
         <div class="built-by__metrics">
-          <MetricRow label="agent PRs" value={productProof.summary.agent_prs_merged.toLocaleString("en-US")} state="live" />
-          <MetricRow label="agent issues" value={productProof.summary.agent_issues_opened.toLocaleString("en-US")} state="live" />
+          <MetricRow label="Alfred PRs" value={productProof.summary.agent_prs_merged.toLocaleString("en-US")} state="live" />
+          <MetricRow label="Alfred issues" value={productProof.summary.agent_issues_opened.toLocaleString("en-US")} state="live" />
           <MetricRow label="files changed" value={productProof.summary.files_changed.toLocaleString("en-US")} state="info" />
           <MetricRow label="repos" value={productProof.summary.repos_scanned.toLocaleString("en-US")} state="live" />
         </div>

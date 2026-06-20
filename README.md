@@ -7,11 +7,11 @@
 [![CI](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml/badge.svg)](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml)
 [![Site](https://github.com/luminik-io/alfred-os/actions/workflows/site.yml/badge.svg)](https://alfred.luminik.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![macOS](https://img.shields.io/badge/macOS-10.15%2B-black?logo=apple)
+![macOS](https://img.shields.io/badge/macOS-11%2B-black?logo=apple)
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-**Autonomous coding agents that keep development moving while you are away.**
+**Local coding agents that turn Slack requests, specs, and labeled issues into pull requests, reviews, safe merges, and Slack updates.**
 
 Alfred keeps engineering work moving when you are not sitting at the keyboard.
 It turns Slack requests, rough plans, specs, and GitHub issues into scoped
@@ -47,8 +47,8 @@ agents from stepping on each other.
   is the reviewer, Bane is QA, and Nightwing is the fixer.
 - Coordinate through ordinary repo primitives: GitHub issues and pull
   requests, labels, specs, isolated git worktrees, commit trailers, and Slack
-  summaries. The local dashboard and desktop app inspect those same sources;
-  they do not become a hosted control plane.
+  summaries. The local dashboard and desktop app read the same local state and
+  GitHub records.
 - Treat Slack as the planning surface: teammates can reply in a Batman plan
   thread with scope changes, questions, and acceptance criteria while you keep
   approval authority. Registered plan-thread replies persist
@@ -61,7 +61,7 @@ agents from stepping on each other.
   `memory promote <id>`, `memory reject <id>`, `memory redis`, `memory sync`,
   `pause`, `resume`) inspect and steer local state from chat with no shell. Scoped Slack
   drafts and scheduled failure harvests can queue reviewable memory candidates
-  without promoting them. An approved draft can cross the off-by-default bridge into a labeled issue, and in-thread
+  without promoting them. When the issue bridge is enabled, an approved draft can become a labeled GitHub issue, and in-thread
   progress posts (claimed, PR opened, CI, merged) report back as the fleet
   works it. A plain-language intake profile lets a non-technical user approve
   outcomes instead of code.
@@ -84,62 +84,15 @@ lands the small safe PRs you allow -> Slack reports what changed.
 
 ## Quick start
 
-Two ways in. The dry-run needs nothing installed and shows you the whole
-firing lifecycle; the full install wires up a real scheduled fleet.
+Install the core runtime first. Add Alfred Desktop when you want the local app
+for plans, agents, logs, setup checks, and memory review.
 
-### Try it in 2 minutes (dry-run)
+### Install Alfred core
 
-Want to watch an agent fire before configuring anything? Dry-run mode runs the
-whole firing lifecycle (pick, claim, worktree, invoke, act, release, report)
-with every side-effecting boundary stubbed. No LLM call, no spend, no Slack
-post, no GitHub mutation, no real repo. It works with **zero host config**: no
-`gh` auth, no AWS, no Slack, no Claude.
-
-```sh
-git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
-cd ~/code/alfred-os
-PYTHONPATH=lib python3 examples/bin/echo_summarise.py --dry-run
-```
-
-You get a narrated, step-numbered trace of the full lifecycle and an exit code
-of 0:
-
-```text
-[dry-run]  1. (start) echo dry-run firing, no LLM, no spend, no gh/slack/git side effects
-[ECHO-PREFLIGHT-FAILED] 2 issue(s):
-  - env var `ECHO_REPO_SLUG` is unset
-  - env var `GH_ORG` is unset
-[dry-run]  2. (preflight) preflight reported config gaps, continuing (dry-run)
-[dry-run]  3. (pick) would `gh issue list --label agent:summarise`; using a synthetic issue instead
-[dry-run]  4. (gh) would claim dry-run-org/dry-run-repo#0 for echo (firing_id=...): add agent:in-flight, post claim comment
-[dry-run]  5. (llm) would invoke claude with prompt of 463 chars, model=(cli-default), max_turns=5
-[dry-run]  6. (spend) would increment real ledger (firings_today+=1, turns_today+=3, cost_usd_today+=0.0); dry-run ledger only
-[dry-run]  7. (gh) would `gh issue comment #0` on dry-run-org/dry-run-repo: **Echo (auto-summary):** [dry-run] synthetic claude result, no LLM was invoked. ...
-[dry-run]  8. (gh) would release dry-run-org/dry-run-repo#0 for echo (firing_id=...): outcome=success, remove agent:in-flight, add agent:done
-[dry-run]  9. (spend) would set real ledger (consecutive_failures=0); dry-run ledger only
-[dry-run] 10. (spend) would increment real ledger (successes_today+=1); dry-run ledger only
-[dry-run] 11. (slack) would post to Slack (severity=info): Echo summarised dry-run-org/dry-run-repo#0: ...
-```
-
-The same works for `examples/bin/hello.py` and `bin/lucius.py`, and via the
-`ALFRED_DRY_RUN=1` env var instead of the flag. See [`docs/DRY_RUN.md`](docs/DRY_RUN.md)
-for what is stubbed versus real.
-
-After install, the Alfred CLI resolves every codename without touching the
-host scheduler:
-
-```sh
-alfred dry-run lucius
-alfred dry-run drake
-alfred dry-run all
-```
-
-### Full install
-
-About 30 minutes on a dev machine that already has GitHub auth, Claude Code, a
-package manager, and Python ready. A fresh laptop or dedicated agent box is
-closer to 60 to 120 minutes because the browser auth and Slack decisions take
-real time.
+Budget about 30 minutes on a dev machine that already has GitHub auth, Claude
+Code, a package manager, and Python ready. A fresh laptop, Mac mini, old Mac, or
+Linux box is closer to 60 to 120 minutes because browser auth and Slack setup
+take real time.
 
 Source checkout path:
 
@@ -169,6 +122,22 @@ The Homebrew formula installs the latest tagged release and exposes
 `alfred`, `alfred-init`, `alfred-install`, `alfred-deploy`, and
 `alfred-doctor` on your PATH. Use the source checkout path when you want to
 work from `main` or run the Linux installer.
+
+### Install Alfred Desktop
+
+Alfred Desktop is optional. It connects to the local runtime over
+`alfred serve`; it does not run agents by itself.
+
+- macOS 11+ on Apple silicon: download the signed, notarized DMG from
+  [`alfred.luminik.io/download/`](https://alfred.luminik.io/download/).
+- Linux: download the AppImage or `.deb` from the same page.
+- Local development: `cd clients/desktop && npm install && npm run tauri dev`.
+
+Start the local API before opening the app:
+
+```sh
+alfred serve --port 7010 --no-browser
+```
 
 For a solo-builder setup that an AI coding tool can run without guessing at
 prompts or labels, pass one repo or an explicit comma-separated repo list:
@@ -205,6 +174,21 @@ the assistant a copy-paste prompt, explicit repo-scope lanes, and the guardrails
 that prevent it from assigning every repo or inventing secrets. For checkout
 layout choices, use [`docs/WORKSPACE_PATTERNS.md`](docs/WORKSPACE_PATTERNS.md).
 
+### Check setup
+
+Use doctor and dry-run to verify the machine before trusting scheduled work:
+
+```sh
+alfred auth status
+bash bin/doctor.sh       # source checkout
+# or: alfred-doctor      # Homebrew install
+alfred dry-run lucius
+```
+
+Dry-run is a diagnostic path. It resolves the codename and prints the firing
+steps without touching the scheduler, GitHub, Slack, engines, or local files. See
+[`docs/DRY_RUN.md`](docs/DRY_RUN.md) for the exact boundary.
+
 ## System shape
 
 ```mermaid
@@ -222,12 +206,13 @@ flowchart LR
     shared --> state["ALFRED_HOME state"]
 ```
 
-One firing is one short-lived process. The OS scheduler owns cadence, the
-runner owns safety rails, and the LLM CLI only receives the bounded task.
+One firing is one short-lived process. The OS scheduler controls cadence, the
+runner applies safety rails, and the LLM CLI only receives the bounded task.
 
 ## Design notes
 
-Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume one long-running Python process, in-memory state, and a human at a REPL. Wrong shape for unattended work:
+Many agent harnesses assume one long-running process, in-memory state, and a
+human at a prompt. That is the wrong shape for unattended engineering work:
 
 - Long-running loops have no failure isolation. One bad run trashes the others.
 - In-memory state can't survive an OS reboot. A long-lived host restarts every few weeks.
@@ -250,56 +235,25 @@ Companion layers can be useful around Alfred, but they are not bundled and must
 not be required for a clean OSS install. See
 [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) for the boundary.
 
-Alfred is also not a hosted model gateway. It owns the repeatable local fleet pattern: schedules, worktrees, issue claims, PR loops, Slack reporting, and failure guards. Today Alfred supports Claude Code CLI and Codex CLI adapters. Other engines require a wrapper binary or new adapter code.
+Alfred provides the repeatable local fleet pattern: schedules, worktrees, issue
+claims, PR loops, Slack reporting, and failure guards. Today it supports Claude
+Code CLI and Codex CLI adapters. Other engines require a wrapper binary or new
+adapter code.
 
-## Anonymous usage telemetry (opt-in)
+## Anonymous usage totals
 
-Alfred ships a small, **opt-in, off-by-default** telemetry reporter. It exists
-for one purpose: the community counter on the public impact page can show how
-many pull requests opted-in installs have opened, merged, and moved to a
-terminal state. It is
-off until you turn it on, and one environment variable turns it off again.
+Alfred can report anonymous aggregate counts for the public
+[Impact](https://alfred.luminik.io/impact/) page. Reporting is on when an ingest
+endpoint is configured. Turn it off any time with `alfred telemetry off` or
+`ALFRED_TELEMETRY_ENABLED=0`. If no endpoint is configured, nothing is sent.
+When an install has already reported, `alfred telemetry off` asks the collector
+to remove that install's stored record before writing the local opt-out.
 
-**Default state: OFF.** Nothing is sent, no `install_id` is generated, and no
-network call is made unless you set `ALFRED_TELEMETRY_ENABLED=1`. Any other
-value (including a typo like `true`) leaves it off. There is exactly one way to
-enable it and removing that one variable disables it completely.
+Alfred reports counts only. It does not send repo names, file paths, code,
+prompts, titles, branches, people, hostnames, or billing data. A reporting
+failure never breaks a firing.
 
-**Exactly what is sent**, once a day when enabled, to the endpoint you set in
-`ALFRED_TELEMETRY_URL`:
-
-```json
-{
-  "install_id": "a-random-opaque-token",
-  "period": "lifetime",
-  "prs_opened": 42,
-  "prs_merged": 31,
-  "prs_reviewed": 18,
-  "loc_added": 12873
-}
-```
-
-- `install_id` is a random token generated locally on first opt-in. It is not
-  derived from your hostname, MAC, user, or email. It lets the server
-  de-duplicate re-sends and count distinct installs, nothing more.
-- The four numbers are anonymous, cumulative lifetime counts from your local
-  fleet-brain, sent into one stable `period` bucket so daily re-sends never
-  double count.
-- `loc_added` is a file-delta count (one per repo file an agent touched); the
-  brain does not store per-line LOC. Public pages label it as a changed-file
-  proxy. See [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
-
-The richer `/impact` GitHub activity board is different: it is generated from
-public GitHub metadata for `luminik-io/alfred-os`, so it can show real PR links,
-issues, additions, deletions, and changed files without exposing a user's
-private work.
-
-**What is never sent:** repo names, file paths, code, commit text, branch names,
-hostnames, IP addresses, Slack handles, codenames, or anything that identifies a
-person or machine. The reporter is fail-soft: a network error never breaks a
-firing.
-
-**To enable:** choose your collector endpoint, then run:
+Configure or change the endpoint:
 
 ```sh
 alfred telemetry on --url https://your-worker.example.com/ingest
@@ -316,29 +270,24 @@ alfred telemetry on \
 Then run `bash deploy.sh` from the source checkout so launchd or systemd
 installs the scheduler change.
 
-**To disable:**
+Turn reporting off:
 
 ```sh
 alfred telemetry off
 ```
 
-**To inspect local state:**
+If this install has already reported, the command asks the collector to remove
+the stored record before it writes the local opt-out.
+
+Inspect local state:
 
 ```sh
 alfred telemetry status
 alfred telemetry status --json
 ```
 
-**To see exactly what would be sent before opting in:**
-`ALFRED_TELEMETRY_ENABLED=1 python3 bin/proof-telemetry.py --dry-run` prints the
-payload and sends nothing.
-
-You run your own collector. The server half is a self-hostable Cloudflare Worker
-under [`telemetry/worker/`](telemetry/worker/); Alfred does not phone home to any
-Luminik-operated endpoint. The collector takes an optional `INGEST_TOKEN` so only
-your own opted-in hosts can write to the counter; `/ingest` has no browser CORS
-and a per-IP rate limit either way. Full contract:
-[`docs/TELEMETRY.md`](docs/TELEMETRY.md).
+The bundled collector lives under [`telemetry/worker/`](telemetry/worker/).
+Full contract: [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
 
 ## What's in here
 
@@ -356,7 +305,7 @@ and a per-IP rate limit either way. Full contract:
 | [`bin/batman.py`](bin/batman.py) | Architect agent for cross-repo work. Picks `agent:large-feature` / `agent:bundle:<slug>` issues, posts a Slack plan, applies approved repo-scope amendments, and carries approved thread notes into child issues. |
 | [`bin/fleet-doctor.py`](bin/fleet-doctor.py) | Daily fleet-health snapshot. Read-only checks (paused repos, global block, stale worktrees, runner gate list) → severity-stripe Slack thread. |
 | [`bin/memory-harvest.py`](bin/memory-harvest.py) | Optional scheduled memory-harvest wrapper. Queues reviewable repeated-failure candidates and nudges Slack when there is something to review. |
-| [`bin/proof-telemetry.py`](bin/proof-telemetry.py) | Opt-in, off-by-default anonymous usage reporter. Hard no-op unless `ALFRED_TELEMETRY_ENABLED=1`. Posts only aggregate counts (PRs opened/merged/reviewed, changed-file totals) to your configured endpoint; fail-soft. |
+| [`bin/proof-telemetry.py`](bin/proof-telemetry.py) | Anonymous usage-total reporter. Posts only aggregate counts to the configured endpoint; `ALFRED_TELEMETRY_ENABLED=0` turns it off; fail-soft. |
 | [`telemetry/worker/`](telemetry/worker/) | Self-hostable Cloudflare Worker that ingests the anonymous aggregate and serves the public totals for the site counter. Ships with placeholder ids; deploy under your own account. |
 | [`bin/`](bin/) | Local helpers, including `doctor.sh` (host validator). |
 | [`launchd/`](launchd/) | `_template.plist` + `agents.conf.example` + `render.sh` (TSV → plists). |
@@ -369,7 +318,7 @@ and a per-IP rate limit either way. Full contract:
 | [`examples/git-hooks/pre-push`](examples/git-hooks/pre-push) | Refuses push if a referenced issue is in-flight. Symmetric guard. |
 | [`Formula/alfred-os.rb`](Formula/alfred-os.rb) | Homebrew formula pinned to the latest public release tarball. |
 | [`site/`](site/) | Astro Starlight docs site, with GitHub Pages publishing gated by the release repo variable. |
-| [`clients/desktop/`](clients/desktop/) | Tauri Mac/Linux client. A local dashboard over `alfred serve` JSON APIs, with in-app Plans, Memory, Fleet, and Logs inspectors plus explicit Slack and GitHub external links. Home carries a Claude + Codex usage rail (real subscription usage, no billing API; backed by the live `GET /api/usage` endpoint); Fleet defaults to a cinematic agent roster with a list toggle. Builds native installers (`.app`/`.dmg`, `.AppImage`/`.deb`) from the Tauri bundle config. |
+| [`clients/desktop/`](clients/desktop/) | Tauri Mac/Linux client. A local dashboard over `alfred serve` JSON APIs, with Inbox, Ask, Work, Agents, and Setup surfaces plus explicit Slack and GitHub external links. Inbox carries a Claude + Codex usage rail (real subscription usage, no billing API; backed by the live `GET /api/usage` endpoint); Agents defaults to a cinematic roster with a list toggle. Builds native installers (`.app`/`.dmg`, `.AppImage`/`.deb`) from the Tauri bundle config. |
 | [`lib/slack_control.py`](lib/slack_control.py), [`lib/slack_trust.py`](lib/slack_trust.py) | Trusted Slack control/query commands (`status`/`runs`/`plans`/`plan`/`draft`/`handled`/`memory`/`remember`/`pause`/`resume`/`trusted`/`trust`/`untrust`/`help`), codename-, plan-id-, and memory-id-validated, no shell, with local collaborator state under `$ALFRED_HOME/state/slack-trust`. |
 | [`lib/slack_thread_status.py`](lib/slack_thread_status.py), [`bin/alfred-slack-thread-sync.py`](bin/alfred-slack-thread-sync.py) | In-thread fleet progress: read-only issue/PR/CI sweep that posts only the new lifecycle states back to the originating Slack thread. |
 
@@ -382,7 +331,7 @@ and a per-IP rate limit either way. Full contract:
 - [Specs-driven development](docs/SPECS_DRIVEN_DEVELOPMENT.md): how to turn specs into issue queues, Batman plans, and reviewable PRs.
 - [Bootstrap](BOOTSTRAP.md): operations guide (AWS IAM, Slack, troubleshooting).
 - [Tutorial: your first agent](docs/TUTORIAL.md): Echo, end-to-end.
-- [Dry-run mode](docs/DRY_RUN.md): watch a full firing lifecycle with no LLM call, no spend, and no side effects.
+- [Dry-run mode](docs/DRY_RUN.md): watch a side-effect-safe firing lifecycle before trusting scheduled work.
 - [Architecture](ARCHITECTURE.md): design rationale.
 - [Architecture diagrams](docs/ARCHITECTURE.md): mermaid diagrams for the agent lifecycle, model dispatch, locking, the Slack-native flow, the disk guardian, and the layered install.
 - [State machine](docs/STATE_MACHINE.md): `agent:in-flight` → `agent:pr-open` → `agent:done` lifecycle.
@@ -394,10 +343,10 @@ and a per-IP rate limit either way. Full contract:
 - [Plain mode](docs/PLAIN_MODE.md): the non-technical intake profile (`ALFRED_INTAKE_PROFILE=plain`).
 - [Claude Code and Codex](docs/CLAUDE_CODE.md): install, Pro vs Max, account routing, engine routing.
 - [Codex provider](docs/CODEX_PROVIDER.md): Codex engine modes, probe commands, runtime contract, and billing posture.
-- [Slack setup](docs/SLACK_SETUP.md): webhook + AWS storage + (optional) bot token, planning listener, trusted control commands, the off-by-default issue bridge, and in-thread fleet-progress thread-sync.
+- [Slack setup](docs/SLACK_SETUP.md): webhook + AWS storage + (optional) bot token, planning listener, trusted control commands, the issue bridge, and in-thread fleet-progress thread-sync.
 - [AWS setup](docs/AWS_SETUP.md): IAM-per-agent, scoped policies.
 - [Skills](docs/SKILLS.md): recommended Claude Code skills.
-- [Telemetry](docs/TELEMETRY.md): the opt-in, off-by-default anonymous proof-counter. Exactly what is sent, what is never sent, the single on/off switch, and how to self-host the collector.
+- [Telemetry](docs/TELEMETRY.md): anonymous aggregate usage totals, the on/off switch, and how to self-host the collector.
 - [Integrations](docs/INTEGRATIONS.md): optional companion tools and what Alfred does not bundle.
 - [Hermes integration](docs/HERMES.md): optional Hermes-layer recipe for teams already using Hermes.
 - [Linux](docs/LINUX.md): Debian/Ubuntu via `systemd --user` timers. Install, deploy, and operate.
@@ -428,7 +377,7 @@ Alfred has a deliberate shape. The boundaries below are intentional.
 - **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script; the core stays lean.
 
 The engineering fleet, local memory, reliability governor, `alfred serve`, and
-the signed Mac/Linux desktop app all ship in v0.5.1. Content, sales, and ops
+the signed macOS desktop app plus Linux desktop packages all ship in v0.5.1. Content, sales, and ops
 departments are the next larger surface area: [`ROADMAP.md`](ROADMAP.md).
 
 ## Status
@@ -437,7 +386,7 @@ departments are the next larger surface area: [`ROADMAP.md`](ROADMAP.md).
 builders: install, starter setup, prompt seeding, GitHub label setup, specs-assisted
 workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling,
 Claude/Codex engine routing, Slack reporting, and isolated worktree execution.
-v0.5.1 carries the first signed native Mac and Linux desktop app (built with Tauri),
+v0.5.1 carries the first signed macOS desktop app and Linux desktop packages (built with Tauri),
 live Claude and Codex subscription usage in that app, a single-repo
 approval gate, a disk guardian that pauses your agents cleanly when the
 disk is nearly full, a Slack planning path that turns an approved draft into a
@@ -463,6 +412,11 @@ The design boundary is stable: one person, one local Mac or Linux box, local CLI
 
 MIT. See [`LICENSE`](LICENSE). Copyright (c) 2026 DataRavel Inc.
 
-## Why the repo slug is `alfred-os`
+## Name and theme
 
-Alfred is named after Bruce Wayne's butler, the one who keeps the cave running while the mission is in flight. The default codenames are bat-themed, and the framework that lets the cave function is `alfred-os`.
+Alfred is named after Alfred Pennyworth: the calm system that keeps the cave
+running while the mission is in flight. The public repository is
+`luminik-io/alfred-os`, but the product name is Alfred. The default codenames
+use the same theme: Batman is the architect, Lucius is the senior developer,
+Drake scopes smaller work, Ra's al Ghul reviews PRs, Bane adds tests, and
+Nightwing handles review fixes.

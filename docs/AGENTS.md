@@ -28,7 +28,7 @@ flowchart LR
     gordon["gordon<br/><i>deploy-health</i><br/>daily 08:00"]
     automerge["automerge<br/><i>squash-merge</i><br/>every 15m"]
 
-    batman -- "owns bundles" --> issues
+    batman -- "plans approved rollouts" --> issues
     drake -- "files scoped work" --> issues
     damian -- "files spec bundles" --> issues
     robin -- "triages" --> issues
@@ -66,7 +66,7 @@ enable Batman when multi-repo or multi-package work becomes recurring.
 
 | Codename | Role | Default schedule | Default repos | What it does |
 |---|---|---|---|---|
-| **batman** | architect | every 1 h, opt-in | `BATMAN_SCAN_REPOS` / `BATMAN_PARENT_REPO` | Owns multi-repo features. The parent-issue path can draft the rollout, wait for Slack approval, file child `agent:implement` issues, and report status so implementation can move in parallel. The legacy scan path drafts plans only. |
+| **batman** | architect | every 1 h, opt-in | `BATMAN_SCAN_REPOS` / `BATMAN_PARENT_REPO` | Coordinates multi-repo features. The parent-issue path can draft the rollout, wait for Slack approval, file child `agent:implement` issues, and report status so implementation can move in parallel. The legacy scan path drafts plans only. |
 | **lucius** | feature-dev | every 20 min | `ALFRED_LUCIUS_REPOS` | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs `claude -p` with the issue body + repo context, pushes a PR labelled `agent:authored`. |
 | **drake** | planner | every 2 h | all in-scope repos | Reads specs / roadmap / `IMMEDIATE_NEXT_STEPS` / cross-repo open-issue list / code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in rolling 24 h. |
 | **damian** | spec-bundle-planner | daily 09:00, opt-in | `DAMIAN_SCAN_REPOS` | Reads `DAMIAN_SPEC_DIR` end-to-end, identifies multi-repo features, files `agent:bundle:<slug>` siblings across affected repos. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to drake. Prompt seeded from `prompts/spec-bundle-planner.md`. |

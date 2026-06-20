@@ -1,184 +1,98 @@
 ---
 import MarketingLayout from "../layouts/MarketingLayout.astro";
 import Hero from "../components/marketing/Hero.astro";
-import SectionHeader from "../components/marketing/SectionHeader.astro";
 import ImpactCounter from "../components/marketing/ImpactCounter.astro";
 import ImpactProofBoard from "../components/marketing/ImpactProofBoard.astro";
-import CodeBlock from "../components/marketing/CodeBlock.astro";
+import ImpactTrend from "../components/marketing/ImpactTrend.astro";
 import proof from "../data/impact-proof.json";
 import productProof from "../data/luminik-product-proof.json";
 
-const fmt = (n: number) => n.toLocaleString("en-US");
 const productProofGenerated = productProof.generated_at.slice(0, 10);
+const linesChanged = productProof.summary.lines_added + productProof.summary.lines_removed;
+const productTrend = Array.isArray((productProof as { trend?: unknown }).trend)
+  ? (productProof as { trend: Array<{ week: string; prs_merged: number }> }).trend
+  : [];
+const telemetryStatsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim();
+const hasLiveTelemetry = telemetryStatsUrl.length > 0;
+const hasPublicActivity =
+  proof.prs.length > 0 ||
+  proof.issues.length > 0 ||
+  proof.summary.prs_merged > 0 ||
+  proof.summary.issues_opened > 0 ||
+  proof.summary.issues_triaged > 0 ||
+  Number(proof.summary.repo_activity?.prs_merged ?? 0) > 0 ||
+  Number(proof.summary.repo_activity?.issues_opened ?? 0) > 0 ||
+  Number(proof.summary.repo_activity?.files_changed ?? 0) > 0;
 ---
 
 <MarketingLayout
   title="Impact | Alfred"
-  description="A running record of what Alfred has shipped: aggregate Luminik product totals, public open-source links, and anonymous community counts."
+  description="A running record of what Alfred has shipped: merged PRs, issues opened and closed, files changed, lines changed, and public examples."
   path="/impact/"
 >
   <Hero
-    eyebrow="ALFRED IN USE"
-    headline="What Alfred has shipped."
-    sub={`In the last ${productProof.window.days} days, Alfred has helped ship product work across Luminik repos. The site refreshes these aggregate totals on every main-branch deploy and once a day. Private work stays private.`}
+    eyebrow="ALFRED IMPACT"
+    headline="What Alfred shipped."
+    sub="Last 30 days: merged PRs, opened and closed issues, and code changed across repos where Alfred is working."
     headlineSize="lg"
     primaryCta={{ label: "View GitHub", href: "https://github.com/luminik-io/alfred-os" }}
-    secondaryCta={{ label: "Read telemetry docs", href: "/reference/telemetry/" }}
+    secondaryCta={{ label: "Telemetry details", href: "/reference/telemetry/" }}
   >
     <div slot="panel" class="impact-panel">
       <div class="impact-panel__head">
-        <span class="m-eyebrow">LAST {productProof.window.days} DAYS</span>
+        <span class="impact-panel__window">Last {productProof.window.days} days</span>
         <span class="m-mono m-mute">updated {productProofGenerated}</span>
       </div>
-      <div class="hero-proof">
-        <span>{fmt(productProof.summary.agent_prs_merged)}</span>
-        <p>agent-identified PRs merged</p>
-      </div>
-      <div class="hero-proof__grid">
-        <div>
-          <span>{fmt(productProof.summary.agent_issues_opened)}</span>
-          <p>issues opened</p>
-        </div>
-        <div>
-          <span>{fmt(productProof.summary.files_changed)}</span>
-          <p>files changed</p>
-        </div>
-      </div>
+      <ImpactCounter
+        variant="plain"
+        seed={{
+          prs_merged: productProof.summary.agent_prs_merged,
+          issues_opened: productProof.summary.agent_issues_opened,
+          issues_closed: productProof.summary.agent_issues_closed,
+          lines_added: productProof.summary.lines_added,
+          lines_removed: productProof.summary.lines_removed,
+          lines_changed: linesChanged,
+          files_changed: productProof.summary.files_changed,
+          updated_at: productProof.generated_at,
+        }}
+        live={false}
+        showUpdated={false}
+        showInstalls={false}
+      />
     </div>
   </Hero>
 
-  <section class="m-section m-section--soft">
-    <div class="m-container product-proof">
-      <div class="product-proof__copy">
-        <SectionHeader
-          eyebrow="RUNNING ON LUMINIK"
-          title="Alfred works on real product repos every day."
-          lede={`The counter uses labels and branch names in GitHub across ${productProof.summary.repos_scanned} Luminik repos. A scheduled site build updates it automatically; the published file keeps only aggregate totals.`}
-          reveal={false}
-        />
-        <p class="product-proof__note">
-          This page publishes totals only. It leaves out private repo names, PR titles, issue titles,
-          branches, comments, prompts, and code.
-        </p>
+  {productTrend.length > 0 ? (
+    <section class="m-section impact-section">
+      <div class="m-container">
+        <ImpactTrend trend={productTrend} windowDays={productProof.window.days} />
       </div>
-      <div class="product-proof__panel" aria-label="Luminik product metrics">
-        <div class="product-proof__head">
-          <span class="m-eyebrow">LUMINIK SETUP</span>
-          <span class="m-mono m-mute">updated {productProofGenerated}</span>
+    </section>
+  ) : null}
+
+  {hasLiveTelemetry ? (
+    <section class="m-section impact-section">
+      <div class="m-container impact-live-section">
+        <div class="impact-live-section__copy">
+          <span class="m-eyebrow">LIVE USAGE</span>
+          <h2 class="m-display-md">Alfred installs in use.</h2>
+          <p>
+            Anonymous totals from Alfred installs with a telemetry endpoint configured
+            and usage sharing left on.
+          </p>
         </div>
-        <div class="product-proof__main">
-          <span>{fmt(productProof.summary.agent_prs_merged)}</span>
-          <p>PRs merged</p>
-        </div>
-        <div class="product-proof__grid">
-          <div>
-            <span>{fmt(productProof.summary.agent_issues_opened)}</span>
-            <p>issues opened</p>
-          </div>
-          <div>
-            <span>{fmt(productProof.summary.agent_issues_closed)}</span>
-            <p>issues closed</p>
-          </div>
-          <div>
-            <span>{fmt(productProof.summary.files_changed)}</span>
-            <p>files changed</p>
-          </div>
-          <div>
-            <span>+{fmt(productProof.summary.lines_added)}</span>
-            <p>lines added, {fmt(productProof.summary.lines_removed)} removed</p>
-          </div>
-        </div>
+        <ImpactCounter threshold={1} />
       </div>
-    </div>
-  </section>
+    </section>
+  ) : null}
 
-  <section class="m-section">
-    <div class="m-container">
-      <ImpactProofBoard proof={proof} />
-    </div>
-  </section>
-
-  <section class="m-section">
-    <div class="m-container">
-      <SectionHeader
-        eyebrow="COMMUNITY TOTALS"
-        title="Installs can add aggregate totals."
-        lede="This counter reads live totals from the telemetry stats endpoint when one is configured. Installs that opt in send aggregate PR counts only: no repo names, titles, branches, prompts, code, people, or hostnames."
-      />
-      <ImpactCounter threshold={1} />
-    </div>
-  </section>
-
-  <section class="m-section">
-    <div class="m-container">
-      <SectionHeader
-        eyebrow="WHAT GETS COUNTED"
-        title="Only aggregate counts. Nothing from the work itself."
-        lede="Anonymous telemetry is for community adoption, not for exposing private work. Public PR titles and URLs appear only for repos someone deliberately publishes."
-      />
-      <div class="proof-grid">
-        <article class="m-card">
-          <span class="m-mono proof-grid__num">01</span>
-          <h3 class="m-h3">Pull requests opened</h3>
-          <p>How many PRs opted-in installs created through the Alfred runner.</p>
-        </article>
-        <article class="m-card">
-          <span class="m-mono proof-grid__num">02</span>
-          <h3 class="m-h3">Terminal pull requests</h3>
-          <p>How many Alfred-authored PRs reached merged or closed state.</p>
-        </article>
-        <article class="m-card">
-          <span class="m-mono proof-grid__num">03</span>
-          <h3 class="m-h3">Pull requests merged</h3>
-          <p>How many PRs reached the shipped state after the team's normal review process.</p>
-        </article>
-        <article class="m-card">
-          <span class="m-mono proof-grid__num">04</span>
-          <h3 class="m-h3">Changed files</h3>
-          <p>The current anonymous field is a file-touch proxy. Real GitHub line counts are shown only for public repos.</p>
-        </article>
+  {hasPublicActivity ? (
+    <section class="m-section">
+      <div class="m-container">
+        <ImpactProofBoard proof={proof} />
       </div>
-    </div>
-  </section>
-
-  <section class="m-section m-section--soft">
-    <div class="m-container control-grid">
-      <div>
-        <SectionHeader
-          eyebrow="YOUR CONTROL"
-          title="Off until you turn it on."
-          lede="For an open-source developer tool, trust matters more than a larger counter. Alfred asks during setup and keeps telemetry disabled unless you opt in."
-        />
-        <div class="control-points">
-          <p><strong>No repo names.</strong> Alfred does not send the repository, organization, branch, issue title, PR title, or source code.</p>
-          <p><strong>No personal data.</strong> The install token is random and exists only to cap duplicate reports from the same install.</p>
-          <p><strong>No hidden dependency.</strong> Alfred runs the same way with telemetry off.</p>
-        </div>
-      </div>
-      <CodeBlock
-        title="telemetry"
-        lines={[
-          "$ alfred telemetry status",
-          "telemetry: off",
-          "endpoint: (unset)",
-          "token: unset",
-          "scheduler row: absent (~/code/alfred-os/launchd/agents.conf)",
-          "public page: https://alfred.luminik.io/impact/",
-          "",
-          "$ alfred telemetry on --url https://your-worker.example/ingest",
-          "alfred: telemetry enabled",
-          "alfred: wrote ~/.alfredrc",
-          "alfred: scheduled alfred.proof-telemetry in ~/code/alfred-os/launchd/agents.conf",
-          "alfred: run `bash ~/code/alfred-os/deploy.sh` to install the scheduler change",
-          "",
-          "$ alfred telemetry off",
-          "alfred: telemetry disabled",
-          "alfred: removed scheduler row at ~/code/alfred-os/launchd/agents.conf",
-          "alfred: run `bash ~/code/alfred-os/deploy.sh` to install the scheduler change",
-        ]}
-      />
-    </div>
-  </section>
+    </section>
+  ) : null}
 </MarketingLayout>
 
 <style>
@@ -195,151 +109,42 @@ const productProofGenerated = productProof.generated_at.slice(0, 10);
     padding-bottom: 12px;
     border-bottom: 1px solid var(--alfred-border);
   }
-  .hero-proof {
-    text-align: center;
-    padding: 12px 0 4px;
-  }
-  .hero-proof span,
-  .hero-proof__grid span {
-    color: var(--alfred-accent);
-    font-family: var(--font-display);
-    font-size: clamp(42px, 7vw, 72px);
-    font-weight: 700;
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
-  }
-  .hero-proof p,
-  .hero-proof__grid p {
-    margin-top: 8px;
-    color: var(--alfred-mute);
+  .impact-panel__window {
+    color: var(--alfred-text-bright);
     font-size: 13px;
-  }
-  .hero-proof__grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-  }
-  .hero-proof__grid div {
-    border: 1px solid var(--alfred-border);
-    border-radius: var(--radius);
-    padding: 14px 12px;
-    text-align: center;
-  }
-  .hero-proof__grid span {
-    font-size: 24px;
-  }
-  .proof-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 18px;
-  }
-  .product-proof {
-    display: grid;
-    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-    gap: 40px;
-    align-items: center;
-  }
-  .product-proof__copy :global(.m-section-header) {
-    margin-bottom: 18px;
-  }
-  .product-proof__note {
-    color: var(--alfred-text);
-    font-size: 15px;
-    line-height: 1.6;
-  }
-  .product-proof__panel {
-    min-width: 0;
-    padding: 22px;
-    border: 1px solid var(--alfred-border-strong);
-    border-radius: var(--radius);
-    background: var(--alfred-black);
-    box-shadow: 0 24px 90px rgba(0, 0, 0, 0.22);
-  }
-  .product-proof__head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 14px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid var(--alfred-border);
-  }
-  .product-proof__main {
-    padding: 24px 0 18px;
-    text-align: center;
-  }
-  .product-proof__main span,
-  .product-proof__grid span {
-    color: var(--alfred-accent);
-    font-family: var(--font-display);
     font-weight: 700;
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
   }
-  .product-proof__main span {
-    font-size: clamp(48px, 8vw, 86px);
+  .impact-section {
+    padding-top: 72px;
   }
-  .product-proof__main p,
-  .product-proof__grid p {
-    margin-top: 8px;
-    color: var(--alfred-mute);
-    font-size: 13px;
-  }
-  .product-proof__grid {
+  .impact-live-section {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-  }
-  .product-proof__grid div {
-    min-width: 0;
-    padding: 16px 14px;
-    border: 1px solid var(--alfred-border);
-    border-radius: var(--radius);
-    background: var(--alfred-surface);
-  }
-  .product-proof__grid span {
-    display: block;
-    font-size: clamp(24px, 4vw, 34px);
-  }
-  .proof-grid__num {
-    display: block;
-    color: var(--alfred-accent);
-    margin-bottom: 14px;
-  }
-  .proof-grid p,
-  .control-points p {
-    margin-top: 10px;
-    color: var(--alfred-text);
-    font-size: 15px;
-    line-height: 1.6;
-  }
-  .control-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
-    gap: 48px;
+    grid-template-columns: minmax(0, 0.7fr) minmax(340px, 1fr);
+    gap: 28px;
     align-items: start;
   }
-  .control-points {
-    display: grid;
-    gap: 16px;
+  .impact-live-section__copy {
+    padding-top: 12px;
   }
-  .control-points strong {
-    color: var(--alfred-text-bright);
+  .impact-live-section__copy h2 {
+    margin-top: 12px;
   }
-  @media (max-width: 980px) {
-    .proof-grid,
-    .product-proof,
-    .control-grid {
+  .impact-live-section__copy p {
+    max-width: 460px;
+    color: var(--alfred-text);
+    font-size: 16px;
+    line-height: 1.65;
+  }
+  @media (max-width: 820px) {
+    .impact-live-section {
       grid-template-columns: 1fr;
     }
   }
   @media (max-width: 520px) {
-    .impact-panel__head,
-    .product-proof__head {
+    .impact-panel__head {
       align-items: flex-start;
       flex-direction: column;
-    }
-    .product-proof__grid {
-      grid-template-columns: 1fr;
     }
   }
 </style>

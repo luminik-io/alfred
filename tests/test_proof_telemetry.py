@@ -1,14 +1,16 @@
-"""Unit tests for the opt-in proof-telemetry reporter.
+"""Unit tests for the anonymous proof-telemetry reporter.
 
-Covers the privacy-load-bearing guarantees:
+Covers the reporting guarantees:
 
-* OFF by default: no send, no install-id file, no network when the master
-  switch is unset or set to anything other than exactly ``"1"``.
+* Explicit opt-out: no send, no install-id file, no network when the master
+  switch is set to a disabled value.
+* Missing endpoint: no send, no install-id file, no network when no ingest URL
+  is configured.
 * Correct, bounded payload shape when enabled.
 * Fail-soft: a network error never raises; it returns a ``failed`` status.
 * Idempotent-friendly install id: stable across calls, regenerated only when
   the file is missing.
-* No PII in the payload (only the four counts plus install_id + period).
+* No PII in the payload (only anonymous counts plus install_id + period).
 
 Nothing here touches the real ``$ALFRED_HOME`` or the network; the brain and
 the HTTP poster are injected.
@@ -17,6 +19,8 @@ the HTTP poster are injected.
 from __future__ import annotations
 
 import importlib.util
+import os
+import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -76,9 +80,21 @@ class FakeTouch:
     pass
 
 
+class FakeIssue:
+    def __init__(self, state: str = "open", *, labels=None) -> None:
+        self.state = state
+        self.labels = list(labels if labels is not None else ["agent:implement"])
+        self.head_ref = None
+
+
 def _authored(prs):
     """Filter to the agent-authored subset the proof counter must count."""
     return [p for p in prs if pt._row_is_agent_authored(p)]
+
+
+def _agent_labeled(rows):
+    """Filter to rows carrying an agent:* label."""
+    return [row for row in rows if pt._row_is_agent_labeled(row)]
 
 
 class FakeBrain:
@@ -92,16 +108,17 @@ class FakeBrain:
     list-fallback (this brain exposes no count_* method).
     """
 
-    def __init__(self, prs=None, touches=None, raise_on=None):
+    def __init__(self, prs=None, issues=None, touches=None, raise_on=None):
         self._prs = prs or []
+        self._issues = issues or []
         self._touches = touches or []
         self._raise_on = raise_on or set()
 
     def list_github_items(self, *, kind=None, state=None, limit=50):
         if "prs" in self._raise_on:
             raise RuntimeError("brain unavailable")
-        assert kind == "pr"
-        rows = self._prs
+        assert kind in {"pr", "issue"}
+        rows = self._prs if kind == "pr" else self._issues
         if state is not None:
             rows = [p for p in rows if getattr(p, "state", None) == state]
         return list(rows)[:limit]
@@ -120,13 +137,15 @@ class NoStateBrain:
     to agent-authored rows.
     """
 
-    def __init__(self, prs=None, touches=None):
+    def __init__(self, prs=None, issues=None, touches=None):
         self._prs = prs or []
+        self._issues = issues or []
         self._touches = touches or []
 
     def list_github_items(self, *, kind=None, limit=50):
-        assert kind == "pr"
-        return list(self._prs)[:limit]
+        assert kind in {"pr", "issue"}
+        rows = self._prs if kind == "pr" else self._issues
+        return list(rows)[:limit]
 
     def list_file_touches(self, *, limit=50):
         return list(self._touches)[:limit]
@@ -145,26 +164,36 @@ class ClampingBrain:
 
     LIST_CAP = 500
 
-    def __init__(self, prs=None, touches=None):
+    def __init__(self, prs=None, issues=None, touches=None):
         self._prs = prs or []
+        self._issues = issues or []
         self._touches = touches or []
 
     def list_github_items(self, *, kind=None, state=None, limit=50):
-        assert kind == "pr"
-        rows = self._prs
+        assert kind in {"pr", "issue"}
+        rows = self._prs if kind == "pr" else self._issues
         if state is not None:
             rows = [p for p in rows if getattr(p, "state", None) == state]
         # Mirror FleetBrain.list_github_items: clamp the effective limit to 500.
         clamped = max(1, min(int(limit), self.LIST_CAP))
         return list(rows)[:clamped]
 
-    def count_github_items(self, *, kind=None, state=None, authored_only=False):
-        assert kind == "pr"
-        rows = self._prs
+    def count_github_items(
+        self,
+        *,
+        kind=None,
+        state=None,
+        authored_only=False,
+        agent_labeled_only=False,
+    ):
+        assert kind in {"pr", "issue"}
+        rows = self._prs if kind == "pr" else self._issues
         if state is not None:
             rows = [p for p in rows if getattr(p, "state", None) == state]
         if authored_only:
             rows = _authored(rows)
+        if agent_labeled_only:
+            rows = _agent_labeled(rows)
         return len(rows)  # exact COUNT(*), no cap
 
     def list_file_touches(self, *, limit=50):
@@ -185,13 +214,14 @@ class ClampingNoCountBrain:
 
     LIST_CAP = 500
 
-    def __init__(self, prs=None, touches=None):
+    def __init__(self, prs=None, issues=None, touches=None):
         self._prs = prs or []
+        self._issues = issues or []
         self._touches = touches or []
 
     def list_github_items(self, *, kind=None, state=None, limit=50):
-        assert kind == "pr"
-        rows = self._prs
+        assert kind in {"pr", "issue"}
+        rows = self._prs if kind == "pr" else self._issues
         if state is not None:
             rows = [p for p in rows if getattr(p, "state", None) == state]
         clamped = max(1, min(int(limit), self.LIST_CAP))
@@ -223,7 +253,14 @@ class FailingBaseBrain:
         rows = [p for p in self._prs if getattr(p, "state", None) == state]
         return list(rows)[:limit]
 
-    def count_github_items(self, *, kind=None, state=None, authored_only=False):
+    def count_github_items(
+        self,
+        *,
+        kind=None,
+        state=None,
+        authored_only=False,
+        agent_labeled_only=False,
+    ):
         assert kind == "pr"
         if state is None:
             raise RuntimeError("base PR count unavailable")
@@ -284,30 +321,40 @@ FIXED = datetime(2026, 6, 15, tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------
-# is_enabled: the master switch
+# is_enabled: the opt-out switch
 # ---------------------------------------------------------------------------
-def test_disabled_when_env_unset():
-    assert pt.is_enabled({}) is False
+def test_enabled_when_env_unset():
+    assert pt.is_enabled({}) is True
 
 
-def test_disabled_for_anything_but_exactly_one():
-    for value in ["0", "true", "yes", "on", "TRUE", "1 ", " ", "", "2", "10"]:
+def test_disabled_for_explicit_opt_out_values():
+    for value in [
+        "0",
+        "false",
+        "False",
+        "no",
+        "off",
+        "disabled",
+        " DISABLED ",
+        "0 # opt out",
+        "false # disable reporting",
+    ]:
         env = {pt.ENABLE_ENV: value}
-        # "1 " is stripped to "1" and is allowed; everything else is off.
-        expected = value.strip() == "1"
-        assert pt.is_enabled(env) is expected, f"{value!r} -> {expected}"
+        assert pt.is_enabled(env) is False, f"{value!r} must opt out"
 
 
-def test_enabled_only_for_one():
-    assert pt.is_enabled({pt.ENABLE_ENV: "1"}) is True
+def test_enabled_for_non_disabled_values():
+    for value in ["1", "true", "yes", "on", "TRUE", "1 ", " ", "", "2", "10"]:
+        env = {pt.ENABLE_ENV: value}
+        assert pt.is_enabled(env) is True, f"{value!r} should stay enabled"
 
 
 # ---------------------------------------------------------------------------
-# report_once: off-by-default path sends nothing
+# report_once: disabled / no-url paths send nothing
 # ---------------------------------------------------------------------------
 def test_report_once_disabled_is_a_no_op():
     poster = RecordingPoster()
-    result = pt.report_once(env={}, brain=FakeBrain(), poster=poster)
+    result = pt.report_once(env={pt.ENABLE_ENV: "0"}, brain=FakeBrain(), poster=poster)
     assert result == {"status": "disabled", "sent": False}
     assert poster.calls == [], "disabled telemetry must not call the network"
 
@@ -316,13 +363,53 @@ def test_report_once_disabled_does_not_create_install_id(tmp_path, monkeypatch):
     # Point the install-id path at a temp dir and assert nothing is written.
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
     poster = RecordingPoster()
-    pt.report_once(env={}, brain=FakeBrain(), poster=poster)
+    pt.report_once(env={pt.ENABLE_ENV: "0"}, brain=FakeBrain(), poster=poster)
     assert not (tmp_path / "state" / "telemetry-install-id").exists()
+
+
+def test_direct_dry_run_loads_alfredrc_opt_out(tmp_path):
+    home = tmp_path / "home"
+    alfred_home = tmp_path / "alfred"
+    home.mkdir()
+    alfred_home.mkdir()
+    (home / ".alfredrc").write_text(
+        "ALFRED_TELEMETRY_ENABLED=0\nALFRED_TELEMETRY_URL=https://telemetry.example.com/ingest\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["ALFRED_HOME"] = str(alfred_home)
+    env["PYTHONPATH"] = str(_REPO / "lib")
+    for key in (pt.ENABLE_ENV, pt.URL_ENV, pt.TOKEN_ENV):
+        env.pop(key, None)
+
+    result = subprocess.run(
+        [sys.executable, str(_REPO / "bin" / "proof-telemetry.py"), "--dry-run"],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=15,
+    )
+
+    assert result.returncode == 0
+    assert "[PROOF-TELEMETRY-DISABLED]" in result.stdout
+    assert not (alfred_home / "state" / "telemetry-install-id").exists()
+
+
+def test_cli_maps_stale_counts_to_non_error_sentinel(monkeypatch, capsys):
+    monkeypatch.setattr(pt, "report_once", lambda: {"status": "stale_counts", "sent": False})
+
+    assert cli.main([]) == 0
+
+    out = capsys.readouterr().out
+    assert "[PROOF-TELEMETRY-STALE-COUNTS]" in out
+    assert "[PROOF-TELEMETRY-ERROR]" not in out
 
 
 def test_report_once_enabled_without_url_is_a_no_op():
     poster = RecordingPoster()
-    result = pt.report_once(env={pt.ENABLE_ENV: "1"}, brain=FakeBrain(), poster=poster)
+    result = pt.report_once(env={}, brain=FakeBrain(), poster=poster)
     assert result["status"] == "no_url"
     assert result["sent"] is False
     assert poster.calls == []
@@ -335,6 +422,11 @@ def test_report_once_enabled_sends_expected_payload(tmp_path, monkeypatch):
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
     brain = FakeBrain(
         prs=[FakePR("merged"), FakePR("merged"), FakePR("closed"), FakePR("open")],
+        issues=[
+            FakeIssue(),
+            FakeIssue("closed", labels=["agent:triage"]),
+            FakeIssue("closed", labels=["bug"]),
+        ],
         touches=[FakeTouch(), FakeTouch(), FakeTouch()],
     )
     poster = RecordingPoster(ok=True)
@@ -355,6 +447,10 @@ def test_report_once_enabled_sends_expected_payload(tmp_path, monkeypatch):
         "prs_opened",
         "prs_merged",
         "prs_reviewed",
+        "issues_opened",
+        "issues_closed",
+        "files_changed",
+        "lines_changed",
         "loc_added",
     }
     # Period is the stable lifetime bucket, not a calendar month, so a calendar
@@ -364,6 +460,10 @@ def test_report_once_enabled_sends_expected_payload(tmp_path, monkeypatch):
     assert payload["prs_merged"] == 2
     # reviewed = merged + closed (terminal), never exceeds opened.
     assert payload["prs_reviewed"] == 3
+    assert payload["issues_opened"] == 2
+    assert payload["issues_closed"] == 1
+    assert payload["files_changed"] == 3
+    assert payload["lines_changed"] == 0
     assert payload["loc_added"] == 3
     assert isinstance(payload["install_id"], str) and payload["install_id"]
 
@@ -392,17 +492,16 @@ def test_report_once_is_fail_soft_on_poster_exception(tmp_path, monkeypatch):
 
 def test_report_once_is_fail_soft_on_brain_error(tmp_path, monkeypatch):
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
-    # Brain raises on both queries; derive_counts swallows -> zero counts, and
-    # the report still sends (zeros are harmless and the server clamps).
+    # Brain raises on local reads; report_once must not overwrite a previously
+    # accepted non-zero report with fallback zeroes.
     brain = FakeBrain(raise_on={"prs", "touches"})
     poster = RecordingPoster(ok=True)
     env = {pt.ENABLE_ENV: "1", pt.URL_ENV: "https://telemetry.example.com/ingest"}
 
     result = pt.report_once(env=env, brain=brain, poster=poster, now=FIXED)
-    assert result["status"] == "sent"
-    _, payload = poster.calls[0]
-    assert payload["prs_opened"] == 0
-    assert payload["loc_added"] == 0
+    assert result["status"] == "stale_counts"
+    assert result["sent"] is False
+    assert poster.calls == []
 
 
 # ---------------------------------------------------------------------------
@@ -417,12 +516,21 @@ def test_derive_counts_maps_states_correctly():
             FakePR("closed"),
             FakePR("unknown"),
         ],
+        issues=[
+            FakeIssue(),
+            FakeIssue("closed", labels=["agent:bundle:billing"]),
+            FakeIssue("closed", labels=["help wanted"]),
+        ],
         touches=[FakeTouch()] * 7,
     )
     counts = pt.derive_counts(brain)
     assert counts.prs_opened == 5
     assert counts.prs_merged == 2
     assert counts.prs_reviewed == 3  # 2 merged + 1 closed
+    assert counts.issues_opened == 2
+    assert counts.issues_closed == 1
+    assert counts.files_changed == 7
+    assert counts.lines_changed == 0
     assert counts.loc_added == 7
 
 
@@ -490,6 +598,7 @@ def test_derive_counts_suppresses_dependents_when_base_query_fails():
     assert counts.prs_reviewed == 0, "dependent count must be suppressed on base failure"
     # An independent field (file touches) is unaffected by the PR failure.
     assert counts.loc_added == 4
+    assert counts.read_complete is False
 
 
 def test_derive_counts_real_zero_is_distinct_from_failure():
@@ -502,6 +611,7 @@ def test_derive_counts_real_zero_is_distinct_from_failure():
     assert counts.prs_merged == 0
     assert counts.prs_reviewed == 0
     assert counts.loc_added == 2
+    assert counts.read_complete is True
 
 
 def test_derive_counts_falls_back_when_brain_has_no_state_kwarg():
@@ -634,6 +744,20 @@ def test_count_rows_keys_continuation_on_raw_page_not_filtered_matches():
     )
 
 
+def test_count_rows_stops_sparse_predicate_at_raw_hard_cap():
+    calls: list[int] = []
+
+    def lister(limit: int):
+        calls.append(limit)
+        return [FakePR("open", authored=False)] * limit
+
+    total = pt._count_rows(lister, pt._row_is_agent_authored)
+
+    assert total == 0
+    assert calls[-1] == pt._COUNT_HARD_LIMIT
+    assert all(limit <= pt._COUNT_HARD_LIMIT for limit in calls)
+
+
 def test_derive_counts_no_early_stop_when_filter_removes_rows_list_fallback():
     # End-to-end via derive_counts. A brain with NO count_* method holds more than
     # one page of PRs, half authored and half operator-opened. The list fallback
@@ -678,7 +802,14 @@ class OpenedZeroRaceBrain:
         self._merged = merged
         self._closed = closed
 
-    def count_github_items(self, *, kind=None, state=None, authored_only=False):
+    def count_github_items(
+        self,
+        *,
+        kind=None,
+        state=None,
+        authored_only=False,
+        agent_labeled_only=False,
+    ):
         assert kind == "pr"
         if state is None:
             return 0  # the base "all authored PRs" count races to 0
@@ -704,6 +835,35 @@ def test_derive_counts_clamps_dependents_to_zero_when_opened_is_zero():
     assert counts.prs_reviewed == 0, "reviewed must be clamped to opened even when opened is 0"
 
 
+class ClosedIssueRaceBrain:
+    """Brain that reports closed agent issues during an opened-count race."""
+
+    def count_github_items(
+        self,
+        *,
+        kind=None,
+        state=None,
+        authored_only=False,
+        agent_labeled_only=False,
+    ):
+        if kind == "issue":
+            if state is None:
+                return 0
+            if state == "closed":
+                return 5
+        return 0
+
+    def count_file_touches(self):
+        return 0
+
+
+def test_derive_counts_clamps_closed_issues_to_opened_issues():
+    brain = ClosedIssueRaceBrain()
+    counts = pt.derive_counts(brain)
+    assert counts.issues_opened == 0
+    assert counts.issues_closed == 0
+
+
 # ---------------------------------------------------------------------------
 # current_period: stable lifetime bucket (no calendar dependence)
 # ---------------------------------------------------------------------------
@@ -724,13 +884,37 @@ def test_build_payload_clamps_negatives_and_caps():
         prs_opened=-5,
         prs_merged=10,
         prs_reviewed=pt._MAX_PER_FIELD + 1,
+        issues_opened=11,
+        issues_closed=12,
+        files_changed=22,
+        lines_changed=33,
         loc_added=0,
     )
     payload = pt.build_payload("id-token", counts, "2026-06")
     assert payload["prs_opened"] == 0
     assert payload["prs_merged"] == 10
     assert payload["prs_reviewed"] == pt._MAX_PER_FIELD
+    assert payload["issues_opened"] == 11
+    assert payload["issues_closed"] == 12
+    assert payload["files_changed"] == 22
+    assert payload["lines_changed"] == 33
     assert payload["loc_added"] == 0
+
+
+def test_build_payload_preserves_explicit_zero_files_changed():
+    counts = pt.TelemetryCounts(files_changed=0, loc_added=9)
+    payload = pt.build_payload("id-token", counts, "lifetime")
+    assert payload["files_changed"] == 0
+    assert payload["loc_added"] == 9
+
+
+def test_build_tombstone_payload_contains_no_counts():
+    payload = pt.build_tombstone_payload("id-token")
+    assert payload == {
+        "install_id": "id-token",
+        "period": "lifetime",
+        "tombstone": True,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -783,6 +967,45 @@ def test_post_omits_token_header_when_unset(monkeypatch):
     monkeypatch.setattr(pt.urllib.request, "urlopen", fake_urlopen)
     pt._post("https://w.example.com/ingest", {"x": 1})
     assert "X-ingest-token" not in captured["headers"]
+
+
+def test_clear_report_sends_tombstone_with_existing_install_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    install_id_path = tmp_path / "state" / "telemetry-install-id"
+    install_id_path.parent.mkdir()
+    install_id_path.write_text("existing-token\n", encoding="utf-8")
+    poster = RecordingPoster(ok=True)
+
+    result = pt.clear_report(
+        env={pt.URL_ENV: "https://telemetry.example.com/ingest"},
+        poster=poster,
+    )
+
+    assert result == {"status": "sent", "sent": True}
+    assert poster.calls == [
+        (
+            "https://telemetry.example.com/ingest",
+            {
+                "install_id": "existing-token",
+                "period": "lifetime",
+                "tombstone": True,
+            },
+        )
+    ]
+
+
+def test_clear_report_does_not_create_install_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    poster = RecordingPoster(ok=True)
+
+    result = pt.clear_report(
+        env={pt.URL_ENV: "https://telemetry.example.com/ingest"},
+        poster=poster,
+    )
+
+    assert result == {"status": "no_install_id", "sent": False}
+    assert poster.calls == []
+    assert not (tmp_path / "state" / "telemetry-install-id").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -894,9 +1117,9 @@ def test_report_once_does_not_mint_fresh_id_per_call_on_persist_failure(tmp_path
 # ALFRED_DOCTOR fast path: bin/doctor.sh runs every agent with ALFRED_DOCTOR=1
 # and must get a quick recognized sentinel, never a real telemetry POST.
 # ---------------------------------------------------------------------------
-def test_doctor_fast_path_disabled_emits_disabled_sentinel(monkeypatch, capsys):
+def test_doctor_fast_path_explicit_opt_out_emits_disabled_sentinel(monkeypatch, capsys):
     monkeypatch.setenv("ALFRED_DOCTOR", "1")
-    monkeypatch.delenv(pt.ENABLE_ENV, raising=False)
+    monkeypatch.setenv(pt.ENABLE_ENV, "0")
     # If the fast path fell through to report_once, this would blow up loudly.
     monkeypatch.setattr(pt, "report_once", _fail_if_called("report_once must not run under doctor"))
     rc = cli.main([])
@@ -909,7 +1132,7 @@ def test_doctor_fast_path_disabled_emits_disabled_sentinel(monkeypatch, capsys):
 
 def test_doctor_fast_path_enabled_without_url_emits_no_url(monkeypatch, capsys):
     monkeypatch.setenv("ALFRED_DOCTOR", "1")
-    monkeypatch.setenv(pt.ENABLE_ENV, "1")
+    monkeypatch.delenv(pt.ENABLE_ENV, raising=False)
     monkeypatch.delenv(pt.URL_ENV, raising=False)
     monkeypatch.setattr(pt, "report_once", _fail_if_called("report_once must not run under doctor"))
     rc = cli.main([])
@@ -920,7 +1143,7 @@ def test_doctor_fast_path_enabled_without_url_emits_no_url(monkeypatch, capsys):
 
 def test_doctor_fast_path_enabled_with_url_emits_doctor_ok_without_posting(monkeypatch, capsys):
     monkeypatch.setenv("ALFRED_DOCTOR", "1")
-    monkeypatch.setenv(pt.ENABLE_ENV, "1")
+    monkeypatch.delenv(pt.ENABLE_ENV, raising=False)
     monkeypatch.setenv(pt.URL_ENV, "https://telemetry.example.com/ingest")
     # The whole point: an ENABLED install under a health check must NOT report.
     monkeypatch.setattr(pt, "report_once", _fail_if_called("doctor must never trigger a report"))
@@ -940,7 +1163,7 @@ def test_doctor_fast_path_takes_precedence_over_dry_run(monkeypatch, capsys):
     rc = cli.main(["--dry-run"])
     out = capsys.readouterr().out
     assert rc == 0
-    assert "[PROOF-TELEMETRY-DISABLED]" in out
+    assert "[PROOF-TELEMETRY-NO-URL]" in out
     assert "DRY-RUN" not in out
 
 

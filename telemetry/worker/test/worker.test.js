@@ -15,6 +15,7 @@ import worker, {
   clampDependentPrCounts,
   normalizePayload,
   ingest,
+  forgetInstall,
   computeTotals,
   hashIp,
 } from "../src/worker.js";
@@ -116,6 +117,18 @@ test("normalizePayload defaults a missing or malformed period to 'lifetime'", ()
   assert.equal(goodPeriod.value.period, "lifetime");
 });
 
+test("normalizePayload accepts a tombstone for an existing install id", () => {
+  const payload = normalizePayload({
+    install_id: "install-delete0",
+    period: "lifetime",
+    tombstone: true,
+  });
+  assert.equal(payload.ok, true);
+  assert.equal(payload.value.tombstone, true);
+  assert.equal(payload.value.install_id, "install-delete0");
+  assert.equal(payload.value.counts, undefined);
+});
+
 test("normalizePayload clamps all count fields and keeps id/period", () => {
   const out = normalizePayload({
     install_id: "abcdef12",
@@ -123,6 +136,10 @@ test("normalizePayload clamps all count fields and keeps id/period", () => {
     prs_opened: 5,
     prs_merged: -3,
     prs_reviewed: 2.7,
+    issues_opened: 11,
+    issues_closed: 12,
+    files_changed: 77,
+    lines_changed: 123,
     loc_added: 999999999,
     repo: "should-be-ignored",
   });
@@ -130,10 +147,23 @@ test("normalizePayload clamps all count fields and keeps id/period", () => {
   assert.deepEqual(out.value, {
     install_id: "abcdef12",
     period: "2026-06",
-    counts: { prs_opened: 5, prs_merged: 0, prs_reviewed: 2, loc_added: 100000 },
+    counts: {
+      prs_opened: 5,
+      prs_merged: 0,
+      prs_reviewed: 2,
+      issues_opened: 11,
+      issues_closed: 11,
+      files_changed: 77,
+      lines_changed: 123,
+      loc_added: 100000,
+    },
   });
   // No extra keys leaked from the raw payload.
   assert.deepEqual(Object.keys(out.value.counts).sort(), [
+    "files_changed",
+    "issues_closed",
+    "issues_opened",
+    "lines_changed",
     "loc_added",
     "prs_merged",
     "prs_opened",
@@ -181,15 +211,16 @@ test("clampDependentPrCounts leaves a valid subset payload unchanged", () => {
   assert.notStrictEqual(out, input);
 });
 
-test("normalizePayload clamps prs_merged/prs_reviewed to prs_opened server-side", () => {
-  // A hostile or buggy open-write client POSTs opened:0 with merged>0. The
-  // Worker's normalization must clamp the dependent counters to opened.
+test("normalizePayload clamps dependent counters server-side", () => {
+  // A hostile or buggy open-write client POSTs opened:0 with dependent counts
+  // above it. The Worker's normalization must clamp the dependent counters.
   const out = normalizePayload({
     install_id: "abcdef12",
     period: "lifetime",
     prs_opened: 0,
     prs_merged: 5,
     prs_reviewed: 3,
+    issues_closed: 5,
     loc_added: 100,
   });
   assert.equal(out.ok, true);
@@ -197,22 +228,32 @@ test("normalizePayload clamps prs_merged/prs_reviewed to prs_opened server-side"
     prs_opened: 0,
     prs_merged: 0,
     prs_reviewed: 0,
+    issues_opened: 0,
+    issues_closed: 0,
+    files_changed: 100,
+    lines_changed: 0,
     loc_added: 100,
   });
 
-  // A normal subset payload (merged/reviewed <= opened) is unchanged.
+  // A normal subset payload is unchanged.
   const valid = normalizePayload({
     install_id: "abcdef12",
     period: "lifetime",
     prs_opened: 10,
     prs_merged: 7,
     prs_reviewed: 4,
+    issues_opened: 3,
+    issues_closed: 2,
     loc_added: 800,
   });
   assert.deepEqual(valid.value.counts, {
     prs_opened: 10,
     prs_merged: 7,
     prs_reviewed: 4,
+    issues_opened: 3,
+    issues_closed: 2,
+    files_changed: 800,
+    lines_changed: 0,
     loc_added: 800,
   });
 });
@@ -236,6 +277,7 @@ test("ingest folds the first send into empty totals", async () => {
   assert.equal(agg.prs_opened, 10);
   assert.equal(agg.prs_merged, 7);
   assert.equal(agg.prs_reviewed, 4);
+  assert.equal(agg.files_changed, 1200);
   assert.equal(agg.loc_added, 1200);
   assert.equal(agg.installs, 1);
   assert.equal(agg.updated_at, FIXED.toISOString());
@@ -351,6 +393,26 @@ test("ingest counts distinct installs and sums across them", async () => {
   assert.equal(agg.prs_reviewed, 3);
   assert.equal(agg.loc_added, 100);
   assert.equal(agg.installs, 2, "two distinct installs counted");
+});
+
+test("forgetInstall removes an install from public totals", async () => {
+  const kv = makeKV();
+  await ingest(
+    kv,
+    normalizePayload({ install_id: "install-delete1", prs_opened: 8, prs_merged: 5 }).value,
+    FIXED,
+  );
+  await ingest(
+    kv,
+    normalizePayload({ install_id: "install-delete2", prs_opened: 3, prs_merged: 1 }).value,
+    FIXED,
+  );
+
+  await forgetInstall(kv, "install-delete1");
+  const totals = await totalsOf(kv);
+  assert.equal(totals.prs_opened, 3);
+  assert.equal(totals.prs_merged, 1);
+  assert.equal(totals.installs, 1);
 });
 
 // --------------------------------------------------------------------------
@@ -687,6 +749,61 @@ test("GET /stats writes a derived-totals cache and serves it on the next read", 
   assert.equal((await second.json()).prs_opened, 999, "served from cache");
 });
 
+test("GET /stats cache hit preserves aggregate totals above the per-install cap", async () => {
+  const kv = makeKV();
+  const env = { TELEMETRY: kv };
+  kv.store.set(
+    "stats:cache",
+    JSON.stringify({
+      prs_opened: 120000,
+      prs_merged: 110000,
+      prs_reviewed: 115000,
+      issues_opened: 130000,
+      issues_closed: 125000,
+      files_changed: 140000,
+      lines_changed: 150000,
+      loc_added: 140000,
+      installs: 2,
+      updated_at: FIXED.toISOString(),
+    }),
+  );
+
+  const res = await worker.fetch(req("GET", "/stats"), env);
+  const stats = await res.json();
+
+  assert.equal(stats.prs_opened, 120000);
+  assert.equal(stats.prs_merged, 110000);
+  assert.equal(stats.prs_reviewed, 115000);
+  assert.equal(stats.issues_opened, 130000);
+  assert.equal(stats.issues_closed, 125000);
+  assert.equal(stats.files_changed, 140000);
+  assert.equal(stats.lines_changed, 150000);
+  assert.equal(stats.loc_added, 140000);
+  assert.equal(stats.installs, 2);
+});
+
+test("GET /stats preserves legacy cached loc_added as files_changed", async () => {
+  const kv = makeKV();
+  const env = { TELEMETRY: kv };
+  kv.store.set(
+    "stats:cache",
+    JSON.stringify({
+      prs_opened: 3,
+      prs_merged: 2,
+      prs_reviewed: 1,
+      loc_added: 321,
+      installs: 1,
+      updated_at: FIXED.toISOString(),
+    }),
+  );
+
+  const res = await worker.fetch(req("GET", "/stats"), env);
+  const stats = await res.json();
+
+  assert.equal(stats.files_changed, 321);
+  assert.equal(stats.loc_added, 321);
+});
+
 test("a new ingest invalidates the stats cache so the next /stats recomputes", async () => {
   const kv = makeKV();
   const env = { TELEMETRY: kv };
@@ -710,6 +827,29 @@ test("a new ingest invalidates the stats cache so the next /stats recomputes", a
   const body = await res.json();
   assert.equal(body.prs_opened, 10, "recomputed total reflects both installs");
   assert.equal(body.installs, 2);
+});
+
+test("POST /ingest tombstone removes an install and invalidates cached stats", async () => {
+  const kv = makeKV();
+  const env = { TELEMETRY: kv };
+  await ingest(
+    kv,
+    normalizePayload({ install_id: "install-delete3", prs_opened: 7, prs_merged: 4 }).value,
+    FIXED,
+  );
+  await worker.fetch(req("GET", "/stats"), env); // populate cache
+  assert.equal(kv.store.has("stats:cache"), true);
+
+  const res = await worker.fetch(
+    req("POST", "/ingest", { install_id: "install-delete3", tombstone: true }),
+    env,
+  );
+  assert.equal(res.status, 200);
+  assert.equal(kv.store.has("install:install-delete3"), false);
+  assert.equal(kv.store.has("stats:cache"), false);
+  const body = await res.json();
+  assert.equal(body.totals.prs_opened, 0);
+  assert.equal(body.totals.installs, 0);
 });
 
 test("STATS_CACHE_TTL_SECONDS=0 disables the cache (always recompute)", async () => {
@@ -862,6 +1002,10 @@ test("POST /ingest then GET /stats round-trips the aggregate", async () => {
       prs_opened: 9,
       prs_merged: 6,
       prs_reviewed: 3,
+      issues_opened: 5,
+      issues_closed: 4,
+      files_changed: 800,
+      lines_changed: 1200,
       loc_added: 800,
     }),
     env,
@@ -882,6 +1026,10 @@ test("POST /ingest then GET /stats round-trips the aggregate", async () => {
     prs_opened: 9,
     prs_merged: 6,
     prs_reviewed: 3,
+    issues_opened: 5,
+    issues_closed: 4,
+    files_changed: 800,
+    lines_changed: 1200,
     loc_added: 800,
     installs: 1,
     updated_at: stats.updated_at,
@@ -1281,6 +1429,10 @@ test("GET /stats on an empty store returns zeroed totals", async () => {
     prs_opened: 0,
     prs_merged: 0,
     prs_reviewed: 0,
+    issues_opened: 0,
+    issues_closed: 0,
+    files_changed: 0,
+    lines_changed: 0,
     loc_added: 0,
     installs: 0,
     updated_at: null,

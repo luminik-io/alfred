@@ -51,34 +51,40 @@ interface Props {
 
 const { proof } = Astro.props;
 const fmt = (n: number) => n.toLocaleString("en-US");
-const day = (raw: string) => new Date(raw).toISOString().slice(0, 10);
-const generated = day(proof.generated_at);
 const maxTrend = Math.max(...proof.trend.map((item) => item.prs_merged), 1);
-const hasRuntimeProof =
+const windowLabel = `Last ${proof.window.days} days`;
+const hasAlfredRows =
+  proof.prs.length > 0 ||
+  proof.issues.length > 0 ||
   proof.summary.prs_merged > 0 ||
   proof.summary.issues_opened > 0 ||
   proof.summary.issues_triaged > 0;
+const activity = hasAlfredRows || !proof.summary.repo_activity
+  ? proof.summary
+  : proof.summary.repo_activity;
+const metricDetail = hasAlfredRows ? windowLabel : "Repo total";
+const codeDetail = hasAlfredRows ? "Listed PRs" : "Repo total";
 
 const metrics = [
   {
-    label: "Alfred PRs merged",
-    value: fmt(proof.summary.prs_merged),
-    detail: "Visible in GitHub",
+    label: "PRs merged",
+    value: fmt(activity.prs_merged),
+    detail: metricDetail,
   },
   {
-    label: "Alfred issues opened",
-    value: fmt(proof.summary.issues_opened),
-    detail: "Visible agent label",
+    label: "Issues opened",
+    value: fmt(activity.issues_opened),
+    detail: metricDetail,
   },
   {
     label: "Lines added",
-    value: fmt(proof.summary.lines_added),
-    detail: "On listed PRs",
+    value: fmt(activity.lines_added),
+    detail: codeDetail,
   },
   {
     label: "Files changed",
-    value: fmt(proof.summary.files_changed),
-    detail: "On listed PRs",
+    value: fmt(activity.files_changed),
+    detail: codeDetail,
   },
 ];
 ---
@@ -87,27 +93,13 @@ const metrics = [
   <div class="proof-board__meta">
     <div>
       <span class="m-eyebrow">OPEN-SOURCE REPO</span>
-      <h2 class="m-display-md">Open-source Alfred work you can inspect.</h2>
+      <h2 class="m-display-md">Open-source activity.</h2>
     </div>
     <p>
-      Last {proof.window.days} days from{" "}
+      Recent public Alfred work from{" "}
       <a href={proof.source.url} rel="noopener noreferrer">{proof.source.repo}</a>.
-      PRs appear here when the branch or label shows Alfred did the work.
-      Issues appear when they carry an Alfred agent label.
-      Updated {generated}.
     </p>
   </div>
-
-  {!hasRuntimeProof && proof.summary.repo_activity ? (
-    <div class="proof-callout" role="note">
-      <span class="m-eyebrow">NO LINKED PRS YET</span>
-      <p>
-        The last {proof.window.days} days have no public Alfred PR or issue links yet.
-        The repo still merged {fmt(proof.summary.repo_activity.prs_merged)} PRs during the same period.
-        This board lists work when GitHub makes the Alfred link visible.
-      </p>
-    </div>
-  ) : null}
 
   <div class="proof-metrics" role="list">
     {metrics.map((metric) => (
@@ -119,79 +111,77 @@ const metrics = [
     ))}
   </div>
 
-  <div class="proof-layout">
-    <section class="proof-panel" aria-label="Weekly merged pull requests">
-      <div class="proof-panel__head">
-        <h3 class="m-h3">Weekly PRs merged</h3>
-        <span class="m-mono m-mute">Last {proof.window.days} days</span>
-      </div>
-      <div class="trend" role="list">
-        {proof.trend.length > 0 ? (
-          proof.trend.map((item) => (
-            <div class="trend__row" role="listitem">
-              <span class="trend__week m-mono">{item.week}</span>
-              <span class="trend__bar" style={`--w:${Math.max(8, Math.round((item.prs_merged / maxTrend) * 100))}%`}>
-                <span></span>
-              </span>
-              <span class="trend__count">{fmt(item.prs_merged)}</span>
-            </div>
-          ))
-        ) : (
-          <p class="proof-empty">No linked public PRs in the last {proof.window.days} days.</p>
-        )}
-      </div>
-    </section>
+  {hasAlfredRows ? (
+    <>
+      <div class="proof-layout">
+        <section class="proof-panel" aria-label="Weekly merged pull requests">
+          <div class="proof-panel__head">
+            <h3 class="m-h3">Weekly PRs merged</h3>
+            <span class="m-mono m-mute">Last {proof.window.days} days</span>
+          </div>
+          <div class="trend" role="list">
+            {proof.trend.length > 0 ? (
+              proof.trend.map((item) => (
+                <div class="trend__row" role="listitem">
+                  <span class="trend__week m-mono">{item.week}</span>
+                  <span class="trend__bar" style={`--w:${Math.max(8, Math.round((item.prs_merged / maxTrend) * 100))}%`}>
+                    <span></span>
+                  </span>
+                  <span class="trend__count">{fmt(item.prs_merged)}</span>
+                </div>
+              ))
+            ) : (
+              <p class="proof-empty">No public PRs in the last {proof.window.days} days.</p>
+            )}
+          </div>
+        </section>
 
-    <section class="proof-panel" aria-label="Recently opened issues">
-      <div class="proof-panel__head">
-        <h3 class="m-h3">Recent agent-labeled issues</h3>
-        <span class="m-mono m-mute">{fmt(proof.summary.issues_triaged)} triaged</span>
+        <section class="proof-panel" aria-label="Recently opened issues">
+          <div class="proof-panel__head">
+            <h3 class="m-h3">Recent Alfred issues</h3>
+            <span class="m-mono m-mute">{fmt(proof.summary.issues_triaged)} triaged</span>
+          </div>
+          <div class="issue-list">
+            {proof.issues.length > 0 ? (
+              proof.issues.slice(0, 5).map((issue) => (
+                <a class="issue-row" href={issue.url} rel="noopener noreferrer">
+                  <span class="issue-row__num m-mono">#{issue.number}</span>
+                  <span class="issue-row__title">{issue.title}</span>
+                </a>
+              ))
+            ) : (
+              <p class="proof-empty">No public issues in the last {proof.window.days} days.</p>
+            )}
+          </div>
+        </section>
       </div>
-      <div class="issue-list">
-        {proof.issues.length > 0 ? (
-          proof.issues.slice(0, 5).map((issue) => (
-            <a class="issue-row" href={issue.url} rel="noopener noreferrer">
-              <span class="issue-row__num m-mono">#{issue.number}</span>
-              <span class="issue-row__title">{issue.title}</span>
-            </a>
-          ))
-        ) : (
-          <p class="proof-empty">No linked public issues in the last {proof.window.days} days.</p>
-        )}
-      </div>
-    </section>
-  </div>
 
-  <section class="proof-panel proof-panel--wide" aria-label="Recent merged pull requests">
-    <div class="proof-panel__head">
-      <h3 class="m-h3">Recent merged PRs</h3>
-      <span class="m-mono m-mute">Open-source links</span>
-    </div>
-    <div class="pr-list">
-      {proof.prs.length > 0 ? (
-        proof.prs.map((pr) => (
-          <a class="pr-row" href={pr.url} rel="noopener noreferrer">
-            <span class="pr-row__num m-mono">#{pr.number}</span>
-            <span class="pr-row__title">{pr.title}</span>
-            <span class="pr-row__stats m-mono">
-              +{fmt(pr.lines_added)} / -{fmt(pr.lines_removed)}, {fmt(pr.files_changed)} files
-            </span>
-          </a>
-        ))
-      ) : (
-        <p class="proof-empty">No linked public PRs in the last {proof.window.days} days.</p>
-      )}
-    </div>
-  </section>
+      <section class="proof-panel proof-panel--wide" aria-label="Recent merged pull requests">
+        <div class="proof-panel__head">
+          <h3 class="m-h3">Recent merged PRs</h3>
+          <span class="m-mono m-mute">GitHub links</span>
+        </div>
+        <div class="pr-list">
+          {proof.prs.length > 0 ? (
+            proof.prs.map((pr) => (
+              <a class="pr-row" href={pr.url} rel="noopener noreferrer">
+                <span class="pr-row__num m-mono">#{pr.number}</span>
+                <span class="pr-row__title">{pr.title}</span>
+                <span class="pr-row__stats m-mono">
+                  +{fmt(pr.lines_added)} / -{fmt(pr.lines_removed)}, {fmt(pr.files_changed)} files
+                </span>
+              </a>
+            ))
+          ) : (
+            <p class="proof-empty">No public PRs in the last {proof.window.days} days.</p>
+          )}
+        </div>
+      </section>
+    </>
+  ) : null}
 
   <p class="proof-note">
-    Line counts come from GitHub additions and deletions on listed PRs.
-    GitHub includes generated files and lockfiles in those stats.
-    {proof.summary.repo_activity ? (
-      <>
-        {" "}The whole public repo merged {fmt(proof.summary.repo_activity.prs_merged)} PRs during this period. This board lists work when GitHub makes the Alfred link visible.
-      </>
-    ) : null}
+    Line counts come from GitHub additions and deletions.
   </p>
 </section>
 
@@ -225,23 +215,11 @@ const metrics = [
     gap: 16px;
   }
 
-  .proof-callout,
   .proof-metric,
   .proof-panel {
     background: var(--alfred-surface);
     border: 1px solid var(--alfred-border-strong);
     border-radius: var(--radius);
-  }
-
-  .proof-callout {
-    padding: 18px 20px;
-  }
-
-  .proof-callout p {
-    margin: 8px 0 0;
-    color: var(--alfred-text);
-    font-size: 15px;
-    line-height: 1.6;
   }
 
   .proof-metric {

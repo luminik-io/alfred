@@ -5,7 +5,9 @@ Alfred ships a single-host memory layer: a runner can call
 firings learned, and `memory.reflect(...)` afterwards to file new
 ones. The default backend is the in-tree
 [`fleet_brain`](./FLEET_BRAIN.md) SQLite store. Nothing leaves the
-host, no telemetry, no cloud sync.
+host by default, and no raw lessons, prompts, paths, or candidate text are
+uploaded. If you configure Alfred's optional usage counter, it sends aggregate
+counts only and can be disabled with `alfred telemetry off`.
 
 This doc covers the **provider layer** above the brain: how to chain
 multiple memory backends so an agent reads from the fleet-brain first
@@ -69,7 +71,7 @@ chain wrapper catches it and tries the next writer.
 | `fleet` | `lib/memory/providers.py` | yes | Wraps `fleet_brain.FleetBrain`. SQLite under `$ALFRED_HOME`. |
 | `gbrain` | `lib/memory/gbrain_stub.py` | no | Optional subprocess shim into the operator's personal knowledge base CLI. Not bundled functionality. |
 | `redis` | `lib/memory/redis_agent_memory.py` | yes | Optional bridge to Redis Agent Memory Server. Not installed or started by Alfred. |
-| `null` | `lib/memory/providers.py` | no | No-op. `recall` returns `[]`, `reflect` raises. Default when env is empty. |
+| `null` | `lib/memory/providers.py` | no | No-op. `recall` returns `[]`, `reflect` raises. Used when `ALFRED_MEMORY_PROVIDERS=null` or the env var is explicitly empty. |
 
 ## Configuration
 
@@ -114,6 +116,11 @@ export ALFRED_MEMORY_PROVIDERS=fleet,redis
 export ALFRED_REDIS_MEMORY_URL=http://127.0.0.1:8000
 export ALFRED_REDIS_MEMORY_NAMESPACE=alfred
 ```
+
+Keep `fleet` first unless you have a very specific reason. The default
+reflection mode stores engine-proposed memories as reviewable fleet-brain
+candidates before they can enter recall. A Redis-only chain can recall from
+Redis, but it cannot stage those local review candidates.
 
 Check the bridge before putting it in the provider chain:
 
@@ -206,7 +213,7 @@ Now `ALFRED_MEMORY_PROVIDERS=fleet,team_wiki` works.
   base. It is **not** bundled with Alfred. The shim only knows the
   path the operator gives it; if the binary is missing, recall
   returns empty and the chain keeps working.
-- Nothing in the memory layer phones home. The fleet-brain is a
+- Nothing in the default memory layer phones home. The fleet-brain is a
   SQLite file under `$ALFRED_HOME`; the gbrain shim invokes a
   subprocess the operator already installed locally.
 - The `redis` provider only runs when the operator opts in by env.
