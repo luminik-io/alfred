@@ -113,8 +113,8 @@ def _poll_kind(
             head_ref=row.get("headRefName"),
             base_ref=row.get("baseRefName"),
             bundle_slug=_bundle_slug(labels),
-            additions=_non_negative_int(row.get("additions")),
-            deletions=_non_negative_int(row.get("deletions")),
+            additions=_optional_non_negative_int(row, "additions"),
+            deletions=_optional_non_negative_int(row, "deletions"),
         )
     return len(rows)
 
@@ -211,6 +211,12 @@ def _non_negative_int(raw: object) -> int:
     except (TypeError, ValueError):
         return 0
     return max(0, value)
+
+
+def _optional_non_negative_int(row: dict, key: str) -> int | None:
+    if key not in row or row[key] is None:
+        return None
+    return _non_negative_int(row[key])
 
 
 def build_parser() -> argparse.ArgumentParser:
