@@ -1,4 +1,5 @@
 """Public agent display profiles for Alfred surfaces."""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
