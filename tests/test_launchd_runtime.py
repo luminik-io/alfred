@@ -160,6 +160,53 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
     }
 
 
+def test_doctor_accepts_no_url_telemetry_sentinel(tmp_path):
+    home = tmp_path / "home"
+    alfred = tmp_path / "alfred"
+    bin_dir = alfred / "bin"
+    launchd_dir = alfred / "launchd"
+    home.mkdir()
+    bin_dir.mkdir(parents=True)
+    launchd_dir.mkdir(parents=True)
+    (launchd_dir / "agents.conf").write_text(
+        "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+        "alfred.proof-telemetry\tAnonymous usage totals\n"
+    )
+    (bin_dir / "agent-launch").write_text(
+        '#!/usr/bin/env bash\nset -euo pipefail\npython3 "$ALFRED_HOME/bin/$1"\n'
+    )
+    (bin_dir / "agent-launch").chmod(0o755)
+    probe = bin_dir / "proof-telemetry.py"
+    probe.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os\n"
+        "assert os.environ.get('ALFRED_DOCTOR') == '1'\n"
+        "print('[PROOF-TELEMETRY-NO-URL] (doctor: enabled but ALFRED_TELEMETRY_URL unset)')\n"
+    )
+    probe.chmod(0o755)
+
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "ALFRED_HOME": str(alfred),
+        "WORKSPACE_ROOT": str(tmp_path / "code"),
+    }
+    env.pop("ALFRED_TELEMETRY_URL", None)
+    env.pop("ALFRED_TELEMETRY_ENABLED", None)
+
+    res = subprocess.run(
+        ["bash", str(REPO / "bin" / "doctor.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert "proof-telemetry" in res.stdout
+    assert "no URL" in res.stdout
+    assert "unexpected output" not in res.stdout
+
+
 def test_deploy_removes_stale_managed_plists(tmp_path):
     src = tmp_path / "repo"
     home = tmp_path / "home"
