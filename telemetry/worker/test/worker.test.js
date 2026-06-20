@@ -435,6 +435,17 @@ test("forgetInstall removes an install from public totals", async () => {
   assert.equal(totals.installs, 1);
 });
 
+test("forgetInstall removes the install auth token too", async () => {
+  const kv = makeKV();
+  const registered = await registerInstall(kv, { install_id: "install-delete-auth" }, FIXED);
+  assert.equal(registered.ok, true);
+  assert.equal(kv.store.has("auth:install-delete-auth"), true);
+
+  await forgetInstall(kv, "install-delete-auth");
+
+  assert.equal(kv.store.has("auth:install-delete-auth"), false);
+});
+
 // --------------------------------------------------------------------------
 // Concurrent ingest: the whole point of deriving totals on read. Two ingests
 // landing "at the same time" must BOTH be reflected in the derived total, with
@@ -1235,6 +1246,20 @@ test("ingest allows a browser Origin that matches ALLOWED_ORIGIN", async () => {
   assert.equal(res.status, 200);
 });
 
+test("ingest allows a browser Origin listed in comma-separated ALLOWED_ORIGIN", async () => {
+  const env = {
+    TELEMETRY: makeKV(),
+    ALLOWED_ORIGIN: "https://site.example.com, https://alfred.example.com",
+  };
+  const req = new Request("https://telemetry.example.com/ingest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "https://alfred.example.com" },
+    body: JSON.stringify(SAMPLE_PAYLOAD),
+  });
+  const res = await worker.fetch(req, env);
+  assert.equal(res.status, 200);
+});
+
 test("ingest allows a server-side caller (no Origin header) regardless of ALLOWED_ORIGIN", async () => {
   const env = { TELEMETRY: makeKV(), ALLOWED_ORIGIN: "https://alfred.example.com" };
   const res = await worker.fetch(ingestReq(SAMPLE_PAYLOAD), env);
@@ -1334,6 +1359,28 @@ test("POST /register returns credentials for the install", async () => {
   assert.equal(body.ingest, "/ingest");
 });
 
+test("register refuses to overwrite an existing install token", async () => {
+  const kv = makeKV();
+  const first = await registerInstall(kv, { install_id: "install-reg003" }, FIXED);
+  assert.equal(first.ok, true);
+  const stored = kv.store.get("auth:install-reg003");
+
+  const second = await registerInstall(kv, { install_id: "install-reg003" }, FIXED);
+  assert.equal(second.ok, false);
+  assert.equal(second.status, 409);
+  assert.equal(kv.store.get("auth:install-reg003"), stored);
+});
+
+test("POST /register returns 409 for an already-registered install", async () => {
+  const env = { TELEMETRY: makeKV() };
+  const first = await worker.fetch(registerReq({ install_id: "install-reg004" }), env);
+  assert.equal(first.status, 200);
+
+  const second = await worker.fetch(registerReq({ install_id: "install-reg004" }), env);
+  assert.equal(second.status, 409);
+  assert.match((await second.json()).error, /already registered/);
+});
+
 test("ingest requires the registered install token when REQUIRE_INSTALL_TOKEN is set", async () => {
   const env = { TELEMETRY: makeKV(), REQUIRE_INSTALL_TOKEN: "1" };
 
@@ -1367,6 +1414,18 @@ test("registered install token gates tombstone deletes too", async () => {
   );
   assert.equal(goodDelete.status, 200);
   assert.equal((await worker.fetch(req("GET", "/stats"), env).then((r) => r.json())).installs, 0);
+
+  const staleToken = await worker.fetch(
+    ingestReq({ ...SAMPLE_PAYLOAD, prs_opened: 99 }, registered.token),
+    env,
+  );
+  assert.equal(staleToken.status, 401);
+
+  const reRegistered = await (
+    await worker.fetch(registerReq({ install_id: SAMPLE_PAYLOAD.install_id }), env)
+  ).json();
+  assert.ok(reRegistered.token);
+  assert.notEqual(reRegistered.token, registered.token);
 });
 
 test("trusted-counts mode ignores untrusted self-reported progress totals", async () => {

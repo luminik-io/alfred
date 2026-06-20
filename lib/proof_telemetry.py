@@ -186,6 +186,21 @@ def trusted_telemetry_token(env: Mapping[str, str] | None = None) -> str:
     return source.get(TRUSTED_TOKEN_ENV, "").strip()
 
 
+def is_official_hosted_collector(url: str) -> bool:
+    """True only for Alfred's hosted telemetry collector."""
+    return _normalize_endpoint(url) == _normalize_endpoint(DEFAULT_INGEST_URL)
+
+
+def trusted_telemetry_token_for_url(
+    url: str,
+    env: Mapping[str, str] | None = None,
+) -> str:
+    """Private hosted token, withheld from custom/self-hosted collectors."""
+    if not is_official_hosted_collector(url):
+        return ""
+    return trusted_telemetry_token(env)
+
+
 def default_telemetry_url(env: Mapping[str, str] | None = None) -> str:
     source = env if env is not None else os.environ
     configured = source.get(DEFAULT_URL_ENV)
@@ -902,7 +917,7 @@ def report_once(
         # Default poster carries the optional ingest token; an injected poster
         # (tests) keeps the simple (url, payload) signature.
         token = telemetry_token(source, endpoint=url)
-        trusted_token = trusted_telemetry_token(source)
+        trusted_token = trusted_telemetry_token_for_url(url, source)
         if not token:
             register = registrar or register_install
             token = register(url, install_id) or ""
@@ -953,7 +968,7 @@ def clear_report(
     try:
         payload = build_tombstone_payload(resolved_install_id)
         token = telemetry_token(source, endpoint=url)
-        trusted_token = trusted_telemetry_token(source)
+        trusted_token = trusted_telemetry_token_for_url(url, source)
         if not token:
             register = registrar or register_install
             token = register(url, resolved_install_id) or ""

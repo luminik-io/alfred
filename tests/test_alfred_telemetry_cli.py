@@ -174,6 +174,20 @@ def test_telemetry_on_uses_hosted_default_without_url(tmp_path):
     )
 
 
+def test_telemetry_on_uses_default_endpoint_from_alfredrc(tmp_path):
+    endpoint = "https://selfhosted.example.com/ingest"
+    alfredrc = tmp_path / ".alfredrc"
+    alfredrc.write_text(f"ALFRED_DEFAULT_TELEMETRY_URL={endpoint}\n", encoding="utf-8")
+    agents_conf = tmp_path / "agents.conf"
+
+    result = _run(tmp_path, "on", alfredrc=alfredrc, agents_conf=agents_conf)
+
+    assert result.returncode == 0, result.stderr
+    rc_text = alfredrc.read_text(encoding="utf-8")
+    assert f"ALFRED_DEFAULT_TELEMETRY_URL={endpoint}" in rc_text
+    assert f"ALFRED_TELEMETRY_URL={endpoint}" in rc_text
+
+
 def test_telemetry_off_disables_and_removes_scheduler_row(tmp_path):
     alfredrc = tmp_path / ".alfredrc"
     agents_conf = tmp_path / "agents.conf"
@@ -219,11 +233,17 @@ def test_telemetry_off_clears_previous_usage_totals(tmp_path):
         install_id = tmp_path / "alfred" / "state" / "telemetry-install-id"
         install_id.parent.mkdir(parents=True)
         install_id.write_text("install-cli-test\n", encoding="utf-8")
+        token = tmp_path / "alfred" / "state" / "telemetry-token"
+        token_endpoint = tmp_path / "alfred" / "state" / "telemetry-token-endpoint"
+        token.write_text("persisted-install-token\n", encoding="utf-8")
+        token_endpoint.write_text(f"{endpoint}\n", encoding="utf-8")
 
         result = _run(tmp_path, "off", alfredrc=alfredrc, agents_conf=agents_conf)
 
         assert result.returncode == 0, result.stderr
         assert "cleared previous usage totals" in result.stdout
+        assert not token.exists()
+        assert not token_endpoint.exists()
         assert received == [
             {
                 "path": "/ingest",
@@ -259,12 +279,18 @@ def test_telemetry_off_preserves_token_when_clear_fails(tmp_path):
         install_id = tmp_path / "alfred" / "state" / "telemetry-install-id"
         install_id.parent.mkdir(parents=True)
         install_id.write_text("install-cli-test\n", encoding="utf-8")
+        token = tmp_path / "alfred" / "state" / "telemetry-token"
+        token_endpoint = tmp_path / "alfred" / "state" / "telemetry-token-endpoint"
+        token.write_text("persisted-install-token\n", encoding="utf-8")
+        token_endpoint.write_text(f"{endpoint}\n", encoding="utf-8")
 
         result = _run(tmp_path, "off", alfredrc=alfredrc, agents_conf=agents_conf)
 
         assert result.returncode == 0
         assert "could not clear previous usage totals" in result.stderr
         assert received and received[0]["token"] == "shared-secret"
+        assert token.exists()
+        assert token_endpoint.exists()
         rc_text = alfredrc.read_text(encoding="utf-8")
         assert "ALFRED_TELEMETRY_ENABLED=0" in rc_text
         assert f"ALFRED_TELEMETRY_URL={endpoint}" in rc_text

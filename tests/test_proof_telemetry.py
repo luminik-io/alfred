@@ -1114,6 +1114,17 @@ def test_trusted_telemetry_token_reads_env():
     assert pt.trusted_telemetry_token({pt.TRUSTED_TOKEN_ENV: " trusted "}) == "trusted"
 
 
+def test_trusted_telemetry_token_is_scoped_to_hosted_collector():
+    env = {pt.TRUSTED_TOKEN_ENV: " trusted "}
+
+    assert pt.trusted_telemetry_token_for_url(pt.DEFAULT_INGEST_URL, env) == "trusted"
+    assert pt.trusted_telemetry_token_for_url(f"{pt.DEFAULT_INGEST_URL}/", env) == "trusted"
+    assert (
+        pt.trusted_telemetry_token_for_url("https://custom.example.com/ingest", env)
+        == ""
+    )
+
+
 def test_post_sends_token_header_when_set(monkeypatch):
     captured = {}
 

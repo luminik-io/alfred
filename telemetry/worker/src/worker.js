@@ -390,6 +390,10 @@ export async function registerInstall(kv, raw, now = new Date()) {
   if (!INSTALL_ID_RE.test(installId)) {
     return { ok: false, status: 400, error: "install_id missing or malformed" };
   }
+  const existing = await kv.get(authKey(installId), { type: "json" });
+  if (existing && typeof existing === "object") {
+    return { ok: false, status: 409, error: "install already registered" };
+  }
   const token = randomToken(32);
   const token_sha256 = await sha256Hex(token);
   await kv.put(
@@ -630,6 +634,7 @@ export async function ingest(kv, payload, now = new Date(), opts = {}) {
 export async function forgetInstall(kv, installId) {
   await kv.delete(installKey(installId));
   await kv.delete(activityKey(installId));
+  await kv.delete(authKey(installId));
   try {
     await kv.delete(STATS_CACHE_KEY);
   } catch {
@@ -770,8 +775,7 @@ function checkContentType(request) {
 function checkOrigin(request, env) {
   const origin = request.headers.get("Origin");
   if (!origin) return { ok: true }; // no Origin: a server-side (non-browser) caller
-  const allowed = (env && env.ALLOWED_ORIGIN) || "";
-  if (allowed && origin === allowed) return { ok: true };
+  if (configuredStatsOrigins(env).includes(origin)) return { ok: true };
   return { ok: false, status: 403, error: "origin not allowed" };
 }
 
