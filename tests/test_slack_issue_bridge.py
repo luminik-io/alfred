@@ -215,6 +215,16 @@ def test_convert_disabled_creates_nothing() -> None:
     assert creator.calls == []
 
 
+def test_convert_disabled_wins_before_non_operator_refusal() -> None:
+    creator = RecordingCreator()
+    bridge = SlackIssueBridge(config=_config(enabled=False), issue_creator=creator)
+    payload = _ready_payload()
+    outcome = bridge.convert(payload, trusted=True, actor_is_operator=False)
+    assert outcome.created is False
+    assert outcome.status == "disabled"
+    assert creator.calls == []
+
+
 def test_convert_refuses_repo_not_in_allowlist() -> None:
     creator = RecordingCreator()
     bridge = SlackIssueBridge(config=_config(), issue_creator=creator)

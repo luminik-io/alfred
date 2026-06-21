@@ -267,16 +267,16 @@ class SlackIssueBridge:
         # SAFETY GATE 1: trusted user. A non-trusted approval can never create.
         if not trusted:
             return BridgeOutcome(False, "refused_untrusted", "approval from non-trusted user")
+
+        # SAFETY GATE 2: feature must be explicitly enabled.
+        if not self.config.enabled:
+            return BridgeOutcome(False, "disabled", f"{ENV_ENABLED} is not enabled")
         if origin == "slack" and not actor_is_operator:
             return BridgeOutcome(
                 False,
                 "refused_non_operator",
                 "only the configured operator can file a Slack draft as an issue",
             )
-
-        # SAFETY GATE 2: feature must be explicitly enabled.
-        if not self.config.enabled:
-            return BridgeOutcome(False, "disabled", f"{ENV_ENABLED} is not enabled")
 
         # SAFETY GATE 3: idempotency -- never double-create for one draft.
         if already_converted:
