@@ -996,12 +996,7 @@ def derive_counts(brain: Any, *, now: datetime | None = None) -> TelemetryCounts
         if (
             callable(line_summer)
             and last_30_days.lines_changed == 0
-            and (
-                last_30_days.prs_opened > 0
-                or last_30_days.prs_merged > 0
-                or last_30_days.prs_reviewed > 0
-                or last_30_days.files_changed > 0
-            )
+            and last_30_days.prs_merged > 0
         ):
             stale_fields.add("lines_changed")
     except Exception as exc:  # fail-soft by contract

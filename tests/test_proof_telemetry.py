@@ -1018,6 +1018,44 @@ def test_derive_counts_does_not_mark_issue_only_window_as_stale_lines():
     assert counts.stale_fields == ()
 
 
+def test_derive_counts_does_not_mark_open_only_window_as_stale_lines():
+    class MissingRollingLineBrain(GitHubFileCountsBrain):
+        def sum_github_changed_lines(self, **filters):
+            if filters.get("merged_since") is not None:
+                return 0
+            return super().sum_github_changed_lines(**filters)
+
+    now = datetime(2026, 6, 21, tzinfo=UTC)
+    brain = MissingRollingLineBrain(
+        prs=[
+            FakePR(
+                "merged",
+                additions=100,
+                deletions=20,
+                changed_files=3,
+                merged_at=datetime(2026, 5, 1, tzinfo=UTC),
+                created_at=datetime(2026, 5, 1, tzinfo=UTC),
+            ),
+            FakePR(
+                "open",
+                additions=0,
+                deletions=0,
+                changed_files=0,
+                created_at=datetime(2026, 6, 18, tzinfo=UTC),
+            ),
+        ],
+    )
+
+    counts = pt.derive_counts(brain, now=now)
+
+    assert counts.lines_changed == 120
+    assert counts.last_30_days is not None
+    assert counts.last_30_days.prs_opened == 1
+    assert counts.last_30_days.prs_merged == 0
+    assert counts.last_30_days.lines_changed == 0
+    assert counts.stale_fields == ()
+
+
 def test_report_once_does_not_zero_lines_when_line_total_query_fails(tmp_path, monkeypatch):
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
 

@@ -168,7 +168,7 @@ const WINDOW_COUNT_FIELDS = [
   "files_changed",
   "lines_changed",
 ];
-const WINDOW_CODE_ACTIVITY_FIELDS = ["prs_opened", "prs_merged", "prs_reviewed", "files_changed"];
+const WINDOW_LINE_ACTIVITY_FIELDS = ["prs_merged"];
 const FIELD_MAXIMUMS = {
   lines_changed: MAX_LINES_CHANGED,
 };
@@ -707,7 +707,7 @@ export async function ingest(kv, payload, now = new Date(), opts = {}) {
     }
     const previousSnapshot = normalizeSnapshot(previous);
     const canPreservePrevious = !countsNeedTrust || previousSnapshot.trusted_reporter === true;
-    const hasRollingCodeActivity = WINDOW_CODE_ACTIVITY_FIELDS.some(
+    const hasRollingLineActivity = WINDOW_LINE_ACTIVITY_FIELDS.some(
       (field) => snapshot.last_30_days[field] > 0,
     );
     if (snapshot.lines_changed === 0) {
@@ -717,7 +717,7 @@ export async function ingest(kv, payload, now = new Date(), opts = {}) {
       );
     }
     snapshot.last_30_days.lines_changed = clampCount(
-      canPreservePrevious && hasRollingCodeActivity ? previousSnapshot.last_30_days.lines_changed : 0,
+      canPreservePrevious && hasRollingLineActivity ? previousSnapshot.last_30_days.lines_changed : 0,
       FIELD_MAXIMUMS.lines_changed,
     );
   }

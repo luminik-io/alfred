@@ -948,6 +948,57 @@ test("issue-only rolling windows do not preserve stale rolling lines", async () 
   assert.equal(agg.last_30_days.lines_changed, 0);
 });
 
+test("open-only rolling windows do not preserve stale rolling lines", async () => {
+  const kv = makeKV();
+  const first = normalizePayload({
+    install_id: "install-staleopenwindow",
+    period: "lifetime",
+    prs_opened: 4,
+    prs_merged: 3,
+    lines_changed: 1200,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 4,
+      prs_merged: 3,
+      files_changed: 20,
+      lines_changed: 900,
+    },
+  }).value;
+  const openOnlyWindow = normalizePayload({
+    install_id: "install-staleopenwindow",
+    period: "lifetime",
+    prs_opened: 5,
+    prs_merged: 3,
+    lines_changed: 0,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 1,
+      prs_merged: 0,
+      prs_reviewed: 0,
+      issues_opened: 0,
+      issues_closed: 0,
+      files_changed: 0,
+      lines_changed: 0,
+    },
+    stale_fields: ["lines_changed"],
+  }).value;
+
+  await ingest(kv, first, FIXED);
+  await ingest(kv, openOnlyWindow, FIXED);
+
+  const snapshot = JSON.parse(kv.store.get("install:install-staleopenwindow"));
+  assert.equal(snapshot.lines_changed, 1200);
+  assert.equal(snapshot.last_30_days.prs_opened, 1);
+  assert.equal(snapshot.last_30_days.prs_merged, 0);
+  assert.equal(snapshot.last_30_days.lines_changed, 0);
+
+  const agg = await totalsOf(kv);
+  assert.equal(agg.lines_changed, 1200);
+  assert.equal(agg.last_30_days.prs_opened, 1);
+  assert.equal(agg.last_30_days.prs_merged, 0);
+  assert.equal(agg.last_30_days.lines_changed, 0);
+});
+
 test("trusted-counts stale lines never promote an earlier untrusted total", async () => {
   const kv = makeKV();
   const untrusted = normalizePayload({
