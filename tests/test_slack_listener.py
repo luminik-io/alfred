@@ -1559,6 +1559,81 @@ def test_conversation_thread_reply_can_borrow_root_target(tmp_path: Path) -> Non
     assert "acme-io/acme-backend#4" in poster.messages[-1]["text"]
 
 
+def test_conversation_thread_does_not_borrow_stale_channel_target(tmp_path: Path) -> None:
+    poster = CardPoster()
+    control = SimpleNamespace(
+        handle=lambda text, **_: SimpleNamespace(
+            handled=True, action="status", text="*Fleet status*", detail=""
+        )
+    )
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=control,
+        intent_engine=_intent_engine(
+            {
+                "action": "queue_issue",
+                "repo": "acme-io/acme-backend",
+                "issue": 9,
+                "confidence": 0.95,
+            }
+        ),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    older = listener.handle_payload(
+        {
+            "event_id": "EvOlderChannelTarget",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> queue acme-io/acme-backend#9",
+                "ts": "1716480910.000001",
+            },
+        }
+    )
+    assert older.action == "intent_confirmation_posted"
+
+    listener._intent_engine = _intent_engine({"action": "status_query", "confidence": 0.95})
+    status_root = listener.handle_payload(
+        {
+            "event_id": "EvNewStatusRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> status?",
+                "ts": "1716480920.000001",
+            },
+        }
+    )
+    assert status_root.action == "intent_status"
+
+    listener._intent_engine = _intent_engine({"action": "queue_issue", "confidence": 0.8})
+    followup = listener.handle_payload(
+        {
+            "event_id": "EvNewStatusThreadFollowup",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "yes, do it",
+                "ts": "1716480921.000001",
+                "thread_ts": "1716480920.000001",
+            },
+        }
+    )
+
+    assert followup.action == "intent_clarify"
+    assert "acme-io/acme-backend#9" not in poster.messages[-1]["text"]
+
+
 def test_threaded_mention_does_not_claim_existing_human_thread(tmp_path: Path) -> None:
     poster = CardPoster()
     listener = SlackPlanningListener(

@@ -425,14 +425,24 @@ class SlackPlanningListener:
         thread_conversation_id = f"thread:{event.channel}:{event.root_ts}"
         if event.conversation_id == thread_conversation_id:
             return
-        for turn in self._conversation.recent(event.conversation_id):
-            self._conversation.record(
-                thread_conversation_id,
-                text=turn.text,
-                action=turn.action,
-                repo=turn.repo,
-                issue=turn.issue,
-            )
+        root_text = (event.text or "").strip()
+        root_turn = next(
+            (
+                turn
+                for turn in reversed(self._conversation.recent(event.conversation_id))
+                if turn.text == root_text
+            ),
+            None,
+        )
+        if root_turn is None:
+            return
+        self._conversation.record(
+            thread_conversation_id,
+            text=root_turn.text,
+            action=root_turn.action,
+            repo=root_turn.repo,
+            issue=root_turn.issue,
+        )
 
     def _handle_conversation_thread_reply(self, event: SlackInputEvent) -> ListenerResult:
         """Route trusted replies in an Alfred-started thread without re-mentioning."""
