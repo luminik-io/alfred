@@ -677,8 +677,6 @@ def resolve_assignment_agent(text: str, *, model_agent: str = "") -> tuple[str, 
         ),
     }
     explicit = _assignment_agent_from_text(text, aliases)
-    if not explicit and model_agent:
-        explicit = _assignment_agent_from_model(model_agent, aliases)
     if not explicit:
         return "", ""
     if explicit == "alfred":
@@ -701,6 +699,8 @@ def _assignment_agent_from_text(
             if any(_contains_token(normalized, f"{prefix} {name}") for prefix in prefixes):
                 return agent
     exact = _known_assignment_agent(text, aliases)
+    if not exact:
+        exact = _known_assignment_agent(_strip_leading_articles(normalized), aliases)
     if exact:
         return exact
     match = re.search(
@@ -710,6 +710,10 @@ def _assignment_agent_from_text(
     if match:
         return _known_assignment_agent(match.group(1), aliases)
     return ""
+
+
+def _strip_leading_articles(text: str) -> str:
+    return re.sub(r"^(?:the|a|an)\s+", "", (text or "").strip(), count=1)
 
 
 def _known_assignment_agent(
@@ -730,24 +734,6 @@ def _known_assignment_agent(
             return agent
         if normalized in names:
             return agent
-    return ""
-
-
-def _assignment_agent_from_model(
-    model_agent: str,
-    aliases: dict[str, tuple[str, ...]],
-) -> str:
-    normalized = _normalize(model_agent)
-    if not normalized:
-        return ""
-    collapsed = re.sub(r"[^a-z0-9._-]+", "", normalized)
-    for agent, names in aliases.items():
-        if normalized == agent or collapsed == agent:
-            return agent
-        if normalized in names:
-            return agent
-    if _CODENAME_RE.match(collapsed):
-        return collapsed
     return ""
 
 

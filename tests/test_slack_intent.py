@@ -39,6 +39,7 @@ from slack_intent import (  # noqa: E402
     RepoCatalog,
     classify_intent,
     resolve_agent_codename,
+    resolve_assignment_agent,
     resolve_issue,
 )
 
@@ -140,6 +141,26 @@ def test_assign_issue_text_lane_beats_conflicting_model_lane() -> None:
     assert intent.needs_clarification is False
 
 
+def test_assign_issue_ignores_model_lane_without_explicit_text() -> None:
+    intent = classify_intent(
+        "assign acme-io/acme-backend#12",
+        engine_invoke=_engine_returning(
+            {
+                "action": "assign_issue",
+                "repo": "acme-io/acme-backend",
+                "issue": 12,
+                "agent": "lucius",
+                "confidence": 0.91,
+            }
+        ),
+        catalog=CATALOG,
+    )
+
+    assert intent.action == ACTION_ASSIGN
+    assert intent.agent == ""
+    assert intent.needs_clarification is False
+
+
 def test_assign_issue_explicit_unsupported_lane_asks() -> None:
     intent = classify_intent(
         "assign acme-io/acme-backend#12 to Drake",
@@ -178,8 +199,13 @@ def test_assign_issue_to_fix_phrase_does_not_become_lane() -> None:
     )
 
     assert intent.action == ACTION_ASSIGN
-    assert intent.agent == "lucius"
+    assert intent.agent == ""
     assert intent.needs_clarification is False
+
+
+def test_resolve_assignment_agent_accepts_article_prefixed_lane_reply() -> None:
+    assert resolve_assignment_agent("the architect") == ("batman", "")
+    assert resolve_assignment_agent("the senior developer") == ("lucius", "")
 
 
 def test_run_agent_classifies_as_confirmable_mutation() -> None:
