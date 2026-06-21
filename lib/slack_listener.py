@@ -960,10 +960,11 @@ class SlackPlanningListener:
         if routed is not None:
             return routed
 
-        # A channel message may still LEAD with a literal control verb (e.g.
+        # A channel message may still use a read-only literal command (e.g.
         # "status"); honor that as a backcompat fallback when the router is
-        # disabled or cannot classify the text.
-        if is_control_message(event.text):
+        # disabled or cannot classify the text. Mutating controls stay behind
+        # the confirmation-card path.
+        if _is_read_only_control_text(event.text):
             control = self.control_handler.handle(
                 event.text,
                 trusted=True,

@@ -1006,6 +1006,31 @@ def test_ambient_mutating_intent_only_posts_card_never_executes(
     assert record.status == "awaiting_confirmation"
 
 
+def test_ambient_control_fallback_blocks_mutating_commands(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
+    monkeypatch.setenv("ALFRED_SLACK_AMBIENT", "1")
+
+    poster = CardPoster()
+    control = StubControl()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine({"action": "unknown", "confidence": 0.2}),
+        repo_catalog=_catalog(),
+        control_handler=control,
+        ambient_channels=("C-FLEET",),
+    )
+
+    mutating = listener.handle_payload(_channel_msg("run Batman now"))
+
+    assert mutating.handled is False
+    assert "not actionable" in mutating.detail
+    assert control.calls == []
+
+
 def test_ambient_confirm_executes_only_after_operator_reaction(tmp_path: Path, monkeypatch) -> None:
     # End-to-end through ambient: nothing runs until the operator reacts on the
     # card, and then it runs exactly the same set_issue_pickup the literal-verb
