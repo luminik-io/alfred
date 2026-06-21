@@ -67,6 +67,7 @@ from slack_intent import (
     default_intent_engine_invoke,
     looks_like_followup_reference,
     resolve_agent_codename,
+    resolve_assignment_agent,
     resolve_issue,
 )
 from slack_issue_bridge import SlackIssueBridge, build_issue_body
@@ -514,12 +515,15 @@ class SlackPlanningListener:
                 repo = issue_repo
                 candidates = []
         issue = issue if issue is not None else turn.issue
+        agent = turn.agent
+        if turn.action == ACTION_ASSIGN and not agent:
+            agent = resolve_assignment_agent(event.text)
 
         intent = Intent(
             action=turn.action,
             repo=repo,
             issue=issue,
-            agent=turn.agent,
+            agent=agent,
             params={
                 "raw_text": event.text.strip(),
                 "clarification_root": turn.text,
@@ -921,6 +925,8 @@ class SlackPlanningListener:
             action=intent.action,
             repo=prev_repo,
             issue=resolved_issue,
+            agent=intent.agent,
+            schedule=intent.schedule,
             params=params,
             confidence=intent.confidence,
             clarification=clarification,
