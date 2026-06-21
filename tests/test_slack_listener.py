@@ -1372,9 +1372,115 @@ def test_status_query_answered_directly_without_confirmation(tmp_path: Path) -> 
     result = listener.handle_payload(_intent_dm("how's the fleet doing?"))
     assert result.handled is True
     assert result.action == "intent_status"
-    # Read-only: it answered, it never registered a confirmation thread.
+    # Read-only: it answered, it never registered a confirmation card.
     assert "Fleet status" in poster.messages[-1]["text"]
     assert "status" in control.calls
+    registry = SlackThreadRegistry(tmp_path / "slack-threads")
+    assert registry.lookup("D9", poster.card_ts()) is None
+
+
+def test_top_level_mention_keeps_thread_conversational_without_remention(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    control = SimpleNamespace(calls=[])
+
+    def handle(text, *, trusted, actor_user_id=None):
+        control.calls.append(text)
+        return SimpleNamespace(
+            handled=True,
+            action=text.split()[0],
+            text=f"*Answer for* `{text}`",
+            detail="",
+        )
+
+    control.handle = handle
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=control,
+        intent_engine=_intent_engine({"action": "status_query", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    first = listener.handle_payload(
+        {
+            "event_id": "EvMentionStatus",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> how is the fleet doing?",
+                "ts": "1716480700.000001",
+            },
+        }
+    )
+
+    assert first.action == "intent_status"
+    registry = SlackThreadRegistry(tmp_path / "slack-threads")
+    record = registry.lookup("C1", "1716480700.000001")
+    assert record is not None
+    assert record.kind == "conversation"
+    assert record.status == "open"
+
+    second = listener.handle_payload(
+        {
+            "event_id": "EvMentionStatusReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "what shipped today?",
+                "ts": "1716480701.000001",
+                "thread_ts": "1716480700.000001",
+            },
+        }
+    )
+
+    assert second.handled is True
+    assert second.action == "intent_status"
+    assert control.calls == ["status", "runs"]
+    assert poster.messages[-1]["thread_ts"] == "1716480700.000001"
+
+
+def test_threaded_mention_does_not_claim_existing_human_thread(tmp_path: Path) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine({"action": "status_query", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    result = listener.handle_payload(
+        {
+            "event_id": "EvThreadMentionStatus",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> status?",
+                "ts": "1716480801.000001",
+                "thread_ts": "1716480800.000001",
+            },
+        }
+    )
+
+    assert result.action == "intent_status"
+    registry = SlackThreadRegistry(tmp_path / "slack-threads")
+    assert registry.lookup("C1", "1716480800.000001") is None
 
 
 def test_mutating_intent_posts_card_and_does_not_execute(tmp_path: Path, monkeypatch) -> None:

@@ -306,9 +306,11 @@ class SlackPlanningListener:
         if event.is_reaction:
             return ListenerResult(False, "ignored", "reaction is not on a registered thread")
         if event.is_direct_intake:
-            return self._handle_direct_intake(event)
+            result = self._handle_direct_intake(event)
+            return self._remember_conversation_root(event, result)
         if event.is_plain_channel_message:
-            return self._maybe_handle_ambient(event)
+            result = self._maybe_handle_ambient(event)
+            return self._remember_conversation_root(event, result)
         return ListenerResult(False, "ignored", "message is not a registered thread or intake")
 
     def _handle_thread_reaction(
@@ -343,6 +345,8 @@ class SlackPlanningListener:
         )
         if record.kind == "draft":
             return self._handle_draft_revision(event, record, feedback)
+        if record.kind == "conversation":
+            return self._handle_conversation_thread_reply(event)
         if record.kind == "plan":
             return self._handle_plan_revision(event, record, feedback, feedback_path)
         if record.kind in {"report", "pr", "followup"}:
@@ -380,6 +384,63 @@ class SlackPlanningListener:
             action = "captured_plan_feedback"
         self._post_thread_ack(event.channel, event.root_ts, ack or "*Feedback captured*")
         return ListenerResult(True, action, thread_kind=record.kind)
+
+    def _remember_conversation_root(
+        self, event: SlackInputEvent, result: ListenerResult
+    ) -> ListenerResult:
+        """Keep top-level Alfred-started Slack threads conversational.
+
+        A trusted top-level mention or Alfred-addressed ambient message can start
+        with a status question, clarification, or confirmation card rather than
+        a planning draft. Register that root so later replies in the same thread
+        do not need another @mention. We intentionally do not claim a pre-existing
+        human-owned thread when the first Alfred mention happened as a reply.
+        """
+        if not result.handled or event.is_reaction or event.is_thread_reply:
+            return result
+        if result.action.startswith("draft_"):
+            return result
+        if not (event.is_direct_intake or event.is_plain_channel_message):
+            return result
+        self.registry.register(
+            SlackThreadRecord(
+                kind="conversation",
+                channel=event.channel,
+                thread_ts=event.root_ts,
+                codename="slack",
+                title=_thread_title_from_text(event.text),
+                status="open",
+                metadata={
+                    "source": "slack-conversation",
+                    "last_action": result.action,
+                    "origin_event_type": event.event_type,
+                    "requested_by": event.user,
+                },
+            )
+        )
+        return result
+
+    def _handle_conversation_thread_reply(self, event: SlackInputEvent) -> ListenerResult:
+        """Route trusted replies in an Alfred-started thread without re-mentioning."""
+        routed = self._maybe_route_intent(event)
+        if routed is not None:
+            return routed
+
+        if is_control_message(event.text):
+            control = self.control_handler.handle(
+                event.text,
+                trusted=True,
+                actor_user_id=event.user,
+            )
+            if control.handled:
+                self._post_thread_ack(event.channel, event.root_ts, control.text)
+                return ListenerResult(
+                    True,
+                    f"conversation_control_{control.action}",
+                    detail=control.detail,
+                )
+
+        return ListenerResult(False, "ignored", "conversation reply is not actionable")
 
     def _handle_plan_revision(
         self,
@@ -2892,6 +2953,16 @@ def _control_result_failed(control: Any) -> bool:
 
 def _safe_event_id(event_id: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", event_id).strip("_") or "event"
+
+
+def _thread_title_from_text(text: str, *, limit: int = 90) -> str:
+    cleaned = re.sub(r"<@[A-Z0-9]+>", "", text or "")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        return "Slack conversation"
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[: limit - 1].rstrip() + "..."
 
 
 def _default_state_root() -> Path:
