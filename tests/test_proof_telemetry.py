@@ -982,6 +982,42 @@ def test_derive_counts_marks_line_field_stale_when_rolling_lines_are_missing():
     assert counts.stale_fields == ("lines_changed",)
 
 
+def test_derive_counts_does_not_mark_issue_only_window_as_stale_lines():
+    now = datetime(2026, 6, 21, tzinfo=UTC)
+    brain = GitHubFileCountsBrain(
+        prs=[
+            FakePR(
+                "merged",
+                additions=100,
+                deletions=20,
+                changed_files=3,
+                merged_at=datetime(2026, 5, 1, tzinfo=UTC),
+                created_at=datetime(2026, 5, 1, tzinfo=UTC),
+            )
+        ],
+        issues=[
+            FakeIssue(
+                "closed",
+                labels=["agent:triage"],
+                created_at=datetime(2026, 6, 18, tzinfo=UTC),
+                closed_at=datetime(2026, 6, 19, tzinfo=UTC),
+            )
+        ],
+    )
+
+    counts = pt.derive_counts(brain, now=now)
+
+    assert counts.lines_changed == 120
+    assert counts.last_30_days is not None
+    assert counts.last_30_days.issues_opened == 1
+    assert counts.last_30_days.issues_closed == 1
+    assert counts.last_30_days.prs_opened == 0
+    assert counts.last_30_days.prs_merged == 0
+    assert counts.last_30_days.files_changed == 0
+    assert counts.last_30_days.lines_changed == 0
+    assert counts.stale_fields == ()
+
+
 def test_report_once_does_not_zero_lines_when_line_total_query_fails(tmp_path, monkeypatch):
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
 

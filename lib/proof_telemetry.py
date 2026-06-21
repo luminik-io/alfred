@@ -1000,8 +1000,6 @@ def derive_counts(brain: Any, *, now: datetime | None = None) -> TelemetryCounts
                 last_30_days.prs_opened > 0
                 or last_30_days.prs_merged > 0
                 or last_30_days.prs_reviewed > 0
-                or last_30_days.issues_opened > 0
-                or last_30_days.issues_closed > 0
                 or last_30_days.files_changed > 0
             )
         ):
