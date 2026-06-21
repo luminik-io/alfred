@@ -252,7 +252,7 @@ Safety model:
 
 The bridge is the wire that turns an *approved* planning draft into a labeled
 GitHub issue the autonomous fleet (Lucius / Batman) picks up. It is **off by
-default**. When enabled, a trusted user can approve a draft directly in its
+default**. When enabled, the operator can approve a draft directly in its
 thread, and Alfred files one issue carrying the pickup label.
 
 **What it does and does not do.** The bridge only runs `gh issue create` with
@@ -265,8 +265,8 @@ of bypassing it.
 **Five gates are all required** before an issue is created:
 
 1. The bridge is explicitly enabled with `ALFRED_BRIDGE_ENABLED=1`.
-2. A **trusted** Slack user (`ALFRED_OPERATOR_SLACK_USER_ID` /
-   `ALFRED_TRUSTED_SLACK_USER_IDS`). A non-trusted user can never trigger it.
+2. The **operator** Slack user (`ALFRED_OPERATOR_SLACK_USER_ID`). Trusted
+   collaborators can refine drafts, but cannot file them as GitHub issues.
 3. An **explicit approval token** in a registered draft thread: a configured
    phrase (default `ship it` / `create issue` / `file issue` / `/ship`) or a
    `:white_check_mark:` reaction on the draft. Ambiguous prose is never treated
