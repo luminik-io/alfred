@@ -654,7 +654,7 @@ def resolve_agent_codename(
 
 def resolve_assignment_agent(text: str, *, model_agent: str = "") -> str:
     """Resolve the requested issue-assignment lane, if the operator named one."""
-    candidates = (model_agent, text)
+    candidates = (text, model_agent)
     aliases = {
         "batman": (
             "architect",

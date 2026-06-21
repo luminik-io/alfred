@@ -120,6 +120,26 @@ def test_assign_issue_classifies_as_confirmable_mutation() -> None:
     assert intent.needs_clarification is False
 
 
+def test_assign_issue_text_lane_beats_conflicting_model_lane() -> None:
+    intent = classify_intent(
+        "assign acme-io/acme-backend#12 to Batman",
+        engine_invoke=_engine_returning(
+            {
+                "action": "assign_issue",
+                "repo": "acme-io/acme-backend",
+                "issue": 12,
+                "agent": "lucius",
+                "confidence": 0.91,
+            }
+        ),
+        catalog=CATALOG,
+    )
+
+    assert intent.action == ACTION_ASSIGN
+    assert intent.agent == "batman"
+    assert intent.needs_clarification is False
+
+
 def test_run_agent_classifies_as_confirmable_mutation() -> None:
     intent = classify_intent(
         "can you run Batman now?",
