@@ -852,9 +852,15 @@ def _build_codex() -> dict[str, Any] | None:
     # cumulative total/input/output at the prior-day boundary and on the latest
     # day's final event.
     sessions: dict[str, dict[str, Any]] = {}
-    # Newest rate_limits payload seen, with its event timestamp for tie-breaks.
-    quota_ts: datetime | None = None
-    quota_raw: dict[str, Any] | None = None
+    # Newest non-null rate_limits windows, tracked independently so a later
+    # payload that reports a null window (Codex emits these between billing
+    # windows) cannot wipe an earlier valid one.
+    primary_ts: datetime | None = None
+    secondary_ts: datetime | None = None
+    plan_ts: datetime | None = None
+    primary_raw: dict[str, Any] | None = None
+    secondary_raw: dict[str, Any] | None = None
+    plan_type: str | None = None
 
     for root in _codex_session_dirs():
         if not os.path.isdir(root):
@@ -873,9 +879,27 @@ def _build_codex() -> dict[str, Any] | None:
                     continue
 
                 rate_limits = payload.get("rate_limits")
-                if isinstance(rate_limits, dict) and (quota_ts is None or ts >= quota_ts):
-                    quota_ts = ts
-                    quota_raw = rate_limits
+                if isinstance(rate_limits, dict):
+                    prim = rate_limits.get("primary")
+                    if _codex_quota_window(prim) is not None and (
+                        primary_ts is None or ts >= primary_ts
+                    ):
+                        primary_ts = ts
+                        primary_raw = prim
+                    sec = rate_limits.get("secondary")
+                    if _codex_quota_window(sec) is not None and (
+                        secondary_ts is None or ts >= secondary_ts
+                    ):
+                        secondary_ts = ts
+                        secondary_raw = sec
+                    plan = rate_limits.get("plan_type")
+                    if (
+                        isinstance(plan, str)
+                        and plan.strip()
+                        and (plan_ts is None or ts >= plan_ts)
+                    ):
+                        plan_ts = ts
+                        plan_type = plan.strip()
 
                 info = payload.get("info")
                 if not isinstance(info, dict):
@@ -967,6 +991,13 @@ def _build_codex() -> dict[str, Any] | None:
     }
     totals = {"total_tokens": None, "cost_usd": None}
     out: dict[str, Any] = {"latest_day": latest_day, "totals": totals}
+    quota_raw: dict[str, Any] | None = None
+    if primary_raw is not None or secondary_raw is not None or plan_type is not None:
+        quota_raw = {
+            "primary": primary_raw,
+            "secondary": secondary_raw,
+            "plan_type": plan_type,
+        }
     quota = _codex_quota(quota_raw)
     if quota is not None:
         out["quota"] = quota
