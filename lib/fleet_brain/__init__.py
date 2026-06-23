@@ -133,9 +133,19 @@ _NON_ACTIONABLE_FAILURE_SUBTYPES = {
 # Auto-promotion defaults. Every one is env-tunable so a deployment can tune
 # the gate without a code change, and all of it is OFF until ALFRED_AUTO_PROMOTE
 # is explicitly set (see ``FleetBrain.auto_promote_enabled``).
-AUTO_PROMOTE_DEFAULT_THRESHOLD = 0.9
+# The threshold is a LIGHT pre-filter, not the decision: any evidenced
+# candidate (candidates default to confidence 0.5) must reach the LLM judge,
+# which makes the real save/skip call. Memory has to capture AND save
+# autonomously via the model; a high bar that dumps observed lessons to a
+# human queue just piles up and never gets reviewed.
+AUTO_PROMOTE_DEFAULT_THRESHOLD = 0.5
 AUTO_PROMOTE_DEFAULT_MAX_PER_RUN = 5
 AUTO_PROMOTE_DEFAULT_MAX_JUDGE_CALLS = 25
+# When the LLM judge is explicitly disabled, the structural confidence is the
+# ONLY gate, so the low judge-era bar would auto-promote every evidenced
+# default-confidence candidate with no review. Hold a conservative floor in
+# that case (env-tunable) so heuristic-only promotion stays selective.
+AUTO_PROMOTE_NO_JUDGE_THRESHOLD = 0.9
 
 # A candidate the auto-promoter has set aside for a human keeps status
 # ``candidate`` (so it stays in the review queue and the dedup index) but its
@@ -491,7 +501,9 @@ class FleetBrain:
           * it does not conflict with another pending candidate that normalizes
             to the same body (two unreviewed versions => leave both for a
             human);
-          * ``confidence >= threshold`` (default 0.9, env-tunable).
+          * ``confidence >= threshold`` (default 0.5, env-tunable) -- a light
+            pre-filter so any evidenced candidate reaches the judge, which is
+            the real save/skip decision (autonomous LLM-driven capture+save).
 
         LLM judge (additive, default ON when armed, gated behind
         ``ALFRED_AUTO_PROMOTE_LLM_JUDGE``): for each candidate that clears the
@@ -546,6 +558,19 @@ class FleetBrain:
                 "ALFRED_AUTO_PROMOTE_THRESHOLD", AUTO_PROMOTE_DEFAULT_THRESHOLD, env_src
             )
         )
+        # The low default bar only makes sense because the LLM judge is the
+        # real decider. With the judge off, raise the bar to a conservative
+        # floor so default-confidence candidates are not blindly promoted with
+        # no model or human review.
+        if not use_judge:
+            bar = max(
+                bar,
+                _env_float(
+                    "ALFRED_AUTO_PROMOTE_NO_JUDGE_THRESHOLD",
+                    AUTO_PROMOTE_NO_JUDGE_THRESHOLD,
+                    env_src,
+                ),
+            )
         cap = (
             int(max_per_run)
             if max_per_run is not None
