@@ -3,13 +3,19 @@ title: Changelog
 description: Recent Alfred releases. Full history in CHANGELOG.md.
 ---
 
-Recent releases. The canonical, complete history lives in [`CHANGELOG.md`](https://github.com/luminik-io/alfred-os/blob/main/CHANGELOG.md) on GitHub. It follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format and [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Tagged releases are at [github.com/luminik-io/alfred-os/releases](https://github.com/luminik-io/alfred-os/releases).
-
-This page is a readable summary of recent releases. For forward-looking work (in flight, next, horizon), see the [roadmap](/about/roadmap/).
+A readable summary of recent releases. The canonical, complete history lives in [`CHANGELOG.md`](https://github.com/luminik-io/alfred-os/blob/main/CHANGELOG.md) on GitHub, which follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format and [Semantic Versioning](https://semver.org/spec/v2.0.0.html); tagged releases are at [github.com/luminik-io/alfred-os/releases](https://github.com/luminik-io/alfred-os/releases). For forward-looking work (in flight, next, horizon), see the [roadmap](/about/roadmap/).
 
 ## Unreleased
 
 Changes merged to `main` since the last tagged release. The running list is the [`[Next]` section of `CHANGELOG.md`](https://github.com/luminik-io/alfred-os/blob/main/CHANGELOG.md).
+
+## 0.5.2 (2026-06-22)
+
+- The native app ships the refreshed dark interface from the public source, so Inbox / Ask / Work / Agents / Setup look the same in the internal and OSS builds.
+- Redis Agent Memory is now the default local memory layer, with FleetBrain kept as the review and reliability layer; docs and install copy match that runtime path.
+- Slack planning threads are easier to follow: the first message needs the Alfred mention, and follow-up replies stay attached to the same plan.
+- Repo-graph support in the code-map flow, and visual-QA tooling (screenshot parity, pixel-sweep hardening) for the desktop client.
+- Fresher public-site impact proof, cleaner mobile hero layouts, and launch copy that explains Alfred's real value: coding agents keep work moving from Slack, GitHub, or a rough plan while you are away.
 
 ## 0.5.1 (2026-06-17)
 

@@ -18,6 +18,10 @@ Effort sizing is uniform across tiers: **S** is roughly a week of focused work, 
 
 The [changelog](/about/changelog/) is the detailed, version-by-version ledger. This tier is the short version, so the roadmap stays a forward-looking document.
 
+### v0.5.2 (2026-06-22)
+
+Design parity between the internal and OSS builds (the refreshed dark UI across Inbox / Ask / Work / Agents / Setup), Redis Agent Memory as the default local memory layer with FleetBrain as the review and reliability layer, smoother Slack planning threads, repo-graph support in the code-map flow, desktop visual-QA tooling, and a fresher public site.
+
 ### v0.5.1 (2026-06-17)
 
 First-run trust polish and the public download path for the signed native client: a public `/download/` page, `alfred serve` and the desktop app aligned on port 7010, and the docs/site brought in line with the shipped client.
