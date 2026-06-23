@@ -137,6 +137,28 @@ def test_emergency_reclaims_dev_caches(tmp_path, monkeypatch):
     assert mod.dev_cache_freed_mb > 0
 
 
+def test_emergency_dev_cache_skips_symlinks_but_still_clears(tmp_path, monkeypatch):
+    """A symlink inside a cache is not counted and never blocks the rmtree."""
+    monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DEV_CACHES", raising=False)
+    home = tmp_path / "home"
+    derived = home / "Library" / "Developer" / "Xcode" / "DerivedData" / "App"
+    derived.mkdir(parents=True)
+    (derived / "real.o").write_bytes(b"x" * 4096)
+    external = tmp_path / "outside-target.bin"
+    external.write_bytes(b"z" * 1_000_000)
+    (derived / "link").symlink_to(external)
+    (home / ".npm" / "_cacache").mkdir(parents=True)
+
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--emergency"], home=home)
+
+    # DerivedData is removed despite containing a symlink...
+    assert not (home / "Library" / "Developer" / "Xcode" / "DerivedData").exists()
+    # ...the symlink target outside the cache is untouched...
+    assert external.exists()
+    # ...and the freed count reflects only the real file, not the 1 MB target.
+    assert mod.dev_cache_freed_mb < 0.5
+
+
 def test_non_emergency_leaves_dev_caches_untouched(tmp_path, monkeypatch):
     """A normal (non-emergency) sweep never touches machine-wide dev caches."""
     home = tmp_path / "home"

@@ -557,6 +557,9 @@ for lock_dir in Path("/tmp").glob("agent-lock-*"):
     shutil.rmtree(lock_dir, ignore_errors=True)
     locks_unlocked += 1
 
+if EMERGENCY:
+    print("[cleanup] EMERGENCY mode: aggressive thresholds (disk-pressure recovery)")
+
 # In EMERGENCY mode, reclaim well-known regenerable developer caches that live
 # OUTSIDE the workspace. Every other pass here is workspace-scoped, so a host
 # whose free space is eaten by Xcode DerivedData or the npm cache can wedge the
@@ -575,19 +578,23 @@ if EMERGENCY and os.environ.get("ALFRED_EMERGENCY_SKIP_DEV_CACHES") != "1":
     for cache_root in DEV_CACHE_ROOTS:
         if not cache_root.is_dir():
             continue
-        try:
-            size_mb = sum(f.stat().st_size for f in cache_root.rglob("*") if f.is_file()) / (
-                1024 * 1024
-            )
-        except OSError:
-            continue
+        # Size is best-effort and must NEVER gate deletion: a single locked or
+        # permission-denied file inside DerivedData would otherwise skip the
+        # whole rmtree and leave the disk full (the exact failure this fixes).
+        # rmtree(ignore_errors=True) already tolerates per-file errors. Skip
+        # symlinks so the count never includes bytes rmtree will not free.
+        size_mb = 0.0
+        for f in cache_root.rglob("*"):
+            try:
+                if f.is_symlink() or not f.is_file():
+                    continue
+                size_mb += f.lstat().st_size / (1024 * 1024)
+            except OSError:
+                continue
         shutil.rmtree(cache_root, ignore_errors=True)
         if not cache_root.exists():
             dev_cache_freed_mb += size_mb
             dev_caches_cleared += 1
-
-if EMERGENCY:
-    print("[cleanup] EMERGENCY mode: aggressive thresholds (disk-pressure recovery)")
 print(f"[cleanup] /tmp: {removed} files/dirs removed ({freed_mb:.1f} MB freed)")
 print(
     f"[cleanup] worktrees: {wt_removed} abandoned removed "
