@@ -92,6 +92,10 @@ export function useAlfred() {
   const [loading, setLoading] = useState(false);
   const [busyPlanAction, setBusyPlanAction] = useState<string | null>(null);
   const [busyMemoryAction, setBusyMemoryAction] = useState<string | null>(null);
+  // Synchronous mirror of "a memory action is in flight". State updates are
+  // batched, so two clicks in the same tick could both read a stale null from
+  // busyMemoryAction; a ref flips immediately and keeps the guard airtight.
+  const busyMemoryRef = useRef(false);
   const [busyTrustedUser, setBusyTrustedUser] = useState<string | null>(null);
   const [busyQueue, setBusyQueue] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<ActionNotice>(null);
@@ -464,9 +468,12 @@ export function useAlfred() {
     async (candidateId: string, action: "promote" | "reject") => {
       // One memory action at a time. The cards only disable their own buttons,
       // so this guards against a click on another card while one is in flight.
-      if (busyMemoryAction) {
+      // The ref is set synchronously, so even two clicks in the same tick can't
+      // both pass.
+      if (busyMemoryRef.current) {
         return;
       }
+      busyMemoryRef.current = true;
       const key = `${candidateId}:${action}`;
       setBusyMemoryAction(key);
       setActionNotice(null);
@@ -490,10 +497,11 @@ export function useAlfred() {
           domain: "memory",
         });
       } finally {
+        busyMemoryRef.current = false;
         setBusyMemoryAction(null);
       }
     },
-    [baseUrl, refresh, busyMemoryAction],
+    [baseUrl, refresh],
   );
 
   const removeTrustedUser = useCallback(
