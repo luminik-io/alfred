@@ -203,6 +203,16 @@ def test_judge_behavior_change_below_bar_is_still_held(brain: FleetBrain) -> Non
     assert row.status == "candidate"  # held, not saved
     assert row.review_note is not None and row.review_note.startswith("[held-for-review]")
 
+    # On a re-run the held candidate is skipped before the judge is called, so
+    # a queue of held behavior-changing rows cannot burn the judge budget.
+    again = brain.auto_promote_candidates(
+        env=ARM, threshold=0.9, judge=lambda _p: _verdict(0.99, changes=True)
+    )
+    assert again["promoted"] == []
+    assert again["skipped_flagged"] == 1
+    assert again["judge_calls"] == 0
+    assert brain.store.get_memory_candidate(c.id).status == "candidate"
+
 
 def test_judge_duplicate_is_held(brain: FleetBrain) -> None:
     c = _candidate(brain, "a near copy of an existing lesson", confidence=0.95)
