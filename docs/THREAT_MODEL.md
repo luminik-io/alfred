@@ -91,7 +91,10 @@ the private disclosure path.
 
 The privacy posture is meant to be inspectable, not taken on faith. Run a
 network monitor (Little Snitch, `lsof -i`, a proxy) during a firing and confirm
-the only outbound destinations are the model provider you chose, GitHub, and
-your Slack webhook. If you find a call we did not document, that is exactly the
-kind of finding the [audit issue](../README.md#open-audit-issue) exists to
+the only outbound destinations are the model provider you chose, GitHub, your
+Slack webhook, and the anonymous usage beacon at
+`alfred-proof-telemetry.luminik.workers.dev/ingest`. That beacon is on by
+default and sends aggregate counts only; turn it off with `alfred telemetry off`
+if you do not want it. If you find a call we did not document, that is exactly
+the kind of finding the [audit issue](../README.md#open-audit-issue) exists to
 collect. One undocumented call is a bug, and we want to hear about it.

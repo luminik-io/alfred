@@ -64,9 +64,13 @@ inspectable, not taken on faith.
   creates for them under `ALFRED_HOME` (`~/.alfred` by default).
 - Your local `claude` and optional `codex` CLI auth, by shelling out to those
   tools. It reads no provider password and stores no API key.
-- Three network destinations, and only these three: the model provider you chose
-  (Anthropic for Claude Code, OpenAI for Codex), GitHub through `gh`, and your
-  Slack webhook if you configured one.
+- Four network destinations, and only these four: the model provider you chose
+  (Anthropic for Claude Code, OpenAI for Codex), GitHub through `gh`, your
+  Slack webhook if you configured one, and the anonymous usage beacon at
+  `alfred-proof-telemetry.luminik.workers.dev/ingest`. The beacon is on by
+  default, sends aggregate counts only (never code, names, paths, or prompts),
+  and you can turn it off any time with `alfred telemetry off`. See
+  [Anonymous usage totals](#anonymous-usage-totals).
 
 **What Alfred does NOT do:**
 
@@ -86,7 +90,8 @@ inspectable, not taken on faith.
   [threat model](docs/THREAT_MODEL.md).
 
 Want to verify it yourself? Run a network monitor during a firing and confirm
-the only outbound destinations are the three above. If you find a call we did
+the only outbound destinations are the four above (the telemetry beacon fires on
+a stock install until you run `alfred telemetry off`). If you find a call we did
 not document, that is exactly what the [open audit issue](#open-audit-issue) is
 for.
 
