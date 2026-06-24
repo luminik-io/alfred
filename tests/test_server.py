@@ -88,6 +88,79 @@ def test_json_api_status_firings_and_plans(tmp_path: Path) -> None:
     assert plan.json()["title"] == "Batman Plan for Issue #61"
 
 
+def test_api_firings_surface_distilled_timeline(tmp_path: Path) -> None:
+    """The /api/firings JSON must carry the honest, render-ready timeline so the
+    desktop Activity view can show a one-line headline + expandable steps + an
+    honestly-classified error without re-deriving anything client-side."""
+    state = tmp_path / "state"
+    # A clean PR-opened run.
+    _write_jsonl(
+        state / "bane" / "events" / "2026-05-27-1200-ok.jsonl",
+        [
+            {"ts": "2026-05-27T12:00:00Z", "event": "firing_started"},
+            {"ts": "2026-05-27T12:01:00Z", "event": "repo_picked", "repo": "acme-org/api"},
+            {
+                "ts": "2026-05-27T12:05:00Z",
+                "event": "llm_invoke_done",
+                "engine": "claude",
+                "turns": 12,
+                "subtype": "success",
+                "success": True,
+            },
+            {
+                "ts": "2026-05-27T12:06:00Z",
+                "event": "pr_opened",
+                "url": "https://github.com/acme-org/api/pull/1048",
+                "repo": "acme-org/api",
+            },
+            {"ts": "2026-05-27T12:06:10Z", "event": "firing_complete", "outcome": "pr-opened"},
+        ],
+    )
+    # An honest auth failure whose provider text reads like a rate limit.
+    _write_jsonl(
+        state / "bane" / "events" / "2026-05-27-1300-err.jsonl",
+        [
+            {"ts": "2026-05-27T13:00:00Z", "event": "firing_started"},
+            {
+                "ts": "2026-05-27T13:01:00Z",
+                "event": "llm_fallback",
+                "from_engine": "claude",
+                "to_engine": "codex",
+                "reason": "API Error: 429 rate_limit_exceeded",
+            },
+            {
+                "ts": "2026-05-27T13:02:00Z",
+                "event": "llm_invoke_done",
+                "engine": "codex",
+                "turns": 2,
+                "subtype": "error_authentication",
+                "success": False,
+            },
+            {
+                "ts": "2026-05-27T13:02:10Z",
+                "event": "firing_complete",
+                "outcome": "llm-error_authentication",
+            },
+        ],
+    )
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    rows = client.get("/api/firings", params={"codename": "bane"}).json()["rows"]
+    by_id = {row["firing_id"]: row for row in rows}
+
+    ok = by_id["2026-05-27-1200-ok"]["timeline"]
+    assert ok["severity"] == "ok"
+    assert ok["error"] is None
+    assert ok["headline"] == "Opened PR #1048"
+    assert [step["kind"] for step in ok["steps"]][-1] == "complete"
+
+    err = by_id["2026-05-27-1300-err"]["timeline"]
+    assert err["severity"] == "error"
+    assert err["error"] == "authentication"
+    assert "authentication" in err["headline"].lower()
+    assert "rate" not in err["headline"].lower()
+
+
 def test_api_status_reports_paused_state_from_marker(tmp_path: Path) -> None:
     state = tmp_path / "state"
     # An agent with state but no pause marker is loaded + not paused.

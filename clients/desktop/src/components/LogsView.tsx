@@ -1,11 +1,23 @@
-import { Activity, ScrollText } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  ChevronRight,
+  CircleDot,
+  ScrollText,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { loadAgentFirings, streamFiringTail } from "../api";
 import { exactTime, friendlyTime } from "../format";
 import { formatTranscriptLine } from "../lib/transcript";
 import type { FeedItem, FeedTarget } from "../lib/notifications";
-import type { FiringRecord } from "../types";
+import type { FiringRecord, TimelineStep } from "../types";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "./ui/collapsible";
+import { Switch } from "./ui/switch";
 import { EmptyState, PanelHeader } from "./atoms";
 import { NotificationsView } from "./NotificationsView";
 import { Tabs, type TabItem } from "./Tabs";
@@ -137,6 +149,14 @@ function buildAgentLanes(firings: FiringRecord[]): AgentLane[] {
   return lanes;
 }
 
+/**
+ * The right-hand console reframed as a scannable list of run cards. Each run
+ * defaults to a single honest headline (outcome + key result); a chevron
+ * expands it to the full step timeline (pr picked, engine + turns, fallback,
+ * PR opened / reviewed). Idle / no-work runs stay quiet; failures are loud and
+ * surface the honestly-classified cause (authentication, rate_limit, timeout).
+ * An "Errors only" switch hides everything that does not need attention.
+ */
 function LiveTailView({
   baseUrl,
   firings,
@@ -156,6 +176,7 @@ function LiveTailView({
     : true;
   const [fetched, setFetched] = useState<{ agent: string; rows: FiringRecord[] } | null>(null);
   const [fetching, setFetching] = useState(false);
+  const [errorsOnly, setErrorsOnly] = useState(false);
 
   useEffect(() => {
     if (!selectedAgent || inGlobalFeed) return;
@@ -193,10 +214,16 @@ function LiveTailView({
     return built;
   }, [firings, selectedAgent, fetched]);
   const activeAgent = lanes.find((l) => l.codename === selectedAgent) || lanes[0] || null;
-  const [firingId, setFiringId] = useState<string | null>(null);
 
-  const activeFiring =
-    activeAgent?.firings.find((f) => f.firing_id === firingId) || activeAgent?.firings[0] || null;
+  const allRuns = useMemo(() => activeAgent?.firings ?? [], [activeAgent]);
+  const errorCount = useMemo(
+    () => allRuns.filter((f) => isErrorFiring(f)).length,
+    [allRuns],
+  );
+  const visibleRuns = useMemo(
+    () => (errorsOnly ? allRuns.filter((f) => isErrorFiring(f)) : allRuns),
+    [allRuns, errorsOnly],
+  );
 
   if (!lanes.length) {
     return (
@@ -212,6 +239,7 @@ function LiveTailView({
       <div className="tail-agents" role="tablist" aria-label="Agents">
         {lanes.map((lane) => {
           const isActive = lane.codename === activeAgent?.codename;
+          const laneErrors = lane.firings.filter((f) => isErrorFiring(f)).length;
           return (
             <button
               key={lane.codename}
@@ -219,10 +247,7 @@ function LiveTailView({
               type="button"
               role="tab"
               aria-selected={isActive}
-              onClick={() => {
-                onSelectAgent(lane.codename);
-                setFiringId(null);
-              }}
+              onClick={() => onSelectAgent(lane.codename)}
             >
               <span className={`tail-agent__dot tail-agent__dot--${toneFor(lane.status)}`} aria-hidden="true" />
               <span className="tail-agent__name">{lane.codename}</span>
@@ -230,98 +255,203 @@ function LiveTailView({
                 {lane.firings.length} run{lane.firings.length === 1 ? "" : "s"}
                 {lane.latestAt ? ` · ${friendlyTime(lane.latestAt)}` : ""}
               </span>
+              {laneErrors > 0 ? (
+                <span className="tail-agent__errors" title={`${laneErrors} run(s) need attention`}>
+                  {laneErrors}
+                </span>
+              ) : null}
             </button>
           );
         })}
       </div>
 
       <div className="tail-console">
-        {activeFiring ? (
-          <>
-            <header className="tail-console__head">
-              <div>
-                <strong>{activeAgent?.codename}</strong>
-                <span className={`tail-status tail-status--${toneFor(activeFiring.status)}`}>
-                  {activeFiring.status}
-                </span>
-              </div>
-              <small title={exactTime(activeFiring.started_at)}>
-                {activeFiring.started_at ? friendlyTime(activeFiring.started_at) : "not started"}
-                {activeFiring.ended_at ? ` → ${friendlyTime(activeFiring.ended_at)}` : " · running"}
-              </small>
-            </header>
-
-            {activeAgent && activeAgent.firings.length > 1 ? (
-              <div className="tail-runs" aria-label={`Recent runs for ${activeAgent.codename}`}>
-                {activeAgent.firings.slice(0, 8).map((f) => (
-                  <button
-                    key={f.firing_id}
-                    className={
-                      f.firing_id === activeFiring.firing_id ? "tail-run tail-run--active" : "tail-run"
-                    }
-                    type="button"
-                    onClick={() => setFiringId(f.firing_id)}
-                    title={f.summary || f.firing_id}
-                  >
-                    {f.started_at ? friendlyTime(f.started_at) : f.firing_id}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-
-            <EventTail
-              firing={activeFiring}
-              baseUrl={baseUrl}
-              // Only tail the live stream for the agent's newest run: an older
-              // run picked from the history strip is already complete on disk,
-              // so re-tailing it would just replay a finished transcript.
-              live={activeFiring.firing_id === activeAgent?.firings[0]?.firing_id}
+        <header className="tail-console__head">
+          <div className="tail-console__title">
+            <strong>{activeAgent?.codename}</strong>
+            <span className="tail-console__count">
+              {allRuns.length} run{allRuns.length === 1 ? "" : "s"}
+              {errorCount > 0 ? ` · ${errorCount} need attention` : ""}
+            </span>
+          </div>
+          <label className="tail-filter" title="Show only runs that ended in an error">
+            <Switch
+              checked={errorsOnly}
+              onCheckedChange={setErrorsOnly}
+              aria-label="Show errors only"
+              disabled={errorCount === 0 && !errorsOnly}
             />
-          </>
-        ) : fetching ? (
+            <span>Errors only</span>
+          </label>
+        </header>
+
+        {allRuns.length === 0 ? (
+          fetching ? (
+            <EmptyState
+              title={`Loading runs for ${activeAgent?.codename ?? "this agent"}...`}
+              body="Fetching this agent's recent firings."
+              compact
+            />
+          ) : (
+            <EmptyState
+              title={`No runs captured for ${activeAgent?.codename ?? "this agent"}.`}
+              body="This agent has not fired recently. Trigger a run from Agents, or pick another agent on the left."
+              compact
+            />
+          )
+        ) : visibleRuns.length === 0 ? (
           <EmptyState
-            title={`Loading runs for ${activeAgent?.codename ?? "this agent"}...`}
-            body="Fetching this agent's recent firings."
+            title="No runs need attention."
+            body="Every recent run for this agent finished cleanly. Toggle off to see them all."
             compact
           />
         ) : (
-          <EmptyState
-            title={`No runs captured for ${activeAgent?.codename ?? "this agent"}.`}
-            body="This agent has not fired recently. Trigger a run from Agents, or pick another agent on the left."
-            compact
-          />
+          <ol className="run-list" aria-label={`Runs for ${activeAgent?.codename ?? "agent"}`}>
+            {visibleRuns.map((firing, index) => (
+              <RunCard
+                key={firing.firing_id}
+                firing={firing}
+                baseUrl={baseUrl}
+                // Default-expand the newest run so the page is useful at a glance,
+                // and always expand a failure so the cause is never a click away.
+                defaultOpen={index === 0 || isErrorFiring(firing)}
+                live={index === 0 && firing.status === "running"}
+              />
+            ))}
+          </ol>
         )}
       </div>
     </div>
   );
 }
 
-function EventTail({
+/** A run ended in an honest failure (server severity, or a legacy error status). */
+function isErrorFiring(firing: FiringRecord): boolean {
+  if (firing.timeline?.severity === "error") return true;
+  // Legacy servers that predate the distilled timeline: fall back to status.
+  return !firing.timeline && firing.status === "error";
+}
+
+function runHeadline(firing: FiringRecord): string {
+  if (firing.timeline?.headline) return firing.timeline.headline;
+  if (firing.summary && firing.summary !== "(no summary)") return firing.summary;
+  if (firing.status === "running") return "Running";
+  return "No summary captured";
+}
+
+const ERROR_CAUSE_LABEL: Record<string, string> = {
+  authentication: "Authentication",
+  rate_limit: "Rate limit",
+  budget: "Usage budget",
+  overloaded: "Provider overloaded",
+  timeout: "Timeout",
+  max_turns: "Max turns",
+  api_error: "API error",
+  checks_failed: "Pre-push checks",
+  validation_failed: "Workflow validation",
+  failed: "Failed",
+};
+
+/**
+ * One collapsible run. Collapsed: a severity dot, the honest one-line headline,
+ * and the run time. Expanded: the step timeline plus, for the running newest
+ * run, the live transcript tail.
+ */
+function RunCard({
   firing,
   baseUrl,
+  defaultOpen,
   live,
 }: {
   firing: FiringRecord;
   baseUrl: string;
+  defaultOpen: boolean;
   live: boolean;
 }) {
-  const lines = useMemo(() => (firing.raw_events || []).map(formatEvent), [firing.raw_events]);
+  const [open, setOpen] = useState(defaultOpen);
+  const severity = firing.timeline?.severity ?? (firing.status === "error" ? "error" : "ok");
+  const isError = severity === "error";
+  const cause = firing.timeline?.error ?? null;
+  const steps = firing.timeline?.steps ?? [];
+  const headline = runHeadline(firing);
 
-  // Live-append the running firing's transcript as it grows (#41). This is a
-  // progressive enhancement layered ON TOP of the static, poll-derived events:
-  // if the stream is unavailable or errors, `liveLines` stays empty and the
-  // view is exactly the pre-streaming poll behavior. We reset the buffer per
-  // firing so switching runs never bleeds one transcript into another.
+  return (
+    <li
+      className={`run-card run-card--${severity}${open ? " run-card--open" : ""}`}
+      data-severity={severity}
+    >
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger className="run-card__head" aria-label={`Toggle run ${firing.firing_id}`}>
+          <ChevronRight className="run-card__chevron" aria-hidden="true" />
+          <span className={`run-card__dot run-card__dot--${severity}`} aria-hidden="true">
+            {isError ? <AlertTriangle size={12} /> : <CircleDot size={12} />}
+          </span>
+          <span className="run-card__headline">{headline}</span>
+          {isError && cause ? (
+            <span className="run-card__cause">{ERROR_CAUSE_LABEL[cause] ?? cause}</span>
+          ) : null}
+          {live ? <span className="run-card__live">live</span> : null}
+          <time className="run-card__time" title={exactTime(firing.started_at)}>
+            {firing.started_at ? friendlyTime(firing.started_at) : "not started"}
+          </time>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="run-card__body">
+          {isError ? (
+            <p className="run-card__alert">
+              <AlertTriangle size={14} aria-hidden="true" />
+              <span>
+                This run failed{cause ? ` — ${ERROR_CAUSE_LABEL[cause] ?? cause}` : ""}.
+                {firing.timeline?.outcome ? (
+                  <code className="run-card__outcome">{firing.timeline.outcome}</code>
+                ) : null}
+              </span>
+            </p>
+          ) : null}
+
+          {steps.length > 0 ? (
+            <ol className="run-steps" aria-label="Run steps">
+              {steps.map((step, index) => (
+                <RunStep key={`${step.kind}-${index}`} step={step} />
+              ))}
+            </ol>
+          ) : (
+            <p className="run-steps__empty">No structured steps captured for this run.</p>
+          )}
+
+          {live ? <LiveTranscript firing={firing} baseUrl={baseUrl} /> : null}
+        </CollapsibleContent>
+      </Collapsible>
+    </li>
+  );
+}
+
+function RunStep({ step }: { step: TimelineStep }) {
+  return (
+    <li className={`run-step run-step--${step.tone}`}>
+      <span className={`run-step__dot run-step__dot--${step.tone}`} aria-hidden="true" />
+      <span className="run-step__label">{step.label}</span>
+      {step.detail ? <span className="run-step__detail">{step.detail}</span> : null}
+      {step.ts ? (
+        <time className="run-step__ts" title={exactTime(step.ts)}>
+          {shortTime(step.ts)}
+        </time>
+      ) : null}
+    </li>
+  );
+}
+
+/**
+ * Progressive live transcript for the running newest run only (#41). Layered on
+ * top of the static step timeline: if the stream errors or is unavailable, this
+ * stays empty and the 60s poll keeps the timeline fresh, so it degrades cleanly.
+ */
+function LiveTranscript({ firing, baseUrl }: { firing: FiringRecord; baseUrl: string }) {
   const [liveLines, setLiveLines] = useState<{ ts: string | null; text: string }[]>([]);
-  const liveScrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setLiveLines([]);
-    // Only the currently-running newest run is worth tailing; a completed run is
-    // fully captured by the poll, so streaming it would only replay the file.
-    if (!live || firing.status !== "running") {
-      return;
-    }
+    if (firing.status !== "running") return;
     const dispose = streamFiringTail(baseUrl, firing.firing_id, {
       onLines: (raw) => {
         const formatted = raw
@@ -331,82 +461,38 @@ function EventTail({
           setLiveLines((prev) => [...prev, ...formatted]);
         }
       },
-      // On error we simply stop appending; the 60s poll keeps the view fresh,
-      // so the live tail degrades to the existing behavior with no regression.
       onError: () => {},
     });
     return dispose;
-  }, [baseUrl, firing.firing_id, firing.status, live]);
+  }, [baseUrl, firing.firing_id, firing.status]);
 
-  // Keep the newest live line in view as the transcript grows.
   useEffect(() => {
-    const el = liveScrollRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-    }
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [liveLines]);
 
-  const hasStatic = lines.length > 0;
-  const hasLive = liveLines.length > 0;
+  if (liveLines.length === 0) {
+    return (
+      <p className="run-live__empty">Waiting for the live transcript to start streaming...</p>
+    );
+  }
 
   return (
-    <div className="tail-stream" aria-label="Run events" role="log" ref={liveScrollRef}>
-      {firing.summary ? <p className="tail-stream__summary">{firing.summary}</p> : null}
-      {hasStatic ? (
-        <ol className="tail-lines">
-          {lines.map((line, index) => (
-            <li key={index} className="tail-line">
-              {line.ts ? <span className="tail-line__ts">{line.ts}</span> : null}
-              <span className="tail-line__text">{line.text}</span>
-            </li>
-          ))}
-        </ol>
-      ) : !hasLive ? (
-        <p className="tail-stream__empty">
-          {live && firing.status === "running"
-            ? "Waiting for the live transcript to start streaming..."
-            : "No structured events captured for this run."}
-          {!live && firing.transcript_path ? " A full transcript is saved on disk." : ""}
-        </p>
-      ) : null}
-      {hasLive ? (
-        <ol className="tail-lines tail-lines--live" aria-label="Live transcript">
-          {liveLines.map((line, index) => (
-            <li key={`live-${index}`} className="tail-line tail-line--live">
-              {line.ts ? <span className="tail-line__ts">{line.ts}</span> : null}
-              <span className="tail-line__text">{line.text}</span>
-            </li>
-          ))}
-        </ol>
-      ) : null}
+    <div className="run-live" role="log" ref={scrollRef}>
+      <ol className="tail-lines tail-lines--live" aria-label="Live transcript">
+        {liveLines.map((line, index) => (
+          <li key={`live-${index}`} className="tail-line tail-line--live">
+            {line.ts ? <span className="tail-line__ts">{line.ts}</span> : null}
+            <span className="tail-line__text">{line.text}</span>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
 
-function formatEvent(event: unknown): { ts: string | null; text: string } {
-  if (event && typeof event === "object") {
-    const record = event as Record<string, unknown>;
-    const ts = typeof record.ts === "string" ? shortTime(record.ts) : null;
-    const name = typeof record.event === "string" ? record.event : null;
-    // Surface the most useful extra field without dumping the whole object.
-    const detail =
-      pickString(record, ["summary", "message", "detail", "text", "error"]) ?? null;
-    const text = [name, detail].filter(Boolean).join("  ·  ") || JSON.stringify(record);
-    return { ts, text };
-  }
-  return { ts: null, text: String(event) };
-}
-
-function pickString(record: Record<string, unknown>, keys: string[]): string | null {
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === "string" && value.trim()) return value;
-  }
-  return null;
-}
-
 function shortTime(iso: string): string {
-  // Just the wall-clock HH:MM:SS for a tail; the full timestamp is the title.
+  // Just the wall-clock HH:MM:SS for a step; the full timestamp is the title.
   const match = iso.match(/T(\d{2}:\d{2}:\d{2})/);
   return match ? match[1] : iso;
 }
