@@ -506,7 +506,13 @@ def resolve_intent(
         normalized = raw_intent.strip().lower()
         if normalized == INTENT_CONVERSATION:
             return INTENT_CONVERSATION
-        if normalized == INTENT_BUILD:
+        if normalized:
+            # The model spoke but did not say "conversation": honor the documented
+            # guarantee that any non-conversation label (a typo, an invented
+            # synonym like "greeting", or the literal "build") resolves to build,
+            # so an unknown value never suppresses the plan surface via the
+            # heuristic backstop below. Only a missing/empty/non-string intent
+            # falls through to the heuristic.
             return INTENT_BUILD
 
     if done or _draft_has_content(draft):
@@ -676,7 +682,7 @@ def run_turn(
         intake_guidance=intake_guidance,
         current_draft=base_draft,
     )
-    last_user_message = _last_user_message(message_list)
+    latest_user_message = last_user_message(message_list)
     engine_invoke = invoke
     if engine_invoke is None:
         try:
@@ -706,17 +712,25 @@ def run_turn(
     return parse_turn(
         result.result_text,
         base_draft=base_draft,
-        last_user_message=last_user_message,
+        last_user_message=latest_user_message,
     )
 
 
-def _last_user_message(messages: Iterable[ConverseMessage]) -> str:
-    """The most recent user turn's text, for the intent heuristic backstop."""
+def last_user_message(messages: Iterable[ConverseMessage]) -> str:
+    """The most recent user turn's text, for the intent heuristic backstop.
+
+    Public so other surfaces (e.g. the server's memory-grounding gate) classify
+    intent against the exact same extraction rather than reimplementing it.
+    """
     last = ""
     for message in messages:
         if getattr(message, "role", "") == "user":
             last = getattr(message, "content", "") or ""
     return last
+
+
+# Back-compat alias for the previously private name.
+_last_user_message = last_user_message
 
 
 def _extract_json_object(value: str) -> dict[str, Any] | None:

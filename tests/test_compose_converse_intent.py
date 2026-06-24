@@ -66,6 +66,21 @@ def test_unknown_model_intent_falls_back_to_build() -> None:
     assert intent == cc.INTENT_BUILD
 
 
+def test_unknown_model_intent_does_not_fall_through_to_heuristic() -> None:
+    # The model returned a present-but-unrecognized label. Even when the last
+    # user message is itself a known conversational opener and the draft is
+    # empty, the unknown label must resolve straight to build and never reach
+    # the heuristic (which would otherwise read "hi" as conversation and
+    # suppress the plan surface), honoring the documented guarantee.
+    intent = cc.resolve_intent(
+        "greeting",
+        last_user_message="hi",
+        draft=_empty_draft(),
+        done=False,
+    )
+    assert intent == cc.INTENT_BUILD
+
+
 # --- resolve_intent: heuristic backstop when the model omits intent ----------
 
 

@@ -244,6 +244,54 @@ describe("ComposeView (conversational)", () => {
     expect(await screen.findByText(/filed with agent:implement/i)).toBeInTheDocument();
   });
 
+  it("keeps the filed confirmation visible across a conversational follow-up", async () => {
+    converseMock.mockResolvedValueOnce(
+      converseResponse({ readiness: { score: 92, ready: true, missing: [] }, done: false }),
+    );
+    filePlanIssueMock.mockResolvedValue({
+      ok: true,
+      status: "filed",
+      draft_id: "compose-20260603-120000-add-csv-export",
+      issue_url: "https://github.com/your-org/frontend/issues/42",
+      repo: "your-org/frontend",
+      label: "agent:implement",
+    });
+    // The follow-up is a pure conversation turn (e.g. "thanks"): it must not
+    // wipe the filed confirmation the person is still reading.
+    converseMock.mockResolvedValueOnce(
+      converseResponse({
+        intent: "conversation",
+        reply: "Anytime. I'll let the coding agents take it from here.",
+        draft: {
+          title: "",
+          problem: "",
+          user: "",
+          current_behavior: "",
+          desired_behavior: "",
+          repos: [],
+          acceptance_criteria: [],
+          test_plan: "",
+          out_of_scope: "",
+          rollout: "",
+          open_questions: "",
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    renderChat();
+
+    await send(user, "Build it");
+    await user.click(await screen.findByRole("button", { name: /file issue/i }));
+    expect(await screen.findByText(/filed with agent:implement/i)).toBeInTheDocument();
+
+    await send(user, "thanks");
+    expect(
+      await screen.findByText(/anytime\. i'll let the coding agents take it from here/i),
+    ).toBeInTheDocument();
+    // The filed confirmation is still on screen after the conversational reply.
+    expect(screen.getByText(/filed with agent:implement/i)).toBeInTheDocument();
+  });
+
   it("saves a draft in the chat when no live session is configured", async () => {
     converseMock.mockRejectedValue(
       new ApiError(

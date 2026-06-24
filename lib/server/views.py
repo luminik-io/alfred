@@ -1625,10 +1625,9 @@ def _converse_memory_grounding(
     """
     import compose_converse as cc
 
-    last_user = ""
-    for message in messages:
-        if getattr(message, "role", "") == "user":
-            last_user = getattr(message, "content", "") or ""
+    # Reuse the single last-user-message extraction so this gate and the turn
+    # parser always classify against identical input.
+    last_user = cc.last_user_message(messages)
     intent = cc.resolve_intent(None, last_user_message=last_user, draft=base_draft, done=False)
     if intent != cc.INTENT_BUILD:
         return ""

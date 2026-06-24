@@ -8,7 +8,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -270,15 +270,18 @@ export function ComposeView({
       baseTurns: ChatTurn[],
       message: string,
     ) => {
-      setFileNotice(null);
       const next: ChatTurn[] = [...baseTurns];
       if (message.trim()) {
         next.push({ role: "assistant", content: message, kind: "message" });
       }
       if (isConversationTurn(reply)) {
+        // A plain conversational reply (e.g. "thanks") must not wipe a "Filed"
+        // confirmation the person is still reading: leave the file notice as-is.
         setTurns(next);
         return;
       }
+      // A real build turn supersedes any prior file result, so clear the notice.
+      setFileNotice(null);
       setResult(reply);
       if (draftHasSubstance(reply.draft)) {
         next.push({ role: "assistant", kind: "draft", draft: draftCardFrom(reply) });
@@ -293,7 +296,9 @@ export function ComposeView({
     if (!text || busy) return;
     setBusy(true);
     setError(null);
-    setFileNotice(null);
+    // The file notice is cleared per-turn inside commitTurn, but only for a real
+    // build turn: a conversational follow-up after filing keeps the "Filed"
+    // confirmation visible until the person actually plans something new.
 
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -457,6 +462,14 @@ export function ComposeView({
   );
 
   const started = turns.length > 0;
+  // The index of the most recent draft card: the file notice rides this card so
+  // it survives conversational turns that land after the plan was filed.
+  const lastDraftIndex = useMemo(() => {
+    for (let i = turns.length - 1; i >= 0; i -= 1) {
+      if (turns[i].kind === "draft") return i;
+    }
+    return -1;
+  }, [turns]);
 
   // One composer, two layouts. Empty: a single centered hero (one headline, the
   // composer as the focal point, starter chips below) so the screen is not three
@@ -567,7 +580,10 @@ export function ComposeView({
                   key={`draft-${index}-${turn.draft.draftId}`}
                   draft={turn.draft}
                   busy={fileBusy}
-                  notice={index === turns.length - 1 ? fileNotice : null}
+                  // Attach the notice to the most recent draft card, not the
+                  // last turn overall, so a filed confirmation stays visible
+                  // when conversational turns ("thanks") follow the plan.
+                  notice={index === lastDraftIndex ? fileNotice : null}
                   onFile={() => void fileIssue(turn.draft.draftId)}
                   onOpenWork={() => onSwitch("pipeline")}
                 />
