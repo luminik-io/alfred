@@ -1,0 +1,100 @@
+import { describe, expect, it } from "vitest";
+
+import { deriveAgentRole, type WorkflowRole } from "./agentRoster";
+import {
+  isRosterThemeId,
+  resolveThemedIdentity,
+  ROSTER_THEME_IDS,
+} from "./agentThemes";
+
+describe("deriveAgentRole", () => {
+  it("places known default-fleet codenames by the hint table", () => {
+    expect(deriveAgentRole({ codename: "batman" })).toBe("architect");
+    expect(deriveAgentRole({ codename: "rasalghul" })).toBe("review");
+    expect(deriveAgentRole({ codename: "automerge" })).toBe("ship");
+    expect(deriveAgentRole({ codename: "fleet-doctor" })).toBe("ops");
+  });
+
+  it("tolerates fully-qualified codenames", () => {
+    expect(deriveAgentRole({ codename: "fleet.local.lucius" })).toBe("implement");
+  });
+
+  it("infers a role from the reported role title when the codename is unknown", () => {
+    expect(deriveAgentRole({ codename: "newbot", roleTitle: "Code Reviewer" })).toBe(
+      "review",
+    );
+    expect(deriveAgentRole({ codename: "newbot", roleTitle: "Senior Developer" })).toBe(
+      "implement",
+    );
+  });
+
+  it("falls back to ops for a wholly unknown agent rather than dropping it", () => {
+    expect(deriveAgentRole({ codename: "totally-unknown" })).toBe("ops");
+  });
+
+  it("reproduces the prior shipped roster lanes exactly (no visible change by default)", () => {
+    // Lanes from the pre-refactor WORKFLOW_LANES mapping. The data-driven
+    // derivation must place every default codename in the same lane it had
+    // before, so the default Batman roster renders identically. huntress in
+    // particular stays in ops (it must not drift into review).
+    const PRIOR_LANES: Record<string, WorkflowRole> = {
+      robin: "triage",
+      drake: "triage",
+      damian: "triage",
+      batman: "architect",
+      lucius: "implement",
+      bane: "implement",
+      nightwing: "implement",
+      rasalghul: "review",
+      automerge: "ship",
+      gordon: "ops",
+      "fleet-doctor": "ops",
+      huntress: "ops",
+    };
+    for (const [codename, lane] of Object.entries(PRIOR_LANES)) {
+      expect(deriveAgentRole({ codename })).toBe(lane);
+    }
+  });
+});
+
+describe("resolveThemedIdentity", () => {
+  it("keeps the shipped names under the default Batman theme", () => {
+    const id = resolveThemedIdentity({ codename: "batman" }, "batman");
+    expect(id.name).toBe("Batman");
+    expect(id.role).toBe("architect");
+    expect(id.roleLabel).toBe("Architect");
+  });
+
+  it("re-skins the architect lead under Transformers without changing the role", () => {
+    const id = resolveThemedIdentity({ codename: "batman" }, "transformers");
+    expect(id.name).toBe("Optimus Prime");
+    expect(id.role).toBe("architect");
+    // The plain role label is preserved across themes.
+    expect(id.roleLabel).toBe("Architect");
+  });
+
+  it("re-skins under Justice League", () => {
+    const id = resolveThemedIdentity({ codename: "rasalghul" }, "justice-league");
+    expect(id.name).toBe("Wonder Woman");
+    expect(id.roleLabel).toBe("Reviewer");
+  });
+
+  it("never returns a blank name for an unknown agent in any theme", () => {
+    for (const themeId of ROSTER_THEME_IDS) {
+      const id = resolveThemedIdentity({ codename: "mystery-bot-7" }, themeId);
+      expect(id.name.length).toBeGreaterThan(0);
+      expect(id.roleLabel.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("isRosterThemeId", () => {
+  it("accepts every id in ROSTER_THEME_IDS and rejects unknown or null", () => {
+    // Derived from ROSTER_THEME_IDS so adding a theme can't desync the guard.
+    for (const themeId of ROSTER_THEME_IDS) {
+      expect(isRosterThemeId(themeId)).toBe(true);
+    }
+    expect(isRosterThemeId("nope")).toBe(false);
+    expect(isRosterThemeId(null)).toBe(false);
+  });
+});
