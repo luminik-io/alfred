@@ -25,6 +25,31 @@ export type AgentSummary = {
   loaded?: boolean;
 };
 
+/** One render-ready line in a firing's expanded step timeline. */
+export type TimelineStep = {
+  kind: string;
+  label: string;
+  detail: string;
+  tone: "ok" | "warn" | "error" | "muted" | string;
+  ts: string | null;
+};
+
+/**
+ * The server-distilled, honest view of one firing. ``headline`` is the one-line
+ * collapsed summary, ``severity`` decides how loud the row is, ``error`` is the
+ * honestly-classified failure cause (authentication / rate_limit / timeout /
+ * budget / overloaded), and ``steps`` is the expandable timeline. Older servers
+ * that predate the distillation omit it, so it is optional and the client falls
+ * back to the legacy raw-event tail.
+ */
+export type FiringTimeline = {
+  headline: string;
+  severity: "ok" | "idle" | "error" | string;
+  error: string | null;
+  outcome: string | null;
+  steps: TimelineStep[];
+};
+
 export type FiringRecord = {
   firing_id: string;
   codename: string;
@@ -35,6 +60,7 @@ export type FiringRecord = {
   transcript_path: string | null;
   events_path: string;
   raw_events?: unknown[];
+  timeline?: FiringTimeline | null;
 };
 
 export type PlanDraft = {

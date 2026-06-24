@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from .agent_profiles import profile_payload, sort_codenames
+from .firing_timeline import FiringTimeline, derive_timeline
 from .plan_approvals import (
     DECISION_APPROVE,
     decision_for_issue,
@@ -67,6 +68,12 @@ class FiringRecord:
     transcript_path: str | None
     events_path: str
     raw_events: list[dict] = field(default_factory=list)
+    # Render-ready distillation of ``raw_events``: a one-line ``headline``, a
+    # ``severity`` (ok/idle/error), an honest classified ``error`` cause, and an
+    # ordered ``steps`` timeline. Derived server-side so the desktop client and
+    # any future surface share one honest source of truth. Optional so legacy
+    # callers that construct a record by hand keep working.
+    timeline: FiringTimeline | None = None
 
 
 @dataclass(frozen=True)
@@ -578,6 +585,7 @@ def _firing_from_events(
         transcript_path=transcript_path,
         events_path=events_path,
         raw_events=events,
+        timeline=derive_timeline(events),
     )
 
 
