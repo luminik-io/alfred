@@ -131,13 +131,16 @@ def test_lifecycle_doctor_reports_missing_slack_scope() -> None:
     assert slack.deleted == [("C0DOCTOR", "1700000000.123")]
 
 
-def test_lifecycle_doctor_requires_claude_oauth_token() -> None:
+def test_lifecycle_doctor_requires_claude_oauth_token(tmp_path) -> None:
     from agent_runner.lifecycle_doctor import FIXTURE_PATH, run_lifecycle_doctor
 
     stream = io.StringIO()
+    # ALFRED_HOME points at an empty dir so the .env credential fallback
+    # finds nothing; otherwise the doctor would resolve a token from the
+    # real ~/.alfred/.env on the host running the suite.
     rc = run_lifecycle_doctor(
         fixture=FIXTURE_PATH,
-        env={"SLACK_BOT_TOKEN": "xoxb-test"},
+        env={"SLACK_BOT_TOKEN": "xoxb-test", "ALFRED_HOME": str(tmp_path)},
         slack_client=FakeSlack(),
         command_runner=fake_claude_ok,
         stream=stream,
@@ -145,8 +148,39 @@ def test_lifecycle_doctor_requires_claude_oauth_token() -> None:
 
     out = stream.getvalue()
     assert rc == 1
-    assert "CLAUDE_CODE_OAUTH_TOKEN present in env: no" in out
+    assert "CLAUDE_CODE_OAUTH_TOKEN reachable (env or $ALFRED_HOME/.env): no" in out
     assert "alfred setup-token" in out
+
+
+def test_lifecycle_doctor_resolves_token_from_env_file(tmp_path) -> None:
+    """A token in $ALFRED_HOME/.env (not the process env) is honored, the
+    same way the runtime loader resolves it."""
+    from agent_runner.lifecycle_doctor import FIXTURE_PATH, run_lifecycle_doctor
+
+    (tmp_path / ".env").write_text(
+        "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-fromdotenv\n", encoding="utf-8"
+    )
+
+    seen_env: dict[str, str] = {}
+
+    def capture_claude(cmd, *, input_text, timeout_s, env):
+        seen_env.update(env)
+        return subprocess.CompletedProcess(list(cmd), 0, stdout="hi\n", stderr="")
+
+    stream = io.StringIO()
+    rc = run_lifecycle_doctor(
+        fixture=FIXTURE_PATH,
+        env={"SLACK_BOT_TOKEN": "xoxb-test", "ALFRED_HOME": str(tmp_path)},
+        slack_client=FakeSlack(),
+        command_runner=capture_claude,
+        stream=stream,
+    )
+
+    out = stream.getvalue()
+    assert rc == 0
+    assert "CLAUDE_CODE_OAUTH_TOKEN reachable: yes" in out
+    # The live probe must run with the token loaded from .env.
+    assert seen_env.get("CLAUDE_CODE_OAUTH_TOKEN") == "sk-ant-oat01-fromdotenv"
 
 
 def test_lifecycle_doctor_fails_bad_parent_body() -> None:
