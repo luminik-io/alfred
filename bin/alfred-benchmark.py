@@ -41,9 +41,13 @@ from pathlib import Path
 # Make ``lib/`` importable whether this script runs from the repo checkout
 # or from ``$ALFRED_HOME/bin``.
 _HERE = Path(__file__).resolve().parent
+_ALFRED_HOME = os.environ.get("ALFRED_HOME", "")
 for candidate in (
     _HERE.parent / "lib",
-    Path(os.environ.get("ALFRED_HOME", "")) / "lib",
+    # Skip the ALFRED_HOME fallback when unset: ``Path("") / "lib"`` resolves
+    # to the relative ``./lib``, which could shadow the real modules from an
+    # unrelated working directory.
+    *([Path(_ALFRED_HOME) / "lib"] if _ALFRED_HOME else []),
 ):
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))

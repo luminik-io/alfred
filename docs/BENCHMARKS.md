@@ -57,6 +57,15 @@ an explicit, non-fabricated denominator and degrades to `0.0` (or `-` for
 a missing time) when there is nothing to divide by, so an empty run reports
 honest zeros, never a guess.
 
+**Reserved codenames.** Auto-discovery (when you do not pass `--codename`)
+walks the top level of the state dir and treats `transcripts`, `codex`,
+`fleet`, and `engines` as infrastructure trees, not agents, so it skips
+them. Do not name an agent any of these: under auto-discovery its event
+log is invisible to the harness (a `--verbose` run logs a debug notice when
+a reserved name with an `events/` dir is skipped). If you must scan one of
+these directories, name it explicitly with `--codename <name>`, which
+bypasses the reserved list.
+
 ## The fixed task suite
 
 Reproducibility comes from running the **same representative coding tasks**

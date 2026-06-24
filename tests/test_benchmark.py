@@ -303,6 +303,33 @@ def test_build_report_empty_state_is_honest_zeros(tmp_path: Path):
     assert report.throughput.time_to_first_pr_seconds is None
 
 
+def test_review_findings_per_pr_excludes_firings_without_a_pr(tmp_path: Path):
+    """Findings from a review-only firing (no PR) must not inflate the rate.
+
+    Regression: ``total_findings`` once summed over every observation while
+    the denominator counted only PRs, so a firing that posted a review but
+    never opened a PR (e.g. a loop-detected run) inflated findings-per-PR
+    with work no PR ever carried.
+    """
+    _seed_two_pr_run(tmp_path)
+    # The 'stuck' firing posts a review but still never opens a PR. Its
+    # findings must be excluded from the numerator (denominator = 2 PRs).
+    _write_events(
+        tmp_path,
+        "lucius",
+        "stuck",
+        [
+            {"type": "firing_started", "ts": _ts(11, 0)},
+            {"type": "review_posted", "ts": _ts(11, 2), "findings": 50},
+            {"type": "error_loop_detected", "ts": _ts(11, 3)},
+        ],
+    )
+    report = benchmark.run_report(tmp_path, prs_merged=1)
+    assert report.throughput.prs_opened == 2
+    # (1 from clean + 3 from messy) / 2 PRs = 2.0; the 50 from 'stuck' is dropped.
+    assert report.quality.review_findings_per_pr == pytest.approx(2.0)
+
+
 def test_merge_rate_never_exceeds_one(tmp_path: Path):
     _seed_two_pr_run(tmp_path)
     # Caller over-reports merges; harness clamps to opened.

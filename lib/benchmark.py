@@ -60,6 +60,13 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Top-level state-dir entries that are infrastructure trees, not agent
+# codenames, so auto-discovery skips them. These names are RESERVED: an
+# operator must not name an agent any of these, or its event log is invisible
+# to the harness. Documented in docs/BENCHMARKS.md. Pass an explicit
+# ``--codename`` to scan a directory regardless of this list.
+RESERVED_CODENAMES = frozenset({"transcripts", "codex", "fleet", "engines"})
+
 
 # --------------------------------------------------------------------------
 # Fixed task suite
@@ -516,7 +523,14 @@ def _discover_codenames_with_events(state_dir: Path) -> list[str]:
     for entry in state_dir.iterdir():
         if not entry.is_dir() or entry.name.startswith("_"):
             continue
-        if entry.name in {"transcripts", "codex", "fleet", "engines"}:
+        if entry.name in RESERVED_CODENAMES:
+            if (entry / "events").is_dir():
+                logger.debug(
+                    "skipping reserved codename %r during auto-discovery; "
+                    "pass --codename %s to include it",
+                    entry.name,
+                    entry.name,
+                )
             continue
         if (entry / "events").is_dir():
             out.append(entry.name)
@@ -734,7 +748,7 @@ def build_report(
     merged = max(0, min(prs_merged, prs_opened))
     clean_ci = sum(1 for o in prs if o.checks_done and o.fix_pushes == 0)
     needed_edit = sum(1 for o in prs if o.fix_pushes > 0)
-    total_findings = sum(o.review_findings for o in observations)
+    total_findings = sum(o.review_findings for o in prs)
     quality = QualityMetrics(
         prs_opened=prs_opened,
         prs_merged=merged,
