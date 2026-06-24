@@ -16,7 +16,7 @@ import labels as label_constants
 from batman import parse_parent_issue
 from slack_approval import default_slack_client
 
-from .paths import CLAUDE_BIN
+from .paths import CLAUDE_BIN, decode_env_value
 
 FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "lifecycle_doctor_body.md"
 DEFAULT_PARENT_BODY = """Bundle: doctor-hello
@@ -276,7 +276,10 @@ def _resolve_oauth_token(env: Mapping[str, str]) -> str:
                     continue
                 name, _, value = line.partition("=")
                 if name.removeprefix("export").strip() == "CLAUDE_CODE_OAUTH_TOKEN":
-                    return value.strip().strip('"').strip("'")
+                    # Shared decoder keeps this in lockstep with the bash
+                    # `decode_env_value` loaders; a naive strip() of quote
+                    # chars would diverge for shlex-quoted edge cases.
+                    return decode_env_value(value.strip())
     except OSError:
         pass
     return ""

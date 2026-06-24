@@ -81,6 +81,7 @@ def env_path() -> Path:
     """
     return _alfred_home() / ".env"
 
+
 # claude setup-token prints the token on a line by itself between two
 # sets of human prose. We match the canonical prefix (``sk-ant-oat01-``)
 # and grab the longest token-shaped string on that line.

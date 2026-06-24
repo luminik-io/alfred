@@ -158,9 +158,7 @@ def test_agent_launch_loads_token_from_env_file(tmp_path: Path, alfred_home: Pat
     assert "TOKEN=sk-ant-oat01-fromdotenv" in proc.stdout
 
 
-def test_agent_launch_env_file_does_not_clobber_real_env(
-    tmp_path: Path, alfred_home: Path
-) -> None:
+def test_agent_launch_env_file_does_not_clobber_real_env(tmp_path: Path, alfred_home: Path) -> None:
     """A value already in the scheduler/process environment wins over the
     same key in .env (.env is a gap-filler, not an override)."""
     (alfred_home / ".env").write_text(
