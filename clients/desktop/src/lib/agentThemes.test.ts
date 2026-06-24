@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveAgentRole } from "./agentRoster";
-import { resolveThemedIdentity, ROSTER_THEME_IDS } from "./agentThemes";
+import { deriveAgentRole, type WorkflowRole } from "./agentRoster";
+import {
+  isRosterThemeId,
+  resolveThemedIdentity,
+  ROSTER_THEME_IDS,
+} from "./agentThemes";
 
 describe("deriveAgentRole", () => {
   it("places known default-fleet codenames by the hint table", () => {
@@ -26,6 +30,30 @@ describe("deriveAgentRole", () => {
 
   it("falls back to ops for a wholly unknown agent rather than dropping it", () => {
     expect(deriveAgentRole({ codename: "totally-unknown" })).toBe("ops");
+  });
+
+  it("reproduces the prior shipped roster lanes exactly (no visible change by default)", () => {
+    // Lanes from the pre-refactor WORKFLOW_LANES mapping. The data-driven
+    // derivation must place every default codename in the same lane it had
+    // before, so the default Batman roster renders identically. huntress in
+    // particular stays in ops (it must not drift into review).
+    const PRIOR_LANES: Record<string, WorkflowRole> = {
+      robin: "triage",
+      drake: "triage",
+      damian: "triage",
+      batman: "architect",
+      lucius: "implement",
+      bane: "implement",
+      nightwing: "implement",
+      rasalghul: "review",
+      automerge: "ship",
+      gordon: "ops",
+      "fleet-doctor": "ops",
+      huntress: "ops",
+    };
+    for (const [codename, lane] of Object.entries(PRIOR_LANES)) {
+      expect(deriveAgentRole({ codename })).toBe(lane);
+    }
   });
 });
 
@@ -57,5 +85,16 @@ describe("resolveThemedIdentity", () => {
       expect(id.name.length).toBeGreaterThan(0);
       expect(id.roleLabel.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("isRosterThemeId", () => {
+  it("accepts every id in ROSTER_THEME_IDS and rejects unknown or null", () => {
+    // Derived from ROSTER_THEME_IDS so adding a theme can't desync the guard.
+    for (const themeId of ROSTER_THEME_IDS) {
+      expect(isRosterThemeId(themeId)).toBe(true);
+    }
+    expect(isRosterThemeId("nope")).toBe(false);
+    expect(isRosterThemeId(null)).toBe(false);
   });
 });

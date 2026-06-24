@@ -161,19 +161,28 @@ export function buildWorkflowGraph(
     }
   }
 
-  // Role handoffs become agent->agent edges: connect the first agent in the
-  // source lane to the first agent in the target lane, so the canvas shows the
-  // pipeline spine without a dense all-pairs mesh. Only edges whose both lanes
-  // are present survive.
+  // Role handoffs become agent->agent edges. Every agent in the source lane is
+  // wired into the pipeline (not just the first), so a multi-agent lane never
+  // leaves its secondary agents orphaned on the canvas. To avoid a dense
+  // all-pairs mesh we connect each source agent to the target lane's single
+  // representative (its first agent), which matches the old explicit edge list
+  // (e.g. lucius/bane/nightwing all handed off to rasalghul). Only edges whose
+  // both lanes are present survive.
   const firstInRole = (role: WorkflowRole): string | null =>
     byRole.get(role)?.[0]?.codename ?? null;
 
   const liveEdges: [string, string][] = [];
+  const seenEdges = new Set<string>();
   for (const [sourceRole, targetRole] of ROLE_EDGES) {
     if (!presentRoles.has(sourceRole) || !presentRoles.has(targetRole)) continue;
-    const source = firstInRole(sourceRole);
     const target = firstInRole(targetRole);
-    if (source && target && source !== target) {
+    if (!target) continue;
+    for (const sourceAgent of byRole.get(sourceRole) ?? []) {
+      const source = sourceAgent.codename;
+      if (source === target) continue;
+      const key = `${source}->${target}`;
+      if (seenEdges.has(key)) continue;
+      seenEdges.add(key);
       liveEdges.push([source, target]);
     }
   }

@@ -136,7 +136,7 @@ export const ROSTER_THEME_IDS: readonly RosterThemeId[] = [
 export const DEFAULT_ROSTER_THEME: RosterThemeId = "batman";
 
 export function isRosterThemeId(value: string | null): value is RosterThemeId {
-  return value === "batman" || value === "transformers" || value === "justice-league";
+  return ROSTER_THEME_IDS.includes(value as RosterThemeId);
 }
 
 /** The plain, theme-independent fallback name when nothing else fits. */

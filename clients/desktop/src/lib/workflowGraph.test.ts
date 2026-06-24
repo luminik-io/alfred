@@ -70,6 +70,33 @@ describe("buildWorkflowGraph", () => {
     ).toBe(true);
   });
 
+  it("wires every agent in a multi-agent lane into the pipeline, not just the first", () => {
+    // implement has three agents; each must hand off into the review lane so no
+    // secondary agent (bane, nightwing) is left without a pipeline edge.
+    const { nodes, edges } = buildWorkflowGraph(
+      [
+        input("lucius", "implement"),
+        input("bane", "implement"),
+        input("nightwing", "implement"),
+        input("rasalghul", "review"),
+      ],
+      null,
+    );
+    const agentIds = nodes.filter((n) => n.type === "agent").map((n) => n.id);
+    expect(agentIds.sort()).toEqual(["bane", "lucius", "nightwing", "rasalghul"]);
+    // Every implement agent connects to the review lane representative.
+    const edgeIds = edges.map((e) => e.id);
+    expect(edgeIds).toContain("lucius->rasalghul");
+    expect(edgeIds).toContain("bane->rasalghul");
+    expect(edgeIds).toContain("nightwing->rasalghul");
+    // No agent in the lane is orphaned: each has at least one incident edge.
+    for (const codename of ["lucius", "bane", "nightwing"]) {
+      expect(
+        edges.some((e) => e.source === codename || e.target === codename),
+      ).toBe(true);
+    }
+  });
+
   it("marks the selected node and animates its incident edges", () => {
     const { nodes, edges } = buildWorkflowGraph(
       [input("lucius", "implement"), input("rasalghul", "review")],
