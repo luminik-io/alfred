@@ -29,7 +29,7 @@ import {
 } from "./components/ui";
 import { useAlfred } from "./hooks/useAlfred";
 import { useDesktopRoute } from "./hooks/useDesktopRoute";
-import { supportsNativeActions } from "./api";
+import { hasStoredBaseUrl, supportsNativeActions } from "./api";
 import { FLEET_SUBTABS, PRIMARY_TABS } from "./lib/primaryTabs";
 import type { OperatorKey, RequestThreadModel, TabKey } from "./lib/uiTypes";
 import { useTheme } from "./lib/useTheme";
@@ -132,7 +132,13 @@ function App() {
   // never connected on this machine, route the user straight into guided
   // onboarding. It fires once: once they have connected, or once we have
   // redirected, we never yank them out of wherever they navigate next.
-  const [firstRunRouted, setFirstRunRouted] = useState(false);
+  //
+  // Seed the guard from the persisted base URL so a returning user who has
+  // connected before (and therefore has a stored URL) is never force-routed
+  // into onboarding on a cold start where the runtime simply is not up yet.
+  // Without this seed both signals reset every process start and the wizard
+  // re-fires for established users.
+  const [firstRunRouted, setFirstRunRouted] = useState(() => hasStoredBaseUrl());
   const hasEverConnected = useRef(false);
   useEffect(() => {
     if (snapshot && !error) {
@@ -155,7 +161,7 @@ function App() {
       setTab("settings");
       setSettingsTab("setup");
     }
-  }, [firstRunRouted, loading, error, snapshot, setSetupMode, setTab]);
+  }, [firstRunRouted, loading, error, snapshot, setSetupMode, setTab, setSettingsTab]);
 
   const commands = useMemo<Command[]>(() => {
     const nav: Command[] = PRIMARY_TABS.map((item) => ({
