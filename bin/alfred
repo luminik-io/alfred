@@ -51,6 +51,9 @@ Subcommands today:
   alfred metrics              Weekly per-agent firings/cost/turns/tool-use
                               roll-up across spend, transcripts, and Codex
                               artifacts.
+  alfred benchmark            Reproducible self-benchmark from existing
+                              telemetry: throughput, quality, reliability,
+                              efficiency, and % of plan quota per PR.
   alfred logs <codename>      Inspect stream-JSON transcripts for one agent:
                               recent firings, tool-call summary, or a full
                               pretty-printed dump of one firing.
@@ -1371,6 +1374,12 @@ def cmd_metrics(args: argparse.Namespace) -> int:
     return subprocess.run(cmd, check=False).returncode
 
 
+def cmd_benchmark(args: argparse.Namespace) -> int:
+    script = _HERE / "alfred-benchmark.py"
+    forwarded = args.benchmark_args or []
+    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+
+
 def cmd_usage(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-usage.py"
     cmd = [sys.executable, str(script)]
@@ -2380,6 +2389,17 @@ def main(argv: list[str] | None = None) -> int:
     p_metrics.add_argument("--by-day", action="store_true", help="per-day breakdown")
     p_metrics.add_argument("--json", action="store_true")
     p_metrics.set_defaults(func=cmd_metrics)
+
+    p_benchmark = sub.add_parser(
+        "benchmark",
+        help="reproducible self-benchmark from existing telemetry (throughput/quality/etc.)",
+    )
+    p_benchmark.add_argument(
+        "benchmark_args",
+        nargs=argparse.REMAINDER,
+        help="forwarded to alfred-benchmark.py (report|show-suite|write-suite, --json, ...)",
+    )
+    p_benchmark.set_defaults(func=cmd_benchmark)
 
     p_usage = sub.add_parser(
         "usage",
