@@ -85,6 +85,33 @@ BATMAN_BASE_NAMES: dict[str, str] = {
     "proof-telemetry": "Telemetry",
 }
 
+# The shipped Batman role label per known fleet codename. The desktop custom
+# theme falls back to this Batman-base role label (agentThemes.ts
+# ``ROLE_LABELS_DEFAULT`` keyed via ``CODENAME_ROLE_HINTS``) when the operator
+# names an agent but sets no per-agent role label. The Slack path must resolve
+# the SAME label there, instead of falling back to the ``ALFRED_<CODENAME>_ROLE``
+# env label, so a saved ``batman -> Sherlock`` without a custom role renders
+# identically on both surfaces. Kept in lockstep with ``agentThemes.ts``.
+BATMAN_BASE_ROLES: dict[str, str] = {
+    "robin": "Triage lead",
+    "drake": "Triage lead",
+    "damian": "Triage lead",
+    "batman": "Architect",
+    "lucius": "Senior developer",
+    "bane": "Senior developer",
+    "nightwing": "Senior developer",
+    "rasalghul": "Reviewer",
+    "automerge": "Release",
+    "gordon": "Ops & health",
+    "fleet-doctor": "Ops & health",
+    "huntress": "Ops & health",
+    "cleanup": "Ops & health",
+    "agent-cleanup": "Ops & health",
+    "memory-harvest": "Ops & health",
+    "code-map-refresh": "Ops & health",
+    "proof-telemetry": "Ops & health",
+}
+
 
 class RosterThemeError(ValueError):
     """Raised when an inbound theme payload fails validation."""
@@ -140,6 +167,24 @@ class RosterThemeState:
             return None
         short = _normalize_codename(codename) or ""
         return self.custom_names.get(short) or BATMAN_BASE_NAMES.get(short)
+
+    def custom_role_label_for(self, codename: str) -> str | None:
+        """Resolve the desktop-equivalent role label under the custom theme.
+
+        Under the ``custom`` theme the desktop overlays the operator's per-agent
+        role label on the Batman-base role label (agentThemes.ts
+        ``roleLabelByCodename`` over ``ROLE_LABELS_DEFAULT``), NOT on the
+        ``ALFRED_<CODENAME>_ROLE`` env label. This mirrors that: the operator's
+        custom role when set, else the Batman base role for a known codename. So
+        a ``batman -> Sherlock`` with no custom role renders ``Sherlock
+        (Architect)`` on both the desktop and Slack. Returns ``None`` for a
+        non-custom theme or an unknown codename so the caller keeps the shipped
+        env-role behavior for those.
+        """
+        if self.theme != CUSTOM_THEME_ID:
+            return None
+        short = _normalize_codename(codename) or ""
+        return self.custom_roles.get(short) or BATMAN_BASE_ROLES.get(short)
 
 
 def default_theme_state() -> RosterThemeState:

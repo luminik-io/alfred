@@ -140,6 +140,31 @@ def test_custom_display_name_is_none_for_preset(tmp_path: Path) -> None:
     assert loaded.custom_display_name_for("lucius") is None
 
 
+def test_custom_role_label_falls_back_to_batman_base(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    store.save(
+        theme="custom",
+        custom_names={"batman": "Sherlock"},
+        custom_roles={"batman": "Lead detective"},
+    )
+    loaded = _store(tmp_path).load()
+    # The operator role wins when set.
+    assert loaded.custom_role_label_for("batman") == "Lead detective"
+    # A known agent with no custom role uses the Batman-base role label, matching
+    # the desktop, not the env role or None.
+    assert loaded.custom_role_label_for("lucius") == "Senior developer"
+    # An unknown codename has no base role, so it returns None and the caller
+    # keeps the shipped env-role behavior.
+    assert loaded.custom_role_label_for("mystery-bot") is None
+
+
+def test_custom_role_label_is_none_for_preset(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    store.save(theme="transformers")
+    loaded = _store(tmp_path).load()
+    assert loaded.custom_role_label_for("batman") is None
+
+
 def test_save_rejects_unknown_theme(tmp_path: Path) -> None:
     with pytest.raises(RosterThemeError):
         _store(tmp_path).save(theme="nope")

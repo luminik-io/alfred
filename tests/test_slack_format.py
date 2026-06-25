@@ -276,23 +276,26 @@ def test_themed_label_custom_name_and_role_applied(tmp_path, monkeypatch):
     assert sf._themed_codename_label("batman") == "Sherlock (Lead detective)"
 
 
-def test_themed_label_custom_name_falls_back_to_env_role(tmp_path, monkeypatch):
+def test_themed_label_custom_name_falls_back_to_batman_base_role(tmp_path, monkeypatch):
     import slack_format as sf
 
     monkeypatch.setenv("ALFRED_BATMAN_ROLE", "Fleet lead")
-    # Custom name set, but no custom role: the env role still shows.
+    # Custom name set, but no custom role: the desktop shows the Batman-base role
+    # label (``Architect``), NOT the ``ALFRED_BATMAN_ROLE`` env label, so the
+    # Slack path must match it rather than diverging to ``Fleet lead``.
     _persist_theme(tmp_path, theme="custom", custom_names={"batman": "Sherlock"})
-    assert sf._themed_codename_label("batman") == "Sherlock (Fleet lead)"
+    assert sf._themed_codename_label("batman") == "Sherlock (Architect)"
 
 
-def test_themed_label_custom_without_name_uses_batman_base_name(tmp_path, monkeypatch):
+def test_themed_label_custom_without_name_uses_batman_base_name_and_role(tmp_path, monkeypatch):
     import slack_format as sf
 
     monkeypatch.setenv("ALFRED_LUCIUS_ROLE", "Engineer")
     # A custom theme that did not name THIS agent must still match the desktop,
-    # which shows the Batman-base name (``Lucius``), not the bare codename.
+    # which shows the Batman-base name (``Lucius``) and the Batman-base role
+    # label (``Senior developer``), not the bare codename or the env role.
     _persist_theme(tmp_path, theme="custom", custom_names={"batman": "Sherlock"})
-    assert sf._themed_codename_label("lucius") == "Lucius (Engineer)"
+    assert sf._themed_codename_label("lucius") == "Lucius (Senior developer)"
 
 
 def test_themed_label_custom_unknown_codename_keeps_shipped_behavior(tmp_path, monkeypatch):
@@ -300,6 +303,7 @@ def test_themed_label_custom_unknown_codename_keeps_shipped_behavior(tmp_path, m
     from agent_runner.metadata import codename_with_role
 
     monkeypatch.setenv("ALFRED_MYSTERY_BOT_ROLE", "Wildcard")
-    # A codename outside the Batman base (no desktop persona) is left as shipped.
+    # A codename outside the Batman base (no desktop persona) is left as shipped:
+    # the env role still applies, since the desktop has no base label for it.
     _persist_theme(tmp_path, theme="custom", custom_names={"batman": "Sherlock"})
     assert sf._themed_codename_label("mystery-bot") == codename_with_role("mystery-bot")

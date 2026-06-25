@@ -77,7 +77,12 @@ def _themed_codename_label(codename: str) -> str:
     name = state.custom_display_name_for(codename)
     if not name:
         return codename_with_role(codename)
-    role = state.role_label_for(codename) or agent_role(codename)
+    # Match the desktop's role fallback: a custom theme with a name but no
+    # per-agent role label falls back to the Batman-base role label (not the
+    # ``ALFRED_<CODENAME>_ROLE`` env label), so the same persisted custom theme
+    # renders identically on both surfaces. Only a codename outside the Batman
+    # base falls through to the env role, preserving the shipped behavior there.
+    role = state.custom_role_label_for(codename) or agent_role(codename)
     return f"{name} ({role})" if role else name
 
 
