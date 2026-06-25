@@ -88,6 +88,76 @@ describe("useRosterTheme", () => {
     });
   });
 
+  // Thread: "Stale read still wins". If a save resolves before a slow initial
+  // GET, the GET continuation must NOT overwrite the freshly persisted choice.
+  it("does not let a slow initial read clobber a save that already won", async () => {
+    // Hold the GET open so the save can resolve first.
+    let resolveLoad: (value: RosterThemeResponse) => void = () => {};
+    loadRosterTheme.mockReturnValue(
+      new Promise<RosterThemeResponse>((resolve) => {
+        resolveLoad = resolve;
+      }),
+    );
+    saveRosterTheme.mockResolvedValue(serverState({ theme: "transformers" }));
+
+    const { result } = renderHook(() => useRosterTheme("http://127.0.0.1:7010"));
+
+    // Operator switches before the GET resolves; the save wins and hydrates.
+    act(() => {
+      result.current.setRosterTheme("transformers");
+    });
+    await waitFor(() => {
+      expect(saveRosterTheme).toHaveBeenCalled();
+    });
+    expect(result.current.rosterTheme).toBe("transformers");
+
+    // The stale server snapshot now resolves; it must be ignored.
+    await act(async () => {
+      resolveLoad(serverState({ theme: "justice-league" }));
+    });
+    expect(result.current.rosterTheme).toBe("transformers");
+  });
+
+  // Thread: "Preset switch clears cast". Switching to a preset must omit the
+  // custom maps so the server retains the authored custom cast; sending empty
+  // objects would wipe it.
+  it("omits the custom maps when switching to a preset", async () => {
+    loadRosterTheme.mockResolvedValue(serverState());
+    saveRosterTheme.mockResolvedValue(serverState({ theme: "transformers" }));
+
+    const { result } = renderHook(() => useRosterTheme("http://127.0.0.1:7010"));
+
+    act(() => {
+      result.current.setRosterTheme("transformers");
+    });
+    await waitFor(() => {
+      expect(saveRosterTheme).toHaveBeenCalledWith("http://127.0.0.1:7010", {
+        theme: "transformers",
+      });
+    });
+  });
+
+  // A custom save still carries the cast so the operator's names/roles persist.
+  it("sends the custom maps when saving the custom cast", async () => {
+    loadRosterTheme.mockResolvedValue(serverState());
+    saveRosterTheme.mockResolvedValue(
+      serverState({ theme: "custom", custom_names: { batman: "Sherlock" } }),
+    );
+
+    const { result } = renderHook(() => useRosterTheme("http://127.0.0.1:7010"));
+
+    act(() => {
+      result.current.setCustomNames({ names: { batman: "Sherlock" }, roles: {} });
+    });
+    await waitFor(() => {
+      expect(saveRosterTheme).toHaveBeenCalledWith("http://127.0.0.1:7010", {
+        theme: "custom",
+        custom_names: { batman: "Sherlock" },
+        custom_roles: {},
+      });
+    });
+  });
+
   // A successful save clears any prior error and is treated as the source of
   // truth (no stale "local-only" warning lingers).
   it("clears the save error after a successful save", async () => {

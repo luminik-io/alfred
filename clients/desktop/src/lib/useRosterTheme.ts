@@ -99,7 +99,11 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
     void (async () => {
       try {
         const remote = await loadRosterTheme(baseUrl);
-        if (cancelled) return;
+        // A save can win the race and mark the hook hydrated while this GET is
+        // still in flight; honoring only `cancelled` would let the older server
+        // snapshot overwrite the freshly persisted choice. Bail once any server
+        // interaction has hydrated the hook so the newer save stands.
+        if (cancelled || hydratedRef.current) return;
         const theme = isRosterThemeId(remote.theme) ? remote.theme : DEFAULT_ROSTER_THEME;
         const custom: CustomRosterNames = {
           names: remote.custom_names ?? {},
@@ -134,11 +138,15 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
         setSaveError("Not connected: this cast is local-only until Alfred is reachable.");
         return;
       }
-      void saveRosterTheme(baseUrl, {
-        theme,
-        custom_names: custom.names,
-        custom_roles: custom.roles,
-      })
+      // Only a custom save carries the cast. A preset switch must omit both
+      // maps so the server retains the authored custom cast (it replaces the
+      // retained maps only when an explicit payload is present); sending empty
+      // objects here would wipe the cast and lose it when switching back.
+      const body =
+        theme === "custom"
+          ? { theme, custom_names: custom.names, custom_roles: custom.roles }
+          : { theme };
+      void saveRosterTheme(baseUrl, body)
         .then(() => {
           // The server is now the agreed source of truth; clear any prior
           // failure and treat the hook as hydrated so a racing GET cannot
