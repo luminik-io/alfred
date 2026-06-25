@@ -157,29 +157,44 @@ lands the small safe PRs you allow -> Slack reports what changed.
 
 ## Quick start
 
-Install the core runtime first. Add Alfred Desktop when you want the local app
-for plans, agents, logs, setup checks, and memory review.
-
-### Install Alfred core
+The signed desktop app is the recommended way to install. It bundles the CLI it
+talks to and opens straight into a guided setup wizard. Prefer the command line?
+The CLI install is right below it.
 
 Budget about 30 minutes on a dev machine that already has GitHub auth, Claude
 Code, a package manager, and Python ready. A fresh laptop, Mac mini, old Mac, or
 Linux box is closer to 60 to 120 minutes because browser auth and Slack setup
 take real time.
 
-Source checkout path:
+### Install Alfred Desktop (recommended)
+
+The desktop app is the front door. It installs the CLI alongside it, then on
+first launch with no runtime running it opens the guided setup wizard, which can
+start `alfred serve` for you.
 
 ```sh
-git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
-cd ~/code/alfred-os
-bash install.sh
-exec $SHELL                       # pick up ~/.alfredrc
-gh auth login                     # GitHub
-claude                            # Claude Code first-run auth
-./bin/alfred-init.py              # choose agents, repos, codenames, Slack
+brew install --cask alfred-os    # signed, notarized macOS app + the CLI
 ```
 
-macOS Homebrew path, if you prefer package-manager installs:
+- macOS 11+ on Apple silicon: or download the signed, notarized DMG from
+  [`alfred.luminik.io/download/`](https://alfred.luminik.io/download/).
+- Linux: download the AppImage or `.deb` from the same page.
+- Local development: `cd clients/desktop && npm install && npm run tauri dev`.
+
+The app connects to the local runtime over `alfred serve`; it does not run
+agents by itself. Start the local API before opening the app, or let the setup
+wizard start it for you:
+
+```sh
+alfred serve --port 7010 --no-browser
+```
+
+### Install the CLI only (advanced)
+
+Prefer a headless box or want to drive everything from the terminal? Install the
+CLI on its own.
+
+macOS Homebrew path:
 
 ```sh
 brew tap luminik-io/alfred-os https://github.com/luminik-io/alfred-os
@@ -191,32 +206,21 @@ claude                            # Claude Code first-run auth
 alfred-init                       # choose agents, repos, codenames, Slack
 ```
 
-The Homebrew formula installs the latest tagged release and exposes
-`alfred`, `alfred-init`, `alfred-install`, `alfred-deploy`, and
-`alfred-doctor` on your PATH. Use the source checkout path when you want to
-work from `main` or run the Linux installer. Want the desktop app too? After
-the formula installs, run `brew install --cask alfred-os` for the signed
-native client (see Install Alfred Desktop below).
-
-### Install Alfred Desktop
-
-Alfred Desktop is optional. It connects to the local runtime over
-`alfred serve`; it does not run agents by itself. On first launch with no
-runtime running, it opens straight into the guided setup wizard, which can
-start `alfred serve` for you.
-
-- macOS 11+ with Homebrew: `brew install --cask alfred-os` installs the
-  signed, notarized app alongside the CLI.
-- macOS 11+ on Apple silicon: or download the signed, notarized DMG from
-  [`alfred.luminik.io/download/`](https://alfred.luminik.io/download/).
-- Linux: download the AppImage or `.deb` from the same page.
-- Local development: `cd clients/desktop && npm install && npm run tauri dev`.
-
-Start the local API before opening the app:
+Source checkout path, for working from `main` or running the Linux installer:
 
 ```sh
-alfred serve --port 7010 --no-browser
+git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
+cd ~/code/alfred-os
+bash install.sh
+exec $SHELL                       # pick up ~/.alfredrc
+gh auth login                     # GitHub
+claude                            # Claude Code first-run auth
+./bin/alfred-init.py              # choose agents, repos, codenames, Slack
 ```
+
+The Homebrew formula installs the latest tagged release and exposes
+`alfred`, `alfred-init`, `alfred-install`, `alfred-deploy`, and
+`alfred-doctor` on your PATH.
 
 For a solo-builder setup that an AI coding tool can run without guessing at
 prompts or labels, pass one repo or an explicit comma-separated repo list:
@@ -322,54 +326,21 @@ adapter code.
 
 ## Anonymous usage totals
 
-Alfred can report anonymous aggregate counts for the public
-[Impact](https://alfred.luminik.io/impact/) page. Reporting is on by default
-and uses Alfred's hosted collector. Turn it off any time with
-`alfred telemetry off` or `ALFRED_TELEMETRY_ENABLED=0`. When an install has
-already reported, `alfred telemetry off` asks the collector to remove that
-install's stored record before writing the local opt-out.
-
-Alfred reports counts only. It does not send repo names, file paths, code,
-prompts, titles, branches, people, hostnames, or billing data. A reporting
-failure never breaks a firing. On Alfred's hosted counter, every public Impact
-total requires a private trusted reporter token, so a random install cannot move
-the public numbers.
-
-Enable it explicitly or repair the scheduler row:
+Alfred reports anonymous aggregate counts (PRs opened, merged, reviewed, file
+deltas) to a public [Impact](https://alfred.luminik.io/impact/) counter. It is on
+by default and sends counts only, never repo names, paths, code, prompts,
+branches, people, or hostnames. A reporting failure never breaks a firing.
 
 ```sh
-alfred telemetry on
+alfred telemetry off      # opt out (or set ALFRED_TELEMETRY_ENABLED=0)
+alfred telemetry status   # see local state
 ```
 
-Self-hosted collector:
-
-```sh
-alfred telemetry on \
-  --url https://your-worker.example.com/ingest \
-  --token the-same-value-as-the-collector
-```
-
-Then run `bash deploy.sh` from the source checkout so launchd or systemd
-installs the scheduler change.
-
-Turn reporting off:
-
-```sh
-alfred telemetry off
-```
-
-If this install has already reported, the command asks the collector to remove
-the stored record before it writes the local opt-out.
-
-Inspect local state:
-
-```sh
-alfred telemetry status
-alfred telemetry status --json
-```
-
-The bundled collector lives under [`telemetry/worker/`](telemetry/worker/).
-Full contract: [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
+The public counter only moves for a trusted reporter token, so a random install
+cannot inflate it. Self-host the collector (Cloudflare Worker under
+[`telemetry/worker/`](telemetry/worker/)) with
+`alfred telemetry on --url ... --token ...`. Full contract:
+[`docs/TELEMETRY.md`](docs/TELEMETRY.md).
 
 ## What's in here
 
