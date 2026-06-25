@@ -21,10 +21,13 @@ install's previous record, then writes `ALFRED_TELEMETRY_ENABLED=0`. The
 scheduler row can stay installed; with telemetry off, the reporter exits
 cleanly and sends nothing.
 
-After changing the telemetry config, load the reporter into the host scheduler
-(`launchd` on macOS, `systemd --user` on Linux). A Homebrew install exposes the
-wrapper as `alfred-deploy`; from a source checkout run `bash deploy.sh`. Until
-then the row is recorded but no unit is loaded, so nothing is sent.
+This assumes Alfred is already installed and deployed once (the install places
+the reporter alongside your fleet's scheduler). After changing the telemetry
+config, re-run the same deploy step to re-render the reporter into the host
+scheduler (`launchd` on macOS, `systemd --user` on Linux): a Homebrew install
+exposes the wrapper as `alfred-deploy`; from a source checkout run
+`bash deploy.sh`. Until that reload runs, the row is recorded but the loaded
+unit still carries the old config, so nothing new is sent.
 
 Self-hosted collector:
 
