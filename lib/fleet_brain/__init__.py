@@ -649,12 +649,14 @@ class FleetBrain:
                 f"promote_memory_candidate: candidate {candidate_id!r} is {candidate.status}"
             )
 
-        if lesson_writer is None:
-            lesson_writer = self._lesson_provider()
-
         # AMS write FIRST. No local fallback: if this fails the candidate stays
-        # pending (no store update) and is re-promotable on a later run.
+        # pending (no store update) and is re-promotable on a later run. Provider
+        # CONSTRUCTION is inside the try too, so a bad AMS env value surfaces as a
+        # retryable MemoryPromotionError (candidate stays pending, batch counts an
+        # ams_write_error) rather than a raw exception / CLI traceback.
         try:
+            if lesson_writer is None:
+                lesson_writer = self._lesson_provider()
             lesson = lesson_writer.reflect(
                 codename=candidate.codename,
                 repo=candidate.repo,
@@ -1008,43 +1010,74 @@ class FleetBrain:
         re-review. Auto-promotions are the validated candidates the auto-promoter
         wrote (``reviewed_by == "auto"`` with a recorded ``promoted_lesson_id``).
 
-        AMS forget is best-effort: a transient outage must not block reopening
-        the candidate, and a later re-promote upserts the same deterministic
-        memory id. ``lesson_forgetter`` is the AMS provider; tests inject a
-        stub. Returns the reverted candidate ids.
+        A candidate is reopened ONLY once its lesson is actually forgotten from
+        AMS: if the forget fails (a transient outage, or forgetting disabled
+        server-side) the candidate is left validated and logged, so the local
+        ledger never claims a revert while the lesson is still live in AMS
+        recall. The sweep paginates (reverting flips a candidate out of the
+        validated set) so it drains more than one page. ``lesson_forgetter`` is
+        the AMS provider; tests inject a stub. Returns the candidate ids that
+        were actually reverted.
         """
-        rows = [
-            cand
-            for cand in self.list_memory_candidates(status="validated", limit=500)
-            if cand.reviewed_by == "auto" and cand.promoted_lesson_id is not None
-        ]
         reverted: list[str] = []
-        if lesson_forgetter is None and rows:
+        # Candidates whose AMS lesson could not be forgotten: we do NOT reopen
+        # them (that would claim a revert while the lesson is still live in AMS
+        # recall), so skip them on later passes to avoid an endless loop.
+        forget_failed: set[str] = set()
+        if lesson_forgetter is None:
             lesson_forgetter = self._lesson_provider()
-        for candidate in rows:
-            cid = candidate.id
-            # Forget the lesson from Redis AMS. Best-effort: a transient AMS
-            # outage must not block reopening the candidate, and a later
-            # re-promote upserts the same deterministic memory id.
-            if lesson_forgetter is not None:
-                try:
-                    lesson_forgetter.forget_lesson(_lesson_memory_id(cid))
-                except Exception:
-                    _LOG.exception(
-                        "revert_auto_promotions: AMS forget failed for candidate %s",
-                        cid,
+        # list_memory_candidates is capped (no offset), but reverting a candidate
+        # flips it out of the "validated" set, so loop until a page has no fresh
+        # auto-promotions left. A safety ceiling guards against a stuck page.
+        max_passes = 100_000
+        passes = 0
+        while passes < max_passes:
+            passes += 1
+            rows = [
+                cand
+                for cand in self.list_memory_candidates(status="validated", limit=500)
+                if cand.reviewed_by == "auto"
+                and cand.promoted_lesson_id is not None
+                and cand.id not in forget_failed
+            ]
+            if not rows:
+                break
+            for candidate in rows:
+                cid = candidate.id
+                # Forget the lesson from Redis AMS, then reopen the candidate
+                # ONLY if the lesson is actually gone, so the local ledger never
+                # records a revert while the lesson is still live in AMS recall.
+                forgotten = True
+                if lesson_forgetter is not None:
+                    try:
+                        forgotten = bool(lesson_forgetter.forget_lesson(_lesson_memory_id(cid)))
+                    except Exception:
+                        _LOG.exception(
+                            "revert_auto_promotions: AMS forget failed for candidate %s",
+                            cid,
+                        )
+                        forgotten = False
+                if not forgotten:
+                    forget_failed.add(cid)
+                    continue
+                self.store.update_memory_candidate(
+                    replace(
+                        candidate,
+                        status="candidate",
+                        reviewed_at=datetime.now(UTC),
+                        reviewed_by=reviewer.strip() or "auto-revert",
+                        review_note=note.strip() or None,
+                        promoted_lesson_id=None,
                     )
-            self.store.update_memory_candidate(
-                replace(
-                    candidate,
-                    status="candidate",
-                    reviewed_at=datetime.now(UTC),
-                    reviewed_by=reviewer.strip() or "auto-revert",
-                    review_note=note.strip() or None,
-                    promoted_lesson_id=None,
                 )
+                reverted.append(cid)
+        if forget_failed:
+            _LOG.warning(
+                "revert_auto_promotions: left %d candidate(s) validated because the "
+                "AMS lesson could not be forgotten: %s",
+                len(forget_failed),
+                ", ".join(sorted(forget_failed)),
             )
-            reverted.append(cid)
         return reverted
 
     def record_failure(

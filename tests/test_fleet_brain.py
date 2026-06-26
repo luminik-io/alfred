@@ -502,6 +502,49 @@ def test_revert_auto_promotions_forgets_lessons_and_reopens(brain: FleetBrain) -
     assert reopened.promoted_lesson_id is None
 
 
+def test_promote_provider_construction_failure_is_memory_promotion_error(
+    brain: FleetBrain, monkeypatch
+) -> None:
+    # A bad AMS env that breaks provider construction (before reflect) must
+    # surface as a retryable MemoryPromotionError, not a raw exception, so the
+    # candidate stays pending and an auto-promote batch counts an ams_write_error.
+    candidate = brain.propose_memory(codename="lucius", repo="org/api", body="x", confidence=0.7)
+
+    def _broken_provider() -> object:
+        raise RuntimeError("ALFRED_REDIS_MEMORY_URL is malformed")
+
+    monkeypatch.setattr(brain, "_lesson_provider", _broken_provider)
+    with pytest.raises(MemoryPromotionError):
+        brain.promote_memory_candidate(candidate.id)
+    still = brain.store.get_memory_candidate(candidate.id)
+    assert still is not None and still.status == "candidate"
+
+
+def test_revert_leaves_candidate_validated_when_forget_fails(brain: FleetBrain) -> None:
+    # When the AMS forget fails, the candidate must NOT be reopened: that would
+    # claim a revert while the lesson is still live in AMS recall.
+    candidate = brain.propose_memory(
+        codename="lucius", repo="org/api", body="Use the fixture factory.", confidence=0.7
+    )
+    ams = _FakeAMS()
+    brain.promote_memory_candidate(
+        candidate.id, reviewer="auto", review_note="auto-promoted", lesson_writer=ams
+    )
+
+    class _ForgetFails:
+        name = "redis"
+
+        def forget_lesson(self, _lesson_id: str) -> bool:
+            return False
+
+    reverted = brain.revert_auto_promotions(lesson_forgetter=_ForgetFails())
+    assert reverted == []
+    # Still validated, lesson id intact (not a false revert).
+    still = brain.store.get_memory_candidate(candidate.id)
+    assert still is not None and still.status == "validated"
+    assert still.promoted_lesson_id is not None
+
+
 def test_revert_skips_human_promotions(brain: FleetBrain) -> None:
     candidate = brain.propose_memory(
         codename="lucius",
