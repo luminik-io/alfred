@@ -473,9 +473,26 @@ export function useAskThread({
     void runTurn(text, baseTurns);
   }, [busy, runTurn, turns]);
 
-  // Start a fresh, empty conversation. The active thread is already persisted
-  // (the last-5 list keeps it), so this just opens a new id and clears state.
+  // Start a fresh, empty conversation. Persist the active thread BEFORE clearing
+  // it: the passive settle effect saves only after `busy` flips false, so
+  // clicking New chat on the first paint after a reply settles could reset
+  // before that write lands and drop the just-finished chat from Recent. Save it
+  // first, exactly like the recent-thread switch path does. A trailing in-flight
+  // reply is dropped; the operator's message and settled turns are kept.
   const newChat = useCallback(() => {
+    const lastIdx = turns.length - 1;
+    const settled = turns.filter(
+      (t, i) =>
+        !(i === lastIdx && t.kind === "message" && t.role === "assistant" && t.pending),
+    );
+    if (settled.length) {
+      saveConversation({
+        id: conversationId,
+        draftId: result?.draft_id,
+        draft: result?.draft,
+        turns: settled.map(toPersistedTurn),
+      });
+    }
     abortRef.current?.abort();
     abortRef.current = null;
     setConversationId(newConversationId());
@@ -489,7 +506,7 @@ export function useAskThread({
     setFileBusyId(null);
     lastUserTextRef.current = "";
     setRecent(loadConversations());
-  }, []);
+  }, [conversationId, turns, result]);
 
   // Resume a stored conversation by id, making it the active thread.
   const resumeConversation = useCallback(
