@@ -18,15 +18,17 @@ function repoChipsFor(repos: string[]): RepoChip[] {
 // the chat reply already carries Alfred's questions, so the card stays quiet
 // (neutral "Draft plan") until the plan is ready to file ("Ready to file"), and
 // File issue is always available because the server is the real readiness gate.
-export function AskDraftPart({ args, toolCallId }: ToolCallMessagePartProps<DraftToolArgs>) {
+export function AskDraftPart({ args }: ToolCallMessagePartProps<DraftToolArgs>) {
   const surface = useAskSurface();
   const draft: DraftCardModel | undefined = args?.draft;
   if (!draft) return null;
 
-  // The file notice rides only the most recent draft card so a filed
-  // confirmation stays visible when conversational turns ("thanks") follow.
-  const notice = toolCallId === surface.lastDraftToolCallId ? surface.fileNotice : null;
+  // Each card shows only its OWN file result, keyed by this draft's id, so a
+  // filed confirmation stays on the card whose plan was filed (and survives
+  // conversational turns that land after) rather than drifting onto the last one.
+  const notice = surface.fileNotices[draft.draftId] ?? null;
   const filed = notice?.tone === "ok";
+  const busy = surface.fileBusyId === draft.draftId;
 
   return (
     <div className="ask-draft" aria-label="Plan Alfred is shaping">
@@ -65,7 +67,7 @@ export function AskDraftPart({ args, toolCallId }: ToolCallMessagePartProps<Draf
                 draft.ready ? "icon-button ask-draft__file" : "secondary-button ask-draft__file"
               }
               type="button"
-              disabled={surface.fileBusy}
+              disabled={busy}
               onClick={() => surface.onFile(draft.draftId)}
               title={
                 draft.ready
@@ -75,7 +77,7 @@ export function AskDraftPart({ args, toolCallId }: ToolCallMessagePartProps<Draf
             >
               <CheckCircle2 size={15} aria-hidden="true" />
               <span>
-                {surface.fileBusy ? "Filing..." : draft.ready ? "File issue" : "File as an issue"}
+                {busy ? "Filing..." : draft.ready ? "File issue" : "File as an issue"}
               </span>
             </button>
           )

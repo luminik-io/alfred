@@ -175,8 +175,14 @@ export function useAskThread({
         ? ({ draft_id: initial.draftId, draft: initial.draft } as unknown as ConverseResponse)
         : null,
   );
-  const [fileBusy, setFileBusy] = useState(false);
-  const [fileNotice, setFileNotice] = useState<FileNotice | null>(null);
+  // The draft currently being filed (its draftId), or null when idle. Scoping
+  // this to a specific draft keeps a second card's File button live while one
+  // file is in flight, and lets each card show its own spinner.
+  const [fileBusyId, setFileBusyId] = useState<string | null>(null);
+  // File results keyed by the draftId they belong to, so a "Filed" confirmation
+  // rides the exact card whose plan was filed rather than a single global notice
+  // that drifts onto whichever card is currently last.
+  const [fileNotices, setFileNotices] = useState<Record<string, FileNotice>>({});
   // The recent-threads list (newest first), so the switcher can resume any of
   // the last 5. Reloaded from storage after every settle.
   const [recent, setRecent] = useState<PersistedConversation[]>(restored);
@@ -242,8 +248,8 @@ export function useAskThread({
         setTurns(next);
         return;
       }
-      // A real build turn supersedes any prior file result, so clear the notice.
-      setFileNotice(null);
+      // A real build turn supersedes any prior file result, so clear notices.
+      setFileNotices({});
       setResult(reply);
       if (draftHasSubstance(reply.draft)) {
         next.push({ kind: "draft", role: "assistant", draft: draftCardFrom(reply) });
@@ -437,8 +443,8 @@ export function useAskThread({
     setResult(null);
     setError(null);
     setBusy(false);
-    setFileNotice(null);
-    setFileBusy(false);
+    setFileNotices({});
+    setFileBusyId(null);
     lastUserTextRef.current = "";
     setRecent(loadConversations());
   }, []);
@@ -460,8 +466,8 @@ export function useAskThread({
       );
       setError(null);
       setBusy(false);
-      setFileNotice(null);
-      setFileBusy(false);
+      setFileNotices({});
+      setFileBusyId(null);
       lastUserTextRef.current = lastUserTextOf(target.turns.map(fromPersistedTurn));
       setRecent(loadConversations());
     },
@@ -478,8 +484,8 @@ export function useAskThread({
     setResult(null);
     setError(null);
     setBusy(false);
-    setFileNotice(null);
-    setFileBusy(false);
+    setFileNotices({});
+    setFileBusyId(null);
     lastUserTextRef.current = "";
     setRecent([]);
   }, []);
@@ -488,40 +494,42 @@ export function useAskThread({
   // enforces readiness and repo allowlisting; there is no client approval step.
   const fileIssue = useCallback(
     async (draftId: string) => {
-      if (fileBusy) return;
-      setFileBusy(true);
-      setFileNotice(null);
+      if (fileBusyId) return;
+      setFileBusyId(draftId);
+      // Drop only this draft's prior notice; other cards keep theirs.
+      setFileNotices((prev) => {
+        if (!(draftId in prev)) return prev;
+        const next = { ...prev };
+        delete next[draftId];
+        return next;
+      });
       try {
         const res: FilePlanIssueResponse = await filePlanIssue(baseUrl, draftId);
-        setFileNotice({
-          tone: "ok",
-          message:
-            res.status === "already_filed"
-              ? "Already filed."
-              : `Filed with ${res.label || "agent:implement"}.`,
-          url: res.issue_url,
-        });
+        setFileNotices((prev) => ({
+          ...prev,
+          [draftId]: {
+            tone: "ok",
+            message:
+              res.status === "already_filed"
+                ? "Already filed."
+                : `Filed with ${res.label || "agent:implement"}.`,
+            url: res.issue_url,
+          },
+        }));
       } catch (err) {
-        setFileNotice({
-          tone: "error",
-          message: err instanceof Error ? err.message : String(err),
-        });
+        setFileNotices((prev) => ({
+          ...prev,
+          [draftId]: {
+            tone: "error",
+            message: err instanceof Error ? err.message : String(err),
+          },
+        }));
       } finally {
-        setFileBusy(false);
+        setFileBusyId(null);
       }
     },
-    [baseUrl, fileBusy],
+    [baseUrl, fileBusyId],
   );
-
-  // The id of the most recent draft card's tool-call part: the file notice rides
-  // this card so it survives conversational turns that land after filing.
-  const lastDraftToolCallId = useMemo(() => {
-    for (let i = turns.length - 1; i >= 0; i -= 1) {
-      const turn = turns[i];
-      if (turn.kind === "draft") return `draft-${i}-${turn.draft.draftId}`;
-    }
-    return null;
-  }, [turns]);
 
   // The assistant-ui ExternalStore runtime. We own the state (turns); assistant-
   // ui renders it. `onNew` routes a composer submission through the same turn
@@ -563,9 +571,8 @@ export function useAskThread({
     started: turns.length > 0,
     busy,
     error,
-    fileBusy,
-    fileNotice,
-    lastDraftToolCallId,
+    fileBusyId,
+    fileNotices,
     recentThreads,
     // Actions.
     retry,

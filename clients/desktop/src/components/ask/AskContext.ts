@@ -7,11 +7,12 @@ import type { FileNotice } from "./useAskThread";
 // MessagePrimitive tree where props cannot reach. The view provides this once
 // around the thread.
 export type AskSurface = {
-  fileBusy: boolean;
-  fileNotice: FileNotice | null;
-  // The tool-call id of the most recent draft card; the file notice rides this
-  // card so a filed confirmation survives conversational follow-ups.
-  lastDraftToolCallId: string | null;
+  // The draftId currently being filed (or null), so each card shows its own
+  // spinner without disabling the others.
+  fileBusyId: string | null;
+  // File results keyed by draftId, so each card shows only its own notice
+  // instead of a single global one that drifts onto the last card.
+  fileNotices: Record<string, FileNotice>;
   onFile: (draftId: string) => void;
   onOpenWork: () => void;
 };

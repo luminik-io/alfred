@@ -131,9 +131,8 @@ export function ComposeView({
       <RestoreTextBridge register={ask.registerRestoreText} />
       <AskSurfaceProvider
         value={{
-          fileBusy: ask.fileBusy,
-          fileNotice: ask.fileNotice,
-          lastDraftToolCallId: ask.lastDraftToolCallId,
+          fileBusyId: ask.fileBusyId,
+          fileNotices: ask.fileNotices,
           onFile: ask.fileIssue,
           onOpenWork,
         }}
