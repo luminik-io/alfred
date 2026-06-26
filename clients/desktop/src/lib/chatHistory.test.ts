@@ -217,6 +217,31 @@ describe("chatHistory last-5 persistence", () => {
     expect(ids.slice().sort()).toEqual(["v2-0", "v2-1", "v2-2", "v2-3", "v2-4"]);
   });
 
+  it("keeps a CONTINUED legacy thread when a later save persists a different chat", () => {
+    // Upgrade path: load the v1 thread, continue it (send another message), then
+    // save a different chat later. The continued legacy thread must survive.
+    window.localStorage.setItem(
+      LEGACY_STORAGE_KEY,
+      JSON.stringify({ version: 1, turns: [messageTurn("user", "legacy request")], updatedAt: 500 }),
+    );
+    const legacy = loadConversations().find((c) => c.title === "legacy request");
+    expect(legacy).toBeDefined();
+    // Continue the migrated legacy thread (saved into v2 under its legacy id).
+    saveConversation({
+      id: legacy!.id,
+      turns: [messageTurn("user", "legacy request"), messageTurn("assistant", "a continued reply")],
+    });
+    // Save a DIFFERENT chat afterwards.
+    saveConversation({ id: "other", turns: [messageTurn("user", "other chat")] });
+
+    const all = loadConversations();
+    const continued = all.find((c) => c.id === legacy!.id);
+    expect(continued).toBeDefined();
+    // The continuation (the new assistant turn) is preserved, not the stale blob.
+    expect(continued?.turns).toHaveLength(2);
+    expect(all.some((c) => c.id === "other")).toBe(true);
+  });
+
   it("clears the v1 key when the migrated legacy thread is deleted so it cannot return", () => {
     window.localStorage.setItem(
       LEGACY_STORAGE_KEY,

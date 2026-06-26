@@ -268,18 +268,21 @@ export function saveConversation(conversation: ConversationDraft): void {
   };
 
   // Build the write list from the RAW v2 store, never the legacy-folded read:
-  // the legacy thread is a read-time convenience only and must never be
-  // persisted into v2, where it could push a real chat off the end of the cap.
-  // Also drop any legacy-v1 entry an earlier buggy build may have already
-  // written into v2, so a stale legacy timestamp cannot evict a real chat on
-  // this save; the legacy still folds back in at read time (from the v1 key)
-  // when there is room under the cap.
-  const existing = readRawV2Conversations().filter(
-    (c) => c.id !== entry.id && c.id !== LEGACY_CONVERSATION_ID,
+  // the read-time legacy fold must never be persisted into v2 where it could
+  // push a real chat off the end of the cap. We DEMOTE rather than drop a
+  // persisted legacy-v1 entry, because the user may have continued the migrated
+  // thread (it then legitimately lives in v2 under that id). Real chats fill the
+  // capped slots first, so the legacy entry can never evict one; it keeps a slot
+  // only when there is room. When `entry` itself is the legacy thread being
+  // saved (a continuation), it is treated as a real-priority entry below.
+  const existing = readRawV2Conversations().filter((c) => c.id !== entry.id);
+  const reals = [entry, ...existing.filter((c) => c.id !== LEGACY_CONVERSATION_ID)].sort(
+    (a, b) => b.updatedAt - a.updatedAt,
   );
-  const next = [entry, ...existing]
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-    .slice(0, MAX_PERSISTED_CONVERSATIONS);
+  const legacyEntries = existing.filter((c) => c.id === LEGACY_CONVERSATION_ID);
+  // Reals first (newest wins the cap), then any persisted legacy fills leftover
+  // slots only. A legacy entry therefore never displaces a real conversation.
+  const next = [...reals, ...legacyEntries].slice(0, MAX_PERSISTED_CONVERSATIONS);
 
   const payload: PersistedHistoryV2 = { version: 2, conversations: next };
   try {
