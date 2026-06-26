@@ -161,6 +161,7 @@ def test_emergency_dev_cache_skips_symlinks_but_still_clears(tmp_path, monkeypat
 
 def test_non_emergency_leaves_dev_caches_untouched(tmp_path, monkeypatch):
     """A normal (non-emergency) sweep never touches machine-wide dev caches."""
+    monkeypatch.delenv("ALFRED_CLEANUP_SCHEDULED_RECLAIM", raising=False)
     home = tmp_path / "home"
     _seed_dev_caches(home)
     mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py"], home=home)
@@ -249,11 +250,67 @@ def test_emergency_skip_env_preserves_docker(tmp_path, monkeypatch):
 
 def test_non_emergency_leaves_docker_untouched(tmp_path, monkeypatch):
     """A normal (non-emergency) sweep never runs docker prunes."""
+    monkeypatch.delenv("ALFRED_CLEANUP_SCHEDULED_RECLAIM", raising=False)
     home = tmp_path / "home"
     calls = _patch_docker(monkeypatch, present=True, stdout="Total reclaimed space: 1.5GB\n")
     mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py"], home=home)
     assert mod.dock_n == 0
     assert mod.dock_freed_mb == 0.0
+    assert calls == []
+
+
+def test_scheduled_flag_reclaims_dev_caches_without_emergency(tmp_path, monkeypatch):
+    """--scheduled reclaims regenerable dev caches on a normal (non-emergency) pass."""
+    monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DEV_CACHES", raising=False)
+    home = tmp_path / "home"
+    _seed_dev_caches(home)
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--scheduled"], home=home)
+    assert not (home / "Library" / "Developer" / "Xcode" / "DerivedData").exists()
+    assert not (home / ".npm" / "_cacache").exists()
+    assert mod.dev_caches_cleared == 2
+    assert mod.dev_cache_freed_mb > 0
+    # --scheduled must NOT flip the aggressive emergency thresholds on.
+    assert mod.EMERGENCY is False
+    assert mod.SCHEDULED_RECLAIM is True
+
+
+def test_scheduled_env_reclaims_dev_caches_without_flag(tmp_path, monkeypatch):
+    """ALFRED_CLEANUP_SCHEDULED_RECLAIM=1 opts the daily pass in with no flag."""
+    monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DEV_CACHES", raising=False)
+    monkeypatch.setenv("ALFRED_CLEANUP_SCHEDULED_RECLAIM", "1")
+    home = tmp_path / "home"
+    _seed_dev_caches(home)
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py"], home=home)
+    assert not (home / "Library" / "Developer" / "Xcode" / "DerivedData").exists()
+    assert mod.dev_caches_cleared == 2
+    assert mod.SCHEDULED_RECLAIM is True
+
+
+def test_scheduled_flag_reclaims_docker_without_emergency(tmp_path, monkeypatch):
+    """--scheduled runs the same 3 safe docker prunes the emergency pass does."""
+    monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DOCKER", raising=False)
+    home = tmp_path / "home"
+    calls = _patch_docker(monkeypatch, present=True, stdout="Total reclaimed space: 1.5GB\n")
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--scheduled"], home=home)
+    assert mod.dock_n == 3
+    assert [c[1:] for c in calls] == [
+        ["builder", "prune", "-f"],
+        ["image", "prune", "-f"],
+        ["volume", "prune", "--all", "-f"],
+    ]
+
+
+def test_scheduled_respects_skip_envs(tmp_path, monkeypatch):
+    """The existing skip envs opt out of the scheduled reclaim too."""
+    monkeypatch.setenv("ALFRED_EMERGENCY_SKIP_DEV_CACHES", "1")
+    monkeypatch.setenv("ALFRED_EMERGENCY_SKIP_DOCKER", "1")
+    home = tmp_path / "home"
+    _seed_dev_caches(home)
+    calls = _patch_docker(monkeypatch, present=True, stdout="Total reclaimed space: 1.5GB\n")
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--scheduled"], home=home)
+    assert (home / "Library" / "Developer" / "Xcode" / "DerivedData").exists()
+    assert mod.dev_caches_cleared == 0
+    assert mod.dock_n == 0
     assert calls == []
 
 

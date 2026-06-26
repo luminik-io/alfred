@@ -64,7 +64,7 @@ PREFLIGHT = PreflightSpec(
     check_disk=False,
 )
 
-USAGE = """usage: agent-cleanup.py [--emergency]
+USAGE = """usage: agent-cleanup.py [--emergency] [--scheduled]
 
 Sweep stale Alfred runtime files:
   - old agent temp files
@@ -81,6 +81,16 @@ Options:
                 clears Alfred's own /tmp debug dirs regardless of the
                 1-day age gate. Still 100% Alfred-owned with the same
                 dirty-skip + recovery-ref safety as a normal sweep.
+  --scheduled   Opt-in proactive reclaim of regenerable developer caches
+                (Xcode DerivedData, npm cache) and Docker build cache,
+                dangling images, and orphaned volumes, on the normal daily
+                pass instead of only when a firing already hit the disk
+                floor. Keeps the normal age gates and retention floors:
+                only the dev-cache and Docker reclaim run, so the daily
+                cleanup recovers regenerable host build output before disk
+                pressure ever forces an --emergency pass. Also enabled by
+                ALFRED_CLEANUP_SCHEDULED_RECLAIM=1 so a launchd entry that
+                cannot pass flags can still opt in via config.
 
 Configuration is via ALFRED_* environment variables.
 """
@@ -95,12 +105,29 @@ if any(arg in {"-h", "--help"} for arg in sys.argv[1:]):
 # is critical. Lowers age gates and retention floors so a full disk can
 # recover before the next firing crash-loops on ENOSPC.
 EMERGENCY = "--emergency" in sys.argv[1:]
+# --scheduled (or ALFRED_CLEANUP_SCHEDULED_RECLAIM=1) opts the daily pass
+# into the dev-cache + Docker reclaim that otherwise runs only reactively
+# under --emergency. It does NOT lower any age gate or retention floor: the
+# rest of the sweep stays a normal pass. An --emergency run already does
+# this reclaim, so the flag is redundant there but harmless. The env var
+# lets a launchd/agents.conf entry (which passes no flags to the script)
+# turn the scheduled reclaim on through config.
+_SCHEDULED_RECLAIM_ENV = os.environ.get("ALFRED_CLEANUP_SCHEDULED_RECLAIM", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+SCHEDULED_RECLAIM = "--scheduled" in sys.argv[1:] or _SCHEDULED_RECLAIM_ENV
+# Run the regenerable dev-cache + Docker reclaim when EITHER an emergency
+# pass demands it or the operator opted the scheduled pass in.
+RECLAIM_DEV_CACHES = EMERGENCY or SCHEDULED_RECLAIM
 # Reject unknown flags only when run as the actual CLI. When the test
 # suite imports this script as a module, sys.argv belongs to pytest and
 # must not trip the parser (the procedural body would exit(2) before its
 # helper functions are defined).
 if __name__ == "__main__":
-    for _unknown in (a for a in sys.argv[1:] if a not in {"--emergency"}):
+    for _unknown in (a for a in sys.argv[1:] if a not in {"--emergency", "--scheduled"}):
         print(f"agent-cleanup.py: unknown argument: {_unknown} (see --help)", file=sys.stderr)
         sys.exit(2)
 
@@ -431,8 +458,9 @@ def _parse_docker_reclaimed_mb(stdout: str) -> float:
 
 
 def reclaim_emergency_docker() -> tuple[float, int]:
-    """Reclaim regenerable Docker artifacts during --emergency.
+    """Reclaim regenerable Docker artifacts.
 
+    Runs under --emergency and under the opt-in --scheduled daily reclaim.
     Like the dev-cache sweep, this targets machine-wide build output that can
     wedge the whole fleet off disk while every workspace-scoped pass reclaims
     0 MB. Docker's build cache, dangling images, and orphaned volumes are all
@@ -457,7 +485,7 @@ def reclaim_emergency_docker() -> tuple[float, int]:
     Returns ``(freed_mb, prunes_reclaimed)`` where ``prunes_reclaimed`` counts
     the prune commands that freed more than 0 bytes.
     """
-    if not EMERGENCY or os.environ.get("ALFRED_EMERGENCY_SKIP_DOCKER") == "1":
+    if not RECLAIM_DEV_CACHES or os.environ.get("ALFRED_EMERGENCY_SKIP_DOCKER") == "1":
         return 0.0, 0
     docker = shutil.which("docker")
     if docker is None:
@@ -635,16 +663,18 @@ for lock_dir in Path("/tmp").glob("agent-lock-*"):
 if EMERGENCY:
     print("[cleanup] EMERGENCY mode: aggressive thresholds (disk-pressure recovery)")
 
-# In EMERGENCY mode, reclaim well-known regenerable developer caches that live
-# OUTSIDE the workspace. Every other pass here is workspace-scoped, so a host
-# whose free space is eaten by Xcode DerivedData or the npm cache can wedge the
-# whole fleet off disk while each sweep reclaims 0 MB and the preflight gate
-# keeps skipping firings. These two are pure build/download output: Xcode
-# recreates DerivedData on the next build, npm refetches its cache on the next
-# install. Opt out with ALFRED_EMERGENCY_SKIP_DEV_CACHES=1.
+# Reclaim well-known regenerable developer caches that live OUTSIDE the
+# workspace. Every other pass here is workspace-scoped, so a host whose free
+# space is eaten by Xcode DerivedData or the npm cache can wedge the whole
+# fleet off disk while each sweep reclaims 0 MB and the preflight gate keeps
+# skipping firings. These two are pure build/download output: Xcode recreates
+# DerivedData on the next build, npm refetches its cache on the next install.
+# Runs under --emergency and under the opt-in --scheduled daily reclaim so the
+# host recovers regenerable build output before disk pressure forces an
+# emergency pass. Opt out with ALFRED_EMERGENCY_SKIP_DEV_CACHES=1.
 dev_cache_freed_mb = 0.0
 dev_caches_cleared = 0
-if EMERGENCY and os.environ.get("ALFRED_EMERGENCY_SKIP_DEV_CACHES") != "1":
+if RECLAIM_DEV_CACHES and os.environ.get("ALFRED_EMERGENCY_SKIP_DEV_CACHES") != "1":
     HOME = Path.home()
     DEV_CACHE_ROOTS = [
         HOME / "Library" / "Developer" / "Xcode" / "DerivedData",  # macOS Xcode
@@ -694,7 +724,7 @@ print(
     f"[cleanup] transcripts: {transcript_removed} removed ({transcript_freed_mb:.1f} MB freed, >{TRANSCRIPT_RETENTION_DAYS}d)"
 )
 print(f"[cleanup] stuck locks: {locks_unlocked} force-released (>{LOCK_MAX_AGE // 3600}h)")
-if EMERGENCY:
+if RECLAIM_DEV_CACHES:
     print(
         f"[cleanup] dev caches: {dev_caches_cleared} reclaimed "
         f"({dev_cache_freed_mb:.1f} MB freed, Xcode DerivedData + npm cache)"
