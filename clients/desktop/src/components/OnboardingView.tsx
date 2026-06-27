@@ -649,14 +649,24 @@ export function OnboardingView({
     (key: OnboardingStepKey) => {
       void (async () => {
         const targetIndex = ONBOARDING_STEP_ORDER.indexOf(key);
-        if (stepKey === "fleet" && targetIndex > currentIndex) {
-          const saved = await ensureFleetChoiceSaved();
-          if (!saved) return;
+        const fleetIndex = ONBOARDING_STEP_ORDER.indexOf("fleet");
+        if (targetIndex > fleetIndex && !stepSatisfied("fleet")) {
+          if (stepKey === "fleet") {
+            const saved = await ensureFleetChoiceSaved();
+            if (!saved) return;
+          } else {
+            goToStep("fleet", { manual: true });
+            setNotice({
+              tone: "error",
+              message: "Save the fleet naming choice before continuing.",
+            });
+            return;
+          }
         }
         goToStep(key, { manual: true });
       })();
     },
-    [currentIndex, ensureFleetChoiceSaved, goToStep, stepKey],
+    [ensureFleetChoiceSaved, goToStep, stepKey, stepSatisfied],
   );
 
   const handleRosterThemeChange = useCallback(

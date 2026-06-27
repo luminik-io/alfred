@@ -185,6 +185,17 @@ async function gotoStep(user: ReturnType<typeof userEvent.setup>, railName: RegE
   await user.click(await screen.findByRole("button", { name: railName }));
 }
 
+async function completeFleetStep(user: ReturnType<typeof userEvent.setup>) {
+  await gotoStep(user, /^fleet$/i);
+  await user.click(screen.getByRole("button", { name: /^continue$/i }));
+  const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+  await waitFor(() =>
+    expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+      /slack/i,
+    ),
+  );
+}
+
 beforeEach(() => {
   vi.spyOn(api, "supportsNativeActions").mockReturnValue(true);
   vi.spyOn(api, "loadSetupStatus").mockResolvedValue(makeStatus());
@@ -750,6 +761,31 @@ describe("OnboardingView seven-step takeover", () => {
     expect(screen.getByText(/save the fleet naming choice before continuing/i)).toBeInTheDocument();
   });
 
+  it("routes back to Fleet when rail navigation would skip its save gate", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
+    const onRosterThemeChange = vi.fn(async () => true);
+    renderOnboarding({ onRosterThemeChange });
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^fleet$/i);
+    await user.click(screen.getByRole("button", { name: /^back$/i }));
+    const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+    expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+      /repositories/i,
+    );
+    await user.click(within(stepper).getByRole("button", { name: /^slack$/i }));
+
+    expect(onRosterThemeChange).not.toHaveBeenCalled();
+    expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+      /fleet/i,
+    );
+    expect(screen.getByText(/save the fleet naming choice before continuing/i)).toBeInTheDocument();
+  });
+
   it("does not mark fleet naming complete while a roster save error is visible", async () => {
     vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
       makeStatus({
@@ -934,7 +970,7 @@ describe("OnboardingView seven-step takeover", () => {
   it("treats Slack as optional and skippable, advancing to the first request", async () => {
     renderOnboarding();
     const user = userEvent.setup();
-    await gotoStep(user, /^slack$/i);
+    await completeFleetStep(user);
     expect(screen.getByText(/want approvals and questions in slack/i)).toBeInTheDocument();
     // Skip is a first-class button, not a tiny link.
     await user.click(screen.getByRole("button", { name: /skip for now/i }));
@@ -954,7 +990,7 @@ describe("OnboardingView seven-step takeover", () => {
     });
     renderOnboarding();
     const user = userEvent.setup();
-    await gotoStep(user, /^slack$/i);
+    await completeFleetStep(user);
     await user.click(screen.getByText(/add a slack approver/i));
     await user.type(screen.getByLabelText(/slack user id/i), "U999");
     await user.click(screen.getByRole("button", { name: /^trust$/i }));
@@ -976,6 +1012,7 @@ describe("OnboardingView seven-step takeover", () => {
     renderOnboarding({ onSwitch });
     const user = userEvent.setup();
 
+    await completeFleetStep(user);
     await gotoStep(user, /^first request$/i);
     await waitFor(() =>
       expect(screen.getByText(/triage open prs every night/i)).toBeInTheDocument(),
@@ -994,6 +1031,7 @@ describe("OnboardingView seven-step takeover", () => {
     renderOnboarding({ onSwitch, onRefreshBoard });
     const user = userEvent.setup();
 
+    await completeFleetStep(user);
     await gotoStep(user, /^first request$/i);
     await user.click(await screen.findByRole("button", { name: /show me a sample first/i }));
     await waitFor(() => expect(seed).toHaveBeenCalledWith("http://127.0.0.1:7010"));
@@ -1011,6 +1049,7 @@ describe("OnboardingView seven-step takeover", () => {
     renderOnboarding({ onRefreshBoard });
     const user = userEvent.setup();
 
+    await completeFleetStep(user);
     await gotoStep(user, /^first request$/i);
     await user.click(await screen.findByRole("button", { name: /show me a sample first/i }));
     // Once seeded, the step surfaces a visible clear control instead of stranding
@@ -1036,6 +1075,7 @@ describe("OnboardingView seven-step takeover", () => {
     renderOnboarding();
     const user = userEvent.setup();
 
+    await completeFleetStep(user);
     await gotoStep(user, /^first request$/i);
     // No seed click in this mount, yet the clear control is present.
     expect(
@@ -1082,6 +1122,7 @@ describe("OnboardingView seven-step takeover", () => {
     vi.spyOn(api, "supportsNativeActions").mockReturnValue(false);
     renderOnboarding({ canRun: false });
     const user = userEvent.setup();
+    await completeFleetStep(user);
     await gotoStep(user, /^first request$/i);
     await waitFor(() =>
       expect(screen.getByText(/triage open prs every night/i)).toBeInTheDocument(),
