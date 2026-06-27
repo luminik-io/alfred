@@ -193,6 +193,7 @@ def test_render_agents_conf_comments_config_gated_rows_without_env(init_mod, tmp
 def test_render_agents_conf_schedules_config_gated_rows_with_config(
     init_mod, tmp_path, monkeypatch
 ):
+    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
     monkeypatch.delenv("ALFRED_GORDON_ECS_CLUSTER", raising=False)
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner", "ops_morning"))
@@ -239,6 +240,7 @@ def test_render_agents_conf_honors_runtime_env_file_for_config_gates(
 def test_render_agents_conf_ignores_stale_managed_alfredrc_for_config_gates(
     init_mod, tmp_path, monkeypatch
 ):
+    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
     state.alfredrc.write_text(
@@ -262,6 +264,7 @@ def test_render_agents_conf_ignores_stale_managed_alfredrc_for_config_gates(
 def test_render_agents_conf_honors_unmanaged_alfredrc_for_config_gates(
     init_mod, tmp_path, monkeypatch
 ):
+    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
     state.alfredrc.write_text(
@@ -278,6 +281,26 @@ def test_render_agents_conf_honors_unmanaged_alfredrc_for_config_gates(
 
     assert "#alfred.huntress" not in text
     assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
+
+
+def test_render_agents_conf_does_not_trust_alfredrc_override_for_config_gates(
+    init_mod, tmp_path, monkeypatch
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
+    state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
+    state.alfredrc = tmp_path / "override.alfredrc"
+    state.role_to_extras["smoke_runner"] = {
+        "ALFRED_HUNTRESS_TARGET_URL": "https://staging.example.com"
+    }
+
+    text = init_mod.render_agents_conf(state)
+
+    assert "# gated until configured: huntress needs ALFRED_HUNTRESS_TARGET_URL" in text
+    assert "#alfred.huntress\thuntress.py\tinterval:1800" in text
+    assert "\nalfred.huntress\t" not in text
 
 
 def test_render_agents_conf_schedules_telemetry_by_default(init_mod, tmp_path):

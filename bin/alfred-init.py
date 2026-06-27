@@ -706,15 +706,23 @@ def _configured_env_values(state: WizardState) -> dict[str, str]:
 
     ``agent-launch`` reads ``~/.alfredrc`` and ``$ALFRED_HOME/.env`` at firing
     time. Transient values in the installer shell do not count unless this
-    wizard is also about to write them through ``role_to_extras``.
+    wizard is also about to write them through ``role_to_extras`` to the same
+    launch rc file the scheduled wrappers read.
     """
     values: dict[str, str] = {}
+    launch_rc = Path.home() / ".alfredrc"
     with contextlib.suppress(OSError):
-        values.update(read_unmanaged_alfredrc(state.alfredrc))
+        values.update(read_unmanaged_alfredrc(launch_rc))
     with contextlib.suppress(OSError):
-        values.update(read_alfredrc(state.alfred_home / ".env"))
-    values.update(env_assignments_for(state))
+        for key, value in read_alfredrc(state.alfred_home / ".env").items():
+            values.setdefault(key, value)
+    if _same_path(state.alfredrc, launch_rc):
+        values.update(env_assignments_for(state))
     return values
+
+
+def _same_path(left: Path, right: Path) -> bool:
+    return left.expanduser().resolve() == right.expanduser().resolve()
 
 
 def schedule_blockers_for_role(state: WizardState, role: str) -> list[str]:
