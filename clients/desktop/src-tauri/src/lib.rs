@@ -391,12 +391,12 @@ fn merged_alfred_env() -> HashMap<String, String> {
     let mut env: HashMap<String, String> = std::env::vars().collect();
     let process_env_keys: HashSet<String> = env.keys().cloned().collect();
     let home = home_dir();
-    if let Some(home) = home.as_deref() {
+    if let Some(alfredrc) = alfredrc_path(home.as_deref(), &env) {
         load_config_file(
             &mut env,
-            &home.join(".alfredrc"),
+            &alfredrc,
             true,
-            Some(home),
+            home.as_deref(),
             &process_env_keys,
         );
     }
@@ -422,6 +422,14 @@ fn merged_alfred_env() -> HashMap<String, String> {
             .or_insert_with(|| home.join("code").to_string_lossy().into_owned());
     }
     env
+}
+
+fn alfredrc_path(home: Option<&Path>, env: &HashMap<String, String>) -> Option<PathBuf> {
+    env.get("ALFREDRC")
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| home.map(|home| home.join(".alfredrc")))
 }
 
 fn load_config_file(
@@ -2133,6 +2141,7 @@ mod tests {
     fn alfred_resolver_reads_alfred_env_file() {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_alfredrc = std::env::var("ALFREDRC").ok();
         let prev_alfred_bin = std::env::var("ALFRED_BIN").ok();
 
         let root = temp_root("alfred-bin-dotenv");
@@ -2145,6 +2154,7 @@ mod tests {
         .expect("write temp env");
 
         std::env::set_var("ALFRED_HOME", &root);
+        std::env::remove_var("ALFREDRC");
         std::env::remove_var("ALFRED_BIN");
         assert_eq!(
             resolve_program("alfred"),
@@ -2153,6 +2163,7 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&root);
         restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFREDRC", prev_alfredrc);
         restore_var("ALFRED_BIN", prev_alfred_bin);
     }
 
@@ -2161,6 +2172,7 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_home = std::env::var("HOME").ok();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_alfredrc = std::env::var("ALFREDRC").ok();
         let prev_alfred_bin = std::env::var("ALFRED_BIN").ok();
 
         let root = temp_root("alfred-bin-alfredrc");
@@ -2176,6 +2188,7 @@ mod tests {
 
         std::env::set_var("HOME", &home);
         std::env::remove_var("ALFRED_HOME");
+        std::env::remove_var("ALFREDRC");
         std::env::remove_var("ALFRED_BIN");
         assert_eq!(
             resolve_program("alfred"),
@@ -2185,7 +2198,64 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         restore_var("HOME", prev_home);
         restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFREDRC", prev_alfredrc);
         restore_var("ALFRED_BIN", prev_alfred_bin);
+    }
+
+    #[test]
+    fn native_subprocess_env_honors_custom_alfredrc() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_alfredrc = std::env::var("ALFREDRC").ok();
+        let prev_auto_promote = std::env::var("ALFRED_AUTO_PROMOTE").ok();
+        let prev_auto_promote_kill = std::env::var("ALFRED_AUTO_PROMOTE_KILL").ok();
+
+        let root = temp_root("alfred-custom-alfredrc");
+        let home = root.join("home");
+        let stale_runtime = root.join("stale-runtime");
+        let runtime = root.join("runtime");
+        let custom_rc = root.join("custom.alfredrc");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&stale_runtime).expect("create stale runtime");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(
+            home.join(".alfredrc"),
+            format!(
+                "ALFRED_HOME='{}'\nALFRED_AUTO_PROMOTE=1\nALFRED_AUTO_PROMOTE_KILL=0\n",
+                stale_runtime.to_string_lossy()
+            ),
+        )
+        .expect("write stale home alfredrc");
+        std::fs::write(
+            &custom_rc,
+            format!(
+                "ALFRED_HOME='{}'\nALFRED_AUTO_PROMOTE=0\nALFRED_AUTO_PROMOTE_KILL=1\n",
+                runtime.to_string_lossy()
+            ),
+        )
+        .expect("write custom alfredrc");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFREDRC", &custom_rc);
+        std::env::remove_var("ALFRED_HOME");
+        std::env::remove_var("ALFRED_AUTO_PROMOTE");
+        std::env::remove_var("ALFRED_AUTO_PROMOTE_KILL");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("ALFRED_HOME"),
+            Some(&runtime.to_string_lossy().to_string())
+        );
+        assert_eq!(env.get("ALFRED_AUTO_PROMOTE"), Some(&"0".to_string()));
+        assert_eq!(env.get("ALFRED_AUTO_PROMOTE_KILL"), Some(&"1".to_string()));
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFREDRC", prev_alfredrc);
+        restore_var("ALFRED_AUTO_PROMOTE", prev_auto_promote);
+        restore_var("ALFRED_AUTO_PROMOTE_KILL", prev_auto_promote_kill);
     }
 
     #[test]
@@ -2193,6 +2263,7 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_home = std::env::var("HOME").ok();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_alfredrc = std::env::var("ALFREDRC").ok();
         let prev_alfred_bin = std::env::var("ALFRED_BIN").ok();
         let prev_gh = std::env::var("GH_BIN").ok();
         let prev_alfred_gh = std::env::var("ALFRED_GH_BIN").ok();
@@ -2220,6 +2291,7 @@ mod tests {
 
         std::env::set_var("HOME", &home);
         std::env::set_var("ALFRED_HOME", &explicit_runtime);
+        std::env::remove_var("ALFREDRC");
         std::env::set_var("ALFRED_BIN", &explicit_bin);
         std::env::set_var("GH_BIN", "/explicit/bin/gh");
         std::env::remove_var("ALFRED_GH_BIN");
@@ -2243,6 +2315,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         restore_var("HOME", prev_home);
         restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFREDRC", prev_alfredrc);
         restore_var("ALFRED_BIN", prev_alfred_bin);
         restore_var("GH_BIN", prev_gh);
         restore_var("ALFRED_GH_BIN", prev_alfred_gh);
@@ -2277,6 +2350,7 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_home = std::env::var("HOME").ok();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_alfredrc = std::env::var("ALFREDRC").ok();
         let prev_auto_promote = std::env::var("ALFRED_AUTO_PROMOTE").ok();
         let prev_auto_promote_kill = std::env::var("ALFRED_AUTO_PROMOTE_KILL").ok();
 
@@ -2291,6 +2365,7 @@ mod tests {
 
         std::env::set_var("HOME", &home);
         std::env::remove_var("ALFRED_HOME");
+        std::env::remove_var("ALFREDRC");
         std::env::remove_var("ALFRED_AUTO_PROMOTE");
         std::env::remove_var("ALFRED_AUTO_PROMOTE_KILL");
 
@@ -2301,6 +2376,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         restore_var("HOME", prev_home);
         restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFREDRC", prev_alfredrc);
         restore_var("ALFRED_AUTO_PROMOTE", prev_auto_promote);
         restore_var("ALFRED_AUTO_PROMOTE_KILL", prev_auto_promote_kill);
     }
@@ -2310,6 +2386,7 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_home = std::env::var("HOME").ok();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_alfredrc = std::env::var("ALFREDRC").ok();
         let prev_auto_promote = std::env::var("ALFRED_AUTO_PROMOTE").ok();
         let prev_auto_promote_kill = std::env::var("ALFRED_AUTO_PROMOTE_KILL").ok();
 
@@ -2334,6 +2411,7 @@ mod tests {
 
         std::env::set_var("HOME", &home);
         std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::remove_var("ALFREDRC");
         std::env::set_var("ALFRED_AUTO_PROMOTE", "1");
         std::env::set_var("ALFRED_AUTO_PROMOTE_KILL", "0");
 
@@ -2344,6 +2422,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         restore_var("HOME", prev_home);
         restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFREDRC", prev_alfredrc);
         restore_var("ALFRED_AUTO_PROMOTE", prev_auto_promote);
         restore_var("ALFRED_AUTO_PROMOTE_KILL", prev_auto_promote_kill);
     }
@@ -2353,6 +2432,7 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_home = std::env::var("HOME").ok();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_alfredrc = std::env::var("ALFREDRC").ok();
         let prev_auto_promote = std::env::var("ALFRED_AUTO_PROMOTE").ok();
         let prev_workspace = std::env::var("WORKSPACE_ROOT").ok();
 
@@ -2377,6 +2457,7 @@ mod tests {
 
         std::env::set_var("HOME", &home);
         std::env::remove_var("ALFRED_HOME");
+        std::env::remove_var("ALFREDRC");
         std::env::remove_var("ALFRED_AUTO_PROMOTE");
         std::env::remove_var("WORKSPACE_ROOT");
 
@@ -2410,6 +2491,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         restore_var("HOME", prev_home);
         restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFREDRC", prev_alfredrc);
         restore_var("ALFRED_AUTO_PROMOTE", prev_auto_promote);
         restore_var("WORKSPACE_ROOT", prev_workspace);
     }
@@ -2419,6 +2501,7 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_home = std::env::var("HOME").ok();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_alfredrc = std::env::var("ALFREDRC").ok();
         let prev_auto_promote = std::env::var("ALFRED_AUTO_PROMOTE").ok();
         let prev_auto_promote_kill = std::env::var("ALFRED_AUTO_PROMOTE_KILL").ok();
 
@@ -2433,6 +2516,7 @@ mod tests {
 
         std::env::set_var("HOME", &home);
         std::env::remove_var("ALFRED_HOME");
+        std::env::remove_var("ALFREDRC");
         std::env::set_var("ALFRED_AUTO_PROMOTE", "0");
         std::env::set_var("ALFRED_AUTO_PROMOTE_KILL", "1");
 
@@ -2443,6 +2527,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         restore_var("HOME", prev_home);
         restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFREDRC", prev_alfredrc);
         restore_var("ALFRED_AUTO_PROMOTE", prev_auto_promote);
         restore_var("ALFRED_AUTO_PROMOTE_KILL", prev_auto_promote_kill);
     }
@@ -2452,6 +2537,7 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_home = std::env::var("HOME").ok();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_alfredrc = std::env::var("ALFREDRC").ok();
         let prev_auto_promote = std::env::var("ALFRED_AUTO_PROMOTE").ok();
         let prev_auto_promote_kill = std::env::var("ALFRED_AUTO_PROMOTE_KILL").ok();
 
@@ -2476,6 +2562,7 @@ mod tests {
 
         std::env::set_var("HOME", &home);
         std::env::remove_var("ALFRED_HOME");
+        std::env::remove_var("ALFREDRC");
         std::env::remove_var("ALFRED_AUTO_PROMOTE");
         std::env::remove_var("ALFRED_AUTO_PROMOTE_KILL");
 
@@ -2486,6 +2573,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         restore_var("HOME", prev_home);
         restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFREDRC", prev_alfredrc);
         restore_var("ALFRED_AUTO_PROMOTE", prev_auto_promote);
         restore_var("ALFRED_AUTO_PROMOTE_KILL", prev_auto_promote_kill);
     }
@@ -2495,6 +2583,7 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
         let prev_alfred_bin = std::env::var("ALFRED_BIN").ok();
+        let prev_alfredrc = std::env::var("ALFREDRC").ok();
         let prev_home = std::env::var("HOME").ok();
 
         let root = temp_root("alfred-home-bin");
@@ -2505,6 +2594,7 @@ mod tests {
 
         std::env::set_var("ALFRED_HOME", root.join("runtime"));
         std::env::remove_var("ALFRED_BIN");
+        std::env::remove_var("ALFREDRC");
         std::env::set_var("HOME", root.join("user"));
         assert_eq!(
             resolve_program("alfred"),
@@ -2514,6 +2604,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         restore_var("ALFRED_HOME", prev_alfred);
         restore_var("ALFRED_BIN", prev_alfred_bin);
+        restore_var("ALFREDRC", prev_alfredrc);
         restore_var("HOME", prev_home);
     }
 
@@ -2535,6 +2626,7 @@ mod tests {
     fn gh_resolver_reads_alfred_env_file() {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_alfredrc = std::env::var("ALFREDRC").ok();
         let prev_alfred_gh = std::env::var("ALFRED_GH_BIN").ok();
         let prev_gh = std::env::var("GH_BIN").ok();
 
@@ -2544,12 +2636,14 @@ mod tests {
             .expect("write temp env");
 
         std::env::set_var("ALFRED_HOME", &dir);
+        std::env::remove_var("ALFREDRC");
         std::env::remove_var("ALFRED_GH_BIN");
         std::env::remove_var("GH_BIN");
         assert_eq!(resolve_gh_bin(), "/configured/gh");
 
         let _ = std::fs::remove_dir_all(&dir);
         restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFREDRC", prev_alfredrc);
         restore_var("ALFRED_GH_BIN", prev_alfred_gh);
         restore_var("GH_BIN", prev_gh);
     }
@@ -2599,6 +2693,7 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_home = std::env::var("HOME").ok();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_alfredrc = std::env::var("ALFREDRC").ok();
 
         let root = temp_root("alfred-token-alfredrc");
         let home = root.join("home");
@@ -2613,6 +2708,7 @@ mod tests {
 
         std::env::set_var("HOME", &home);
         std::env::remove_var("ALFRED_HOME");
+        std::env::remove_var("ALFREDRC");
 
         assert_eq!(
             server_token_path().expect("alfredrc ALFRED_HOME resolves a token path"),
@@ -2622,6 +2718,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         restore_var("HOME", prev_home);
         restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFREDRC", prev_alfredrc);
     }
 
     #[test]
