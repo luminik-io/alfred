@@ -594,8 +594,8 @@ def cmd_auto_promote(args: argparse.Namespace) -> int:
         return 0
     if not summary["enabled"]:
         print(
-            "alfred-brain: auto-promotion is disarmed. Set ALFRED_AUTO_PROMOTE=1 "
-            "to arm it (ALFRED_AUTO_PROMOTE_KILL=1 overrides).",
+            "alfred-brain: auto-promotion is disabled. Remove ALFRED_AUTO_PROMOTE=0 "
+            "or unset ALFRED_AUTO_PROMOTE_KILL=1 to let the LLM judge save lessons.",
             file=sys.stderr,
         )
         return 0
@@ -1287,13 +1287,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_auto_promote = sub.add_parser(
         "auto-promote",
-        help="promote high-confidence, judge-approved candidates (ALFRED_AUTO_PROMOTE)",
+        help="promote high-confidence, LLM-judge-approved candidates",
     )
     p_auto_promote.add_argument(
         "--threshold",
         type=float,
         default=None,
-        help="Confidence bar (default ALFRED_AUTO_PROMOTE_THRESHOLD or 0.9).",
+        help="Confidence bar (default ALFRED_AUTO_PROMOTE_THRESHOLD or 0.5).",
     )
     p_auto_promote.add_argument(
         "--max-per-run",

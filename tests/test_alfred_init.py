@@ -80,10 +80,14 @@ def test_discover_agents_handles_scheduled_utilities(tmp_path, init_mod):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     (bin_dir / "fleet-doctor.py").write_text("# doctor\n")
+    (bin_dir / "memory-harvest.py").write_text("# harvest\n")
+    (bin_dir / "memory-auto-promote.py").write_text("# auto promote\n")
     (bin_dir / "shipped-summary-daily.sh").write_text("#!/bin/sh\n")
     (bin_dir / "shipped-summary-weekly.sh").write_text("#!/bin/sh\n")
     out = init_mod.discover_agents(bin_dir)
     assert "fleet_doctor" in out
+    assert "memory_harvest" in out
+    assert "memory_auto_promote" in out
     assert "shipped_summary_daily" in out
     assert "shipped_summary_weekly" in out
 
@@ -157,6 +161,19 @@ def test_render_agents_conf_schedules_health_and_shipped_reports(init_mod, tmp_p
     assert "alfred.shipped-summary-daily\tshipped-summary-daily.sh\tcron:7:35" in text
     assert "alfred.shipped-summary-weekly\tshipped-summary-weekly.sh\tcron:1:7:35" in text
     assert text.count("\talfred.shipped-summary\tshipped summary") == 2
+
+
+def test_render_agents_conf_schedules_memory_learning_jobs(init_mod, tmp_path):
+    state = _state_with(init_mod, tmp_path, roles=("memory_harvest", "memory_auto_promote"))
+    text = init_mod.render_agents_conf(state)
+    assert (
+        "alfred.memory-harvest\tmemory-harvest.py\tcron:8:05\tno\t"
+        "alfred.memory-harvest\tmemory harvest" in text
+    )
+    assert (
+        "alfred.memory-auto-promote\tmemory-auto-promote.py\tcron:8:20\tno\t"
+        "alfred.memory-auto-promote\tmemory auto-promote" in text
+    )
 
 
 def test_render_agents_conf_custom_codename(init_mod, tmp_path):
@@ -1317,12 +1334,22 @@ def test_noninteractive_single_repo_starter_main(monkeypatch, tmp_path, init_mod
 
 
 def test_starter_roles_and_agents_arg(init_mod):
-    available = ["feature_dev", "planner", "cross_repo_coordinator", "pr_review", "agent_cleanup"]
+    available = [
+        "feature_dev",
+        "planner",
+        "cross_repo_coordinator",
+        "pr_review",
+        "agent_cleanup",
+        "memory_harvest",
+        "memory_auto_promote",
+    ]
     assert init_mod.starter_roles(available) == [
         "planner",
         "feature_dev",
         "pr_review",
         "agent_cleanup",
+        "memory_harvest",
+        "memory_auto_promote",
     ]
     assert init_mod.recommended_roles(available) == available
     assert init_mod.roles_from_agents_arg("", available) == available
@@ -1340,6 +1367,8 @@ def test_starter_roles_and_agents_arg(init_mod):
         "feature_dev",
         "pr_review",
         "agent_cleanup",
+        "memory_harvest",
+        "memory_auto_promote",
         "cross_repo_coordinator",
     ]
 

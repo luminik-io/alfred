@@ -151,8 +151,10 @@ _NON_ACTIONABLE_FAILURE_SUBTYPES = {
 }
 
 # Auto-promotion defaults. Every one is env-tunable so a deployment can tune
-# the gate without a code change, and all of it is OFF until ALFRED_AUTO_PROMOTE
-# is explicitly set (see ``FleetBrain.auto_promote_enabled``).
+# the gate without a code change. Auto-promotion is ON by default when the flag
+# is unset/blank or a recognized truthy value: the LLM judge is the primary
+# save/skip decision, while ``ALFRED_AUTO_PROMOTE=0``, malformed nonblank
+# values, and ``ALFRED_AUTO_PROMOTE_KILL=1`` fail closed.
 # The threshold is a LIGHT pre-filter, not the decision: any evidenced
 # candidate (candidates default to confidence 0.5) must reach the LLM judge,
 # which makes the real save/skip call. Memory has to capture AND save
@@ -198,6 +200,20 @@ def _env_flag_on(name: str, env: Mapping[str, str] | None = None) -> bool:
     """True only for an explicit truthy token (1/true/yes/on)."""
     src = env if env is not None else os.environ
     return str(src.get(name, "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_flag_default_on(name: str, env: Mapping[str, str] | None = None) -> bool:
+    """Default to ON, but fail closed for any unrecognized nonblank value."""
+    src = env if env is not None else os.environ
+    raw = src.get(name)
+    if raw is None or not str(raw).strip():
+        return True
+    value = str(raw).strip().lower()
+    if value in {"1", "true", "yes", "on", "enabled"}:
+        return True
+    if value in {"0", "false", "no", "off", "disabled"}:
+        return False
+    return False
 
 
 def _env_float(name: str, default: float, env: Mapping[str, str] | None = None) -> float:
@@ -715,15 +731,17 @@ class FleetBrain:
         return self.store.update_memory_candidate(updated)
 
     def auto_promote_enabled(self, env: Mapping[str, str] | None = None) -> bool:
-        """True only when armed AND not kill-switched.
+        """True unless explicitly disabled or kill-switched.
 
-        OFF by default: ``auto_promote_candidates`` returns immediately (a true
-        no-op, no writes) unless ``ALFRED_AUTO_PROMOTE`` is truthy.
-        ``ALFRED_AUTO_PROMOTE_KILL`` wins over the arm flag so a bad batch can
-        be stopped without un-setting the deployment config."""
+        Memory should learn autonomously: evidenced candidates reach the LLM
+        judge by default and the judge decides whether to save. Operators can
+        set ``ALFRED_AUTO_PROMOTE=0`` for a normal opt-out; malformed nonblank
+        values fail closed too. ``ALFRED_AUTO_PROMOTE_KILL=1`` wins over
+        everything so a bad batch can be halted without editing the rest of the
+        deployment config."""
         if _env_flag_on("ALFRED_AUTO_PROMOTE_KILL", env):
             return False
-        return _env_flag_on("ALFRED_AUTO_PROMOTE", env)
+        return _env_flag_default_on("ALFRED_AUTO_PROMOTE", env)
 
     def hold_candidate_for_review(
         self, candidate_id: str, *, note: str = ""
@@ -760,7 +778,7 @@ class FleetBrain:
 
         Structural gate (every condition must hold):
 
-          * the master arm flag is on and the kill-switch is off
+          * the opt-out flag is not off and the kill-switch is off
             (``auto_promote_enabled``); otherwise this is a NO-OP that touches
             nothing and the manual queue is unchanged;
           * the candidate is still ``candidate`` and not already held for a
@@ -774,7 +792,7 @@ class FleetBrain:
             pre-filter so any evidenced candidate reaches the judge, which is
             the real save/skip decision (autonomous LLM-driven capture+save).
 
-        LLM judge (additive, default ON when armed, gated behind
+        LLM judge (additive, default ON, gated behind
         ``ALFRED_AUTO_PROMOTE_LLM_JUDGE``): for each candidate that clears the
         structural gate, an LLM is asked whether the lesson is safe to save.
         The verdict shapes the outcome:
@@ -821,7 +839,7 @@ class FleetBrain:
             "ams_write_errors": 0,
         }
         if not summary["enabled"]:
-            # No-op when disarmed: do not even read the queue.
+            # No-op when explicitly disabled: do not even read the queue.
             return summary
 
         from memory_judge import judge_candidate, judge_enabled

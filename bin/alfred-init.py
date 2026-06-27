@@ -114,6 +114,18 @@ AGENT_CATALOG: dict[str, tuple[str, str, bool, str]] = {
         False,
         "cron:3:00",
     ),
+    "memory_harvest": (
+        "memory-harvest",
+        "memory harvest (queues repeated failure and reflection lessons)",
+        False,
+        "cron:8:05",
+    ),
+    "memory_auto_promote": (
+        "memory-auto-promote",
+        "memory auto-promote (LLM-judges queued lessons into recall)",
+        False,
+        "cron:8:20",
+    ),
     "code_map_refresh": (
         "code-map-refresh",
         "code map refresh (regenerates per-repo skeleton)",
@@ -163,7 +175,14 @@ CODENAME_TO_ROLE: dict[str, str] = {
     default: role for role, (default, _, _, _) in AGENT_CATALOG.items()
 }
 
-STARTER_ROLES = ("planner", "feature_dev", "pr_review", "agent_cleanup")
+STARTER_ROLES = (
+    "planner",
+    "feature_dev",
+    "pr_review",
+    "agent_cleanup",
+    "memory_harvest",
+    "memory_auto_promote",
+)
 OPT_IN_ROLES = {"cross_repo_coordinator"}
 CONFIG_GATED_ROLE_ENVS = {
     "smoke_runner": ("ALFRED_HUNTRESS_TARGET_URL",),

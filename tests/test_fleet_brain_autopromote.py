@@ -1,9 +1,10 @@
 """Tests for FleetBrain LLM-gated auto-promotion (auto_promote_candidates).
 
-Auto-promotion is OFF until ``ALFRED_AUTO_PROMOTE`` is armed, gates on
-structural rails (evidence, no body-conflict, confidence >= threshold), and
-layers an LLM judge that can only make the gate STRICTER. The judge seam is
-injected, so these never spawn a real model. All state lives under tmp_path.
+Auto-promotion is ON by default, gates on structural rails (evidence, no
+body-conflict, confidence >= threshold), and layers an LLM judge that can only
+make the gate STRICTER. ``ALFRED_AUTO_PROMOTE=0`` opts out, and
+``ALFRED_AUTO_PROMOTE_KILL=1`` halts it immediately. The judge seam is injected,
+so these never spawn a real model. All state lives under tmp_path.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from fleet_brain import FleetBrain, Lesson, new_id  # noqa: E402
 
 ARM = {"ALFRED_AUTO_PROMOTE": "1"}
 ARM_NO_JUDGE = {"ALFRED_AUTO_PROMOTE": "1", "ALFRED_AUTO_PROMOTE_LLM_JUDGE": "0"}
+OPT_OUT = {"ALFRED_AUTO_PROMOTE": "0"}
 
 
 class _FakeAMS:
@@ -123,20 +125,38 @@ def _status(brain: FleetBrain, cid: str) -> str:
 # --- arm / kill switch -----------------------------------------------------
 
 
-def test_disarmed_is_a_true_noop(brain: FleetBrain) -> None:
+def test_auto_promote_defaults_on_and_judges_candidates(brain: FleetBrain) -> None:
     c = _candidate(brain, "a strong durable lesson", confidence=0.99)
-    summary = brain.auto_promote_candidates(env={})
+    summary = brain.auto_promote_candidates(env={}, judge=lambda _p: _verdict(0.97))
+    assert summary["enabled"] is True
+    assert c.id in summary["promoted"]
+    assert _status(brain, c.id) == "validated"
+
+
+def test_explicit_opt_out_is_a_true_noop(brain: FleetBrain) -> None:
+    c = _candidate(brain, "a strong durable lesson", confidence=0.99)
+    summary = brain.auto_promote_candidates(env=OPT_OUT)
     assert summary["enabled"] is False
     assert summary["promoted"] == []
     assert summary["considered"] == 0  # the queue is not even read
     assert _status(brain, c.id) == "candidate"
 
 
-def test_kill_switch_overrides_arm(brain: FleetBrain) -> None:
+def test_unrecognized_auto_promote_value_fails_closed(brain: FleetBrain) -> None:
     c = _candidate(brain, "a strong durable lesson", confidence=0.99)
     summary = brain.auto_promote_candidates(
-        env={"ALFRED_AUTO_PROMOTE": "1", "ALFRED_AUTO_PROMOTE_KILL": "1"}
+        env={"ALFRED_AUTO_PROMOTE": "fales"},
+        judge=lambda _p: _verdict(0.97),
     )
+    assert summary["enabled"] is False
+    assert summary["promoted"] == []
+    assert summary["considered"] == 0
+    assert _status(brain, c.id) == "candidate"
+
+
+def test_kill_switch_overrides_arm(brain: FleetBrain) -> None:
+    c = _candidate(brain, "a strong durable lesson", confidence=0.99)
+    summary = brain.auto_promote_candidates(env={"ALFRED_AUTO_PROMOTE_KILL": "1"})
     assert summary["enabled"] is False
     assert _status(brain, c.id) == "candidate"
 
@@ -277,10 +297,11 @@ def test_judge_duplicate_is_held(brain: FleetBrain) -> None:
     assert _status(brain, c.id) == "candidate"
 
 
-def test_judge_failure_is_fail_soft(brain: FleetBrain) -> None:
+def test_default_on_judge_failure_is_fail_soft(brain: FleetBrain) -> None:
     c = _candidate(brain, "a strong durable lesson", confidence=0.99)
-    summary = brain.auto_promote_candidates(env=ARM, judge=lambda _p: None)
+    summary = brain.auto_promote_candidates(env={}, judge=lambda _p: None)
     assert summary["promoted"] == []
+    assert summary["judge_enabled"] is True
     assert summary["judge_errors"] == 1
     assert _status(brain, c.id) == "candidate"  # never promoted on a failed judgment
 

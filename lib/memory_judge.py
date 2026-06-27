@@ -113,15 +113,14 @@ class JudgeVerdict:
 def judge_enabled(env: Mapping[str, str] | None = None) -> bool:
     """True unless explicitly disabled.
 
-    The judge defaults ON when auto-promotion is armed (the operator's ask:
-    have the model decide). Set ``ALFRED_AUTO_PROMOTE_LLM_JUDGE`` to a falsy
-    value (``0``/``false``/``no``/``off``) to fall back to the pure heuristic
-    gate. Note this is only consulted from inside ``auto_promote_candidates``,
-    which is itself already gated behind ``ALFRED_AUTO_PROMOTE``."""
+    The judge defaults ON because the operator's ask is to have the model
+    decide. Set ``ALFRED_AUTO_PROMOTE_LLM_JUDGE`` to a falsy value
+    (``0``/``false``/``no``/``off``) to fall back to the pure heuristic gate.
+    Note this is only consulted when ``auto_promote_candidates`` is enabled."""
     src = env if env is not None else os.environ
     raw = src.get("ALFRED_AUTO_PROMOTE_LLM_JUDGE")
     if raw is None or not str(raw).strip():
-        return True  # default ON when armed
+        return True  # default ON for autonomous memory
     return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
 
