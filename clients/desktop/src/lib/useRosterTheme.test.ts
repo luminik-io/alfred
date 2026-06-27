@@ -193,11 +193,13 @@ describe("useRosterTheme", () => {
 
     const { result } = renderHook(() => useRosterTheme("http://127.0.0.1:7010"));
 
+    let firstSave: Promise<boolean> | undefined;
+    let secondSave: Promise<boolean> | undefined;
     act(() => {
-      result.current.setRosterTheme("justice-league");
+      firstSave = result.current.setRosterTheme("justice-league");
     });
     act(() => {
-      result.current.setRosterTheme("transformers");
+      secondSave = result.current.setRosterTheme("transformers");
     });
 
     // Only the first POST is out; the newest choice is queued, not sent yet.
@@ -222,6 +224,8 @@ describe("useRosterTheme", () => {
       expect(result.current.saveError).toBeNull();
     });
     expect(result.current.rosterTheme).toBe("transformers");
+    await expect(firstSave!).resolves.toBe(false);
+    await expect(secondSave!).resolves.toBe(true);
   });
 
   // Thread: "Hydration Ignores Runtime". Hydration is tied to the connected

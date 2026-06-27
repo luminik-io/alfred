@@ -189,7 +189,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           // failure and record this runtime as synced so a racing GET cannot
           // clobber the choice we just persisted. Skip if a newer save has
           // since been issued: that save owns the agreed state, not this one.
-          if (seq !== latestSeqByUrlRef.current.get(url)) return true;
+          if (seq !== latestSeqByUrlRef.current.get(url)) return false;
           // Only record hydration when this save targeted the runtime the
           // desktop is still connected to; a save that completed against a
           // runtime we have since left must not mark the current one synced.
