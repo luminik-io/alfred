@@ -175,6 +175,40 @@ def test_render_agents_conf_includes_batman(init_mod, tmp_path):
     )
 
 
+def test_render_agents_conf_comments_config_gated_rows_without_env(init_mod, tmp_path, monkeypatch):
+    monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
+    monkeypatch.delenv("ALFRED_GORDON_ECS_CLUSTER", raising=False)
+    state = _state_with(init_mod, tmp_path, roles=("smoke_runner", "ops_morning"))
+
+    text = init_mod.render_agents_conf(state)
+
+    assert "# gated until configured: huntress needs ALFRED_HUNTRESS_TARGET_URL" in text
+    assert "#alfred.huntress\thuntress.py\tinterval:1800" in text
+    assert "# gated until configured: gordon needs ALFRED_GORDON_ECS_CLUSTER" in text
+    assert "#alfred.gordon\tgordon.py\tcron:8:00" in text
+    assert "\nalfred.huntress\t" not in text
+    assert "\nalfred.gordon\t" not in text
+
+
+def test_render_agents_conf_schedules_config_gated_rows_with_config(
+    init_mod, tmp_path, monkeypatch
+):
+    monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
+    monkeypatch.delenv("ALFRED_GORDON_ECS_CLUSTER", raising=False)
+    state = _state_with(init_mod, tmp_path, roles=("smoke_runner", "ops_morning"))
+    state.role_to_extras["smoke_runner"] = {
+        "ALFRED_HUNTRESS_TARGET_URL": "https://staging.example.com"
+    }
+    state.role_to_extras["ops_morning"] = {"ALFRED_GORDON_ECS_CLUSTER": "staging"}
+
+    text = init_mod.render_agents_conf(state)
+
+    assert "#alfred.huntress" not in text
+    assert "#alfred.gordon" not in text
+    assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
+    assert "\nalfred.gordon\tgordon.py\tcron:8:00" in text
+
+
 def test_render_agents_conf_schedules_telemetry_by_default(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path, roles=("feature_dev",))
     text = init_mod.render_agents_conf(state)
@@ -774,6 +808,33 @@ def test_apply_config_overrides_role_codename_and_schedule(init_mod, tmp_path):
     assert state.role_to_schedule["planner"] == "cron:7:30"
 
 
+def test_apply_config_overrides_role_extras(init_mod, tmp_path):
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path,
+    )
+
+    init_mod.apply_config_overrides(
+        state,
+        {
+            "role_extras": {
+                "huntress": {
+                    "ALFRED_HUNTRESS_TARGET_URL": "https://staging.example.com",
+                },
+                "ops_morning": {
+                    "ALFRED_GORDON_ECS_CLUSTER": "staging",
+                },
+            },
+        },
+    )
+
+    assert state.role_to_extras["smoke_runner"] == {
+        "ALFRED_HUNTRESS_TARGET_URL": "https://staging.example.com",
+    }
+    assert state.role_to_extras["ops_morning"] == {"ALFRED_GORDON_ECS_CLUSTER": "staging"}
+
+
 def test_apply_config_overrides_ignores_unknown_agent_keys(init_mod, tmp_path, capsys):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
@@ -786,6 +847,7 @@ def test_apply_config_overrides_ignores_unknown_agent_keys(init_mod, tmp_path, c
             "role_repos": {"not-a-real-agent": ["acme/api"]},
             "role_codename": {"also-not-real": "ghost"},
             "role_schedule": {"phantom": "interval:60"},
+            "role_extras": {"ghost": {"ENV": "value"}},
         },
     )
     assert "not-a-real-agent" not in state.role_to_repos
@@ -795,6 +857,7 @@ def test_apply_config_overrides_ignores_unknown_agent_keys(init_mod, tmp_path, c
     assert "not-a-real-agent" in err
     assert "also-not-real" in err
     assert "phantom" in err
+    assert "ghost" in err
 
 
 def test_apply_config_overrides_rejects_invalid_codename(init_mod, tmp_path, capsys):
@@ -1084,7 +1147,7 @@ def test_starter_roles_and_agents_arg(init_mod):
     assert init_mod.roles_from_agents_arg("recommended", available) == available
     assert init_mod.roles_from_agents_arg("starter", available) == init_mod.starter_roles(available)
     assert init_mod.roles_from_agents_arg("all", available) == available
-    assert init_mod.roles_from_agents_arg("recommended,lucius", available) == available
+    assert init_mod.roles_from_agents_arg("recommended,lucius", available) == ["feature_dev"]
     assert init_mod.roles_from_agents_arg("batman,lucius", available) == [
         "feature_dev",
         "cross_repo_coordinator",
@@ -1136,7 +1199,7 @@ def test_seed_prompt_templates_copies_shared_compose_prompt(init_mod, tmp_path):
     assert prompt.read_text() == "custom compose prompt\n"
 
 
-def test_write_opt_in_gate_for_batman(init_mod, tmp_path):
+def test_write_opt_in_gate_does_not_arm_batman_during_setup(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
         alfredrc=tmp_path / ".alfredrc",
@@ -1144,8 +1207,8 @@ def test_write_opt_in_gate_for_batman(init_mod, tmp_path):
     )
     state.enabled_roles = ["cross_repo_coordinator"]
     written = init_mod.write_opt_in_gate(state)
-    assert written == ["batman"]
-    assert "batman" in (tmp_path / "alfred" / "state" / "fleet" / "enabled.txt").read_text()
+    assert written == []
+    assert not (tmp_path / "alfred" / "state" / "fleet" / "enabled.txt").exists()
 
 
 # ---------------------------------------------------------------------------

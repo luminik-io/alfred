@@ -73,8 +73,8 @@ Rules:
   Nightwing, Robin, Huntress, Gordon, automerge, cleanup, code-map refresh,
   briefs, recaps, shipped summaries, and fleet doctor where available.
 - Keep Batman configured even for a one-repo install. It will only act when
-  cross-repo or parent-plan work exists, but users should not have to discover
-  and add the architect later.
+  cross-repo or parent-plan work exists and remains runner-gated until
+  `alfred enable batman`.
 - If SPECS_REPO is set, clone it under the workspace for context, but do not assign Lucius/Nightwing write loops to it unless I explicitly ask.
 - Before running any command that loads scheduled agents, show me the command and ask for confirmation.
 - If an interactive browser auth step is needed, stop and tell me exactly what to run.

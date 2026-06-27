@@ -165,6 +165,10 @@ CODENAME_TO_ROLE: dict[str, str] = {
 
 STARTER_ROLES = ("planner", "feature_dev", "pr_review", "agent_cleanup")
 OPT_IN_ROLES = {"cross_repo_coordinator"}
+CONFIG_GATED_ROLE_ENVS = {
+    "smoke_runner": ("ALFRED_HUNTRESS_TARGET_URL",),
+    "ops_morning": ("ALFRED_GORDON_ECS_CLUSTER",),
+}
 
 # The only strings that count as an explicit opt-in for a privacy-sensitive
 # consent flag. Anything else (including "false", "0", "no", "", or any other
@@ -552,9 +556,8 @@ def roles_from_agents_arg(raw: str, available: list[str]) -> list[str]:
     requested = {tok.strip().lower() for tok in value.split(",") if tok.strip()}
     if "all" in requested:
         return recommended_roles(available)
-    if requested & {"recommended", "default"}:
-        return recommended_roles(available)
     starter_tokens = {"starter"}
+    alias_tokens = {"recommended", "default"}
     starter_requested = bool(requested & starter_tokens)
     matched: list[str] = starter_roles(available) if starter_requested else []
     for role in available:
@@ -568,8 +571,15 @@ def roles_from_agents_arg(raw: str, available: list[str]) -> list[str]:
         requested
         - {token for role in matched for token in (role.lower(), AGENT_CATALOG[role][0].lower())}
         - starter_tokens
-        - {"recommended", "default"}
+        - alias_tokens
     )
+    ignored_aliases = requested & alias_tokens
+    if ignored_aliases:
+        warn(
+            "Ignoring mixed --agents alias value(s): "
+            + ", ".join(sorted(ignored_aliases))
+            + ". Use the alias by itself, or use 'all' for the full fleet."
+        )
     if unknown:
         warn(f"Ignoring unknown --agents value(s): {', '.join(sorted(unknown))}")
     return matched
@@ -636,28 +646,39 @@ def seed_prompt_templates(state: WizardState) -> list[Path]:
 
 
 def write_opt_in_gate(state: WizardState) -> list[str]:
-    """Persist selected opt-in agents to the runner gate file.
+    """Leave runner-gated agents disabled during fleet generation.
 
-    Default-enabled agents do not need to be listed. Batman does.
+    The full-fleet install should make Batman visible, seed its prompt and
+    env, and render its scheduler row, but it must not arm cross-repo execution
+    as a side effect of accepting defaults. Operators opt in explicitly with
+    ``alfred enable <codename>`` after reviewing the cross-repo gate.
     """
-    wanted = [state.codename_for(role) for role in state.enabled_roles if role in OPT_IN_ROLES]
-    if not wanted:
+    return []
+
+
+def _configured_env_values(state: WizardState) -> dict[str, str]:
+    """Return env values known during config rendering.
+
+    Values already in ``~/.alfredrc`` or the parent process count, as do env
+    vars the wizard is about to write from ``role_to_extras``. The helper is
+    intentionally small: schedule gating only needs to know whether a required
+    setting is present, not validate the target service.
+    """
+    values: dict[str, str] = {}
+    with contextlib.suppress(OSError):
+        values.update(read_alfredrc(state.alfredrc))
+    values.update(os.environ)
+    values.update(env_assignments_for(state))
+    return values
+
+
+def schedule_blockers_for_role(state: WizardState, role: str) -> list[str]:
+    """Return required runtime env vars missing for an agent schedule row."""
+    required = CONFIG_GATED_ROLE_ENVS.get(role, ())
+    if not required:
         return []
-    gate = state.alfred_home / "state" / "fleet" / "enabled.txt"
-    existing: list[str] = []
-    if gate.exists():
-        for raw in gate.read_text().splitlines():
-            line = raw.split("#", 1)[0].strip()
-            if line and line not in existing:
-                existing.append(line)
-    out = sorted(set(existing) | set(wanted))
-    gate.parent.mkdir(parents=True, exist_ok=True)
-    gate.write_text(
-        "# Alfred runner gate. Opt-in agents listed here are allowed to run.\n"
-        + "\n".join(out)
-        + "\n"
-    )
-    return wanted
+    values = _configured_env_values(state)
+    return [name for name in required if not values.get(name, "").strip()]
 
 
 # ---------------------------------------------------------------------------
@@ -697,7 +718,16 @@ def render_agents_conf(state: WizardState) -> str:
             log_stem = f"alfred.{codename}"
         label = f"alfred.{codename}"
         role_text = desc.split(" (", 1)[0]
-        lines.append(f"{label}\t{script}\t{schedule}\tno\t{log_stem}\t{role_text}")
+        row = f"{label}\t{script}\t{schedule}\tno\t{log_stem}\t{role_text}"
+        blockers = schedule_blockers_for_role(state, role)
+        if blockers:
+            lines.append(
+                "# gated until configured: "
+                f"{codename} needs {', '.join(blockers)} in ~/.alfredrc or --config role_extras"
+            )
+            lines.append(f"#{row}")
+        else:
+            lines.append(row)
     # Proof-telemetry is not an AGENT_CATALOG role, so it is not in
     # enabled_roles. Emit its scheduler row only when an ingest URL exists.
     # Without a URL, the reporter is a clean no-op and scheduling it would only
@@ -1103,12 +1133,12 @@ def step_5_pick_agents(
     print("  Available agents (Enter = full fleet):")
     print("    [full]     enabled by the default full-fleet setup")
     print("    [starter]  explicit small setup for lab installs only")
-    print("    (gated)    selected by full fleet, but still protected by a runner gate")
+    print("    (gated)    selected by full fleet, but still protected by a runner or config gate")
     starter = set(starter_roles(available))
     for role in available:
         codename, desc, _, _ = AGENT_CATALOG[role]
         marker = "[starter]" if role in starter else "[full]   "
-        suffix = " (gated)" if role in OPT_IN_ROLES else ""
+        suffix = " (gated)" if role in OPT_IN_ROLES or role in CONFIG_GATED_ROLE_ENVS else ""
         print(f"    {marker} {codename:<20s}{suffix:<10s} {desc}")
     print()
     if non_interactive:
@@ -1570,6 +1600,9 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
       schedule for an agent. Key resolves the same way as
       ``role_codename``; value is in ``agents.conf`` schedule format
       (``"interval:1200"``, ``"cron:7:30"``, ``"cron:1:7:30"``).
+    - ``role_extras`` (dict[str, dict[str, str]]): per-agent env values
+      normally collected by interactive prompts, such as
+      ``ALFRED_HUNTRESS_TARGET_URL`` or ``ALFRED_GORDON_ECS_CLUSTER``.
     - ``telemetry_enabled`` (bool), ``telemetry_url`` (str): configure
       anonymous proof-telemetry non-interactively. Reporting is opt-out and
       uses Alfred's hosted collector by default. ``telemetry_url`` overrides it
@@ -1639,6 +1672,21 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
                 warn(f"--config role_schedule: unknown agent {raw_key!r}; ignored")
                 continue
             state.role_to_schedule[role] = str(raw_schedule)
+    if "role_extras" in cfg and isinstance(cfg["role_extras"], dict):
+        for raw_key, raw_values in cfg["role_extras"].items():
+            role = _resolve_role_key(str(raw_key))
+            if role is None:
+                warn(f"--config role_extras: unknown agent {raw_key!r}; ignored")
+                continue
+            if not isinstance(raw_values, dict):
+                warn(
+                    f"--config role_extras[{raw_key!r}]: expected object, "
+                    f"got {type(raw_values).__name__}; ignored"
+                )
+                continue
+            state.role_to_extras.setdefault(role, {}).update(
+                {str(k): str(v) for k, v in raw_values.items() if str(k).strip()}
+            )
     # Telemetry opt-out. A missing key keeps the default: enabled, using
     # Alfred's hosted collector unless telemetry_url overrides it.
     # parse_consent is strict: a quoted "false"/"0"/"no" (or anything that is

@@ -246,6 +246,11 @@ prompt templates, creates the standard GitHub labels on selected repos, writes
 the scheduler manifest (`launchd/agents.conf`), updates `~/.alfredrc`, then runs
 deploy and doctor.
 
+Config-heavy agents are visible from the start without being accidentally
+armed. Batman stays behind the runner gate until `alfred enable batman`;
+Huntress and Gordon stay as disabled scheduler rows until their required staging
+or ECS settings exist.
+
 For a framework-only install with no agents configured, use `bash deploy.sh &&
 bash bin/doctor.sh`; doctor reports `0 passed, 0 failed`. See
 [`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py) for the
