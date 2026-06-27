@@ -829,6 +829,8 @@ def test_read_alfredrc_strips_inline_comments_without_touching_quoted_hashes(tmp
                 "TOPIC='memory # literal' # comment",
                 'BODY="ship # literal" # comment',
                 "TOKEN=abc#not-comment",
+                "HASH_TOKEN=#abc",
+                "EMPTY= # comment",
                 "",
             ]
         )
@@ -841,6 +843,20 @@ def test_read_alfredrc_strips_inline_comments_without_touching_quoted_hashes(tmp
     assert out["TOPIC"] == "memory # literal"
     assert out["BODY"] == "ship # literal"
     assert out["TOKEN"] == "abc#not-comment"
+    assert out["HASH_TOKEN"] == "#abc"
+    assert out["EMPTY"] == ""
+
+
+def test_env_assignments_preserve_runtime_stop_control_over_stale_alfredrc(init_mod, tmp_path):
+    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
+    state.alfred_home.mkdir()
+    (state.alfred_home / ".env").write_text("ALFRED_AUTO_PROMOTE=0\nALFRED_AUTO_PROMOTE_KILL=1\n")
+    state.alfredrc.write_text("ALFRED_AUTO_PROMOTE=1\nALFRED_AUTO_PROMOTE_KILL=0\n")
+
+    out = init_mod.env_assignments_for(state)
+
+    assert out["ALFRED_AUTO_PROMOTE"] == "0"
+    assert out["ALFRED_AUTO_PROMOTE_KILL"] == "1"
 
 
 def test_upsert_alfredrc_idempotent(tmp_path, init_mod):

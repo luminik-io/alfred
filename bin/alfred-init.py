@@ -481,7 +481,7 @@ def _parse_alfredrc_text(raw_text: str) -> dict[str, str]:
             continue
         k, _, v = line.partition("=")
         k = k.strip()
-        v = strip_inline_comment(v.strip())
+        v = strip_inline_comment(v).strip()
         try:
             parsed = shlex.split(v)
         except ValueError:
@@ -942,9 +942,31 @@ def memory_auto_promote_control_assignments(state: WizardState) -> dict[str, str
     for source in (state.alfred_home / ".env", state.alfredrc):
         with contextlib.suppress(OSError):
             for key, value in read_alfredrc(source).items():
-                if key in MEMORY_AUTO_PROMOTE_CONTROL_ENVS and value.strip():
-                    values[key] = value.strip()
+                if key not in MEMORY_AUTO_PROMOTE_CONTROL_ENVS:
+                    continue
+                clean = value.strip()
+                if not clean:
+                    continue
+                if memory_auto_promote_stop_control_active(key, clean):
+                    values[key] = clean
+                    continue
+                existing = values.get(key)
+                if existing and memory_auto_promote_stop_control_active(key, existing):
+                    continue
+                values[key] = clean
     return values
+
+
+def memory_auto_promote_stop_control_active(key: str, value: str) -> bool:
+    """Return true for values that should keep default-on memory paused."""
+    token = value.strip().lower()
+    if not token:
+        return False
+    if key == "ALFRED_AUTO_PROMOTE":
+        return token not in {"1", "true", "yes", "on", "enabled"}
+    if key == "ALFRED_AUTO_PROMOTE_KILL":
+        return token in {"1", "true", "yes", "on"}
+    return False
 
 
 # ---------------------------------------------------------------------------

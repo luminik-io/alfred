@@ -457,7 +457,7 @@ fn load_config_file(
         if !is_valid_env_key(key) {
             continue;
         }
-        let clean = decode_config_value(strip_inline_comment(value.trim()), home)
+        let clean = decode_config_value(strip_inline_comment(value), home)
             .trim()
             .to_string();
         if no_clobber && process_env_keys.contains(key) {
@@ -513,10 +513,11 @@ fn strip_inline_comment(value: &str) -> &str {
             quote = Some(ch);
             continue;
         }
-        let previous_is_space = value[..index]
-            .chars()
-            .next_back()
-            .map_or(true, |previous| previous.is_whitespace());
+        let previous_is_space = index > 0
+            && value[..index]
+                .chars()
+                .next_back()
+                .is_some_and(|previous| previous.is_whitespace());
         if ch == '#' && previous_is_space {
             return value[..index].trim_end();
         }
@@ -2342,6 +2343,14 @@ mod tests {
         assert_eq!(
             decode_config_value(strip_inline_comment("prefix#literal # comment"), None),
             "prefix#literal"
+        );
+        assert_eq!(
+            decode_config_value(strip_inline_comment("#abc"), None),
+            "#abc"
+        );
+        assert_eq!(
+            decode_config_value(strip_inline_comment(" # comment"), None),
+            ""
         );
     }
 
