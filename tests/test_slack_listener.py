@@ -3340,3 +3340,114 @@ def test_converse_clean_finalization_has_no_degraded_marker(tmp_path: Path) -> N
     result = listener._maybe_converse(event)
     assert result is not None and result.handled is True
     assert "did not land" not in result.detail
+
+
+def test_client_is_connected_probes_defensively() -> None:
+    from slack_listener import _client_is_connected
+
+    assert _client_is_connected(SimpleNamespace(is_connected=lambda: True)) is True
+    assert _client_is_connected(SimpleNamespace(is_connected=lambda: False)) is False
+
+    # A raising probe is treated as disconnected, not a crash.
+    def boom() -> bool:
+        raise RuntimeError("socket state unknown")
+
+    assert _client_is_connected(SimpleNamespace(is_connected=boom)) is False
+    # A client variant with no is_connected is assumed connected (no reconnect spam).
+    assert _client_is_connected(SimpleNamespace()) is True
+
+
+def test_reconnect_socket_mode_resets_backoff_on_success() -> None:
+    from slack_listener import _reconnect_socket_mode
+
+    waits: list[float] = []
+    connects = {"n": 0}
+
+    def connect() -> None:
+        connects["n"] += 1
+
+    client = SimpleNamespace(connect=connect)
+    nxt = _reconnect_socket_mode(
+        client, 4.0, base_backoff=1.0, max_backoff=30.0, sleep=waits.append
+    )
+    # It waited the current backoff, reconnected once, and reset to base.
+    assert waits == [4.0]
+    assert connects["n"] == 1
+    assert nxt == 1.0
+
+
+def test_reconnect_socket_mode_doubles_backoff_on_failure_capped() -> None:
+    from slack_listener import _reconnect_socket_mode
+
+    def connect() -> None:
+        raise RuntimeError("still unreachable")
+
+    client = SimpleNamespace(connect=connect)
+    waits: list[float] = []
+    # Doubles 4 -> 8...
+    nxt = _reconnect_socket_mode(
+        client, 4.0, base_backoff=1.0, max_backoff=30.0, sleep=waits.append
+    )
+    assert waits == [4.0]
+    assert nxt == 8.0
+    # ...and is capped at max_backoff.
+    capped = _reconnect_socket_mode(
+        client, 20.0, base_backoff=1.0, max_backoff=30.0, sleep=lambda _s: None
+    )
+    assert capped == 30.0
+
+
+def test_env_float_listener_rejects_non_finite(monkeypatch) -> None:
+    from slack_listener import _env_float_listener
+
+    for bad in ("nan", "inf", "-inf", "Infinity"):
+        monkeypatch.setenv("ALFRED_TEST_BACKOFF", bad)
+        assert _env_float_listener("ALFRED_TEST_BACKOFF", 5.0, minimum=0.1) == 5.0
+    monkeypatch.setenv("ALFRED_TEST_BACKOFF", "3.5")
+    assert _env_float_listener("ALFRED_TEST_BACKOFF", 5.0, minimum=0.1) == 3.5
+
+
+def test_reconnect_base_backoff_floored_positive(monkeypatch) -> None:
+    from slack_listener import _reconnect_base_backoff_s
+
+    monkeypatch.setenv("ALFRED_SLACK_RECONNECT_BASE_BACKOFF_S", "0")
+    # A zero base would never grow when doubled; it is floored to a small positive.
+    assert _reconnect_base_backoff_s() >= 0.1
+
+
+def test_reconnect_clamps_base_to_max_and_grows_from_tiny() -> None:
+    from slack_listener import _reconnect_socket_mode
+
+    # base larger than max must not reset above the ceiling.
+    ok_client = SimpleNamespace(connect=lambda: None)
+    assert (
+        _reconnect_socket_mode(
+            ok_client, 1.0, base_backoff=99.0, max_backoff=30.0, sleep=lambda _s: None
+        )
+        == 30.0
+    )
+
+    # From a tiny current backoff a failed reconnect still grows toward the cap.
+    def boom() -> None:
+        raise RuntimeError("down")
+
+    bad_client = SimpleNamespace(connect=boom)
+    nxt = _reconnect_socket_mode(
+        bad_client, 0.1, base_backoff=1.0, max_backoff=30.0, sleep=lambda _s: None
+    )
+    assert nxt > 0.1
+
+
+def test_reconnect_prefers_fresh_endpoint() -> None:
+    from slack_listener import _reconnect_socket_mode
+
+    calls: list[str] = []
+    client = SimpleNamespace(
+        close=lambda: calls.append("close"),
+        connect_to_new_endpoint=lambda: calls.append("fresh"),
+        connect=lambda: calls.append("connect"),
+    )
+    _reconnect_socket_mode(client, 1.0, base_backoff=1.0, max_backoff=30.0, sleep=lambda _s: None)
+    # It tore down the stale connection and reconnected on a FRESH endpoint, not
+    # the cached one.
+    assert calls == ["close", "fresh"]
