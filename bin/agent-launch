@@ -106,6 +106,15 @@ memory_auto_promote_stop_control_active() {
   return 1
 }
 
+ORIGINAL_ENV_KEYS=":$(env | sed 's/=.*//' | tr '\n' ':')"
+
+original_env_has_key() {
+  case "$ORIGINAL_ENV_KEYS" in
+    *:"$1":*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 expand_user_path() {
   local path="$1"
   case "$path" in
@@ -116,7 +125,7 @@ expand_user_path() {
 }
 
 load_env_file() {
-  local file="$1" no_clobber="${2:-}" allow_alfredrc_pointer="${3:-}" line key value quote_style existing_value
+  local file="$1" no_clobber="${2:-}" allow_alfredrc_pointer="${3:-}" file_overrides_existing="${4:-}" line key value quote_style existing_value
   [ -f "$file" ] || return 0
   env_value_quote_style() {
     case "$1" in
@@ -178,6 +187,10 @@ load_env_file() {
         continue
       fi
       if ! memory_auto_promote_stop_control_active "$key" "$value"; then
+        if [ "$file_overrides_existing" = "file_overrides_existing" ] && ! original_env_has_key "$key"; then
+          export "$key=$value"
+          continue
+        fi
         continue
       fi
     fi
@@ -186,10 +199,7 @@ load_env_file() {
 }
 
 load_selected_alfredrc() {
-  local selected_alfredrc="${ALFREDRC:-$HOME/.alfredrc}" allow_alfredrc_pointer=""
-  if [ -z "${ALFREDRC:-}" ]; then
-    allow_alfredrc_pointer="allow_alfredrc_pointer"
-  fi
+  local selected_alfredrc="${ALFREDRC:-$HOME/.alfredrc}" allow_alfredrc_pointer="allow_alfredrc_pointer"
   selected_alfredrc="$(expand_user_path "$selected_alfredrc")"
   ALFREDRC="$selected_alfredrc"
   export ALFREDRC
@@ -198,7 +208,7 @@ load_selected_alfredrc() {
     selected_alfredrc="$(expand_user_path "$ALFREDRC")"
     ALFREDRC="$selected_alfredrc"
     export ALFREDRC
-    load_env_file "$selected_alfredrc" no_clobber
+    load_env_file "$selected_alfredrc" no_clobber "" file_overrides_existing
   fi
 }
 
