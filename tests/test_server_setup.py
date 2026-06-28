@@ -278,6 +278,7 @@ def test_persist_selected_repos_writes_active_runtime_home_and_preserves_queue_s
     env_path = home / ".env"
     assert result["env_path"] == str(env_path)
     env_text = env_path.read_text(encoding="utf-8")
+    assert "ALFRED_QUEUE_REPOS=old/repo" in env_text
     assert "ALFRED_QUEUE_REPOS=acme/web" not in env_text
     assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
     assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
@@ -286,7 +287,7 @@ def test_persist_selected_repos_writes_active_runtime_home_and_preserves_queue_s
     assert "export ALFRED_QUEUE_REPOS=old/repo" in rc_text
     assert "export ALFRED_SHIPPED_REPOS=acme/web" in rc_text
     assert "export ALFRED_BRIDGE_REPOS=acme/web" in rc_text
-    assert setup_mod.selected_repos() == ["acme/web"]
+    assert setup_mod.setup_board_repos() == ["acme/web"]
 
 
 def test_persist_selected_repos_seeds_queue_for_new_install(
@@ -332,8 +333,12 @@ def test_persist_selected_repos_updates_board_scope_without_widening_stale_queue
 
     rc_text = (tmp_path / ".alfredrc").read_text(encoding="utf-8")
     assert "export ALFRED_QUEUE_REPOS=acme/web" not in rc_text
+    assert "export ALFRED_QUEUE_REPOS=old/repo" in rc_text
     assert "export ALFRED_SHIPPED_REPOS=acme/web" in rc_text
     assert "export ALFRED_BRIDGE_REPOS=acme/web" in rc_text
+    env_text = (home / ".env").read_text(encoding="utf-8")
+    assert "ALFRED_QUEUE_REPOS=old/repo" in env_text
+    assert "ALFRED_QUEUE_REPOS=acme/web" not in env_text
 
     monkeypatch.setenv("ALFRED_QUEUE_REPOS", "old/repo")
     monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "old/repo")
