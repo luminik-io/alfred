@@ -597,6 +597,37 @@ describe("useRosterTheme", () => {
     });
   });
 
+  it("preserves a save failure after returning to the same runtime before rejection", async () => {
+    loadRosterTheme.mockReturnValue(new Promise<RosterThemeResponse>(() => {}));
+    let rejectA: (reason?: unknown) => void = () => {};
+    saveRosterTheme.mockReturnValueOnce(
+      new Promise<RosterThemeResponse>((_resolve, reject) => {
+        rejectA = reject;
+      }),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ baseUrl }: { baseUrl?: string }) => useRosterTheme(baseUrl),
+      { initialProps: { baseUrl: "http://127.0.0.1:7010" } as { baseUrl?: string } },
+    );
+
+    let saveResult: Promise<boolean> | null = null;
+    act(() => {
+      saveResult = result.current.setRosterTheme("justice-league");
+    });
+    rerender({ baseUrl: "http://127.0.0.1:7020" });
+    rerender({ baseUrl: "http://127.0.0.1:7010" });
+
+    await act(async () => {
+      rejectA(new Error("alfred serve returned 500"));
+    });
+    if (saveResult === null) throw new Error("setRosterTheme did not return a save promise");
+    await expect(saveResult).resolves.toBe(false);
+    await waitFor(() => {
+      expect(result.current.saveError).toContain("500");
+    });
+  });
+
   it("a drained successful save on the current runtime clears stale save errors", async () => {
     loadRosterTheme.mockReturnValue(new Promise<RosterThemeResponse>(() => {}));
     let rejectA: (reason?: unknown) => void = () => {};

@@ -112,10 +112,14 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
   // props that launched them, not refs updated later by effects.
   const connectionGenerationRef = useRef(0);
   const connectionSnapshotRef = useRef({ baseUrl, connected });
+  const connectionRestartSeqRef = useRef(0);
   if (
     connectionSnapshotRef.current.baseUrl !== baseUrl ||
     connectionSnapshotRef.current.connected !== connected
   ) {
+    if (connectionSnapshotRef.current.connected !== connected) {
+      connectionRestartSeqRef.current += 1;
+    }
     connectionGenerationRef.current += 1;
     connectionSnapshotRef.current = { baseUrl, connected };
   }
@@ -136,6 +140,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
         custom: CustomRosterNames;
         seq: number;
         generation: number;
+        restartSeq: number;
         resolve: (saved: boolean) => void;
       }
     >
@@ -277,6 +282,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
       custom: CustomRosterNames,
       seq: number,
       generation: number,
+      restartSeq: number,
     ): Promise<boolean> => {
       // Only a custom save carries the cast. A preset switch must omit both
       // maps so the server retains the authored custom cast (it replaces the
@@ -324,7 +330,11 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
           // not silently look successful. A superseded save stays quiet; the
           // newer one reports its own outcome.
           if (seq !== latestSeqByUrlRef.current.get(url)) return false;
-          if (generation !== connectionGenerationRef.current && baseUrlRef.current === url) {
+          if (
+            generation !== connectionGenerationRef.current &&
+            restartSeq !== connectionRestartSeqRef.current &&
+            baseUrlRef.current === url
+          ) {
             if (connectedRef.current) {
               requestHydrationReconcile(url);
             }
@@ -362,9 +372,14 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
           if (nextUrl !== undefined) {
             const next = pendingRef.current.get(nextUrl)!;
             pendingRef.current.delete(nextUrl);
-            void runSave(nextUrl, next.theme, next.custom, next.seq, next.generation).then(
-              next.resolve,
-            );
+            void runSave(
+              nextUrl,
+              next.theme,
+              next.custom,
+              next.seq,
+              next.generation,
+              next.restartSeq,
+            ).then(next.resolve);
           }
         });
     },
@@ -407,6 +422,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
       hydratedUrlRef.current = baseUrl;
       const seq = ++saveSeqRef.current;
       const generation = connectionGenerationRef.current;
+      const restartSeq = connectionRestartSeqRef.current;
       latestSeqByUrlRef.current.set(baseUrl, seq);
       if (inFlightRef.current) {
         // A save is already running. Queue this choice under its runtime url;
@@ -418,10 +434,17 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
           previous.resolve(false);
         }
         return new Promise((resolve) => {
-          pendingRef.current.set(baseUrl, { theme, custom, seq, generation, resolve });
+          pendingRef.current.set(baseUrl, {
+            theme,
+            custom,
+            seq,
+            generation,
+            restartSeq,
+            resolve,
+          });
         });
       }
-      return runSave(baseUrl, theme, custom, seq, generation);
+      return runSave(baseUrl, theme, custom, seq, generation, restartSeq);
     },
     [baseUrl, clearRuntimeSaveError, connected, runSave],
   );
