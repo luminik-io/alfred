@@ -333,6 +333,36 @@ def test_selected_repos_skips_matching_launcher_queue_only_scope(
     assert setup_mod.selected_repos() == []
 
 
+def test_selected_repos_honors_empty_runtime_board_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    (tmp_path / ".alfredrc").write_text(
+        f"export ALFRED_HOME={home}\n"
+        "export ALFRED_SHIPPED_REPOS=old/repo\n"
+        "export ALFRED_BRIDGE_REPOS=old/repo\n",
+        encoding="utf-8",
+    )
+    home.mkdir(parents=True)
+    (home / ".env").write_text(
+        "ALFRED_SHIPPED_REPOS=\nALFRED_BRIDGE_REPOS=\n",
+        encoding="utf-8",
+    )
+
+    assert setup_mod.selected_repos() == []
+    inventory = setup_mod.install_inventory()
+    assert inventory["selected_repos_env_present"] is True
+    by_key = {item["key"]: item for item in inventory["items"]}
+    assert by_key["repos"]["ok"] is False
+    assert "No repositories selected yet" in by_key["repos"]["detail"]
+
+
 def test_persist_selected_repos_seeds_queue_for_new_install(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

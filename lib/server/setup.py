@@ -217,7 +217,7 @@ def selected_repos(env: dict[str, str] | None = None) -> list[str]:
 
     runtime_env = _runtime_config_env()
     repos = _repos_from_env(runtime_env, _BOARD_REPO_ENV_KEYS)
-    if repos or any(_has_config_value(runtime_env, key) for key in _BOARD_REPO_ENV_KEYS):
+    if repos or any(_has_config_key(runtime_env, key) for key in _BOARD_REPO_ENV_KEYS):
         return sorted(repos)
     return []
 
@@ -1149,8 +1149,8 @@ def install_inventory(
     conf_path = _install_agents_conf_path(home)
     scheduled_runs = setup_schedule.upcoming_runs(conf_path=conf_path) if conf_path else []
     selected = repos if repos is not None else setup_board_repos(resolved_env)
-    selected_env_present = any(_has_config_value(resolved_env, key) for key in _REPO_ENV_KEYS)
-    board_env_present = any(_has_config_value(resolved_env, key) for key in _BOARD_REPO_ENV_KEYS)
+    selected_env_present = any(_has_config_key(resolved_env, key) for key in _REPO_ENV_KEYS)
+    board_env_present = any(_has_config_key(resolved_env, key) for key in _BOARD_REPO_ENV_KEYS)
     slack_configured = any(_has_config_value(resolved_env, key) for key in _SLACK_CONFIG_KEYS)
     memory_overridden = any(_has_config_value(resolved_env, key) for key in _MEMORY_CONFIG_KEYS)
     memory_detail = (
@@ -1289,6 +1289,10 @@ def _install_agents_conf_path(home: Path) -> Path | None:
 
 def _has_config_value(env: dict[str, str], key: str) -> bool:
     return bool(_code_memory_config(env, key))
+
+
+def _has_config_key(env: dict[str, str], key: str) -> bool:
+    return key in env
 
 
 def list_owner_repos(limit: int = 100) -> dict[str, Any]:
