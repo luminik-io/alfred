@@ -1025,6 +1025,43 @@ describe("useRosterTheme", () => {
     expect(result.current.saveError).toBeNull();
   });
 
+  it("starts a replacement hydration when a save fails after initial hydration", async () => {
+    let rejectSave: (reason?: unknown) => void = () => {};
+    loadRosterTheme
+      .mockResolvedValueOnce(serverState({ theme: "batman" }))
+      .mockResolvedValueOnce(serverState({ theme: "batman" }));
+    saveRosterTheme.mockReturnValueOnce(
+      new Promise<RosterThemeResponse>((_resolve, reject) => {
+        rejectSave = reject;
+      }),
+    );
+
+    const { result } = renderHook(() => useRosterTheme("http://127.0.0.1:7010"));
+
+    await waitFor(() => {
+      expect(result.current.rosterTheme).toBe("batman");
+    });
+    expect(result.current.hydrating).toBe(false);
+
+    act(() => {
+      result.current.setRosterTheme("transformers");
+    });
+    expect(result.current.rosterTheme).toBe("transformers");
+
+    await act(async () => {
+      rejectSave(new Error("alfred serve returned 503"));
+    });
+
+    await waitFor(() => {
+      expect(loadRosterTheme).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(result.current.rosterTheme).toBe("batman");
+    });
+    expect(result.current.hydrating).toBe(false);
+    expect(result.current.saveError).toBeNull();
+  });
+
   it("restores the saved choice when hydration retries while a save is pending", async () => {
     let resolveSave: (value: RosterThemeResponse) => void = () => {};
     loadRosterTheme

@@ -347,6 +347,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
           recordRuntimeSaveError(url, message);
           if (!connectedRef.current) return false;
           if (url !== baseUrlRef.current) return false;
+          requestHydrationReconcile(url);
           if (skippedHydrationUrlRef.current === url) {
             skippedHydrationUrlRef.current = null;
             setHydrationRequestSeq((requestSeq) => requestSeq + 1);
