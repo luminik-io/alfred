@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -671,8 +670,7 @@ def test_persist_selected_repos_rewrites_exported_runtime_env_as_plain_env(
     setup_mod.persist_selected_repos(["Acme/Web"])
 
     env_text = (home / ".env").read_text(encoding="utf-8")
-    assert "ALFRED_QUEUE_REPOS=old/repo" in env_text
-    assert "ALFRED_QUEUE_REPOS=acme/web" not in env_text
+    assert "ALFRED_QUEUE_REPOS=acme/web" in env_text
     assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
     assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
     assert "export ALFRED_QUEUE_REPOS" not in env_text

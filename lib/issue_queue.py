@@ -23,7 +23,8 @@ import re
 import subprocess
 from pathlib import Path
 
-from agent_runner.paths import decode_env_value, runtime_home as agent_runtime_home
+from agent_runner.paths import decode_env_value
+from agent_runner.paths import runtime_home as agent_runtime_home
 from labels import DO_NOT_PICKUP, IMPLEMENT, PLAN_PENDING_APPROVAL
 from shipped_board import _gh_bin, _gh_subprocess_env
 

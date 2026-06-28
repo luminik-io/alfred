@@ -598,7 +598,7 @@ def test_launcher_ignores_stale_rc_code_memory_when_process_home_is_active(
 
     assert res.returncode == 0, res.stderr
     assert f"index-dir:   {runtime_b}/state/code-memory" in res.stderr
-    assert "repos:       (none configured)" in res.stderr
+    assert "repos:       auto-discovered:" in res.stderr
     assert "org/stale" not in res.stderr
 
 
@@ -752,8 +752,11 @@ def test_launcher_ignores_pointed_rc_memory_when_process_home_is_active(
         "ALFRED_CODE_MEMORY_REPOS=org/runtime\nALFRED_CODE_MEMORY_AUTOFETCH=0\n",
         encoding="utf-8",
     )
-    env = _launcher_env_with_workspace(tmp_path, "org/runtime", "org/stale")
-    env["ALFRED_HOME"] = str(runtime)
+    env = {
+        "HOME": str(home),
+        "PATH": os.environ.get("PATH", ""),
+        "ALFRED_HOME": str(runtime),
+    }
     env.pop("ALFRED_CODE_MEMORY_AUTOFETCH", None)
     env.pop("ALFRED_CODE_MEMORY_REPOS", None)
     env.pop("ALFREDRC", None)

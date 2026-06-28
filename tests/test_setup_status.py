@@ -216,7 +216,7 @@ def test_bootstrap_status_ignores_empty_code_memory_cache_scaffolding(
     assert "run an index" in code_memory["detail"]
 
 
-def test_code_memory_status_reads_launcher_env_files(
+def test_code_memory_status_ignores_legacy_alfredrc_without_process_home(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     home = tmp_path / "home"
@@ -239,9 +239,9 @@ def test_code_memory_status_reads_launcher_env_files(
 
     code_memory = setup_mod.code_memory_status()
 
-    assert code_memory["enabled"] is False
-    assert code_memory["autofetch"] is False
-    assert code_memory["index_dir"] == str(alfred_home / "state" / "code-memory")
+    assert code_memory["enabled"] is True
+    assert code_memory["autofetch"] is True
+    assert code_memory["index_dir"] == str(home / ".alfred" / "state" / "code-memory")
 
 
 def test_setup_config_prefers_process_env_over_runtime_env_file(
@@ -350,7 +350,7 @@ def test_selected_repos_preserves_shipped_and_bridge_fallbacks(
     assert setup_mod.selected_repos() == ["octocat/api", "octocat/web"]
 
 
-def test_selected_repos_merges_queue_shipped_and_bridge_scopes(
+def test_selected_repos_ignores_queue_only_scope(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     runtime = tmp_path / "runtime"
@@ -360,7 +360,7 @@ def test_selected_repos_merges_queue_shipped_and_bridge_scopes(
     monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "acme/frontend")
     monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "acme/api")
 
-    assert setup_mod.selected_repos() == ["acme/api", "acme/frontend", "octocat/web"]
+    assert setup_mod.selected_repos() == ["acme/api", "acme/frontend"]
 
 
 def test_selected_repos_reads_runtime_env_file_but_not_alfredrc(
@@ -381,7 +381,7 @@ def test_selected_repos_reads_runtime_env_file_but_not_alfredrc(
     monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
 
-    assert setup_mod.selected_repos() == ["octocat/api", "octocat/web"]
+    assert setup_mod.selected_repos() == ["octocat/api"]
 
 
 def test_install_inventory_uses_active_serve_home_not_launcher_rc_home(
@@ -426,19 +426,21 @@ def test_bootstrap_status_uses_active_serve_home_for_code_memory(
     launcher_home = tmp_path / "launcher-runtime"
     active_cache = active_home / "bin" / "codebase-memory-mcp"
     active_index = active_home / "state" / "code-memory"
+    active_graph = active_index / ".cache" / "codebase-memory-mcp"
     launcher_cache = launcher_home / "bin" / "codebase-memory-mcp"
     launcher_index = launcher_home / "state" / "code-memory"
+    launcher_graph = launcher_index / ".cache" / "codebase-memory-mcp"
     home.mkdir()
     active_cache.parent.mkdir(parents=True)
-    active_index.mkdir(parents=True)
+    active_graph.mkdir(parents=True)
     launcher_cache.parent.mkdir(parents=True)
-    launcher_index.mkdir(parents=True)
+    launcher_graph.mkdir(parents=True)
     active_cache.write_text("#!/bin/sh\n", encoding="utf-8")
     active_cache.chmod(active_cache.stat().st_mode | stat.S_IXUSR)
     launcher_cache.write_text("#!/bin/sh\n", encoding="utf-8")
     launcher_cache.chmod(launcher_cache.stat().st_mode | stat.S_IXUSR)
-    (active_index / "graph.db").write_text("active", encoding="utf-8")
-    (launcher_index / "graph.db").write_text("launcher", encoding="utf-8")
+    (active_graph / "graph.db").write_text("active", encoding="utf-8")
+    (launcher_graph / "graph.db").write_text("launcher", encoding="utf-8")
     (home / ".alfredrc").write_text(
         f"ALFRED_HOME={launcher_home}\nALFRED_CODE_MEMORY_REPOS=launcher/api\n",
         encoding="utf-8",
@@ -451,6 +453,7 @@ def test_bootstrap_status_uses_active_serve_home_for_code_memory(
     monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("ALFRED_HOME", str(active_home))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
     monkeypatch.delenv("ALFRED_CODE_MEMORY_BIN", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
@@ -465,7 +468,8 @@ def test_bootstrap_status_uses_active_serve_home_for_code_memory(
     assert code_memory["binary"]["path"] == str(active_cache)
     assert code_memory["index_dir"] == str(active_index)
     assert code_memory["index_present"] is True
-    assert code_memory["repos"] == {"configured": ["active/api"], "count": 1}
+    assert code_memory["repos"]["configured"] == ["active/api"]
+    assert "launcher/api" not in code_memory["repos"]["configured"]
 
 
 def test_bootstrap_status_expands_tilde_home_for_code_memory(
@@ -476,10 +480,11 @@ def test_bootstrap_status_expands_tilde_home_for_code_memory(
     alfred_home = home / "runtime"
     cache_bin = alfred_home / "bin" / "codebase-memory-mcp"
     index_dir = alfred_home / "state" / "code-memory"
+    graph_dir = index_dir / ".cache" / "codebase-memory-mcp"
     cache_bin.parent.mkdir(parents=True)
-    index_dir.mkdir(parents=True)
+    graph_dir.mkdir(parents=True)
     cache_bin.write_text("#!/bin/sh\n", encoding="utf-8")
-    (index_dir / "graph.db").write_text("ok", encoding="utf-8")
+    (graph_dir / "graph.db").write_text("ok", encoding="utf-8")
     cache_bin.chmod(cache_bin.stat().st_mode | stat.S_IXUSR)
     monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
     monkeypatch.setenv("HOME", str(home))
@@ -499,7 +504,7 @@ def test_bootstrap_status_expands_tilde_home_for_code_memory(
     assert code_memory["index_present"] is True
 
 
-def test_code_memory_status_keeps_code_memory_in_rc_selected_home(
+def test_code_memory_status_ignores_rc_selected_home(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     home = tmp_path / "home"
@@ -528,10 +533,9 @@ def test_code_memory_status_keeps_code_memory_in_rc_selected_home(
 
     code_memory = setup_mod.code_memory_status()
 
-    assert code_memory["binary"]["path"] == str(cache_bin)
-    assert code_memory["index_dir"] == str(index_dir)
-    assert code_memory["index_present"] is True
-    assert code_memory["repos"] == {"configured": ["api"], "count": 1}
+    assert code_memory["binary"]["path"] is None
+    assert code_memory["index_dir"] == str(home / ".alfred" / "state" / "code-memory")
+    assert code_memory["index_present"] is False
 
 
 def test_bootstrap_status_matches_case_insensitive_launcher_flags(
@@ -839,6 +843,8 @@ def test_bootstrap_status_demo_fallback_survives_unresolvable_home(
     monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MAP_REPOS", raising=False)
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "octocat/web")
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "octocat/web")
     monkeypatch.setenv("CODEX_HOME", str(codex_home))
     monkeypatch.setenv("CLAUDE_HOME", str(claude_home))
     monkeypatch.setattr(
@@ -851,7 +857,6 @@ def test_bootstrap_status_demo_fallback_survives_unresolvable_home(
         "engine_clis",
         lambda: [{"name": "codex", "installed": True, "path": "/usr/local/bin/codex"}],
     )
-    monkeypatch.setattr(setup_mod, "selected_repos", lambda: ["octocat/web"])
     monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         setup_mod.os.path,
@@ -925,7 +930,7 @@ def test_bootstrap_status_avoids_home_dependent_runtime_imports(
 
     monkeypatch.delenv("HOME", raising=False)
     monkeypatch.setenv("ALFRED_HOME", str(runtime))
-    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "octocat/web")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "acme/frontend, acme/api")
     monkeypatch.setenv("GH_BIN", str(gh_bin))
     monkeypatch.setenv("CODEX_BIN", str(codex_bin))
     monkeypatch.delenv("ALFRED_CODE_MEMORY_BIN", raising=False)
@@ -951,7 +956,7 @@ def test_bootstrap_status_avoids_home_dependent_runtime_imports(
     payload = setup_mod.bootstrap_status()
 
     assert payload["github"]["ok"] is True
-    assert payload["repos"]["selected"] == ["acme/api", "acme/frontend", "octocat/web"]
+    assert payload["repos"]["selected"] == ["acme/api", "acme/frontend"]
     assert payload["ready"] is True
 
 

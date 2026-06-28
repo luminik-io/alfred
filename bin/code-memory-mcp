@@ -573,8 +573,28 @@ scope_repos() {
   return 0
 }
 
+configured_scope_summary() {
+  local raw name repos
+  raw="$(scope_raw)"
+  repos=""
+  while IFS= read -r name; do
+    name="$(trim_env_value "$name")"
+    [ -n "$name" ] || continue
+    if [ -n "$repos" ]; then
+      repos="$repos, $name"
+    else
+      repos="$name"
+    fi
+  done < <(printf '%s\n' "$raw" | tr ',' '\n')
+  printf '%s' "$repos"
+}
+
 scope_repo_summary() {
   local rel repo repos
+  if scope_raw_has_entries; then
+    configured_scope_summary
+    return 0
+  fi
   repos=""
   while IFS= read -r repo; do
     if [ "$repo" = "$WORKSPACE" ]; then

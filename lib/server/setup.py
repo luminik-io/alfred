@@ -326,6 +326,7 @@ def _write_env_file_values(path: Path, values: dict[str, str], *, export: bool =
     with suppress(OSError):
         os.chmod(path, 0o600)
 
+
 def persist_selected_repos(repos: list[str]) -> dict[str, Any]:
     """Persist the chosen repo allowlist and mirror it into the live process.
 
@@ -396,6 +397,8 @@ def _effective_queue_scope_for_save(runtime_env: dict[str, str]) -> tuple[bool, 
     if runtime_queue or _has_config_key(runtime_env, QUEUE_REPOS_ENV):
         return True, sorted(runtime_queue)
     return False, []
+
+
 # --------------------------------------------------------------------------- #
 # gh + engine detection
 # --------------------------------------------------------------------------- #
@@ -1110,7 +1113,7 @@ def bootstrap_status() -> dict[str, Any]:
     engines = engine_clis()
     runtime_env = _runtime_config_env()
     repos = setup_board_repos(runtime_env)
-    queue_repos = _setup_queue_repos_for_status()
+    queue_repos = _setup_queue_repos_for_status(runtime_env)
     queue_missing = sorted(set(repos) - queue_repos)
     queue_covers_selected = bool(repos) and not queue_missing
     any_engine = any(e["installed"] for e in engines)
@@ -1139,10 +1142,8 @@ def bootstrap_status() -> dict[str, Any]:
     }
 
 
-def _setup_queue_repos_for_status() -> set[str]:
-    from issue_queue import allowed_queue_repos
-
-    return allowed_queue_repos()
+def _setup_queue_repos_for_status(env: dict[str, str]) -> set[str]:
+    return _repos_from_env(env, (QUEUE_REPOS_ENV,))
 
 
 def install_inventory(
