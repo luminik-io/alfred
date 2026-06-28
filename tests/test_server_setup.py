@@ -751,6 +751,86 @@ def test_persist_selected_repos_replaces_previous_ui_save_queue_scope(
     assert os.environ["ALFRED_BRIDGE_REPOS"] == "acme/api"
 
 
+def test_persist_selected_repos_preserves_process_queue_only_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "old/repo")
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    home.mkdir(parents=True)
+
+    setup_mod.persist_selected_repos(["Acme/Web"])
+
+    env_text = (home / ".env").read_text(encoding="utf-8")
+    assert "ALFRED_QUEUE_REPOS=old/repo" in env_text
+    assert "ALFRED_QUEUE_REPOS=acme/web" not in env_text
+    assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
+    assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
+    assert os.environ["ALFRED_QUEUE_REPOS"] == "old/repo"
+    assert os.environ["ALFRED_SHIPPED_REPOS"] == "acme/web"
+    assert os.environ["ALFRED_BRIDGE_REPOS"] == "acme/web"
+
+
+def test_persist_selected_repos_updates_process_queue_that_matches_persisted_board(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "old/repo")
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    home.mkdir(parents=True)
+    (home / ".env").write_text(
+        "ALFRED_SHIPPED_REPOS=old/repo\nALFRED_BRIDGE_REPOS=old/repo\n",
+        encoding="utf-8",
+    )
+
+    setup_mod.persist_selected_repos(["Acme/Web"])
+
+    env_text = (home / ".env").read_text(encoding="utf-8")
+    assert "ALFRED_QUEUE_REPOS=acme/web" in env_text
+    assert "ALFRED_QUEUE_REPOS=old/repo" not in env_text
+    assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
+    assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
+    assert os.environ["ALFRED_QUEUE_REPOS"] == "acme/web"
+    assert os.environ["ALFRED_SHIPPED_REPOS"] == "acme/web"
+    assert os.environ["ALFRED_BRIDGE_REPOS"] == "acme/web"
+
+
+def test_persist_selected_repos_updates_process_queue_that_matches_live_board(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "live/repo")
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "live/repo")
+    monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "live/repo")
+    home.mkdir(parents=True)
+    (home / ".env").write_text(
+        "ALFRED_SHIPPED_REPOS=stale/repo\nALFRED_BRIDGE_REPOS=stale/repo\n",
+        encoding="utf-8",
+    )
+
+    setup_mod.persist_selected_repos(["Acme/Web"])
+
+    env_text = (home / ".env").read_text(encoding="utf-8")
+    assert "ALFRED_QUEUE_REPOS=acme/web" in env_text
+    assert "ALFRED_QUEUE_REPOS=live/repo" not in env_text
+    assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
+    assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
+    assert os.environ["ALFRED_QUEUE_REPOS"] == "acme/web"
+    assert os.environ["ALFRED_SHIPPED_REPOS"] == "acme/web"
+    assert os.environ["ALFRED_BRIDGE_REPOS"] == "acme/web"
+
+
 def test_persist_selected_repos_preserves_active_narrow_queue_scope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

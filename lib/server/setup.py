@@ -129,15 +129,6 @@ def _runtime_config_env() -> dict[str, str]:
     return env
 
 
-def _runtime_env_file_config() -> dict[str, str]:
-    env = {
-        "HOME": os.environ.get("HOME", ""),
-        "ALFRED_HOME": str(_alfred_home()),
-    }
-    _load_launcher_env_file(Path(env["ALFRED_HOME"]) / ".env", env)
-    return env
-
-
 _SLACK_CONFIG_KEYS = (
     "SLACK_WEBHOOK_URL",
     "SLACK_WEBHOOK_SECRET_ID",
@@ -377,9 +368,9 @@ def _repo_scope_values_for_save(repos: list[str]) -> dict[str, str]:
         SHIPPED_REPOS_ENV: value,
         BRIDGE_REPOS_ENV: value,
     }
-    persisted_env = _runtime_env_file_config()
-    queue_scope_present, existing_queue = _effective_queue_scope_for_save(persisted_env)
-    current_board = _repos_from_env(persisted_env, _BOARD_REPO_ENV_KEYS)
+    runtime_env = _runtime_config_env()
+    queue_scope_present, existing_queue = _effective_queue_scope_for_save(runtime_env)
+    current_board = _repos_from_env(runtime_env, _BOARD_REPO_ENV_KEYS)
     selected = set(repos)
     explicit_empty_queue = queue_scope_present and not existing_queue
     preserve_existing_queue = (
