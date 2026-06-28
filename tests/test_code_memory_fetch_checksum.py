@@ -158,7 +158,7 @@ def test_scope_repos_auto_discovers_git_repos_when_unconfigured(tmp_path: Path) 
 
     assert res.returncode == 0, res.stderr
     repos = [Path(line).relative_to(workspace).as_posix() for line in res.stdout.splitlines()]
-    assert repos == ["product/api", "tools/alfred-os", "worktree"]
+    assert repos == ["worktree", "product/api", "tools/alfred-os"]
 
 
 def test_scope_repos_defaults_to_product_subdir(tmp_path: Path) -> None:
@@ -209,6 +209,32 @@ def test_scope_repos_prefers_configured_scope(tmp_path: Path) -> None:
     assert res.returncode == 0, res.stderr
     repos = [Path(line).relative_to(workspace).as_posix() for line in res.stdout.splitlines()]
     assert repos == ["web", "api"]
+
+
+def test_scope_repos_discovers_top_level_repos_before_nested_repos(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    (workspace / "alpha" / "extra" / ".git").mkdir(parents=True)
+    (workspace / "beta" / ".git").mkdir(parents=True)
+    (workspace / "gamma" / ".git").mkdir(parents=True)
+    env = _launcher_env(
+        tmp_path,
+        WORKSPACE_ROOT=str(workspace),
+        WORKSPACE_SUBDIR="",
+        ALFRED_CODE_MEMORY_REPOS="",
+        ALFRED_CODE_MAP_REPOS="",
+        ALFRED_CODE_MEMORY_DISCOVERY_LIMIT="2",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "__scope-repos"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    repos = [Path(line).relative_to(workspace).as_posix() for line in res.stdout.splitlines()]
+    assert repos == ["beta", "gamma"]
 
 
 def test_scope_repos_uses_workspace_subdir_fallback(tmp_path: Path) -> None:

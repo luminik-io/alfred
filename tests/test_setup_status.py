@@ -234,8 +234,8 @@ def test_bootstrap_status_auto_discovers_code_memory_repos(
     assert code_memory["repos"] == {
         "configured": [],
         "configured_existing": [],
-        "discovered": ["product/api", "tools/alfred-os", "worktree"],
-        "selected": ["product/api", "tools/alfred-os", "worktree"],
+        "discovered": ["worktree", "product/api", "tools/alfred-os"],
+        "selected": ["worktree", "product/api", "tools/alfred-os"],
         "source": "auto",
         "count": 3,
         "limit": 25,
@@ -310,6 +310,26 @@ def test_bootstrap_status_falls_back_when_configured_code_memory_repos_are_stale
         "count": 1,
         "limit": 25,
     }
+
+
+def test_bootstrap_status_discovers_top_level_repos_before_nested_repos(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    workspace = tmp_path / "workspace"
+    (workspace / "alpha" / "extra" / ".git").mkdir(parents=True)
+    (workspace / "beta" / ".git").mkdir(parents=True)
+    (workspace / "gamma" / ".git").mkdir(parents=True)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MAP_REPOS", raising=False)
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_DISCOVERY_LIMIT", "2")
+
+    code_memory = setup_mod.bootstrap_status()["code_memory"]
+
+    assert code_memory["repos"]["selected"] == ["beta", "gamma"]
 
 
 def test_bootstrap_status_uses_workspace_subdir_fallback_for_code_memory(

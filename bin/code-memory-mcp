@@ -273,16 +273,15 @@ discovery_limit() {
 }
 
 discover_scope_repos() {
-  local limit count dir child base last_index i
+  local limit count dir child base
   local -a stack children
   limit="$(discovery_limit)"
   count=0
   [ -d "$WORKSPACE" ] || return 0
   stack=("$WORKSPACE")
   while [ "${#stack[@]}" -gt 0 ]; do
-    last_index=$((${#stack[@]} - 1))
-    dir="${stack[$last_index]}"
-    unset "stack[$last_index]"
+    dir="${stack[0]}"
+    stack=("${stack[@]:1}")
     if [ -e "$dir/.git" ]; then
       printf '%s\n' "$dir"
       count=$((count + 1))
@@ -299,9 +298,7 @@ discover_scope_repos() {
       esac
       children+=("$child")
     done < <(find "$dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
-    for ((i = ${#children[@]} - 1; i >= 0; i--)); do
-      stack+=("${children[$i]}")
-    done
+    stack+=("${children[@]}")
   done
   return 0
 }

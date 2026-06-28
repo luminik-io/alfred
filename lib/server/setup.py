@@ -463,21 +463,38 @@ def _discover_code_memory_repos(env: dict[str, str]) -> list[str]:
     found: list[str] = []
     if not workspace.is_dir():
         return found
-    for root, dirs, files in os.walk(workspace):
-        dirs[:] = sorted(d for d in dirs if d not in _CODE_MEMORY_DISCOVERY_IGNORES)
-        if ".git" not in dirs and ".git" not in files:
-            continue
-        repo = Path(root)
+    queue = [workspace]
+    while queue:
+        repo = queue.pop(0)
         try:
-            relative_parts = repo.relative_to(workspace).parts
-        except ValueError:
+            entries = list(repo.iterdir())
+        except OSError:
             continue
-        if any(part in _CODE_MEMORY_DISCOVERY_IGNORES for part in relative_parts):
+        names = {entry.name for entry in entries}
+        if ".git" in names:
+            try:
+                relative_parts = repo.relative_to(workspace).parts
+            except ValueError:
+                continue
+            if any(part in _CODE_MEMORY_DISCOVERY_IGNORES for part in relative_parts):
+                continue
+            found.append(str(repo.relative_to(workspace)))
+            if len(found) >= limit:
+                break
             continue
-        found.append(str(repo.relative_to(workspace)))
-        dirs.clear()
-        if len(found) >= limit:
-            break
+        children = sorted(
+            entry
+            for entry in entries
+            if entry.is_dir() and entry.name not in _CODE_MEMORY_DISCOVERY_IGNORES
+        )
+        for child in children:
+            try:
+                relative_parts = child.relative_to(workspace).parts
+            except ValueError:
+                continue
+            if any(part in _CODE_MEMORY_DISCOVERY_IGNORES for part in relative_parts):
+                continue
+            queue.append(child)
     return found
 
 
