@@ -23,9 +23,9 @@ import re
 import subprocess
 from pathlib import Path
 
-from agent_runner.paths import launcher_env
+from agent_runner.paths import decode_env_value, launcher_env
 from labels import DO_NOT_PICKUP, IMPLEMENT, PLAN_PENDING_APPROVAL
-from shipped_board import _config_value, _gh_bin, _gh_subprocess_env
+from shipped_board import _gh_bin, _gh_subprocess_env
 
 logger = logging.getLogger(__name__)
 
@@ -37,16 +37,41 @@ QUEUE_ACTIONS = ("queue", "hold", "done")
 _ALLOWLIST_ENV = ("ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS", "ALFRED_BRIDGE_REPOS")
 
 
-def _queue_config_value(key: str) -> str:
-    """Resolve queue config from the live runtime, then same-home launcher rc fallback."""
+def _runtime_config_entry(key: str) -> tuple[bool, str]:
+    """Return ``(present, value)`` from process env / active runtime .env."""
 
-    live_value = _config_value(key).strip()
-    if live_value:
-        return live_value
+    if key in os.environ:
+        return True, os.environ.get(key, "").strip()
+    home = _runtime_home()
+    try:
+        for raw_line in (home / ".env").read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            if line.startswith("export "):
+                line = line.removeprefix("export ").strip()
+            name, _, raw_value = line.partition("=")
+            if name.strip() == key:
+                return True, decode_env_value(raw_value.strip()).strip()
+    except OSError:
+        pass
+    return False, ""
+
+
+def _queue_config_entry(key: str, *, allow_launcher: bool) -> tuple[bool, str]:
+    """Resolve queue config while preserving explicit empty runtime values."""
+
+    present, live_value = _runtime_config_entry(key)
+    if present:
+        return True, live_value
+    if not allow_launcher:
+        return False, ""
     launcher = _launcher_env_for_runtime()
     if not launcher:
-        return ""
-    return launcher.get(key, "").strip()
+        return False, ""
+    if key in launcher:
+        return True, launcher.get(key, "").strip()
+    return False, ""
 
 
 def _launcher_env_for_runtime() -> dict[str, str] | None:
@@ -95,11 +120,15 @@ def allowed_queue_repos() -> set[str]:
     so it must be scoped at least as tightly as the Slack issue bridge. Require
     an explicit allowlist and never infer from arbitrary GitHub access.
     """
-    explicit = _queue_config_value("ALFRED_QUEUE_REPOS")
-    env_names = ("ALFRED_QUEUE_REPOS",) if explicit.strip() else _ALLOWLIST_ENV
+    runtime_repo_scope_present = any(_runtime_config_entry(name)[0] for name in _ALLOWLIST_ENV)
+    queue_present, _ = _queue_config_entry(
+        "ALFRED_QUEUE_REPOS",
+        allow_launcher=not runtime_repo_scope_present,
+    )
+    env_names = ("ALFRED_QUEUE_REPOS",) if queue_present else _ALLOWLIST_ENV
     repos: set[str] = set()
     for env_name in env_names:
-        raw = _queue_config_value(env_name)
+        _, raw = _queue_config_entry(env_name, allow_launcher=not runtime_repo_scope_present)
         for item in re.split(r"[\s,]+", raw):
             repo = item.strip().lower()
             if repo:

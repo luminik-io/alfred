@@ -368,14 +368,15 @@ def _repo_scope_values_for_save(repos: list[str]) -> dict[str, str]:
         BRIDGE_REPOS_ENV: value,
     }
     runtime_env = _runtime_config_env()
-    existing_queue = sorted(_repos_from_env(runtime_env, (QUEUE_REPOS_ENV,)))
+    queue_scope_present, existing_queue = _effective_queue_scope_for_save(runtime_env)
     current_board = _repos_from_env(runtime_env, _BOARD_REPO_ENV_KEYS)
     selected = set(repos)
+    explicit_empty_queue = queue_scope_present and not existing_queue
     preserve_existing_queue = (
         bool(value)
-        and bool(existing_queue)
+        and queue_scope_present
         and set(existing_queue) != selected
-        and set(existing_queue) != current_board
+        and (explicit_empty_queue or set(existing_queue) != current_board)
     )
     if preserve_existing_queue:
         values = {QUEUE_REPOS_ENV: _format_repo_value(existing_queue), **values}
@@ -383,6 +384,12 @@ def _repo_scope_values_for_save(repos: list[str]) -> dict[str, str]:
         values = {QUEUE_REPOS_ENV: value, **values}
     return values
 
+
+def _effective_queue_scope_for_save(runtime_env: dict[str, str]) -> tuple[bool, list[str]]:
+    runtime_queue = _repos_from_env(runtime_env, (QUEUE_REPOS_ENV,))
+    if runtime_queue or _has_config_key(runtime_env, QUEUE_REPOS_ENV):
+        return True, sorted(runtime_queue)
+    return False, []
 # --------------------------------------------------------------------------- #
 # gh + engine detection
 # --------------------------------------------------------------------------- #

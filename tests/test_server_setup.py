@@ -482,6 +482,38 @@ def test_persist_selected_repos_preserves_active_narrow_queue_scope(
     assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
 
 
+def test_persist_selected_repos_preserves_empty_active_queue_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    home.mkdir(parents=True)
+    (home / ".env").write_text(
+        "\n".join(
+            [
+                "ALFRED_QUEUE_REPOS=",
+                "ALFRED_SHIPPED_REPOS=",
+                "ALFRED_BRIDGE_REPOS=",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    setup_mod.persist_selected_repos(["Acme/Web"])
+
+    env_text = (home / ".env").read_text(encoding="utf-8")
+    assert "ALFRED_QUEUE_REPOS=\n" in env_text
+    assert "ALFRED_QUEUE_REPOS=acme/web" not in env_text
+    assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
+    assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
+
+
 def test_persist_selected_repos_ignores_stale_rc_queue_scope_when_runtime_has_board_only(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
