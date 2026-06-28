@@ -7,8 +7,7 @@ This module owns the 12-factor env-var contract:
   three flavours of boolean env-var test.
 * Engine-selection helpers (``normalize_engine``, ``agent_engine``,
   ``engine_preflight_bins``) and the engine-mode constants
-  (``ENGINE_CHOICES``, ``PROVIDER_LIMIT_SUBTYPES``,
-  ``HYBRID_FALLBACK_SUBTYPES``).
+  (``ENGINE_CHOICES``, ``PROVIDER_LIMIT_SUBTYPES``).
 * Codex sandbox resolution per agent (``codex_sandbox_for_agent``).
 * Doctor + dry-run mode flags (``doctor_mode``, ``is_dry_run``,
   ``set_dry_run``, ``dry_run_log``).
@@ -39,37 +38,15 @@ ENGINE_CHOICES: frozenset[str] = frozenset({"claude", "codex", "hybrid"})
 PROVIDER_LIMIT_SUBTYPES: frozenset[str] = frozenset({"error_budget", "error_rate_limit"})
 """Subtypes that mean we hit a provider's quota / rate-limit wall."""
 
-HYBRID_FALLBACK_SUBTYPES: frozenset[str] = PROVIDER_LIMIT_SUBTYPES | frozenset(
-    {"error_authentication"}
-)
-"""Subtypes that should trigger a Claude->Codex fallback in hybrid mode."""
-
 
 def reported_subtype(result: object) -> str:
-    """Return the subtype an agent should REPORT as the failure's root cause.
+    """Return the raw subtype an agent should report.
 
-    Hybrid mode falls back from Claude to codex on a provider-limit or auth
-    failure. When the fallback itself then fails, the returned ``ClaudeResult``
-    carries codex's subtype, which can be a misleading ``error_rate_limit``
-    that hides the original trigger. This was a real outage: a Claude 401
-    (token missing from the runtime env) pushed every firing to codex, codex
-    hit its weekly cap, and the whole thing surfaced as ``error_rate_limit``
-    instead of "your Claude credential is unreachable".
-
-    The honest headline is the TRIGGER. We promote ``fallback_from_subtype``
-    when it is an auth failure (operator-actionable, distinct from codex's
-    own wall). A provider-limit trigger that fell back to another provider
-    limit stays as-is: both ends are genuinely rate-limited, so reporting
-    the codex subtype is not misleading.
-
-    Accepts any object exposing ``subtype`` / ``fallback_from_subtype`` so
-    this module need not import :mod:`result` (avoids an import cycle).
+    Hybrid fallback no longer rewrites auth or quota failures through a second
+    provider. The result subtype is therefore the honest headline; any
+    ``fallback_from_subtype`` is audit context, not a replacement.
     """
-    subtype = getattr(result, "subtype", "") or ""
-    trigger = getattr(result, "fallback_from_subtype", None)
-    if trigger == "error_authentication" and subtype != "error_authentication":
-        return trigger
-    return subtype
+    return getattr(result, "subtype", "") or ""
 
 
 # --------------------------------------------------------------------------
