@@ -1,4 +1,6 @@
 use std::collections::{HashMap, HashSet};
+#[cfg(unix)]
+use std::ffi::{CStr, CString};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
@@ -422,6 +424,10 @@ fn load_selected_alfredrc_env(
     home: Option<&Path>,
     process_env_keys: &HashSet<String>,
 ) {
+    let had_alfredrc_value = env
+        .get("ALFREDRC")
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
     if let Some(alfredrc) = alfredrc_path(home, env) {
         load_config_file(env, &alfredrc, true, false, home, process_env_keys);
         if let Some(pointed_alfredrc) = alfredrc_path(home, env) {
@@ -431,6 +437,11 @@ fn load_selected_alfredrc_env(
                     pointed_alfredrc.to_string_lossy().into_owned(),
                 );
                 load_config_file(env, &pointed_alfredrc, true, true, home, process_env_keys);
+            } else if had_alfredrc_value || env.contains_key("ALFREDRC") {
+                env.insert(
+                    "ALFREDRC".to_string(),
+                    alfredrc.to_string_lossy().into_owned(),
+                );
             }
         }
     }
@@ -454,7 +465,73 @@ fn expand_home_path(value: &str, home: Option<&Path>) -> PathBuf {
             return home.join(rest);
         }
     }
+    if let Some(rest) = value.strip_prefix('~') {
+        let (user, suffix) = rest.split_once('/').unwrap_or((rest, ""));
+        if !user.is_empty() {
+            if let Some(user_home) = home_for_user(user, home) {
+                return if suffix.is_empty() {
+                    user_home
+                } else {
+                    user_home.join(suffix)
+                };
+            }
+        }
+    }
     PathBuf::from(value)
+}
+
+fn home_for_user(user: &str, home: Option<&Path>) -> Option<PathBuf> {
+    if current_process_user_matches(user) {
+        if let Some(home) = home {
+            return Some(home.to_path_buf());
+        }
+    }
+    lookup_user_home(user)
+}
+
+fn current_process_user_matches(user: &str) -> bool {
+    ["USER", "LOGNAME"].iter().any(|key| {
+        std::env::var(key)
+            .map(|value| value.trim() == user)
+            .unwrap_or(false)
+    })
+}
+
+#[cfg(unix)]
+fn lookup_user_home(user: &str) -> Option<PathBuf> {
+    let c_user = CString::new(user).ok()?;
+    let mut pwd = std::mem::MaybeUninit::<libc::passwd>::uninit();
+    let mut result: *mut libc::passwd = std::ptr::null_mut();
+    let mut buffer = vec![0 as libc::c_char; 16 * 1024];
+    let rc = unsafe {
+        libc::getpwnam_r(
+            c_user.as_ptr(),
+            pwd.as_mut_ptr(),
+            buffer.as_mut_ptr(),
+            buffer.len(),
+            &mut result,
+        )
+    };
+    if rc != 0 || result.is_null() {
+        return None;
+    }
+    let pwd = unsafe { pwd.assume_init() };
+    if pwd.pw_dir.is_null() {
+        return None;
+    }
+    let dir = unsafe { CStr::from_ptr(pwd.pw_dir) }
+        .to_string_lossy()
+        .into_owned();
+    if dir.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(dir))
+    }
+}
+
+#[cfg(not(unix))]
+fn lookup_user_home(_user: &str) -> Option<PathBuf> {
+    None
 }
 
 fn load_config_file(
@@ -2391,6 +2468,58 @@ mod tests {
         restore_var("HOME", prev_home);
         restore_var("ALFRED_HOME", prev_alfred);
         restore_var("ALFREDRC", prev_alfredrc);
+    }
+
+    #[test]
+    fn native_subprocess_env_expands_user_alfredrc_path() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_user = std::env::var("USER").ok();
+        let prev_logname = std::env::var("LOGNAME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_alfredrc = std::env::var("ALFREDRC").ok();
+        let prev_auto_promote = std::env::var("ALFRED_AUTO_PROMOTE").ok();
+
+        let root = temp_root("alfred-user-alfredrc-path");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        let custom_rc = home.join("custom.alfredrc");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(
+            &custom_rc,
+            format!(
+                "ALFRED_HOME='{}'\nALFRED_AUTO_PROMOTE=0\n",
+                runtime.to_string_lossy()
+            ),
+        )
+        .expect("write custom alfredrc");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("USER", "alfredtest");
+        std::env::set_var("LOGNAME", "alfredtest");
+        std::env::set_var("ALFREDRC", "~alfredtest/custom.alfredrc");
+        std::env::remove_var("ALFRED_HOME");
+        std::env::remove_var("ALFRED_AUTO_PROMOTE");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("ALFREDRC"),
+            Some(&custom_rc.to_string_lossy().to_string())
+        );
+        assert_eq!(
+            env.get("ALFRED_HOME"),
+            Some(&runtime.to_string_lossy().to_string())
+        );
+        assert_eq!(env.get("ALFRED_AUTO_PROMOTE"), Some(&"0".to_string()));
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("USER", prev_user);
+        restore_var("LOGNAME", prev_logname);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFREDRC", prev_alfredrc);
+        restore_var("ALFRED_AUTO_PROMOTE", prev_auto_promote);
     }
 
     #[test]
