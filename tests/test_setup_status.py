@@ -318,6 +318,27 @@ def test_selected_repos_merges_queue_shipped_and_bridge_scopes(
     assert setup_mod.selected_repos() == ["acme/api", "acme/frontend", "octocat/web"]
 
 
+def test_selected_repos_reads_runtime_env_file_but_not_alfredrc(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    home.mkdir()
+    runtime.mkdir()
+    (home / ".alfredrc").write_text("ALFRED_QUEUE_REPOS=octocat/stale\n", encoding="utf-8")
+    (runtime / ".env").write_text(
+        "ALFRED_QUEUE_REPOS=octocat/web\nALFRED_BRIDGE_REPOS=octocat/api\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+
+    assert setup_mod.selected_repos() == ["octocat/api", "octocat/web"]
+
+
 def test_bootstrap_status_matches_case_insensitive_launcher_flags(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

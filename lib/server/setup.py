@@ -118,10 +118,24 @@ def _setup_config_value(key: str, default: str = "") -> str:
     return _code_memory_config(_code_memory_launcher_env(), key, default)
 
 
+def _queue_config_value(key: str, default: str = "") -> str:
+    value = os.environ.get(key, "").strip()
+    if value:
+        return value
+    raw_home = os.environ.get("ALFRED_HOME", "").strip()
+    if raw_home:
+        runtime_home = _safe_expand_path(raw_home) or Path(raw_home)
+    else:
+        runtime_home = _default_alfred_home(os.environ)
+    runtime_env: dict[str, str] = {}
+    _load_launcher_env_file(runtime_home / ".env", runtime_env)
+    return runtime_env.get(key, "").strip() or default
+
+
 def _allowed_queue_repos() -> set[str]:
     repos: set[str] = set()
     for key in _REPO_ENV_KEYS:
-        raw = _setup_config_value(key)
+        raw = _queue_config_value(key)
         repos.update(normalize_repo_slugs(re.split(r"[\s,]+", raw)))
     return repos
 
