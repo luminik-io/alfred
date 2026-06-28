@@ -36,7 +36,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from agent_runner.paths import config_value, decode_env_value
+from agent_runner.paths import config_value
 from agent_runner.paths import launcher_env as agent_launcher_env
 from issue_queue import allowed_queue_repos
 from shipped_board import _gh_bin, _gh_subprocess_env
@@ -446,50 +446,13 @@ def _engine_search_path() -> tuple[str, ...]:
 def _code_memory_launcher_env() -> dict[str, str]:
     """Return the env shape ``bin/code-memory-mcp`` sees after its loaders run."""
 
-    env = dict(os.environ)
-    if not env.get("ALFRED_HOME", "").strip():
-        env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
-    else:
-        env["ALFRED_HOME"] = str(Path(env["ALFRED_HOME"]).expanduser())
-    _load_launcher_env_file(Path.home() / ".alfredrc", env)
-    if not env.get("ALFRED_HOME", "").strip():
-        env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
-    else:
-        env["ALFRED_HOME"] = str(Path(env["ALFRED_HOME"]).expanduser())
-    _load_launcher_env_file(Path(env["ALFRED_HOME"]).expanduser() / ".env", env)
-    if not env.get("ALFRED_HOME", "").strip():
-        env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
-    else:
-        env["ALFRED_HOME"] = str(Path(env["ALFRED_HOME"]).expanduser())
-    return env
+    return _setup_launcher_env()
 
 
 def _setup_launcher_env() -> dict[str, str]:
     """Return the env shape scheduled agents see through ``bin/agent-launch``."""
 
     return agent_launcher_env()
-
-
-def _load_launcher_env_file(path: Path, env: dict[str, str]) -> None:
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return
-    for raw_line in lines:
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line.removeprefix("export ").strip()
-        if "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        key = key.strip()
-        if not _ENV_KEY_RE.match(key):
-            continue
-        decoded = decode_env_value(value.strip())
-        decoded = decoded.replace("${HOME}", str(Path.home())).replace("$HOME", str(Path.home()))
-        env[key] = decoded
 
 
 def _code_memory_config(env: dict[str, str], key: str, default: str = "") -> str:
