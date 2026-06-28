@@ -116,8 +116,8 @@ from importlib.machinery import SourceFileLoader
 real_import = builtins.__import__
 
 def guarded_import(name, *args, **kwargs):
-    if name == "agent_runner" or name.startswith("agent_runner."):
-        raise RuntimeError("agent_runner import should not be needed")
+    if name == "agent_runner" or name.startswith("agent_runner.") or name == "scheduler":
+        raise RuntimeError("blocked import should not be needed")
     return real_import(name, *args, **kwargs)
 
 builtins.__import__ = guarded_import

@@ -117,26 +117,27 @@ for candidate in (
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
-import scheduler  # noqa: E402
 
+class _LazyModule:
+    """Import a heavy helper module only for commands that actually use it."""
 
-class _LazyAgentRunner:
-    """Import the runtime package only for commands that actually use it."""
-
-    _module = None
+    def __init__(self, module_name: str) -> None:
+        self._module_name = module_name
+        self._module = None
 
     def _load(self):
         if self._module is None:
             import importlib
 
-            self._module = importlib.import_module("agent_runner")
+            self._module = importlib.import_module(self._module_name)
         return self._module
 
     def __getattr__(self, name):
         return getattr(self._load(), name)
 
 
-agent_runner = _LazyAgentRunner()
+agent_runner = _LazyModule("agent_runner")
+scheduler = _LazyModule("scheduler")
 
 OPT_IN_AGENTS = {"batman"}
 ENGINE_AGENTS = ("bane", "batman", "drake", "lucius", "nightwing", "rasalghul", "robin")
