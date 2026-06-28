@@ -216,6 +216,27 @@ def _env_flag_default_on(name: str, env: Mapping[str, str] | None = None) -> boo
     return False
 
 
+def _env_flag_recognized_or_blank(name: str, env: Mapping[str, str] | None = None) -> bool:
+    """True when a flag is absent, blank, or a recognized truthy/falsy token."""
+    src = env if env is not None else os.environ
+    raw = src.get(name)
+    value = _env_token(raw)
+    if raw is None or not value:
+        return True
+    return value in {
+        "1",
+        "true",
+        "yes",
+        "on",
+        "enabled",
+        "0",
+        "false",
+        "no",
+        "off",
+        "disabled",
+    }
+
+
 def _env_token(raw: object) -> str:
     """Normalize env flag values, accepting shell-style trailing comments."""
     value = str(raw).strip()
@@ -750,6 +771,8 @@ class FleetBrain:
         everything so a bad batch can be halted without editing the rest of the
         deployment config."""
         if _env_flag_on("ALFRED_AUTO_PROMOTE_KILL", env):
+            return False
+        if not _env_flag_recognized_or_blank("ALFRED_AUTO_PROMOTE_LLM_JUDGE", env):
             return False
         return _env_flag_default_on("ALFRED_AUTO_PROMOTE", env)
 

@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=__ALFRED_BIN__/agent-launch __SCRIPT__
+ExecStart=__AGENT_LAUNCH__ __SCRIPT__
 StandardOutput=append:/tmp/__LOG_STEM__.stdout
 StandardError=append:/tmp/__LOG_STEM__.stderr
 WorkingDirectory=__HOME__

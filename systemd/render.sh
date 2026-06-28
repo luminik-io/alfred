@@ -326,6 +326,7 @@ mapping = {
     "__PATH__": env_value(path_value),
     "__JAVA_BLOCK__": java_block,
     "__ALFRED_BIN__": alfred_bin,
+    "__AGENT_LAUNCH__": env_value(f"{alfred_bin}/agent-launch"),
     "__ALFRED_HOME__": env_value(alfred_home),
     "__ALFREDRC__": env_value(alfredrc),
     "__WORKSPACE_ROOT__": env_value(workspace_root),

@@ -191,6 +191,20 @@ def test_malformed_leading_hash_auto_promote_value_fails_closed(brain: FleetBrai
     assert _status(brain, c.id) == "candidate"
 
 
+def test_malformed_judge_flag_fails_closed(brain: FleetBrain) -> None:
+    c = _candidate(brain, "a strong durable lesson", confidence=0.99)
+
+    summary = brain.auto_promote_candidates(
+        env={"ALFRED_AUTO_PROMOTE_LLM_JUDGE": "treu"},
+        judge=lambda _p: _verdict(0.97),
+    )
+
+    assert summary["enabled"] is False
+    assert summary["promoted"] == []
+    assert summary["considered"] == 0
+    assert _status(brain, c.id) == "candidate"
+
+
 # --- structural gate (judge disabled) --------------------------------------
 
 

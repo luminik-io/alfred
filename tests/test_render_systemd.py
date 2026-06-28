@@ -147,6 +147,22 @@ def test_render_quotes_custom_alfredrc_with_spaces(tmp_path):
     assert f'Environment=ALFREDRC="{custom_rc}"' in service
 
 
+def test_render_quotes_execstart_when_alfred_home_has_spaces(tmp_path):
+    custom_rc = tmp_path / "custom.alfredrc"
+    custom_home = tmp_path / "runtime home"
+    custom_rc.write_text(
+        f"ALFRED_HOME={custom_home}\nALFRED_AUTO_PROMOTE=0\n",
+        encoding="utf-8",
+    )
+    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
+
+    out_dir = _render(tmp_path, conf, env={"ALFREDRC": str(custom_rc)})
+
+    service = (out_dir / "my.fleet.memory-auto-promote.service").read_text()
+    assert f'ExecStart="{custom_home}/bin/agent-launch" memory-auto-promote.py' in service
+    assert f'Environment=ALFRED_HOME="{custom_home}"' in service
+
+
 def test_render_follows_persisted_alfredrc_pointer(tmp_path):
     home = tmp_path / "fakehome"
     home.mkdir()
