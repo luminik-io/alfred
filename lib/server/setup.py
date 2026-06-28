@@ -362,10 +362,12 @@ def _repo_scope_values_for_save(repos: list[str]) -> dict[str, str]:
         SHIPPED_REPOS_ENV: value,
         BRIDGE_REPOS_ENV: value,
     }
-    existing_queue = _existing_queue_repos_for_save()
+    existing_queue = sorted(_existing_queue_repos_for_save())
     selected = set(repos)
-    if not value or not existing_queue or existing_queue == selected:
+    if not value or not existing_queue or set(existing_queue) == selected:
         values = {QUEUE_REPOS_ENV: value, **values}
+    else:
+        values = {QUEUE_REPOS_ENV: _format_repo_value(existing_queue), **values}
     return values
 
 

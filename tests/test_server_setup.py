@@ -332,6 +332,7 @@ def test_persist_selected_repos_updates_board_scope_without_widening_stale_queue
     setup_mod.persist_selected_repos(["Acme/Web"])
 
     env_text = (home / ".env").read_text(encoding="utf-8")
+    assert "ALFRED_QUEUE_REPOS=old/repo" in env_text
     assert "ALFRED_QUEUE_REPOS=acme/web" not in env_text
     assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
     assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
