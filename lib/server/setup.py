@@ -318,7 +318,11 @@ def code_memory_status() -> dict[str, Any]:
     autofetch = _config_flag(launcher_env, "ALFRED_CODE_MEMORY_AUTOFETCH", default=True)
     binary = _code_memory_binary(launcher_env)
     index_dir = _code_memory_index_dir(launcher_env)
-    repo_scope = _code_memory_repo_scope(launcher_env)
+    repo_scope = (
+        _code_memory_repo_scope(launcher_env)
+        if enabled
+        else _disabled_code_memory_repo_scope(launcher_env)
+    )
     index_present = _dir_has_entries(index_dir)
     pin = _code_memory_pin(launcher_env)
 
@@ -500,6 +504,19 @@ def _code_memory_repo_scope(env: dict[str, str]) -> dict[str, Any]:
         "selected": selected,
         "source": source,
         "count": len(selected),
+        "limit": _code_memory_discovery_limit(env),
+    }
+
+
+def _disabled_code_memory_repo_scope(env: dict[str, str]) -> dict[str, Any]:
+    configured = _code_memory_repos(env)
+    return {
+        "configured": configured,
+        "configured_existing": [],
+        "discovered": [],
+        "selected": configured,
+        "source": "configured" if configured else "disabled",
+        "count": len(configured),
         "limit": _code_memory_discovery_limit(env),
     }
 

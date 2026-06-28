@@ -183,15 +183,31 @@ def test_bootstrap_status_respects_code_memory_disable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
     monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path / ".alfred"))
     monkeypatch.setenv("ALFRED_CODE_MEMORY_MCP", "0")
     monkeypatch.setenv("ALFRED_CODE_MEMORY_AUTOFETCH", "0")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "api, web")
+    monkeypatch.setattr(
+        setup_mod,
+        "_discover_code_memory_repos",
+        lambda _env: pytest.fail("disabled code memory must not crawl workspace repos"),
+    )
 
     code_memory = setup_mod.bootstrap_status()["code_memory"]
 
     assert code_memory["enabled"] is False
     assert code_memory["autofetch"] is False
+    assert code_memory["repos"] == {
+        "configured": ["api", "web"],
+        "configured_existing": [],
+        "discovered": [],
+        "selected": ["api", "web"],
+        "source": "configured",
+        "count": 2,
+        "limit": 25,
+    }
     assert code_memory["detail"] == "Code memory is disabled with ALFRED_CODE_MEMORY_MCP."
 
 
