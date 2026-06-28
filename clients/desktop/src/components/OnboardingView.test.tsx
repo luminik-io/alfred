@@ -160,6 +160,7 @@ function onboardingProps(
     rosterTheme: DEFAULT_ROSTER_THEME,
     customNames: EMPTY_CUSTOM_NAMES,
     rosterSaveError: null,
+    rosterHydrating: false,
     onRosterThemeChange: vi.fn(),
     onCustomNamesChange: vi.fn(),
     ...props,
@@ -311,6 +312,7 @@ describe("OnboardingView seven-step takeover", () => {
         rosterTheme={DEFAULT_ROSTER_THEME}
         customNames={{ names: {}, roles: {} }}
         rosterSaveError={null}
+        rosterHydrating={false}
         onRosterThemeChange={vi.fn(async () => true)}
         onCustomNamesChange={vi.fn(async () => true)}
       />,
@@ -701,6 +703,28 @@ describe("OnboardingView seven-step takeover", () => {
         /5 of 7/i,
       ),
     );
+  });
+
+  it("does not save the fallback roster before server hydration finishes", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
+    const onRosterThemeChange = vi.fn(async () => true);
+    renderOnboarding({ rosterHydrating: true, onRosterThemeChange });
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^fleet$/i);
+    expect(screen.getByLabelText(/transformers/i)).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: /^continue$/i }));
+
+    const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+    expect(onRosterThemeChange).not.toHaveBeenCalled();
+    expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+      /fleet/i,
+    );
+    expect(screen.getByText(/load the saved fleet names/i)).toBeInTheDocument();
   });
 
   it("keeps fleet naming incomplete when accepting the default cannot be saved", async () => {

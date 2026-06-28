@@ -106,8 +106,14 @@ function App() {
 
   const { theme, toggle: toggleTheme, themeName, setThemeName, mode, setMode } =
     useTheme();
-  const { rosterTheme, customNames, setRosterTheme, setCustomNames, saveError: rosterSaveError } =
-    useRosterTheme(baseUrl);
+  const {
+    rosterTheme,
+    customNames,
+    setRosterTheme,
+    setCustomNames,
+    saveError: rosterSaveError,
+    hydrating: rosterHydrating,
+  } = useRosterTheme(baseUrl);
   const [customThemeEditorOpen, setCustomThemeEditorOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // The Setup tab splits into Setup (get Alfred running) and Settings (appearance
@@ -350,6 +356,7 @@ function App() {
               rosterTheme={rosterTheme}
               customNames={customNames}
               rosterSaveError={rosterSaveError}
+              rosterHydrating={rosterHydrating}
               onRosterThemeChange={setRosterTheme}
               onCustomNamesChange={setCustomNames}
             />

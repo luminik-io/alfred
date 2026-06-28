@@ -174,6 +174,7 @@ export function OnboardingView({
   rosterTheme,
   customNames,
   rosterSaveError,
+  rosterHydrating,
   onRosterThemeChange,
   onCustomNamesChange,
 }: {
@@ -195,6 +196,7 @@ export function OnboardingView({
   rosterTheme: RosterThemeId;
   customNames: CustomRosterNames;
   rosterSaveError: string | null;
+  rosterHydrating: boolean;
   onRosterThemeChange: (next: RosterThemeId) => boolean | void | Promise<boolean | void>;
   onCustomNamesChange: (next: CustomRosterNames) => boolean | void | Promise<boolean | void>;
 }) {
@@ -624,6 +626,13 @@ export function OnboardingView({
       setFleetTouched(true);
       return true;
     }
+    if (rosterHydrating) {
+      setNotice({
+        tone: "error",
+        message: "Wait for Alfred to load the saved fleet names before continuing.",
+      });
+      return false;
+    }
     if (rosterSaveError || !fleetTouched) {
       return saveFleetChoice(() => onRosterThemeChange(rosterTheme));
     }
@@ -633,6 +642,7 @@ export function OnboardingView({
     fleetSavePending,
     fleetTouched,
     onRosterThemeChange,
+    rosterHydrating,
     rosterSaveError,
     rosterTheme,
     saveFleetChoice,
@@ -676,12 +686,19 @@ export function OnboardingView({
         setFleetTouched(true);
         return;
       }
+      if (rosterHydrating) {
+        setNotice({
+          tone: "error",
+          message: "Wait for Alfred to load the saved fleet names before changing them.",
+        });
+        return;
+      }
       void saveFleetChoice(
         () => onRosterThemeChange(next),
         "Save the fleet naming theme before continuing.",
       );
     },
-    [canMutate, onRosterThemeChange, saveFleetChoice],
+    [canMutate, onRosterThemeChange, rosterHydrating, saveFleetChoice],
   );
 
   const handleCustomNamesChange = useCallback(
@@ -694,12 +711,19 @@ export function OnboardingView({
         });
         return false;
       }
+      if (rosterHydrating) {
+        setNotice({
+          tone: "error",
+          message: "Wait for Alfred to load the saved fleet names before changing them.",
+        });
+        return false;
+      }
       return saveFleetChoice(
         () => onCustomNamesChange(next),
         "Save the custom fleet names before continuing.",
       );
     },
-    [canMutate, onCustomNamesChange, saveFleetChoice],
+    [canMutate, onCustomNamesChange, rosterHydrating, saveFleetChoice],
   );
 
   const skipStep = useCallback(
@@ -884,7 +908,7 @@ export function OnboardingView({
                 value={rosterTheme}
                 customNames={customNames}
                 saveError={rosterSaveError}
-                disabled={fleetSavePending || !canMutate}
+                disabled={fleetSavePending || rosterHydrating || !canMutate}
                 onChange={handleRosterThemeChange}
                 onSaveCustom={handleCustomNamesChange}
               />

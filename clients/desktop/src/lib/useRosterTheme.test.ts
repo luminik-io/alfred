@@ -36,6 +36,28 @@ describe("useRosterTheme", () => {
     vi.clearAllMocks();
   });
 
+  it("reports hydration while the connected runtime roster is loading", async () => {
+    let resolveLoad: (value: RosterThemeResponse) => void = () => {};
+    loadRosterTheme.mockReturnValue(
+      new Promise<RosterThemeResponse>((resolve) => {
+        resolveLoad = resolve;
+      }),
+    );
+
+    const { result } = renderHook(() => useRosterTheme("http://127.0.0.1:7010"));
+
+    expect(result.current.hydrating).toBe(true);
+
+    await act(async () => {
+      resolveLoad(serverState({ theme: "transformers" }));
+    });
+
+    await waitFor(() => {
+      expect(result.current.hydrating).toBe(false);
+    });
+    expect(result.current.rosterTheme).toBe("transformers");
+  });
+
   // Thread: "Offline Change Blocks Hydration". A change made while baseUrl is
   // absent must not mark the hook hydrated, so the later server read still runs
   // and the desktop converges on the server (and Slack) cast.

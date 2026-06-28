@@ -77,12 +77,17 @@ export type UseRosterTheme = {
   // reload keep the old persisted cast until a save succeeds, so the UI must be
   // able to tell the operator the change is local-only.
   saveError: string | null;
+  // True while the connected runtime's saved cast is still being read. Mutating
+  // setup flows use this to avoid POSTing a localStorage fallback before the
+  // server's existing roster has had a chance to load.
+  hydrating: boolean;
 };
 
 export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   const [rosterTheme, setRosterThemeState] = useState<RosterThemeId>(readStoredTheme);
   const [customNames, setCustomNamesState] = useState<CustomRosterNames>(readStoredCustom);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [hydrating, setHydrating] = useState(false);
   // Avoid clobbering a freshly persisted choice with a slow initial GET. We
   // track WHICH runtime we have synced with, not just whether we have synced:
   // a successful read or write records its `baseUrl` here. If the desktop later
@@ -131,9 +136,11 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   // localStorage value, so an offline desktop still works.
   useEffect(() => {
     if (!baseUrl || hydratedUrlRef.current === baseUrl) {
+      setHydrating(false);
       return;
     }
     let cancelled = false;
+    setHydrating(true);
     void (async () => {
       try {
         const remote = await loadRosterTheme(baseUrl);
@@ -153,6 +160,10 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
         writeStored(theme, custom);
       } catch {
         // Unreachable runtime: keep the localStorage fallback already in state.
+      } finally {
+        if (!cancelled && baseUrlRef.current === baseUrl) {
+          setHydrating(false);
+        }
       }
     })();
     return () => {
@@ -305,5 +316,5 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
     [persist],
   );
 
-  return { rosterTheme, customNames, setRosterTheme, setCustomNames, saveError };
+  return { rosterTheme, customNames, setRosterTheme, setCustomNames, saveError, hydrating };
 }
