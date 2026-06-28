@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { SetupInstallInventory } from "../../types";
+import type { SetupInstallInventory, SetupStatus } from "../../types";
 import { InstallInventoryPanel } from "./InstallInventoryPanel";
 
 function inventory(overrides: Partial<SetupInstallInventory> = {}): SetupInstallInventory {
@@ -79,6 +79,28 @@ describe("InstallInventoryPanel", () => {
 
     expect(screen.getByText(/configuration file/i)).toBeInTheDocument();
     expect(screen.getByText(/not created yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 to finish/i)).toBeInTheDocument();
+    expect(screen.queryByText(/ready to use/i)).not.toBeInTheDocument();
+  });
+
+  it("blocks ready state when queue coverage misses selected repos", () => {
+    const readyInventory = inventory({
+      env_present: true,
+      items: inventory().items.map((item) =>
+        item.key === "env" ? { ...item, ok: true, detail: "Found /tmp/alfred-home/.env" } : item,
+      ),
+    });
+    const queue: NonNullable<SetupStatus["queue"]> = {
+      ready: false,
+      count: 1,
+      covers_selected: false,
+      missing_selected: ["acme/mobile"],
+    };
+
+    render(<InstallInventoryPanel inventory={readyInventory} queue={queue} />);
+
+    expect(screen.getByText(/queue coverage/i)).toBeInTheDocument();
+    expect(screen.getByText(/missing 1 selected repo/i)).toBeInTheDocument();
     expect(screen.getByText(/1 to finish/i)).toBeInTheDocument();
     expect(screen.queryByText(/ready to use/i)).not.toBeInTheDocument();
   });

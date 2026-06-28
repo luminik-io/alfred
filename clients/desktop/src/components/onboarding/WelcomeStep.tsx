@@ -1,6 +1,6 @@
 import { ArrowRight, KeyRound, Server, Sparkles } from "lucide-react";
 
-import type { SetupInstallInventory } from "../../types";
+import type { SetupInstallInventory, SetupStatus } from "../../types";
 import { InstallInventoryPanel } from "./InstallInventoryPanel";
 import { Button } from "../ui";
 
@@ -16,10 +16,12 @@ import { Button } from "../ui";
  */
 export function WelcomeStep({
   install,
+  queue,
   onGetStarted,
   onDevShortcut,
 }: {
   install?: SetupInstallInventory | null;
+  queue?: SetupStatus["queue"] | null;
   onGetStarted: () => void;
   onDevShortcut: () => void;
 }) {
@@ -49,7 +51,7 @@ export function WelcomeStep({
         </span>
       </div>
 
-      <InstallInventoryPanel inventory={install} />
+      <InstallInventoryPanel inventory={install} queue={queue} />
 
       <div className="mx-auto flex flex-wrap items-center justify-center gap-2">
         <Button type="button" size="lg" onClick={onGetStarted}>

@@ -1313,6 +1313,11 @@ def _install_agents_conf_path(home: Path) -> Path | None:
     ):
         if conf.is_file():
             return conf
+    from .schedule import agents_conf_path
+
+    resolved = agents_conf_path()
+    if resolved and resolved.is_file():
+        return resolved
     return None
 
 

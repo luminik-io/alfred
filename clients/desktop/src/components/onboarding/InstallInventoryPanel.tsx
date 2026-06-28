@@ -4,7 +4,7 @@ import {
   CircleDashed,
 } from "lucide-react";
 
-import type { SetupInstallInventory, SetupInstallItem } from "../../types";
+import type { SetupInstallInventory, SetupInstallItem, SetupStatus } from "../../types";
 import { Badge, Card, CardContent } from "../ui";
 import { cn } from "@/lib/utils";
 
@@ -12,18 +12,22 @@ const PRIMARY_ITEMS = ["home", "env", "agents", "repos", "slack", "memory", "tok
 
 export function InstallInventoryPanel({
   inventory,
+  queue,
   compact = false,
 }: {
   inventory: SetupInstallInventory | null | undefined;
+  queue?: SetupStatus["queue"] | null;
   compact?: boolean;
 }) {
   if (!inventory?.initialized) {
     return null;
   }
 
+  const queueItem = queue && !queue.ready ? queueInventoryItem(queue) : null;
   const items = PRIMARY_ITEMS
     .map((key) => inventory.items.find((item) => item.key === key))
-    .filter((item): item is SetupInstallItem => Boolean(item));
+    .filter((item): item is SetupInstallItem => Boolean(item))
+    .concat(queueItem ? [queueItem] : []);
   const blocking = items.filter((item) => !item.ok && !item.optional).length;
 
   return (
@@ -79,6 +83,21 @@ export function InstallInventoryPanel({
       </CardContent>
     </Card>
   );
+}
+
+function queueInventoryItem(queue: NonNullable<SetupStatus["queue"]>): SetupInstallItem {
+  const missing = queue.missing_selected ?? [];
+  const detail = missing.length
+    ? `Queue actions are missing ${missing.length} selected repo${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}.`
+    : "Queue actions are not ready for the selected repositories.";
+
+  return {
+    key: "queue",
+    label: "Queue coverage",
+    ok: false,
+    detail,
+    path: null,
+  };
 }
 
 function StatusIcon({ item }: { item: SetupInstallItem }) {

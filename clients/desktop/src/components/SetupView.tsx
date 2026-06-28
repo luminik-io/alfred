@@ -157,7 +157,11 @@ export function SetupView({
               path, Slack stays the collaboration UI, and the CLI is the inspectable runtime
               underneath.
             </p>
-            <InstallInventoryPanel inventory={setupStatus?.install ?? null} compact />
+            <InstallInventoryPanel
+              inventory={setupStatus?.install ?? null}
+              queue={setupStatus?.queue ?? null}
+              compact
+            />
             {setupError ? (
               <p className="console-note">
                 Setup inventory unavailable: {setupError}

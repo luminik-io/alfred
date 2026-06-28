@@ -645,6 +645,7 @@ export function OnboardingView({
             // echoed by a step header above it.
             <WelcomeStep
               install={status?.install ?? null}
+              queue={status?.queue ?? null}
               onGetStarted={() => goToStep("engine")}
               onDevShortcut={() => goToStep("github")}
             />

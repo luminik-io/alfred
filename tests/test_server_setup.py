@@ -111,7 +111,7 @@ def test_install_inventory_uses_active_serve_home_for_agents_conf(
     assert inventory["scheduled_runs"] == 1
 
 
-def test_install_inventory_does_not_reuse_checkout_agents_conf_for_runtime_home(
+def test_install_inventory_reuses_schedule_resolver_for_checkout_agents_conf(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -131,9 +131,9 @@ def test_install_inventory_does_not_reuse_checkout_agents_conf_for_runtime_home(
 
     inventory = setup_mod.install_inventory()
 
-    assert inventory["agents_conf_path"] is None
-    assert inventory["agents_conf_present"] is False
-    assert inventory["scheduled_runs"] == 0
+    assert inventory["agents_conf_path"] == str(conf)
+    assert inventory["agents_conf_present"] is True
+    assert inventory["scheduled_runs"] == 1
 
 
 def test_install_inventory_prefers_runtime_home_agents_conf_over_repo_resolver(
