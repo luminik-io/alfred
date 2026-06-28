@@ -186,6 +186,31 @@ def test_scope_repos_defaults_to_product_subdir(tmp_path: Path) -> None:
     assert repos == ["api"]
 
 
+def test_scope_repos_follows_symlinked_workspace_root(tmp_path: Path) -> None:
+    actual = tmp_path / "actual-workspace"
+    workspace = tmp_path / "workspace-link"
+    (actual / "api" / ".git").mkdir(parents=True)
+    workspace.symlink_to(actual, target_is_directory=True)
+    env = _launcher_env(
+        tmp_path,
+        WORKSPACE_ROOT=str(workspace),
+        WORKSPACE_SUBDIR="",
+        ALFRED_CODE_MEMORY_REPOS="",
+        ALFRED_CODE_MAP_REPOS="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "__scope-repos"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    repos = [Path(line).relative_to(workspace).as_posix() for line in res.stdout.splitlines()]
+    assert repos == ["api"]
+
+
 def test_scope_repos_prefers_configured_scope(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     (workspace / "api" / ".git").mkdir(parents=True)

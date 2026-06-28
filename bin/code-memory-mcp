@@ -297,7 +297,7 @@ discover_scope_repos() {
           ;;
       esac
       children+=("$child")
-    done < <(find "$dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
+    done < <(find -H "$dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
     stack+=("${children[@]}")
   done
   return 0

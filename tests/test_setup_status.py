@@ -291,6 +291,26 @@ def test_bootstrap_status_skips_symlinked_code_memory_repos(
     assert code_memory["repos"]["discovered"] == ["real"]
 
 
+def test_bootstrap_status_follows_symlinked_code_memory_workspace_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    actual = tmp_path / "actual-workspace"
+    workspace = tmp_path / "workspace-link"
+    (actual / "api" / ".git").mkdir(parents=True)
+    workspace.symlink_to(actual, target_is_directory=True)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MAP_REPOS", raising=False)
+
+    code_memory = setup_mod.bootstrap_status()["code_memory"]
+
+    assert code_memory["repos"]["selected"] == ["api"]
+    assert code_memory["repos"]["discovered"] == ["api"]
+
+
 def test_bootstrap_status_defaults_code_memory_to_product_subdir(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
