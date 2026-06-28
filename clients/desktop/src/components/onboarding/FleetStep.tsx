@@ -1,4 +1,4 @@
-import { AlertTriangle, Pencil, Sparkles } from "lucide-react";
+import { AlertTriangle, Pencil, RefreshCw, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import {
@@ -21,6 +21,7 @@ export function FleetStep({
   disabled = false,
   onChange,
   onSaveCustom,
+  onRetry,
 }: {
   value: RosterThemeId;
   customNames: CustomRosterNames;
@@ -28,6 +29,7 @@ export function FleetStep({
   disabled?: boolean;
   onChange: (next: RosterThemeId) => void;
   onSaveCustom: (next: CustomRosterNames) => boolean | void | Promise<boolean | void>;
+  onRetry?: () => void;
 }) {
   const [customOpen, setCustomOpen] = useState(false);
   const activePreview = useMemo(
@@ -115,17 +117,25 @@ export function FleetStep({
       </div>
 
       {saveError ? (
-        <p className="inline-notice inline-notice--error" role="alert">
+        <div className="inline-notice inline-notice--error" role="alert">
           <AlertTriangle size={14} aria-hidden="true" />
-          {saveError}
-        </p>
+          <span>{saveError}</span>
+          {onRetry ? (
+            <Button type="button" variant="ghost" size="sm" onClick={onRetry}>
+              <RefreshCw aria-hidden="true" className="size-3.5" />
+              Retry
+            </Button>
+          ) : null}
+        </div>
       ) : null}
 
       <CustomThemeEditor
         open={customOpen}
         value={customNames}
+        blockedError={disabled && saveError ? saveError : null}
         onOpenChange={setCustomOpen}
         onSave={onSaveCustom}
+        onRetryBlocked={onRetry}
       />
     </div>
   );

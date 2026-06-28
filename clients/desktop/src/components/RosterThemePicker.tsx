@@ -1,4 +1,4 @@
-import { AlertTriangle, Pencil, Sparkles } from "lucide-react";
+import { AlertTriangle, Pencil, RefreshCw, Sparkles } from "lucide-react";
 
 import {
   ROSTER_THEME_IDS,
@@ -23,24 +23,33 @@ export function RosterThemePicker({
   value,
   onChange,
   onEditCustom,
+  disabled = false,
   saveError = null,
+  onRetry,
 }: {
   value: RosterThemeId;
   onChange: (next: RosterThemeId) => void;
   onEditCustom?: () => void;
+  disabled?: boolean;
   // When the last save did not reach the runtime, the choice is local-only and
   // Slack keeps the old cast; show that so the picker never looks successful.
   saveError?: string | null;
+  onRetry?: () => void;
 }) {
   return (
     <div className="roster-theme-picker">
       <Sparkles aria-hidden="true" className="roster-theme-picker__icon" />
       <span className="roster-theme-picker__label">Roster theme</span>
-      <Select value={value} onValueChange={(next) => onChange(next as RosterThemeId)}>
+      <Select
+        value={value}
+        onValueChange={(next) => onChange(next as RosterThemeId)}
+        disabled={disabled}
+      >
         <SelectTrigger
           size="sm"
           className="roster-theme-picker__trigger"
           aria-label="Roster theme"
+          disabled={disabled}
         >
           <SelectValue placeholder={rosterThemeLabel(value)} />
         </SelectTrigger>
@@ -59,19 +68,26 @@ export function RosterThemePicker({
           size="sm"
           className="roster-theme-picker__edit"
           onClick={onEditCustom}
+          disabled={disabled}
         >
           <Pencil aria-hidden="true" className="size-3.5" />
           {value === "custom" ? "Edit names" : "Customize"}
         </Button>
       ) : null}
       {saveError ? (
-        <span
+        <div
           className="roster-theme-picker__error inline-notice inline-notice--error"
           role="alert"
         >
           <AlertTriangle size={14} aria-hidden="true" />
-          {saveError}
-        </span>
+          <span>{saveError}</span>
+          {onRetry ? (
+            <Button type="button" variant="ghost" size="sm" onClick={onRetry}>
+              <RefreshCw aria-hidden="true" className="size-3.5" />
+              Retry
+            </Button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

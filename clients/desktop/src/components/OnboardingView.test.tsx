@@ -162,6 +162,7 @@ function onboardingProps(
     rosterSaveError: null,
     rosterHydrating: false,
     rosterHydrationError: null,
+    onRetryRosterHydration: vi.fn(),
     onRosterThemeChange: vi.fn(),
     onCustomNamesChange: vi.fn(),
     ...props,
@@ -315,6 +316,7 @@ describe("OnboardingView seven-step takeover", () => {
         rosterSaveError={null}
         rosterHydrating={false}
         rosterHydrationError={null}
+        onRetryRosterHydration={vi.fn()}
         onRosterThemeChange={vi.fn(async () => true)}
         onCustomNamesChange={vi.fn(async () => true)}
       />,
@@ -736,18 +738,23 @@ describe("OnboardingView seven-step takeover", () => {
       }),
     );
     const onRosterThemeChange = vi.fn(async () => true);
+    const onRetryRosterHydration = vi.fn();
     renderOnboarding({
       rosterHydrationError: "Could not load saved fleet names from Alfred.",
+      onRetryRosterHydration,
       onRosterThemeChange,
     });
     const user = userEvent.setup();
 
     await gotoStep(user, /^fleet$/i);
     expect(screen.getByLabelText(/transformers/i)).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: /^retry$/i }));
+    expect(onRetryRosterHydration).toHaveBeenCalledTimes(1);
     await user.click(screen.getByRole("button", { name: /^continue$/i }));
 
     const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
     expect(onRosterThemeChange).not.toHaveBeenCalled();
+    expect(onRetryRosterHydration).toHaveBeenCalledTimes(2);
     expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
       /fleet/i,
     );

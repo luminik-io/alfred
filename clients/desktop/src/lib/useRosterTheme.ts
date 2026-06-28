@@ -139,11 +139,14 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   // cast the runtime (and Slack) already use. A failed read keeps the
   // localStorage value, so an offline desktop still works.
   useEffect(() => {
-    if (!baseUrl || hydratedUrlRef.current === baseUrl) {
+    if (!baseUrl) {
       setHydrating(false);
-      if (!baseUrl) {
-        setHydrationError(null);
-      }
+      setHydrationError(null);
+      return;
+    }
+    if (hydratedUrlRef.current === baseUrl) {
+      setHydrating(false);
+      setHydrationError(null);
       return;
     }
     let cancelled = false;

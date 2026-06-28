@@ -114,12 +114,18 @@ function App() {
     saveError: rosterSaveError,
     hydrating: rosterHydrating,
     hydrationError: rosterHydrationError,
+    retryHydration: retryRosterHydration,
   } = useRosterTheme(baseUrl);
   const [customThemeEditorOpen, setCustomThemeEditorOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // The Setup tab splits into Setup (get Alfred running) and Settings (appearance
   // and preferences), so theme selection no longer crowds the onboarding flow.
   const [settingsTab, setSettingsTab] = useState<"setup" | "settings">("setup");
+  const rosterWritesBlocked = Boolean(rosterHydrating || rosterHydrationError);
+  const rosterWriteError = rosterSaveError ?? rosterHydrationError;
+  const rosterEditorBlockedError =
+    rosterHydrationError ??
+    (rosterHydrating ? "Wait for Alfred to load the saved fleet names before changing them." : null);
 
   // ⌘K / Ctrl+K opens the command palette anywhere.
   useEffect(() => {
@@ -359,6 +365,7 @@ function App() {
               rosterSaveError={rosterSaveError}
               rosterHydrating={rosterHydrating}
               rosterHydrationError={rosterHydrationError}
+              onRetryRosterHydration={retryRosterHydration}
               onRosterThemeChange={setRosterTheme}
               onCustomNamesChange={setCustomNames}
             />
@@ -383,7 +390,9 @@ function App() {
                 value={rosterTheme}
                 onChange={setRosterTheme}
                 onEditCustom={() => setCustomThemeEditorOpen(true)}
-                saveError={rosterSaveError}
+                disabled={rosterWritesBlocked}
+                saveError={rosterWriteError}
+                onRetry={rosterHydrationError ? retryRosterHydration : undefined}
               />
             ) : null}
           </div>
@@ -456,8 +465,10 @@ function App() {
       <CustomThemeEditor
         open={customThemeEditorOpen}
         value={customNames}
+        blockedError={rosterEditorBlockedError}
         onOpenChange={setCustomThemeEditorOpen}
         onSave={setCustomNames}
+        onRetryBlocked={rosterHydrationError ? retryRosterHydration : undefined}
       />
     </AppShell>
   );

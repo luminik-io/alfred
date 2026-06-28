@@ -176,6 +176,7 @@ export function OnboardingView({
   rosterSaveError,
   rosterHydrating,
   rosterHydrationError,
+  onRetryRosterHydration,
   onRosterThemeChange,
   onCustomNamesChange,
 }: {
@@ -199,6 +200,7 @@ export function OnboardingView({
   rosterSaveError: string | null;
   rosterHydrating: boolean;
   rosterHydrationError: string | null;
+  onRetryRosterHydration: () => void;
   onRosterThemeChange: (next: RosterThemeId) => boolean | void | Promise<boolean | void>;
   onCustomNamesChange: (next: CustomRosterNames) => boolean | void | Promise<boolean | void>;
 }) {
@@ -638,9 +640,10 @@ export function OnboardingView({
       return false;
     }
     if (rosterHydrationError) {
+      onRetryRosterHydration();
       setNotice({
         tone: "error",
-        message: rosterHydrationError,
+        message: `${rosterHydrationError} Rechecking now.`,
       });
       return false;
     }
@@ -653,6 +656,7 @@ export function OnboardingView({
     fleetSavePending,
     fleetTouched,
     onRosterThemeChange,
+    onRetryRosterHydration,
     rosterHydrationError,
     rosterHydrating,
     rosterSaveError,
@@ -937,6 +941,7 @@ export function OnboardingView({
                 disabled={fleetSavePending || fleetRosterBlocked || !canMutate}
                 onChange={handleRosterThemeChange}
                 onSaveCustom={handleCustomNamesChange}
+                onRetry={rosterHydrationError ? onRetryRosterHydration : undefined}
               />
             </StepFrame>
           ) : null}

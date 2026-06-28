@@ -1,3 +1,4 @@
+import { RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -34,13 +35,17 @@ const MAX_LABEL_LEN = 64;
 export function CustomThemeEditor({
   open,
   value,
+  blockedError = null,
   onOpenChange,
   onSave,
+  onRetryBlocked,
 }: {
   open: boolean;
   value: CustomRosterNames;
+  blockedError?: string | null;
   onOpenChange: (open: boolean) => void;
   onSave: (next: CustomRosterNames) => boolean | void | Promise<boolean | void>;
+  onRetryBlocked?: () => void;
 }) {
   const agents = useMemo(() => editableAgents(), []);
   const [names, setNames] = useState<Record<string, string>>(value.names);
@@ -79,6 +84,10 @@ export function CustomThemeEditor({
   };
 
   const handleSave = async () => {
+    if (blockedError) {
+      setSaveError(blockedError);
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
@@ -98,6 +107,7 @@ export function CustomThemeEditor({
       setSaving(false);
     }
   };
+  const visibleError = saveError ?? blockedError;
 
   const byRole = useMemo(() => {
     const groups = new Map<WorkflowRole, typeof agents>();
@@ -145,6 +155,7 @@ export function CustomThemeEditor({
                         placeholder={agent.defaultName}
                         maxLength={MAX_LABEL_LEN}
                         onChange={(event) => setName(agent.codename, event.target.value)}
+                        disabled={saving || Boolean(blockedError)}
                       />
                     </div>
                     <div className="space-y-1">
@@ -160,6 +171,7 @@ export function CustomThemeEditor({
                         placeholder={agent.defaultRoleLabel}
                         maxLength={MAX_LABEL_LEN}
                         onChange={(event) => setRole(agent.codename, event.target.value)}
+                        disabled={saving || Boolean(blockedError)}
                       />
                     </div>
                   </div>
@@ -168,13 +180,25 @@ export function CustomThemeEditor({
             ))}
           </div>
         </ScrollArea>
-        {saveError ? (
-          <p className="inline-notice inline-notice--error" role="alert">
-            {saveError}
-          </p>
+        {visibleError ? (
+          <div className="inline-notice inline-notice--error" role="alert">
+            <span>{visibleError}</span>
+            {blockedError && onRetryBlocked ? (
+              <Button type="button" variant="ghost" size="sm" onClick={onRetryBlocked}>
+                <RefreshCw aria-hidden="true" className="size-3.5" />
+                Retry
+              </Button>
+            ) : null}
+          </div>
         ) : null}
         <DialogFooter className="custom-theme-editor__footer gap-2 sm:justify-between">
-          <Button type="button" variant="ghost" size="sm" onClick={reset}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={reset}
+            disabled={saving || Boolean(blockedError)}
+          >
             Reset all
           </Button>
           <div className="flex gap-2">
@@ -187,7 +211,7 @@ export function CustomThemeEditor({
             >
               Cancel
             </Button>
-            <Button type="button" size="sm" onClick={handleSave} disabled={saving}>
+            <Button type="button" size="sm" onClick={handleSave} disabled={saving || Boolean(blockedError)}>
               {saving ? "Saving..." : "Save cast"}
             </Button>
           </div>
