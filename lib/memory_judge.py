@@ -115,13 +115,24 @@ def judge_enabled(env: Mapping[str, str] | None = None) -> bool:
 
     The judge defaults ON because the operator's ask is to have the model
     decide. Set ``ALFRED_AUTO_PROMOTE_LLM_JUDGE`` to a falsy value
-    (``0``/``false``/``no``/``off``) to fall back to the pure heuristic gate.
-    Note this is only consulted when ``auto_promote_candidates`` is enabled."""
+    (``0``/``false``/``no``/``off``/``disabled``) to fall back to the pure
+    heuristic gate. Malformed nonblank values fail closed. Note this is only
+    consulted when ``auto_promote_candidates`` is enabled."""
     src = env if env is not None else os.environ
     raw = src.get("ALFRED_AUTO_PROMOTE_LLM_JUDGE")
-    if raw is None or not str(raw).strip():
+    value = _env_token(raw)
+    if raw is None or not value:
         return True  # default ON for autonomous memory
-    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+    return value in {"1", "true", "yes", "on", "enabled"}
+
+
+def _env_token(raw: object) -> str:
+    value = str(raw).strip()
+    for index, ch in enumerate(value):
+        if ch == "#" and index > 0 and value[index - 1].isspace():
+            value = value[:index].rstrip()
+            break
+    return value.strip().lower()
 
 
 def _truncate(text: str, limit: int) -> str:

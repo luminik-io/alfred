@@ -94,9 +94,13 @@ def test_judge_enabled_defaults_on_and_can_be_disabled() -> None:
     assert judge_enabled({}) is True
     assert judge_enabled({"ALFRED_AUTO_PROMOTE_LLM_JUDGE": ""}) is True
     assert judge_enabled({"ALFRED_AUTO_PROMOTE_LLM_JUDGE": "1"}) is True
+    assert judge_enabled({"ALFRED_AUTO_PROMOTE_LLM_JUDGE": "1 # keep judge on"}) is True
+    assert judge_enabled({"ALFRED_AUTO_PROMOTE_LLM_JUDGE": "enabled"}) is True
     assert judge_enabled({"ALFRED_AUTO_PROMOTE_LLM_JUDGE": "0"}) is False
     assert judge_enabled({"ALFRED_AUTO_PROMOTE_LLM_JUDGE": "false"}) is False
-    assert judge_enabled({"ALFRED_AUTO_PROMOTE_LLM_JUDGE": "off"}) is False
+    assert judge_enabled({"ALFRED_AUTO_PROMOTE_LLM_JUDGE": "off # heuristic only"}) is False
+    assert judge_enabled({"ALFRED_AUTO_PROMOTE_LLM_JUDGE": "disabled"}) is False
+    assert judge_enabled({"ALFRED_AUTO_PROMOTE_LLM_JUDGE": "treu"}) is False
 
 
 def test_build_judge_prompt_neutralizes_a_forged_delimiter() -> None:

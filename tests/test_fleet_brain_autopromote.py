@@ -205,6 +205,22 @@ def test_malformed_judge_flag_fails_closed(brain: FleetBrain) -> None:
     assert _status(brain, c.id) == "candidate"
 
 
+@pytest.mark.parametrize("value", ["enabled", "1 # keep judge on"])
+def test_truthy_judge_flag_tokens_still_use_judge(brain: FleetBrain, value: str) -> None:
+    c = _candidate(brain, "judge-gated durable lesson", confidence=0.99)
+
+    summary = brain.auto_promote_candidates(
+        env={"ALFRED_AUTO_PROMOTE_LLM_JUDGE": value},
+        judge=lambda _p: _verdict(0.40),
+    )
+
+    assert summary["enabled"] is True
+    assert summary["judge_enabled"] is True
+    assert summary["judge_calls"] == 1
+    assert c.id not in summary["promoted"]
+    assert _status(brain, c.id) == "candidate"
+
+
 # --- structural gate (judge disabled) --------------------------------------
 
 
