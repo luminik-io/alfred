@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import stat
+import subprocess
 import sys
 from pathlib import Path
 
@@ -48,7 +50,6 @@ def test_bootstrap_status_reports_code_memory_defaults(
     _stub_common(monkeypatch)
     _isolate_launcher_env(monkeypatch, tmp_path)
     monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
-    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / ".alfred"))
     monkeypatch.delenv("ALFRED_CODE_MEMORY_BIN", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_AUTOFETCH", raising=False)
@@ -244,6 +245,146 @@ def test_bootstrap_status_reads_code_memory_launcher_env_files(
     assert code_memory["index_dir"] == str(alfred_home / "state" / "code-memory")
 
 
+def test_setup_config_prefers_process_env_over_runtime_env_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text(
+        "\n".join(
+            [
+                "CLAUDE_BIN=/file/claude",
+                "CODEX_BIN=/file/codex",
+                "GH_ORG=file-org",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("CLAUDE_BIN", "/env/claude")
+    monkeypatch.setenv("CODEX_BIN", "/env/codex")
+    monkeypatch.setenv("GH_ORG", "env-org")
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
+
+    launcher_env = setup_mod._code_memory_launcher_env()
+    engines = {item["name"]: item for item in setup_mod.engine_clis()}
+
+    assert launcher_env["CLAUDE_BIN"] == "/env/claude"
+    assert launcher_env["CODEX_BIN"] == "/env/codex"
+    assert launcher_env["GH_ORG"] == "env-org"
+    assert engines["claude"]["path"] == "/env/claude"
+    assert engines["codex"]["path"] == "/env/codex"
+    assert setup_mod._repo_list_owners() == ["env-org"]
+
+
+def test_setup_config_reads_runtime_env_file_but_not_legacy_alfredrc(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    home.mkdir()
+    runtime.mkdir()
+    (home / ".alfredrc").write_text(
+        "\n".join(
+            [
+                "CLAUDE_BIN=/stale/claude",
+                "CODEX_BIN=/stale/codex",
+                "GH_BIN=/stale/gh",
+                "GH_ORG=stale-org",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (runtime / ".env").write_text(
+        "\n".join(
+            [
+                "CODEX_BIN=/runtime/codex",
+                "GH_ORG=runtime-org",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("CLAUDE_BIN", raising=False)
+    monkeypatch.delenv("CODEX_BIN", raising=False)
+    monkeypatch.delenv("GH_BIN", raising=False)
+    monkeypatch.delenv("GH_ORG", raising=False)
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *args, **kwargs: None)
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
+
+    engines = {item["name"]: item for item in setup_mod.engine_clis()}
+
+    assert setup_mod._setup_config_value("CODEX_BIN") == "/runtime/codex"
+    assert setup_mod._setup_config_value("CLAUDE_BIN") == ""
+    assert setup_mod._gh_bin() == "gh"
+    assert engines["codex"]["path"] == "/runtime/codex"
+    assert engines["claude"]["path"] is None
+    assert setup_mod._repo_list_owners() == ["runtime-org"]
+
+
+def test_gh_subprocess_env_drops_empty_path_entries(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("PATH", "")
+
+    parts = setup_mod._gh_subprocess_env()["PATH"].split(os.pathsep)
+
+    assert "" not in parts
+    assert "." not in parts
+    assert str(home / ".local" / "bin") in parts
+
+
+def test_selected_repos_preserves_shipped_and_bridge_fallbacks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "octocat/web")
+    monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "octocat/api, octocat/web")
+
+    assert setup_mod.selected_repos() == ["octocat/api", "octocat/web"]
+
+
+def test_selected_repos_merges_queue_shipped_and_bridge_scopes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "octocat/web")
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "acme/frontend")
+    monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "acme/api")
+
+    assert setup_mod.selected_repos() == ["acme/api", "acme/frontend", "octocat/web"]
+
+
+def test_selected_repos_reads_runtime_env_file_but_not_alfredrc(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    home.mkdir()
+    runtime.mkdir()
+    (home / ".alfredrc").write_text("ALFRED_QUEUE_REPOS=octocat/stale\n", encoding="utf-8")
+    (runtime / ".env").write_text(
+        "ALFRED_QUEUE_REPOS=octocat/web\nALFRED_BRIDGE_REPOS=octocat/api\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+
+    assert setup_mod.selected_repos() == ["octocat/api", "octocat/web"]
+
+
 def test_bootstrap_status_matches_case_insensitive_launcher_flags(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -315,6 +456,352 @@ def test_bootstrap_status_respects_code_memory_disable(
         "limit": 25,
     }
     assert code_memory["detail"] == "Code memory is disabled with ALFRED_CODE_MEMORY_MCP."
+
+
+def test_capability_plane_reports_missing_optional_layers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / ".alfred"))
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    monkeypatch.setenv("CLAUDE_HOME", str(tmp_path / "claude"))
+    monkeypatch.delenv("ALFRED_CONTEXT_COMPRESSION", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_BIN", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_AUTOFETCH", raising=False)
+
+    payload = setup_mod.capability_status()
+    by_key = {item["key"]: item for item in payload["capabilities"]}
+
+    assert payload["summary"] == {"ready": 0, "actionable": 3, "disabled": 0, "total": 3}
+    assert by_key["code_graph"]["state"] == "installable"
+    assert by_key["context_compression"]["state"] == "missing"
+    assert by_key["engineering_skills"]["state"] == "missing"
+
+
+def test_capability_plane_reports_external_layers_without_headroom_runner_wiring(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    codex_home = tmp_path / "codex"
+    (codex_home / "skills" / "gstack").mkdir(parents=True)
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("CLAUDE_HOME", str(tmp_path / "claude"))
+    monkeypatch.setenv("ALFRED_CONTEXT_COMPRESSION", "1")
+
+    def fake_which(name: str, **_kwargs: object) -> str | None:
+        return "/opt/homebrew/bin/headroom" if name == "headroom" else None
+
+    monkeypatch.setattr(setup_mod.shutil, "which", fake_which)
+    code_memory = {
+        "enabled": True,
+        "autofetch": True,
+        "binary": {
+            "resolved": True,
+            "path": "/usr/local/bin/codebase-memory-mcp",
+            "source": "path",
+            "configured": None,
+        },
+        "version_pin": "v0.8.1",
+        "repo": "DeusData/codebase-memory-mcp",
+        "index_dir": str(tmp_path / "index"),
+        "index_present": True,
+        "repos": {"configured": ["api"], "count": 1},
+        "detail": "Code-memory binary and index are present.",
+    }
+
+    payload = setup_mod.capability_status(code_memory)
+    by_key = {item["key"]: item for item in payload["capabilities"]}
+
+    assert payload["summary"]["ready"] == 2
+    assert payload["summary"]["actionable"] == 1
+    assert by_key["code_graph"]["state"] == "ready"
+    assert by_key["context_compression"]["state"] == "available"
+    assert by_key["engineering_skills"]["state"] == "ready"
+    assert by_key["engineering_skills"]["detected"]["paths"] == [
+        str(codex_home / "skills" / "gstack")
+    ]
+
+
+def test_capability_plane_requires_context_compression_opt_in(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / ".alfred"))
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    monkeypatch.setenv("CLAUDE_HOME", str(tmp_path / "claude"))
+    monkeypatch.delenv("ALFRED_CONTEXT_COMPRESSION", raising=False)
+    monkeypatch.setattr(
+        setup_mod.shutil,
+        "which",
+        lambda name, **_kwargs: "/opt/homebrew/bin/headroom" if name == "headroom" else None,
+    )
+
+    payload = setup_mod.capability_status()
+    context = {item["key"]: item for item in payload["capabilities"]}["context_compression"]
+
+    assert context["state"] == "available"
+    assert context["installed"] is True
+    assert context["enabled"] is False
+
+
+def test_capability_plane_reads_context_compression_from_runtime_env_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text("ALFRED_CONTEXT_COMPRESSION=0\n", encoding="utf-8")
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_CONTEXT_COMPRESSION", raising=False)
+    monkeypatch.setattr(
+        setup_mod.shutil,
+        "which",
+        lambda name, **_kwargs: "/opt/homebrew/bin/headroom" if name == "headroom" else None,
+    )
+
+    payload = setup_mod.capability_status()
+    context = {item["key"]: item for item in payload["capabilities"]}["context_compression"]
+
+    assert context["state"] == "available"
+    assert context["installed"] is True
+    assert context["enabled"] is False
+
+
+def test_capability_plane_ignores_legacy_alfredrc_for_non_code_memory_rows(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    stale_codex = tmp_path / "stale-codex"
+    home.mkdir()
+    runtime.mkdir()
+    (stale_codex / "skills" / "gstack").mkdir(parents=True)
+    (home / ".alfredrc").write_text(
+        f"ALFRED_CONTEXT_COMPRESSION=1\nCODEX_HOME={stale_codex}\n",
+        encoding="utf-8",
+    )
+    (runtime / ".env").write_text("ALFRED_CONTEXT_COMPRESSION=0\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_CONTEXT_COMPRESSION", raising=False)
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.delenv("CLAUDE_HOME", raising=False)
+    monkeypatch.setattr(
+        setup_mod.shutil,
+        "which",
+        lambda name, **_kwargs: "/opt/homebrew/bin/headroom" if name == "headroom" else None,
+    )
+    code_memory = {
+        "enabled": True,
+        "autofetch": True,
+        "binary": {"resolved": False},
+        "index_present": False,
+        "repos": {"configured": [], "count": 0},
+        "detail": "Code-memory binary is not installed yet.",
+    }
+
+    payload = setup_mod.capability_status(code_memory)
+    by_key = {item["key"]: item for item in payload["capabilities"]}
+
+    assert by_key["context_compression"]["state"] == "available"
+    assert by_key["context_compression"]["enabled"] is False
+    assert by_key["engineering_skills"]["state"] == "missing"
+    assert by_key["engineering_skills"]["detected"]["paths"] == []
+
+
+def test_capability_plane_uses_explicit_skill_homes_without_resolving_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    codex_home = tmp_path / "codex"
+    claude_home = tmp_path / "claude"
+    (codex_home / "skills" / "gstack").mkdir(parents=True)
+    (claude_home / "skills").mkdir(parents=True)
+    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("CLAUDE_HOME", str(claude_home))
+    monkeypatch.setattr(
+        setup_mod.Path,
+        "home",
+        staticmethod(lambda: (_ for _ in ()).throw(RuntimeError("no home"))),
+    )
+    monkeypatch.setattr(
+        setup_mod.os.path,
+        "expanduser",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("no home")),
+    )
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+
+    payload = setup_mod.capability_status()
+    skills = {item["key"]: item for item in payload["capabilities"]}["engineering_skills"]
+
+    assert skills["state"] == "ready"
+    assert skills["detected"]["paths"] == [str(codex_home / "skills" / "gstack")]
+
+
+def test_setup_module_cold_import_survives_without_agent_runner_home(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    env = os.environ.copy()
+    env.pop("HOME", None)
+    env["PYTHONPATH"] = str(ROOT / "lib")
+    code = """
+import builtins
+import pathlib
+
+real_import = builtins.__import__
+
+def guarded_import(name, *args, **kwargs):
+    if name == "agent_runner.paths":
+        raise RuntimeError("agent_runner.paths import should not be needed")
+    return real_import(name, *args, **kwargs)
+
+builtins.__import__ = guarded_import
+pathlib.Path.home = staticmethod(
+    lambda: (_ for _ in ()).throw(RuntimeError("no home"))
+)
+
+from server.setup import capability_status
+
+print(capability_status()["summary"]["total"])
+"""
+
+    res = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.strip() == "3"
+
+
+def test_bootstrap_status_demo_fallback_survives_unresolvable_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    codex_home = tmp_path / "codex"
+    claude_home = tmp_path / "claude"
+    codex_home.mkdir()
+    claude_home.mkdir()
+    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_BIN", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MAP_REPOS", raising=False)
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("CLAUDE_HOME", str(claude_home))
+    monkeypatch.setattr(
+        setup_mod,
+        "gh_auth_status",
+        lambda: {"ok": True, "account": "octocat", "detail": "Signed in."},
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "engine_clis",
+        lambda: [{"name": "codex", "installed": True, "path": "/usr/local/bin/codex"}],
+    )
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: ["octocat/web"])
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        setup_mod.os.path,
+        "expanduser",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("no home")),
+    )
+    monkeypatch.setattr(
+        setup_mod.Path,
+        "home",
+        staticmethod(lambda: (_ for _ in ()).throw(RuntimeError("no home"))),
+    )
+
+    payload = setup_mod.bootstrap_status()
+
+    assert payload["demo"] == {"present": False}
+    assert payload["capability_plane"]["summary"]["total"] == 3
+    assert payload["ready"] is True
+
+
+def test_bootstrap_status_survives_tilde_code_memory_paths_without_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    _stub_common(monkeypatch)
+    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("WORKSPACE_ROOT", "~/workspace")
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "api")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_HOME", "~/code-memory-home")
+    monkeypatch.setenv("CBM_CACHE_DIR", "~/code-memory-cache")
+    monkeypatch.setattr(
+        setup_mod.Path,
+        "home",
+        staticmethod(lambda: (_ for _ in ()).throw(RuntimeError("no home"))),
+    )
+    monkeypatch.setattr(
+        setup_mod.os.path,
+        "expanduser",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("no home")),
+    )
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+
+    payload = setup_mod.bootstrap_status()
+
+    code_memory = payload["code_memory"]
+    assert code_memory["index_home"] == "~/code-memory-home"
+    assert code_memory["graph_dir"] == "~/code-memory-cache"
+    assert code_memory["repos"]["configured"] == ["api"]
+    assert code_memory["repos"]["source"] == "auto-fallback"
+    assert payload["capability_plane"]["summary"]["total"] == 3
+
+
+def test_bootstrap_status_avoids_home_dependent_runtime_imports(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import builtins
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    gh_bin = tmp_path / "gh"
+    gh_bin.write_text(
+        '#!/bin/sh\nprintf "Logged in to github.com as octocat\\n" >&2\n',
+        encoding="utf-8",
+    )
+    gh_bin.chmod(0o755)
+    codex_bin = tmp_path / "codex"
+    codex_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    codex_bin.chmod(0o755)
+
+    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "octocat/web")
+    monkeypatch.setenv("GH_BIN", str(gh_bin))
+    monkeypatch.setenv("CODEX_BIN", str(codex_bin))
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_BIN", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "acme/frontend")
+    monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "acme/api")
+    monkeypatch.setattr(
+        setup_mod.Path,
+        "home",
+        staticmethod(lambda: (_ for _ in ()).throw(RuntimeError("no home"))),
+    )
+
+    real_import = builtins.__import__
+
+    def guarded_import(name, *args, **kwargs):
+        blocked = {"agent_runner.paths", "issue_queue", "shipped_board"}
+        if name in blocked:
+            raise RuntimeError(f"{name} import should not be needed")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+
+    payload = setup_mod.bootstrap_status()
+
+    assert payload["github"]["ok"] is True
+    assert payload["repos"]["selected"] == ["acme/api", "acme/frontend", "octocat/web"]
+    assert payload["ready"] is True
 
 
 def test_bootstrap_status_auto_discovers_code_memory_repos(

@@ -31,14 +31,11 @@ import os
 import re
 import shutil
 import subprocess
+from collections.abc import Mapping
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-
-from agent_runner.paths import config_value, decode_env_value
-from issue_queue import allowed_queue_repos
-from shipped_board import _gh_bin, _gh_subprocess_env
 
 # The watched-repo allowlist the rest of the fleet reads. The Set up surface
 # writes BOTH the queue allowlist (controls what an operator can arm/hold/close)
@@ -85,6 +82,77 @@ _DEMO_FILENAME = "setup-demo-cards.json"
 # so a demo card can never be mistaken for (or acted on as) real fleet work.
 DEMO_REPO = "alfred/demo"
 
+_CAPABILITY_SOURCES: dict[str, dict[str, str]] = {
+    "code_graph": {
+        "source": "DeusData/codebase-memory-mcp",
+        "url": "https://github.com/DeusData/codebase-memory-mcp",
+        "license": "MIT",
+    },
+    "context_compression": {
+        "source": "headroomlabs-ai/headroom",
+        "url": "https://github.com/headroomlabs-ai/headroom",
+        "license": "Apache-2.0",
+    },
+    "engineering_skills": {
+        "source": "garrytan/gstack, vercel-labs/agent-skills, addyosmani/agent-skills",
+        "url": "https://github.com/garrytan/gstack",
+        "license": "MIT",
+    },
+}
+
+
+def decode_env_value(value: str) -> str:
+    """Decode one shell-style env-file value without importing agent_runner."""
+
+    if len(value) >= 2 and value[0] == "'" and value[-1] == "'":
+        return value[1:-1].replace("'\"'\"'", "'")
+    if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+        return value[1:-1]
+    return value
+
+
+def _setup_config_value(key: str, default: str = "") -> str:
+    return _runtime_config_value(key, default)
+
+
+def _runtime_config_env() -> dict[str, str]:
+    env = dict(os.environ)
+    protected = {key for key, value in os.environ.items() if value.strip()}
+    raw_home = env.get("ALFRED_HOME", "").strip()
+    if raw_home:
+        runtime_home = _safe_expand_path(raw_home) or Path(raw_home)
+    else:
+        runtime_home = _default_alfred_home(env)
+        env["ALFRED_HOME"] = str(runtime_home)
+    _load_launcher_env_file(runtime_home / ".env", env, protected_keys=protected)
+    return env
+
+
+def _runtime_config_value(key: str, default: str = "") -> str:
+    return _runtime_config_env().get(key, "").strip() or default
+
+
+def _queue_config_value(key: str, default: str = "") -> str:
+    return _runtime_config_value(key, default)
+
+
+def _allowed_queue_repos() -> set[str]:
+    repos: set[str] = set()
+    for key in _REPO_ENV_KEYS:
+        raw = _queue_config_value(key)
+        repos.update(normalize_repo_slugs(re.split(r"[\s,]+", raw)))
+    return repos
+
+
+def _gh_bin() -> str:
+    return _setup_config_value("ALFRED_GH_BIN") or _setup_config_value("GH_BIN") or "gh"
+
+
+def _gh_subprocess_env() -> dict[str, str]:
+    env = dict(os.environ)
+    env["PATH"] = _join_search_path(_engine_search_path(env), env.get("PATH", ""))
+    return env
+
 
 # --------------------------------------------------------------------------- #
 # Repo slug validation
@@ -124,15 +192,14 @@ def selected_repos() -> list[str]:
     shows the same scope queue/hold/close actually enforce. Sorted for a stable
     render.
     """
-    return sorted(allowed_queue_repos())
+    return sorted(_allowed_queue_repos())
 
 
 # --------------------------------------------------------------------------- #
 # .env writer
 # --------------------------------------------------------------------------- #
 def _env_path() -> Path:
-    home = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
-    return Path(home) / ".env"
+    return _alfred_home(dict(os.environ)) / ".env"
 
 
 def _format_repo_value(repos: list[str]) -> str:
@@ -230,7 +297,8 @@ def gh_auth_status() -> dict[str, Any]:
     shows a clear next action ("run gh auth login") instead of an error.
     """
     gh = _gh_bin()
-    if shutil.which(gh) is None and not os.path.isabs(gh):
+    gh_env = _gh_subprocess_env()
+    if shutil.which(gh, path=gh_env.get("PATH")) is None and not os.path.isabs(gh):
         return {
             "ok": False,
             "account": None,
@@ -242,7 +310,7 @@ def gh_auth_status() -> dict[str, Any]:
             capture_output=True,
             text=True,
             timeout=15,
-            env=_gh_subprocess_env(),
+            env=gh_env,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return {
@@ -286,10 +354,10 @@ def engine_clis() -> list[dict[str, Any]]:
     the in-browser-capable fallback so the runtime checks work without Tauri.
     Honours ``CLAUDE_BIN`` / ``CODEX_BIN`` overrides via config.
     """
-    search = os.pathsep.join((*_engine_search_path(), os.environ.get("PATH", "")))
+    search = _join_search_path(_engine_search_path(os.environ), os.environ.get("PATH", ""))
     out: list[dict[str, Any]] = []
     for name in _ENGINE_BINS:
-        configured = config_value(f"{name.upper()}_BIN")
+        configured = _setup_config_value(f"{name.upper()}_BIN")
         resolved = (
             configured
             if configured and (os.path.isabs(configured) or shutil.which(configured, path=search))
@@ -355,32 +423,280 @@ def code_memory_status() -> dict[str, Any]:
     }
 
 
-def _engine_search_path() -> tuple[str, ...]:
-    return (
-        os.path.expanduser("~/.local/bin"),
-        os.path.expanduser("~/.claude/local"),
-        "/opt/homebrew/bin",
-        "/opt/homebrew/sbin",
-        "/usr/local/bin",
+def capability_status(
+    code_memory: dict[str, Any] | None = None,
+    launcher_env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Return Alfred's local capability plane without installing anything.
+
+    The native setup flow needs one stable contract for "what makes this fleet
+    enterprise-ready" instead of a scattering of bespoke probes. This detector
+    stays read-only: it reports what is present, what Alfred can safely fetch on
+    explicit use, and which optional packages are still missing.
+    """
+
+    runtime_env = launcher_env or _runtime_config_env()
+    code_memory = code_memory or code_memory_status()
+    capabilities = [
+        _code_graph_capability(code_memory),
+        _context_compression_capability(runtime_env),
+        _engineering_skills_capability(runtime_env),
+    ]
+    counts = {
+        "ready": sum(1 for item in capabilities if item["state"] == "ready"),
+        "actionable": sum(
+            1
+            for item in capabilities
+            if item["state"] in {"installable", "missing", "needs_index", "available"}
+        ),
+        "disabled": sum(1 for item in capabilities if item["state"] == "disabled"),
+    }
+    return {
+        "version": 1,
+        "summary": counts | {"total": len(capabilities)},
+        "capabilities": capabilities,
+    }
+
+
+def _capability_base(
+    key: str,
+    *,
+    title: str,
+    category: str,
+    recommended: bool,
+    state: str,
+    detail: str,
+    installed: bool,
+    enabled: bool,
+    install_hint: str,
+    detected: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    source = _CAPABILITY_SOURCES[key]
+    return {
+        "key": key,
+        "title": title,
+        "category": category,
+        "recommended": recommended,
+        "state": state,
+        "installed": installed,
+        "enabled": enabled,
+        "detail": detail,
+        "detected": detected or {},
+        "install_hint": install_hint,
+        "source": source,
+    }
+
+
+def _code_graph_capability(code_memory: dict[str, Any]) -> dict[str, Any]:
+    binary = code_memory.get("binary") or {}
+    enabled = bool(code_memory.get("enabled"))
+    installed = bool(binary.get("resolved"))
+    indexed = bool(code_memory.get("index_present"))
+    if not enabled:
+        state = "disabled"
+    elif installed and indexed:
+        state = "ready"
+    elif installed:
+        state = "needs_index"
+    elif code_memory.get("autofetch"):
+        state = "installable"
+    else:
+        state = "missing"
+    return _capability_base(
+        "code_graph",
+        title="Code graph memory",
+        category="memory",
+        recommended=True,
+        state=state,
+        installed=installed,
+        enabled=enabled,
+        detail=str(code_memory.get("detail") or ""),
+        detected={
+            "binary": binary,
+            "index_dir": code_memory.get("index_dir"),
+            "index_present": indexed,
+            "repos": code_memory.get("repos"),
+            "version_pin": code_memory.get("version_pin"),
+        },
+        install_hint="Run `alfred code-memory doctor`, then `alfred code-memory index`.",
     )
+
+
+def _context_compression_capability(env: Mapping[str, str]) -> dict[str, Any]:
+    search = _join_search_path(_engine_search_path(env), env.get("PATH", ""))
+    binary = shutil.which("headroom", path=search)
+    enabled = _env_flag(env, "ALFRED_CONTEXT_COMPRESSION", default=False)
+    if binary:
+        state = "available"
+        detail = (
+            "Headroom CLI is installed; Alfred will report ready after runner wiring is enabled."
+            if enabled
+            else "Headroom CLI is installed; runner integration is not wired yet."
+        )
+    else:
+        state = "missing"
+        detail = (
+            "Headroom is not installed yet; Alfred can use it as a local token-compression layer."
+        )
+    return _capability_base(
+        "context_compression",
+        title="Context compression",
+        category="tokens",
+        recommended=True,
+        state=state,
+        installed=bool(binary),
+        enabled=enabled,
+        detail=detail,
+        detected={"binary": binary, "env_key": "ALFRED_CONTEXT_COMPRESSION"},
+        install_hint=(
+            "Install `headroom-ai[all]` with pip or `headroom-ai` with npm, "
+            "then run `headroom doctor`."
+        ),
+    )
+
+
+def _engineering_skills_capability(env: Mapping[str, str]) -> dict[str, Any]:
+    paths = _installed_skill_paths(env)
+    installed = bool(paths)
+    if installed:
+        state = "ready"
+        detail = "At least one engineering skill pack is installed for a local agent host."
+    else:
+        state = "missing"
+        detail = (
+            "No recommended engineering skill pack was found in Claude or Codex skill directories."
+        )
+    return _capability_base(
+        "engineering_skills",
+        title="Engineering skill packs",
+        category="skills",
+        recommended=True,
+        state=state,
+        installed=installed,
+        enabled=installed,
+        detail=detail,
+        detected={"paths": [str(path) for path in paths]},
+        install_hint=(
+            "Install gstack and the Vercel/Addy agent-skill packs for review, QA, "
+            "security, docs, and frontend workflows."
+        ),
+    )
+
+
+def _env_flag(env: Mapping[str, str], key: str, *, default: bool) -> bool:
+    raw = env.get(key)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in _FALSEY
+
+
+def _installed_skill_paths(env: Mapping[str, str]) -> list[Path]:
+    roots = _skill_roots(env)
+    patterns = (
+        "gstack",
+        "gstack-*",
+        "agent-skills",
+        "vercel-*",
+        "react-best-practices",
+        "web-design-guidelines",
+        "frontend-ui-engineering",
+    )
+    out: list[Path] = []
+    seen: set[Path] = set()
+    for root in roots:
+        for pattern in patterns:
+            for path in root.glob(pattern):
+                if path.is_dir() and path not in seen:
+                    seen.add(path)
+                    out.append(path)
+    return sorted(out, key=lambda p: str(p))
+
+
+def _skill_roots(env: Mapping[str, str]) -> list[Path]:
+    home = _safe_home(env)
+    roots: list[Path] = []
+    codex_home = env.get("CODEX_HOME", "").strip()
+    claude_home = env.get("CLAUDE_HOME", "").strip()
+    if codex_home:
+        path = _safe_expand_path(codex_home)
+        if path:
+            roots.append(path / "skills")
+    elif home:
+        roots.append(home / ".codex" / "skills")
+    if claude_home:
+        path = _safe_expand_path(claude_home)
+        if path:
+            roots.append(path / "skills")
+    elif home:
+        roots.append(home / ".claude" / "skills")
+    return roots
+
+
+def _safe_home(env: Mapping[str, str]) -> Path | None:
+    raw = env.get("HOME", "").strip()
+    if raw:
+        path = _safe_expand_path(raw)
+        if path:
+            return path
+    try:
+        return Path.home()
+    except RuntimeError:
+        return None
+
+
+def _safe_expand_path(raw: str) -> Path | None:
+    try:
+        return Path(raw).expanduser()
+    except RuntimeError:
+        return None
+
+
+def _default_alfred_home(env: Mapping[str, str]) -> Path:
+    home = _safe_home(env)
+    if home:
+        return home / ".alfred"
+    return Path(".alfred")
+
+
+def _engine_search_path(env: Mapping[str, str]) -> tuple[str, ...]:
+    paths: list[str] = []
+    home = _safe_home(env)
+    if home:
+        paths.extend([str(home / ".local" / "bin"), str(home / ".claude" / "local")])
+    paths.extend(["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin"])
+    return tuple(paths)
+
+
+def _join_search_path(paths: tuple[str, ...], inherited_path: str) -> str:
+    parts = [part for part in paths if part]
+    parts.extend(part for part in inherited_path.split(os.pathsep) if part)
+    return os.pathsep.join(parts)
 
 
 def _code_memory_launcher_env() -> dict[str, str]:
     """Return the env shape ``bin/code-memory-mcp`` sees after its loaders run."""
 
     env = dict(os.environ)
+    protected = {key for key, value in os.environ.items() if value.strip()}
     if not env.get("ALFRED_HOME", "").strip():
-        env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
-    _load_launcher_env_file(Path.home() / ".alfredrc", env)
+        env["ALFRED_HOME"] = str(_default_alfred_home(env))
+    home = _safe_home(env)
+    if home:
+        _load_launcher_env_file(home / ".alfredrc", env, protected_keys=protected)
     if not env.get("ALFRED_HOME", "").strip():
-        env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
-    _load_launcher_env_file(Path(env["ALFRED_HOME"]).expanduser() / ".env", env)
+        env["ALFRED_HOME"] = str(_default_alfred_home(env))
+    alfred_home = _safe_expand_path(env["ALFRED_HOME"])
+    if alfred_home:
+        _load_launcher_env_file(alfred_home / ".env", env, protected_keys=protected)
     if not env.get("ALFRED_HOME", "").strip():
-        env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
+        env["ALFRED_HOME"] = str(_default_alfred_home(env))
     return env
 
 
-def _load_launcher_env_file(path: Path, env: dict[str, str]) -> None:
+def _load_launcher_env_file(
+    path: Path, env: dict[str, str], *, protected_keys: set[str] | None = None
+) -> None:
+    protected_keys = protected_keys or set()
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError:
@@ -397,8 +713,12 @@ def _load_launcher_env_file(path: Path, env: dict[str, str]) -> None:
         key = key.strip()
         if not _ENV_KEY_RE.match(key):
             continue
+        if key in protected_keys:
+            continue
         decoded = decode_env_value(value.strip())
-        decoded = decoded.replace("${HOME}", str(Path.home())).replace("$HOME", str(Path.home()))
+        home = _safe_home(env)
+        if home:
+            decoded = decoded.replace("${HOME}", str(home)).replace("$HOME", str(home))
         env[key] = decoded
 
 
@@ -414,27 +734,42 @@ def _config_flag(env: dict[str, str], key: str, *, default: bool) -> bool:
 
 
 def _alfred_home(env: dict[str, str]) -> Path:
-    return Path(_code_memory_config(env, "ALFRED_HOME", "~/.alfred")).expanduser()
+    raw = _code_memory_config(env, "ALFRED_HOME")
+    if raw:
+        path = _safe_expand_path(raw)
+        if path:
+            return path
+        return Path(raw)
+    return _default_alfred_home(env)
 
 
 def _code_memory_index_dir(env: dict[str, str]) -> Path:
     raw = _code_memory_config(env, "ALFRED_CODE_MEMORY_INDEX_DIR")
     if raw.strip():
-        return Path(raw).expanduser()
+        path = _safe_expand_path(raw)
+        if path:
+            return path
+        return Path(raw)
     return _alfred_home(env) / "state" / "code-memory"
 
 
 def _code_memory_home(env: dict[str, str], index_dir: Path) -> Path:
     raw = _code_memory_config(env, "ALFRED_CODE_MEMORY_HOME")
     if raw.strip():
-        return Path(raw).expanduser()
+        path = _safe_expand_path(raw)
+        if path:
+            return path
+        return Path(raw)
     return index_dir
 
 
 def _code_memory_graph_dir(env: dict[str, str], index_home: Path) -> Path:
     upstream_cache = _code_memory_config(env, "CBM_CACHE_DIR")
     if upstream_cache:
-        return Path(upstream_cache).expanduser()
+        path = _safe_expand_path(upstream_cache)
+        if path:
+            return path
+        return Path(upstream_cache)
     return index_home / ".cache" / _CODE_MEMORY_BIN_NAME
 
 
@@ -462,9 +797,28 @@ def _code_memory_workspace_subdir(env: dict[str, str]) -> str:
 
 
 def _code_memory_workspace(env: dict[str, str]) -> Path:
-    root = Path(_code_memory_config(env, "WORKSPACE_ROOT", str(Path.home() / "code"))).expanduser()
+    root = _code_memory_workspace_root(env)
     subdir = _code_memory_workspace_subdir(env)
     return root / subdir if subdir else root
+
+
+def _code_memory_workspace_root(env: dict[str, str]) -> Path:
+    configured = _code_memory_config(env, "WORKSPACE_ROOT")
+    if configured:
+        path = _safe_expand_path(configured)
+        if path:
+            return path
+        return Path(configured)
+    home = env.get("HOME", "").strip()
+    if home:
+        path = _safe_expand_path(home)
+        if path:
+            return path / "code"
+        return Path(home) / "code"
+    try:
+        return Path.home() / "code"
+    except (OSError, RuntimeError):
+        return Path.cwd() / ".alfred-code-memory-workspace-unavailable"
 
 
 def _code_memory_discovery_limit(env: dict[str, str]) -> int:
@@ -572,7 +926,7 @@ def _disabled_code_memory_repo_scope(env: dict[str, str]) -> dict[str, Any]:
 
 
 def _code_memory_binary(env: dict[str, str]) -> dict[str, Any]:
-    search = os.pathsep.join((*_engine_search_path(), env.get("PATH", "")))
+    search = _join_search_path(_engine_search_path(env), env.get("PATH", ""))
     explicit = _code_memory_config(env, "ALFRED_CODE_MEMORY_BIN")
     if explicit:
         resolved = _resolve_configured_binary(explicit, search=search)
@@ -606,7 +960,7 @@ def _code_memory_binary(env: dict[str, str]) -> dict[str, Any]:
 
 
 def _resolve_configured_binary(value: str, *, search: str) -> str | None:
-    path = Path(value).expanduser()
+    path = _safe_expand_path(value) or Path(value)
     if path.is_file() and os.access(path, os.X_OK):
         return str(path)
     found = shutil.which(value, path=search)
@@ -665,11 +1019,14 @@ def bootstrap_status() -> dict[str, Any]:
     engines = engine_clis()
     repos = selected_repos()
     any_engine = any(e["installed"] for e in engines)
+    code_memory = code_memory_status()
+    capability_plane = capability_status(code_memory)
     return {
         "github": gh,
         "engines": engines,
         "engine_ready": any_engine,
-        "code_memory": code_memory_status(),
+        "code_memory": code_memory,
+        "capability_plane": capability_plane,
         "repos": {
             "selected": repos,
             "count": len(repos),
@@ -806,7 +1163,7 @@ def _repo_list_owners() -> list[str]:
         seen.add(owner)
         owners.append(owner)
 
-    for raw in re.split(r"[\s,]+", config_value("GH_ORG") or ""):
+    for raw in re.split(r"[\s,]+", _setup_config_value("GH_ORG") or ""):
         add(raw)
     for slug in selected_repos():
         owner, sep, _repo = slug.partition("/")
@@ -1023,8 +1380,7 @@ def load_demo_cards(state_root: Path | None = None) -> dict[str, list[dict[str, 
         "shipped": [],
     }
     if state_root is None:
-        base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
-        state_root = Path(base) / "state"
+        state_root = _alfred_home(dict(os.environ)) / "state"
     path = _demo_path(state_root)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))

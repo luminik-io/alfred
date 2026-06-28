@@ -63,6 +63,8 @@ Subcommands today:
                               `forget`, `export`).
   alfred code-memory ...      Inspect, index, or serve the optional
                               code-structure memory MCP layer.
+  alfred capabilities         Inspect local code graph, token, and skill
+                              capabilities Alfred can use during setup.
   alfred serve                Open the read-only localhost dashboard over
                               fleet state and reliability-governor actions.
   alfred slack-listener       Run the Slack-native planning listener, or
@@ -115,15 +117,60 @@ for candidate in (
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
-import agent_runner  # noqa: E402
-import scheduler  # noqa: E402
+
+class _LazyModule:
+    """Import a heavy helper module only for commands that actually use it."""
+
+    def __init__(self, module_name: str) -> None:
+        self._module_name = module_name
+        self._module = None
+
+    def _load(self):
+        if self._module is None:
+            import importlib
+
+            self._module = importlib.import_module(self._module_name)
+        return self._module
+
+    def __getattr__(self, name):
+        return getattr(self._load(), name)
+
+
+agent_runner = _LazyModule("agent_runner")
+scheduler = _LazyModule("scheduler")
 
 OPT_IN_AGENTS = {"batman"}
 ENGINE_AGENTS = ("bane", "batman", "drake", "lucius", "nightwing", "rasalghul", "robin")
 ENGINE_SCRIPTS = tuple(f"{agent}.py" for agent in ENGINE_AGENTS)
 NATIVE_DRY_RUN_SCRIPTS = {"lucius.py", "hello.py", "echo_summarise.py"}
-PRIMARY_CLAUDE_DIR = Path.home() / ".claude"
-SECONDARY_CLAUDE_DIR = Path.home() / ".claude-secondary"
+
+
+def _safe_expanduser(path: Path) -> Path:
+    try:
+        return path.expanduser()
+    except RuntimeError:
+        return path
+
+
+def _safe_home() -> Path | None:
+    raw = os.environ.get("HOME", "").strip()
+    if raw:
+        return _safe_expanduser(Path(raw))
+    try:
+        return Path.home()
+    except RuntimeError:
+        return None
+
+
+def _home_child(name: str) -> Path:
+    home = _safe_home()
+    if home is None:
+        return Path(name)
+    return home / name
+
+
+PRIMARY_CLAUDE_DIR = _home_child(".claude")
+SECONDARY_CLAUDE_DIR = _home_child(".claude-secondary")
 TELEMETRY_LABEL = "alfred.proof-telemetry"
 TELEMETRY_ROW = (
     f"{TELEMETRY_LABEL}\tproof-telemetry.py\tinterval:3600\tno\t"
@@ -393,7 +440,10 @@ def cmd_enabled_agents(_args: argparse.Namespace) -> int:
 
 
 def _alfredrc_path(raw: str | None = None) -> Path:
-    return Path(raw or os.environ.get("ALFREDRC") or (Path.home() / ".alfredrc")).expanduser()
+    configured = raw or os.environ.get("ALFREDRC")
+    if configured:
+        return _safe_expanduser(Path(configured))
+    return _home_child(".alfredrc")
 
 
 def _read_alfredrc_values(path: Path) -> dict[str, str]:
@@ -574,7 +624,10 @@ def _strip_telemetry_env_lines(text: str) -> str:
 
 
 def _alfred_home_path() -> Path:
-    return Path(os.environ.get("ALFRED_HOME") or (Path.home() / ".alfred")).expanduser()
+    configured = os.environ.get("ALFRED_HOME")
+    if configured:
+        return _safe_expanduser(Path(configured))
+    return _home_child(".alfred")
 
 
 def _source_agents_conf_for_root(root: Path) -> Path | None:
@@ -1404,6 +1457,31 @@ def cmd_code_memory(args: argparse.Namespace) -> int:
     script = _HERE / "code-memory-mcp"
     forwarded = args.code_memory_args or ["doctor"]
     return subprocess.run([str(script), *forwarded], check=False).returncode
+
+
+def cmd_capabilities(args: argparse.Namespace) -> int:
+    from server.setup import capability_status
+
+    payload = capability_status()
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+
+    print("Alfred capability doctor")
+    print(f"ready {payload['summary']['ready']}/{payload['summary']['total']}")
+    for item in payload["capabilities"]:
+        marker = {
+            "ready": "OK",
+            "needs_index": "INDEX",
+            "installable": "INSTALL",
+            "available": "ENABLE",
+            "missing": "MISSING",
+            "disabled": "OFF",
+        }.get(item["state"], item["state"].upper())
+        print(f"{marker:<8} {item['title']}: {item['detail']}")
+        if item["state"] != "ready":
+            print(f"         next: {item['install_hint']}")
+    return 0
 
 
 def cmd_github_poll(args: argparse.Namespace) -> int:
@@ -2429,6 +2507,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_code_memory.add_argument("code_memory_args", nargs=argparse.REMAINDER)
     p_code_memory.set_defaults(func=cmd_code_memory)
+
+    p_capabilities = sub.add_parser(
+        "capabilities",
+        help="inspect local code graph, token, and skill capabilities",
+    )
+    p_capabilities.add_argument("--json", action="store_true")
+    p_capabilities.set_defaults(func=cmd_capabilities)
 
     p_github_poll = sub.add_parser("github-poll", help="poll GitHub issues/PRs into fleet-brain")
     p_github_poll.add_argument("--repo", action="append")

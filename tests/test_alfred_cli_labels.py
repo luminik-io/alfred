@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from importlib.machinery import SourceFileLoader
@@ -96,6 +97,45 @@ def test_labels_all_reads_fleet_repo_env(cli_module, monkeypatch: pytest.MonkeyP
 
     assert cli_module.main(["labels", "check", "--all"]) == 0
     assert repos == ["api", "web", "mobile"]
+
+
+def test_capabilities_command_does_not_import_agent_runner(tmp_path: Path) -> None:
+    env = os.environ.copy()
+    env.pop("HOME", None)
+    env["ALFRED_HOME"] = str(tmp_path / ".alfred")
+    env["CODEX_HOME"] = str(tmp_path / "codex")
+    env["CLAUDE_HOME"] = str(tmp_path / "claude")
+    env["PYTHONPATH"] = str(LIB)
+    code = f"""
+import builtins
+import importlib.util
+import pathlib
+import sys
+from importlib.machinery import SourceFileLoader
+
+real_import = builtins.__import__
+
+def guarded_import(name, *args, **kwargs):
+    if name == "agent_runner" or name.startswith("agent_runner.") or name == "scheduler":
+        raise RuntimeError("blocked import should not be needed")
+    return real_import(name, *args, **kwargs)
+
+builtins.__import__ = guarded_import
+pathlib.Path.home = staticmethod(
+    lambda: (_ for _ in ()).throw(RuntimeError("no home"))
+)
+loader = SourceFileLoader("alfred_cli_no_agent_runner", {str(BIN)!r})
+spec = importlib.util.spec_from_loader(loader.name, loader)
+module = importlib.util.module_from_spec(spec)
+sys.modules[loader.name] = module
+spec.loader.exec_module(module)
+raise SystemExit(module.main(["capabilities", "--json"]))
+"""
+
+    res = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env)
+
+    assert res.returncode == 0, res.stderr
+    assert json.loads(res.stdout)["summary"]["total"] == 3
 
 
 def test_clear_lock_clears_dead_lock(
@@ -242,3 +282,123 @@ def test_code_memory_command_defaults_to_doctor(
 
     assert cli_module.main(["code-memory"]) == 0
     assert calls == [[str(REPO_ROOT / "bin" / "code-memory-mcp"), "doctor"]]
+
+
+def test_capabilities_command_emits_json(
+    cli_module, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from server import setup as setup_mod
+
+    payload = {
+        "version": 1,
+        "summary": {"ready": 1, "actionable": 0, "disabled": 0, "total": 1},
+        "capabilities": [
+            {
+                "key": "code_graph",
+                "title": "Code graph memory",
+                "category": "memory",
+                "recommended": True,
+                "state": "ready",
+                "installed": True,
+                "enabled": True,
+                "detail": "ready",
+                "detected": {},
+                "install_hint": "none",
+                "source": {"source": "DeusData/codebase-memory-mcp"},
+            }
+        ],
+    }
+    monkeypatch.setattr(setup_mod, "capability_status", lambda: payload)
+
+    assert cli_module.main(["capabilities", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == payload
+
+
+def test_capabilities_command_import_survives_unresolvable_home(
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex"
+    claude_home = tmp_path / "claude"
+    (codex_home / "skills" / "gstack").mkdir(parents=True)
+    (claude_home / "skills").mkdir(parents=True)
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    env = {
+        **os.environ,
+        "ALFRED_HOME": str(runtime),
+        "CODEX_HOME": str(codex_home),
+        "CLAUDE_HOME": str(claude_home),
+        "PYTHONPATH": str(LIB),
+    }
+    env.pop("HOME", None)
+    code = f"""
+import importlib.util
+import pathlib
+import sys
+from importlib.machinery import SourceFileLoader
+
+pathlib.Path.home = staticmethod(
+    lambda: (_ for _ in ()).throw(RuntimeError("no home"))
+)
+loader = SourceFileLoader("alfred_cli_cold_capabilities", {str(BIN)!r})
+spec = importlib.util.spec_from_loader(loader.name, loader)
+assert spec and spec.loader
+mod = importlib.util.module_from_spec(spec)
+sys.modules[loader.name] = mod
+spec.loader.exec_module(mod)
+raise SystemExit(mod.main(["capabilities", "--json"]))
+"""
+
+    res = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=REPO_ROOT,
+    )
+
+    assert res.returncode == 0, res.stderr
+    payload = json.loads(res.stdout)
+    skills = {item["key"]: item for item in payload["capabilities"]}["engineering_skills"]
+    assert skills["state"] == "ready"
+    assert skills["detected"]["paths"] == [str(codex_home / "skills" / "gstack")]
+
+
+def test_claude_home_does_not_override_primary_auth_directory(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    claude_home = tmp_path / "skill-claude-home"
+    home.mkdir()
+    runtime.mkdir()
+    claude_home.mkdir()
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "ALFRED_HOME": str(runtime),
+        "CLAUDE_HOME": str(claude_home),
+        "PYTHONPATH": str(LIB),
+    }
+    code = f"""
+import importlib.util
+import sys
+from importlib.machinery import SourceFileLoader
+
+loader = SourceFileLoader("alfred_cli_claude_home_auth", {str(BIN)!r})
+spec = importlib.util.spec_from_loader(loader.name, loader)
+assert spec and spec.loader
+mod = importlib.util.module_from_spec(spec)
+sys.modules[loader.name] = mod
+spec.loader.exec_module(mod)
+print(mod.PRIMARY_CLAUDE_DIR)
+"""
+
+    res = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=REPO_ROOT,
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.strip() == str(home / ".claude")
