@@ -1528,7 +1528,8 @@ def _unmanaged_alfred_systemd_jobs(env: Mapping[str, str], home: Path) -> list[s
     for label in sorted(loaded):
         if label in managed:
             continue
-        program_args = _systemd_service_program_args(label, env)
+        service_label = _systemd_timer_service_label(label, env)
+        program_args = _systemd_service_program_args(service_label, env)
         if program_args is None:
             if _looks_like_alfred_launchd_label(label, legacy_prefixes):
                 labels.append(_unreadable_launchd_label(label))
@@ -1736,6 +1737,35 @@ def _systemd_service_program_args(label: str, env: Mapping[str, str]) -> list[st
             if parsed is not None:
                 return parsed
     return None
+
+
+def _systemd_timer_service_label(label: str, env: Mapping[str, str]) -> str:
+    if os.uname().sysname != "Linux":
+        return label
+    try:
+        cp = subprocess.run(
+            [
+                "systemctl",
+                "--user",
+                "show",
+                f"{label}.timer",
+                "--property=Unit",
+                "--value",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+            env=_scheduler_probe_subprocess_env(env),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return label
+    if cp.returncode != 0:
+        return label
+    unit = (cp.stdout or "").strip()
+    if not unit.endswith(".service"):
+        return label
+    return unit.removesuffix(".service")
 
 
 def _active_systemd_service_program_args(label: str, env: Mapping[str, str]) -> list[str] | None:
