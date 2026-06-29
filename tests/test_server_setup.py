@@ -1477,6 +1477,41 @@ def test_install_inventory_blocks_generic_systemd_timer_with_unreadable_alfred_s
     assert inventory["unmanaged_scheduler_count"] == 1
 
 
+def test_install_inventory_blocks_generic_systemd_timer_when_unreadable_service_file_proves_alfred(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "alfred"
+    old_runtime = tmp_path / "internal-alfred"
+    systemd_user = home / ".config" / "systemd" / "user"
+    systemd_user.mkdir(parents=True)
+    (systemd_user / "worker.service").write_text(
+        f"[Service]\nExecStart={old_runtime / 'bin' / 'agent-launch'} lucius.py\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_mod.os, "uname", lambda: SimpleNamespace(sysname="Linux"))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.setenv("ALFRED_SETUP_SYSTEMD_LIST_FIXTURE", "vendor.cleanup.timer\n")
+
+    def fake_run(args: list[str], **_kwargs: object) -> SimpleNamespace:
+        if "vendor.cleanup.timer" in args:
+            return SimpleNamespace(returncode=0, stdout="worker.service\n")
+        if "worker.service" in args:
+            return SimpleNamespace(returncode=1, stdout="")
+        return SimpleNamespace(returncode=1, stdout="")
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+
+    inventory = setup_mod.install_inventory()
+
+    assert inventory["unmanaged_scheduler_jobs"] == ["vendor.cleanup (unreadable)"]
+    assert inventory["unmanaged_scheduler_count"] == 1
+
+
 def test_install_inventory_ignores_systemd_timer_for_non_service_unit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

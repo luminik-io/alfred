@@ -1544,6 +1544,10 @@ def _unmanaged_alfred_systemd_jobs(env: Mapping[str, str], home: Path) -> list[s
             continue
         program_args = _systemd_service_program_args(service_label, env, allow_disk_fallback=False)
         if program_args is None:
+            disk_args = _systemd_service_program_args(service_label, env, allow_disk_fallback=True)
+            if disk_args is not None and _program_has_alfred_scheduler_path(disk_args, home):
+                labels.append(_unreadable_launchd_label(label))
+                continue
             if _strong_unreadable_alfred_scheduler_label(
                 label,
                 legacy_prefixes,
@@ -2024,6 +2028,13 @@ def _program_runs_from_alfred_home(program_args: list[str], home: Path) -> bool:
             path.relative_to(home / "bin")
             return True
     return False
+
+
+def _program_has_alfred_scheduler_path(program_args: list[str], home: Path) -> bool:
+    return _program_runs_from_alfred_home(program_args, home) or any(
+        _path_is_external_alfred_scheduler_launcher(path)
+        for path in _program_argument_paths(program_args)
+    )
 
 
 def _program_is_alfred_scheduler(
