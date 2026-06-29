@@ -121,8 +121,16 @@ _ENV_LEGACY_LAUNCHD_LABEL_PREFIXES = "ALFRED_SETUP_LEGACY_LAUNCHD_LABEL_PREFIXES
 _INFERRED_LEGACY_PREFIX_MIN_EVIDENCE = 2
 _LAUNCHD_PROBE_UNAVAILABLE = "launchd probe unavailable"
 _SYSTEMD_PROBE_UNAVAILABLE = "systemd probe unavailable"
-_SCHEDULER_PROBE_UNAVAILABLE = frozenset({_LAUNCHD_PROBE_UNAVAILABLE, _SYSTEMD_PROBE_UNAVAILABLE})
+_SYSTEMD_TIMER_LOOKUP_UNAVAILABLE = "systemd timer lookup unavailable"
+_SCHEDULER_PROBE_UNAVAILABLE = frozenset(
+    {
+        _LAUNCHD_PROBE_UNAVAILABLE,
+        _SYSTEMD_PROBE_UNAVAILABLE,
+        _SYSTEMD_TIMER_LOOKUP_UNAVAILABLE,
+    }
+)
 _LAUNCHD_UNREADABLE_SUFFIX = " (unreadable)"
+_COMMON_REVERSE_DNS_PREFIXES = frozenset({"app", "com", "dev", "io", "net", "org"})
 
 _DEMO_FILENAME = "setup-demo-cards.json"
 # A made-up slug the demo cards live under. It is never a real ``owner/repo``,
@@ -1288,12 +1296,16 @@ def install_inventory(
         _inventory_item(
             "scheduler_unmanaged",
             "Unmanaged scheduler jobs",
-            not unmanaged_scheduler_jobs,
+            not _unmanaged_scheduler_jobs_block_setup(unmanaged_scheduler_jobs),
             _unmanaged_scheduler_detail(
                 unmanaged_scheduler_jobs,
                 scheduler_kind=_scheduler_probe_kind(resolved_env),
             ),
-            _scheduler_inventory_path(resolved_env) if unmanaged_scheduler_jobs else None,
+            (
+                _scheduler_inventory_path(resolved_env)
+                if _unmanaged_scheduler_jobs_block_setup(unmanaged_scheduler_jobs)
+                else None
+            ),
         ),
         _inventory_item(
             "repos",
@@ -1391,6 +1403,10 @@ def _inventory_item(
 
 def _unmanaged_scheduler_jobs_indicate_install(labels: list[str]) -> bool:
     return bool(labels) and any(label not in _SCHEDULER_PROBE_UNAVAILABLE for label in labels)
+
+
+def _unmanaged_scheduler_jobs_block_setup(labels: list[str]) -> bool:
+    return bool(labels) and labels != [_SYSTEMD_TIMER_LOOKUP_UNAVAILABLE]
 
 
 def _install_agents_conf_path(home: Path) -> Path | None:
@@ -1558,7 +1574,7 @@ def _unmanaged_alfred_systemd_jobs(env: Mapping[str, str], home: Path) -> list[s
             labels.append(label)
     if labels:
         return sorted(set(labels))
-    return [_SYSTEMD_PROBE_UNAVAILABLE] if probe_unavailable else []
+    return [_SYSTEMD_TIMER_LOOKUP_UNAVAILABLE] if probe_unavailable else []
 
 
 def _loaded_launchd_labels(env: Mapping[str, str]) -> set[str] | None:
@@ -1722,6 +1738,8 @@ def _strong_unreadable_alfred_scheduler_label(
     if not normalized:
         return False
     if _label_matches_legacy_prefix(normalized, legacy_prefixes):
+        return True
+    if _label_has_legacy_engineering_shape(normalized):
         return True
     return normalized.startswith(("alfred.", "alfred-", "old.alfred", "old-alfred"))
 
@@ -2074,7 +2092,7 @@ def _path_is_scheduler_launcher(path: Path) -> bool:
 
 def _label_has_legacy_engineering_shape(normalized_label: str) -> bool:
     parts = normalized_label.split(".")
-    return len(parts) >= 3 and parts[1] == "eng"
+    return len(parts) >= 3 and parts[1] == "eng" and parts[0] not in _COMMON_REVERSE_DNS_PREFIXES
 
 
 def _path_part_is_alfred_install_name(part: str) -> bool:
@@ -2127,6 +2145,11 @@ def _unmanaged_scheduler_detail(labels: list[str], *, scheduler_kind: str = "lau
         return (
             "Could not query systemd for unmanaged Alfred jobs. Retry setup or inspect "
             "systemctl --user before switching this host to OSS scheduling."
+        )
+    if labels == [_SYSTEMD_TIMER_LOOKUP_UNAVAILABLE]:
+        return (
+            "Could not inspect one or more unrelated systemd timers, but no "
+            "Alfred-looking scheduler jobs were found."
         )
     unreadable = [
         label.removesuffix(_LAUNCHD_UNREADABLE_SUFFIX)

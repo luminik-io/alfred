@@ -738,7 +738,7 @@ def test_install_inventory_blocks_unreadable_configured_legacy_prefix(
     assert inventory["unmanaged_scheduler_count"] == 1
 
 
-def test_install_inventory_ignores_private_legacy_prefix_without_opt_in(
+def test_install_inventory_blocks_unreadable_legacy_engineering_shape_without_opt_in(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -755,8 +755,8 @@ def test_install_inventory_ignores_private_legacy_prefix_without_opt_in(
 
     inventory = setup_mod.install_inventory()
 
-    assert inventory["unmanaged_scheduler_jobs"] == []
-    assert inventory["unmanaged_scheduler_count"] == 0
+    assert inventory["unmanaged_scheduler_jobs"] == [f"{label} (unreadable)"]
+    assert inventory["unmanaged_scheduler_count"] == 1
 
 
 def test_install_inventory_treats_agents_conf_labels_as_managed(
@@ -1626,8 +1626,11 @@ def test_install_inventory_reports_systemd_probe_unavailable_for_generic_timer_u
 
     inventory = setup_mod.install_inventory()
 
-    assert inventory["unmanaged_scheduler_jobs"] == ["systemd probe unavailable"]
+    assert inventory["unmanaged_scheduler_jobs"] == ["systemd timer lookup unavailable"]
     assert inventory["unmanaged_scheduler_count"] == 1
+    by_key = {item["key"]: item for item in inventory["items"]}
+    assert by_key["scheduler_unmanaged"]["ok"] is True
+    assert "no Alfred-looking scheduler jobs" in by_key["scheduler_unmanaged"]["detail"]
 
 
 def test_install_inventory_uses_systemd_timer_file_when_unit_lookup_fails(
