@@ -804,7 +804,7 @@ def test_install_inventory_ignores_external_agent_launch_with_alfred_substring(
 
     def fake_program_args(label: str, _env: dict[str, str]) -> list[str]:
         if label == "com.example.worker":
-            return ["/opt/alfredium/bin/agent-launch"]
+            return ["/opt/alfred-tools/bin/agent-launch"]
         return []
 
     monkeypatch.setattr(setup_mod, "_launchctl_program_args", fake_program_args)
@@ -813,6 +813,46 @@ def test_install_inventory_ignores_external_agent_launch_with_alfred_substring(
 
     assert inventory["unmanaged_scheduler_jobs"] == []
     assert inventory["unmanaged_scheduler_count"] == 0
+
+
+def test_install_inventory_blocks_unreadable_plist_with_old_alfred_launcher(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "alfred"
+    old_runtime = tmp_path / "internal-alfred"
+    launch_agents = home / "Library" / "LaunchAgents"
+    launch_agents.mkdir(parents=True)
+    (launch_agents / "com.example.worker.plist").write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+ "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.worker</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{agent_launch}</string>
+    <string>lucius.py</string>
+  </array>
+</dict>
+</plist>
+""".format(agent_launch=old_runtime / "bin" / "agent-launch"),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.setenv("ALFRED_SETUP_LAUNCHD_LIST_FIXTURE", "com.example.worker\n")
+    monkeypatch.setattr(setup_mod, "_launchctl_program_args", lambda *_args: None)
+
+    inventory = setup_mod.install_inventory()
+
+    assert inventory["unmanaged_scheduler_jobs"] == ["com.example.worker (unreadable)"]
+    assert inventory["unmanaged_scheduler_count"] == 1
 
 
 def test_install_inventory_detects_wrapper_job_running_from_home(

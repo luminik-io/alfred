@@ -1479,7 +1479,7 @@ def _unmanaged_alfred_launchd_jobs(env: Mapping[str, str], home: Path) -> list[s
             if active_args is None:
                 if _looks_like_alfred_launchd_label(
                     label, legacy_prefixes
-                ) or _program_runs_from_alfred_home(plist_args, home):
+                ) or _program_is_alfred_scheduler(plist_args, home, label, legacy_prefixes):
                     unreadable_labels.add(label)
                 continue
             checked_labels.add(label)
@@ -1829,7 +1829,12 @@ def _path_is_external_alfred_scheduler_launcher(path: Path) -> bool:
 
 
 def _path_part_is_alfred_install_name(part: str) -> bool:
-    return "alfred" in set(re.split(r"[^a-z0-9]+", part.lower()))
+    normalized = part.lower()
+    return (
+        normalized in {"alfred", "alfred-os"}
+        or normalized.endswith("-alfred")
+        or normalized.endswith("_alfred")
+    )
 
 
 def _program_argument_paths(program_args: list[str]) -> list[Path]:
