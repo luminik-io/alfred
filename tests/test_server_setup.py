@@ -815,6 +815,37 @@ def test_install_inventory_detects_wrapper_job_running_from_home(
     assert inventory["unmanaged_scheduler_count"] == 1
 
 
+def test_install_inventory_detects_shell_wrapper_with_embedded_agent_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "alfred"
+    old_runtime = tmp_path / "internal-alfred"
+    (home / "Library" / "LaunchAgents").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.setenv("ALFRED_SETUP_LAUNCHD_LIST_FIXTURE", "com.example.worker\n")
+
+    def fake_program_args(label: str, _env: dict[str, str]) -> list[str]:
+        if label == "com.example.worker":
+            return [
+                "/bin/sh",
+                "-c",
+                f"exec {old_runtime / 'bin' / 'agent-launch'} batman.py",
+            ]
+        return []
+
+    monkeypatch.setattr(setup_mod, "_launchctl_program_args", fake_program_args)
+
+    inventory = setup_mod.install_inventory()
+
+    assert inventory["unmanaged_scheduler_jobs"] == ["com.example.worker"]
+    assert inventory["unmanaged_scheduler_count"] == 1
+
+
 def test_install_inventory_detects_no_plist_job_without_launch_agents_dir(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

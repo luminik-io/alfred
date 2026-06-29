@@ -30,6 +30,7 @@ import json
 import os
 import plistlib
 import re
+import shlex
 import shutil
 import subprocess
 from collections.abc import Iterable, Mapping
@@ -1679,11 +1680,27 @@ def _path_is_external_alfred_scheduler_launcher(path: Path) -> bool:
 
 def _program_argument_paths(program_args: list[str]) -> list[Path]:
     paths: list[Path] = []
+    seen: set[str] = set()
     for raw in program_args:
-        path = _safe_expand_path(raw)
-        if path is not None:
+        for token in _program_argument_path_tokens(raw):
+            path = _safe_expand_path(token)
+            if path is None:
+                continue
+            key = str(path)
+            if key in seen:
+                continue
+            seen.add(key)
             paths.append(path)
     return paths
+
+
+def _program_argument_path_tokens(raw: str) -> Iterable[str]:
+    yield raw
+    if not any(char.isspace() for char in raw):
+        return
+    with suppress(ValueError):
+        for token in shlex.split(raw):
+            yield token.rstrip(";&|")
 
 
 def _unreadable_launchd_label(label: str) -> str:
