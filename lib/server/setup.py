@@ -1531,12 +1531,16 @@ def _unmanaged_alfred_systemd_jobs(env: Mapping[str, str], home: Path) -> list[s
             continue
         service_label = _systemd_timer_service_label(label, env)
         if service_label is None:
-            labels.append(_unreadable_launchd_label(label))
-            continue
+            if _strong_alfred_scheduler_label(label, legacy_prefixes):
+                labels.append(_unreadable_launchd_label(label))
+                continue
+            return [_SYSTEMD_PROBE_UNAVAILABLE]
         program_args = _systemd_service_program_args(service_label, env, allow_disk_fallback=False)
         if program_args is None:
-            labels.append(_unreadable_launchd_label(label))
-            continue
+            if _strong_alfred_scheduler_label(label, legacy_prefixes):
+                labels.append(_unreadable_launchd_label(label))
+                continue
+            return [_SYSTEMD_PROBE_UNAVAILABLE]
         if _program_is_alfred_scheduler(program_args, home, label, legacy_prefixes):
             labels.append(label)
     return sorted(set(labels))
@@ -1688,14 +1692,20 @@ def _strong_alfred_scheduler_label(label: str, legacy_prefixes: tuple[str, ...] 
     normalized = label.strip().lower()
     if not normalized:
         return False
-    if legacy_prefixes and any(normalized.startswith(prefix) for prefix in legacy_prefixes):
+    if _label_matches_legacy_prefix(normalized, legacy_prefixes):
         return True
     if normalized.startswith(("alfred.", "alfred-", "old.alfred", "old-alfred")):
         return True
-    if any(phrase in normalized for phrase in _ALFRED_LAUNCHD_LABEL_PHRASES):
-        return True
-    tokens = set(re.split(r"[^a-z0-9]+", normalized))
-    return bool(tokens.intersection(_ALFRED_LAUNCHD_ROLE_TOKENS))
+    return any(phrase in normalized for phrase in _ALFRED_LAUNCHD_LABEL_PHRASES)
+
+
+def _label_matches_legacy_prefix(
+    normalized_label: str,
+    legacy_prefixes: tuple[str, ...],
+) -> bool:
+    return bool(legacy_prefixes) and any(
+        normalized_label.startswith(prefix) for prefix in legacy_prefixes
+    )
 
 
 def _has_alfred_prefix_inference_evidence(normalized: str) -> bool:
@@ -1973,6 +1983,11 @@ def _program_is_alfred_scheduler(
         return True
     looks_like_alfred_label = _strong_alfred_scheduler_label(label, legacy_prefixes)
     argument_paths = _program_argument_paths(program_args)
+    if _label_matches_legacy_prefix(label.strip().lower(), legacy_prefixes) and any(
+        path.name in _ALFRED_SCHEDULER_LAUNCHER_NAMES and path.parent.name == "bin"
+        for path in argument_paths
+    ):
+        return True
     if any(_path_is_external_alfred_scheduler_launcher(path) for path in argument_paths):
         return looks_like_alfred_label
     return False

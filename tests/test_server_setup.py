@@ -1048,10 +1048,10 @@ def test_install_inventory_detects_shell_wrapper_with_embedded_agent_launch(
     monkeypatch.setenv("ALFRED_HOME", str(runtime))
     monkeypatch.delenv("ALFRED_REPO", raising=False)
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
-    monkeypatch.setenv("ALFRED_SETUP_LAUNCHD_LIST_FIXTURE", "com.example.batman.worker\n")
+    monkeypatch.setenv("ALFRED_SETUP_LAUNCHD_LIST_FIXTURE", "old.alfred.worker\n")
 
     def fake_program_args(label: str, _env: dict[str, str]) -> list[str]:
-        if label == "com.example.batman.worker":
+        if label == "old.alfred.worker":
             return [
                 "/bin/sh",
                 "-c",
@@ -1063,7 +1063,7 @@ def test_install_inventory_detects_shell_wrapper_with_embedded_agent_launch(
 
     inventory = setup_mod.install_inventory()
 
-    assert inventory["unmanaged_scheduler_jobs"] == ["com.example.batman.worker"]
+    assert inventory["unmanaged_scheduler_jobs"] == ["old.alfred.worker"]
     assert inventory["unmanaged_scheduler_count"] == 1
 
 
@@ -1363,7 +1363,7 @@ def test_install_inventory_blocks_generic_systemd_timer_when_unit_lookup_fails(
 
     inventory = setup_mod.install_inventory()
 
-    assert inventory["unmanaged_scheduler_jobs"] == ["vendor.cleanup (unreadable)"]
+    assert inventory["unmanaged_scheduler_jobs"] == ["systemd probe unavailable"]
     assert inventory["unmanaged_scheduler_count"] == 1
 
 
