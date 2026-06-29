@@ -786,6 +786,32 @@ Done when:
     ]
 
 
+def test_parse_parent_issue_canonical_bare_repos_use_parent_owner():
+    import batman as bm
+
+    body = """
+Bundle: billing-v2 rollout
+
+Repos:
+- backend
+
+Children:
+- backend: introduce BillingV2Service
+
+Done when:
+- Child merged to main
+"""
+    plan = bm.parse_parent_issue(
+        body=body,
+        title="Bundle: billing-v2 rollout",
+        parent_repo="other-org/specs",
+        parent_issue_number=42,
+    )
+
+    assert plan.affected_repos == ("other-org/backend",)
+    assert [child.repo for child in plan.children] == ["other-org/backend"]
+
+
 # ---------------------------------------------------------------------------
 # Issue #116: lifecycle parser silently skips bare-name repos
 # ---------------------------------------------------------------------------

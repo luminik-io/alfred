@@ -1299,16 +1299,16 @@ def _slugify_bundle_title(title: str, prefix: str = "") -> str:
     return slug
 
 
-def _parse_repo_lines(block: str) -> list[str]:
+def _parse_repo_lines(block: str, *, fallback_org: str = "") -> list[str]:
     """Parse a `Repos:` block into a list of ``owner/repo`` slugs.
 
     Accepts two shapes (issue #116):
 
     - ``owner/repo`` (canonical): kept verbatim.
-    - bare ``repo``: qualified with ``GH_ORG`` when set, so the
-      operator's natural shorthand works under the common
-      "one-org fleet" setup. Without ``GH_ORG`` the bare line is
-      skipped with a stderr warning rather than silently dropped.
+    - bare ``repo``: qualified with the parent repo owner, falling back
+      to ``GH_ORG`` when this parser is called outside a parent issue.
+      Without either owner, the bare line is skipped with a stderr
+      warning rather than silently dropped.
 
     Lines that match neither shape (and can't be qualified) get a
     single warning each; the previous behaviour was to drop them
@@ -1325,15 +1325,15 @@ def _parse_repo_lines(block: str) -> list[str]:
         if "/" in token:
             out.append(token)
             continue
-        # Bare repo name. Qualify with GH_ORG when available so the
-        # operator's natural shorthand (`palette`, `palette-web`) works
-        # in a single-org fleet without forcing them to spell out
-        # `owner/` on every line.
-        if GH_ORG:
-            qualified = f"{GH_ORG}/{token}"
+        # Bare repo name. Prefer the parent repo owner so canonical and
+        # loose parent-issue shapes route the same scope to the same org.
+        owner = fallback_org or GH_ORG
+        if owner:
+            qualified = f"{owner}/{token}"
+            owner_source = "parent repo owner" if fallback_org else "GH_ORG"
             print(
                 f"[BATMAN-PARSE-INFO] _parse_repo_lines: qualified bare repo "
-                f"name {token!r} with GH_ORG ({qualified!r}). For multi-org "
+                f"name {token!r} with {owner_source} ({qualified!r}). For multi-org "
                 f"fleets, write `owner/repo` explicitly.",
                 file=sys.stderr,
             )
@@ -1344,7 +1344,7 @@ def _parse_repo_lines(block: str) -> list[str]:
         # of after a wasted Slack approval cycle.
         print(
             f"[BATMAN-PARSE-WARN] _parse_repo_lines: skipping bare repo "
-            f"name {token!r}: no `/` and `GH_ORG` is unset. Write "
+            f"name {token!r}: no `/`, parent repo owner, or `GH_ORG` is set. Write "
             f"`owner/{token}` or set GH_ORG in `~/.alfredrc`. See "
             f"docs/BATMAN_PARENT_ISSUE_TEMPLATE.md.",
             file=sys.stderr,
@@ -1434,11 +1434,12 @@ def parse_parent_issue(
     """
     body = body or ""
     slug = _slugify_bundle_title(title, prefix=bundle_slug_prefix)
+    parent_org = parent_repo.split("/", 1)[0] if "/" in parent_repo else ""
 
     repos: list[str] = []
     rm = _REPOS_BLOCK_RE.search(body)
     if rm:
-        repos = _parse_repo_lines(rm.group(1))
+        repos = _parse_repo_lines(rm.group(1), fallback_org=parent_org)
 
     children_pairs: list[tuple[str, str]] = []
     cm = _CHILDREN_BLOCK_RE.search(body)
@@ -1481,7 +1482,6 @@ def parse_parent_issue(
             # Map local repo names from the loose parser back to
             # `owner/repo` slugs using GH_REPO_TO_LOCAL.
             local_to_gh = {v: k for k, v in GH_REPO_TO_LOCAL.items()}
-            parent_org = parent_repo.split("/", 1)[0] if "/" in parent_repo else ""
             loose_repos: list[tuple[str, str]] = []
             for repo_key in loose.affected_repos:
                 # Prefer an explicit GH_REPO_TO_LOCAL mapping, then fall
