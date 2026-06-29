@@ -1524,17 +1524,18 @@ def _unmanaged_alfred_systemd_jobs(env: Mapping[str, str], home: Path) -> list[s
         return []
     legacy_prefixes = _legacy_launchd_label_prefixes(env, loaded)
     labels: list[str] = []
+    probe_unavailable = False
     for label in sorted(loaded):
         if label in managed:
             continue
         service_label, service_lookup_failed = _systemd_timer_service_label(label, env)
         if service_lookup_failed:
-            if _strong_unreadable_alfred_scheduler_label(label, legacy_prefixes):
+            if _strong_alfred_scheduler_label(label, legacy_prefixes):
                 labels.append(_unreadable_launchd_label(label))
                 continue
             service_label, timer_file_found = _systemd_timer_file_service_label(label, env)
             if not timer_file_found:
-                labels.append(_unreadable_launchd_label(label))
+                probe_unavailable = True
                 continue
             if service_label is None:
                 continue
@@ -1555,7 +1556,9 @@ def _unmanaged_alfred_systemd_jobs(env: Mapping[str, str], home: Path) -> list[s
             legacy_prefixes,
         ):
             labels.append(label)
-    return sorted(set(labels))
+    if labels:
+        return sorted(set(labels))
+    return [_SYSTEMD_PROBE_UNAVAILABLE] if probe_unavailable else []
 
 
 def _loaded_launchd_labels(env: Mapping[str, str]) -> set[str] | None:

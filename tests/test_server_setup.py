@@ -1575,7 +1575,7 @@ def test_install_inventory_blocks_when_systemd_timer_unit_lookup_fails(
     assert inventory["unmanaged_scheduler_count"] == 1
 
 
-def test_install_inventory_blocks_generic_systemd_timer_when_unit_lookup_fails(
+def test_install_inventory_reports_systemd_probe_unavailable_for_generic_timer_unit_lookup_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1598,7 +1598,7 @@ def test_install_inventory_blocks_generic_systemd_timer_when_unit_lookup_fails(
 
     inventory = setup_mod.install_inventory()
 
-    assert inventory["unmanaged_scheduler_jobs"] == ["vendor.cleanup (unreadable)"]
+    assert inventory["unmanaged_scheduler_jobs"] == ["systemd probe unavailable"]
     assert inventory["unmanaged_scheduler_count"] == 1
 
 
