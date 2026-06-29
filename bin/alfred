@@ -116,7 +116,7 @@ for candidate in (
     _HERE.parent / "lib",
 ):
     candidate_path = str(candidate)
-    if candidate.exists():
+    if candidate.is_dir():
         if candidate_path in sys.path:
             sys.path.remove(candidate_path)
         sys.path.insert(0, candidate_path)
