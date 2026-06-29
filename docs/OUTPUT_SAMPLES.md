@@ -73,7 +73,8 @@ Total: $0.90 / 87 turns / 3 PRs
 
 When it appears: Batman scanned `BATMAN_SCAN_REPOS`, found an
 `agent:large-feature` issue, resolved its bundle, and posted the plan.
-Batman pauses at the plan until the configured approver approves it.
+This legacy scan path is plan-only; child issue filing happens through the
+`BATMAN_PARENT_REPO` lifecycle path.
 
 ```
 batman · plan drafted
@@ -84,9 +85,9 @@ Affected:     your-backend, your-frontend, your-mobile
 Rollout:      your-backend → your-frontend → your-mobile
 Engine:       hybrid
 
-Approval:     waiting for configured approval
-Next:         approve in Slack or the configured gate. After approval, Batman
-              files and supervises the child issue sequence.
+Approval:     not requested on the legacy scan path
+Next:         move the scope to a BATMAN_PARENT_REPO parent issue when you want
+              Batman to run approval and child issue filing.
 ```
 
 ## doctor.sh: clean run

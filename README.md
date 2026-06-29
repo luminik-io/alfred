@@ -23,8 +23,9 @@ work unless you let it.
 - **Ra's al Ghul** reviews them.
 - **Bane** adds the tests.
 - **Nightwing** clears the review comments.
-- **Batman** is the architect for multi-repo work: he plans large features, files
-  the child issues, and keeps the bundle moving through reviewed, gated PRs.
+- **Batman** is the architect for multi-repo work: he plans large features,
+  files child issues on the approved parent-plan path, and keeps the bundle
+  moving through reviewed, gated PRs.
 
 **It runs on the Claude Max or Codex Pro subscription you already pay for. No API
 keys, no separate token bill.** Alfred shells out to your local `claude` and
@@ -395,7 +396,7 @@ the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
 | [`bin/alfred-usage.py`](bin/alfred-usage.py) | Live Claude + Codex subscription usage for the rolling 5-hour and weekly limit windows, read from the engines' own local CLI state (no billing API). The same data is served over the live `GET /api/usage` endpoint; this is its `alfred usage` CLI front end. |
 | [`bin/alfred-shipped-summary.py`](bin/alfred-shipped-summary.py) | Daily/weekly shipped-work report across configured repos: merged PRs, issues, LOC, and model/config changes. Also available as `alfred shipped`. |
 | [`bin/shipped-summary-daily.sh`](bin/shipped-summary-daily.sh), [`bin/shipped-summary-weekly.sh`](bin/shipped-summary-weekly.sh) | Launchd wrappers for scheduled shipped-work Slack reports. |
-| [`bin/batman.py`](bin/batman.py) | Architect agent for cross-repo work. Picks `agent:large-feature` / `agent:bundle:<slug>` issues, posts a Slack plan, applies approved repo-scope amendments, files scoped child `agent:implement` issues, and carries approved thread notes into those issues. |
+| [`bin/batman.py`](bin/batman.py) | Architect agent for cross-repo work. In the legacy `BATMAN_SCAN_REPOS` path it picks `agent:large-feature` / `agent:bundle:<slug>` work and posts a plan without filing children. In the `BATMAN_PARENT_REPO` lifecycle path it can apply approved repo-scope amendments, file scoped child `agent:implement` issues, and carry approved thread notes into those issues when `BATMAN_AUTO_EXECUTE` allows it. |
 | [`bin/fleet-doctor.py`](bin/fleet-doctor.py) | Daily fleet-health snapshot. Read-only checks (paused repos, global block, stale worktrees, runner gate list) → severity-stripe Slack thread. |
 | [`bin/memory-harvest.py`](bin/memory-harvest.py) | Optional scheduled memory-harvest wrapper. Queues reviewable repeated-failure candidates and nudges Slack when there is something to review. |
 | [`bin/proof-telemetry.py`](bin/proof-telemetry.py) | Anonymous usage-total reporter. Posts aggregate counts to Alfred's hosted collector by default; `ALFRED_TELEMETRY_ENABLED=0` turns it off; fail-soft. |

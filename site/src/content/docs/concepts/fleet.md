@@ -59,11 +59,11 @@ The loop closes on itself: Batman leads multi-repo rollouts, Drake files smaller
 
 ## Batman: the architect agent
 
-Batman is the architect agent that leads a whole feature across repos. Where Lucius implements one scoped issue at a time inside one repo, Batman reads one `agent:large-feature` issue, walks the affected repos, drafts the rollout plan, posts it to Slack for approval, and only then files scoped `agent:implement` child issues across every repo Lucius needs to work in.
+Batman is the architect agent that leads a whole feature across repos. Where Lucius implements one scoped issue at a time inside one repo, Batman's parent-plan path reads one `agent:large-feature` issue, walks the affected repos, drafts the rollout plan, waits for approval, and only then files scoped `agent:implement` child issues across every repo Lucius needs to work in.
 
 This is what makes Alfred different from single-repo coding agents. A backend service change that needs a frontend page and a mobile screen and a data-infra job becomes one Batman plan with four children, instead of four manual context-rebuilds in a chat window.
 
-Batman is part of the public fleet and runs on the same local schedule model as the other agents, but parent-plan execution is deliberately gated. A fresh full install configures Batman and keeps it behind `alfred enable batman`; with the default `BATMAN_AUTO_EXECUTE=0`, parent issues halt after the plan. Set `BATMAN_AUTO_EXECUTE=approval-gate` when you want Batman to file child issues only after Slack approval, or `1` only for fleets that intentionally skip the gate.
+Batman is part of the public fleet and runs on the same local schedule model as the other agents, but execution is deliberately gated. A fresh full install configures Batman and keeps it behind `alfred enable batman`. The legacy `BATMAN_SCAN_REPOS` path drafts plans and stops before child filing. The newer `BATMAN_PARENT_REPO` path halts after the plan with the default `BATMAN_AUTO_EXECUTE=0`; set `BATMAN_AUTO_EXECUTE=approval-gate` when you want Batman to file child issues only after Slack approval, or `1` only for fleets that intentionally skip the gate.
 
 See [Multi-repo planning](/multi-repo/) for the marketing-side overview, and [Worked example: Batman across three repos](/guides/multi-repo-worked-example/) for an end-to-end walkthrough from large-feature issue to merged children.
 
