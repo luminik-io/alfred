@@ -624,6 +624,31 @@ We want a cross-org billing worker rollout.
     assert "see acceptance criteria" not in plan.children[0].body
 
 
+def test_parse_parent_issue_loose_shape_qualifies_bare_mapped_slug(
+    monkeypatch,
+):
+    import batman as bm
+
+    monkeypatch.setattr(bm, "GH_REPO_TO_LOCAL", {"acme-backend": "backend"})
+
+    body = """
+We want a mapped backend rollout.
+
+## Affected Repos
+- backend
+
+## Acceptance Criteria
+
+### backend
+- Add the billing worker behind the `billing-v2` flag.
+"""
+
+    plan = _parse_parent(body)
+
+    assert [child.repo for child in plan.children] == ["myorg/acme-backend"]
+    assert plan.affected_repos == ("myorg/acme-backend",)
+
+
 def test_parse_parent_issue_loose_shape_preserves_duplicate_cross_org_tails():
     body = """
 We want the same worker in two orgs.

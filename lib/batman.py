@@ -1392,6 +1392,16 @@ def _resolve_child_repo(short: str, affected: list[str]) -> str | None:
     return None
 
 
+def _qualify_github_repo_slug(repo_slug: str, *, fallback_org: str = "") -> str:
+    """Return a ``owner/repo`` slug when an org is known."""
+    if "/" in repo_slug:
+        return repo_slug
+    owner = fallback_org or GH_ORG
+    if owner:
+        return f"{owner}/{repo_slug}"
+    return repo_slug
+
+
 def parse_parent_issue(
     *,
     body: str,
@@ -1477,7 +1487,7 @@ def parse_parent_issue(
                 # Prefer an explicit GH_REPO_TO_LOCAL mapping, then fall
                 # back to <parent_org>/<local> so a fresh fleet with no
                 # mapping still produces a usable owner/repo pair.
-                gh_slug = (
+                raw_gh_slug = (
                     loose.repo_slugs.get(repo_key)
                     or local_to_gh.get(repo_key)
                     or (
@@ -1488,6 +1498,7 @@ def parse_parent_issue(
                         else repo_key
                     )
                 )
+                gh_slug = _qualify_github_repo_slug(raw_gh_slug, fallback_org=parent_org)
                 loose_repos.append((repo_key, gh_slug))
                 if gh_slug not in repos:
                     repos.append(gh_slug)
