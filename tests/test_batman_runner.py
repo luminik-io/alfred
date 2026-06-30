@@ -38,9 +38,10 @@ def _load_runner():
     return mod
 
 
-def test_batman_pickup_blocks_done_large_features():
+def test_batman_pickup_blocks_completed_large_features():
     runner = _load_runner()
     assert runner._has_batman_pickup_blocker({"agent:large-feature", "agent:done"})
+    assert runner._has_batman_pickup_blocker({"agent:large-feature", "agent:fanout-complete"})
 
 
 def test_main_noops_when_parent_repo_unconfigured(monkeypatch, capsys):
@@ -302,11 +303,11 @@ def test_lifecycle_finalizes_parent_after_full_child_fanout(monkeypatch, capsys)
     assert out == 0
     assert order == ["ensure", "label", "close", "report"]
     assert reports == [result]
-    assert ensured == [("myorg/parent", runner.LIFECYCLE_LABELS)]
-    assert edits == [("myorg/parent", 83, {"add_labels": ["agent:done"]})]
+    assert ensured == [("myorg/parent", runner.BATMAN_PARENT_FINALIZATION_LABELS)]
+    assert edits == [("myorg/parent", 83, {"add_labels": ["agent:fanout-complete"]})]
     assert closes == [("myorg/parent", 83)]
     assert not runner._has_completed_fanout_marker("myorg/parent", 83)
-    assert "[BATMAN-PARENT-DONE]" in captured.out
+    assert "[BATMAN-PARENT-FANOUT-COMPLETE]" in captured.out
     assert "[BATMAN-PARENT-CLOSED]" in captured.out
 
 
@@ -373,12 +374,12 @@ def test_lifecycle_keeps_completed_marker_when_parent_finalization_fails(monkeyp
     captured = capsys.readouterr()
     assert out == 1
     assert reports == ["completed"]
-    assert ensured == [("myorg/parent", runner.LIFECYCLE_LABELS)]
-    assert edits == [("myorg/parent", 83, {"add_labels": ["agent:done"]})]
+    assert ensured == [("myorg/parent", runner.BATMAN_PARENT_FINALIZATION_LABELS)]
+    assert edits == [("myorg/parent", 83, {"add_labels": ["agent:fanout-complete"]})]
     assert closes == []
     assert runner._has_completed_fanout_marker("myorg/parent", 83)
     assert runner._completed_fanout_marker_state("myorg/parent", 83) == "completed"
-    assert "[BATMAN-PARENT-DONE-WARN]" in captured.err
+    assert "[BATMAN-PARENT-FANOUT-COMPLETE-WARN]" in captured.err
 
 
 def test_lifecycle_completed_marker_uses_executed_children(monkeypatch):
@@ -650,7 +651,7 @@ def test_executing_fanout_marker_recovers_when_all_children_exist(monkeypatch, c
         if repo == "myorg/parent":
             return rows
         assert repo == "myorg/backend"
-        assert '"Implement backend slice" in:title' in cmd
+        assert "--search" not in cmd
         assert "agent:bundle:ready-plan" in cmd
         return [
             {
@@ -1075,9 +1076,9 @@ def test_finalize_parent_treats_close_failure_as_best_effort(monkeypatch, capsys
 
     captured = capsys.readouterr()
     assert ok is True
-    assert edits == [("myorg/parent", 83, {"add_labels": ["agent:done"]})]
+    assert edits == [("myorg/parent", 83, {"add_labels": ["agent:fanout-complete"]})]
     assert closes == [("myorg/parent", 83)]
-    assert "[BATMAN-PARENT-DONE]" in captured.out
+    assert "[BATMAN-PARENT-FANOUT-COMPLETE]" in captured.out
     assert "[BATMAN-PARENT-CLOSE-WARN]" in captured.err
 
 

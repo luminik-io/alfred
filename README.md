@@ -170,8 +170,9 @@ planning queue, and keeps Batman idle until that repo is configured: one
 child `agent:implement` issues filed across repos after the approval gate you
 choose. From there, Lucius implements, Ra's al Ghul reviews, Bane adds focused
 tests, Nightwing handles high-priority review fixes, and your merge policy or a
-human lands each PR. When Batman files every child successfully, it marks and
-closes the parent so the same bundle cannot fan out twice. Per-child PR
+human lands each PR. When Batman files every child successfully, it adds
+`agent:fanout-complete` and closes the parent so the same bundle cannot fan out
+twice without counting the planning parent as shipped work. Per-child PR
 completion rollups remain the next Batman iteration.
 
 ## Quick start

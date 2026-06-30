@@ -83,7 +83,15 @@ BATMAN_PICKUP_BLOCKING_LABELS = {
     label_constants.NEEDS_INFO,
     label_constants.DONE,
     label_constants.DONE_ALREADY,
+    label_constants.FANOUT_COMPLETE,
 }
+BATMAN_PARENT_FINALIZATION_LABELS = [
+    (
+        label_constants.FANOUT_COMPLETE,
+        "5319e7",
+        "Batman filed every child issue for this parent; not shipped-work evidence.",
+    )
+]
 
 
 def _has_batman_pickup_blocker(label_names: set[str] | frozenset[str]) -> bool:
@@ -690,12 +698,10 @@ def _child_issue_exists(
         repo,
         "--state",
         "all",
-        "--search",
-        f'"{title}" in:title',
         "--json",
         "title,url,body",
         "--limit",
-        "20",
+        "100",
     ]
     for label in bundle_labels:
         cmd.extend(["--label", label])
@@ -853,29 +859,34 @@ def _unset_pending_approval_label(parent_repo: str, parent_issue_number: int) ->
 
 
 def _finalize_parent_after_child_fanout(parent_repo: str, parent_issue_number: int) -> bool:
-    """Mark a fully-fanned-out parent as done and close it best-effort.
+    """Mark a fully-fanned-out parent as complete and close it best-effort.
 
     Batman already filed every child issue at this point. Leaving the
     parent open without a blocker lets the next firing pick the same
     `agent:large-feature` issue again and duplicate the child fan-out.
-    The `agent:done` label is the durable pickup blocker; GitHub close is
-    a best-effort convenience for the operator.
+    The `agent:fanout-complete` label is the durable pickup blocker;
+    GitHub close is a best-effort convenience for the operator.
     """
     if not parent_repo or parent_issue_number <= 0:
         return False
     label_failure = ""
     try:
-        ensure_labels(parent_repo, LIFECYCLE_LABELS)
-        ok = gh_issue_edit(parent_repo, parent_issue_number, add_labels=[label_constants.DONE])
+        ensure_labels(parent_repo, BATMAN_PARENT_FINALIZATION_LABELS)
+        ok = gh_issue_edit(
+            parent_repo,
+            parent_issue_number,
+            add_labels=[label_constants.FANOUT_COMPLETE],
+        )
     except Exception as exc:
         ok = False
         label_failure = str(exc)
     if ok:
-        print(f"[BATMAN-PARENT-DONE] parent={parent_repo}#{parent_issue_number}")
+        print(f"[BATMAN-PARENT-FANOUT-COMPLETE] parent={parent_repo}#{parent_issue_number}")
     else:
-        detail = label_failure or f"could not add {label_constants.DONE}"
+        detail = label_failure or f"could not add {label_constants.FANOUT_COMPLETE}"
         print(
-            f"[BATMAN-PARENT-DONE-WARN] parent={parent_repo}#{parent_issue_number}: {detail}",
+            f"[BATMAN-PARENT-FANOUT-COMPLETE-WARN] "
+            f"parent={parent_repo}#{parent_issue_number}: {detail}",
             file=sys.stderr,
         )
         return False
