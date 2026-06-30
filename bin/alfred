@@ -201,6 +201,9 @@ TELEMETRY_DISABLED_VALUES = {"0", "false", "no", "off", "disabled"}
 DEFAULT_TELEMETRY_URL = "https://alfred-proof-telemetry.luminik.workers.dev/ingest"
 TELEMETRY_TOKEN_FILENAME = "telemetry-token"
 TELEMETRY_TOKEN_ENDPOINT_FILENAME = "telemetry-token-endpoint"
+SUPPORT_SCHEDULER_LABELS = {TELEMETRY_LABEL}
+SUPPORT_SCHEDULER_CODENAMES = {"proof-telemetry"}
+SUPPORT_SCHEDULER_SCRIPTS = {"proof-telemetry.py"}
 ALFRED_INIT_BANNER_RE = re.compile(
     r"# alfred-init.{1,4}generated below this line\. Safe to re-run\."
 )
@@ -238,7 +241,6 @@ DEFAULT_AGENT_CATALOG: dict[str, dict[str, str]] = {
         "schedule": "cron:3:00",
         "role": "agent cleanup",
     },
-    "cleanup": {"script": "agent-cleanup.py", "schedule": "cron:3:00", "role": "agent cleanup"},
     "memory-harvest": {
         "script": "memory-harvest.py",
         "schedule": "cron:8:05",
@@ -254,17 +256,7 @@ DEFAULT_AGENT_CATALOG: dict[str, dict[str, str]] = {
         "schedule": "interval:21600",
         "role": "code map refresh",
     },
-    "code-memory-refresh": {
-        "script": "code-memory-mcp",
-        "schedule": "interval:21600",
-        "role": "code-memory index refresh",
-    },
     "agent-morning-brief": {
-        "script": "agent-morning-brief.py",
-        "schedule": "cron:7:00",
-        "role": "morning brief",
-    },
-    "morning-brief": {
         "script": "agent-morning-brief.py",
         "schedule": "cron:7:00",
         "role": "morning brief",
@@ -979,12 +971,30 @@ def _label_map() -> dict[str, str]:
 
 
 def _record_map() -> dict[str, dict[str, str]]:
-    """codename -> agents.conf record, falling back to the built-in catalog."""
+    """codename -> canonical agent record.
+
+    A rendered install already has an ``agents.conf``. Treat that file as the
+    complete agent roster so dry-run commands do not resurrect old defaults or
+    aliases that the operator deliberately did not install. Commented agent
+    rows still count: a disabled-only ``agents.conf`` is an intentional
+    empty/paused installed roster, not a request to revive fallback defaults.
+    Scheduler support rows, such as proof telemetry, do not count as fleet
+    agents and cannot suppress the development fallback by themselves.
+    """
     out: dict[str, dict[str, str]] = {}
     for record in _parse_agents_conf(_agents_conf_path()):
         codename = _codename_from_label(record["label"])
+        script_name = Path(record["script"]).name
+        if (
+            record["label"] in SUPPORT_SCHEDULER_LABELS
+            or codename in SUPPORT_SCHEDULER_CODENAMES
+            or script_name in SUPPORT_SCHEDULER_SCRIPTS
+        ):
+            continue
         if codename:
             out.setdefault(codename, record)
+    if out:
+        return out
     for codename, defaults in DEFAULT_AGENT_CATALOG.items():
         out.setdefault(
             codename,
@@ -1021,6 +1031,21 @@ def _resolve_agent_record(name: str) -> dict[str, str] | None:
             return record
     normalized = _normalize_agent_name(name)
     return records.get(normalized)
+
+
+def _dry_run_payload(record: dict[str, str], args: argparse.Namespace) -> dict[str, str]:
+    codename = _codename_from_label(record["label"])
+    script = _script_path(record["script"])
+    native = args.native and script.name in NATIVE_DRY_RUN_SCRIPTS and not args.simulate
+    return {
+        "codename": codename,
+        "label": record["label"],
+        "script": str(script),
+        "role": record.get("role") or "-",
+        "schedule": record.get("schedule") or "-",
+        "mode": "native" if native else "simulated",
+        "side_effects": "stubbed" if native else "none",
+    }
 
 
 def _script_path(script: str) -> Path:
@@ -1155,8 +1180,13 @@ def cmd_dry_run(
     os.environ.update(launcher_env)
     try:
         if args.codename == "all":
+            records = _record_map()
+            if args.json:
+                payloads = [_dry_run_payload(records[codename], args) for codename in sorted(records)]
+                print(json.dumps(payloads, indent=2))
+                return 0
             rc = 0
-            for codename in sorted(_record_map()):
+            for codename in sorted(records):
                 child_args = argparse.Namespace(
                     codename=codename,
                     native=args.native,
@@ -1170,18 +1200,10 @@ def cmd_dry_run(
         if record is None:
             print(f"alfred dry-run: unknown agent '{args.codename}'", file=sys.stderr)
             return 1
-        codename = _codename_from_label(record["label"])
         script = _script_path(record["script"])
         native = args.native and script.name in NATIVE_DRY_RUN_SCRIPTS and not args.simulate
-        payload = {
-            "codename": codename,
-            "label": record["label"],
-            "script": str(script),
-            "role": record.get("role") or "-",
-            "schedule": record.get("schedule") or "-",
-            "mode": "native" if native else "simulated",
-            "side_effects": "stubbed" if native else "none",
-        }
+        payload = _dry_run_payload(record, args)
+        codename = payload["codename"]
         if args.json:
             print(json.dumps(payload, indent=2))
             return 0

@@ -12,6 +12,7 @@ binary on PATH so they run identically on macOS and Linux CI.
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import subprocess
 import sys
@@ -150,6 +151,83 @@ def test_alfred_dry_run_json_reports_resolved_script(tmp_path):
     assert res.returncode == 0, res.stdout + res.stderr
     assert '"codename": "lucius"' in res.stdout
     assert '"mode": "simulated"' in res.stdout
+
+
+def test_alfred_dry_run_all_uses_agents_conf_as_complete_roster(tmp_path):
+    home = tmp_path / "home"
+    alfred_home = tmp_path / "alfred"
+    home.mkdir()
+    alfred_home.mkdir()
+    _seed_conf(alfred_home, "my.fleet.lucius\tlucius.py\tinterval:600\tno\t\tFeature dev\n")
+
+    res = _run_alfred(
+        ["dry-run", "all", "--simulate", "--json"], home=home, alfred_home=alfred_home
+    )
+
+    assert res.returncode == 0, res.stdout + res.stderr
+    payload = json.loads(res.stdout)
+    assert [item["codename"] for item in payload] == ["lucius"]
+    assert "drake" not in res.stdout
+    assert "cleanup" not in res.stdout
+    assert "code-memory-refresh" not in res.stdout
+
+
+def test_alfred_dry_run_telemetry_only_conf_uses_default_fleet(tmp_path):
+    home = tmp_path / "home"
+    alfred_home = tmp_path / "alfred"
+    home.mkdir()
+    alfred_home.mkdir()
+    _seed_conf(
+        alfred_home,
+        "my.fleet.proof-telemetry\tproof-telemetry.py\tinterval:3600\tno\t"
+        "my.fleet.proof-telemetry\tAnonymous usage totals\n",
+    )
+
+    res = _run_alfred(
+        ["dry-run", "lucius", "--simulate", "--json"], home=home, alfred_home=alfred_home
+    )
+
+    assert res.returncode == 0, res.stdout + res.stderr
+    payload = json.loads(res.stdout)
+    assert payload["codename"] == "lucius"
+
+
+def test_alfred_dry_run_all_omits_telemetry_support_row(tmp_path):
+    home = tmp_path / "home"
+    alfred_home = tmp_path / "alfred"
+    home.mkdir()
+    alfred_home.mkdir()
+    _seed_conf(
+        alfred_home,
+        "my.fleet.proof-telemetry\tproof-telemetry.py\tinterval:3600\tno\t"
+        "my.fleet.proof-telemetry\tAnonymous usage totals\n"
+        "my.fleet.lucius\tlucius.py\tinterval:600\tno\t\tFeature dev\n",
+    )
+
+    res = _run_alfred(
+        ["dry-run", "all", "--simulate", "--json"], home=home, alfred_home=alfred_home
+    )
+
+    assert res.returncode == 0, res.stdout + res.stderr
+    payload = json.loads(res.stdout)
+    assert [item["codename"] for item in payload] == ["lucius"]
+    assert "proof-telemetry" not in res.stdout
+
+
+def test_alfred_dry_run_rejects_removed_legacy_aliases_when_conf_exists(tmp_path):
+    home = tmp_path / "home"
+    alfred_home = tmp_path / "alfred"
+    home.mkdir()
+    alfred_home.mkdir()
+    _seed_conf(
+        alfred_home,
+        "my.fleet.agent-cleanup\tagent-cleanup.py\tcron:3:00\tno\t\tAgent cleanup\n",
+    )
+
+    res = _run_alfred(["dry-run", "cleanup"], home=home, alfred_home=alfred_home)
+
+    assert res.returncode == 1
+    assert "unknown agent 'cleanup'" in res.stderr
 
 
 def test_alfred_run_honors_pause_marker(tmp_path):
