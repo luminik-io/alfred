@@ -1162,7 +1162,7 @@ fn run_native_command_blocking(
                 });
             }
             Ok(None) if started.elapsed() >= timeout => {
-                terminate_child_tree(&mut child);
+                terminate_child_tree(child);
                 let timeout_msg = format!("command timed out after {}", duration_label(timeout));
                 return Ok(NativeCommandResult {
                     command: preview,
@@ -1177,7 +1177,7 @@ fn run_native_command_blocking(
             }
             Ok(None) => thread::sleep(Duration::from_millis(100)),
             Err(err) => {
-                terminate_child_tree(&mut child);
+                terminate_child_tree(child);
                 return Err(format!("native action status check failed: {err}"));
             }
         }
@@ -1204,7 +1204,7 @@ fn read_child_output(child: &mut Child) -> (Vec<u8>, Vec<u8>) {
     (stdout, stderr)
 }
 
-fn terminate_child_tree(child: &mut Child) {
+fn terminate_child_tree(mut child: Child) {
     #[cfg(unix)]
     {
         let group = format!("-{}", child.id());
@@ -1215,15 +1215,17 @@ fn terminate_child_tree(child: &mut Child) {
         }
     }
     let _ = child.kill();
-    wait_for_child_exit(child, Duration::from_millis(500));
+    if !wait_for_child_exit(&mut child, Duration::from_millis(500)) {
+        reap_child(child);
+    }
 }
 
-fn wait_for_child_exit(child: &mut Child, timeout: Duration) {
+fn wait_for_child_exit(child: &mut Child, timeout: Duration) -> bool {
     let started = Instant::now();
     loop {
         match child.try_wait() {
-            Ok(Some(_)) | Err(_) => return,
-            Ok(None) if started.elapsed() >= timeout => return,
+            Ok(Some(_)) | Err(_) => return true,
+            Ok(None) if started.elapsed() >= timeout => return false,
             Ok(None) => thread::sleep(Duration::from_millis(20)),
         }
     }
