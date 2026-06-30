@@ -604,7 +604,7 @@ def test_executing_fanout_marker_skips_refanout_without_finalize(monkeypatch, ca
     assert "state=executing; skipping re-fanout" in captured.err
 
 
-def test_stale_executing_fanout_marker_clears_and_requeues(monkeypatch, capsys):
+def test_stale_executing_fanout_marker_keeps_marker_and_requeues(monkeypatch, capsys):
     runner = _load_runner()
     finalize_calls = []
     rows = [
@@ -653,7 +653,7 @@ def test_stale_executing_fanout_marker_clears_and_requeues(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert eligible == rows
     assert finalize_calls == []
-    assert not runner._has_completed_fanout_marker("myorg/parent", 83)
+    assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
     assert "[BATMAN-PARENT-FANOUT-MARKER-STALE]" in captured.err
 
 
@@ -719,7 +719,65 @@ def test_stale_executing_fanout_marker_records_existing_children(monkeypatch, ca
     assert eligible[0][runner.EXISTING_FANOUT_CHILDREN_KEY] == [
         ("myorg/backend", "Implement backend slice")
     ]
-    assert not runner._has_completed_fanout_marker("myorg/parent", 83)
+    assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
+    assert "[BATMAN-PARENT-FANOUT-MARKER-STALE]" in captured.err
+
+
+def test_stale_executing_fanout_marker_survives_when_picker_chooses_other_parent(
+    monkeypatch, capsys
+):
+    runner = _load_runner()
+    rows = [
+        {
+            "number": 82,
+            "title": "older ready",
+            "url": "https://github.com/myorg/parent/issues/82",
+            "labels": [{"name": runner.LARGE_FEATURE_LABEL}],
+            "createdAt": "2026-06-01T00:00:00Z",
+            "body": "Bundle: older",
+        },
+        {
+            "number": 83,
+            "title": "stale marker ready",
+            "url": "https://github.com/myorg/parent/issues/83",
+            "labels": [{"name": runner.LARGE_FEATURE_LABEL}],
+            "createdAt": "2026-06-02T00:00:00Z",
+            "body": "Bundle: stale",
+        },
+    ]
+
+    monkeypatch.setenv(runner.ENV_EXECUTING_FANOUT_STALE_AFTER_S, "0")
+    assert runner._save_completed_fanout_marker(
+        "myorg/parent",
+        83,
+        firing_id="fid-executing",
+        reason="fanout-started",
+        state="executing",
+        children=[
+            {
+                "labels": ["agent:bundle:ready-plan"],
+                "repo": "myorg/backend",
+                "title": "Implement backend slice",
+            }
+        ],
+    )
+
+    def fake_gh_json(cmd, **_kwargs):
+        repo = cmd[cmd.index("-R") + 1]
+        if repo == "myorg/parent":
+            return rows
+        assert repo == "myorg/backend"
+        return []
+
+    monkeypatch.setattr(runner, "gh_json", fake_gh_json)
+
+    eligible = runner._list_parent_repo_large_features("myorg/parent")
+    picked = runner._pick_parent_issue(eligible)
+
+    captured = capsys.readouterr()
+    assert picked is not None
+    assert picked["number"] == 82
+    assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
     assert "[BATMAN-PARENT-FANOUT-MARKER-STALE]" in captured.err
 
 

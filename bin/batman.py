@@ -175,12 +175,9 @@ def _list_parent_repo_large_features(parent_repo: str) -> list[dict]:
                     r[EXISTING_FANOUT_CHILDREN_KEY] = sorted(existing_child_keys)
                 print(
                     f"[BATMAN-PARENT-FANOUT-MARKER-STALE] parent={parent_repo}#{issue_number} "
-                    f"state=executing; clearing marker and retrying fanout",
+                    f"state=executing; retrying fanout when selected",
                     file=sys.stderr,
                 )
-                _clear_completed_fanout_marker(parent_repo, issue_number)
-                if _has_completed_fanout_marker(parent_repo, issue_number):
-                    continue
             elif marker_state == "executing":
                 print(
                     f"[BATMAN-PARENT-FANOUT-MARKER] parent={parent_repo}#{issue_number} "
