@@ -204,7 +204,7 @@ class CustomAgentStore:
                     raise CustomAgentError("custom agent manifest entries must be objects")
                 continue
             try:
-                agent = _coerce_agent(raw, strict=False)
+                agent = _coerce_agent(raw, strict=strict)
             except CustomAgentError as exc:
                 if strict:
                     raise CustomAgentError(

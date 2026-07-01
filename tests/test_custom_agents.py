@@ -228,6 +228,38 @@ def test_custom_agent_store_delete_preserves_malformed_manifest(tmp_path: Path) 
     assert manifest.read_text(encoding="utf-8") == original
 
 
+def test_custom_agent_store_strict_rows_reject_invalid_enabled_value(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    manifest = state / "custom-agents" / "custom-agents.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "agents": [
+                    {
+                        "codename": "release-captain",
+                        "display_name": "Release Captain",
+                        "role_title": "Release coordinator",
+                        "purpose": "Checks release readiness.",
+                        "prompt": "Review release readiness and summarize blockers before the operator ships.",
+                        "engine": "codex",
+                        "schedule": "interval:1800",
+                        "repos": [],
+                        "enabled": "false",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    store = CustomAgentStore.from_state_root(state)
+
+    assert store.load()[0].enabled is True
+    with pytest.raises(CustomAgentError, match="invalid agent"):
+        store.conf_rows(strict=True)
+
+
 def test_custom_agent_schedule_shortcuts_match_scheduler_grammar() -> None:
     assert canonical_schedule("10m") == "interval:600"
     assert canonical_schedule("every 2h") == "interval:7200"
