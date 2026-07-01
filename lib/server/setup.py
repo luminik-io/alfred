@@ -10,8 +10,9 @@ zero to a working fleet without a terminal:
   ``gh repo list`` plus the repos already selected, so the client can render a
   checklist with the current selection ticked.
 * :func:`persist_selected_repos`  - write the chosen repo allowlist to
-  ``$ALFRED_HOME/.env`` (the same keys ``shipped_board`` / ``issue_queue``
-  read), so the choice survives a restart and scopes everything Alfred touches.
+  ``$ALFRED_HOME/.env`` for boards, queue mutations, scheduled agents, and
+  code-memory indexing, so the choice survives a restart and scopes everything
+  Alfred touches.
 * :func:`STARTER_PLAYBOOKS`  - 2-3 canned overnight jobs the client can compose
   into a concrete first request.
 * the demo store (:func:`seed_demo`, :func:`clear_demo`, :func:`load_demo_cards`)
@@ -40,16 +41,33 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# The watched-repo allowlist the rest of the fleet reads. The Set up surface
-# writes BOTH the queue allowlist (controls what an operator can arm/hold/close)
-# and the shipped allowlist (controls which repos the board scans), so the one
-# golden-path repo pick wires up the whole experience, including the native
-# Plan-work -> GitHub issue handoff and the Slack issue bridge.
+# The watched-repo allowlists the rest of the fleet reads. Board and queue
+# surfaces use GitHub ``owner/repo`` slugs. Scheduled agents and code memory
+# use local repo names under GH_ORG / WORKSPACE_ROOT, matching alfred-init's
+# generated env contract.
 QUEUE_REPOS_ENV = "ALFRED_QUEUE_REPOS"
 SHIPPED_REPOS_ENV = "ALFRED_SHIPPED_REPOS"
 BRIDGE_REPOS_ENV = "ALFRED_BRIDGE_REPOS"
+GH_ORG_ENV = "GH_ORG"
 _REPO_ENV_KEYS = (QUEUE_REPOS_ENV, SHIPPED_REPOS_ENV, BRIDGE_REPOS_ENV)
 _BOARD_REPO_ENV_KEYS = (SHIPPED_REPOS_ENV, BRIDGE_REPOS_ENV)
+CODE_MEMORY_REPOS_ENV = "ALFRED_CODE_MEMORY_REPOS"
+RUNTIME_REPO_SCOPE_ENV_KEYS = (
+    "BATMAN_ROLLOUT_ORDER",
+    "ALFRED_LUCIUS_REPOS",
+    "ALFRED_DRAKE_REPOS",
+    "ALFRED_BANE_REPOS",
+    "ALFRED_RASALGHUL_REPOS",
+    "ALFRED_NIGHTWING_REPOS",
+    "ALFRED_ROBIN_REPOS",
+    "ALFRED_CLAIM_SWEEP_REPOS",
+    "ALFRED_AUTOMERGE_REPOS",
+    "ALFRED_CODE_MAP_REPOS",
+    CODE_MEMORY_REPOS_ENV,
+    "ALFRED_MORNING_BRIEF_REPOS",
+    "ALFRED_SHIPPED_SUMMARY_DAILY_REPOS",
+    "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS",
+)
 
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -151,6 +169,7 @@ def _runtime_config_env() -> dict[str, str]:
     env = dict(os.environ)
     protected = {key for key, value in os.environ.items() if value.strip()}
     protected.update(key for key in _REPO_ENV_KEYS if key in os.environ)
+    protected.update(key for key in RUNTIME_REPO_SCOPE_ENV_KEYS if key in os.environ)
     raw_home = env.get("ALFRED_HOME", "").strip()
     if raw_home:
         runtime_home = _safe_expand_path(raw_home) or Path(raw_home)
@@ -236,6 +255,25 @@ def normalize_repo_slugs(values: Any) -> list[str]:
     return out
 
 
+def _normalize_repo_slugs_preserve_case(values: Any) -> list[str]:
+    if not isinstance(values, (list, tuple)):
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in values:
+        slug = str(raw or "").strip()
+        if not _REPO_SLUG_RE.match(slug):
+            continue
+        if any(part == ".." for part in slug.split("/")):
+            continue
+        folded = slug.lower()
+        if folded in seen:
+            continue
+        seen.add(folded)
+        out.append(slug)
+    return out
+
+
 def selected_repos(env: dict[str, str] | None = None) -> list[str]:
     """The board-visible repos selected for first-run setup.
 
@@ -287,6 +325,22 @@ def _alfred_home(env: dict[str, str] | None = None) -> Path:
 
 def _format_repo_value(repos: list[str]) -> str:
     return ",".join(repos)
+
+
+def _repo_local_names(repos: list[str]) -> list[str]:
+    out: list[str] = []
+    for repo in repos:
+        name = repo.rsplit("/", 1)[-1]
+        if name and name not in out:
+            out.append(name)
+    return out
+
+
+def _repo_scope_owner(repos: list[str]) -> str | None:
+    owners = {repo.partition("/")[0] for repo in repos}
+    if len(owners) > 1:
+        raise ValueError("repo selection must use a single owner")
+    return next(iter(owners)) if owners else None
 
 
 def _repos_from_env(
@@ -367,20 +421,29 @@ def persist_selected_repos(
 ) -> dict[str, Any]:
     """Persist the chosen repo allowlist and mirror it into the live process.
 
-    Writes the board allowlist keys to ``.env`` and updates ``os.environ`` so
-    the change takes effect for this running server without a restart
-    (``config_value`` prefers the process env, and a fresh board call then sees
-    the new scope immediately). Queue mutation scope is only written when the
-    caller supplies ``queue_repos`` explicitly and there is no existing queue
-    scope. Existing queue scopes are only replaced by ``replace_queue_repos``.
+    Writes board and scheduled-agent allowlist keys to ``.env`` and updates
+    ``os.environ`` so the change takes effect for this running server without a
+    restart (``config_value`` prefers the process env, and a fresh board call
+    then sees the new scope immediately). Queue mutation scope is only written
+    when the caller supplies ``queue_repos`` explicitly and there is no existing
+    queue scope. Existing queue scopes are only replaced by
+    ``replace_queue_repos``.
     """
+    case_preserved = _normalize_repo_slugs_preserve_case(repos)
     clean = normalize_repo_slugs(repos)
     clean_queue = normalize_repo_slugs(queue_repos) if queue_repos is not None else None
+    owner = _repo_scope_owner(clean)
+    runtime_env = _runtime_config_env()
+    _validate_repo_scope_owner(owner, runtime_env)
     values = _repo_scope_values_for_save(
         clean,
         queue_repos=clean_queue,
         replace_queue_repos=replace_queue_repos,
+        runtime_env=runtime_env,
+        runtime_repos=_repo_local_names(case_preserved),
     )
+    if owner:
+        values = {GH_ORG_ENV: owner, **values}
     env_path = write_env_values(values)
     for key in values:
         # Mirror into the live process so the new scope is effective now. An
@@ -402,29 +465,72 @@ def _repo_scope_values_for_save(
     *,
     queue_repos: list[str] | None = None,
     replace_queue_repos: bool = False,
+    runtime_env: dict[str, str] | None = None,
+    runtime_repos: list[str] | None = None,
 ) -> dict[str, str]:
     """Repo keys to persist for a setup repo save.
 
-    The onboarding repo picker owns the board-visible scope. Queue scope is a
-    mutation boundary, so guided saves can seed it on fresh installs but must
-    preserve any existing queue scope. Replacing an existing queue allowlist
-    requires ``replace_queue_repos`` so board visibility cannot widen mutation
+    The onboarding repo picker owns board-visible scope and the local-name
+    scopes used by scheduled agents. Queue scope is a mutation boundary, so
+    guided saves can seed it on fresh installs but must preserve any existing
+    queue scope. Replacing an existing queue allowlist requires
+    ``replace_queue_repos`` so board visibility cannot widen mutation
     permissions as a side effect.
     """
 
     value = _format_repo_value(repos)
+    runtime_value = _format_repo_value(runtime_repos or _repo_local_names(repos))
+    resolved_env = runtime_env if runtime_env is not None else _runtime_config_env()
     values = {
         SHIPPED_REPOS_ENV: value,
         BRIDGE_REPOS_ENV: value,
+        **_runtime_repo_scope_values_for_save(resolved_env, runtime_value),
     }
-    runtime_env = _runtime_config_env()
-    queue_scope_present, existing_queue = _effective_queue_scope_for_save(runtime_env)
+    queue_scope_present, existing_queue = _effective_queue_scope_for_save(resolved_env)
     if queue_repos is not None and (replace_queue_repos or not queue_scope_present):
         return {QUEUE_REPOS_ENV: _format_repo_value(queue_repos), **values}
 
     if queue_scope_present:
         values = {QUEUE_REPOS_ENV: _format_repo_value(existing_queue), **values}
     return values
+
+
+def _runtime_repo_scope_values_for_save(
+    runtime_env: dict[str, str],
+    runtime_value: str,
+) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for key in RUNTIME_REPO_SCOPE_ENV_KEYS:
+        existing = _code_memory_config(runtime_env, key)
+        if _has_config_key(runtime_env, key) and existing == "":
+            values[key] = existing
+            continue
+        if existing and (
+            not _runtime_scope_matches_board(existing, runtime_env)
+            or _local_scope_tokens(existing) == _local_scope_tokens(runtime_value)
+        ):
+            values[key] = existing
+        else:
+            values[key] = runtime_value
+    return values
+
+
+def _runtime_scope_matches_board(existing: str, runtime_env: dict[str, str]) -> bool:
+    board_names = set(_repo_local_names(setup_board_repos(runtime_env)))
+    return bool(board_names) and _local_scope_tokens(existing) == board_names
+
+
+def _local_scope_tokens(raw: str) -> set[str]:
+    return {part.strip().lower() for part in re.split(r"[\s,]+", raw) if part.strip()}
+
+
+def _validate_repo_scope_owner(owner: str | None, runtime_env: dict[str, str]) -> None:
+    if not owner:
+        return
+    existing_owner = _code_memory_config(runtime_env, GH_ORG_ENV).lower()
+    if not existing_owner or existing_owner == owner:
+        return
+    raise ValueError("repo selection owner does not match existing GH_ORG")
 
 
 def _effective_queue_scope_for_save(runtime_env: dict[str, str]) -> tuple[bool, list[str]]:

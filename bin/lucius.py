@@ -33,6 +33,7 @@ from agent_runner import (
     commit_trailer,
     create_recovery_ref,
     doctor_mode,
+    doctor_requested,
     dry_run_log,
     engine_preflight_bins,
     find_open_authored_pr_for_issue,
@@ -1060,6 +1061,10 @@ def main() -> int:
             f"{AGENT} dry-run firing, no LLM, no spend, no gh/slack/git side effects",
         )
 
+    if not LUCIUS_REPOS and not doctor_requested():
+        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_LUCIUS_REPOS)")
+        return 0
+
     try:
         preflight(PREFLIGHT)
     except PreflightFailed:
@@ -1074,10 +1079,6 @@ def main() -> int:
 
     if doctor_mode():
         print(f"[{AGENT.upper()}-DOCTOR-OK]")
-        return 0
-
-    if not LUCIUS_REPOS:
-        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_LUCIUS_REPOS)")
         return 0
 
     # Per-firing event log, every meaningful step gets a record so a Slack
