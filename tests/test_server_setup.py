@@ -852,6 +852,8 @@ def test_persist_selected_repos_rejects_mixed_owners_before_writing_runtime_scop
     monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    for key in setup_mod.RUNTIME_REPO_SCOPE_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
     home.mkdir(parents=True)
 
     with pytest.raises(ValueError, match="single owner"):
