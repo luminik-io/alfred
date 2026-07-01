@@ -439,6 +439,15 @@ class WizardState:
         return self.role_to_codename.get(role, AGENT_CATALOG[role][0])
 
 
+def hydrate_codenames_from_env(state: WizardState, env: dict[str, str]) -> None:
+    """Load persisted role codenames before noninteractive default filling."""
+    for role in state.enabled_roles:
+        key = f"AGENT_CODENAME_{role.upper()}"
+        codename = env.get(key, "").strip()
+        if codename and CODENAME_RE.match(codename):
+            state.role_to_codename.setdefault(role, codename)
+
+
 # ---------------------------------------------------------------------------
 # Prompt helpers.
 # ---------------------------------------------------------------------------
@@ -1688,12 +1697,14 @@ def seed_runtime_roster(state: WizardState, *, agents_arg: str | None) -> int:
             return 1
 
     ok(f"Enabled full runtime roster ({len(state.enabled_roles)} agents).")
+    existing_managed_env = read_managed_env_file(state.env_file)
+    hydrate_codenames_from_env(state, existing_managed_env)
     step_6_codenames(state, non_interactive=True)
     for role in state.enabled_roles:
         state.role_to_repos.setdefault(role, [])
     step_8_schedule(state, non_interactive=True)
 
-    existing_env = read_env_file(state.env_file)
+    existing_env = {**read_env_file(state.env_file), **existing_managed_env}
     existing_telemetry_enabled = existing_env.get("ALFRED_TELEMETRY_ENABLED", "").strip()
     existing_telemetry_url = existing_env.get("ALFRED_TELEMETRY_URL", "").strip()
     if existing_telemetry_url and (
@@ -1715,7 +1726,7 @@ def seed_runtime_roster(state: WizardState, *, agents_arg: str | None) -> int:
     target.write_text(conf)
     ok(f"wrote {target}")
 
-    env_kvs = read_managed_env_file(state.env_file)
+    env_kvs = existing_managed_env
     env_kvs.update(env_assignments_for(state))
     upsert_env_file(state.env_file, env_kvs)
     ok(f"updated {state.env_file} with {len(env_kvs)} fleet key(s)")

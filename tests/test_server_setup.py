@@ -841,6 +841,67 @@ def test_persist_selected_repos_seeds_queue_for_new_install(
     assert "BATMAN_ROLLOUT_ORDER=web" in env_text
 
 
+def test_persist_selected_repos_preserves_existing_runtime_agent_scopes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    home.mkdir(parents=True)
+    (home / ".env").write_text(
+        "\n".join(
+            [
+                "GH_ORG=acme",
+                "ALFRED_AUTOMERGE_REPOS=api",
+                "ALFRED_LUCIUS_REPOS=api",
+                "ALFRED_CODE_MEMORY_REPOS=api",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    setup_mod.persist_selected_repos(["Acme/Web"], queue_repos=["Acme/Web"])
+
+    env_text = (home / ".env").read_text(encoding="utf-8")
+    assert "GH_ORG=acme" in env_text
+    assert "ALFRED_QUEUE_REPOS=acme/web" in env_text
+    assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
+    assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
+    assert "ALFRED_AUTOMERGE_REPOS=api" in env_text
+    assert "ALFRED_LUCIUS_REPOS=api" in env_text
+    assert "ALFRED_CODE_MEMORY_REPOS=api" in env_text
+    assert "ALFRED_DRAKE_REPOS=web" in env_text
+    assert os.environ["ALFRED_AUTOMERGE_REPOS"] == "api"
+    assert os.environ["ALFRED_DRAKE_REPOS"] == "web"
+
+
+def test_persist_selected_repos_rejects_owner_change_with_existing_runtime_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    home.mkdir(parents=True)
+    (home / ".env").write_text(
+        "GH_ORG=legacy\nALFRED_AUTOMERGE_REPOS=api\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="existing GH_ORG"):
+        setup_mod.persist_selected_repos(["Acme/Web"], queue_repos=["Acme/Web"])
+
+    env_text = (home / ".env").read_text(encoding="utf-8")
+    assert "GH_ORG=legacy" in env_text
+    assert "ALFRED_AUTOMERGE_REPOS=api" in env_text
+    assert "ALFRED_SHIPPED_REPOS=acme/web" not in env_text
+
+
 def test_persist_selected_repos_rejects_mixed_owners_before_writing_runtime_scope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

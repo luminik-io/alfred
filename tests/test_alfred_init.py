@@ -1654,7 +1654,7 @@ def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
                 "ALFRED_TELEMETRY_URL=https://telemetry.example/ingest",
                 "ALFRED_LUCIUS_REPOS=api",
                 "ALFRED_DRAKE_REPOS=api",
-                "AGENT_CODENAME_FEATURE_DEV=lucius",
+                "AGENT_CODENAME_FEATURE_DEV=fox",
                 "",
             ]
         )
@@ -1694,10 +1694,15 @@ def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
     assert "ALFRED_TELEMETRY_URL=https://telemetry.example/ingest\n" in env_text
     assert "ALFRED_LUCIUS_REPOS=api\n" in env_text
     assert "ALFRED_DRAKE_REPOS=api\n" in env_text
+    assert "AGENT_CODENAME_FEATURE_DEV=fox\n" in env_text
     assert "AGENT_CODENAME_CROSS_REPO_COORDINATOR=batman\n" in env_text
 
     conf = (alfred_home / "launchd" / "agents.conf").read_text()
+    assert "alfred.fox\tlucius.py" in conf
+    assert "alfred.lucius\tlucius.py" not in conf
     assert "alfred.proof-telemetry\tproof-telemetry.py" in conf
+    assert (alfred_home / "prompts" / "fox.md").exists()
+    assert not (alfred_home / "prompts" / "lucius.md").exists()
 
 
 def test_starter_roles_and_agents_arg(init_mod):

@@ -412,10 +412,13 @@ def persist_selected_repos(
     clean = normalize_repo_slugs(repos)
     clean_queue = normalize_repo_slugs(queue_repos) if queue_repos is not None else None
     owner = _repo_scope_owner(clean)
+    runtime_env = _runtime_config_env()
+    _validate_repo_scope_owner(owner, runtime_env)
     values = _repo_scope_values_for_save(
         clean,
         queue_repos=clean_queue,
         replace_queue_repos=replace_queue_repos,
+        runtime_env=runtime_env,
     )
     if owner:
         values = {GH_ORG_ENV: owner, **values}
@@ -440,6 +443,7 @@ def _repo_scope_values_for_save(
     *,
     queue_repos: list[str] | None = None,
     replace_queue_repos: bool = False,
+    runtime_env: dict[str, str] | None = None,
 ) -> dict[str, str]:
     """Repo keys to persist for a setup repo save.
 
@@ -453,19 +457,43 @@ def _repo_scope_values_for_save(
 
     value = _format_repo_value(repos)
     runtime_value = _format_repo_value(_repo_local_names(repos))
+    resolved_env = runtime_env if runtime_env is not None else _runtime_config_env()
     values = {
         SHIPPED_REPOS_ENV: value,
         BRIDGE_REPOS_ENV: value,
-        **dict.fromkeys(RUNTIME_REPO_SCOPE_ENV_KEYS, runtime_value),
+        **_runtime_repo_scope_values_for_save(resolved_env, runtime_value),
     }
-    runtime_env = _runtime_config_env()
-    queue_scope_present, existing_queue = _effective_queue_scope_for_save(runtime_env)
+    queue_scope_present, existing_queue = _effective_queue_scope_for_save(resolved_env)
     if queue_repos is not None and (replace_queue_repos or not queue_scope_present):
         return {QUEUE_REPOS_ENV: _format_repo_value(queue_repos), **values}
 
     if queue_scope_present:
         values = {QUEUE_REPOS_ENV: _format_repo_value(existing_queue), **values}
     return values
+
+
+def _runtime_repo_scope_values_for_save(
+    runtime_env: dict[str, str],
+    runtime_value: str,
+) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for key in RUNTIME_REPO_SCOPE_ENV_KEYS:
+        existing = _code_memory_config(runtime_env, key)
+        values[key] = existing or runtime_value
+    return values
+
+
+def _validate_repo_scope_owner(owner: str | None, runtime_env: dict[str, str]) -> None:
+    if not owner:
+        return
+    existing_owner = _code_memory_config(runtime_env, GH_ORG_ENV).lower()
+    if not existing_owner or existing_owner == owner:
+        return
+    has_custom_runtime_scope = any(
+        _code_memory_config(runtime_env, key) for key in RUNTIME_REPO_SCOPE_ENV_KEYS
+    )
+    if has_custom_runtime_scope:
+        raise ValueError("repo selection owner does not match existing GH_ORG")
 
 
 def _effective_queue_scope_for_save(runtime_env: dict[str, str]) -> tuple[bool, list[str]]:
