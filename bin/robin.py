@@ -303,6 +303,10 @@ def parse_triage_payload(text: str) -> dict:
 def main() -> int:
     with_lock(AGENT)
 
+    if not TRIAGE_REPOS and not doctor_mode():
+        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_ROBIN_REPOS)")
+        return 0
+
     try:
         preflight(PREFLIGHT)
     except PreflightFailed:
@@ -310,10 +314,6 @@ def main() -> int:
 
     if doctor_mode():
         print(f"[{AGENT.upper()}-DOCTOR-OK]")
-        return 0
-
-    if not TRIAGE_REPOS:
-        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_ROBIN_REPOS)")
         return 0
 
     events = EventLog(agent=AGENT)

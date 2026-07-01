@@ -657,6 +657,14 @@ def build_code_map() -> dict[str, Any]:
 def main() -> int:
     with_lock(AGENT)
 
+    if not REPOS and not BACKEND_REPO and not SIDECAR_REPO and not doctor_mode():
+        print(
+            f"[{AGENT.upper()}-IDLE] no repos configured "
+            "(set ALFRED_CODE_MAP_REPOS, ALFRED_CODE_MAP_BACKEND_REPO, "
+            "or ALFRED_CODE_MAP_SIDECAR_REPO)"
+        )
+        return 0
+
     try:
         preflight(PREFLIGHT)
     except PreflightFailed:
@@ -664,14 +672,6 @@ def main() -> int:
 
     if doctor_mode():
         print(f"[{AGENT.upper()}-DOCTOR-OK]")
-        return 0
-
-    if not REPOS and not BACKEND_REPO and not SIDECAR_REPO:
-        print(
-            f"[{AGENT.upper()}-IDLE] no repos configured "
-            "(set ALFRED_CODE_MAP_REPOS, ALFRED_CODE_MAP_BACKEND_REPO, "
-            "or ALFRED_CODE_MAP_SIDECAR_REPO)"
-        )
         return 0
 
     code_map = build_code_map()
