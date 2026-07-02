@@ -558,7 +558,11 @@ new department or runtime change, should start as a discussion.
 
 ## License
 
-MIT. See [`LICENSE`](LICENSE). Copyright (c) 2026 DataRavel Inc.
+Code is licensed under the MIT License - see [`LICENSE`](LICENSE). Copyright (c) 2026 DataRavel Inc. (dba Luminik), https://www.luminik.io.
+
+Documentation and website content are licensed under CC BY 4.0 - see [`LICENSE-docs`](LICENSE-docs).
+
+"Alfred" and "Luminik" are trademarks of DataRavel Inc. - see [`TRADEMARK`](TRADEMARK.md).
 
 ## Name and theme
 

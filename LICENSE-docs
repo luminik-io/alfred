@@ -1,0 +1,22 @@
+# Documentation License
+
+The Alfred source code is licensed under the MIT License (see [LICENSE](LICENSE)).
+
+The project documentation and website content are licensed separately, under the
+Creative Commons Attribution 4.0 International License (CC BY 4.0). This covers:
+
+- The `docs/` directory.
+- The documentation content under `site/src/content/`.
+
+You are free to share and adapt this documentation, including commercially, as
+long as you give appropriate credit. The full legal text of CC BY 4.0 is not
+reproduced here to avoid transcription errors; the canonical version is at:
+
+  https://creativecommons.org/licenses/by/4.0/
+
+Required attribution string:
+
+  Alfred documentation (c) 2026 DataRavel Inc. (dba Luminik), https://www.luminik.io
+
+This file covers documentation and website content only. The software itself
+remains under the MIT License.
