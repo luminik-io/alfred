@@ -58,11 +58,18 @@ single environment variable read by the runner:
 
 ```bash
 ALFRED_PR_EVIDENCE=1   # default; attach test + diff + self-assessment
-ALFRED_PR_EVIDENCE=0   # off; PR body omits the evidence block entirely
+ALFRED_PR_EVIDENCE=0   # off; the test, diff, and self-assessment tiers are omitted
 ```
 
 Screenshots are **strictly opt-in** and governed separately by per-repo config
-(below), independent of `ALFRED_PR_EVIDENCE`.
+(below), independent of `ALFRED_PR_EVIDENCE`. Turning the flag off on a repo
+that has a preview configured still captures screenshots; the PR then carries
+a screenshots-only evidence block. With the flag off and no preview
+configured, the PR body has no evidence block at all.
+
+The self-assessment tier makes one extra engine call per PR. Its turns and
+cost are recorded against the same daily spend caps as the implementation
+call, and the operator can bound it with `ALFRED_LUCIUS_SELFASSESS_MAX_TURNS`.
 
 ## Test and diff evidence
 

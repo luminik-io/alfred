@@ -155,7 +155,13 @@ class ScreenshotEvidence:
 
 @dataclass
 class EvidenceInputs:
-    """Everything :func:`build_evidence_block` needs, all optional."""
+    """Everything :func:`build_evidence_block` needs, all optional.
+
+    ``include_core`` covers the ``ALFRED_PR_EVIDENCE``-gated tiers (tests,
+    diff, self-assessment). Screenshots are governed independently by per-repo
+    config, so a gate-off firing with a configured preview still produces a
+    screenshots-only block instead of dropping the evidence on the floor.
+    """
 
     test: TestEvidence | None = None
     diff: DiffStat | None = None
@@ -163,6 +169,7 @@ class EvidenceInputs:
     screenshots: ScreenshotEvidence | None = None
     firing_id: str = ""
     notes: list[str] = field(default_factory=list)
+    include_core: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -170,9 +177,12 @@ class EvidenceInputs:
 # ---------------------------------------------------------------------------
 
 # pytest's summary line is a run of "N word" tokens between "=" rails, e.g.
-# "===== 5 failed, 40 passed, 3 skipped in 9.1s =====". We match that shape so
-# a bare "18 passed" inside a jest table is not mistaken for pytest.
-_PYTEST_LINE_RE = re.compile(r"=+\s*((?:\d+\s+\w+(?:,\s*)?)+)\s+in\s+([\d.]+)s", re.IGNORECASE)
+# "===== 5 failed, 40 passed, 3 skipped in 9.1s =====". Match the "=" rail and
+# the trailing duration with a lazy middle (no nested quantifiers, so no
+# exponential backtracking on adversarial input) and let _COUNT_RE pull the
+# counts out of that middle. Requiring the rail keeps a bare "18 passed"
+# inside a jest table from being mistaken for pytest.
+_PYTEST_LINE_RE = re.compile(r"=+\s(.*?)\sin\s+([\d.]+)s", re.IGNORECASE)
 _COUNT_RE = re.compile(
     r"(\d+)\s+(passed|failed|skipped|error|errors|xfailed|xpassed)", re.IGNORECASE
 )
@@ -305,10 +315,16 @@ def load_preview_config(raw: object) -> PreviewConfig:
 
 
 def _format_screenshot_cmd(template: str, *, url: str, out: str) -> list[str]:
+    """Build the screenshot argv, keeping substituted paths as single tokens.
+
+    The template is split FIRST, then ``{url}``/``{out}`` are substituted into
+    the resulting tokens. Substituting before the split would let an absolute
+    worktree path with spaces (``/tmp/My Repo/...``) explode into multiple
+    argv entries and point the shot at the wrong file.
+    """
     import shlex
 
-    filled = template.replace("{url}", url).replace("{out}", out)
-    return shlex.split(filled)
+    return [token.replace("{url}", url).replace("{out}", out) for token in shlex.split(template)]
 
 
 def capture_screenshots(
@@ -414,8 +430,38 @@ def _default_sleep(seconds: float) -> None:
 
 
 def _terminate(proc: object) -> None:
+    """Tear down the preview server and everything it spawned.
+
+    ``start_cmd`` values like ``npm run dev`` are wrappers that fork the real
+    server, so terminating only the parent leaves the child holding the port.
+    The server is started with ``start_new_session=True``, which makes its pid
+    the process-group id; signal the whole group (TERM, then KILL after a
+    short grace period). Fakes without a real pid fall back to their own
+    ``terminate``/``kill`` methods.
+    """
     if proc is None:
         return
+    pid = getattr(proc, "pid", None)
+    if isinstance(pid, int) and pid > 0:
+        import signal
+
+        try:
+            os.killpg(pid, signal.SIGTERM)
+        except (OSError, ProcessLookupError):
+            pass
+        else:
+            import contextlib
+
+            wait_fn = getattr(proc, "wait", None)
+            if callable(wait_fn):
+                try:
+                    wait_fn(timeout=5)
+                    return
+                except (subprocess.TimeoutExpired, OSError):
+                    pass
+            with contextlib.suppress(OSError, ProcessLookupError):
+                os.killpg(pid, signal.SIGKILL)
+            return
     for method in ("terminate", "kill"):
         fn = getattr(proc, method, None)
         if callable(fn):
@@ -521,18 +567,27 @@ def _render_screenshots(shots: ScreenshotEvidence | None) -> list[str] | None:
 def build_evidence_block(inputs: EvidenceInputs) -> str:
     """Assemble the ``## Verification evidence`` Markdown block.
 
-    Always returns a non-empty string with the heading. Each subsection is
-    honest about missing data. Screenshots are included only when a capture
-    was attempted.
+    Returns a string with the heading; each included subsection is honest
+    about missing data. Screenshots appear only when a capture was attempted.
+    With ``include_core=False`` (operator turned ``ALFRED_PR_EVIDENCE`` off)
+    the gated tiers are omitted as a disabled feature, not as missing
+    evidence; a screenshots-only block remains when a capture ran. Returns an
+    empty string when nothing at all is included.
     """
-    blocks: list[list[str]] = [
-        _render_test(inputs.test),
-        _render_diff(inputs.diff),
-        _render_assessment(inputs.assessment),
-    ]
+    blocks: list[list[str]] = []
+    if inputs.include_core:
+        blocks.extend(
+            [
+                _render_test(inputs.test),
+                _render_diff(inputs.diff),
+                _render_assessment(inputs.assessment),
+            ]
+        )
     shots = _render_screenshots(inputs.screenshots)
     if shots is not None:
         blocks.append(shots)
+    if not blocks and not inputs.notes:
+        return ""
 
     out: list[str] = [EVIDENCE_HEADING, ""]
     for i, block in enumerate(blocks):

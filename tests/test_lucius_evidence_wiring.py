@@ -77,12 +77,76 @@ def test_diff_stat_parses_numstat(lucius, monkeypatch):
     assert "lib/a.py" in stat.files
 
 
-def test_evidence_block_empty_when_gate_off(lucius, monkeypatch):
+def test_evidence_block_empty_when_gate_off_and_no_preview(lucius, monkeypatch):
     monkeypatch.setenv("ALFRED_PR_EVIDENCE", "0")
+    monkeypatch.setattr(lucius, "PREVIEW_CONFIG", {})
     block = lucius._verification_evidence_block(
         "backend", {"body": "x"}, Path("/x"), "br", "origin/main", "fid", None
     )
     assert block == ""
+
+
+def test_gate_off_still_captures_configured_screenshots(lucius, monkeypatch):
+    # Screenshots are opt-in per repo and independent of ALFRED_PR_EVIDENCE:
+    # gate off + configured preview -> screenshots-only evidence block.
+    monkeypatch.setenv("ALFRED_PR_EVIDENCE", "0")
+    shots = lucius.ScreenshotEvidence(
+        attempted=True, ok=True, after_path=".alfred/evidence/fid/after.png", route="/dash"
+    )
+    seen: list[tuple] = []
+
+    def fake_capture(repo, wt, branch, firing_id):
+        seen.append((repo, branch, firing_id))
+        return shots
+
+    monkeypatch.setattr(lucius, "_capture_screenshot_evidence", fake_capture)
+    block = lucius._verification_evidence_block(
+        "frontend", {"body": "x"}, Path("/x"), "br", "origin/main", "fid", None
+    )
+    assert seen == [("frontend", "br", "fid")]
+    assert "### Screenshots" in block
+    assert ".alfred/evidence/fid/after.png" in block
+    # Core tiers are a disabled feature, not missing evidence.
+    assert "### Tests" not in block
+    assert "### Diff" not in block
+    assert "### Acceptance criteria" not in block
+
+
+def test_self_assessment_counts_against_spend(lucius, monkeypatch):
+    monkeypatch.setattr(lucius, "is_dry_run", lambda: False)
+
+    def fake_run(cmd, **kwargs):
+        assert cmd[:2] == ["git", "diff"]
+        return subprocess.CompletedProcess(cmd, 0, stdout="+ real diff content\n")
+
+    monkeypatch.setattr(lucius, "run", fake_run)
+
+    class _FakeResult:
+        num_turns = 3
+        cost_usd = 0.42
+        result_text = '{"criteria": [{"index": 0, "met": true}]}'
+
+    monkeypatch.setattr(lucius, "invoke_agent_engine", lambda *a, **kw: (_FakeResult(), "claude"))
+
+    class _FakeSpend:
+        def __init__(self):
+            self.increments: list[dict] = []
+
+        def increment(self, **kwargs):
+            self.increments.append(kwargs)
+
+    spend = _FakeSpend()
+    assessment = lucius._build_self_assessment(
+        "backend",
+        {"body": "## Acceptance criteria\n- [ ] It works\n"},
+        Path("/x"),
+        "origin/main",
+        "fid",
+        spend=spend,
+    )
+    assert assessment.produced is True
+    assert assessment.criteria[0].met is True
+    assert spend.increments == [{"turns_today": 3, "cost_usd_today": 0.42}]
 
 
 def test_evidence_block_assembles_when_gate_on(lucius, monkeypatch):

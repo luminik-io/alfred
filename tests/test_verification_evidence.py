@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
 
+import verification_evidence as ve  # noqa: E402
 from verification_evidence import (  # noqa: E402
     CriterionAssessment,
     DiffStat,
@@ -78,6 +79,20 @@ def test_parse_test_summary_unrecognised_returns_empty():
 def test_parse_test_summary_never_raises_on_junk():
     # Regex over adversarial input must not blow up.
     assert isinstance(parse_test_summary("{" * 5000), str)
+
+
+def test_parse_test_summary_linear_on_redos_shaped_input():
+    # CodeQL flagged the earlier pytest-line regex for exponential
+    # backtracking on "=0 000 000 ..." shaped strings. The rewritten lazy
+    # pattern must stay linear: this call returns (quickly) instead of
+    # hanging the runner.
+    import time
+
+    adversarial = "=0 " + "000 " * 20000
+    start = time.monotonic()
+    result = parse_test_summary(adversarial)
+    assert time.monotonic() - start < 5.0
+    assert isinstance(result, str)
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +277,80 @@ def test_capture_screenshots_start_raises(tmp_path):
     assert "OSError" in shots.reason
 
 
+def test_capture_screenshots_out_path_with_spaces_stays_one_token(tmp_path):
+    # A worktree path containing spaces must reach the screenshot command as a
+    # single argv entry, not be re-split into several tokens.
+    worktree = tmp_path / "My Repo"
+    worktree.mkdir()
+    cfg = PreviewConfig(
+        start_cmd="run-server", url="http://localhost:5173", screenshot_cmd="shot {url} {out}"
+    )
+    seen: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        seen.append(cmd)
+        Path(cmd[-1]).write_bytes(b"png")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    shots = capture_screenshots(
+        worktree,
+        cfg,
+        "f1",
+        run_cmd=fake_run,
+        popen=lambda *a, **kw: _FakeProc(),
+        sleep=lambda s: None,
+    )
+    assert shots.ok is True
+    assert len(seen) == 1
+    assert seen[0] == ["shot", "http://localhost:5173", str(worktree / shots.after_path)]
+    assert "My Repo" in seen[0][-1]
+
+
+def test_terminate_kills_whole_process_group(monkeypatch):
+    # start_cmd wrappers (npm run dev) fork the real server; teardown must
+    # signal the process group, not just the wrapper.
+    killed: list[tuple[int, int]] = []
+    monkeypatch.setattr(ve.os, "killpg", lambda pgid, sig: killed.append((pgid, sig)))
+
+    class _PidProc:
+        pid = 4242
+
+        def __init__(self):
+            self.waited = False
+
+        def wait(self, timeout=None):
+            self.waited = True
+
+    proc = _PidProc()
+    ve._terminate(proc)
+    import signal
+
+    assert killed == [(4242, signal.SIGTERM)]
+    assert proc.waited is True
+
+
+def test_terminate_escalates_to_sigkill_when_group_survives(monkeypatch):
+    killed: list[tuple[int, int]] = []
+    monkeypatch.setattr(ve.os, "killpg", lambda pgid, sig: killed.append((pgid, sig)))
+
+    class _StubbornProc:
+        pid = 77
+
+        def wait(self, timeout=None):
+            raise subprocess.TimeoutExpired(cmd="run-server", timeout=timeout)
+
+    ve._terminate(_StubbornProc())
+    import signal
+
+    assert killed == [(77, signal.SIGTERM), (77, signal.SIGKILL)]
+
+
+def test_terminate_falls_back_to_terminate_without_pid():
+    proc = _FakeProc()
+    ve._terminate(proc)
+    assert proc.terminated is True
+
+
 class _FakeProc:
     def __init__(self):
         self.terminated = False
@@ -361,3 +450,25 @@ def test_build_block_assessment_no_criteria_found():
 def test_build_block_always_ends_with_newline():
     md = build_evidence_block(EvidenceInputs())
     assert md.endswith("\n")
+
+
+def test_build_block_core_off_keeps_screenshots_only():
+    # ALFRED_PR_EVIDENCE=0 disables the core tiers as a feature, but a repo
+    # that opted into screenshots still gets its screenshot evidence.
+    md = build_evidence_block(
+        EvidenceInputs(
+            screenshots=ScreenshotEvidence(
+                attempted=True, ok=True, after_path=".alfred/evidence/f/after.png", route="/"
+            ),
+            include_core=False,
+        )
+    )
+    assert "## Verification evidence" in md
+    assert "### Screenshots" in md
+    assert "### Tests" not in md
+    assert "### Diff" not in md
+    assert "### Acceptance criteria" not in md
+
+
+def test_build_block_core_off_and_no_screenshots_is_empty():
+    assert build_evidence_block(EvidenceInputs(include_core=False)) == ""
