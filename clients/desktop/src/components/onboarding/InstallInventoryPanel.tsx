@@ -117,7 +117,7 @@ function RepoMapPreview({ inventory }: { inventory: SetupInstallInventory }) {
       {visible.map((entry) => (
         <span
           key={entry.repo}
-          className="grid gap-0.5 rounded border border-border/50 bg-background/55 px-2 py-1"
+          className="grid gap-0.5 rounded-none border border-border/50 bg-background/55 px-2 py-1"
         >
           <code className="break-all text-[11px] text-foreground">{entry.repo}</code>
           <code className="break-all text-[11px] text-muted-foreground">{entry.path}</code>
@@ -142,7 +142,7 @@ function CustomAgentsPreview({ inventory }: { inventory: SetupInstallInventory }
       {visible.map((agent) => (
         <span
           key={agent.codename}
-          className="grid gap-0.5 rounded border border-border/50 bg-background/55 px-2 py-1"
+          className="grid gap-0.5 rounded-none border border-border/50 bg-background/55 px-2 py-1"
         >
           <span className="flex flex-wrap items-center gap-1.5">
             <code className="break-all text-[11px] text-foreground">{agent.display_name}</code>

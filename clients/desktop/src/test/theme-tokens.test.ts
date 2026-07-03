@@ -107,13 +107,15 @@ describe("theme token completeness (do not revert)", () => {
     expect(declaredTokens(linearBody).has("--glass-blur")).toBe(true);
   });
 
-  it("defines the steel-violet signature accent on the Alfred default", () => {
+  it("defines the brand cobalt signature accent on the Alfred default", () => {
     const body = blockBody(css, ":root {");
-    // The operator-locked Alfred accent: steel violet retuned 2026-06-14 for a
-    // more vivid, premium dark palette (lightness 0.64, chroma 0.19, hue 282).
-    // It lives on --accent / --ring (active + focus glow); --primary sits a
-    // touch deeper so white button text clears WCAG AA.
-    expect(body).toMatch(/--accent:\s*oklch\(0\.64 0\.19 282\)/);
-    expect(body).toMatch(/--ring:\s*oklch\(0\.64 0\.19 282\)/);
+    // The operator-locked Alfred accent: the marketing site's cobalt-blue
+    // (#5789FF family, hue 262) so the app and site read as one product. Only
+    // the hue rotated from the former steel-violet (282); lightness/chroma are
+    // unchanged, so every WCAG contrast ratio is preserved. It lives on
+    // --accent / --ring (active + focus glow); --primary sits a touch deeper so
+    // white button text clears WCAG AA.
+    expect(body).toMatch(/--accent:\s*oklch\(0\.64 0\.19 262\)/);
+    expect(body).toMatch(/--ring:\s*oklch\(0\.64 0\.19 262\)/);
   });
 });

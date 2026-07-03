@@ -48,7 +48,7 @@ export function WelcomeStep({
     <div className="alfred-onboarding-welcome grid gap-7 text-center">
       <div className="mx-auto grid max-w-xl gap-4">
         <span
-          className="mx-auto flex size-12 items-center justify-center rounded-full border border-primary/30 bg-primary/15 text-primary"
+          className="mx-auto flex size-12 items-center justify-center rounded-none border border-primary/30 bg-primary/15 text-primary"
           aria-hidden="true"
         >
           <Sparkles size={22} />
