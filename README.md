@@ -60,6 +60,13 @@ flowchart LR
 - **A team you supervise, not autonomy you hope for.** Each run is contained in
   an isolated worktree, bounded by a hard spend cap, and held at an approval
   gate you control. Slack is the planning surface; you keep merge authority.
+- **Alfred proves itself on its own repo.** A measurable, re-quotable stat:
+  <!-- SELF_PROOF -->No merged PRs in Alfred's own repo in the last 30 days yet<!-- /SELF_PROOF -->.
+  The line between the markers is generated from live GitHub data by
+  `npm run proof:update` from [`site/`](site/) (the same command that refreshes
+  the Impact page JSON), never hand-typed; the seed above reads as no-data until
+  a refresh runs, and an empty window says so instead of quoting a fabricated
+  share. See [Anonymous usage totals](#anonymous-usage-totals).
 
 Docs site: https://alfred.luminik.io
 
@@ -403,6 +410,27 @@ A reporting failure never breaks a firing.
 alfred telemetry off      # opt out (or set ALFRED_TELEMETRY_ENABLED=0)
 alfred telemetry status   # see local state
 ```
+
+The Impact page also carries a **self-proof** stat: the share of merged PRs, in
+a configured repo set over a rolling window, that were shipped by Alfred agents
+(the Aider "wrote its own code" pattern). It is computed from GitHub, never
+fabricated: an empty window reports "no merged PRs yet" rather than a 0% share.
+Refresh or preview it from either surface:
+
+```sh
+# Fleet-wide, from the CLI (self repo + $ALFRED_SHIPPED_REPOS by default):
+alfred shipped --self-proof                       # human-readable, per repo + aggregate
+alfred shipped --self-proof --json                # machine-readable
+alfred shipped --self-proof --self-proof-json proof.json   # write JSON for a badge/page
+alfred shipped --period weekly                    # the weekly Slack recap now carries the line
+
+# For the public site's Impact page (refreshes site/src/data/impact-proof.json
+# AND the README self-proof line between the SELF_PROOF markers):
+cd site && npm run proof:update                   # writes summary + self_proof block, updates README
+```
+
+The weekly recap appends one self-proof line automatically; the daily recap
+stays lean unless you pass `--with-self-proof`.
 
 The public counter only moves for a trusted reporter token, so a random install
 cannot inflate it. Self-host the collector (Cloudflare Worker under

@@ -81,7 +81,8 @@ Subcommands today:
                               that filed each issue. Read-only on GitHub;
                               posts only the delta since the last sweep.
   alfred shipped              Summarize merged PRs, issues, LOC, and
-                              model/config changes.
+                              model/config changes. ``--self-proof`` reports the
+                              share of merged PRs shipped by Alfred agents.
   alfred telemetry ...        Inspect or change anonymous usage totals.
   alfred skills ...           Manage curated skill packs (`list`,
                               `install <pack>`, `installed`). Vendored packs
@@ -1916,6 +1917,14 @@ def cmd_shipped(args: argparse.Namespace) -> int:
         cmd.append("--slack")
     if args.no_file_scan:
         cmd.append("--no-file-scan")
+    if getattr(args, "self_proof", False):
+        cmd.append("--self-proof")
+    if getattr(args, "with_self_proof", False):
+        cmd.append("--with-self-proof")
+    if getattr(args, "self_proof_days", None) is not None:
+        cmd.extend(["--self-proof-days", str(args.self_proof_days)])
+    if getattr(args, "self_proof_json", None):
+        cmd.extend(["--self-proof-json", args.self_proof_json])
     return subprocess.run(cmd, check=False).returncode
 
 
@@ -3075,6 +3084,22 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_shipped.add_argument("--json", action="store_true")
     p_shipped.add_argument("--slack", action="store_true")
     p_shipped.add_argument("--no-file-scan", action="store_true")
+    p_shipped.add_argument(
+        "--self-proof",
+        action="store_true",
+        help="compute only the share of merged PRs shipped by Alfred agents",
+    )
+    p_shipped.add_argument(
+        "--with-self-proof",
+        action="store_true",
+        help="append the self-proof share to the shipped summary",
+    )
+    p_shipped.add_argument("--self-proof-days", type=int)
+    p_shipped.add_argument(
+        "--self-proof-json",
+        metavar="PATH",
+        help="write the self-proof stat as JSON to PATH ('-' for stdout)",
+    )
     p_shipped.set_defaults(func=cmd_shipped)
 
     args = p.parse_args(argv)
