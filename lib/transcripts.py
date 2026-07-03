@@ -64,10 +64,6 @@ def transcripts_root(state_dir: Path) -> Path:
     return state_dir / "transcripts"
 
 
-def codex_root(state_dir: Path) -> Path:
-    return state_dir / "codex"
-
-
 # --------------------------------------------------------------------------
 # Result types
 # --------------------------------------------------------------------------
