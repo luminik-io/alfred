@@ -125,6 +125,8 @@ describe("CustomAgentsPanel", () => {
     const onChanged = renderPanel();
     const user = userEvent.setup();
 
+    // The create form is a disclosure: open it via "New agent" before filling.
+    await user.click(await screen.findByRole("button", { name: /new agent/i }));
     await screen.findByText("No custom agents yet.");
     await user.type(screen.getByLabelText("Codename"), "release-captain");
     await user.type(screen.getByLabelText("Display name"), "Release Captain");
@@ -158,10 +160,14 @@ describe("CustomAgentsPanel", () => {
   it("keeps browser preview read-only", async () => {
     apiMocks.supportsNativeActions.mockReturnValue(false);
     renderPanel();
+    const user = userEvent.setup();
 
+    // Read-only note shows without opening the form; open the disclosure to
+    // confirm the create action is disabled in browser preview.
+    expect(await screen.findByRole("note")).toHaveTextContent(/packaged desktop app/i);
+    await user.click(screen.getByRole("button", { name: /new agent/i }));
     expect(await screen.findByText("No custom agents yet.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /create agent/i })).toBeDisabled();
-    expect(screen.getByRole("note")).toHaveTextContent(/packaged desktop app/i);
   });
 
   it("falls back to prompt-free inventory when browser preview lacks the token", async () => {

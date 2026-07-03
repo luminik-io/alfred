@@ -62,10 +62,14 @@ type Selection =
   | { kind: "plan"; id: string }
   | { kind: "card"; key: string };
 
-const BOARD_COLUMNS: Array<{ key: BoardColumn; label: string }> = [
-  { key: "queued", label: "Queued" },
-  { key: "in_progress", label: "Working now" },
-  { key: "shipped", label: "Shipped" },
+const BOARD_COLUMNS: Array<{
+  key: BoardColumn;
+  label: string;
+  lane: "queued" | "working" | "shipped";
+}> = [
+  { key: "queued", label: "Queued", lane: "queued" },
+  { key: "in_progress", label: "Working now", lane: "working" },
+  { key: "shipped", label: "Shipped", lane: "shipped" },
 ];
 
 function repoChips(repos: string[]): RepoChip[] {
@@ -261,7 +265,7 @@ export function PipelineView({
         />
       ) : (
         <div className="alfred-pipeline__columns motion-rise">
-          <PipelineColumn label="Needs your go-ahead" count={goAheadCount}>
+          <PipelineColumn label="Needs your go-ahead" count={goAheadCount} lane="needs">
             {visiblePlans.map((entry) => (
               <PlanLifecycleCard
                 key={entry.plan.plan_id}
@@ -324,7 +328,7 @@ export function PipelineView({
           {BOARD_COLUMNS.map((col) => {
             const cards = columns?.[col.key] || [];
             return (
-              <PipelineColumn key={col.key} label={col.label} count={cards.length}>
+              <PipelineColumn key={col.key} label={col.label} count={cards.length} lane={col.lane}>
                 {cards.length ? (
                   cards.map((card) => (
                     <BoardLifecycleCard
@@ -459,14 +463,20 @@ function QueueComposer({
 function PipelineColumn({
   label,
   count,
+  lane,
   children,
 }: {
   label: string;
   count: number;
+  lane: "needs" | "queued" | "working" | "shipped";
   children: React.ReactNode;
 }) {
   return (
-    <section className="alfred-pipeline__column" aria-label={`${label} (${count})`}>
+    <section
+      className="alfred-pipeline__column"
+      data-lane={lane}
+      aria-label={`${label} (${count})`}
+    >
       <div className="alfred-pipeline__column-head">
         <span>{label}</span>
         <small>{count}</small>

@@ -6,6 +6,7 @@ import {
   Save,
   Trash2,
   UserRound,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -74,6 +75,10 @@ export function CustomAgentsPanel({
   const [editingCodename, setEditingCodename] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<CustomAgentRecord | null>(null);
   const [form, setForm] = useState<CustomAgentForm>(EMPTY_FORM);
+  // The create/edit form is a disclosure so the built-in roster below stays the
+  // primary content and the Agents page fits the viewport. It only opens when the
+  // operator explicitly chooses "New agent" or selects an existing custom agent.
+  const [expanded, setExpanded] = useState(false);
   const deleteRef = useRef<HTMLButtonElement | null>(null);
 
   const refresh = useCallback(async () => {
@@ -115,6 +120,7 @@ export function CustomAgentsPanel({
     setForm(formFromAgent(agent));
     setNotice(null);
     setError(null);
+    setExpanded(true);
   };
 
   const resetForm = () => {
@@ -122,6 +128,15 @@ export function CustomAgentsPanel({
     setForm(EMPTY_FORM);
     setNotice(null);
     setError(null);
+    setExpanded(true);
+  };
+
+  const closeForm = () => {
+    setEditingCodename(null);
+    setForm(EMPTY_FORM);
+    setNotice(null);
+    setError(null);
+    setExpanded(false);
   };
 
   const updateForm = <K extends keyof CustomAgentForm>(key: K, value: CustomAgentForm[K]) => {
@@ -246,7 +261,8 @@ export function CustomAgentsPanel({
         </div>
       ) : null}
 
-      <div className="custom-agents-panel__body">
+      {expanded || agents.length ? (
+      <div className="custom-agents-panel__body" data-expanded={expanded ? "true" : "false"}>
         <div className="custom-agents-panel__list" aria-busy={loading ? "true" : "false"}>
           <div className="custom-agents-panel__listhead">
             <span>{snapshot ? `${snapshot.count} configured` : "Inventory"}</span>
@@ -291,6 +307,7 @@ export function CustomAgentsPanel({
           )}
         </div>
 
+        {expanded ? (
         <form className="custom-agent-form" onSubmit={onSubmit}>
           <div className="custom-agent-form__head">
             <div>
@@ -299,6 +316,7 @@ export function CustomAgentsPanel({
               </p>
               <h3>{isEditing ? form.displayName || editingCodename : "Define a role"}</h3>
             </div>
+            <div className="custom-agent-form__headactions">
             {isEditing ? (
               <Button
                 type="button"
@@ -314,6 +332,11 @@ export function CustomAgentsPanel({
                 Remove
               </Button>
             ) : null}
+              <Button type="button" variant="ghost" size="sm" onClick={closeForm}>
+                <X aria-hidden="true" />
+                Close
+              </Button>
+            </div>
           </div>
 
           <div className="custom-agent-form__grid">
@@ -427,7 +450,9 @@ export function CustomAgentsPanel({
             </Button>
           </div>
         </form>
+        ) : null}
       </div>
+      ) : null}
 
       <Dialog
         open={Boolean(pendingDelete)}
