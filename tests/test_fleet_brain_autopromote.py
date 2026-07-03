@@ -862,3 +862,40 @@ def test_consolidate_enabled_predicate_matches_summary_gate() -> None:
     for token in ("0", "false", "no", "off", "", "maybe", "2"):
         assert consolidate_enabled({"ALFRED_MEMORY_CONSOLIDATE": token}) is False, token
     assert consolidate_enabled({}) is False
+
+
+def test_consolidate_threads_env_into_lesson_forgetter() -> None:
+    """The forget step must build the AMS provider from the SAME merged env
+    consolidation gated on (the persisted .env in the scheduled case), not
+    os.environ, so it forgets from the operator's configured AMS, not defaults."""
+    import tempfile
+
+    fb = FleetBrain(db_path=Path(tempfile.mkdtemp()) / "brain.db")
+    ams = _FakeAMS()
+    received_env: list[object] = []
+
+    def _spy_provider(env=None):  # type: ignore[no-untyped-def]
+        received_env.append(env)
+        return ams
+
+    fb._lesson_provider = _spy_provider  # type: ignore[method-assign]
+
+    old = datetime.now(UTC) - timedelta(days=400)
+    cand = fb.propose_memory(
+        codename="lucius", repo="acme/api", body="old lesson", evidence="e", created_at=old
+    )
+    fb.promote_memory_candidate(cand.id, reviewer="auto", reviewed_at=old, lesson_writer=ams)
+
+    merged_env = {
+        "ALFRED_MEMORY_CONSOLIDATE": "1",
+        "ALFRED_REDIS_MEMORY_URL": "http://ams.from-dotenv:9999",
+        "ALFRED_REDIS_MEMORY_NAMESPACE": "operator-ns",
+        "ALFRED_REDIS_MEMORY_TOKEN": "persisted-token",
+    }
+    summary = fb.consolidate_lessons(env=merged_env, stale_days=180)
+
+    assert summary["decayed"] == 1
+    assert summary["ams_forgotten"] == 1
+    # The forgetter was built with the merged env, not None/os.environ.
+    assert received_env, "consolidation should have built the AMS forgetter"
+    assert received_env[0] is merged_env

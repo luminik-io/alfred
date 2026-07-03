@@ -1393,6 +1393,7 @@ class FleetBrain:
             dry_run=dry_run,
             lesson_forgetter=lesson_forgetter,
             summary=summary,
+            env=env,
         )
         merged = self._retire_consolidated(
             merge_losers,
@@ -1400,6 +1401,7 @@ class FleetBrain:
             dry_run=dry_run,
             lesson_forgetter=lesson_forgetter,
             summary=summary,
+            env=env,
         )
         summary["decayed"] = decayed
         summary["merged"] = merged
@@ -1413,6 +1415,7 @@ class FleetBrain:
         dry_run: bool,
         lesson_forgetter: Any | None,
         summary: dict[str, Any],
+        env: Mapping[str, str] | None = None,
     ) -> int:
         """Forget each candidate's AMS lesson then retire the row.
 
@@ -1421,7 +1424,13 @@ class FleetBrain:
         mode nothing is forgotten or written; the count is what WOULD change.
         Shared by the decay and merge passes; increments the ams_forget counters
         on ``summary`` in place. Returns the number retired (or, in dry-run, the
-        number that would be)."""
+        number that would be).
+
+        ``env`` is the SAME merged env ``consolidate_lessons`` gated on (the
+        persisted ``$ALFRED_HOME/.env`` in the scheduled case). It is threaded
+        into the AMS forgetter so the destructive forget uses the operator's
+        configured AMS URL/namespace/token from ``.env`` instead of falling back
+        to ``os.environ`` defaults and forgetting from the wrong server."""
         if dry_run:
             return len(candidates)
         if not candidates:
@@ -1429,7 +1438,7 @@ class FleetBrain:
         forgetter = lesson_forgetter
         if forgetter is None:
             try:
-                forgetter = self._lesson_provider()
+                forgetter = self._lesson_provider(env)
             except Exception:
                 summary["ams_forget_failed"] += len(candidates)
                 _LOG.exception(
