@@ -70,12 +70,20 @@ export function agentChip(agent: { status?: string; paused?: boolean }): Chip {
 // Board cards (Queued / Working / Shipped) from GET /api/shipped.
 // ---------------------------------------------------------------------------
 
-export type BoardColumn = "queued" | "in_progress" | "shipped";
+export type BoardColumn =
+  | "queued"
+  | "in_progress"
+  | "shipped"
+  | "awaiting_approval";
 
 export function boardCardChip(card: ShippedCard, column: BoardColumn): Chip {
   if (card.demo) return { label: "Sample", tone: "idle" };
   if (column === "shipped") return { label: "Shipped", tone: "ok" };
   if (column === "in_progress") return { label: "Working now", tone: "working" };
+  // A plan gated on the operator's go-ahead is a decision, not queued work.
+  if (column === "awaiting_approval") {
+    return { label: "Needs your go-ahead", tone: "attention" };
+  }
   // Queued column: an armed issue is "Queued"; a parked one is "On hold".
   const labels = (card.labels || []).map((label) => label.toLowerCase());
   if (labels.includes("do-not-pickup")) return { label: "On hold", tone: "idle" };
