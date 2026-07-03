@@ -621,7 +621,11 @@ class SlackPlanningListener:
         # that just re-offers to file, and nothing is ever filed.
         if self.bridge.is_approval(text=_strip_mentions(event.text)):
             source_text = self._ship_it_source_text(event)
-            return self._open_planning_draft(event, source_text=source_text)
+            # Key the materialized draft on the PARENT thread so later steering
+            # replies in this thread reach the draft-revision handler (and a
+            # reaction on the thread root can file it), instead of stranding the
+            # draft under the ship-it message ts where nothing can reach it.
+            return self._open_planning_draft(event, source_text=source_text, register_on_root=True)
 
         # A free-form reply in an Alfred-started thread is a conversation turn:
         # answer it (streamed, with the prior thread messages as context) rather
@@ -636,11 +640,14 @@ class SlackPlanningListener:
         """Pick the build request a ``ship it`` reply is approving.
 
         A bare ``ship it`` carries no scope of its own; the actual request is an
-        earlier human turn in the same thread. Read the bounded thread context
-        (best-effort, the same reader converse uses) and return the most recent
-        human turn that is not itself an approval token. Falls back to the reply
-        text when no prior human turn is recoverable, so the draft path always has
-        something to refine.
+        earlier human turn in the same thread, and specifically the ORIGINAL task
+        description, not a later short acceptance / ack line ("yes", "accepted",
+        "spec accepted and marked done"). Seeding from such a line produced a
+        draft titled after the acceptance with no real scope. Read the bounded
+        thread context and return the EARLIEST substantive human turn that is
+        neither an approval token nor a short acceptance / ack; fall back to the
+        most recent substantive human turn, then to the reply text, so the draft
+        path always has something to refine.
         """
         reply_text = (event.text or "").strip()
         if self.poster is None:
@@ -661,13 +668,26 @@ class SlackPlanningListener:
                 file=sys.stderr,
             )
             return reply_text
-        for message in reversed(context):
-            if message.role != "user":
-                continue
-            candidate = (message.content or "").strip()
-            if not candidate or self.bridge.is_approval(text=candidate):
-                continue
-            return candidate
+        # Human turns in thread order (oldest first). The original build request
+        # is the first substantive one; a later short acceptance / ack is not it.
+        human_turns = [
+            (message.content or "").strip()
+            for message in context
+            if message.role == "user" and (message.content or "").strip()
+        ]
+        substantive = [
+            text
+            for text in human_turns
+            if not self.bridge.is_approval(text=text) and not _looks_like_acceptance(text)
+        ]
+        if substantive:
+            # Earliest substantive turn = the original task the plan was built for.
+            return substantive[0]
+        # Nothing that reads like a real request: fall back to the most recent
+        # non-approval human turn (better than the bare "ship it"), then the reply.
+        for text in reversed(human_turns):
+            if not self.bridge.is_approval(text=text):
+                return text
         return reply_text
 
     def _maybe_complete_thread_clarification(
@@ -1011,6 +1031,7 @@ class SlackPlanningListener:
         event: SlackInputEvent,
         *,
         source_text: str,
+        register_on_root: bool = False,
     ) -> ListenerResult:
         """Refine ``source_text`` into a saved planning draft and register it.
 
@@ -1019,6 +1040,17 @@ class SlackPlanningListener:
         bridge can later graduate it into a GitHub issue. Both the top-level
         intake and a ``ship it`` reply in a conversation thread funnel here so the
         bridge always has a saved draft to act on.
+
+        ``register_on_root`` controls the thread key the draft record is stored
+        under. A top-level intake keys on its own root (the default). A ``ship
+        it`` that materializes a draft out of an existing conversation thread must
+        key on the PARENT ``thread_ts`` (``register_on_root=True``): otherwise the
+        draft is stored under the ship-it message ts while later steering replies
+        (``repo:`` / ``desired:`` ...) in the parent thread resolve to the parent
+        ``thread_ts`` and route to the conversation handler, never reaching the
+        draft-revision handler, so the draft stays at ``needs_scope`` forever.
+        Keying the draft on the parent root supersedes the conversation record so
+        those steering replies reach :meth:`_handle_draft_revision`.
         """
         draft = draft_from_slack_text(source_text)
         refined = refine_issue_draft(
@@ -1062,7 +1094,10 @@ class SlackPlanningListener:
                 readiness_ok=refined.readiness.ok,
                 readiness_score=refined.readiness.score,
             )
-        registered_thread_ts = event.ts if event.is_thread_reply else event.root_ts
+        if register_on_root:
+            registered_thread_ts = event.root_ts
+        else:
+            registered_thread_ts = event.ts if event.is_thread_reply else event.root_ts
         record = self.registry.register(
             SlackThreadRecord(
                 kind="draft",
@@ -3017,14 +3052,149 @@ def _list_field(fields: dict[str, str], key: str) -> list[str]:
     return [item.strip().lstrip("-*").strip() for item in re.split(r",|;|\n", raw) if item.strip()]
 
 
+# Extensions that mark a "word/word" token as a source-file path, not a GitHub
+# repo slug. A prose reference like "llm/sanitize.py" or "script/style.css" must
+# never be parsed as an owner/repo scope.
+_CODE_PATH_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        "py",
+        "ts",
+        "tsx",
+        "js",
+        "jsx",
+        "mjs",
+        "cjs",
+        "kt",
+        "kts",
+        "java",
+        "go",
+        "rs",
+        "rb",
+        "php",
+        "cs",
+        "cpp",
+        "cc",
+        "c",
+        "h",
+        "hpp",
+        "swift",
+        "m",
+        "mm",
+        "scala",
+        "clj",
+        "ex",
+        "exs",
+        "html",
+        "htm",
+        "css",
+        "scss",
+        "sass",
+        "less",
+        "json",
+        "yaml",
+        "yml",
+        "toml",
+        "xml",
+        "md",
+        "mdx",
+        "txt",
+        "sh",
+        "bash",
+        "sql",
+        "vue",
+        "svelte",
+        "astro",
+        "proto",
+        "graphql",
+        "gql",
+    }
+)
+
+
+def _looks_like_repo_slug(token: str) -> bool:
+    """True iff ``token`` is a plausible GitHub ``owner/repo``, not a file path.
+
+    Rejects tokens whose repo segment carries a source-file extension
+    ("llm/sanitize.py"), so a code reference in prose is never mistaken for a
+    repo scope. Requires exactly one slash and non-empty, non-dot segments.
+    """
+    if token.count("/") != 1:
+        return False
+    owner, name = token.split("/", 1)
+    if not owner or not name or owner in {".", ".."} or name in {".", ".."}:
+        return False
+    # A trailing ".ext" on the repo name where ext is a known source extension
+    # marks this as a file path (e.g. "sanitize.py"), not a repo.
+    if "." in name:
+        ext = name.rsplit(".", 1)[-1].lower()
+        if ext in _CODE_PATH_EXTENSIONS:
+            return False
+    return True
+
+
+# Short acceptance / ack phrases a person types once a plan is locked, before or
+# alongside "ship it". These are NOT the build request, so ``_ship_it_source_text``
+# skips them when choosing what scope to seed the draft from.
+_ACCEPTANCE_PHRASES: frozenset[str] = frozenset(
+    {
+        "accepted",
+        "spec accepted",
+        "spec accepted and marked done",
+        "marked done",
+        "done",
+        "sounds good",
+        "sounds right",
+        "looks good",
+        "looks right",
+        "looks great",
+        "perfect",
+        "great",
+        "yes",
+        "yep",
+        "yeah",
+        "correct",
+        "that is right",
+        "thats right",
+        "agreed",
+        "confirmed",
+        "ok",
+        "okay",
+    }
+)
+# An acceptance line is short: a real build request is longer than this many
+# words, so a longer turn is never mistaken for a bare acknowledgement.
+_ACCEPTANCE_MAX_WORDS = 6
+
+
+def _looks_like_acceptance(text: str) -> bool:
+    """True iff ``text`` reads as a short acceptance / ack, not a build request.
+
+    Matches a small closed set of whole-message acknowledgements (after stripping
+    mentions and trailing punctuation), and only when the message is short, so a
+    real request that merely contains the word "done" is never suppressed.
+    """
+    cleaned = _strip_mentions(text)
+    normalized = re.sub(r"[^\w\s]", " ", cleaned).lower()
+    normalized = " ".join(normalized.split())
+    if not normalized:
+        return False
+    if len(normalized.split()) > _ACCEPTANCE_MAX_WORDS:
+        return False
+    return normalized in _ACCEPTANCE_PHRASES
+
+
 def _repos_from_text(text: str) -> list[str]:
-    repos = re.findall(r"\b[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\b", text)
+    # Only whole "word/word" tokens NOT embedded in a longer slash path: a
+    # negative lookaround rejects "a/b/c" and "script/style/on" so a multi
+    # segment code path is never harvested as a repo.
+    tokens = re.findall(r"(?<![\w/])[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?![\w/])", text)
     seen: set[str] = set()
     out: list[str] = []
-    for repo in repos:
-        if repo not in seen:
-            seen.add(repo)
-            out.append(repo)
+    for repo in tokens:
+        if repo in seen or not _looks_like_repo_slug(repo):
+            continue
+        seen.add(repo)
+        out.append(repo)
     return out
 
 

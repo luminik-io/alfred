@@ -1665,10 +1665,12 @@ def test_conversation_thread_ship_it_opens_a_planning_draft(tmp_path: Path) -> N
     assert result.action == "draft_created"
     assert result.thread_kind == "draft"
     assert converse_calls == []
-    # The draft is seeded from the discussed request, not the bare "ship it".
-    record = registry.lookup("C1", "1716480001.000001")
+    # The draft is registered on the PARENT thread root (not the ship-it ts), so
+    # later steering replies in this thread can reach the draft-revision handler.
+    record = registry.lookup("C1", "1716480000.000000")
     assert record is not None
     assert record.kind == "draft"
+    # Seeded from the discussed request, not the bare "ship it".
     assert "dark mode" in (record.title or "").lower()
 
 
@@ -1765,13 +1767,162 @@ def test_conversation_thread_mention_prefixed_ship_it_files(tmp_path: Path) -> N
     assert result.action == "draft_created"
     assert result.thread_kind == "draft"
     assert converse_calls == []
-    record = registry.lookup("C1", "1716480001.000001")
+    # Registered on the parent thread root, not the ship-it ts.
+    record = registry.lookup("C1", "1716480000.000000")
     assert record is not None
     assert record.kind == "draft"
     assert "dark mode" in (record.title or "").lower()
     # A real planning-draft payload was persisted (draft_path set + on disk).
     assert result.draft_path
     assert Path(result.draft_path).is_file()
+
+
+def test_ship_it_seeds_from_original_request_not_acceptance(tmp_path: Path) -> None:
+    """The draft must carry the ORIGINAL request's scope, not a later ack line.
+
+    Live regression: shipping a well-scoped plan produced a draft titled after a
+    subsequent "Spec accepted and marked done" ack, with code paths parsed as
+    repo slugs ("llm/sanitize.py", "script/style"). The draft must seed from the
+    earliest substantive build request and must not turn file paths into repos.
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    registry.register(
+        SlackThreadRecord(
+            kind="conversation",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="sanitize",
+            status="open",
+        )
+    )
+    poster = ConversationReplyPoster(
+        [
+            {
+                "user": "U1",
+                "text": (
+                    "strip dangerous tags from user HTML in llm/sanitize.py, "
+                    "covering script/style/on* handlers"
+                ),
+                "ts": "1716480000.000000",
+            },
+            {"user": "UALFRED", "text": "Here is the plan. Ready.", "ts": "1716480000.5"},
+            {"user": "U1", "text": "Spec accepted and marked done", "ts": "1716480000.9"},
+        ]
+    )
+
+    def converse_runner(**kwargs):
+        raise AssertionError("ship it must file, not re-enter converse")
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_runner=converse_runner,
+    )
+
+    result = listener.handle_payload(
+        {
+            "event_id": "EvShipScope",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": "<@UALFRED|alfred> ship it",
+                "ts": "1716480001.000001",
+                "thread_ts": "1716480000.000000",
+            },
+        }
+    )
+
+    assert result.action == "draft_created"
+    payload = json.loads(Path(result.draft_path).read_text(encoding="utf-8"))
+    title = (payload["draft"]["title"] or "").lower()
+    # Titled after the original request, NOT the acceptance ack.
+    assert "accepted" not in title
+    assert "marked done" not in title
+    assert "strip dangerous tags" in title
+    # Code paths are NOT parsed as repo slugs.
+    assert "llm/sanitize.py" not in payload["draft"]["repos"]
+    assert "script/style" not in payload["draft"]["repos"]
+
+
+def test_parent_thread_steering_after_ship_it_reaches_draft_revision(tmp_path: Path) -> None:
+    """After ship it materializes a draft, steering replies must update it.
+
+    Live regression: the draft was keyed on the ship-it message ts, so later
+    "repo:/desired:/acceptance:" replies in the parent thread routed to the
+    conversation handler and never reached the draft, leaving it stuck at
+    needs_scope. Keying the draft on the parent thread root fixes reachability.
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    registry.register(
+        SlackThreadRecord(
+            kind="conversation",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="export",
+            status="open",
+        )
+    )
+    poster = ConversationReplyPoster(
+        [
+            {
+                "user": "U1",
+                "text": "add a CSV export to the attendees table",
+                "ts": "1716480000.000000",
+            },
+            {"user": "UALFRED", "text": "I can file it.", "ts": "1716480000.5"},
+        ]
+    )
+
+    def converse_runner(**kwargs):
+        raise AssertionError("ship it and steering must not re-enter converse")
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_runner=converse_runner,
+    )
+
+    ship = listener.handle_payload(
+        {
+            "event_id": "EvShip",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": "<@UALFRED|alfred> ship it",
+                "ts": "1716480001.000001",
+                "thread_ts": "1716480000.000000",
+            },
+        }
+    )
+    assert ship.action == "draft_created"
+
+    # A steering reply in the PARENT thread must reach the draft-revision handler.
+    steer = listener.handle_payload(
+        {
+            "event_id": "EvSteer",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": "<@UALFRED> repo: acme-io/frontend\nacceptance: exported CSV matches the visible rows",
+                "ts": "1716480002.000002",
+                "thread_ts": "1716480000.000000",
+            },
+        }
+    )
+    assert steer.action == "plan_revised" or steer.action.startswith("draft_")
+    # The draft record now carries the steered repo scope.
+    record = registry.lookup("C1", "1716480000.000000")
+    assert record is not None
+    assert record.kind == "draft"
 
 
 def test_duplicate_mention_delivery_is_processed_once(tmp_path: Path) -> None:
