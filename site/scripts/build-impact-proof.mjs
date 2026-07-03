@@ -2,6 +2,12 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  agentEvidence,
+  buildSelfProof,
+  isAgentShipped,
+  labelNames,
+} from "./lib/self-proof.mjs";
 
 const REPO = "luminik-io/alfred-os";
 const DAYS = Number.parseInt(process.env.ALFRED_IMPACT_DAYS || "30", 10);
@@ -143,6 +149,10 @@ const proof = {
     lines_removed: pr.deletions || 0,
     files_changed: pr.changedFiles || 0,
     agent_authored: isAgentMarked(pr),
+    agent_evidence: agentEvidence(pr, {
+      agentLabels: AGENT_SHIPPED_LABELS,
+      agentBranchPrefixes: AGENT_BRANCH_PREFIXES,
+    }),
   })),
   issues: agentIssuesOpened.slice(0, 8).map((issue) => ({
     number: issue.number,
@@ -274,24 +284,16 @@ function csvEnv(name, fallback, { lowercase = true } = {}) {
     .filter(Boolean);
 }
 
-function labelNames(item) {
-  return (item.labels?.nodes || []).map((label) => String(label.name || "").toLowerCase());
-}
-
-function authorLogin(item) {
-  return String(item.author?.login || "").trim().toLowerCase();
-}
-
+// Attribution is LABEL-ONLY and exact-match, delegated to the shared module so
+// the site and the Python CLI agree on the numerator. A branch prefix never
+// qualifies a PR (see lib/self-proof.mjs); it is recorded as display-only
+// evidence via agentEvidence, so a human PR on a lucius/ or automerge/ branch
+// cannot inflate the publicly displayed share.
 function isAgentMarked(item) {
-  if (EXCLUDED_AUTHORS.has(authorLogin(item))) {
-    return false;
-  }
-  const labels = labelNames(item);
-  const branch = String(item.headRefName || "").trim();
-  return (
-    AGENT_BRANCH_PREFIXES.some((prefix) => branch.startsWith(prefix)) ||
-    labels.some((label) => AGENT_SHIPPED_LABELS.includes(label))
-  );
+  return isAgentShipped(item, {
+    agentLabels: AGENT_SHIPPED_LABELS,
+    excludedAuthors: EXCLUDED_AUTHORS,
+  });
 }
 
 function isAgentIssue(issue) {
@@ -304,39 +306,6 @@ function isTriagedIssue(issue) {
       label.startsWith("agent:") ||
       ["bug", "enhancement", "documentation", "question"].includes(label),
   );
-}
-
-function buildSelfProof(agentMerged, totalMerged, days) {
-  // share_pct is null (not 0) when there are no merged PRs, so the page renders
-  // "no data yet" instead of a fabricated 0% share.
-  const sharePct =
-    totalMerged > 0 ? Math.round((1000 * agentMerged) / totalMerged) / 10 : null;
-  const repoWord = "repo";
-  const sentence =
-    sharePct === null
-      ? `No merged PRs to measure in the last ${days} days yet.`
-      : `${formatShare(sharePct)}% of merged PRs in the last ${days} days were shipped by Alfred agents.`;
-  const headline =
-    sharePct === null
-      ? `No merged PRs in the last ${days} days yet.`
-      : `Alfred agents shipped ${agentMerged} of ${totalMerged} merged PRs (${formatShare(
-          sharePct,
-        )}%) in the last ${days} days.`;
-  return {
-    window_days: days,
-    agent_shipped: agentMerged,
-    merged_total: totalMerged,
-    share_pct: sharePct,
-    repos_counted: totalMerged > 0 ? 1 : 0,
-    repo_word: repoWord,
-    headline,
-    sentence,
-  };
-}
-
-function formatShare(value) {
-  // Drop a trailing ".0" so 75.0 reads as "75" while 66.7 stays precise.
-  return Number.isInteger(value) ? String(value) : String(value);
 }
 
 function buildTrend(items) {

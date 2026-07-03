@@ -30,12 +30,12 @@
   "self_proof": {
     "window_days": 30,
     "agent_shipped": 0,
-    "merged_total": 132,
-    "share_pct": 0,
-    "repos_counted": 1,
+    "merged_total": 0,
+    "share_pct": null,
+    "repos_counted": 0,
     "repo_word": "repo",
-    "headline": "Alfred agents shipped 0 of 132 merged PRs (0%) in the last 30 days.",
-    "sentence": "0% of merged PRs in the last 30 days were shipped by Alfred agents."
+    "headline": "No merged PRs in the last 30 days yet.",
+    "sentence": "No merged PRs to measure in the last 30 days yet."
   },
   "trend": [],
   "prs": [],
