@@ -319,3 +319,19 @@ def test_classify_message_intent_real_content_still_wins_over_question() -> None
         draft=IssueDraft(title="Add a dark mode toggle", repos=["your-org/frontend"]),
     )
     assert intent == cc.INTENT_BUILD
+
+
+def test_noun_use_of_build_verb_stays_question():
+    from compose_converse import looks_like_question
+
+    assert looks_like_question("What support options are available?")
+    assert looks_like_question("What changes landed this week?")
+    assert looks_like_question("Which fix went out yesterday?")
+
+
+def test_verb_position_build_hints_stay_work():
+    from compose_converse import looks_like_question
+
+    assert not looks_like_question("Can we support markdown exports?")
+    assert not looks_like_question("Is it possible to add retries?")
+    assert not looks_like_question("Please update the docs")

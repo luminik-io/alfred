@@ -664,9 +664,49 @@ def looks_like_question(text: str) -> bool:
             return False
     elif not (cleaned.endswith("?") or first in _QUESTION_OPENERS):
         return False
-    # A build verb anywhere ("can you add ...?", "is it possible to add ...?")
-    # marks work phrased as a question, so it is not treated as a plain question.
-    return not (set(tokens) & set(_BUILD_VERB_HINTS))
+    # A build verb in VERB position ("can you add ...?", "is it possible to
+    # add ...?") marks work phrased as a question. Position matters: several
+    # hints are also common nouns ("what support options are available?",
+    # "what changes landed?"), and a noun use must not suppress the question.
+    return not _has_build_verb_in_verb_position(tokens)
+
+
+# Tokens that put a following build-verb hint into verb position: subject
+# pronouns ("can we add ..."), the infinitive marker ("is it possible to
+# add ..."), and politeness/chaining openers ("please add ...", "and then
+# remove ...").
+_VERB_POSITION_PRECEDERS = (
+    "we",
+    "you",
+    "i",
+    "it",
+    "they",
+    "alfred",
+    "to",
+    "please",
+    "and",
+    "then",
+    "just",
+)
+
+
+def _has_build_verb_in_verb_position(tokens: list[str]) -> bool:
+    """True when a build-verb hint is used as a verb, not as a noun.
+
+    A hint counts only when it opens the message ("Add a CSV export") or
+    directly follows a subject pronoun, the infinitive "to", or a
+    politeness/chaining opener ("can we support markdown?", "is it possible
+    to add retries?", "please update the docs"). "What support options are
+    available?" leaves "support" in noun position and stays a question.
+    """
+    for index, token in enumerate(tokens):
+        if token not in _BUILD_VERB_HINTS:
+            continue
+        if index == 0:
+            return True
+        if tokens[index - 1] in _VERB_POSITION_PRECEDERS:
+            return True
+    return False
 
 
 def classify_message_intent(text: str, *, draft: IssueDraft) -> str:
