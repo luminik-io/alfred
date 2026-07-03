@@ -72,10 +72,19 @@ def _run_consolidate(args: argparse.Namespace) -> dict[str, Any]:
             f"memory consolidate timed out after {args.timeout}s{suffix}"
         ) from exc
 
-    # rc 1 with a valid JSON summary means "AMS forget failed" (real, but the
-    # payload is still useful); a crash with no JSON is surfaced as an error.
+    # rc 1 WITH a valid JSON summary means "AMS forget failed" (real, but the
+    # payload is still useful). A crash BEFORE any JSON is printed must surface
+    # as a hard failure: an empty stdout with a nonzero returncode is a child
+    # crash, not a disabled no-op, so do NOT default it to `{}` (which would let
+    # the wrapper report a false "disabled/no-op" and skip the failure path).
+    if not (stdout or "").strip():
+        if proc.returncode != 0:
+            detail = _short((stderr or "consolidate produced no output").strip(), 500)
+            raise RuntimeError(f"memory consolidate failed (rc={proc.returncode}): {detail}")
+        # rc 0 with no output: nothing to do (still surface as a non-crash empty).
+        return {"_returncode": 0}
     try:
-        payload = json.loads(stdout or "{}")
+        payload = json.loads(stdout)
     except json.JSONDecodeError as exc:
         detail = _short((stderr or stdout or "consolidate failed").strip(), 500)
         raise RuntimeError(f"memory consolidate returned invalid JSON: {detail}") from exc

@@ -321,6 +321,39 @@ def test_cli_lessons_json(
     assert payload[0]["codename"] == "lucius"
 
 
+def test_cli_lessons_honors_db_flag(
+    cli_mod: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`--db X lessons` must read ledger X, not the default env ledger.
+
+    Regression guard: routing lessons through the provider chain must still honor
+    the per-invocation --db override (threaded via ALFRED_FLEET_BRAIN_DB)."""
+    from fleet_brain import FleetBrain
+
+    default_db = tmp_path / "default.db"
+    other_db = tmp_path / "other.db"
+    # Local-only chain so the read cannot reach a stray AMS on the host.
+    monkeypatch.setenv("ALFRED_MEMORY_PROVIDERS", "fleet")
+    monkeypatch.setenv("ALFRED_FLEET_BRAIN_DB", str(default_db))
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "home"))
+
+    # Seed a lesson ONLY into the non-default db.
+    FleetBrain(db_path=other_db).reflect(codename="lucius", repo="org/api", body="db-scoped lesson")
+
+    # Without --db: reads the (empty) default db.
+    cli_mod.main(["lessons", "lucius", "org/api", "--json"])
+    assert json.loads(capsys.readouterr().out) == []
+
+    # With --db pointing at the seeded db: the lesson is found.
+    cli_mod.main(["--db", str(other_db), "lessons", "lucius", "org/api", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert len(payload) == 1
+    assert payload[0]["body"] == "db-scoped lesson"
+
+
 def test_cli_candidate_promote_and_reject(
     cli_mod: ModuleType,
     brain_db: Path,

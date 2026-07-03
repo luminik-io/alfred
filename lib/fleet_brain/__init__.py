@@ -197,6 +197,16 @@ def _lesson_memory_id(candidate_id: str) -> str:
     return f"{_LESSON_MEMORY_ID_PREFIX}{candidate_id}"
 
 
+def _aware_utc(value: datetime | None) -> datetime | None:
+    """Return ``value`` as a UTC-aware datetime, or None. A naive datetime is
+    assumed to already be UTC (the store persists UTC)."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value
+
+
 class MemoryPromotionError(RuntimeError):
     """Raised when a candidate could not be written to Redis AMS.
 
@@ -214,6 +224,18 @@ def _env_kill_switch_on(name: str, env: Mapping[str, str] | None = None) -> bool
     if raw is None or not value:
         return False
     return value not in _FALSY_ENV_TOKENS
+
+
+def _env_opt_in_armed(name: str, env: Mapping[str, str] | None = None) -> bool:
+    """Default OFF; arms ONLY on a recognized truthy token, fail closed otherwise.
+
+    For destructive opt-in switches (e.g. ``ALFRED_MEMORY_CONSOLIDATE``) where a
+    typo must NOT arm the feature. Unlike ``_env_kill_switch_on`` (which arms on
+    any nonblank non-falsy value), an unrecognized token like ``maybe`` stays
+    disarmed here so a config typo cannot run a destructive pass."""
+    src = env if env is not None else os.environ
+    value = _env_token(src.get(name))
+    return value in _TRUTHY_ENV_TOKENS
 
 
 def _env_flag_default_on(name: str, env: Mapping[str, str] | None = None) -> bool:
@@ -1290,7 +1312,7 @@ class FleetBrain:
         a true no-op. ``lesson_forgetter`` is the AMS provider; tests inject a
         stub. Returns a summary dict (always safe to log)."""
         summary: dict[str, Any] = {
-            "enabled": _env_kill_switch_on("ALFRED_MEMORY_CONSOLIDATE", env),
+            "enabled": _env_opt_in_armed("ALFRED_MEMORY_CONSOLIDATE", env),
             "dry_run": bool(dry_run),
             "decayed": 0,
             "merged": 0,
@@ -1320,10 +1342,14 @@ class FleetBrain:
         stale: list[MemoryCandidate] = []
         fresh_auto: list[MemoryCandidate] = []
         for cand in validated:
-            created = cand.created_at
-            if created.tzinfo is None:
-                created = created.replace(tzinfo=UTC)
-            if created < cutoff:
+            # Age from PROMOTION time (when the lesson entered AMS recall), not
+            # the original proposal time: a candidate that sat in review past
+            # stale_days and was promoted today has a FRESH active lesson and
+            # must not be forgotten on the next pass. reviewed_at is the
+            # promotion timestamp for a promoted candidate; fall back to
+            # created_at only if it is somehow missing.
+            promoted_at = _aware_utc(cand.reviewed_at) or _aware_utc(cand.created_at)
+            if promoted_at is not None and promoted_at < cutoff:
                 stale.append(cand)
             elif cand.reviewed_by == "auto":
                 # Only auto-promoted lessons are merge-eligible; human-reviewed
@@ -1331,14 +1357,18 @@ class FleetBrain:
                 fresh_auto.append(cand)
 
         # Merge losers: among still-fresh auto-promoted candidates, keep the
-        # OLDEST per normalized body and mark the rest for retirement. (Stale
-        # rows already decay above, so they are excluded from the merge set to
-        # avoid double-counting the same candidate.)
-        by_body: dict[str, list[MemoryCandidate]] = {}
+        # OLDEST per (repo, codename, normalized body) and mark the rest for
+        # retirement. Scope the group by repo + codename because AMS recall is
+        # topic-scoped: two identical-body lessons for DIFFERENT repos/codenames
+        # are not redundant (each answers a different recall scope), so they must
+        # not collapse into one. (Stale rows already decay above and are excluded
+        # here to avoid double-counting the same candidate.)
+        by_scoped_body: dict[tuple[str, str, str], list[MemoryCandidate]] = {}
         for cand in fresh_auto:
-            by_body.setdefault(_canonical_memory_body(cand.body), []).append(cand)
+            key = (cand.repo, cand.codename, _canonical_memory_body(cand.body))
+            by_scoped_body.setdefault(key, []).append(cand)
         merge_losers: list[MemoryCandidate] = []
-        for group in by_body.values():
+        for group in by_scoped_body.values():
             if len(group) < 2:
                 continue
             ordered = sorted(group, key=lambda c: (c.created_at, c.id))

@@ -109,6 +109,7 @@ def _build_brain(args: argparse.Namespace, env: dict[str, str] | None = None) ->
 
 
 def _recall_lessons(
+    args: argparse.Namespace,
     *,
     codename: str | None,
     repo: str | None,
@@ -120,18 +121,29 @@ def _recall_lessons(
 
     The promoted-lesson backend is Redis AMS, so ``FleetBrain.recall`` alone
     (local SQLite) shows nothing on an AMS-primary install. Route through the
-    configured chain so the CLI displays what Alfred actually remembers. A build
-    error is logged (never silent) and degrades to local-only recall.
+    configured chain so the CLI displays what Alfred actually remembers.
+
+    ``--db`` still scopes the LOCAL ledger read: it is threaded to the fleet
+    provider via ``ALFRED_FLEET_BRAIN_DB`` so ``alfred-brain --db X lessons ...``
+    reads ledger X (not the default), preserving the documented per-invocation
+    override. A build error is logged (never silent) and degrades to a local
+    recall against the same requested db.
     """
+    env: dict[str, str] | None = None
+    if args.db:
+        env = dict(os.environ)
+        env["ALFRED_FLEET_BRAIN_DB"] = str(args.db)
     try:
         from memory.config import recall_lessons
 
-        return recall_lessons(codename=codename, repo=repo, query=query, limit=limit)
+        return recall_lessons(codename=codename, repo=repo, query=query, limit=limit, env=env)
     except Exception:
         logging.getLogger(__name__).exception(
             "alfred-brain: provider-chain recall failed; falling back to local ledger"
         )
-        return FleetBrain().recall(codename=codename, repo=repo, query=query, limit=limit)
+        return _build_brain(args, env).recall(
+            codename=codename, repo=repo, query=query, limit=limit
+        )
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -157,7 +169,9 @@ def cmd_status(args: argparse.Namespace) -> int:
 def cmd_lessons(args: argparse.Namespace) -> int:
     codename = None if args.codename == "-" else args.codename
     repo = None if args.repo == "-" else args.repo
-    lessons = _recall_lessons(codename=codename, repo=repo, query=args.query, limit=args.limit)
+    lessons = _recall_lessons(
+        args, codename=codename, repo=repo, query=args.query, limit=args.limit
+    )
     if args.json:
         payload = [
             {

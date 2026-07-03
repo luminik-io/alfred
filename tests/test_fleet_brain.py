@@ -1792,7 +1792,11 @@ def test_lesson_stats_counts_retired(brain: FleetBrain) -> None:
     brain._lesson_provider = lambda env=None: ams  # type: ignore[method-assign]
     old = datetime.now(UTC) - timedelta(days=400)
     c = brain.propose_memory(codename="a", repo="r", body="stale", evidence="e", created_at=old)
-    brain.promote_memory_candidate(c.id, reviewer="auto", lesson_writer=ams)
+    # Promote with an old reviewed_at so consolidation (which ages from the
+    # promotion time) sees it as stale.
+    brain.promote_memory_candidate(
+        c.id, reviewer="auto", reviewed_at=old, lesson_writer=ams
+    )
 
     brain.consolidate_lessons(env={"ALFRED_MEMORY_CONSOLIDATE": "1"}, lesson_forgetter=ams)
 

@@ -152,6 +152,14 @@ def recall_lessons(
     SQLite ledger alone, so an AMS-primary install shows the lessons it has
     actually promoted instead of an empty list.
 
+    Best-effort recall, NOT a complete namespace enumeration: for the AMS
+    backend an unfiltered call is a semantic search (ranked, capped at
+    ``limit``), so on a large namespace it returns the top matches a firing
+    would recall, not every stored lesson. That is the right semantic for a
+    "what does Alfred recall" surface. A caller that needs to enumerate every
+    stored lesson (e.g. a destructive reset) must use the provider's
+    ``list_lessons`` page-and-loop primitive instead.
+
     ``provider`` is an injectable seam for tests; when omitted the chain is
     built from env via :func:`load_provider`. Any provider error is swallowed to
     an empty list by the chain itself, so this never raises on a down backend.

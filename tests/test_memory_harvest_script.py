@@ -247,3 +247,50 @@ def test_memory_consolidate_module_loads() -> None:
     ns = parser.parse_args(["--stale-days", "90", "--dry-run"])
     assert ns.stale_days == 90
     assert ns.dry_run is True
+
+
+def test_memory_consolidate_empty_child_output_is_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A child that crashes before printing JSON (empty stdout, rc!=0) must be a
+    hard failure, not a false 'disabled/no-op' that skips the failure path."""
+    spec = util.spec_from_file_location(
+        "memory_consolidate_empty_test", REPO_ROOT / "bin" / "memory-consolidate.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    # A stub "brain script" that prints nothing and exits nonzero.
+    crasher = tmp_path / "crasher.py"
+    crasher.write_text("import sys\nsys.exit(3)\n")
+    monkeypatch.setattr(module, "_brain_script", lambda: crasher)
+
+    import argparse
+
+    args = argparse.Namespace(stale_days=180, dry_run=False, timeout=30)
+    with pytest.raises(RuntimeError) as excinfo:
+        module._run_consolidate(args)
+    assert "rc=3" in str(excinfo.value)
+
+
+def test_memory_consolidate_main_reports_child_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The runner's main() returns nonzero (not 0) when the child crashes empty."""
+    db = tmp_path / "brain.db"
+    FleetBrain(db_path=db)
+    # Point the wrapper's brain script at a crasher so the child exits empty rc!=0.
+    crasher = tmp_path / "crash.py"
+    crasher.write_text("import sys\nsys.exit(2)\n")
+    spec = util.spec_from_file_location(
+        "memory_consolidate_main_test", REPO_ROOT / "bin" / "memory-consolidate.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module, "_brain_script", lambda: crasher)
+    monkeypatch.setattr(module, "_post_slack", lambda *a, **k: True)
+
+    rc = module.main(["--no-slack"])
+    assert rc == 1

@@ -643,21 +643,28 @@ def _promote_auto(
     body: str,
     *,
     created_at: datetime,
+    promoted_at: datetime | None = None,
     confidence: float = 0.95,
+    repo: str = "acme/api",
+    codename: str = "lucius",
 ) -> str:
     """Stage a candidate with an explicit age and promote it as an auto lesson.
 
-    Returns the candidate id; its promoted lesson is written to the fixture's
-    _FakeAMS with a deterministic memory id."""
+    ``created_at`` is the proposal time; ``promoted_at`` (default = ``created_at``)
+    is stamped as the promotion time (``reviewed_at``), which is what
+    consolidation ages from. Returns the candidate id; its promoted lesson is
+    written to the fixture's _FakeAMS with a deterministic memory id."""
     cand = brain.propose_memory(
-        codename="lucius",
-        repo="acme/api",
+        codename=codename,
+        repo=repo,
         body=body,
         evidence="saw it",
         confidence=confidence,
         created_at=created_at,
     )
-    brain.promote_memory_candidate(cand.id, reviewer="auto")
+    brain.promote_memory_candidate(
+        cand.id, reviewer="auto", reviewed_at=promoted_at or created_at
+    )
     return cand.id
 
 
@@ -769,3 +776,77 @@ def test_consolidate_keeps_row_validated_when_ams_forget_fails(brain: FleetBrain
     assert forgetter.attempted == [f"lesson:memory_candidate:{stale_id}"]
     # Row stays validated (live) so a later pass retries.
     assert _status(brain, stale_id) == "validated"
+
+
+def test_consolidate_does_not_merge_across_repo_scope(brain: FleetBrain) -> None:
+    """Identical bodies for DIFFERENT repos are not redundant: AMS recall is
+    topic-scoped, so each answers a different scope and both must stay live."""
+    older = datetime.now(UTC) - timedelta(days=3)
+    newer = datetime.now(UTC) - timedelta(days=1)
+    api_id = _promote_auto(brain, "Same body.", created_at=older, repo="acme/api")
+    web_id = _promote_auto(brain, "same body.", created_at=newer, repo="acme/web")
+
+    summary = brain.consolidate_lessons(env=ARM_CONSOLIDATE, stale_days=180)
+
+    assert summary["merged"] == 0
+    assert _status(brain, api_id) == "validated"
+    assert _status(brain, web_id) == "validated"
+
+
+def test_consolidate_does_not_merge_across_codename_scope(brain: FleetBrain) -> None:
+    older = datetime.now(UTC) - timedelta(days=3)
+    newer = datetime.now(UTC) - timedelta(days=1)
+    a_id = _promote_auto(brain, "Same body.", created_at=older, codename="lucius")
+    b_id = _promote_auto(brain, "same body.", created_at=newer, codename="drake")
+
+    summary = brain.consolidate_lessons(env=ARM_CONSOLIDATE, stale_days=180)
+
+    assert summary["merged"] == 0
+    assert _status(brain, a_id) == "validated"
+    assert _status(brain, b_id) == "validated"
+
+
+def test_consolidate_ages_from_promotion_time_not_proposal_time(brain: FleetBrain) -> None:
+    """A candidate that sat in review past stale_days but was promoted TODAY has
+    a fresh active lesson and must not be forgotten on the next pass."""
+    proposed_long_ago = datetime.now(UTC) - timedelta(days=400)
+    promoted_today = datetime.now(UTC) - timedelta(hours=1)
+    cid = _promote_auto(
+        brain,
+        "recently promoted, long-pending lesson",
+        created_at=proposed_long_ago,
+        promoted_at=promoted_today,
+    )
+
+    summary = brain.consolidate_lessons(env=ARM_CONSOLIDATE, stale_days=180)
+
+    # Aged from promotion time (fresh), so NOT decayed.
+    assert summary["decayed"] == 0
+    assert _status(brain, cid) == "validated"
+    assert brain.ams.forgotten == []  # type: ignore[attr-defined]
+
+
+def test_consolidate_malformed_flag_stays_disarmed(brain: FleetBrain) -> None:
+    """A destructive opt-in must fail closed: a typo does not arm consolidation."""
+    old = datetime.now(UTC) - timedelta(days=400)
+    stale_id = _promote_auto(brain, "a stale lesson", created_at=old)
+
+    summary = brain.consolidate_lessons(env={"ALFRED_MEMORY_CONSOLIDATE": "maybe"})
+
+    assert summary["enabled"] is False
+    assert summary["decayed"] == 0
+    assert brain.ams.forgotten == []  # type: ignore[attr-defined]
+    assert _status(brain, stale_id) == "validated"
+
+
+def test_consolidate_arms_on_recognized_truthy_tokens(brain: FleetBrain) -> None:
+    for token in ("1", "true", "yes", "on", "enabled"):
+        assert (
+            brain.consolidate_lessons(env={"ALFRED_MEMORY_CONSOLIDATE": token})["enabled"]
+            is True
+        ), token
+    for token in ("0", "false", "no", "off", "", "maybe", "2"):
+        assert (
+            brain.consolidate_lessons(env={"ALFRED_MEMORY_CONSOLIDATE": token})["enabled"]
+            is False
+        ), token

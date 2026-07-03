@@ -512,10 +512,16 @@ class RedisAgentMemoryProvider:
         Best-effort: a transient AMS outage returns ``False`` rather than
         raising so callers (e.g. the auto-promotion revert lever) can still
         reopen the candidate. A later re-promote upserts the same id.
+
+        A blank id returns ``False`` (nothing was forgotten): callers gate a
+        destructive follow-up (retire the candidate row) on a True return, so
+        claiming success for an empty id would let them retire a row whose AMS
+        lesson was never actually deleted.
         """
         clean_id = str(lesson_id).strip()
         if not clean_id:
-            return True
+            _LOG.debug("memory.redis: forget called with a blank lesson id; no-op")
+            return False
         path = "/v1/long-term-memory?" + urlencode({"memory_ids": clean_id})
         try:
             self._request("DELETE", path, None)

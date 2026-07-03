@@ -636,12 +636,16 @@ def test_forget_lesson_swallows_transport_error() -> None:
     assert prov.forget_lesson("m1") is False
 
 
-def test_empty_memory_id_is_noop_success() -> None:
+def test_empty_memory_id_returns_false_without_calling_transport() -> None:
+    """A blank id forgets nothing, so it must return False (not a false success):
+    callers gate a destructive follow-up (retire the row) on a True return."""
+
     def transport(method, url, payload, headers, timeout):
         raise AssertionError("transport should not be called for empty id")
 
     prov = _provider(transport)
-    assert prov.forget_lesson("  ") is True
+    assert prov.forget_lesson("  ") is False
+    assert prov.forget_lesson("") is False
 
 
 def test_ams_reset_limit_caps_total_attempts(monkeypatch, capsys) -> None:
