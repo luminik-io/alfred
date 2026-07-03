@@ -160,7 +160,13 @@ Rules for the output:
   exactly as they came in and keep `done` false: you are chatting, not speccing.
   When unsure, and the message plausibly describes work, choose `"build"`.
 - Carry forward every field you already knew; only change what this turn
-  taught you. Never blank a field you previously filled.
+  taught you. Never blank a field you previously filled. EXCEPTION:
+  `open_questions` tracks only questions that are still open. The moment the
+  person answers, resolves, or explicitly accepts them (for example "I accept
+  the plan, no open questions" or "go ahead"), set `open_questions` to "none"
+  (or "accepted as risk" for a risk they knowingly accept). Leaving an answered
+  question in `open_questions` wrongly blocks readiness, so clearing it is
+  required, not optional.
 - `repos` entries must be `owner/repo` slugs drawn from the grounding above.
 - `readiness.missing` lists the gaps in plain language; empty when ready.
 - Set `done` to true only when the person has explicitly accepted the plan or
