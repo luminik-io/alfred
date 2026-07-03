@@ -319,6 +319,7 @@ def record_reflections(
     if mode == "off":
         return 0
     written = 0
+    dropped = 0
     for reflection in reflections:
         try:
             if mode == "candidate":
@@ -352,9 +353,27 @@ def record_reflections(
                 )
             written += 1
         except NotImplementedError:
-            continue
+            # No writable/candidate-capable provider took the lesson. This is a
+            # real drop (the firing's learning is lost), not an expected
+            # fallthrough, so it must not vanish silently.
+            dropped += 1
         except Exception:
+            dropped += 1
             _LOG.exception("memory runtime: reflect failed")
+    if dropped:
+        # One summary line per firing so a misconfigured chain (no writable
+        # memory provider) is visible in logs instead of silently discarding
+        # every lesson a firing learned.
+        _LOG.warning(
+            "memory runtime: dropped %d of %d reflection(s) for %s/%s firing %s "
+            "(mode=%s): no provider accepted the write",
+            dropped,
+            written + dropped,
+            codename,
+            repo,
+            firing_id,
+            mode,
+        )
     return written
 
 

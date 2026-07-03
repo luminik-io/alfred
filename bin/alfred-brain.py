@@ -666,6 +666,33 @@ def cmd_auto_promote(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_stats(args: argparse.Namespace) -> int:
+    """Lesson-quality metrics: state counts + auto-promote/judge rates."""
+    brain = _build_brain(args)
+    stats = brain.lesson_stats()
+    if args.json:
+        print(json.dumps(stats, indent=2, sort_keys=True))
+        return 0
+    states = stats["states"]
+    print(f"alfred-brain: lesson quality ({stats['total']} candidate(s) total)")
+    print(
+        f"  states      candidate={states['candidate']} validated={states['validated']} "
+        f"rejected={states['rejected']} retired={states['retired']}"
+    )
+    print(f"  held        {stats['held_for_review']} pending, set aside for review")
+    acceptance = stats["auto_promote_acceptance_rate"]
+    rejection = stats["judge_rejection_rate"]
+    if stats["auto_decided"]:
+        print(
+            f"  auto-promote acceptance {acceptance:.1%} "
+            f"({stats['auto_validated']}/{stats['auto_decided']} decided)"
+        )
+        print(f"  judge       rejection {rejection:.1%}")
+    else:
+        print("  auto-promote no auto-decided candidates yet")
+    return 0
+
+
 def cmd_consolidate(args: argparse.Namespace) -> int:
     """Periodic consolidation/decay pass (gated, off by default)."""
     brain = _build_brain(args)
@@ -1183,6 +1210,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_status = sub.add_parser("status", help="row counts and db path")
     p_status.set_defaults(func=cmd_status)
+
+    p_stats = sub.add_parser(
+        "stats",
+        help="lesson-quality metrics (state counts, auto-promote + judge rates)",
+    )
+    p_stats.add_argument("--json", action="store_true")
+    p_stats.set_defaults(func=cmd_stats)
 
     p_lessons = sub.add_parser("lessons", help="recall lessons for a codename / repo")
     p_lessons.add_argument("codename", help="codename or '-' to widen")

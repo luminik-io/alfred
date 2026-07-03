@@ -441,6 +441,62 @@ def test_api_memory_lessons_lists_active_lessons(
     assert provider.calls and provider.calls[0]["limit"] <= 200
 
 
+def test_api_memory_stats_returns_quality_metrics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The stats endpoint surfaces lesson-quality metrics from the ledger."""
+    state = tmp_path / "state"
+    payload = {
+        "total": 4,
+        "states": {"candidate": 1, "validated": 2, "rejected": 1, "retired": 0},
+        "auto_validated": 2,
+        "auto_rejected": 1,
+        "auto_decided": 3,
+        "auto_promote_acceptance_rate": 0.6667,
+        "judge_rejection_rate": 0.3333,
+        "held_for_review": 1,
+        "recall_hits": None,
+    }
+
+    class FakeBrain:
+        def health(self) -> dict[str, bool]:
+            return {"ok": True}
+
+        def lesson_stats(self) -> dict[str, object]:
+            return payload
+
+    monkeypatch.setattr(server_views, "_memory_brain", lambda *_a, **_kw: (FakeBrain(), None))
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    resp = client.get("/api/memory/stats")
+    assert resp.status_code == 200
+    stats = resp.json()["stats"]
+    assert stats["total"] == 4
+    assert stats["states"]["validated"] == 2
+    assert stats["auto_promote_acceptance_rate"] == 0.6667
+    assert stats["judge_rejection_rate"] == 0.3333
+    assert stats["held_for_review"] == 1
+
+
+def test_api_memory_stats_reports_error_when_ledger_down(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unreachable ledger returns null stats + an error, never a 500."""
+    state = tmp_path / "state"
+    monkeypatch.setattr(
+        server_views, "_memory_brain", lambda *_a, **_kw: (None, "internal error")
+    )
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    resp = client.get("/api/memory/stats")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["stats"] is None
+    assert body["error"] == "internal error"
+
+
 def test_api_memory_candidate_value_error_is_bad_request(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3431,6 +3487,12 @@ def test_api_memory_routes_work_with_empty_real_fleet_brain(
     home = tmp_path / "alfred-home"
     monkeypatch.setenv("ALFRED_HOME", str(home))
     monkeypatch.delenv("ALFRED_FLEET_BRAIN_DB", raising=False)
+    # /api/memory/lessons now reads across the whole provider chain (AMS + local)
+    # so an AMS-primary install is not shown empty. Pin the chain to the local
+    # ledger here so the "empty clean install" assertion is deterministic and
+    # cannot reach a stray AMS on the test host; AMS-backed recall is covered by
+    # test_api_memory_lessons_lists_active_lessons.
+    monkeypatch.setenv("ALFRED_MEMORY_PROVIDERS", "fleet")
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     candidates = client.get("/api/memory/candidates")

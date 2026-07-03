@@ -985,3 +985,73 @@ def test_cli_consolidate_returns_nonzero_when_ams_forget_fails(
     rc = cli_mod.main(["consolidate", "--json"])
     assert rc == 1
     assert '"ams_forget_failed": 1' in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# stats CLI (lesson-quality metrics)
+# ---------------------------------------------------------------------------
+
+
+class _FakeStatsBrain:
+    def __init__(self, stats: dict[str, object]) -> None:
+        self.stats_payload = stats
+
+    def lesson_stats(self) -> dict[str, object]:
+        return self.stats_payload
+
+
+_STATS = {
+    "total": 5,
+    "states": {"candidate": 2, "validated": 2, "rejected": 1, "retired": 0},
+    "auto_validated": 2,
+    "auto_rejected": 1,
+    "auto_decided": 3,
+    "auto_promote_acceptance_rate": 0.6667,
+    "judge_rejection_rate": 0.3333,
+    "held_for_review": 1,
+    "recall_hits": None,
+}
+
+
+def test_cli_stats_json(
+    cli_mod: ModuleType, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli_mod, "FleetBrain", lambda *a, **k: _FakeStatsBrain(_STATS))
+    rc = cli_mod.main(["stats", "--json"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["total"] == 5
+    assert payload["auto_promote_acceptance_rate"] == 0.6667
+    assert payload["states"]["validated"] == 2
+
+
+def test_cli_stats_text(
+    cli_mod: ModuleType, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli_mod, "FleetBrain", lambda *a, **k: _FakeStatsBrain(_STATS))
+    rc = cli_mod.main(["stats"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "validated=2" in out
+    assert "acceptance" in out
+    assert "rejection" in out
+
+
+def test_cli_stats_text_handles_no_auto_decisions(
+    cli_mod: ModuleType, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    empty = {
+        "total": 0,
+        "states": {"candidate": 0, "validated": 0, "rejected": 0, "retired": 0},
+        "auto_validated": 0,
+        "auto_rejected": 0,
+        "auto_decided": 0,
+        "auto_promote_acceptance_rate": None,
+        "judge_rejection_rate": None,
+        "held_for_review": 0,
+        "recall_hits": None,
+    }
+    monkeypatch.setattr(cli_mod, "FleetBrain", lambda *a, **k: _FakeStatsBrain(empty))
+    rc = cli_mod.main(["stats"])
+    assert rc == 0
+    assert "no auto-decided candidates yet" in capsys.readouterr().out

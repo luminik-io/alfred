@@ -973,6 +973,26 @@ def register_routes(app: FastAPI) -> None:
             return JSONResponse({"rows": [], "error": _GENERIC_ERROR})
         return JSONResponse({"rows": [_lesson_to_api(lesson) for lesson in lessons]})
 
+    @app.get("/api/memory/stats", response_class=JSONResponse)
+    async def api_memory_stats(request: Request) -> JSONResponse:
+        """Lesson-quality metrics for the desktop client: candidate counts by
+        state, auto-promote acceptance rate, judge rejection rate.
+
+        Additive and read-only. Backed by the local FleetBrain ledger (cheap
+        COUNT(*) rollups), so it is safe to poll and works even when Redis AMS is
+        down. Returns an ``error`` with a null ``stats`` if the ledger is
+        unreachable, matching the other memory read endpoints.
+        """
+        brain, error = _memory_brain(request, require_existing=True)
+        if brain is None:
+            return JSONResponse({"stats": None, "error": error})
+        try:
+            stats = brain.lesson_stats()
+        except Exception:  # pragma: no cover - local bridge can be down
+            logger.exception("api_memory_stats: failed to compute lesson stats")
+            return JSONResponse({"stats": None, "error": _GENERIC_ERROR})
+        return JSONResponse({"stats": _jsonable(stats)})
+
     @app.get("/api/firings", response_class=JSONResponse)
     async def api_firings(
         request: Request,

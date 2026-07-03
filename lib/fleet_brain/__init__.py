@@ -62,6 +62,7 @@ from .graph import (
     parse_codeowners,
 )
 from .store import (
+    _AUTO_HELD_MARKER,
     BundleItem,
     CodeOwnerRow,
     FailureEvent,
@@ -172,10 +173,10 @@ AUTO_PROMOTE_NO_JUDGE_THRESHOLD = 0.9
 
 # A candidate the auto-promoter has set aside for a human keeps status
 # ``candidate`` (so it stays in the review queue and the dedup index) but its
-# review_note is stamped with this marker. Subsequent runs see the marker and
-# never re-judge the row, so a held candidate cannot starve the per-run judge
-# budget or re-post the same alert every run.
-_AUTO_HELD_MARKER = "[held-for-review]"
+# review_note is stamped with this marker (``_AUTO_HELD_MARKER``, imported from
+# .store so the store's stats query and this hold path share one source).
+# Subsequent runs see the marker and never re-judge the row, so a held candidate
+# cannot starve the per-run judge budget or re-post the same alert every run.
 _TRUTHY_ENV_TOKENS = {"1", "true", "yes", "on", "enabled"}
 _FALSY_ENV_TOKENS = {"0", "false", "no", "off", "disabled"}
 _RECOGNIZED_ENV_TOKENS = _TRUTHY_ENV_TOKENS | _FALSY_ENV_TOKENS
@@ -2043,6 +2044,54 @@ class FleetBrain:
 
     def stats(self) -> dict[str, int]:
         return self.store.stats()
+
+    def lesson_stats(self) -> dict[str, Any]:
+        """Lesson-quality metrics for the operator (``alfred brain stats``).
+
+        Cheap COUNT(*) rollups over the candidate ledger plus two derived rates.
+        All counts come from a single store call so this is safe to poll:
+
+          * ``states``: candidate counts by review state
+            (candidate / validated / rejected / retired);
+          * ``auto_promote_acceptance_rate``: of the candidates an auto-run has
+            DECIDED (auto-validated + auto-rejected), the fraction it saved.
+            ``None`` when the auto-promoter has decided nothing yet (no
+            divide-by-zero);
+          * ``judge_rejection_rate``: of those same auto-decided candidates, the
+            fraction the judge/gate rejected. ``None`` when none decided;
+          * ``held_for_review``: still-pending candidates an auto-run set aside
+            for a human.
+
+        Recall hit counts are intentionally omitted: the ledger does not record
+        per-recall hits, so surfacing them would need a new write path on the hot
+        recall loop. The field is reserved (``recall_hits: None``) so the shape
+        can grow without a breaking change.
+        """
+        raw = self.store.memory_candidate_stats()
+        auto_validated = int(raw.get("auto_validated", 0))
+        auto_rejected = int(raw.get("auto_rejected", 0))
+        auto_decided = auto_validated + auto_rejected
+        acceptance: float | None = None
+        rejection: float | None = None
+        if auto_decided:
+            acceptance = round(auto_validated / auto_decided, 4)
+            rejection = round(auto_rejected / auto_decided, 4)
+        return {
+            "total": int(raw.get("total", 0)),
+            "states": {
+                "candidate": int(raw.get("candidate", 0)),
+                "validated": int(raw.get("validated", 0)),
+                "rejected": int(raw.get("rejected", 0)),
+                "retired": int(raw.get("retired", 0)),
+            },
+            "auto_validated": auto_validated,
+            "auto_rejected": auto_rejected,
+            "auto_decided": auto_decided,
+            "auto_promote_acceptance_rate": acceptance,
+            "judge_rejection_rate": rejection,
+            "held_for_review": int(raw.get("held", 0)),
+            "recall_hits": None,
+        }
 
     def health(self) -> dict[str, Any]:
         """Return a cheap liveness check for local API callers.

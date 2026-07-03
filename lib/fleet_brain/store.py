@@ -39,6 +39,11 @@ GitHubItemKind = Literal["issue", "pr"]
 GitHubItemState = Literal["open", "closed", "merged", "unknown"]
 WorkerStatus = Literal["running", "ok", "failed", "stale", "cancelled"]
 
+# Marker stamped into a candidate's review_note when an auto-run sets it aside
+# for a human (the row stays ``candidate``). Defined here, the lowest layer, so
+# both the store's stats query and the FleetBrain hold path share one source.
+_AUTO_HELD_MARKER = "[held-for-review]"
+
 
 @dataclass(frozen=True)
 class Lesson:
@@ -448,6 +453,8 @@ class Store(Protocol):
     def replace_code_owners(self, repo: str, rules: list[CodeOwnerRow]) -> int: ...
 
     def stats(self) -> dict[str, int]: ...
+
+    def memory_candidate_stats(self) -> dict[str, int]: ...
 
 
 # ---------------------------------------------------------------------------
@@ -1590,6 +1597,55 @@ class SQLiteStore:
             "repos": int(repos),
             "graph_edges": int(graph_edges),
             "code_owners": int(code_owners),
+        }
+
+    def memory_candidate_stats(self) -> dict[str, int]:
+        """Counts for the lesson-quality metrics surface.
+
+        Cheap COUNT(*) rollups over the memory_candidates ledger, split by
+        status and by who reviewed each row, so the caller can derive
+        acceptance / rejection rates without loading every candidate. ``held``
+        is a still-``candidate`` row an auto-run set aside for a human (its
+        review_note is stamped with the held marker); ``auto_*`` rows carry
+        ``reviewed_by = 'auto'``.
+        """
+        held_like = f"{_AUTO_HELD_MARKER}%"
+        with self._connect() as conn:
+            (total,) = conn.execute("SELECT COUNT(*) FROM memory_candidates").fetchone()
+            (pending,) = conn.execute(
+                "SELECT COUNT(*) FROM memory_candidates WHERE status = 'candidate'"
+            ).fetchone()
+            (validated,) = conn.execute(
+                "SELECT COUNT(*) FROM memory_candidates WHERE status = 'validated'"
+            ).fetchone()
+            (rejected,) = conn.execute(
+                "SELECT COUNT(*) FROM memory_candidates WHERE status = 'rejected'"
+            ).fetchone()
+            (retired,) = conn.execute(
+                "SELECT COUNT(*) FROM memory_candidates WHERE status = 'retired'"
+            ).fetchone()
+            (auto_validated,) = conn.execute(
+                "SELECT COUNT(*) FROM memory_candidates "
+                "WHERE status = 'validated' AND reviewed_by = 'auto'"
+            ).fetchone()
+            (auto_rejected,) = conn.execute(
+                "SELECT COUNT(*) FROM memory_candidates "
+                "WHERE status = 'rejected' AND reviewed_by = 'auto'"
+            ).fetchone()
+            (held,) = conn.execute(
+                "SELECT COUNT(*) FROM memory_candidates "
+                "WHERE status = 'candidate' AND review_note LIKE ?",
+                (held_like,),
+            ).fetchone()
+        return {
+            "total": int(total),
+            "candidate": int(pending),
+            "validated": int(validated),
+            "rejected": int(rejected),
+            "retired": int(retired),
+            "auto_validated": int(auto_validated),
+            "auto_rejected": int(auto_rejected),
+            "held": int(held),
         }
 
 

@@ -83,6 +83,12 @@ export function MemoryView({
             />
           ))}
         </div>
+      ) : activeLessons.length ? (
+        <EmptyState
+          title="Nothing is waiting for your review."
+          body="Alfred has no new learnings to confirm right now. The lessons it is already using are below."
+          tone="ok"
+        />
       ) : (
         <EmptyState
           title="Alfred has not learned anything new yet."
