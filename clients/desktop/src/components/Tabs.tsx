@@ -16,8 +16,16 @@ export type TabItem<K extends string = string> = {
  * large sections behind tabs instead of one long scroll. Pages own the active
  * key so the choice can be lifted (e.g. a deep-link from another surface).
  *
- * Backed by Radix Tabs so arrow keys, focus management, and tab semantics stay
- * native. Panels are rendered by the caller and should reference `${idBase}-panel`.
+ * Backed by Radix Tabs for selection state, arrow-key navigation, and tab
+ * semantics. Callers render their own panels as siblings (a page owns its large
+ * sections), so no `TabsContent` lives inside the root. Radix's roving-focus
+ * group only hands a trigger `tabindex="0"` after a focus event lands on it, and
+ * with the panels rendered outside the root that redirect never fires: every
+ * trigger stays at `tabindex="-1"`, dropping the tablist out of the tab order so
+ * the user can never focus a tab and ArrowLeft/ArrowRight are dead (violating
+ * the WAI-ARIA tabs pattern). Pinning an explicit roving `tabindex` (active tab
+ * 0, the rest -1) puts the active tab back in the tab order; once a trigger can
+ * hold focus, Radix's own arrow/Home/End handling takes over natively.
  */
 export function Tabs<K extends string>({
   tabs,
@@ -48,6 +56,9 @@ export function Tabs<K extends string>({
               className="min-w-0 gap-1 px-1.5 text-[0.78rem] sm:gap-1.5 sm:px-3 sm:text-sm [&>span]:min-w-0 [&>span]:truncate"
               value={tab.key}
               aria-controls={`${idBase}-panel`}
+              // Roving tabindex: only the active tab is in the tab order, so Tab
+              // lands on it and Radix's native arrow handling takes over.
+              tabIndex={tab.key === active ? 0 : -1}
             >
               {Icon ? (
                 <Icon
