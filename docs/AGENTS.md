@@ -83,6 +83,8 @@ letting it file work until multi-repo or multi-package plans are ready.
 | **code-map-refresh** | utility | every 6 h | `ALFRED_CODE_MAP_REPOS` | Scans configured repos and writes `${ALFRED_HOME}/state/code-map.json` with source files, symbols, imports, API calls, server routes, and contract drift. Drake, Batman, and code-map-aware review prompts can read it for cross-repo context. |
 | **agent-morning-brief** | utility | daily 07:00 | n/a | Slack post: yesterday's PRs shipped, in-flight work, doctor status, anything red. |
 | **fleet-recap** | utility | 07:30 + 22:00 | n/a | Two firings of the same script. Aggregates per-agent spend / firings / success rate. Posts to Slack. |
+| **alfred-nightly** | utility | weekly Sun 22:00, opt-in | `ALFRED_NIGHTLY_NPM_REPOS`, `ALFRED_NIGHTLY_ADVISORY_REPOS` | Weekly dependency updater. Applies safe-band npm bumps (caret-compatible, pre-push verified) and opens one PR per npm repo; gradle/pip repos get an advisory-only Slack report, never a PR. Major bumps and CVEs are surfaced but not auto-merged. A no-op until the repo lists are set. |
+| **cold-backup** | utility | weekly Sun 04:00, opt-in | `ALFRED_BACKUP_DEST` | Archives `$ALFRED_HOME/state`, the cron store, and the runtime plists, uploads the tarball to an S3 prefix, and prunes to a retention window. `--local-only` skips S3. A no-op until a destination is set. |
 
 ## Roster customization
 
