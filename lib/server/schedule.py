@@ -99,9 +99,12 @@ def agents_conf_path() -> Path | None:
         return checkout
 
     workspace = os.environ.get("WORKSPACE_ROOT", os.path.expanduser("~/code"))
-    workspace_conf = _first_agents_conf(Path(workspace) / "alfred-os")
-    if workspace_conf is not None:
-        return workspace_conf
+    # The documented source checkout is ``<workspace>/alfred`` after the rename;
+    # ``alfred-os`` is kept as a legacy fallback for checkouts made before it.
+    for slug in ("alfred", "alfred-os"):
+        workspace_conf = _first_agents_conf(Path(workspace) / slug)
+        if workspace_conf is not None:
+            return workspace_conf
 
     default_home = Path(os.path.expanduser("~/.alfred"))
     return _first_agents_conf(default_home) if default_home.is_dir() else None
