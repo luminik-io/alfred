@@ -626,6 +626,24 @@ _BUILD_VERB_HINTS = (
 )
 
 
+# Wh-words ask ABOUT something; they win over verb position ("how do I add
+# a repo?"). Yes/no openers ("is", "are", "do") do not: "is it possible to
+# add retries?" is still a change request and runs the verb check.
+_WH_OPENERS = (
+    "what",
+    "whats",
+    "what's",
+    "which",
+    "who",
+    "whom",
+    "whose",
+    "where",
+    "when",
+    "why",
+    "how",
+)
+
+
 def looks_like_question(text: str) -> bool:
     """True when ``text`` reads as a plain question rather than a change request.
 
@@ -662,7 +680,7 @@ def looks_like_question(text: str) -> bool:
         second = tokens[1] if len(tokens) > 1 else ""
         if second != "you":
             return False
-    elif first in _QUESTION_OPENERS:
+    elif first in _WH_OPENERS:
         # An interrogative opener asks ABOUT something rather than
         # commissioning it: "how do I add a new repo?" and "what changes
         # should we make?" are guidance questions even though a build verb
@@ -672,7 +690,7 @@ def looks_like_question(text: str) -> bool:
         second = tokens[1] if len(tokens) > 1 else ""
         if second != "about":
             return True
-    elif not cleaned.endswith("?"):
+    elif not (cleaned.endswith("?") or first in _QUESTION_OPENERS):
         return False
     # A build verb in VERB position ("can you add ...?", "is it possible to
     # add ...?") marks work phrased as a question. Position matters: several
