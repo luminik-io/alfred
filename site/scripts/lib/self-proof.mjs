@@ -142,3 +142,58 @@ export function buildSelfProof(agentMerged, totalMerged, days) {
 export function noDataSelfProof(days) {
   return buildSelfProof(0, 0, days);
 }
+
+// The README carries a live self-proof line between these markers. The proof
+// build rewrites the text between them from real data so the documented
+// `npm run proof:update` command actually updates it (not a hand-typed
+// placeholder). The markers themselves are preserved so the next refresh finds
+// them again.
+export const SELF_PROOF_MARKER_OPEN = "<!-- SELF_PROOF -->";
+export const SELF_PROOF_MARKER_CLOSE = "<!-- /SELF_PROOF -->";
+
+/**
+ * The README sentence for a self_proof block, honest on empty data.
+ *
+ * With merged PRs: "N% of Alfred's own merged PRs in the last D days were
+ * shipped by Alfred agents". Empty window: a plain "no merged PRs yet" line, so
+ * a refreshed-but-idle repo never advertises a fabricated 0%.
+ *
+ * @param {object} selfProof a block from buildSelfProof / noDataSelfProof
+ * @returns {string}
+ */
+export function readmeSelfProofText(selfProof) {
+  const days = selfProof.window_days;
+  if (selfProof.share_pct === null || selfProof.merged_total <= 0) {
+    return `No merged PRs in Alfred's own repo in the last ${days} days yet`;
+  }
+  return (
+    `${formatShare(selfProof.share_pct)}% of Alfred's own merged PRs in the ` +
+    `last ${days} days were shipped by Alfred agents`
+  );
+}
+
+/**
+ * Rewrite the text between the SELF_PROOF markers in `readme` from real data.
+ *
+ * Returns the updated README string and whether it changed. The markers are
+ * required; if they are absent the README is returned unchanged with
+ * updated=false (the caller decides whether that is an error). Idempotent:
+ * running twice with the same data yields the same text.
+ *
+ * @param {string} readme full README contents
+ * @param {object} selfProof a block from buildSelfProof / noDataSelfProof
+ * @returns {{content: string, updated: boolean, found: boolean}}
+ */
+export function updateReadmeSelfProof(readme, selfProof) {
+  const open = SELF_PROOF_MARKER_OPEN;
+  const close = SELF_PROOF_MARKER_CLOSE;
+  const openAt = readme.indexOf(open);
+  const closeAt = readme.indexOf(close);
+  if (openAt === -1 || closeAt === -1 || closeAt < openAt) {
+    return { content: readme, updated: false, found: false };
+  }
+  const before = readme.slice(0, openAt + open.length);
+  const after = readme.slice(closeAt);
+  const next = `${before}${readmeSelfProofText(selfProof)}${after}`;
+  return { content: next, updated: next !== readme, found: true };
+}

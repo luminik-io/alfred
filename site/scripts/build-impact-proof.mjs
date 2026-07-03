@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -7,6 +7,7 @@ import {
   buildSelfProof,
   isAgentShipped,
   labelNames,
+  updateReadmeSelfProof,
 } from "./lib/self-proof.mjs";
 
 const REPO = "luminik-io/alfred-os";
@@ -15,6 +16,10 @@ const OUT = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../src/data/impact-proof.json",
 );
+// The repo README carries a live self-proof line between SELF_PROOF markers.
+// This build rewrites it from the same data it writes to the JSON, so the
+// documented `npm run proof:update` command actually refreshes the README.
+const README = resolve(dirname(fileURLToPath(import.meta.url)), "../../README.md");
 const AGENT_BRANCH_PREFIXES = csvEnv(
   "ALFRED_IMPACT_AGENT_BRANCH_PREFIXES",
   [
@@ -169,6 +174,35 @@ writeFileSync(OUT, `${JSON.stringify(proof, null, 2)}\n`);
 console.log(
   `Wrote ${OUT}: ${summary.prs_merged} agent PRs, ${summary.issues_opened} agent issues, ${summary.repo_activity.prs_merged} total public PRs.`,
 );
+
+// Refresh the README self-proof line from the same data. This is what makes
+// the documented refresh command honest: the marker text is generated, not
+// hand-typed. A missing README or missing markers is a non-fatal warning so a
+// docs-only edit cannot break the JSON/site refresh.
+refreshReadmeSelfProof();
+
+function refreshReadmeSelfProof() {
+  let readme;
+  try {
+    readme = readFileSync(README, "utf8");
+  } catch (error) {
+    console.warn(`Skipped README self-proof refresh: ${error.message}`);
+    return;
+  }
+  const { content, updated, found } = updateReadmeSelfProof(readme, selfProof);
+  if (!found) {
+    console.warn(
+      `Skipped README self-proof refresh: SELF_PROOF markers not found in ${README}`,
+    );
+    return;
+  }
+  if (updated) {
+    writeFileSync(README, content);
+    console.log(`Updated README self-proof line in ${README}.`);
+  } else {
+    console.log("README self-proof line already current.");
+  }
+}
 
 async function searchGitHub(query) {
   const out = [];

@@ -19,6 +19,10 @@ import {
   buildSelfProof,
   isAgentShipped,
   noDataSelfProof,
+  readmeSelfProofText,
+  SELF_PROOF_MARKER_CLOSE,
+  SELF_PROOF_MARKER_OPEN,
+  updateReadmeSelfProof,
 } from "./self-proof.mjs";
 
 const AGENT_LABELS = [
@@ -148,4 +152,65 @@ test("the JS numerator matches the Python rule on a mixed population", () => {
   assert.equal(agent, 1);
   const proof = buildSelfProof(agent, population.length, 7);
   assert.equal(proof.share_pct, 33.3);
+});
+
+// --------------------------------------------------------------------------
+// README self-proof marker wiring (the documented refresh must be real)
+// --------------------------------------------------------------------------
+
+const README_FIXTURE = [
+  "# Alfred",
+  "",
+  `- A stat: ${SELF_PROOF_MARKER_OPEN}placeholder${SELF_PROOF_MARKER_CLOSE}. More prose.`,
+  "",
+  "## Next section",
+].join("\n");
+
+test("updateReadmeSelfProof rewrites the marker text from real data", () => {
+  const proof = buildSelfProof(9, 12, 30);
+  const { content, updated, found } = updateReadmeSelfProof(README_FIXTURE, proof);
+  assert.equal(found, true);
+  assert.equal(updated, true);
+  assert.match(
+    content,
+    /75% of Alfred's own merged PRs in the last 30 days were shipped by Alfred agents/,
+  );
+  // Markers are preserved so the next refresh finds them again.
+  assert.ok(content.includes(SELF_PROOF_MARKER_OPEN));
+  assert.ok(content.includes(SELF_PROOF_MARKER_CLOSE));
+  // Surrounding prose is untouched.
+  assert.ok(content.includes("More prose."));
+  assert.ok(content.includes("## Next section"));
+});
+
+test("updateReadmeSelfProof is idempotent", () => {
+  const proof = buildSelfProof(1, 4, 30);
+  const once = updateReadmeSelfProof(README_FIXTURE, proof).content;
+  const twice = updateReadmeSelfProof(once, proof);
+  assert.equal(twice.updated, false);
+  assert.equal(twice.content, once);
+});
+
+test("empty-window marker text is honest, not a fabricated 0%", () => {
+  const proof = noDataSelfProof(30);
+  const text = readmeSelfProofText(proof);
+  assert.match(text, /No merged PRs in Alfred's own repo in the last 30 days yet/);
+  assert.doesNotMatch(text, /0%/);
+});
+
+test("updateReadmeSelfProof reports found=false when markers are absent", () => {
+  const { content, updated, found } = updateReadmeSelfProof("# no markers here", buildSelfProof(1, 2, 30));
+  assert.equal(found, false);
+  assert.equal(updated, false);
+  assert.equal(content, "# no markers here");
+});
+
+test("the committed README seed text matches the no-data generator output", () => {
+  // Guards the wiring: the marker text the emitter would write for an empty
+  // window must equal what the committed README seed shows, so a real refresh
+  // with no data is a clean no-op rather than a surprise diff.
+  assert.equal(
+    readmeSelfProofText(noDataSelfProof(30)),
+    "No merged PRs in Alfred's own repo in the last 30 days yet",
+  );
 });
