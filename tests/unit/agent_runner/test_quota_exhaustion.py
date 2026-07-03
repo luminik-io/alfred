@@ -81,6 +81,76 @@ def test_parse_quota_resume_returns_none_without_hint(fresh_agent_runner):
 
 
 # --------------------------------------------------------------------------
+# REAL captured strings (not author-invented) -- these are the messages the
+# feature exists to handle, pulled from tests/test_result_classification.py
+# and the canonical curly-apostrophe form terminals emit. A false-negative
+# here means the engine is never parked on the exact input that motivated the
+# change, so these are the load-bearing cases.
+# --------------------------------------------------------------------------
+
+# The real string captured from a live codex run (see
+# tests/test_result_classification.py:116). It deliberately carries the real
+# curly apostrophe (U+2019), middle dot (U+00B7), and the time-of-day-with-UTC
+# resume format -- exactly what the parser has to survive, so the inline
+# suppression below is load-bearing, not cosmetic.
+_REAL_CODEX_WALL = "You’re out of extra usage · resets 5:50pm (UTC)"  # noqa: RUF001
+
+
+def test_real_captured_string_classifies_as_exhausted(fresh_agent_runner):
+    from agent_runner.result import looks_quota_exhausted
+
+    # The exact live message must be recognised as a hard wall.
+    assert looks_quota_exhausted(_REAL_CODEX_WALL)
+
+
+def test_real_captured_string_parses_a_resume_instant(fresh_agent_runner):
+    from agent_runner.result import parse_quota_resume_at
+
+    # It must yield a concrete resume instant, NOT fall through to the default
+    # 5h window. 5:50pm UTC with now=10:00 is later today.
+    now = datetime(2026, 7, 3, 10, 0, 0, tzinfo=UTC)
+    got = parse_quota_resume_at(_REAL_CODEX_WALL, now=now)
+    assert got == "2026-07-03T17:50:00Z"
+
+
+def test_real_captured_string_resume_rolls_to_next_day_when_past(fresh_agent_runner):
+    from agent_runner.result import parse_quota_resume_at
+
+    # When the reset time already passed today, the resume is tomorrow.
+    now = datetime(2026, 7, 3, 18, 0, 0, tzinfo=UTC)
+    got = parse_quota_resume_at(_REAL_CODEX_WALL, now=now)
+    assert got == "2026-07-04T17:50:00Z"
+
+
+def test_curly_apostrophe_hit_limit_classifies_and_parses(fresh_agent_runner):
+    from agent_runner.result import looks_quota_exhausted, parse_quota_resume_at
+
+    # macOS terminals / rich CLIs emit the typographic apostrophe. The ASCII
+    # apostrophe used to be the only match, a live false-negative.
+    curly = "You’ve hit your usage limit. try again at Jul 7"  # noqa: RUF001
+    assert looks_quota_exhausted(curly)
+    now = datetime(2026, 7, 3, tzinfo=UTC)
+    assert parse_quota_resume_at(curly, now=now) == "2026-07-07T00:00:00Z"
+
+
+def test_resume_handles_after_keyword(fresh_agent_runner):
+    from agent_runner.result import parse_quota_resume_at
+
+    now = datetime(2026, 7, 3, tzinfo=UTC)
+    got = parse_quota_resume_at("usage limit reached, try again after 2026-08-01", now=now)
+    assert got == "2026-08-01T00:00:00Z"
+
+
+def test_resume_time_of_day_without_utc_suffix(fresh_agent_runner):
+    from agent_runner.result import parse_quota_resume_at
+
+    now = datetime(2026, 7, 3, 10, 0, 0, tzinfo=UTC)
+    assert parse_quota_resume_at("out of extra usage, resets 5pm", now=now) == (
+        "2026-07-03T17:00:00Z"
+    )
+
+
+# --------------------------------------------------------------------------
 # Reliability classification: quota exhaustion is FATAL for the retry loop
 # --------------------------------------------------------------------------
 
