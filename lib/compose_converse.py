@@ -692,15 +692,20 @@ def looks_like_question(text: str) -> bool:
         return False
     first = tokens[0]
     if first in _MODAL_OPENERS:
-        # A modal opener with a PERSONAL-PRONOUN subject ("can you ...", "can I
-        # see ...", "could we get ...") runs the build-verb check below: it is a
-        # question unless a build verb sits in verb position, so "can you add X?"
-        # and "can we show X?" stay work while "can I see the fleet status?" and
-        # "can I get the status?" read as questions. A NON-pronoun subject
-        # ("could the dashboard include a pause button?") names a thing to change
-        # and stays a change request by default.
+        # Modal-opener messages are change requests by default ("can we show
+        # X", "should we retry failed firings", "could the dashboard include a
+        # pause button"). Two shapes read as questions instead:
+        #   * aimed at the assistant ("can you ...") -> runs the build-verb
+        #     check below, so "can you add X?" stays work.
+        #   * a first-person subject asking ABOUT state with an information verb
+        #     ("can I see the fleet status?", "could we get the paused agents?")
+        #     -> a status question, not a change request.
         second = tokens[1] if len(tokens) > 1 else ""
-        if second not in {"you", "i", "we"}:
+        if second == "you":
+            pass  # fall through to the build-verb check below
+        elif second in {"i", "we"} and _has_info_verb_in_verb_position(tokens):
+            return True
+        else:
             return False
     elif first in _WH_OPENERS:
         # An interrogative opener asks ABOUT something rather than
@@ -764,6 +769,30 @@ def _is_build_verb_form(token: str) -> bool:
         if len(stem) > 1 and stem[-1] == stem[-2]:
             candidates.add(stem[:-1])
         return bool(candidates & set(_BUILD_VERB_HINTS))
+    return False
+
+
+# Information verbs: asking to look AT existing state, not change it. Used only
+# to tell a first-person status question ("can I see the fleet status?") from a
+# first-person change request ("can we show X in the roster?").
+_INFO_VERBS = ("see", "view", "check", "read", "get", "find")
+
+
+def _has_info_verb_in_verb_position(tokens: list[str]) -> bool:
+    """True when an information verb (see/get/view/...) is used as a verb.
+
+    Mirrors ``_has_build_verb_in_verb_position``: the verb must open the message
+    or directly follow a subject pronoun, the infinitive "to", or a
+    politeness/chaining opener, so "can I see the status" counts while a noun use
+    does not.
+    """
+    for index, token in enumerate(tokens):
+        if token not in _INFO_VERBS:
+            continue
+        if index == 0:
+            return True
+        if tokens[index - 1] in _VERB_POSITION_PRECEDERS:
+            return True
     return False
 
 
