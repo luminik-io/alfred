@@ -27,6 +27,8 @@ import {
   startLocalRuntime,
   streamComposeConverse,
   streamFiringTail,
+  supportsMutations,
+  supportsNativeActions,
 } from "./api";
 import type { ConverseRequest } from "./types";
 
@@ -241,6 +243,30 @@ describe("hosted browser (served by alfred serve)", () => {
     window.__TAURI_INTERNALS__ = {};
     // The native shell is not a "hosted browser" even with DEV=false.
     expect(isHostedBrowser()).toBe(false);
+  });
+
+  it("supportsMutations is true for a hosted browser but supportsNativeActions is not", () => {
+    // The hosted browser can send token-gated HTTP writes (queue actions,
+    // custom-agent save/delete) even though it has no native bridge. Panels that
+    // gate an HTTP mutation must use supportsMutations, not supportsNativeActions,
+    // or they wrongly hide working controls in the browser build.
+    vi.stubEnv("DEV", false);
+    expect(supportsMutations()).toBe(true);
+    expect(supportsNativeActions()).toBe(false);
+  });
+
+  it("supportsMutations is false in the token-less Vite dev preview", () => {
+    // DEV=true (vitest default), no Tauri bridge: no launch token, so writes
+    // would 403. Both predicates are false here.
+    delete window.__TAURI_INTERNALS__;
+    expect(supportsMutations()).toBe(false);
+    expect(supportsNativeActions()).toBe(false);
+  });
+
+  it("supportsMutations and supportsNativeActions are both true in the native shell", () => {
+    window.__TAURI_INTERNALS__ = {};
+    expect(supportsMutations()).toBe(true);
+    expect(supportsNativeActions()).toBe(true);
   });
 
   it("uses the page origin as the base URL when hosted", () => {

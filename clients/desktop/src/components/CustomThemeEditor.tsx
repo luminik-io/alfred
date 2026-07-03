@@ -36,12 +36,17 @@ export function CustomThemeEditor({
   open,
   value,
   agents,
+  saveError,
   onOpenChange,
   onSave,
 }: {
   open: boolean;
   value: CustomRosterNames;
   agents?: readonly EditableAgent[];
+  // The most recent roster save failure from useRosterTheme, threaded in so the
+  // editor can keep itself open and show the error inline instead of closing
+  // optimistically and hiding a failed save behind the (now dismissed) dialog.
+  saveError?: string | null;
   onOpenChange: (open: boolean) => void;
   onSave: (next: CustomRosterNames) => void | Promise<void>;
 }) {
@@ -49,6 +54,12 @@ export function CustomThemeEditor({
   const [names, setNames] = useState<Record<string, string>>(value.names);
   const [roles, setRoles] = useState<Record<string, string>>(value.roles);
   const [saving, setSaving] = useState(false);
+  // The persist() call in useRosterTheme is fire-and-forget: it resolves
+  // synchronously while the POST settles later, recording any failure in
+  // `saveError`. So we cannot await the network result here. Instead, once the
+  // operator saves, wait one tick for the save to settle, then close only if no
+  // error surfaced; a failure keeps the dialog open with the message visible.
+  const [pendingClose, setPendingClose] = useState(false);
 
   // Re-seed the draft whenever the editor (re)opens with the persisted maps, so
   // a cancelled edit never leaks into the next open.
@@ -56,8 +67,23 @@ export function CustomThemeEditor({
     if (open) {
       setNames({ ...value.names });
       setRoles({ ...value.roles });
+      setPendingClose(false);
     }
   }, [open, value.names, value.roles]);
+
+  // Resolve a pending close after a save: close on a clean save, or stay open
+  // and surface the error when the save failed.
+  useEffect(() => {
+    if (!pendingClose) return;
+    const timer = window.setTimeout(() => {
+      setPendingClose(false);
+      setSaving(false);
+      if (!saveError) {
+        onOpenChange(false);
+      }
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [pendingClose, saveError, onOpenChange]);
 
   const setName = (codename: string, next: string) =>
     setNames((prev) => ({ ...prev, [codename]: next.slice(0, MAX_LABEL_LEN) }));
@@ -81,12 +107,11 @@ export function CustomThemeEditor({
 
   const handleSave = async () => {
     setSaving(true);
-    try {
-      await onSave({ names: clean(names), roles: clean(roles) });
-      onOpenChange(false);
-    } finally {
-      setSaving(false);
-    }
+    // onSave (setCustomNames -> persist) is fire-and-forget; awaiting it only
+    // covers the synchronous part. Kick off the save, then let the pendingClose
+    // effect decide whether to close (clean save) or stay open (saveError set).
+    await onSave({ names: clean(names), roles: clean(roles) });
+    setPendingClose(true);
   };
 
   const byRole = useMemo(() => {
@@ -158,6 +183,14 @@ export function CustomThemeEditor({
             ))}
           </div>
         </ScrollArea>
+        {saveError ? (
+          <p
+            className="custom-theme-editor__error text-sm text-destructive"
+            role="alert"
+          >
+            {saveError}
+          </p>
+        ) : null}
         <DialogFooter className="custom-theme-editor__footer gap-2 sm:justify-between">
           <Button type="button" variant="ghost" size="sm" onClick={reset}>
             Reset all

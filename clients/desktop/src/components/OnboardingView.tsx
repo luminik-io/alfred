@@ -15,7 +15,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { errorDetail, loadSetupStatus, supportsNativeActions } from "../api";
+import { errorDetail, loadSetupStatus, supportsMutations } from "../api";
 import { pollGithubAuthStatus } from "../lib/githubAuth";
 import {
   type CustomRosterNames,
@@ -211,10 +211,12 @@ export function OnboardingView({
   onSwitch?: (tab: TabKey) => void;
   onRefreshBoard?: (options?: { demo?: boolean }) => Promise<void> | void;
 }) {
-  // The mutating steps need the per-launch token the native bridge attaches; the
-  // browser preview cannot, so it shows a read-only note. The read steps work
-  // either way.
-  const canMutate = supportsNativeActions();
+  // The mutating steps (repo save, Slack approver add) are token-gated HTTP
+  // writes that work from the Tauri shell AND the browser shell served by
+  // `alfred serve` (both carry the per-launch token). Only the token-less Vite
+  // dev preview is read-only, so it shows the read-only note. Native-only steps
+  // (install / start runtime / GitHub login) stay gated on `canRun`.
+  const canMutate = supportsMutations();
 
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);

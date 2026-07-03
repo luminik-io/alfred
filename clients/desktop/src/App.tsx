@@ -489,6 +489,7 @@ function App() {
         open={customThemeEditorOpen}
         value={customNames}
         agents={customThemeAgents}
+        saveError={rosterSaveError}
         onOpenChange={setCustomThemeEditorOpen}
         onSave={setCustomNames}
       />
