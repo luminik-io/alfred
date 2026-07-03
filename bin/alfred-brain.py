@@ -108,6 +108,32 @@ def _build_brain(args: argparse.Namespace, env: dict[str, str] | None = None) ->
     return FleetBrain()
 
 
+def _recall_lessons(
+    *,
+    codename: str | None,
+    repo: str | None,
+    query: str | None,
+    limit: int,
+) -> list[Any]:
+    """Recall lessons across the whole provider chain (AMS + local), not just the
+    local SQLite ledger.
+
+    The promoted-lesson backend is Redis AMS, so ``FleetBrain.recall`` alone
+    (local SQLite) shows nothing on an AMS-primary install. Route through the
+    configured chain so the CLI displays what Alfred actually remembers. A build
+    error is logged (never silent) and degrades to local-only recall.
+    """
+    try:
+        from memory.config import recall_lessons
+
+        return recall_lessons(codename=codename, repo=repo, query=query, limit=limit)
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "alfred-brain: provider-chain recall failed; falling back to local ledger"
+        )
+        return FleetBrain().recall(codename=codename, repo=repo, query=query, limit=limit)
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     brain = _build_brain(args)
     s = brain.stats()
@@ -131,8 +157,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 def cmd_lessons(args: argparse.Namespace) -> int:
     codename = None if args.codename == "-" else args.codename
     repo = None if args.repo == "-" else args.repo
-    brain = _build_brain(args)
-    lessons = brain.recall(codename=codename, repo=repo, query=args.query, limit=args.limit)
+    lessons = _recall_lessons(codename=codename, repo=repo, query=args.query, limit=args.limit)
     if args.json:
         payload = [
             {

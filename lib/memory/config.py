@@ -38,6 +38,7 @@ __all__ = [
     "build_chain",
     "load_provider",
     "parse_provider_names",
+    "recall_lessons",
 ]
 
 _LOG = logging.getLogger(__name__)
@@ -132,3 +133,33 @@ def load_provider(env: Mapping[str, str] | None = None) -> MemoryProvider:
         # Explicitly empty -- the operator turned memory off.
         return NullMemoryProvider()
     return build_chain(names, env=envmap)
+
+
+def recall_lessons(
+    *,
+    codename: str | None = None,
+    repo: str | None = None,
+    query: str | None = None,
+    limit: int = 50,
+    env: Mapping[str, str] | None = None,
+    provider: MemoryProvider | None = None,
+) -> list:
+    """Recall the lessons Alfred is actually using, across the whole chain.
+
+    This is the read surface behind ``alfred brain lessons`` and
+    ``/api/memory/lessons``. It routes through the configured provider chain
+    (Redis AMS + local FleetBrain, merged and deduped) rather than the local
+    SQLite ledger alone, so an AMS-primary install shows the lessons it has
+    actually promoted instead of an empty list.
+
+    ``provider`` is an injectable seam for tests; when omitted the chain is
+    built from env via :func:`load_provider`. Any provider error is swallowed to
+    an empty list by the chain itself, so this never raises on a down backend.
+    """
+    chain = provider if provider is not None else load_provider(env)
+    return chain.recall(
+        codename=codename,
+        repo=repo,
+        query=query,
+        limit=max(1, int(limit)),
+    )

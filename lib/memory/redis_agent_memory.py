@@ -54,6 +54,15 @@ _DEFAULT_BREAKER_THRESHOLD = 5
 _DEFAULT_BREAKER_COOLDOWN_S = 30.0
 _AMS_SEARCH_PAGE_LIMIT = 100
 
+# Read-path (recall) budget. Recall runs inline before a firing and its result
+# is optional (a miss falls back to FleetBrain), so it must never pay the full
+# write-path retry cost: a dead AMS that has not yet tripped the breaker would
+# otherwise cost timeout_s * (max_retries + 1) (~6s by default) on every recall.
+# The read path uses a shorter timeout and no retries by default so a firing is
+# never blocked waiting on memory, while writes keep the full retry budget.
+_DEFAULT_RECALL_TIMEOUT_S = 1.0
+_DEFAULT_RECALL_MAX_RETRIES = 0
+
 Transport = Callable[[str, str, dict[str, Any] | None, dict[str, str], float], Any]
 
 
@@ -198,6 +207,8 @@ class RedisAgentMemoryProvider:
     transport: Transport | None = None
     name: str = "redis"
     max_retries: int = _DEFAULT_MAX_RETRIES
+    recall_timeout_s: float = _DEFAULT_RECALL_TIMEOUT_S
+    recall_max_retries: int = _DEFAULT_RECALL_MAX_RETRIES
     breaker_threshold: int = _DEFAULT_BREAKER_THRESHOLD
     breaker_cooldown_s: float = _DEFAULT_BREAKER_COOLDOWN_S
     sleep: Callable[[float], None] = time.sleep
@@ -223,6 +234,13 @@ class RedisAgentMemoryProvider:
             timeout = float(timeout_raw) if timeout_raw else _DEFAULT_TIMEOUT_S
         except ValueError:
             timeout = _DEFAULT_TIMEOUT_S
+        recall_timeout_raw = envmap.get("ALFRED_REDIS_MEMORY_RECALL_TIMEOUT_S", "")
+        try:
+            recall_timeout = (
+                float(recall_timeout_raw) if recall_timeout_raw else _DEFAULT_RECALL_TIMEOUT_S
+            )
+        except ValueError:
+            recall_timeout = _DEFAULT_RECALL_TIMEOUT_S
         return cls(
             base_url=(envmap.get("ALFRED_REDIS_MEMORY_URL") or _ams_default_url(envmap)).rstrip(
                 "/"
@@ -237,6 +255,10 @@ class RedisAgentMemoryProvider:
             search_mode=(envmap.get("ALFRED_REDIS_MEMORY_SEARCH_MODE") or "semantic").strip()
             or "semantic",
             max_retries=_env_int(envmap, "ALFRED_REDIS_MEMORY_MAX_RETRIES", _DEFAULT_MAX_RETRIES),
+            recall_timeout_s=recall_timeout,
+            recall_max_retries=_env_int(
+                envmap, "ALFRED_REDIS_MEMORY_RECALL_MAX_RETRIES", _DEFAULT_RECALL_MAX_RETRIES
+            ),
             breaker_threshold=_env_int(
                 envmap, "ALFRED_REDIS_MEMORY_BREAKER_THRESHOLD", _DEFAULT_BREAKER_THRESHOLD
             ),
@@ -266,7 +288,13 @@ class RedisAgentMemoryProvider:
         if self.user_id:
             payload["user_id"] = {"eq": self.user_id}
         try:
-            response = self._request("POST", "/v1/long-term-memory/search", payload)
+            response = self._request(
+                "POST",
+                "/v1/long-term-memory/search",
+                payload,
+                max_retries=self.recall_max_retries,
+                timeout_s=self.recall_timeout_s,
+            )
         except Exception as exc:
             _LOG.debug("memory.redis: recall failed: %s", exc)
             return []
@@ -307,7 +335,13 @@ class RedisAgentMemoryProvider:
         if self.user_id:
             payload["user_id"] = {"eq": self.user_id}
         try:
-            response = self._request("POST", "/v1/long-term-memory/search", payload)
+            response = self._request(
+                "POST",
+                "/v1/long-term-memory/search",
+                payload,
+                max_retries=self.recall_max_retries,
+                timeout_s=self.recall_timeout_s,
+            )
         except Exception as exc:
             _LOG.debug("memory.redis: recall_scored failed: %s", exc)
             return []
@@ -495,7 +529,19 @@ class RedisAgentMemoryProvider:
         method: str,
         path: str,
         payload: dict[str, Any] | None,
+        *,
+        max_retries: int | None = None,
+        timeout_s: float | None = None,
     ) -> Any:
+        """Issue one AMS request under the breaker and retry loop.
+
+        ``max_retries`` / ``timeout_s`` override the write-path defaults for a
+        single call. The read (recall) path passes its own lower budget so a
+        dead-but-not-yet-tripped AMS never blocks a firing for the full
+        write-path cost; writes keep the full budget.
+        """
+        request_retries = self.max_retries if max_retries is None else max(0, int(max_retries))
+        request_timeout = self.timeout_s if timeout_s is None else max(0.0, float(timeout_s))
         url = f"{self.base_url}{path}"
         headers = {"Accept": _JSON}
         if payload is not None:
@@ -517,13 +563,13 @@ class RedisAgentMemoryProvider:
 
         # A half-open trial gets exactly ONE attempt: a failed probe must not
         # keep hammering a recovering endpoint through the retry loop during the
-        # fresh cooldown. A closed breaker uses the full retry budget.
-        retries = 0 if decision == "half_open" else self.max_retries
+        # fresh cooldown. A closed breaker uses this request's retry budget.
+        retries = 0 if decision == "half_open" else request_retries
         attempt = 0
         try:
             while True:
                 try:
-                    result = self._call_transport(method, url, payload, headers)
+                    result = self._call_transport(method, url, payload, headers, request_timeout)
                 except _AmsHttpError as exc:
                     if not _is_transient_status(exc.status):
                         # FATAL (auth / bad request): surface immediately. A fatal
@@ -544,7 +590,7 @@ class RedisAgentMemoryProvider:
                         method,
                         path,
                         attempt + 1,
-                        self.max_retries,
+                        retries,
                         delay,
                     )
                     self.sleep(delay)
@@ -562,11 +608,12 @@ class RedisAgentMemoryProvider:
         url: str,
         payload: dict[str, Any] | None,
         headers: dict[str, str],
+        timeout_s: float,
     ) -> Any:
         try:
             if self.transport is not None:
-                return self.transport(method, url, payload, headers, self.timeout_s)
-            return _default_transport(method, url, payload, headers, self.timeout_s)
+                return self.transport(method, url, payload, headers, timeout_s)
+            return _default_transport(method, url, payload, headers, timeout_s)
         except _AmsHttpError:
             # Already carries an HTTP status (or explicit None): preserve it.
             raise

@@ -380,43 +380,65 @@ def test_api_memory_candidates_promote_and_reject(
     assert rejected.json()["review_note"] == "too broad"
 
 
+class _StubRecallProvider:
+    """A memory provider whose recall returns a fixed lesson list.
+
+    Stands in for the AMS-backed chain so the /api/memory/lessons test can prove
+    the endpoint surfaces lessons from recall (AMS), not the local SQLite ledger.
+    """
+
+    name = "stub"
+
+    def __init__(self, lessons: list[Lesson]) -> None:
+        self._lessons = lessons
+        self.calls: list[dict[str, object]] = []
+
+    def recall(
+        self,
+        *,
+        query: str | None = None,
+        codename: str | None = None,
+        repo: str | None = None,
+        limit: int = 5,
+    ) -> list[Lesson]:
+        self.calls.append({"query": query, "codename": codename, "repo": repo, "limit": limit})
+        return self._lessons[:limit]
+
+
 def test_api_memory_lessons_lists_active_lessons(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """The endpoint surfaces lessons from the provider chain (AMS + local),
+    not the local SQLite ledger, so an AMS-primary install is not shown empty."""
     state = tmp_path / "state"
-
-    class FakeBrain:
-        def health(self) -> dict[str, bool]:
-            return {"ok": True}
-
-        def list_lessons(self, *, limit: int) -> list[Lesson]:
-            assert limit <= 200
-            return [
-                Lesson(
-                    id="lesson:1",
-                    codename="lucius",
-                    repo="example-org/alfred",
-                    body="GraphQL schema lives in src/schema.graphql.",
-                    tags=["graphql"],
-                    created_at=datetime(2026, 5, 30, 12, 0, tzinfo=UTC),
-                    firing_id=None,
-                )
-            ]
-
-    brain = FakeBrain()
-    monkeypatch.setattr(server_views, "_memory_brain", lambda *_a, **_kw: (brain, None))
-    client = TestClient(create_app(FilesystemReader(state_root=state)))
+    provider = _StubRecallProvider(
+        [
+            Lesson(
+                id="lesson:memory_candidate:1",
+                codename="lucius",
+                repo="example-org/alfred",
+                body="GraphQL schema lives in src/schema.graphql.",
+                tags=["graphql"],
+                created_at=datetime(2026, 5, 30, 12, 0, tzinfo=UTC),
+                firing_id=None,
+            )
+        ]
+    )
+    app = create_app(FilesystemReader(state_root=state))
+    app.state.memory_provider = provider
+    client = TestClient(app)
 
     resp = client.get("/api/memory/lessons")
     assert resp.status_code == 200
     rows = resp.json()["rows"]
     assert len(rows) == 1
-    assert rows[0]["id"] == "lesson:1"
+    assert rows[0]["id"] == "lesson:memory_candidate:1"
     assert rows[0]["codename"] == "lucius"
     assert rows[0]["body"].startswith("GraphQL")
     assert rows[0]["tags"] == ["graphql"]
     assert rows[0]["severity"] == "info"
+    # Proves the read went through recall (the AMS-aware path), not list_lessons.
+    assert provider.calls and provider.calls[0]["limit"] <= 200
 
 
 def test_api_memory_candidate_value_error_is_bad_request(

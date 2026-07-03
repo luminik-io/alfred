@@ -54,6 +54,11 @@ def brain_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     db = tmp_path / "brain.db"
     monkeypatch.setenv("ALFRED_FLEET_BRAIN_DB", str(db))
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred-home"))
+    # Pin the read chain to the local ledger so `lessons` round-trips against the
+    # temp SQLite brain these tests seed, not whatever AMS happens to be live on
+    # the dev host (the `lessons` CLI now recalls across the whole provider
+    # chain). AMS-backed recall has its own coverage in test_memory_provider.
+    monkeypatch.setenv("ALFRED_MEMORY_PROVIDERS", "fleet")
     return db
 
 

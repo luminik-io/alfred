@@ -958,14 +958,18 @@ def register_routes(app: FastAPI) -> None:
     @app.get("/api/memory/lessons", response_class=JSONResponse)
     async def api_memory_lessons(request: Request, limit: int = 50) -> JSONResponse:
         """The lessons Alfred is actually using in recall (promoted + auto-promoted),
-        as opposed to the pending review queue served by /api/memory/candidates."""
-        brain, error = _memory_brain(request, require_existing=True)
-        if brain is None:
-            return JSONResponse({"rows": [], "error": error})
+        as opposed to the pending review queue served by /api/memory/candidates.
+
+        Routed through the memory provider chain (Redis AMS + local FleetBrain,
+        merged and deduped) rather than the local SQLite ledger alone: the
+        promoted-lesson backend is AMS, so ``FleetBrain.list_lessons`` returns
+        nothing on an AMS-primary install and the client would show an empty
+        "lessons Alfred is using" section even when it has promoted lessons.
+        """
         try:
-            lessons = brain.list_lessons(limit=min(max(1, limit), 200))
+            lessons = _recall_lessons_via_chain(request, limit=min(max(1, limit), 200))
         except Exception:  # pragma: no cover - local bridge can be down
-            logger.exception("api_memory_lessons: failed to list lessons")
+            logger.exception("api_memory_lessons: failed to recall lessons")
             return JSONResponse({"rows": [], "error": _GENERIC_ERROR})
         return JSONResponse({"rows": [_lesson_to_api(lesson) for lesson in lessons]})
 
@@ -1525,6 +1529,26 @@ def _lesson_field(lesson: Any, key: str) -> Any:
     if isinstance(payload, dict):
         return payload.get(key)
     return None
+
+
+def _recall_lessons_via_chain(request: Request, *, limit: int) -> list[Any]:
+    """Recall the lessons Alfred is using across the whole provider chain.
+
+    The promoted-lesson backend is Redis AMS, so the local SQLite ledger is
+    empty by design on an AMS-primary install. Route the read through the
+    configured chain (AMS + local, merged and deduped) so the client shows the
+    lessons Alfred has actually promoted.
+
+    A test/app-configured provider on ``request.app.state.memory_provider`` (or
+    the shared ``planning_memory_provider``) is preferred so the recall reuses a
+    single chain; otherwise it is built from env via ``recall_lessons``.
+    """
+    from memory.config import recall_lessons
+
+    provider = getattr(request.app.state, "memory_provider", None) or _planning_memory_provider(
+        request
+    )
+    return recall_lessons(limit=limit, provider=provider)
 
 
 def _memory_brain(
