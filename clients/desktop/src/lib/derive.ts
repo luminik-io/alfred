@@ -142,6 +142,60 @@ export function buildRunning(snapshot: Snapshot | null): RunningState {
 }
 
 // ---------------------------------------------------------------------------
+// Fleet pause state: the client must never overstate activity while agents are
+// on hold. /api/status carries a per-agent `paused` flag; this derives the
+// fleet-wide view so the Inbox summary and "Working now" metric can tell the
+// truth when the fleet is fully or mostly paused.
+// ---------------------------------------------------------------------------
+
+export type FleetActivity = {
+  // Total agents the runtime reported.
+  total: number;
+  // How many carry an operator pause marker.
+  paused: number;
+  // How many are not paused (able to pick up work).
+  active: number;
+  // The whole fleet is on hold: every reported agent is paused.
+  allPaused: boolean;
+  // Most of the fleet is on hold (a strict majority paused). When true the
+  // Inbox must lead with the pause instead of implying live activity.
+  mostlyPaused: boolean;
+};
+
+export function buildFleetActivity(snapshot: Snapshot | null): FleetActivity {
+  const agents = snapshot?.status?.agents || [];
+  const total = agents.length;
+  const paused = agents.filter((agent) => agent.paused === true).length;
+  const active = total - paused;
+  // A fleet with no reported agents is not "all paused" (there is nothing to
+  // pause): only report a hold when we actually saw agents and they are held.
+  const allPaused = total > 0 && paused === total;
+  const mostlyPaused = total > 0 && paused > total / 2;
+  return { total, paused, active, allPaused, mostlyPaused };
+}
+
+// A one-line, pause-aware summary of what the fleet is doing right now, or null
+// when the fleet is not paused (so callers keep their normal activity copy).
+// When the fleet is on hold this LEADS the Inbox summary so the metrics below
+// it never imply work is happening.
+export function fleetPauseSummary(
+  activity: FleetActivity,
+  waitingWork: number,
+): string | null {
+  if (!activity.mostlyPaused && !activity.allPaused) return null;
+  const held = activity.allPaused
+    ? `Fleet paused - all ${plural(activity.total, "agent")} on hold`
+    : `Fleet paused - ${plural(activity.paused, "agent")} on hold`;
+  if (waitingWork > 0) {
+    const waiting = `${plural(waitingWork, "request")} ${
+      waitingWork === 1 ? "is" : "are"
+    } waiting`;
+    return `${held}; ${waiting}.`;
+  }
+  return `${held}.`;
+}
+
+// ---------------------------------------------------------------------------
 // Shipped digest: a plain-English "what Alfred shipped" line per merged PR.
 // ---------------------------------------------------------------------------
 

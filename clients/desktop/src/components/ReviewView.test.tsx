@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ReviewView } from "./ReviewView";
 import type { AttentionItem } from "../lib/uiTypes";
-import type { FiringRecord, ShippedBoard, Snapshot, UsageResponse } from "../types";
+import type { AgentSummary, FiringRecord, ShippedBoard, Snapshot, UsageResponse } from "../types";
 
 vi.mock("../lib/links", () => ({
   openExternal: vi.fn(),
@@ -73,6 +73,21 @@ function snapshot(overrides: Partial<Snapshot> = {}): Snapshot {
     firings: [],
     plans: [],
     trustedSlack: null,
+    ...overrides,
+  };
+}
+
+function agent(overrides: Partial<AgentSummary> = {}): AgentSummary {
+  return {
+    codename: "lucius",
+    last_firing_id: null,
+    last_run_at: null,
+    status: "idle",
+    last_summary: "no firings yet",
+    firings_today: 0,
+    paused: false,
+    paused_since: null,
+    loaded: true,
     ...overrides,
   };
 }
@@ -373,6 +388,133 @@ describe("ReviewView", () => {
     expect(workingCard).not.toBeNull();
     expect(within(workingCard as HTMLElement).getByText("8")).toBeInTheDocument();
     expect(within(workingCard as HTMLElement).getByText(/follow live work/i)).toBeInTheDocument();
+  });
+
+  it("leads with the pause when the whole fleet is on hold, not queued/building activity", () => {
+    // Every reported agent is paused: the board still lists queued work, but the
+    // fleet cannot be actively working it, so the Inbox must say so and must not
+    // claim the requests are "queued or building".
+    const queued = Array.from({ length: 25 }, (_, index) => ({
+      repo: "your-org/api",
+      number: index + 1,
+      title: `Queued request ${index + 1}`,
+      url: `https://github.com/your-org/api/issues/${index + 1}`,
+      author: "batman",
+      kind: "issue",
+      timestamp: "2026-06-02T11:45:00Z",
+      age_days: 0,
+      is_draft: false,
+      labels: [],
+    }));
+    renderReview({
+      snapshot: snapshot({
+        status: {
+          agents: [
+            agent({ codename: "batman", paused: true, paused_since: "2026-06-01T00:00:00Z" }),
+            agent({ codename: "lucius", paused: true, paused_since: "2026-06-01T00:00:00Z" }),
+            agent({ codename: "drake", paused: true, paused_since: "2026-06-01T00:00:00Z" }),
+          ],
+          total_today: 0,
+          reliability: { status: "ok" },
+        },
+      }),
+      shipped: board({
+        columns: { queued, in_progress: [], shipped: [] },
+        counts: { queued: 25, in_progress: 0, shipped: 0 },
+      }),
+    });
+
+    expect(screen.getByText("Fleet is paused")).toBeInTheDocument();
+    // Honest lead line: paused + waiting, never "queued or building".
+    expect(screen.getByText(/Fleet paused - all 3 agents on hold; 25 requests are waiting/i)).toBeInTheDocument();
+    expect(screen.queryByText(/queued or building/i)).not.toBeInTheDocument();
+    // "Working now" must read 0 while paused, and say the work is waiting, not running.
+    const workingCard = screen.getByText("Working now").closest("article");
+    expect(within(workingCard as HTMLElement).getByText("0")).toBeInTheDocument();
+    expect(within(workingCard as HTMLElement).getByText(/paused/i)).toBeInTheDocument();
+  });
+
+  it("counts only genuinely running firings as Working now while paused (no stale board work)", () => {
+    // A stale board card from a paused fleet must not inflate Working now. With
+    // no live firing, Working now is 0 even though the board lists in-flight work.
+    renderReview({
+      snapshot: snapshot({
+        status: {
+          agents: [
+            agent({ codename: "batman", paused: true }),
+            agent({ codename: "lucius", paused: true }),
+          ],
+          total_today: 0,
+          reliability: { status: "ok" },
+        },
+      }),
+      shipped: board({
+        columns: {
+          queued: [],
+          in_progress: [
+            {
+              repo: "your-org/api",
+              number: 5,
+              title: "Stale in-flight PR",
+              url: "https://github.com/your-org/api/pull/5",
+              author: "lucius",
+              kind: "pr",
+              timestamp: "2026-06-01T10:00:00Z",
+              age_days: 1,
+              is_draft: false,
+              labels: ["agent:in-flight"],
+            },
+          ],
+          shipped: [],
+        },
+        counts: { queued: 0, in_progress: 1, shipped: 0 },
+      }),
+    });
+
+    const workingCard = screen.getByText("Working now").closest("article");
+    expect(within(workingCard as HTMLElement).getByText("0")).toBeInTheDocument();
+  });
+
+  it("keeps the normal activity summary when only a minority of agents are paused", () => {
+    // One of three paused is not "mostly paused": the fleet is still working, so
+    // the honest summary keeps the queued/building line.
+    renderReview({
+      snapshot: snapshot({
+        status: {
+          agents: [
+            agent({ codename: "batman", paused: false }),
+            agent({ codename: "lucius", paused: false }),
+            agent({ codename: "drake", paused: true }),
+          ],
+          total_today: 0,
+          reliability: { status: "ok" },
+        },
+      }),
+      shipped: board({
+        columns: {
+          queued: [
+            {
+              repo: "your-org/api",
+              number: 12,
+              title: "Add billing report",
+              url: "https://github.com/your-org/api/issues/12",
+              author: "batman",
+              kind: "issue",
+              timestamp: "2026-06-02T11:45:00Z",
+              age_days: 0,
+              is_draft: false,
+              labels: [],
+            },
+          ],
+          in_progress: [],
+          shipped: [],
+        },
+        counts: { queued: 1, in_progress: 0, shipped: 0 },
+      }),
+    });
+
+    expect(screen.queryByText(/Fleet is paused/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/1 request is queued or building/i)).toBeInTheDocument();
   });
 
   it("shows compact engine headroom without exposing token totals or dollars", () => {
