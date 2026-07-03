@@ -7,6 +7,7 @@ guard, gh-failure fallback) and ``find_existing_worktree`` /
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import time
@@ -342,6 +343,16 @@ def test_create_recovery_ref_sanitizes_branch_and_updates_ref(monkeypatch, tmp_p
     assert ref is not None
     assert ref.startswith("recovery/lucius-issue-42-")
     assert updates == [["git", "update-ref", f"refs/heads/{ref}", "HEAD"]]
+
+    # Idempotency: a second call for the same branch + HEAD must upsert the
+    # SAME deterministic ref (no timestamp component), not mint a new branch.
+    ref2 = ar.create_recovery_ref(wt, branch="lucius/issue 42")
+
+    assert ref2 == ref
+    assert ref == "recovery/lucius-issue-42-abc123"
+    # No timestamp: the tail after the sanitized fragment is just the short sha.
+    assert re.fullmatch(r"recovery/lucius-issue-42-[0-9a-f]+", ref)
+    assert updates == [["git", "update-ref", f"refs/heads/{ref}", "HEAD"]] * 2
 
 
 def test_push_current_branch_pushes_head_to_named_branch(monkeypatch, tmp_path):

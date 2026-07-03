@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import collections
 import contextlib
+import json
 import os
 import re
 import shutil
@@ -248,6 +249,73 @@ def dirty_worktree_reason(wt: Path) -> str | None:
     return worktree_risk_reason(wt)
 
 
+# State file recording the set of stuck-worktree ids we last warned about.
+# The cleanup Slack warn is throttled to only fire when the stuck set CHANGES
+# (>=1 newly stuck worktree) so one lingering dirty worktree does not warn on
+# every firing. IO is best-effort: cleanup must never crash on state errors.
+STUCK_WORKTREES_STATE = STATE_ROOT / "cleanup-stuck-worktrees.json"
+
+
+def stuck_worktree_id(wt: Path, recovery_ref: str | None) -> str:
+    """Return a stable id for a skipped (stuck) worktree.
+
+    Prefers the now-deterministic recovery ref (stable across firings for the
+    same branch + HEAD); otherwise falls back to ``{wt}@{short_sha}`` so a
+    worktree that keeps advancing its HEAD reads as newly stuck.
+    """
+    if recovery_ref:
+        return recovery_ref
+    short_sha = "head"
+    try:
+        sha = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(wt),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if sha.returncode == 0:
+            short_sha = (sha.stdout or "head").strip() or "head"
+    except (OSError, subprocess.SubprocessError):
+        short_sha = "head"
+    return f"{wt}@{short_sha}"
+
+
+def _load_stuck_state(state_path: Path) -> set[str]:
+    """Return the previously-warned stuck ids, or empty set on any error.
+
+    An unreadable/corrupt/missing state file is treated as an empty previous
+    set: we warn once (never silent-forever) and rewrite the state.
+    """
+    try:
+        raw = json.loads(state_path.read_text())
+    except (OSError, ValueError):
+        return set()
+    if isinstance(raw, list):
+        return {str(x) for x in raw}
+    if isinstance(raw, dict):
+        return {str(x) for x in raw.get("stuck", [])}
+    return set()
+
+
+def newly_stuck_worktrees(current_ids: set[str], state_path: Path) -> set[str]:
+    """Decide which stuck worktrees are newly stuck vs the last run.
+
+    Loads the previously-warned set from ``state_path``, then ALWAYS rewrites
+    it to ``current_ids`` (so a resolved worktree stops re-warning). Returns
+    ``current_ids - previous`` - the ids that warrant a fresh warn. All IO is
+    guarded so this never raises; on write failure we still return the correct
+    decision (the next run then re-warns, which is safe).
+    """
+    previous = _load_stuck_state(state_path)
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(json.dumps({"stuck": sorted(current_ids)}))
+    except OSError:
+        pass
+    return current_ids - previous
+
+
 # Sweep abandoned clean worktrees (>2h old, or >15min in emergency mode).
 # Dirty or unknown directories are kept so cleanup never destroys
 # in-progress agent work - the dirty-skip + recovery-ref path is identical
@@ -258,6 +326,9 @@ wt_removed = 0
 wt_skipped = 0
 wt_freed_mb = 0.0
 wt_recovery_refs: list[str] = []
+# Stable ids of every worktree we skipped this run (fleet pool + extra paths),
+# used to throttle the "stale worktree(s)" Slack warn to changes only.
+wt_stuck_ids: set[str] = set()
 if wt_root.exists():
     for wt in wt_root.iterdir():
         try:
@@ -268,6 +339,7 @@ if wt_root.exists():
             if dirty_reason:
                 wt_skipped += 1
                 recovery_ref = create_recovery_ref(wt)
+                wt_stuck_ids.add(stuck_worktree_id(wt, recovery_ref))
                 if recovery_ref:
                     wt_recovery_refs.append(f"{wt} -> {recovery_ref}")
                     print(
@@ -352,6 +424,7 @@ def sweep_extra_paths(
                 if dirty_reason:
                     skipped += 1
                     recovery_ref = create_recovery_ref(wt)
+                    wt_stuck_ids.add(stuck_worktree_id(wt, recovery_ref))
                     if recovery_ref:
                         wt_recovery_refs.append(f"{wt} -> {recovery_ref}")
                         print(
@@ -827,7 +900,15 @@ total_freed_mb = (
     + dock_freed_mb
 )
 print(f"[cleanup] total reclaimed: {total_freed_mb:.1f} MB")
-if wt_skipped:
+# Throttle the stale-worktree warn: fire only when the stuck set CHANGED vs the
+# previous run (>=1 newly stuck). A single lingering dirty worktree must not
+# warn every firing. State is always rewritten so a resolved worktree stops
+# re-warning; unreadable state warns once (never silent-forever).
+try:
+    newly_stuck = newly_stuck_worktrees(wt_stuck_ids, STUCK_WORKTREES_STATE)
+except Exception:  # never let throttling state crash cleanup
+    newly_stuck = wt_stuck_ids
+if wt_skipped and newly_stuck:
     recovery_note = ""
     if wt_recovery_refs:
         shown = "\n".join(f"- {line}" for line in wt_recovery_refs[:5])
@@ -835,7 +916,8 @@ if wt_skipped:
         recovery_note = f"\nRecovery refs created:\n{shown}{extra}"
     slack_post(
         f"cleanup skipped {wt_skipped} stale worktree(s) because they were dirty "
-        "or could not be proven safe to remove."
+        "or could not be proven safe to remove "
+        f"({len(newly_stuck)} newly stuck this run)."
         f"{recovery_note}",
         severity="warn",
     )
