@@ -666,6 +666,30 @@ def cmd_auto_promote(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_consolidate(args: argparse.Namespace) -> int:
+    """Periodic consolidation/decay pass (gated, off by default)."""
+    brain = _build_brain(args)
+    summary = brain.consolidate_lessons(
+        stale_days=args.stale_days,
+        dry_run=args.dry_run,
+    )
+    ams_failed = int(summary.get("ams_forget_failed") or 0)
+    if args.json:
+        print(json.dumps(summary, indent=2, sort_keys=True))
+    elif not summary.get("enabled"):
+        print("consolidate disabled (ALFRED_MEMORY_CONSOLIDATE off); no-op")
+    else:
+        print(
+            "consolidate "
+            f"enabled=true dry_run={summary.get('dry_run')} "
+            f"decayed={summary.get('decayed')} merged={summary.get('merged')} "
+            f"ams_forget_attempted={summary.get('ams_forget_attempted', 0)} "
+            f"ams_forgotten={summary.get('ams_forgotten', 0)} "
+            f"ams_forget_failed={ams_failed}"
+        )
+    return 1 if ams_failed else 0
+
+
 def _build_redis_provider() -> RedisAgentMemoryProvider:
     return RedisAgentMemoryProvider.from_env()
 
@@ -1344,6 +1368,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_auto_promote.add_argument("--json", action="store_true")
     p_auto_promote.set_defaults(func=cmd_auto_promote)
+
+    p_consolidate = sub.add_parser(
+        "consolidate",
+        help=(
+            "periodic consolidation/decay pass over promoted lessons "
+            "(no-op unless ALFRED_MEMORY_CONSOLIDATE is armed)"
+        ),
+    )
+    p_consolidate.add_argument("--stale-days", type=int, default=180)
+    p_consolidate.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report counts without forgetting or writing anything.",
+    )
+    p_consolidate.add_argument("--json", action="store_true")
+    p_consolidate.set_defaults(func=cmd_consolidate)
 
     p_redis_status = sub.add_parser("redis-status", help="check Redis Agent Memory Server")
     p_redis_status.add_argument("--json", action="store_true")

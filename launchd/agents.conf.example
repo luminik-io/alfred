@@ -58,6 +58,13 @@
 # freshly queued candidates are seen.
 #   my.fleet.memory-auto-promote	memory-auto-promote.py	cron:8:20	no		Gated memory auto-promoter
 #
+# Opt-in: memory consolidation/decay. A conservative, invalidate-not-delete pass
+# that forgets stale promoted lessons from Redis AMS and collapses exact-duplicate
+# auto-promoted lessons, retiring the local candidate rows (history is kept). It
+# is a NO-OP unless ALFRED_MEMORY_CONSOLIDATE=1 is set in $ALFRED_HOME/.env, so
+# scheduling this row disarmed is safe. Runs weekly, well after the daily harvest.
+#   my.fleet.memory-consolidate	memory-consolidate.py	cron:0:4:30	no		Memory consolidation/decay
+#
 # Opt-in: local code-map refresh. This scans ALFRED_CODE_MAP_REPOS and writes
 # $ALFRED_HOME/state/code-map.json for prompt context. It is separate from the
 # codebase-memory-mcp graph; run `bin/code-memory-mcp refresh` when you want to

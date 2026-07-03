@@ -911,3 +911,77 @@ def test_github_poll_records_issues_prs_and_bundles(
         "pr",
     }
     assert len(brain.list_bundle_items(bundle_slug="billing")) == 2
+
+
+# ---------------------------------------------------------------------------
+# consolidate CLI surface
+# ---------------------------------------------------------------------------
+
+
+class _FakeConsolidateBrain:
+    """Stub brain that returns a fixed consolidate summary."""
+
+    def __init__(self, summary: dict[str, object]) -> None:
+        self.summary = summary
+        self.calls: list[dict[str, object]] = []
+
+    def consolidate_lessons(self, **kwargs: object) -> dict[str, object]:
+        self.calls.append(kwargs)
+        return self.summary
+
+
+def test_cli_consolidate_disabled_is_noop(
+    cli_mod: ModuleType, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    summary = {
+        "enabled": False,
+        "dry_run": False,
+        "decayed": 0,
+        "merged": 0,
+        "ams_forget_attempted": 0,
+        "ams_forgotten": 0,
+        "ams_forget_failed": 0,
+    }
+    monkeypatch.setattr(cli_mod, "FleetBrain", lambda *a, **k: _FakeConsolidateBrain(summary))
+    rc = cli_mod.main(["consolidate"])
+    assert rc == 0
+    assert "disabled" in capsys.readouterr().out
+
+
+def test_cli_consolidate_prints_ams_forget_counts(
+    cli_mod: ModuleType, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    summary = {
+        "enabled": True,
+        "dry_run": False,
+        "decayed": 1,
+        "merged": 1,
+        "ams_forget_attempted": 2,
+        "ams_forgotten": 2,
+        "ams_forget_failed": 0,
+    }
+    monkeypatch.setattr(cli_mod, "FleetBrain", lambda *a, **k: _FakeConsolidateBrain(summary))
+    rc = cli_mod.main(["consolidate"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "decayed=1" in out
+    assert "merged=1" in out
+    assert "ams_forgotten=2" in out
+
+
+def test_cli_consolidate_returns_nonzero_when_ams_forget_fails(
+    cli_mod: ModuleType, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    summary = {
+        "enabled": True,
+        "dry_run": False,
+        "decayed": 0,
+        "merged": 0,
+        "ams_forget_attempted": 1,
+        "ams_forgotten": 0,
+        "ams_forget_failed": 1,
+    }
+    monkeypatch.setattr(cli_mod, "FleetBrain", lambda *a, **k: _FakeConsolidateBrain(summary))
+    rc = cli_mod.main(["consolidate", "--json"])
+    assert rc == 1
+    assert '"ams_forget_failed": 1' in capsys.readouterr().out

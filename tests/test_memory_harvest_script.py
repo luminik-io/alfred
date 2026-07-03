@@ -50,6 +50,7 @@ def _run_harvest(tmp_path: Path, db: Path, *args: str) -> subprocess.CompletedPr
     [
         ("memory-harvest.py", "[MEMORY-HARVEST-DOCTOR-OK]"),
         ("memory-auto-promote.py", "[MEMORY-AUTO-PROMOTE-DOCTOR-OK]"),
+        ("memory-consolidate.py", "[MEMORY-CONSOLIDATE-DOCTOR-OK]"),
     ],
 )
 def test_memory_wrappers_doctor_mode_short_circuits(
@@ -182,3 +183,67 @@ def test_slack_trigger_uses_rendered_queued_candidates(
     assert script.main([]) == 0
     assert posts == []
     assert "queued=0" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# memory-consolidate.py scheduled runner
+# ---------------------------------------------------------------------------
+
+
+def _run_consolidate(tmp_path: Path, db: Path, *args: str, arm: bool = False):
+    env = {
+        **os.environ,
+        "ALFRED_HOME": str(tmp_path / "alfred"),
+        "ALFRED_FLEET_BRAIN_DB": str(db),
+    }
+    if arm:
+        env["ALFRED_MEMORY_CONSOLIDATE"] = "1"
+    else:
+        env.pop("ALFRED_MEMORY_CONSOLIDATE", None)
+    return subprocess.run(
+        [sys.executable, str(REPO_ROOT / "bin" / "memory-consolidate.py"), *args],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=30,
+    )
+
+
+def test_memory_consolidate_disarmed_is_noop(tmp_path: Path) -> None:
+    db = tmp_path / "brain.db"
+    FleetBrain(db_path=db)  # create the schema
+
+    result = _run_consolidate(tmp_path, db, "--json", "--no-slack", arm=False)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["enabled"] is False
+    assert payload["decayed"] == 0
+    assert payload["merged"] == 0
+
+
+def test_memory_consolidate_dry_run_reports_without_writing(tmp_path: Path) -> None:
+    """Armed + dry-run never touches AMS, so it runs end to end with no server."""
+    db = tmp_path / "brain.db"
+    FleetBrain(db_path=db)
+
+    result = _run_consolidate(tmp_path, db, "--dry-run", "--json", "--no-slack", arm=True)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["enabled"] is True
+    assert payload["dry_run"] is True
+
+
+def test_memory_consolidate_module_loads() -> None:
+    spec = util.spec_from_file_location(
+        "memory_consolidate_script", REPO_ROOT / "bin" / "memory-consolidate.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    # The runner exposes a build_parser with the documented flags.
+    parser = module.build_parser()
+    ns = parser.parse_args(["--stale-days", "90", "--dry-run"])
+    assert ns.stale_days == 90
+    assert ns.dry_run is True

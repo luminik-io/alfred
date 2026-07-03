@@ -1257,6 +1257,172 @@ class FleetBrain:
             )
         return reverted
 
+    def consolidate_lessons(
+        self,
+        *,
+        stale_days: int = 180,
+        dry_run: bool = False,
+        env: Mapping[str, str] | None = None,
+        lesson_forgetter: Any | None = None,
+    ) -> dict[str, Any]:
+        """Periodic consolidation/decay pass over promoted lessons (OFF by default).
+
+        Two minimal, invalidate-not-delete operations over validated (promoted)
+        candidates whose lesson lives in Redis AMS:
+
+          * decay: a promoted candidate older than ``stale_days`` has its AMS
+            lesson forgotten and its row flipped to ``retired`` so recall stops
+            surfacing it, but the audit row is kept (never deleted);
+          * merge: auto-promoted (``reviewed_by == "auto"``) promoted candidates
+            whose bodies normalize to the same text are collapsed to the oldest;
+            the rest have their AMS lesson forgotten and are retired.
+
+        A candidate is retired ONLY once its AMS lesson is actually forgotten:
+        if the forget fails (a transient outage, or forgetting disabled
+        server-side) the row is left ``validated`` and logged, so the ledger
+        never claims a decay/merge while the lesson is still live in AMS recall.
+        This mirrors the revert lever and keeps the two paths honest.
+
+        Gated behind ``ALFRED_MEMORY_CONSOLIDATE`` so it never runs unless armed;
+        ``dry_run`` reports counts without writing. Deliberately conservative (no
+        LLM merge yet) so it can be scheduled safely -- scheduling it disarmed is
+        a true no-op. ``lesson_forgetter`` is the AMS provider; tests inject a
+        stub. Returns a summary dict (always safe to log)."""
+        summary: dict[str, Any] = {
+            "enabled": _env_kill_switch_on("ALFRED_MEMORY_CONSOLIDATE", env),
+            "dry_run": bool(dry_run),
+            "decayed": 0,
+            "merged": 0,
+            "ams_forget_attempted": 0,
+            "ams_forgotten": 0,
+            "ams_forget_failed": 0,
+        }
+        if not summary["enabled"]:
+            # No-op when disarmed: do not even read the ledger.
+            return summary
+
+        # Enumerate every validated (promoted) candidate via offset paging. A
+        # promoted candidate carries a promoted_lesson_id; that is the AMS key.
+        validated: list[MemoryCandidate] = []
+        page = 500
+        offset = 0
+        while True:
+            batch = self.list_memory_candidates(status="validated", limit=page, offset=offset)
+            validated.extend(
+                cand for cand in batch if cand.promoted_lesson_id is not None
+            )
+            if len(batch) < page:
+                break
+            offset += page
+
+        cutoff = datetime.now(UTC) - timedelta(days=max(0, int(stale_days)))
+        stale: list[MemoryCandidate] = []
+        fresh_auto: list[MemoryCandidate] = []
+        for cand in validated:
+            created = cand.created_at
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=UTC)
+            if created < cutoff:
+                stale.append(cand)
+            elif cand.reviewed_by == "auto":
+                # Only auto-promoted lessons are merge-eligible; human-reviewed
+                # lessons are left alone (a human deliberately kept both).
+                fresh_auto.append(cand)
+
+        # Merge losers: among still-fresh auto-promoted candidates, keep the
+        # OLDEST per normalized body and mark the rest for retirement. (Stale
+        # rows already decay above, so they are excluded from the merge set to
+        # avoid double-counting the same candidate.)
+        by_body: dict[str, list[MemoryCandidate]] = {}
+        for cand in fresh_auto:
+            by_body.setdefault(_canonical_memory_body(cand.body), []).append(cand)
+        merge_losers: list[MemoryCandidate] = []
+        for group in by_body.values():
+            if len(group) < 2:
+                continue
+            ordered = sorted(group, key=lambda c: (c.created_at, c.id))
+            merge_losers.extend(ordered[1:])
+
+        decay_reason = f"consolidate: decayed (stale > {int(stale_days)}d)"
+        merge_reason = "consolidate: merged (duplicate of an older lesson)"
+        decayed = self._retire_consolidated(
+            stale,
+            reason=decay_reason,
+            dry_run=dry_run,
+            lesson_forgetter=lesson_forgetter,
+            summary=summary,
+        )
+        merged = self._retire_consolidated(
+            merge_losers,
+            reason=merge_reason,
+            dry_run=dry_run,
+            lesson_forgetter=lesson_forgetter,
+            summary=summary,
+        )
+        summary["decayed"] = decayed
+        summary["merged"] = merged
+        return summary
+
+    def _retire_consolidated(
+        self,
+        candidates: list[MemoryCandidate],
+        *,
+        reason: str,
+        dry_run: bool,
+        lesson_forgetter: Any | None,
+        summary: dict[str, Any],
+    ) -> int:
+        """Forget each candidate's AMS lesson then retire the row.
+
+        Retires ONLY once the AMS lesson is forgotten, so the ledger never marks
+        a lesson consolidated while it is still live in AMS recall. In dry-run
+        mode nothing is forgotten or written; the count is what WOULD change.
+        Shared by the decay and merge passes; increments the ams_forget counters
+        on ``summary`` in place. Returns the number retired (or, in dry-run, the
+        number that would be)."""
+        if dry_run:
+            return len(candidates)
+        if not candidates:
+            return 0
+        forgetter = lesson_forgetter
+        if forgetter is None:
+            try:
+                forgetter = self._lesson_provider()
+            except Exception:
+                summary["ams_forget_failed"] += len(candidates)
+                _LOG.exception(
+                    "consolidate_lessons: could not build AMS lesson forgetter"
+                )
+                return 0
+        retired = 0
+        for candidate in candidates:
+            lesson_id = candidate.promoted_lesson_id or _lesson_memory_id(candidate.id)
+            summary["ams_forget_attempted"] += 1
+            forgotten = False
+            try:
+                forgotten = bool(forgetter.forget_lesson(lesson_id))
+            except Exception:
+                _LOG.exception(
+                    "consolidate_lessons: AMS forget failed for candidate %s",
+                    candidate.id,
+                )
+            if not forgotten:
+                summary["ams_forget_failed"] += 1
+                continue
+            summary["ams_forgotten"] += 1
+            self.store.update_memory_candidate(
+                replace(
+                    candidate,
+                    status="retired",
+                    reviewed_at=datetime.now(UTC),
+                    reviewed_by="consolidate",
+                    review_note=reason,
+                    promoted_lesson_id=None,
+                )
+            )
+            retired += 1
+        return retired
+
     def record_failure(
         self,
         *,

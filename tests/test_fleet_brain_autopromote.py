@@ -19,7 +19,7 @@ import pytest
 _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "lib"))
 
-from datetime import UTC, datetime  # noqa: E402
+from datetime import UTC, datetime, timedelta  # noqa: E402
 
 from fleet_brain import FleetBrain, Lesson, direct_auto_promote_env, new_id  # noqa: E402
 
@@ -629,3 +629,143 @@ def test_ams_write_failure_leaves_candidate_pending(brain: FleetBrain) -> None:
     again = brain.auto_promote_candidates(env=ARM, judge=lambda _p: _verdict(0.97))
     assert c.id in again["promoted"]
     assert brain.ams.reflected[-1]["memory_id"] == f"lesson:memory_candidate:{c.id}"  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
+# consolidate_lessons: gated decay + merge over promoted lessons
+# ---------------------------------------------------------------------------
+
+ARM_CONSOLIDATE = {"ALFRED_MEMORY_CONSOLIDATE": "1"}
+
+
+def _promote_auto(
+    brain: FleetBrain,
+    body: str,
+    *,
+    created_at: datetime,
+    confidence: float = 0.95,
+) -> str:
+    """Stage a candidate with an explicit age and promote it as an auto lesson.
+
+    Returns the candidate id; its promoted lesson is written to the fixture's
+    _FakeAMS with a deterministic memory id."""
+    cand = brain.propose_memory(
+        codename="lucius",
+        repo="acme/api",
+        body=body,
+        evidence="saw it",
+        confidence=confidence,
+        created_at=created_at,
+    )
+    brain.promote_memory_candidate(cand.id, reviewer="auto")
+    return cand.id
+
+
+def test_consolidate_disarmed_is_a_noop(brain: FleetBrain) -> None:
+    old = datetime.now(UTC) - timedelta(days=365)
+    _promote_auto(brain, "a stale lesson", created_at=old)
+
+    summary = brain.consolidate_lessons(env={})  # not armed
+
+    assert summary["enabled"] is False
+    assert summary["decayed"] == 0
+    assert summary["merged"] == 0
+    # Disarmed must not even forget from AMS.
+    assert brain.ams.forgotten == []  # type: ignore[attr-defined]
+
+
+def test_consolidate_decays_stale_promoted_lessons(brain: FleetBrain) -> None:
+    old = datetime.now(UTC) - timedelta(days=200)
+    fresh = datetime.now(UTC) - timedelta(days=1)
+    stale_id = _promote_auto(brain, "an old lesson", created_at=old)
+    fresh_id = _promote_auto(brain, "a recent lesson", created_at=fresh)
+
+    summary = brain.consolidate_lessons(env=ARM_CONSOLIDATE, stale_days=180)
+
+    assert summary["enabled"] is True
+    assert summary["decayed"] == 1
+    assert summary["merged"] == 0
+    assert summary["ams_forgotten"] == 1
+    # The stale lesson was forgotten from AMS and its row retired.
+    assert f"lesson:memory_candidate:{stale_id}" in brain.ams.forgotten  # type: ignore[attr-defined]
+    assert _status(brain, stale_id) == "retired"
+    # The fresh one is untouched.
+    assert _status(brain, fresh_id) == "validated"
+
+
+def test_consolidate_merges_duplicate_auto_lessons(brain: FleetBrain) -> None:
+    older = datetime.now(UTC) - timedelta(days=3)
+    newer = datetime.now(UTC) - timedelta(days=1)
+    keep_id = _promote_auto(brain, "Duplicate lesson body.", created_at=older)
+    dup_id = _promote_auto(brain, "duplicate lesson body.", created_at=newer)
+
+    summary = brain.consolidate_lessons(env=ARM_CONSOLIDATE, stale_days=180)
+
+    assert summary["merged"] == 1
+    assert summary["decayed"] == 0
+    # The newer duplicate loses; the oldest is kept live.
+    assert _status(brain, dup_id) == "retired"
+    assert _status(brain, keep_id) == "validated"
+    assert f"lesson:memory_candidate:{dup_id}" in brain.ams.forgotten  # type: ignore[attr-defined]
+    assert f"lesson:memory_candidate:{keep_id}" not in brain.ams.forgotten  # type: ignore[attr-defined]
+
+
+def test_consolidate_leaves_human_reviewed_duplicates_alone(brain: FleetBrain) -> None:
+    """Merge is only for auto-promoted lessons; a human who kept both wins."""
+    older = datetime.now(UTC) - timedelta(days=3)
+    newer = datetime.now(UTC) - timedelta(days=1)
+    a = brain.propose_memory(
+        codename="lucius", repo="acme/api", body="Same body.", evidence="e", created_at=older
+    )
+    b = brain.propose_memory(
+        codename="lucius", repo="acme/api", body="same body.", evidence="e", created_at=newer
+    )
+    brain.promote_memory_candidate(a.id, reviewer="operator")
+    brain.promote_memory_candidate(b.id, reviewer="operator")
+
+    summary = brain.consolidate_lessons(env=ARM_CONSOLIDATE, stale_days=180)
+
+    assert summary["merged"] == 0
+    assert _status(brain, a.id) == "validated"
+    assert _status(brain, b.id) == "validated"
+
+
+def test_consolidate_dry_run_writes_nothing(brain: FleetBrain) -> None:
+    old = datetime.now(UTC) - timedelta(days=200)
+    stale_id = _promote_auto(brain, "an old lesson", created_at=old)
+
+    summary = brain.consolidate_lessons(env=ARM_CONSOLIDATE, stale_days=180, dry_run=True)
+
+    assert summary["dry_run"] is True
+    assert summary["decayed"] == 1  # would decay
+    assert summary["ams_forgotten"] == 0
+    assert brain.ams.forgotten == []  # type: ignore[attr-defined]
+    # Nothing was actually retired.
+    assert _status(brain, stale_id) == "validated"
+
+
+def test_consolidate_keeps_row_validated_when_ams_forget_fails(brain: FleetBrain) -> None:
+    class FailingForgetter:
+        def __init__(self) -> None:
+            self.attempted: list[str] = []
+
+        def forget_lesson(self, lesson_id: str) -> bool:
+            self.attempted.append(lesson_id)
+            return False
+
+    old = datetime.now(UTC) - timedelta(days=200)
+    stale_id = _promote_auto(brain, "an old lesson", created_at=old)
+    forgetter = FailingForgetter()
+
+    summary = brain.consolidate_lessons(
+        env=ARM_CONSOLIDATE, stale_days=180, lesson_forgetter=forgetter
+    )
+
+    # The AMS forget failed, so the ledger must NOT claim a decay.
+    assert summary["decayed"] == 0
+    assert summary["ams_forget_attempted"] == 1
+    assert summary["ams_forgotten"] == 0
+    assert summary["ams_forget_failed"] == 1
+    assert forgetter.attempted == [f"lesson:memory_candidate:{stale_id}"]
+    # Row stays validated (live) so a later pass retries.
+    assert _status(brain, stale_id) == "validated"
