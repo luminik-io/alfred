@@ -839,3 +839,68 @@ def test_fleet_worktree_reclamation_is_counted_in_total(tmp_path, monkeypatch):
     # And the grand total includes the fleet reclamation.
     assert mod.total_freed_mb >= mod.wt_freed_mb
     assert mod.total_freed_mb >= 2.9
+
+
+def test_newly_stuck_first_run_warns(cleanup, tmp_path):
+    """First run with no state file: every stuck worktree is newly stuck."""
+    state = tmp_path / "state" / "cleanup-stuck-worktrees.json"
+    current = {"recovery/lucius-issue-42-abc123", "recovery/bane-7-def456"}
+
+    newly = cleanup.newly_stuck_worktrees(current, state)
+
+    assert newly == current
+    assert state.exists()
+
+
+def test_newly_stuck_identical_second_run_is_silent(cleanup, tmp_path):
+    """An identical second run returns an empty set (no warn)."""
+    state = tmp_path / "state" / "cleanup-stuck-worktrees.json"
+    current = {"recovery/lucius-issue-42-abc123"}
+
+    first = cleanup.newly_stuck_worktrees(current, state)
+    second = cleanup.newly_stuck_worktrees(current, state)
+
+    assert first == current
+    assert second == set()
+
+
+def test_newly_stuck_new_worktree_warns_only_for_the_new_one(cleanup, tmp_path):
+    """A newly-appearing stuck worktree warns; the already-known one does not."""
+    state = tmp_path / "state" / "cleanup-stuck-worktrees.json"
+    cleanup.newly_stuck_worktrees({"recovery/lucius-issue-42-abc123"}, state)
+
+    newly = cleanup.newly_stuck_worktrees(
+        {"recovery/lucius-issue-42-abc123", "recovery/bane-7-def456"},
+        state,
+    )
+
+    assert newly == {"recovery/bane-7-def456"}
+
+
+def test_newly_stuck_resolved_worktree_stops_rewarning(cleanup, tmp_path):
+    """When a worktree is resolved, state is rewritten so it never re-warns."""
+    state = tmp_path / "state" / "cleanup-stuck-worktrees.json"
+    cleanup.newly_stuck_worktrees({"recovery/lucius-issue-42-abc123"}, state)
+
+    # Worktree resolved: current set is now empty. Nothing new, and state
+    # is rewritten to empty.
+    assert cleanup.newly_stuck_worktrees(set(), state) == set()
+    # The same worktree reappearing later is treated as newly stuck again.
+    assert cleanup.newly_stuck_worktrees({"recovery/lucius-issue-42-abc123"}, state) == {
+        "recovery/lucius-issue-42-abc123"
+    }
+
+
+def test_newly_stuck_unreadable_state_warns_once(cleanup, tmp_path):
+    """Corrupt/unreadable state is treated as empty previous: warn once."""
+    state = tmp_path / "state" / "cleanup-stuck-worktrees.json"
+    state.parent.mkdir(parents=True, exist_ok=True)
+    state.write_text("{ not valid json ][")
+    current = {"recovery/lucius-issue-42-abc123"}
+
+    newly = cleanup.newly_stuck_worktrees(current, state)
+
+    # Warned (all current ids are "new" against the unreadable state)...
+    assert newly == current
+    # ...but the state was rewritten cleanly, so the next identical run is silent.
+    assert cleanup.newly_stuck_worktrees(current, state) == set()

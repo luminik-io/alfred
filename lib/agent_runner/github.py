@@ -492,15 +492,16 @@ def create_recovery_ref(
     """Create a local recovery branch for ahead commits in ``wt``.
 
     Returns the short ref name (for example
-    ``recovery/lucius-42-20260525-120000-abc1234``) or ``None`` when
-    there are no commits ahead of ``base`` or the ref could not be
-    written. The helper is deliberately local-only; pushing the ref is
-    an operator decision.
+    ``recovery/lucius-42-abc1234``) or ``None`` when there are no commits
+    ahead of ``base`` or the ref could not be written. The ref name is
+    deterministic (no timestamp): repeated calls for the same branch and
+    HEAD upsert the SAME ref via ``git update-ref`` instead of minting a
+    new branch every firing. The helper is deliberately local-only;
+    pushing the ref is an operator decision.
     """
     branch_name = branch or _worktree_branch(wt) or "head"
     if is_dry_run():
-        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-        ref = f"{prefix}/{_safe_recovery_ref_fragment(branch_name)}-{stamp}-dryrun"
+        ref = f"{prefix}/{_safe_recovery_ref_fragment(branch_name)}-dryrun"
         dry_run_log("git", f"would create recovery ref {ref} at HEAD in {wt}")
         return ref
     comparison_base = _worktree_comparison_base(wt, base)
@@ -517,8 +518,7 @@ def create_recovery_ref(
         return None
     sha = run(["git", "rev-parse", "--short", "HEAD"], cwd=str(wt), timeout=10)
     short_sha = (sha.stdout or "head").strip() if sha.returncode == 0 else "head"
-    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-    ref = f"{prefix}/{_safe_recovery_ref_fragment(branch_name)}-{stamp}-{short_sha}"
+    ref = f"{prefix}/{_safe_recovery_ref_fragment(branch_name)}-{short_sha}"
     res = run(["git", "update-ref", f"refs/heads/{ref}", "HEAD"], cwd=str(wt), timeout=15)
     if res.returncode != 0:
         return None

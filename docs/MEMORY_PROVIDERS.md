@@ -158,6 +158,32 @@ store. The real intelligence (the LLM judge that gates auto-save, plus
 candidate-side dedup) lives upstream in Python; Redis just stores and retrieves
 the embeddings.
 
+### Resilience and tuning knobs
+
+The Redis Agent Memory client is fault-tolerant: it retries transient failures
+and trips a circuit breaker so a flaky or down AMS never blocks a firing (recall
+then falls back to FleetBrain). The auto-promote path has its own budget knobs so
+the LLM judge cannot run away with cost. Every value below has a working default,
+so none of these are required; set them only to tune. Names and defaults are read
+from `lib/memory/redis_agent_memory.py`, `lib/fleet_brain/__init__.py`, and
+`lib/memory_judge.py`.
+
+| Variable | Default | What it controls |
+|---|---|---|
+| `ALFRED_REDIS_MEMORY_TIMEOUT_S` | `2.0` | Per-request AMS HTTP timeout, in seconds. |
+| `ALFRED_REDIS_MEMORY_MAX_RETRIES` | `2` | Retry attempts for a transient AMS request failure before giving up on that call. |
+| `ALFRED_REDIS_MEMORY_BREAKER_THRESHOLD` | `5` | Consecutive failures that trip the circuit breaker and short-circuit further AMS calls. |
+| `ALFRED_REDIS_MEMORY_BREAKER_COOLDOWN_S` | `30` | Seconds the breaker stays open before it allows a probe request again. |
+| `ALFRED_AUTO_PROMOTE_THRESHOLD` | `0.5` | Minimum candidate confidence to consider for auto-promotion (the LLM judge is the real decider above this bar). |
+| `ALFRED_AUTO_PROMOTE_NO_JUDGE_THRESHOLD` | `0.9` | Confidence floor used instead when the LLM judge is off, so default-confidence candidates are not promoted with no review. |
+| `ALFRED_AUTO_PROMOTE_MAX_PER_RUN` | `5` | Cap on successful auto-promotions per run. |
+| `ALFRED_AUTO_PROMOTE_MAX_JUDGE_CALLS` | `25` | Per-run judge-call budget (never below `MAX_PER_RUN`); bounds cost since rejected or duplicate candidates still cost a judge call. |
+| `ALFRED_AUTO_PROMOTE_JUDGE_TIMEOUT` | `120` | Per-call LLM judge timeout, in seconds. |
+
+The `ALFRED_AUTO_PROMOTE`, `ALFRED_AUTO_PROMOTE_KILL`, and
+`ALFRED_AUTO_PROMOTE_LLM_JUDGE` on/off switches are covered in
+`docs/FLEET_BRAIN.md`.
+
 `ALFRED_MEMORY_REFLECTION_MODE` controls how model-generated reflections are
 stored:
 
