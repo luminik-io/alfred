@@ -901,13 +901,13 @@ def test_followup_can_be_converted_to_planning_draft(tmp_path: Path) -> None:
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     response = client.post(
-        "/plans/slack-C1-1716480000.000000/convert-followup",
+        "/api/plans/slack-C1-1716480000.000000/convert-followup",
         headers=_auth_headers(state),
-        follow_redirects=False,
     )
 
-    assert response.status_code == 303
-    assert response.headers["location"].startswith("/plans/followup-")
+    assert response.status_code == 200
+    draft_path = Path(response.json()["draft_path"])
+    assert draft_path.stem.startswith("followup-")
     drafts = list((state / "planning-drafts").glob("followup-*.json"))
     assert len(drafts) == 1
     payload = json.loads(drafts[0].read_text(encoding="utf-8"))
@@ -922,10 +922,9 @@ def test_followup_can_be_converted_to_planning_draft(tmp_path: Path) -> None:
     assert len(archived) == 1
     assert "Follow-up action: converted" in archived[0].read_text(encoding="utf-8")
 
-    detail = client.get(response.headers["location"])
+    detail = client.get(f"/api/plans/{draft_path.stem}")
     assert detail.status_code == 200
-    assert "Plan next pass" not in detail.text
-    assert "manual docs smoke test" in detail.text
+    assert "manual docs smoke test" in detail.json()["content"]
 
 
 def test_followup_conversion_derives_repos_from_created_links(tmp_path: Path) -> None:
@@ -972,17 +971,16 @@ def test_followup_actions_reject_cross_origin_posts(tmp_path: Path) -> None:
     )
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    html_response = client.post(
-        "/plans/slack-C1-1716480000.000000/convert-followup",
+    convert_response = client.post(
+        "/api/plans/slack-C1-1716480000.000000/convert-followup",
         headers={"origin": "https://example.invalid"},
-        follow_redirects=False,
     )
     response = client.post(
         "/api/plans/slack-C1-1716480000.000000/mark-handled",
         headers={"origin": "https://example.invalid"},
     )
 
-    assert html_response.status_code == 403
+    assert convert_response.status_code == 403
     assert response.status_code == 403
     assert source.exists()
     assert not (state / "planning-drafts").exists()
@@ -1051,42 +1049,12 @@ def test_followup_can_be_marked_handled(tmp_path: Path) -> None:
     assert plans == []
 
 
-def test_plan_detail_embeds_token_and_html_form_post_uses_it(tmp_path: Path) -> None:
-    """The server-rendered plan page is the only client for the HTML form
-    routes and cannot set a custom header. It must embed the per-launch token
-    as a hidden ``_token`` field, and the POST handler must accept that field
-    (a browser form never sends ``SERVER_TOKEN_HEADER``)."""
-    state = tmp_path / "state"
-    followups = state / "followups"
-    followups.mkdir(parents=True)
-    (followups / "slack-C1-1716480000.000000.md").write_text(
-        "# Follow-up for Improve planning loop\n\n"
-        "- Parent: [example-org/alfred#120](https://github.com/example-org/alfred/issues/120)\n\n"
-        "Already answered in the PR thread.\n",
-        encoding="utf-8",
-    )
-    client = TestClient(create_app(FilesystemReader(state_root=state)))
-
-    detail = client.get("/plans/slack-C1-1716480000.000000")
-    assert detail.status_code == 200
-    token = _server_token(state)
-    # The GET page must carry the token so the form can echo it back.
-    assert f'name="_token" value="{token}"' in detail.text
-
-    # A browser form POST: same-origin + token in the body, NO custom header.
-    handled = client.post(
-        "/plans/slack-C1-1716480000.000000/mark-handled",
-        headers={"origin": "http://testserver"},
-        data={"_token": token},
-        follow_redirects=False,
-    )
-    assert handled.status_code == 303
-    assert not (followups / "slack-C1-1716480000.000000.md").exists()
-
-
-def test_html_form_post_without_token_is_forbidden(tmp_path: Path) -> None:
-    """Same-origin alone is not enough: a form POST missing the ``_token`` body
-    field (e.g. a header-less drive-by) is rejected and mutates nothing."""
+def test_json_mutation_requires_header_token(tmp_path: Path) -> None:
+    """State-mutating JSON routes require the per-launch token via the
+    ``X-Alfred-Token`` header. A same-origin POST without it is rejected and
+    mutates nothing; the same POST with the token succeeds. This is the auth
+    contract every client (Tauri bridge, hosted-browser meta tag, dev proxy)
+    relies on after the server-rendered HTML dashboard was retired."""
     state = tmp_path / "state"
     followups = state / "followups"
     followups.mkdir(parents=True)
@@ -1099,44 +1067,23 @@ def test_html_form_post_without_token_is_forbidden(tmp_path: Path) -> None:
     )
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    response = client.post(
-        "/plans/slack-C1-1716480000.000000/mark-handled",
+    # Same-origin but no token: rejected, nothing archived.
+    denied = client.post(
+        "/api/plans/slack-C1-1716480000.000000/mark-handled",
         headers={"origin": "http://testserver"},
-        follow_redirects=False,
     )
-
-    assert response.status_code == 403
+    assert denied.status_code == 403
     assert source.exists()
     assert not (followups / "handled").exists()
 
-
-def test_html_form_post_with_malformed_token_body_is_forbidden(tmp_path: Path) -> None:
-    """Invalid form bytes fail closed rather than raising before auth."""
-    state = tmp_path / "state"
-    followups = state / "followups"
-    followups.mkdir(parents=True)
-    source = followups / "slack-C1-1716480000.000000.md"
-    source.write_text(
-        "# Follow-up for Improve planning loop\n\n"
-        "- Parent: [example-org/alfred#120](https://github.com/example-org/alfred/issues/120)\n\n"
-        "Malformed form bodies must not mutate this inbox.\n",
-        encoding="utf-8",
+    # Same-origin + header token: accepted, source archived.
+    ok = client.post(
+        "/api/plans/slack-C1-1716480000.000000/mark-handled",
+        headers=_auth_headers(state),
     )
-    client = TestClient(create_app(FilesystemReader(state_root=state)))
-
-    response = client.post(
-        "/plans/slack-C1-1716480000.000000/mark-handled",
-        content=b"\xff",
-        headers={
-            "origin": "http://testserver",
-            "content-type": "application/x-www-form-urlencoded",
-        },
-        follow_redirects=False,
-    )
-
-    assert response.status_code == 403
-    assert source.exists()
-    assert not (followups / "handled").exists()
+    assert ok.status_code == 200
+    assert not source.exists()
+    assert (followups / "handled" / "slack-C1-1716480000.000000.md").exists()
 
 
 def test_json_plan_empty_body_does_not_return_raw_slack_event(tmp_path: Path) -> None:
@@ -1226,39 +1173,38 @@ def test_api_actions_preserves_reliability_errors(tmp_path: Path) -> None:
 
 
 def test_planning_save_spec_applies_pending_chat_message(tmp_path: Path) -> None:
+    """A chat-message amendment is folded into the refined draft and the spec is
+    saved under ``spec-drafts/``. Exercises ``refine_issue_draft`` +
+    ``_save_planning_text`` directly (the ``/planning`` HTML page was retired)."""
+    from planning_assistant import refine_issue_draft, render_development_spec
+
     state = tmp_path / "state"
     state.mkdir()
-    client = TestClient(create_app(FilesystemReader(state_root=state)))
-
-    response = client.post(
-        "/planning",
-        data={
-            "title": "Add Slack plan revision flow",
-            "problem": (
-                "Operators and teammates need to discuss a Batman plan before "
-                "implementation so Alfred does not ship the wrong workflow."
-            ),
-            "user": "Repo owner or teammate",
-            "current_behavior": "Batman posts a plan and waits for emoji approval.",
-            "desired_behavior": (
-                "Batman keeps implementation paused when a plan needs revision "
-                "and accepts thread feedback before child issues are filed."
-            ),
-            "repos": "example-org/alfred\nexample-org/web",
-            "acceptance_criteria": "Slack plan messages tell the operator how to reply.",
-            "test_plan": "Run Batman tests and manually inspect the Slack payload.",
-            "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
-            "chat_message": (
-                "acceptance: saved specs include chat amendments\nremove repo: example-org/web"
-            ),
-            "action": "save_spec",
-        },
+    app = create_app(FilesystemReader(state_root=state))
+    request = SimpleNamespace(app=app)
+    draft = IssueDraft(
+        title="Add Slack plan revision flow",
+        problem="Operators need to discuss a plan before implementation.",
+        desired_behavior="Batman keeps implementation paused for revision.",
+        repos=["example-org/alfred", "example-org/web"],
+        acceptance_criteria=["Slack plan messages tell the operator how to reply."],
     )
 
-    assert response.status_code == 200
-    specs = list((tmp_path / "spec-drafts").glob("*.md"))
-    assert specs
-    saved_spec = max(specs, key=lambda path: path.stat().st_mtime).read_text(encoding="utf-8")
+    assistant_result = refine_issue_draft(
+        draft,
+        ["acceptance: saved specs include chat amendments\nremove repo: example-org/web"],
+    )
+    spec_body = render_development_spec(assistant_result.draft)
+    saved = server_views._save_planning_text(
+        request,
+        assistant_result.draft,
+        spec_body,
+        directory="spec-drafts",
+        suffix="spec",
+    )
+
+    assert saved.exists()
+    saved_spec = saved.read_text(encoding="utf-8")
     assert "saved specs include chat amendments" in saved_spec
     assert "example-org/web" not in saved_spec
 
@@ -1300,9 +1246,14 @@ def test_planning_memory_provider_loads_for_runtime_state(
     assert server_views._planning_memory_provider(request) is sentinel
 
 
-def test_planning_page_surfaces_memory_and_queues_spec_candidate(
+def test_planning_spec_candidate_is_proposed_from_configured_provider(
     tmp_path: Path,
 ) -> None:
+    """Saving a planning spec queues a memory candidate through the configured
+    provider. Exercises ``_propose_planning_memory_candidate`` directly (the
+    former server-rendered ``/planning`` page was retired; the same helper is
+    what any UI wires the spec-save flow to)."""
+
     class Memory:
         name = "test"
 
@@ -1310,13 +1261,7 @@ def test_planning_page_surfaces_memory_and_queues_spec_candidate(
             self.candidates: list[dict[str, object]] = []
 
         def recall(self, *, repo=None, query=None, limit=3):
-            return [
-                {
-                    "repo": repo,
-                    "body": "Slack plans should show explicit revision commands.",
-                    "tags": ["planning"],
-                }
-            ]
+            return []
 
         def propose_memory(self, **kwargs):
             self.candidates.append(kwargs)
@@ -1328,34 +1273,23 @@ def test_planning_page_surfaces_memory_and_queues_spec_candidate(
     app = create_app(FilesystemReader(state_root=state))
     app.state.planning_memory_provider = memory
     app.state.planning_memory_writer = memory
-    client = TestClient(app)
-
-    response = client.post(
-        "/planning",
-        data={
-            "title": "Add Slack plan revision flow",
-            "problem": (
-                "Operators and teammates need to discuss a Batman plan before "
-                "implementation so Alfred does not ship the wrong workflow."
-            ),
-            "user": "Repo owner or teammate",
-            "current_behavior": "Batman posts a plan and waits for emoji approval.",
-            "desired_behavior": (
-                "Batman keeps implementation paused when a plan needs revision "
-                "and accepts thread feedback before child issues are filed."
-            ),
-            "repos": "example-org/alfred",
-            "acceptance_criteria": "Slack plan messages tell the operator how to reply.",
-            "test_plan": "Run Batman unit tests and manually inspect the Slack payload.",
-            "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
-            "action": "save_spec",
-        },
+    request = SimpleNamespace(app=app)
+    draft = IssueDraft(
+        title="Add Slack plan revision flow",
+        problem="Operators need to discuss a plan before implementation.",
+        desired_behavior="Alfred keeps implementation paused for revision.",
+        repos=["example-org/alfred"],
+        acceptance_criteria=["Slack plan messages tell the operator how to reply."],
     )
 
-    assert response.status_code == 200
-    assert "Planning memory" in response.text
-    assert "Slack plans should show explicit revision commands." in response.text
-    assert "Memory review queued" in response.text
+    ids = server_views._propose_planning_memory_candidate(
+        request,
+        draft,
+        spec_path=tmp_path / "spec.md",
+        spec_body="a saved planning spec body",
+    )
+
+    assert len(ids) == 1
     assert len(memory.candidates) == 1
     assert memory.candidates[0]["source"] == "planning-ui"
     assert memory.candidates[0]["repo"] == "example-org/alfred"
@@ -1398,31 +1332,23 @@ def test_planning_memory_candidate_uses_writable_provider_inside_tuple_chain(
     chain = Chain()
     app = create_app(FilesystemReader(state_root=state))
     app.state.planning_memory_provider = chain
-    client = TestClient(app)
-
-    response = client.post(
-        "/planning",
-        data={
-            "title": "Add Slack plan revision flow",
-            "problem": (
-                "Operators and teammates need to discuss a Batman plan before "
-                "implementation so Alfred does not ship the wrong workflow."
-            ),
-            "user": "Repo owner or teammate",
-            "current_behavior": "Batman posts a plan and waits for emoji approval.",
-            "desired_behavior": (
-                "Batman keeps implementation paused when a plan needs revision "
-                "and accepts thread feedback before child issues are filed."
-            ),
-            "repos": "example-org/alfred",
-            "acceptance_criteria": "Slack plan messages tell the operator how to reply.",
-            "test_plan": "Run Batman unit tests and manually inspect the Slack payload.",
-            "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
-            "action": "save_spec",
-        },
+    request = SimpleNamespace(app=app)
+    draft = IssueDraft(
+        title="Add Slack plan revision flow",
+        problem="Operators need to discuss a plan before implementation.",
+        desired_behavior="Alfred keeps implementation paused for revision.",
+        repos=["example-org/alfred"],
+        acceptance_criteria=["Slack plan messages tell the operator how to reply."],
     )
 
-    assert response.status_code == 200
+    ids = server_views._propose_planning_memory_candidate(
+        request,
+        draft,
+        spec_path=tmp_path / "spec.md",
+        spec_body="a saved planning spec body",
+    )
+
+    assert ids
     assert chain.writable.candidates
     assert chain.writable.candidates[0]["repo"] == "example-org/alfred"
 

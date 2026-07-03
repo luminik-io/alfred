@@ -135,8 +135,9 @@ gaps, and multi-repo rollouts.
   Ghul reviews, Bane adds tests, Nightwing clears review comments, and Batman
   turns approved multi-repo rollouts into repo-sized work.
 - **Coordinate through ordinary repo primitives.** Issues, pull requests, labels,
-  specs, isolated worktrees, commit trailers, and Slack summaries. The dashboard
-  and desktop app read the same local state and GitHub records.
+  specs, isolated worktrees, commit trailers, and Slack summaries. The desktop
+  app (native or in a browser via `alfred serve`) reads the same local state and
+  GitHub records.
 - **Add your own scheduled roles.** `alfred agent add` creates
   operator-defined runtime agents with custom names, prompts, engines, schedules,
   and repo scope; deploy renders them into the same launchd/systemd fleet.
@@ -220,6 +221,10 @@ for you:
 ```sh
 alfred serve --port 7010 --no-browser
 ```
+
+`alfred serve` also serves the desktop app in the browser, so you can open the
+same UI at `http://127.0.0.1:7010/` without the native window. Drop
+`--no-browser` to have it open a tab for you.
 
 ### Install the CLI only (headless)
 
@@ -438,7 +443,7 @@ the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
 | [`Formula/alfred-os.rb`](Formula/alfred-os.rb) | Homebrew formula for the CLI, pinned to the latest public release tarball. `brew install alfred-os`. |
 | [`Casks/alfred-os.rb`](Casks/alfred-os.rb) | Homebrew cask for the signed native desktop app. `brew install --cask alfred-os`. |
 | [`site/`](site/) | Astro Starlight docs site, with GitHub Pages publishing gated by the release repo variable. |
-| [`clients/desktop/`](clients/desktop/) | Tauri Mac/Linux client. A local dashboard over `alfred serve` JSON APIs, with Inbox, Ask, Work, Agents, and Setup surfaces plus explicit Slack and GitHub external links. Inbox carries a Claude + Codex usage rail (real subscription usage, no billing API; backed by the live `GET /api/usage` endpoint); Agents defaults to a cinematic roster with a list toggle. Builds native installers (`.app`/`.dmg`, `.AppImage`/`.deb`) from the Tauri bundle config. |
+| [`clients/desktop/`](clients/desktop/) | The desktop client: one React app, two shells (a Tauri Mac/Linux native window, and the browser via `alfred serve`). A local dashboard over `alfred serve` JSON APIs, with Inbox, Ask, Work, Agents, and Setup surfaces plus explicit Slack and GitHub external links. Inbox carries a Claude + Codex usage rail (real subscription usage, no billing API; backed by the live `GET /api/usage` endpoint); Agents defaults to a cinematic roster with a list toggle. Builds native installers (`.app`/`.dmg`, `.AppImage`/`.deb`) from the Tauri bundle config. |
 | [`lib/slack_control.py`](lib/slack_control.py), [`lib/slack_trust.py`](lib/slack_trust.py) | Trusted Slack control/query commands (`status`/`runs`/`plans`/`plan`/`draft`/`handled`/`memory`/`remember`/`pause`/`resume`/`trusted`/`trust`/`untrust`/`help`), codename-, plan-id-, and memory-id-validated, no shell, with local collaborator state under `$ALFRED_HOME/state/slack-trust`. |
 | [`lib/slack_thread_status.py`](lib/slack_thread_status.py), [`bin/alfred-slack-thread-sync.py`](bin/alfred-slack-thread-sync.py) | In-thread fleet progress: read-only issue/PR/CI sweep that posts only the new lifecycle states back to the originating Slack thread. |
 

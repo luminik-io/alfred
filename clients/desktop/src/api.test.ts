@@ -18,6 +18,7 @@ import {
   hasStoredBaseUrl,
   installAlfredCore,
   initialBaseUrl,
+  isHostedBrowser,
   loadRosterTheme,
   loadShipped,
   loadSnapshot,
@@ -212,6 +213,80 @@ afterEach(() => {
   invokeMock.mockReset();
   delete window.__TAURI_INTERNALS__;
   vi.unstubAllGlobals();
+});
+
+describe("hosted browser (served by alfred serve)", () => {
+  // When the built app is served in a plain browser by `alfred serve`
+  // (import.meta.env.DEV === false, no Tauri bridge), the API is same-origin and
+  // the server injects the per-launch token into the page. The client reads that
+  // meta tag and attaches it to mutations directly.
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    document.head.querySelectorAll('meta[name="alfred-token"]').forEach((m) => m.remove());
+    delete window.__TAURI_INTERNALS__;
+  });
+
+  function setInjectedToken(value: string): void {
+    const meta = document.createElement("meta");
+    meta.setAttribute("name", "alfred-token");
+    meta.setAttribute("content", value);
+    document.head.appendChild(meta);
+  }
+
+  it("is false in the Vite dev preview and true only in a hosted browser build", () => {
+    // Default vitest env is DEV=true, so the hosted-browser path stays off.
+    expect(isHostedBrowser()).toBe(false);
+    vi.stubEnv("DEV", false);
+    expect(isHostedBrowser()).toBe(true);
+    window.__TAURI_INTERNALS__ = {};
+    // The native shell is not a "hosted browser" even with DEV=false.
+    expect(isHostedBrowser()).toBe(false);
+  });
+
+  it("uses the page origin as the base URL when hosted", () => {
+    vi.stubEnv("DEV", false);
+    // jsdom's default origin is http://localhost:3000.
+    expect(initialBaseUrl()).toBe(clientBaseUrl(window.location.origin));
+  });
+
+  it("attaches the injected token to a mutation and none to a read", async () => {
+    vi.stubEnv("DEV", false);
+    setInjectedToken("hosted-token-abc");
+    const seen: Array<{ url: string; token: string | undefined; method: string | undefined }> = [];
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const headers = (init?.headers as Record<string, string>) || {};
+      seen.push({
+        url: String(input),
+        token: headers["X-Alfred-Token"],
+        method: init?.method,
+      });
+      return new Response(JSON.stringify({ users: [] }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    // A mutation carries the injected token.
+    await addTrustedSlackUser(DEFAULT_BASE_URL, "U123");
+    // A read carries no token.
+    await loadRosterTheme(DEFAULT_BASE_URL);
+
+    const mutation = seen.find((r) => r.method === "POST");
+    const read = seen.find((r) => r.method === undefined || r.method === "GET");
+    expect(mutation?.token).toBe("hosted-token-abc");
+    expect(read?.token).toBeUndefined();
+  });
+
+  it("sends no token when the page has none injected (server then 403s)", async () => {
+    vi.stubEnv("DEV", false);
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      const headers = (init?.headers as Record<string, string>) || {};
+      expect(headers["X-Alfred-Token"]).toBeUndefined();
+      return new Response(JSON.stringify({ users: [] }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await addTrustedSlackUser(DEFAULT_BASE_URL, "U123");
+    expect(fetchMock).toHaveBeenCalled();
+  });
 });
 
 describe("loadSnapshot degradation", () => {
