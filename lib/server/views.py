@@ -34,7 +34,6 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
-    RedirectResponse,
     StreamingResponse,
 )
 from planning_assistant import (
@@ -78,7 +77,6 @@ _LOCAL_CLIENT_USER_ID = "ULOCALCLIENT"
 # drive-by same-origin localhost page cannot arm work or mutate trust/plan
 # state on the operator's behalf.
 SERVER_TOKEN_HEADER = "X-Alfred-Token"
-SERVER_TOKEN_FORM_FIELD = "_token"
 _SERVER_TOKEN_FILENAME = "server-token"
 
 
@@ -121,37 +119,28 @@ def _read_server_token(state_root: Path) -> str | None:
     return token or None
 
 
-def _authorized_mutation(request: Request, *, form_token: str | None = None) -> bool:
+def _authorized_mutation(request: Request) -> bool:
     """Require the per-launch token for a state-mutating POST.
 
-    The token must match the value persisted at server start with a
-    constant-time compare. JSON/Tauri clients present it via the
-    ``SERVER_TOKEN_HEADER`` header; server-rendered HTML forms (which cannot
-    set a custom header) present it via a hidden ``_token`` field, which the
-    GET handler embeds from the same on-disk token. Either path is a valid
-    synchronizer token: a cross-origin attacker cannot read the GET response
-    body to learn the token, so this still defeats CSRF. ``_same_origin_post``
-    remains an additional layer; together they stop a drive-by same-origin
-    localhost caller (which cannot read the operator's ``0600`` token file)
-    from mutating fleet state.
+    The token must match the value persisted at server start, compared in
+    constant time. Every client presents it via the ``SERVER_TOKEN_HEADER``
+    header: the desktop (Tauri) shell attaches it through its native bridge,
+    and the browser build reads the token the server injects into the served
+    ``index.html`` (a ``<meta name="alfred-token">`` tag a same-origin page can
+    read but a cross-origin page cannot) and echoes it back. This is a
+    synchronizer token: a cross-origin attacker cannot read the operator's
+    ``0600`` token file nor a same-origin document, so it defeats CSRF.
+    ``_same_origin_post`` remains an additional layer.
     """
     expected = _read_server_token(_state_root(request))
     if not expected:
         # No token on disk means the gate cannot be satisfied. Fail closed so a
         # missing/unreadable token never silently downgrades to same-origin-only.
         return False
-    presented = request.headers.get(SERVER_TOKEN_HEADER) or form_token
+    presented = request.headers.get(SERVER_TOKEN_HEADER)
     if not presented:
         return False
     return hmac.compare_digest(presented, expected)
-
-
-def _form_token_from_body(raw: bytes) -> str:
-    try:
-        form = parse_qs(raw.decode("utf-8"), keep_blank_values=True)
-    except UnicodeDecodeError:
-        return ""
-    return _first(form, SERVER_TOKEN_FORM_FIELD)
 
 
 # Origins the packaged Tauri webview presents. A built .app loads its bundle
@@ -214,142 +203,11 @@ def _streaming_cors_headers(request: Request, base: dict[str, str] | None = None
 
 
 def register_routes(app: FastAPI) -> None:
-    """Bind the three GET routes to ``app``."""
+    """Bind the JSON ``/api/*`` routes (plus ``/healthz``) to ``app``.
 
-    @app.get("/", response_class=HTMLResponse)
-    async def fleet(request: Request) -> HTMLResponse:
-        reader = request.app.state.reader
-        templates = request.app.state.templates
-        agents = reader.list_agents()
-        if request.headers.get("HX-Request") == "true":
-            return templates.TemplateResponse(
-                request,
-                "fleet_table.html",
-                {
-                    "agents": agents,
-                    "total_today": sum(a.firings_today for a in agents),
-                },
-            )
-        reliability = reader.reliability_report()
-        recent_firings = reader.list_recent_firings(limit=5)
-        recent_plans = reader.list_plans(limit=4)
-        return templates.TemplateResponse(
-            request,
-            "fleet.html",
-            {
-                "agents": agents,
-                "total_today": sum(a.firings_today for a in agents),
-                "reliability": reliability,
-                "recent_firings": recent_firings,
-                "recent_plans": recent_plans,
-                "fleet_counts": _fleet_counts(agents, recent_firings),
-            },
-        )
-
-    @app.get("/firings", response_class=HTMLResponse)
-    async def firings(request: Request, codename: str | None = None) -> HTMLResponse:
-        reader = request.app.state.reader
-        templates = request.app.state.templates
-        rows = reader.list_recent_firings(limit=50, codename=codename)
-        # Sidebar codename filter list is derived from list_agents so the
-        # filter renders even when the currently filtered view is empty.
-        all_agents = reader.list_agents()
-        return templates.TemplateResponse(
-            request,
-            "firings.html",
-            {
-                "rows": rows,
-                "codename": codename,
-                "all_codenames": [a.codename for a in all_agents],
-            },
-        )
-
-    @app.get("/firings/{firing_id}", response_class=HTMLResponse)
-    async def firing_detail(request: Request, firing_id: str) -> HTMLResponse:
-        reader = request.app.state.reader
-        templates = request.app.state.templates
-        record = reader.get_firing(firing_id)
-        if record is None:
-            return templates.TemplateResponse(
-                request,
-                "not_found.html",
-                {
-                    "title": "Firing not found",
-                    "item_id": firing_id,
-                    "back_url": "/firings",
-                    "back_label": "back to firings",
-                },
-                status_code=404,
-            )
-        return templates.TemplateResponse(
-            request,
-            "firing_detail.html",
-            {"firing": record},
-        )
-
-    @app.get("/plans", response_class=HTMLResponse)
-    async def plans(request: Request) -> HTMLResponse:
-        reader = request.app.state.reader
-        templates = request.app.state.templates
-        rows = reader.list_plans(limit=50)
-        return templates.TemplateResponse(
-            request,
-            "plans.html",
-            {"rows": rows},
-        )
-
-    @app.get("/plans/{plan_id}", response_class=HTMLResponse)
-    async def plan_detail(request: Request, plan_id: str) -> HTMLResponse:
-        reader = request.app.state.reader
-        templates = request.app.state.templates
-        plan = reader.get_plan(plan_id)
-        if plan is None:
-            return templates.TemplateResponse(
-                request,
-                "not_found.html",
-                {
-                    "title": "Plan not found",
-                    "item_id": plan_id,
-                    "back_url": "/plans",
-                    "back_label": "back to plans",
-                },
-                status_code=404,
-            )
-        return templates.TemplateResponse(
-            request,
-            "plan_detail.html",
-            {
-                "plan": plan,
-                "server_token": _read_server_token(_state_root(request)) or "",
-            },
-        )
-
-    @app.post("/plans/{plan_id}/convert-followup")
-    async def convert_followup(request: Request, plan_id: str):
-        if not _same_origin_post(request):
-            return HTMLResponse("Forbidden", status_code=403)
-        if not _authorized_mutation(
-            request, form_token=_form_token_from_body(await request.body())
-        ):
-            return HTMLResponse("Forbidden", status_code=403)
-        plan = request.app.state.reader.get_plan(plan_id)
-        if plan is None or plan.source != "followup":
-            return RedirectResponse("/plans", status_code=303)
-        draft_path, _archived_path = _convert_and_archive_followup(request, plan)
-        return RedirectResponse(f"/plans/{draft_path.stem}", status_code=303)
-
-    @app.post("/plans/{plan_id}/mark-handled")
-    async def mark_followup_handled(request: Request, plan_id: str):
-        if not _same_origin_post(request):
-            return HTMLResponse("Forbidden", status_code=403)
-        if not _authorized_mutation(
-            request, form_token=_form_token_from_body(await request.body())
-        ):
-            return HTMLResponse("Forbidden", status_code=403)
-        plan = request.app.state.reader.get_plan(plan_id)
-        if plan is not None and plan.source == "followup":
-            _archive_followup(plan, action="handled")
-        return RedirectResponse("/plans", status_code=303)
+    The browser UI at ``/`` is the built desktop React app, served separately
+    by :func:`server.static_ui.register_ui`. Every route below is JSON.
+    """
 
     @app.get("/api/status", response_class=JSONResponse)
     async def api_status(request: Request) -> JSONResponse:
@@ -1380,79 +1238,6 @@ def register_routes(app: FastAPI) -> None:
         """
         return Response(status_code=204, headers=_streaming_cors_headers(request))
 
-    @app.get("/planning", response_class=HTMLResponse)
-    async def planning(request: Request) -> HTMLResponse:
-        templates = request.app.state.templates
-        return templates.TemplateResponse(
-            request,
-            "planning.html",
-            {
-                "draft": IssueDraft(title=""),
-                "result": None,
-                "assistant_result": None,
-                "chat_message": "",
-                "saved_path": None,
-                "spec_saved_path": None,
-                "memory_candidate_ids": (),
-            },
-        )
-
-    @app.post("/planning", response_class=HTMLResponse)
-    async def planning_submit(request: Request) -> HTMLResponse:
-        templates = request.app.state.templates
-        form = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
-        draft = _draft_from_form(form)
-        action = _first(form, "action")
-        chat_message = _first(form, "chat_message")
-        memory_provider = _planning_memory_provider(request)
-        should_refine = action == "refine" or (action in {"save", "save_spec"} and chat_message)
-        assistant_result: PlanningAssistantResult = refine_issue_draft(
-            draft,
-            [chat_message] if should_refine else [],
-            refiner=(
-                engine_refiner_from_env(workdir=_planning_workdir(request))
-                if should_refine
-                else None
-            ),
-            memory_provider=memory_provider,
-        )
-        draft = assistant_result.draft
-        result = assistant_result.readiness
-        saved_path = None
-        spec_saved_path = None
-        memory_candidate_ids: tuple[str, ...] = ()
-        if action == "save":
-            saved_path = str(_save_issue_draft(request, draft, result.issue_body))
-        elif action == "save_spec":
-            spec_path = _save_planning_text(
-                request,
-                draft,
-                assistant_result.spec_body,
-                directory="spec-drafts",
-                suffix="spec",
-            )
-            spec_saved_path = str(spec_path)
-            memory_candidate_ids = _propose_planning_memory_candidate(
-                request,
-                draft,
-                spec_path=spec_path,
-                spec_body=assistant_result.spec_body,
-                memory_provider=memory_provider,
-            )
-        return templates.TemplateResponse(
-            request,
-            "planning.html",
-            {
-                "draft": draft,
-                "result": result,
-                "assistant_result": assistant_result,
-                "chat_message": "",
-                "saved_path": saved_path,
-                "spec_saved_path": spec_saved_path,
-                "memory_candidate_ids": memory_candidate_ids,
-            },
-        )
-
     @app.get("/healthz", response_class=HTMLResponse)
     async def healthz() -> HTMLResponse:
         # Minimal liveness probe. Returns 200 with "ok" body, no template.
@@ -2285,33 +2070,6 @@ def _compose_interrogator_prompt_path() -> Path:
         if candidate.is_file():
             return candidate
     return candidates[0]
-
-
-def _fleet_counts(agents: list[Any], recent_firings: list[Any]) -> dict[str, int]:
-    return {
-        "live": sum(1 for agent in agents if getattr(agent, "status", "") == "live"),
-        "idle": sum(1 for agent in agents if getattr(agent, "status", "") == "idle"),
-        "error": sum(1 for agent in agents if getattr(agent, "status", "") == "error"),
-        "running": sum(
-            1 for firing in recent_firings if getattr(firing, "status", "") == "running"
-        ),
-    }
-
-
-def _draft_from_form(form: dict[str, list[str]]) -> IssueDraft:
-    return IssueDraft(
-        title=_first(form, "title"),
-        problem=_first(form, "problem"),
-        user=_first(form, "user"),
-        current_behavior=_first(form, "current_behavior"),
-        desired_behavior=_first(form, "desired_behavior"),
-        repos=_lines(_first(form, "repos")),
-        acceptance_criteria=_lines(_first(form, "acceptance_criteria")),
-        test_plan=_first(form, "test_plan"),
-        out_of_scope=_first(form, "out_of_scope"),
-        rollout=_first(form, "rollout"),
-        open_questions=_first(form, "open_questions"),
-    )
 
 
 def _first(form: dict[str, list[str]], key: str) -> str:

@@ -2,16 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import { friendlyTime } from "./format";
 
-// These fixtures are shared with the Python server helper test
-// (tests/test_server_formatting.py). Both surfaces compute day boundaries and
-// calendar fields in UTC, so a timestamp near midnight UTC renders the same
-// relative date on the desktop client and in `alfred serve`.
+// Day boundaries and calendar fields are computed in UTC, so a timestamp near
+// midnight UTC renders the same relative date everywhere the app runs. (This
+// fixture originally guarded parity with a Python server-side renderer; that
+// renderer is gone and this is now the only timestamp presentation surface.)
 const FIXTURE_NOW = "2026-03-16T12:00:00Z";
 const FIXTURE_VALUE = "2026-03-14T23:50:00Z";
 const FIXTURE_EXPECTED = "Mar 14, 23:50";
 
 describe("friendlyTime", () => {
-  it("renders the shared UTC day-boundary fixture consistently with Python", () => {
+  it("renders the UTC day-boundary fixture", () => {
     expect(friendlyTime(FIXTURE_VALUE, new Date(FIXTURE_NOW))).toBe(FIXTURE_EXPECTED);
   });
 

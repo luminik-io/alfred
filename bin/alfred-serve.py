@@ -111,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
             "alfred-serve: missing dependencies. Re-run install.sh, or install the "
             "dashboard deps into $ALFRED_HOME/venv:\n"
             '    uv pip install --python "$ALFRED_HOME/venv/bin/python" '
-            "fastapi httpx uvicorn jinja2\n"
+            "fastapi httpx uvicorn\n"
         )
         return 2
 

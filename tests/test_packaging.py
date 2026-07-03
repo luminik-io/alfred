@@ -67,3 +67,47 @@ def test_operator_cli_owns_claude_probe():
     assert "status,primary,secondary,swap,probe" in result.stdout
     removed_helper = "alfred" + "-claude"
     assert not Path("bin", removed_helper).exists()
+
+
+def test_runtime_dep_probes_match_pyproject_base_deps():
+    """install.sh, deploy.sh, and bin/doctor.sh each probe/install the runtime
+    deps by name. Those lists must stay in sync with pyproject's base
+    dependencies, or a fresh install passes while doctor fails (or the
+    installer ships packages nothing imports). Guards the drift where a dep
+    was removed from the install path but doctor still required it."""
+    import re
+
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+    import_name = {"slack-sdk": "slack_sdk"}
+    expected = {
+        import_name.get(name, name)
+        for name in (
+            re.split(r"[><=~!\[]", dep, maxsplit=1)[0].strip()
+            for dep in pyproject["project"]["dependencies"]
+        )
+    }
+
+    # The scripts probe importability with `python -c "import a, b, c"`.
+    probe_re = re.compile(r'-c "import ([\w, ]+)"')
+    for script in ("install.sh", "deploy.sh", "bin/doctor.sh"):
+        text = Path(script).read_text(encoding="utf-8")
+        probes = probe_re.findall(text)
+        assert probes, f"{script} no longer probes runtime deps; update this test"
+        for probe in probes:
+            probed = {name.strip() for name in probe.split(",")}
+            assert probed == expected, (
+                f"{script} probes {sorted(probed)} but pyproject base deps are "
+                f"{sorted(expected)}; keep them in sync"
+            )
+
+    # The uv pip install fallbacks must not install packages pyproject dropped
+    # (or miss ones it added). The quoted "name>=floor" pins only appear in the
+    # runtime-dep install blocks.
+    dep_line_re = re.compile(r'"([a-z0-9-]+)>=[0-9.]+"')
+    for script in ("install.sh", "deploy.sh"):
+        text = Path(script).read_text(encoding="utf-8")
+        installed = {import_name.get(name, name) for name in dep_line_re.findall(text)}
+        assert installed == expected, (
+            f"{script} installs {sorted(installed)} but pyproject base deps are "
+            f"{sorted(expected)}; keep them in sync"
+        )

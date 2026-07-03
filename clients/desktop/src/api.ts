@@ -88,8 +88,11 @@ function humanizeFetchError(status: number, serverMessage?: string | null): stri
     return serverMessage;
   }
   if (status === 401 || status === 403) {
-    if (!isTauri()) {
+    if (!isTauri() && !isHostedBrowser()) {
       return "This action needs the Alfred desktop app so it can attach the launch token. Open the desktop app, then retry.";
+    }
+    if (isHostedBrowser()) {
+      return "Alfred serve rejected this action (auth token mismatch). Reload this page so it can pick up a fresh launch token, or restart alfred serve.";
     }
     return "Alfred serve is running but rejected this client (auth token mismatch). Restart the runtime or check your token.";
   }
@@ -154,6 +157,13 @@ export function clientBaseUrl(value?: string | null): string {
 }
 
 export function initialBaseUrl(): string {
+  // When the app is served in a browser BY `alfred serve` (not the desktop
+  // shell, not the Vite dev server), the API lives at the same origin the page
+  // was loaded from. Prefer that so relative `/api/*` calls just work and no
+  // localStorage/default guessing is needed.
+  if (isHostedBrowser()) {
+    return clientBaseUrl(window.location.origin);
+  }
   return clientBaseUrl(DEV_BASE_URL || window.localStorage.getItem(BASE_URL_KEY));
 }
 
@@ -667,6 +677,15 @@ export async function streamComposeConverse(
     } catch {
       // No token: let the server reject so the caller falls back cleanly.
     }
+  } else if (isHostedBrowser()) {
+    // Browser served by `alfred serve`: the same-origin POST carries the
+    // injected token. The stream route accepts same-origin + token, so this
+    // works without the native bridge; a missing token surfaces as the 403 the
+    // caller treats as a fallback trigger.
+    const token = hostedBrowserToken();
+    if (token) {
+      headers["X-Alfred-Token"] = token;
+    }
   }
 
   let response: Response;
@@ -938,11 +957,25 @@ async function browserFetch(
 ): Promise<string> {
   const url = new URL(path, normalizedBaseUrl(baseUrl));
   const devProxyPath = shouldUseDevProxy(url) ? `/alfred-api${path}` : url.toString();
+  const headers: Record<string, string> = {};
+  if (body !== undefined) {
+    headers["content-type"] = "application/json";
+  }
+  // Hosted browser (served by `alfred serve`): attach the injected per-launch
+  // token so state-mutating requests pass the server's `_authorized_mutation`
+  // gate. Reads (GET) need no token; the dev-proxy path injects it server-side,
+  // so we only add it for the direct same-origin hosted case.
+  if (method !== "GET" && !shouldUseDevProxy(url) && isHostedBrowser()) {
+    const token = hostedBrowserToken();
+    if (token) {
+      headers["X-Alfred-Token"] = token;
+    }
+  }
   let response: Response;
   try {
     response = await fetch(devProxyPath, {
       method,
-      headers: body === undefined ? undefined : { "content-type": "application/json" },
+      headers: Object.keys(headers).length ? headers : undefined,
       body,
       signal,
     });
@@ -968,6 +1001,30 @@ function normalizedBaseUrl(baseUrl: string): string {
 
 function isTauri(): boolean {
   return Boolean(window.__TAURI_INTERNALS__);
+}
+
+// True when the built app is being served in a plain browser by `alfred serve`
+// (the production browser shell): not the Tauri native window, and not the Vite
+// dev server. In this mode the API is same-origin and the server injects the
+// per-launch token into the page, so the client attaches it directly rather
+// than relying on the native bridge (Tauri) or the dev proxy (Vite dev).
+export function isHostedBrowser(): boolean {
+  return !isTauri() && !import.meta.env.DEV && typeof window !== "undefined";
+}
+
+// The per-launch mutation token the server injects into the served index.html
+// as `<meta name="alfred-token">`. A same-origin page can read its own document
+// to recover it; a cross-origin drive-by page cannot (the same-origin policy),
+// and the token file stays 0600 on disk. Mirrors the Tauri bridge's token and
+// the Vite dev proxy's header. Returns null when absent (e.g. the "not built"
+// page, or an older server), in which case a mutation surfaces the server's 403.
+function hostedBrowserToken(): string | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  const meta = document.querySelector('meta[name="alfred-token"]');
+  const token = meta?.getAttribute("content")?.trim();
+  return token || null;
 }
 
 function shouldUseDevProxy(url: URL): boolean {

@@ -1,19 +1,21 @@
 # `alfred serve`
 
-A small, localhost-only dashboard over `$ALFRED_HOME/state`, saved Batman
-plans, the local fleet brain, and local planning drafts. It is read-only for
-runtime state and can write issue/spec drafts under `$ALFRED_HOME/planning-drafts`.
-The operator's pane of glass for "what is the fleet doing right now".
+A localhost-only server over `$ALFRED_HOME/state`, saved Batman plans, the local
+fleet brain, and local planning drafts. It does two jobs: it exposes a JSON
+`/api/*` surface, and it serves the built desktop app as the browser UI. Runtime
+state is read-only; the server can write issue/spec drafts under
+`$ALFRED_HOME/planning-drafts`. It is the operator's pane of glass for "what is
+the fleet doing right now".
 
-Status: v0.5.1 ships the local control surface used by Alfred Desktop. It includes
-reliability-governor cards, human-readable timestamps, responsive table shells,
-mobile card layouts, a sticky header, a saved-plan inbox, a Planning intake
-page, setup endpoints, usage headroom, queue controls, streaming logs, and
-token-gated local mutations for the Tauri client under `clients/desktop`.
+One UI, two shells. The desktop client under `clients/desktop` is a React app
+that talks to the same `/api/*` surface over plain HTTP. `alfred serve` serves
+that same built app in the browser, so there is a single UI codebase behind both
+the native (Tauri) window and any browser. The older server-rendered dashboard
+has been retired.
 
 ## Install
 
-`install.sh` provisions the managed `$ALFRED_HOME/venv` with the dashboard
+`install.sh` provisions the managed `$ALFRED_HOME/venv` with the server
 dependencies because Alfred Desktop uses `alfred serve` by default.
 
 For package-only installs, the dependencies are in the base package:
@@ -22,7 +24,19 @@ For package-only installs, the dependencies are in the base package:
 pip install alfred-os
 ```
 
-The stack uses `fastapi`, `httpx`, `uvicorn`, and `jinja2`. Pico.css and HTMX are loaded from a CDN by the bundled templates; no JS or CSS build step is required.
+The Python stack is `fastapi`, `httpx`, and `uvicorn`. The browser UI is the
+built React app; nothing is loaded from a CDN. `deploy.sh` builds the client
+(`npm ci && npm run build`) and ships `dist/` into
+`$ALFRED_HOME/clients/desktop/dist` so the server can find it. To build it by
+hand:
+
+```bash
+cd clients/desktop && npm ci && npm run build
+```
+
+If no build is present, `alfred serve` shows a short "UI not built" page and the
+JSON API still works. Point `ALFRED_SERVE_UI_DIST` at a `dist/` directory to
+override where the server looks for the built app.
 
 ## Run
 
@@ -49,7 +63,9 @@ Defaults:
 | `--no-browser` | off           | skip the auto-open browser tab on localhost binds.            |
 | `--log-level`  | `info`        | uvicorn log level (`debug` / `info` / `warning` / `error`).   |
 
-The dashboard auto-refreshes the fleet table every 10 seconds via HTMX. Detail views are static, refresh manually.
+On a localhost bind the server opens a browser tab to the app (unless
+`--no-browser` is passed). The app polls the `/api/*` surface for live fleet
+state.
 
 ## What it reads
 
@@ -97,112 +113,32 @@ $ALFRED_HOME/state/slack-threads/*.json
 $ALFRED_HOME/state/slack-threads/feedback/*.jsonl
 ```
 
-## Views
+## The browser UI
 
-### `GET /` - Fleet status
+### `GET /` - the desktop app in the browser
 
-Summary cards plus one row per codename:
+`GET /` serves the built desktop React app (`clients/desktop/dist/index.html`).
+Any client-side deep link (for example `/inbox/some-plan`) falls back to the same
+`index.html` so a refresh or a shared link resolves. Hashed assets are served
+from `/assets/*` and brand images from `/brand/*`. The app reads live fleet
+state, plans, firings, usage, and setup from the JSON `/api/*` surface below; it
+is the same app the native (Tauri) window loads.
 
-- reliability-governor status and top action
-- repeated failure-pattern count
-- stale-worker count
-- memory-promotion suggestions
-- status dot (idle, live, error)
-- last-run timestamp, rendered for scanning with the raw UTC value in the
-  browser title
-- firings-today count (read from the per-day spend ledger)
-- last firing id (linked to the detail view) plus a one-line summary
+Native-only affordances (starting or installing the local runtime, the menu-bar
+tray) are hidden in the browser because they need the desktop shell. Everything
+else, including reads and token-gated mutations, works in the browser.
 
-The table auto-refreshes every 10 seconds via HTMX. The refresh swaps just the
-table body, not the whole shell.
+The server resolves the built app in this order: the `ALFRED_SERVE_UI_DIST`
+environment variable, then `$ALFRED_HOME/clients/desktop/dist` (where `deploy.sh`
+ships it), then `<repo>/clients/desktop/dist` for a local build. If none is
+found, `/` returns a short "UI not built" page and the JSON API is unaffected.
 
-### `GET /firings` - Recent firings
-
-The most recent 50 firings across all codenames, newest first. Each row links to its detail view.
-
-Filters:
-
-- `?codename=<name>` restricts the list to one codename. The clickable filter strip at the top of the page renders one link per known codename plus an "all" reset.
-
-### `GET /plans` - Saved Alfred plans
-
-Lists saved Alfred plan drafts from `$ALFRED_HOME/batman-plans`,
-Slack/local planning JSON under `$ALFRED_HOME/state/planning-drafts`, and
-Slack follow-up context under `$ALFRED_HOME/state/followups`. Each card shows
-source, status, readiness score when present, revision count, affected repos,
-parent issue, update time, and a local detail link.
-
-### `GET /plans/{plan_id}` - Single saved plan
-
-Renders the saved Markdown or generated spec body exactly as it exists on disk.
-This keeps the local control surface aligned with the Slack plan that the operator is
-approving or editing.
-
-For Slack follow-up items, the detail page also exposes two local actions:
-`Plan next pass` converts the captured feedback into a scoped planning draft
-under `$ALFRED_HOME/state/planning-drafts`, and `Mark handled` archives the
-follow-up under `$ALFRED_HOME/state/followups/handled`. Neither action creates
-a GitHub issue, opens a PR, approves work, or merges anything.
-
-### `GET/POST /planning` - Issue/spec readiness
-
-A local intake form for shaping work before Alfred files issues or opens PRs.
-It turns title, problem, desired behavior, repo scope, acceptance criteria,
-test plan, non-goals, rollout, and open questions into a GitHub-ready issue
-draft.
-
-The form also has a small planning-assistant box. You can type natural notes or
-structured commands:
-
-```text
-acceptance: the Slack plan thread shows clear next steps before approval
-test: add coverage for thread feedback parsing
-add repo: my-org/mobile
-remove repo: my-org/website
-question: should approval happen after edits or after a new plan?
-```
-
-`Refine draft` applies those edits locally, re-runs readiness, and renders both
-the GitHub issue draft and a spec draft. In Batman Slack approvals, the same
-repo add/remove commands also amend execution scope before implementation.
-Trusted replies after reports or PR links are captured during Batman's
-report-feedback window and written to `$ALFRED_HOME/state/followups/` as
-context for the next pass, never as merge approval. Those follow-ups are listed
-in Plans with `needs follow-up` status. From the follow-up detail page, `Plan
-next pass` turns that feedback into a local planning draft and archives the
-original follow-up; `Mark handled` only archives it. `Save draft` writes the
-issue body under `$ALFRED_HOME/planning-drafts`; `Save spec` writes the spec
-body under `$ALFRED_HOME/spec-drafts`. None of these buttons create a GitHub
-issue.
-
-Slack-created drafts are saved as JSON under
-`$ALFRED_HOME/state/planning-drafts/`. The dashboard treats that path as the
-native-client draft inbox contract, so the local UI and Slack listener can
-converge without inventing a second planning store.
-
-When fleet-brain is available, the Planning page recalls a small number of
-promoted lessons for the selected repos and shows them as planning memory.
-Those hints are embedded in saved specs under a "Planning Memory" section, but
-they never override the current issue or readiness checks. Saving a spec also
-queues a reviewable memory candidate so useful spec-to-issue lessons can be
-promoted explicitly.
-
-By default refinement is deterministic and offline. Advanced operators can set
-`ALFRED_PLANNING_ASSISTANT_ENGINE=<engine>` to let the configured local engine
-rewrite the draft after the command parser has applied obvious edits. Use
-`ALFRED_PLANNING_ASSISTANT_TIMEOUT` to cap that optional call.
-
-The readiness panel blocks vague or incomplete work from feeling ready. It
-asks concrete follow-up questions when problem, desired behavior, repo scope,
-acceptance criteria, or test plan are missing. Open questions are a hard gate
-until explicitly answered or accepted as risk.
-
-### `GET /firings/{firing_id}` - Single firing detail
-
-- meta (start, end, status, summary, events file path, transcript path if present)
-- raw event stream rendered as JSON lines in a Fragment Mono log strip
-
-Returns 404 for unknown firing ids. The id is validated against path traversal before the reader touches disk.
+The planning-assistant behavior the old server-rendered page exposed (natural
+notes and structured `add repo:` / `remove repo:` / `acceptance:` commands that
+refine a draft and record readiness) now lives in the app's Plan and Ask
+surfaces, backed by the `POST /api/plans/draft` and `POST /api/compose/converse`
+endpoints. In Batman Slack approvals, the same repo add/remove commands amend
+execution scope before implementation.
 
 ### `GET /healthz`
 
@@ -210,7 +146,7 @@ Returns plain text `ok` with status 200. Useful for liveness probes if you run `
 
 ### JSON API
 
-The browser UI and future native client can read the same localhost data
+The browser UI and the native client read and write the same localhost data
 through JSON endpoints:
 
 ```text
@@ -250,7 +186,13 @@ POST /api/slack/trusted-users
 POST /api/slack/trusted-users/{user_id}/remove
 ```
 
-Read endpoints intentionally mirror the HTML pages.
+State-mutating `POST`/`DELETE` endpoints require the per-launch token via the
+`X-Alfred-Token` header. The desktop shell attaches it through its native
+bridge. When the app is served in a browser, the server injects that same token
+into the served `index.html` as a `<meta name="alfred-token">` tag: a same-origin
+page can read it and echo it back, a cross-origin page cannot read another
+origin's document, and the token file stays `0600` on disk. Read endpoints need
+no token.
 
 `GET /api/setup/status` includes a `first_run` readiness block for native
 onboarding. It rolls up GitHub auth, engine CLIs, repo scope, queue coverage,
@@ -319,43 +261,56 @@ rights, call Slack, call GitHub, or run an agent.
 
 ## Architecture
 
-Three thin modules behind a single factory:
+Thin modules behind a single factory:
 
 ```
 lib/server/
   __init__.py       # re-exports public surface
   reader.py         # FleetReader Protocol + FilesystemReader
   app.py            # create_app(reader) -> FastAPI
-  formatting.py     # timestamp and firing-id presentation helpers
-  views.py          # fleet, firings, plans, planning, detail, health routes
-  templates/        # base + pages + 1 HTMX partial
-  static/style.css  # Operations Room theme
+  views.py          # JSON /api/* routes + /healthz
+  static_ui.py      # serves the built React app + SPA fallback + token inject
+  static/           # server-owned static assets
 bin/alfred-serve.py # argparse driver, runs uvicorn
 ```
 
-The reader is injected into the FastAPI app via `create_app(reader)`. Tests pass a tmp-dir-backed `FilesystemReader` (or any stub matching the `FleetReader` Protocol), so the test suite never touches a real fleet.
+The reader is injected into the FastAPI app via `create_app(reader)`. Tests pass
+a tmp-dir-backed `FilesystemReader` (or any stub matching the `FleetReader`
+Protocol), so the test suite never touches a real fleet. `static_ui.register_ui`
+runs after the API routes so `/api/*` and `/healthz` always win over the UI's
+SPA catch-all.
 
 ## Security model
 
-Default bind is `127.0.0.1`. Runtime-state routes are read-only. The Planning
-page accepts a local `POST` only to write markdown drafts under
+Default bind is `127.0.0.1`. Runtime-state routes are read-only. Mutating
+endpoints require the per-launch `X-Alfred-Token` header (see the JSON API auth
+note above) and are compared in constant time; a missing token fails closed.
+Compose/plan `POST`s only write markdown/JSON drafts under
 `$ALFRED_HOME/planning-drafts` and `$ALFRED_HOME/spec-drafts`. Follow-up actions
 only move captured follow-up files into `handled/` or create local planning
 draft JSON. Memory candidate actions only mutate the local fleet-brain
 database. Slack collaborator actions only mutate the local trust JSON file.
-They do not call GitHub or Slack. The planning assistant only calls a model provider when
-`ALFRED_PLANNING_ASSISTANT_ENGINE` is explicitly set. The reader's path-traversal guard rejects firing ids containing
-`/`, `\\`, or a leading `.` before any filesystem read.
+They do not call GitHub or Slack. The planning assistant only calls a model
+provider when `ALFRED_PLANNING_ASSISTANT_ENGINE` is explicitly set. The reader's
+path-traversal guard rejects firing ids containing `/`, `\\`, or a leading `.`
+before any filesystem read, and the UI's SPA fallback refuses to serve files
+outside the built app directory.
 
-That said: the dashboard surfaces repo URLs, file paths, and event payloads that may contain operator context. Treat `--host 0.0.0.0` like exposing the raw state directory over HTTP, only do it on a network you trust.
+That said: the app surfaces repo URLs, file paths, and event payloads that may
+contain operator context. Treat `--host 0.0.0.0` like exposing the raw state
+directory over HTTP, only do it on a network you trust.
 
 ## Tests
 
 ```bash
-pytest tests/test_server.py -q
+pytest tests/test_server.py tests/test_server_static_ui.py -q
 ```
 
-Covers empty state, populated state via `tmp_path`, codename filter, HTMX
-partial swap, 404 on unknown firing, path-traversal rejection, saved plan
-listing, planning draft readiness/saving, timestamp formatting,
-malformed-JSONL tolerance, Slack trusted-user API guards, and `/healthz`.
+`test_server.py` covers empty and populated state via `tmp_path`, the JSON
+firing/plan surfaces, 404 on unknown firing, path-traversal rejection, saved
+plan listing, planning draft readiness/saving, memory-candidate proposal,
+malformed-JSONL tolerance, header-token mutation guards, Slack trusted-user API
+guards, and `/healthz`. `test_server_static_ui.py` covers serving the built app
+at `/` with the injected token, asset and brand resolution, SPA deep-link
+fallback, the API never being shadowed by the UI catch-all, the "UI not built"
+page, and the traversal guard.

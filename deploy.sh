@@ -215,7 +215,7 @@ ensure_runtime_python_deps() {
   local venv_python="$ALFRED_HOME/venv/bin/python"
   [ "${ALFRED_DEPLOY_SKIP_PYTHON_DEPS:-0}" = "1" ] && return 0
   [ -x "$venv_python" ] || return 0
-  if "$venv_python" -c "import boto3, fastapi, httpx, jinja2, slack_sdk, uvicorn" >/dev/null 2>&1; then
+  if "$venv_python" -c "import boto3, fastapi, httpx, slack_sdk, uvicorn" >/dev/null 2>&1; then
     return 0
   fi
   if ! command -v uv >/dev/null 2>&1; then
@@ -228,12 +228,11 @@ ensure_runtime_python_deps() {
     "boto3>=1.34" \
     "fastapi>=0.110" \
     "httpx>=0.27" \
-    "uvicorn>=0.27" \
-    "jinja2>=3.1" >/dev/null; then
+    "uvicorn>=0.27" >/dev/null; then
     echo "[alfred-os/deploy] WARNING: runtime dependency install failed; re-run install.sh to repair" >&2
     return 0
   fi
-  if ! "$venv_python" -c "import boto3, fastapi, httpx, jinja2, slack_sdk, uvicorn" >/dev/null 2>&1; then
+  if ! "$venv_python" -c "import boto3, fastapi, httpx, slack_sdk, uvicorn" >/dev/null 2>&1; then
     echo "[alfred-os/deploy] WARNING: runtime dependency install completed, but imports still fail; re-run install.sh to repair" >&2
   fi
 }
@@ -247,6 +246,52 @@ if [ -d "$REPO_DIR/prompts" ]; then
   done
   echo "[alfred-os/deploy] copied prompts/"
 fi
+
+# Build and ship the desktop React app so `alfred serve` can serve it as the
+# browser UI. The same built app powers the Tauri native shell and the browser:
+# one UI codebase, two shells. This is optional; when it is skipped or the
+# toolchain is absent, `alfred serve` shows a "UI not built" page and the
+# desktop app is unaffected. Skip with ALFRED_DEPLOY_SKIP_UI=1.
+ship_desktop_ui() {
+  local client_dir="$REPO_DIR/clients/desktop"
+  local runtime_ui="$ALFRED_HOME/clients/desktop/dist"
+  [ "${ALFRED_DEPLOY_SKIP_UI:-0}" = "1" ] && { echo "[alfred-os/deploy] skipping desktop UI build (ALFRED_DEPLOY_SKIP_UI=1)"; return 0; }
+  [ -d "$client_dir" ] || return 0
+
+  # Build the app when npm is available and no fresh dist exists yet. A prebuilt
+  # dist/ (shipped in a release tarball or already built locally) is used as-is.
+  if [ ! -f "$client_dir/dist/index.html" ]; then
+    if command -v npm >/dev/null 2>&1; then
+      echo "[alfred-os/deploy] building desktop UI (npm ci + npm run build)"
+      if ! (cd "$client_dir" && npm ci >/dev/null 2>&1 && npm run build >/dev/null 2>&1); then
+        echo "[alfred-os/deploy] WARNING: desktop UI build failed; alfred serve will show the 'UI not built' page" >&2
+        return 0
+      fi
+    else
+      echo "[alfred-os/deploy] npm not found; skipping desktop UI build (alfred serve shows the 'UI not built' page)"
+      return 0
+    fi
+  fi
+
+  [ -f "$client_dir/dist/index.html" ] || return 0
+  if same_dir "$client_dir/dist" "$runtime_ui"; then
+    echo "[alfred-os/deploy] desktop UI already in runtime root"
+  else
+    mkdir -p "$runtime_ui"
+    # Mirror dist/ into the runtime location. Prefer rsync for a clean mirror;
+    # fall back to a wipe-and-copy so stale hashed assets never linger.
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --delete "$client_dir/dist/" "$runtime_ui/"
+    else
+      rm -rf "$runtime_ui"
+      mkdir -p "$runtime_ui"
+      cp -R "$client_dir/dist/." "$runtime_ui/"
+    fi
+    echo "[alfred-os/deploy] shipped desktop UI → $runtime_ui"
+  fi
+}
+
+ship_desktop_ui
 
 if [ -f "$RUNTIME_BIN/alfred" ]; then
   ln -sfn "$RUNTIME_BIN/alfred" "$LOCAL_BIN/alfred"

@@ -342,12 +342,12 @@ venv_deps_fail=0
 if [ -x "$ALFRED_HOME/venv/bin/python" ]; then
   venv_python="$ALFRED_HOME/venv/bin/python"
   printf "  %-30s " "alfred-venv base deps"
-  if "$venv_python" -c "import boto3, fastapi, httpx, jinja2, slack_sdk, uvicorn" >/dev/null 2>&1; then
+  if "$venv_python" -c "import boto3, fastapi, httpx, slack_sdk, uvicorn" >/dev/null 2>&1; then
     echo "✅"
   elif [ "$DEV_MODE" = "1" ]; then
     echo "⚠️  --dev: runtime deps import failed in \$ALFRED_HOME/venv"
   else
-    echo "❌ import boto3, fastapi, httpx, jinja2, slack_sdk, uvicorn failed against $venv_python"
+    echo "❌ import boto3, fastapi, httpx, slack_sdk, uvicorn failed against $venv_python"
     echo "       (re-run install.sh to repair, or pip install into the venv manually)"
     venv_deps_fail=1
   fi

@@ -411,9 +411,8 @@ else
     "boto3>=1.34" \
     "fastapi>=0.110" \
     "httpx>=0.27" \
-    "uvicorn>=0.27" \
-    "jinja2>=3.1" >/dev/null
-  if "$ALFRED_VENV/bin/python" -c "import boto3, fastapi, httpx, jinja2, slack_sdk, uvicorn" >/dev/null 2>&1; then
+    "uvicorn>=0.27" >/dev/null
+  if "$ALFRED_VENV/bin/python" -c "import boto3, fastapi, httpx, slack_sdk, uvicorn" >/dev/null 2>&1; then
     ok "Alfred runtime deps importable from \$ALFRED_HOME/venv"
   else
     warn "venv install reported success but imports fail; check $ALFRED_VENV manually"
