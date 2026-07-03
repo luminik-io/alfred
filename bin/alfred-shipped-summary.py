@@ -561,15 +561,18 @@ def render_slack(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _self_proof_gh_json(args: list[str], *, timeout: int = 30) -> Any:
+def _self_proof_gh_json(args: list[str], **_ignored: Any) -> Any:
     """Adapt agent_runner.gh_json to the self_proof gh callable contract.
 
     ``self_proof`` passes ``gh``-subcommand args WITHOUT a leading ``gh`` and
     expects ``None`` on failure; ``agent_runner.gh_json`` wants the full argv
-    and takes a ``default``. Bridge the two so the fleet's preflighted gh
-    wrapper (with its auth + PATH handling) is what actually runs.
+    and takes only ``cmd`` and ``default`` (its internal ``run`` applies its
+    own timeout), so any keyword the caller passes (e.g. ``timeout``) is
+    accepted here and dropped rather than forwarded. Bridging this way keeps
+    the fleet's preflighted gh wrapper (with its auth + PATH handling) as what
+    actually runs without raising ``TypeError`` per repo.
     """
-    return gh_json(["gh", *args], default=None, timeout=timeout)
+    return gh_json(["gh", *args], default=None)
 
 
 def compute_self_proof_stat(
@@ -577,9 +580,21 @@ def compute_self_proof_stat(
     *,
     days: int,
 ) -> dict[str, Any]:
-    """Resolve the self-proof repo set and compute the stat via the fleet gh."""
+    """Resolve the self-proof repo set and compute the stat via the fleet gh.
+
+    Explicit repos may be bare names (the shipped-summary convention); they are
+    resolved to ``owner/repo`` slugs through GH_ORG before querying, the same
+    way ``fetch_merged_prs`` resolves them. Unresolvable bare names are dropped
+    rather than sent to gh as bad slugs.
+    """
     resolved = resolve_self_proof_repos(repos)
-    return compute_self_proof(resolved, days=days, gh_json=_self_proof_gh_json)
+    slugged: list[str] = []
+    for repo in resolved:
+        try:
+            slugged.append(repo_slug(repo))
+        except ValueError:
+            continue
+    return compute_self_proof(slugged, days=days, gh_json=_self_proof_gh_json)
 
 
 def render_self_proof(data: dict[str, Any]) -> str:
@@ -597,6 +612,11 @@ def render_self_proof(data: dict[str, Any]) -> str:
     for row in per_repo:
         if row.get("errored"):
             lines.append(f"- `{row['repo']}`: GitHub query failed (excluded)")
+        elif row.get("capped"):
+            lines.append(
+                f"- `{row['repo']}`: query hit the page cap; counts would be "
+                "incomplete, so this repo is excluded"
+            )
         elif row.get("no_data"):
             lines.append(f"- `{row['repo']}`: no merged PRs in window")
         else:
@@ -615,11 +635,15 @@ def render_self_proof(data: dict[str, Any]) -> str:
             f"merged PRs ({share_str}) across "
             f"{aggregate['repos_counted']} repos"
         )
-    if data.get("errors"):
+    warnings = [f"- {repo}: GitHub data unavailable" for repo in (data.get("errors") or [])[:6]]
+    warnings.extend(
+        f"- {repo}: page-capped query; excluded from the share"
+        for repo in (data.get("capped") or [])[:6]
+    )
+    if warnings:
         lines.append("")
         lines.append("*Query warnings*")
-        for repo in data["errors"][:6]:
-            lines.append(f"- {repo}: GitHub data unavailable")
+        lines.extend(warnings)
     return "\n".join(line for line in lines if line is not None)
 
 
@@ -741,8 +765,13 @@ def main(argv: list[str] | None = None) -> int:
     data = collect(period, repos, fetch_files=not args.no_file_scan)
 
     # Weekly recap opts in to the self-proof line; daily stays lean unless asked.
+    # The proof line measures the SAME repos the summary just collected (the
+    # resolved --repo / ALFRED_SHIPPED_SUMMARY_*_REPOS set), so a scheduled
+    # weekly recap cannot summarize real merged PRs and then append a
+    # contradictory "No merged PRs" self-proof line resolved from different
+    # env knobs.
     if args.with_self_proof or args.period == "weekly":
-        data["self_proof"] = compute_self_proof_stat(args.repo, days=_self_proof_window_days(args))
+        data["self_proof"] = compute_self_proof_stat(repos, days=_self_proof_window_days(args))
     if args.self_proof_json and data.get("self_proof"):
         _write_self_proof_json(args.self_proof_json, data["self_proof"])
 

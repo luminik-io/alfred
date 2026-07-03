@@ -3,10 +3,18 @@
 
 The stat is "X% of merged PRs were shipped by Alfred agents" per repo and in
 aggregate. All GitHub access is stubbed via an injected ``gh_json`` callable,
-so these run offline and deterministically. The numerator is agent-shipped
-merged PRs (provenance label or agent branch prefix); the denominator is every
-merged PR in the window, so the percentage is the fleet's real share of the
-merge stream.
+so these run offline and deterministically.
+
+Correctness properties under test (this number is quoted publicly, so both
+sides of the ratio must be unimpeachable):
+
+* Numerator: ONLY merged PRs carrying an exact Alfred provenance label count.
+  A codename-looking branch, a stale ``automerge/`` branch, or a near-miss
+  label (``not-agent:authored``) can never inflate it.
+* Denominator: every merged PR in the window, fetched via per-UTC-day
+  ``merged:`` search windows and de-duplicated, so it is never truncated by a
+  single page cap. A genuinely capped day flags the repo and excludes it from
+  the aggregate instead of quoting a wrong share.
 """
 
 from __future__ import annotations
@@ -45,8 +53,9 @@ def _pr(number, *, merged_day, labels=None, branch="feature/x", author="alice"):
 def _gh_for(repo_prs: dict[str, list[dict]]):
     """Build a gh_json stub returning per-repo merged PR rows.
 
-    ``repo_prs`` maps ``owner/name`` -> list of PR rows. A repo mapped to
-    ``None`` simulates a gh failure (returns ``None``).
+    ``repo_prs`` maps ``owner/name`` -> list of PR rows returned for EVERY day
+    window (the fetch de-duplicates by number, so this is safe). A repo mapped
+    to ``None`` simulates a gh failure (returns ``None``).
     """
 
     def _impl(args, **kwargs):
@@ -60,6 +69,12 @@ def _gh_for(repo_prs: dict[str, list[dict]]):
         return repo_prs.get(repo)
 
     return _impl
+
+
+def _search_from(args) -> str:
+    """The from-date of the ``merged:>=A merged:<B`` qualifier in a gh argv."""
+    qualifier = args[args.index("--search") + 1]
+    return qualifier.split("merged:>=")[1].split()[0]
 
 
 @pytest.fixture(autouse=True)
@@ -78,7 +93,7 @@ def _clean_env(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# agent-shipped detection
+# agent-shipped detection: label-authoritative, exact-match
 # --------------------------------------------------------------------------
 
 
@@ -87,22 +102,41 @@ def test_agent_shipped_by_provenance_label():
     assert sp.pr_is_agent_shipped(_pr(2, merged_day=28, labels=["agent:shipped"]))
 
 
-def test_agent_shipped_by_branch_prefix():
-    assert sp.pr_is_agent_shipped(_pr(3, merged_day=28, branch="lucius/fix-bug"))
-    assert sp.pr_is_agent_shipped(_pr(4, merged_day=28, branch="batman/rollout"))
+def test_branch_prefix_alone_does_not_qualify():
+    # A human PR pushed to a codename-looking or stale automerge branch must
+    # NOT count: the label is the authoritative provenance signal, matching
+    # shipped_board. The branch is recorded as corroborating evidence only.
+    for branch in ("lucius/fix-bug", "batman/rollout", "automerge/dep-bump"):
+        pr = _pr(3, merged_day=28, branch=branch)
+        assert not sp.pr_is_agent_shipped(pr)
+        assert f"branch:{branch}" in sp.pr_agent_evidence(pr)
+
+
+def test_near_miss_labels_do_not_qualify():
+    # Substring lookalikes must not count; only exact label names qualify.
+    for label in ("not-agent:authored", "agent:authored-needed", "agent:authoredx"):
+        assert not sp.pr_is_agent_shipped(_pr(4, merged_day=28, labels=[label]))
+
+
+def test_label_plus_branch_yields_both_evidence_kinds():
+    pr = _pr(5, merged_day=28, labels=["agent:authored"], branch="lucius/x")
+    assert sp.pr_is_agent_shipped(pr)
+    evidence = sp.pr_agent_evidence(pr)
+    assert "label:agent:authored" in evidence
+    assert "branch:lucius/x" in evidence
 
 
 def test_human_pr_is_not_agent_shipped():
     assert not sp.pr_is_agent_shipped(
-        _pr(5, merged_day=28, branch="feature/manual", labels=["bug"])
+        _pr(6, merged_day=28, branch="feature/manual", labels=["bug"])
     )
 
 
-def test_dependabot_on_automerge_branch_is_excluded():
-    # An excluded author on an agent-looking branch is NOT counted, so a bot
-    # bump never inflates the numerator.
+def test_excluded_author_never_counts_even_with_label():
+    # dependabot (and friends) never count, even when a label sync stamped the
+    # provenance label onto a bot PR.
     assert not sp.pr_is_agent_shipped(
-        _pr(6, merged_day=28, branch="automerge/dep", author="dependabot[bot]")
+        _pr(7, merged_day=28, labels=["agent:authored"], author="dependabot[bot]")
     )
 
 
@@ -116,7 +150,7 @@ def test_share_and_aggregate_across_repos():
         {
             "acme/api": [
                 _pr(1, merged_day=28, labels=["agent:authored"]),
-                _pr(2, merged_day=28, branch="lucius/x"),
+                _pr(2, merged_day=28, labels=["agent:done"], branch="lucius/x"),
                 _pr(3, merged_day=28, branch="feature/human", labels=["bug"]),
             ],
             "acme/web": [
@@ -143,6 +177,25 @@ def test_share_and_aggregate_across_repos():
     assert agg["repos_with_agent_work"] == 2
     assert "shipped 3 of 5 merged PRs (60%)" in result["headline"]
     assert "60% of merged PRs" in result["sentence"]
+
+
+def test_branch_only_prs_stay_in_denominator_not_numerator():
+    # The inflation case from review: human PRs on codename branches. They
+    # must count as merged (denominator) but never as agent-shipped.
+    gh = _gh_for(
+        {
+            "acme/api": [
+                _pr(1, merged_day=28, labels=["agent:authored"]),
+                _pr(2, merged_day=28, branch="lucius/human-lookalike"),
+                _pr(3, merged_day=28, branch="automerge/stale"),
+            ]
+        }
+    )
+    result = sp.compute_self_proof(["acme/api"], days=7, now=NOW, gh_json=gh)
+    row = result["per_repo"][0]
+    assert row["merged_total"] == 3
+    assert row["agent_shipped"] == 1
+    assert row["share_pct"] == pytest.approx(33.3, abs=0.05)
 
 
 def test_prs_outside_window_are_excluded():
@@ -208,6 +261,113 @@ def test_custom_label_env_override(monkeypatch):
     # qualifies because the env override replaces the default set.
     assert result["aggregate"]["agent_shipped"] == 1
     assert result["aggregate"]["merged_total"] == 2
+
+
+# --------------------------------------------------------------------------
+# pagination + cap honesty
+# --------------------------------------------------------------------------
+
+
+def test_day_qualifiers_cover_whole_window():
+    start = NOW - sp.timedelta(days=7)
+    qualifiers = sp._day_qualifiers(start, NOW)
+    # 2026-06-23 .. 2026-06-30 inclusive: 8 UTC calendar days.
+    assert len(qualifiers) == 8
+    assert qualifiers[0] == "merged:>=2026-06-23 merged:<2026-06-24"
+    assert qualifiers[-1] == "merged:>=2026-06-30 merged:<2026-07-01"
+
+
+def test_denominator_counts_past_a_single_page():
+    # 3 UTC days x 150 merged PRs with a 200-row page limit. A single
+    # unwindowed `gh pr list --limit 200` would truncate to 200 rows; the
+    # day-windowed fetch must count all 450, with the agent subset intact.
+    days_rows: dict[str, list[dict]] = {}
+    number = 0
+    for day in (27, 28, 29):
+        rows = []
+        for i in range(150):
+            number += 1
+            labels = ["agent:authored"] if i % 3 == 0 else []
+            rows.append(_pr(number, merged_day=day, labels=labels))
+        days_rows[f"2026-06-{day:02d}"] = rows
+
+    def gh(args, **kwargs):
+        return days_rows.get(_search_from(args), [])
+
+    result = sp.compute_self_proof(["acme/api"], days=7, now=NOW, gh_json=gh, limit=200)
+    row = result["per_repo"][0]
+    assert row["capped"] is False
+    assert row["merged_total"] == 450
+    assert row["agent_shipped"] == 150
+    assert result["aggregate"]["share_pct"] == pytest.approx(33.3, abs=0.05)
+
+
+def test_duplicate_rows_across_windows_are_deduped():
+    # The same PR returned by two day windows must count once.
+    pr = _pr(1, merged_day=28, labels=["agent:authored"])
+
+    def gh(args, **kwargs):
+        return [pr] if _search_from(args) in ("2026-06-27", "2026-06-28") else []
+
+    result = sp.compute_self_proof(["acme/api"], days=7, now=NOW, gh_json=gh)
+    row = result["per_repo"][0]
+    assert row["merged_total"] == 1
+    assert row["agent_shipped"] == 1
+
+
+def test_capped_day_window_excludes_repo_from_share():
+    # When a day window returns as many rows as the limit, rows beyond the cap
+    # are unknowable, so the repo must be flagged capped, report no share, and
+    # be excluded from the aggregate instead of quoting a truncated ratio.
+    rows = [_pr(i, merged_day=28, labels=["agent:authored"]) for i in range(1, 6)]
+
+    def gh(args, **kwargs):
+        return rows if _search_from(args) == "2026-06-28" else []
+
+    result = sp.compute_self_proof(["acme/api"], days=7, now=NOW, gh_json=gh, limit=5)
+    row = result["per_repo"][0]
+    assert row["capped"] is True
+    assert row["share_pct"] is None
+    assert row["merged_total"] == 0
+    assert result["capped"] == ["acme/api"]
+    assert result["aggregate"]["merged_total"] == 0
+    assert result["aggregate"]["share_pct"] is None
+
+
+def test_capped_repo_does_not_poison_healthy_repo():
+    capped_rows = [_pr(i, merged_day=28) for i in range(1, 4)]
+    healthy_rows = [_pr(10, merged_day=28, labels=["agent:authored"])]
+
+    def gh(args, **kwargs):
+        repo = args[args.index("--repo") + 1]
+        if repo == "acme/firehose":
+            return capped_rows if _search_from(args) == "2026-06-28" else []
+        return healthy_rows if _search_from(args) == "2026-06-28" else []
+
+    result = sp.compute_self_proof(
+        ["acme/firehose", "acme/api"], days=7, now=NOW, gh_json=gh, limit=3
+    )
+    assert result["capped"] == ["acme/firehose"]
+    assert result["aggregate"]["merged_total"] == 1
+    assert result["aggregate"]["agent_shipped"] == 1
+    assert result["aggregate"]["share_pct"] == 100.0
+
+
+def test_fetch_uses_merged_search_qualifier_and_limit():
+    # The gh query itself must be date-scoped (merged:) and carry the limit,
+    # so the page cap applies per day, not to the whole window.
+    seen_args: list[list[str]] = []
+
+    def gh(args, **kwargs):
+        seen_args.append(list(args))
+        return []
+
+    sp.compute_self_proof(["acme/api"], days=7, now=NOW, gh_json=gh, limit=42)
+    assert seen_args, "expected gh queries"
+    for args in seen_args:
+        assert "--search" in args
+        assert "merged:>=" in args[args.index("--search") + 1]
+        assert args[args.index("--limit") + 1] == "42"
 
 
 # --------------------------------------------------------------------------

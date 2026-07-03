@@ -10,13 +10,25 @@ plus a fleet-wide aggregate across every configured repo:
 
     Alfred agents shipped N merged PRs across M repos in the last N days
 
-The agent-authored signal is the SAME one the rest of the fleet uses: a merged
-PR counts as agent-shipped when it carries one of Alfred's provenance labels
-(``agent:authored`` and friends, applied on PR open and merge) or was pushed
-from an agent branch prefix. Every merged PR in the window is the denominator;
-the agent-shipped subset is the numerator. Human and bot PRs stay in the
-denominator so the percentage is honest: it is the fleet's real share of the
-merge stream, not a filtered-then-counted illusion.
+Attribution is label-authoritative, matching ``shipped_board._pr_is_agent_shipped``
+and the shipped-summary path: a merged PR counts as agent-shipped ONLY when it
+carries one of Alfred's provenance labels (``agent:authored`` set on PR open,
+plus ``agent:done`` / ``agent:shipped`` and friends), matched EXACTLY, not by
+substring. An agent branch prefix (``lucius/``, ``batman/``, ...) is recorded as
+corroborating evidence for display but never qualifies a PR on its own, so a
+human PR pushed to a codename-looking branch, a stale ``automerge/`` branch, or
+a near-miss label like ``not-agent:authored`` can never inflate the numerator.
+Every merged PR in the window is the denominator; the agent-shipped subset is
+the numerator. Human and bot PRs stay in the denominator so the percentage is
+honest: it is the fleet's real share of the merge stream, not a
+filtered-then-counted illusion.
+
+Merged PRs are fetched with a ``merged:`` date-window search qualifier, one
+UTC-day sub-window at a time, and de-duplicated by PR number, so the count is
+complete for the whole window rather than truncated at a single page. If any
+sub-window still returns as many rows as the query limit, the repo is flagged
+``capped`` and EXCLUDED from the aggregate instead of contributing a silently
+truncated denominator: a wrong percentage is worse than no percentage.
 
 All GitHub access flows through an injectable ``gh_json`` callable so the whole
 module is unit-testable with a stubbed shell, exactly like ``shipped_board``.
@@ -27,6 +39,7 @@ Honesty contract: when a repo has zero merged PRs in the window, its share is
 reported as ``None`` (not 0 and not 100) and it is flagged ``no_data`` so a
 caller never prints a fabricated "0% shipped by Alfred" for an idle repo. The
 aggregate share is likewise ``None`` when the total across all repos is zero.
+Errored and capped repos are excluded from the aggregate and reported.
 """
 
 from __future__ import annotations
@@ -37,15 +50,20 @@ import os
 import shutil
 import subprocess
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 DEFAULT_WINDOW_DAYS = 7
-_PER_REPO_LIMIT = 200
+# Per-day-window query limit. The window is split into UTC-day sub-queries, so
+# this cap applies to ONE day of one repo's merges, not the whole window. A repo
+# merging 500+ PRs in a single day trips the ``capped`` flag and is excluded
+# from the aggregate rather than silently undercounted.
+_PER_WINDOW_LIMIT = 500
 
-# Agent-authorship signals, kept in lockstep with shipped_board.py so the
-# self-proof numerator matches what the shipped board and Impact page count as
-# agent work. Overridable via the same env knobs used elsewhere.
+# Alfred's provenance labels, kept in lockstep with shipped_board.py and the
+# shipped summary so the self-proof numerator matches what the rest of the
+# fleet counts as agent work. Matched EXACTLY (case-insensitive), never by
+# substring. Overridable via ALFRED_SHIPPED_AGENT_LABELS.
 _DEFAULT_AGENT_SHIPPED_LABELS = (
     "agent:authored",
     "agent:done",
@@ -54,6 +72,8 @@ _DEFAULT_AGENT_SHIPPED_LABELS = (
     "shipped-by-alfred",
 )
 
+# Agent branch prefixes. Display-only corroboration (see pr_agent_evidence);
+# a prefix match NEVER qualifies a PR as agent-shipped on its own.
 _DEFAULT_AGENT_BRANCH_PREFIXES = (
     "alfred/",
     "alfred-nightly/",
@@ -67,9 +87,9 @@ _DEFAULT_AGENT_BRANCH_PREFIXES = (
     "robin/",
 )
 
-# PR authors that are never agent work even on an agent-looking branch. Mirrors
-# the site emitters' dependabot exclusion so a bot bump does not inflate either
-# side of the ratio.
+# PR authors that are never agent work even when carrying an agent-looking
+# label (e.g. a label sync gone wrong on a bot bump). Mirrors the site
+# emitters' dependabot exclusion.
 _DEFAULT_EXCLUDED_AUTHORS = (
     "app/dependabot",
     "dependabot",
@@ -126,23 +146,37 @@ def _author_login(pr: dict) -> str:
 
 
 def pr_is_agent_shipped(pr: dict) -> bool:
-    """True when a merged PR looks agent-shipped.
+    """True only when a merged PR carries an Alfred provenance label.
 
-    A PR counts as agent-shipped when it carries any Alfred provenance label OR
-    was pushed from an agent branch prefix, and its author is not on the
-    excluded-authors list (dependabot and friends). Conservative on both ends: a
-    bot PR on an ``automerge/`` branch is excluded, and a PR with no agent
-    signal is never counted, so the numerator never claims work the fleet did
-    not do.
+    The provenance label (``agent:authored``, applied by the fleet when it
+    opens the PR, plus ``agent:done`` / ``agent:shipped`` set on merge) is the
+    authoritative signal, matched EXACTLY against the PR's label names, the
+    same rule ``shipped_board._pr_is_agent_shipped`` and the shipped summary
+    use. Substring matches (``not-agent:authored``, ``agent:authored-needed``)
+    do NOT qualify. A branch prefix does NOT qualify on its own either; it is
+    recorded by :func:`pr_agent_evidence` for display only, so a human PR on a
+    codename-looking branch or a stale ``automerge/`` branch can never inflate
+    the numerator. Excluded authors (dependabot and friends) never count even
+    when labelled.
     """
     if _author_login(pr) in _excluded_authors():
         return False
-    label_hints = _shipped_label_hints()
-    if any(any(hint in label for hint in label_hints) for label in _labels(pr)):
-        return True
-    branch = (pr.get("headRefName") or "").strip().lower()
+    return bool(set(_labels(pr)) & set(_shipped_label_hints()))
+
+
+def pr_agent_evidence(pr: dict) -> list[str]:
+    """All agent evidence on a PR, for display: labels qualify, branches corroborate."""
+    evidence: list[str] = []
+    label_hints = set(_shipped_label_hints())
+    for label in _labels(pr):
+        if label in label_hints:
+            evidence.append(f"label:{label}")
+    branch = (pr.get("headRefName") or "").strip()
+    lowered = branch.lower()
     prefixes = tuple(p.lower() for p in _shipped_branch_prefixes())
-    return bool(branch) and any(branch.startswith(prefix) for prefix in prefixes)
+    if lowered and any(lowered.startswith(prefix) for prefix in prefixes):
+        evidence.append(f"branch:{lowered}")
+    return evidence
 
 
 # --------------------------------------------------------------------------
@@ -272,60 +306,98 @@ def _share_pct(agent: int, total: int) -> float | None:
     return round(100.0 * agent / total, 1)
 
 
+def _day_qualifiers(start: datetime, end: datetime) -> list[str]:
+    """UTC-day ``merged:`` search qualifiers covering ``[start, end]``.
+
+    One qualifier per UTC calendar day, ``merged:>=D merged:<D+1``, the same
+    day-slicing the shipped summary uses. Slicing the window into days keeps
+    each query far under any page cap and lets the caller detect a genuinely
+    capped day instead of silently losing rows past a single page. Date
+    qualifiers are day-granular; the exact ``[start, end]`` timestamp filter is
+    applied locally on ``mergedAt`` by the caller.
+    """
+    qualifiers: list[str] = []
+    day = start.astimezone(UTC).date()
+    last = end.astimezone(UTC).date()
+    while day <= last:
+        next_day = day + timedelta(days=1)
+        qualifiers.append(f"merged:>={day.isoformat()} merged:<{next_day.isoformat()}")
+        day = next_day
+    return qualifiers
+
+
 def _fetch_repo(
     repo: str,
     *,
-    cutoff: float,
+    start: datetime,
+    end: datetime,
     limit: int,
     gh_json: Callable[..., Any],
 ) -> dict[str, Any]:
-    """Compute one repo's agent-vs-total merged-PR counts in the window.
+    """Compute one repo's agent-vs-total merged-PR counts in ``[start, end]``.
 
-    Returns a per-repo record. ``errored`` is True when the gh query failed, so
-    the caller records it without inventing counts. Pure per-repo work, safe to
-    run concurrently.
+    Queries one UTC-day sub-window at a time with a ``merged:`` search
+    qualifier and de-duplicates by PR number, so the denominator covers the
+    whole window instead of one truncated page. Returns a per-repo record.
+    ``errored`` is True when any gh query failed; ``capped`` is True when any
+    day window returned as many rows as the query limit (the counts beyond the
+    cap are unknowable, so the caller must not quote a share from them). Pure
+    per-repo work, safe to run concurrently.
     """
-    prs = gh_json(
-        [
-            "pr",
-            "list",
-            "--repo",
-            repo,
-            "--state",
-            "merged",
-            "--limit",
-            str(limit),
-            "--json",
-            "number,title,url,author,mergedAt,labels,headRefName",
-        ]
-    )
-    if prs is None:
-        return {
-            "repo": repo,
-            "merged_total": 0,
-            "agent_shipped": 0,
-            "share_pct": None,
-            "errored": True,
-            "no_data": True,
-        }
+    seen: dict[int, dict] = {}
+    errored = False
+    capped = False
+    for qualifier in _day_qualifiers(start, end):
+        prs = gh_json(
+            [
+                "pr",
+                "list",
+                "--repo",
+                repo,
+                "--state",
+                "merged",
+                "--search",
+                qualifier,
+                "--limit",
+                str(limit),
+                "--json",
+                "number,title,url,author,mergedAt,labels,headRefName",
+            ]
+        )
+        if prs is None:
+            errored = True
+            continue
+        if len(prs) >= limit:
+            capped = True
+        for pr in prs:
+            number = pr.get("number")
+            if isinstance(number, int):
+                seen[number] = pr
 
     merged_total = 0
     agent_shipped = 0
-    for pr in prs:
+    start_ts = start.timestamp()
+    end_ts = end.timestamp()
+    for pr in seen.values():
         merged = _parse_ts(pr.get("mergedAt"))
-        if not merged or merged.timestamp() < cutoff:
+        if not merged:
+            continue
+        ts = merged.timestamp()
+        if ts < start_ts or ts > end_ts:
             continue
         merged_total += 1
         if pr_is_agent_shipped(pr):
             agent_shipped += 1
 
+    unusable = errored or capped
     return {
         "repo": repo,
-        "merged_total": merged_total,
-        "agent_shipped": agent_shipped,
-        "share_pct": _share_pct(agent_shipped, merged_total),
-        "errored": False,
-        "no_data": merged_total == 0,
+        "merged_total": 0 if unusable else merged_total,
+        "agent_shipped": 0 if unusable else agent_shipped,
+        "share_pct": None if unusable else _share_pct(agent_shipped, merged_total),
+        "errored": errored,
+        "capped": capped,
+        "no_data": unusable or merged_total == 0,
     }
 
 
@@ -333,7 +405,7 @@ def compute_self_proof(
     repos: list[str],
     *,
     days: int = DEFAULT_WINDOW_DAYS,
-    limit: int = _PER_REPO_LIMIT,
+    limit: int = _PER_WINDOW_LIMIT,
     now: datetime | None = None,
     gh_json: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -347,7 +419,8 @@ def compute_self_proof(
           "repos": [...],
           "per_repo": [
             {"repo": "owner/name", "merged_total": 12, "agent_shipped": 9,
-             "share_pct": 75.0, "no_data": false, "errored": false},
+             "share_pct": 75.0, "no_data": false, "errored": false,
+             "capped": false},
             ...
           ],
           "aggregate": {
@@ -355,27 +428,34 @@ def compute_self_proof(
             "repos_counted": 3, "repos_with_agent_work": 2
           },
           "errors": ["owner/flaky"],
+          "capped": ["owner/firehose"],
           "headline": "Alfred agents shipped 30 of 40 merged PRs (75%) across 3 repos in the last 7 days.",
           "sentence": "75% of merged PRs across 3 repos were shipped by Alfred agents in the last 7 days."
         }
 
-    Repos are queried concurrently; a failing repo is recorded in ``errors`` and
-    excluded from the aggregate rather than breaking the whole stat. When the
-    aggregate denominator is zero, ``share_pct`` is ``None`` and the sentences
-    say so honestly.
+    Repos are queried concurrently, one UTC-day search window at a time (see
+    ``_fetch_repo``), so the denominator is complete for the window. A failing
+    repo is recorded in ``errors`` and a page-capped repo in ``capped``; both
+    are excluded from the aggregate rather than contributing wrong counts,
+    because this number is quoted publicly and a truncated share is worse than
+    a smaller repo set. When the aggregate denominator is zero, ``share_pct``
+    is ``None`` and the sentences say so honestly.
     """
     now = now or datetime.now(UTC)
     fetch = gh_json or default_gh_json
-    cutoff = now.timestamp() - max(1, days) * 86400
+    start = now - timedelta(days=max(1, days))
 
     per_repo: list[dict[str, Any]] = []
     errors: list[str] = []
+    capped: list[str] = []
 
     if repos:
         max_workers = min(len(repos), 8)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
             futures = {
-                pool.submit(_fetch_repo, repo, cutoff=cutoff, limit=limit, gh_json=fetch): repo
+                pool.submit(
+                    _fetch_repo, repo, start=start, end=now, limit=limit, gh_json=fetch
+                ): repo
                 for repo in repos
             }
             results: dict[str, dict[str, Any]] = {}
@@ -390,6 +470,7 @@ def compute_self_proof(
                         "agent_shipped": 0,
                         "share_pct": None,
                         "errored": True,
+                        "capped": False,
                         "no_data": True,
                     }
         # Preserve the caller's repo order for stable output.
@@ -397,6 +478,8 @@ def compute_self_proof(
             row = results[repo]
             if row.get("errored"):
                 errors.append(repo)
+            if row.get("capped"):
+                capped.append(repo)
             per_repo.append(
                 {
                     "repo": row["repo"],
@@ -405,13 +488,17 @@ def compute_self_proof(
                     "share_pct": row["share_pct"],
                     "no_data": row["no_data"],
                     "errored": row["errored"],
+                    "capped": row.get("capped", False),
                 }
             )
 
-    agent_total = sum(r["agent_shipped"] for r in per_repo if not r["errored"])
-    merged_total = sum(r["merged_total"] for r in per_repo if not r["errored"])
-    repos_counted = sum(1 for r in per_repo if not r["errored"] and r["merged_total"] > 0)
-    repos_with_agent_work = sum(1 for r in per_repo if not r["errored"] and r["agent_shipped"] > 0)
+    def _usable(row: dict[str, Any]) -> bool:
+        return not row["errored"] and not row["capped"]
+
+    agent_total = sum(r["agent_shipped"] for r in per_repo if _usable(r))
+    merged_total = sum(r["merged_total"] for r in per_repo if _usable(r))
+    repos_counted = sum(1 for r in per_repo if _usable(r) and r["merged_total"] > 0)
+    repos_with_agent_work = sum(1 for r in per_repo if _usable(r) and r["agent_shipped"] > 0)
     aggregate = {
         "merged_total": merged_total,
         "agent_shipped": agent_total,
@@ -427,6 +514,7 @@ def compute_self_proof(
         "per_repo": per_repo,
         "aggregate": aggregate,
         "errors": sorted(set(errors)),
+        "capped": sorted(set(capped)),
         "headline": _headline(aggregate, days),
         "sentence": _sentence(aggregate, days),
     }
