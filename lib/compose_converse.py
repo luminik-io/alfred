@@ -692,12 +692,15 @@ def looks_like_question(text: str) -> bool:
         return False
     first = tokens[0]
     if first in _MODAL_OPENERS:
-        # Modal-opener messages are change requests by default ("can we ...",
-        # "could the dashboard ..."). Only a modal aimed at the assistant
-        # ("can you ...") reads as a question; it still runs the build-verb
-        # check below so "can you add X?" stays work.
+        # A modal opener with a PERSONAL-PRONOUN subject ("can you ...", "can I
+        # see ...", "could we get ...") runs the build-verb check below: it is a
+        # question unless a build verb sits in verb position, so "can you add X?"
+        # and "can we show X?" stay work while "can I see the fleet status?" and
+        # "can I get the status?" read as questions. A NON-pronoun subject
+        # ("could the dashboard include a pause button?") names a thing to change
+        # and stays a change request by default.
         second = tokens[1] if len(tokens) > 1 else ""
-        if second != "you":
+        if second not in {"you", "i", "we"}:
             return False
     elif first in _WH_OPENERS:
         # An interrogative opener asks ABOUT something rather than

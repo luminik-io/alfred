@@ -138,6 +138,29 @@ def test_no_engine_classifier_keeps_list_status_questions_conversational() -> No
     )
 
 
+def test_no_engine_classifier_routes_modal_status_questions_by_subject() -> None:
+    # A modal opener with a personal-pronoun subject (you/i/we) is a question
+    # unless it carries a build verb, so "can I see/get the status" stays
+    # conversation while "can we show/add X" stays build. A non-pronoun subject
+    # ("could the dashboard include X") names a thing to change and stays build.
+    for message in (
+        "Can I see the current state of the fleet?",
+        "Can I get the fleet status?",
+        "Could we get the list of paused agents?",
+    ):
+        assert (
+            cc.classify_message_intent(message, draft=_empty_draft())
+            == cc.INTENT_CONVERSATION
+        ), message
+    for message in (
+        "Can we show paused agents in the roster?",
+        "Could the dashboard include a pause button?",
+    ):
+        assert (
+            cc.classify_message_intent(message, draft=_empty_draft()) == cc.INTENT_BUILD
+        ), message
+
+
 def test_heuristic_keeps_build_when_a_draft_already_has_content() -> None:
     # A "thanks" mid-build must not flip an in-progress spec to conversation and
     # wipe the plan; existing draft content forces build.
