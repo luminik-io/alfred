@@ -579,6 +579,48 @@ def test_build_block_before_absent_when_not_attempted():
     assert "base-branch baseline not available" in md
 
 
+def test_build_block_screenshot_links_are_absolute_blob_urls():
+    # A relative path does not resolve from a PR body; with repo+branch known,
+    # emit an absolute blob URL on the pushed branch.
+    md = build_evidence_block(
+        EvidenceInputs(
+            screenshots=ScreenshotEvidence(
+                attempted=True,
+                ok=True,
+                before_path=".alfred/evidence/f/before.png",
+                after_path=".alfred/evidence/f/after.png",
+                route="/",
+            ),
+            repo="acme/api",
+            branch="agent/feature",
+        )
+    )
+    assert "https://github.com/acme/api/blob/agent/feature/.alfred/evidence/f/after.png" in md
+    assert "https://github.com/acme/api/blob/agent/feature/.alfred/evidence/f/before.png" in md
+
+
+def test_build_block_screenshot_links_fall_back_to_relative_without_repo():
+    md = build_evidence_block(
+        EvidenceInputs(
+            screenshots=ScreenshotEvidence(
+                attempted=True, ok=True, after_path=".alfred/evidence/f/after.png", route="/"
+            )
+        )
+    )
+    assert "[`.alfred/evidence/f/after.png`](.alfred/evidence/f/after.png)" in md
+
+
+def test_build_block_preserves_criteria_when_assessment_unparseable():
+    # P3: even when the engine verdict is unparseable, the preserved criteria
+    # must still render as [?] so reviewers keep the checklist.
+    assessment = parse_assessment_response("sorry, no JSON", ["Login works", "Logout works"])
+    assert assessment.produced is False
+    md = build_evidence_block(EvidenceInputs(assessment=assessment))
+    assert "not captured" in md
+    assert "[?] Login works" in md
+    assert "[?] Logout works" in md
+
+
 def test_build_block_missing_evidence_is_labelled_not_omitted():
     md = build_evidence_block(EvidenceInputs())
     assert "## Verification evidence" in md

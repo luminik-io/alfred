@@ -78,9 +78,15 @@ def test_test_evidence_dry_run_does_not_claim_passed(lucius, monkeypatch):
     assert "not run (dry-run)" in md
 
 
-def test_diff_stat_parses_numstat(lucius, monkeypatch):
+def test_diff_stat_parses_numstat_and_excludes_evidence(lucius, monkeypatch):
+    seen: list[list[str]] = []
+
     def fake_run(cmd, **kwargs):
+        seen.append(cmd)
         assert cmd[:3] == ["git", "diff", "--numstat"]
+        # The evidence tree is excluded so committed screenshots never inflate
+        # the code-change summary.
+        assert any(part.startswith(":(exclude)") and "evidence" in part for part in cmd)
         return subprocess.CompletedProcess(
             cmd, 0, stdout="10\t2\tlib/a.py\n5\t0\tbin/b.py\n-\t-\tassets/logo.png\n"
         )
@@ -91,6 +97,35 @@ def test_diff_stat_parses_numstat(lucius, monkeypatch):
     assert stat.insertions == 15
     assert stat.deletions == 2
     assert "lib/a.py" in stat.files
+
+
+def test_evidence_block_computes_diff_after_screenshots(lucius, monkeypatch):
+    # P1: screenshots commit evidence onto the branch, so the diff must be
+    # computed AFTER capture, not before.
+    monkeypatch.setenv("ALFRED_PR_EVIDENCE", "1")
+    monkeypatch.setattr(lucius, "is_dry_run", lambda: False)
+    order: list[str] = []
+
+    def fake_capture(repo, wt, branch, firing_id, base_ref):
+        order.append("screenshots")
+        return None
+
+    def fake_diff(wt, base_ref):
+        order.append("diff")
+        return lucius.DiffStat(files_changed=1, insertions=1, deletions=0, files=("a.py",))
+
+    def fake_assess(repo, issue, wt, base_ref, firing_id, spend=None):
+        order.append("assess")
+        return lucius.SelfAssessment(produced=True, criteria=())
+
+    monkeypatch.setattr(lucius, "_capture_screenshot_evidence", fake_capture)
+    monkeypatch.setattr(lucius, "_diff_stat", fake_diff)
+    monkeypatch.setattr(lucius, "_build_self_assessment", fake_assess)
+
+    lucius._verification_evidence_block(
+        "frontend", {"body": "x"}, Path("/x"), "br", "origin/main", "fid", None
+    )
+    assert order.index("screenshots") < order.index("diff")
 
 
 def test_evidence_block_empty_when_gate_off_and_no_preview(lucius, monkeypatch):

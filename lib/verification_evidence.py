@@ -171,6 +171,11 @@ class EvidenceInputs:
     firing_id: str = ""
     notes: list[str] = field(default_factory=list)
     include_core: bool = True
+    # Used to turn repo-relative evidence paths into absolute blob URLs that
+    # resolve from the PR body (a PR description has no current file to anchor
+    # a relative link against). ``repo`` is ``owner/name``.
+    repo: str = ""
+    branch: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -664,6 +669,12 @@ def _render_assessment(assessment: SelfAssessment | None) -> list[str]:
     if assessment is None or not assessment.produced:
         reason = (assessment.reason if assessment else "") or "self-assessment not produced"
         lines.append(f"- {_NOT_CAPTURED} ({reason})")
+        # Even when the engine's verdict was unparseable, parse_assessment_response
+        # preserves the criteria with met=None. Render them as [?] so reviewers
+        # still get the acceptance checklist exactly when the verdict is missing.
+        criteria = assessment.criteria if assessment else ()
+        for crit in criteria:
+            lines.append(f"- [?] {_one_line(crit.text)}")
         return lines
     if not assessment.criteria:
         lines.append(f"- {_NOT_CAPTURED} (no acceptance criteria found in the issue)")
@@ -683,7 +694,23 @@ def _render_assessment(assessment: SelfAssessment | None) -> list[str]:
     return lines
 
 
-def _render_screenshots(shots: ScreenshotEvidence | None) -> list[str] | None:
+def _evidence_link(path: str, repo: str, branch: str) -> str:
+    """Return a Markdown link that resolves from a PR body.
+
+    A relative path has nothing to anchor against in a PR description, so when
+    ``repo`` (``owner/name``) and ``branch`` are known, build an absolute
+    GitHub ``blob`` URL on the pushed branch. Falls back to the relative path
+    otherwise (e.g. rendering for a local preview).
+    """
+    if repo and branch:
+        url = f"https://github.com/{repo}/blob/{branch}/{path}"
+        return f"[`{path}`]({url})"
+    return f"[`{path}`]({path})"
+
+
+def _render_screenshots(
+    shots: ScreenshotEvidence | None, repo: str = "", branch: str = ""
+) -> list[str] | None:
     # Screenshots are opt-in. When never attempted, omit the section entirely
     # rather than adding noise - absence here is not dishonest because the
     # feature simply was not requested for this repo.
@@ -696,12 +723,12 @@ def _render_screenshots(shots: ScreenshotEvidence | None) -> list[str] | None:
         lines.append(f"- {_NOT_CAPTURED} ({_one_line(reason)})")
         return lines
     if shots.before_path:
-        lines.append(f"- Before: [`{shots.before_path}`]({shots.before_path})")
+        lines.append(f"- Before: {_evidence_link(shots.before_path, repo, branch)}")
     elif shots.before_reason:
         lines.append(f"- Before: {_NOT_CAPTURED} ({_one_line(shots.before_reason)})")
     else:
         lines.append(f"- Before: {_NOT_CAPTURED} (base-branch baseline not available)")
-    lines.append(f"- After: [`{shots.after_path}`]({shots.after_path})")
+    lines.append(f"- After: {_evidence_link(shots.after_path, repo, branch)}")
     return lines
 
 
@@ -724,7 +751,7 @@ def build_evidence_block(inputs: EvidenceInputs) -> str:
                 _render_assessment(inputs.assessment),
             ]
         )
-    shots = _render_screenshots(inputs.screenshots)
+    shots = _render_screenshots(inputs.screenshots, inputs.repo, inputs.branch)
     if shots is not None:
         blocks.append(shots)
     if not blocks and not inputs.notes:

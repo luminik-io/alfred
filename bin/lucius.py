@@ -63,6 +63,7 @@ from agent_runner import (
 )
 from dependencies import issue_dependencies
 from verification_evidence import (
+    EVIDENCE_DIR_NAME,
     DiffStat,
     EvidenceInputs,
     PreviewConfig,
@@ -344,9 +345,24 @@ def _refresh_pre_push_config() -> None:
 
 
 def _diff_stat(wt: Path, base_ref: str) -> DiffStat:
-    """Compute a files/lines summary of the branch against its base."""
+    """Compute a files/lines summary of the branch against its base.
+
+    Excludes the ``.alfred/evidence`` tree so committed screenshot images
+    never inflate the code-change summary reviewers read. Callers compute this
+    AFTER screenshot capture so any evidence commit is already part of HEAD.
+    """
     numstat = run(
-        ["git", "diff", "--numstat", f"{base_ref}...HEAD"], cwd=str(wt), timeout=15
+        [
+            "git",
+            "diff",
+            "--numstat",
+            f"{base_ref}...HEAD",
+            "--",
+            ".",
+            f":(exclude){EVIDENCE_DIR_NAME}/**",
+        ],
+        cwd=str(wt),
+        timeout=15,
     ).stdout
     files: list[str] = []
     insertions = 0
@@ -544,15 +560,21 @@ def _verification_evidence_block(
     only when nothing is enabled at all.
     """
     core = evidence_enabled()
+    repo_slug = f"{GH_ORG}/{repo}" if GH_ORG else repo
     try:
-        test = _test_evidence_from_pre_push(pre_push) if core else None
-        diff = _diff_stat(wt, base_ref) if core else None
+        # Self-assessment (read-only) can run against the pre-screenshot tree.
         assessment = (
             _build_self_assessment(repo, issue, wt, base_ref, firing_id, spend=spend)
             if core
             else None
         )
+        # Screenshots commit and push evidence images onto the branch, so they
+        # must run BEFORE the diff summary is computed - otherwise the diff is
+        # taken from a stale HEAD. The diff also excludes the evidence tree so
+        # the images never inflate the code-change counts either way.
         screenshots = _capture_screenshot_evidence(repo, wt, branch, firing_id, base_ref)
+        test = _test_evidence_from_pre_push(pre_push) if core else None
+        diff = _diff_stat(wt, base_ref) if core else None
     except Exception as exc:
         return build_evidence_block(
             EvidenceInputs(
@@ -569,6 +591,8 @@ def _verification_evidence_block(
             screenshots=screenshots,
             firing_id=firing_id,
             include_core=core,
+            repo=repo_slug,
+            branch=branch,
         )
     )
 
