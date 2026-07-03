@@ -111,6 +111,14 @@ const summary = {
   },
 };
 
+// Self-proof stat: the share of merged PRs shipped by Alfred agents. This is
+// summary.prs_merged / summary.repo_activity.prs_merged over the same window,
+// surfaced as a first-class, re-quotable field so the Impact page can render
+// "X% of Alfred's own merged PRs were shipped by Alfred agents" without
+// re-deriving it. Honest on an empty window: share_pct is null (not 0), so the
+// page shows "no data yet" rather than a fabricated 0%.
+const selfProof = buildSelfProof(agentPrs.length, sortedPrs.length, DAYS);
+
 const proof = {
   generated_at: now.toISOString(),
   source: {
@@ -124,6 +132,7 @@ const proof = {
     to: now.toISOString(),
   },
   summary,
+  self_proof: selfProof,
   trend: buildTrend(agentPrs),
   prs: agentPrs.slice(0, 10).map((pr) => ({
     number: pr.number,
@@ -295,6 +304,39 @@ function isTriagedIssue(issue) {
       label.startsWith("agent:") ||
       ["bug", "enhancement", "documentation", "question"].includes(label),
   );
+}
+
+function buildSelfProof(agentMerged, totalMerged, days) {
+  // share_pct is null (not 0) when there are no merged PRs, so the page renders
+  // "no data yet" instead of a fabricated 0% share.
+  const sharePct =
+    totalMerged > 0 ? Math.round((1000 * agentMerged) / totalMerged) / 10 : null;
+  const repoWord = "repo";
+  const sentence =
+    sharePct === null
+      ? `No merged PRs to measure in the last ${days} days yet.`
+      : `${formatShare(sharePct)}% of merged PRs in the last ${days} days were shipped by Alfred agents.`;
+  const headline =
+    sharePct === null
+      ? `No merged PRs in the last ${days} days yet.`
+      : `Alfred agents shipped ${agentMerged} of ${totalMerged} merged PRs (${formatShare(
+          sharePct,
+        )}%) in the last ${days} days.`;
+  return {
+    window_days: days,
+    agent_shipped: agentMerged,
+    merged_total: totalMerged,
+    share_pct: sharePct,
+    repos_counted: totalMerged > 0 ? 1 : 0,
+    repo_word: repoWord,
+    headline,
+    sentence,
+  };
+}
+
+function formatShare(value) {
+  // Drop a trailing ".0" so 75.0 reads as "75" while 66.7 stays precise.
+  return Number.isInteger(value) ? String(value) : String(value);
 }
 
 function buildTrend(items) {

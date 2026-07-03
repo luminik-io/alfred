@@ -40,6 +40,16 @@ interface ProofData {
       files_changed: number;
     };
   };
+  self_proof?: {
+    window_days: number;
+    agent_shipped: number;
+    merged_total: number;
+    share_pct: number | null;
+    repos_counted?: number;
+    repo_word?: string;
+    headline?: string;
+    sentence?: string;
+  };
   trend: Array<{ week: string; prs_merged: number }>;
   prs: ProofPr[];
   issues: ProofIssue[];
@@ -51,6 +61,19 @@ interface Props {
 
 const { proof } = Astro.props;
 const fmt = (n: number) => n.toLocaleString("en-US");
+
+// Self-proof: the share of merged PRs shipped by Alfred agents. Rendered only
+// when the emitter supplied the block AND there is real merged-PR data, so an
+// empty window shows "no data yet" copy rather than a fabricated 0%.
+const selfProof = proof.self_proof;
+const hasSelfProof =
+  !!selfProof &&
+  selfProof.merged_total > 0 &&
+  selfProof.share_pct !== null &&
+  selfProof.share_pct !== undefined;
+const selfProofShare = hasSelfProof
+  ? `${Number.isInteger(selfProof!.share_pct) ? selfProof!.share_pct : (selfProof!.share_pct as number).toFixed(1)}%`
+  : null;
 const maxTrend = Math.max(...proof.trend.map((item) => item.prs_merged), 1);
 const windowLabel = `Last ${proof.window.days} days`;
 const hasAlfredRows =
@@ -113,6 +136,18 @@ const metrics = [
       </article>
     ))}
   </div>
+
+  {hasSelfProof ? (
+    <div class="proof-selfproof" aria-label="Share of merged PRs shipped by Alfred agents">
+      <span class="proof-selfproof__value">{selfProofShare}</span>
+      <div class="proof-selfproof__body">
+        <span class="proof-selfproof__label">of merged PRs shipped by Alfred agents</span>
+        <span class="proof-selfproof__detail m-mono">
+          {fmt(selfProof!.agent_shipped)} of {fmt(selfProof!.merged_total)} merged PRs, last {selfProof!.window_days} days
+        </span>
+      </div>
+    </div>
+  ) : null}
 
   {hasAlfredRows ? (
     <>
@@ -247,6 +282,43 @@ const metrics = [
   }
 
   .proof-metric__detail {
+    color: var(--alfred-mute);
+    font-size: 13px;
+  }
+
+  .proof-selfproof {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    background: var(--alfred-surface);
+    border: 1px solid var(--alfred-border-strong);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+  }
+
+  .proof-selfproof__value {
+    color: var(--alfred-accent);
+    font-family: var(--font-display);
+    font-size: clamp(40px, 6vw, 64px);
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .proof-selfproof__body {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .proof-selfproof__label {
+    color: var(--alfred-text-bright);
+    font-weight: 700;
+    font-size: 15px;
+    line-height: 1.4;
+  }
+
+  .proof-selfproof__detail {
     color: var(--alfred-mute);
     font-size: 13px;
   }
@@ -396,6 +468,12 @@ const metrics = [
   @media (max-width: 560px) {
     .proof-metrics {
       grid-template-columns: 1fr;
+    }
+
+    .proof-selfproof {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 8px;
     }
 
     .proof-panel__head {
