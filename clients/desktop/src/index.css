@@ -478,43 +478,55 @@ body {
  * these hero chrome surfaces read as glass and match the marketing site. Text
  * sits on --popover-foreground over a >=90%-opaque popover fill, so contrast
  * holds WCAG AA; where backdrop-filter is unsupported the popover fill alone is
- * already AA-safe (see @supports fallback). Corners stay sharp (zero radius). */
-.alfred-surface-glass {
-  position: relative;
-  border: 1px solid
-    color-mix(in oklch, var(--accent) 22%, color-mix(in oklch, var(--border), white 10%));
-  background:
-    linear-gradient(180deg, var(--glass-highlight), transparent 30%),
-    color-mix(in oklch, var(--popover), transparent 6%);
-  box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    0 18px 54px var(--glass-shadow);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-}
-
-/* Luminous 1px top edge: a cobalt->teal brand hairline that catches the light. */
-.alfred-surface-glass::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 1px;
-  pointer-events: none;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in oklch, var(--accent), transparent 45%),
-    color-mix(in oklch, var(--brand-teal), transparent 55%),
-    transparent
-  );
-  opacity: 0.9;
-}
-
-/* Where the backdrop filter cannot render, fall back to an opaque popover fill
- * so text-on-glass never loses contrast. */
-@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+ * already AA-safe (see @supports fallback). Corners stay sharp (zero radius).
+ *
+ * POSITIONING IS OFF-LIMITS HERE. This helper is applied to surfaces that are
+ * already positioned by Tailwind utilities (DialogContent/CommandDialog use
+ * `fixed`, PopoverContent is Radix-positioned). It must therefore set ONLY
+ * background / border / box-shadow / backdrop-filter and NEVER position, inset,
+ * top/left, or transform, or it would override a dialog's `fixed` centering and
+ * drop the modal into normal document flow (Codex P1 on PR #385). The luminous
+ * top hairline is drawn as a non-repeating gradient layer in `background` (not a
+ * positioned ::before), so no positioning context is needed. The rule also lives
+ * inside @layer components so it can never win a specificity tie against a
+ * Tailwind utility in @layer utilities. */
+@layer components {
   .alfred-surface-glass {
-    background: var(--popover);
+    border: 1px solid
+      color-mix(in oklch, var(--accent) 22%, color-mix(in oklch, var(--border), white 10%));
+    /* Layer order (top paints first): the cobalt->teal 1px hairline pinned to the
+       top edge, the specular highlight wash, then the translucent popover fill. */
+    background:
+      linear-gradient(
+        90deg,
+        transparent,
+        color-mix(in oklch, var(--accent), transparent 45%),
+        color-mix(in oklch, var(--brand-teal), transparent 55%),
+        transparent
+      ) top / 100% 1px no-repeat,
+      linear-gradient(180deg, var(--glass-highlight), transparent 30%),
+      color-mix(in oklch, var(--popover), transparent 6%);
+    box-shadow:
+      inset 0 1px 0 var(--glass-highlight),
+      0 18px 54px var(--glass-shadow);
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  }
+
+  /* Where the backdrop filter cannot render, fall back to an opaque popover fill
+     (keeping the hairline layer) so text-on-glass never loses contrast. */
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .alfred-surface-glass {
+      background:
+        linear-gradient(
+          90deg,
+          transparent,
+          color-mix(in oklch, var(--accent), transparent 45%),
+          color-mix(in oklch, var(--brand-teal), transparent 55%),
+          transparent
+        ) top / 100% 1px no-repeat,
+        var(--popover);
+    }
   }
 }
 
