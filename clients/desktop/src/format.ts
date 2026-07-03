@@ -1,3 +1,22 @@
+// Day boundaries and calendar fields are computed in UTC so the desktop client
+// renders the same relative date as the Python `friendly_time` server helper
+// (lib/server/formatting.py), which is UTC throughout. Using local getters here
+// let the two surfaces disagree near midnight.
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
 export function friendlyTime(value: string | null | undefined, now = new Date()): string {
   const parsed = parseTime(value);
   if (!parsed) return value && value !== "never" ? value : "never";
@@ -11,18 +30,17 @@ export function friendlyTime(value: string | null | undefined, now = new Date())
     return `${Math.floor(deltaMs / 3_600_000)}h ago`;
   }
 
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  if (sameDate(parsed, yesterday)) {
+  const yesterday = new Date(now.getTime() - 86_400_000);
+  if (sameUtcDate(parsed, yesterday)) {
     return `yesterday ${timeOnly(parsed)}`;
   }
 
-  const month = parsed.toLocaleString(undefined, { month: "short" });
-  const day = parsed.getDate();
-  if (parsed.getFullYear() === now.getFullYear()) {
+  const month = MONTHS[parsed.getUTCMonth()];
+  const day = parsed.getUTCDate();
+  if (parsed.getUTCFullYear() === now.getUTCFullYear()) {
     return `${month} ${day}, ${timeOnly(parsed)}`;
   }
-  return `${month} ${day}, ${parsed.getFullYear()}`;
+  return `${month} ${day}, ${parsed.getUTCFullYear()}`;
 }
 
 export function exactTime(value: string | null | undefined): string {
@@ -64,18 +82,16 @@ function parseTime(value: string | null | undefined): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function sameDate(a: Date, b: Date): boolean {
+function sameUtcDate(a: Date, b: Date): boolean {
   return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
+    a.getUTCFullYear() === b.getUTCFullYear() &&
+    a.getUTCMonth() === b.getUTCMonth() &&
+    a.getUTCDate() === b.getUTCDate()
   );
 }
 
 function timeOnly(value: Date): string {
-  return value.toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+  const hours = String(value.getUTCHours()).padStart(2, "0");
+  const minutes = String(value.getUTCMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
 }
