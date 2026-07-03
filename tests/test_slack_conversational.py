@@ -28,6 +28,10 @@ LIB = REPO / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
+from slack_converse import (  # noqa: E402
+    SlackConverseConfig,
+    SlackConverseOutcome,
+)
 from slack_intent import (  # noqa: E402
     ConversationContext,
     RepoCatalog,
@@ -1281,3 +1285,130 @@ def test_conversational_assign_to_named_role_passes_target_agent(
     assert confirmed.action == "intent_assign_issue"
     assert calls == [{"repo": "acme-io/acme-frontend", "number": 12, "target_agent": "batman"}]
     assert "Batman" in poster.messages[-1]["text"]
+
+
+# ---------------------------------------------------------------------------
+# Failed converse degrades to the deterministic status / planning fallback
+# ---------------------------------------------------------------------------
+
+
+def _mention_payload(text: str, *, event_id: str = "EvConv", user: str = "U1") -> dict:
+    return {
+        "event_id": event_id,
+        "event": {
+            "type": "app_mention",
+            "channel": "C-FLEET",
+            "user": user,
+            "text": text,
+            "ts": "1716480777.000001",
+        },
+    }
+
+
+def _engaged_converse_config() -> SlackConverseConfig:
+    # Enabled with an engine and no channel allowlist, so converse engages for a
+    # trusted mention (mirrors the default-on runtime).
+    return SlackConverseConfig(enabled=True, engine="claude", channels=frozenset())
+
+
+def test_failed_converse_status_query_falls_through_to_terse_status(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # Codex P2: when converse is enabled but the model turn fails, a status
+    # question must still be answered from local fleet state, not hidden behind a
+    # transient engine failure. The failing runner returns answered=False (the
+    # shape run_slack_converse produces on an engine failure); the listener must
+    # fall through to the deterministic control handler.
+    poster = CardPoster()
+    control = StubControl()
+    seen: dict[str, object] = {}
+
+    def failing_runner(**kwargs):
+        seen.update(kwargs)
+        return SlackConverseOutcome(handled=False, answered=False, detail="engine timeout")
+
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine({"action": "status_query", "confidence": 0.95}),
+        repo_catalog=_catalog(),
+        control_handler=control,
+        converse_config=_engaged_converse_config(),
+        converse_runner=failing_runner,
+    )
+
+    result = listener.handle_payload(_mention_payload("<@UALFRED> what's running right now?"))
+
+    # Converse was tried first (and asked to suppress its generic error) ...
+    assert seen.get("suppress_engine_error") is True
+    # ... but since it could not answer, the terse status handler took over.
+    assert result.handled is True
+    assert result.action == "intent_status"
+    assert "all green" in poster.messages[-1]["text"]
+    assert control.calls, "the deterministic status handler must have run"
+
+
+def test_failed_converse_build_request_falls_through_to_planning_draft(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # The same degrade for a build-shaped mention: a failed converse turn must
+    # fall through to planning intake, not strand the user on the generic error.
+    monkeypatch.delenv("ALFRED_INTENT_ROUTER_ENABLED", raising=False)
+    poster = CardPoster()
+
+    def failing_runner(**kwargs):
+        return SlackConverseOutcome(handled=False, answered=False, detail="engine error")
+
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=None,
+        control_handler=StubControl(),
+        converse_config=_engaged_converse_config(),
+        converse_runner=failing_runner,
+    )
+
+    result = listener.handle_payload(
+        _mention_payload("<@UALFRED> title: fix the broken export\nrepo: acme-io/acme-frontend")
+    )
+
+    assert result.handled is True
+    assert result.action == "draft_created"
+    assert result.draft_path
+
+
+def test_answered_converse_still_wins_over_fallback(tmp_path: Path, monkeypatch) -> None:
+    # Guard the happy path: a converse turn that DID answer is not second-guessed
+    # into the terse fallback. answered defaults True, so a handled outcome is
+    # returned as the conversational result.
+    poster = CardPoster()
+    control = StubControl()
+
+    def good_runner(**kwargs):
+        client = kwargs["client"]
+        client.chat_postMessage(
+            channel=kwargs["channel"],
+            thread_ts=kwargs["thread_ts"],
+            text="Lucius is mid-run on the export fix; everything else is idle.",
+        )
+        return SlackConverseOutcome(handled=True, answered=True, intent="conversation")
+
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine({"action": "status_query", "confidence": 0.95}),
+        repo_catalog=_catalog(),
+        control_handler=control,
+        converse_config=_engaged_converse_config(),
+        converse_runner=good_runner,
+    )
+
+    result = listener.handle_payload(_mention_payload("<@UALFRED> what's running right now?"))
+
+    assert result.handled is True
+    assert result.action == "converse"
+    assert control.calls == [], "the terse handler must NOT run when converse answered"
+    assert "Lucius is mid-run" in poster.messages[-1]["text"]

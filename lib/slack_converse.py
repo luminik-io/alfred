@@ -648,6 +648,13 @@ class SlackConverseOutcome:
     # The turn still ran, but the listener should treat delivery as degraded
     # rather than a clean success when this is False.
     finalized: bool = True
+    # False when the converse turn could NOT produce a real answer (engine error,
+    # timeout, or unparseable output) and only a generic "could not reach"
+    # message was posted. The listener uses this to fall through to the
+    # deterministic status / planning handler instead of leaving a transient
+    # engine failure hiding locally available fleet status. True whenever a real
+    # conversation or build turn was rendered.
+    answered: bool = True
 
 
 def run_slack_converse(
@@ -665,6 +672,7 @@ def run_slack_converse(
     transcript_for: Callable[[str], Path] | None = None,
     extract_tokens: Callable[[Path], list[str]] | None = None,
     now: Callable[[], float] | None = None,
+    suppress_engine_error: bool = False,
 ) -> SlackConverseOutcome:
     """Classify, stream, and post one conversational Slack answer.
 
@@ -683,6 +691,17 @@ def run_slack_converse(
     returns a canned turn, so no model or network is touched. Returns a
     :class:`SlackConverseOutcome`; ``handled`` is False only when there was no
     usable answer (the listener then falls through to its prior behavior).
+
+    ``suppress_engine_error`` changes the FAILURE path only. When a caller has
+    its own deterministic fallback (a status query answered from local fleet
+    state, or planning intake), it passes True so that a failed turn does not
+    strand the user on the generic "could not reach the engine" message. In that
+    mode a failed turn finalizes the placeholder to a short transitional line and
+    returns ``handled=False, answered=False``, so the listener falls through to
+    that deterministic handler, which posts the real answer as a follow-up.
+    Left False (the default), a failed turn keeps posting the generic guidance
+    and returns ``handled=True, answered=False`` (the caller then has nothing
+    better to fall through to, so the guidance is the honest outcome).
     """
     if build_turn is None:
         build_turn = _default_build_turn
@@ -742,14 +761,28 @@ def run_slack_converse(
     )
 
     if not result.ok:
+        detail = result.error or "live_session_unavailable"
+        if suppress_engine_error:
+            # The caller has a deterministic fallback (status from local state, or
+            # planning intake). Do not strand the user on the generic guidance:
+            # leave a short transitional line on the placeholder and report the
+            # turn as unanswered so the caller's fallback posts the real answer.
+            poster.finalize("One moment, pulling that up directly.")
+            return SlackConverseOutcome(
+                handled=False,
+                answered=False,
+                streamed=result.streamed,
+                detail=detail,
+            )
         fallback_landed = poster.finalize(
             "I could not reach the conversational engine just now. "
             "Try again in a moment, or send the request as a plan."
         )
         return SlackConverseOutcome(
             handled=True,
+            answered=False,
             streamed=result.streamed,
-            detail=result.error or "live_session_unavailable",
+            detail=detail,
             finalized=fallback_landed,
         )
 

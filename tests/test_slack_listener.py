@@ -1670,6 +1670,133 @@ def test_conversation_thread_ship_it_opens_a_planning_draft(tmp_path: Path) -> N
     assert "dark mode" in (record.title or "").lower()
 
 
+def test_conversation_thread_mention_prefixed_ship_it_files(tmp_path: Path) -> None:
+    """A channel approval reply arrives as "<@BOT> ship it" and must still file.
+
+    In a channel the user must @-mention the bot, so the approval always carries
+    a leading "<@BOTID>" token. The listener must strip that mention before the
+    approval check; otherwise the whole-token match fails and "ship it" loops
+    back into another converse turn that just re-offers to file, and nothing is
+    ever filed (BUG 1 from live testing).
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    registry.register(
+        SlackThreadRecord(
+            kind="conversation",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="Dark mode",
+            status="open",
+        )
+    )
+    poster = ConversationReplyPoster(
+        [
+            {"user": "U1", "text": "Add a dark mode toggle to settings", "ts": "1716480000.000000"},
+            {"user": "UALFRED", "text": "I can turn this into an issue.", "ts": "1716480000.5"},
+            {"user": "U1", "text": "<@UALFRED> ship it", "ts": "1716480001.000001"},
+        ]
+    )
+    converse_calls: list[dict] = []
+
+    def converse_runner(**kwargs):
+        converse_calls.append(kwargs)
+        return SimpleNamespace(handled=True, answered=True, intent="build", streamed=False)
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_runner=converse_runner,
+    )
+
+    # The mention-prefixed approval arrives as an app_mention reply in the thread.
+    result = listener.handle_payload(
+        {
+            "event_id": "EvMentionShipIt",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": "<@UALFRED> ship it",
+                "ts": "1716480001.000001",
+                "thread_ts": "1716480000.000000",
+            },
+        }
+    )
+
+    # It filed a real draft, it did NOT loop back into converse.
+    assert result.handled is True
+    assert result.action == "draft_created"
+    assert result.thread_kind == "draft"
+    assert converse_calls == []
+    record = registry.lookup("C1", "1716480001.000001")
+    assert record is not None
+    assert record.kind == "draft"
+    assert "dark mode" in (record.title or "").lower()
+
+
+def test_duplicate_mention_delivery_is_processed_once(tmp_path: Path) -> None:
+    """One @mention arrives as app_mention AND message; it must run one turn.
+
+    Slack delivers a single mention as two events with distinct envelope
+    ``event_id`` values but the same ``client_msg_id``. Without content-level
+    de-dup the conversation path runs two model turns and posts two identical
+    replies (BUG 2 from live testing). The second delivery must be reported as a
+    duplicate and never reach the converse runner.
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    poster = Poster()
+    converse_calls: list[dict] = []
+
+    def converse_runner(**kwargs):
+        converse_calls.append(kwargs)
+        client = kwargs["client"]
+        client.chat_postMessage(
+            channel=kwargs["channel"],
+            thread_ts=kwargs["thread_ts"],
+            text="Here is what the fleet is doing.",
+        )
+        return SimpleNamespace(handled=True, answered=True, intent="conversation", streamed=False)
+
+    from slack_converse import SlackConverseConfig
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_config=SlackConverseConfig(enabled=True, engine="claude", channels=frozenset()),
+        converse_runner=converse_runner,
+    )
+
+    def _delivery(event_type: str, event_id: str) -> dict:
+        return {
+            "event_id": event_id,
+            "event": {
+                "type": event_type,
+                "channel": "C1",
+                "user": "U1",
+                "text": "<@UALFRED> what's the fleet doing?",
+                "ts": "1716480050.000001",
+                "client_msg_id": "cmid-abc-123",
+            },
+        }
+
+    first = listener.handle_payload(_delivery("app_mention", "EvA"))
+    second = listener.handle_payload(_delivery("message", "EvB"))
+
+    assert first.handled is True
+    assert first.action == "converse"
+    # The second delivery of the same message is a duplicate: one turn, one reply.
+    assert second.handled is False
+    assert second.action == "duplicate"
+    assert len(converse_calls) == 1
+    assert len(poster.messages) == 1
+
+
 def test_conversation_thread_read_only_control_skips_pending_clarification(
     tmp_path: Path,
 ) -> None:

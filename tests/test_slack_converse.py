@@ -712,10 +712,45 @@ def test_run_slack_converse_handles_unavailable_engine(tmp_path: Path) -> None:
         extract_tokens=lambda p: [],
         now=FakeClock(),
     )
-    # Honest: handled (we posted a fallback note) but no intent classified.
+    # Honest: handled (we posted a fallback note) but no intent classified and
+    # the turn produced no real answer.
     assert outcome.handled is True
+    assert outcome.answered is False
     assert outcome.intent == ""
     assert "could not reach" in client.updates[-1]["text"].lower()
+
+
+def test_run_slack_converse_suppresses_engine_error_for_fallback(tmp_path: Path) -> None:
+    # When the caller owns a deterministic fallback, a failed turn must not
+    # strand the user on the generic guidance: report handled=False,
+    # answered=False and leave only a short transitional line, so the listener
+    # falls through to the status / planning handler.
+    client = FakeSlackClient(replies={"ok": True, "messages": []})
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text("", encoding="utf-8")
+
+    def _no_turn(*, messages, engine, timeout, firing_id, workdir):
+        return None
+
+    outcome = sc.run_slack_converse(
+        client=client,
+        config=_enabled_config(),
+        channel="C1",
+        thread_ts="1.0",
+        user_message="what's the fleet doing?",
+        build_turn=_no_turn,
+        transcript_for=lambda fid: transcript,
+        extract_tokens=lambda p: [],
+        now=FakeClock(),
+        suppress_engine_error=True,
+    )
+    assert outcome.handled is False
+    assert outcome.answered is False
+    # The generic "could not reach / send as a plan" guidance is NOT shown; only
+    # a short transitional line remains before the caller's real answer.
+    last = client.updates[-1]["text"].lower()
+    assert "could not reach" not in last
+    assert "pulling that up" in last
 
 
 def test_run_slack_converse_surfaces_failed_finalization(tmp_path: Path) -> None:

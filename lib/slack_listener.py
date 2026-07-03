@@ -178,10 +178,33 @@ class SlackInputEvent:
     thread_ts: str
     channel_type: str = ""
     reaction: str = ""
+    client_msg_id: str = ""
 
     @property
     def root_ts(self) -> str:
         return self.thread_ts or self.ts
+
+    @property
+    def dedup_key(self) -> str:
+        """A key identifying the underlying message, not the delivery envelope.
+
+        Slack delivers one @mention as BOTH an ``app_mention`` and a ``message``
+        event, each with its own envelope ``event_id`` but the SAME
+        ``client_msg_id``, so de-duplicating on ``event_id`` alone lets a single
+        user message run two turns (two model calls, two replies). Both events
+        for one mention carry the same ``client_msg_id`` and every distinct user
+        message gets its own, so this key collapses the duplicate pair without
+        ever merging two genuinely different messages.
+
+        Returns an empty string (meaning "no content-level de-dup, rely on the
+        envelope ``event_id`` alone") when there is no ``client_msg_id``: a
+        reaction (no message body) or a synthetic/legacy event. That keeps the
+        de-dup precise -- a ``ts`` can be reused by unrelated synthetic events,
+        so it is not a safe stand-alone identity, whereas ``client_msg_id`` is.
+        """
+        if self.is_reaction or not self.client_msg_id:
+            return ""
+        return f"msg:{self.client_msg_id}"
 
     @property
     def is_thread_reply(self) -> bool:
@@ -377,6 +400,17 @@ class SlackPlanningListener:
             return ListenerResult(False, "ignored", "unsupported Slack event")
         if self.seen.mark_seen(event.event_id):
             return ListenerResult(False, "duplicate", "event already processed")
+        # Slack delivers a single @mention as BOTH an ``app_mention`` and a
+        # ``message`` event, each with a distinct envelope ``event_id`` but the
+        # same ``client_msg_id``. De-duplicate on that message identity too (see
+        # ``SlackInputEvent.dedup_key``) so one user message never runs two turns
+        # (two model calls, two replies). Marked after the envelope check so a
+        # re-delivery of either event type collapses onto the first. Empty for a
+        # reaction or an event without a ``client_msg_id``, in which case the
+        # envelope check above is the only de-dup (no content key to collide on).
+        dedup_key = event.dedup_key
+        if dedup_key and self.seen.mark_seen(dedup_key):
+            return ListenerResult(False, "duplicate", "message already processed")
         if self.bot_user_id and event.user == self.bot_user_id:
             return ListenerResult(False, "ignored", "bot self-message")
         trusted_user_ids = self._trusted_user_ids()
@@ -565,7 +599,13 @@ class SlackPlanningListener:
         # existing approval bridge has something concrete to graduate. The bare
         # ``ship it`` reply carries no scope, so seed the draft from the latest
         # substantive request earlier in the thread, falling back to the reply.
-        if self.bridge.is_approval(text=event.text):
+        #
+        # In a channel the approval reply must @-mention the bot, so it arrives as
+        # "<@BOTID> ship it". Strip the mention before the approval check so the
+        # whole-token match still fires; otherwise the leading mention token
+        # defeats the match and "ship it" loops back into another converse turn
+        # that just re-offers to file, and nothing is ever filed.
+        if self.bridge.is_approval(text=_strip_mentions(event.text)):
             source_text = self._ship_it_source_text(event)
             return self._open_planning_draft(event, source_text=source_text)
 
@@ -939,12 +979,14 @@ class SlackPlanningListener:
                 detail="greeting or capability question",
             )
 
-        # Conversational, streamed answer (off by default). When armed, free-form
-        # prose is classified through the same compose_converse intent path the
-        # desktop Ask uses and streamed back; a build request gets a prose offer
-        # to file an issue rather than a silent planning draft. Only when this is
-        # disabled or yields no answer do we fall through to planning intake.
-        converse = self._maybe_converse(event)
+        # Conversational, streamed answer. Free-form prose is classified through
+        # the same compose_converse intent path the desktop Ask uses and streamed
+        # back; a build request gets a prose offer to file an issue rather than a
+        # silent planning draft. When converse is disabled, yields no answer, or
+        # the model turn fails, we fall through to planning intake:
+        # ``suppress_engine_error`` keeps a failed turn from stranding the user on
+        # the generic "could not reach" message before that intake runs.
+        converse = self._maybe_converse(event, suppress_engine_error=True)
         if converse is not None:
             return converse
 
@@ -1032,15 +1074,29 @@ class SlackPlanningListener:
             readiness_score=refined.readiness.score,
         )
 
-    def _maybe_converse(self, event: SlackInputEvent) -> ListenerResult | None:
+    def _maybe_converse(
+        self,
+        event: SlackInputEvent,
+        *,
+        suppress_engine_error: bool = False,
+    ) -> ListenerResult | None:
         """Stream a conversational answer for a trusted mention / thread reply.
 
-        Returns a :class:`ListenerResult` when the converse path posted an
+        Returns a :class:`ListenerResult` when the converse path posted a real
         answer (a plain reply for a ``conversation`` turn, or a prose answer plus
         an offer to file an issue for a ``build`` turn), or ``None`` to fall
         through to the caller's prior behavior. Inert unless converse is enabled
         and the channel is allowed; the model and Slack client are reached only
         through the injected runner.
+
+        ``suppress_engine_error`` is set by callers that own a deterministic
+        fallback (a status query answered from local fleet state, or planning
+        intake). It tells the runner not to strand the user on the generic
+        "could not reach the engine" message when the model turn fails, so a
+        transient engine failure falls through to that fallback instead of hiding
+        locally available fleet status. A turn that ran but could not produce an
+        answer (``answered`` is False) always returns ``None`` here so the caller
+        falls through, whether or not the generic guidance was posted.
 
         SAFETY: this never files an issue or runs anything. A ``build`` turn only
         ever OFFERS the existing approval bridge in prose; the issue itself is
@@ -1064,6 +1120,7 @@ class SlackPlanningListener:
                 exclude_ts=event.ts,
                 bridge_enabled=self.bridge.config.enabled,
                 workdir=Path.cwd(),
+                suppress_engine_error=suppress_engine_error,
             )
         except Exception as exc:
             print(
@@ -1072,6 +1129,11 @@ class SlackPlanningListener:
             )
             return None
         if outcome is None or not getattr(outcome, "handled", False):
+            return None
+        # A turn that ran but could not produce a real answer (engine error,
+        # timeout, unparseable output) must not short-circuit the deterministic
+        # fallback: report it as unhandled here so the caller falls through.
+        if not getattr(outcome, "answered", True):
             return None
         from compose_converse import INTENT_BUILD
 
@@ -1278,10 +1340,13 @@ class SlackPlanningListener:
         fleet snapshot as grounding), so "what's the fleet doing?" reads like a
         colleague's answer rather than a raw control-handler dump. The terse
         control-handler summary below is the fallback when converse is not
-        engaged or could not answer, so the deterministic status path is never
-        lost.
+        engaged OR the model turn failed (engine error, timeout, unparseable
+        output), so a transient engine failure never hides locally available
+        fleet status. ``suppress_engine_error`` keeps a failed turn from
+        stranding the user on the generic "could not reach" message before this
+        deterministic answer runs.
         """
-        converse = self._maybe_converse(event)
+        converse = self._maybe_converse(event, suppress_engine_error=True)
         if converse is not None:
             return converse
 
@@ -2324,6 +2389,7 @@ def parse_slack_payload(payload: dict[str, Any]) -> SlackInputEvent | None:
         ts=ts,
         thread_ts=str(event.get("thread_ts") or ""),
         channel_type=str(event.get("channel_type") or ""),
+        client_msg_id=str(event.get("client_msg_id") or ""),
     )
 
 
