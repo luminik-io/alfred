@@ -83,7 +83,7 @@ AGENT_CATALOG: dict[str, tuple[str, str, bool, str]] = {
     "pr_review": ("rasalghul", "PR review (multi-axis on every fresh PR)", True, "interval:1800"),
     "ci_repair": (
         "nightwing",
-        "CI repair (re-runs flaky checks, opens fix PRs)",
+        "review fixes (lands P0/P1 reviewer comments on agent PRs)",
         True,
         "interval:2700",
     ),
