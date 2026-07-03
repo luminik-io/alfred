@@ -59,8 +59,9 @@ PR diffs, issue bodies, author emails, comments, labels, and any other state are
 A PR passes through only when its repo:
 
 1. Matches the public slug format `owner/name`.
-2. Is in `--public-allowlist` (an explicit allowlist entry always publishes, and overrides the private-name denylist), OR
-3. Does NOT match the built-in private-name patterns AND no allowlist is set. The emitter ships with a denylist for internal product-repo basenames; any owner/name whose name segment matches is dropped. Both `alfred-internal` (the private sibling after the rename) and the legacy bare `alfred` basename are denied under any owner. The legacy `alfred` deny matters because `luminik-io/alfred` was the private repo before the rename, so shipped state captured earlier still carries that slug for private PRs. The repo is now public under the same slug, so it publishes only when listed explicitly in the allowlist, once you have confirmed no stale pre-rename records remain.
+2. Does NOT match the built-in private-name patterns, AND is either in `--public-allowlist` or shipped with no allowlist set. The emitter ships with a denylist for internal product-repo basenames; any owner/name whose name segment matches is dropped. Both `alfred-internal` (the private sibling after the rename) and the legacy bare `alfred` basename are denied under any owner.
+
+An allowlist entry does NOT bypass the denylist. A private-pattern repo stays denied even when it is listed, so a mis-scoped allowlist can never leak a private feed. The one exception is the renamed public cutover slug `luminik-io/alfred`: it matches the legacy bare `alfred` deny (because that slug was the private repo before the rename, and earlier shipped state still carries it for private PRs), so it is denied by default and publishes only when you list it explicitly, once you have confirmed no stale pre-rename records remain. No other private-pattern repo can be re-allowed this way.
 
 Any title containing one of those private tokens has it rewritten in place to a `your-` placeholder.
 
