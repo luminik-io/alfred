@@ -48,18 +48,19 @@ export function CustomThemeEditor({
   // optimistically and hiding a failed save behind the (now dismissed) dialog.
   saveError?: string | null;
   onOpenChange: (open: boolean) => void;
-  onSave: (next: CustomRosterNames) => void | Promise<void>;
+  // Awaitable save: resolves when the roster is persisted server-side, rejects
+  // on a failed save. The editor closes only on resolve and stays open with the
+  // error on reject, so a slow failure can no longer close the dialog first.
+  onSave: (next: CustomRosterNames) => Promise<void>;
 }) {
   const editableRoster = useMemo(() => [...(agents ?? editableAgents())], [agents]);
   const [names, setNames] = useState<Record<string, string>>(value.names);
   const [roles, setRoles] = useState<Record<string, string>>(value.roles);
   const [saving, setSaving] = useState(false);
-  // The persist() call in useRosterTheme is fire-and-forget: it resolves
-  // synchronously while the POST settles later, recording any failure in
-  // `saveError`. So we cannot await the network result here. Instead, once the
-  // operator saves, wait one tick for the save to settle, then close only if no
-  // error surfaced; a failure keeps the dialog open with the message visible.
-  const [pendingClose, setPendingClose] = useState(false);
+  // A save failure surfaced locally by awaiting onSave (which rejects on a
+  // failed POST). Shown alongside any parent-supplied `saveError` so a rejection
+  // is visible even before the parent's state re-renders.
+  const [localError, setLocalError] = useState<string | null>(null);
 
   // Re-seed the draft whenever the editor (re)opens with the persisted maps, so
   // a cancelled edit never leaks into the next open.
@@ -67,23 +68,9 @@ export function CustomThemeEditor({
     if (open) {
       setNames({ ...value.names });
       setRoles({ ...value.roles });
-      setPendingClose(false);
+      setLocalError(null);
     }
   }, [open, value.names, value.roles]);
-
-  // Resolve a pending close after a save: close on a clean save, or stay open
-  // and surface the error when the save failed.
-  useEffect(() => {
-    if (!pendingClose) return;
-    const timer = window.setTimeout(() => {
-      setPendingClose(false);
-      setSaving(false);
-      if (!saveError) {
-        onOpenChange(false);
-      }
-    }, 150);
-    return () => window.clearTimeout(timer);
-  }, [pendingClose, saveError, onOpenChange]);
 
   const setName = (codename: string, next: string) =>
     setNames((prev) => ({ ...prev, [codename]: next.slice(0, MAX_LABEL_LEN) }));
@@ -107,12 +94,27 @@ export function CustomThemeEditor({
 
   const handleSave = async () => {
     setSaving(true);
-    // onSave (setCustomNames -> persist) is fire-and-forget; awaiting it only
-    // covers the synchronous part. Kick off the save, then let the pendingClose
-    // effect decide whether to close (clean save) or stay open (saveError set).
-    await onSave({ names: clean(names), roles: clean(roles) });
-    setPendingClose(true);
+    setLocalError(null);
+    try {
+      // onSave is the awaitable saveCustomNames: it resolves only once the
+      // server persists the roster and rejects on a failed POST. Close on
+      // success; on failure stay open so the operator sees the error and can
+      // retry. Tying closure to the real outcome (not a timer) fixes the race
+      // where a slow failure closed the dialog before the error surfaced.
+      await onSave({ names: clean(names), roles: clean(roles) });
+      onOpenChange(false);
+    } catch (err) {
+      setLocalError(
+        err instanceof Error && err.message
+          ? err.message
+          : "Could not save the roster. It is local-only until a save succeeds.",
+      );
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const shownError = localError ?? saveError ?? null;
 
   const byRole = useMemo(() => {
     const groups = new Map<WorkflowRole, typeof editableRoster>();
@@ -183,12 +185,12 @@ export function CustomThemeEditor({
             ))}
           </div>
         </ScrollArea>
-        {saveError ? (
+        {shownError ? (
           <p
             className="custom-theme-editor__error text-sm text-destructive"
             role="alert"
           >
-            {saveError}
+            {shownError}
           </p>
         ) : null}
         <DialogFooter className="custom-theme-editor__footer gap-2 sm:justify-between">

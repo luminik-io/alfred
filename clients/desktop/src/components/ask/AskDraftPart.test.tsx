@@ -41,19 +41,26 @@ function renderDraft(model: DraftCardModel, surface: Partial<AskSurface>) {
 }
 
 describe("AskDraftPart file button", () => {
-  it("keeps this card's File button live while a DIFFERENT card is filing", () => {
-    // Card "draft-b" is rendered while "draft-a" is the one in flight. The
-    // per-card concurrency design says other cards must stay fileable, so this
-    // button must NOT be disabled.
+  it("disables a sibling card's File button while a DIFFERENT card is filing", () => {
+    // The file path is single-flight (one global guard in useAskThread), so a
+    // sibling card must NOT look active-but-dead: it is disabled while draft-a
+    // files, and does not show the filing spinner (that stays on draft-a).
     renderDraft(draft({ draftId: "draft-b" }), { fileBusyId: "draft-a" });
     const button = screen.getByRole("button", { name: /file issue/i });
-    expect(button).toBeEnabled();
+    expect(button).toBeDisabled();
   });
 
   it("disables and shows a spinner only on the card that is filing", () => {
     renderDraft(draft({ draftId: "draft-a" }), { fileBusyId: "draft-a" });
+    // Only the filing card shows the "Filing..." label.
     const button = screen.getByRole("button", { name: /filing/i });
     expect(button).toBeDisabled();
+  });
+
+  it("enables every File button when nothing is in flight", () => {
+    renderDraft(draft({ draftId: "draft-a" }), { fileBusyId: null });
+    const button = screen.getByRole("button", { name: /file issue/i });
+    expect(button).toBeEnabled();
   });
 
   it("fires onFile with this card's draftId when clicked", async () => {

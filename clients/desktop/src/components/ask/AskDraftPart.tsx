@@ -67,7 +67,13 @@ export function AskDraftPart({ args }: ToolCallMessagePartProps<DraftToolArgs>) 
                 draft.ready ? "icon-button ask-draft__file" : "secondary-button ask-draft__file"
               }
               type="button"
-              disabled={busy}
+              // The file path is single-flight: useAskThread.fileIssue has one
+              // global guard, so a click on another card while one is filing is a
+              // silent no-op. Disable every card's File button while ANY file is
+              // in flight (surface.fileBusyId !== null), and let only the filing
+              // card show the "Filing..." spinner (via `busy`), so no button
+              // looks active but dead.
+              disabled={surface.fileBusyId !== null}
               onClick={() => surface.onFile(draft.draftId)}
               title={
                 draft.ready
