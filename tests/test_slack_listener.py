@@ -13,7 +13,9 @@ if str(LIB) not in sys.path:
 
 from slack_listener import (  # noqa: E402
     SlackPlanningListener,
+    _clean_slack_text,
     _short_plain,
+    _strip_mentions,
     _thread_title_from_text,
     conversational_reply,
     draft_from_slack_text,
@@ -1670,14 +1672,34 @@ def test_conversation_thread_ship_it_opens_a_planning_draft(tmp_path: Path) -> N
     assert "dark mode" in (record.title or "").lower()
 
 
-def test_conversation_thread_mention_prefixed_ship_it_files(tmp_path: Path) -> None:
-    """A channel approval reply arrives as "<@BOT> ship it" and must still file.
+def test_clean_slack_text_canonicalizes_piped_user_mention() -> None:
+    """A labelled mention "<@ID|label>" must become the bare "<@ID>", not "label".
 
-    In a channel the user must @-mention the bot, so the approval always carries
-    a leading "<@BOTID>" token. The listener must strip that mention before the
-    approval check; otherwise the whole-token match fails and "ship it" loops
-    back into another converse turn that just re-offers to file, and nothing is
-    ever filed (BUG 1 from live testing).
+    The generic "<url|display>" link rule would otherwise rewrite a piped user
+    mention to its bare label, leaving e.g. "alfred ship it" and defeating a
+    whole-token approval match. Canonicalizing to "<@ID>" keeps the token
+    recognizable (for mentions_bot) and strippable (for the approval check),
+    while a real link or a plain request is untouched.
+    """
+    assert _clean_slack_text("<@U0BOT|alfred> ship it") == "<@U0BOT> ship it"
+    assert _clean_slack_text("<@U0BOT> ship it") == "<@U0BOT> ship it"
+    # After stripping the (now bare) mention, the approval token stands alone.
+    assert _strip_mentions(_clean_slack_text("<@U0BOT|Alfred> ship it")) == "ship it"
+    # A real request keeps its words; a genuine link keeps its display text.
+    assert _clean_slack_text("<@U0BOT|alfred> add dark mode") == "<@U0BOT> add dark mode"
+    assert _clean_slack_text("see <https://x.test|the docs>") == "see the docs"
+
+
+def test_conversation_thread_mention_prefixed_ship_it_files(tmp_path: Path) -> None:
+    """A channel approval reply "<@BOT|label> ship it" must still file.
+
+    In a channel the user must @-mention the bot, so the approval carries a
+    leading mention token. Slack renders that mention with a display label as
+    "<@BOTID|alfred>", and the generic link cleaner used to rewrite it to the
+    bare label "alfred", leaving "alfred ship it" -- which fails the whole-token
+    approval match, so "ship it" looped back into another converse turn that just
+    re-offered to file, and nothing was ever filed (BUG 1 from live testing).
+    The piped mention must now be canonicalized/stripped so the approval fires.
     """
     registry = SlackThreadRegistry(tmp_path / "threads")
     registry.register(
@@ -1693,7 +1715,7 @@ def test_conversation_thread_mention_prefixed_ship_it_files(tmp_path: Path) -> N
         [
             {"user": "U1", "text": "Add a dark mode toggle to settings", "ts": "1716480000.000000"},
             {"user": "UALFRED", "text": "I can turn this into an issue.", "ts": "1716480000.5"},
-            {"user": "U1", "text": "<@UALFRED> ship it", "ts": "1716480001.000001"},
+            {"user": "U1", "text": "<@UALFRED|alfred> ship it", "ts": "1716480001.000001"},
         ]
     )
     converse_calls: list[dict] = []
@@ -1711,7 +1733,7 @@ def test_conversation_thread_mention_prefixed_ship_it_files(tmp_path: Path) -> N
         converse_runner=converse_runner,
     )
 
-    # The mention-prefixed approval arrives as an app_mention reply in the thread.
+    # The labelled-mention approval arrives as an app_mention reply in the thread.
     result = listener.handle_payload(
         {
             "event_id": "EvMentionShipIt",
@@ -1719,7 +1741,7 @@ def test_conversation_thread_mention_prefixed_ship_it_files(tmp_path: Path) -> N
                 "type": "app_mention",
                 "channel": "C1",
                 "user": "U1",
-                "text": "<@UALFRED> ship it",
+                "text": "<@UALFRED|alfred> ship it",
                 "ts": "1716480001.000001",
                 "thread_ts": "1716480000.000000",
             },
@@ -1735,6 +1757,9 @@ def test_conversation_thread_mention_prefixed_ship_it_files(tmp_path: Path) -> N
     assert record is not None
     assert record.kind == "draft"
     assert "dark mode" in (record.title or "").lower()
+    # A real planning-draft payload was persisted (draft_path set + on disk).
+    assert result.draft_path
+    assert Path(result.draft_path).is_file()
 
 
 def test_duplicate_mention_delivery_is_processed_once(tmp_path: Path) -> None:
@@ -1795,6 +1820,115 @@ def test_duplicate_mention_delivery_is_processed_once(tmp_path: Path) -> None:
     assert second.action == "duplicate"
     assert len(converse_calls) == 1
     assert len(poster.messages) == 1
+
+
+def test_duplicate_api_sent_message_without_client_msg_id_is_deduped(tmp_path: Path) -> None:
+    """An API-sent message carries no client_msg_id and must still de-dupe.
+
+    A message posted via chat.postMessage (another bot / API) is delivered as
+    both an app_mention and a message event but carries no client_msg_id, so the
+    client_msg_id path cannot collapse them (BUG from live testing: both ran and
+    the conversation replied twice). The content-hash fallback keyed on
+    (channel, thread_ts, user, ts, normalized text) -- all identical across the
+    two deliveries of one message -- must collapse them to a single turn.
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    poster = Poster()
+    converse_calls: list[dict] = []
+
+    def converse_runner(**kwargs):
+        converse_calls.append(kwargs)
+        client = kwargs["client"]
+        client.chat_postMessage(
+            channel=kwargs["channel"], thread_ts=kwargs["thread_ts"], text="Fleet status."
+        )
+        return SimpleNamespace(handled=True, answered=True, intent="conversation", streamed=False)
+
+    from slack_converse import SlackConverseConfig
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_config=SlackConverseConfig(enabled=True, engine="claude", channels=frozenset()),
+        converse_runner=converse_runner,
+    )
+
+    def _delivery(event_type: str, event_id: str) -> dict:
+        # No client_msg_id (API-sent). Same ts across both deliveries.
+        return {
+            "event_id": event_id,
+            "event": {
+                "type": event_type,
+                "channel": "C1",
+                "user": "U1",
+                "text": "<@UALFRED|alfred> what's the fleet doing?",
+                "ts": "1716480060.000001",
+            },
+        }
+
+    first = listener.handle_payload(_delivery("app_mention", "EvA"))
+    second = listener.handle_payload(_delivery("message", "EvB"))
+
+    assert first.handled is True
+    assert first.action == "converse"
+    assert second.handled is False
+    assert second.action == "duplicate"
+    assert len(converse_calls) == 1
+    assert len(poster.messages) == 1
+
+
+def test_distinct_api_sent_messages_are_not_collapsed(tmp_path: Path) -> None:
+    """Two genuinely different API-sent messages (distinct ts) both run.
+
+    The content-hash fallback must not over-collapse: two different messages
+    have different ts (Slack assigns one per message) and usually different text,
+    so they must each run their own turn.
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    poster = Poster()
+    converse_calls: list[dict] = []
+
+    def converse_runner(**kwargs):
+        converse_calls.append(kwargs)
+        return SimpleNamespace(handled=True, answered=True, intent="conversation", streamed=False)
+
+    from slack_converse import SlackConverseConfig
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_config=SlackConverseConfig(enabled=True, engine="claude", channels=frozenset()),
+        converse_runner=converse_runner,
+    )
+
+    def _msg(text: str, ts: str, event_id: str) -> dict:
+        return {
+            "event_id": event_id,
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": text,
+                "ts": ts,
+            },
+        }
+
+    first = listener.handle_payload(
+        _msg("<@UALFRED> what's the fleet doing?", "1716480070.000001", "EvA")
+    )
+    second = listener.handle_payload(
+        _msg("<@UALFRED> what shipped today?", "1716480071.000002", "EvB")
+    )
+
+    assert first.action == "converse"
+    assert second.action == "converse"
+    assert len(converse_calls) == 2
 
 
 def test_conversation_thread_read_only_control_skips_pending_clarification(

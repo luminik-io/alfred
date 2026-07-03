@@ -13,6 +13,7 @@ Execution remains gated by the existing reaction approval flow.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import inspect
 import json
 import math
@@ -189,22 +190,35 @@ class SlackInputEvent:
         """A key identifying the underlying message, not the delivery envelope.
 
         Slack delivers one @mention as BOTH an ``app_mention`` and a ``message``
-        event, each with its own envelope ``event_id`` but the SAME
-        ``client_msg_id``, so de-duplicating on ``event_id`` alone lets a single
-        user message run two turns (two model calls, two replies). Both events
-        for one mention carry the same ``client_msg_id`` and every distinct user
-        message gets its own, so this key collapses the duplicate pair without
-        ever merging two genuinely different messages.
+        event, each with its own envelope ``event_id``, so de-duplicating on
+        ``event_id`` alone lets a single user message run two turns (two model
+        calls, two replies). This key ignores the envelope so the duplicate pair
+        collapses onto the first delivery.
 
-        Returns an empty string (meaning "no content-level de-dup, rely on the
-        envelope ``event_id`` alone") when there is no ``client_msg_id``: a
-        reaction (no message body) or a synthetic/legacy event. That keeps the
-        de-dup precise -- a ``ts`` can be reused by unrelated synthetic events,
-        so it is not a safe stand-alone identity, whereas ``client_msg_id`` is.
+        Two tiers, both stable across the app_mention/message pair of one message:
+
+        1. ``client_msg_id`` when present. A real client stamps every message
+           with a unique ``client_msg_id`` that both deliveries share, so this is
+           the precise identity and never collides across distinct messages.
+        2. A hash of ``(channel, thread_ts, user, ts, normalized text)`` when
+           there is no ``client_msg_id`` (an API-sent message, e.g. one posted by
+           another bot or via ``chat.postMessage``, carries none). Both deliveries
+           of one such message share all five fields -- crucially the same ``ts``,
+           which Slack assigns once per message -- so they collapse, while any two
+           genuinely different messages differ in ``ts`` (and usually text) and
+           stay distinct.
+
+        Returns an empty string for a reaction (no message body to identify), so
+        a reaction is de-duplicated only on its envelope ``event_id``.
         """
-        if self.is_reaction or not self.client_msg_id:
+        if self.is_reaction:
             return ""
-        return f"msg:{self.client_msg_id}"
+        if self.client_msg_id:
+            return f"msg:{self.client_msg_id}"
+        normalized = " ".join((self.text or "").split()).lower()
+        raw = "\x1f".join((self.channel, self.thread_ts or self.ts, self.user, self.ts, normalized))
+        digest = hashlib.sha256(raw.encode("utf-8", "replace")).hexdigest()[:32]
+        return f"msg:hash:{digest}"
 
     @property
     def is_thread_reply(self) -> bool:
@@ -3020,11 +3034,31 @@ def _title_from_text(text: str) -> str:
     return first[:90] or "Untitled Alfred work"
 
 
+# A Slack user mention is either bare ("<@U0AEG9M3ZDH>") or carries a display
+# label after a pipe ("<@U0AEG9M3ZDH|alfred>"). ``_strip_mentions`` must remove
+# BOTH forms whole: dropping only the "<@...>" wrapper of the piped form would
+# leave the bare label ("alfred") behind, which then breaks a whole-token
+# approval match like "ship it".
+_USER_MENTION_RE = re.compile(r"<@[A-Z0-9]+(?:\|[^>]*)?>")
+# The piped user-mention form specifically. ``_clean_slack_text`` canonicalizes
+# it to the bare "<@ID>" form so (a) the generic "<url|display>" link rule below
+# never rewrites it into its bare label, and (b) the resulting token still looks
+# like a mention, so ``mentions_bot`` (which detects the ambient/app_mention
+# duplicate delivery) keeps working.
+_PIPED_USER_MENTION_RE = re.compile(r"<@([A-Z0-9]+)\|[^>]*>")
+
+
 def _strip_mentions(text: str) -> str:
-    return re.sub(r"<@[^>]+>", "", text).strip()
+    return _USER_MENTION_RE.sub("", text or "").strip()
 
 
 def _clean_slack_text(text: str) -> str:
+    # Order matters. Canonicalize a piped user mention "<@ID|label>" to the bare
+    # "<@ID>" FIRST, so the generic "<url|display>" link rule below does not
+    # rewrite it into its bare label (which would leave e.g. "alfred ship it" and
+    # defeat a whole-token approval match), and so the bare "<@ID>" token still
+    # survives for ``mentions_bot`` to recognise a duplicate delivery.
+    text = _PIPED_USER_MENTION_RE.sub(r"<@\1>", text)
     text = re.sub(r"<mailto:[^|>]+\|([^>]+)>", r"\1", text)
     text = re.sub(r"<([^|>]+)\|([^>]+)>", r"\2", text)
     return "\n".join(line.strip() for line in text.splitlines() if line.strip())

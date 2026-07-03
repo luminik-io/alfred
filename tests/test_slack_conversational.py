@@ -346,7 +346,8 @@ def test_ambient_skips_bot_mention_to_avoid_double_processing(tmp_path: Path, mo
         ambient_channels=("C-FLEET",),
     )
 
-    # The literal <@BOT> token survives _clean_slack_text (no pipe), so the
+    # The <@BOT> mention token survives _clean_slack_text as the bare "<@ID>"
+    # form (a piped "<@ID|label>" is canonicalized to it, not stripped), so the
     # ambient gate can recognise the duplicate-delivery and bail out.
     result = listener.handle_payload(
         _channel_msg(
