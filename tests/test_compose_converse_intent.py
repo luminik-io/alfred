@@ -210,9 +210,7 @@ def test_default_converse_turn_intent_is_build() -> None:
 def test_looks_like_question_detects_the_live_repro() -> None:
     # The exact question from the live bug report must read as a question so the
     # no-engine fallback answers it instead of drafting a plan.
-    assert cc.looks_like_question(
-        "What is the current state of the fleet, in one short paragraph?"
-    )
+    assert cc.looks_like_question("What is the current state of the fleet, in one short paragraph?")
 
 
 def test_looks_like_question_detects_interrogative_without_trailing_mark() -> None:
