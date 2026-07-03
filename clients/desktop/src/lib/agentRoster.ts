@@ -58,6 +58,23 @@ export const ROLE_EDGES: readonly [WorkflowRole, WorkflowRole][] = [
   ["ship", "ops"],
 ];
 
+// Short verbs for each canonical handoff, so a newcomer can read the pipeline
+// (plan -> approve -> build -> review -> merge) straight off the edges instead
+// of inferring it from lane order alone. Keyed by "source->target" role pair.
+export const ROLE_EDGE_LABEL: Record<string, string> = {
+  "triage->architect": "scope",
+  "triage->implement": "approved plan",
+  "architect->implement": "design",
+  "implement->review": "pull request",
+  "review->ship": "approved",
+  "ship->ops": "merged",
+};
+
+// The single handoff that carries the human approval gate (the Drake gate): a
+// plan only becomes implementation work once the operator approves it. Rendered
+// distinctly so the most important interaction in Alfred reads at a glance.
+export const APPROVAL_GATE_ROLE_EDGE = "triage->implement";
+
 // Name-keyed role hints for the default fleet. The runtime does not always send
 // a machine-readable role for every agent, so we seed the canonical codenames
 // here. This is a HINT, not a gate: an agent absent from this table is still

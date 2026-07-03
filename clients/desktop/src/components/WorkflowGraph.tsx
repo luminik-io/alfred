@@ -83,6 +83,53 @@ function AgentNode({ data }: NodeProps) {
 
 const NODE_TYPES: ReactFlowProps["nodeTypes"] = { agent: AgentNode, lane: LaneNode };
 
+/**
+ * A quiet glass legend pinned top-left of the canvas so a newcomer can decode
+ * the pipeline without a tour: what the node status colors mean, what an edge is
+ * (a handoff), and where the human approval gate sits. Purely explanatory, so it
+ * is aria-hidden from the flow's interactive graph and never captures pointer
+ * events over the canvas.
+ */
+function WorkflowLegend() {
+  return (
+    <aside className="wf-legend" aria-label="Workflow legend">
+      <p className="wf-legend__title">Delivery pipeline</p>
+      <p className="wf-legend__flow">
+        Plan <span aria-hidden="true">&rarr;</span> approve{" "}
+        <span aria-hidden="true">&rarr;</span> build{" "}
+        <span aria-hidden="true">&rarr;</span> review{" "}
+        <span aria-hidden="true">&rarr;</span> merge
+      </p>
+      <ul className="wf-legend__items">
+        <li className="wf-legend__item">
+          <span className="wf-legend__swatch" data-tone="ok" aria-hidden="true" />
+          Running
+        </li>
+        <li className="wf-legend__item">
+          <span className="wf-legend__swatch" data-tone="warn" aria-hidden="true" />
+          Needs attention
+        </li>
+        <li className="wf-legend__item">
+          <span className="wf-legend__swatch" data-tone="error" aria-hidden="true" />
+          Failing
+        </li>
+        <li className="wf-legend__item">
+          <span className="wf-legend__swatch" data-tone="idle" aria-hidden="true" />
+          Idle
+        </li>
+        <li className="wf-legend__item wf-legend__item--edge">
+          <span className="wf-legend__edge" aria-hidden="true" />
+          Handoff
+        </li>
+        <li className="wf-legend__item wf-legend__item--edge">
+          <span className="wf-legend__edge wf-legend__edge--gate" aria-hidden="true" />
+          Your approval
+        </li>
+      </ul>
+    </aside>
+  );
+}
+
 const FIT_OPTIONS = { padding: 0.14, minZoom: 0.45, maxZoom: 1.4 } as const;
 
 // MiniMap node color tracks the agent's live status, so the overview reads the
@@ -165,6 +212,7 @@ export function WorkflowGraph({
 
   return (
     <div className="workflow-graph" aria-label="Agent workflow graph">
+      <WorkflowLegend />
       <ReactFlow
         nodes={nodes}
         edges={edges}

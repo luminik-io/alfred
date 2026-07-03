@@ -14,6 +14,8 @@ import type { Edge, Node } from "@xyflow/react";
 
 import type { AlfredTone } from "../components/ui/alfred";
 import {
+  APPROVAL_GATE_ROLE_EDGE,
+  ROLE_EDGE_LABEL,
   ROLE_EDGES,
   ROLE_LANE_LABEL,
   roleOrder,
@@ -171,23 +173,35 @@ export function buildWorkflowGraph(
   const firstInRole = (role: WorkflowRole): string | null =>
     byRole.get(role)?.[0]?.codename ?? null;
 
-  const liveEdges: [string, string][] = [];
+  const liveEdges: {
+    source: string;
+    target: string;
+    label: string;
+    gate: boolean;
+  }[] = [];
   const seenEdges = new Set<string>();
   for (const [sourceRole, targetRole] of ROLE_EDGES) {
     if (!presentRoles.has(sourceRole) || !presentRoles.has(targetRole)) continue;
     const target = firstInRole(targetRole);
     if (!target) continue;
+    const rolePair = `${sourceRole}->${targetRole}`;
+    const label = ROLE_EDGE_LABEL[rolePair] ?? "";
+    const gate = rolePair === APPROVAL_GATE_ROLE_EDGE;
     for (const sourceAgent of byRole.get(sourceRole) ?? []) {
       const source = sourceAgent.codename;
       if (source === target) continue;
       const key = `${source}->${target}`;
       if (seenEdges.has(key)) continue;
       seenEdges.add(key);
-      liveEdges.push([source, target]);
+      liveEdges.push({ source, target, label, gate });
     }
   }
 
-  const positions = layoutGraph(placedAgents, presentLanes, liveEdges);
+  const positions = layoutGraph(
+    placedAgents,
+    presentLanes,
+    liveEdges.map((edge) => [edge.source, edge.target] as [string, string]),
+  );
 
   const byCodename = new Map(inputs.map((input) => [input.codename, input]));
   const nodes: Node[] = [];
@@ -225,11 +239,16 @@ export function buildWorkflowGraph(
     });
   }
 
-  const edges: Edge[] = liveEdges.map(([source, target]) => ({
+  const edges: Edge[] = liveEdges.map(({ source, target, label, gate }) => ({
     id: `${source}->${target}`,
     source,
     target,
     type: "smoothstep",
+    label: label || undefined,
+    // The approval-gate edge is marked so the renderer can flag the human
+    // go-ahead step; a small data bag keeps the Edge shape declarative.
+    data: { gate, label },
+    className: gate ? "wf-edge wf-edge--gate" : "wf-edge",
     animated: source === selectedCodename || target === selectedCodename,
   }));
 
