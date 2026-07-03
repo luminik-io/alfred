@@ -23,12 +23,12 @@
 
 :root,
 [data-theme="dark"] {
-  --alfred-black: #0A0E14;
+  --alfred-black: #070A11;         /* deepened canvas so glass panes glow against it */
   --alfred-surface: #11161F;
   --alfred-surface-2: #161D2A;
   --alfred-border: #1F2937;
   --alfred-border-strong: #2A3548;
-  --alfred-mute: #6B7A8F;
+  --alfred-mute: #7C8AA0;          /* lifted from #6B7A8F for AA on the deeper canvas */
   --alfred-text: #C5D0E0;
   --alfred-text-bright: #F2F6FF;
 
@@ -38,6 +38,28 @@
   --alfred-warn: #F4B43E;
   --alfred-error: #FF5A6B;
   --alfred-blue: #5789FF;
+
+  /* ── Glass x Systematic ─────────────────────────────────────────────
+     The signature material. A glass pane is a translucent fill that lets
+     the aurora field bleed through, a real backdrop blur + saturation
+     lift, a 1px luminous edge, and a layered drop shadow for depth.
+     Text NEVER sits directly on --glass-fill: it sits on --glass-solid
+     (an opaque sibling token) so every text surface stays WCAG AA even
+     when the blur is unsupported. See .m-glass / .m-glass--solid. */
+  --glass-fill: rgba(19, 27, 42, 0.55);
+  --glass-fill-strong: rgba(15, 22, 35, 0.72);
+  --glass-solid: #0E1420;          /* opaque AA-safe backdrop for text blocks */
+  --glass-edge: rgba(150, 180, 230, 0.16);
+  --glass-edge-lit: rgba(180, 215, 255, 0.40);   /* top luminous hairline */
+  --glass-blur: 20px;
+  --glass-saturate: 1.4;
+  --glass-shadow: 0 24px 70px -28px rgba(0, 0, 0, 0.85), 0 2px 10px -4px rgba(0, 0, 0, 0.5);
+
+  /* Aurora field: two brand blooms drifting behind hero + soft sections. */
+  --aurora-1: rgba(0, 229, 199, 0.16);
+  --aurora-2: rgba(87, 137, 255, 0.14);
+  --aurora-3: rgba(0, 229, 199, 0.05);
+  --grid-line: rgba(96, 130, 190, 0.10);   /* engineered baseline-grid motif */
 }
 
 [data-theme="light"] {
@@ -56,6 +78,22 @@
   --alfred-warn: #B07A19;
   --alfred-error: #C2362C;
   --alfred-blue: #2E5DDB;
+
+  /* Light-mode glass: frosted parchment. Higher opacity than dark so text
+     contrast holds without a heavy backdrop, warm edges instead of cool. */
+  --glass-fill: rgba(253, 251, 246, 0.62);
+  --glass-fill-strong: rgba(253, 251, 246, 0.82);
+  --glass-solid: #FBF8F1;
+  --glass-edge: rgba(120, 100, 60, 0.16);
+  --glass-edge-lit: rgba(255, 255, 255, 0.85);
+  --glass-blur: 18px;
+  --glass-saturate: 1.15;
+  --glass-shadow: 0 22px 60px -30px rgba(70, 55, 25, 0.30), 0 2px 8px -3px rgba(70, 55, 25, 0.12);
+
+  --aurora-1: rgba(15, 138, 120, 0.10);
+  --aurora-2: rgba(46, 93, 219, 0.08);
+  --aurora-3: rgba(15, 138, 120, 0.04);
+  --grid-line: rgba(120, 100, 60, 0.10);
 }
 
 /* Static design tokens (typography, spacing) live on :root and are
@@ -79,9 +117,109 @@
   --container: 1180px;
   --gutter: 32px;
   --radius: 8px;
+  --radius-lg: 12px;    /* glass panes read a touch softer than sharp cards */
+  --radius-xl: 18px;
 }
 
 * { box-sizing: border-box; }
+
+/* ───────────────────────────────────────────────────────────────────
+   GLASS RECIPE, the signature material of the Glass x Systematic
+   direction. Real backdrop blur + saturation, a luminous top hairline,
+   and a layered shadow. Everything floats on the aurora field.
+
+   Accessibility contract:
+   - .m-glass is for CHROME and DECORATIVE panels only. Long-form text
+     goes inside .m-glass__body which paints an opaque AA-safe surface.
+   - Where backdrop-filter is unsupported, we fall back to --glass-solid
+     (opaque) so contrast never depends on the blur landing.
+   ─────────────────────────────────────────────────────────────────── */
+.m-glass {
+  position: relative;
+  background: var(--glass-fill);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--glass-shadow);
+}
+
+/* Luminous top edge: a bright 1px inner highlight that catches "light"
+   at the top of the pane and fades to nothing by a third of the way down.
+   This is what sells real glass over a flat translucent card. */
+.m-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(180deg, var(--glass-edge-lit), transparent 34%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.m-glass--strong { background: var(--glass-fill-strong); }
+
+/* Opaque, AA-safe fallback anywhere the backdrop filter cannot render. */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .m-glass { background: var(--glass-solid); }
+  .m-glass--strong { background: var(--glass-solid); }
+}
+
+/* Text block that sits inside glass: opaque sub-surface so body copy is
+   always AA regardless of what bleeds through the blur behind the pane. */
+.m-glass__body {
+  position: relative;
+  z-index: 1;
+  background: color-mix(in oklab, var(--glass-solid) 62%, transparent);
+  border-radius: var(--radius);
+}
+
+/* ── Aurora field ──────────────────────────────────────────────────
+   Two brand-color blooms + a fine engineered grid, sitting behind hero
+   and soft sections. Pure CSS, decorative, reduced-motion safe. The
+   .m-aurora element is absolutely positioned; the parent must be
+   position: relative and overflow: hidden. */
+.m-aurora {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.m-aurora::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(38% 44% at 18% 8%, var(--aurora-1), transparent 62%),
+    radial-gradient(42% 48% at 86% 22%, var(--aurora-2), transparent 64%),
+    radial-gradient(50% 55% at 60% 100%, var(--aurora-3), transparent 68%);
+  filter: blur(8px);
+  animation: m-aurora-drift 26s ease-in-out infinite alternate;
+  will-change: transform;
+}
+.m-aurora::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(120% 100% at 50% 0%, #000 0%, transparent 72%);
+  -webkit-mask-image: radial-gradient(120% 100% at 50% 0%, #000 0%, transparent 72%);
+}
+@keyframes m-aurora-drift {
+  from { transform: translate3d(-2%, -1%, 0) scale(1.02); }
+  to   { transform: translate3d(3%, 2%, 0) scale(1.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .m-aurora::before { animation: none; }
+}
 
 html, body {
   margin: 0;
@@ -101,6 +239,15 @@ a {
 }
 
 a:hover { text-decoration: underline; }
+
+/* Keyboard focus is always visible, even over glass. A high-contrast accent
+   ring plus a dark offset ring so it reads on any surface, light or dark.
+   Non-negotiable for accessibility; do not remove. */
+:where(a, button, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--alfred-accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
 
 h1, h2, h3, h4 {
   font-family: var(--font-display);
@@ -198,11 +345,27 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
 .m-section--tight { padding: 64px 0; }
 
 .m-section--soft {
+  position: relative;
   background:
-    radial-gradient(ellipse 720px 360px at 12% -10%, var(--alfred-soft-glow-1, rgba(0, 229, 199, 0.07)), transparent 60%),
-    radial-gradient(ellipse 600px 420px at 88% 110%, var(--alfred-soft-glow-2, rgba(87, 137, 255, 0.05)), transparent 65%),
+    radial-gradient(ellipse 720px 360px at 12% -10%, var(--aurora-1), transparent 60%),
+    radial-gradient(ellipse 600px 420px at 88% 110%, var(--aurora-2), transparent 65%),
     linear-gradient(180deg, var(--alfred-black) 0%, var(--alfred-surface) 50%, var(--alfred-black) 100%);
 }
+/* Faint engineered grid over soft sections ties them to the hero field. */
+.m-section--soft::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(90% 70% at 50% 30%, #000 0%, transparent 78%);
+  -webkit-mask-image: radial-gradient(90% 70% at 50% 30%, #000 0%, transparent 78%);
+}
+.m-section--soft > .m-container { position: relative; z-index: 1; }
 
 [data-theme="light"] .m-section--soft {
   background:
@@ -249,15 +412,25 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   transform: translateY(0) scale(0.985);
 }
 
+/* Ghost CTA is a glass chip: translucent, blurred, luminous edge. Text
+   stays --alfred-text-bright which is AA on the dark aurora behind it. */
 .m-btn--ghost {
-  background: transparent;
+  background: var(--glass-fill);
+  -webkit-backdrop-filter: blur(12px) saturate(var(--glass-saturate));
+  backdrop-filter: blur(12px) saturate(var(--glass-saturate));
   color: var(--alfred-text-bright);
-  border-color: var(--alfred-border-strong);
+  border-color: var(--glass-edge);
+  box-shadow: 0 1px 0 0 var(--glass-edge-lit) inset;
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .m-btn--ghost { background: var(--alfred-surface); }
 }
 
 .m-btn--ghost:hover {
-  background: var(--alfred-surface-2);
+  background: var(--glass-fill-strong);
   color: var(--alfred-text-bright);
+  border-color: color-mix(in oklab, var(--alfred-accent) 40%, var(--glass-edge));
 }
 
 .m-btn--ghost:active {
@@ -274,16 +447,42 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
 /* Card */
 
 .m-card {
-  background: var(--alfred-surface);
-  border: 1px solid var(--alfred-border-strong);
-  border-radius: var(--radius);
+  position: relative;
+  /* Glass pane. Strong fill keeps card-local headings + body AA even over
+     the aurora; the luminous edge (::after) gives it the lit-glass read. */
+  background: var(--glass-fill-strong);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius-lg);
   padding: 24px;
+  box-shadow: var(--glass-shadow);
 }
 
-.m-card--hover { transition: background 120ms ease, border-color 120ms ease; }
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .m-card { background: var(--glass-solid); }
+}
+
+/* Luminous top edge, same recipe as .m-glass. */
+.m-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(180deg, var(--glass-edge-lit), transparent 40%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+.m-card > * { position: relative; z-index: 1; }
+
+.m-card--hover { transition: background 160ms ease, border-color 160ms ease, transform 220ms ease, box-shadow 220ms ease; }
 .m-card--hover:hover {
-  background: var(--alfred-surface-2);
-  border-color: #344664;
+  background: var(--glass-fill-strong);
+  border-color: color-mix(in oklab, var(--alfred-accent) 45%, var(--glass-edge));
 }
 
 /* Status dots */
@@ -314,12 +513,17 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   position: sticky;
   top: 0;
   z-index: 50;
-  /* color-mix preserves the alpha through theme switches so the header
-     reads as the surrounding canvas with a soft blur. */
-  background: color-mix(in oklab, var(--alfred-black) 82%, transparent);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid var(--alfred-border);
+  /* Glass bar: translucent so the aurora shimmers through it, real blur,
+     and a luminous hairline along the bottom edge. */
+  background: color-mix(in oklab, var(--alfred-black) 68%, transparent);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border-bottom: 1px solid var(--glass-edge);
+  box-shadow: 0 1px 0 0 var(--glass-edge-lit) inset, 0 18px 40px -30px rgba(0, 0, 0, 0.7);
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .m-header { background: var(--alfred-black); }
 }
 
 .m-header__inner {
@@ -440,6 +644,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
    svg-specific stuff) but never override max-width or outer padding.
    ─────────────────────────────────────────────────────────────────── */
 .m-figure {
+  position: relative;
   display: block;
   width: 100%;
   max-width: 100%;
@@ -450,11 +655,32 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   min-width: 0;
   margin: 32px 0;
   padding: 22px;
-  border: 1px solid var(--alfred-border-strong);
-  background: linear-gradient(180deg, var(--alfred-surface-2) 0%, var(--alfred-surface) 100%);
-  border-radius: var(--radius);
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-fill-strong);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border-radius: var(--radius-lg);
+  box-shadow: var(--glass-shadow);
   box-sizing: border-box;
 }
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .m-figure { background: var(--glass-solid); }
+}
+/* Luminous top edge on figures. */
+.m-figure::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(180deg, var(--glass-edge-lit), transparent 30%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+.m-figure > * { position: relative; z-index: 1; }
 @media (max-width: 720px) {
   .m-figure {
     padding: 16px;
@@ -675,13 +901,17 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   width: min(330px, calc(100vw - 40px));
   gap: 4px;
   padding: 10px;
-  border: 1px solid var(--alfred-border-strong);
-  border-radius: var(--radius);
-  background: var(--alfred-surface);
-  box-shadow: 0 24px 68px rgba(0, 0, 0, 0.44);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius-lg);
+  background: var(--glass-fill-strong);
+  box-shadow: var(--glass-shadow);
   transform: translateX(-50%);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .m-nav-menu { background: var(--glass-solid); }
 }
 
 .m-nav-group[open] .m-nav-menu {
@@ -791,13 +1021,17 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   display: grid;
   gap: 10px;
   padding: 10px;
-  border: 1px solid var(--alfred-border-strong);
-  border-radius: var(--radius);
-  background: var(--alfred-surface-2);
-  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.44);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius-lg);
+  background: var(--glass-fill-strong);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   animation: m-mobile-menu-enter 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .m-mobile-menu { background: var(--glass-solid); }
 }
 
 .m-mobile-menu[hidden] {

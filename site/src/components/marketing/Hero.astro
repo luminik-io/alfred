@@ -30,7 +30,9 @@ const hasPanel = Astro.slots.has("panel");
 ---
 
 <section class={`hero ${hasPanel ? "hero--split" : "hero--solo"}`}>
-  <div class="m-ambient" aria-hidden="true"></div>
+  {/* Aurora field: two drifting brand blooms + a fine engineered grid.
+      This is the Glass x Systematic backdrop the whole hero floats on. */}
+  <div class="m-aurora" aria-hidden="true"></div>
   {/* Cinematic fleet layer: a calm horizon sweep. Pure CSS, no JS,
       reduced-motion safe. Reads as "the fleet is working in the background"
       without competing with the headline. */}
@@ -64,25 +66,13 @@ const hasPanel = Astro.slots.has("panel");
 
 <style>
   .hero {
-    padding: 96px 0 64px;
+    padding: 120px 0 88px;
     position: relative;
     overflow: hidden;
   }
 
-  .hero::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(ellipse 600px 280px at 20% 0%, rgba(0, 229, 199, 0.10), transparent 60%),
-      radial-gradient(ellipse 700px 320px at 80% 10%, rgba(87, 137, 255, 0.06), transparent 60%);
-    pointer-events: none;
-  }
-
-  :global([data-theme="light"]) .hero::before {
-    background:
-      radial-gradient(ellipse 600px 280px at 20% 0%, rgba(15, 138, 120, 0.10), transparent 60%),
-      radial-gradient(ellipse 700px 320px at 80% 10%, rgba(46, 93, 219, 0.06), transparent 60%);
+  @media (max-width: 980px) {
+    .hero { padding: 80px 0 56px; }
   }
 
   .hero__inner {
@@ -122,16 +112,35 @@ const hasPanel = Astro.slots.has("panel");
   }
 
   .hero__panel {
-    background: var(--alfred-surface);
-    border: 1px solid var(--alfred-border-strong);
-    border-radius: var(--radius);
-    padding: 22px;
-    box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.6);
+    position: relative;
+    background: var(--glass-fill-strong);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    border: 1px solid var(--glass-edge);
+    border-radius: var(--radius-xl);
+    padding: 26px;
+    box-shadow: var(--glass-shadow);
   }
 
-  :global([data-theme="light"]) .hero__panel {
-    box-shadow: 0 20px 50px -28px rgba(20, 30, 60, 0.25);
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .hero__panel { background: var(--glass-solid); }
   }
+
+  /* Luminous top edge on the floating telemetry panel. */
+  .hero__panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(180deg, var(--glass-edge-lit), transparent 32%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+  .hero__panel > :global(*) { position: relative; z-index: 1; }
 
   @media (max-width: 980px) {
     .hero { padding: 64px 0 48px; }
