@@ -662,7 +662,17 @@ def looks_like_question(text: str) -> bool:
         second = tokens[1] if len(tokens) > 1 else ""
         if second != "you":
             return False
-    elif not (cleaned.endswith("?") or first in _QUESTION_OPENERS):
+    elif first in _QUESTION_OPENERS:
+        # An interrogative opener asks ABOUT something rather than
+        # commissioning it: "how do I add a new repo?" and "what changes
+        # should we make?" are guidance questions even though a build verb
+        # sits in verb position. The one idiom that proposes work is
+        # "how/what about ..." ("how about adding search?"), which falls
+        # through to the verb check below.
+        second = tokens[1] if len(tokens) > 1 else ""
+        if second != "about":
+            return True
+    elif not cleaned.endswith("?"):
         return False
     # A build verb in VERB position ("can you add ...?", "is it possible to
     # add ...?") marks work phrased as a question. Position matters: several
