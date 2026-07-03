@@ -202,3 +202,74 @@ def test_default_converse_turn_intent_is_build() -> None:
         done=False,
     )
     assert turn.intent == cc.INTENT_BUILD
+
+
+# --- looks_like_question: deterministic question detector -------------------
+
+
+def test_looks_like_question_detects_the_live_repro() -> None:
+    # The exact question from the live bug report must read as a question so the
+    # no-engine fallback answers it instead of drafting a plan.
+    assert cc.looks_like_question(
+        "What is the current state of the fleet, in one short paragraph?"
+    )
+
+
+def test_looks_like_question_detects_interrogative_without_trailing_mark() -> None:
+    assert cc.looks_like_question("How many agents are paused")
+
+
+def test_looks_like_question_rejects_plain_build_request() -> None:
+    assert not cc.looks_like_question("Add a dark mode toggle to the settings page")
+
+
+def test_looks_like_question_rejects_build_verb_phrased_as_question() -> None:
+    # "Can you add X?" is work phrased as a question; the build verb wins so the
+    # plan surface is not suppressed for a real request.
+    assert not cc.looks_like_question("Can you add a dark mode toggle?")
+
+
+def test_looks_like_question_rejects_empty() -> None:
+    assert not cc.looks_like_question("   ")
+
+
+# --- classify_message_intent: shared no-engine backstop ---------------------
+
+
+def test_classify_message_intent_status_question_is_conversation() -> None:
+    intent = cc.classify_message_intent(
+        "What is the current state of the fleet, in one short paragraph?",
+        draft=_empty_draft(),
+    )
+    assert intent == cc.INTENT_CONVERSATION
+
+
+def test_classify_message_intent_change_request_is_build() -> None:
+    intent = cc.classify_message_intent(
+        "Add a CSV export button to the reports page",
+        draft=_empty_draft(),
+    )
+    assert intent == cc.INTENT_BUILD
+
+
+def test_classify_message_intent_build_verb_question_is_build() -> None:
+    intent = cc.classify_message_intent(
+        "Can you add a dark mode toggle?",
+        draft=_empty_draft(),
+    )
+    assert intent == cc.INTENT_BUILD
+
+
+def test_classify_message_intent_keeps_build_when_draft_has_content() -> None:
+    # A question mid-build ("and the mobile app?") must not wipe the spec.
+    intent = cc.classify_message_intent(
+        "and what about the mobile app?",
+        draft=_build_draft(),
+    )
+    assert intent == cc.INTENT_BUILD
+
+
+def test_classify_message_intent_greeting_still_conversation() -> None:
+    # The existing greeting-opener heuristic still resolves to conversation.
+    intent = cc.classify_message_intent("who are you", draft=_empty_draft())
+    assert intent == cc.INTENT_CONVERSATION

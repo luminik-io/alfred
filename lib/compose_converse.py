@@ -547,6 +547,117 @@ def resolve_intent(
     return INTENT_BUILD
 
 
+# Interrogatives that open a genuine question ("what is the fleet state?",
+# "how many agents are paused?"). Used only by the no-engine classifier below to
+# tell a status/answer question from a change request when there is no live
+# model to judge. Kept deliberately narrow: a leading question word plus a
+# trailing "?" is a strong, low-false-positive signal, and a real build request
+# ("Add a dark mode toggle") matches neither.
+_QUESTION_OPENERS = (
+    "what",
+    "whats",
+    "what's",
+    "which",
+    "who",
+    "whom",
+    "whose",
+    "where",
+    "when",
+    "why",
+    "how",
+    "is",
+    "are",
+    "was",
+    "were",
+    "do",
+    "does",
+    "did",
+    "can",
+    "could",
+    "should",
+    "would",
+    "will",
+    "am",
+    "have",
+    "has",
+)
+
+# Imperative verbs that open a change request even when phrased with a trailing
+# "?" ("Can you add a dark mode toggle?"). When a question-shaped message also
+# carries one of these build verbs it is treated as work, not a question, so the
+# plan surface is never suppressed for a real request.
+_BUILD_VERB_HINTS = (
+    "add",
+    "build",
+    "create",
+    "make",
+    "implement",
+    "fix",
+    "change",
+    "update",
+    "remove",
+    "delete",
+    "refactor",
+    "rename",
+    "migrate",
+    "wire",
+    "ship",
+    "write",
+    "support",
+    "enable",
+    "disable",
+)
+
+
+def looks_like_question(text: str) -> bool:
+    """True when ``text`` reads as a plain question rather than a change request.
+
+    A deterministic, no-model signal used by the offline classifier: the message
+    ends with ``?`` OR opens with an interrogative word, AND it does not carry a
+    build verb ("add", "fix", ...) that would mark it as work phrased as a
+    question ("can you add a dark mode toggle?"). Genuine build prose ("Add a
+    CSV export button") matches neither branch and stays work.
+    """
+    cleaned = " ".join(str(text or "").split()).strip()
+    if not cleaned:
+        return False
+    lowered = cleaned.lower()
+    first = lowered.split()[0].strip(",.;:!\"'`(") if lowered.split() else ""
+    ends_question = cleaned.endswith("?")
+    opens_question = first in _QUESTION_OPENERS
+    if not (ends_question or opens_question):
+        return False
+    build_verbs = set(_BUILD_VERB_HINTS)
+    words = {token.strip(",.;:!?\"'`()[]") for token in lowered.split()}
+    # A build verb anywhere ("can you add ...?") marks work phrased as a
+    # question, so it is not treated as a plain question.
+    return not (words & build_verbs)
+
+
+def classify_message_intent(text: str, *, draft: IssueDraft) -> str:
+    """Classify one plain message as ``conversation`` or ``build`` with no model.
+
+    This is the shared, deterministic backstop the no-engine surfaces use so a
+    question ("what is the current state of the fleet?") is answered instead of
+    silently drafted into a plan. It layers a question detector on top of the
+    existing ``resolve_intent`` heuristic (the single source of intent truth):
+
+    * A draft that already carries structured content is ``build`` (a mid-build
+      "and the mobile app?" must not wipe the in-progress spec).
+    * An otherwise plain, question-shaped message is ``conversation``.
+    * Everything else defaults to ``build`` so genuine work is never misread.
+
+    The live model still overrides this whenever an engine is configured (that
+    path runs through ``resolve_intent`` with the model's own verdict); this only
+    strengthens the deterministic fallback both surfaces share.
+    """
+    if _draft_has_content(draft):
+        return INTENT_BUILD
+    if looks_like_question(text):
+        return INTENT_CONVERSATION
+    return resolve_intent(None, last_user_message=text, draft=draft, done=False)
+
+
 def _draft_has_content(draft: IssueDraft) -> bool:
     """True when the structured draft carries any real, planned content."""
     for field in _SCALAR_FIELDS:

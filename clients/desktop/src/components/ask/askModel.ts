@@ -87,8 +87,17 @@ export function draftHasSubstance(
 
 // The reply for the no-engine fallback path. There is no live model to ask the
 // open questions in prose, so fold them into the message (Markdown list) under
-// the saved-plan summary, keeping the inline card a clean offer.
+// the saved-plan summary, keeping the inline card a clean offer. A conversation
+// turn (a question the server declined to draft into a plan) carries its whole
+// answer in `summary` and no plan questions, so it is returned as-is with no
+// "firm it up" plan framing.
 export function draftFallbackReply(draft: ComposeDraftResponse): string {
+  if (draft.intent === "conversation") {
+    return (
+      (draft.summary || "").trim() ||
+      "That is a question, not a change request, so I did not start a plan."
+    );
+  }
   const summary =
     (draft.summary || "").trim() ||
     "I saved a plan. Review it below, then file it as an issue when you are ready.";

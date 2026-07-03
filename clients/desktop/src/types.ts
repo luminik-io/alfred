@@ -429,6 +429,12 @@ export type ComposeDraftResponse = {
   draft_id: string;
   saved_path: string;
   title: string;
+  // The one-shot draft endpoint is also the no-live-engine fallback for the Ask
+  // surface. When the turn is a plain question it answers conversationally
+  // (`intent: "conversation"`) instead of fabricating a plan; a change request
+  // omits `intent` (a plan). Older servers never send it, so it is optional and
+  // absent means "plan", keeping the plan surface intact.
+  intent?: ConverseIntent;
   readiness: { ok: boolean; score: number };
   questions: string[];
   findings: ComposeFinding[];

@@ -554,6 +554,68 @@ def test_api_status_paused_marker_without_timestamp_uses_mtime(tmp_path: Path) -
     assert robin["paused_since"] is not None
 
 
+def test_compose_draft_answers_a_question_conversationally(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A status question sent to the one-shot draft endpoint (the no-live-engine
+    Ask fallback) must come back as a conversation turn, not a fabricated plan.
+
+    This is the live bug: "What is the current state of the fleet?" produced a
+    starter Draft-plan card with a "File as an issue" CTA. The fix classifies the
+    turn with the shared backstop and returns a conversational reply instead.
+    """
+    # Keep the deterministic offline path: no refiner engine configured.
+    monkeypatch.delenv("ALFRED_PLANNING_ASSISTANT_ENGINE", raising=False)
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/plans/draft",
+        headers=_auth_headers(state),
+        json={"text": "What is the current state of the fleet, in one short paragraph?"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    # A conversation turn: no plan title, no plan questions, no draft substance,
+    # and the intent the client keys on to render a plain chat reply.
+    assert payload["intent"] == "conversation"
+    assert not payload["title"]
+    assert payload["questions"] == []
+    assert payload["draft"]["title"] == ""
+    assert not payload["draft"]["desired_behavior"]
+    assert payload["summary"].strip()
+    # No plan draft was persisted for a question.
+    drafts_dir = state / "planning-drafts"
+    saved = list(drafts_dir.glob("compose-*.json")) if drafts_dir.is_dir() else []
+    assert saved == []
+
+
+def test_compose_draft_still_drafts_a_change_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A genuine change request must still synthesize a plan (no regression)."""
+    monkeypatch.delenv("ALFRED_PLANNING_ASSISTANT_ENGINE", raising=False)
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/plans/draft",
+        headers=_auth_headers(state),
+        json={"text": "Add a CSV export button to the reports page"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    # A build turn drafts a plan: it has a title and does not claim to be a
+    # conversation turn, so the client renders the inline plan/file-issue card.
+    assert payload.get("intent") != "conversation"
+    assert payload["title"]
+    assert payload["draft"]["title"]
+
+
 def test_json_api_lists_slack_planning_drafts(tmp_path: Path) -> None:
     state = tmp_path / "state"
     drafts = state / "planning-drafts"
