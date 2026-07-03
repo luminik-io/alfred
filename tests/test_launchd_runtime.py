@@ -339,6 +339,89 @@ def test_deploy_removes_stale_managed_plists(tmp_path):
     assert "alfred.new.plist" in log
 
 
+def test_deploy_copies_skills_registry_into_runtime(tmp_path):
+    """deploy.sh must ship skills/ (manifest + vendored tree) into $ALFRED_HOME.
+
+    lib/skill_packs.py resolves the manifest relative to the deployed lib/
+    ($ALFRED_HOME/lib -> $ALFRED_HOME/skills), so a deploy that skips skills/
+    leaves `alfred skills` crashing on FileNotFoundError (review finding on
+    PR #382).
+    """
+    src = tmp_path / "repo"
+    home = tmp_path / "home"
+    alfred = tmp_path / "alfred"
+    fakebin = tmp_path / "fakebin"
+    src.mkdir()
+    home.mkdir()
+    fakebin.mkdir()
+    (src / "bin").mkdir()
+    (src / "lib").mkdir()
+    (src / "launchd").mkdir()
+    shutil.copy(REPO / "deploy.sh", src / "deploy.sh")
+    shutil.copy(REPO / "launchd" / "render.sh", src / "launchd" / "render.sh")
+    shutil.copy(REPO / "launchd" / "_template.plist", src / "launchd" / "_template.plist")
+    shutil.copy(REPO / "bin" / "agent-launch", src / "bin" / "agent-launch")
+    (src / "bin" / "probe.py").write_text("#!/usr/bin/env python3\nprint('[PROBE-OK]')\n")
+    (src / "bin" / "probe.py").chmod(0o755)
+    (src / "lib" / "dummy.py").write_text("# dummy\n")
+    for pkg in ("agent_runner", "connectors", "fleet_brain", "memory", "server"):
+        (src / "lib" / pkg).mkdir()
+        (src / "lib" / pkg / "__init__.py").write_text("")
+    (src / "launchd" / "agents.conf").write_text(
+        "alfred.new\tprobe.py\tinterval:60\tno\talfred.new\tNew helper\n"
+    )
+    # A minimal skills registry: manifest + one vendored skill with LICENSE.
+    vendored = src / "skills" / "vendored" / "demo-skill"
+    vendored.mkdir(parents=True)
+    (src / "skills" / "packs.toml").write_text('schema_version = 1\n')
+    (vendored / "SKILL.md").write_text("---\nname: demo-skill\n---\n")
+    (vendored / "LICENSE").write_text("MIT License\n")
+
+    launch_agents = home / "Library" / "LaunchAgents"
+    launch_agents.mkdir(parents=True)
+    launchctl_log = tmp_path / "launchctl.log"
+    (fakebin / "uname").write_text("#!/usr/bin/env sh\necho Darwin\n")
+    (fakebin / "launchctl").write_text(
+        f"#!/usr/bin/env sh\nprintf '%s\\n' \"$*\" >> {str(launchctl_log)!r}\nexit 0\n"
+    )
+    (fakebin / "uname").chmod(0o755)
+    (fakebin / "launchctl").chmod(0o755)
+
+    res = subprocess.run(
+        ["bash", str(src / "deploy.sh")],
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "ALFRED_HOME": str(alfred),
+            "WORKSPACE_ROOT": str(tmp_path / "code"),
+            "PATH": f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert (alfred / "skills" / "packs.toml").is_file()
+    assert (alfred / "skills" / "vendored" / "demo-skill" / "SKILL.md").is_file()
+    assert (alfred / "skills" / "vendored" / "demo-skill" / "LICENSE").is_file()
+    # Re-run: the copy is idempotent (no error on the second pass).
+    res2 = subprocess.run(
+        ["bash", str(src / "deploy.sh")],
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "ALFRED_HOME": str(alfred),
+            "WORKSPACE_ROOT": str(tmp_path / "code"),
+            "PATH": f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert res2.returncode == 0, res2.stdout + res2.stderr
+    assert (alfred / "skills" / "packs.toml").is_file()
+
+
 def test_desktop_deploy_prefers_seeded_runtime_roster(tmp_path):
     src = tmp_path / "repo"
     home = tmp_path / "home"

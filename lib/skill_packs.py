@@ -30,6 +30,7 @@ runner, so tests stub it). Manifest parsing uses stdlib ``tomllib`` (3.11+).
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import tomllib
 from collections.abc import Callable, Sequence
@@ -94,16 +95,21 @@ class Pack:
 def skills_root() -> Path:
     """Absolute path to the ``skills/`` directory (manifest + vendored tree).
 
-    Two layouts are supported:
+    Three layouts are supported:
 
     * Source checkout: ``lib/skill_packs.py`` -> repo root -> ``skills/``.
+    * Deployed runtime: ``deploy.sh`` copies ``lib/`` to ``$ALFRED_HOME/lib``
+      and ``skills/`` to ``$ALFRED_HOME/skills``, so the same parent-relative
+      walk resolves (``$ALFRED_HOME/lib/skill_packs.py`` ->
+      ``$ALFRED_HOME/skills``).
     * Installed wheel: ``sources = ["lib"]`` flattens ``lib`` to the wheel root,
       and ``force-include`` packages ``skills`` as a sibling of this module, so
       ``<module dir>/skills`` holds the manifest.
 
     The packaged sibling is checked first (it only exists in a wheel), then the
-    source-checkout parent. Whichever contains ``packs.toml`` wins; the source
-    parent is the fallback so a fresh checkout with no build still resolves.
+    parent (source checkout and deployed runtime). Whichever contains
+    ``packs.toml`` wins; the parent is the fallback so a fresh checkout with no
+    build still resolves.
     """
     here = Path(__file__).resolve().parent
     packaged = here / "skills"
@@ -248,7 +254,12 @@ def install_pack(
 
     # fetch shape
     assert pack.fetch_cmd is not None
-    cmd = pack.fetch_cmd.replace("{skills_dir}", str(skills_dir))
+    # Shell-quote the expanded path: fetch commands run with shell=True, so an
+    # unquoted ALFRED_SKILLS_DIR containing spaces or shell metacharacters
+    # would be word-split (or interpreted as shell syntax) by the shell.
+    # Quoting the whole segment keeps `{skills_dir}/gstack` valid too: the
+    # shell concatenates the quoted path with the literal suffix.
+    cmd = pack.fetch_cmd.replace("{skills_dir}", shlex.quote(str(skills_dir)))
     dest = skills_dir / pack.name
     if dry_run:
         return InstallResult(pack.name, pack.install, dest, fetched=cmd, dry_run=True)

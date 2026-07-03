@@ -191,6 +191,47 @@ def test_install_fetch_nonzero_runner_raises(tmp_path: Path) -> None:
         skill_packs.install_pack(pack, skills_dir=tmp_path, runner=lambda _c, _d: 1)
 
 
+def test_install_fetch_shell_quotes_spaced_skills_dir(tmp_path: Path) -> None:
+    """A skills dir with spaces (or metacharacters) must be shell-quoted.
+
+    Fetch commands run with shell=True; an unquoted path would be word-split
+    or interpreted as shell syntax (review finding on PR #382).
+    """
+    import shlex
+
+    spaced = tmp_path / "with space" / "sk ills"
+    spaced.mkdir(parents=True)
+    calls: list[str] = []
+    pack = _pack(
+        install="fetch",
+        fetch_cmd="clone {skills_dir}/thing && cd {skills_dir}/thing",
+        vendored_path=None,
+    )
+    skill_packs.install_pack(pack, skills_dir=spaced, runner=lambda c, _d: calls.append(c) or 0)
+    (cmd,) = calls
+    quoted = shlex.quote(str(spaced))
+    assert quoted.startswith("'")  # the spaced path really did need quoting
+    assert cmd == f"clone {quoted}/thing && cd {quoted}/thing"
+    # The shell must see the path as ONE token: split the first clause and
+    # check the argument parses back to the real path plus suffix.
+    tokens = shlex.split(cmd.split("&&")[0])
+    assert tokens == ["clone", f"{spaced}/thing"]
+
+
+def test_fetch_pip_installs_are_version_pinned() -> None:
+    """Reference pip installs must pin the audited version (reproducibility).
+
+    An unpinned `pip install` would fetch whatever upstream publishes next,
+    silently breaking the license-audited contract recorded in the manifest
+    (review finding on PR #382).
+    """
+    for p in skill_packs.load_manifest():
+        if p.is_fetch and p.fetch_cmd and "pip install" in p.fetch_cmd:
+            assert "==" in p.fetch_cmd, (
+                f"{p.name} pip-installs without a version pin: {p.fetch_cmd}"
+            )
+
+
 def test_dry_run_writes_nothing_and_runs_nothing(tmp_path: Path) -> None:
     ran: list[str] = []
     fetch = _pack(install="fetch", fetch_cmd="echo hi", vendored_path=None)

@@ -2478,113 +2478,17 @@ def _probe_claude_auth() -> int:
     return 1
 
 
-def _skills_load():
-    """Import the skill-pack lib lazily and return (packs, module).
-
-    Kept lazy so `alfred` startup stays cheap and a missing/broken manifest
-    only bites the `alfred skills` verbs, not the whole CLI.
-    """
-    import skill_packs
-
-    return skill_packs.load_manifest(), skill_packs
-
-
-def cmd_skills_list(args: argparse.Namespace) -> int:
-    packs, mod = _skills_load()
-    if getattr(args, "role", None):
-        packs = [p for p in packs if args.role in p.roles]
-    installed = mod.installed_packs(packs)
-    if args.json:
-        print(
-            json.dumps(
-                [
-                    {
-                        "name": p.name,
-                        "summary": p.summary,
-                        "source": p.source,
-                        "license": p.license,
-                        "install": p.install,
-                        "roles": list(p.roles),
-                        "opt_in": p.opt_in,
-                        "installed": p.name in installed,
-                    }
-                    for p in packs
-                ],
-                indent=2,
-            )
-        )
-        return 0
-    if not packs:
-        print("No packs match." if getattr(args, "role", None) else "No packs configured.")
-        return 0
-    print(f"Curated skill packs (skills dir: {mod.default_skills_dir()})")
-    for p in packs:
-        mark = "installed" if p.name in installed else "available"
-        shape = p.install + (" opt-in" if p.opt_in else "")
-        print(f"  [{mark:<9}] {p.name:<28} {p.license:<11} {shape}")
-        print(f"              {p.summary}")
-        if p.roles:
-            print(f"              roles: {', '.join(p.roles)}")
-    return 0
-
-
-def cmd_skills_installed(args: argparse.Namespace) -> int:
-    packs, mod = _skills_load()
-    installed = mod.installed_packs(packs)
-    names = sorted(installed)
-    if args.json:
-        print(json.dumps({"skills_dir": str(mod.default_skills_dir()), "installed": names}, indent=2))
-        return 0
-    if not names:
-        print(f"No packs installed under {mod.default_skills_dir()}.")
-        return 0
-    print(f"Installed under {mod.default_skills_dir()}:")
-    for name in names:
-        print(f"  {name}")
-    return 0
-
-
-def cmd_skills_install(args: argparse.Namespace) -> int:
-    packs, mod = _skills_load()
-    by_name = {p.name: p for p in packs}
-    target = by_name.get(args.pack)
-    if target is None:
-        print(f"Unknown pack {args.pack!r}. Run `alfred skills list`.", file=sys.stderr)
-        return 2
-    if target.is_fetch and not args.yes and not args.dry_run:
-        print(
-            f"Pack {target.name!r} is reference-install: it runs a network command:\n"
-            f"  {target.fetch_cmd}\n"
-            f"Re-run with --yes to proceed (or --dry-run to preview).",
-            file=sys.stderr,
-        )
-        return 1
-    try:
-        result = mod.install_pack(target, dry_run=args.dry_run)
-    except (FileNotFoundError, RuntimeError) as exc:
-        print(f"Install failed: {exc}", file=sys.stderr)
-        return 1
-    verb = "would install" if result.dry_run else "installed"
-    if result.fetched:
-        print(f"{verb} {result.pack} (fetch) -> {result.dest}")
-        print(f"  command: {result.fetched}")
-    else:
-        print(f"{verb} {result.pack} (vendored) -> {result.dest}")
-    if target.attribution:
-        print(f"  license: {target.license} | {target.attribution}")
-    return 0
-
-
 def cmd_skills(args: argparse.Namespace) -> int:
-    command = getattr(args, "skills_command", None)
-    if command == "list":
-        return cmd_skills_list(args)
-    if command == "installed":
-        return cmd_skills_installed(args)
-    if command == "install":
-        return cmd_skills_install(args)
-    print("Usage: alfred skills {list|install <pack>|installed}", file=sys.stderr)
-    return 2
+    """Delegate to the shared skills CLI (lib/skills_cli.py).
+
+    Imported lazily so `alfred` startup stays cheap and a missing/broken
+    manifest only bites the `alfred skills` verbs, not the whole CLI. The same
+    module backs the wheel's `alfred-os skills` entry point, so both surfaces
+    behave identically.
+    """
+    import skills_cli
+
+    return skills_cli.dispatch(args)
 
 
 def cmd_claude(args: argparse.Namespace) -> int:

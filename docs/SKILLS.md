@@ -55,10 +55,15 @@ alfred skills installed                  # what is installed under the skills di
 
 Installs land in `~/.claude/skills/` by default. Override with
 `ALFRED_SKILLS_DIR` (for example, point it at a project's `.claude/skills` for a
-project-scoped install). Vendored installs are idempotent -- re-installing
-replaces the directory cleanly. Reference-install packs (`gstack`, `headroom`)
-run a network command and require `--yes`; `--dry-run` shows the exact command
-first.
+project-scoped install; paths with spaces are handled, the fetch command is
+shell-quoted). Vendored installs are idempotent -- re-installing replaces the
+directory cleanly. Reference-install packs (`gstack`, `headroom`) run a network
+command and require `--yes`; `--dry-run` shows the exact command first.
+
+The command works from all three layouts: a source checkout, a deployed runtime
+(`deploy.sh` copies `skills/` into `$ALFRED_HOME` next to `lib/`), and an
+installed wheel, where the same verbs are exposed as `alfred-os skills ...`
+(the manifest and vendored tree ship inside the wheel).
 
 ## Where skills live and how the fleet uses them
 
@@ -173,8 +178,11 @@ MCP server, and a CLI wrapper.
 headroom is reference-install and opt-in for a reason: it carries a heavy ML
 model and is Apache-2.0 (vendorable into MIT with LICENSE plus NOTICE retained,
 but better pinned to a released version). `alfred skills install headroom --yes`
-runs `pip install headroom-ai`; wiring it into prompt assembly is a separate,
-deliberate step, not automatic.
+runs `pip install headroom-ai==<pinned version>` -- the manifest pins the exact
+release that was license-audited, so a future upstream release cannot silently
+change the installed code or its license; bump the pin and re-audit when
+upgrading. Wiring it into prompt assembly is a separate, deliberate step, not
+automatic.
 
 ## Installing skills by hand
 
@@ -206,8 +214,10 @@ new skill the way you would any other dependency:
 4. Pin to a specific commit when installing from a third-party source.
 
 The vendored packs are pinned by virtue of being copied in at a known revision
-and license-reviewed (see `skills/NOTICE.md`). Reference-install packs pull from
-upstream `main` and require `--yes`, so a network fetch is never silent.
+and license-reviewed (see `skills/NOTICE.md`). Reference-install packs require
+`--yes`, so a network fetch is never silent; headroom is pinned to the audited
+release, while gstack clones upstream `main` because its skills are versioned
+and upgraded by its own `./setup` and `gstack-upgrade` flow.
 
 The fleet's IAM-per-agent and per-firing-worktree isolation limit blast radius:
 a compromised skill in one worktree cannot reach the operator's home or a second

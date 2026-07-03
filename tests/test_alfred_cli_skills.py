@@ -91,3 +91,52 @@ def test_skills_installed_reflects_prior_install(cli_module, capsys, tmp_path: P
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert "security-and-hardening" in payload["installed"]
+
+
+# --------------------------------------------------------------------------
+# Wheel console script (`alfred-os skills ...`): same shared skills_cli
+# backend as `alfred skills`, exposed from an installed wheel (review finding
+# on PR #382: the wheel previously shipped the manifest but no CLI route).
+# --------------------------------------------------------------------------
+
+
+def test_wheel_console_cli_routes_skills_list(
+    monkeypatch: pytest.MonkeyPatch, capsys, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("ALFRED_SKILLS_DIR", str(tmp_path / "skills"))
+    import alfred_os_cli
+
+    rc = alfred_os_cli.main(["skills", "list", "--json"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    names = {p["name"] for p in payload}
+    assert "vercel-react-best-practices" in names
+    assert "gstack" in names
+
+
+def test_wheel_console_cli_installs_vendored_pack(
+    monkeypatch: pytest.MonkeyPatch, capsys, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("ALFRED_SKILLS_DIR", str(tmp_path / "skills"))
+    import alfred_os_cli
+
+    rc = alfred_os_cli.main(["skills", "install", "code-review-and-quality"])
+    assert rc == 0
+    dest = tmp_path / "skills" / "code-review-and-quality"
+    assert (dest / "SKILL.md").is_file()
+    assert (dest / "LICENSE").is_file()
+    assert "installed code-review-and-quality" in capsys.readouterr().out
+
+
+def test_wheel_console_cli_keeps_paths_flag(capsys) -> None:
+    """Non-skills argv still hits the original flag parser (no regression).
+
+    Uses --paths rather than the bare version printout because the version
+    lookup needs installed package metadata, which a source checkout lacks.
+    """
+    import alfred_os_cli
+
+    rc = alfred_os_cli.main(["--paths"])
+    assert rc == 0
+    out = capsys.readouterr().out.strip()
+    assert out.endswith("__init__.py") or out.endswith("agent_runner.py")

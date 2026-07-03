@@ -38,6 +38,19 @@ def test_wheel_smoke_import_and_console_script(tmp_path):
         for sub in ("paths", "process", "result", "github", "state"):
             assert f"agent_runner/{sub}.py" in names, f"wheel missing agent_runner/{sub}.py"
         assert "alfred_os_cli.py" in names
+        # The curated skill-pack workflow must be usable from an installed
+        # wheel: the shared CLI module, the pure core, the manifest, and the
+        # vendored tree all ship (review finding on PR #382).
+        assert "skill_packs.py" in names
+        assert "skills_cli.py" in names
+        assert "skills/packs.toml" in names
+        assert "skills/NOTICE.md" in names
+        assert any(
+            name.startswith("skills/vendored/") and name.endswith("SKILL.md") for name in names
+        )
+        assert any(
+            name.startswith("skills/vendored/") and name.endswith("LICENSE") for name in names
+        )
         entry_points = next(name for name in names if name.endswith(".dist-info/entry_points.txt"))
         assert "alfred-os = alfred_os_cli:main" in zf.read(entry_points).decode()
 

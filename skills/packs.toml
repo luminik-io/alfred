@@ -97,13 +97,15 @@ roles = ["e2e-smoke", "pr-review", "bug-triage"]
 name = "headroom"
 summary = "Opt-in token/context compression (Apache-2.0). Reference-install; see docs/SKILLS.md."
 source = "https://github.com/headroomlabs-ai/headroom"
-ref = "main"
+ref = "v0.29.0"
 license = "Apache-2.0"
 attribution = "Copyright 2025 Headroom Contributors"
 install = "fetch"
-# Headroom is a Python/TS package, not a Claude Code skill. Install pins the
-# released library so the framework can call it as an opt-in compression step.
-fetch_cmd = "python3 -m pip install 'headroom-ai'"
+# Headroom is a Python/TS package, not a Claude Code skill. The install pins
+# the exact released version that was license-audited, so a future upstream
+# release cannot silently change the installed code (or its license) without a
+# manifest change. Bump the pin AND re-audit when upgrading.
+fetch_cmd = "python3 -m pip install 'headroom-ai==0.29.0'"
 reference_reason = "Apache-2.0 package carrying a custom ML compression model; pin to a released version rather than vendoring source. Opt-in only."
 opt_in = true
 roles = []
