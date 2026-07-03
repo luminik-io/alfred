@@ -592,6 +592,41 @@ def test_compose_draft_answers_a_question_conversationally(
     assert saved == []
 
 
+def test_compose_draft_question_with_selected_repo_context_stays_conversational(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The common configured desktop case: useAskThread sends the selected repo
+    in draft.repos (and context_repos) with EVERY no-engine fallback turn. That
+    grounding context must not read as draft signal, or the live bug still
+    reproduces for any one-repo setup: the question would fall through to plan
+    synthesis and persist a draft.
+    """
+    monkeypatch.delenv("ALFRED_PLANNING_ASSISTANT_ENGINE", raising=False)
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    # Mirror the desktop client payload shape (draftWithRepoContext /
+    # contextReposForPlanning): repos ride along even for a plain question.
+    response = client.post(
+        "/api/plans/draft",
+        headers=_auth_headers(state),
+        json={
+            "text": "What is the current state of the fleet, in one short paragraph?",
+            "draft": {"repos": ["example-org/frontend"]},
+            "context_repos": ["example-org/frontend"],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["intent"] == "conversation"
+    assert not payload["title"]
+    drafts_dir = state / "planning-drafts"
+    saved = list(drafts_dir.glob("compose-*.json")) if drafts_dir.is_dir() else []
+    assert saved == []
+
+
 def test_compose_draft_still_drafts_a_change_request(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -611,6 +646,29 @@ def test_compose_draft_still_drafts_a_change_request(
     payload = response.json()
     # A build turn drafts a plan: it has a title and does not claim to be a
     # conversation turn, so the client renders the inline plan/file-issue card.
+    assert payload.get("intent") != "conversation"
+    assert payload["title"]
+    assert payload["draft"]["title"]
+
+
+def test_compose_draft_modal_change_request_still_drafts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A planning ask phrased as a question with an unlisted verb ("can we show
+    X in Y?") is a change request and must keep the no-engine planning path."""
+    monkeypatch.delenv("ALFRED_PLANNING_ASSISTANT_ENGINE", raising=False)
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/plans/draft",
+        headers=_auth_headers(state),
+        json={"text": "Can we show paused agents in the roster?"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
     assert payload.get("intent") != "conversation"
     assert payload["title"]
     assert payload["draft"]["title"]

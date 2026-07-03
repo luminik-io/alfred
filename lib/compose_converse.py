@@ -31,7 +31,7 @@ import hashlib
 import json
 import os
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -552,7 +552,9 @@ def resolve_intent(
 # tell a status/answer question from a change request when there is no live
 # model to judge. Kept deliberately narrow: a leading question word plus a
 # trailing "?" is a strong, low-false-positive signal, and a real build request
-# ("Add a dark mode toggle") matches neither.
+# ("Add a dark mode toggle") matches neither. Modals (can/could/should/...) are
+# deliberately NOT here: they open request-shaped questions ("can we support
+# X?") and are handled separately by ``_MODAL_OPENERS``.
 _QUESTION_OPENERS = (
     "what",
     "whats",
@@ -572,14 +574,29 @@ _QUESTION_OPENERS = (
     "do",
     "does",
     "did",
+    "am",
+    "have",
+    "has",
+)
+
+# Modal openers are how people phrase CHANGE REQUESTS as questions ("can we
+# show paused agents in the roster?", "could the dashboard include a pause
+# button?", "should we add retries?"). A modal-opener message is therefore work
+# by default, never a plain question -- UNLESS it is directed at the assistant
+# itself ("can you explain how review works?"), which reads as a question and
+# still has to clear the build-verb check ("can you add a dark mode toggle?"
+# stays work). Ambiguity resolves to build so the no-engine planning path is
+# never lost for a natural request.
+_MODAL_OPENERS = (
     "can",
     "could",
     "should",
     "would",
     "will",
-    "am",
-    "have",
-    "has",
+    "shall",
+    "may",
+    "might",
+    "must",
 )
 
 # Imperative verbs that open a change request even when phrased with a trailing
@@ -612,26 +629,44 @@ _BUILD_VERB_HINTS = (
 def looks_like_question(text: str) -> bool:
     """True when ``text`` reads as a plain question rather than a change request.
 
-    A deterministic, no-model signal used by the offline classifier: the message
-    ends with ``?`` OR opens with an interrogative word, AND it does not carry a
-    build verb ("add", "fix", ...) that would mark it as work phrased as a
-    question ("can you add a dark mode toggle?"). Genuine build prose ("Add a
-    CSV export button") matches neither branch and stays work.
+    A deterministic, no-model signal used by the offline classifier, resolving
+    ambiguity toward "not a question" (build) so the planning path is never lost
+    for a natural request:
+
+    * A modal opener ("can/could/should/would ...") is a request phrased as a
+      question ("can we show paused agents in the roster?", "could the dashboard
+      include a pause button?") and is NOT a plain question -- unless it is
+      directed at the assistant itself ("can you explain how review works?").
+    * Otherwise the message must end with ``?`` or open with an interrogative
+      word ("what is the current state of the fleet?").
+    * Either way, a build verb anywhere ("can you add a dark mode toggle?")
+      marks work phrased as a question, so it is not a plain question.
+
+    Genuine build prose ("Add a CSV export button") matches no branch and stays
+    work.
     """
     cleaned = " ".join(str(text or "").split()).strip()
     if not cleaned:
         return False
     lowered = cleaned.lower()
-    first = lowered.split()[0].strip(",.;:!\"'`(") if lowered.split() else ""
-    ends_question = cleaned.endswith("?")
-    opens_question = first in _QUESTION_OPENERS
-    if not (ends_question or opens_question):
+    tokens = [token.strip(",.;:!?\"'`()[]") for token in lowered.split()]
+    tokens = [token for token in tokens if token]
+    if not tokens:
         return False
-    build_verbs = set(_BUILD_VERB_HINTS)
-    words = {token.strip(",.;:!?\"'`()[]") for token in lowered.split()}
-    # A build verb anywhere ("can you add ...?") marks work phrased as a
-    # question, so it is not treated as a plain question.
-    return not (words & build_verbs)
+    first = tokens[0]
+    if first in _MODAL_OPENERS:
+        # Modal-opener messages are change requests by default ("can we ...",
+        # "could the dashboard ..."). Only a modal aimed at the assistant
+        # ("can you ...") reads as a question; it still runs the build-verb
+        # check below so "can you add X?" stays work.
+        second = tokens[1] if len(tokens) > 1 else ""
+        if second != "you":
+            return False
+    elif not (cleaned.endswith("?") or first in _QUESTION_OPENERS):
+        return False
+    # A build verb anywhere ("can you add ...?", "is it possible to add ...?")
+    # marks work phrased as a question, so it is not treated as a plain question.
+    return not (set(tokens) & set(_BUILD_VERB_HINTS))
 
 
 def classify_message_intent(text: str, *, draft: IssueDraft) -> str:
@@ -643,7 +678,10 @@ def classify_message_intent(text: str, *, draft: IssueDraft) -> str:
     existing ``resolve_intent`` heuristic (the single source of intent truth):
 
     * A draft that already carries structured content is ``build`` (a mid-build
-      "and the mobile app?" must not wipe the in-progress spec).
+      "and the mobile app?" must not wipe the in-progress spec). ``repos`` alone
+      are NOT content here: clients send the selected repo as grounding context
+      with every turn (the desktop Ask sends ``draft.repos`` even for a plain
+      question), so a repo-only draft must not suppress the conversation intent.
     * An otherwise plain, question-shaped message is ``conversation``.
     * Everything else defaults to ``build`` so genuine work is never misread.
 
@@ -651,11 +689,12 @@ def classify_message_intent(text: str, *, draft: IssueDraft) -> str:
     path runs through ``resolve_intent`` with the model's own verdict); this only
     strengthens the deterministic fallback both surfaces share.
     """
-    if _draft_has_content(draft):
+    content_draft = replace(draft, repos=()) if draft.repos else draft
+    if _draft_has_content(content_draft):
         return INTENT_BUILD
     if looks_like_question(text):
         return INTENT_CONVERSATION
-    return resolve_intent(None, last_user_message=text, draft=draft, done=False)
+    return resolve_intent(None, last_user_message=text, draft=content_draft, done=False)
 
 
 def _draft_has_content(draft: IssueDraft) -> bool:

@@ -1227,13 +1227,17 @@ def register_routes(app: FastAPI) -> None:
         # message that carries no build signal is a conversation turn and gets a
         # plain reply that points at the answer path, instead of a plan. A change
         # request, or any refinement of an existing draft, still drafts as before.
-        # Classify BEFORE the selected-setup-repo injection below: a single
-        # configured repo is grounding context, not evidence this turn is work.
+        # Repos are excluded from the "has signal" judgment here: they are
+        # grounding context, not evidence this turn is work. The desktop client
+        # sends the selected repo in draft.repos with EVERY fallback turn (and
+        # the setup-scope injection below adds one server-side), so counting
+        # repos would suppress the conversation path for any configured setup.
+        content_draft = replace(base_draft, repos=()) if base_draft.repos else base_draft
         if (
             text
             and prior_payload is None
-            and not _draft_has_signal(base_draft)
-            and _compose_question_intent(text, base_draft)
+            and not _draft_has_signal(content_draft)
+            and _compose_question_intent(text, content_draft)
         ):
             return JSONResponse(_compose_question_reply(draft_id))
 

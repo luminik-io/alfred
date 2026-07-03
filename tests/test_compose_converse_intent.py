@@ -227,6 +227,21 @@ def test_looks_like_question_rejects_build_verb_phrased_as_question() -> None:
     assert not cc.looks_like_question("Can you add a dark mode toggle?")
 
 
+def test_looks_like_question_rejects_modal_change_requests() -> None:
+    # Request-shaped questions with unlisted verbs are still change requests: a
+    # modal opener not aimed at the assistant is work, never a plain question.
+    assert not cc.looks_like_question("Can we show paused agents in the roster?")
+    assert not cc.looks_like_question("Could the dashboard include a pause button?")
+    assert not cc.looks_like_question("Should we retry failed firings automatically?")
+    assert not cc.looks_like_question("Would it be possible to show more history?")
+
+
+def test_looks_like_question_keeps_assistant_directed_modal_questions() -> None:
+    # A modal aimed at the assistant itself, with no build verb, is a question.
+    assert cc.looks_like_question("Can you explain how review works?")
+    assert cc.looks_like_question("Could you summarize the fleet status?")
+
+
 def test_looks_like_question_rejects_empty() -> None:
     assert not cc.looks_like_question("   ")
 
@@ -271,3 +286,36 @@ def test_classify_message_intent_greeting_still_conversation() -> None:
     # The existing greeting-opener heuristic still resolves to conversation.
     intent = cc.classify_message_intent("who are you", draft=_empty_draft())
     assert intent == cc.INTENT_CONVERSATION
+
+
+def test_classify_message_intent_modal_change_requests_are_build() -> None:
+    # Planning asks phrased as questions with unlisted verbs must keep the
+    # no-engine planning path (the modal-opener rule, not the verb list, wins).
+    for message in (
+        "Can we show paused agents in the roster?",
+        "Could the dashboard include a pause button?",
+        "Should we retry failed firings automatically?",
+    ):
+        assert cc.classify_message_intent(message, draft=_empty_draft()) == cc.INTENT_BUILD
+
+
+def test_classify_message_intent_ignores_grounding_repos() -> None:
+    # The desktop Ask sends the selected repo in draft.repos with EVERY fallback
+    # turn as grounding context. A repo-only draft must not read as work: the
+    # live-repro question stays a conversation turn in a one-repo setup.
+    repo_only = IssueDraft(title="", repos=["your-org/frontend"])
+    intent = cc.classify_message_intent(
+        "What is the current state of the fleet, in one short paragraph?",
+        draft=repo_only,
+    )
+    assert intent == cc.INTENT_CONVERSATION
+
+
+def test_classify_message_intent_real_content_still_wins_over_question() -> None:
+    # Repos are ignored, but any REAL draft content (title, desired behavior,
+    # acceptance criteria) still forces build, question-shaped or not.
+    intent = cc.classify_message_intent(
+        "and what about the mobile app?",
+        draft=IssueDraft(title="Add a dark mode toggle", repos=["your-org/frontend"]),
+    )
+    assert intent == cc.INTENT_BUILD
