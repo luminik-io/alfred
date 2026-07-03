@@ -358,3 +358,18 @@ def test_proposal_gerunds_stay_work():
 
     assert not looks_like_question("What about adding search?")
     assert not looks_like_question("How about making the header sticky?")
+
+
+def test_feature_request_verbs_stay_work():
+    from compose_converse import looks_like_question as q
+
+    assert not q("Can you show paused agents in the roster?")
+    assert not q("Could you include a pause button on the dashboard?")
+    assert not q("Can you surface the awaiting-approval count?")
+
+
+def test_communication_verbs_stay_questions():
+    from compose_converse import looks_like_question as q
+
+    assert q("Can you explain how review works?")
+    assert q("Could you describe the approval gate?")

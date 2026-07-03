@@ -623,6 +623,28 @@ _BUILD_VERB_HINTS = (
     "support",
     "enable",
     "disable",
+    # Common feature-request verbs ("can you show/include/surface X?"). These
+    # keep "can you <verb>" requests on the build path; communication verbs
+    # ("explain", "tell", "describe", "clarify") are deliberately absent so
+    # "can you explain how review works?" stays a question. This list is a
+    # best-effort backstop for the NO-ENGINE path only; when a live engine is
+    # configured the model classifier handles the long tail of phrasing.
+    "show",
+    "display",
+    "include",
+    "surface",
+    "give",
+    "list",
+    "provide",
+    "expose",
+    "render",
+    "toggle",
+    "hide",
+    "sort",
+    "filter",
+    "group",
+    "highlight",
+    "put",
 )
 
 
