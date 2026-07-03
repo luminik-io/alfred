@@ -130,8 +130,9 @@ def _parse_lessons(raw: str | None) -> list[dict[str, Any]]:
         lesson = str(item.get("lesson") or "").strip()
         if not lesson:
             continue
+        raw_confidence = item.get("confidence")
         try:
-            confidence = float(item.get("confidence"))
+            confidence = 0.5 if raw_confidence is None else float(raw_confidence)
         except (TypeError, ValueError):
             confidence = 0.5
         confidence = max(0.0, min(1.0, confidence))

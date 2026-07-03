@@ -325,7 +325,7 @@ class Goal:
         """
         if not isinstance(data, dict):
             raise ValueError("goal.json must be a JSON object")
-        known = set(cls.__dataclass_fields__)  # type: ignore[attr-defined]
+        known = set(cls.__dataclass_fields__)
         payload = {k: v for k, v in data.items() if k in known}
 
         gid = validate_goal_id(payload.get("id", ""))
