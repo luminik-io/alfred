@@ -62,6 +62,22 @@ from agent_runner import (
     worktree_risk_reason,
 )
 from dependencies import issue_dependencies
+from verification_evidence import (
+    DiffStat,
+    EvidenceInputs,
+    PreviewConfig,
+    ScreenshotEvidence,
+    SelfAssessment,
+    TestEvidence,
+    assessment_prompt,
+    build_evidence_block,
+    capture_screenshots,
+    evidence_enabled,
+    extract_acceptance_criteria,
+    load_preview_config,
+    parse_assessment_response,
+    parse_test_summary,
+)
 from workflow_validation import validate_changed_workflows
 
 # Accept `--dry-run` as a CLI flag in addition to ALFRED_DRY_RUN=1. Flip the
@@ -287,10 +303,217 @@ PRE_PUSH = _load_pre_push_config(AGENT)
 TRUSTED_AUTHOR_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 
 
+def _load_preview_config(agent_codename: str) -> dict[str, PreviewConfig]:
+    """Load per-repo screenshot-preview config from the agent TOML.
+
+    TOML format (all keys optional except start_cmd + url to enable it)::
+
+        [preview.your-frontend]
+        start_cmd = "npm run dev"
+        url = "http://localhost:5173"
+        ready_regex = "Local:"
+        route = "/dashboard"
+        # screenshot_cmd is optional; defaults to the documented playwright one
+        screenshot_cmd = "npx --yes playwright screenshot {url} {out}"
+
+    Screenshots are strictly opt-in: a repo with no ``[preview.<repo>]`` table
+    yields a disabled :class:`PreviewConfig`.
+    """
+    cfg_path = ALFRED_HOME / "agents" / f"{agent_codename}.toml"
+    raw: dict = {}
+    if cfg_path.exists():
+        try:
+            data = tomllib.loads(cfg_path.read_text())
+            raw = dict(data.get("preview", {}) or {})
+        except (OSError, tomllib.TOMLDecodeError):
+            raw = {}
+    out: dict[str, PreviewConfig] = {}
+    for repo in LUCIUS_REPOS:
+        out[repo] = load_preview_config(raw.get(repo))
+    return out
+
+
+PREVIEW_CONFIG = _load_preview_config(AGENT)
+
+
 def _refresh_pre_push_config() -> None:
     """Reload inferred pre-push commands after preflight syncs checkouts."""
-    global PRE_PUSH
+    global PRE_PUSH, PREVIEW_CONFIG
     PRE_PUSH = _load_pre_push_config(AGENT)
+    PREVIEW_CONFIG = _load_preview_config(AGENT)
+
+
+def _diff_stat(wt: Path, base_ref: str) -> DiffStat:
+    """Compute a files/lines summary of the branch against its base."""
+    numstat = run(
+        ["git", "diff", "--numstat", f"{base_ref}...HEAD"], cwd=str(wt), timeout=15
+    ).stdout
+    files: list[str] = []
+    insertions = 0
+    deletions = 0
+    for line in numstat.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 3:
+            continue
+        add, delete, name = parts
+        files.append(name.strip())
+        if add.isdigit():
+            insertions += int(add)
+        if delete.isdigit():
+            deletions += int(delete)
+    return DiffStat(
+        files_changed=len(files),
+        insertions=insertions,
+        deletions=deletions,
+        files=tuple(files),
+    )
+
+
+def _test_evidence_from_pre_push(pre_push: PrePushResult | None) -> TestEvidence:
+    """Turn the captured :class:`PrePushResult` into test evidence."""
+    if pre_push is None:
+        return TestEvidence(ran=False, reason="pre-push result not captured")
+    command = (pre_push.command or "").strip()
+    if not command:
+        # No command ran (either none configured, or only lockfile drift check).
+        reason = pre_push.reason or "no pre-push command configured for this repo"
+        return TestEvidence(ran=False, reason=reason)
+    summary = ""
+    if not is_dry_run():
+        summary = parse_test_summary(pre_push.stdout or "", pre_push.stderr or "")
+    return TestEvidence(
+        ran=True,
+        command=command,
+        ok=pre_push.ok,
+        reason=pre_push.reason,
+        summary=summary,
+    )
+
+
+def _build_self_assessment(
+    repo: str,
+    issue: dict,
+    wt: Path,
+    base_ref: str,
+    firing_id: str,
+) -> SelfAssessment:
+    """Ask the engine to assess its own diff against the issue's criteria."""
+    criteria = extract_acceptance_criteria(issue.get("body") or "")
+    if not criteria:
+        return SelfAssessment(produced=True, criteria=())
+    if is_dry_run():
+        return SelfAssessment(
+            produced=False,
+            reason="self-assessment skipped in dry-run",
+            criteria=(),
+        )
+    diff_text = run(["git", "diff", f"{base_ref}...HEAD"], cwd=str(wt), timeout=20).stdout
+    if not diff_text.strip():
+        return SelfAssessment(produced=False, reason="empty diff")
+    prompt = assessment_prompt(diff_text, criteria)
+    try:
+        result, _engine = invoke_agent_engine(
+            prompt,
+            engine=LUCIUS_ENGINE,
+            claude_fn=claude_invoke_streaming,
+            codex_fn=codex_invoke,
+            workdir=wt,
+            claude_allowed_tools="",
+            agent=AGENT,
+            firing_id=f"{firing_id}-selfassess",
+            # No hardcoded turn cap (policy: wall-clock timeout is the only
+            # default ceiling); the call is a single no-tools JSON reply and
+            # the operator can bound it via the env knob.
+            claude_max_turns=optional_env_int("ALFRED_LUCIUS_SELFASSESS_MAX_TURNS", minimum=1),
+            timeout=240,
+            codex_timeout=240,
+            codex_sandbox=codex_sandbox_for_agent(AGENT, default="read-only"),
+        )
+    except Exception as exc:
+        return SelfAssessment(
+            produced=False,
+            reason=f"self-assessment engine call failed: {short(str(exc), 120)}",
+        )
+    return parse_assessment_response(result.result_text or "", criteria)
+
+
+def _capture_screenshot_evidence(repo: str, wt: Path, branch: str, firing_id: str):
+    """Run the opt-in screenshot capture and commit the images on the branch."""
+    config = PREVIEW_CONFIG.get(repo, PreviewConfig())
+    if not config.enabled:
+        return None
+    if is_dry_run():
+        dry_run_log("evidence", f"would capture screenshots for {repo} route={config.route}")
+        return None
+    # Default subprocess seams: the preview server needs a non-blocking
+    # Popen start, which agent_runner's blocking ``run`` cannot provide.
+    shots = capture_screenshots(wt, config, firing_id)
+    if shots.ok and shots.after_path:
+        # Commit the evidence images onto the PR branch so the relative links
+        # in the body resolve. A commit failure downgrades to a reported miss.
+        add = run(["git", "add", "--", shots.after_path], cwd=str(wt), timeout=15)
+        if shots.before_path:
+            run(["git", "add", "--", shots.before_path], cwd=str(wt), timeout=15)
+        commit = run(
+            ["git", "commit", "-m", f"chore(evidence): screenshots for {firing_id}"],
+            cwd=str(wt),
+            timeout=20,
+        )
+        if add.returncode != 0 or commit.returncode != 0:
+            return ScreenshotEvidence(
+                attempted=True,
+                ok=False,
+                reason="captured but failed to commit evidence images",
+                route=config.route,
+            )
+        push = push_current_branch(wt, branch)
+        if push.returncode != 0:
+            return ScreenshotEvidence(
+                attempted=True,
+                ok=False,
+                reason="captured but failed to push evidence commit",
+                route=config.route,
+            )
+    return shots
+
+
+def _verification_evidence_block(
+    repo: str,
+    issue: dict,
+    wt: Path,
+    branch: str,
+    base_ref: str,
+    firing_id: str,
+    pre_push: PrePushResult | None,
+) -> str:
+    """Assemble the full evidence block for the PR body, honestly.
+
+    Returns an empty string when the evidence gate is off so the caller can
+    skip the section entirely.
+    """
+    if not evidence_enabled():
+        return ""
+    try:
+        test = _test_evidence_from_pre_push(pre_push)
+        diff = _diff_stat(wt, base_ref)
+        assessment = _build_self_assessment(repo, issue, wt, base_ref, firing_id)
+        screenshots = _capture_screenshot_evidence(repo, wt, branch, firing_id)
+    except Exception as exc:
+        return build_evidence_block(
+            EvidenceInputs(
+                firing_id=firing_id,
+                notes=[f"evidence generation errored: {short(str(exc), 160)}"],
+            )
+        )
+    return build_evidence_block(
+        EvidenceInputs(
+            test=test,
+            diff=diff,
+            assessment=assessment,
+            screenshots=screenshots,
+            firing_id=firing_id,
+        )
+    )
 
 
 def _strip_auto_seed_marker(text: str) -> str:
@@ -925,12 +1148,20 @@ def _push_or_preserve(
     run_checks: bool = True,
     run_workflow_validation: bool | None = None,
     events: EventLog | None = None,
+    pre_push_out: list[PrePushResult] | None = None,
 ) -> bool:
-    """Push the current branch, preserving local work and releasing for retry on failure."""
+    """Push the current branch, preserving local work and releasing for retry on failure.
+
+    When ``pre_push_out`` is a list, the :class:`PrePushResult` from the check
+    run is appended so the PR-create path can turn it into verification
+    evidence instead of discarding it.
+    """
     if run_workflow_validation is None:
         run_workflow_validation = run_checks
     if run_checks:
         pre_push = run_pre_push_checks(repo, wt)
+        if pre_push_out is not None:
+            pre_push_out.append(pre_push)
         if not pre_push.ok:
             recovery_ref = create_recovery_ref(wt, branch=branch)
             if release_on_failure:
@@ -1418,6 +1649,7 @@ Generated by Alfred
             return 0
 
         # Push + open PR
+        pre_push_holder: list[PrePushResult] = []
         if not _push_or_preserve(
             repo,
             issue_num,
@@ -1426,6 +1658,7 @@ Generated by Alfred
             branch,
             "push-failed",
             events=events,
+            pre_push_out=pre_push_holder,
         ):
             spend.increment(failures_today=1, consecutive_failures=1)
             return 0
@@ -1436,12 +1669,28 @@ Generated by Alfred
             ["git", "log", f"{base_ref}..HEAD", "--format=%B"], cwd=str(wt), timeout=10
         ).stdout.strip()
 
+        # Verification evidence (default-on; screenshots opt-in per repo). This
+        # captures the pre-push check output the runner already produced, a diff
+        # summary, and an engine self-assessment against the issue's acceptance
+        # criteria. Screenshot capture + commit happens before the PR opens so
+        # the relative links resolve on the branch.
+        evidence_block = _verification_evidence_block(
+            repo,
+            issue,
+            wt,
+            branch,
+            base_ref,
+            events.firing_id,
+            pre_push_holder[0] if pre_push_holder else None,
+        )
+        evidence_section = f"\n{evidence_block}\n" if evidence_block else ""
+
         body_file = Path(f"/tmp/{AGENT}-prbody-{issue_num}.md")
         body_file.write_text(f"""## Summary
 {commit_body[:2000]}
 
 {issue_closing_line(issue_num)}
-
+{evidence_section}
 ## Test plan
 - [ ] CI passes (lint, type-check, build, tests)
 - [ ] Reviewer feedback addressed
