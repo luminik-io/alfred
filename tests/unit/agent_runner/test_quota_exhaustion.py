@@ -150,6 +150,27 @@ def test_resume_time_of_day_without_utc_suffix(fresh_agent_runner):
     )
 
 
+def test_month_name_with_time_of_day_is_preserved(fresh_agent_runner):
+    """A month-day hint WITH a time (``Jul 7 at 3pm``) must park until that
+    time, not midnight -- otherwise the backoff expires hours early and the
+    scheduler resumes firing into the still-shut wall."""
+    from agent_runner.result import parse_quota_resume_at
+
+    now = datetime(2026, 7, 3, tzinfo=UTC)
+    assert parse_quota_resume_at("try again at Jul 7 at 3pm", now=now) == "2026-07-07T15:00:00Z"
+    assert parse_quota_resume_at("try again at Jul 7 at 3:05pm", now=now) == "2026-07-07T15:05:00Z"
+    assert parse_quota_resume_at("resets Jul 7 at 15:30", now=now) == "2026-07-07T15:30:00Z"
+    # No time still pins to midnight.
+    assert parse_quota_resume_at("try again at Jul 7", now=now) == "2026-07-07T00:00:00Z"
+
+
+def test_month_name_with_explicit_year_and_time(fresh_agent_runner):
+    from agent_runner.result import parse_quota_resume_at
+
+    now = datetime(2026, 7, 3, tzinfo=UTC)
+    assert parse_quota_resume_at("resets July 7, 2026 at 9am", now=now) == "2026-07-07T09:00:00Z"
+
+
 # --------------------------------------------------------------------------
 # Reliability classification: quota exhaustion is FATAL for the retry loop
 # --------------------------------------------------------------------------

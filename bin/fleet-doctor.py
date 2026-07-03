@@ -493,10 +493,21 @@ def _aws_features_configured() -> bool:
     return False
 
 
+def _configured_aws_profile() -> str:
+    """Resolve the AWS profile Alfred's secret refresh runs under, if any.
+
+    Precedence matches the runtime: an explicit ``AWS_PROFILE`` in the
+    process env, then ``ALFRED_AWS_PROFILE`` (env or ``$ALFRED_HOME/.env``).
+    Empty string means "no named profile; use ambient credentials".
+    """
+    return (config_value("AWS_PROFILE") or config_value("ALFRED_AWS_PROFILE") or "").strip()
+
+
 def check_aws_credentials(
     *,
     runner: Callable[[Sequence[str]], subprocess.CompletedProcess[str]] | None = None,
     features_configured: Callable[[], bool] = _aws_features_configured,
+    profile_resolver: Callable[[], str] = _configured_aws_profile,
 ) -> Finding:
     """Cheap ``sts get-caller-identity`` when AWS-backed features are configured.
 
@@ -504,6 +515,13 @@ def check_aws_credentials(
     went stale for 55h before anyone noticed). A short-timeout STS probe
     catches the expiry as soon as fleet-doctor next runs. Skipped entirely
     (green, informational) when no AWS-backed feature is configured.
+
+    When a named AWS profile is configured (``AWS_PROFILE`` /
+    ``ALFRED_AWS_PROFILE``), the probe targets that profile with ``--profile``
+    so it validates the SAME identity secret refresh uses, not whatever
+    default/inherited credentials happen to be in the ambient env. Otherwise a
+    valid default profile could mask an expired Alfred profile (false green),
+    or vice-versa (false red).
     """
     if not features_configured():
         return Finding("aws-credentials", "green", "no AWS-backed features configured; skipped")
@@ -518,15 +536,20 @@ def check_aws_credentials(
         )
 
     run_it = runner or _default_runner
+    profile = profile_resolver()
     cmd = ["aws", "sts", "get-caller-identity", "--query", "Arn", "--output", "text"]
+    if profile:
+        cmd.extend(["--profile", profile])
+    label = f" (profile {profile})" if profile else ""
     try:
         result = run_it(cmd)
     except subprocess.TimeoutExpired:
         return Finding(
             "aws-credentials",
             "alert",
-            f"🔴 `aws sts get-caller-identity` timed out after {AWS_STS_TIMEOUT_SECONDS}s. "
-            "AWS-backed secret refresh (Slack webhook) may be degraded. Re-auth AWS SSO.",
+            f"🔴 `aws sts get-caller-identity`{label} timed out after "
+            f"{AWS_STS_TIMEOUT_SECONDS}s. AWS-backed secret refresh (Slack webhook) may be "
+            "degraded. Re-auth AWS SSO.",
         )
     except FileNotFoundError:
         return Finding(
@@ -540,10 +563,14 @@ def check_aws_credentials(
         return Finding(
             "aws-credentials",
             "alert",
-            f"🔴 AWS credentials not valid: {detail}. AWS-backed secret refresh (Slack "
-            "webhook) is degraded until re-auth (e.g. `aws sso login`).",
+            f"🔴 AWS credentials not valid{label}: {detail}. AWS-backed secret refresh "
+            "(Slack webhook) is degraded until re-auth (e.g. `aws sso login`).",
         )
-    return Finding("aws-credentials", "green", "AWS credentials valid (sts get-caller-identity ok)")
+    return Finding(
+        "aws-credentials",
+        "green",
+        f"AWS credentials valid{label} (sts get-caller-identity ok)",
+    )
 
 
 def check_webhook_cache_age(

@@ -152,6 +152,43 @@ def test_aws_credentials_alert_on_timeout():
     assert "timed out" in finding.message
 
 
+def test_aws_credentials_probes_configured_profile():
+    """When a named profile is configured, the STS probe targets it with
+    --profile so it validates the identity secret refresh actually uses."""
+    fd = _load_doctor()
+    seen: list[list[str]] = []
+
+    def runner(cmd):
+        seen.append(list(cmd))
+        return _proc(0, stdout="arn:aws:iam::123:user/alfred")
+
+    finding = fd.check_aws_credentials(
+        features_configured=lambda: True,
+        profile_resolver=lambda: "alfred-secrets",
+        runner=runner,
+    )
+    assert finding.severity == "green"
+    assert seen and "--profile" in seen[0]
+    assert seen[0][seen[0].index("--profile") + 1] == "alfred-secrets"
+    assert "alfred-secrets" in finding.message
+
+
+def test_aws_credentials_no_profile_flag_when_unset():
+    fd = _load_doctor()
+    seen: list[list[str]] = []
+
+    def runner(cmd):
+        seen.append(list(cmd))
+        return _proc(0, stdout="arn:aws:iam::123:role/default")
+
+    fd.check_aws_credentials(
+        features_configured=lambda: True,
+        profile_resolver=lambda: "",
+        runner=runner,
+    )
+    assert seen and "--profile" not in seen[0]
+
+
 # --------------------------------------------------------------------------
 # check_webhook_cache_age (item 3)
 # --------------------------------------------------------------------------

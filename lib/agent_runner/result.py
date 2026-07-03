@@ -173,6 +173,12 @@ _QUOTA_RESUME_REL_RE = re.compile(
     r"try again in\s+(?P<n>\d+)\s+(?P<unit>second|minute|hour|day|week)s?",
     re.IGNORECASE,
 )
+# A bare clock string: ``3pm``, ``3:05pm``, ``15:30``. Anchored at the start of
+# the captured time-of-day fragment so "3pm" and "3:05 pm" both parse.
+_CLOCK_RE = re.compile(
+    r"^\s*(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>am|pm)?",
+    re.IGNORECASE,
+)
 
 # Month abbreviations Codex emits in a bare ``Jul 7`` resume hint.
 _MONTHS: dict[str, int] = {
@@ -299,7 +305,7 @@ def _parse_resume_when(raw: str, *, now: datetime) -> datetime | None:
             continue
 
     # Bare month-name form: "Jul 7", "July 7, 2026", "Jul 7 at 3pm".
-    body, _, _timepart = text.partition(" at ")
+    body, _, timepart = text.partition(" at ")
     tokens = body.replace(",", " ").split()
     if len(tokens) >= 2:
         month = _MONTHS.get(tokens[0][:3].lower())
@@ -309,8 +315,14 @@ def _parse_resume_when(raw: str, *, now: datetime) -> datetime | None:
             day = 0
         if month and 1 <= day <= 31:
             year = int(tokens[2]) if len(tokens) >= 3 and tokens[2].isdigit() else now.year
+            # Carry the captured time-of-day through instead of discarding it:
+            # "Jul 7 at 3pm" must park until 15:00, not midnight, or the backoff
+            # expires hours before the real reset and the scheduler resumes
+            # firing into the still-shut wall. Falls back to 00:00 when no time
+            # was given.
+            hour, minute = _parse_clock(timepart)
             try:
-                candidate = datetime(year, month, day, tzinfo=UTC)
+                candidate = datetime(year, month, day, hour, minute, tzinfo=UTC)
             except ValueError:
                 return None
             # No explicit year and the date already passed this year -> next year.
@@ -318,6 +330,30 @@ def _parse_resume_when(raw: str, *, now: datetime) -> datetime | None:
                 return candidate.replace(year=candidate.year + 1)
             return candidate
     return None
+
+
+def _parse_clock(raw: str) -> tuple[int, int]:
+    """Parse a bare clock string (``3pm``, ``15:30``, ``3:05pm``) to (hour, minute).
+
+    Returns ``(0, 0)`` when the string is empty or unparseable, so a
+    date-only hint pins to midnight. 12-hour am/pm is normalized to 24-hour.
+    """
+    match = _CLOCK_RE.search(raw or "")
+    if match is None:
+        return (0, 0)
+    try:
+        hour = int(match.group("hour"))
+    except (TypeError, ValueError):
+        return (0, 0)
+    minute = int(match.group("minute")) if match.group("minute") else 0
+    ampm = (match.group("ampm") or "").lower()
+    if ampm == "pm" and hour != 12:
+        hour += 12
+    elif ampm == "am" and hour == 12:
+        hour = 0
+    if not (0 <= hour <= 23) or not (0 <= minute <= 59):
+        return (0, 0)
+    return (hour, minute)
 
 
 _RATE_LIMIT_RESULT_RE = re.compile(
