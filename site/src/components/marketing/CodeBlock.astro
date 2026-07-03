@@ -70,8 +70,9 @@ const { title, lines } = Astro.props;
     align-items: center;
     gap: 12px;
     padding: 10px 16px;
-    background: var(--alfred-surface-2);
-    border-bottom: 1px solid var(--alfred-border);
+    /* Translucent head bar so the glass figure reads as one pane. */
+    background: color-mix(in oklab, var(--glass-solid) 55%, transparent);
+    border-bottom: 1px solid var(--glass-edge);
     /* Allow the head children to shrink below their intrinsic min-content
        so a long unbreakable title (e.g. "your-platform#812
        (agent:large-feature)") truncates instead of stretching the figure

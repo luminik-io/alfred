@@ -60,7 +60,7 @@ const fmt = (n: number) => n.toLocaleString("en-US");
     gap: 28px;
     padding: 28px;
     border: 1px solid var(--alfred-border-strong);
-    border-radius: var(--radius);
+    border-radius: 0;
     background: var(--alfred-surface);
   }
   .trend-panel__head {
@@ -87,7 +87,7 @@ const fmt = (n: number) => n.toLocaleString("en-US");
     display: grid;
     grid-template-rows: minmax(0, 1fr) 20px;
     gap: 12px;
-    border-radius: var(--radius);
+    border-radius: 0;
     outline: none;
     transform: translateY(0);
     transition: transform 180ms ease;
@@ -115,7 +115,7 @@ const fmt = (n: number) => n.toLocaleString("en-US");
     min-height: 10px;
     height: min(var(--h), calc(100% - 40px));
     flex: 0 0 auto;
-    border-radius: 8px 8px 3px 3px;
+    border-radius: 0;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 35%),
       linear-gradient(180deg, var(--alfred-accent), rgba(0, 229, 199, 0.24));
@@ -144,7 +144,7 @@ const fmt = (n: number) => n.toLocaleString("en-US");
     min-width: max-content;
     padding: 9px 10px;
     border: 1px solid var(--alfred-border-strong);
-    border-radius: 6px;
+    border-radius: 0;
     background: color-mix(in oklab, var(--alfred-surface-2) 92%, transparent);
     color: var(--alfred-text);
     font-size: 12px;

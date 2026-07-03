@@ -68,7 +68,7 @@ Headings always use display font. Body and mono never mixed within a sentence.
 ## Layout
 
 - Max content width 1180px, gutters 32px on tablet+, 20px on mobile.
-- Card radius 8px (sharp, not pill).
+- Card radius 0. Sharp corners everywhere: cards, panels, buttons, inputs, nav, code blocks. Hard edges + glass + luminous accents are the brand.
 - Border `1px solid var(--alfred-border-strong)`.
 - Hover state: lift to `--alfred-surface-2`, no scale transform.
 - 8px grid spacing, with prominent multipliers at 16, 24, 32, 48, 64, 96, 128.

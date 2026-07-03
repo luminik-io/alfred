@@ -183,7 +183,7 @@ nav.sidebar .sidebar-content {
 mobile-starlight-toc nav {
   background: var(--alfred-bg-elevated);
   border: 1px solid var(--alfred-border);
-  border-radius: 0.5rem;
+  border-radius: 0;
   padding: 0.75rem;
 }
 
@@ -257,7 +257,7 @@ mobile-starlight-toc nav {
 .expressive-code .frame pre {
   background: var(--alfred-bg-code);
   border: 1px solid var(--alfred-border);
-  border-radius: 0.5rem;
+  border-radius: 0;
 }
 
 .expressive-code .frame.has-title:not(.is-terminal) .header,
@@ -307,7 +307,7 @@ mobile-starlight-toc nav {
 /* ------------------------------------------------------------------ */
 .sl-markdown-content pre.mermaid {
   border: 1px solid var(--alfred-border);
-  border-radius: 0.5rem;
+  border-radius: 0;
   padding: 1rem;
   max-width: 100%;
   overflow-x: auto;
@@ -369,7 +369,7 @@ mobile-starlight-toc nav {
   padding: 1.25rem;
   background: var(--alfred-bg-elevated);
   border: 1px solid var(--alfred-border-strong);
-  border-radius: 0.5rem;
+  border-radius: 0;
 }
 
 .mermaid-zoom-hint {
@@ -382,7 +382,7 @@ mobile-starlight-toc nav {
   color: var(--sl-color-gray-3);
   background: color-mix(in srgb, var(--sl-color-bg-nav) 85%, transparent);
   border: 1px solid var(--alfred-border);
-  border-radius: 999px;
+  border-radius: 0;
   pointer-events: none;
 }
 
@@ -491,7 +491,7 @@ mobile-starlight-toc nav {
   border-left: 3px solid var(--sl-color-accent);
   padding: 0.6rem 1rem;
   background: var(--alfred-bg-elevated);
-  border-radius: 0 4px 4px 0;
+  border-radius: 0;
   margin: 1rem 0;
 }
 

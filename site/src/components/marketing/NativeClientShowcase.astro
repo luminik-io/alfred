@@ -202,7 +202,7 @@ const stateLabel: Record<Agent["state"], string> = {
     border-bottom: 1px solid var(--alfred-border);
   }
   .ncs__lights { display: inline-flex; gap: 7px; }
-  .ncs__light { width: 11px; height: 11px; border-radius: 999px; display: block; }
+  .ncs__light { width: 11px; height: 11px; border-radius: 0; display: block; }
   .ncs__light--r { background: var(--alfred-error); opacity: 0.85; }
   .ncs__light--y { background: var(--alfred-warn); opacity: 0.85; }
   .ncs__light--g { background: var(--alfred-accent); opacity: 0.85; }
@@ -230,7 +230,7 @@ const stateLabel: Record<Agent["state"], string> = {
     align-items: center;
     gap: 11px;
     padding: 8px 10px;
-    border-radius: 6px;
+    border-radius: 0;
     font-family: var(--font-body);
     font-size: 14px;
     font-weight: 600;
@@ -302,7 +302,7 @@ const stateLabel: Record<Agent["state"], string> = {
     gap: 6px;
     min-width: 0;
     border: 1px solid var(--alfred-border-strong);
-    border-radius: 7px;
+    border-radius: 0;
     background: var(--alfred-surface);
     color: var(--alfred-mute);
     font-family: var(--font-mono);
@@ -314,7 +314,7 @@ const stateLabel: Record<Agent["state"], string> = {
   .ncs__step-dot {
     width: 7px;
     height: 7px;
-    border-radius: 999px;
+    border-radius: 0;
     background: var(--alfred-border-strong);
     flex: none;
   }
@@ -333,7 +333,7 @@ const stateLabel: Record<Agent["state"], string> = {
   }
   .cap {
     border: 1px solid var(--alfred-border-strong);
-    border-radius: 7px;
+    border-radius: 0;
     padding: 13px 14px;
     background: var(--alfred-surface);
   }
@@ -344,14 +344,14 @@ const stateLabel: Record<Agent["state"], string> = {
   .cap__bar {
     margin: 11px 0 7px;
     height: 6px;
-    border-radius: 999px;
+    border-radius: 0;
     background: var(--alfred-border);
     overflow: hidden;
   }
   .cap__fill {
     display: block;
     height: 100%;
-    border-radius: 999px;
+    border-radius: 0;
     background: linear-gradient(90deg, var(--alfred-accent), #5BF5DF);
     transform-origin: left center;
     transform: scaleX(0);
@@ -390,7 +390,7 @@ const stateLabel: Record<Agent["state"], string> = {
     gap: 11px;
     padding: 12px 13px;
     border: 1px solid var(--alfred-border-strong);
-    border-radius: 7px;
+    border-radius: 0;
     background: var(--alfred-surface);
     overflow: hidden;
     transition: border-color 200ms ease, transform 200ms ease, box-shadow 200ms ease;
@@ -414,7 +414,7 @@ const stateLabel: Record<Agent["state"], string> = {
     flex: none;
     width: 32px;
     height: 32px;
-    border-radius: 7px;
+    border-radius: 0;
     display: grid;
     place-items: center;
     font-family: var(--font-display);
@@ -456,7 +456,7 @@ const stateLabel: Record<Agent["state"], string> = {
   /* ===== ask intake ===== */
   .ask {
     border: 1px solid var(--alfred-border-strong);
-    border-radius: 8px;
+    border-radius: 0;
     background: var(--alfred-surface);
     padding: 15px 16px 14px;
     box-shadow: inset 0 0 0 1px rgba(0, 229, 199, 0.04);
@@ -473,7 +473,7 @@ const stateLabel: Record<Agent["state"], string> = {
     gap: 2px;
     padding: 12px 14px;
     border: 1px solid var(--alfred-border);
-    border-radius: 6px;
+    border-radius: 0;
     background: var(--alfred-black);
     min-height: 58px;
   }
@@ -484,7 +484,7 @@ const stateLabel: Record<Agent["state"], string> = {
     color: var(--alfred-text-bright);
     background: var(--alfred-surface-2);
     border: 1px solid var(--alfred-border-strong);
-    border-radius: 4px;
+    border-radius: 0;
     padding: 0 5px;
   }
   .ask__cursor {
@@ -518,7 +518,7 @@ const stateLabel: Record<Agent["state"], string> = {
     align-items: center;
     gap: 6px;
     padding: 4px 10px;
-    border-radius: 999px;
+    border-radius: 0;
     border: 1px solid var(--alfred-border-strong);
     background: var(--alfred-surface-2);
     color: var(--alfred-text);
@@ -547,7 +547,7 @@ const stateLabel: Record<Agent["state"], string> = {
     color: var(--alfred-text-bright);
     background: var(--alfred-black);
     padding: 1px 6px;
-    border-radius: 4px;
+    border-radius: 0;
     font-family: var(--font-mono);
     font-size: 12px;
   }

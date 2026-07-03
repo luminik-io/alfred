@@ -29,7 +29,7 @@
   background: var(--sl-color-bg-nav, var(--alfred-surface-2, #161d2a));
   color: var(--sl-color-text, var(--alfred-text, #c5d0e0));
   border: 1px solid var(--alfred-border, #1f2937);
-  border-radius: 10px;
+  border-radius: 0;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
   -webkit-backdrop-filter: blur(14px) saturate(1.15);
   backdrop-filter: blur(14px) saturate(1.15);
@@ -80,7 +80,7 @@
   font: inherit;
   font-weight: 600;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 0;
   cursor: pointer;
 }
 

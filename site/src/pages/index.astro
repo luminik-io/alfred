@@ -150,8 +150,8 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
 >
   <Hero
     eyebrow="AUTONOMOUS CODING AGENTS"
-    headline="Coding agents that keep shipping while you are away."
-    sub="Alfred is a team of coding agents that works from a spec, a Slack message, or a GitHub issue and turns it into a reviewed pull request. It autonomously plans the work, writes the code, opens the PR, and reviews it, on the Claude and Codex subscriptions you already pay for."
+    headline="An engineering team that remembers, and keeps shipping while you are away."
+    sub="Alfred turns a spec, a Slack message, or a GitHub issue into a reviewed pull request. It plans, writes, opens the PR, reviews it, and remembers every run, on the Claude and Codex subscriptions you already pay for."
     primaryCta={{ label: "Download", href: "/download/", data: { "data-download-os": "other", "data-download-source": "home-hero", "data-download-kind": "intent" } }}
     secondaryCta={{ label: "Install", href: "/getting-started/install/" }}
     tertiaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
@@ -556,7 +556,7 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
     content: "";
     width: 12px;
     height: 12px;
-    border-radius: 999px;
+    border-radius: 0;
     background: var(--alfred-surface);
     border: 2px solid var(--alfred-accent);
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--alfred-accent) 12%, transparent);
@@ -573,7 +573,7 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
     min-height: 32px;
     padding: 6px 10px;
     border: 1px solid var(--alfred-border);
-    border-radius: 999px;
+    border-radius: 0;
     color: var(--alfred-text);
     font-size: 12px;
     line-height: 1.2;
@@ -695,7 +695,7 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
   .steps__item {
     background: var(--alfred-surface);
     border: 1px solid var(--alfred-border-strong);
-    border-radius: var(--radius);
+    border-radius: 0;
     padding: 22px;
     position: relative;
   }
@@ -711,9 +711,9 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
     font-size: 12px;
     line-height: 1.5;
     color: var(--alfred-mute);
-    background: var(--alfred-black);
-    border: 1px solid var(--alfred-border);
-    border-radius: 6px;
+    background: color-mix(in oklab, var(--alfred-black) 55%, transparent);
+    border: 1px solid var(--glass-edge);
+    border-radius: 0;
     padding: 10px 12px;
     overflow-x: auto;
     white-space: pre-wrap;
