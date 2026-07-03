@@ -30,7 +30,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from .config import _truthy_env
@@ -107,6 +107,145 @@ _BUDGET_RESULT_RE = re.compile(
     r"|\bout of extra usage\b",
     re.IGNORECASE,
 )
+
+# Hard credit / plan-quota exhaustion, distinct from a transient rate limit.
+# Codex prints ``You've hit your usage limit.`` on a hard wall and usually
+# appends a resume date (``try again at Jul 7``, ``resets on 2026-07-07``,
+# ``try again in 3 days``). This is NOT a 429 that clears on a short backoff:
+# it is a spent budget that only refills at the named time. We classify it as
+# its own ``error_quota_exhausted`` subtype so the scheduler can park that
+# engine until the resume instant instead of burning firings retrying it, and
+# so ``alfred usage`` can report the honest wall instead of the optimistic
+# local-cache number.
+_QUOTA_EXHAUSTED_RESULT_RE = re.compile(
+    r"\byou(?:'ve| have) hit your usage limit\b"
+    r"|\byou(?:'re| are) out of (?:extra )?usage\b"
+    r"|\busage limit reached\b"
+    r"|\bplan (?:limit|quota) (?:reached|exhausted)\b",
+    re.IGNORECASE,
+)
+
+# Resume-instant extraction from the exhaustion message. Ordered most specific
+# first. ``try again at <when>`` / ``resets (on|at) <when>`` capture an
+# absolute date or datetime; ``try again in <N> <unit>`` captures a relative
+# offset. The parser below turns whichever matched into a UTC ISO instant.
+_QUOTA_RESUME_ABS_RE = re.compile(
+    r"(?:try again (?:at|on)|resets?(?:\s+(?:at|on))?|available again(?:\s+(?:at|on))?)\s+"
+    r"(?P<when>[A-Z][a-z]{2,8}\.?\s+\d{1,2}(?:,?\s+\d{4})?(?:\s+at\s+[\d:apm ]+)?"
+    r"|\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?)?)",
+    re.IGNORECASE,
+)
+_QUOTA_RESUME_REL_RE = re.compile(
+    r"try again in\s+(?P<n>\d+)\s+(?P<unit>second|minute|hour|day|week)s?",
+    re.IGNORECASE,
+)
+
+# Month abbreviations Codex emits in a bare ``Jul 7`` resume hint.
+_MONTHS: dict[str, int] = {
+    "jan": 1,
+    "feb": 2,
+    "mar": 3,
+    "apr": 4,
+    "may": 5,
+    "jun": 6,
+    "jul": 7,
+    "aug": 8,
+    "sep": 9,
+    "oct": 10,
+    "nov": 11,
+    "dec": 12,
+}
+_REL_UNIT_SECONDS: dict[str, int] = {
+    "second": 1,
+    "minute": 60,
+    "hour": 3600,
+    "day": 86_400,
+    "week": 604_800,
+}
+
+
+def looks_quota_exhausted(text: str) -> bool:
+    """True when ``text`` carries a hard plan/credit-exhaustion wall.
+
+    Distinct from a transient 429 rate limit: this is a spent budget that
+    only refills at a named resume instant, so the same engine will keep
+    failing until then. Callers use it to skip the engine, not retry it.
+    """
+    return bool(_QUOTA_EXHAUSTED_RESULT_RE.search(text or ""))
+
+
+def parse_quota_resume_at(text: str, *, now: datetime | None = None) -> str | None:
+    """Best-effort extraction of the resume instant from an exhaustion message.
+
+    Returns a ``YYYY-MM-DDTHH:MM:SSZ`` UTC string, or ``None`` when no resume
+    hint is present or parseable. Handles the three shapes Codex emits:
+
+    * absolute date ``try again at Jul 7`` (year inferred as the next
+      occurrence at/after ``now``),
+    * ISO ``resets on 2026-07-07`` / ``2026-07-07T15:00``,
+    * relative ``try again in 3 days``.
+
+    A bare date with no time-of-day is pinned to 00:00 UTC of that day. The
+    scheduler treats the instant as a floor, so erring slightly early only
+    costs one wasted probe, never a stuck engine.
+    """
+    moment = now or datetime.now(UTC)
+    haystack = text or ""
+
+    rel = _QUOTA_RESUME_REL_RE.search(haystack)
+    if rel:
+        try:
+            count = int(rel.group("n"))
+        except ValueError:
+            count = 0
+        unit_seconds = _REL_UNIT_SECONDS.get(rel.group("unit").lower(), 0)
+        if count > 0 and unit_seconds:
+            resume = moment + timedelta(seconds=count * unit_seconds)
+            return resume.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    abs_match = _QUOTA_RESUME_ABS_RE.search(haystack)
+    if abs_match:
+        parsed = _parse_resume_when(abs_match.group("when"), now=moment)
+        if parsed is not None:
+            return parsed.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return None
+
+
+def _parse_resume_when(raw: str, *, now: datetime) -> datetime | None:
+    """Parse one resume ``when`` token into a UTC-aware datetime, or None."""
+    text = " ".join(raw.split()).strip()
+    if not text:
+        return None
+
+    # ISO forms first: 2026-07-07, 2026-07-07T15:00, 2026-07-07 15:00:00.
+    iso = text.replace(" ", "T", 1) if " " in text and text[:4].isdigit() else text
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(iso, fmt).replace(tzinfo=UTC)
+        except ValueError:
+            continue
+
+    # Bare month-name form: "Jul 7", "July 7, 2026", "Jul 7 at 3pm".
+    body, _, _timepart = text.partition(" at ")
+    tokens = body.replace(",", " ").split()
+    if len(tokens) >= 2:
+        month = _MONTHS.get(tokens[0][:3].lower())
+        try:
+            day = int(tokens[1])
+        except ValueError:
+            day = 0
+        if month and 1 <= day <= 31:
+            year = int(tokens[2]) if len(tokens) >= 3 and tokens[2].isdigit() else now.year
+            try:
+                candidate = datetime(year, month, day, tzinfo=UTC)
+            except ValueError:
+                return None
+            # No explicit year and the date already passed this year -> next year.
+            if len(tokens) < 3 and candidate < now - timedelta(days=1):
+                return candidate.replace(year=candidate.year + 1)
+            return candidate
+    return None
+
 
 _RATE_LIMIT_RESULT_RE = re.compile(
     r"\brate[_ -]?limit(?:ed|_exceeded| exceeded)?\b"

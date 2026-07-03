@@ -305,3 +305,70 @@ def test_decode_env_value_agrees_with_bash_loader(token: str, tmp_path: Path) ->
     bash_value = proc.stdout.split("TOKEN[", 1)[1].rsplit("]", 1)[0]
     assert bash_value == token
     assert decode_env_value(shlex.quote(token)) == bash_value
+
+
+# --------------------------------------------------------------------------
+# Deep headless-auth probe (scrubbed env, mimics launchd `env -i`)
+# --------------------------------------------------------------------------
+
+
+def test_deep_probe_scrubbed_env_drops_interactive_only_token(tmp_path) -> None:
+    """A token that lives ONLY in the interactive env (not in .env) is
+    invisible to the scrubbed launchd-like env, so the probe reports the
+    silent-401 gap that a scheduled firing would hit."""
+    import io
+
+    from agent_runner.lifecycle_doctor import run_deep_auth_probe
+
+    home = tmp_path / "alfred"
+    home.mkdir(parents=True)
+    (home / ".env").write_text("WORKSPACE_ROOT=/tmp/ws\n")  # no OAuth token persisted
+
+    stream = io.StringIO()
+
+    def must_not_run(*_a, **_kw):  # pragma: no cover - probe should not reach claude
+        raise AssertionError("claude -p must not run without a token")
+
+    rc = run_deep_auth_probe(
+        env={
+            "ALFRED_HOME": str(home),
+            "HOME": str(tmp_path),
+            "PATH": os.environ.get("PATH", ""),
+            # Interactive-only token: present in the base env but NOT in .env.
+            "CLAUDE_CODE_OAUTH_TOKEN": "interactive-only-token",
+        },
+        command_runner=must_not_run,
+        stream=stream,
+    )
+    out = stream.getvalue()
+    assert rc == 1
+    assert "no" in out  # "reachable ... : no"
+    assert "setup-token" in out
+
+
+def test_deep_probe_passes_when_token_in_env_file(tmp_path) -> None:
+    """A token persisted to $ALFRED_HOME/.env survives the scrub and the
+    headless probe succeeds."""
+    import io
+
+    from agent_runner.lifecycle_doctor import run_deep_auth_probe
+
+    home = tmp_path / "alfred"
+    home.mkdir(parents=True)
+    (home / ".env").write_text("CLAUDE_CODE_OAUTH_TOKEN=persisted-token\n")
+
+    seen_env: dict[str, str] = {}
+
+    def capture(cmd, *, input_text, timeout_s, env):
+        seen_env.update(env)
+        return subprocess.CompletedProcess(list(cmd), 0, stdout="hi\n", stderr="")
+
+    stream = io.StringIO()
+    rc = run_deep_auth_probe(
+        env={"ALFRED_HOME": str(home), "HOME": str(tmp_path), "PATH": os.environ.get("PATH", "")},
+        command_runner=capture,
+        stream=stream,
+    )
+    assert rc == 0
+    # The probe saw the token that was overlaid from .env.
+    assert seen_env.get("CLAUDE_CODE_OAUTH_TOKEN") == "persisted-token"

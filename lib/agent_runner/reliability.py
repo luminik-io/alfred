@@ -124,6 +124,13 @@ _SUBTYPE_CLASS: dict[str, FailureClass] = {
     # engine's retry loop) and the existing global-block path handles the
     # fleet pause.
     "error_budget": FailureClass.FATAL,
+    # Plan/credit exhaustion (the codex "hit your usage limit ... try again
+    # at <date>" wall). A hard budget wall that only refills at a named
+    # resume instant: retrying the SAME engine before then just re-hits it,
+    # so it is FATAL for this engine's retry loop. The scheduler skip
+    # (engine_quota_backoff) is what actually parks the engine until resume;
+    # here we only make sure the transient retry loop never touches it.
+    "error_quota_exhausted": FailureClass.FATAL,
     # The engine ran but gave us nothing usable. Different engine, please.
     "error_max_turns": FailureClass.CAPABILITY,
     "parse-failed": FailureClass.CAPABILITY,

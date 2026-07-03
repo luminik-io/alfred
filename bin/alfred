@@ -1935,6 +1935,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         cmd.append("--dev")
     if args.lifecycle:
         cmd.append("--lifecycle")
+    if getattr(args, "deep", False):
+        cmd.append("--deep")
     return subprocess.run(cmd, check=False).returncode
 
 
@@ -2709,6 +2711,11 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
         "--lifecycle",
         action="store_true",
         help="run only the Batman lifecycle-path doctor",
+    )
+    p_doctor.add_argument(
+        "--deep",
+        action="store_true",
+        help="run only the scrubbed-env headless Claude auth probe (mimics launchd)",
     )
     p_doctor.set_defaults(func=cmd_doctor)
 
