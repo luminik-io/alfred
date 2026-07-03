@@ -114,6 +114,30 @@ def test_heuristic_classifies_build_request_as_build() -> None:
     assert intent == cc.INTENT_BUILD
 
 
+def test_no_engine_classifier_keeps_list_status_questions_conversational() -> None:
+    # "list"/"give"/"provide" lean informational: a modal status question routed
+    # through the no-engine Ask fallback must not be misread as build work and
+    # persist a plan card (regression: these verbs were build hints).
+    for message in (
+        "Can you list the currently live agents?",
+        "Could you give me the status of the fleet?",
+        "Can you provide an overview of what shipped today?",
+    ):
+        assert (
+            cc.classify_message_intent(message, draft=_empty_draft())
+            == cc.INTENT_CONVERSATION
+        ), message
+    # A genuine build request phrased the same way still routes to build.
+    assert (
+        cc.classify_message_intent("Can you add a dark mode toggle?", draft=_empty_draft())
+        == cc.INTENT_BUILD
+    )
+    assert (
+        cc.classify_message_intent("Can you show paused agents in the roster?", draft=_empty_draft())
+        == cc.INTENT_BUILD
+    )
+
+
 def test_heuristic_keeps_build_when_a_draft_already_has_content() -> None:
     # A "thanks" mid-build must not flip an in-progress spec to conversation and
     # wipe the plan; existing draft content forces build.
