@@ -24,6 +24,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`AGENTS.md`](AGENTS.md): default agent roles, stable runtime codenames, and custom display-name themes.
 - [`BATMAN.md`](BATMAN.md): the architect agent for features spanning more than one repo. It reads a parent issue, drafts the rollout for operator approval, and files scoped child issues across the named repos.
 - [`STATE_MACHINE.md`](STATE_MACHINE.md): issue claim lifecycle and stale-claim recovery.
+- [`VERIFICATION.md`](VERIFICATION.md): the `## Verification evidence` block on every agent PR. Test-check summary, diff summary, engine self-assessment against the issue's acceptance criteria, and optional opt-in before/after screenshots, with an honest "not captured" for anything that could not run.
 - [`STATE_AND_MEMORY.md`](STATE_AND_MEMORY.md): what Alfred remembers between firings, where every state file lives, and the local fleet-brain memory layer.
 - [`FLEET_BRAIN.md`](FLEET_BRAIN.md): local memory schema, reviewable lesson candidates, failure history, CLI, and read-only MCP bridge.
 - [`CODE_MEMORY.md`](CODE_MEMORY.md): the code-structure memory layer. codebase-memory-mcp indexes in-scope repos into a code graph and answers read-only symbol, caller, and ownership queries the fleet can call on demand.

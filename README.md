@@ -174,6 +174,14 @@ or Codex implements -> a PR opens with `agent:authored` -> Ra's al Ghul reviews
 -> Nightwing fixes P0/P1 comments -> Bane adds tests -> Automerge lands the small
 safe PRs you allow -> Slack reports what changed.
 
+Every agent PR carries a `## Verification evidence` block so a non-author can
+check the work at a glance: the pre-push check summary the runner already ran,
+a diff summary, the issue's acceptance criteria restated with the engine's
+self-assessment of its own diff, and optional before/after screenshots for UI
+work. Evidence that could not be generated says so rather than being omitted.
+This is on by default (`ALFRED_PR_EVIDENCE=1`); screenshots are opt-in per repo.
+See [`docs/VERIFICATION.md`](docs/VERIFICATION.md).
+
 Multi-repo flow is public OSS code, not an internal-only path. The default
 full fleet includes Batman as the cross-repo architect. Batman owns
 `agent:large-feature`: one parent issue in `BATMAN_PARENT_REPO` can become an
