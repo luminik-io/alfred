@@ -1,0 +1,109 @@
+# Curated skill packs for the alfred-os fleet.
+#
+# Each [[pack]] describes one installable skill bundle: where it comes from, its
+# license, how it installs, and which agent roles get it by default. The
+# `alfred skills` CLI reads this manifest.
+#
+# install = "vendored"  -> the skill is copied into this repo under `skills/vendored/<path>`.
+#                          Install copies it to the Claude Code skills dir. No network.
+# install = "fetch"     -> the skill is NOT in this repo. Install runs `fetch_cmd`
+#                          to pull it from `source` at install time (network required).
+#
+# roles are the agent codenames' role identifiers (feature-dev, pr-review,
+# bug-triage, test-coverage, review-fix, deploy-monitor, e2e-smoke). A role in
+# `roles` means the pack is recommended-by-default for that role. The CLI never
+# auto-installs; roles drive documentation and `--role` filtering only.
+
+schema_version = 1
+
+# --------------------------------------------------------------------------
+# Vendored packs (MIT, copied into this repo with attribution intact)
+# --------------------------------------------------------------------------
+
+[[pack]]
+name = "code-review-and-quality"
+summary = "Multi-axis code review: correctness, edge cases, type safety, coverage."
+source = "https://github.com/addyosmani/agent-skills"
+ref = "skills/code-review-and-quality"
+license = "MIT"
+attribution = "Copyright (c) 2025 Addy Osmani"
+install = "vendored"
+vendored_path = "code-review-and-quality"
+roles = ["pr-review", "feature-dev", "review-fix"]
+
+[[pack]]
+name = "security-and-hardening"
+summary = "Security lens for auth, IAM, session, and untrusted-input paths."
+source = "https://github.com/addyosmani/agent-skills"
+ref = "skills/security-and-hardening"
+license = "MIT"
+attribution = "Copyright (c) 2025 Addy Osmani"
+install = "vendored"
+vendored_path = "security-and-hardening"
+roles = ["pr-review", "feature-dev"]
+
+[[pack]]
+name = "frontend-ui-engineering"
+summary = "Component patterns, state, and layout guidance for production UIs."
+source = "https://github.com/addyosmani/agent-skills"
+ref = "skills/frontend-ui-engineering"
+license = "MIT"
+attribution = "Copyright (c) 2025 Addy Osmani"
+install = "vendored"
+vendored_path = "frontend-ui-engineering"
+roles = ["feature-dev"]
+
+[[pack]]
+name = "debugging-and-error-recovery"
+summary = "Systematic root-cause debugging when tests fail or behavior drifts."
+source = "https://github.com/addyosmani/agent-skills"
+ref = "skills/debugging-and-error-recovery"
+license = "MIT"
+attribution = "Copyright (c) 2025 Addy Osmani"
+install = "vendored"
+vendored_path = "debugging-and-error-recovery"
+roles = ["bug-triage", "deploy-monitor"]
+
+[[pack]]
+name = "vercel-react-best-practices"
+summary = "React and Next.js performance patterns from Vercel Engineering (70 rules)."
+source = "https://github.com/vercel-labs/agent-skills"
+ref = "skills/react-best-practices"
+license = "MIT"
+attribution = "Copyright (c) Vercel, Inc. (declared in README + SKILL.md; no upstream LICENSE file)"
+install = "vendored"
+vendored_path = "vercel-react-best-practices"
+roles = ["feature-dev"]
+
+# --------------------------------------------------------------------------
+# Reference-install packs (fetched from source at install time)
+# --------------------------------------------------------------------------
+
+[[pack]]
+name = "gstack"
+summary = "CLI-first headless-browser QA, review, and ship skills (installs a directory of subskills)."
+source = "https://github.com/garrytan/gstack"
+ref = "main"
+license = "MIT"
+attribution = "Copyright (c) 2026 Garry Tan"
+install = "fetch"
+# gstack ships its own setup that clones into the skills dir and symlinks each
+# subskill up to a top-level name. {skills_dir} is expanded by the CLI.
+fetch_cmd = "git clone --depth 1 https://github.com/garrytan/gstack.git {skills_dir}/gstack && cd {skills_dir}/gstack && ./setup"
+reference_reason = "Large interdependent skill set plus a Bun/TypeScript browse daemon; upstream setup handles platform-specific symlinking."
+roles = ["e2e-smoke", "pr-review", "bug-triage"]
+
+[[pack]]
+name = "headroom"
+summary = "Opt-in token/context compression (Apache-2.0). Reference-install; see docs/SKILLS.md."
+source = "https://github.com/headroomlabs-ai/headroom"
+ref = "main"
+license = "Apache-2.0"
+attribution = "Copyright 2025 Headroom Contributors"
+install = "fetch"
+# Headroom is a Python/TS package, not a Claude Code skill. Install pins the
+# released library so the framework can call it as an opt-in compression step.
+fetch_cmd = "python3 -m pip install 'headroom-ai'"
+reference_reason = "Apache-2.0 package carrying a custom ML compression model; pin to a released version rather than vendoring source. Opt-in only."
+opt_in = true
+roles = []

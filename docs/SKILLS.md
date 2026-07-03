@@ -1,50 +1,184 @@
 # Claude Code skills
 
-Skills are small bundles (markdown + optional scripts) that extend Claude Code's tool surface for a specific purpose: code review, refactoring, browser testing, security checks. Alfred does not ship skills itself. Consumer agents pick the ones they want.
+Skills are small bundles (markdown plus optional scripts) that extend Claude
+Code for a specific purpose: code review, refactoring, browser QA, security
+checks. alfred-os ships a curated, license-audited set of skill packs and a
+CLI to install them. You can also skip the registry and install skills by hand.
 
-This doc lists a recommended skill set for an autonomous engineering fleet, what each skill is for, and the install commands.
+## Curated skill packs
 
-## Where skills live
+The registry lives in [`skills/packs.toml`](../skills/packs.toml). Each pack
+records its source repo, license, install method, and which agent roles get it
+by default. Attribution for every bundled or referenced skill is in
+[`skills/NOTICE.md`](../skills/NOTICE.md).
+
+Two install shapes:
+
+- **vendored** -- the skill is copied into this repo under
+  `skills/vendored/<name>/` with its upstream `LICENSE` kept next to it.
+  Installing copies it into your skills dir. No network, works offline and in
+  CI.
+- **fetch** (reference-install) -- the skill is not in this repo. Installing
+  runs a network command to pull it from source. Used for large skills and heavy
+  dependencies that are better pinned to upstream.
+
+### The packs
+
+| Pack | License | Shape | Source | Default roles |
+|---|---|---|---|---|
+| `code-review-and-quality` | MIT | vendored | [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) | pr-review, feature-dev, review-fix |
+| `security-and-hardening` | MIT | vendored | [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) | pr-review, feature-dev |
+| `frontend-ui-engineering` | MIT | vendored | [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) | feature-dev |
+| `debugging-and-error-recovery` | MIT | vendored | [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) | bug-triage, deploy-monitor |
+| `vercel-react-best-practices` | MIT | vendored | [vercel-labs/agent-skills](https://github.com/vercel-labs/agent-skills) | feature-dev |
+| `gstack` | MIT | fetch | [garrytan/gstack](https://github.com/garrytan/gstack) | e2e-smoke, pr-review, bug-triage |
+| `headroom` | Apache-2.0 | fetch (opt-in) | [headroomlabs-ai/headroom](https://github.com/headroomlabs-ai/headroom) | (none) |
+
+Licensing rationale: all bundled sources are permissive (MIT or Apache-2.0). No
+copyleft (GPL/AGPL) source is vendored -- copyleft would be reference-install
+only for this MIT repo, and the test suite guards against a copyleft skill
+sneaking into the vendored set. Vercel declares MIT in its README and SKILL.md
+frontmatter but ships no LICENSE file, so the vendored copy carries a
+reconstructed MIT notice (see `skills/NOTICE.md`).
+
+## The `alfred skills` command
+
+```sh
+alfred skills list                       # all curated packs, with install state
+alfred skills list --role feature-dev    # only packs recommended for a role
+alfred skills list --json                # machine-readable
+alfred skills install <pack>             # install one pack into the skills dir
+alfred skills install <pack> --dry-run   # preview without writing or fetching
+alfred skills install <pack> --yes       # confirm a reference-install network fetch
+alfred skills installed                  # what is installed under the skills dir
+```
+
+Installs land in `~/.claude/skills/` by default. Override with
+`ALFRED_SKILLS_DIR` (for example, point it at a project's `.claude/skills` for a
+project-scoped install). Vendored installs are idempotent -- re-installing
+replaces the directory cleanly. Reference-install packs (`gstack`, `headroom`)
+run a network command and require `--yes`; `--dry-run` shows the exact command
+first.
+
+## Where skills live and how the fleet uses them
 
 ```
 ~/.claude/skills/
-├── code-review/SKILL.md
 ├── code-review-and-quality/SKILL.md
-├── debugging-and-error-recovery/SKILL.md
-├── frontend-ui-engineering/SKILL.md
 ├── security-and-hardening/SKILL.md
-├── spec-driven-development/SKILL.md
-├── vercel-react-best-practices/SKILL.md
-├── autofix/SKILL.md
-└── gstack/                  # the gstack tap installs as a directory of subskills
+├── frontend-ui-engineering/SKILL.md
+├── debugging-and-error-recovery/SKILL.md
+├── vercel-react-best-practices/
+│   ├── SKILL.md
+│   └── rules/
+└── gstack/                  # the gstack setup installs a directory of subskills
     ├── browse/
-    ├── investigate/
     ├── qa/
     ├── review/
     └── ship/
 ```
 
-`claude` resolves skill names against `~/.claude/skills/` at run-time. Once installed, any `claude -p` invocation can invoke them as tools (the agent's prompt should explicitly name the skill it wants to use, e.g. "Use the `code-review-and-quality` skill on the changed files before committing").
+### Do skills load under `claude -p` (headless)?
 
-## Recommended set for an autonomous engineering fleet
+Yes, with one caveat you must know. The fleet invokes `claude -p` **without**
+`--bare`, and in that mode Claude Code auto-discovers skills in
+`~/.claude/skills/` and `<project>/.claude/skills/` exactly as an interactive
+session does. Under `--permission-mode bypassPermissions` (how firings run), the
+`Skill` tool is permitted, so a matching skill can auto-activate.
 
-| Skill | Source | Used by | Why |
-|---|---|---|---|
-| `spec-driven-development` | Anthropic official | feature-dev agents | Grounds the model in a written spec instead of letting it invent requirements |
-| `code-review-and-quality` | Anthropic official | feature-dev (self-check), reviewer | Multi-axis review: correctness, edge cases, type safety, test coverage |
-| `security-and-hardening` | Anthropic official | feature-dev (auth/IAM/session paths), reviewer | Security-specific lens; complements code-review-and-quality |
-| `debugging-and-error-recovery` | Anthropic official | bug-triage, monitoring agents | Systematic root-cause path |
-| `frontend-ui-engineering` | Anthropic official | feature-dev (frontend repos) | Component patterns, state, layouts |
-| `vercel-react-best-practices` | community | feature-dev (React/Next.js) | RSC patterns, perf optimisation |
-| `code-review` | CodeRabbit | reviewer agents | Backbone for structured review, pairs with `/review` |
-| `autofix` | CodeRabbit | review-fix agents | Apply CodeRabbit-flagged P0/P1 fixes with per-change approval |
-| `/review`, `/ship`, `/qa`, `/browse`, `/investigate` | gstack | various | gstack's CLI-first review/ship/QA flow |
+The honest caveat: auto-activation is a model decision, not a guarantee, and
+`--bare` (which skips all skill, hook, and MCP discovery) is slated to become the
+`-p` default in a future Claude Code release. So the reliable, future-proof way
+to get a skill into a headless run is to **name it in the agent's prompt**. Two
+supported mechanisms:
 
-## Install commands
+1. Direct invocation: put `/skill-name` at the start of the `-p` prompt string.
+   Claude Code expands the rendered SKILL.md into the message before the model
+   runs. Works even in `--bare`.
+2. Instruction line: tell the model to use the skill, for example:
 
-### Anthropic official skills
+   ```
+   After implementing the change, use the `code-review-and-quality` skill on
+   every file you edited. Apply any P0 or P1 finding before you commit.
+   ```
 
-These ship in the [`anthropics/claude-code`](https://github.com/anthropics/claude-code) repo under `skills/`. One-time copy:
+`lib/skill_packs.py` exposes `skill_prompt_snippet(pack)` which returns exactly
+such a line for a pack, so a role prompt builder can append it. This is the
+`--bare`-proof path and does not depend on the model choosing to activate a
+skill on its own.
+
+There is no CLI flag that registers a skills directory, and no `--settings`
+field that adds one -- discovery is purely by the `~/.claude/skills/` and
+`.claude/skills/` conventions (plus `--add-dir` and plugins). So the CLI's job
+is to place skills where discovery finds them; naming them in the prompt is what
+makes a headless run deterministic.
+
+### Per-agent skill matrix
+
+A typical engineering-fleet matrix (skills are opt-in per agent; the framework
+does not wire a "skill bus"):
+
+| Codename | Role | Skills it invokes |
+|---|---|---|
+| Lucius | feature-dev | `code-review-and-quality` (self-check), `security-and-hardening` (auth paths), `frontend-ui-engineering` + `vercel-react-best-practices` (FE repos), gstack `/review` (pre-push) |
+| Bane | test-coverage | `code-review-and-quality`, gstack `/qa` |
+| Ra's al Ghul | pr-review | `code-review-and-quality`, `security-and-hardening`, gstack `/review` |
+| Nightwing | review-fix | `code-review-and-quality`, gstack `/review` |
+| Robin | bug-triage | `debugging-and-error-recovery`, gstack `/investigate` |
+| Gordon | deploy-monitor | `debugging-and-error-recovery` |
+| Huntress | e2e-smoke | gstack `/browse`, `/qa` |
+
+## Token optimization: headroom (opt-in) vs the built-in condenser
+
+The registry lists **headroom** ([headroomlabs-ai/headroom](https://github.com/headroomlabs-ai/headroom),
+Apache-2.0) as an opt-in reference-install for token/context compression. Before
+adding it, know that alfred-os already ships an overlapping capability, so this
+is a comparison, not a double-integration.
+
+**Built-in: `lib/conversation_condenser.py`.** A rolling transcript condenser for
+long Ask/Slack chats and long autonomous runs. It keeps the opening turns (the
+original task) and the most recent `keep_last` turns verbatim, and replaces the
+middle run with one model-written summary block. It has a proactive trigger
+(turn-count or character budget) and a reactive `condense_on_overflow` path that
+fires on a provider context-overflow error and retries with a smaller prompt.
+Every pass emits an auditable `CondensationRecord`. It is config-driven
+(`ALFRED_CONDENSER_*`) and has zero model dependency (the summarizer is
+injected). This is the framework's answer to "the conversation is too long."
+
+**headroom.** A general-purpose LLM compression toolkit: content-aware routing
+to specialist compressors (JSON, AST-aware code, a custom ML model for prose)
+with reversible compression (originals cached locally, retrievable on demand). It
+ships as a Python or TypeScript library (`compress(messages)`), an HTTP proxy, an
+MCP server, and a CLI wrapper.
+
+**How they differ, and where headroom would hook.**
+
+- The condenser operates on **conversation turns** (summarize the middle of a
+  long chat). headroom operates on **arbitrary payloads** (compress a large tool
+  output, a RAG chunk, a JSON blob, a code file) before they enter the prompt.
+  They are complementary, not redundant: the condenser shrinks history, headroom
+  shrinks individual large inputs.
+- If you adopt headroom, the hook point is **prompt assembly**, not transcript
+  condensation. The framework builds a firing prompt in the role builders (for
+  example `build_prompt` in `bin/lucius.py`), which inline a repo `CLAUDE.md` and
+  issue payload. A `compress()` call there, on the largest inlined blocks, is the
+  natural insertion. It should stay behind an env flag (opt-in), mirroring the
+  condenser's `ALFRED_CONDENSER_ENABLED` switch, so a fleet that does not want a
+  compression dependency runs unchanged.
+- Do **not** route the transcript condenser through headroom. The condenser's
+  summary is auditable and memory-promotable by design; replacing it with lossy
+  compression would lose that property. Keep them as two independent tools:
+  condenser for history, headroom (if adopted) for oversized single inputs.
+
+headroom is reference-install and opt-in for a reason: it carries a heavy ML
+model and is Apache-2.0 (vendorable into MIT with LICENSE plus NOTICE retained,
+but better pinned to a released version). `alfred skills install headroom --yes`
+runs `pip install headroom-ai`; wiring it into prompt assembly is a separate,
+deliberate step, not automatic.
+
+## Installing skills by hand
+
+You do not need the registry. Anthropic's official skills, for example:
 
 ```sh
 mkdir -p ~/.claude/skills
@@ -53,108 +187,37 @@ cp -R /tmp/cc-skills-src/skills/* ~/.claude/skills/
 rm -rf /tmp/cc-skills-src
 ```
 
-To update later:
-
-```sh
-git clone --depth 1 https://github.com/anthropics/claude-code.git /tmp/cc-skills-src
-rsync -a --delete /tmp/cc-skills-src/skills/ ~/.claude/skills/
-rm -rf /tmp/cc-skills-src
-```
-
-### gstack
+gstack, if you prefer its own installer over `alfred skills install gstack`:
 
 ```sh
 git clone https://github.com/garrytan/gstack.git ~/.claude/skills/gstack
 cd ~/.claude/skills/gstack && ./setup
 ```
 
-The setup script symlinks each subdirectory back up to `~/.claude/skills/<name>` so they resolve as top-level skills (`/review`, `/ship`, etc.).
-
-### CodeRabbit
-
-```sh
-npx -y skills add coderabbitai/skills --global --yes \
-    --agent claude-code --skill '*'
-```
-
-Installs all CodeRabbit skills into `~/.claude/skills/`. Note: the security audit on `skills.sh` flags `code-review` as Snyk Med Risk and `autofix` as High Risk. Both are reviewable; treat as "review-before-use". `autofix` itself enforces per-change approval at runtime.
-
-### Vercel React best practices
-
-Vercel's React guidance moves over time. Install this only after verifying the current published source for your Claude Code setup, or omit it and rely on your own frontend prompt conventions.
-
-## Skill-install automation
-
-If you want fresh-install reproducibility, a script that installs a known set of skills:
-
-```sh
-# scripts/install-skills.sh in your fleet repo
-#!/usr/bin/env bash
-set -euo pipefail
-mkdir -p ~/.claude/skills
-TMPDIR=$(mktemp -d)
-trap 'rm -rf "$TMPDIR"' EXIT
-
-# Anthropic official
-git clone --depth 1 https://github.com/anthropics/claude-code.git "$TMPDIR/cc"
-rsync -a "$TMPDIR/cc/skills/" ~/.claude/skills/
-
-# gstack
-if [[ ! -d ~/.claude/skills/gstack ]]; then
-  git clone https://github.com/garrytan/gstack.git ~/.claude/skills/gstack
-  (cd ~/.claude/skills/gstack && ./setup)
-fi
-
-# CodeRabbit (interactive prompt: confirm yes/no for each)
-npx -y skills add coderabbitai/skills --global --yes \
-    --agent claude-code --skill '*'
-
-echo "skills installed:"
-ls ~/.claude/skills/
-```
-
-Run on every fresh host. Idempotent: `git clone` fails loud if the dir exists, the rsync silently overwrites stale Anthropic skills, the npx install is a no-op when versions match.
-
-## Per-agent skill matrix
-
-Document which skills each codename invokes in your fleet's own agent prompts or runbooks. A typical engineering-fleet matrix:
-
-| Codename | Skills it invokes |
-|---|---|
-| Lucius (feature dev) | `spec-driven-development`, `code-review-and-quality` (self-check), `security-and-hardening` (auth paths), `frontend-ui-engineering` + `vercel-react-best-practices` (FE repo only), `/investigate` (vague issues), `/review` (final pre-push) |
-| Bane (test coverage) | `code-review-and-quality`, `/qa` (integration scenarios) |
-| Ra's al Ghul (PR review) | `code-review`, `code-review-and-quality`, `security-and-hardening`, `/review` |
-| Nightwing (review-fix) | `autofix` (CodeRabbit thread auto-closure), `code-review-and-quality`, `/review` |
-| Robin (bug triage) | `debugging-and-error-recovery`, `/investigate` |
-| Gordon or another deploy monitor | `debugging-and-error-recovery`, `/investigate` |
-| Huntress (E2E smoke) | `/browse`, `/qa` |
-
-Skills are opt-in per-agent. No "skill bus" the framework wires up. The agent's prompt tells `claude -p` to invoke a skill, e.g.:
-
-```
-After implementing the change, invoke the `code-review-and-quality` skill
-on every file you edited. Apply any P0 or P1 finding before you commit.
-```
-
 ## Security note
 
-Skills run with the same permissions as `claude`. They can read/write files in the agent's worktree, run shell commands, invoke other tools. Treat any new skill the way you'd treat any other dependency:
+Skills run with the same permissions as `claude`. They can read and write files
+in the agent's worktree, run shell commands, and invoke other tools. Treat any
+new skill the way you would any other dependency:
 
 1. Read the `SKILL.md` before installing.
 2. Skim the scripts the skill might invoke.
-3. Run a Snyk / CodeQL scan if the source is unfamiliar.
-4. Pin to a specific version/commit when installing from a third-party tap.
+3. Run a Snyk or CodeQL scan if the source is unfamiliar.
+4. Pin to a specific commit when installing from a third-party source.
 
-The fleet's IAM-per-agent and per-firing-worktree-isolation patterns limit blast radius (a malicious skill in the Lucius worktree can't reach the operator's home or the secondary Claude account). Mitigations, not prevention.
+The vendored packs are pinned by virtue of being copied in at a known revision
+and license-reviewed (see `skills/NOTICE.md`). Reference-install packs pull from
+upstream `main` and require `--yes`, so a network fetch is never silent.
+
+The fleet's IAM-per-agent and per-firing-worktree isolation limit blast radius:
+a compromised skill in one worktree cannot reach the operator's home or a second
+Claude account. Mitigation, not prevention.
 
 ## Skills NOT recommended for an autonomous fleet
 
-- **Anything that auto-publishes** (auto-tweet, auto-deploy, auto-merge). Use these as draft-then-review only.
-- **Skills that fork to the network without explicit allowlists.** Network egress from a worktree is a known agent attack vector (data exfiltration, prompt injection from fetched content). Default to disabling.
-- **Skills the operator hasn't read.** Skills are markdown. Read them. 100-300 lines apiece.
-
-## Where skills live in the framework's mental model
-
-Skills are operator-installed, not framework-bundled. Alfred ships zero skills by default. The consumer fleet picks. Keeps the framework pluralist (different fleets, different skill stacks) and small (no skill maintenance burden on the framework).
-
-If a future skill becomes universally needed (e.g. a state-machine-aware skill that reads the agent claim labels), it lands in `examples/skills/` as a documented option, never as a default.
+- **Anything that auto-publishes** (auto-tweet, auto-deploy, auto-merge). Use
+  these as draft-then-review only.
+- **Skills that reach the network without an allowlist.** Egress from a worktree
+  is a known agent attack vector (exfiltration, prompt injection from fetched
+  content). Default to disabling.
+- **Skills the operator has not read.** Skills are markdown. Read them.
