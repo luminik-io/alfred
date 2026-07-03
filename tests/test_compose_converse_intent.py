@@ -351,3 +351,10 @@ def test_how_to_questions_stay_questions():
     assert looks_like_question("How do I add a new repo?")
     assert looks_like_question("What changes should we make first?")
     assert looks_like_question("Where do I update the token?")
+
+
+def test_proposal_gerunds_stay_work():
+    from compose_converse import looks_like_question
+
+    assert not looks_like_question("What about adding search?")
+    assert not looks_like_question("How about making the header sticky?")

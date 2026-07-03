@@ -720,7 +720,29 @@ _VERB_POSITION_PRECEDERS = (
     "help",
     "me",
     "us",
+    # The proposal idiom puts the gerund right after "about":
+    # "what about adding search?".
+    "about",
 )
+
+
+def _is_build_verb_form(token: str) -> bool:
+    """True for a build-verb hint or its gerund ("adding", "making").
+
+    Gerunds carry proposals ("what about adding search?"), so the hint match
+    normalizes -ing forms: strip the suffix, then try the bare stem, the
+    de-doubled stem ("adding" -> "add"), and the restored-e stem
+    ("making" -> "make").
+    """
+    if token in _BUILD_VERB_HINTS:
+        return True
+    if len(token) > 4 and token.endswith("ing"):
+        stem = token[:-3]
+        candidates = {stem, stem + "e"}
+        if len(stem) > 1 and stem[-1] == stem[-2]:
+            candidates.add(stem[:-1])
+        return bool(candidates & set(_BUILD_VERB_HINTS))
+    return False
 
 
 def _has_build_verb_in_verb_position(tokens: list[str]) -> bool:
@@ -733,7 +755,7 @@ def _has_build_verb_in_verb_position(tokens: list[str]) -> bool:
     available?" leaves "support" in noun position and stays a question.
     """
     for index, token in enumerate(tokens):
-        if token not in _BUILD_VERB_HINTS:
+        if not _is_build_verb_form(token):
             continue
         if index == 0:
             return True
