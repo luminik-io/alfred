@@ -589,6 +589,18 @@ describe("fleetPauseSummary", () => {
     );
   });
 
+  it("says 'the agent' rather than 'all 1 agent' for a single-agent fleet", () => {
+    const activity = buildFleetActivity(
+      emptySnapshot({
+        status: { agents: [agent({ paused: true })], total_today: 0, reliability: {} },
+      }),
+    );
+    expect(fleetPauseSummary(activity, 0)).toBe("Fleet paused - the agent is on hold.");
+    expect(fleetPauseSummary(activity, 3)).toBe(
+      "Fleet paused - the agent is on hold; 3 requests are waiting.",
+    );
+  });
+
   it("names the paused count when only most are paused, and omits waiting when none", () => {
     const activity = buildFleetActivity(
       emptySnapshot({

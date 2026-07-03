@@ -7,8 +7,9 @@ import { Tabs, type TabItem } from "./Tabs";
 
 // Mirrors how App.tsx wires the Agents view tabs: the Tabs component renders the
 // tablist, and the page renders the panels as SIBLINGS outside the Radix root.
-// This is the exact shape that left every trigger at tabindex="-1" and broke
-// arrow-key navigation, so the harness reproduces the real integration.
+// The harness reproduces that real integration and locks in the WAI-ARIA
+// keyboard contract: an explicit roving tabindex on the active trigger plus
+// working Arrow/Home/End navigation.
 function AgentsTabsHarness({ initial = "roster" as const }: { initial?: "roster" | "activity" | "learnings" }) {
   const tabs: TabItem<"roster" | "activity" | "learnings">[] = [
     { key: "roster", label: "Roster" },

@@ -183,9 +183,16 @@ export function fleetPauseSummary(
   waitingWork: number,
 ): string | null {
   if (!activity.mostlyPaused && !activity.allPaused) return null;
-  const held = activity.allPaused
-    ? `Fleet paused - all ${plural(activity.total, "agent")} on hold`
-    : `Fleet paused - ${plural(activity.paused, "agent")} on hold`;
+  // "all 1 agent" reads wrong, so a single-agent fleet on hold says "the agent".
+  let held: string;
+  if (activity.allPaused) {
+    held =
+      activity.total === 1
+        ? "Fleet paused - the agent is on hold"
+        : `Fleet paused - all ${plural(activity.total, "agent")} on hold`;
+  } else {
+    held = `Fleet paused - ${plural(activity.paused, "agent")} on hold`;
+  }
   if (waitingWork > 0) {
     const waiting = `${plural(waitingWork, "request")} ${
       waitingWork === 1 ? "is" : "are"
