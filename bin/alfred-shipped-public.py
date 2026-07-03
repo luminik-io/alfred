@@ -130,7 +130,11 @@ PRIVATE_REPO_PATTERNS: tuple[re.Pattern[str], ...] = (
 # A title may carry a private repo name in plain text; this regex
 # replaces those with the neutral placeholder.
 PRIVATE_TOKEN_RE = re.compile(
-    r"luminik-(backend|frontend|mobile|nango|agents|data-acquisition|data-infra|specs|site|design-system|orchestrator|internal)",
+    r"luminik-(backend|frontend|mobile|nango|agents|data-acquisition|data-infra|specs|site|design-system|orchestrator|internal)"
+    # "alfred-internal": the private sibling of the now-public luminik-io/alfred.
+    # A title can name it in plain text ("Move alfred-internal state") even when
+    # the PR's own repo is public, so it must be scrubbed to the neutral token.
+    r"|(alfred-internal)",
     re.IGNORECASE,
 )
 
@@ -191,6 +195,12 @@ PLACEHOLDER_REPO_MAP: dict[str, str] = {
 }
 
 REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
+# The single renamed public slug that may opt back past the bare-"alfred"
+# private deny (see filter_repo). It shares its slug with the former private
+# repo, so it publishes only when the operator lists it explicitly; no other
+# private-pattern repo can be re-allowed this way.
+PUBLIC_CUTOVER_SLUG = "luminik-io/alfred"
 
 log = logging.getLogger("alfred-shipped-public")
 
@@ -321,6 +331,9 @@ def scrub_title(title: str) -> str:
     """
 
     def repl_private(match: re.Match[str]) -> str:
+        # Group 2 matches the bare "alfred-internal" token; group 1 the luminik-* set.
+        if match.group(2):
+            return PLACEHOLDER_REPO_MAP["internal"]
         token = match.group(1).lower()
         return PLACEHOLDER_REPO_MAP.get(token, "your-repo")
 
@@ -426,16 +439,19 @@ def filter_repo(repo: str, allowlist: Iterable[str]) -> bool:
     if not REPO_SLUG_RE.match(repo):
         return False
     allow = list(allowlist)
-    # An explicit allowlist entry is an intentional opt-in and overrides the
-    # private-pattern deny. This is the cutover path for the renamed public
-    # repo: luminik-io/alfred now shares its slug with the former private repo,
-    # so it stays denied by default (protecting stale pre-rename state) and
-    # publishes only when the operator lists it explicitly.
+    if is_private_repo(repo):
+        # Private-pattern repos are hard-denied. The ONLY exception is the
+        # renamed public cutover slug, which shares its slug with the former
+        # private repo: it may opt back in via an explicit allowlist entry once
+        # the operator has confirmed stale pre-rename state has aged out. Every
+        # other private-pattern repo (e.g. the alfred-internal sibling) stays
+        # denied even when listed, so the allowlist can never leak a private
+        # sibling into the public feed.
+        return repo == PUBLIC_CUTOVER_SLUG and repo in allow
+    # Non-private repo: an explicit allowlist entry is an intentional opt-in;
+    # with no allowlist configured, publish anything that is not private.
     if repo in allow:
         return True
-    if is_private_repo(repo):
-        return False
-    # No allowlist configured: publish anything that is not private.
     return not allow
 
 

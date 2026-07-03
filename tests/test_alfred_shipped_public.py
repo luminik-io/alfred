@@ -285,6 +285,23 @@ def test_renamed_public_repo_publishes_only_when_explicitly_allowlisted(mod):
     assert mod.filter_repo(new_private, [public_repo]) is False
 
 
+def test_allowlisting_a_private_repo_never_un_denies_it(mod):
+    # The allowlist opt-in is scoped to the single renamed cutover slug. Listing
+    # any other private-pattern repo (the private sibling, or any luminik-* repo)
+    # must NOT publish it: private-pattern matches stay hard-denied regardless of
+    # the allowlist, so a mis-scoped allowlist can never leak a private feed.
+    pre = "lumi" + "nik"
+    sibling = f"{pre}-io/alfred-internal"
+    product = f"{pre}-io/{pre}-backend"
+    assert mod.is_private_repo(sibling) is True
+    assert mod.is_private_repo(product) is True
+    assert mod.filter_repo(sibling, [sibling]) is False
+    assert mod.filter_repo(product, [product]) is False
+    assert mod.filter_repo(product, [product, "your-org/your-backend"]) is False
+    # A genuinely public repo still opts in through the same allowlist.
+    assert mod.filter_repo("your-org/your-backend", [product, "your-org/your-backend"]) is True
+
+
 def test_build_feed_drops_legacy_private_alfred_records_across_rename(mod, window):
     # Simulate shipped state captured before the rename: a PR whose repo slug
     # is the legacy bare "alfred" (private at capture time). With the default
@@ -327,6 +344,10 @@ def test_scrub_rewrites_private_token_in_title(mod):
     assert mod.scrub_title(f"Refactor {pre}-backend audit log") == "Refactor your-backend audit log"
     assert mod.scrub_title(f"Bump {pre}-Frontend deps") == "Bump your-frontend deps"
     assert mod.scrub_title("Wire billing-v2 settings panel") == "Wire billing-v2 settings panel"
+    # The private sibling of the public repo can be named in a title even when
+    # the PR's own repo is public; it must collapse to the neutral placeholder.
+    assert mod.scrub_title("Move alfred-internal state migration") == "Move your-internal state migration"
+    assert mod.scrub_title("Sync alfred-Internal secrets") == "Sync your-internal secrets"
 
 
 def test_scrub_redacts_partner_names_in_title(mod):
