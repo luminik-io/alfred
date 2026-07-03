@@ -3320,7 +3320,12 @@ def test_api_shipped_board_failure_returns_generic_error(
     assert response.status_code == 200
     body = response.json()
     assert body["error"] == "internal error"
-    assert body["columns"] == {"queued": [], "in_progress": [], "shipped": []}
+    assert body["columns"] == {
+        "queued": [],
+        "in_progress": [],
+        "shipped": [],
+        "awaiting_approval": [],
+    }
     _assert_no_exc_leak(body, marker)
 
 
