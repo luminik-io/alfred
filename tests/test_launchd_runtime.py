@@ -373,7 +373,7 @@ def test_deploy_copies_skills_registry_into_runtime(tmp_path):
     # A minimal skills registry: manifest + one vendored skill with LICENSE.
     vendored = src / "skills" / "vendored" / "demo-skill"
     vendored.mkdir(parents=True)
-    (src / "skills" / "packs.toml").write_text('schema_version = 1\n')
+    (src / "skills" / "packs.toml").write_text("schema_version = 1\n")
     (vendored / "SKILL.md").write_text("---\nname: demo-skill\n---\n")
     (vendored / "LICENSE").write_text("MIT License\n")
 

@@ -155,7 +155,9 @@ def dispatch(args: argparse.Namespace) -> int:
     """Route a parsed namespace (from :func:`build_parser` or ``bin/alfred``)."""
     command = getattr(args, "skills_command", None)
     if command == "list":
-        return cmd_list(role=getattr(args, "role", None), as_json=bool(getattr(args, "json", False)))
+        return cmd_list(
+            role=getattr(args, "role", None), as_json=bool(getattr(args, "json", False))
+        )
     if command == "installed":
         return cmd_installed(as_json=bool(getattr(args, "json", False)))
     if command == "install":
