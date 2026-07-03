@@ -844,6 +844,20 @@ export function supportsNativeActions(): boolean {
   return isTauri();
 }
 
+// Whether this client can hold a live, server-backed conversation (the desktop
+// Ask). The conversational engine runs SERVER-SIDE in `alfred serve`
+// (`/api/compose/converse` and its streaming variant execute the model
+// regardless of client), so both the native Tauri window AND the hosted browser
+// shell can converse: the native window reaches the server through its bridge,
+// and the hosted browser calls the same-origin endpoint with the injected
+// per-launch token. This is deliberately BROADER than `supportsNativeActions`,
+// which stays Tauri-only for genuine native actions (starting the runtime,
+// installing core). Gating Ask on `supportsNativeActions` was the bug that left
+// the browser Ask stuck on the offline draft fallback with no real conversation.
+export function supportsConversation(): boolean {
+  return isTauri() || isHostedBrowser();
+}
+
 export async function runNativeAction(
   action: NativeAction,
   target?: string,

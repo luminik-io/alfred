@@ -1572,6 +1572,26 @@ def _converse_memory_grounding(
     )
 
 
+def _converse_operational_grounding(request: Request) -> str:
+    """Build the live fleet snapshot for a desktop Ask converse turn.
+
+    Reads the same ``request.app.state.reader`` the Fleet view uses so the
+    desktop Ask answers status questions ("what's the fleet doing?", "why did a
+    run fail?", "what shipped today?") from real runtime state, matching the
+    Slack surface. Best-effort: a missing reader or a read failure degrades to an
+    empty string so the turn still answers from the repo grounding.
+    """
+    reader = getattr(request.app.state, "reader", None)
+    if reader is None:
+        return ""
+    try:
+        from converse_grounding import build_operational_grounding
+
+        return build_operational_grounding(reader)
+    except Exception:
+        return ""
+
+
 def _selected_setup_repos_payload() -> dict[str, Any]:
     repos = _selected_setup_repos()
     return {"selected": repos, "count": len(repos)}
@@ -1704,6 +1724,7 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
     # the flag. This lets a non-developer flip jargon-free coaching on/off in
     # the app without restarting the runtime.
     intake_guidance = cc.intake_guidance_for(_resolve_intake_profile_name(body))
+    operational_grounding = _converse_operational_grounding(request)
 
     try:
         from agent_runner.metadata import load_prompt
@@ -1720,6 +1741,7 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
             code_map=code_map,
             intake_guidance=intake_guidance,
             loader=load_prompt,
+            operational_grounding=operational_grounding,
         )
     except OSError:
         return JSONResponse(
@@ -1831,6 +1853,7 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
     # the flag. This lets a non-developer flip jargon-free coaching on/off in
     # the app without restarting the runtime.
     intake_guidance = cc.intake_guidance_for(_resolve_intake_profile_name(body))
+    operational_grounding = _converse_operational_grounding(request)
 
     try:
         from agent_runner.metadata import load_prompt
@@ -1848,6 +1871,7 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
             code_map=code_map,
             intake_guidance=intake_guidance,
             loader=load_prompt,
+            operational_grounding=operational_grounding,
         )
     except OSError:
         return JSONResponse(

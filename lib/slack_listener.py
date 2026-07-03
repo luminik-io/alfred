@@ -1272,7 +1272,19 @@ class SlackPlanningListener:
         needs scope?" -> the planning inbox, otherwise fleet status) and the
         handler's structured output is framed with a short conversational
         lead-in instead of being dumped raw.
+
+        Conversation-first: when converse is engaged, a status question is
+        answered by the streamed, LLM-backed converse turn (which carries a live
+        fleet snapshot as grounding), so "what's the fleet doing?" reads like a
+        colleague's answer rather than a raw control-handler dump. The terse
+        control-handler summary below is the fallback when converse is not
+        engaged or could not answer, so the deterministic status path is never
+        lost.
         """
+        converse = self._maybe_converse(event)
+        if converse is not None:
+            return converse
+
         verb, lead_in = _status_query_plan(event.text)
         control = self.control_handler.handle(
             verb,

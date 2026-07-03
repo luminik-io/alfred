@@ -19,11 +19,19 @@ import type { ConverseResponse } from "../../types";
 // last-5 recent-threads switcher. The broader
 // converse/draft/control/cancel behavior is covered in ComposeChat.test.tsx.
 
+// `supportsConversation` gates whether Ask holds a live streamed conversation.
+// It is overridable per test so we can prove the hosted-browser case (native
+// actions unavailable, conversation still available) converses through the
+// server-side engine rather than dropping to the offline draft fallback.
+let conversationAvailable = true;
+
 vi.mock("../../api", async () => {
   const actual = await vi.importActual<typeof import("../../api")>("../../api");
   return {
     ...actual,
-    supportsNativeActions: () => true,
+    // Native actions stay Tauri-only; the hosted-browser test flips this false.
+    supportsNativeActions: () => false,
+    supportsConversation: () => conversationAvailable,
     composeConverse: vi.fn(),
     composeDraft: vi.fn(),
     conversationControl: vi.fn(),
@@ -78,6 +86,7 @@ function converseResponse(overrides: Partial<ConverseResponse> = {}): ConverseRe
 }
 
 beforeEach(() => {
+  conversationAvailable = true;
   window.localStorage.clear();
   converseMock.mockReset();
   draftMock.mockReset();
@@ -113,6 +122,56 @@ describe("Ask adapter: onNew streaming + message conversion", () => {
       await screen.findByText(/which repository is the attendees table in\?/i),
     ).toBeInTheDocument();
     expect(converseMock).not.toHaveBeenCalled();
+  });
+
+  it("holds a live streamed conversation in the hosted browser (no native actions)", async () => {
+    // Regression: the desktop Ask was gated on `supportsNativeActions` (Tauri
+    // only), so in the browser served by `alfred serve` it never streamed and
+    // dropped straight to the offline draft fallback. The engine runs
+    // server-side, so with native actions OFF but conversation available, a
+    // send must go through the streaming converse endpoint, not the draft path.
+    conversationAvailable = true;
+    streamMock.mockImplementation(async (_baseUrl, _request, onToken) => {
+      onToken("Lucius is retrying ");
+      onToken("a failed run right now.");
+      return converseResponse({ reply: "Lucius is retrying a failed run right now." });
+    });
+    const user = userEvent.setup();
+    renderChat();
+
+    await send(user, "what's the fleet doing?");
+
+    await waitFor(() => expect(streamMock).toHaveBeenCalledTimes(1));
+    expect(
+      await screen.findByText(/lucius is retrying a failed run right now\./i),
+    ).toBeInTheDocument();
+    // It conversed through the server, it did NOT fall back to the draft form.
+    expect(draftMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the offline draft path when conversation is unavailable", async () => {
+    // A bare non-served preview (no Tauri, no hosted server) cannot converse, so
+    // Ask keeps its reliable offline draft fallback rather than a broken stream.
+    conversationAvailable = false;
+    draftMock.mockResolvedValue({
+      draft_id: "compose-20260603-120000-add-csv-export",
+      saved_path: "/state/planning-drafts/compose-20260603-120000-add-csv-export.json",
+      title: "Add CSV export to the attendees table",
+      readiness: { ok: false, score: 40 },
+      questions: [],
+      findings: [],
+      summary: "",
+      spec_body: "",
+      revision_count: 0,
+      draft: converseResponse().draft,
+    });
+    const user = userEvent.setup();
+    renderChat();
+
+    await send(user, "Add a CSV download button");
+
+    await waitFor(() => expect(draftMock).toHaveBeenCalledTimes(1));
+    expect(streamMock).not.toHaveBeenCalled();
   });
 
   it("renders the user turn and the assistant turn as distinct bubbles", async () => {

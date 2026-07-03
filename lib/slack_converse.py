@@ -138,7 +138,14 @@ class SlackConverseConfig:
     @classmethod
     def from_env(cls) -> SlackConverseConfig:
         return cls(
-            enabled=_env_flag(ENV_ENABLED),
+            # Conversation is Alfred's default Slack surface. Converse is ON by
+            # default and only stands down when the operator explicitly disables
+            # it (``ALFRED_SLACK_CONVERSE_ENABLED=0``) or when no engine can be
+            # resolved (``engages`` returns False without an engine, so an
+            # unconfigured runtime still degrades to planning intake rather than
+            # posting an error). Previously this was off-by-default, which is why
+            # every mention fell through to a planning draft.
+            enabled=_env_flag(ENV_ENABLED, default=True),
             channels=frozenset(_parse_channels(os.environ.get(ENV_CHANNELS))),
             engine=(
                 os.environ.get(ENV_ENGINE) or os.environ.get(ENV_FALLBACK_ENGINE) or ""
@@ -151,12 +158,16 @@ class SlackConverseConfig:
     def engages(self, channel: str) -> bool:
         """True iff converse should run for ``channel``.
 
-        Off-by-default and, when on, scoped to the channel allowlist. An empty
-        allowlist means "every channel the listener already trusts" -- the
-        listener has already gated trust and (for ambient) its own allowlist
-        before we are reached, so an empty converse allowlist is not a blast
-        radius, it just declines to add a second, narrower gate. An operator who
-        wants converse limited to specific channels lists them explicitly.
+        On by default (conversation is Alfred's default Slack surface), and only
+        when an engine resolves, so an unconfigured runtime still declines and
+        falls back to planning intake rather than erroring. When on, it is scoped
+        to the channel allowlist. An empty allowlist means "every channel the
+        listener already trusts" -- the listener has already gated trust and (for
+        ambient) its own allowlist before we are reached, so an empty converse
+        allowlist is not a blast radius, it just declines to add a second,
+        narrower gate. An operator who wants converse limited to specific channels
+        lists them explicitly, or disables it entirely with
+        ``ALFRED_SLACK_CONVERSE_ENABLED=0``.
         """
         if not self.enabled or not self.engine:
             return False
@@ -788,12 +799,18 @@ def _default_build_turn(
         )
         code_map = cc.load_code_map(_code_map_path())
         intake_guidance = cc.intake_guidance_for(os.environ.get("ALFRED_INTAKE_PROFILE") or "")
+        # Live fleet snapshot so a status question ("what's the fleet doing?",
+        # "why did lucius fail on #1038?", "what shipped today?") is answered
+        # from real runtime state, not the repo grounding. Best-effort: a missing
+        # reader or a read failure degrades to an empty block.
+        operational_grounding = _operational_grounding()
         system_prompt = cc.render_system_prompt(
             prompt_path=_interrogator_prompt_path(),
             repo_grounding=repo_grounding,
             code_map=code_map,
             intake_guidance=intake_guidance,
             loader=load_prompt,
+            operational_grounding=operational_grounding,
         )
     except OSError:
         return None
@@ -931,6 +948,26 @@ def _code_map_path() -> Path:
     return Path(base) / "state" / "code-map.json"
 
 
+def _operational_grounding() -> str:
+    """Build the live fleet snapshot for a Slack converse turn (best-effort).
+
+    Reads the same read-only fleet reader the desktop client uses and formats a
+    bounded status block. Any failure (import error, missing runtime, read error)
+    degrades to an empty string so a mention is still answered from the repo
+    grounding alone.
+    """
+    try:
+        from converse_grounding import (
+            build_operational_grounding,
+            default_operational_reader_factory,
+        )
+
+        reader = default_operational_reader_factory()()
+        return build_operational_grounding(reader)
+    except Exception:  # pragma: no cover - defensive
+        return ""
+
+
 def _interrogator_prompt_path() -> Path:
     override = os.environ.get("ALFRED_SPEC_INTERROGATOR_PROMPT")
     if override:
@@ -1013,8 +1050,22 @@ def _parse_channels(raw: str | None) -> list[str]:
     return out
 
 
-def _env_flag(name: str) -> bool:
-    return (os.environ.get(name) or "").strip().lower() in {"1", "true", "yes", "on"}
+def _env_flag(name: str, *, default: bool = False) -> bool:
+    """Read a boolean env var with an explicit default.
+
+    Returns ``default`` when unset/blank, ``True`` for ``1/true/yes/on`` and
+    ``False`` for ``0/false/no/off`` (case-insensitive). Any other non-blank
+    value falls back to ``default``. Mirrors ``slack_intent._env_flag`` so the
+    converse enable flag and the intent-router flag read env the same way.
+    """
+    raw = (os.environ.get(name) or "").strip().lower()
+    if not raw:
+        return default
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 
 def _env_int(name: str, default: int) -> int:
