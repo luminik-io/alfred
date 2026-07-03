@@ -16,8 +16,21 @@ export type TabItem<K extends string = string> = {
  * large sections behind tabs instead of one long scroll. Pages own the active
  * key so the choice can be lifted (e.g. a deep-link from another surface).
  *
- * Backed by Radix Tabs so arrow keys, focus management, and tab semantics stay
- * native. Panels are rendered by the caller and should reference `${idBase}-panel`.
+ * Backed by Radix Tabs for selection state, arrow-key navigation, and tab
+ * semantics. Callers render their own panels as siblings (a page owns its large
+ * sections), so no `TabsContent` lives inside the root.
+ *
+ * We pin an explicit roving `tabindex` on the triggers (active tab 0, the rest
+ * -1) rather than leaving it entirely to Radix's RovingFocusGroup. Radix keeps
+ * the triggers at `tabindex="-1"` and instead puts the tab stop on the tablist
+ * container, redirecting focus onto the active trigger on the container's focus
+ * event. That works, but the tab stop then lives on the container, not the tab,
+ * so which element ends up focused depends on that redirect firing. Placing the
+ * roving `tabindex="0"` directly on the active trigger makes it the tab stop
+ * itself: Tab lands squarely on the active tab and programmatic/AT focus is
+ * deterministic, with no behavioural change to Radix's own arrow/Home/End keys
+ * (verified against the real sibling-panel wiring in a browser). This is a
+ * defensive, explicit WAI-ARIA roving-tabindex, not a fix for broken arrows.
  */
 export function Tabs<K extends string>({
   tabs,
@@ -48,6 +61,9 @@ export function Tabs<K extends string>({
               className="min-w-0 gap-1 px-1.5 text-[0.78rem] sm:gap-1.5 sm:px-3 sm:text-sm [&>span]:min-w-0 [&>span]:truncate"
               value={tab.key}
               aria-controls={`${idBase}-panel`}
+              // Explicit roving tabindex: the active tab is the tab stop, so Tab
+              // lands directly on it. Radix still owns arrow/Home/End behaviour.
+              tabIndex={tab.key === active ? 0 : -1}
             >
               {Icon ? (
                 <Icon

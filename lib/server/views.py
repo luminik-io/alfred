@@ -313,8 +313,18 @@ def register_routes(app: FastAPI) -> None:
             return JSONResponse(
                 _jsonable(
                     {
-                        "columns": {"queued": [], "in_progress": [], "shipped": []},
-                        "counts": {"queued": 0, "in_progress": 0, "shipped": 0},
+                        "columns": {
+                            "queued": [],
+                            "in_progress": [],
+                            "shipped": [],
+                            "awaiting_approval": [],
+                        },
+                        "counts": {
+                            "queued": 0,
+                            "in_progress": 0,
+                            "shipped": 0,
+                            "awaiting_approval": 0,
+                        },
                         "repos": repo_list or [],
                         "lookback_days": days,
                         "error": _GENERIC_ERROR,

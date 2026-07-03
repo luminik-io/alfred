@@ -3,14 +3,38 @@ import { describe, expect, it } from "vitest";
 import {
   buildActiveThreads,
   buildCostHealth,
+  buildFleetActivity,
   buildNeedsYou,
   buildRunning,
   buildShippedDigest,
   dedupePlans,
+  fleetPauseSummary,
   planNeedsAttention,
   threadForCompose,
 } from "./derive";
-import type { FiringRecord, PlanDraft, ShippedBoard, ShippedCard, Snapshot } from "../types";
+import type {
+  AgentSummary,
+  FiringRecord,
+  PlanDraft,
+  ShippedBoard,
+  ShippedCard,
+  Snapshot,
+} from "../types";
+
+function agent(overrides: Partial<AgentSummary> = {}): AgentSummary {
+  return {
+    codename: "lucius",
+    last_firing_id: null,
+    last_run_at: null,
+    status: "idle",
+    last_summary: "",
+    firings_today: 0,
+    paused: false,
+    paused_since: null,
+    loaded: true,
+    ...overrides,
+  };
+}
 
 function emptySnapshot(overrides: Partial<Snapshot> = {}): Snapshot {
   return {
@@ -484,5 +508,113 @@ describe("request threads", () => {
     expect(thread.steps.find((s) => s.key === "plan")?.state).toBe("active");
     expect(thread.repo).toBe("your-org/frontend");
     expect(thread.correlationApproximate).toBe(true);
+  });
+});
+
+describe("buildFleetActivity", () => {
+  it("reports all paused when every agent carries a pause marker", () => {
+    const activity = buildFleetActivity(
+      emptySnapshot({
+        status: {
+          agents: [agent({ paused: true }), agent({ codename: "batman", paused: true })],
+          total_today: 0,
+          reliability: {},
+        },
+      }),
+    );
+    expect(activity).toMatchObject({ total: 2, paused: 2, active: 0, allPaused: true, mostlyPaused: true });
+  });
+
+  it("reports mostly paused when a strict majority are paused", () => {
+    const activity = buildFleetActivity(
+      emptySnapshot({
+        status: {
+          agents: [
+            agent({ codename: "a", paused: true }),
+            agent({ codename: "b", paused: true }),
+            agent({ codename: "c", paused: false }),
+          ],
+          total_today: 0,
+          reliability: {},
+        },
+      }),
+    );
+    expect(activity.allPaused).toBe(false);
+    expect(activity.mostlyPaused).toBe(true);
+    expect(activity.active).toBe(1);
+  });
+
+  it("is not paused when exactly half are paused (no strict majority)", () => {
+    const activity = buildFleetActivity(
+      emptySnapshot({
+        status: {
+          agents: [agent({ codename: "a", paused: true }), agent({ codename: "b", paused: false })],
+          total_today: 0,
+          reliability: {},
+        },
+      }),
+    );
+    expect(activity.mostlyPaused).toBe(false);
+    expect(activity.allPaused).toBe(false);
+  });
+
+  it("treats an empty roster as not paused (nothing to pause)", () => {
+    const activity = buildFleetActivity(emptySnapshot());
+    expect(activity).toMatchObject({ total: 0, paused: 0, allPaused: false, mostlyPaused: false });
+  });
+});
+
+describe("fleetPauseSummary", () => {
+  it("returns null when the fleet is running", () => {
+    const activity = buildFleetActivity(
+      emptySnapshot({
+        status: { agents: [agent({ paused: false })], total_today: 0, reliability: {} },
+      }),
+    );
+    expect(fleetPauseSummary(activity, 3)).toBeNull();
+  });
+
+  it("leads with all-paused and the waiting count", () => {
+    const activity = buildFleetActivity(
+      emptySnapshot({
+        status: {
+          agents: [agent({ paused: true }), agent({ codename: "batman", paused: true })],
+          total_today: 0,
+          reliability: {},
+        },
+      }),
+    );
+    expect(fleetPauseSummary(activity, 25)).toBe(
+      "Fleet paused - all 2 agents on hold; 25 requests are waiting.",
+    );
+  });
+
+  it("says 'the agent' rather than 'all 1 agent' for a single-agent fleet", () => {
+    const activity = buildFleetActivity(
+      emptySnapshot({
+        status: { agents: [agent({ paused: true })], total_today: 0, reliability: {} },
+      }),
+    );
+    expect(fleetPauseSummary(activity, 0)).toBe("Fleet paused - the agent is on hold.");
+    expect(fleetPauseSummary(activity, 3)).toBe(
+      "Fleet paused - the agent is on hold; 3 requests are waiting.",
+    );
+  });
+
+  it("names the paused count when only most are paused, and omits waiting when none", () => {
+    const activity = buildFleetActivity(
+      emptySnapshot({
+        status: {
+          agents: [
+            agent({ codename: "a", paused: true }),
+            agent({ codename: "b", paused: true }),
+            agent({ codename: "c", paused: false }),
+          ],
+          total_today: 0,
+          reliability: {},
+        },
+      }),
+    );
+    expect(fleetPauseSummary(activity, 0)).toBe("Fleet paused - 2 agents on hold.");
   });
 });

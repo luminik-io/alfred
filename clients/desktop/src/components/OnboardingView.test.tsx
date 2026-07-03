@@ -253,6 +253,56 @@ describe("OnboardingView seven-step takeover", () => {
     expect(screen.getByText(/ready to use/i)).toBeInTheDocument();
   });
 
+  it("marks inventory-proven steps done for a detected install, not 0 of 7", async () => {
+    // The contradiction: an existing install reads "ready to use" while the rail
+    // said "0 of 7 done" because completion was gated on the user re-walking the
+    // wizard. With an install detected, steps the runtime proves complete
+    // (engine, github, repos, team) must show as done so the rail agrees with
+    // the inventory.
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        install: makeInstall(),
+        github: { ok: true, account: "octocat", detail: "Signed in as octocat." },
+        engine_ready: true,
+        repos: {
+          selected: ["octocat/web"],
+          count: 1,
+          keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+        },
+      }),
+    );
+    renderOnboarding();
+
+    // On the welcome step of a detected install, the rail must not read 0 done.
+    expect(await screen.findByText(/review your alfred setup/i)).toBeInTheDocument();
+    const progress = await screen.findByLabelText(/of 7 onboarding steps complete/i);
+    const match = /(\d+) of 7 onboarding steps complete/.exec(progress.getAttribute("aria-label") || "");
+    expect(match).not.toBeNull();
+    expect(Number(match?.[1])).toBeGreaterThan(0);
+  });
+
+  it("keeps a fresh first run honest at 0 done until the user walks the wizard", async () => {
+    // No existing install: even if engine/gh/repos are pre-detected, a brand-new
+    // first run opens on Welcome with nothing marked done so the flow never feels
+    // skipped. The cursor still governs completion here.
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        install: makeInstall({ initialized: false }),
+        github: { ok: true, account: "octocat", detail: "Signed in as octocat." },
+        engine_ready: true,
+        repos: {
+          selected: ["octocat/web"],
+          count: 1,
+          keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+        },
+      }),
+    );
+    renderOnboarding();
+
+    const progress = await screen.findByLabelText(/of 7 onboarding steps complete/i);
+    expect(progress.getAttribute("aria-label")).toMatch(/^0 of 7/);
+  });
+
   it("uses neutral shell copy while setup inventory is loading", async () => {
     const pending = deferred<SetupStatus>();
     vi.spyOn(api, "loadSetupStatus").mockReturnValue(pending.promise);

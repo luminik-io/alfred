@@ -111,6 +111,88 @@ describe("PipelineView", () => {
     expect(screen.getByText("Add CSV export.")).toBeInTheDocument();
   });
 
+  it("counts plan-pending-approval GitHub issues in Needs-your-go-ahead, not Queued", () => {
+    // 3 gated GitHub issues plus 1 local plan: the honest go-ahead count is 4,
+    // and the gated issues must not read as Queued.
+    const gated = [
+      card({ number: 101, title: "bundle: onboarding redesign", labels: ["agent:plan-pending-approval"] }),
+      card({ number: 102, title: "bundle: credential collection", labels: ["agent:plan-pending-approval"] }),
+      card({ number: 103, title: "bundle: super admin", labels: ["agent:plan-pending-approval"] }),
+    ];
+    renderPipeline({
+      plans: [plan({ title: "Approve the export plan", source: "batman", status: "draft" })],
+      board: board({
+        columns: {
+          queued: [card({ number: 5, title: "A genuinely queued issue" })],
+          in_progress: [],
+          shipped: [],
+          awaiting_approval: gated,
+        },
+        counts: { queued: 1, in_progress: 0, shipped: 0, awaiting_approval: 3 },
+      }),
+    });
+    // The go-ahead lane's accessible name carries the honest count (1 plan + 3 gated = 4).
+    expect(screen.getByRole("region", { name: /needs your go-ahead \(4\)/i })).toBeInTheDocument();
+    // The Queued lane counts only the single genuinely-queued issue, not the gated ones.
+    expect(screen.getByRole("region", { name: /^Queued \(1\)$/ })).toBeInTheDocument();
+    // Each gated issue renders in the decision lane with the go-ahead chip.
+    expect(screen.getByText(/onboarding redesign/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/needs your go-ahead/i).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("gives an in-app go-ahead on a gated card via the queue action", async () => {
+    const onQueueAction = vi.fn(async () => true);
+    const user = userEvent.setup();
+    renderPipeline({
+      onQueueAction,
+      board: board({
+        columns: {
+          queued: [],
+          in_progress: [],
+          shipped: [],
+          awaiting_approval: [
+            card({ number: 77, title: "gated plan awaiting go-ahead", labels: ["agent:plan-pending-approval"] }),
+          ],
+        },
+        counts: { queued: 0, in_progress: 0, shipped: 0, awaiting_approval: 1 },
+      }),
+    });
+    // The decision card offers a real go-ahead, not just a GitHub link. The
+    // queue action strips the approval gate server-side (lib/issue_queue.py).
+    await user.click(screen.getByRole("button", { name: /give go-ahead/i }));
+    expect(onQueueAction).toHaveBeenCalledWith("your-org/api", 77, "queue");
+  });
+
+  it("does not offer a go-ahead on a demo gated card", () => {
+    renderPipeline({
+      onQueueAction: vi.fn(async () => true),
+      board: board({
+        columns: {
+          queued: [],
+          in_progress: [],
+          shipped: [],
+          awaiting_approval: [
+            card({ number: 78, title: "sample gated plan", demo: true, labels: ["agent:plan-pending-approval"] }),
+          ],
+        },
+        counts: { queued: 0, in_progress: 0, shipped: 0, awaiting_approval: 1 },
+      }),
+    });
+    expect(screen.queryByRole("button", { name: /give go-ahead/i })).not.toBeInTheDocument();
+  });
+
+  it("falls back to zero awaiting-approval when an older server omits the lane", () => {
+    renderPipeline({
+      plans: [plan({ title: "Approve the export plan", source: "batman", status: "draft" })],
+      board: board({
+        columns: { queued: [card()], in_progress: [], shipped: [] },
+        counts: { queued: 1, in_progress: 0, shipped: 0 },
+      }),
+    });
+    // No awaiting_approval lane on the payload: count is just the single plan.
+    expect(screen.getByRole("region", { name: /needs your go-ahead \(1\)/i })).toBeInTheDocument();
+  });
+
   it("uses the human chip vocabulary, never raw jargon, on card faces", () => {
     renderPipeline({
       plans: [plan({ title: "Approve the export plan", source: "batman", status: "draft" })],
@@ -262,6 +344,71 @@ describe("PipelineView", () => {
     expect(onDiscardPlan).toHaveBeenCalledWith(
       expect.objectContaining({ plan_id: "compose-export" }),
     );
+  });
+
+  it("opens the detail sheet when a Needs-detail draft card is clicked (no dead-end)", async () => {
+    const user = userEvent.setup();
+    renderPipeline({
+      plans: [
+        plan({
+          plan_id: "compose-thin",
+          title: "What is the state of the fleet",
+          status: "needs scope",
+          parent: null,
+          source: "compose",
+          readiness_score: 78,
+          readiness_ok: false,
+        }),
+      ],
+    });
+    // The card face reads "Needs detail" and clicking its body opens the plan
+    // detail (the card body carries the outcome sentence; the hover discard has
+    // its own distinct "Discard this draft" name so it never collides).
+    await user.click(screen.getByText("What is the state of the fleet"));
+    expect(screen.getByLabelText(/selected plan details/i)).toBeInTheDocument();
+  });
+
+  it("offers a quiet inline Discard on a junk draft card, without opening the sheet", async () => {
+    const onDiscardPlan = vi.fn();
+    const user = userEvent.setup();
+    renderPipeline({
+      plans: [
+        plan({
+          plan_id: "compose-thin",
+          title: "What is the state of the fleet",
+          status: "needs scope",
+          parent: null,
+          source: "compose",
+          readiness_score: 78,
+          readiness_ok: false,
+        }),
+      ],
+      onDiscardPlan,
+    });
+    // The inline discard is a card hover action, so no detail sheet is needed.
+    await user.click(screen.getByRole("button", { name: "Discard this draft" }));
+    expect(onDiscardPlan).toHaveBeenCalledWith(
+      expect.objectContaining({ plan_id: "compose-thin" }),
+    );
+    expect(screen.queryByLabelText(/selected plan details/i)).not.toBeInTheDocument();
+  });
+
+  it("does not offer an inline discard on a genuine Batman go/no-go plan", () => {
+    renderPipeline({
+      plans: [
+        plan({
+          plan_id: "13-plan",
+          title: "Add CSV export",
+          source: "batman",
+          status: "Draft (awaiting approval)",
+          parent: null,
+        }),
+      ],
+    });
+    // A Batman go/no-go is a decision, never a junk draft: no inline discard.
+    expect(
+      screen.queryByRole("button", { name: "Discard this draft" }),
+    ).not.toBeInTheDocument();
   });
 
   it("holds and marks done a queued issue from its detail panel", async () => {

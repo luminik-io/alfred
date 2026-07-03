@@ -283,8 +283,18 @@ export type ShippedBoard = {
     queued: ShippedCard[];
     in_progress: ShippedCard[];
     shipped: ShippedCard[];
+    // Plans gated on the operator's go-ahead (agent:plan-pending-approval).
+    // These are decisions waiting on you, not queued or in-flight work. Older
+    // servers omit the lane, so it is optional and the client treats a missing
+    // lane as an empty one.
+    awaiting_approval?: ShippedCard[];
   };
-  counts: { queued: number; in_progress: number; shipped: number };
+  counts: {
+    queued: number;
+    in_progress: number;
+    shipped: number;
+    awaiting_approval?: number;
+  };
   // Per-repo soft failures: the board still built from the repos that worked.
   errors?: string[];
   // Hard failure: the board could not be built at all (auth/gh down). The

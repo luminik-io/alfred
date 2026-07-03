@@ -104,7 +104,13 @@ def test_board_splits_into_three_columns(monkeypatch):
     assert [c["number"] for c in cols["in_progress"]] == [1]
     assert [c["number"] for c in cols["shipped"]] == [2]  # old merge (April) excluded
     assert [c["number"] for c in cols["queued"]] == [9]
-    assert board["counts"] == {"queued": 1, "in_progress": 1, "shipped": 1}
+    assert cols["awaiting_approval"] == []
+    assert board["counts"] == {
+        "queued": 1,
+        "in_progress": 1,
+        "shipped": 1,
+        "awaiting_approval": 0,
+    }
     assert board["errors"] == []
 
 
@@ -200,8 +206,52 @@ def test_approval_gated_issue_excluded_from_queued(monkeypatch):
         },
     ]
     monkeypatch.setattr(sb, "_gh_json", _fake_gh([], issues))
-    queued = sb.build_board(["acme/api"], now=NOW)["columns"]["queued"]
+    board = sb.build_board(["acme/api"], now=NOW)
+    queued = board["columns"]["queued"]
     assert [c["number"] for c in queued] == [1]  # gated issue must not read as Ready
+
+
+def test_approval_gated_issue_surfaced_in_awaiting_approval(monkeypatch):
+    # The gated plan is a decision waiting on the operator, so it must NOT vanish
+    # from the board: it belongs in the awaiting_approval lane with an honest
+    # count, distinct from the pickable Queued lane (Codex P2 on #218 follow-up).
+    issues = [
+        {
+            "number": 1,
+            "title": "pickable work",
+            "url": "u1",
+            "author": {"login": "a"},
+            "createdAt": _iso(2),
+            "labels": [{"name": "agent:implement"}],
+        },
+        {
+            "number": 2,
+            "title": "gated plan awaiting operator go-ahead",
+            "url": "u2",
+            "author": {"login": "a"},
+            "createdAt": _iso(2),
+            "labels": [
+                {"name": "agent:implement"},
+                {"name": "agent:plan-pending-approval"},
+            ],
+        },
+        {
+            "number": 3,
+            "title": "another gated plan",
+            "url": "u3",
+            "author": {"login": "a"},
+            "createdAt": _iso(3),
+            "labels": [{"name": "agent:plan-pending-approval"}],
+        },
+    ]
+    monkeypatch.setattr(sb, "_gh_json", _fake_gh([], issues))
+    board = sb.build_board(["acme/api"], now=NOW)
+    cols = board["columns"]
+    # Gated plans land in awaiting_approval, never in queued.
+    assert sorted(c["number"] for c in cols["awaiting_approval"]) == [2, 3]
+    assert [c["number"] for c in cols["queued"]] == [1]
+    assert board["counts"]["awaiting_approval"] == 2
+    assert board["counts"]["queued"] == 1
 
 
 def test_queue_include_label_required_when_set(monkeypatch):
@@ -326,7 +376,7 @@ def test_queue_exclude_labels_configurable(monkeypatch):
 def test_failed_repo_recorded_not_raised(monkeypatch):
     monkeypatch.setattr(sb, "_gh_json", lambda *a, **k: None)  # gh always fails
     board = sb.build_board(["acme/api", "acme/web"], now=NOW)
-    assert board["counts"] == {"queued": 0, "in_progress": 0, "shipped": 0}
+    assert board["counts"] == {"queued": 0, "in_progress": 0, "shipped": 0, "awaiting_approval": 0}
     assert set(board["errors"]) == {"acme/api", "acme/web"}
     assert board["error"].startswith("GitHub data unavailable")
 
@@ -342,7 +392,7 @@ def test_partial_repo_failure_with_no_cards_stays_soft(monkeypatch):
 
     monkeypatch.setattr(sb, "_gh_json", fake_gh)
     board = sb.build_board(["acme/api", "acme/web"], now=NOW)
-    assert board["counts"] == {"queued": 0, "in_progress": 0, "shipped": 0}
+    assert board["counts"] == {"queued": 0, "in_progress": 0, "shipped": 0, "awaiting_approval": 0}
     assert board["errors"] == ["acme/api"]
     assert "error" not in board
 
@@ -667,7 +717,7 @@ def test_demo_cards_excluded_by_default(_hermetic_alfred_home, monkeypatch):
     board = sb.build_board(["acme/api"], now=NOW)
     titles = [c["title"] for col in board["columns"].values() for c in col]
     assert all("demo" not in t for t in titles)
-    assert board["counts"] == {"queued": 0, "in_progress": 0, "shipped": 0}
+    assert board["counts"] == {"queued": 0, "in_progress": 0, "shipped": 0, "awaiting_approval": 0}
 
 
 def test_demo_cards_merged_only_on_opt_in(_hermetic_alfred_home, monkeypatch):

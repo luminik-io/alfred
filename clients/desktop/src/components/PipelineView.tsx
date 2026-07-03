@@ -142,6 +142,16 @@ export function PipelineView({
     () => deduped.filter((entry) => isLowSignalPlan(entry.plan)),
     [deduped],
   );
+  // GitHub issues gated on the operator's go-ahead (agent:plan-pending-approval)
+  // are decisions too, not queued work. The server surfaces them in the
+  // `awaiting_approval` lane; render them alongside the local plans so the
+  // "Needs your go-ahead" count is honest instead of hiding a real backlog.
+  const awaitingApproval = useMemo(
+    () => columns?.awaiting_approval ?? [],
+    [columns],
+  );
+  // The honest decision count: local plans waiting plus gated GitHub issues.
+  const goAheadCount = visiblePlans.length + awaitingApproval.length;
 
   const selectedPlan =
     selection?.kind === "plan"
@@ -153,6 +163,7 @@ export function PipelineView({
           ...(columns?.queued || []),
           ...(columns?.in_progress || []),
           ...(columns?.shipped || []),
+          ...awaitingApproval,
         ].find((card) => cardKey(card) === selection.key) || null
       : null;
 
@@ -165,6 +176,7 @@ export function PipelineView({
   const hasAnything =
     visiblePlans.length ||
     lowSignal.length ||
+    awaitingApproval.length ||
     (columns &&
       (columns.queued.length || columns.in_progress.length || columns.shipped.length));
 
@@ -249,7 +261,7 @@ export function PipelineView({
         />
       ) : (
         <div className="alfred-pipeline__columns motion-rise">
-          <PipelineColumn label="Needs your go-ahead" count={visiblePlans.length}>
+          <PipelineColumn label="Needs your go-ahead" count={goAheadCount}>
             {visiblePlans.map((entry) => (
               <PlanLifecycleCard
                 key={entry.plan.plan_id}
@@ -259,6 +271,19 @@ export function PipelineView({
                 selected={selection?.kind === "plan" && selection.id === entry.plan.plan_id}
                 onSelect={() => setSelection({ kind: "plan", id: entry.plan.plan_id })}
                 onDecision={onDecision}
+                onDiscardPlan={onDiscardPlan}
+              />
+            ))}
+            {awaitingApproval.map((card) => (
+              <BoardLifecycleCard
+                key={cardKey(card)}
+                card={card}
+                column="awaiting_approval"
+                selected={selection?.kind === "card" && selection.key === cardKey(card)}
+                onSelect={() => setSelection({ kind: "card", key: cardKey(card) })}
+                canQueue={canQueue}
+                busyQueue={busyQueue}
+                onQueueAction={onQueueAction}
               />
             ))}
             {lowSignal.length ? (
@@ -291,7 +316,7 @@ export function PipelineView({
                   : null}
               </div>
             ) : null}
-            {!visiblePlans.length && !lowSignal.length ? (
+            {!visiblePlans.length && !lowSignal.length && !awaitingApproval.length ? (
               <p className="alfred-pipeline__empty">No plans waiting on you.</p>
             ) : null}
           </PipelineColumn>
@@ -357,7 +382,9 @@ export function PipelineView({
                   ? "shipped"
                   : (columns?.in_progress || []).some((c) => cardKey(c) === cardKey(selectedCard))
                     ? "in_progress"
-                    : "queued"
+                    : awaitingApproval.some((c) => cardKey(c) === cardKey(selectedCard))
+                      ? "awaiting_approval"
+                      : "queued"
               }
               busyQueue={busyQueue}
               canQueue={canQueue}
@@ -449,6 +476,14 @@ function PipelineColumn({
   );
 }
 
+// A working draft (compose / planning) with no parent issue can be discarded.
+// Genuine Batman go/no-go plans and Slack follow-ups are decisions, not junk
+// drafts, so they never get the quiet discard.
+function planCanDiscard(plan: PlanDraft): boolean {
+  const hasParent = Boolean(plan.parent && isSafeExternalUrl(plan.parent));
+  return !hasParent && (plan.source === "compose" || plan.source === "planning");
+}
+
 function PlanLifecycleCard({
   plan,
   revisions,
@@ -456,6 +491,7 @@ function PlanLifecycleCard({
   selected,
   onSelect,
   onDecision,
+  onDiscardPlan,
 }: {
   plan: PlanDraft;
   revisions: number;
@@ -463,11 +499,29 @@ function PlanLifecycleCard({
   selected: boolean;
   onSelect: () => void;
   onDecision: (plan: PlanDraft, decision: PlanDecision) => void;
+  onDiscardPlan?: (plan: PlanDraft) => void;
 }) {
   const canDecide = planNeedsAttention(plan);
   const actionBusy = busyPlanAction?.startsWith(`${plan.plan_id}:`) || false;
   const repos = repoChips(splitReposFull(plan.affected_repos));
   const outcome = revisions > 1 ? `${plan.title} (${revisions} revisions)` : plan.title;
+  // A quiet Discard on the card face for junk working drafts, revealed on hover
+  // or keyboard focus (like the queued Hold action), so a dead-end draft can be
+  // cleared without opening the detail sheet.
+  const discardable = Boolean(onDiscardPlan) && planCanDiscard(plan);
+  const hoverActions =
+    discardable && onDiscardPlan ? (
+      <button
+        className="card-hover-action"
+        type="button"
+        disabled={actionBusy}
+        title="Discard this draft"
+        aria-label="Discard this draft"
+        onClick={() => onDiscardPlan(plan)}
+      >
+        <X size={14} aria-hidden="true" />
+      </button>
+    ) : null;
   return (
     <LifecycleCard
       chip={planChip(plan)}
@@ -476,6 +530,7 @@ function PlanLifecycleCard({
       outcome={outcome}
       selected={selected}
       onSelect={onSelect}
+      hoverActions={hoverActions}
       action={
         canDecide ? (
           <button
@@ -511,8 +566,29 @@ function BoardLifecycleCard({
   onQueueAction?: QueueActionHandler;
 }) {
   const agent = agentForShipped(card);
+  // A gated plan (agent:plan-pending-approval) is a decision waiting on the
+  // operator. The `queue` action strips the gate label (see lib/issue_queue.py),
+  // so it IS the in-app "give the go-ahead" path: a card that says "Needs your
+  // go-ahead" must let you actually give it, not just link to GitHub.
+  const canGiveGoAhead =
+    Boolean(canQueue) &&
+    column === "awaiting_approval" &&
+    card.kind === "issue" &&
+    !card.demo &&
+    !!card.number;
+  const approving = busyQueue === `queue:${card.repo}#${card.number}`;
   const action =
-    column === "shipped" && card.url ? (
+    canGiveGoAhead && card.number && onQueueAction ? (
+      <button
+        className="approve-button"
+        type="button"
+        disabled={approving}
+        onClick={() => onQueueAction(card.repo, card.number as number, "queue")}
+      >
+        <Check size={15} aria-hidden="true" />
+        <span>{approving ? "Approving" : "Give go-ahead"}</span>
+      </button>
+    ) : column === "shipped" && card.url ? (
       <button
         className="secondary-button"
         type="button"
@@ -723,8 +799,17 @@ function CardInspector({
 }) {
   const actionable =
     canQueue && column === "queued" && card.kind === "issue" && !card.demo && !!card.number;
+  // A gated plan can be released from its detail too: `queue` strips the
+  // approval gate (lib/issue_queue.py), which is the in-app go-ahead.
+  const canGiveGoAhead =
+    canQueue &&
+    column === "awaiting_approval" &&
+    card.kind === "issue" &&
+    !card.demo &&
+    !!card.number;
   const holding = busyQueue === `hold:${card.repo}#${card.number}`;
   const closing = busyQueue === `done:${card.repo}#${card.number}`;
+  const approving = busyQueue === `queue:${card.repo}#${card.number}`;
   return (
     <div className="detail-panel detail-panel--sheet" aria-label="Selected pipeline item">
       <div className="detail-panel__head">
@@ -746,6 +831,17 @@ function CardInspector({
         ) : null}
       </dl>
       <div className="card-actions card-actions--start">
+        {canGiveGoAhead && card.number ? (
+          <button
+            className="approve-button"
+            type="button"
+            disabled={approving}
+            onClick={() => onQueueAction?.(card.repo, card.number as number, "queue")}
+          >
+            <Check size={16} aria-hidden="true" />
+            <span>{approving ? "Approving" : "Give go-ahead"}</span>
+          </button>
+        ) : null}
         {card.url ? (
           <button className="secondary-button" type="button" onClick={() => void openExternal(card.url as string)}>
             <ExternalLink size={16} aria-hidden="true" />

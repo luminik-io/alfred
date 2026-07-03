@@ -71,6 +71,15 @@ _DEFAULT_QUEUE_EXCLUDE = (
 
 _DEFAULT_QUEUE_INCLUDE = ("agent:implement", "agent:large-feature")
 
+# A gated single-repo plan carries ``agent:plan-pending-approval`` and is a
+# decision waiting on the operator, not queued or parked work. Excluding it from
+# the queue lane (above) is correct, but silently dropping it understates what
+# needs a go-ahead. Surface these issues in their own ``awaiting_approval`` lane
+# so the operator sees an honest count instead of the decision vanishing.
+# Substring + case-insensitive so it matches ``agent:plan-pending-approval`` and
+# a bare ``plan-pending-approval``.
+_AWAITING_APPROVAL_HINT = "plan-pending-approval"
+
 _DEFAULT_AGENT_SHIPPED_LABELS = (
     "agent:authored",
     "agent:done",
@@ -183,6 +192,16 @@ def _issue_is_queue_work(issue: dict) -> bool:
         return True
     labels = _issue_labels(issue)
     return any(any(h in label for h in include) for label in labels)
+
+
+def _issue_is_awaiting_approval(issue: dict) -> bool:
+    """True if an open issue is a plan gated on the operator's go-ahead.
+
+    These carry ``agent:plan-pending-approval``. They are decisions waiting on
+    the operator, so they belong in the ``awaiting_approval`` lane with an
+    honest count, not silently dropped from the board.
+    """
+    return any(_AWAITING_APPROVAL_HINT in label for label in _issue_labels(issue))
 
 
 def _agent_shipped_evidence(pr: dict) -> list[str]:
@@ -362,15 +381,17 @@ def _card(repo: str, item: dict, *, kind: str, ts_field: str, now: datetime) -> 
 
 def _fetch_repo(
     repo: str, *, cutoff: float, now: datetime, limit: int
-) -> tuple[str, list[dict], list[dict], list[dict], bool]:
+) -> tuple[str, list[dict], list[dict], list[dict], list[dict], bool]:
     """Query one repo's PRs + issues. Returns
-    ``(repo, queued, in_progress, shipped, errored)``. ``errored`` is True if
-    either gh call failed, so the caller records it without losing the cards it
-    did get. Pure per-repo work, safe to run concurrently across repos.
+    ``(repo, queued, in_progress, shipped, awaiting_approval, errored)``.
+    ``errored`` is True if either gh call failed, so the caller records it
+    without losing the cards it did get. Pure per-repo work, safe to run
+    concurrently across repos.
     """
     queued: list[dict] = []
     in_progress: list[dict] = []
     shipped: list[dict] = []
+    awaiting_approval: list[dict] = []
     errored = False
 
     prs = _gh_json(
@@ -418,6 +439,14 @@ def _fetch_repo(
         errored = True
     else:
         for issue in issues:
+            # A plan gated on the operator's go-ahead is a decision, not queued
+            # work: surface it in its own lane so the count is honest instead of
+            # the issue silently dropping off the board.
+            if _issue_is_awaiting_approval(issue):
+                awaiting_approval.append(
+                    _card(repo, issue, kind="issue", ts_field="createdAt", now=now)
+                )
+                continue
             # "Queued" must mean work Alfred can actually pick up, not the whole
             # backlog: skip PR-backed / parked issues, and (when an include-label
             # is configured) require a pickup-ready label so roadmap / needs-info
@@ -425,12 +454,17 @@ def _fetch_repo(
             if _issue_is_queue_work(issue):
                 queued.append(_card(repo, issue, kind="issue", ts_field="createdAt", now=now))
 
-    return repo, queued, in_progress, shipped, errored
+    return repo, queued, in_progress, shipped, awaiting_approval, errored
 
 
 def _demo_cards() -> dict[str, list[dict]]:
     """Locally seeded demo cards to merge into the board, or empty columns."""
-    empty: dict[str, list[dict]] = {"queued": [], "in_progress": [], "shipped": []}
+    empty: dict[str, list[dict]] = {
+        "queued": [],
+        "in_progress": [],
+        "shipped": [],
+        "awaiting_approval": [],
+    }
     try:
         from server.setup import load_demo_cards
 
@@ -482,6 +516,7 @@ def build_board(
     queued: list[dict] = []
     in_progress: list[dict] = []
     shipped: list[dict] = []
+    awaiting_approval: list[dict] = []
     errors: list[str] = []
 
     if include_demo:
@@ -489,6 +524,7 @@ def build_board(
         queued.extend(demo.get("queued", []))
         in_progress.extend(demo.get("in_progress", []))
         shipped.extend(demo.get("shipped", []))
+        awaiting_approval.extend(demo.get("awaiting_approval", []))
 
     if repos:
         max_workers = min(len(repos), 8)
@@ -499,12 +535,13 @@ def build_board(
             ]
             for fut in concurrent.futures.as_completed(futures):
                 try:
-                    repo, q, ip, sh, errored = fut.result()
+                    repo, q, ip, sh, aa, errored = fut.result()
                 except Exception:  # never let one repo's failure break the board
                     continue
                 queued.extend(q)
                 in_progress.extend(ip)
                 shipped.extend(sh)
+                awaiting_approval.extend(aa)
                 if errored:
                     errors.append(repo)
 
@@ -515,6 +552,7 @@ def build_board(
         "queued": len(queued),
         "in_progress": len(in_progress),
         "shipped": len(shipped),
+        "awaiting_approval": len(awaiting_approval),
     }
     unique_errors = sorted(set(errors))
     result = {
@@ -525,6 +563,7 @@ def build_board(
             "queued": _sort(queued),
             "in_progress": _sort(in_progress),
             "shipped": _sort(shipped),
+            "awaiting_approval": _sort(awaiting_approval),
         },
         "counts": counts,
         "errors": unique_errors,

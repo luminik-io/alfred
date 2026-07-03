@@ -20,8 +20,10 @@ import { exactTime, friendlyTime } from "../format";
 import {
   buildActiveThreads,
   buildCostHealth,
+  buildFleetActivity,
   buildRunning,
   buildShippedDigest,
+  fleetPauseSummary,
   isErrorStatus,
   threadForCard,
 } from "../lib/derive";
@@ -124,6 +126,7 @@ export function ReviewView({
   const health = buildCostHealth(snapshot);
   const activeThreads = buildActiveThreads(shipped);
   const boardLiveCount = countBoardLiveWork(shipped);
+  const fleet = buildFleetActivity(snapshot);
   const decisions = needsYou.length;
   const [shippedDays, setShippedDays] = useState<number>(1);
   const routeCards = useMemo(() => buildRouteCards(snapshot), [snapshot]);
@@ -136,9 +139,13 @@ export function ReviewView({
     };
   }, [shipped, shippedDays]);
   const filteredDigest = useMemo(() => buildShippedDigest(filteredShipped), [filteredShipped]);
+  // A paused fleet is not "running", so a mostly/all-paused fleet with no live
+  // firing prefers the shipped proof (or needs-you) over an empty Running lane.
+  const fleetHeld = fleet.allPaused || fleet.mostlyPaused;
+  const hasLiveActivity = running.running.length > 0 || (!fleetHeld && boardLiveCount > 0);
   const preferredLane: InboxLane = decisions
     ? "needs"
-    : running.running.length || boardLiveCount
+    : hasLiveActivity
       ? "activity"
       : filteredDigest.length
         ? "shipped"
@@ -158,15 +165,25 @@ export function ReviewView({
     isErrorStatus(firing.status),
   ).length;
   const runningCount = running.running.length;
-  const liveWorkCount = runningCount + boardLiveCount;
+  // When the fleet is on hold, nothing is actually being worked: the queued /
+  // in-flight board cards are frozen, not progressing. Only a genuinely running
+  // firing counts as live work then, so "Working now" never overstates a paused
+  // fleet. When the fleet is running, live work is the usual runs + board work.
+  // `fleetHeld` (derived above) is the single source of truth for this state.
+  const liveWorkCount = fleetHeld ? runningCount : runningCount + boardLiveCount;
+  const pauseSummary = fleetPauseSummary(fleet, boardLiveCount);
   const liveRunSummary = runningCount
     ? `${runningCount} ${runningCount === 1 ? "run is" : "runs are"} active now.`
     : null;
-  const activeThreadSummary = boardLiveCount
-    ? `${boardLiveCount} ${boardLiveCount === 1 ? "request is" : "requests are"} queued or building.`
-    : null;
+  // While the fleet is on hold the pause line already accounts for waiting work,
+  // so drop the "queued or building" claim that would imply activity.
+  const activeThreadSummary =
+    boardLiveCount && !fleetHeld
+      ? `${boardLiveCount} ${boardLiveCount === 1 ? "request is" : "requests are"} queued or building.`
+      : null;
   const summary = snapshot
     ? [
+        pauseSummary,
         filteredDigest.length
           ? `Shipped ${filteredDigest.length} ${filteredDigest.length === 1 ? "update" : "updates"} overnight.`
           : null,
@@ -182,11 +199,15 @@ export function ReviewView({
     ? decisions === 1
       ? "Alfred needs one decision"
       : `Alfred needs ${decisions} decisions`
-    : liveWorkCount
-      ? "Alfred is working"
-      : filteredDigest.length
-        ? "Alfred shipped while you were away"
-        : "Alfred is clear";
+    : fleetHeld
+      ? fleet.allPaused
+        ? "Fleet is paused"
+        : "Fleet is mostly paused"
+      : liveWorkCount
+        ? "Alfred is working"
+        : filteredDigest.length
+          ? "Alfred shipped while you were away"
+          : "Alfred is clear";
 
   const laneTabs: TabItem<InboxLane>[] = [
     { key: "needs", label: "Needs you", icon: Bell, badge: decisions || null },
@@ -214,7 +235,13 @@ export function ReviewView({
     {
       label: "Working now",
       value: liveWorkCount ? String(liveWorkCount) : "0",
-      detail: liveWorkCount ? "Open Running to follow live work." : "No live work right now.",
+      detail: fleetHeld
+        ? boardLiveCount
+          ? `Fleet paused - ${boardLiveCount} ${boardLiveCount === 1 ? "request is" : "requests are"} waiting, not running.`
+          : "Fleet paused. Nothing is running."
+        : liveWorkCount
+          ? "Open Running to follow live work."
+          : "No live work right now.",
     },
     {
       label: `Shipped in ${shippedDays === 1 ? "24h" : `${shippedDays}d`}`,
