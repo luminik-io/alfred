@@ -1690,6 +1690,18 @@ def test_clean_slack_text_canonicalizes_piped_user_mention() -> None:
     assert _clean_slack_text("see <https://x.test|the docs>") == "see the docs"
 
 
+def test_clean_slack_text_strips_sent_using_attribution_footer() -> None:
+    """Slack's "*Sent using* <@app>" footer on app-posted messages must be
+    dropped, otherwise "ship it" arrives as "ship it *Sent using* <@app>" and
+    fails the whole-token approval match."""
+    piped = "<@U0BOT|alfred> ship it *Sent using* <@U0APP|Claude>"
+    assert _strip_mentions(_clean_slack_text(piped)) == "ship it"
+    bare = "<@U0BOT> ship it *Sent using* <@U0APP>"
+    assert _strip_mentions(_clean_slack_text(bare)) == "ship it"
+    # A message with no footer is unchanged.
+    assert _strip_mentions(_clean_slack_text("<@U0BOT> ship it")) == "ship it"
+
+
 def test_conversation_thread_mention_prefixed_ship_it_files(tmp_path: Path) -> None:
     """A channel approval reply "<@BOT|label> ship it" must still file.
 

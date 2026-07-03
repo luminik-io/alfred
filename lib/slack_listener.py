@@ -3046,6 +3046,13 @@ _USER_MENTION_RE = re.compile(r"<@[A-Z0-9]+(?:\|[^>]*)?>")
 # like a mention, so ``mentions_bot`` (which detects the ambient/app_mention
 # duplicate delivery) keeps working.
 _PIPED_USER_MENTION_RE = re.compile(r"<@([A-Z0-9]+)\|[^>]*>")
+# The "*Sent using* <@app>" attribution Slack appends to a message a user posts
+# through an app integration. Optional italics, optional whitespace/newline, then
+# a user mention (piped or bare). Stripped so it never contaminates a match.
+_SENT_USING_FOOTER_RE = re.compile(
+    r"\s*\*?\s*Sent using\s*\*?\s*<@[A-Z0-9]+(?:\|[^>]*)?>",
+    re.IGNORECASE,
+)
 
 
 def _strip_mentions(text: str) -> str:
@@ -3053,6 +3060,13 @@ def _strip_mentions(text: str) -> str:
 
 
 def _clean_slack_text(text: str) -> str:
+    # Slack appends an italic "*Sent using* <@app>" attribution footer to a
+    # message a user posts THROUGH an app integration (rather than typing it in
+    # the client). It is never user content, and left in place it defeats a
+    # whole-token match: "ship it" arrives as "ship it *Sent using* <@app>" and
+    # no longer reads as an approval. Strip the footer first so every downstream
+    # match (approval, intent, converse) sees the real message.
+    text = _SENT_USING_FOOTER_RE.sub(" ", text)
     # Order matters. Canonicalize a piped user mention "<@ID|label>" to the bare
     # "<@ID>" FIRST, so the generic "<url|display>" link rule below does not
     # rewrite it into its bare label (which would leave e.g. "alfred ship it" and
