@@ -260,6 +260,66 @@ def test_scrub_drops_private_repos(mod, window):
     assert private_sibling not in serialized
 
 
+def test_legacy_bare_alfred_and_internal_are_denied_by_default(mod):
+    # Both the new private sibling (alfred-internal) and the legacy bare
+    # "alfred" slug (which WAS the private repo before the rename) must be
+    # treated as private so pre-rename shipped state never leaks.
+    legacy_private = "lumi" + "nik-io/alfred"
+    new_private = "lumi" + "nik-io/alfred-internal"
+    assert mod.is_private_repo(legacy_private) is True
+    assert mod.is_private_repo(new_private) is True
+    # With no allowlist configured, both are dropped.
+    assert mod.filter_repo(legacy_private, []) is False
+    assert mod.filter_repo(new_private, []) is False
+
+
+def test_renamed_public_repo_publishes_only_when_explicitly_allowlisted(mod):
+    # The public repo now shares the bare "alfred" slug with the former private
+    # repo, so it is denied by default and opts in via an explicit allowlist
+    # entry, which overrides the private-pattern deny.
+    public_repo = "lumi" + "nik-io/alfred"
+    assert mod.filter_repo(public_repo, []) is False
+    assert mod.filter_repo(public_repo, [public_repo]) is True
+    # The allowlist override is scoped: it does not un-deny the private sibling.
+    new_private = "lumi" + "nik-io/alfred-internal"
+    assert mod.filter_repo(new_private, [public_repo]) is False
+
+
+def test_build_feed_drops_legacy_private_alfred_records_across_rename(mod, window):
+    # Simulate shipped state captured before the rename: a PR whose repo slug
+    # is the legacy bare "alfred" (private at capture time). With the default
+    # empty allowlist it must not surface in the public feed.
+    legacy_private = "lumi" + "nik-io/alfred"
+    raw = [
+        {
+            "repo": legacy_private,
+            "number": 7,
+            "title": "internal work captured before the rename",
+            "codename": "lucius",
+            "merged_at": "2026-05-20T09:00:00Z",
+            "lines_added": 1,
+            "lines_removed": 0,
+            "files_changed": 1,
+            "url": f"https://github.com/{legacy_private}/pull/7",
+        },
+        {
+            "repo": "your-org/your-backend",
+            "number": 8,
+            "title": "public",
+            "codename": "lucius",
+            "merged_at": "2026-05-20T10:00:00Z",
+            "lines_added": 1,
+            "lines_removed": 0,
+            "files_changed": 1,
+            "url": "https://github.com/your-org/your-backend/pull/8",
+        },
+    ]
+    feed = mod.build_feed(raw, operator="your-org", window=window, allowlist=[])
+    payload = feed.to_dict()
+    assert [pr["repo"] for pr in payload["prs"]] == ["your-org/your-backend"]
+    assert legacy_private not in json.dumps(payload)
+
+
 def test_scrub_rewrites_private_token_in_title(mod):
     # Build private tokens dynamically to keep the test source clean against
     # scrub-check.sh while still verifying the emitter rewrites them.

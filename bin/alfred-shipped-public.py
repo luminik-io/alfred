@@ -24,6 +24,11 @@ Privacy contract:
   no allowlist is configured AND the repo does not match
   ``PRIVATE_REPO_PATTERNS`` (which catches the Luminik internal repo
   names that must not leak to the public feed).
+- An explicit allowlist entry overrides ``PRIVATE_REPO_PATTERNS``. This is
+  the deliberate opt-in for the renamed public repo: ``luminik-io/alfred``
+  now shares its slug with the former private repo of the same name, so it
+  is denied by default (keeping stale pre-rename records private) and only
+  publishes once the operator adds it to ``ALFRED_PUBLIC_REPO_ALLOWLIST``.
 """
 
 from __future__ import annotations
@@ -109,11 +114,17 @@ PRIVATE_REPO_PATTERNS: tuple[re.Pattern[str], ...] = (
         + r")"
         + r"(?:$|[^A-Za-z0-9_-])"
     ),
-    # "alfred-internal" basename under any owner (the private sibling of the
-    # public luminik-io/alfred repo). The basename match is intentional; the
-    # public repo is the bare "alfred" name and must stay through, so only the
-    # "-internal" suffixed sibling is denied here.
+    # "alfred-internal" basename under any owner: the private sibling of the
+    # public luminik-io/alfred repo after the rename.
     re.compile(r"(?:^|/)alfred-internal(?:$|[^A-Za-z0-9_])"),
+    # Legacy bare "alfred" basename under any owner. Before the repo rename,
+    # luminik-io/alfred WAS the private repo, so shipped state captured before
+    # the cutover carries this slug for private PRs. Denying it by default keeps
+    # those stale private records out of the public feed. The repo is now
+    # public under this same slug, so publishing it requires an explicit
+    # allowlist entry (see filter_repo), which overrides this deny once the
+    # operator has confirmed stale pre-rename state has aged out.
+    re.compile(r"(?:^|/)alfred(?:$|[^-A-Za-z0-9_])"),
 )
 
 # A title may carry a private repo name in plain text; this regex
@@ -414,12 +425,18 @@ def filter_repo(repo: str, allowlist: Iterable[str]) -> bool:
     """Decide whether a repo's PRs are allowed into the public feed."""
     if not REPO_SLUG_RE.match(repo):
         return False
+    allow = list(allowlist)
+    # An explicit allowlist entry is an intentional opt-in and overrides the
+    # private-pattern deny. This is the cutover path for the renamed public
+    # repo: luminik-io/alfred now shares its slug with the former private repo,
+    # so it stays denied by default (protecting stale pre-rename state) and
+    # publishes only when the operator lists it explicitly.
+    if repo in allow:
+        return True
     if is_private_repo(repo):
         return False
-    allow = list(allowlist)
-    if not allow:
-        return True
-    return repo in allow
+    # No allowlist configured: publish anything that is not private.
+    return not allow
 
 
 def to_public_pr(raw: dict[str, Any]) -> PublicPr | None:

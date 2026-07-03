@@ -59,8 +59,8 @@ PR diffs, issue bodies, author emails, comments, labels, and any other state are
 A PR passes through only when its repo:
 
 1. Matches the public slug format `owner/name`.
-2. Does NOT match the built-in private-name patterns. The emitter ships with a denylist for internal product-repo basenames; any owner/name whose name segment matches is dropped, and the `alfred-internal` basename is denied under any owner (that is the private sibling of the public `luminik-io/alfred` repo, which is the bare-name `alfred` and stays through).
-3. Is in `--public-allowlist` (if any is set) OR no allowlist is set.
+2. Is in `--public-allowlist` (an explicit allowlist entry always publishes, and overrides the private-name denylist), OR
+3. Does NOT match the built-in private-name patterns AND no allowlist is set. The emitter ships with a denylist for internal product-repo basenames; any owner/name whose name segment matches is dropped. Both `alfred-internal` (the private sibling after the rename) and the legacy bare `alfred` basename are denied under any owner. The legacy `alfred` deny matters because `luminik-io/alfred` was the private repo before the rename, so shipped state captured earlier still carries that slug for private PRs. The repo is now public under the same slug, so it publishes only when listed explicitly in the allowlist, once you have confirmed no stale pre-rename records remain.
 
 Any title containing one of those private tokens has it rewritten in place to a `your-` placeholder.
 

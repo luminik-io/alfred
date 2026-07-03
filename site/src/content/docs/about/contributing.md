@@ -17,7 +17,7 @@ PRs that fit get reviewed. PRs that broaden scope get politely declined.
 
 ```sh
 git clone https://github.com/luminik-io/alfred.git
-cd alfred-os
+cd alfred
 uv run --with pytest pytest tests/         # 35 tests, ~2s
 uv run --with 'ruff>=0.6' ruff check .
 uv run --with 'mypy>=1.10' mypy lib/
