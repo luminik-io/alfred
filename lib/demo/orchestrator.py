@@ -13,9 +13,13 @@ fake engine and collect the events. No real LLM runs in CI.
 
 The loop is honest by construction (product rule: real progress only). If
 an engine call fails, :func:`run_demo` raises :class:`DemoEngineError` and
-the run stops. It never prints a fake "shipped". The one scripted beat is
-the approval gate: the presenter blocks on the operator pressing Enter, and
-if they decline the run aborts with :class:`DemoAborted`.
+the run stops. Before declaring "shipped" it verifies the engine actually
+changed the worktree, runs the sample test suite, and requires a real new
+commit with a non-empty diffstat; a reviewer response without a verdict
+token is a failure, never an implicit approval. It never prints a fake
+"shipped". The one scripted beat is the approval gate: the presenter blocks
+on the operator pressing Enter, and if they decline the run aborts with
+:class:`DemoAborted`.
 """
 
 from __future__ import annotations
@@ -57,10 +61,13 @@ class DemoAborted(RuntimeError):
 
 
 class DemoEngineError(RuntimeError):
-    """Raised when a real engine call fails mid-demo.
+    """Raised when a step fails mid-demo and the run must stop honestly.
 
-    Carries the failing step and the engine's own error text so the runner
-    can print an honest failure instead of a fabricated success.
+    Covers a failed engine call, a reviewer response without a verdict
+    token, an engine "success" that left the worktree unchanged, a failing
+    sample test suite, and a failed git commit. Carries the failing step
+    and the error text so the runner can print an honest failure instead
+    of a fabricated success.
     """
 
     def __init__(self, step: str, message: str) -> None:
@@ -182,14 +189,16 @@ Do not write the code yet. Output only the plan."""
 _BUILD_PROMPT = """You are Lucius, the implementation agent on the Alfred fleet.
 
 Working in this `textkit` repo, implement the approved plan. Be fast and direct:
-read `textkit.py`, then make the edits. Do not run the test suite; the review
-step verifies the change.
+read `textkit.py`, then make the edits. Do not run the test suite; the demo's
+ship step verifies it for you.
 
 Add a `slugify(text: str) -> str` function to `textkit.py` that lowercases the
 input, replaces every run of non-alphanumeric characters with a single hyphen,
 and strips leading and trailing hyphens. Add two focused tests for it to
-`test_textkit.py` (one with punctuation, one with multiple spaces). Keep the
-existing code intact.
+`test_textkit.py` (one with punctuation, one with multiple spaces). Write the
+tests as plain assert-based functions matching the existing style; do not use
+pytest-only features (the demo may verify them without pytest installed). Keep
+the existing code intact.
 
 When done, output one line: [DEMO-BUILD-DONE] followed by a one-sentence
 summary. Do nothing else."""
@@ -197,27 +206,38 @@ summary. Do nothing else."""
 _REVIEW_PROMPT = f"""You are Ra's al Ghul, the adversarial reviewer on the Alfred fleet.
 
 Review the CURRENT state of `textkit.py` in your working directory with a
-critical eye. There is a real correctness bug in the EXISTING `titlecase`
-function: it splits on a single space and rejoins with a single space, so it
-silently collapses runs of consecutive whitespace (for example "a  b" with two
-spaces returns "A B" with one). The current tests only use single spaces, so
-they pass and hide it.
+critical eye, focusing on whitespace handling in the EXISTING functions, not
+the newly added one. Pay particular attention to whether `titlecase` preserves
+the exact spacing of its input.
 
-Find that bug. Explain it in two sentences: what breaks and the input that
-exposes it. Then, on the LAST line, output exactly one verdict token:
-  {REVIEW_BLOCK_SENTINEL}   if you found a correctness bug that must be fixed
-  {REVIEW_PASS_SENTINEL}    only if the code is genuinely correct
-Do not edit any files. Output only your two-sentence finding and the verdict."""
+Do not take anyone's word for it, including this prompt's. Verify with a real
+reproduction before you judge: run
+
+  python3 -c 'import textkit; print(repr(textkit.titlecase("a  b")))'
+
+(note the two spaces in the input) and compare the output spacing to the input
+spacing. Also consider leading and trailing whitespace.
+
+If you verified a real correctness bug, explain it in two sentences: what
+breaks and the exact input and output from your reproduction. If the behavior
+is genuinely correct, say so. Then, on the LAST line, output exactly one
+verdict token:
+  {REVIEW_BLOCK_SENTINEL}   if your reproduction showed a real correctness bug
+  {REVIEW_PASS_SENTINEL}    if you could not reproduce any bug
+Do not edit any files. Output only your finding and the verdict."""
 
 _FIX_PROMPT = """You are Lucius again. The reviewer blocked the change with this finding:
 
 {finding}
 
-Be fast and direct. Fix the reported bug in `titlecase` in `textkit.py` so runs
-of consecutive whitespace are preserved instead of collapsed. Add one test to
-`test_textkit.py` that would have caught it (an input with two consecutive
-spaces). Do not run the test suite. Make the edits with your tools, then output
-one line: [DEMO-FIX-DONE] followed by a one-sentence summary. Do nothing else."""
+Be fast and direct. Fix the reported whitespace bug in `titlecase` in
+`textkit.py` so the exact spacing of the input is preserved instead of
+collapsed or stripped. Add one test to `test_textkit.py` that would have caught
+it (an input with two consecutive spaces), written as a plain assert-based
+function matching the existing style (no pytest-only features). Do not run the
+test suite; the demo's ship step verifies it for you. Make the edits with your
+tools, then output one line: [DEMO-FIX-DONE] followed by a one-sentence
+summary. Do nothing else."""
 
 
 def run_demo(
@@ -247,7 +267,9 @@ def run_demo(
 
     Raises:
         DemoAborted: the operator declined at the gate.
-        DemoEngineError: a real engine call failed; the run stops honestly.
+        DemoEngineError: a step failed (engine error, missing review
+            verdict, unchanged worktree, failing tests, or a failed
+            commit); the run stops honestly.
     """
     started = clock()
     models = models or {}
@@ -324,6 +346,15 @@ def run_demo(
         events,
     )
     bug_caught = REVIEW_BLOCK_SENTINEL in review_text
+    approved = REVIEW_PASS_SENTINEL in review_text
+    if not bug_caught and not approved:
+        # No verdict token at all is an honest failure, never an implicit
+        # approval: silently treating it as "approved" would skip the fix
+        # and ship a change the reviewer never actually signed off on.
+        raise DemoEngineError(
+            "review",
+            "reviewer returned no verdict token; cannot treat a missing verdict as approval",
+        )
     finding = _strip_verdict(review_text)
     if bug_caught:
         _emit(events, "review", "done", finding, verdict="changes_requested", bug_caught=True)
@@ -355,8 +386,11 @@ def run_demo(
         )
 
     # -- ship --------------------------------------------------------------
-    _emit(events, "ship", "start", "Committing the reviewed change and drafting a PR summary.")
-    diff_summary = _finalize_and_summarize(workdir)
+    _emit(events, "ship", "start", "Verifying the change, then committing with a PR summary.")
+    _emit(events, "ship", "detail", "Running the sample test suite before committing.")
+    test_summary = _verify_tests(workdir)
+    _emit(events, "ship", "detail", f"Tests: {test_summary}")
+    diff_summary = _finalize_and_summarize(workdir, include_fix=bug_caught)
     _emit(events, "ship", "done", diff_summary, diff_summary=diff_summary)
 
     elapsed = clock() - started
@@ -384,37 +418,131 @@ def _strip_verdict(review_text: str) -> str:
     return cleaned.strip()
 
 
-def _finalize_and_summarize(workdir: Path) -> str:
-    """Commit any working changes and produce a PR-style summary string.
+# Plain-assert fallback test runner. The sample suite is plain assert-based
+# functions on purpose (and the build/fix prompts require new tests to match),
+# so the demo can verify the shipped change even on a host without pytest.
+# Kept as a standalone script string so it runs in a subprocess: a broken
+# sample module can never corrupt the demo process itself.
+_PLAIN_TEST_RUNNER = """\
+import sys
+import traceback
+
+sys.path.insert(0, ".")
+try:
+    import test_textkit as mod
+except Exception:
+    traceback.print_exc()
+    print("FAILED to import test_textkit")
+    sys.exit(1)
+
+failed = 0
+ran = 0
+for name in sorted(dir(mod)):
+    if name.startswith("test_") and callable(getattr(mod, name)):
+        ran += 1
+        try:
+            getattr(mod, name)()
+        except Exception:
+            failed += 1
+            print(f"FAILED {name}")
+            traceback.print_exc()
+if ran == 0:
+    print("no tests found")
+    sys.exit(1)
+print(f"{ran - failed} passed, {failed} failed")
+sys.exit(1 if failed else 0)
+"""
+
+
+def _verify_tests(workdir: Path) -> str:
+    """Run the sample project's test suite; raise on any failure.
+
+    Prefers ``pytest`` when it is importable in the current interpreter,
+    otherwise falls back to a dependency-free plain runner that imports the
+    test module and calls every ``test_*`` function. Either way, a failing
+    or unrunnable suite raises :class:`DemoEngineError` so the demo can
+    never declare "shipped" over broken code.
+
+    Returns a one-line human-readable summary of the passing run.
+    """
+    import importlib.util
+    import sys
+
+    if importlib.util.find_spec("pytest") is not None:
+        cmd = [sys.executable, "-m", "pytest", "test_textkit.py", "-q"]
+    else:
+        cmd = [sys.executable, "-c", _PLAIN_TEST_RUNNER]
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(workdir),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise DemoEngineError("ship", f"could not run the sample test suite: {exc}") from exc
+    output = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
+    if proc.returncode != 0:
+        tail = "\n".join(output.splitlines()[-10:])
+        raise DemoEngineError(
+            "ship",
+            f"the sample test suite failed after the change; not shipping.\n{tail}",
+        )
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    return lines[-1] if lines else "test suite passed"
+
+
+def _git_checked(args: list[str], *, cwd: Path, step: str) -> None:
+    """Run a git command and raise :class:`DemoEngineError` on failure."""
+    proc = subprocess.run(
+        ["git", *args],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip().splitlines()
+        raise DemoEngineError(
+            step, f"git {' '.join(args)} failed: {detail[-1] if detail else proc.returncode}"
+        )
+
+
+def _finalize_and_summarize(workdir: Path, *, include_fix: bool) -> str:
+    """Commit the verified changes and produce a PR-style summary string.
 
     Uses the local repo materialized by :mod:`demo.sample_repo`, so there is
     no remote, no GitHub, and no push. The "merge" is a real local commit and
     the summary is built from the real diffstat, never fabricated.
+
+    Honest by construction: an engine run that reported success but left the
+    worktree untouched raises :class:`DemoEngineError` instead of shipping,
+    the ``git add`` / ``git commit`` return codes are checked, and the
+    summary requires a genuinely new commit with a non-empty diffstat.
     """
     status = _git_capture(["status", "--porcelain"], cwd=workdir)
-    if status:
-        subprocess.run(
-            ["git", "add", "-A"], cwd=str(workdir), capture_output=True, text=True, timeout=30
-        )
-        subprocess.run(
-            [
-                "git",
-                "commit",
-                "--quiet",
-                "-m",
-                "feat(textkit): add slugify and fix titlecase whitespace bug",
-            ],
-            cwd=str(workdir),
-            capture_output=True,
-            text=True,
-            timeout=30,
+    if not status:
+        raise DemoEngineError(
+            "ship",
+            "the engine reported success but left the worktree unchanged; "
+            "there is nothing real to ship",
         )
 
+    message = "feat(textkit): add slugify"
+    if include_fix:
+        message += " and fix titlecase whitespace bug"
+    _git_checked(["add", "-A"], cwd=workdir, step="ship")
+    _git_checked(["commit", "--quiet", "-m", message], cwd=workdir, step="ship")
+
     diffstat = _git_capture(["diff", "--stat", "HEAD~1", "HEAD"], cwd=workdir)
-    log_line = _git_capture(["log", "-1", "--pretty=%s"], cwd=workdir)
     if not diffstat:
-        # No second commit (e.g. reviewer approved and build made no net change).
-        diffstat = _git_capture(["show", "--stat", "--pretty=format:", "HEAD"], cwd=workdir)
+        raise DemoEngineError(
+            "ship",
+            "the commit produced an empty diff against the initial snapshot; "
+            "refusing to present it as shipped",
+        )
+    log_line = _git_capture(["log", "-1", "--pretty=%s"], cwd=workdir)
     parts = ["PR summary (local, no remote):", f"  title: {log_line}", "  files changed:"]
     for line in diffstat.splitlines():
         line = line.strip()

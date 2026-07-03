@@ -2,8 +2,7 @@
 
 The sample project used by ``alfred demo``. It is deliberately small so the
 plan/build/review/ship loop finishes in one short run, but it is a real
-library with a real test suite, an obvious missing feature (``slugify``),
-and one subtle bug planted for the adversarial review pass to catch.
+library with a real test suite and real work for the demo to do.
 """
 
 from __future__ import annotations
@@ -30,13 +29,6 @@ def truncate(text: str, limit: int, *, suffix: str = "...") -> str:
 
 
 def titlecase(text: str) -> str:
-    """Capitalize the first letter of each word, lowercasing the rest.
-
-    Words are split on single spaces. The planted bug: splitting on a
-    single space and re-joining with a single space silently collapses
-    runs of consecutive whitespace, so ``"a  b"`` (two spaces) comes back
-    as ``"A B"`` (one space). The existing tests only use single spaces,
-    so the suite is green and the bug is invisible until review.
-    """
-    words = text.split(" ")
+    """Capitalize the first letter of each word, lowercasing the rest."""
+    words = text.split()
     return " ".join(word[:1].upper() + word[1:].lower() for word in words)

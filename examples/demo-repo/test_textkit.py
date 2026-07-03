@@ -1,8 +1,7 @@
 """Test suite for textkit.
 
-These tests all pass against the starting code. They deliberately do not
-cover the whitespace-collapsing edge case in ``titlecase`` (the planted
-bug) or the missing ``slugify`` feature, so the demo has real work to do.
+These tests all pass against the starting code. They cover the happy paths
+only, so the demo has real work to do.
 """
 
 from __future__ import annotations

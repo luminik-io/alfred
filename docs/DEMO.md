@@ -43,13 +43,17 @@ runs a compressed version of the real fleet loop against it with real
 4. **Review.** Ra's al Ghul reviews the change adversarially. The sample
    project ships with a subtle planted bug in its existing `titlecase`
    function (it silently collapses runs of consecutive whitespace, and the
-   existing tests do not cover it). The review pass is there to catch it and
-   demand a fix.
+   existing tests do not cover it). The bug is real and manifest: the review
+   prompt requires the reviewer to run an actual reproduction before blocking,
+   so the catch is verified, not recited.
 5. **Fix.** Lucius applies the fix the reviewer demanded and adds a
    regression test.
-6. **Ship.** The reviewed change is committed locally and a pull-request-style
-   summary is printed from the real diffstat. There is no remote and no push:
-   the "ship" is a real local commit, never a fabricated one.
+6. **Ship.** Before anything is declared shipped, the demo verifies the work:
+   it requires real changes in the worktree, runs the sample test suite, and
+   requires the commit to produce a non-empty diff. Only then is the change
+   committed locally and a pull-request-style summary printed from the real
+   diffstat. There is no remote and no push: the "ship" is a real local
+   commit, never a fabricated one.
 
 At the end it prints the measured run time and a pointer to
 [`../INSTALL.md`](../INSTALL.md) for pointing Alfred at your own repos.
@@ -73,8 +77,14 @@ only).
 - If the `claude` CLI is missing, it says so and points you at the installer.
 - If a model call fails mid-run, it stops at that step and tells you which
   one, rather than pretending it shipped.
-- If the review pass happens not to flag the planted bug on a given run, it
-  says so plainly and still ships the reviewed change. Re-run to see the catch.
+- If the engine reports success but leaves the worktree unchanged, the ship
+  step refuses to commit and the run fails honestly. Same if the sample test
+  suite fails after the change, or if the commit would produce an empty diff.
+- If the reviewer returns prose without an explicit verdict token, the run
+  fails at the review step. A missing verdict is never treated as approval.
+- If the review pass happens not to flag the planted bug on a given run
+  (it must verify a real reproduction before blocking), it says so plainly
+  and still ships the reviewed change. Re-run to see the catch.
 
 ## Flags
 

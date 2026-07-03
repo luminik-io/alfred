@@ -69,9 +69,20 @@ class ScriptedEngine:
     still commits real changes, it just does not call an LLM to author them.
     """
 
-    def __init__(self, *, catch_bug: bool = True, fail_step: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        catch_bug: bool = True,
+        fail_step: str | None = None,
+        noop_build: bool = False,
+        break_tests: bool = False,
+        omit_review_verdict: bool = False,
+    ) -> None:
         self.catch_bug = catch_bug
         self.fail_step = fail_step
+        self.noop_build = noop_build
+        self.break_tests = break_tests
+        self.omit_review_verdict = omit_review_verdict
         self.calls: list[EngineCall] = []
 
     def __call__(self, call: EngineCall) -> EngineOutcome:
@@ -85,14 +96,19 @@ class ScriptedEngine:
                 text="Add slugify(text): lowercase, hyphenate non-alphanumerics, strip hyphens.",
             )
         if call.step == "build":
-            self._append_slugify(call.workdir)
+            if not self.noop_build:
+                self._append_slugify(call.workdir)
+            if self.break_tests:
+                self._append_failing_test(call.workdir)
             return EngineOutcome(success=True, text="[DEMO-BUILD-DONE] added slugify + tests")
         if call.step == "review":
-            verdict = REVIEW_BLOCK_SENTINEL if self.catch_bug else REVIEW_PASS_SENTINEL
             finding = (
-                "titlecase collapses consecutive spaces because it splits and rejoins on a "
-                'single space; "a  b" returns "A B".'
+                'titlecase splits on whitespace runs and rejoins with single spaces; "a  b" '
+                '(two spaces) returns "A B" (one space), silently collapsing the input spacing.'
             )
+            if self.omit_review_verdict:
+                return EngineOutcome(success=True, text=finding)
+            verdict = REVIEW_BLOCK_SENTINEL if self.catch_bug else REVIEW_PASS_SENTINEL
             return EngineOutcome(success=True, text=f"{finding}\n{verdict}")
         if call.step == "fix":
             self._fix_titlecase(call.workdir)
@@ -113,6 +129,13 @@ class ScriptedEngine:
         lib = workdir / "textkit.py"
         text = lib.read_text()
         lib.write_text(text + "\n# fix: preserve whitespace runs in titlecase\n")
+
+    @staticmethod
+    def _append_failing_test(workdir: Path) -> None:
+        tests = workdir / "test_textkit.py"
+        tests.write_text(
+            tests.read_text() + "\n\ndef test_scripted_regression() -> None:\n    assert False\n"
+        )
 
 
 def _run(engine: ScriptedEngine, tmp_path: Path, *, approve=lambda _p: True):
@@ -144,6 +167,28 @@ def test_materialize_sample_repo_is_a_real_git_repo(tmp_path):
     assert (workdir / ".git").is_dir()
 
 
+def test_planted_titlecase_bug_actually_manifests():
+    """The review target must be a REAL defect, not a prompted hallucination.
+
+    Guard against regressing the planted bug: ``titlecase`` in the bundled
+    sample must genuinely collapse runs of consecutive whitespace, so the
+    reviewer's repro (``titlecase("a  b")``) really shows the corruption.
+    """
+    loader = importlib.machinery.SourceFileLoader(
+        "demo_sample_textkit", str(ROOT / "examples/demo-repo/textkit.py")
+    )
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    assert spec is not None
+    sample = importlib.util.module_from_spec(spec)
+    loader.exec_module(sample)
+
+    # The bug: two spaces in, one space out. Leading whitespace is dropped too.
+    assert sample.titlecase("a  b") == "A B"
+    assert sample.titlecase("  a") == "A"
+    # And the shipped tests still pass against it (single-space inputs).
+    assert sample.titlecase("the quick brown fox") == "The Quick Brown Fox"
+
+
 # ---------------------------------------------------------------------------
 # Full loop, bug caught
 # ---------------------------------------------------------------------------
@@ -163,6 +208,10 @@ def test_full_loop_catches_bug_and_ships(tmp_path):
     # The ship summary is built from a real diff, not fabricated.
     assert "files changed" in result.diff_summary
     assert "textkit.py" in result.diff_summary
+    # The ship step ran the sample test suite before committing.
+    ship_details = [e.text for e in events if e.step == "ship" and e.kind == "detail"]
+    assert any("test suite" in text for text in ship_details)
+    assert any(text.startswith("Tests:") for text in ship_details)
 
 
 def test_review_verdict_drives_fix_branch(tmp_path):
@@ -175,6 +224,8 @@ def test_review_verdict_drives_fix_branch(tmp_path):
     assert not any(c.step == "fix" for c in engine.calls)
     fix_done = [e for e in events if e.step == "fix" and e.kind == "done"]
     assert fix_done and "no fix was needed" in fix_done[0].text
+    # The commit title must not claim a fix that never happened.
+    assert "fix titlecase" not in result.diff_summary
 
 
 # ---------------------------------------------------------------------------
@@ -214,6 +265,52 @@ def test_unsuccessful_engine_result_is_a_failure(tmp_path):
             workdir=workdir,
             timeout=30,
         )
+
+
+def test_noop_successful_engine_never_ships(tmp_path):
+    """Engine says success but edits nothing: ship must fail, never fake it.
+
+    This is the Greptile P1 repro: a "successful" build that leaves the
+    worktree untouched used to sail through ship and print the initial
+    snapshot as a PR summary. Now it must raise at the ship step.
+    """
+    engine = ScriptedEngine(catch_bug=False, noop_build=True)
+    with pytest.raises(DemoEngineError) as exc_info:
+        _run(engine, tmp_path)
+    assert exc_info.value.step == "ship"
+    assert "unchanged" in exc_info.value.message
+
+
+def test_review_without_verdict_token_is_a_failure(tmp_path):
+    """Review prose with neither sentinel is not an implicit approval."""
+    engine = ScriptedEngine(omit_review_verdict=True)
+    with pytest.raises(DemoEngineError) as exc_info:
+        _run(engine, tmp_path)
+    assert exc_info.value.step == "review"
+    assert "verdict" in exc_info.value.message
+    # The run stopped at review: no fix call, no ship.
+    assert [c.step for c in engine.calls] == ["plan", "build", "review"]
+
+
+def test_ship_fails_when_sample_tests_fail(tmp_path):
+    """A failing sample test suite blocks the ship step honestly."""
+    engine = ScriptedEngine(catch_bug=False, break_tests=True)
+    with pytest.raises(DemoEngineError) as exc_info:
+        _run(engine, tmp_path)
+    assert exc_info.value.step == "ship"
+    assert "test suite failed" in exc_info.value.message
+    # Nothing was committed over the broken state: HEAD is still the snapshot.
+    workdir = tmp_path / "textkit"
+    import subprocess
+
+    head = subprocess.run(
+        ["git", "log", "-1", "--pretty=%s"],
+        cwd=str(workdir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    ).stdout.strip()
+    assert head == "Initial textkit snapshot"
 
 
 # ---------------------------------------------------------------------------
