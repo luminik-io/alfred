@@ -294,12 +294,6 @@ def _env_key_matches(key: str, patterns: set[str]) -> bool:
     return "ALFRED_CODE_MEMORY_*" in patterns and key.startswith("ALFRED_CODE_MEMORY_")
 
 
-def launcher_config_value(key: str, default: str = "") -> str:
-    """Resolve one config key using ``agent-launch`` precedence."""
-
-    return launcher_env().get(key, "").strip() or default
-
-
 def load_env_file(
     path: Path,
     env: dict[str, str],

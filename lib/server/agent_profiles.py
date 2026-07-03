@@ -1,12 +1,25 @@
-"""Public agent display profiles for Alfred surfaces."""
+"""Public agent display profiles for Alfred surfaces.
+
+The set of codenames Alfred knows is owned by the shared roster manifest
+(``lib/roster_manifest.json``), the same file the desktop client imports for
+its theme and name layer. To keep the two surfaces from drifting on which
+agents exist, ``AGENT_PROFILES`` is built by iterating the manifest's codenames
+and pairing each with its profile-only display data defined here (display name,
+role title, purpose, theme, and stable sort order). The manifest is the single
+source for membership; this module owns only the presentation fields the
+manifest does not carry.
+"""
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 from custom_agents import CustomAgentStore
+
+_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "roster_manifest.json"
 
 
 @dataclass(frozen=True)
@@ -21,9 +34,24 @@ class AgentProfile:
     order: int
 
 
-AGENT_PROFILES: tuple[AgentProfile, ...] = (
-    AgentProfile(
-        codename="batman",
+@dataclass(frozen=True)
+class _ProfileDisplay:
+    """Presentation fields the roster manifest does not carry."""
+
+    display_name: str
+    role_title: str
+    purpose: str
+    theme: str
+    theme_label: str
+    theme_accent: str
+    order: int
+
+
+# Profile-only display data, keyed by the codename the manifest owns. Every
+# manifest codename must have an entry here; ``_build_profiles`` asserts the two
+# stay in lockstep at import time.
+_PROFILE_DISPLAY: dict[str, _ProfileDisplay] = {
+    "batman": _ProfileDisplay(
         display_name="Batman",
         role_title="Architect",
         purpose="Plans and coordinates multi-repo work with approval.",
@@ -32,8 +60,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#3B82F6",
         order=10,
     ),
-    AgentProfile(
-        codename="lucius",
+    "lucius": _ProfileDisplay(
         display_name="Lucius",
         role_title="Senior Developer",
         purpose="Ships scoped implementation issues as pull requests.",
@@ -42,8 +69,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#7CE2B0",
         order=20,
     ),
-    AgentProfile(
-        codename="drake",
+    "drake": _ProfileDisplay(
         display_name="Drake",
         role_title="Planner",
         purpose="Turns specs and loose requests into implementation-ready issues.",
@@ -52,8 +78,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#00E5C7",
         order=30,
     ),
-    AgentProfile(
-        codename="rasalghul",
+    "rasalghul": _ProfileDisplay(
         display_name="Ras al Ghul",
         role_title="Reviewer",
         purpose="Reviews PR diffs, tests, and posts P0/P1 findings.",
@@ -62,8 +87,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#A78BFA",
         order=40,
     ),
-    AgentProfile(
-        codename="bane",
+    "bane": _ProfileDisplay(
         display_name="Bane",
         role_title="Test Engineer",
         purpose="Adds or strengthens tests around shipped code paths.",
@@ -72,8 +96,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#F59E0B",
         order=50,
     ),
-    AgentProfile(
-        codename="nightwing",
+    "nightwing": _ProfileDisplay(
         display_name="Nightwing",
         role_title="Fixer",
         purpose="Applies high-priority review and CI feedback.",
@@ -82,8 +105,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#8FA6C9",
         order=60,
     ),
-    AgentProfile(
-        codename="robin",
+    "robin": _ProfileDisplay(
         display_name="Robin",
         role_title="Bug Triage",
         purpose="Labels and scopes bug reports for the fleet.",
@@ -92,8 +114,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#F87171",
         order=70,
     ),
-    AgentProfile(
-        codename="damian",
+    "damian": _ProfileDisplay(
         display_name="Damian",
         role_title="Spec Planner",
         purpose="Plans spec-level bundles before implementation starts.",
@@ -102,8 +123,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#14B8A6",
         order=80,
     ),
-    AgentProfile(
-        codename="huntress",
+    "huntress": _ProfileDisplay(
         display_name="Huntress",
         role_title="QA Runner",
         purpose="Runs end-to-end smoke checks and reports failures.",
@@ -112,8 +132,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#EC4899",
         order=90,
     ),
-    AgentProfile(
-        codename="gordon",
+    "gordon": _ProfileDisplay(
         display_name="Gordon",
         role_title="Ops Watch",
         purpose="Checks uptime, incidents, and operational health.",
@@ -122,8 +141,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#38BDF8",
         order=100,
     ),
-    AgentProfile(
-        codename="automerge",
+    "automerge": _ProfileDisplay(
         display_name="Automerge",
         role_title="Merge Sweeper",
         purpose="Merges approved low-risk PRs when policy allows.",
@@ -132,8 +150,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#22C55E",
         order=110,
     ),
-    AgentProfile(
-        codename="agent-cleanup",
+    "agent-cleanup": _ProfileDisplay(
         display_name="Agent Cleanup",
         role_title="Workspace Janitor",
         purpose="Sweeps stale worktrees and local branch leftovers.",
@@ -142,8 +159,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#94A3B8",
         order=120,
     ),
-    AgentProfile(
-        codename="memory-harvest",
+    "memory-harvest": _ProfileDisplay(
         display_name="Memory Harvest",
         role_title="Memory Curator",
         purpose="Queues repeated lessons for review before recall.",
@@ -152,8 +168,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#C084FC",
         order=130,
     ),
-    AgentProfile(
-        codename="memory-auto-promote",
+    "memory-auto-promote": _ProfileDisplay(
         display_name="Memory Auto-Promote",
         role_title="Memory Judge",
         purpose="Promotes high-confidence repeated lessons into recall.",
@@ -162,8 +177,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#C084FC",
         order=135,
     ),
-    AgentProfile(
-        codename="fleet-doctor",
+    "fleet-doctor": _ProfileDisplay(
         display_name="Fleet Doctor",
         role_title="Health Check",
         purpose="Reports fleet health, pauses, locks, and runner gates.",
@@ -172,8 +186,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#60A5FA",
         order=140,
     ),
-    AgentProfile(
-        codename="code-map-refresh",
+    "code-map-refresh": _ProfileDisplay(
         display_name="Code Map",
         role_title="Repo Indexer",
         purpose="Refreshes repo maps for planners and reviewers.",
@@ -182,8 +195,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#FBBF24",
         order=150,
     ),
-    AgentProfile(
-        codename="agent-morning-brief",
+    "agent-morning-brief": _ProfileDisplay(
         display_name="Morning Brief",
         role_title="Daily Brief",
         purpose="Prepares the operator's morning fleet summary.",
@@ -192,8 +204,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#38BDF8",
         order=155,
     ),
-    AgentProfile(
-        codename="fleet-recap-morning",
+    "fleet-recap-morning": _ProfileDisplay(
         display_name="Fleet Recap Morning",
         role_title="Fleet Recap",
         purpose="Publishes the morning activity recap.",
@@ -202,8 +213,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#60A5FA",
         order=170,
     ),
-    AgentProfile(
-        codename="fleet-recap-evening",
+    "fleet-recap-evening": _ProfileDisplay(
         display_name="Fleet Recap Evening",
         role_title="Fleet Recap",
         purpose="Publishes the evening activity recap.",
@@ -212,8 +222,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#60A5FA",
         order=171,
     ),
-    AgentProfile(
-        codename="shipped-summary-daily",
+    "shipped-summary-daily": _ProfileDisplay(
         display_name="Shipped Summary Daily",
         role_title="Shipping Digest",
         purpose="Summarizes merged work for the daily shipped board.",
@@ -222,8 +231,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#22C55E",
         order=180,
     ),
-    AgentProfile(
-        codename="shipped-summary-weekly",
+    "shipped-summary-weekly": _ProfileDisplay(
         display_name="Shipped Summary Weekly",
         role_title="Shipping Digest",
         purpose="Summarizes merged work for the weekly shipped board.",
@@ -232,8 +240,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#22C55E",
         order=181,
     ),
-    AgentProfile(
-        codename="proof-telemetry",
+    "proof-telemetry": _ProfileDisplay(
         display_name="Proof Telemetry",
         role_title="Impact Reporter",
         purpose="Sends anonymous aggregate usage totals when configured.",
@@ -242,7 +249,49 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
         theme_accent="#00E5C7",
         order=190,
     ),
-)
+}
+
+
+def _manifest_codenames() -> tuple[str, ...]:
+    """Read the codename roster from the shared manifest."""
+    payload = json.loads(_MANIFEST_PATH.read_text(encoding="utf-8"))
+    return tuple(agent["codename"] for agent in payload["agents"])
+
+
+def _build_profiles() -> tuple[AgentProfile, ...]:
+    """Pair each manifest codename with its local profile display data.
+
+    The manifest owns the codename set; ``_PROFILE_DISPLAY`` owns the
+    presentation fields. Any drift between the two (a codename in one but not
+    the other) is a hard import-time error, so the desktop and server surfaces
+    cannot silently disagree on which agents exist.
+    """
+    manifest = _manifest_codenames()
+    manifest_set = set(manifest)
+    profile_set = set(_PROFILE_DISPLAY)
+    missing_display = manifest_set - profile_set
+    if missing_display:
+        raise RuntimeError(
+            "roster manifest codenames without a display profile: "
+            + ", ".join(sorted(missing_display))
+        )
+    extra_display = profile_set - manifest_set
+    if extra_display:
+        raise RuntimeError(
+            "display profiles without a roster manifest codename: "
+            + ", ".join(sorted(extra_display))
+        )
+    profiles = [
+        AgentProfile(codename=codename, **asdict(_PROFILE_DISPLAY[codename]))
+        for codename in manifest
+    ]
+    # Preserve the historical roster ordering (Batman, Lucius, Drake first),
+    # which the profiles own via ``order`` rather than manifest position.
+    profiles.sort(key=lambda profile: profile.order)
+    return tuple(profiles)
+
+
+AGENT_PROFILES: tuple[AgentProfile, ...] = _build_profiles()
 
 _PROFILE_BY_CODENAME = {profile.codename: profile for profile in AGENT_PROFILES}
 _UNKNOWN_ORDER = 10_000

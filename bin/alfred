@@ -63,6 +63,9 @@ Subcommands today:
                               layer (`status`, `lessons`, `reflect`,
                               `governor`, `failure-patterns`, `firings`,
                               `forget`, `export`).
+  alfred goal ...             Manage the durable goal ledger (`create`,
+                              `list`, `status`, `approve`, `pause`,
+                              `resume`, `clear`).
   alfred code-memory ...      Inspect, index, or serve the optional
                               code-structure memory MCP layer.
   alfred code-map ...         Export/query Alfred's local JSON code graph
@@ -1868,6 +1871,12 @@ def cmd_spec(args: argparse.Namespace) -> int:
     return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
 
 
+def cmd_goal(args: argparse.Namespace) -> int:
+    script = _HERE / "alfred-goal.py"
+    forwarded = args.goal_args or ["list"]
+    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+
+
 def cmd_slack_listener(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-slack-listener.py"
     forwarded = args.listener_args or ["run"]
@@ -2986,6 +2995,10 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_spec = sub.add_parser("spec", help="create and lint specs for agent work")
     p_spec.add_argument("spec_args", nargs=argparse.REMAINDER)
     p_spec.set_defaults(func=cmd_spec)
+
+    p_goal = sub.add_parser("goal", help="manage the durable goal ledger")
+    p_goal.add_argument("goal_args", nargs=argparse.REMAINDER)
+    p_goal.set_defaults(func=cmd_goal)
 
     p_slack_listener = sub.add_parser(
         "slack-listener",

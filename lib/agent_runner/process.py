@@ -690,6 +690,7 @@ def claude_invoke_streaming(
         str(max_turns),
         "--output-format",
         "stream-json",
+        "--verbose",
         "--permission-mode",
         "bypassPermissions",
     ]
@@ -822,7 +823,10 @@ def claude_invoke_streaming(
             result_text=stdout_text or stderr,
             raw={"returncode": proc.returncode, "transcript_path": str(transcript)},
             stop_reason="error",
-            error_message="claude stream-json produced no result event",
+            error_message=(
+                "claude stream-json produced no result event"
+                + (f" (stderr: {stderr.strip()[-300:]})" if stderr and stderr.strip() else "")
+            ),
         )
 
     result = _build_claude_result(final_event, fallback_text=stderr or stdout_text)

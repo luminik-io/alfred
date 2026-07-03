@@ -82,3 +82,14 @@
 # and ALFRED_TELEMETRY_ENABLED=0 opts out. No repo names, code, prompts, titles,
 # branches, people, or hostnames are sent.
 #   my.fleet.proof-telemetry	proof-telemetry.py	interval:3600	no		Anonymous usage totals
+
+# Opt-in: weekly dependency updater. Applies safe-band npm bumps and opens one
+# PR per repo, plus advisory-only gradle/pip reports. A no-op until you set
+# ALFRED_NIGHTLY_NPM_REPOS (and/or ALFRED_NIGHTLY_ADVISORY_REPOS), so scheduling
+# it disarmed is safe. Fires Sunday 22:00.
+#   my.fleet.alfred-nightly	alfred-nightly.py	cron:0:22:00	yes		Weekly dependency updater
+
+# Opt-in: weekly cold backup of runtime state to S3. Archives $ALFRED_HOME/state,
+# the cron store, and the runtime plists. A no-op until you set ALFRED_BACKUP_DEST
+# (or pass --local-only). Fires Sunday 04:00.
+#   my.fleet.cold-backup	alfred-cold-backup.py	cron:0:04:00	no		Weekly cold backup
