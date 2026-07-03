@@ -1780,10 +1780,11 @@ def test_lesson_stats_counts_states_and_rates(brain: FleetBrain) -> None:
     assert stats["states"]["candidate"] == 2  # held + fresh
     assert stats["auto_validated"] == 2
     assert stats["auto_rejected"] == 1
-    assert stats["auto_decided"] == 3
-    # 2 of 3 auto-decided were saved.
-    assert stats["auto_promote_acceptance_rate"] == round(2 / 3, 4)
-    assert stats["judge_rejection_rate"] == round(1 / 3, 4)
+    # A judge decision is saved, hard-rejected, OR held: the held candidate is a
+    # judge rejection, so 4 auto decisions total (2 saved, 1 rejected, 1 held).
+    assert stats["auto_decided"] == 4
+    assert stats["auto_promote_acceptance_rate"] == round(2 / 4, 4)
+    assert stats["judge_rejection_rate"] == round(2 / 4, 4)
     assert stats["held_for_review"] == 1
 
 

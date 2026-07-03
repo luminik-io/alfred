@@ -2104,13 +2104,16 @@ class FleetBrain:
           * ``states``: candidate counts by review state
             (candidate / validated / rejected / retired);
           * ``auto_promote_acceptance_rate``: of the candidates an auto-run has
-            DECIDED (auto-validated + auto-rejected), the fraction it saved.
-            ``None`` when the auto-promoter has decided nothing yet (no
-            divide-by-zero);
+            DECIDED, the fraction it saved. A judge decision is one of: saved
+            (auto-validated), hard-rejected (auto-rejected), or HELD for a human
+            (a duplicate, or scored below the bar) -- held rows are the judge's
+            usual rejection, so they count as decided. ``None`` when the
+            auto-promoter has decided nothing yet (no divide-by-zero);
           * ``judge_rejection_rate``: of those same auto-decided candidates, the
-            fraction the judge/gate rejected. ``None`` when none decided;
+            fraction the judge/gate did NOT save (auto-rejected plus held).
+            ``None`` when none decided;
           * ``held_for_review``: still-pending candidates an auto-run set aside
-            for a human.
+            for a human (also counted as judge rejections above).
 
         Recall hit counts are intentionally omitted: the ledger does not record
         per-recall hits, so surfacing them would need a new write path on the hot
@@ -2120,12 +2123,19 @@ class FleetBrain:
         raw = self.store.memory_candidate_stats()
         auto_validated = int(raw.get("auto_validated", 0))
         auto_rejected = int(raw.get("auto_rejected", 0))
-        auto_decided = auto_validated + auto_rejected
+        held = int(raw.get("held", 0))
+        # The judge rejects almost entirely by HOLDING (a duplicate, or a lesson
+        # below the confidence bar, is set aside for a human rather than stored
+        # as status='rejected'). Count held rows as auto-decided rejections so
+        # judge_rejection_rate reflects real judge behavior instead of staying
+        # near zero.
+        auto_rejections = auto_rejected + held
+        auto_decided = auto_validated + auto_rejections
         acceptance: float | None = None
         rejection: float | None = None
         if auto_decided:
             acceptance = round(auto_validated / auto_decided, 4)
-            rejection = round(auto_rejected / auto_decided, 4)
+            rejection = round(auto_rejections / auto_decided, 4)
         return {
             "total": int(raw.get("total", 0)),
             "states": {
