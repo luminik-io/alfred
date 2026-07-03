@@ -62,6 +62,22 @@ def test_test_evidence_none_is_honest(lucius):
     assert "not captured" in ev.reason
 
 
+def test_test_evidence_dry_run_does_not_claim_passed(lucius, monkeypatch):
+    # In dry-run run_pre_push_checks returns ok=True with a command but never
+    # executes it. Evidence must NOT render "Pre-push checks passed".
+    monkeypatch.setattr(lucius, "is_dry_run", lambda: True)
+    pre = lucius.PrePushResult(ok=True, command="uv run pytest")
+    ev = lucius._test_evidence_from_pre_push(pre)
+    assert ev.ran is False
+    assert ev.command == "uv run pytest"
+    assert ev.reason == "not run (dry-run)"
+    from verification_evidence import EvidenceInputs, build_evidence_block
+
+    md = build_evidence_block(EvidenceInputs(test=ev))
+    assert "passed" not in md.lower()
+    assert "not run (dry-run)" in md
+
+
 def test_diff_stat_parses_numstat(lucius, monkeypatch):
     def fake_run(cmd, **kwargs):
         assert cmd[:3] == ["git", "diff", "--numstat"]
@@ -95,15 +111,15 @@ def test_gate_off_still_captures_configured_screenshots(lucius, monkeypatch):
     )
     seen: list[tuple] = []
 
-    def fake_capture(repo, wt, branch, firing_id):
-        seen.append((repo, branch, firing_id))
+    def fake_capture(repo, wt, branch, firing_id, base_ref):
+        seen.append((repo, branch, firing_id, base_ref))
         return shots
 
     monkeypatch.setattr(lucius, "_capture_screenshot_evidence", fake_capture)
     block = lucius._verification_evidence_block(
         "frontend", {"body": "x"}, Path("/x"), "br", "origin/main", "fid", None
     )
-    assert seen == [("frontend", "br", "fid")]
+    assert seen == [("frontend", "br", "fid", "origin/main")]
     assert "### Screenshots" in block
     assert ".alfred/evidence/fid/after.png" in block
     # Core tiers are a disabled feature, not missing evidence.
@@ -216,5 +232,53 @@ def test_load_preview_config_reads_toml(lucius, monkeypatch, tmp_path):
 def test_screenshot_evidence_skipped_without_config(lucius, monkeypatch):
     monkeypatch.setattr(lucius, "is_dry_run", lambda: False)
     monkeypatch.setattr(lucius, "PREVIEW_CONFIG", {"backend": lucius.PreviewConfig()})
-    result = lucius._capture_screenshot_evidence("backend", Path("/x"), "br", "fid")
+    result = lucius._capture_screenshot_evidence("backend", Path("/x"), "br", "fid", "origin/main")
     assert result is None
+
+
+def test_screenshot_evidence_prepares_and_cleans_base_worktree(lucius, monkeypatch):
+    # A configured preview builds a base worktree, passes it as base_dir, and
+    # removes it afterward even on the happy path.
+    monkeypatch.setattr(lucius, "is_dry_run", lambda: False)
+    monkeypatch.setattr(
+        lucius,
+        "PREVIEW_CONFIG",
+        {
+            "frontend": lucius.PreviewConfig(
+                start_cmd="npm run dev", url="http://localhost:5173", route="/"
+            )
+        },
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    captured: dict = {}
+
+    def fake_capture(wt, config, firing_id, base_dir=None, **kwargs):
+        captured["base_dir"] = base_dir
+        return lucius.ScreenshotEvidence(
+            attempted=True,
+            ok=True,
+            before_path=".alfred/evidence/fid/before.png",
+            after_path=".alfred/evidence/fid/after.png",
+            route="/",
+        )
+
+    monkeypatch.setattr(lucius, "run", fake_run)
+    monkeypatch.setattr(lucius, "capture_screenshots", fake_capture)
+    monkeypatch.setattr(
+        lucius, "push_current_branch", lambda wt, branch: subprocess.CompletedProcess([], 0)
+    )
+
+    result = lucius._capture_screenshot_evidence(
+        "frontend", Path("/wt"), "br", "fid", "origin/main"
+    )
+    assert result.ok is True
+    # base worktree was created and given to capture_screenshots
+    assert captured["base_dir"] is not None
+    assert any(c[:3] == ["git", "worktree", "add"] for c in calls)
+    # and cleaned up
+    assert any(c[:3] == ["git", "worktree", "remove"] for c in calls)

@@ -378,9 +378,12 @@ def _test_evidence_from_pre_push(pre_push: PrePushResult | None) -> TestEvidence
         # No command ran (either none configured, or only lockfile drift check).
         reason = pre_push.reason or "no pre-push command configured for this repo"
         return TestEvidence(ran=False, reason=reason)
-    summary = ""
-    if not is_dry_run():
-        summary = parse_test_summary(pre_push.stdout or "", pre_push.stderr or "")
+    if is_dry_run():
+        # run_pre_push_checks returns ok=True with the command set but WITHOUT
+        # executing it in dry-run. Reporting that as "passed" would be a lie;
+        # the command exists but never ran.
+        return TestEvidence(ran=False, command=command, reason="not run (dry-run)")
+    summary = parse_test_summary(pre_push.stdout or "", pre_push.stderr or "")
     return TestEvidence(
         ran=True,
         command=command,
@@ -445,17 +448,54 @@ def _build_self_assessment(
     return parse_assessment_response(result.result_text or "", criteria)
 
 
-def _capture_screenshot_evidence(repo: str, wt: Path, branch: str, firing_id: str):
-    """Run the opt-in screenshot capture and commit the images on the branch."""
+def _base_screenshot_worktree(wt: Path, base_ref: str, firing_id: str) -> Path | None:
+    """Add a throwaway git worktree at ``base_ref`` for the before-shot.
+
+    Returns the checkout path, or ``None`` when the base checkout could not be
+    prepared (the caller then reports the before-image as unavailable). The
+    worktree lives beside the PR worktree and is removed by
+    :func:`_remove_base_screenshot_worktree`.
+    """
+    base_path = wt.parent / f".alfred-baseshot-{firing_id}"
+    res = run(
+        ["git", "worktree", "add", "--detach", str(base_path), base_ref],
+        cwd=str(wt),
+        timeout=60,
+    )
+    if res.returncode != 0:
+        return None
+    return base_path
+
+
+def _remove_base_screenshot_worktree(wt: Path, base_path: Path) -> None:
+    run(
+        ["git", "worktree", "remove", "--force", str(base_path)],
+        cwd=str(wt),
+        timeout=30,
+    )
+
+
+def _capture_screenshot_evidence(repo: str, wt: Path, branch: str, firing_id: str, base_ref: str):
+    """Run the opt-in screenshot capture and commit the images on the branch.
+
+    Captures the "after" state on the PR worktree and, when a base checkout can
+    be prepared, the "before" state on a throwaway worktree at ``base_ref`` so
+    the PR carries a real before/after pair.
+    """
     config = PREVIEW_CONFIG.get(repo, PreviewConfig())
     if not config.enabled:
         return None
     if is_dry_run():
         dry_run_log("evidence", f"would capture screenshots for {repo} route={config.route}")
         return None
-    # Default subprocess seams: the preview server needs a non-blocking
-    # Popen start, which agent_runner's blocking ``run`` cannot provide.
-    shots = capture_screenshots(wt, config, firing_id)
+    base_path = _base_screenshot_worktree(wt, base_ref, firing_id)
+    try:
+        # Default subprocess seams: the preview server needs a non-blocking
+        # Popen start, which agent_runner's blocking ``run`` cannot provide.
+        shots = capture_screenshots(wt, config, firing_id, base_dir=base_path)
+    finally:
+        if base_path is not None:
+            _remove_base_screenshot_worktree(wt, base_path)
     if shots.ok and shots.after_path:
         # Commit the evidence images onto the PR branch so the relative links
         # in the body resolve. A commit failure downgrades to a reported miss.
@@ -512,7 +552,7 @@ def _verification_evidence_block(
             if core
             else None
         )
-        screenshots = _capture_screenshot_evidence(repo, wt, branch, firing_id)
+        screenshots = _capture_screenshot_evidence(repo, wt, branch, firing_id, base_ref)
     except Exception as exc:
         return build_evidence_block(
             EvidenceInputs(

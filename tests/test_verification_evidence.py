@@ -18,6 +18,7 @@ from verification_evidence import (  # noqa: E402
     TestEvidence,
     assessment_prompt,
     build_evidence_block,
+    capture_route,
     capture_screenshots,
     evidence_enabled,
     extract_acceptance_criteria,
@@ -306,6 +307,154 @@ def test_capture_screenshots_out_path_with_spaces_stays_one_token(tmp_path):
     assert "My Repo" in seen[0][-1]
 
 
+def test_capture_screenshots_captures_before_from_base_dir(tmp_path):
+    # With a base checkout supplied, both before and after are captured, each
+    # against its own server directory, and both land under the PR worktree.
+    worktree = tmp_path / "pr"
+    base = tmp_path / "base"
+    worktree.mkdir()
+    base.mkdir()
+    cfg = PreviewConfig(
+        start_cmd="run-server", url="http://localhost:5173", screenshot_cmd="shot {url} {out}"
+    )
+    server_dirs: list[str] = []
+
+    def fake_run(cmd, cwd=None, **kwargs):
+        server_dirs.append(cwd)
+        Path(cmd[-1]).write_bytes(b"png")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    shots = capture_screenshots(
+        worktree,
+        cfg,
+        "fid",
+        base_dir=base,
+        run_cmd=fake_run,
+        popen=lambda *a, **kw: _FakeProc(),
+        sleep=lambda s: None,
+    )
+    assert shots.ok is True
+    assert shots.after_path == ".alfred/evidence/fid/after.png"
+    assert shots.before_path == ".alfred/evidence/fid/before.png"
+    assert (worktree / shots.after_path).exists()
+    assert (worktree / shots.before_path).exists()
+    # after ran in the PR worktree, before ran in the base checkout.
+    assert str(worktree) in server_dirs
+    assert str(base) in server_dirs
+
+
+def test_capture_screenshots_before_failure_is_reported_not_faked(tmp_path):
+    worktree = tmp_path / "pr"
+    base = tmp_path / "base"
+    worktree.mkdir()
+    base.mkdir()
+    cfg = PreviewConfig(
+        start_cmd="run-server", url="http://localhost:5173", screenshot_cmd="shot {url} {out}"
+    )
+
+    def fake_run(cmd, cwd=None, **kwargs):
+        # after (in worktree) succeeds; before (in base) fails.
+        if cwd == str(worktree):
+            Path(cmd[-1]).write_bytes(b"png")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="base boom")
+
+    shots = capture_screenshots(
+        worktree,
+        cfg,
+        "fid",
+        base_dir=base,
+        run_cmd=fake_run,
+        popen=lambda *a, **kw: _FakeProc(),
+        sleep=lambda s: None,
+    )
+    # Overall capture still succeeds (after is present); before is honestly empty.
+    assert shots.ok is True
+    assert shots.after_path
+    assert shots.before_path == ""
+    assert "base boom" in shots.before_reason
+
+
+def test_capture_screenshots_no_base_dir_leaves_before_empty(tmp_path):
+    worktree = tmp_path / "pr"
+    worktree.mkdir()
+    cfg = PreviewConfig(
+        start_cmd="run-server", url="http://localhost:5173", screenshot_cmd="shot {url} {out}"
+    )
+
+    def fake_run(cmd, **kwargs):
+        Path(cmd[-1]).write_bytes(b"png")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    shots = capture_screenshots(
+        worktree,
+        cfg,
+        "fid",
+        run_cmd=fake_run,
+        popen=lambda *a, **kw: _FakeProc(),
+        sleep=lambda s: None,
+    )
+    assert shots.ok is True
+    assert shots.before_path == ""
+    assert shots.before_reason == ""  # not attempted -> render says baseline unavailable
+
+
+def test_capture_route_ready_regex_matches(tmp_path):
+    # When ready_regex is set, capture polls server output for the marker
+    # instead of blind-sleeping.
+    cfg = PreviewConfig(
+        start_cmd="run-server",
+        url="http://localhost:5173",
+        ready_regex="Local:",
+        screenshot_cmd="shot {url} {out}",
+    )
+    slept: list[float] = []
+    chunks = iter(["booting...\n", "Local:  http://localhost:5173\n"])
+
+    def fake_run(cmd, **kwargs):
+        Path(cmd[-1]).write_bytes(b"png")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    result = capture_route(
+        tmp_path,
+        tmp_path / "out.png",
+        cfg,
+        run_cmd=fake_run,
+        popen=lambda *a, **kw: _FakeProc(),
+        sleep=slept.append,
+        read_ready=lambda: next(chunks, ""),
+    )
+    assert result.ok is True
+
+
+def test_capture_route_ready_regex_never_matches_fails(tmp_path):
+    cfg = PreviewConfig(
+        start_cmd="run-server",
+        url="http://localhost:5173",
+        ready_regex="Local:",
+        screenshot_cmd="shot {url} {out}",
+    )
+    ran_shot = []
+
+    def fake_run(cmd, **kwargs):
+        ran_shot.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0)
+
+    result = capture_route(
+        tmp_path,
+        tmp_path / "out.png",
+        cfg,
+        run_cmd=fake_run,
+        popen=lambda *a, **kw: _FakeProc(),
+        server_boot_wait_s=0.0,
+        sleep=lambda s: None,
+        read_ready=lambda: "still booting\n",
+    )
+    assert result.ok is False
+    assert "did not signal ready" in result.reason
+    assert ran_shot == []  # never took the shot
+
+
 def test_terminate_kills_whole_process_group(monkeypatch):
     # start_cmd wrappers (npm run dev) fork the real server; teardown must
     # signal the process group, not just the wrapper.
@@ -384,7 +533,11 @@ def test_build_block_full_and_honest():
             overall_note="two of three met",
         ),
         screenshots=ScreenshotEvidence(
-            attempted=True, ok=True, after_path=".alfred/evidence/f/after.png", route="/"
+            attempted=True,
+            ok=True,
+            before_path=".alfred/evidence/f/before.png",
+            after_path=".alfred/evidence/f/after.png",
+            route="/",
         ),
     )
     md = build_evidence_block(inputs)
@@ -395,7 +548,35 @@ def test_build_block_full_and_honest():
     assert "[x] Login works" in md
     assert "[ ] Logout works" in md
     assert "[?] Reset works" in md
+    assert "[`.alfred/evidence/f/before.png`]" in md
     assert "[`.alfred/evidence/f/after.png`]" in md
+
+
+def test_build_block_before_reason_reported_when_baseline_failed():
+    md = build_evidence_block(
+        EvidenceInputs(
+            screenshots=ScreenshotEvidence(
+                attempted=True,
+                ok=True,
+                after_path=".alfred/evidence/f/after.png",
+                before_reason="base checkout failed",
+                route="/",
+            )
+        )
+    )
+    assert "Before: _not captured_ (base checkout failed)" in md
+    assert "[`.alfred/evidence/f/after.png`]" in md
+
+
+def test_build_block_before_absent_when_not_attempted():
+    md = build_evidence_block(
+        EvidenceInputs(
+            screenshots=ScreenshotEvidence(
+                attempted=True, ok=True, after_path=".alfred/evidence/f/after.png", route="/"
+            )
+        )
+    )
+    assert "base-branch baseline not available" in md
 
 
 def test_build_block_missing_evidence_is_labelled_not_omitted():

@@ -149,6 +149,7 @@ class ScreenshotEvidence:
     ok: bool = False
     reason: str = ""
     before_path: str = ""  # repo-relative
+    before_reason: str = ""  # why a before-image is absent, when one was attempted
     after_path: str = ""  # repo-relative
     route: str = "/"
 
@@ -327,40 +328,187 @@ def _format_screenshot_cmd(template: str, *, url: str, out: str) -> list[str]:
     return [token.replace("{url}", url).replace("{out}", out) for token in shlex.split(template)]
 
 
-def capture_screenshots(
-    worktree: Path,
+@dataclass(frozen=True)
+class ShotResult:
+    """Outcome of a single route capture."""
+
+    ok: bool
+    reason: str = ""
+
+
+def capture_route(
+    server_dir: Path,
+    out_path: Path,
     config: PreviewConfig,
-    firing_id: str,
     *,
     run_cmd: RunCmd = subprocess.run,
     popen: Callable[..., object] = subprocess.Popen,
     server_boot_wait_s: float = 8.0,
     shot_timeout_s: int = 90,
     sleep: Callable[[float], None] | None = None,
-    has_base_screenshot: bool = False,
+    read_ready: Callable[[], str] | None = None,
+) -> ShotResult:
+    """Start the preview server in ``server_dir`` and screenshot the route.
+
+    Writes the PNG to ``out_path``. This is the single-capture primitive; the
+    runner calls it once against the base checkout ("before") and once against
+    the PR worktree ("after"). Everything external (``popen`` for the server,
+    ``run_cmd`` for the shot, ``sleep``, and the optional ``read_ready`` server
+    output reader) is injectable so tests never launch a real process.
+
+    Readiness: if ``config.ready_regex`` is set and a ``read_ready`` reader is
+    available, the server's captured output is polled for that pattern (up to
+    ``server_boot_wait_s``); otherwise a fixed ``server_boot_wait_s`` grace
+    period is used. A server that never signals ready yields an honest failed
+    shot rather than a false success.
+
+    Never raises for an environment problem; returns ``ShotResult(ok=False)``.
+    """
+    route = config.route or "/"
+    url = config.url.rstrip("/") + ("" if route == "/" else route)
+    template = config.screenshot_cmd or DEFAULT_SCREENSHOT_CMD
+    shot_cmd = _format_screenshot_cmd(template, url=url, out=str(out_path))
+    do_sleep = sleep if sleep is not None else _default_sleep
+
+    try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return ShotResult(ok=False, reason=f"cannot create output dir: {exc}")
+
+    proc = None
+    try:
+        import shlex
+
+        capture_output = bool(config.ready_regex and read_ready is None)
+        proc = popen(
+            shlex.split(config.start_cmd),
+            cwd=str(server_dir),
+            stdout=subprocess.PIPE if capture_output else subprocess.DEVNULL,
+            stderr=subprocess.STDOUT if capture_output else subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        if not _wait_for_ready(
+            config.ready_regex,
+            server_boot_wait_s,
+            do_sleep,
+            read_ready=read_ready,
+            proc=proc,
+        ):
+            return ShotResult(
+                ok=False,
+                reason=f"preview server did not signal ready (regex {config.ready_regex!r})",
+            )
+
+        shot = run_cmd(
+            shot_cmd,
+            cwd=str(server_dir),
+            timeout=shot_timeout_s,
+            capture_output=True,
+            text=True,
+        )
+        rc = getattr(shot, "returncode", 1)
+        if rc != 0 or not out_path.exists():
+            detail = (getattr(shot, "stderr", "") or "").strip()[:200]
+            return ShotResult(
+                ok=False, reason=f"screenshot command failed (exit {rc}) {detail}".strip()
+            )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return ShotResult(ok=False, reason=f"{exc.__class__.__name__}: {exc}")
+    finally:
+        _terminate(proc)
+
+    return ShotResult(ok=True)
+
+
+def _wait_for_ready(
+    ready_regex: str,
+    timeout_s: float,
+    sleep: Callable[[float], None],
+    *,
+    read_ready: Callable[[], str] | None,
+    proc: object,
+) -> bool:
+    """Return True once the server is considered ready.
+
+    With no ``ready_regex``, this is a fixed grace sleep (always True). With a
+    regex, poll the server's accumulated stdout for the pattern until it
+    matches or the timeout elapses. ``read_ready`` supplies the current output
+    (tests inject it); when absent, the server's own ``stdout`` pipe is read.
+    """
+    if not ready_regex:
+        sleep(timeout_s)
+        return True
+
+    import time
+
+    try:
+        pattern = re.compile(ready_regex)
+    except re.error:
+        # A bad regex must not crash capture; fall back to the grace period.
+        sleep(timeout_s)
+        return True
+
+    reader = read_ready or _pipe_reader(proc)
+    if reader is None:
+        sleep(timeout_s)
+        return True
+
+    deadline = time.monotonic() + timeout_s
+    accumulated = ""
+    step = min(0.5, timeout_s) if timeout_s > 0 else 0.0
+    while time.monotonic() < deadline:
+        try:
+            chunk = reader()
+        except Exception:  # readiness probing must never crash capture
+            chunk = ""
+        if chunk:
+            accumulated += chunk
+            if pattern.search(accumulated):
+                return True
+        sleep(step)
+    return bool(pattern.search(accumulated))
+
+
+def _pipe_reader(proc: object) -> Callable[[], str] | None:
+    stdout = getattr(proc, "stdout", None)
+    if stdout is None:
+        return None
+
+    def _read() -> str:
+        line = stdout.readline()
+        if isinstance(line, bytes):
+            return line.decode("utf-8", "replace")
+        return line or ""
+
+    return _read
+
+
+def capture_screenshots(
+    worktree: Path,
+    config: PreviewConfig,
+    firing_id: str,
+    *,
+    base_dir: Path | None = None,
+    run_cmd: RunCmd = subprocess.run,
+    popen: Callable[..., object] = subprocess.Popen,
+    server_boot_wait_s: float = 8.0,
+    shot_timeout_s: int = 90,
+    sleep: Callable[[float], None] | None = None,
 ) -> ScreenshotEvidence:
-    """Capture a screenshot of the configured route on the PR branch.
+    """Capture before/after screenshots of the configured route.
 
-    The runner is expected to call this once for the "after" state; a
-    before-image is optional and captured by the caller from the base branch.
-    The preview server is started through the injectable ``popen`` (must be
-    Popen-like: non-blocking, with ``terminate``); the screenshot command runs
-    through ``run_cmd`` (``subprocess.run`` signature). Tests inject both plus
-    a no-op ``sleep`` so nothing real ever launches.
+    ``worktree`` is the PR-branch checkout (the "after" state). ``base_dir``,
+    when given, is a checkout of the base ref (the "before" state) prepared by
+    the runner; the before-image is captured there and copied next to the
+    after-image so both live on the PR branch. When ``base_dir`` is ``None``
+    the before-image is honestly reported as unavailable.
 
-    Readiness is a fixed ``server_boot_wait_s`` grace period in v1. The
-    ``ready_regex`` config key is reserved for output-polling readiness; until
-    that lands, a server that is not up in time yields a failed shot, which is
-    reported honestly rather than papered over.
-
-    Failure is always reported as ``ScreenshotEvidence(ok=False, reason=...)``;
-    this function never raises for an environment problem.
+    Both PNGs land under ``.alfred/evidence/<firing-id>/`` in ``worktree``.
     """
     if not config.enabled:
         return ScreenshotEvidence(attempted=False, reason="preview command not configured")
 
     route = config.route or "/"
-    url = config.url.rstrip("/") + ("" if route == "/" else route)
     rel_dir = f"{EVIDENCE_DIR_NAME}/{firing_id or 'unknown'}"
     out_dir = worktree / rel_dir
     try:
@@ -371,53 +519,42 @@ def capture_screenshots(
         )
 
     after_rel = f"{rel_dir}/after.png"
-    template = config.screenshot_cmd or DEFAULT_SCREENSHOT_CMD
-    shot_cmd = _format_screenshot_cmd(template, url=url, out=str(worktree / after_rel))
-    do_sleep = sleep if sleep is not None else _default_sleep
+    after = capture_route(
+        worktree,
+        worktree / after_rel,
+        config,
+        run_cmd=run_cmd,
+        popen=popen,
+        server_boot_wait_s=server_boot_wait_s,
+        shot_timeout_s=shot_timeout_s,
+        sleep=sleep,
+    )
+    if not after.ok:
+        return ScreenshotEvidence(attempted=True, ok=False, reason=after.reason, route=route)
 
-    proc = None
-    try:
-        # Start the preview server without blocking; give it a fixed grace
-        # period to come up.
-        import shlex
-
-        proc = popen(
-            shlex.split(config.start_cmd),
-            cwd=str(worktree),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
+    before_rel = ""
+    before_reason = ""
+    if base_dir is not None:
+        before_rel = f"{rel_dir}/before.png"
+        before = capture_route(
+            base_dir,
+            worktree / before_rel,
+            config,
+            run_cmd=run_cmd,
+            popen=popen,
+            server_boot_wait_s=server_boot_wait_s,
+            shot_timeout_s=shot_timeout_s,
+            sleep=sleep,
         )
-        do_sleep(server_boot_wait_s)
+        if not before.ok:
+            before_rel = ""
+            before_reason = before.reason
 
-        shot = run_cmd(
-            shot_cmd,
-            cwd=str(worktree),
-            timeout=shot_timeout_s,
-            capture_output=True,
-            text=True,
-        )
-        rc = getattr(shot, "returncode", 1)
-        if rc != 0 or not (worktree / after_rel).exists():
-            detail = (getattr(shot, "stderr", "") or "").strip()[:200]
-            return ScreenshotEvidence(
-                attempted=True,
-                ok=False,
-                reason=f"screenshot command failed (exit {rc}) {detail}".strip(),
-                route=route,
-            )
-    except (OSError, subprocess.SubprocessError) as exc:
-        return ScreenshotEvidence(
-            attempted=True, ok=False, reason=f"{exc.__class__.__name__}: {exc}", route=route
-        )
-    finally:
-        _terminate(proc)
-
-    before_rel = f"{rel_dir}/before.png"
     return ScreenshotEvidence(
         attempted=True,
         ok=True,
-        before_path=before_rel if has_base_screenshot else "",
+        before_path=before_rel,
+        before_reason=before_reason,
         after_path=after_rel,
         route=route,
     )
@@ -485,6 +622,8 @@ def _render_test(test: TestEvidence | None) -> list[str]:
     if not test.ran:
         reason = test.reason or "no pre-push command configured for this repo"
         lines.append(f"- {_NOT_CAPTURED} ({reason})")
+        if test.command:
+            lines.append(f"- Command: `{_one_line(test.command)}`")
         return lines
     status = "passed" if test.ok else "FAILED"
     summary = test.summary or (f"exit {test.exit_code}" if test.exit_code is not None else "")
@@ -558,8 +697,10 @@ def _render_screenshots(shots: ScreenshotEvidence | None) -> list[str] | None:
         return lines
     if shots.before_path:
         lines.append(f"- Before: [`{shots.before_path}`]({shots.before_path})")
+    elif shots.before_reason:
+        lines.append(f"- Before: {_NOT_CAPTURED} ({_one_line(shots.before_reason)})")
     else:
-        lines.append("- Before: _not captured (no base-branch baseline)_")
+        lines.append(f"- Before: {_NOT_CAPTURED} (base-branch baseline not available)")
     lines.append(f"- After: [`{shots.after_path}`]({shots.after_path})")
     return lines
 

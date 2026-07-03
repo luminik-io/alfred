@@ -120,9 +120,13 @@ still lists the criteria as unjudged.
 ## Screenshot evidence (opt-in)
 
 For UI work, a picture is the fastest evidence. When a repo declares a preview
-command, the runner starts the app, screenshots a configured route, commits the
-image under `.alfred/evidence/<firing-id>/` on the PR branch, and links it from
-the body with a relative path so it renders in the PR.
+command, the runner captures a real before/after pair of a configured route:
+the **after** shot on the PR-branch worktree, and the **before** shot on a
+throwaway `git worktree` checked out at the PR's base ref. Both PNGs are
+committed under `.alfred/evidence/<firing-id>/` on the PR branch and linked
+from the body with relative paths so they render in the PR. When the base
+checkout cannot be prepared, the before-image is reported as not captured
+rather than faked.
 
 Alfred does **not** bundle a browser or add a heavyweight mandatory dependency
 to the core. You declare the screenshot command; the documented default shells
@@ -145,14 +149,15 @@ Screenshots are configured in the agent TOML at
 start_cmd   = "npm run dev"           # how to start the app (required)
 url         = "http://localhost:5173" # base URL (required)
 route       = "/dashboard"            # route to screenshot (default "/")
-ready_regex = "Local:"                # reserved for readiness polling (accepted, not yet used)
+ready_regex = "Local:"                # optional: readiness marker in server output
 screenshot_cmd = "npx --yes playwright screenshot {url} {out}"  # optional; default above
 ```
 
-In v1 the runner starts the app, waits a fixed grace period, then takes the
-shot. `ready_regex` is parsed and stored, but readiness polling on server
-output is not implemented yet; a server that is slow to boot yields an honest
-`not captured` line rather than a blank or stale image.
+Readiness: when `ready_regex` is set, the runner polls the preview server's
+output until the pattern appears (up to the boot timeout) before taking the
+shot; when it is not set, a fixed grace period is used. A server that never
+signals ready yields an honest `not captured` line rather than a blank or
+stale image.
 
 A repo with no `[preview.<repo>]` table (or missing `start_cmd`/`url`) never
 attempts screenshots, and the Screenshots section is omitted entirely rather
