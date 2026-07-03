@@ -19,18 +19,42 @@ The native client is the local control surface for the same goal state. It shoul
 show active goals, blocked goals, evidence, plans, runs, memory used, and safe
 local actions without pushing the operator into a browser for local Alfred state.
 
-The CLI is the intended portable substrate. The goal verbs below are the planned
-contract, not a shipped command yet; the durable goal ledger and its
-`alfred goal` surface are tracked under "Alfred Desktop v2" in
-[`../ROADMAP.md`](../ROADMAP.md):
+The CLI is the portable substrate, and the durable goal ledger now backs it.
+`lib/goals.py` is the on-disk ledger and `alfred goal` is the operator command
+that reads and writes it, so Slack, the native client, and the CLI can share one
+source of truth. Slack-native and evaluator wiring on top of the ledger is still
+tracked under "Alfred Desktop v2" in [`../ROADMAP.md`](../ROADMAP.md).
 
 ```sh
-alfred goal create
-alfred goal status
-alfred goal pause
-alfred goal resume
-alfred goal clear
+alfred goal create "Make onboarding work end to end" \
+    --verification "signup flow green in staging" \
+    --constraint "do not touch billing" \
+    --human-gate "before merging" \
+    --repo your-backend
+alfred goal list [--status draft|active|blocked|paused|achieved|cleared]
+alfred goal status <goal_id> [--events]
+alfred goal approve <goal_id>       # draft -> active (alias: activate)
+alfred goal pause <goal_id>
+alfred goal resume <goal_id>        # paused/blocked -> active
+alfred goal clear <goal_id>         # abandon
 ```
+
+Every goal lives under `$ALFRED_HOME/state/goals/<goal_id>/` as a `goal.json`
+entity plus an append-only `events.jsonl` audit trail. The ledger is stdlib-only
+so it runs from launchd, the CLI, the server, and tests without an install step,
+and every status change goes through a validated lifecycle state machine
+(illegal transitions are rejected).
+
+### Wiring goals into a firing (opt-in)
+
+`lib/goal_context.py` is the read-mostly bridge that lets a runner honor active
+goals. It is off by default and armed with `ALFRED_GOAL_WIRING=1`. When armed, it
+selects the active goals scoped to the repo a firing is about to work, renders a
+concise standing-objective block, and offers it to both engines: Claude through
+the native `--append-system-prompt` flag and Codex through prompt assembly. It
+also appends `attempted` / `evidence_added` events to matching goals when a firing
+opens a PR. Every path is fail-soft: a broken or empty ledger degrades to "no
+active goal" and never regresses a firing that works today.
 
 Engine-specific goal modes are useful execution hints, but Alfred should not make
 them the source of truth. The Alfred goal ledger needs to be shared by Slack, the
