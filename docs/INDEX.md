@@ -5,6 +5,7 @@ Current map of the public docs. Trust code first, then this index.
 ## Start Here
 
 - [`../README.md`](../README.md): overview, quick start, repository map, and status.
+- [`DEMO.md`](DEMO.md): `alfred demo`, the one-run tour. Watch the team plan, build in an isolated worktree, catch a planted bug in review, fix it, and ship locally on a throwaway sample repo, with only an authenticated `claude` CLI.
 - [`../INSTALL.md`](../INSTALL.md): from-zero local install.
 - [`AI_ASSISTED_INSTALL.md`](AI_ASSISTED_INSTALL.md): copy-paste prompt and guardrails for Claude Code, Codex, or another local coding assistant to install Alfred.
 - [`INSTALL_TIERS.md`](INSTALL_TIERS.md): the three install tiers (`core`, `client`, `slack`) and how the CLI and fleet run fully standalone.
