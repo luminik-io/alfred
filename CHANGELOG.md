@@ -6,6 +6,7 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Added
 
+- Curated skill packs. Alfred now ships a license-audited registry of Claude Code skills (`skills/packs.toml`) and an `alfred skills` command to list, install, and check them. Small, permissively licensed skills (code review, security, frontend, debugging, and Vercel's React best practices) are vendored into the repo with their licenses kept intact; larger tools (gstack QA, headroom token compression) are reference-installed from source on request. Vendored installs need no network and work in CI; reference-installs require an explicit `--yes`, and the pip-installed headroom is pinned to the exact license-audited release. The command works from a source checkout, a deployed runtime (`deploy.sh` copies the registry into `$ALFRED_HOME`), and an installed wheel (`alfred-os skills`). The docs explain how skills load under headless `claude -p` and how headroom compares to the built-in conversation condenser. See `docs/SKILLS.md`.
 - Long Ask conversations no longer run out of room. When a chat grows past a configurable length, Alfred keeps the opening task and the most recent turns intact and replaces the middle with one compact, model-written summary, so the original goal and the live working state both survive. If a turn still overflows the model's context, Alfred condenses and retries once instead of failing. Every condensation is written down as an auditable record, short chats are left untouched, and every threshold is environment-overridable.
 
 ### Changed

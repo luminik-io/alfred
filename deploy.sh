@@ -134,9 +134,10 @@ RUNTIME_LIB="$ALFRED_HOME/lib"
 RUNTIME_LAUNCHD="$ALFRED_HOME/launchd"
 RUNTIME_SYSTEMD="$ALFRED_HOME/systemd"
 RUNTIME_PROMPTS="$ALFRED_HOME/prompts"
+RUNTIME_SKILLS="$ALFRED_HOME/skills"
 LOCAL_BIN="${HOME}/.local/bin"
 
-mkdir -p "$RUNTIME_BIN" "$RUNTIME_LIB" "$RUNTIME_LAUNCHD" "$RUNTIME_SYSTEMD" "$RUNTIME_PROMPTS" "$LOCAL_BIN"
+mkdir -p "$RUNTIME_BIN" "$RUNTIME_LIB" "$RUNTIME_LAUNCHD" "$RUNTIME_SYSTEMD" "$RUNTIME_PROMPTS" "$RUNTIME_SKILLS" "$LOCAL_BIN"
 
 echo "[alfred-os/deploy] ALFRED_HOME=$ALFRED_HOME WORKSPACE_ROOT=$WORKSPACE_ROOT"
 
@@ -209,6 +210,24 @@ else
     cp "$f" "$RUNTIME_BIN/"
     chmod +x "$RUNTIME_BIN/$(basename "$f")"
   done
+fi
+
+# The curated skill-pack registry (skills/packs.toml + skills/vendored/) must
+# ship with the runtime the same way lib/ does: lib/skill_packs.py resolves the
+# manifest relative to its own location ($ALFRED_HOME/lib -> $ALFRED_HOME/skills),
+# so without this copy `alfred skills` crashes on a deployed runtime.
+if [ -d "$REPO_DIR/skills" ]; then
+  echo "[alfred-os/deploy] copying skills/ (curated skill-pack registry)"
+  if same_dir "$REPO_DIR/skills" "$RUNTIME_SKILLS"; then
+    echo "[alfred-os/deploy] skills/ already in runtime root"
+  else
+    cp -R "$REPO_DIR/skills/." "$RUNTIME_SKILLS/"
+  fi
+  find "$RUNTIME_SKILLS" -type f -exec chmod 644 {} +
+  if [ ! -f "$RUNTIME_SKILLS/packs.toml" ]; then
+    echo "[alfred-os/deploy] ERROR: skills/packs.toml missing after copy" >&2
+    exit 1
+  fi
 fi
 
 ensure_runtime_python_deps() {

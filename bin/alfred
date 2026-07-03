@@ -83,6 +83,10 @@ Subcommands today:
   alfred shipped              Summarize merged PRs, issues, LOC, and
                               model/config changes.
   alfred telemetry ...        Inspect or change anonymous usage totals.
+  alfred skills ...           Manage curated skill packs (`list`,
+                              `install <pack>`, `installed`). Vendored packs
+                              copy in offline; reference-install packs fetch
+                              from source and need `--yes`.
 
 The runner-level fleet gate file lives at
 ``$ALFRED_HOME/state/fleet/enabled.txt``. Listed codenames are enabled.
@@ -2474,6 +2478,19 @@ def _probe_claude_auth() -> int:
     return 1
 
 
+def cmd_skills(args: argparse.Namespace) -> int:
+    """Delegate to the shared skills CLI (lib/skills_cli.py).
+
+    Imported lazily so `alfred` startup stays cheap and a missing/broken
+    manifest only bites the `alfred skills` verbs, not the whole CLI. The same
+    module backs the wheel's `alfred-os skills` entry point, so both surfaces
+    behave identically.
+    """
+    import skills_cli
+
+    return skills_cli.dispatch(args)
+
+
 def cmd_claude(args: argparse.Namespace) -> int:
     command = args.claude_command
     if command in ("status", ""):
@@ -2607,6 +2624,27 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_agent_remove.add_argument("codename")
     p_agent_remove.add_argument("--json", action="store_true")
     p_agent_remove.set_defaults(func=cmd_agent_remove)
+
+    p_skills = sub.add_parser("skills", help="manage curated skill packs")
+    skills_sub = p_skills.add_subparsers(dest="skills_command", required=True)
+    p_skills_list = skills_sub.add_parser("list", help="list curated skill packs")
+    p_skills_list.add_argument("--role", help="only packs recommended for this agent role")
+    p_skills_list.add_argument("--json", action="store_true")
+    p_skills_list.set_defaults(func=cmd_skills)
+    p_skills_install = skills_sub.add_parser("install", help="install one pack into the skills dir")
+    p_skills_install.add_argument("pack", help="pack name (see `alfred skills list`)")
+    p_skills_install.add_argument(
+        "--yes",
+        action="store_true",
+        help="confirm running a reference-install pack's network fetch command",
+    )
+    p_skills_install.add_argument(
+        "--dry-run", action="store_true", help="show what would happen without writing or fetching"
+    )
+    p_skills_install.set_defaults(func=cmd_skills)
+    p_skills_installed = skills_sub.add_parser("installed", help="list installed packs")
+    p_skills_installed.add_argument("--json", action="store_true")
+    p_skills_installed.set_defaults(func=cmd_skills)
 
     p_telemetry = sub.add_parser("telemetry", help="manage anonymous usage totals")
     telemetry_sub = p_telemetry.add_subparsers(dest="telemetry_command", required=True)
