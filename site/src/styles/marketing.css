@@ -28,7 +28,7 @@
   --alfred-surface-2: #161D2A;
   --alfred-border: #1F2937;
   --alfred-border-strong: #2A3548;
-  --alfred-mute: #7C8AA0;          /* lifted from #6B7A8F for AA on the deeper canvas */
+  --alfred-mute: #8896AD;          /* lifted from #6B7A8F so muted labels hold AA even over a peak aurora bloom behind glass */
   --alfred-text: #C5D0E0;
   --alfred-text-bright: #F2F6FF;
 
@@ -46,20 +46,21 @@
      Text NEVER sits directly on --glass-fill: it sits on --glass-solid
      (an opaque sibling token) so every text surface stays WCAG AA even
      when the blur is unsupported. See .m-glass / .m-glass--solid. */
-  --glass-fill: rgba(19, 27, 42, 0.55);
-  --glass-fill-strong: rgba(15, 22, 35, 0.72);
+  --glass-fill: rgba(19, 27, 42, 0.40);
+  --glass-fill-strong: rgba(14, 21, 34, 0.58);
   --glass-solid: #0E1420;          /* opaque AA-safe backdrop for text blocks */
-  --glass-edge: rgba(150, 180, 230, 0.16);
-  --glass-edge-lit: rgba(180, 215, 255, 0.40);   /* top luminous hairline */
-  --glass-blur: 20px;
-  --glass-saturate: 1.4;
-  --glass-shadow: 0 24px 70px -28px rgba(0, 0, 0, 0.85), 0 2px 10px -4px rgba(0, 0, 0, 0.5);
+  --glass-edge: rgba(150, 180, 230, 0.24);
+  --glass-edge-lit: rgba(195, 225, 255, 0.60);   /* top luminous hairline */
+  --glass-glow: 0 0 0 1px rgba(150, 180, 230, 0.06) inset, 0 0 44px -18px rgba(0, 229, 199, 0.25) inset;
+  --glass-blur: 28px;
+  --glass-saturate: 1.7;
+  --glass-shadow: 0 30px 90px -30px rgba(0, 0, 0, 0.9), 0 2px 12px -4px rgba(0, 0, 0, 0.55);
 
-  /* Aurora field: two brand blooms drifting behind hero + soft sections. */
-  --aurora-1: rgba(0, 229, 199, 0.16);
-  --aurora-2: rgba(87, 137, 255, 0.14);
-  --aurora-3: rgba(0, 229, 199, 0.05);
-  --grid-line: rgba(96, 130, 190, 0.10);   /* engineered baseline-grid motif */
+  /* Aurora field: brand blooms drifting behind hero + soft sections. */
+  --aurora-1: rgba(0, 229, 199, 0.26);
+  --aurora-2: rgba(87, 137, 255, 0.22);
+  --aurora-3: rgba(0, 229, 199, 0.10);
+  --grid-line: rgba(96, 130, 190, 0.14);   /* engineered baseline-grid motif */
 }
 
 [data-theme="light"] {
@@ -68,7 +69,7 @@
   --alfred-surface-2: #F1ECE0;     /* hover / focused panel */
   --alfred-border: #E2D9C6;
   --alfred-border-strong: #C8BBA0;
-  --alfred-mute: #6B6354;
+  --alfred-mute: #625A4B;   /* darkened so muted text holds AA over a peak aurora bloom */
   --alfred-text: #2A2620;
   --alfred-text-bright: #0B0905;
 
@@ -81,19 +82,20 @@
 
   /* Light-mode glass: frosted parchment. Higher opacity than dark so text
      contrast holds without a heavy backdrop, warm edges instead of cool. */
-  --glass-fill: rgba(253, 251, 246, 0.62);
-  --glass-fill-strong: rgba(253, 251, 246, 0.82);
+  --glass-fill: rgba(253, 251, 246, 0.50);
+  --glass-fill-strong: rgba(253, 251, 246, 0.74);
   --glass-solid: #FBF8F1;
-  --glass-edge: rgba(120, 100, 60, 0.16);
-  --glass-edge-lit: rgba(255, 255, 255, 0.85);
-  --glass-blur: 18px;
-  --glass-saturate: 1.15;
-  --glass-shadow: 0 22px 60px -30px rgba(70, 55, 25, 0.30), 0 2px 8px -3px rgba(70, 55, 25, 0.12);
+  --glass-edge: rgba(120, 100, 60, 0.22);
+  --glass-edge-lit: rgba(255, 255, 255, 0.95);
+  --glass-glow: 0 0 0 1px rgba(120, 100, 60, 0.05) inset, 0 0 44px -18px rgba(15, 138, 120, 0.16) inset;
+  --glass-blur: 24px;
+  --glass-saturate: 1.3;
+  --glass-shadow: 0 26px 70px -30px rgba(70, 55, 25, 0.36), 0 2px 10px -3px rgba(70, 55, 25, 0.14);
 
-  --aurora-1: rgba(15, 138, 120, 0.10);
-  --aurora-2: rgba(46, 93, 219, 0.08);
-  --aurora-3: rgba(15, 138, 120, 0.04);
-  --grid-line: rgba(120, 100, 60, 0.10);
+  --aurora-1: rgba(15, 138, 120, 0.16);
+  --aurora-2: rgba(46, 93, 219, 0.13);
+  --aurora-3: rgba(15, 138, 120, 0.07);
+  --grid-line: rgba(120, 100, 60, 0.14);
 }
 
 /* Static design tokens (typography, spacing) live on :root and are
@@ -116,9 +118,11 @@
 
   --container: 1180px;
   --gutter: 32px;
-  --radius: 8px;
-  --radius-lg: 12px;    /* glass panes read a touch softer than sharp cards */
-  --radius-xl: 18px;
+  /* Sharp is the brand. Zero radius everywhere: cards, panels, buttons,
+     inputs, nav, code blocks. Hard edges + glass + luminous accents. */
+  --radius: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
 }
 
 * { box-sizing: border-box; }
@@ -140,8 +144,8 @@
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   border: 1px solid var(--glass-edge);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--glass-shadow);
+  border-radius: 0;
+  box-shadow: var(--glass-shadow), var(--glass-glow);
 }
 
 /* Luminous top edge: a bright 1px inner highlight that catches "light"
@@ -153,7 +157,7 @@
   inset: 0;
   border-radius: inherit;
   padding: 1px;
-  background: linear-gradient(180deg, var(--glass-edge-lit), transparent 34%);
+  background: linear-gradient(180deg, var(--glass-edge-lit), transparent 48%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
@@ -175,7 +179,7 @@
   position: relative;
   z-index: 1;
   background: color-mix(in oklab, var(--glass-solid) 62%, transparent);
-  border-radius: var(--radius);
+  border-radius: 0;
 }
 
 /* ── Aurora field ──────────────────────────────────────────────────
@@ -195,9 +199,9 @@
   position: absolute;
   inset: -20%;
   background:
-    radial-gradient(38% 44% at 18% 8%, var(--aurora-1), transparent 62%),
-    radial-gradient(42% 48% at 86% 22%, var(--aurora-2), transparent 64%),
-    radial-gradient(50% 55% at 60% 100%, var(--aurora-3), transparent 68%);
+    radial-gradient(52% 56% at 16% 6%, var(--aurora-1), transparent 66%),
+    radial-gradient(56% 60% at 88% 20%, var(--aurora-2), transparent 68%),
+    radial-gradient(64% 66% at 55% 105%, var(--aurora-3), transparent 70%);
   filter: blur(8px);
   animation: m-aurora-drift 26s ease-in-out infinite alternate;
   will-change: transform;
@@ -246,7 +250,7 @@ a:hover { text-decoration: underline; }
 :where(a, button, summary, [tabindex]):focus-visible {
   outline: 2px solid var(--alfred-accent);
   outline-offset: 3px;
-  border-radius: 3px;
+  border-radius: 0;
 }
 
 h1, h2, h3, h4 {
@@ -390,7 +394,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   font-weight: 600;
   letter-spacing: 0.01em;
   padding: 14px 22px;
-  border-radius: var(--radius);
+  border-radius: 0;
   border: 1px solid transparent;
   background: var(--alfred-accent);
   color: var(--alfred-accent-ink);
@@ -416,8 +420,8 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
    stays --alfred-text-bright which is AA on the dark aurora behind it. */
 .m-btn--ghost {
   background: var(--glass-fill);
-  -webkit-backdrop-filter: blur(12px) saturate(var(--glass-saturate));
-  backdrop-filter: blur(12px) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(18px) saturate(var(--glass-saturate));
+  backdrop-filter: blur(18px) saturate(var(--glass-saturate));
   color: var(--alfred-text-bright);
   border-color: var(--glass-edge);
   box-shadow: 0 1px 0 0 var(--glass-edge-lit) inset;
@@ -454,9 +458,9 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   border: 1px solid var(--glass-edge);
-  border-radius: var(--radius-lg);
+  border-radius: 0;
   padding: 24px;
-  box-shadow: var(--glass-shadow);
+  box-shadow: var(--glass-shadow), var(--glass-glow);
 }
 
 @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
@@ -470,7 +474,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   inset: 0;
   border-radius: inherit;
   padding: 1px;
-  background: linear-gradient(180deg, var(--glass-edge-lit), transparent 40%);
+  background: linear-gradient(180deg, var(--glass-edge-lit), transparent 48%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
@@ -515,7 +519,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   z-index: 50;
   /* Glass bar: translucent so the aurora shimmers through it, real blur,
      and a luminous hairline along the bottom edge. */
-  background: color-mix(in oklab, var(--alfred-black) 68%, transparent);
+  background: color-mix(in oklab, var(--alfred-black) 52%, transparent);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   border-bottom: 1px solid var(--glass-edge);
@@ -659,8 +663,8 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   background: var(--glass-fill-strong);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  border-radius: var(--radius-lg);
-  box-shadow: var(--glass-shadow);
+  border-radius: 0;
+  box-shadow: var(--glass-shadow), var(--glass-glow);
   box-sizing: border-box;
 }
 @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
@@ -673,7 +677,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   inset: 0;
   border-radius: inherit;
   padding: 1px;
-  background: linear-gradient(180deg, var(--glass-edge-lit), transparent 30%);
+  background: linear-gradient(180deg, var(--glass-edge-lit), transparent 48%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
@@ -739,7 +743,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   display: block;
   width: 100%;
   height: auto;
-  border-radius: 4px;
+  border-radius: 0;
 }
 .m-proof__cap {
   margin-top: 12px;
@@ -756,9 +760,12 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   margin: 32px 0 12px;
 }
 .m-stat {
-  border: 1px solid var(--alfred-border-strong);
-  background: var(--alfred-surface);
-  border-radius: var(--radius);
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-fill-strong);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  box-shadow: var(--glass-shadow), var(--glass-glow);
+  border-radius: 0;
   padding: 22px 24px;
 }
 .m-stat__num {
@@ -902,7 +909,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   gap: 4px;
   padding: 10px;
   border: 1px solid var(--glass-edge);
-  border-radius: var(--radius-lg);
+  border-radius: 0;
   background: var(--glass-fill-strong);
   box-shadow: var(--glass-shadow);
   transform: translateX(-50%);
@@ -933,7 +940,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   display: grid;
   gap: 2px;
   padding: 11px 12px;
-  border-radius: 6px;
+  border-radius: 0;
   color: var(--alfred-text);
   transition: background 140ms ease, color 140ms ease, transform 140ms ease;
 }
@@ -956,7 +963,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
 .m-nav__cta {
   padding: 8px 14px;
   border: 1px solid var(--alfred-border-strong);
-  border-radius: var(--radius);
+  border-radius: 0;
 }
 .m-nav__cta:hover { border-color: var(--alfred-accent); color: var(--alfred-accent) !important; }
 .m-nav__cta:active { transform: scale(0.98); }
@@ -972,7 +979,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   gap: 5px;
   padding: 0;
   border: 1px solid var(--alfred-border-strong);
-  border-radius: var(--radius);
+  border-radius: 0;
   background: var(--alfred-surface);
   color: var(--alfred-text-bright);
   cursor: pointer;
@@ -994,7 +1001,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
 .m-menu-button span {
   width: 17px;
   height: 2px;
-  border-radius: 999px;
+  border-radius: 0;
   background: currentColor;
   transform-origin: center;
   transition: transform 160ms ease, opacity 160ms ease;
@@ -1022,7 +1029,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   gap: 10px;
   padding: 10px;
   border: 1px solid var(--glass-edge);
-  border-radius: var(--radius-lg);
+  border-radius: 0;
   background: var(--glass-fill-strong);
   box-shadow: var(--glass-shadow);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
@@ -1044,7 +1051,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   justify-content: space-between;
   min-height: 44px;
   padding: 0 12px;
-  border-radius: 6px;
+  border-radius: 0;
   color: var(--alfred-text);
   font-weight: 600;
   transition: background 140ms ease, color 140ms ease, transform 140ms ease;
@@ -1085,7 +1092,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   content: "";
   width: 8px;
   height: 8px;
-  border-radius: 999px;
+  border-radius: 0;
   background: var(--alfred-accent);
 }
 
@@ -1136,10 +1143,15 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
 /* Footer */
 
 .m-footer {
-  border-top: 1px solid var(--alfred-border);
+  position: relative;
+  overflow: hidden;
+  border-top: 1px solid var(--glass-edge);
+  /* Luminous hairline along the footer top edge. */
+  box-shadow: 0 1px 0 0 var(--glass-edge-lit) inset;
   padding: 64px 0 32px;
   margin-top: 64px;
 }
+.m-footer > .m-container { position: relative; z-index: 1; }
 
 .m-footer__grid {
   display: grid;
