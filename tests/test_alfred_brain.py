@@ -963,11 +963,81 @@ class _FakeConsolidateBrain:
         return self.summary
 
 
-def test_cli_consolidate_disabled_is_noop(
-    cli_mod: ModuleType, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+def _consolidate_brain_factory(brain: _FakeConsolidateBrain):
+    """Return a FleetBrain stand-in whose direct call AND ``from_env`` both yield
+    ``brain``. cmd_consolidate builds via ``_build_brain(args, env_src)``, which
+    takes the ``from_env`` branch when no ``--db`` is given, so the stub must
+    provide it."""
+
+    class _Stub:
+        def __new__(cls, *_a: object, **_k: object) -> _FakeConsolidateBrain:  # type: ignore[misc]
+            return brain
+
+        @classmethod
+        def from_env(cls, *_a: object, **_k: object) -> _FakeConsolidateBrain:
+            return brain
+
+    return _Stub
+
+
+def test_cli_consolidate_disabled_does_not_open_the_ledger(
+    cli_mod: ModuleType,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A disarmed run is a true no-op: it must NOT construct FleetBrain (which
+    would ensure_schema() and create/write the SQLite DB)."""
+    monkeypatch.delenv("ALFRED_MEMORY_CONSOLIDATE", raising=False)
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "home"))
+
+    def _boom(*_a: object, **_k: object) -> object:
+        raise AssertionError("FleetBrain must not be built when consolidation is disarmed")
+
+    monkeypatch.setattr(cli_mod, "FleetBrain", _boom)
+    rc = cli_mod.main(["consolidate"])
+    assert rc == 0
+    assert "disabled" in capsys.readouterr().out
+    # And the disarmed run never created a brain DB on disk.
+    assert not (tmp_path / "home" / "fleet-brain.db").exists()
+
+
+def test_cli_consolidate_disabled_json_reports_enabled_false(
+    cli_mod: ModuleType,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ALFRED_MEMORY_CONSOLIDATE", raising=False)
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(
+        cli_mod,
+        "FleetBrain",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not build")),
+    )
+    rc = cli_mod.main(["consolidate", "--json"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["enabled"] is False
+
+
+def test_cli_consolidate_honors_persisted_env_opt_in(
+    cli_mod: ModuleType,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Arming ALFRED_MEMORY_CONSOLIDATE in $ALFRED_HOME/.env is enough: the CLI
+    loads the persisted opt-in (like auto-promote), not just process env."""
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".env").write_text("ALFRED_MEMORY_CONSOLIDATE=1\n")
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    # NOT exported in the process env: only the persisted file arms it.
+    monkeypatch.delenv("ALFRED_MEMORY_CONSOLIDATE", raising=False)
+
     summary = {
-        "enabled": False,
+        "enabled": True,
         "dry_run": False,
         "decayed": 0,
         "merged": 0,
@@ -975,15 +1045,25 @@ def test_cli_consolidate_disabled_is_noop(
         "ams_forgotten": 0,
         "ams_forget_failed": 0,
     }
-    monkeypatch.setattr(cli_mod, "FleetBrain", lambda *a, **k: _FakeConsolidateBrain(summary))
+    built = _FakeConsolidateBrain(summary)
+    monkeypatch.setattr(cli_mod, "FleetBrain", _consolidate_brain_factory(built))
+
     rc = cli_mod.main(["consolidate"])
+
     assert rc == 0
-    assert "disabled" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "enabled=true" in out
+    # The persisted opt-in reached consolidate_lessons via the merged env.
+    assert built.calls, "consolidate_lessons should have run"
+    passed_env = built.calls[0].get("env")
+    assert isinstance(passed_env, dict)
+    assert passed_env.get("ALFRED_MEMORY_CONSOLIDATE") == "1"
 
 
 def test_cli_consolidate_prints_ams_forget_counts(
     cli_mod: ModuleType, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv("ALFRED_MEMORY_CONSOLIDATE", "1")  # armed so the gate opens
     summary = {
         "enabled": True,
         "dry_run": False,
@@ -993,7 +1073,8 @@ def test_cli_consolidate_prints_ams_forget_counts(
         "ams_forgotten": 2,
         "ams_forget_failed": 0,
     }
-    monkeypatch.setattr(cli_mod, "FleetBrain", lambda *a, **k: _FakeConsolidateBrain(summary))
+    built = _FakeConsolidateBrain(summary)
+    monkeypatch.setattr(cli_mod, "FleetBrain", _consolidate_brain_factory(built))
     rc = cli_mod.main(["consolidate"])
     assert rc == 0
     out = capsys.readouterr().out
@@ -1005,6 +1086,7 @@ def test_cli_consolidate_prints_ams_forget_counts(
 def test_cli_consolidate_returns_nonzero_when_ams_forget_fails(
     cli_mod: ModuleType, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv("ALFRED_MEMORY_CONSOLIDATE", "1")  # armed so the gate opens
     summary = {
         "enabled": True,
         "dry_run": False,
@@ -1014,7 +1096,8 @@ def test_cli_consolidate_returns_nonzero_when_ams_forget_fails(
         "ams_forgotten": 0,
         "ams_forget_failed": 1,
     }
-    monkeypatch.setattr(cli_mod, "FleetBrain", lambda *a, **k: _FakeConsolidateBrain(summary))
+    built = _FakeConsolidateBrain(summary)
+    monkeypatch.setattr(cli_mod, "FleetBrain", _consolidate_brain_factory(built))
     rc = cli_mod.main(["consolidate", "--json"])
     assert rc == 1
     assert '"ams_forget_failed": 1' in capsys.readouterr().out

@@ -112,6 +112,7 @@ __all__ = [
     "Store",
     "WorkerHeartbeat",
     "WorkerStatus",
+    "consolidate_enabled",
     "default_db_path",
     "densify_enabled",
     "direct_auto_promote_env",
@@ -236,6 +237,16 @@ def _env_opt_in_armed(name: str, env: Mapping[str, str] | None = None) -> bool:
     src = env if env is not None else os.environ
     value = _env_token(src.get(name))
     return value in _TRUTHY_ENV_TOKENS
+
+
+def consolidate_enabled(env: Mapping[str, str] | None = None) -> bool:
+    """Whether the consolidation/decay pass is armed (``ALFRED_MEMORY_CONSOLIDATE``).
+
+    Off by default; arms only on a recognized truthy token (fail-closed on a
+    typo). This is the SAME predicate ``consolidate_lessons`` gates on, exported
+    so a caller (the CLI, the scheduled runner) can check the opt-in BEFORE
+    opening the ledger and avoid touching the store on a disarmed no-op run."""
+    return _env_opt_in_armed("ALFRED_MEMORY_CONSOLIDATE", env)
 
 
 def _env_flag_default_on(name: str, env: Mapping[str, str] | None = None) -> bool:
@@ -1312,7 +1323,7 @@ class FleetBrain:
         a true no-op. ``lesson_forgetter`` is the AMS provider; tests inject a
         stub. Returns a summary dict (always safe to log)."""
         summary: dict[str, Any] = {
-            "enabled": _env_opt_in_armed("ALFRED_MEMORY_CONSOLIDATE", env),
+            "enabled": consolidate_enabled(env),
             "dry_run": bool(dry_run),
             "decayed": 0,
             "merged": 0,

@@ -93,6 +93,7 @@ for candidate in (
 from fleet_brain import (  # noqa: E402
     FleetBrain,
     MemoryPromotionError,
+    consolidate_enabled,
     default_db_path,
     direct_auto_promote_env,
 )
@@ -709,10 +710,35 @@ def cmd_stats(args: argparse.Namespace) -> int:
 
 def cmd_consolidate(args: argparse.Namespace) -> int:
     """Periodic consolidation/decay pass (gated, off by default)."""
-    brain = _build_brain(args)
+    # Honor the persisted opt-in the same way auto-promote does: load
+    # $ALFRED_HOME/.env so arming ALFRED_MEMORY_CONSOLIDATE there (per the docs
+    # and the scheduler wrapper) is enough, without launchd also exporting it.
+    env_src = direct_auto_promote_env()
+    # Gate on the opt-in BEFORE opening the ledger: a disarmed weekly run must be
+    # a true no-op that never constructs FleetBrain (which would ensure_schema()
+    # and create/write the SQLite DB, and could exit nonzero + Slack a false
+    # failure if ALFRED_FLEET_BRAIN_DB points at an unwritable path).
+    if not consolidate_enabled(env_src):
+        disabled = {
+            "enabled": False,
+            "dry_run": bool(args.dry_run),
+            "decayed": 0,
+            "merged": 0,
+            "ams_forget_attempted": 0,
+            "ams_forgotten": 0,
+            "ams_forget_failed": 0,
+        }
+        if args.json:
+            print(json.dumps(disabled, indent=2, sort_keys=True))
+        else:
+            print("consolidate disabled (ALFRED_MEMORY_CONSOLIDATE off); no-op")
+        return 0
+
+    brain = _build_brain(args, env_src)
     summary = brain.consolidate_lessons(
         stale_days=args.stale_days,
         dry_run=args.dry_run,
+        env=env_src,
     )
     ams_failed = int(summary.get("ams_forget_failed") or 0)
     if args.json:

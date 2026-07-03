@@ -850,3 +850,15 @@ def test_consolidate_arms_on_recognized_truthy_tokens(brain: FleetBrain) -> None
             brain.consolidate_lessons(env={"ALFRED_MEMORY_CONSOLIDATE": token})["enabled"]
             is False
         ), token
+
+
+def test_consolidate_enabled_predicate_matches_summary_gate() -> None:
+    """The exported consolidate_enabled predicate (used to gate before opening
+    the ledger) matches the arm/disarm semantics of consolidate_lessons."""
+    from fleet_brain import consolidate_enabled
+
+    for token in ("1", "true", "yes", "on", "enabled"):
+        assert consolidate_enabled({"ALFRED_MEMORY_CONSOLIDATE": token}) is True, token
+    for token in ("0", "false", "no", "off", "", "maybe", "2"):
+        assert consolidate_enabled({"ALFRED_MEMORY_CONSOLIDATE": token}) is False, token
+    assert consolidate_enabled({}) is False

@@ -235,6 +235,73 @@ def test_memory_consolidate_dry_run_reports_without_writing(tmp_path: Path) -> N
     assert payload["dry_run"] is True
 
 
+def test_memory_consolidate_honors_persisted_env_opt_in(tmp_path: Path) -> None:
+    """Arming ALFRED_MEMORY_CONSOLIDATE in $ALFRED_HOME/.env (NOT the process
+    env) is enough for the scheduled runner: the persisted opt-in is loaded."""
+    alfred_home = tmp_path / "alfred"
+    alfred_home.mkdir()
+    (alfred_home / ".env").write_text("ALFRED_MEMORY_CONSOLIDATE=1\n")
+    db = tmp_path / "brain.db"
+    FleetBrain(db_path=db)
+
+    env = {
+        **os.environ,
+        "ALFRED_HOME": str(alfred_home),
+        "ALFRED_FLEET_BRAIN_DB": str(db),
+    }
+    env.pop("ALFRED_MEMORY_CONSOLIDATE", None)  # only the persisted file arms it
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "bin" / "memory-consolidate.py"),
+            "--dry-run",
+            "--json",
+            "--no-slack",
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["enabled"] is True
+
+
+def test_memory_consolidate_disarmed_does_not_create_ledger(tmp_path: Path) -> None:
+    """A disarmed scheduled run is a true no-op that never opens/creates the DB,
+    even when ALFRED_FLEET_BRAIN_DB points at a not-yet-existing path."""
+    alfred_home = tmp_path / "alfred"
+    missing_db = tmp_path / "nested" / "not-created" / "brain.db"
+
+    env = {
+        **os.environ,
+        "ALFRED_HOME": str(alfred_home),
+        "ALFRED_FLEET_BRAIN_DB": str(missing_db),
+    }
+    env.pop("ALFRED_MEMORY_CONSOLIDATE", None)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "bin" / "memory-consolidate.py"),
+            "--json",
+            "--no-slack",
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["enabled"] is False
+    # The disarmed run must not have created the DB (its parent dir does not even
+    # exist), proving it never opened the ledger.
+    assert not missing_db.exists()
+
+
 def test_memory_consolidate_module_loads() -> None:
     spec = util.spec_from_file_location(
         "memory_consolidate_script", REPO_ROOT / "bin" / "memory-consolidate.py"
