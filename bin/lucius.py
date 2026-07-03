@@ -10,6 +10,7 @@ import shlex
 import sys
 import time
 import tomllib
+from dataclasses import replace
 from pathlib import Path
 
 sys.path.insert(
@@ -516,14 +517,30 @@ def _capture_screenshot_evidence(repo: str, wt: Path, branch: str, firing_id: st
         # Commit the evidence images onto the PR branch so the relative links
         # in the body resolve. A commit failure downgrades to a reported miss.
         add = run(["git", "add", "--", shots.after_path], cwd=str(wt), timeout=15)
+        if add.returncode != 0:
+            return ScreenshotEvidence(
+                attempted=True,
+                ok=False,
+                reason="captured but failed to commit evidence images",
+                route=config.route,
+            )
+        # Stage the before-image separately: if its `git add` fails we must NOT
+        # keep referencing it, or the PR body would link a baseline that was
+        # never committed. Drop the reference and report it honestly instead.
         if shots.before_path:
-            run(["git", "add", "--", shots.before_path], cwd=str(wt), timeout=15)
+            before_add = run(["git", "add", "--", shots.before_path], cwd=str(wt), timeout=15)
+            if before_add.returncode != 0:
+                shots = replace(
+                    shots,
+                    before_path="",
+                    before_reason="captured but failed to stage baseline image",
+                )
         commit = run(
             ["git", "commit", "-m", f"chore(evidence): screenshots for {firing_id}"],
             cwd=str(wt),
             timeout=20,
         )
-        if add.returncode != 0 or commit.returncode != 0:
+        if commit.returncode != 0:
             return ScreenshotEvidence(
                 attempted=True,
                 ok=False,

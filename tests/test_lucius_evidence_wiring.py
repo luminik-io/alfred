@@ -317,3 +317,87 @@ def test_screenshot_evidence_prepares_and_cleans_base_worktree(lucius, monkeypat
     assert any(c[:3] == ["git", "worktree", "add"] for c in calls)
     # and cleaned up
     assert any(c[:3] == ["git", "worktree", "remove"] for c in calls)
+
+
+def test_before_add_failure_drops_reference_not_link(lucius, monkeypatch):
+    # If `git add` of the before-image fails, the commit of after.png can still
+    # succeed - but we must NOT keep before_path, or the PR would link an
+    # uncommitted baseline. Drop it and report before_reason honestly.
+    monkeypatch.setattr(lucius, "is_dry_run", lambda: False)
+    monkeypatch.setattr(
+        lucius,
+        "PREVIEW_CONFIG",
+        {
+            "frontend": lucius.PreviewConfig(
+                start_cmd="npm run dev", url="http://localhost:5173", route="/"
+            )
+        },
+    )
+
+    def fake_run(cmd, **kwargs):
+        # Fail only the before-image `git add`; everything else succeeds.
+        if cmd[:2] == ["git", "add"] and cmd[-1].endswith("before.png"):
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="pathspec error")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    def fake_capture(wt, config, firing_id, base_dir=None, **kwargs):
+        return lucius.ScreenshotEvidence(
+            attempted=True,
+            ok=True,
+            before_path=".alfred/evidence/fid/before.png",
+            after_path=".alfred/evidence/fid/after.png",
+            route="/",
+        )
+
+    monkeypatch.setattr(lucius, "run", fake_run)
+    monkeypatch.setattr(lucius, "capture_screenshots", fake_capture)
+    monkeypatch.setattr(
+        lucius, "push_current_branch", lambda wt, branch: subprocess.CompletedProcess([], 0)
+    )
+
+    result = lucius._capture_screenshot_evidence(
+        "frontend", Path("/wt"), "br", "fid", "origin/main"
+    )
+    # after.png still landed, so overall capture succeeds...
+    assert result.ok is True
+    assert result.after_path == ".alfred/evidence/fid/after.png"
+    # ...but the never-committed before-image is dropped, not linked.
+    assert result.before_path == ""
+    assert "failed to stage baseline" in result.before_reason
+
+
+def test_before_add_success_keeps_reference(lucius, monkeypatch):
+    # Sanity counterpart: when the before `git add` succeeds, the reference
+    # survives the commit.
+    monkeypatch.setattr(lucius, "is_dry_run", lambda: False)
+    monkeypatch.setattr(
+        lucius,
+        "PREVIEW_CONFIG",
+        {
+            "frontend": lucius.PreviewConfig(
+                start_cmd="npm run dev", url="http://localhost:5173", route="/"
+            )
+        },
+    )
+    monkeypatch.setattr(
+        lucius, "run", lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+    )
+    monkeypatch.setattr(
+        lucius,
+        "capture_screenshots",
+        lambda wt, config, firing_id, base_dir=None, **kw: lucius.ScreenshotEvidence(
+            attempted=True,
+            ok=True,
+            before_path=".alfred/evidence/fid/before.png",
+            after_path=".alfred/evidence/fid/after.png",
+            route="/",
+        ),
+    )
+    monkeypatch.setattr(
+        lucius, "push_current_branch", lambda wt, branch: subprocess.CompletedProcess([], 0)
+    )
+    result = lucius._capture_screenshot_evidence(
+        "frontend", Path("/wt"), "br", "fid", "origin/main"
+    )
+    assert result.before_path == ".alfred/evidence/fid/before.png"
+    assert result.before_reason == ""
