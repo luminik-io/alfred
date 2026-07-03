@@ -8,7 +8,7 @@ default full Alfred fleet, including Batman. The example is "add an organization
 to every account-scoped URL" because it is a small realistic change that
 requires coordinated edits to backend, frontend, and mobile.
 
-This page mirrors [`docs/MULTI_REPO_WORKED_EXAMPLE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/MULTI_REPO_WORKED_EXAMPLE.md).
+This page mirrors [`docs/MULTI_REPO_WORKED_EXAMPLE.md`](https://github.com/luminik-io/alfred/blob/main/docs/MULTI_REPO_WORKED_EXAMPLE.md).
 
 The repos referenced below are placeholders. Replace them with your own fleet:
 

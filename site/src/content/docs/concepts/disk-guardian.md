@@ -7,7 +7,7 @@ Scheduled agents write worktrees, transcripts, spend ledgers, and temp debug dir
 
 The disk guardian turns that crash-loop into a clean, throttled back-off. It runs as the first step of every agent's preflight.
 
-Source: [`lib/agent_runner/disk.py`](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner/disk.py) and the preflight gate in [`lib/agent_runner/orchestrator.py`](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner/orchestrator.py).
+Source: [`lib/agent_runner/disk.py`](https://github.com/luminik-io/alfred/blob/main/lib/agent_runner/disk.py) and the preflight gate in [`lib/agent_runner/orchestrator.py`](https://github.com/luminik-io/alfred/blob/main/lib/agent_runner/orchestrator.py).
 
 ## The back-off
 
@@ -62,4 +62,4 @@ Two properties keep the guardian from becoming noise or a new failure mode:
 ## See also
 
 - [Architecture](/concepts/architecture/): the runtime boundary and preflight.
-- [`ARCHITECTURE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/ARCHITECTURE.md): the full diagram companion, including this back-off.
+- [`ARCHITECTURE.md`](https://github.com/luminik-io/alfred/blob/main/docs/ARCHITECTURE.md): the full diagram companion, including this back-off.

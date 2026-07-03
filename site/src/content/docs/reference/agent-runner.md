@@ -3,7 +3,7 @@ title: agent_runner API reference
 description: Public primitives in the lib/agent_runner package. Function signatures, semantics, return shapes.
 ---
 
-The shared runtime. Every codename agent imports from this package. Source: [`lib/agent_runner/`](https://github.com/luminik-io/alfred-os/tree/main/lib/agent_runner).
+The shared runtime. Every codename agent imports from this package. Source: [`lib/agent_runner/`](https://github.com/luminik-io/alfred/tree/main/lib/agent_runner).
 
 The package is internally split into focused submodules: `paths`,
 `config`, `process`, `result`, `transcripts`, `metadata`, `notify`,
@@ -272,4 +272,4 @@ Substitutes `${ENV_VAR}` from the environment (and any `extra_vars`). Unset vars
 - Every primitive that writes user-visible state (Slack, gh, files) is idempotent or near-idempotent.
 - Every primitive that depends on the host shell uses `subprocess.run` (via `run()`), never `shell=True`.
 
-For implementation details, the [package source](https://github.com/luminik-io/alfred-os/tree/main/lib/agent_runner) is exhaustively commented. Each submodule's docstring documents what it owns and what it does not own.
+For implementation details, the [package source](https://github.com/luminik-io/alfred/tree/main/lib/agent_runner) is exhaustively commented. Each submodule's docstring documents what it owns and what it does not own.

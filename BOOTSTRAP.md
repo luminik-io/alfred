@@ -28,8 +28,8 @@ Pro gives a few thousand turns per week against `claude -p`. Max raises the ceil
 ## 1. Clone and pick paths
 
 ```sh
-git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
-cd ~/code/alfred-os
+git clone https://github.com/luminik-io/alfred.git ~/code/alfred
+cd ~/code/alfred
 ```
 
 Two environment variables drive every path. Set them in `~/.zshrc` (or your shell rc):

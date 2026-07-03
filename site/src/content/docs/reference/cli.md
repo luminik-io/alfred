@@ -271,7 +271,7 @@ alfred labels check your-backend
 alfred labels bootstrap your-backend
 alfred labels bootstrap --all
 alfred labels bootstrap --all --check
-alfred labels bootstrap luminik-io/alfred-os --force
+alfred labels bootstrap luminik-io/alfred --force
 ```
 
 `check` and `bootstrap --check` report missing labels without creating them.
@@ -336,7 +336,7 @@ firings and lists skill invocations separately. The single-firing dump
 pretty-prints the stream-JSON one event per line with tool-use inputs
 summarised inline.
 
-See [`docs/CLI.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/CLI.md)
+See [`docs/CLI.md`](https://github.com/luminik-io/alfred/blob/main/docs/CLI.md)
 for the full reference including library examples.
 
 ## `bin/connector-sync.py`
@@ -344,7 +344,7 @@ for the full reference including library examples.
 Drain registered input connectors and file `agent:implement` issues for
 every new draft. Connectors are pull-mode adapters from non-GitHub
 sources (Linear, Sentry) into the engineering fleet's queue. See
-[`docs/CONNECTORS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/CONNECTORS.md)
+[`docs/CONNECTORS.md`](https://github.com/luminik-io/alfred/blob/main/docs/CONNECTORS.md)
 for the full design and the new-connector recipe.
 
 ```sh

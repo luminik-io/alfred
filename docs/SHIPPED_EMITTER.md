@@ -1,6 +1,6 @@
 # The `alfred-shipped-public` emitter
 
-`bin/alfred-shipped-public.py` reads your `$ALFRED_HOME/state/` directory, applies a public field allowlist and a partner-name redaction table, and writes a `weekly.json` feed describing recent merged work. The canonical Alfred site now renders a separate public GitHub board for the `luminik-io/alfred-os` repository from `site/src/data/impact-proof.json`. Use this emitter when you want a shipped-work page for your own private or customer repos, because it scrubs local state before anything is published.
+`bin/alfred-shipped-public.py` reads your `$ALFRED_HOME/state/` directory, applies a public field allowlist and a partner-name redaction table, and writes a `weekly.json` feed describing recent merged work. The canonical Alfred site now renders a separate public GitHub board for the `luminik-io/alfred` repository from `site/src/data/impact-proof.json`. Use this emitter when you want a shipped-work page for your own private or customer repos, because it scrubs local state before anything is published.
 
 This document explains the schema, the scrub rules, and the emit command.
 
@@ -59,7 +59,7 @@ PR diffs, issue bodies, author emails, comments, labels, and any other state are
 A PR passes through only when its repo:
 
 1. Matches the public slug format `owner/name`.
-2. Does NOT match the built-in private-name patterns. The emitter ships with a denylist for internal product-repo basenames; any owner/name whose name segment matches is dropped, and the bare-name `alfred` basename is denied under any owner (the public `alfred-os` repo carries the `-os` suffix and stays through).
+2. Does NOT match the built-in private-name patterns. The emitter ships with a denylist for internal product-repo basenames; any owner/name whose name segment matches is dropped, and the `alfred-internal` basename is denied under any owner (that is the private sibling of the public `luminik-io/alfred` repo, which is the bare-name `alfred` and stays through).
 3. Is in `--public-allowlist` (if any is set) OR no allowlist is set.
 
 Any title containing one of those private tokens has it rewritten in place to a `your-` placeholder.

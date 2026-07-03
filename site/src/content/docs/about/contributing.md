@@ -3,7 +3,7 @@ title: Contributing
 description: How to propose changes, the design constraints we hold, the PR review flow.
 ---
 
-Full guide at [`CONTRIBUTING.md`](https://github.com/luminik-io/alfred-os/blob/main/CONTRIBUTING.md). The shape:
+Full guide at [`CONTRIBUTING.md`](https://github.com/luminik-io/alfred/blob/main/CONTRIBUTING.md). The shape:
 
 ## Read first
 
@@ -16,7 +16,7 @@ PRs that fit get reviewed. PRs that broaden scope get politely declined.
 ## Local dev
 
 ```sh
-git clone https://github.com/luminik-io/alfred-os.git
+git clone https://github.com/luminik-io/alfred.git
 cd alfred-os
 uv run --with pytest pytest tests/         # 35 tests, ~2s
 uv run --with 'ruff>=0.6' ruff check .
@@ -54,7 +54,7 @@ pre-commit install
 - One topic per PR. Stack PRs for related changes.
 - Update `CHANGELOG.md` under `Next` for any user-visible change.
 - Update `docs/` and `site/` for any user-visible change.
-- The PR template in [`.github/PULL_REQUEST_TEMPLATE.md`](https://github.com/luminik-io/alfred-os/blob/main/.github/PULL_REQUEST_TEMPLATE.md) has the verification checklist.
+- The PR template in [`.github/PULL_REQUEST_TEMPLATE.md`](https://github.com/luminik-io/alfred/blob/main/.github/PULL_REQUEST_TEMPLATE.md) has the verification checklist.
 
 ## Codename proposals
 

@@ -11,11 +11,11 @@ body:
         This template is the open invitation to test that. Use it for findings that are safe to discuss in public, for example:
 
         - an outbound network call we did not document
-        - a privacy claim in the README or [`docs/THREAT_MODEL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/THREAT_MODEL.md) that does not match what the code does
+        - a privacy claim in the README or [`docs/THREAT_MODEL.md`](https://github.com/luminik-io/alfred/blob/main/docs/THREAT_MODEL.md) that does not match what the code does
         - a containment boundary (isolated worktree, approval gate, spend cap, never auto-merge) that can be bypassed without operator action
-        - a macOS permission prompt that appears but is not explained in [`docs/MACOS_PERMISSIONS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/MACOS_PERMISSIONS.md)
+        - a macOS permission prompt that appears but is not explained in [`docs/MACOS_PERMISSIONS.md`](https://github.com/luminik-io/alfred/blob/main/docs/MACOS_PERMISSIONS.md)
 
-        **If the finding is an exploitable vulnerability, do NOT use this template.** Report it privately through a [security advisory](https://github.com/luminik-io/alfred-os/security/advisories/new) instead. See [`SECURITY.md`](https://github.com/luminik-io/alfred-os/blob/main/SECURITY.md).
+        **If the finding is an exploitable vulnerability, do NOT use this template.** Report it privately through a [security advisory](https://github.com/luminik-io/alfred/security/advisories/new) instead. See [`SECURITY.md`](https://github.com/luminik-io/alfred/blob/main/SECURITY.md).
 
   - type: dropdown
     id: area

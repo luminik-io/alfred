@@ -5,7 +5,7 @@ description: Build Echo, a working Alfred agent, end-to-end in 30 minutes.
 
 By the end you'll have a codename agent **Echo** that picks the oldest open issue with a specific label, asks Claude for a one-line summary, posts it as an issue comment, and reports to Slack. It fires every 30 minutes via the host scheduler, isolated in a per-firing git worktree, claiming the issue via the [state machine](/concepts/state-machine/) before posting.
 
-Condensed companion to [`docs/TUTORIAL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/TUTORIAL.md). Full agent source at [`examples/bin/echo_summarise.py`](https://github.com/luminik-io/alfred-os/blob/main/examples/bin/echo_summarise.py); copy-paste-ready.
+Condensed companion to [`docs/TUTORIAL.md`](https://github.com/luminik-io/alfred/blob/main/docs/TUTORIAL.md). Full agent source at [`examples/bin/echo_summarise.py`](https://github.com/luminik-io/alfred/blob/main/examples/bin/echo_summarise.py); copy-paste-ready.
 
 ## Prerequisites
 

@@ -127,7 +127,7 @@ def test_issue_readiness_renders_github_ready_issue() -> None:
                 "Batman keeps implementation paused when a plan needs revision "
                 "and accepts thread feedback before child issues are filed."
             ),
-            repos=["luminik-io/alfred-os"],
+            repos=["luminik-io/alfred"],
             acceptance_criteria=[
                 "A plan with unresolved questions is marked needs-scope.",
                 "Slack plan messages tell the operator how to reply with changes.",
@@ -157,7 +157,7 @@ def test_issue_readiness_does_not_add_todo_for_optional_blanks() -> None:
                 "Batman keeps implementation paused when a plan needs revision "
                 "and accepts thread feedback before child issues are filed."
             ),
-            repos=["luminik-io/alfred-os"],
+            repos=["luminik-io/alfred"],
             acceptance_criteria=[
                 "A plan with unresolved questions is marked needs-scope.",
                 "Slack plan messages tell the operator how to reply with changes.",

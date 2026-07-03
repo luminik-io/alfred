@@ -221,12 +221,12 @@ def test_github_links_render_as_slack_mrkdwn():
     import slack_format as sf
 
     assert (
-        sf.github_issue_link("luminik-io/alfred-os", 113)
-        == "<https://github.com/luminik-io/alfred-os/issues/113|luminik-io/alfred-os#113>"
+        sf.github_issue_link("luminik-io/alfred", 113)
+        == "<https://github.com/luminik-io/alfred/issues/113|luminik-io/alfred#113>"
     )
     assert (
-        sf.github_url_link("https://github.com/luminik-io/alfred-os/pull/139")
-        == "<https://github.com/luminik-io/alfred-os/pull/139|luminik-io/alfred-os#139>"
+        sf.github_url_link("https://github.com/luminik-io/alfred/pull/139")
+        == "<https://github.com/luminik-io/alfred/pull/139|luminik-io/alfred#139>"
     )
 
 

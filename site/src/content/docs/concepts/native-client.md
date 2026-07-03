@@ -41,7 +41,7 @@ The desktop package bundles Alfred core resources, but it still needs to install
 them into the local runtime home, connect GitHub auth, and configure at least
 one repo before it can show real plans, runs, and agents.
 
-Full implementation note and build commands: [`docs/DESKTOP_CLIENT.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/DESKTOP_CLIENT.md).
+Full implementation note and build commands: [`docs/DESKTOP_CLIENT.md`](https://github.com/luminik-io/alfred/blob/main/docs/DESKTOP_CLIENT.md).
 
 ## Boundary
 

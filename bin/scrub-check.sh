@@ -34,13 +34,13 @@ patterns=(
   "/Users/[A-Za-z0-9._-]+/\\.hermes"
   "/home/[A-Za-z0-9._-]+/Claude_Workspace"
 
-  # Luminik internal product / org references. alfred-os legitimately ships
-  # from luminik-io, but other product repo names are private. The "alfred"
-  # bareword catches the predecessor private repo; the long alternation
-  # catches every named Luminik product repo.
+  # Luminik internal product / org references. This repo (luminik-io/alfred)
+  # is the public OSS repo and ships from luminik-io, so its own slug is NOT
+  # blocked. The private sibling is luminik-io/alfred-internal; that slug plus
+  # every other named Luminik product repo must never appear in public assets.
   "luminik-internal"
   "luminik-orchestrator"
-  "luminik-io/alfred([^A-Za-z0-9_-]|$)"
+  "luminik-io/alfred-internal"
   "luminik-io/luminik-(backend|frontend|mobile|nango|agents|data-acquisition|data-infra|specs|site|design-system)"
   "luminik-(backend|frontend|mobile|nango|agents|data-acquisition|data-infra)([^A-Za-z0-9_-]|$)"
   "[A-Za-z0-9._%+-]+@luminik\\.io"

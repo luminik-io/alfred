@@ -10,7 +10,7 @@ monorepo is the unit of scope inside that worktree, the test command Bane
 runs, and the size of the worktree itself. The next sections cover those three
 points concretely.
 
-This page mirrors [`docs/MONOREPO.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/MONOREPO.md).
+This page mirrors [`docs/MONOREPO.md`](https://github.com/luminik-io/alfred/blob/main/docs/MONOREPO.md).
 
 ## Three monorepo shapes Alfred has been tried against
 

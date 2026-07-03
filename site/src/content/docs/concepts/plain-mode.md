@@ -11,7 +11,7 @@ always runs on. The person never sees a spec, a repository name, a readiness sco
 request. They describe an outcome, answer at most a question or two, and approve
 a preview.
 
-Source: [`lib/intake_profiles.py`](https://github.com/luminik-io/alfred-os/blob/main/lib/intake_profiles.py) and the full note in [`docs/PLAIN_MODE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/PLAIN_MODE.md).
+Source: [`lib/intake_profiles.py`](https://github.com/luminik-io/alfred/blob/main/lib/intake_profiles.py) and the full note in [`docs/PLAIN_MODE.md`](https://github.com/luminik-io/alfred/blob/main/docs/PLAIN_MODE.md).
 
 ## The idea
 

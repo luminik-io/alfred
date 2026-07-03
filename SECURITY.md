@@ -11,7 +11,7 @@ vulnerabilities use the private process below.
 
 **Do not open a public GitHub issue for security vulnerabilities.** Report privately so we can patch before disclosure.
 
-Preferred: open a [private security advisory](https://github.com/luminik-io/alfred-os/security/advisories/new) on this repository. Do not include exploit details in public issues, PRs, or discussions.
+Preferred: open a [private security advisory](https://github.com/luminik-io/alfred/security/advisories/new) on this repository. Do not include exploit details in public issues, PRs, or discussions.
 
 Acknowledgement target: 72 hours. Patch (or documented trade-off) target for critical / high severity: 14 days.
 

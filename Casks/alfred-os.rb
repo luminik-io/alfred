@@ -15,17 +15,26 @@
 # `version` and recompute the checksum against the published asset:
 #
 #   curl -fL -o Alfred.dmg \
-#     https://github.com/luminik-io/alfred-os/releases/download/vX.Y.Z/Alfred.dmg
+#     https://github.com/luminik-io/alfred/releases/download/vX.Y.Z/Alfred.dmg
 #   shasum -a 256 Alfred.dmg
 #
 # Then verify: `brew audit --cask --new Casks/alfred-os.rb` and
 # `brew install --cask ./Casks/alfred-os.rb`.
+#
+# Cask token stays `alfred-os` even though the GitHub repo is now
+# luminik-io/alfred. Two reasons: (1) homebrew/cask already ships a mainstream
+# `alfred` cask (the Alfred launcher, alfredapp.com), so a bare `alfred` token
+# is ambiguous; (2) renaming the token would break `brew install --cask
+# alfred-os` for existing users. The download URL and `verified:` stanza below
+# point at the new luminik-io/alfred slug, which is what actually resolves the
+# release asset. Tap-scoped installs (luminik-io/alfred/alfred-os) are
+# unaffected by the mainstream token.
 cask "alfred-os" do
   version "0.5.3"
   sha256 "2b3009c14665b81fd224362e0630cef3874056b21696a877432c3130b1a32ada"
 
-  url "https://github.com/luminik-io/alfred-os/releases/download/v#{version}/Alfred.dmg",
-      verified: "github.com/luminik-io/alfred-os/"
+  url "https://github.com/luminik-io/alfred/releases/download/v#{version}/Alfred.dmg",
+      verified: "github.com/luminik-io/alfred/"
   name "Alfred Desktop"
   desc "Native desktop client for the Alfred local coding-agent fleet"
   homepage "https://alfred.luminik.io/"

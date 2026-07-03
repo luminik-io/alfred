@@ -3,7 +3,7 @@ title: Issue claim state machine
 description: How Alfred prevents two actors from doing the same work twice on the same GitHub issue.
 ---
 
-Full doc at [`docs/STATE_MACHINE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/STATE_MACHINE.md). This page is the executive summary.
+Full doc at [`docs/STATE_MACHINE.md`](https://github.com/luminik-io/alfred/blob/main/docs/STATE_MACHINE.md). This page is the executive summary.
 
 ## The problem
 
@@ -69,7 +69,7 @@ plan to Slack and is waiting for an approval reaction. The
 polls one message's reactions, and on the approver's reply the agent
 either transitions back to `agent:in-flight` (approved, worker pickup) or
 returns to `agent:implement` (rejected or timed out). See
-[`docs/SLACK_APPROVAL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_APPROVAL.md)
+[`docs/SLACK_APPROVAL.md`](https://github.com/luminik-io/alfred/blob/main/docs/SLACK_APPROVAL.md)
 for the full setup walkthrough.
 
 ### Sticky modifiers (orthogonal)
@@ -156,7 +156,7 @@ LABEL_STATE_SWEEP_REPOS="your-backend,your-frontend,your-mobile" \
   alfred-label-state sweep-claims --max-age-hours 4 --dry-run
 ```
 
-The pre-push git hook ([`examples/git-hooks/pre-push`](https://github.com/luminik-io/alfred-os/blob/main/examples/git-hooks/pre-push)) enforces this symmetrically. Push a branch whose commits reference `Closes #N` and that issue is currently in-flight or has a PR open, the push is refused.
+The pre-push git hook ([`examples/git-hooks/pre-push`](https://github.com/luminik-io/alfred/blob/main/examples/git-hooks/pre-push)) enforces this symmetrically. Push a branch whose commits reference `Closes #N` and that issue is currently in-flight or has a PR open, the push is refused.
 
 Override per-push: `git push --no-verify`.
 Override globally: `LABEL_STATE_SKIP_DEDUP_CHECK=1` in your shell rc.
@@ -194,7 +194,7 @@ See [agent_runner API reference](/reference/agent-runner/) for the full module s
 
 ## Source-of-truth label constants
 
-Every label string lives in [`lib/labels.py`](https://github.com/luminik-io/alfred-os/blob/main/lib/labels.py). Import from there rather than duplicating string literals:
+Every label string lives in [`lib/labels.py`](https://github.com/luminik-io/alfred/blob/main/lib/labels.py). Import from there rather than duplicating string literals:
 
 ```python
 from labels import (

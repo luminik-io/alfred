@@ -3,13 +3,13 @@ title: Security
 description: Reporting vulnerabilities, scope, hardening recommendations.
 ---
 
-Full policy at [`SECURITY.md`](https://github.com/luminik-io/alfred-os/blob/main/SECURITY.md). The shape:
+Full policy at [`SECURITY.md`](https://github.com/luminik-io/alfred/blob/main/SECURITY.md). The shape:
 
 ## Reporting a vulnerability
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Preferred: open a [private security advisory](https://github.com/luminik-io/alfred-os/security/advisories/new).
+Preferred: open a [private security advisory](https://github.com/luminik-io/alfred/security/advisories/new).
 
 Acknowledgement target: 72 hours. Patch target for critical / high severity: 14 days.
 

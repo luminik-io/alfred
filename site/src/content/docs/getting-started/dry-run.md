@@ -7,7 +7,7 @@ Dry-run is a diagnostic path. By default it prints a safe simulation for any con
 
 A developer with **nothing configured** (no `gh` auth, no AWS, no Slack, no Claude) can run a dry-run and see the sequence Alfred would follow. The output is a narrated, step-numbered trace.
 
-Condensed companion to [`docs/DRY_RUN.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/DRY_RUN.md).
+Condensed companion to [`docs/DRY_RUN.md`](https://github.com/luminik-io/alfred/blob/main/docs/DRY_RUN.md).
 
 ## How it differs from doctor mode
 
@@ -20,8 +20,8 @@ Dry-run is the opposite: it shows the firing path and, for native dry-run runner
 From a fresh checkout (no [install](/getting-started/install/) needed), put `lib/` on `PYTHONPATH`:
 
 ```sh
-git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
-cd ~/code/alfred-os
+git clone https://github.com/luminik-io/alfred.git ~/code/alfred
+cd ~/code/alfred
 PYTHONPATH=lib python3 examples/bin/echo_summarise.py --dry-run
 ```
 
@@ -68,4 +68,4 @@ Every side-effecting boundary is stubbed behind a single `is_dry_run()` helper i
 
 With nothing configured, the runners also substitute clearly-labelled fake data: a synthetic issue from `pick_issue`, a `dry-run-org/<repo>` placeholder when `GH_ORG` is unset, and a `dry-run-repo` slug when the repo env vars are missing. Preflight still runs and still reports what is missing. In dry-run, the runner narrates the gap and continues instead of exiting.
 
-See [`docs/DRY_RUN.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/DRY_RUN.md) for the full seam table and for how to add dry-run support to your own runner.
+See [`docs/DRY_RUN.md`](https://github.com/luminik-io/alfred/blob/main/docs/DRY_RUN.md) for the full seam table and for how to add dry-run support to your own runner.

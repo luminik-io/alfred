@@ -16,7 +16,7 @@ which memory candidates are ready, and which local actions are safe to run next.
 It is the installer/control surface for the same local runtime, not a second
 scheduler or hosted service.
 
-Design note and run commands: [`docs/DESKTOP_CLIENT.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/DESKTOP_CLIENT.md).
+Design note and run commands: [`docs/DESKTOP_CLIENT.md`](https://github.com/luminik-io/alfred/blob/main/docs/DESKTOP_CLIENT.md).
 
 ## The local control surface
 

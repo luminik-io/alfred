@@ -32,8 +32,8 @@ operator's literal home directory, so a unit file is host-agnostic.
 ## Install
 
 ```sh
-git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
-cd ~/code/alfred-os
+git clone https://github.com/luminik-io/alfred.git ~/code/alfred
+cd ~/code/alfred
 bash install.sh
 ```
 

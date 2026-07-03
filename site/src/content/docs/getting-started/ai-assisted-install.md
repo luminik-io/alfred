@@ -4,7 +4,7 @@ description: Use Claude Code, Codex, or another local coding assistant to instal
 ---
 
 This page mirrors the full GitHub guide:
-[`docs/AI_ASSISTED_INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/AI_ASSISTED_INSTALL.md).
+[`docs/AI_ASSISTED_INSTALL.md`](https://github.com/luminik-io/alfred/blob/main/docs/AI_ASSISTED_INSTALL.md).
 
 Use this path when you want Claude Code, Codex, or another local coding
 assistant to drive the terminal setup. Alfred supports one repo and multi-repo
@@ -35,7 +35,7 @@ Values:
 - OPERATOR_NAME=<your-name>
 - OPERATOR_EMAIL=<your-email>
 - SLACK_WEBHOOK=skip
-- INSTALL_DIR=~/code/alfred-os
+- INSTALL_DIR=~/code/alfred
 - WORKSPACE_ROOT=~/code
 
 Rules:
@@ -106,6 +106,6 @@ Slack, waits for approval when required, files scoped child issues, and reports
 status. The default `BATMAN_AUTO_EXECUTE=0` halts after the plan for manual
 control. Set `approval-gate` when you want Slack-approved child issue filing;
 set `1` to skip the gate entirely (not recommended for fresh installs). See
-[docs/BATMAN.md](https://github.com/luminik-io/alfred-os/blob/main/docs/BATMAN.md).
+[docs/BATMAN.md](https://github.com/luminik-io/alfred/blob/main/docs/BATMAN.md).
 If `BATMAN_PARENT_REPO` is a specs or planning repo outside `--repos`, run
 `alfred labels bootstrap my-org/specs` for that repo before filing parent issues.

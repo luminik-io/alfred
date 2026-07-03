@@ -10,7 +10,7 @@ review and reliability rows in `$ALFRED_HOME/fleet-brain.db`. Recalled lessons
 live in the local Redis Agent Memory Server by default. If you delete local
 state, Alfred rebuilds whatever it still can from GitHub and local config.
 
-This page is the map of that directory and the contract each file carries. Full doc at [`docs/STATE_AND_MEMORY.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/STATE_AND_MEMORY.md).
+This page is the map of that directory and the contract each file carries. Full doc at [`docs/STATE_AND_MEMORY.md`](https://github.com/luminik-io/alfred/blob/main/docs/STATE_AND_MEMORY.md).
 
 ## The state tree
 
@@ -62,7 +62,7 @@ $ALFRED_HOME/state/
 
 **`transcripts/<codename>/<YYYY-MM>/<firing-id>.jsonl`** is the planned home for full Claude transcripts. The convention is written and the path helpers exist, but the current runner does not write transcripts by default. Codex transcripts under `codex/` are written today.
 
-**`codex/<codename>/<YYYY-MM>/<firing-id>.{last.md,stdout.txt,stderr.txt}`** is the per-firing Codex artifact bundle. `last.md` is the final message, `stdout.txt` and `stderr.txt` are the captured streams. See [Codex provider](https://github.com/luminik-io/alfred-os/blob/main/docs/CODEX_PROVIDER.md).
+**`codex/<codename>/<YYYY-MM>/<firing-id>.{last.md,stdout.txt,stderr.txt}`** is the per-firing Codex artifact bundle. `last.md` is the final message, `stdout.txt` and `stderr.txt` are the captured streams. See [Codex provider](https://github.com/luminik-io/alfred/blob/main/docs/CODEX_PROVIDER.md).
 
 **`worktrees/eng-<codename>-<repo>-<issue>-<ts>/`** is a throwaway git worktree, created by `make_worktree` and removed at the end of the firing. Surviving worktrees are pruned at the start of the next firing or by `agent-cleanup`.
 
@@ -121,7 +121,7 @@ recalled lessons, and FleetBrain keeps the local review and reliability ledger.
 Set `ALFRED_MEMORY_PROVIDERS=null` to disable runtime recall and reflection, or
 `ALFRED_MEMORY_PROVIDERS=redis,fleet,gbrain` to add a read-only personal
 knowledge base behind the default stack. See
-[`docs/MEMORY_PROVIDERS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/MEMORY_PROVIDERS.md)
+[`docs/MEMORY_PROVIDERS.md`](https://github.com/luminik-io/alfred/blob/main/docs/MEMORY_PROVIDERS.md)
 for the provider chain.
 
 The `memory-harvest.py` scheduled wrapper runs the same safe loop as

@@ -175,11 +175,11 @@ def test_known_plan_thread_reply_is_captured_and_acknowledged(tmp_path: Path) ->
             parent_issue=120,
             plan_path=str(plan_path),
             metadata={
-                "affected_repos": ["example-org/alfred", "luminik-io/alfred-os"],
+                "affected_repos": ["example-org/alfred", "example-org/docs"],
                 "child_count": 2,
                 "children_by_repo": {
                     "example-org/alfred": 1,
-                    "luminik-io/alfred-os": 1,
+                    "example-org/docs": 1,
                 },
             },
         )
@@ -193,7 +193,7 @@ def test_known_plan_thread_reply_is_captured_and_acknowledged(tmp_path: Path) ->
 
     result = listener.handle_payload(
         _thread_reply(
-            "remove repo: alfred-os\n"
+            "remove repo: docs\n"
             "acceptance: the Slack thread shows the current plan scope\n"
             "open question: Should the docs mention Redis?"
         )
@@ -538,7 +538,7 @@ def test_app_mention_creates_planning_draft(tmp_path: Path) -> None:
             "text": (
                 "<@UALFRED> title: Improve Slack planning\n"
                 "problem: Users need a safer way to describe work before agents build.\n"
-                "repo: luminik-io/alfred-os\n"
+                "repo: luminik-io/alfred\n"
                 "desired: Alfred saves a draft and asks for missing acceptance criteria."
             ),
             "ts": "1716480010.000001",
@@ -552,7 +552,7 @@ def test_app_mention_creates_planning_draft(tmp_path: Path) -> None:
     assert result.draft_path
     draft = json.loads(Path(result.draft_path).read_text(encoding="utf-8"))
     assert draft["draft"]["title"] == "Improve Slack planning"
-    assert draft["draft"]["repos"] == ["luminik-io/alfred-os"]
+    assert draft["draft"]["repos"] == ["luminik-io/alfred"]
     assert "Planning draft saved" in poster.messages[0]["text"]
 
 
@@ -841,7 +841,7 @@ def test_app_mention_save_failure_is_acknowledged(tmp_path: Path, monkeypatch) -
                 "text": (
                     "<@UALFRED> title: Improve Slack planning\n"
                     "problem: Users need a safer way to describe work before agents build.\n"
-                    "repo: luminik-io/alfred-os\n"
+                    "repo: luminik-io/alfred\n"
                     "desired: Alfred saves a draft and asks for missing acceptance criteria."
                 ),
                 "ts": "1716480010.000001",
@@ -873,7 +873,7 @@ def test_draft_thread_reply_revises_saved_draft(tmp_path: Path) -> None:
                 "text": (
                     "<@UALFRED> title: Improve Slack planning\n"
                     "problem: Users need a safer way to describe work before agents build.\n"
-                    "repo: luminik-io/alfred-os\n"
+                    "repo: luminik-io/alfred\n"
                     "repo: luminik-io/mobile\n"
                     "desired: Alfred saves a draft and asks for missing acceptance criteria."
                 ),
@@ -906,7 +906,7 @@ def test_draft_thread_reply_revises_saved_draft(tmp_path: Path) -> None:
     assert revised.draft_path == created.draft_path
     payload = json.loads(Path(created.draft_path).read_text(encoding="utf-8"))
     assert payload["revision_count"] == 1
-    assert payload["draft"]["repos"] == ["luminik-io/alfred-os"]
+    assert payload["draft"]["repos"] == ["luminik-io/alfred"]
     assert payload["draft"]["acceptance_criteria"] == ["follow-up replies update the saved draft"]
     assert "listener revision tests" in payload["draft"]["test_plan"]
     assert payload["readiness"]["score"] == revised.readiness_score
@@ -933,7 +933,7 @@ def test_draft_revision_history_is_capped(tmp_path: Path) -> None:
                 "text": (
                     "<@UALFRED> title: Improve Slack planning\n"
                     "problem: Users need a safer way to describe work before agents build.\n"
-                    "repo: luminik-io/alfred-os\n"
+                    "repo: luminik-io/alfred\n"
                     "desired: Alfred saves a draft and asks for missing acceptance criteria."
                 ),
                 "ts": "1716480020.000001",
@@ -1037,7 +1037,7 @@ def test_draft_revision_write_failure_is_acknowledged(tmp_path: Path, monkeypatc
                 "text": (
                     "<@UALFRED> title: Improve Slack planning\n"
                     "problem: Users need a safer way to describe work before agents build.\n"
-                    "repo: luminik-io/alfred-os\n"
+                    "repo: luminik-io/alfred\n"
                     "desired: Alfred saves a draft and asks for missing acceptance criteria."
                 ),
                 "ts": "1716480030.000001",
@@ -1080,7 +1080,7 @@ def test_draft_thread_reply_uses_memory_provider(tmp_path: Path) -> None:
         name = "test"
 
         def recall(self, *, repo=None, query=None, limit=3):
-            assert repo == "luminik-io/alfred-os"
+            assert repo == "luminik-io/alfred"
             return [{"repo": repo, "body": "Keep Slack planning replies concise."}]
 
     listener = SlackPlanningListener(
@@ -1099,7 +1099,7 @@ def test_draft_thread_reply_uses_memory_provider(tmp_path: Path) -> None:
                 "text": (
                     "<@UALFRED> title: Improve Slack planning\n"
                     "problem: Users need a safer way to describe work before agents build.\n"
-                    "repo: luminik-io/alfred-os\n"
+                    "repo: luminik-io/alfred\n"
                     "desired: Alfred saves a draft and asks for missing acceptance criteria."
                 ),
                 "ts": "1716480013.000001",
@@ -1158,12 +1158,12 @@ def test_threaded_app_mention_does_not_register_parent_thread(tmp_path: Path) ->
 
 def test_draft_from_slack_text_extracts_repos_and_title() -> None:
     draft = draft_from_slack_text(
-        "title: Add memory review\nrepo: luminik-io/alfred-os\n"
+        "title: Add memory review\nrepo: luminik-io/alfred\n"
         "problem: Operators need memory candidates before lessons affect future runs."
     )
 
     assert draft.title == "Add memory review"
-    assert draft.repos == ["luminik-io/alfred-os"]
+    assert draft.repos == ["luminik-io/alfred"]
 
 
 def test_draft_from_slack_text_keeps_repeated_acceptance_lines() -> None:

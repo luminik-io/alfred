@@ -214,7 +214,7 @@ def test_scrub_drops_private_repos(mod, window):
     # emitter must still scrub them at runtime.
     private_org = "lumi" + "nik-io"
     private_token = "lumi" + "nik-backend"
-    predecessor = "lumi" + "nik-io/alfred"
+    private_sibling = "lumi" + "nik-io/alfred-internal"
     raw = [
         {
             "repo": f"{private_org}/{private_token}",
@@ -228,15 +228,15 @@ def test_scrub_drops_private_repos(mod, window):
             "url": f"https://github.com/{private_org}/{private_token}/pull/1",
         },
         {
-            "repo": predecessor,
+            "repo": private_sibling,
             "number": 2,
-            "title": "former internal",
+            "title": "private sibling",
             "codename": "lucius",
             "merged_at": "2026-05-22T11:00:00Z",
             "lines_added": 1,
             "lines_removed": 0,
             "files_changed": 1,
-            "url": f"https://github.com/{predecessor}/pull/2",
+            "url": f"https://github.com/{private_sibling}/pull/2",
         },
         {
             "repo": "your-org/your-backend",
@@ -257,7 +257,7 @@ def test_scrub_drops_private_repos(mod, window):
     serialized = json.dumps(payload)
     # No private repo identifiers anywhere in the serialized feed.
     assert private_token not in serialized
-    assert predecessor not in serialized
+    assert private_sibling not in serialized
 
 
 def test_scrub_rewrites_private_token_in_title(mod):

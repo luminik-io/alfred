@@ -11,7 +11,7 @@ Specs-driven Alfred means the important context lives outside the chat
 transcript. Agents read the spec, turn it into scoped implementation tasks,
 execute in clean worktrees, and return PRs, reviews, tests, and Slack reports.
 
-Full GitHub guide: [`docs/SPECS_DRIVEN_DEVELOPMENT.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SPECS_DRIVEN_DEVELOPMENT.md).
+Full GitHub guide: [`docs/SPECS_DRIVEN_DEVELOPMENT.md`](https://github.com/luminik-io/alfred/blob/main/docs/SPECS_DRIVEN_DEVELOPMENT.md).
 
 ## Why Specs Matter
 

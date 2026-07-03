@@ -109,10 +109,11 @@ PRIVATE_REPO_PATTERNS: tuple[re.Pattern[str], ...] = (
         + r")"
         + r"(?:$|[^A-Za-z0-9_-])"
     ),
-    # Bare-name "alfred" basename under any owner (a former internal repo,
-    # not alfred-os which is public). The basename match is intentional;
-    # alfred-os carries the "-os" suffix and is unaffected.
-    re.compile(r"(?:^|/)alfred(?:$|[^-A-Za-z0-9_])"),
+    # "alfred-internal" basename under any owner (the private sibling of the
+    # public luminik-io/alfred repo). The basename match is intentional; the
+    # public repo is the bare "alfred" name and must stay through, so only the
+    # "-internal" suffixed sibling is denied here.
+    re.compile(r"(?:^|/)alfred-internal(?:$|[^A-Za-z0-9_])"),
 )
 
 # A title may carry a private repo name in plain text; this regex

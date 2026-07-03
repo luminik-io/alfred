@@ -1,4 +1,9 @@
 [project]
+# Project/distribution name stays "alfred-os" even though the GitHub repo is
+# now luminik-io/alfred. Renaming the package would break `pip install
+# alfred-os` and the `alfred_os_cli` import path for existing users; the repo
+# URLs below already point at the new slug. Revisit the package rename as a
+# deliberate, separately-versioned change, not as part of the repo-slug sweep.
 name = "alfred-os"
 version = "0.5.3"
 description = "A small framework for running a fleet of narrow-specialist Claude Code and Codex agents on one host, isolated by git worktree."
@@ -43,9 +48,9 @@ dev = [
 ]
 [project.urls]
 Homepage = "https://alfred.luminik.io"
-Repository = "https://github.com/luminik-io/alfred-os"
-Issues = "https://github.com/luminik-io/alfred-os/issues"
-Changelog = "https://github.com/luminik-io/alfred-os/blob/main/CHANGELOG.md"
+Repository = "https://github.com/luminik-io/alfred"
+Issues = "https://github.com/luminik-io/alfred/issues"
+Changelog = "https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]

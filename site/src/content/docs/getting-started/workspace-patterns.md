@@ -7,7 +7,7 @@ Alfred can run against one repo, a multi-repo product workspace, or a
 specs-led workspace. The important part is making the repo scope explicit.
 
 This page mirrors the full GitHub guide:
-[`docs/WORKSPACE_PATTERNS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/WORKSPACE_PATTERNS.md).
+[`docs/WORKSPACE_PATTERNS.md`](https://github.com/luminik-io/alfred/blob/main/docs/WORKSPACE_PATTERNS.md).
 
 For a deeper spec workflow, read [Specs-driven development](/guides/specs-driven-development/).
 

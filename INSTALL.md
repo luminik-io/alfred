@@ -17,8 +17,8 @@ Alfred core is the fleet, the operator CLI, the host scheduler, and the `alfred 
 Source checkout path:
 
 ```sh
-git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
-cd ~/code/alfred-os
+git clone https://github.com/luminik-io/alfred.git ~/code/alfred
+cd ~/code/alfred
 bash install.sh
 gh auth login                     # GitHub auth
 claude auth login                 # Claude Code auth
@@ -28,7 +28,7 @@ claude auth login                 # Claude Code auth
 macOS Homebrew path, if you prefer package-manager installs:
 
 ```sh
-brew tap luminik-io/alfred-os https://github.com/luminik-io/alfred-os
+brew tap luminik-io/alfred https://github.com/luminik-io/alfred
 brew install alfred-os
 alfred-install
 gh auth login                     # GitHub auth
@@ -100,8 +100,8 @@ ALFRED_NONINTERACTIVE=1 GH_ORG=myorg OPERATOR_NAME='Your Name' \
 ### 1. Clone
 
 ```sh
-git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
-cd ~/code/alfred-os
+git clone https://github.com/luminik-io/alfred.git ~/code/alfred
+cd ~/code/alfred
 ```
 
 ### 2. Bootstrap
@@ -263,7 +263,7 @@ The npm global install dir might not be on PATH. Run `npm config get prefix`, ap
 | `$ALFRED_HOME/.env` | Operator config loaded by the scheduler, CLI, and native app | After re-running install.sh |
 | `~/.alfred/` | Runtime root (state, worktrees, deployed bin/lib) | Yes, `deploy.sh` repopulates |
 | `~/code/` | Default workspace root | If you set a different `WORKSPACE_ROOT` |
-Everything else lives inside the cloned repo and is removed by `rm -rf ~/code/alfred-os`.
+Everything else lives inside the cloned repo and is removed by `rm -rf ~/code/alfred`.
 
 ## Where to go next
 

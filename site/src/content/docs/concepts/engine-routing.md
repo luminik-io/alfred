@@ -5,7 +5,7 @@ description: How Alfred decides whether each codename runs through Claude Code, 
 
 Alfred is the scheduler and guardrail layer. The actual LLM work is done by the engine: a local CLI you have already authenticated. The framework owns the per-codename decision of which engine that is. Default posture is local subscription auth; Alfred does not need Anthropic or OpenAI API keys for the normal Claude Code or Codex CLI flow.
 
-This page covers the three modes, the precedence chain, the fallback behavior, the default routing matrix for the shipped fleet, and where the multi-engine roadmap is going. Full doc at [`docs/ENGINE_ROUTING.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/ENGINE_ROUTING.md).
+This page covers the three modes, the precedence chain, the fallback behavior, the default routing matrix for the shipped fleet, and where the multi-engine roadmap is going. Full doc at [`docs/ENGINE_ROUTING.md`](https://github.com/luminik-io/alfred/blob/main/docs/ENGINE_ROUTING.md).
 
 ## Three modes
 

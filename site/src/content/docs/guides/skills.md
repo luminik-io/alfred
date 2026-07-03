@@ -5,7 +5,7 @@ description: Recommended skill set for an autonomous engineering fleet, install 
 
 Skills are small bundles (markdown + optional scripts) that extend Claude Code's tool surface. Alfred doesn't ship skills itself; consumer agents pick what they need.
 
-Full guide at [`docs/SKILLS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SKILLS.md). Highlights:
+Full guide at [`docs/SKILLS.md`](https://github.com/luminik-io/alfred/blob/main/docs/SKILLS.md). Highlights:
 
 ## Where they live
 
@@ -56,7 +56,7 @@ npx -y skills add coderabbitai/skills --global --yes \
     --agent claude-code --skill '*'
 ```
 
-For a single fresh-install script, see [`docs/SKILLS.md#skill-install-automation`](https://github.com/luminik-io/alfred-os/blob/main/docs/SKILLS.md#skill-install-automation).
+For a single fresh-install script, see [`docs/SKILLS.md#skill-install-automation`](https://github.com/luminik-io/alfred/blob/main/docs/SKILLS.md#skill-install-automation).
 
 ## Security note
 

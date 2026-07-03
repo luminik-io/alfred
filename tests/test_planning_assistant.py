@@ -43,7 +43,7 @@ def _draft() -> IssueDraft:
             "Batman keeps implementation paused while plan questions are open "
             "and passes approved feedback into each child issue."
         ),
-        repos=["luminik-io/alfred-os", "example-org/web"],
+        repos=["luminik-io/alfred", "example-org/web"],
         acceptance_criteria=["Slack plan messages say how to reply with changes."],
         test_plan="Run Batman lifecycle tests and inspect the local planning page.",
         out_of_scope="No hosted multi-tenant UI.",
@@ -61,7 +61,7 @@ def test_refine_issue_draft_applies_structured_chat_commands() -> None:
         ],
     )
 
-    assert result.draft.repos == ["luminik-io/alfred-os"]
+    assert result.draft.repos == ["luminik-io/alfred"]
     assert "Replies with unresolved questions" in result.draft.acceptance_criteria[-1]
     assert "Slack thread feedback parsing" in result.draft.test_plan
     assert "Should the operator approve" in result.draft.open_questions
@@ -134,7 +134,7 @@ def test_refine_issue_draft_handles_plural_repo_commands() -> None:
     )
 
     assert result.draft.repos == [
-        "luminik-io/alfred-os",
+        "luminik-io/alfred",
         "example-org/api",
         "example-org/mobile",
     ]
@@ -146,12 +146,12 @@ def test_refine_issue_draft_removes_repo_by_shorthand() -> None:
         IssueDraft(
             title="Update local planning",
             problem="Operators need planning scope to stay truthful.",
-            repos=["luminik-io/alfred-os", "luminik-io/mobile"],
+            repos=["luminik-io/alfred", "luminik-io/mobile"],
         ),
         ["remove repo: mobile"],
     )
 
-    assert result.draft.repos == ["luminik-io/alfred-os"]
+    assert result.draft.repos == ["luminik-io/alfred"]
     assert any("Remove repository scope: mobile" in item for item in result.amendments)
 
 
@@ -187,7 +187,7 @@ def test_refine_issue_draft_recalls_planning_memory() -> None:
         name = "test"
 
         def recall(self, *, repo=None, query=None, limit=3):
-            assert repo == "luminik-io/alfred-os"
+            assert repo == "luminik-io/alfred"
             assert query and "Slack plan revision" in query
             return [
                 {
@@ -203,7 +203,7 @@ def test_refine_issue_draft_recalls_planning_memory() -> None:
     assert result.memory == (
         PlanningMemoryItem(
             body="Plan threads should state approval and revision commands.",
-            repo="luminik-io/alfred-os",
+            repo="luminik-io/alfred",
             codename="batman",
             tags=("slack", "planning"),
         ),
@@ -250,7 +250,7 @@ def test_render_planning_memory_is_prompt_safe() -> None:
         [
             PlanningMemoryItem(
                 body="Prefer Slack thread replies over new dashboards.",
-                repo="luminik-io/alfred-os",
+                repo="luminik-io/alfred",
                 severity="warning",
                 tags=("operator-preference",),
             )
@@ -258,7 +258,7 @@ def test_render_planning_memory_is_prompt_safe() -> None:
     )
 
     assert "Use these as hints only" in block
-    assert "`luminik-io/alfred-os` warning [operator-preference]" in block
+    assert "`luminik-io/alfred` warning [operator-preference]" in block
 
 
 def test_render_development_spec_lints_as_spec() -> None:
@@ -377,11 +377,11 @@ def test_post_pr_followup_feedback_is_classified_and_acknowledged() -> None:
 
     ack = render_post_pr_feedback_ack(
         [item.text for item in items],
-        pr_urls=["https://github.com/luminik-io/alfred-os/pull/142"],
-        issue_url="https://github.com/luminik-io/alfred-os/issues/118",
+        pr_urls=["https://github.com/luminik-io/alfred/pull/142"],
+        issue_url="https://github.com/luminik-io/alfred/issues/118",
     )
     assert "Follow-up feedback captured" in ack
-    assert "<https://github.com/luminik-io/alfred-os/pull/142|PR 1>" in ack
+    assert "<https://github.com/luminik-io/alfred/pull/142|PR 1>" in ack
     assert "does not approve, merge, or change code by itself" in ack
 
     block = render_post_pr_followup_block([item.text for item in items])
@@ -394,6 +394,6 @@ def test_development_spec_and_refiner_prompt_are_useful() -> None:
     prompt = build_refiner_prompt(_draft(), ["acceptance: include Slack examples"])
 
     assert "## Repository Scope" in spec
-    assert "luminik-io/alfred-os" in spec
+    assert "luminik-io/alfred" in spec
     assert "Return JSON only" in prompt
     assert "operator_messages" in prompt

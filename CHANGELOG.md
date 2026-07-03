@@ -11,6 +11,7 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Changed
 
+- Repository renamed `luminik-io/alfred-os` to `luminik-io/alfred`. GitHub redirects old URLs in place, and this release updates every in-repo reference (clone URLs, site links, workflow paths, docs) to the new slug. The Homebrew formula and cask tokens (`alfred-os`), the PyPI package name (`alfred-os`), and the `alfred_os_cli` import path are unchanged to avoid breaking existing installs; only the underlying repository slug moved.
 - Alfred Desktop now uses the exact local runtime URL the operator chooses instead of silently retrying or rewriting stale localhost ports. The setup console also shows the current `alfred brain doctor --json` command.
 - Batman now removes a fully fanned-out parent's `agent:large-feature` queue label, marks it with `batman:fanout-complete`, and closes it after every child issue is filed, preventing duplicate fan-out without counting the planning parent as shipped work.
 
@@ -449,13 +450,13 @@ Initial public framework extraction.
 - `tests/test_agent_runner.py`: 22 cases covering preflight, doctor_mode, load_prompt, commit_trailer, HandoffTable, EventLog, _full_repo.
 - Top-level docs: `README.md`, `ARCHITECTURE.md`, `BOOTSTRAP.md`, `CONTRIBUTING.md`, `LICENSE` (MIT), `docs/INDEX.md`.
 
-[Unreleased]: https://github.com/luminik-io/alfred-os/compare/v0.5.3...HEAD
-[0.5.3]: https://github.com/luminik-io/alfred-os/compare/v0.5.2...v0.5.3
-[0.5.2]: https://github.com/luminik-io/alfred-os/compare/v0.5.1...v0.5.2
-[0.5.1]: https://github.com/luminik-io/alfred-os/compare/v0.5.0...v0.5.1
-[0.5.0]: https://github.com/luminik-io/alfred-os/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/luminik-io/alfred-os/compare/v0.3.0...v0.4.0
-[0.3.0]: https://github.com/luminik-io/alfred-os/compare/v0.2.1...v0.3.0
-[0.2.1]: https://github.com/luminik-io/alfred-os/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/luminik-io/alfred-os/compare/0c5d13c673f5954014cb5b5ccf3dc880c9563641...v0.2.0
-[0.1.0]: https://github.com/luminik-io/alfred-os/pull/2
+[Unreleased]: https://github.com/luminik-io/alfred/compare/v0.5.3...HEAD
+[0.5.3]: https://github.com/luminik-io/alfred/compare/v0.5.2...v0.5.3
+[0.5.2]: https://github.com/luminik-io/alfred/compare/v0.5.1...v0.5.2
+[0.5.1]: https://github.com/luminik-io/alfred/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/luminik-io/alfred/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/luminik-io/alfred/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/luminik-io/alfred/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/luminik-io/alfred/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/luminik-io/alfred/compare/0c5d13c673f5954014cb5b5ccf3dc880c9563641...v0.2.0
+[0.1.0]: https://github.com/luminik-io/alfred/pull/2

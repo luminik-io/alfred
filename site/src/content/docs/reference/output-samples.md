@@ -7,7 +7,7 @@ This page is a reference for every shape of output Alfred produces. If you are
 deciding whether to install, you can mentally simulate the Alfred experience
 by reading this end to end.
 
-This page mirrors [`docs/OUTPUT_SAMPLES.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/OUTPUT_SAMPLES.md).
+This page mirrors [`docs/OUTPUT_SAMPLES.md`](https://github.com/luminik-io/alfred/blob/main/docs/OUTPUT_SAMPLES.md).
 
 All samples are representative, not auto-generated. The exact wording in your
 fleet will differ; the shape will not.

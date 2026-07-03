@@ -3,15 +3,15 @@ title: Install
 description: Fast setup for an existing dev machine, with a longer guided path for a fresh host.
 ---
 
-This page condenses [`INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/main/INSTALL.md). Budget about 30 minutes on an already-provisioned dev machine, or 60 to 120 minutes for a fresh laptop, server, or dedicated agent box. For the full doc with every troubleshooting case, read it on GitHub.
+This page condenses [`INSTALL.md`](https://github.com/luminik-io/alfred/blob/main/INSTALL.md). Budget about 30 minutes on an already-provisioned dev machine, or 60 to 120 minutes for a fresh laptop, server, or dedicated agent box. For the full doc with every troubleshooting case, read it on GitHub.
 
 ## TL;DR
 
 Source checkout path:
 
 ```sh
-git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
-cd ~/code/alfred-os
+git clone https://github.com/luminik-io/alfred.git ~/code/alfred
+cd ~/code/alfred
 bash install.sh
 gh auth login                     # GitHub
 claude auth login                 # Claude Code auth
@@ -21,7 +21,7 @@ claude auth login                 # Claude Code auth
 macOS Homebrew path, if you prefer package-manager installs:
 
 ```sh
-brew tap luminik-io/alfred-os https://github.com/luminik-io/alfred-os
+brew tap luminik-io/alfred https://github.com/luminik-io/alfred
 brew install alfred-os
 alfred-install
 gh auth login                     # GitHub
@@ -106,7 +106,7 @@ For a framework-only install with no agents configured, run `bash deploy.sh &&
 
 Claude Code, Codex, or another local coding assistant can drive setup if you
 give it explicit values and guardrails. Use the copy-paste prompt in
-[`docs/AI_ASSISTED_INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/AI_ASSISTED_INSTALL.md).
+[`docs/AI_ASSISTED_INSTALL.md`](https://github.com/luminik-io/alfred/blob/main/docs/AI_ASSISTED_INSTALL.md).
 
 The important rules:
 
@@ -177,7 +177,7 @@ Then write your first codename agent:
 
 ## Troubleshooting
 
-Full list in [`INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/main/INSTALL.md#troubleshooting-installsh) on GitHub. The most common:
+Full list in [`INSTALL.md`](https://github.com/luminik-io/alfred/blob/main/INSTALL.md#troubleshooting-installsh) on GitHub. The most common:
 
 - **`install.sh` stops on an unsupported host**: the apt lane targets Debian/Ubuntu. Other Linux distros need their packages installed by hand; the framework itself is distro-agnostic once the prerequisites are present.
 - **`claude: command not found` from a scheduled agent**: the scheduler unit's PATH doesn't include the npm global bin. Set `CLAUDE_BIN` in `$ALFRED_HOME/.env`.

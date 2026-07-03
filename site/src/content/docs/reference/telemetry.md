@@ -55,12 +55,12 @@ reporters send changed-line totals when the local fleet brain has cached GitHub
 additions and deletions.
 
 The public GitHub examples on `/impact/` are separate. They use public GitHub
-metadata for `luminik-io/alfred-os`.
+metadata for `luminik-io/alfred`.
 
 ## Collector
 
 The bundled collector lives in
-[`telemetry/worker/`](https://github.com/luminik-io/alfred-os/tree/main/telemetry/worker).
+[`telemetry/worker/`](https://github.com/luminik-io/alfred/tree/main/telemetry/worker).
 It exposes:
 
 - `POST /ingest` for install reports
@@ -76,4 +76,4 @@ Impact total. Anonymous reports can be accepted by the collector, but they
 cannot move PR, issue, file, line, or machine totals.
 
 Full implementation contract:
-[`docs/TELEMETRY.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/TELEMETRY.md).
+[`docs/TELEMETRY.md`](https://github.com/luminik-io/alfred/blob/main/docs/TELEMETRY.md).

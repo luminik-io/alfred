@@ -1,6 +1,6 @@
 # Alfred docs site
 
-Astro Starlight site for [Alfred](https://github.com/luminik-io/alfred-os).
+Astro Starlight site for [Alfred](https://github.com/luminik-io/alfred).
 
 ## Local dev
 
@@ -39,4 +39,4 @@ Useful when migrating off GitHub Pages onto a custom domain.
 
 ## Editing existing pages
 
-The "Edit page" link in the rendered sidebar opens the file at `https://github.com/luminik-io/alfred-os/edit/main/site/...`. Set up by `editLink` in `astro.config.mjs`.
+The "Edit page" link in the rendered sidebar opens the file at `https://github.com/luminik-io/alfred/edit/main/site/...`. Set up by `editLink` in `astro.config.mjs`.
