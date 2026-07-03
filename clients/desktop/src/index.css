@@ -5368,22 +5368,37 @@ body {
   min-height: 0;
 }
 
-/* Fit-to-viewport board: the summary hero is auto height, the assign composer
-   (when shown) is auto, and the columns row takes the rest and never lets the
-   page scroll. Each column scrolls its own cards instead. */
+/* Fit-to-viewport board: the summary hero is auto height, and any transient
+   rows between it and the columns (an action notice shown ~12s, the assign
+   composer, a hard-error notice) are auto too. The columns row is the single
+   flexible child that absorbs the remaining height, so the board stays visible
+   and scrollable no matter how many notices precede it. A flex column is used
+   instead of a fixed grid-template-rows so the columns never get pushed into an
+   implicit, clipped row when a notice or the composer is present. Each column
+   scrolls its own cards instead of growing the page. */
 .alfred-pipeline {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 0.9rem;
   height: 100%;
   min-height: 0;
   overflow: hidden;
 }
 
-/* When the assign composer is present it sits between hero and columns; keep it
-   auto and let the columns row absorb the remaining height. */
-.alfred-pipeline:has(> .alfred-pipeline__assign) {
-  grid-template-rows: auto auto minmax(0, 1fr);
+/* The columns (and the empty state that replaces them) are the flexible child:
+   they take the remaining height and never overflow the fixed-height panel. */
+.alfred-pipeline > .alfred-pipeline__columns,
+.alfred-pipeline > .empty-state {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Transient rows (hero, notices, assign composer) stay at their natural height
+   and never shrink, so the flexible columns row absorbs the rest. */
+.alfred-pipeline > .alfred-page-hero,
+.alfred-pipeline > .inline-notice,
+.alfred-pipeline > .alfred-pipeline__assign {
+  flex: 0 0 auto;
 }
 
 .alfred-pipeline__assign {
@@ -5501,6 +5516,35 @@ body {
 @media (max-width: 640px) {
   .alfred-pipeline__columns {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Below 900px the per-column internal card scroll (defined in the min-width:900px
+   block) is off and the lanes stack (two-up under 1024px, single-column under
+   640px). Stacked lanes are taller than the viewport, so the fixed-height
+   overflow:hidden panel would clip the lower lanes (Queued / Working / Shipped)
+   and make them unreachable. Below the internal-scroll breakpoint, release the
+   fixed height and let the whole board scroll vertically so every lane is
+   reachable. */
+@media (max-width: 899px) {
+  .board-page {
+    height: auto;
+    min-height: 100%;
+  }
+
+  .alfred-pipeline {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }
+
+  .alfred-pipeline > .alfred-pipeline__columns,
+  .alfred-pipeline > .empty-state {
+    flex: 0 0 auto;
+  }
+
+  .alfred-pipeline__columns {
+    height: auto;
   }
 }
 
