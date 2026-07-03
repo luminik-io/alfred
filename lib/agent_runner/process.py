@@ -75,6 +75,8 @@ from .result import (
     _build_claude_result,
     _should_retry_claude_auth,
     dry_run_claude_result,
+    looks_quota_exhausted,
+    parse_quota_resume_at,
 )
 from .transcripts import (
     _extract_codex_session_id,
@@ -1086,6 +1088,38 @@ def codex_invoke(
     if proc.returncode != 0:
         tail = (result_text or stderr or stdout or "").strip()[-1000:]
         classifier_text = f"{result_text}\n{stdout}\n{stderr}"
+        # Hard plan/credit exhaustion is checked BEFORE the generic rate-limit
+        # bucket. A spent budget prints "You've hit your usage limit ... try
+        # again at <date>": that is not a 429 that clears on a short backoff,
+        # so classifying it as error_rate_limit made the router keep firing
+        # into a wall that stayed shut until the resume date. We split it into
+        # its own error_quota_exhausted subtype, parse the resume instant into
+        # raw["quota_resume_at"], and persist a per-engine backoff so the
+        # scheduler parks codex until then instead of burning firings.
+        if looks_quota_exhausted(classifier_text):
+            resume_at = parse_quota_resume_at(classifier_text)
+            raw["quota_resume_at"] = resume_at
+            with contextlib.suppress(Exception):
+                from .state import record_engine_quota_exhausted
+
+                record_engine_quota_exhausted(
+                    "codex",
+                    resume_at=resume_at,
+                    reason=tail[-200:] or "codex usage limit reached",
+                )
+            return ClaudeResult(
+                success=False,
+                subtype="error_quota_exhausted",
+                num_turns=1,
+                cost_usd=0.0,
+                session_id=session_id,
+                result_text=result_text or tail,
+                raw=raw,
+                stop_reason="error",
+                error_message=(
+                    "codex usage limit reached" + (f"; resumes {resume_at}" if resume_at else "")
+                ),
+            )
         subtype = "error_rate_limit" if _RATE_LIMIT_RESULT_RE.search(classifier_text) else "error"
         if subtype == "error" and _BUDGET_RESULT_RE.search(classifier_text):
             subtype = "error_rate_limit"
@@ -1218,7 +1252,38 @@ def invoke_agent_engine(
         Claude->Codex fallback. The breaker trips after N consecutive
         transient failures on the engine and pauses it for a cooldown, so
         parallel workers cannot lockstep-retry into a deeper rate-limit.
+
+        A hard quota-exhaustion wall recorded by a previous firing (the
+        codex "hit your usage limit ... try again at <date>" case) short-
+        circuits the invoke entirely: the engine is spent until its named
+        resume instant, so firing into it again only wastes a run. We return
+        an honest ``error_quota_exhausted`` result instead, which lets the
+        hybrid caller keep claude running while codex is parked.
         """
+        with contextlib.suppress(Exception):
+            from .state import engine_quota_backoff
+
+            parked = engine_quota_backoff(engine_name)
+            if parked:
+                until = parked.get("until", "")
+                return ClaudeResult(
+                    success=False,
+                    subtype="error_quota_exhausted",
+                    num_turns=0,
+                    cost_usd=0.0,
+                    session_id=None,
+                    result_text=(
+                        f"{engine_name} usage limit reached; parked until {until}. "
+                        "Skipping this engine until its plan window resets."
+                    ),
+                    raw={
+                        "quota_exhausted": True,
+                        "engine": engine_name,
+                        "quota_resume_at": until,
+                    },
+                    stop_reason="error",
+                    error_message=f"{engine_name} quota exhausted (resumes {until})",
+                )
         breaker = CircuitBreaker(engine_name)
         if breaker.is_open():
             status = breaker.status()

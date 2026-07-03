@@ -10,7 +10,7 @@
 # fresh forks and post-rotation verification (after AWS SSO refresh, after
 # changing IAM policies, after `alfred claude swap`, etc.).
 #
-# Usage: doctor.sh [--dev] [--lifecycle]
+# Usage: doctor.sh [--dev] [--lifecycle] [--deep]
 #   --dev   Dev-install mode. Agents whose preflight() reports unconfigured
 #           host state (missing GH auth, repo checkouts, secrets) are printed
 #           but do NOT fail the run. Code-correctness failures (an agent that
@@ -21,6 +21,12 @@
 #           Run only the Batman lifecycle-path doctor. It feeds a synthetic
 #           parent issue into the parser, validates bundle labels, probes the
 #           Slack approval surface, and probes Claude OAuth auth.
+#   --deep
+#           Run only the scrubbed-env headless Claude auth probe. Rebuilds the
+#           exact env a launchd firing sees (bare env + $ALFRED_HOME/.env
+#           overlay), then runs a minimal `claude -p` invocation. Catches the
+#           silent-401 class where `claude` works interactively but 401s under
+#           the scheduler because the token was never persisted to .env.
 #
 # Exit code is 0 when every agent reports DOCTOR-OK, 1 if any agent fails.
 # In --dev mode the exit code stays a real gate: it is 0 only when no
@@ -31,11 +37,13 @@ set -uo pipefail
 # --- arg parse -------------------------------------------------------------
 DEV_MODE=0
 LIFECYCLE_MODE=0
+DEEP_MODE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --dev) DEV_MODE=1 ;;
     --lifecycle) LIFECYCLE_MODE=1 ;;
-    -h|--help) sed -n '2,34p' "$0"; exit 0 ;;
+    --deep) DEEP_MODE=1 ;;
+    -h|--help) sed -n '2,42p' "$0"; exit 0 ;;
     *) echo "doctor.sh: unknown argument: $1 (see --help)" >&2; exit 2 ;;
   esac
   shift
@@ -156,6 +164,18 @@ if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
 fi
 if [ -n "${OPENAI_API_KEY:-}" ]; then
   echo "doctor.sh: warning: OPENAI_API_KEY is set; Codex may use API billing instead of ChatGPT-plan auth. Alfred does not require it." >&2
+fi
+
+if [ "$DEEP_MODE" -eq 1 ]; then
+  # Scrubbed-env headless Claude auth probe. The lifecycle_doctor rebuilds a
+  # launchd-like env internally (bare env + $ALFRED_HOME/.env overlay), so we
+  # only need to hand it ALFRED_HOME and PATH.
+  deep_python="python3"
+  if [ -x "$ALFRED_HOME/venv/bin/python" ]; then
+    deep_python="$ALFRED_HOME/venv/bin/python"
+  fi
+  "$deep_python" -m agent_runner.lifecycle_doctor --deep
+  exit $?
 fi
 
 if [ "$LIFECYCLE_MODE" -eq 1 ]; then

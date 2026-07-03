@@ -97,7 +97,14 @@ def _render_provider(name: str, provider: Any) -> list[str]:
         if isinstance(provider, dict):
             reason = provider.get("unavailable_reason") or ""
         lines.append(f"    unavailable{(' - ' + reason) if reason else ''}")
+        if isinstance(provider, dict) and provider.get("quota_exhausted"):
+            lines.append(f"    ⛔ {provider.get('quota_exhausted_note', 'usage limit reached')}")
         return lines
+    # An honest usage-limit wall from the last real invocation overrides the
+    # optimistic local-cache numbers below. Surface it first so the operator
+    # cannot mistake "0% used" for "engine is free".
+    if provider.get("quota_exhausted"):
+        lines.append(f"    ⛔ EXHAUSTED - {provider.get('quota_exhausted_note', '')}".rstrip())
     lines.append(_window_line("5-hour", provider.get("five_hour")))
     lines.append(_window_line("weekly", provider.get("weekly")))
     plan = provider.get("plan_type")

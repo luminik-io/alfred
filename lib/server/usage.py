@@ -247,12 +247,78 @@ def build_provider_usage(*, now: datetime | None = None) -> dict[str, Any]:
 
     claude = _provider_claude(base, errors)
     codex = _provider_codex(base, errors, now=moment)
+    # Reconcile against the last REAL invocation. The local usage-limit cache
+    # can read a cheerful "0% used / 100% remaining" while the CLI is actually
+    # slamming into a hard "you've hit your usage limit ... try again at
+    # <date>" wall -- the two read different sources. When a firing recorded a
+    # quota-exhaustion backoff for an engine, that is the honest signal, so we
+    # overlay it here: the operator sees "exhausted until <resume>" instead of
+    # the optimistic cache number.
+    _apply_quota_exhaustion_overlay(claude, "claude", now=moment)
+    _apply_quota_exhaustion_overlay(codex, "codex", now=moment)
     return {
         "available": bool(claude.get("available") or codex.get("available")),
         "generated_at": moment.isoformat(),
         "claude": claude,
         "codex": codex,
     }
+
+
+def _engine_quota_state_dir() -> str:
+    """Directory holding per-engine quota-exhaustion backoff records.
+
+    Mirrors ``agent_runner.state._engine_quota_path``: records live under
+    ``${ALFRED_HOME}/state/_engine_quota/<engine>.json``. Read here directly
+    (stdlib, no cross-package import) to keep the usage reader decoupled from
+    the runtime package, matching how the rest of this module reads state.
+    """
+    home = (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")).strip()
+    return os.path.join(home, "state", "_engine_quota")
+
+
+def _active_quota_exhaustion(engine: str, *, now: datetime) -> dict[str, Any] | None:
+    """Return the active exhaustion record for ``engine``, or ``None``.
+
+    Active means an on-disk record whose ``until`` is still in the future.
+    Corrupt/expired records read as ``None`` so a stale file never falsely
+    reports a healthy engine as exhausted.
+    """
+    path = os.path.join(_engine_quota_state_dir(), f"{engine}.json")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    until = str(data.get("until", "")).strip()
+    parsed = _parse_iso(until)
+    if parsed is None or parsed <= now:
+        return None
+    return {"until": until, "reason": str(data.get("reason", ""))}
+
+
+def _apply_quota_exhaustion_overlay(
+    provider: dict[str, Any], engine: str, *, now: datetime
+) -> None:
+    """Mark ``provider`` as exhausted when a real invocation hit the wall.
+
+    Mutates ``provider`` in place. Leaves the optimistic cache figures
+    untouched when no active exhaustion record exists (the common healthy
+    case), so this is a no-op unless a firing actually recorded a wall.
+    """
+    record = _active_quota_exhaustion(engine, now=now)
+    if record is None:
+        return
+    provider["quota_exhausted"] = True
+    provider["quota_resume_at"] = record["until"]
+    reason = record["reason"].strip()
+    note = (
+        f"Last real invocation hit a usage-limit wall; parked until {record['until']}"
+        + (f" ({reason})" if reason else "")
+        + ". The percentages above are from the local cache and may read optimistic."
+    )
+    provider["quota_exhausted_note"] = note
 
 
 def _provider_window(
