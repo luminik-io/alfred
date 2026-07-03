@@ -687,6 +687,11 @@ _VERB_POSITION_PRECEDERS = (
     "and",
     "then",
     "just",
+    # Helper phrasings keep the following verb in verb position:
+    # "can you help me add ...", "help us fix ...", "help add ...".
+    "help",
+    "me",
+    "us",
 )
 
 

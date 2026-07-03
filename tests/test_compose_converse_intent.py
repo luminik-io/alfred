@@ -335,3 +335,11 @@ def test_verb_position_build_hints_stay_work():
     assert not looks_like_question("Can we support markdown exports?")
     assert not looks_like_question("Is it possible to add retries?")
     assert not looks_like_question("Please update the docs")
+
+
+def test_helper_phrasings_stay_work():
+    from compose_converse import looks_like_question
+
+    assert not looks_like_question("Can you help me add a CSV export?")
+    assert not looks_like_question("Can you help add a dark mode toggle?")
+    assert not looks_like_question("Help us fix the login redirect")
