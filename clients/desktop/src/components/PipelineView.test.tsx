@@ -140,6 +140,47 @@ describe("PipelineView", () => {
     expect(screen.getAllByText(/needs your go-ahead/i).length).toBeGreaterThanOrEqual(3);
   });
 
+  it("gives an in-app go-ahead on a gated card via the queue action", async () => {
+    const onQueueAction = vi.fn(async () => true);
+    const user = userEvent.setup();
+    renderPipeline({
+      onQueueAction,
+      board: board({
+        columns: {
+          queued: [],
+          in_progress: [],
+          shipped: [],
+          awaiting_approval: [
+            card({ number: 77, title: "gated plan awaiting go-ahead", labels: ["agent:plan-pending-approval"] }),
+          ],
+        },
+        counts: { queued: 0, in_progress: 0, shipped: 0, awaiting_approval: 1 },
+      }),
+    });
+    // The decision card offers a real go-ahead, not just a GitHub link. The
+    // queue action strips the approval gate server-side (lib/issue_queue.py).
+    await user.click(screen.getByRole("button", { name: /give go-ahead/i }));
+    expect(onQueueAction).toHaveBeenCalledWith("your-org/api", 77, "queue");
+  });
+
+  it("does not offer a go-ahead on a demo gated card", () => {
+    renderPipeline({
+      onQueueAction: vi.fn(async () => true),
+      board: board({
+        columns: {
+          queued: [],
+          in_progress: [],
+          shipped: [],
+          awaiting_approval: [
+            card({ number: 78, title: "sample gated plan", demo: true, labels: ["agent:plan-pending-approval"] }),
+          ],
+        },
+        counts: { queued: 0, in_progress: 0, shipped: 0, awaiting_approval: 1 },
+      }),
+    });
+    expect(screen.queryByRole("button", { name: /give go-ahead/i })).not.toBeInTheDocument();
+  });
+
   it("falls back to zero awaiting-approval when an older server omits the lane", () => {
     renderPipeline({
       plans: [plan({ title: "Approve the export plan", source: "batman", status: "draft" })],

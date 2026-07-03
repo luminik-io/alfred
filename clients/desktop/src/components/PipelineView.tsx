@@ -566,8 +566,29 @@ function BoardLifecycleCard({
   onQueueAction?: QueueActionHandler;
 }) {
   const agent = agentForShipped(card);
+  // A gated plan (agent:plan-pending-approval) is a decision waiting on the
+  // operator. The `queue` action strips the gate label (see lib/issue_queue.py),
+  // so it IS the in-app "give the go-ahead" path: a card that says "Needs your
+  // go-ahead" must let you actually give it, not just link to GitHub.
+  const canGiveGoAhead =
+    Boolean(canQueue) &&
+    column === "awaiting_approval" &&
+    card.kind === "issue" &&
+    !card.demo &&
+    !!card.number;
+  const approving = busyQueue === `queue:${card.repo}#${card.number}`;
   const action =
-    column === "shipped" && card.url ? (
+    canGiveGoAhead && card.number && onQueueAction ? (
+      <button
+        className="approve-button"
+        type="button"
+        disabled={approving}
+        onClick={() => onQueueAction(card.repo, card.number as number, "queue")}
+      >
+        <Check size={15} aria-hidden="true" />
+        <span>{approving ? "Approving" : "Give go-ahead"}</span>
+      </button>
+    ) : column === "shipped" && card.url ? (
       <button
         className="secondary-button"
         type="button"
@@ -778,8 +799,17 @@ function CardInspector({
 }) {
   const actionable =
     canQueue && column === "queued" && card.kind === "issue" && !card.demo && !!card.number;
+  // A gated plan can be released from its detail too: `queue` strips the
+  // approval gate (lib/issue_queue.py), which is the in-app go-ahead.
+  const canGiveGoAhead =
+    canQueue &&
+    column === "awaiting_approval" &&
+    card.kind === "issue" &&
+    !card.demo &&
+    !!card.number;
   const holding = busyQueue === `hold:${card.repo}#${card.number}`;
   const closing = busyQueue === `done:${card.repo}#${card.number}`;
+  const approving = busyQueue === `queue:${card.repo}#${card.number}`;
   return (
     <div className="detail-panel detail-panel--sheet" aria-label="Selected pipeline item">
       <div className="detail-panel__head">
@@ -801,6 +831,17 @@ function CardInspector({
         ) : null}
       </dl>
       <div className="card-actions card-actions--start">
+        {canGiveGoAhead && card.number ? (
+          <button
+            className="approve-button"
+            type="button"
+            disabled={approving}
+            onClick={() => onQueueAction?.(card.repo, card.number as number, "queue")}
+          >
+            <Check size={16} aria-hidden="true" />
+            <span>{approving ? "Approving" : "Give go-ahead"}</span>
+          </button>
+        ) : null}
         {card.url ? (
           <button className="secondary-button" type="button" onClick={() => void openExternal(card.url as string)}>
             <ExternalLink size={16} aria-hidden="true" />
