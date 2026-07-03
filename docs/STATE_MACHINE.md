@@ -234,12 +234,3 @@ from labels import (
 ```
 
 `labels.py` also exports the framework label definitions (`LIFECYCLE_LABEL_DEFS`) used by `ensure_labels()` to create missing labels on a fresh repo. If you need to change a label string, change it once in `labels.py` and the rest of the fleet follows.
-
-## Cross-repo PR chains and worktrees
-
-For multi-repo features (one issue, N PRs across N repos), Alfred ships:
-
-- **`lib/multi_worktree.py`**: `MultiWorktree(requests, agent, feature_id)` context manager that creates per-repo git worktrees with synchronised branch names and cleans them up on exit. Git interaction is injected via a `GitRunner` Protocol so tests don't touch real worktrees.
-- **`lib/cross_repo_pr.py`**: `CrossRepoPRChain` plan/execute coordinator. `chain.plan(...)` returns a `Plan` dataclass (pure, no I/O); `chain.execute(plan)` opens each PR, persists state to `$ALFRED_HOME/state/pr-chains/<feature_id>.json` atomically, and refreshes earlier PR bodies as later siblings open so the cross-links stay current.
-
-Both modules use Protocol-based dependency injection so consumers can swap the default subprocess implementation for tests or alternative GitHub clients.

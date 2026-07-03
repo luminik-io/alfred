@@ -168,7 +168,6 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 - `alfred-metrics` CLI: per-agent firings, cost, success rate, p50/p95 turn count from on-disk state.
 - `alfred-logs` CLI: tail and filter per-firing transcripts without grepping `state/` by hand.
 - `alfred-label-state` CLI: read-only inspector for the issue-claim state machine across all configured repos.
-- Cross-repo PR primitive: `lib/cross_repo_pr.py` for bundles that need to land coordinated PRs across more than one repo.
 - Damian spec-bundle planner: a planner codename that turns a spec document into an `agent:large-feature` bundle that Batman can execute.
 - `slack_approval`: reaction-based approval gate. An agent posts a proposal, the operator reacts with the configured emoji, the agent proceeds.
 - `slop-detector`: PR-time linter for AI-authored prose patterns. Used by the new `curator` codename.
