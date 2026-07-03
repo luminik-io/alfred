@@ -496,6 +496,12 @@ export function OnboardingView({
     setReachedIndex((prev) => Math.max(prev, currentIndex));
   }, [currentIndex]);
 
+  // An existing local runtime was detected on this Mac. When true, the setup
+  // inventory already proves several steps are in place, so the rail must not
+  // contradict it by reporting them as not-done just because the user has not
+  // re-walked the wizard.
+  const installInitialized = status !== null && Boolean(status.install?.initialized);
+
   // Whether a step's own readiness signal is satisfied, ignoring position.
   const stepSatisfied = useCallback(
     (key: OnboardingStepKey): boolean => {
@@ -511,8 +517,11 @@ export function OnboardingView({
           return reposSelected;
         case "team":
           // The shipped Batman roster is already valid. Keeping the default is a
-          // complete state only after the operator continues past Team.
-          return reachedIndex > ONBOARDING_STEP_ORDER.indexOf("team");
+          // complete state only after the operator continues past Team, OR when
+          // an existing install proves a roster is already configured.
+          return (
+            reachedIndex > ONBOARDING_STEP_ORDER.indexOf("team") || installInitialized
+          );
         case "slack":
           // Slack is optional and the server exposes no "approver added" flag on
           // SetupStatus, so it reads satisfied only when the user explicitly
@@ -525,21 +534,34 @@ export function OnboardingView({
           return false;
       }
     },
-    [githubConnected, reachedIndex, reposSelected, requestDone, skipped, slackTouched, toolsReady],
+    [
+      githubConnected,
+      installInitialized,
+      reachedIndex,
+      reposSelected,
+      requestDone,
+      skipped,
+      slackTouched,
+      toolsReady,
+    ],
   );
 
-  // Per-step completion for the rail. A step is "done" only when the user has
-  // reached it (its index is at or below the furthest-reached cursor) AND its
-  // readiness signal is satisfied. This keeps the indicator and the "N of M
-  // done" count honest to where the user is, never running ahead on a
-  // pre-detected engine / gh / repo selection the user has not walked up to yet.
+  // Per-step completion for the rail. A step is "done" when its readiness signal
+  // is satisfied AND either the user has reached it (its index is at or below the
+  // furthest-reached cursor) OR an existing install was detected. On a fresh
+  // first run the cursor keeps the count honest so a pre-detected engine / gh /
+  // repo the user has not walked up to does not read as done. But when the
+  // runtime already exists, a proven-complete step must show done so the rail
+  // never contradicts the "ready to use" inventory (the "0 of 7" vs "ready"
+  // contradiction). Steps with no inventory-backed signal (welcome) still rely
+  // on the cursor, so they are never invented as done.
   const stepComplete = useCallback(
     (key: OnboardingStepKey): boolean => {
       const index = ONBOARDING_STEP_ORDER.indexOf(key);
-      if (index > reachedIndex) return false;
+      if (!installInitialized && index > reachedIndex) return false;
       return stepSatisfied(key);
     },
-    [reachedIndex, stepSatisfied],
+    [installInitialized, reachedIndex, stepSatisfied],
   );
 
   const steps = useMemo<StepMeta[]>(
@@ -639,7 +661,6 @@ export function OnboardingView({
   );
 
   const meta = STEP_META[stepKey];
-  const installInitialized = status !== null && Boolean(status.install?.initialized);
   const canReadSetupStatus = connected || loading || statusLoading;
   let shellCopy = {
     eyebrow: "First run",
