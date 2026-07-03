@@ -806,7 +806,7 @@ def classify_message_intent(text: str, *, draft: IssueDraft) -> str:
     path runs through ``resolve_intent`` with the model's own verdict); this only
     strengthens the deterministic fallback both surfaces share.
     """
-    content_draft = replace(draft, repos=()) if draft.repos else draft
+    content_draft = replace(draft, repos=[]) if draft.repos else draft
     if _draft_has_content(content_draft):
         return INTENT_BUILD
     if looks_like_question(text):
