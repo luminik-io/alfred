@@ -1795,9 +1795,7 @@ def test_lesson_stats_counts_retired(brain: FleetBrain) -> None:
     c = brain.propose_memory(codename="a", repo="r", body="stale", evidence="e", created_at=old)
     # Promote with an old reviewed_at so consolidation (which ages from the
     # promotion time) sees it as stale.
-    brain.promote_memory_candidate(
-        c.id, reviewer="auto", reviewed_at=old, lesson_writer=ams
-    )
+    brain.promote_memory_candidate(c.id, reviewer="auto", reviewed_at=old, lesson_writer=ams)
 
     brain.consolidate_lessons(env={"ALFRED_MEMORY_CONSOLIDATE": "1"}, lesson_forgetter=ams)
 
@@ -1813,6 +1811,4 @@ def test_consolidate_rejects_negative_stale_days(brain: FleetBrain) -> None:
     import pytest
 
     with pytest.raises(ValueError, match="stale_days"):
-        brain.consolidate_lessons(
-            stale_days=-1, env={"ALFRED_MEMORY_CONSOLIDATE": "1"}
-        )
+        brain.consolidate_lessons(stale_days=-1, env={"ALFRED_MEMORY_CONSOLIDATE": "1"})

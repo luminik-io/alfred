@@ -1347,9 +1347,7 @@ class FleetBrain:
         offset = 0
         while True:
             batch = self.list_memory_candidates(status="validated", limit=page, offset=offset)
-            validated.extend(
-                cand for cand in batch if cand.promoted_lesson_id is not None
-            )
+            validated.extend(cand for cand in batch if cand.promoted_lesson_id is not None)
             if len(batch) < page:
                 break
             offset += page
@@ -1446,9 +1444,7 @@ class FleetBrain:
                 forgetter = self._lesson_provider(env)
             except Exception:
                 summary["ams_forget_failed"] += len(candidates)
-                _LOG.exception(
-                    "consolidate_lessons: could not build AMS lesson forgetter"
-                )
+                _LOG.exception("consolidate_lessons: could not build AMS lesson forgetter")
                 return 0
         retired = 0
         for candidate in candidates:
