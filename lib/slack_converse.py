@@ -593,28 +593,84 @@ class ConverseReply:
     intent: str
     offered_issue: bool = False
     fields: dict[str, Any] = field(default_factory=dict)
+    # A stable fingerprint of the file affordance this turn WOULD show (its lead
+    # line, keyed off the draft title). The listener persists it per thread and
+    # feeds it back on the next turn as ``prior_offer_signature`` so the offer is
+    # shown once, when the affordance first appears or materially changes, not
+    # re-appended verbatim to every build turn. Empty when no offer applies.
+    offer_signature: str = ""
 
 
-def render_converse_reply(turn: ConverseTurn, *, bridge_enabled: bool) -> ConverseReply:
+def _offer_signature(turn: ConverseTurn) -> str:
+    """A stable fingerprint of the file affordance a build turn would show.
+
+    The affordance text only varies by the draft title (see :func:`_build_offer`),
+    so the title is the whole signal: two turns that would show the same lead
+    line share a signature and the offer is not repeated. Normalised (stripped,
+    lowercased, collapsed whitespace) so trivial rewordings of the same title do
+    not read as a change and re-trigger the block.
+    """
+    title = " ".join((turn.draft.title or "").split()).strip().lower()
+    return f"offer:{title}"
+
+
+def render_converse_reply(
+    turn: ConverseTurn,
+    *,
+    bridge_enabled: bool,
+    prior_offer_signature: str = "",
+) -> ConverseReply:
     """Shape a converse turn into the Slack reply text.
 
     A ``conversation`` turn is returned as-is: a plain, warm answer. A ``build``
-    turn keeps the model's prose reply and APPENDS a short, optional offer to
-    file an issue through the existing approval bridge -- never a forced form.
-    When the bridge is disabled the offer is omitted (we do not advertise a path
-    that cannot run); the conversational answer still stands on its own.
+    turn keeps the model's prose reply and, the FIRST time the affordance appears
+    or its material content changes, APPENDS a short, optional offer to file an
+    issue through the existing approval bridge -- never a forced form. When the
+    bridge is disabled the offer is omitted (we do not advertise a path that
+    cannot run); the conversational answer still stands on its own.
+
+    Repetition guard: ``prior_offer_signature`` is the affordance fingerprint the
+    previous turn in this thread showed (persisted by the listener). When this
+    turn's signature matches it, the file-affordance block is SUPPRESSED so the
+    identical "reply ``ship it`` to file it" boilerplate is not appended turn
+    after turn. The block returns only when the affordance first becomes fileable
+    or the draft title materially changes. The current signature is returned on
+    the reply so the caller can persist it for the next turn.
     """
     reply = (turn.reply or "").strip()
     if turn.intent == INTENT_CONVERSATION:
-        return ConverseReply(text=reply, intent=INTENT_CONVERSATION)
+        # A conversation turn never carries a file affordance; carry the prior
+        # signature forward unchanged so a chat aside mid-build does not reset
+        # the dedup state and re-trigger the offer on the next build turn.
+        return ConverseReply(
+            text=reply,
+            intent=INTENT_CONVERSATION,
+            offer_signature=prior_offer_signature,
+        )
 
     # build turn: offer, do not force.
     if not bridge_enabled:
         return ConverseReply(text=reply, intent=INTENT_BUILD, offered_issue=False)
 
+    signature = _offer_signature(turn)
+    if signature == prior_offer_signature:
+        # The affordance is unchanged since the last turn; showing it again would
+        # just repeat the same boilerplate. Keep the model's prose, drop the block.
+        return ConverseReply(
+            text=reply,
+            intent=INTENT_BUILD,
+            offered_issue=False,
+            offer_signature=signature,
+        )
+
     offer = _build_offer(turn)
     text = f"{reply}\n\n{offer}" if reply else offer
-    return ConverseReply(text=text, intent=INTENT_BUILD, offered_issue=True)
+    return ConverseReply(
+        text=text,
+        intent=INTENT_BUILD,
+        offered_issue=True,
+        offer_signature=signature,
+    )
 
 
 def _build_offer(turn: ConverseTurn) -> str:
@@ -655,6 +711,14 @@ class SlackConverseOutcome:
     # engine failure hiding locally available fleet status. True whenever a real
     # conversation or build turn was rendered.
     answered: bool = True
+    # The file-affordance fingerprint the listener should persist for the next
+    # turn, passed back as ``prior_offer_signature`` so the offer block is not
+    # repeated verbatim. This is the CURRENT turn's fingerprint only when the
+    # offer actually reached Slack (the final chat.update landed); on a degraded
+    # delivery it is the PRIOR fingerprint carried forward unchanged, so an offer
+    # the user never saw is not treated as already shown. Empty when no answer
+    # was rendered.
+    offer_signature: str = ""
 
 
 def run_slack_converse(
@@ -673,6 +737,7 @@ def run_slack_converse(
     extract_tokens: Callable[[Path], list[str]] | None = None,
     now: Callable[[], float] | None = None,
     suppress_engine_error: bool = False,
+    prior_offer_signature: str = "",
 ) -> SlackConverseOutcome:
     """Classify, stream, and post one conversational Slack answer.
 
@@ -702,6 +767,13 @@ def run_slack_converse(
     Left False (the default), a failed turn keeps posting the generic guidance
     and returns ``handled=True, answered=False`` (the caller then has nothing
     better to fall through to, so the guidance is the honest outcome).
+
+    ``prior_offer_signature`` is the file-affordance fingerprint the previous
+    turn in this thread showed (the listener persists it per thread). It gates
+    whether the "reply ``ship it`` to file it" block is appended: the block is
+    shown only when the affordance first appears or its material content changes,
+    never verbatim turn after turn. The turn's own signature comes back on
+    :attr:`SlackConverseOutcome.offer_signature` for the caller to persist.
     """
     if build_turn is None:
         build_turn = _default_build_turn
@@ -748,7 +820,11 @@ def run_slack_converse(
     reply_box: dict[str, ConverseReply] = {}
 
     def _render(turn: ConverseTurn) -> str:
-        reply = render_converse_reply(turn, bridge_enabled=bridge_enabled)
+        reply = render_converse_reply(
+            turn,
+            bridge_enabled=bridge_enabled,
+            prior_offer_signature=prior_offer_signature,
+        )
         reply_box["reply"] = reply
         return reply.text
 
@@ -787,6 +863,18 @@ def run_slack_converse(
         )
 
     reply = reply_box.get("reply")
+    # The affordance fingerprint the listener should persist for the next turn.
+    # The file offer is only appended in the FINAL render, so it reached the user
+    # only if the final chat.update landed (``result.finalized``). When delivery
+    # was degraded (a persistent 429 past the backoff budget, or a transport
+    # error on the final update), the user never saw the "reply ``ship it``"
+    # affordance, so we must NOT advance the signature: carry the prior one
+    # forward unchanged so the next turn re-shows the offer rather than
+    # suppressing one that never landed.
+    if result.finalized:
+        offer_signature = reply.offer_signature if reply else prior_offer_signature
+    else:
+        offer_signature = prior_offer_signature
     return SlackConverseOutcome(
         handled=True,
         intent=reply.intent if reply else "",
@@ -796,6 +884,10 @@ def run_slack_converse(
         # reconciled answer did not land on Slack despite the turn running, so
         # the listener can tell a clean success from a degraded delivery.
         finalized=result.finalized,
+        # Carry the affordance fingerprint forward so the listener can persist it
+        # and feed it back next turn, keeping the file offer from repeating. Only
+        # advanced when the offer actually reached Slack (see above).
+        offer_signature=offer_signature,
     )
 
 

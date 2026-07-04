@@ -187,6 +187,106 @@ def test_build_turn_omits_offer_when_bridge_disabled() -> None:
 
 
 # ---------------------------------------------------------------------------
+# File-affordance dedup: the "reply `ship it`" block is shown once, not
+# re-appended verbatim to every build turn (the operator's "repeating same
+# messages" complaint).
+# ---------------------------------------------------------------------------
+
+
+def test_first_build_turn_shows_offer_and_returns_signature() -> None:
+    turn = _turn("Scoping the export.", INTENT_BUILD, title="CSV export")
+    reply = sc.render_converse_reply(turn, bridge_enabled=True, prior_offer_signature="")
+    assert reply.offered_issue is True
+    assert "ship it" in reply.text
+    assert reply.offer_signature  # a non-empty fingerprint is carried forward
+
+
+def test_unchanged_draft_suppresses_repeat_offer() -> None:
+    first = _turn("Scoping the export.", INTENT_BUILD, title="CSV export")
+    first_reply = sc.render_converse_reply(first, bridge_enabled=True, prior_offer_signature="")
+
+    # Next turn, same draft title: the affordance did not materially change, so
+    # the "reply `ship it` to file it" boilerplate must NOT be repeated.
+    second = _turn("Also filter by date.", INTENT_BUILD, title="CSV export")
+    second_reply = sc.render_converse_reply(
+        second,
+        bridge_enabled=True,
+        prior_offer_signature=first_reply.offer_signature,
+    )
+    assert second_reply.offered_issue is False
+    assert "ship it" not in second_reply.text
+    assert "Nothing is filed" not in second_reply.text
+    assert second_reply.text == "Also filter by date."
+    # Signature is unchanged so the dedup holds on the turn after this one too.
+    assert second_reply.offer_signature == first_reply.offer_signature
+
+
+def test_materially_changed_draft_shows_offer_again() -> None:
+    first = _turn("Scoping the export.", INTENT_BUILD, title="CSV export")
+    first_reply = sc.render_converse_reply(first, bridge_enabled=True, prior_offer_signature="")
+
+    # The draft title changed: this is a materially different affordance, so the
+    # offer is shown again (once), keyed to the new title.
+    changed = _turn("Actually a PDF report.", INTENT_BUILD, title="PDF report")
+    changed_reply = sc.render_converse_reply(
+        changed,
+        bridge_enabled=True,
+        prior_offer_signature=first_reply.offer_signature,
+    )
+    assert changed_reply.offered_issue is True
+    assert "ship it" in changed_reply.text
+    assert changed_reply.offer_signature != first_reply.offer_signature
+
+
+def test_title_reword_whitespace_case_is_not_a_change() -> None:
+    first = _turn("Scoping it.", INTENT_BUILD, title="CSV export")
+    first_reply = sc.render_converse_reply(first, bridge_enabled=True, prior_offer_signature="")
+
+    # Same title, only whitespace/case differ: not a material change, no repeat.
+    noisy = _turn("Refining.", INTENT_BUILD, title="  CSV   Export ")
+    noisy_reply = sc.render_converse_reply(
+        noisy,
+        bridge_enabled=True,
+        prior_offer_signature=first_reply.offer_signature,
+    )
+    assert noisy_reply.offered_issue is False
+    assert "ship it" not in noisy_reply.text
+
+
+def test_conversation_turn_carries_prior_signature_forward() -> None:
+    # A chat aside mid-build must not reset the dedup state; it carries the prior
+    # signature through so the next build turn still suppresses the repeat.
+    turn = _turn("Happy to help.", INTENT_CONVERSATION)
+    reply = sc.render_converse_reply(
+        turn,
+        bridge_enabled=True,
+        prior_offer_signature="offer:csv export",
+    )
+    assert reply.offered_issue is False
+    assert reply.offer_signature == "offer:csv export"
+
+
+def test_render_does_not_inflate_a_short_reply() -> None:
+    # A normal turn stays short: neither a conversation turn nor a deduped build
+    # turn appends the multi-sentence file-affordance block, so a terse model
+    # reply reaches Slack terse (the operator's "too long / chatty" complaint).
+    short = "Live: Lucius and Bane. Nothing stuck."
+    convo = sc.render_converse_reply(_turn(short, INTENT_CONVERSATION), bridge_enabled=True)
+    assert convo.text == short
+
+    build = _turn(short, INTENT_BUILD, title="CSV export")
+    deduped = sc.render_converse_reply(
+        build,
+        bridge_enabled=True,
+        prior_offer_signature=sc._offer_signature(build),
+    )
+    assert deduped.text == short
+    # The block that WOULD be appended is itself multi-clause, so proving it is
+    # absent proves the reply was not inflated.
+    assert "Nothing is filed" not in deduped.text
+
+
+# ---------------------------------------------------------------------------
 # Thread context gathering (bounded, role-tagged, best-effort)
 # ---------------------------------------------------------------------------
 
@@ -649,6 +749,104 @@ def test_run_slack_converse_build_path_offers_issue(tmp_path: Path) -> None:
     assert outcome.intent == INTENT_BUILD
     assert outcome.offered_issue is True
     assert "ship it" in client.updates[-1]["text"]
+    # The outcome carries the affordance fingerprint so the listener can persist
+    # it and feed it back to suppress a repeat next turn.
+    assert outcome.offer_signature
+
+
+def test_run_slack_converse_suppresses_repeat_offer_with_prior_signature(
+    tmp_path: Path,
+) -> None:
+    client = FakeSlackClient(replies={"ok": True, "messages": []})
+    turn = _turn("Refining the toggle.", INTENT_BUILD, title="Dark mode toggle")
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text("", encoding="utf-8")
+
+    prior = sc._offer_signature(turn)
+    outcome = sc.run_slack_converse(
+        client=client,
+        config=_enabled_config(),
+        channel="C1",
+        thread_ts="1.0",
+        user_message="also remember the preference",
+        bridge_enabled=True,
+        build_turn=_fake_build_turn(turn, ""),
+        transcript_for=lambda fid: transcript,
+        extract_tokens=lambda p: [],
+        now=FakeClock(),
+        prior_offer_signature=prior,
+    )
+    assert outcome.handled is True
+    assert outcome.intent == INTENT_BUILD
+    # Same affordance as the prior turn: no repeat of the boilerplate block.
+    assert outcome.offered_issue is False
+    assert "ship it" not in client.updates[-1]["text"]
+    assert client.updates[-1]["text"] == "Refining the toggle."
+
+
+def test_degraded_delivery_does_not_advance_offer_signature(tmp_path: Path) -> None:
+    # The offer is only appended in the FINAL render, so a build turn whose final
+    # chat.update fails means the user never saw the "reply `ship it`" affordance.
+    # The outcome must NOT advance the signature to this turn's fingerprint;
+    # otherwise the next turn would suppress an offer that never reached Slack.
+    # It carries the PRIOR signature forward unchanged instead.
+    class FailingUpdates(FakeSlackClient):
+        def chat_update(self, **kwargs: object) -> dict:
+            raise RuntimeError("permanent transport failure")
+
+    client = FailingUpdates(replies={"ok": True, "messages": []})
+    turn = _turn("Scoping the export.", INTENT_BUILD, title="CSV export")
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text("", encoding="utf-8")
+
+    outcome = sc.run_slack_converse(
+        client=client,
+        config=_enabled_config(),
+        channel="C1",
+        thread_ts="1.0",
+        user_message="export attendees to csv",
+        bridge_enabled=True,
+        build_turn=_fake_build_turn(turn, ""),
+        transcript_for=lambda fid: transcript,
+        extract_tokens=lambda p: [],
+        now=FakeClock(),
+        prior_offer_signature="",
+    )
+    assert outcome.handled is True
+    assert outcome.finalized is False
+    # New offer never reached Slack: signature stays at the prior (empty) value so
+    # the next turn re-shows the offer rather than suppressing it.
+    assert outcome.offer_signature == ""
+
+
+def test_degraded_delivery_keeps_prior_signature_unchanged(tmp_path: Path) -> None:
+    # Same principle when a prior offer WAS already shown: a degraded turn must
+    # not overwrite the persisted signature (whether or not the draft changed),
+    # because whatever this turn would have shown never landed.
+    class FailingUpdates(FakeSlackClient):
+        def chat_update(self, **kwargs: object) -> dict:
+            raise RuntimeError("permanent transport failure")
+
+    client = FailingUpdates(replies={"ok": True, "messages": []})
+    turn = _turn("Now a PDF instead.", INTENT_BUILD, title="PDF report")
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text("", encoding="utf-8")
+
+    outcome = sc.run_slack_converse(
+        client=client,
+        config=_enabled_config(),
+        channel="C1",
+        thread_ts="1.0",
+        user_message="actually make it a pdf",
+        bridge_enabled=True,
+        build_turn=_fake_build_turn(turn, ""),
+        transcript_for=lambda fid: transcript,
+        extract_tokens=lambda p: [],
+        now=FakeClock(),
+        prior_offer_signature="offer:csv export",
+    )
+    assert outcome.finalized is False
+    assert outcome.offer_signature == "offer:csv export"
 
 
 def test_run_slack_converse_streams_partial_tokens(tmp_path: Path) -> None:

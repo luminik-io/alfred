@@ -23,7 +23,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Iterable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -293,6 +293,13 @@ class ListenerResult:
     thread_kind: str = ""
     readiness_ok: bool | None = None
     readiness_score: int | None = None
+    # The converse file-affordance fingerprint this turn should persist for the
+    # thread, when the turn was a converse answer. Carried on the result so a
+    # top-level mention (whose conversation record is registered AFTER the
+    # converse turn runs, in ``_remember_conversation_root``) can seed the new
+    # record with it: without this the first offer's signature would be dropped
+    # and the next reply would re-show the identical offer. Empty otherwise.
+    converse_offer_signature: str = ""
 
 
 class SeenEventStore:
@@ -568,6 +575,19 @@ class SlackPlanningListener:
             return result
         if not (event.is_direct_intake or event.is_plain_channel_message):
             return result
+        metadata: dict[str, Any] = {
+            "source": "slack-conversation",
+            "last_action": result.action,
+            "origin_event_type": event.event_type,
+            "requested_by": event.user,
+        }
+        # Seed the new record with the converse offer fingerprint this turn showed
+        # (empty for a non-converse turn). The converse turn ran BEFORE this
+        # registration, so there was no record to persist onto at the time; without
+        # carrying it here the first offer's signature is lost and the next reply
+        # re-shows the identical "reply `ship it`" offer.
+        if result.converse_offer_signature:
+            metadata[self._CONVERSE_OFFER_SIGNATURE_KEY] = result.converse_offer_signature
         self.registry.register(
             SlackThreadRecord(
                 kind="conversation",
@@ -576,12 +596,7 @@ class SlackPlanningListener:
                 codename="slack",
                 title=_thread_title_from_text(event.text),
                 status="open",
-                metadata={
-                    "source": "slack-conversation",
-                    "last_action": result.action,
-                    "origin_event_type": event.event_type,
-                    "requested_by": event.user,
-                },
+                metadata=metadata,
             )
         )
         self._mirror_context_to_thread(event)
@@ -1206,6 +1221,12 @@ class SlackPlanningListener:
         text = (event.text or "").strip()
         if not text:
             return None
+        # The file-affordance fingerprint this thread last showed. Feeding it back
+        # in lets the runner suppress the identical "reply `ship it` to file it"
+        # block when nothing about the affordance changed, so a build thread does
+        # not repeat the same boilerplate on every turn. Best-effort: absent when
+        # the thread has not been registered yet.
+        prior_offer_signature = self._converse_offer_signature(event.channel, event.root_ts)
         try:
             outcome = self._converse_runner(
                 client=self.poster,
@@ -1218,6 +1239,7 @@ class SlackPlanningListener:
                 bridge_enabled=self.bridge.config.enabled,
                 workdir=Path.cwd(),
                 suppress_engine_error=suppress_engine_error,
+                prior_offer_signature=prior_offer_signature,
             )
         except Exception as exc:
             print(
@@ -1247,7 +1269,72 @@ class SlackPlanningListener:
                 file=sys.stderr,
             )
             detail = f"{detail} (final delivery did not land)"
-        return ListenerResult(True, action, detail=detail)
+        # The affordance fingerprint to persist for the next turn. The runner only
+        # advances it when the offer actually reached Slack (delivery not
+        # degraded), so persisting it as-is never records an offer the user did
+        # not see. Two persistence paths cover both thread states:
+        #
+        #  1. If a thread record already exists (a reply in an Alfred-started
+        #     thread, or a draft thread), write the signature onto it now.
+        #  2. On a brand-new top-level mention there is NO record yet: the
+        #     conversation root is registered later in
+        #     ``_remember_conversation_root``. Carry the signature on the result
+        #     so that registration seeds the new record with it. Otherwise the
+        #     first offer's signature would be dropped and the next reply would
+        #     re-show the identical offer.
+        offer_signature = getattr(outcome, "offer_signature", "")
+        self._store_converse_offer_signature(event.channel, event.root_ts, offer_signature)
+        return ListenerResult(
+            True,
+            action,
+            detail=detail,
+            converse_offer_signature=offer_signature,
+        )
+
+    _CONVERSE_OFFER_SIGNATURE_KEY = "converse_offer_signature"
+
+    def _converse_offer_signature(self, channel: str, thread_ts: str) -> str:
+        """Read the file-affordance fingerprint this thread last showed.
+
+        Best-effort: an unregistered thread, a missing key, or any read error
+        returns an empty string, which makes the runner treat the affordance as
+        new and show the offer once (the safe default). It never raises.
+        """
+        try:
+            record = self.registry.lookup(channel, thread_ts)
+        except Exception:
+            return ""
+        if record is None:
+            return ""
+        value = record.metadata.get(self._CONVERSE_OFFER_SIGNATURE_KEY)
+        return value if isinstance(value, str) else ""
+
+    def _store_converse_offer_signature(self, channel: str, thread_ts: str, signature: str) -> None:
+        """Persist the affordance fingerprint onto an EXISTING thread record.
+
+        Merged into the record's metadata so no other thread state is lost. When
+        the thread has no record yet (a brand-new top-level mention), this is a
+        no-op: the record is created later in ``_remember_conversation_root``,
+        which seeds the signature from
+        :attr:`ListenerResult.converse_offer_signature`. Best-effort: any read or
+        write failure is swallowed; the only cost is the next turn may re-show the
+        offer once.
+        """
+        try:
+            record = self.registry.lookup(channel, thread_ts)
+        except Exception:
+            return
+        if record is None:
+            return
+        current = record.metadata.get(self._CONVERSE_OFFER_SIGNATURE_KEY)
+        if isinstance(current, str) and current == signature:
+            return
+        metadata = dict(record.metadata)
+        metadata[self._CONVERSE_OFFER_SIGNATURE_KEY] = signature
+        try:
+            self.registry.register(replace(record, metadata=metadata))
+        except Exception:
+            return
 
     # ------------------------------------------------------------------
     # Conversational intent router (additive fallback)
