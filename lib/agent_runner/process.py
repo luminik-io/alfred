@@ -78,6 +78,7 @@ from .result import (
     looks_quota_exhausted,
     parse_quota_resume_at,
 )
+from .skills_context import skills_context_for_role
 from .transcripts import (
     _extract_codex_session_id,
     _extract_codex_tokens,
@@ -1165,6 +1166,23 @@ def codex_invoke(
 # --------------------------------------------------------------------------
 
 
+def _with_skills_block(prompt: str, role: str | None) -> str:
+    """Append the role-scoped skills block to ``prompt`` when injection is on.
+
+    Metadata-only progressive disclosure: names the skills a firing of ``role``
+    may invoke and where to read each one, without inlining any body. Gated by
+    ``ALFRED_SKILLS_INJECT`` (default on) inside :func:`skills_context_for_role`.
+    Behavior-preserving when no skills match or the gate is off: the helper
+    returns ``""`` and the prompt is returned unchanged.
+    """
+    block = ""
+    with contextlib.suppress(Exception):
+        block = skills_context_for_role(role)
+    if not block:
+        return prompt
+    return f"{prompt}\n\n{block}"
+
+
 def invoke_agent_engine(
     prompt: str,
     *,
@@ -1174,6 +1192,7 @@ def invoke_agent_engine(
     workdir: Path,
     claude_allowed_tools: str,
     timeout: int,
+    role: str | None = None,
     claude_max_turns: int | None = None,
     claude_model: str | None = None,
     codex_timeout: int | None = None,
@@ -1196,21 +1215,27 @@ def invoke_agent_engine(
     ``on_fallback`` callback fires only when hybrid mode falls back
     after a Claude capability failure; useful for posting a
     one-line Slack warning.
+
+    ``role`` is the firing's agent role (feature-dev, pr-review, planner, ...).
+    When set and ``ALFRED_SKILLS_INJECT`` is not disabled, a compact
+    metadata-only block naming the skills recommended for that role is appended
+    to the prompt (progressive disclosure: the agent reads each SKILL.md body on
+    demand). Omitting ``role`` or disabling the gate leaves the prompt untouched.
     """
     mode = normalize_engine(engine)
     claude_call = claude_fn or claude_invoke_streaming
     codex_call = codex_fn or codex_invoke
     memory_provider = load_runtime_memory() if memory_repo else None
-    prompt_for_engine, context_governance = govern_prompt_context(
-        with_memory_prompt(
-            prompt,
-            memory_provider,
-            codename=agent,
-            repo=memory_repo,
-            query=memory_query,
-            limit=memory_limit,
-        )
+    prompt_with_context = with_memory_prompt(
+        prompt,
+        memory_provider,
+        codename=agent,
+        repo=memory_repo,
+        query=memory_query,
+        limit=memory_limit,
     )
+    prompt_with_context = _with_skills_block(prompt_with_context, role)
+    prompt_for_engine, context_governance = govern_prompt_context(prompt_with_context)
 
     def _stamp_context_governance(result: ClaudeResult) -> ClaudeResult:
         if context_governance.applied:

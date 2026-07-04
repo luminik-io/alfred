@@ -4,15 +4,20 @@
 # license, how it installs, and which agent roles get it by default. The
 # `alfred skills` CLI reads this manifest.
 #
-# install = "vendored"  -> the skill is copied into this repo under `skills/vendored/<path>`.
-#                          Install copies it to the Claude Code skills dir. No network.
-# install = "fetch"     -> the skill is NOT in this repo. Install runs `fetch_cmd`
-#                          to pull it from `source` at install time (network required).
+# install = "vendored"    -> the skill is copied into this repo under `skills/vendored/<path>`
+#                            Install copies it to the Claude Code skills dir. No network.
+# install = "first_party"  -> an Alfred-authored MIT skill under `skills/first_party/<path>`.
+#                            Installs like vendored (local copy, no network); it is our own
+#                            source, so no upstream attribution. Set `default_install = true`
+#                            to include it in the `alfred skills install --starter` set.
+# install = "fetch"        -> the skill is NOT in this repo. Install runs `fetch_cmd`
+#                            to pull it from `source` at install time (network required).
 #
 # roles are the agent codenames' role identifiers (feature-dev, pr-review,
-# bug-triage, test-coverage, review-fix, deploy-monitor, e2e-smoke). A role in
-# `roles` means the pack is recommended-by-default for that role. The CLI never
-# auto-installs; roles drive documentation and `--role` filtering only.
+# bug-triage, test-coverage, review-fix, deploy-monitor, e2e-smoke, planner). A
+# role in `roles` means the pack is recommended-by-default for that role. The CLI
+# never auto-installs; roles drive documentation, `--role` filtering, and which
+# skills the runner injector offers a firing of that role.
 
 schema_version = 1
 
@@ -74,6 +79,87 @@ attribution = "Copyright (c) Vercel, Inc. (declared in README + SKILL.md; no ups
 install = "vendored"
 vendored_path = "vercel-react-best-practices"
 roles = ["feature-dev"]
+
+# --------------------------------------------------------------------------
+# First-party packs (Alfred-authored, MIT, local copy, no network)
+#
+# These are our own skills under skills/first_party/<name>/. They install
+# exactly like vendored packs (a local copytree) but carry no upstream
+# attribution because we wrote them. `default_install = true` marks the
+# starter set that `alfred skills install --starter` lays down.
+# --------------------------------------------------------------------------
+
+[[pack]]
+name = "spec-to-issues"
+summary = "Turn an approved spec into scoped, single-repo agent:implement issues with testable acceptance criteria."
+source = "https://github.com/luminik-io/alfred"
+ref = "skills/first_party/spec-to-issues"
+license = "MIT"
+attribution = "Alfred first-party skill (MIT)"
+install = "first_party"
+first_party_path = "spec-to-issues"
+default_install = true
+roles = ["planner"]
+
+[[pack]]
+name = "write-tests"
+summary = "Derive tests from acceptance criteria, regression-test before a fix, run the suite, report behavior coverage."
+source = "https://github.com/luminik-io/alfred"
+ref = "skills/first_party/write-tests"
+license = "MIT"
+attribution = "Alfred first-party skill (MIT)"
+install = "first_party"
+first_party_path = "write-tests"
+default_install = true
+roles = ["test-coverage", "feature-dev"]
+
+[[pack]]
+name = "review-security"
+summary = "STRIDE-lite security lens: injection, authorization, secret handling, SSRF and egress."
+source = "https://github.com/luminik-io/alfred"
+ref = "skills/first_party/review-security"
+license = "MIT"
+attribution = "Alfred first-party skill (MIT)"
+install = "first_party"
+first_party_path = "review-security"
+default_install = true
+roles = ["pr-review", "feature-dev"]
+
+[[pack]]
+name = "add-observability"
+summary = "Structured logging at decision points, a metric per outcome, a span per new I/O, config-driven levels."
+source = "https://github.com/luminik-io/alfred"
+ref = "skills/first_party/add-observability"
+license = "MIT"
+attribution = "Alfred first-party skill (MIT)"
+install = "first_party"
+first_party_path = "add-observability"
+default_install = true
+roles = ["feature-dev", "deploy-monitor"]
+
+[[pack]]
+name = "migrate-dependency"
+summary = "Pin the target version, read the changelog for breaking changes, migrate call sites, run tests, write a note."
+source = "https://github.com/luminik-io/alfred"
+ref = "skills/first_party/migrate-dependency"
+license = "MIT"
+attribution = "Alfred first-party skill (MIT)"
+install = "first_party"
+first_party_path = "migrate-dependency"
+default_install = true
+roles = ["feature-dev"]
+
+[[pack]]
+name = "changelog-and-release-notes"
+summary = "Read the diff, write a CHANGELOG entry in the repo's voice, bump VERSION when asked."
+source = "https://github.com/luminik-io/alfred"
+ref = "skills/first_party/changelog-and-release-notes"
+license = "MIT"
+attribution = "Alfred first-party skill (MIT)"
+install = "first_party"
+first_party_path = "changelog-and-release-notes"
+default_install = true
+roles = ["feature-dev", "deploy-monitor"]
 
 # --------------------------------------------------------------------------
 # Reference-install packs (fetched from source at install time)

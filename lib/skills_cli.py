@@ -18,10 +18,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import UTC, datetime
 
 import skill_packs
 
-__all__ = ["cmd_install", "cmd_installed", "cmd_list", "run"]
+__all__ = ["cmd_evolve", "cmd_install", "cmd_installed", "cmd_list", "run"]
 
 _MANIFEST_HINT = (
     "skills manifest not found: {path}\n"
@@ -95,7 +96,56 @@ def cmd_installed(*, as_json: bool = False) -> int:
     return 0
 
 
-def cmd_install(pack_name: str, *, yes: bool = False, dry_run: bool = False) -> int:
+def _install_one(target: skill_packs.Pack, *, dry_run: bool) -> int:
+    """Install one already-resolved pack, printing the outcome. Returns rc."""
+    try:
+        result = skill_packs.install_pack(target, dry_run=dry_run)
+    except (FileNotFoundError, RuntimeError) as exc:
+        print(f"Install failed: {exc}", file=sys.stderr)
+        return 1
+    verb = "would install" if result.dry_run else "installed"
+    if result.fetched:
+        print(f"{verb} {result.pack} (fetch) -> {result.dest}")
+        print(f"  command: {result.fetched}")
+    else:
+        shape = "first-party" if target.is_first_party else "vendored"
+        print(f"{verb} {result.pack} ({shape}) -> {result.dest}")
+    if target.attribution:
+        print(f"  license: {target.license} | {target.attribution}")
+    return 0
+
+
+def cmd_install_starter(*, dry_run: bool = False) -> int:
+    """Install the default first-party starter set (local-copy, no network)."""
+    packs = _load_packs()
+    starter = skill_packs.starter_packs(packs)
+    if not starter:
+        print("No starter (default_install) packs configured.")
+        return 0
+    verb = "Would install" if dry_run else "Installing"
+    print(f"{verb} starter set ({len(starter)} first-party skills):")
+    worst = 0
+    for pack in starter:
+        rc = _install_one(pack, dry_run=dry_run)
+        worst = max(worst, rc)
+    return worst
+
+
+def cmd_install(
+    pack_name: str | None,
+    *,
+    yes: bool = False,
+    dry_run: bool = False,
+    starter: bool = False,
+) -> int:
+    if starter:
+        if pack_name:
+            print("Pass either a pack name or --starter, not both.", file=sys.stderr)
+            return 2
+        return cmd_install_starter(dry_run=dry_run)
+    if not pack_name:
+        print("Specify a pack name or --starter. Run `alfred skills list`.", file=sys.stderr)
+        return 2
     packs = _load_packs()
     by_name = {p.name: p for p in packs}
     target = by_name.get(pack_name)
@@ -110,19 +160,68 @@ def cmd_install(pack_name: str, *, yes: bool = False, dry_run: bool = False) -> 
             file=sys.stderr,
         )
         return 1
+    return _install_one(target, dry_run=dry_run)
+
+
+def _parse_since(raw: str | None) -> datetime | None:
+    """Parse a ``--since`` value (ISO date or datetime) into an aware datetime."""
+    if not raw:
+        return None
+    text = raw.strip()
     try:
-        result = skill_packs.install_pack(target, dry_run=dry_run)
-    except (FileNotFoundError, RuntimeError) as exc:
-        print(f"Install failed: {exc}", file=sys.stderr)
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        print(
+            f"Invalid --since {raw!r}: expected an ISO date like 2026-06-01 "
+            "or a full ISO timestamp.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2) from None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
+
+
+def cmd_evolve(
+    *,
+    since: str | None = None,
+    dry_run: bool = False,
+    recall=None,
+) -> int:
+    """Cluster promoted lessons into SKILL.md drafts under ``_proposed/``.
+
+    Reads lessons through the memory recall chain and emits DRAFTS only; it
+    never installs a skill (substrate rule + Alfred's approval-gate doctrine).
+    ``recall`` is an injection seam for tests; production wires it to
+    ``memory.config.recall_lessons``.
+    """
+    import skills_evolve
+
+    since_dt = _parse_since(since)
+    if recall is None:
+        try:
+            from memory.config import recall_lessons as recall
+        except Exception as exc:  # pragma: no cover - only on a broken install
+            print(f"Cannot reach memory recall: {exc}", file=sys.stderr)
+            return 1
+
+    try:
+        proposals = skills_evolve.evolve_skills(recall=recall, since=since_dt, dry_run=dry_run)
+    except Exception as exc:
+        print(f"Evolve failed: {exc}", file=sys.stderr)
         return 1
-    verb = "would install" if result.dry_run else "installed"
-    if result.fetched:
-        print(f"{verb} {result.pack} (fetch) -> {result.dest}")
-        print(f"  command: {result.fetched}")
-    else:
-        print(f"{verb} {result.pack} (vendored) -> {result.dest}")
-    if target.attribution:
-        print(f"  license: {target.license} | {target.attribution}")
+
+    if not proposals:
+        print("No skill proposals: not enough clustered lessons yet.")
+        return 0
+    verb = "Would draft" if dry_run else "Drafted"
+    print(
+        f"{verb} {len(proposals)} skill proposal(s) under {skills_evolve.default_proposed_dir()}:"
+    )
+    for prop in proposals:
+        c = prop.cluster
+        print(f"  {prop.name}  ({c.size} lessons; repo={c.repo}, tag={c.tag}) -> {prop.path}")
+    print("These are DRAFTS. Review and register in skills/packs.toml; nothing was installed.")
     return 0
 
 
@@ -136,7 +235,12 @@ def build_parser(prog: str = "alfred skills") -> argparse.ArgumentParser:
     p_list.add_argument("--json", action="store_true")
 
     p_install = sub.add_parser("install", help="install one pack into the skills dir")
-    p_install.add_argument("pack", help="pack name (see `list`)")
+    p_install.add_argument("pack", nargs="?", help="pack name (see `list`); omit with --starter")
+    p_install.add_argument(
+        "--starter",
+        action="store_true",
+        help="install the default first-party starter set (local copy, no network)",
+    )
     p_install.add_argument(
         "--yes",
         action="store_true",
@@ -148,6 +252,14 @@ def build_parser(prog: str = "alfred skills") -> argparse.ArgumentParser:
 
     p_installed = sub.add_parser("installed", help="list installed packs")
     p_installed.add_argument("--json", action="store_true")
+
+    p_evolve = sub.add_parser(
+        "evolve", help="draft SKILL.md proposals from promoted memory (never installs)"
+    )
+    p_evolve.add_argument("--since", help="only lessons created on/after this ISO date")
+    p_evolve.add_argument(
+        "--dry-run", action="store_true", help="report the proposals without writing any draft"
+    )
     return parser
 
 
@@ -162,11 +274,17 @@ def dispatch(args: argparse.Namespace) -> int:
         return cmd_installed(as_json=bool(getattr(args, "json", False)))
     if command == "install":
         return cmd_install(
-            args.pack,
+            getattr(args, "pack", None),
             yes=bool(getattr(args, "yes", False)),
             dry_run=bool(getattr(args, "dry_run", False)),
+            starter=bool(getattr(args, "starter", False)),
         )
-    print("Usage: alfred skills {list|install <pack>|installed}", file=sys.stderr)
+    if command == "evolve":
+        return cmd_evolve(
+            since=getattr(args, "since", None),
+            dry_run=bool(getattr(args, "dry_run", False)),
+        )
+    print("Usage: alfred skills {list|install <pack>|installed|evolve}", file=sys.stderr)
     return 2
 
 

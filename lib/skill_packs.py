@@ -48,6 +48,7 @@ __all__ = [
     "manifest_path",
     "skill_prompt_snippet",
     "skills_root",
+    "starter_packs",
 ]
 
 # Env override for where installed skills land. Defaults to the Claude Code
@@ -58,6 +59,11 @@ DEFAULT_SKILLS_DIR_ENV = "ALFRED_SKILLS_DIR"
 # Valid install shapes.
 _VENDORED = "vendored"
 _FETCH = "fetch"
+# first_party: an Alfred-authored MIT skill living in ``skills/first_party/<name>/``.
+# It installs exactly like a vendored pack (a local copytree, no network), but it
+# is our own source rather than a copied upstream, so it carries no upstream
+# attribution and can be flagged as part of the default "starter" set.
+_FIRST_PARTY = "first_party"
 
 
 @dataclass(frozen=True)
@@ -80,8 +86,10 @@ class Pack:
     roles: tuple[str, ...]
     vendored_path: str | None = None
     fetch_cmd: str | None = None
+    first_party_path: str | None = None
     reference_reason: str | None = None
     opt_in: bool = False
+    default_install: bool = False
 
     @property
     def is_vendored(self) -> bool:
@@ -90,6 +98,19 @@ class Pack:
     @property
     def is_fetch(self) -> bool:
         return self.install == _FETCH
+
+    @property
+    def is_first_party(self) -> bool:
+        return self.install == _FIRST_PARTY
+
+    @property
+    def is_local_copy(self) -> bool:
+        """True when installing this pack is a local copytree (no network).
+
+        Both vendored and first-party packs copy a directory from this repo into
+        the skills dir; the fetch shape is the only one that reaches the network.
+        """
+        return self.is_vendored or self.is_first_party
 
 
 def skills_root() -> Path:
@@ -147,15 +168,20 @@ def _parse_pack(table: dict[str, object]) -> Pack:
     except KeyError as exc:
         raise ValueError(f"pack is missing required key {exc}") from exc
 
-    if install not in (_VENDORED, _FETCH):
-        raise ValueError(f"pack {name!r} has invalid install {install!r} (want vendored|fetch)")
+    if install not in (_VENDORED, _FETCH, _FIRST_PARTY):
+        raise ValueError(
+            f"pack {name!r} has invalid install {install!r} (want vendored|fetch|first_party)"
+        )
 
     vendored_path = table.get("vendored_path")
     fetch_cmd = table.get("fetch_cmd")
+    first_party_path = table.get("first_party_path")
     if install == _VENDORED and not vendored_path:
         raise ValueError(f"vendored pack {name!r} must set vendored_path")
     if install == _FETCH and not fetch_cmd:
         raise ValueError(f"fetch pack {name!r} must set fetch_cmd")
+    if install == _FIRST_PARTY and not first_party_path:
+        raise ValueError(f"first_party pack {name!r} must set first_party_path")
 
     return Pack(
         name=name,
@@ -168,10 +194,12 @@ def _parse_pack(table: dict[str, object]) -> Pack:
         roles=_coerce_roles(table.get("roles")),
         vendored_path=str(vendored_path) if vendored_path else None,
         fetch_cmd=str(fetch_cmd) if fetch_cmd else None,
+        first_party_path=str(first_party_path) if first_party_path else None,
         reference_reason=(
             str(table["reference_reason"]) if table.get("reference_reason") else None
         ),
         opt_in=bool(table.get("opt_in", False)),
+        default_install=bool(table.get("default_install", False)),
     )
 
 
@@ -202,6 +230,19 @@ def _vendored_source(pack: Pack) -> Path:
     """Absolute path to a vendored pack's source directory in this repo."""
     assert pack.vendored_path is not None
     return skills_root() / "vendored" / pack.vendored_path
+
+
+def _first_party_source(pack: Pack) -> Path:
+    """Absolute path to a first-party pack's source directory in this repo."""
+    assert pack.first_party_path is not None
+    return skills_root() / "first_party" / pack.first_party_path
+
+
+def _local_source(pack: Pack) -> Path:
+    """Source directory for a local-copy pack (vendored or first-party)."""
+    if pack.is_first_party:
+        return _first_party_source(pack)
+    return _vendored_source(pack)
 
 
 @dataclass(frozen=True)
@@ -239,10 +280,11 @@ def install_pack(
     """
     skills_dir = skills_dir or default_skills_dir()
 
-    if pack.is_vendored:
-        src = _vendored_source(pack)
+    if pack.is_local_copy:
+        src = _local_source(pack)
         if not src.is_dir():
-            raise FileNotFoundError(f"vendored source missing for {pack.name!r}: {src}")
+            shape = "first-party" if pack.is_first_party else "vendored"
+            raise FileNotFoundError(f"{shape} source missing for {pack.name!r}: {src}")
         dest = skills_dir / pack.name
         if dry_run:
             return InstallResult(pack.name, pack.install, dest, dry_run=True)
@@ -294,6 +336,16 @@ def installed_packs(packs: Sequence[Pack], *, skills_dir: Path | None = None) ->
         if (skills_dir / pack.name).is_dir():
             present.add(pack.name)
     return present
+
+
+def starter_packs(packs: Sequence[Pack]) -> list[Pack]:
+    """The default first-party set: local-copy packs flagged ``default_install``.
+
+    This is what ``alfred skills install --starter`` installs. It is limited to
+    local-copy shapes (no network) so a starter install is deterministic and
+    offline: a fetch pack is never pulled in implicitly.
+    """
+    return [p for p in packs if p.default_install and p.is_local_copy]
 
 
 def skill_prompt_snippet(pack: Pack, *, skills_dir: Path | None = None) -> str:
