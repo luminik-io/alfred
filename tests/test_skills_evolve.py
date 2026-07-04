@@ -115,9 +115,50 @@ def test_evolve_writes_drafts_under_proposed(tmp_path: Path) -> None:
     assert len(proposals) == 1
     prop = proposals[0]
     assert prop.written is True
-    assert prop.path == tmp_path / "your-backend-schema" / "SKILL.md"
+    # The readable slug plus a stable key-hash suffix (collision-proof filename).
+    assert prop.name.startswith("your-backend-schema-")
+    assert prop.path == tmp_path / prop.name / "SKILL.md"
     assert prop.path.is_file()
     assert "status: proposed" in prop.path.read_text(encoding="utf-8")
+
+
+def test_two_clusters_sharing_a_slug_base_get_distinct_files(tmp_path: Path) -> None:
+    """Distinct clusters that slugify to the same 48-char base must not clobber.
+
+    Both keys share a >48-char common prefix, so the readable slug truncates to
+    the same base; the stable key-hash suffix must still separate them.
+    """
+    common = "backend-service-with-a-very-long-descriptive-repo"  # > 48 chars
+    lessons = [
+        StubLesson("a1", ["alpha"], f"{common}-one"),
+        StubLesson("a2", ["alpha"], f"{common}-one"),
+        StubLesson("b1", ["alpha"], f"{common}-two"),
+        StubLesson("b2", ["alpha"], f"{common}-two"),
+    ]
+    clusters = skills_evolve.cluster_lessons(lessons)
+    assert len(clusters) == 2
+    # Same readable base, different full name (the hash suffix differs).
+    bases = {c.name.rsplit("-", 1)[0] for c in clusters}
+    assert len(bases) == 1, "precondition: the two slugs share a truncated base"
+    assert len({c.name for c in clusters}) == 2, "names must be distinct"
+
+    proposals = skills_evolve.evolve_skills(recall=_recall_from(lessons), proposed_dir=tmp_path)
+    assert len(proposals) == 2
+    paths = {p.path for p in proposals}
+    assert len(paths) == 2, "two clusters must write two distinct draft files"
+    # Both drafts survive on disk (neither overwrote the other).
+    assert all(p.path.is_file() for p in proposals)
+
+
+def test_cluster_name_is_stable_across_runs() -> None:
+    """The same (repo, tag) always yields the same draft name (reviewable diffs)."""
+    lessons = [
+        StubLesson("a", ["schema"], "your-backend"),
+        StubLesson("b", ["schema"], "your-backend"),
+    ]
+    first = skills_evolve.cluster_lessons(lessons)[0].name
+    second = skills_evolve.cluster_lessons(lessons)[0].name
+    assert first == second
 
 
 def test_evolve_dry_run_writes_nothing(tmp_path: Path) -> None:

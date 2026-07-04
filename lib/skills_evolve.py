@@ -28,6 +28,7 @@ Zero new third-party dependencies; stdlib only.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections import defaultdict
 from collections.abc import Callable, Sequence
@@ -61,11 +62,34 @@ def default_proposed_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "skills" / "first_party" / "_proposed"
 
 
+# Length of the stable hash suffix appended to every draft name. 8 hex chars of
+# BLAKE2b over the full cluster key is ample to keep distinct clusters apart
+# while staying short and readable in a filename.
+_NAME_HASH_LEN = 8
+
+
 def _slugify(text: str, *, fallback: str = "lesson") -> str:
     """Lowercase-hyphen slug suitable for a SKILL.md ``name`` and directory."""
     slug = _SLUG_RE.sub("-", text.strip().lower()).strip("-")
     slug = slug[:48].strip("-")
     return slug or fallback
+
+
+def _cluster_name(repo: str, tag: str) -> str:
+    """Collision-proof draft name: a readable slug plus a stable key hash.
+
+    The readable part (``slugify(repo-tag)``) is truncated to 48 chars, so two
+    distinct ``(repo, tag)`` keys whose slugs share the same 48-char prefix would
+    otherwise map to the same ``_proposed/<name>`` and clobber each other. We
+    append a short BLAKE2b digest of the FULL, untruncated key so distinct
+    clusters always get distinct files, while the same key always yields the same
+    name (deterministic re-runs, reviewable diffs).
+    """
+    base = _slugify(f"{repo}-{tag}", fallback=_slugify(tag))
+    digest = hashlib.blake2b(f"{repo}\x00{tag}".encode(), digest_size=_NAME_HASH_LEN).hexdigest()[
+        :_NAME_HASH_LEN
+    ]
+    return f"{base}-{digest}"
 
 
 @dataclass(frozen=True)
@@ -142,7 +166,7 @@ def cluster_lessons(
     for (repo, tag), items in sorted(buckets.items()):
         if len(items) < min_cluster_size:
             continue
-        name = _slugify(f"{repo}-{tag}", fallback=_slugify(tag))
+        name = _cluster_name(repo, tag)
         clusters.append(LessonCluster(name=name, repo=repo, tag=tag, lessons=tuple(items)))
     return clusters
 
