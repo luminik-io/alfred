@@ -1084,6 +1084,31 @@ def register_routes(app: FastAPI) -> None:
         draft_id = _safe_compose_draft_id(body.get("draft_id"))
         prior_payload, prior_path = _read_compose_draft_payload(request, draft_id)
         base_draft = _compose_base_draft(body, prior_payload)
+
+        # A question must get an answer, not a fabricated plan. This one-shot
+        # endpoint is the reliable fallback the Ask surface drops to when no live
+        # conversational engine is configured; without this branch a plain status
+        # question ("what is the current state of the fleet?") is synthesized into
+        # a starter plan, which is the wrong surface. Classify the turn with the
+        # SAME deterministic backstop the converse path shares
+        # (compose_converse.classify_message_intent): a fresh, question-shaped
+        # message that carries no build signal is a conversation turn and gets a
+        # plain reply that points at the answer path, instead of a plan. A change
+        # request, or any refinement of an existing draft, still drafts as before.
+        # Repos are excluded from the "has signal" judgment here: they are
+        # grounding context, not evidence this turn is work. The desktop client
+        # sends the selected repo in draft.repos with EVERY fallback turn (and
+        # the setup-scope injection below adds one server-side), so counting
+        # repos would suppress the conversation path for any configured setup.
+        content_draft = replace(base_draft, repos=()) if base_draft.repos else base_draft
+        if (
+            text
+            and prior_payload is None
+            and not _draft_has_signal(content_draft)
+            and _compose_question_intent(text, content_draft)
+        ):
+            return JSONResponse(_compose_question_reply(draft_id))
+
         if not base_draft.repos:
             setup_scope = _selected_setup_repos_for_scope()
             if setup_scope:
@@ -2324,6 +2349,65 @@ def _plain_compose_title(text: str) -> str:
     if len(title) > 92:
         title = title[:92].rsplit(" ", 1)[0].rstrip(" ,.;:")
     return title[:1].upper() + title[1:] if title else "Plan Alfred work"
+
+
+def _compose_question_intent(text: str, base_draft: IssueDraft) -> bool:
+    """True when ``text`` is a plain question, not a change request.
+
+    Thin wrapper over the shared, deterministic
+    ``compose_converse.classify_message_intent`` so the one-shot draft fallback
+    routes questions to a conversational answer instead of a fabricated plan,
+    using the exact same intent semantics the converse path uses (no forked
+    logic). Imported lazily to keep the module import graph light.
+    """
+    import compose_converse as cc
+
+    return cc.classify_message_intent(text, draft=base_draft) == cc.INTENT_CONVERSATION
+
+
+def _compose_question_reply(draft_id: str | None) -> dict[str, Any]:
+    """A conversational answer for a question sent to the one-shot draft endpoint.
+
+    The Ask surface reaches this endpoint only as the no-live-engine fallback.
+    When the turn is a plain question (classified with the shared
+    ``compose_converse`` backstop), returning a fabricated starter plan is the
+    wrong surface: questions get answers. Since no conversational engine is
+    configured on this path, we cannot answer the question's content here, so we
+    say so plainly and honestly (``intent: "conversation"`` so the client renders
+    it as a normal chat reply with no plan card), instead of masquerading the
+    engine gap as a plan. The empty ``draft``/``readiness`` keep the response
+    shape compatible with ``ComposeDraftResponse`` while carrying no plan.
+    """
+    return {
+        "draft_id": draft_id or "",
+        "saved_path": "",
+        "title": "",
+        "intent": "conversation",
+        "readiness": {"ok": False, "score": 0},
+        "questions": [],
+        "findings": [],
+        "summary": (
+            "That is a question, so I did not start a plan. Answering it needs "
+            "Alfred's conversational engine, which is not configured on this "
+            "connection. Open the desktop app with a live engine to get an "
+            "answer, or describe a change you want made and I will shape a plan."
+        ),
+        "spec_body": "",
+        "revision_count": 0,
+        "draft": {
+            "title": "",
+            "problem": "",
+            "user": "",
+            "current_behavior": "",
+            "desired_behavior": "",
+            "repos": [],
+            "acceptance_criteria": [],
+            "test_plan": "",
+            "out_of_scope": "",
+            "rollout": "",
+            "open_questions": "",
+        },
+    }
 
 
 def _compose_draft_response_summary(

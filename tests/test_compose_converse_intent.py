@@ -114,6 +114,54 @@ def test_heuristic_classifies_build_request_as_build() -> None:
     assert intent == cc.INTENT_BUILD
 
 
+def test_no_engine_classifier_keeps_list_status_questions_conversational() -> None:
+    # "list"/"give"/"provide" lean informational: a modal status question routed
+    # through the no-engine Ask fallback must not be misread as build work and
+    # persist a plan card (regression: these verbs were build hints).
+    for message in (
+        "Can you list the currently live agents?",
+        "Could you give me the status of the fleet?",
+        "Can you provide an overview of what shipped today?",
+    ):
+        assert (
+            cc.classify_message_intent(message, draft=_empty_draft()) == cc.INTENT_CONVERSATION
+        ), message
+    # A genuine build request phrased the same way still routes to build.
+    assert (
+        cc.classify_message_intent("Can you add a dark mode toggle?", draft=_empty_draft())
+        == cc.INTENT_BUILD
+    )
+    assert (
+        cc.classify_message_intent(
+            "Can you show paused agents in the roster?", draft=_empty_draft()
+        )
+        == cc.INTENT_BUILD
+    )
+
+
+def test_no_engine_classifier_routes_modal_status_questions_by_subject() -> None:
+    # A modal opener with a personal-pronoun subject (you/i/we) is a question
+    # unless it carries a build verb, so "can I see/get the status" stays
+    # conversation while "can we show/add X" stays build. A non-pronoun subject
+    # ("could the dashboard include X") names a thing to change and stays build.
+    for message in (
+        "Can I see the current state of the fleet?",
+        "Can I get the fleet status?",
+        "Could we get the list of paused agents?",
+    ):
+        assert (
+            cc.classify_message_intent(message, draft=_empty_draft()) == cc.INTENT_CONVERSATION
+        ), message
+    for message in (
+        "Can we show paused agents in the roster?",
+        "Could the dashboard include a pause button?",
+        # An info verb does not win over a build verb also in verb position.
+        "Can we find a way to add dark mode?",
+        "Could we get the app to support markdown?",
+    ):
+        assert cc.classify_message_intent(message, draft=_empty_draft()) == cc.INTENT_BUILD, message
+
+
 def test_heuristic_keeps_build_when_a_draft_already_has_content() -> None:
     # A "thanks" mid-build must not flip an in-progress spec to conversation and
     # wipe the plan; existing draft content forces build.
@@ -202,3 +250,174 @@ def test_default_converse_turn_intent_is_build() -> None:
         done=False,
     )
     assert turn.intent == cc.INTENT_BUILD
+
+
+# --- looks_like_question: deterministic question detector -------------------
+
+
+def test_looks_like_question_detects_the_live_repro() -> None:
+    # The exact question from the live bug report must read as a question so the
+    # no-engine fallback answers it instead of drafting a plan.
+    assert cc.looks_like_question("What is the current state of the fleet, in one short paragraph?")
+
+
+def test_looks_like_question_detects_interrogative_without_trailing_mark() -> None:
+    assert cc.looks_like_question("How many agents are paused")
+
+
+def test_looks_like_question_rejects_plain_build_request() -> None:
+    assert not cc.looks_like_question("Add a dark mode toggle to the settings page")
+
+
+def test_looks_like_question_rejects_build_verb_phrased_as_question() -> None:
+    # "Can you add X?" is work phrased as a question; the build verb wins so the
+    # plan surface is not suppressed for a real request.
+    assert not cc.looks_like_question("Can you add a dark mode toggle?")
+
+
+def test_looks_like_question_rejects_modal_change_requests() -> None:
+    # Request-shaped questions with unlisted verbs are still change requests: a
+    # modal opener not aimed at the assistant is work, never a plain question.
+    assert not cc.looks_like_question("Can we show paused agents in the roster?")
+    assert not cc.looks_like_question("Could the dashboard include a pause button?")
+    assert not cc.looks_like_question("Should we retry failed firings automatically?")
+    assert not cc.looks_like_question("Would it be possible to show more history?")
+
+
+def test_looks_like_question_keeps_assistant_directed_modal_questions() -> None:
+    # A modal aimed at the assistant itself, with no build verb, is a question.
+    assert cc.looks_like_question("Can you explain how review works?")
+    assert cc.looks_like_question("Could you summarize the fleet status?")
+
+
+def test_looks_like_question_rejects_empty() -> None:
+    assert not cc.looks_like_question("   ")
+
+
+# --- classify_message_intent: shared no-engine backstop ---------------------
+
+
+def test_classify_message_intent_status_question_is_conversation() -> None:
+    intent = cc.classify_message_intent(
+        "What is the current state of the fleet, in one short paragraph?",
+        draft=_empty_draft(),
+    )
+    assert intent == cc.INTENT_CONVERSATION
+
+
+def test_classify_message_intent_change_request_is_build() -> None:
+    intent = cc.classify_message_intent(
+        "Add a CSV export button to the reports page",
+        draft=_empty_draft(),
+    )
+    assert intent == cc.INTENT_BUILD
+
+
+def test_classify_message_intent_build_verb_question_is_build() -> None:
+    intent = cc.classify_message_intent(
+        "Can you add a dark mode toggle?",
+        draft=_empty_draft(),
+    )
+    assert intent == cc.INTENT_BUILD
+
+
+def test_classify_message_intent_keeps_build_when_draft_has_content() -> None:
+    # A question mid-build ("and the mobile app?") must not wipe the spec.
+    intent = cc.classify_message_intent(
+        "and what about the mobile app?",
+        draft=_build_draft(),
+    )
+    assert intent == cc.INTENT_BUILD
+
+
+def test_classify_message_intent_greeting_still_conversation() -> None:
+    # The existing greeting-opener heuristic still resolves to conversation.
+    intent = cc.classify_message_intent("who are you", draft=_empty_draft())
+    assert intent == cc.INTENT_CONVERSATION
+
+
+def test_classify_message_intent_modal_change_requests_are_build() -> None:
+    # Planning asks phrased as questions with unlisted verbs must keep the
+    # no-engine planning path (the modal-opener rule, not the verb list, wins).
+    for message in (
+        "Can we show paused agents in the roster?",
+        "Could the dashboard include a pause button?",
+        "Should we retry failed firings automatically?",
+    ):
+        assert cc.classify_message_intent(message, draft=_empty_draft()) == cc.INTENT_BUILD
+
+
+def test_classify_message_intent_ignores_grounding_repos() -> None:
+    # The desktop Ask sends the selected repo in draft.repos with EVERY fallback
+    # turn as grounding context. A repo-only draft must not read as work: the
+    # live-repro question stays a conversation turn in a one-repo setup.
+    repo_only = IssueDraft(title="", repos=["your-org/frontend"])
+    intent = cc.classify_message_intent(
+        "What is the current state of the fleet, in one short paragraph?",
+        draft=repo_only,
+    )
+    assert intent == cc.INTENT_CONVERSATION
+
+
+def test_classify_message_intent_real_content_still_wins_over_question() -> None:
+    # Repos are ignored, but any REAL draft content (title, desired behavior,
+    # acceptance criteria) still forces build, question-shaped or not.
+    intent = cc.classify_message_intent(
+        "and what about the mobile app?",
+        draft=IssueDraft(title="Add a dark mode toggle", repos=["your-org/frontend"]),
+    )
+    assert intent == cc.INTENT_BUILD
+
+
+def test_noun_use_of_build_verb_stays_question():
+    from compose_converse import looks_like_question
+
+    assert looks_like_question("What support options are available?")
+    assert looks_like_question("What changes landed this week?")
+    assert looks_like_question("Which fix went out yesterday?")
+
+
+def test_verb_position_build_hints_stay_work():
+    from compose_converse import looks_like_question
+
+    assert not looks_like_question("Can we support markdown exports?")
+    assert not looks_like_question("Is it possible to add retries?")
+    assert not looks_like_question("Please update the docs")
+
+
+def test_helper_phrasings_stay_work():
+    from compose_converse import looks_like_question
+
+    assert not looks_like_question("Can you help me add a CSV export?")
+    assert not looks_like_question("Can you help add a dark mode toggle?")
+    assert not looks_like_question("Help us fix the login redirect")
+
+
+def test_how_to_questions_stay_questions():
+    from compose_converse import looks_like_question
+
+    assert looks_like_question("How do I add a new repo?")
+    assert looks_like_question("What changes should we make first?")
+    assert looks_like_question("Where do I update the token?")
+
+
+def test_proposal_gerunds_stay_work():
+    from compose_converse import looks_like_question
+
+    assert not looks_like_question("What about adding search?")
+    assert not looks_like_question("How about making the header sticky?")
+
+
+def test_feature_request_verbs_stay_work():
+    from compose_converse import looks_like_question as q
+
+    assert not q("Can you show paused agents in the roster?")
+    assert not q("Could you include a pause button on the dashboard?")
+    assert not q("Can you surface the awaiting-approval count?")
+
+
+def test_communication_verbs_stay_questions():
+    from compose_converse import looks_like_question as q
+
+    assert q("Can you explain how review works?")
+    assert q("Could you describe the approval gate?")

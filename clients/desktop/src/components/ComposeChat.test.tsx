@@ -314,6 +314,40 @@ describe("ComposeView (conversational)", () => {
     expect(screen.getByText(/^Draft plan$/)).toBeInTheDocument();
   });
 
+  it("answers a question conversationally on the no-engine fallback, with no plan card", async () => {
+    // The live bug: a question ("What is the current state of the fleet?") sent
+    // through the no-engine draft fallback came back as a starter plan with a
+    // "File as an issue" CTA. The server now returns a conversation-intent draft
+    // response; the client must render it as a plain reply with NO plan card.
+    converseMock.mockRejectedValue(
+      new ApiError(
+        "Alfred serve is reachable but not ready yet.",
+        'alfred serve returned 503: {"error": "live_session_unavailable"}',
+      ),
+    );
+    draftMock.mockResolvedValue(
+      draftResponse({
+        intent: "conversation",
+        title: "",
+        questions: [],
+        summary: "That is a question, so I did not start a plan.",
+        draft: { ...converseResponse().draft, title: "", desired_behavior: "" },
+      }),
+    );
+    const user = userEvent.setup();
+    renderChat();
+
+    await send(user, "What is the current state of the fleet, in one short paragraph?");
+
+    await waitFor(() => expect(draftMock).toHaveBeenCalledTimes(1));
+    expect(
+      await screen.findByText(/that is a question, so i did not start a plan\./i),
+    ).toBeInTheDocument();
+    // No plan card and no "firm it up" plan framing for a conversation turn.
+    expect(screen.queryByText(/^Draft plan$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/to firm it up/i)).not.toBeInTheDocument();
+  });
+
   it("keeps the message on a dropped stream and offers a one-click retry", async () => {
     // Stream and buffered converse both fail with a transport (not
     // live-unavailable) error: the turn stays on screen with a recoverable

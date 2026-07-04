@@ -31,7 +31,7 @@ import hashlib
 import json
 import os
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -557,6 +557,308 @@ def resolve_intent(
     if len(message) <= 80 and any(stripped == hint for hint in _CONVERSATION_HINTS):
         return INTENT_CONVERSATION
     return INTENT_BUILD
+
+
+# Interrogatives that open a genuine question ("what is the fleet state?",
+# "how many agents are paused?"). Used only by the no-engine classifier below to
+# tell a status/answer question from a change request when there is no live
+# model to judge. Kept deliberately narrow: a leading question word plus a
+# trailing "?" is a strong, low-false-positive signal, and a real build request
+# ("Add a dark mode toggle") matches neither. Modals (can/could/should/...) are
+# deliberately NOT here: they open request-shaped questions ("can we support
+# X?") and are handled separately by ``_MODAL_OPENERS``.
+_QUESTION_OPENERS = (
+    "what",
+    "whats",
+    "what's",
+    "which",
+    "who",
+    "whom",
+    "whose",
+    "where",
+    "when",
+    "why",
+    "how",
+    "is",
+    "are",
+    "was",
+    "were",
+    "do",
+    "does",
+    "did",
+    "am",
+    "have",
+    "has",
+)
+
+# Modal openers are how people phrase CHANGE REQUESTS as questions ("can we
+# show paused agents in the roster?", "could the dashboard include a pause
+# button?", "should we add retries?"). A modal-opener message is therefore work
+# by default, never a plain question -- UNLESS it is directed at the assistant
+# itself ("can you explain how review works?"), which reads as a question and
+# still has to clear the build-verb check ("can you add a dark mode toggle?"
+# stays work). Ambiguity resolves to build so the no-engine planning path is
+# never lost for a natural request.
+_MODAL_OPENERS = (
+    "can",
+    "could",
+    "should",
+    "would",
+    "will",
+    "shall",
+    "may",
+    "might",
+    "must",
+)
+
+# Imperative verbs that open a change request even when phrased with a trailing
+# "?" ("Can you add a dark mode toggle?"). When a question-shaped message also
+# carries one of these build verbs it is treated as work, not a question, so the
+# plan surface is never suppressed for a real request.
+_BUILD_VERB_HINTS = (
+    "add",
+    "build",
+    "create",
+    "make",
+    "implement",
+    "fix",
+    "change",
+    "update",
+    "remove",
+    "delete",
+    "refactor",
+    "rename",
+    "migrate",
+    "wire",
+    "ship",
+    "write",
+    "support",
+    "enable",
+    "disable",
+    # Common feature-request verbs ("can you show/include/surface X?"). These
+    # keep "can you <verb>" requests on the build path; communication verbs
+    # ("explain", "tell", "describe", "clarify") are deliberately absent so
+    # "can you explain how review works?" stays a question. This list is a
+    # best-effort backstop for the NO-ENGINE path only; when a live engine is
+    # configured the model classifier handles the long tail of phrasing.
+    "show",
+    "display",
+    "include",
+    "surface",
+    "expose",
+    "render",
+    "toggle",
+    "hide",
+    "sort",
+    "filter",
+    "group",
+    "highlight",
+    "put",
+)
+
+
+# Wh-words ask ABOUT something; they win over verb position ("how do I add
+# a repo?"). Yes/no openers ("is", "are", "do") do not: "is it possible to
+# add retries?" is still a change request and runs the verb check.
+_WH_OPENERS = (
+    "what",
+    "whats",
+    "what's",
+    "which",
+    "who",
+    "whom",
+    "whose",
+    "where",
+    "when",
+    "why",
+    "how",
+)
+
+
+def looks_like_question(text: str) -> bool:
+    """True when ``text`` reads as a plain question rather than a change request.
+
+    A deterministic, no-model signal used by the offline classifier, resolving
+    ambiguity toward "not a question" (build) so the planning path is never lost
+    for a natural request:
+
+    * A modal opener ("can/could/should/would ...") is a request phrased as a
+      question ("can we show paused agents in the roster?", "could the dashboard
+      include a pause button?") and is NOT a plain question -- unless it is
+      directed at the assistant itself ("can you explain how review works?").
+    * Otherwise the message must end with ``?`` or open with an interrogative
+      word ("what is the current state of the fleet?").
+    * Either way, a build verb anywhere ("can you add a dark mode toggle?")
+      marks work phrased as a question, so it is not a plain question.
+
+    Genuine build prose ("Add a CSV export button") matches no branch and stays
+    work.
+    """
+    cleaned = " ".join(str(text or "").split()).strip()
+    if not cleaned:
+        return False
+    lowered = cleaned.lower()
+    tokens = [token.strip(",.;:!?\"'`()[]") for token in lowered.split()]
+    tokens = [token for token in tokens if token]
+    if not tokens:
+        return False
+    first = tokens[0]
+    if first in _MODAL_OPENERS:
+        # Modal-opener messages are change requests by default ("can we show
+        # X", "should we retry failed firings", "could the dashboard include a
+        # pause button"). Two shapes read as questions instead:
+        #   * aimed at the assistant ("can you ...") -> runs the build-verb
+        #     check below, so "can you add X?" stays work.
+        #   * a first-person subject asking ABOUT state with an information verb
+        #     ("can I see the fleet status?", "could we get the paused agents?")
+        #     -> a status question, not a change request.
+        second = tokens[1] if len(tokens) > 1 else ""
+        if second != "you":
+            # A first-person subject asking with an information verb and no build
+            # verb is a status question ("can I see the fleet status?"). Anything
+            # else with a non-"you" subject is a change request: a build verb wins
+            # ("can we find a way to ADD dark mode?") and a noun subject names a
+            # thing to change ("could the dashboard include X?"). Only "can you
+            # ..." falls through to the shared build-verb check below.
+            return (
+                second in {"i", "we"}
+                and _has_info_verb_in_verb_position(tokens)
+                and not _has_build_verb_in_verb_position(tokens)
+            )
+    elif first in _WH_OPENERS:
+        # An interrogative opener asks ABOUT something rather than
+        # commissioning it: "how do I add a new repo?" and "what changes
+        # should we make?" are guidance questions even though a build verb
+        # sits in verb position. The one idiom that proposes work is
+        # "how/what about ..." ("how about adding search?"), which falls
+        # through to the verb check below.
+        second = tokens[1] if len(tokens) > 1 else ""
+        if second != "about":
+            return True
+    elif not (cleaned.endswith("?") or first in _QUESTION_OPENERS):
+        return False
+    # A build verb in VERB position ("can you add ...?", "is it possible to
+    # add ...?") marks work phrased as a question. Position matters: several
+    # hints are also common nouns ("what support options are available?",
+    # "what changes landed?"), and a noun use must not suppress the question.
+    return not _has_build_verb_in_verb_position(tokens)
+
+
+# Tokens that put a following build-verb hint into verb position: subject
+# pronouns ("can we add ..."), the infinitive marker ("is it possible to
+# add ..."), and politeness/chaining openers ("please add ...", "and then
+# remove ...").
+_VERB_POSITION_PRECEDERS = (
+    "we",
+    "you",
+    "i",
+    "it",
+    "they",
+    "alfred",
+    "to",
+    "please",
+    "and",
+    "then",
+    "just",
+    # Helper phrasings keep the following verb in verb position:
+    # "can you help me add ...", "help us fix ...", "help add ...".
+    "help",
+    "me",
+    "us",
+    # The proposal idiom puts the gerund right after "about":
+    # "what about adding search?".
+    "about",
+)
+
+
+def _is_build_verb_form(token: str) -> bool:
+    """True for a build-verb hint or its gerund ("adding", "making").
+
+    Gerunds carry proposals ("what about adding search?"), so the hint match
+    normalizes -ing forms: strip the suffix, then try the bare stem, the
+    de-doubled stem ("adding" -> "add"), and the restored-e stem
+    ("making" -> "make").
+    """
+    if token in _BUILD_VERB_HINTS:
+        return True
+    if len(token) > 4 and token.endswith("ing"):
+        stem = token[:-3]
+        candidates = {stem, stem + "e"}
+        if len(stem) > 1 and stem[-1] == stem[-2]:
+            candidates.add(stem[:-1])
+        return bool(candidates & set(_BUILD_VERB_HINTS))
+    return False
+
+
+# Information verbs: asking to look AT existing state, not change it. Used only
+# to tell a first-person status question ("can I see the fleet status?") from a
+# first-person change request ("can we show X in the roster?").
+_INFO_VERBS = ("see", "view", "check", "read", "get", "find")
+
+
+def _has_info_verb_in_verb_position(tokens: list[str]) -> bool:
+    """True when an information verb (see/get/view/...) is used as a verb.
+
+    Mirrors ``_has_build_verb_in_verb_position``: the verb must open the message
+    or directly follow a subject pronoun, the infinitive "to", or a
+    politeness/chaining opener, so "can I see the status" counts while a noun use
+    does not.
+    """
+    for index, token in enumerate(tokens):
+        if token not in _INFO_VERBS:
+            continue
+        if index == 0:
+            return True
+        if tokens[index - 1] in _VERB_POSITION_PRECEDERS:
+            return True
+    return False
+
+
+def _has_build_verb_in_verb_position(tokens: list[str]) -> bool:
+    """True when a build-verb hint is used as a verb, not as a noun.
+
+    A hint counts only when it opens the message ("Add a CSV export") or
+    directly follows a subject pronoun, the infinitive "to", or a
+    politeness/chaining opener ("can we support markdown?", "is it possible
+    to add retries?", "please update the docs"). "What support options are
+    available?" leaves "support" in noun position and stays a question.
+    """
+    for index, token in enumerate(tokens):
+        if not _is_build_verb_form(token):
+            continue
+        if index == 0:
+            return True
+        if tokens[index - 1] in _VERB_POSITION_PRECEDERS:
+            return True
+    return False
+
+
+def classify_message_intent(text: str, *, draft: IssueDraft) -> str:
+    """Classify one plain message as ``conversation`` or ``build`` with no model.
+
+    This is the shared, deterministic backstop the no-engine surfaces use so a
+    question ("what is the current state of the fleet?") is answered instead of
+    silently drafted into a plan. It layers a question detector on top of the
+    existing ``resolve_intent`` heuristic (the single source of intent truth):
+
+    * A draft that already carries structured content is ``build`` (a mid-build
+      "and the mobile app?" must not wipe the in-progress spec). ``repos`` alone
+      are NOT content here: clients send the selected repo as grounding context
+      with every turn (the desktop Ask sends ``draft.repos`` even for a plain
+      question), so a repo-only draft must not suppress the conversation intent.
+    * An otherwise plain, question-shaped message is ``conversation``.
+    * Everything else defaults to ``build`` so genuine work is never misread.
+
+    The live model still overrides this whenever an engine is configured (that
+    path runs through ``resolve_intent`` with the model's own verdict); this only
+    strengthens the deterministic fallback both surfaces share.
+    """
+    content_draft = replace(draft, repos=[]) if draft.repos else draft
+    if _draft_has_content(content_draft):
+        return INTENT_BUILD
+    if looks_like_question(text):
+        return INTENT_CONVERSATION
+    return resolve_intent(None, last_user_message=text, draft=content_draft, done=False)
 
 
 def _draft_has_content(draft: IssueDraft) -> bool:
