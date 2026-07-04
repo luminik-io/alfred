@@ -543,6 +543,7 @@ the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
 - [AI-assisted install](docs/AI_ASSISTED_INSTALL.md): copy-paste prompt for Claude Code, Codex, or another local coding assistant.
 - [Workspace patterns](docs/WORKSPACE_PATTERNS.md): one-repo, multi-repo, specs-led, and Batman planning layouts.
 - [Specs-driven development](docs/SPECS_DRIVEN_DEVELOPMENT.md): how to turn specs into issue queues, Batman plans, and reviewable PRs.
+- [Spec-driven work in plain words](docs/SPEC_DRIVEN_FOR_EVERYONE.md): the non-technical version. Describe an outcome, answer a question or two, approve a preview.
 - [Bootstrap](BOOTSTRAP.md): operations guide (AWS IAM, Slack, troubleshooting).
 - [Tutorial: your first agent](docs/TUTORIAL.md): Echo, end-to-end.
 - [Dry-run mode](docs/DRY_RUN.md): watch a side-effect-safe firing lifecycle before trusting scheduled work.
@@ -550,6 +551,7 @@ the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
 - [Architecture diagrams](docs/ARCHITECTURE.md): mermaid diagrams for the agent lifecycle, model dispatch, locking, the Slack-native flow, the disk guardian, and the layered install.
 - [State machine](docs/STATE_MACHINE.md): `agent:in-flight` → `agent:pr-open` → `agent:done` lifecycle.
 - [Memory](docs/MEMORY_PROVIDERS.md): Redis Agent Memory for recalled lessons, local FleetBrain for the operational ledger and review queue, Slack-driven memory review, failure history, reliability governor, read-only MCP access, and the stable `alfred-codegraph@1` code-map export.
+- [MCP servers](docs/MCP.md): the read-only `alfred_memory` and consumed `code_memory` MCP servers Alfred attaches to Claude-engine firings only (Codex-routed firings get no MCP), per-role tool scoping, the safety model, and configuration.
 - [Alfred Desktop](docs/DESKTOP_CLIENT.md): the desktop app tab by tab, the Slack-native boundary, the Claude + Codex usage rail (backed by the live `GET /api/usage` endpoint), the cinematic agent roster, the `alfred serve` API, and building native installers.
 - [Alfred analytics CLIs](docs/CLI.md): `alfred metrics`, `alfred logs`, `alfred usage`, and `alfred slack-listener`.
 - [Goals](docs/GOALS.md): durable goal contract across Slack, CLI, client, planning readiness, evaluator, and memory.
