@@ -346,7 +346,10 @@ def test_scrub_rewrites_private_token_in_title(mod):
     assert mod.scrub_title("Wire billing-v2 settings panel") == "Wire billing-v2 settings panel"
     # The private sibling of the public repo can be named in a title even when
     # the PR's own repo is public; it must collapse to the neutral placeholder.
-    assert mod.scrub_title("Move alfred-internal state migration") == "Move your-internal state migration"
+    assert (
+        mod.scrub_title("Move alfred-internal state migration")
+        == "Move your-internal state migration"
+    )
     assert mod.scrub_title("Sync alfred-Internal secrets") == "Sync your-internal secrets"
 
 
