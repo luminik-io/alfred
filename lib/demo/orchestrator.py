@@ -509,6 +509,36 @@ def _git_checked(args: list[str], *, cwd: Path, step: str) -> None:
         )
 
 
+# Test-cache paths that a build/fix never authors but the ship-time test run
+# can create. They must not count as "real" work, or a no-op build that only
+# ran the suite would look like it changed something and sail through ship.
+_CACHE_PATH_PARTS = ("__pycache__/", ".pytest_cache/")
+
+
+def _has_real_changes(workdir: Path) -> bool:
+    """Return whether the worktree has genuine source changes to ship.
+
+    ``git status --porcelain`` is filtered so that python test-cache
+    artifacts (``__pycache__``, ``.pytest_cache``, ``*.pyc``) never register
+    as work. The sample repo git-ignores these, but the filter keeps the
+    no-op guard honest even on a host whose git does not honor the ignore.
+    """
+    status = _git_capture(["status", "--porcelain"], cwd=workdir)
+    for line in status.splitlines():
+        path = line[3:].strip() if len(line) > 3 else ""
+        # Handle rename entries of the form "old -> new": judge the destination.
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        if not path:
+            continue
+        if path.endswith(".pyc"):
+            continue
+        if any(part in path for part in _CACHE_PATH_PARTS):
+            continue
+        return True
+    return False
+
+
 def _finalize_and_summarize(workdir: Path, *, include_fix: bool) -> str:
     """Commit the verified changes and produce a PR-style summary string.
 
@@ -521,8 +551,7 @@ def _finalize_and_summarize(workdir: Path, *, include_fix: bool) -> str:
     the ``git add`` / ``git commit`` return codes are checked, and the
     summary requires a genuinely new commit with a non-empty diffstat.
     """
-    status = _git_capture(["status", "--porcelain"], cwd=workdir)
-    if not status:
+    if not _has_real_changes(workdir):
         raise DemoEngineError(
             "ship",
             "the engine reported success but left the worktree unchanged; "
