@@ -42,6 +42,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal, Protocol, runtime_checkable
 
+from llm_retry import RetryPolicy, classify_exception, is_retryable_code, retry_call
+
 # Severity levels accepted on an IssueDraft. The runner maps these onto
 # Alfred's existing severity-routing labels:
 #
@@ -173,6 +175,13 @@ class UrllibHttpClient:
     so one transient API blip never blocks a whole sync).
     """
 
+    def __init__(self, *, retry_policy: RetryPolicy | None = None) -> None:
+        # Retries only the transient failures (429, 5xx, connection, timeout)
+        # via the shared llm_retry policy. Tunable through ALFRED_LLM_* env
+        # knobs; defaults to omnigent-spec (6 retries, 2s base, 60s cap). One
+        # transient upstream blip no longer skips a whole connector poll.
+        self._retry_policy = retry_policy or RetryPolicy.from_env()
+
     def get_json(
         self,
         url: str,
@@ -198,8 +207,15 @@ class UrllibHttpClient:
         req = urllib.request.Request(url, data=data, headers=merged, method="POST")
         return self._send(req, timeout=timeout)
 
+    def _send(self, req: urllib.request.Request, *, timeout: float) -> object:
+        return retry_call(
+            lambda: self._send_once(req, timeout=timeout),
+            self._retry_policy,
+            is_retryable=_http_error_is_retryable,
+        )
+
     @staticmethod
-    def _send(req: urllib.request.Request, *, timeout: float) -> object:
+    def _send_once(req: urllib.request.Request, *, timeout: float) -> object:
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 status = resp.status
@@ -210,6 +226,8 @@ class UrllibHttpClient:
                 body = e.read().decode("utf-8", errors="replace")
             raise HttpError(e.code, body) from e
         except urllib.error.URLError as e:
+            # DNS / connection refused / socket timeout: status 0 marks it a
+            # transient transport failure so the retry loop treats it as such.
             raise HttpError(0, str(e.reason)) from e
         if not 200 <= status < 300:
             raise HttpError(status, payload)
@@ -219,6 +237,19 @@ class UrllibHttpClient:
             return json.loads(payload)
         except json.JSONDecodeError as e:
             raise HttpError(status, f"non-JSON body: {payload[:200]}") from e
+
+
+def _http_error_is_retryable(exc: BaseException) -> bool:
+    """True for transient connector HTTP failures worth retrying.
+
+    A status-0 :class:`HttpError` is a transport failure (DNS, refused
+    connection, socket timeout) surfaced by ``urllib``'s ``URLError`` and is
+    always retryable. Otherwise defer to the shared semantic classifier so
+    429 / 5xx retry and other 4xx do not.
+    """
+    if isinstance(exc, HttpError) and exc.status == 0:
+        return True
+    return is_retryable_code(classify_exception(exc))
 
 
 class HttpError(RuntimeError):
