@@ -7,13 +7,24 @@ import type { ComposeDraftResponse, ConverseResponse } from "../../types";
 import type { PersistedTurn } from "../../lib/chatHistory";
 
 // The inline draft/plan card model. Carries just enough to render the lifecycle
-// card offer and file the plan by id.
+// card offer and file the plan by id, plus the structured plan fields the
+// converse turn co-authors (problem, desired behavior, acceptance criteria, test
+// plan). Those extra fields are OPTIONAL: the card renders each section only when
+// the plan actually carries it, so a thin early draft stays quiet and a firmed-up
+// plan reads as a structured brief. They are never invented client-side; each is
+// copied straight from the server draft.
 export type DraftCardModel = {
   draftId: string;
   title: string;
   repos: string[];
   ready: boolean;
   questions: string[];
+  // Enriched, structured plan sections. Empty string / empty array means "the
+  // plan does not carry this yet" and the section is omitted from the card.
+  problem?: string;
+  desiredBehavior?: string;
+  acceptanceCriteria?: string[];
+  testPlan?: string;
 };
 
 // One in-view turn. A message turn is a chat bubble (user or assistant); a
@@ -120,14 +131,25 @@ export function draftCardFrom(
     "missing" in result.readiness
       ? result.readiness.missing
       : (result as ComposeDraftResponse).questions || [];
+  const fields = result.draft;
+  // Only carry a section when it has real content, so downstream rendering can
+  // gracefully omit empty headers without re-checking. Never fabricate a value.
+  const trimmed = (value: string | undefined): string => (value || "").trim();
+  const acceptance = (fields.acceptance_criteria || [])
+    .map((item) => (item || "").trim())
+    .filter(Boolean);
   return {
     draftId: result.draft_id,
     title:
-      result.draft.title ||
+      fields.title ||
       ("title" in result ? (result as ComposeDraftResponse).title : "New request"),
-    repos: cleanRepos(result.draft.repos),
+    repos: cleanRepos(fields.repos),
     ready: Boolean(ready),
     questions: questions || [],
+    problem: trimmed(fields.problem),
+    desiredBehavior: trimmed(fields.desired_behavior),
+    acceptanceCriteria: acceptance,
+    testPlan: trimmed(fields.test_plan),
   };
 }
 

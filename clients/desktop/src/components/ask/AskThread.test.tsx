@@ -443,11 +443,127 @@ describe("Ask hero and copy", () => {
     expect(screen.queryByRole("switch", { name: /plain language/i })).not.toBeInTheDocument();
   });
 
-  it("seeds the composer from a starter chip", async () => {
+  it("shows generic starter prompt cards on an empty thread", () => {
+    renderChat();
+    // Four repo-agnostic starters, matching the ChatGPT/Base44 empty-state
+    // pattern. No real repo name appears in any of them.
+    expect(screen.getByRole("button", { name: /add tests to a module/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /fix a failing ci check/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /tidy a readme/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /add logging to a code path/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("seeds the composer from a starter chip without sending", async () => {
     const user = userEvent.setup();
     renderChat();
 
-    await user.click(screen.getByRole("button", { name: /how does alfred work/i }));
-    expect((chatInput() as HTMLTextAreaElement).value).toMatch(/how does alfred work/i);
+    await user.click(screen.getByRole("button", { name: /add tests to a module/i }));
+    // The starter text lands in the composer input for editing...
+    expect((chatInput() as HTMLTextAreaElement).value).toMatch(/add tests to a module/i);
+    // ...but nothing was sent: no converse/stream call fired.
+    expect(streamMock).not.toHaveBeenCalled();
+    expect(converseMock).not.toHaveBeenCalled();
+  });
+
+  it("hides the starter prompt cards once the thread has messages", async () => {
+    streamMock.mockImplementation(async () => converseResponse());
+    const user = userEvent.setup();
+    renderChat();
+
+    // Present on the empty thread.
+    expect(screen.getByRole("button", { name: /add tests to a module/i })).toBeInTheDocument();
+
+    await send(user, "Add a CSV download button");
+    await screen.findByText(/how should alfred verify this worked\?/i);
+
+    // Gone once the conversation has started.
+    expect(
+      screen.queryByRole("button", { name: /add tests to a module/i }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("Ask plan card enrichment", () => {
+  it("renders the structured sections and consequence line when the plan carries them", async () => {
+    streamMock.mockImplementation(async () =>
+      converseResponse({
+        readiness: { score: 92, ready: true, missing: [] },
+        draft: {
+          title: "Add CSV export to the attendees table",
+          problem: "Sales reps cannot export the attendees they filtered.",
+          user: "Sales rep",
+          current_behavior: "",
+          desired_behavior: "A download button exports the visible rows as CSV.",
+          repos: ["your-org/frontend"],
+          acceptance_criteria: [
+            "The button downloads only the filtered rows.",
+            "The file opens cleanly in a spreadsheet.",
+          ],
+          test_plan: "A unit test asserts the exported rows match the filtered set.",
+          out_of_scope: "",
+          rollout: "",
+          open_questions: "",
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    const { container } = renderChat();
+
+    await send(user, "Build it");
+
+    expect(await screen.findByLabelText(/plan alfred is shaping/i)).toBeInTheDocument();
+    // Structured section headers appear.
+    expect(screen.getByText(/^Intent$/)).toBeInTheDocument();
+    expect(screen.getByText(/^Scope$/)).toBeInTheDocument();
+    expect(screen.getByText(/^Done when$/)).toBeInTheDocument();
+    expect(screen.getByText(/^Verified by$/)).toBeInTheDocument();
+    // Their content is present.
+    expect(screen.getByText(/sales reps cannot export/i)).toBeInTheDocument();
+    expect(screen.getByText(/the button downloads only the filtered rows/i)).toBeInTheDocument();
+    // The plain-words consequence line names the target repo.
+    const consequence = container.querySelector(".ask-draft__consequence");
+    expect(consequence).toBeInTheDocument();
+    expect(consequence).toHaveTextContent(/files a real issue on frontend/i);
+    expect(consequence).toHaveTextContent(/engineer-agent picks it up and opens a pull request/i);
+  });
+
+  it("omits every empty section (no bare headers) on a thin draft", async () => {
+    streamMock.mockImplementation(async () =>
+      converseResponse({
+        readiness: { score: 40, ready: false, missing: ["a test plan"] },
+        draft: {
+          title: "Add CSV export to the attendees table",
+          problem: "",
+          // `user` gives the draft enough substance to surface the card at all,
+          // but it is NOT one of the card's rendered sections, so the enriched
+          // detail block must still be absent.
+          user: "Sales rep",
+          current_behavior: "",
+          desired_behavior: "",
+          repos: [],
+          acceptance_criteria: [],
+          test_plan: "",
+          out_of_scope: "",
+          rollout: "",
+          open_questions: "",
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    const { container } = renderChat();
+
+    await send(user, "Add a CSV download button");
+
+    expect(await screen.findByLabelText(/plan alfred is shaping/i)).toBeInTheDocument();
+    // No structured detail block and no section headers when there is no data.
+    expect(container.querySelector(".ask-draft__detail")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Intent$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Done when$/)).not.toBeInTheDocument();
+    // The consequence line still shows (repo-agnostic when no repo is named).
+    const consequence = container.querySelector(".ask-draft__consequence");
+    expect(consequence).toBeInTheDocument();
+    expect(consequence).toHaveTextContent(/files a real issue\./i);
   });
 });

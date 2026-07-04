@@ -117,6 +117,77 @@ describe("PipelineView", () => {
     expect(screen.getByText("Lucius")).toBeInTheDocument();
   });
 
+  it("shows a themed agent avatar chip with the resolved name's monogram", () => {
+    const { container } = renderPipeline({
+      rosterTheme: "justice-league",
+      board: board({
+        columns: {
+          queued: [],
+          in_progress: [],
+          shipped: [card({ kind: "pr", number: 9, title: "feat: add export", author: "lucius" })],
+        },
+        counts: { queued: 0, in_progress: 0, shipped: 1 },
+      }),
+    });
+    // The avatar monogram is the first letter of the THEMED name (Superman -> S),
+    // resolved the same way as the visible attribution name.
+    const avatar = container.querySelector(".board-avatar");
+    expect(avatar).toBeInTheDocument();
+    expect(avatar).toHaveTextContent("S");
+    expect(screen.getByText("Superman")).toBeInTheDocument();
+  });
+
+  it("applies a per-column lifecycle accent via the data-lane hook", () => {
+    const { container } = renderPipeline({
+      board: board({
+        columns: {
+          queued: [card({ number: 3, title: "Queued issue" })],
+          in_progress: [],
+          shipped: [],
+        },
+        counts: { queued: 1, in_progress: 0, shipped: 0 },
+      }),
+    });
+    // Every lifecycle lane carries its own accent tone via data-lane, driving the
+    // per-column top border / wash in CSS (needs / queued / working / shipped).
+    expect(container.querySelector('.alfred-pipeline__column[data-lane="needs"]')).toBeInTheDocument();
+    expect(container.querySelector('.alfred-pipeline__column[data-lane="queued"]')).toBeInTheDocument();
+    expect(container.querySelector('.alfred-pipeline__column[data-lane="working"]')).toBeInTheDocument();
+    expect(container.querySelector('.alfred-pipeline__column[data-lane="shipped"]')).toBeInTheDocument();
+  });
+
+  it("surfaces an in-review indicator for a draft PR in the working lane", () => {
+    renderPipeline({
+      board: board({
+        columns: {
+          queued: [],
+          in_progress: [
+            card({ kind: "pr", number: 21, title: "feat: wip export", is_draft: true, author: "lucius" }),
+          ],
+          shipped: [],
+        },
+        counts: { queued: 0, in_progress: 1, shipped: 0 },
+      }),
+    });
+    expect(screen.getByText(/in review/i)).toBeInTheDocument();
+  });
+
+  it("does not fabricate a review state for a non-draft working PR", () => {
+    renderPipeline({
+      board: board({
+        columns: {
+          queued: [],
+          in_progress: [
+            card({ kind: "pr", number: 22, title: "feat: ready export", is_draft: false, author: "lucius" }),
+          ],
+          shipped: [],
+        },
+        counts: { queued: 0, in_progress: 1, shipped: 0 },
+      }),
+    });
+    expect(screen.queryByText(/in review/i)).not.toBeInTheDocument();
+  });
+
   it("renders a server hard failure as an honest error, not a false-empty board", () => {
     renderPipeline({
       board: board({ error: "GitHub data unavailable for 3 watched repos" }),
