@@ -32,8 +32,8 @@ Includes the parser scope-widening guard used by the bundle planner.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field, replace
 
 from agent_runner import GH_ORG, GH_REPO_TO_LOCAL, claim_issue, gh_json, release_issue
 from dependencies import issue_dependencies
@@ -823,6 +823,10 @@ class BundlePlan:
     done_when: str
     plan_markdown: str
     readiness_findings: tuple[PlanReadinessFinding, ...] = ()
+    # Parsed cross-repo contract inputs, carried so the operator-feedback
+    # rebuild can re-derive each child's contract block (hybrid Batman).
+    contract_lines: tuple[str, ...] = ()
+    sequencing_lines: tuple[str, ...] = ()
 
     @property
     def readiness_blockers(self) -> tuple[PlanReadinessFinding, ...]:
@@ -1248,7 +1252,21 @@ _CHILDREN_BLOCK_RE = re.compile(
     re.IGNORECASE | re.MULTILINE | re.DOTALL,
 )
 _DONE_BLOCK_RE = re.compile(
-    r"^\s*done\s*when\s*:\s*$(.*?)(?=^\#|\Z)",
+    r"^\s*done\s*when\s*:\s*$(.*?)(?=^\s*(?:contract|shared|sequenc\w*|landing\s*order|rollout\s*order)\s*:|^\#|\Z)",
+    re.IGNORECASE | re.MULTILINE | re.DOTALL,
+)
+# The cross-repo contract feeds the "hybrid Batman" child-issue contract block:
+# shared interfaces/types/events every repo in the rollout must agree on. A
+# `Contract:` (or `Shared:`) block, and an optional sequencing block, are parsed
+# from the parent body if present; both degrade to empty and never raise.
+_CONTRACT_BLOCK_RE = re.compile(
+    r"^\s*(?:contract|shared)\s*:\s*$(.*?)"
+    r"(?=^\s*(?:repos?|children|done\s*when|shared|contract|sequenc\w*|landing\s*order|rollout\s*order)\s*:|^\#|\Z)",
+    re.IGNORECASE | re.MULTILINE | re.DOTALL,
+)
+_SEQUENCING_BLOCK_RE = re.compile(
+    r"^\s*(?:sequenc\w*|landing\s*order|rollout\s*order)\s*:\s*$(.*?)"
+    r"(?=^\s*(?:repos?|children|done\s*when|shared|contract|sequenc\w*|landing\s*order|rollout\s*order)\s*:|^\#|\Z)",
     re.IGNORECASE | re.MULTILINE | re.DOTALL,
 )
 
@@ -1347,6 +1365,69 @@ def _parse_children_lines(block: str) -> list[tuple[str, str]]:
     return out
 
 
+# Bound the parsed cross-repo contract so a runaway parent body can never
+# balloon a child issue: at most this many contract/sequencing lines, each
+# trimmed to this many characters.
+_MAX_CONTRACT_LINES = 20
+_MAX_CONTRACT_LINE_LEN = 200
+
+
+def _bounded_lines(
+    lines: Sequence[str],
+    *,
+    max_lines: int = _MAX_CONTRACT_LINES,
+    max_len: int = _MAX_CONTRACT_LINE_LEN,
+) -> list[str]:
+    """Clamp a line list to a bounded, trimmed, non-empty subset.
+
+    Defense in depth: :func:`build_cross_repo_contract` is public and pure, so
+    it clamps its own inputs rather than trusting callers to pre-bound them.
+    """
+    out: list[str] = []
+    for raw in lines or ():
+        line = str(raw).strip()
+        if not line:
+            continue
+        out.append(line[:max_len])
+        if len(out) >= max_lines:
+            break
+    return out
+
+
+def _parse_bullet_lines(block: str, *, max_lines: int = _MAX_CONTRACT_LINES) -> list[str]:
+    """Return trimmed, de-bulleted, bounded non-empty lines from a text block.
+
+    Shared by the ``Contract:``/``Shared:`` and sequencing parsers. Each line
+    is stripped of a leading ``-``/``*`` bullet and clamped to keep the derived
+    child-issue contract block bounded and deterministic.
+    """
+    out: list[str] = []
+    for line in block.splitlines():
+        stripped = line.strip().lstrip("-*").strip()
+        if not stripped:
+            continue
+        out.append(stripped[:_MAX_CONTRACT_LINE_LEN])
+        if len(out) >= max_lines:
+            break
+    return out
+
+
+def _parse_contract_lines(body: str) -> list[str]:
+    """Parse the optional ``Contract:``/``Shared:`` block from a parent body."""
+    match = _CONTRACT_BLOCK_RE.search(body or "")
+    if not match:
+        return []
+    return _parse_bullet_lines(match.group(1))
+
+
+def _parse_sequencing_lines(body: str) -> list[str]:
+    """Parse the optional sequencing / landing-order block from a parent body."""
+    match = _SEQUENCING_BLOCK_RE.search(body or "")
+    if not match:
+        return []
+    return _parse_bullet_lines(match.group(1))
+
+
 def _matching_child_repos(short: str, affected: list[str]) -> list[str]:
     short = short.lower()
     full_slug = [r for r in affected if r.lower() == short]
@@ -1421,6 +1502,11 @@ def parse_parent_issue(
     dm = _DONE_BLOCK_RE.search(body)
     if dm:
         done_when = dm.group(1).strip()
+
+    # Cross-repo contract inputs for the hybrid-Batman child-issue block.
+    # Both are optional and degrade to empty lists.
+    contract_lines = _parse_contract_lines(body)
+    sequencing_lines = _parse_sequencing_lines(body)
 
     # Auto-fallback to the loose `## Affected Repos` / `## Acceptance
     # Criteria` shape when the canonical `Repos:` / `Children:` blocks
@@ -1577,6 +1663,17 @@ def parse_parent_issue(
             )
         )
 
+    # Second pass: enrich each child body with the cross-repo contract now
+    # that the full sibling list is known (hybrid-Batman foundation).
+    children = list(
+        _attach_cross_repo_contract(
+            children,
+            bundle_slug=slug,
+            contract_lines=contract_lines,
+            sequencing_lines=sequencing_lines,
+        )
+    )
+
     if loose_scope_findings:
         readiness_findings = loose_scope_findings
     else:
@@ -1607,7 +1704,136 @@ def parse_parent_issue(
         done_when=done_when,
         plan_markdown=plan_md,
         readiness_findings=tuple(readiness_findings),
+        contract_lines=tuple(contract_lines),
+        sequencing_lines=tuple(sequencing_lines),
     )
+
+
+CONTRACT_HEADING = "## Cross-repo contract"
+
+
+def build_cross_repo_contract(
+    *,
+    target_repo: str,
+    children: Sequence[ChildIssue],
+    bundle_slug: str,
+    contract_lines: Sequence[str] = (),
+    sequencing_lines: Sequence[str] = (),
+) -> str:
+    """Build the machine-readable cross-repo contract for one child issue.
+
+    This is the "hybrid Batman" foundation: per-repo implementers (Lucius,
+    Bane, Nightwing) only see their own repo, so without this block they are
+    blind to the sibling repos and the shared interfaces the feature spans.
+    Batman stays the planner - it does not open PRs - but it centralizes the
+    contract derived from the approved parent plan into every child issue.
+
+    Pure and deterministic. Given the ``target_repo`` and the full list of
+    ``children`` in the rollout, it emits:
+
+    - the shared interfaces / contracts block (parsed ``Contract:``/``Shared:``
+      lines) when the parent plan supplies them,
+    - the sibling repos + their child-issue scope one-liners (so repo A's
+      implementer knows repo B and C are also changing and what they cover),
+    - the landing order / sequencing when the plan specifies it,
+    - a pointer to the code-graph ``code_memory`` MCP tools for cross-repo
+      impact analysis before implementing.
+
+    With no explicit contract data it still emits the sibling-repos + code-graph
+    pointer block, which alone removes implementer blindness. Output is bounded:
+    contract/sequencing lines are capped upstream by :func:`_parse_bullet_lines`.
+    """
+    target_key = str(target_repo or "").strip().lower()
+    siblings = [
+        child
+        for child in children
+        if str(getattr(child, "repo", "") or "").strip().lower() != target_key
+    ]
+
+    lines: list[str] = [CONTRACT_HEADING, ""]
+    lines.append(
+        "This feature spans multiple repos in the "
+        f"`{bundle_slug}` bundle. Implement this repo's scope so it stays "
+        "compatible with the sibling repos below - do not design shared shapes "
+        "in isolation."
+    )
+
+    clean_contract = _bounded_lines(contract_lines)
+    if clean_contract:
+        lines.append("")
+        lines.append("### Shared interfaces and invariants")
+        lines.append("")
+        lines.extend(f"- {line}" for line in clean_contract)
+
+    lines.append("")
+    lines.append("### Sibling repos in this rollout")
+    lines.append("")
+    if siblings:
+        for child in siblings:
+            repo = str(getattr(child, "repo", "") or "").strip()
+            title = str(getattr(child, "title", "") or "").strip() or "(scope TBD)"
+            lines.append(f"- `{repo}`: {title}")
+    else:
+        lines.append("- (none; this repo is the only one in the rollout)")
+
+    clean_sequencing = _bounded_lines(sequencing_lines)
+    if clean_sequencing:
+        lines.append("")
+        lines.append("### Landing order")
+        lines.append("")
+        lines.extend(f"- {line}" for line in clean_sequencing)
+
+    lines.append("")
+    lines.append(
+        "Before implementing, consult the code-graph MCP (`code_memory` tools) "
+        "for cross-repo impact: search for the shared types, endpoints, and event "
+        "names above so this repo's change lands compatibly with its siblings."
+    )
+    return "\n".join(lines)
+
+
+def _strip_cross_repo_contract(body: str) -> str:
+    """Remove a previously appended cross-repo contract block from a body.
+
+    Everything from the ``## Cross-repo contract`` heading to the end of the
+    body is dropped. Keeps :func:`_attach_cross_repo_contract` idempotent even
+    when the sibling set changes (operator feedback adds or removes repos), so
+    the block never double-appends and always reflects the current rollout.
+    """
+    text = body or ""
+    idx = text.find(CONTRACT_HEADING)
+    if idx == -1:
+        return text
+    return text[:idx].rstrip()
+
+
+def _attach_cross_repo_contract(
+    children: Sequence[ChildIssue],
+    *,
+    bundle_slug: str,
+    contract_lines: Sequence[str] = (),
+    sequencing_lines: Sequence[str] = (),
+) -> tuple[ChildIssue, ...]:
+    """Append the cross-repo contract block to every child issue body.
+
+    Runs as a second pass once all children are built, because the contract
+    for one child names its siblings and so needs the full child list. Strips
+    any previously attached block first, so repeated passes never double-append
+    and the sibling list stays current when repos are added or removed.
+    """
+    enriched: list[ChildIssue] = []
+    for child in children:
+        base_body = _strip_cross_repo_contract(child.body or "")
+        contract = build_cross_repo_contract(
+            target_repo=child.repo,
+            children=children,
+            bundle_slug=bundle_slug,
+            contract_lines=contract_lines,
+            sequencing_lines=sequencing_lines,
+        )
+        new_body = f"{base_body.rstrip()}\n\n{contract}\n"
+        enriched.append(replace(child, body=new_body))
+    return tuple(enriched)
 
 
 def _render_child_body(
@@ -1858,6 +2084,18 @@ def _apply_operator_feedback_to_plan(
             )
         )
 
+    # Re-derive the cross-repo contract across the amended child set so every
+    # child (kept or newly added) names the current siblings and carries the
+    # block exactly once (hybrid Batman).
+    children = list(
+        _attach_cross_repo_contract(
+            children,
+            bundle_slug=plan.bundle_slug,
+            contract_lines=plan.contract_lines,
+            sequencing_lines=plan.sequencing_lines,
+        )
+    )
+
     readiness_findings = _assess_plan_readiness(
         affected_repos=list(affected_repos),
         children=children,
@@ -1882,6 +2120,8 @@ def _apply_operator_feedback_to_plan(
             readiness_findings=readiness_findings,
         ),
         readiness_findings=tuple(readiness_findings),
+        contract_lines=plan.contract_lines,
+        sequencing_lines=plan.sequencing_lines,
     )
 
 
