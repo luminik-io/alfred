@@ -1704,6 +1704,19 @@ def test_clean_slack_text_strips_sent_using_attribution_footer() -> None:
     assert _strip_mentions(_clean_slack_text("<@U0BOT> ship it")) == "ship it"
 
 
+def test_strip_mentions_drops_sent_using_footer_without_clean_slack_text() -> None:
+    """The approval path calls ``_strip_mentions(event.text)`` directly, without
+    ``_clean_slack_text`` first. ``_strip_mentions`` must therefore drop the
+    "*Sent using* <@app>" footer on its own: the footer regex is anchored on the
+    trailing app mention, so if mentions were removed first the literal
+    "*Sent using*" text would be orphaned and "ship it" would arrive as
+    "ship it *Sent using*" and fail the whole-token approval match."""
+    assert _strip_mentions("<@U0BOT> ship it *Sent using* <@U0APP>") == "ship it"
+    assert _strip_mentions("<@U0BOT|alfred> ship it *Sent using* <@U0APP|Claude>") == "ship it"
+    # No footer: still reduces to the bare command.
+    assert _strip_mentions("<@U0BOT> ship it") == "ship it"
+
+
 def test_conversation_thread_mention_prefixed_ship_it_files(tmp_path: Path) -> None:
     """A channel approval reply "<@BOT|label> ship it" must still file.
 

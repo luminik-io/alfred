@@ -3420,7 +3420,14 @@ _SENT_USING_FOOTER_RE = re.compile(
 
 
 def _strip_mentions(text: str) -> str:
-    return _USER_MENTION_RE.sub("", text or "").strip()
+    # Strip the "*Sent using* <@app>" attribution footer FIRST. The footer regex
+    # is anchored on the trailing app mention, so removing mentions first would
+    # orphan the literal "*Sent using*" text and defeat a whole-token match: an
+    # approval typed through an app integration arrives as
+    # "<@bot> ship it *Sent using* <@app>" and must reduce to "ship it", not
+    # "ship it *Sent using*". Every caller (approval, problem, intent) benefits.
+    text = _SENT_USING_FOOTER_RE.sub(" ", text or "")
+    return _USER_MENTION_RE.sub("", text).strip()
 
 
 def _clean_slack_text(text: str) -> str:
