@@ -673,12 +673,13 @@ class SlackPlanningListener:
         A bare ``ship it`` carries no scope of its own; the actual request is an
         earlier human turn in the same thread, and specifically the ORIGINAL task
         description, not a later short acceptance / ack line ("yes", "accepted",
-        "spec accepted and marked done"). Seeding from such a line produced a
-        draft titled after the acceptance with no real scope. Read the bounded
-        thread context and return the EARLIEST substantive human turn that is
-        neither an approval token nor a short acceptance / ack; fall back to the
-        most recent substantive human turn, then to the reply text, so the draft
-        path always has something to refine.
+        "spec accepted and marked done") and not an opening greeting / capability
+        question ("hi Alfred", "what can you do"). Seeding from either produced a
+        draft titled after the wrong turn with no real scope. Read the bounded
+        thread context and return the EARLIEST substantive human turn that is not
+        an approval token, a short acceptance / ack, or a conversational opener;
+        fall back to the most recent such turn, then to the reply text, so the
+        draft path always has something to refine.
         """
         reply_text = (event.text or "").strip()
         if self.poster is None:
@@ -706,11 +707,7 @@ class SlackPlanningListener:
             for message in context
             if message.role == "user" and (message.content or "").strip()
         ]
-        substantive = [
-            text
-            for text in human_turns
-            if not self.bridge.is_approval(text=text) and not _looks_like_acceptance(text)
-        ]
+        substantive = [text for text in human_turns if self._is_substantive_request(text)]
         if substantive:
             # Earliest substantive turn = the original task the plan was built for.
             return substantive[0]
@@ -720,6 +717,21 @@ class SlackPlanningListener:
             if not self.bridge.is_approval(text=text):
                 return text
         return reply_text
+
+    def _is_substantive_request(self, text: str) -> bool:
+        """True iff ``text`` reads as a real build request, not chatter.
+
+        Excludes approval tokens, short acceptance / ack lines, and conversational
+        openers (greetings, capability / identity questions, thanks) so seeding a
+        ship-it draft never picks a "hi Alfred" opener over the actual task.
+        """
+        if self.bridge.is_approval(text=text):
+            return False
+        if _looks_like_acceptance(text):
+            return False
+        # A greeting / capability / thanks opener yields a canned reply; a real
+        # build request does not, so no canned reply means a substantive turn.
+        return conversational_reply(text) is None
 
     def _maybe_complete_thread_clarification(
         self,
@@ -3221,8 +3233,13 @@ def _repos_from_text(text: str) -> list[str]:
     tokens = re.findall(r"(?<![\w/])[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?![\w/])", text)
     seen: set[str] = set()
     out: list[str] = []
-    for repo in tokens:
-        if repo in seen or not _looks_like_repo_slug(repo):
+    for token in tokens:
+        # Trim sentence punctuation the char class swept in: "fix octo/app."
+        # matches as "octo/app." because "." is a valid slug character mid-name
+        # but a trailing "." is really the sentence period. A leading/trailing
+        # dot, comma, or other punctuation is never part of a GitHub owner/repo.
+        repo = token.strip(".,;:!?-")
+        if not repo or repo in seen or not _looks_like_repo_slug(repo):
             continue
         seen.add(repo)
         out.append(repo)

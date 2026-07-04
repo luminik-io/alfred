@@ -1848,6 +1848,79 @@ def test_ship_it_seeds_from_original_request_not_acceptance(tmp_path: Path) -> N
     assert "script/style" not in payload["draft"]["repos"]
 
 
+def test_ship_it_skips_conversational_opener_when_seeding(tmp_path: Path) -> None:
+    """A greeting opener must not be seeded as the build request.
+
+    Review P2: a thread that starts with "hi Alfred" then asks for real work must
+    seed the ship-it draft from the actual request, not the greeting.
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    registry.register(
+        SlackThreadRecord(
+            kind="conversation",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="x",
+            status="open",
+        )
+    )
+    poster = ConversationReplyPoster(
+        [
+            {"user": "U1", "text": "hi Alfred", "ts": "1716480000.000000"},
+            {"user": "UALFRED", "text": "Hi! What can I help with?", "ts": "1716480000.3"},
+            {
+                "user": "U1",
+                "text": "add a CSV export to the attendees table",
+                "ts": "1716480000.6",
+            },
+        ]
+    )
+
+    def converse_runner(**kwargs):
+        raise AssertionError("ship it must file, not re-enter converse")
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_runner=converse_runner,
+    )
+
+    result = listener.handle_payload(
+        {
+            "event_id": "EvShipGreet",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": "<@UALFRED|alfred> ship it",
+                "ts": "1716480001.000001",
+                "thread_ts": "1716480000.000000",
+            },
+        }
+    )
+
+    assert result.action == "draft_created"
+    title = json.loads(Path(result.draft_path).read_text(encoding="utf-8"))["draft"][
+        "title"
+    ].lower()
+    assert "csv export" in title
+    assert "hi alfred" not in title
+
+
+def test_repos_from_text_trims_trailing_sentence_punctuation() -> None:
+    from slack_listener import _repos_from_text
+
+    # A sentence period swept into the token must be trimmed before validation.
+    assert _repos_from_text("please fix octo/app.") == ["octo/app"]
+    assert _repos_from_text("change acme/api, and acme/web.") == ["acme/api", "acme/web"]
+    assert _repos_from_text("update owner/repo!") == ["owner/repo"]
+    # A code path with an extension is still rejected, even with a trailing dot.
+    assert _repos_from_text("edit llm/sanitize.py.") == []
+
+
 def test_parent_thread_steering_after_ship_it_reaches_draft_revision(tmp_path: Path) -> None:
     """After ship it materializes a draft, steering replies must update it.
 
