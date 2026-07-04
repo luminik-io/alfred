@@ -1231,6 +1231,44 @@ def test_build_cross_repo_contract_is_pure_and_bounded():
     assert "`acme/a`:" not in block
 
 
+def test_contract_sibling_list_is_bounded_with_more_indicator():
+    """With many children and very long scopes, the sibling list in the
+    contract block must be bounded in both entry count and per-line length,
+    and must show a "+N more" indicator when siblings are dropped."""
+    import batman as bm
+
+    long_scope = "x" * 1000
+    children = tuple(
+        bm.ChildIssue(repo=f"acme/repo{i:02d}", title=long_scope, body="", labels=())
+        for i in range(40)
+    )
+    block = bm.build_cross_repo_contract(
+        target_repo="acme/repo00",
+        children=children,
+        bundle_slug="demo",
+    )
+    # Deterministic.
+    again = bm.build_cross_repo_contract(
+        target_repo="acme/repo00",
+        children=children,
+        bundle_slug="demo",
+    )
+    assert block == again
+
+    sibling_lines = [line for line in block.splitlines() if line.startswith("- `acme/repo")]
+    # 39 siblings (self excluded) but capped at _MAX_CONTRACT_LINES shown.
+    assert len(sibling_lines) <= bm._MAX_CONTRACT_LINES, len(sibling_lines)
+    # Every shown sibling line is length-bounded (not the raw 1000-char scope).
+    for line in sibling_lines:
+        assert len(line) <= bm._MAX_CONTRACT_LINE_LEN + len("- "), len(line)
+    # The dropped-siblings indicator is present and counts correctly.
+    dropped = 39 - len(sibling_lines)
+    assert dropped > 0
+    assert f"(+{dropped} more sibling repo(s) in this rollout)" in block
+    # Self never listed as its own sibling.
+    assert "`acme/repo00`:" not in block
+
+
 def test_contract_reattached_once_after_operator_feedback():
     """Operator feedback that adds a repo must give the new child a contract
     and must not double-append the block on existing children."""

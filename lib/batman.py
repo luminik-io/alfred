@@ -1748,7 +1748,11 @@ def build_cross_repo_contract(
 
     With no explicit contract data it still emits the sibling-repos + code-graph
     pointer block, which alone removes implementer blindness. Output is bounded:
-    contract/sequencing lines are capped upstream by :func:`_parse_bullet_lines`.
+    contract and sequencing lines are capped by :func:`_bounded_lines`, and the
+    sibling list is capped to ``_MAX_CONTRACT_LINES`` entries (each scope line
+    truncated to ``_MAX_CONTRACT_LINE_LEN`` chars) with a ``(+N more)`` marker
+    when siblings are dropped, so a large rollout can never balloon the block
+    appended to every child issue.
     """
     target_key = str(target_repo or "").strip().lower()
     siblings = [
@@ -1776,10 +1780,15 @@ def build_cross_repo_contract(
     lines.append("### Sibling repos in this rollout")
     lines.append("")
     if siblings:
-        for child in siblings:
+        shown = siblings[:_MAX_CONTRACT_LINES]
+        for child in shown:
             repo = str(getattr(child, "repo", "") or "").strip()
             title = str(getattr(child, "title", "") or "").strip() or "(scope TBD)"
-            lines.append(f"- `{repo}`: {title}")
+            entry = f"- `{repo}`: {title}"
+            lines.append(entry[: _MAX_CONTRACT_LINE_LEN + len("- ")])
+        dropped = len(siblings) - len(shown)
+        if dropped > 0:
+            lines.append(f"- (+{dropped} more sibling repo(s) in this rollout)")
     else:
         lines.append("- (none; this repo is the only one in the rollout)")
 
