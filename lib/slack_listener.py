@@ -721,13 +721,18 @@ class SlackPlanningListener:
     def _is_substantive_request(self, text: str) -> bool:
         """True iff ``text`` reads as a real build request, not chatter.
 
-        Excludes approval tokens, short acceptance / ack lines, and conversational
-        openers (greetings, capability / identity questions, thanks) so seeding a
-        ship-it draft never picks a "hi Alfred" opener over the actual task.
+        Excludes approval tokens, short acceptance / ack lines, conversational
+        openers (greetings, capability / identity questions, thanks), and
+        read-only status / answer questions ("what's the fleet doing?", "why did
+        a run fail?"), so seeding a ship-it draft never picks any of those over
+        the actual task in a mixed conversation-to-build thread.
         """
         if self.bridge.is_approval(text=text):
             return False
         if _looks_like_acceptance(text):
+            return False
+        # A read-only status / diagnostic question is not a build request.
+        if _looks_like_status_or_answer(text):
             return False
         # A greeting / capability / thanks opener yields a canned reply; a real
         # build request does not, so no canned reply means a substantive turn.
@@ -3224,6 +3229,60 @@ def _looks_like_acceptance(text: str) -> bool:
     if len(normalized.split()) > _ACCEPTANCE_MAX_WORDS:
         return False
     return normalized in _ACCEPTANCE_PHRASES
+
+
+# Read-only / status-question cues. A ship-it draft must not be seeded from a
+# status turn ("what's the fleet doing?", "why did lucius fail on #1038?") that
+# happened to come before the real build request in the same thread. These are
+# substrings matched against the normalized turn; each is distinctive enough to
+# a read-only question that it never appears in a genuine build request.
+_STATUS_QUESTION_CUES: tuple[str, ...] = (
+    "what's the fleet doing",
+    "whats the fleet doing",
+    "what is the fleet doing",
+    "what's the status",
+    "whats the status",
+    "what is the status",
+    "fleet status",
+    "status of the fleet",
+    "what shipped",
+    "what did you ship",
+    "what's shipped",
+    "what is shipped",
+    "what have you shipped",
+    "what's blocked",
+    "whats blocked",
+    "what is blocked",
+    "what's running",
+    "whats running",
+    "what is running",
+    "what are you working on",
+    "what's queued",
+    "whats queued",
+    "what is queued",
+    "what's in the inbox",
+    "how does review work",
+    "why did",
+    "why is",
+    "why was",
+)
+
+
+def _looks_like_status_or_answer(text: str) -> bool:
+    """True iff ``text`` reads as a read-only status / answer question.
+
+    Covers both a leading-verb read-only control command ("status", "runs",
+    "plans") and a natural-language status / diagnostic question ("what's the
+    fleet doing?", "why did lucius fail?"). Used to keep such a turn from being
+    picked as the build request a ship-it draft is seeded from.
+    """
+    cleaned = _strip_mentions(text).strip()
+    if not cleaned:
+        return False
+    if _is_read_only_control_text(cleaned):
+        return True
+    normalized = re.sub(r"\s+", " ", cleaned.lower()).strip()
+    return any(cue in normalized for cue in _STATUS_QUESTION_CUES)
 
 
 def _repos_from_text(text: str) -> list[str]:
