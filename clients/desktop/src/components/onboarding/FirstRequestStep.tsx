@@ -101,11 +101,14 @@ export function FirstRequestStep({
     setBusyKey(key);
     try {
       const result = await composeSetupPlaybook(baseUrl, key);
+      // This path navigates to Compose immediately, which unmounts this step, so
+      // the inline cost chip below would never be seen. Fold the spend
+      // reassurance into the success notice instead, so it surfaces on the screen
+      // the user actually lands on.
       setNotice({
         tone: "ok",
-        message: `Drafted your first request: "${result.title}". Refine it in Ask, then save the plan.`,
+        message: `Drafted your first request: "${result.title}". Refine it in Ask, then save the plan. It runs on the Claude and Codex subscriptions you already pay for, with no per-request bill, and you can watch usage in the sidebar.`,
       });
-      setFirstJobFired(true);
       onComplete("request");
       onSwitch?.("compose");
     } catch (err) {
