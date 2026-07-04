@@ -18,6 +18,11 @@ Two install shapes:
   `skills/vendored/<name>/` with its upstream `LICENSE` kept next to it.
   Installing copies it into your skills dir. No network, works offline and in
   CI.
+- **first_party** -- an Alfred-authored MIT skill under
+  `skills/first_party/<name>/`. Installs like a vendored pack (a local copy, no
+  network), but it is our own source, so it carries no upstream attribution.
+  Packs flagged `default_install` form the **starter set** (`alfred skills
+  install --starter`).
 - **fetch** (reference-install) -- the skill is not in this repo. Installing
   runs a network command to pull it from source. Used for large skills and heavy
   dependencies that are better pinned to upstream.
@@ -31,8 +36,17 @@ Two install shapes:
 | `frontend-ui-engineering` | MIT | vendored | [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) | feature-dev |
 | `debugging-and-error-recovery` | MIT | vendored | [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) | bug-triage, deploy-monitor |
 | `vercel-react-best-practices` | MIT | vendored | [vercel-labs/agent-skills](https://github.com/vercel-labs/agent-skills) | feature-dev |
+| `spec-to-issues` | MIT | first_party | Alfred | planner |
+| `write-tests` | MIT | first_party | Alfred | test-coverage, feature-dev |
+| `review-security` | MIT | first_party | Alfred | pr-review, feature-dev |
+| `add-observability` | MIT | first_party | Alfred | feature-dev, deploy-monitor |
+| `migrate-dependency` | MIT | first_party | Alfred | feature-dev |
+| `changelog-and-release-notes` | MIT | first_party | Alfred | feature-dev, deploy-monitor |
 | `gstack` | MIT | fetch | [garrytan/gstack](https://github.com/garrytan/gstack) | e2e-smoke, pr-review, bug-triage |
 | `headroom` | Apache-2.0 | fetch (opt-in) | [headroomlabs-ai/headroom](https://github.com/headroomlabs-ai/headroom) | (none) |
+
+The six `first_party` packs are Alfred-authored. They are the starter set:
+`alfred skills install --starter` lays all of them down in one offline copy.
 
 Licensing rationale: all bundled sources are permissive (MIT or Apache-2.0). No
 copyleft (GPL/AGPL) source is vendored -- copyleft would be reference-install
@@ -48,9 +62,13 @@ alfred skills list                       # all curated packs, with install state
 alfred skills list --role feature-dev    # only packs recommended for a role
 alfred skills list --json                # machine-readable
 alfred skills install <pack>             # install one pack into the skills dir
+alfred skills install --starter          # install the default first-party set (offline)
 alfred skills install <pack> --dry-run   # preview without writing or fetching
 alfred skills install <pack> --yes       # confirm a reference-install network fetch
 alfred skills installed                  # what is installed under the skills dir
+alfred skills evolve                     # draft SKILL.md proposals from memory (never installs)
+alfred skills evolve --since 2026-06-01  # only cluster lessons from this date on
+alfred skills evolve --dry-run           # report the proposals without writing a draft
 ```
 
 Installs land in `~/.claude/skills/` by default. Override with
@@ -111,6 +129,61 @@ supported mechanisms:
 such a line for a pack, so a role prompt builder can append it. This is the
 `--bare`-proof path and does not depend on the model choosing to activate a
 skill on its own.
+
+### The runner skill-injector (metadata-only)
+
+`lib/agent_runner/skills_context.py` is the automatic, `--bare`-proof path. When
+a firing runs, `invoke_agent_engine` appends a compact block naming the skills
+recommended for that firing's **role**, with the path to each `SKILL.md` so the
+agent reads the body on demand (progressive disclosure). It parses **only** the
+YAML frontmatter (name + description), never the body, and caps each file read
+at 10 MB (mirroring deepagents' `MAX_SKILL_FILE_SIZE`), so it is cheap. The
+block looks like:
+
+```
+Available skills (invoke by name when the trigger matches; read the SKILL.md ...):
+- write-tests: Derive tests from acceptance criteria ... [read: ~/.claude/skills/write-tests/SKILL.md]
+```
+
+Role filtering uses the manifest `roles`: a firing only sees skills recommended
+for its role. The role is derived automatically from the agent codename via the
+canonical roster map (`lib/agent_roster.py`, e.g. `lucius` -> `feature-dev`,
+`rasalghul` -> `pr-review`), so injection is active for every existing caller
+with no code change; a caller may still pass an explicit `role=` to override.
+Operational codenames with no skill role (automerge, memory-harvest, ...) inject
+nothing. It is on by default and gated by `ALFRED_SKILLS_INJECT` (set to
+`0`/`false`/`no`/`off` to disable), mirroring the `ALFRED_*_MCP` convention. When
+no installed skill matches the role, no role resolves, or the gate is off, the
+prompt is left untouched.
+
+The injector discovers skills ONLY from global, operator-controlled locations:
+the configured global skills dir (`ALFRED_SKILLS_DIR`, default `~/.claude/skills`,
+where `alfred skills install` places skills) plus the in-repo `skills/first_party`
+tree. It does **not** scan the firing's working directory. That is a security
+boundary, not just a convention: firings run under
+`--permission-mode bypassPermissions`, so scanning a checked-out repo's
+`<workdir>/.claude/skills/` would let that repo shadow or inject an unreviewed
+`SKILL.md` into an autonomous run just by committing one. Injection therefore
+comes only from the operator-curated set, and a firing sees the same skills
+regardless of which repo it is working in. **Follow-up:** per-repo project-skill
+discovery (reading `<firing-workdir>/.claude/skills` so a repo can ship its own
+project skills to its own firings) is a deliberate, trust-gated future step.
+Project skills are repo-controlled, so they must be treated as lower-trust than
+the curated global set (and gated behind an explicit opt-in) before they can be
+injected; that is why repo-local skills are intentionally NOT auto-injected here.
+
+### `alfred skills evolve`: from memory to skill proposals
+
+Over time Alfred's memory accumulates promoted lessons a firing learned about a
+codename/repo. `alfred skills evolve` reads those lessons through the normal
+recall chain (`memory.config.recall_lessons`), clusters them by `(repo, tag)`,
+and writes `SKILL.md` **drafts** under `skills/first_party/_proposed/<name>/`
+for an operator to review. It **never installs** a skill and never writes into
+the live `skills/first_party/` set (the substrate rule plus Alfred's approval
+gate). Each draft carries `status: proposed` frontmatter and TODO sections; an
+operator turns a good draft into a real skill and registers it in `packs.toml`
+by hand. `--since` filters lessons by date; `--dry-run` reports the plan without
+writing. The generated drafts are git-ignored.
 
 There is no CLI flag that registers a skills directory, and no `--settings`
 field that adds one -- discovery is purely by the `~/.claude/skills/` and

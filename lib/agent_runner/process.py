@@ -78,6 +78,7 @@ from .result import (
     looks_quota_exhausted,
     parse_quota_resume_at,
 )
+from .skills_context import skills_context_for_role
 from .transcripts import (
     _extract_codex_session_id,
     _extract_codex_tokens,
@@ -1165,6 +1166,47 @@ def codex_invoke(
 # --------------------------------------------------------------------------
 
 
+def _resolve_firing_role(role: str | None, agent: str) -> str | None:
+    """Resolve the skill-pack role for a firing.
+
+    An explicit ``role`` always wins (the override). When it is ``None`` -- which
+    is every production caller today, since none pass a role -- the role is
+    derived from the agent ``codename`` via the canonical
+    :data:`agent_roster.CODENAME_TO_PACK_ROLE` map. That is what makes skill
+    injection active for the whole fleet without touching any caller. A codename
+    with no engineering skill role (operational agents) resolves to ``None`` and
+    injects nothing.
+    """
+    if role is not None:
+        return role
+    with contextlib.suppress(Exception):
+        from agent_roster import pack_role_for_codename
+
+        return pack_role_for_codename(agent)
+    return None
+
+
+def _with_skills_block(prompt: str, role: str | None, agent: str = "") -> str:
+    """Append the role-scoped skills block to ``prompt`` when injection is on.
+
+    ``role`` is the explicit override; when it is ``None`` the role is derived
+    from the agent ``codename`` (:func:`_resolve_firing_role`), so every existing
+    caller gets injection automatically. Metadata-only progressive disclosure:
+    names the skills a firing of that role may invoke and where to read each one,
+    without inlining any body. Gated by ``ALFRED_SKILLS_INJECT`` (default on)
+    inside :func:`skills_context_for_role`. Behavior-preserving when no skills
+    match, no role resolves, or the gate is off: the prompt is returned
+    unchanged.
+    """
+    resolved = _resolve_firing_role(role, agent)
+    block = ""
+    with contextlib.suppress(Exception):
+        block = skills_context_for_role(resolved)
+    if not block:
+        return prompt
+    return f"{prompt}\n\n{block}"
+
+
 def invoke_agent_engine(
     prompt: str,
     *,
@@ -1174,6 +1216,7 @@ def invoke_agent_engine(
     workdir: Path,
     claude_allowed_tools: str,
     timeout: int,
+    role: str | None = None,
     claude_max_turns: int | None = None,
     claude_model: str | None = None,
     codex_timeout: int | None = None,
@@ -1196,21 +1239,31 @@ def invoke_agent_engine(
     ``on_fallback`` callback fires only when hybrid mode falls back
     after a Claude capability failure; useful for posting a
     one-line Slack warning.
+
+    ``role`` is the firing's agent role (feature-dev, pr-review, planner, ...).
+    It is an OPTIONAL override: when omitted (as every production caller does
+    today), the role is derived from the agent ``codename`` via the canonical
+    roster map, so skill injection is active for the whole fleet with no caller
+    change. When a role resolves and ``ALFRED_SKILLS_INJECT`` is not disabled, a
+    compact metadata-only block naming the skills recommended for that role is
+    appended to the prompt (progressive disclosure: the agent reads each SKILL.md
+    body on demand). A codename with no skill role, or the gate off, leaves the
+    prompt untouched.
     """
     mode = normalize_engine(engine)
     claude_call = claude_fn or claude_invoke_streaming
     codex_call = codex_fn or codex_invoke
     memory_provider = load_runtime_memory() if memory_repo else None
-    prompt_for_engine, context_governance = govern_prompt_context(
-        with_memory_prompt(
-            prompt,
-            memory_provider,
-            codename=agent,
-            repo=memory_repo,
-            query=memory_query,
-            limit=memory_limit,
-        )
+    prompt_with_context = with_memory_prompt(
+        prompt,
+        memory_provider,
+        codename=agent,
+        repo=memory_repo,
+        query=memory_query,
+        limit=memory_limit,
     )
+    prompt_with_context = _with_skills_block(prompt_with_context, role, agent)
+    prompt_for_engine, context_governance = govern_prompt_context(prompt_with_context)
 
     def _stamp_context_governance(result: ClaudeResult) -> ClaudeResult:
         if context_governance.applied:
