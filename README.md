@@ -551,7 +551,7 @@ the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
 - [Architecture diagrams](docs/ARCHITECTURE.md): mermaid diagrams for the agent lifecycle, model dispatch, locking, the Slack-native flow, the disk guardian, and the layered install.
 - [State machine](docs/STATE_MACHINE.md): `agent:in-flight` → `agent:pr-open` → `agent:done` lifecycle.
 - [Memory](docs/MEMORY_PROVIDERS.md): Redis Agent Memory for recalled lessons, local FleetBrain for the operational ledger and review queue, Slack-driven memory review, failure history, reliability governor, read-only MCP access, and the stable `alfred-codegraph@1` code-map export.
-- [MCP servers](docs/MCP.md): the read-only `alfred_memory` and consumed `code_memory` MCP servers Alfred attaches to every firing, per-role tool scoping, the safety model, and configuration.
+- [MCP servers](docs/MCP.md): the read-only `alfred_memory` and consumed `code_memory` MCP servers Alfred attaches to Claude-engine firings only (Codex-routed firings get no MCP), per-role tool scoping, the safety model, and configuration.
 - [Alfred Desktop](docs/DESKTOP_CLIENT.md): the desktop app tab by tab, the Slack-native boundary, the Claude + Codex usage rail (backed by the live `GET /api/usage` endpoint), the cinematic agent roster, the `alfred serve` API, and building native installers.
 - [Alfred analytics CLIs](docs/CLI.md): `alfred metrics`, `alfred logs`, `alfred usage`, and `alfred slack-listener`.
 - [Goals](docs/GOALS.md): durable goal contract across Slack, CLI, client, planning readiness, evaluator, and memory.

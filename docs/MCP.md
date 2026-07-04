@@ -52,10 +52,19 @@ shares that one resolved path between the `--mcp-config` attachment and the tool
 allowlist, so the two can never disagree about **whether** the server is present
 (no TOCTOU between two separate `Path.exists()` checks).
 
-This shared-path guarantee is about attachment, not about tool-set parity.
-Attaching a server makes every tool it lists over `tools/list` reachable; the
-`--allowedTools` allowlist is populated separately, from two fixed constants in
-`process.py`. Those two sets are not identical: the `alfred_memory` server
+This shared-path guarantee is about attachment, not about which tools an agent
+can call. Attach and allowlist are **two distinct gates**:
+
+1. **Attaching** a server (`--mcp-config`) *exposes* its tools to the run: the
+   `claude` process can see everything the server lists over `tools/list`.
+2. **The allowlist** (`--allowedTools`, a hardcoded list of
+   `mcp__<server>__<tool>` names built from two fixed constants in `process.py`)
+   decides which of those exposed tools the agent may actually *call*.
+
+Both gates must pass. Exposure alone does not make a tool callable, so a tool a
+server newly returns is **not** automatically usable by the agent: it stays
+uncallable until its `mcp__<server>__<tool>` name is added to the allowlist
+constant. The two sets are therefore not identical: the `alfred_memory` server
 registers eleven tools, but the allowlist constant names ten of them (see the
 note under the tool table). See [Per-role tool scoping](#per-role-tool-scoping)
 for exactly how the allowlist is assembled.
@@ -83,13 +92,16 @@ path, so no per-tool restriction is needed even under `bypassPermissions`.
 | `alfred_code_impact` | Local import, symbol, route, API-call, and drift hints for a path | `repo` and `path` (both required) | yes |
 
 All eleven tools above are registered on the server (the `TOOLS` tuple in
-`bin/alfred-mcp.py`) and are therefore reachable once the server is attached.
-**One registered tool, `alfred_memory_doctor`, is not in the runner's tool
-allowlist**: the `_MEMORY_RECALL_TOOLS` constant in `process.py` names the other
-ten. `alfred_brain_status` covers the same read-only doctor output and is in the
-allowlist, so an agent does not lose that capability. The tool remains available
-to any MCP client that talks to the server directly, for example through
-`alfred mcp serve`.
+`bin/alfred-mcp.py`), so attaching the server exposes all eleven to the run.
+Being exposed is not the same as being callable by the agent: a firing can only
+call the tools whose names are in the `--allowedTools` allowlist. **One
+registered tool, `alfred_memory_doctor`, is not in that allowlist**: the
+`_MEMORY_RECALL_TOOLS` constant in `process.py` names the other ten, so the
+agent cannot call `alfred_memory_doctor` even though the server exposes it.
+`alfred_brain_status` covers the same read-only doctor output and is in the
+allowlist, so an agent does not lose that capability. The exposed-but-not-
+allowlisted tool remains available to any MCP client that talks to the server
+directly, for example through `alfred mcp serve`.
 
 ### Safety model
 
@@ -148,8 +160,9 @@ see [CODE_MEMORY.md](CODE_MEMORY.md).
 ## Per-role tool scoping
 
 Scoping happens in `lib/agent_runner/process.py`, only on the Claude path
-(`claude_invoke` and `claude_invoke_streaming`). There are two separate steps:
-**attaching** the servers and **allowlisting** their tool names.
+(`claude_invoke` and `claude_invoke_streaming`). It runs two distinct gates:
+**attaching** the servers (exposure) and **allowlisting** their tool names
+(callability). A tool must clear both gates before an agent can use it.
 
 1. The runner resolves the `alfred_memory` server *script path* **once** per
    invoke (`_memory_mcp_script()`) and passes that one resolved value to both the
@@ -158,21 +171,24 @@ Scoping happens in `lib/agent_runner/process.py`, only on the Claude path
    TOCTOU between two separate existence checks). It is a presence guarantee, not
    a promise that the attached tool set and the allowlisted tool set are equal.
 2. `_memory_mcp_args` builds the single `--mcp-config` flag containing whichever
-   of the two servers are enabled and resolvable. **Attaching a server makes
-   every tool it lists over `tools/list` reachable**, not only the allowlisted
-   ones.
-3. `_with_memory_mcp_tools` appends tool *names* to the agent's `--allowedTools`
-   list from two fixed constants: the memory names (`mcp__alfred_memory__*`) from
-   `_MEMORY_RECALL_TOOLS`, added only when the memory MCP is enabled and its
-   script exists; and the `mcp__code_memory__*` names from `_CODE_MEMORY_TOOLS`,
-   added only when the code-memory server resolves. It preserves the caller's
-   separator style and skips names already present.
+   of the two servers are enabled and resolvable. Attaching a server **exposes**
+   every tool it lists over `tools/list` to the run, but exposure alone does not
+   make a tool callable.
+3. `_with_memory_mcp_tools` builds the `--allowedTools` list, which is what
+   decides callability. It appends tool *names* from two fixed constants: the
+   memory names (`mcp__alfred_memory__*`) from `_MEMORY_RECALL_TOOLS`, added only
+   when the memory MCP is enabled and its script exists; and the
+   `mcp__code_memory__*` names from `_CODE_MEMORY_TOOLS`, added only when the
+   code-memory server resolves. It preserves the caller's separator style and
+   skips names already present. A tool a server exposes but this list omits is
+   **not** callable by the agent.
 
-Because the two sets are populated independently, they are not guaranteed
-identical. In practice the code-memory sets match, while `alfred_memory`
-registers eleven server tools and `_MEMORY_RECALL_TOOLS` allowlists ten
-(`alfred_memory_doctor` is the one it omits; `alfred_brain_status` gives an agent
-the same doctor output). The allowlist is the tighter of the two.
+Because exposure and the allowlist are populated independently, the exposed and
+callable sets are not guaranteed identical. In practice the code-memory sets
+match, while `alfred_memory` exposes eleven server tools and `_MEMORY_RECALL_TOOLS`
+allowlists ten (`alfred_memory_doctor` is the one it omits, so the agent cannot
+call it; `alfred_brain_status` gives an agent the same doctor output). The
+allowlist is the tighter, load-bearing gate.
 
 Both servers expose only read-only tools, so **no write, merge, or mutate tool
 ever reaches any agent through MCP**, regardless of which set you read. Keeping
