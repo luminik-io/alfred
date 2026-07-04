@@ -709,4 +709,43 @@ describe("Ask plan card enrichment", () => {
     expect(consequence).not.toHaveTextContent(/files a real issue/i);
     expect(consequence).toHaveTextContent(/add the missing detail/i);
   });
+
+  it("names only the single target repo (repos[0]) for a ready multi-repo draft", async () => {
+    // The filing path files the issue in the FIRST repo only, so a ready draft
+    // listing several repos must promise a filing in just that one, not the whole
+    // list, and note that the rest are context.
+    streamMock.mockImplementation(async () =>
+      converseResponse({
+        readiness: { score: 92, ready: true, missing: [] },
+        draft: {
+          title: "Add CSV export to the attendees table",
+          problem: "Sales reps cannot export the attendees they filtered.",
+          user: "Sales rep",
+          current_behavior: "",
+          desired_behavior: "A download button exports the visible rows as CSV.",
+          repos: ["your-org/frontend", "your-org/api"],
+          acceptance_criteria: [],
+          test_plan: "A unit test asserts the exported rows match the filtered set.",
+          out_of_scope: "",
+          rollout: "",
+          open_questions: "",
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    const { container } = renderChat();
+
+    await send(user, "Build it");
+    await screen.findByLabelText(/plan alfred is shaping/i);
+
+    const consequence = container.querySelector(".ask-draft__consequence");
+    expect(consequence).toBeInTheDocument();
+    // Only the first repo is named as the filing target.
+    expect(consequence).toHaveTextContent(/files a real issue on frontend\./i);
+    // The second repo is NOT promised a filing.
+    expect(consequence).not.toHaveTextContent(/on frontend, api/i);
+    expect(consequence).not.toHaveTextContent(/issue on api/i);
+    // The note clarifies the other repos are context, not extra issues.
+    expect(consequence).toHaveTextContent(/other repos are context, not extra issues/i);
+  });
 });

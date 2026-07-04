@@ -40,14 +40,18 @@ function scopeText(repos: string[]): string | null {
 // file-issue path (the server enforces repo allowlisting), so promising "this
 // files a real issue" there would overpromise. Returns null when there is no
 // repo; the card shows a neutral hint instead (see hintText).
+//
+// The filing path (the Slack issue bridge) creates the issue in the FIRST repo
+// only, even when the plan lists several. So the promise names just that single
+// target repo, and adds a short note that the rest are context, not additional
+// filings. Naming the full list would promise issues in repos that never get one.
 function consequenceText(repos: string[]): string | null {
   const clean = cleanRepos(repos);
   if (!clean.length) return null;
-  const target =
-    clean.length === 1
-      ? ` on ${repoShortName(clean[0])}`
-      : ` on ${clean.map((repo) => repoShortName(repo)).join(", ")}`;
-  return `This files a real issue${target}. An engineer-agent picks it up and opens a pull request you review.`;
+  const target = repoShortName(clean[0]);
+  const multiNote =
+    clean.length > 1 ? " The other repos are context, not extra issues." : "";
+  return `This files a real issue on ${target}. An engineer-agent picks it up and opens a pull request you review.${multiNote}`;
 }
 
 // The neutral hint shown in place of the filing promise when the draft is not yet
