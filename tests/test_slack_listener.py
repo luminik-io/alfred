@@ -1925,6 +1925,80 @@ def test_parent_thread_steering_after_ship_it_reaches_draft_revision(tmp_path: P
     assert record.kind == "draft"
 
 
+def test_mention_prefixed_open_questions_none_clears_the_blocker(tmp_path: Path) -> None:
+    """A single-line "<@BOT> open questions: none" steering reply clears the block.
+
+    Live regression: the mention-prefixed single-line clearing form was captured
+    as an operator note instead of parsed, so the open_questions_unresolved
+    blocker stayed and readiness could not pass. A fully-scoped draft with one
+    open question must reach ready after this reply.
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    draft_path = tmp_path / "draft.json"
+    # A draft that is complete except for one open question, so clearing it is
+    # the only thing standing between the draft and ready.
+    draft_path.write_text(
+        json.dumps(
+            {
+                "draft": {
+                    "title": "Strip dangerous tags from user HTML",
+                    "problem": "User HTML can carry script/style/on* handlers (XSS).",
+                    "user": "Any viewer of user content",
+                    "current_behavior": "Raw user HTML is rendered.",
+                    "desired_behavior": "Dangerous tags and handlers are stripped.",
+                    "repos": ["acme-io/api"],
+                    "acceptance_criteria": ["script and style tags are removed"],
+                    "test_plan": "Unit tests over the sanitizer.",
+                    "out_of_scope": "",
+                    "rollout": "",
+                    "open_questions": "Should we also strip data: URIs?",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry.register(
+        SlackThreadRecord(
+            kind="draft",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="Strip dangerous tags from user HTML",
+            status="needs_scope",
+            draft_path=str(draft_path),
+        )
+    )
+    poster = ConversationReplyPoster([])
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="U0BOT",
+    )
+
+    result = listener.handle_payload(
+        {
+            "event_id": "EvClearQ",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": "<@U0BOT> open questions: none",
+                "ts": "1716480003.000003",
+                "thread_ts": "1716480000.000000",
+            },
+        }
+    )
+
+    assert result.action == "draft_revised"
+    assert result.readiness_ok is True
+    payload = json.loads(draft_path.read_text(encoding="utf-8"))
+    open_questions = payload["draft"]["open_questions"]
+    assert "Operator note" not in open_questions
+    assert "None" in open_questions
+
+
 def test_duplicate_mention_delivery_is_processed_once(tmp_path: Path) -> None:
     """One @mention arrives as app_mention AND message; it must run one turn.
 

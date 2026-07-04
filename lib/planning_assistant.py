@@ -664,7 +664,7 @@ def _merge_patch(draft: IssueDraft, patch: dict[str, Any]) -> IssueDraft:
 
 
 def _parse_line(line: str) -> tuple[str, str] | None:
-    cleaned = _clean_text(line).strip("-* ").strip()
+    cleaned = _strip_leading_mention(_clean_text(line)).strip("-* ").strip()
     if not cleaned:
         return None
     remove_value = _prefixed_command_value(cleaned, "remove repos")
@@ -812,7 +812,14 @@ def _summarize_amendments(messages: tuple[str, ...]) -> tuple[str, ...]:
             elif key == "acceptance_criteria":
                 summaries.append(f"Add acceptance criterion: {value}")
             elif key == "open_questions":
-                summaries.append(f"Track open question: {value}")
+                # A clearing value ("none" / "n/a" / "accepted as risk" ...) SETS
+                # the field to a resolved state; only a real question is tracked.
+                # Labelling a clear as "Track open question: none" was misleading
+                # and read as if a question named "none" had been added.
+                if _questions_resolved_value(value):
+                    summaries.append(f"Clear open questions: {value}")
+                else:
+                    summaries.append(f"Track open question: {value}")
             elif key == "resolved_open_questions":
                 summaries.append(f"Resolve open questions: {value}")
             else:
@@ -1072,6 +1079,20 @@ def _env_int(name: str, default: int) -> int:
 
 def _clean_text(value: str) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+# A leading Slack user mention on a field-command line, in either the bare
+# "<@U0BOT>" or the labelled "<@U0BOT|alfred>" form. In a channel the steering
+# reply must @-mention the bot, so a single-line field command arrives as
+# "<@BOT> open questions: none". Stripping the leading mention lets the field
+# prefix ("open questions:", "repo:", ...) match; otherwise the line starts with
+# "<" (not alphabetic), fails the field parse, and is recorded as an operator
+# note instead of clearing / setting the field.
+_LEADING_MENTION_RE = re.compile(r"^\s*<@[A-Z0-9]+(?:\|[^>]*)?>\s*")
+
+
+def _strip_leading_mention(line: str) -> str:
+    return _LEADING_MENTION_RE.sub("", line or "")
 
 
 def _normalize_message(value: str) -> str:

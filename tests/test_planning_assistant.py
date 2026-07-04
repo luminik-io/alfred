@@ -110,6 +110,51 @@ def test_refine_issue_draft_clear_alias_resolves_any_explanation() -> None:
     )
 
 
+def test_refine_issue_draft_clears_open_questions_with_leading_mention() -> None:
+    # Live regression: in a channel the steering reply must @-mention the bot, so
+    # a single-line field command arrives as "<@BOT> open questions: none". The
+    # leading mention must be stripped so the field prefix matches and the field
+    # is CLEARED, instead of the line being captured as an operator note (which
+    # left the open_questions_unresolved blocker in place and capped readiness).
+    for line in (
+        "<@U0BOT> open questions: none",
+        "<@U0BOT|alfred> open questions: none",
+    ):
+        result = refine_issue_draft(
+            replace(_draft(), open_questions="Should this include the docs site?"),
+            [line],
+        )
+        assert result.draft.open_questions == "None.", line
+        assert result.readiness.ok is True, line
+        assert not any(
+            finding.code == "open_questions_unresolved" for finding in result.readiness.findings
+        ), line
+        # It was applied as a field command, not recorded as an operator note.
+        assert "Operator note" not in result.draft.open_questions, line
+        assert any("Clear open questions" in item for item in result.amendments), line
+
+
+def test_refine_issue_draft_applies_mention_prefixed_repo_command() -> None:
+    # The same single-line mention-prefixed parsing for a non-question field.
+    result = refine_issue_draft(
+        replace(_draft(), repos=["example-org/web"]),
+        ["<@U0BOT> repo: acme-io/api"],
+    )
+    assert "acme-io/api" in result.draft.repos
+    assert any("Add repository scope: acme-io/api" in item for item in result.amendments)
+
+
+def test_clear_open_questions_summary_is_not_a_track_label() -> None:
+    # The plural clearing form must read as a clear, not "Track open question:
+    # none" (which looked like a question literally named "none" was added).
+    result = refine_issue_draft(
+        replace(_draft(), open_questions="Should this include the docs site?"),
+        ["open questions: none"],
+    )
+    assert any("Clear open questions: none" in item for item in result.amendments)
+    assert not any("Track open question: none" in item for item in result.amendments)
+
+
 def test_refine_issue_draft_preserves_mixed_freeform_notes() -> None:
     result = refine_issue_draft(
         _draft(),
