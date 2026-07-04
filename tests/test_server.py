@@ -493,6 +493,73 @@ def test_api_memory_lessons_lists_active_lessons(
     assert provider.calls and provider.calls[0]["limit"] <= 200
 
 
+def test_api_memory_lessons_collapses_duplicate_bodies(
+    tmp_path: Path,
+) -> None:
+    """The same fact promoted more than once (distinct ids, identical body,
+    same repo + codename) surfaces from recall as several rows; the endpoint
+    collapses them to one so the client does not show 'Use the API fixture
+    factory.' five times. Bodies that differ only by case/whitespace count as the
+    same; genuinely distinct lessons are all kept. Crucially, an identical body
+    under a DIFFERENT repo or agent is a distinct active lesson (own row + Undo)
+    and is NOT collapsed."""
+    state = tmp_path / "state"
+
+    def _lesson(
+        lesson_id: str,
+        body: str,
+        minute: int,
+        *,
+        repo: str = "example-org/api",
+        codename: str = "lucius",
+    ) -> Lesson:
+        return Lesson(
+            id=lesson_id,
+            codename=codename,
+            repo=repo,
+            body=body,
+            tags=["fixtures"],
+            created_at=datetime(2026, 6, 26, 19, minute, tzinfo=UTC),
+            firing_id=None,
+        )
+
+    provider = _StubRecallProvider(
+        [
+            _lesson("lesson:memory_candidate:1", "Use the API fixture factory.", 10),
+            _lesson("lesson:memory_candidate:2", "Use the API fixture factory.", 0),
+            # Same body, only case + trailing whitespace differ -> still a dup.
+            _lesson("lesson:memory_candidate:3", "use the API fixture factory.  ", 56),
+            # Same body but a DIFFERENT repo -> a distinct lesson, must be kept.
+            _lesson(
+                "lesson:memory_candidate:5",
+                "Use the API fixture factory.",
+                40,
+                repo="example-org/web",
+            ),
+            # Same body + repo but a DIFFERENT agent -> distinct, kept.
+            _lesson(
+                "lesson:memory_candidate:6", "Use the API fixture factory.", 30, codename="bane"
+            ),
+            _lesson("lesson:memory_candidate:4", "Mock the outbound HTTP client.", 53),
+        ]
+    )
+    app = create_app(FilesystemReader(state_root=state))
+    app.state.memory_provider = provider
+    client = TestClient(app)
+
+    rows = client.get("/api/memory/lessons").json()["rows"]
+
+    # Four survivors: the collapsed org/api+lucius row, the distinct org/web row,
+    # the distinct bane row, and the unrelated HTTP-client lesson.
+    ids = [row["id"] for row in rows]
+    assert ids == [
+        "lesson:memory_candidate:1",  # first of the org/api + lucius dupes wins
+        "lesson:memory_candidate:5",  # different repo -> kept
+        "lesson:memory_candidate:6",  # different agent -> kept
+        "lesson:memory_candidate:4",  # different body -> kept
+    ]
+
+
 def test_api_memory_stats_returns_quality_metrics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
