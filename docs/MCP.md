@@ -1,7 +1,15 @@
 # MCP servers
 
-Alfred attaches Model Context Protocol (MCP) servers to every `claude` firing so
-the fleet agents get *tools the model can call on demand* instead of guessing.
+Alfred attaches Model Context Protocol (MCP) servers to **Claude-engine
+firings** so the fleet agents get *tools the model can call on demand* instead
+of guessing. MCP is a Claude Code feature: the servers and their tools are
+wired in `claude_invoke` and `claude_invoke_streaming` only. **Codex-routed
+firings do not get MCP servers or tools** (`codex_invoke` builds a `codex exec`
+command with no `--mcp-config`, and Codex does not expose Claude's tool
+allowlist). An agent routed to Codex reads and greps the working tree directly.
+See [ENGINE_ROUTING.md](ENGINE_ROUTING.md) for how a codename is routed to
+Claude versus Codex.
+
 Two servers ship with Alfred:
 
 - **`alfred_memory`** gives an agent read-only recall over the local fleet brain:
@@ -37,10 +45,20 @@ flowchart LR
   runner -.->|not wired by default| yours
 ```
 
-The runner resolves both servers once per invoke and passes them to the `claude`
-CLI in a single `--mcp-config` flag (a single `mcpServers` map). The same
-resolution feeds the per-agent tool allowlist, so the attached servers and the
-allowed tool names can never disagree.
+On a Claude firing the runner resolves both servers once per invoke and passes
+them to the `claude` CLI in a single `--mcp-config` flag (a single `mcpServers`
+map). It resolves the `alfred_memory` server *script path* exactly once and
+shares that one resolved path between the `--mcp-config` attachment and the tool
+allowlist, so the two can never disagree about **whether** the server is present
+(no TOCTOU between two separate `Path.exists()` checks).
+
+This shared-path guarantee is about attachment, not about tool-set parity.
+Attaching a server makes every tool it lists over `tools/list` reachable; the
+`--allowedTools` allowlist is populated separately, from two fixed constants in
+`process.py`. Those two sets are not identical: the `alfred_memory` server
+registers eleven tools, but the allowlist constant names ten of them (see the
+note under the tool table). See [Per-role tool scoping](#per-role-tool-scoping)
+for exactly how the allowlist is assembled.
 
 ## Servers Alfred provides: `alfred_memory`
 
@@ -63,6 +81,15 @@ path, so no per-tool restriction is needed even under `bypassPermissions`.
 | `alfred_prs_touching` | Pull requests that changed a path, from the materialized graph edges | `repo` and `path` (both required) | yes |
 | `alfred_code_graph_summary` | Local code-graph summary per repo, no raw source | none | yes |
 | `alfred_code_impact` | Local import, symbol, route, API-call, and drift hints for a path | `repo` and `path` (both required) | yes |
+
+All eleven tools above are registered on the server (the `TOOLS` tuple in
+`bin/alfred-mcp.py`) and are therefore reachable once the server is attached.
+**One registered tool, `alfred_memory_doctor`, is not in the runner's tool
+allowlist**: the `_MEMORY_RECALL_TOOLS` constant in `process.py` names the other
+ten. `alfred_brain_status` covers the same read-only doctor output and is in the
+allowlist, so an agent does not lose that capability. The tool remains available
+to any MCP client that talks to the server directly, for example through
+`alfred mcp serve`.
 
 ### Safety model
 
@@ -120,36 +147,49 @@ see [CODE_MEMORY.md](CODE_MEMORY.md).
 
 ## Per-role tool scoping
 
-The allowlist is assembled in `lib/agent_runner/process.py`, and it is read-only
-by design:
+Scoping happens in `lib/agent_runner/process.py`, only on the Claude path
+(`claude_invoke` and `claude_invoke_streaming`). There are two separate steps:
+**attaching** the servers and **allowlisting** their tool names.
 
-1. The runner resolves the memory-server path **once** per invoke
-   (`_memory_mcp_script()`) and shares it with both the allowlist builder and the
-   `--mcp-config` attachment, so the two can never disagree (no TOCTOU between two
-   separate existence checks).
-2. `_with_memory_mcp_tools` appends the memory tool names
-   (`mcp__alfred_memory__*`) to the agent's existing allowlist, but only when the
-   memory MCP is enabled and its server script exists. It preserves the caller's
+1. The runner resolves the `alfred_memory` server *script path* **once** per
+   invoke (`_memory_mcp_script()`) and passes that one resolved value to both the
+   allowlist builder and the `--mcp-config` attachment. This shared path is what
+   guarantees the two agree about **whether** the memory server is present (no
+   TOCTOU between two separate existence checks). It is a presence guarantee, not
+   a promise that the attached tool set and the allowlisted tool set are equal.
+2. `_memory_mcp_args` builds the single `--mcp-config` flag containing whichever
+   of the two servers are enabled and resolvable. **Attaching a server makes
+   every tool it lists over `tools/list` reachable**, not only the allowlisted
+   ones.
+3. `_with_memory_mcp_tools` appends tool *names* to the agent's `--allowedTools`
+   list from two fixed constants: the memory names (`mcp__alfred_memory__*`) from
+   `_MEMORY_RECALL_TOOLS`, added only when the memory MCP is enabled and its
+   script exists; and the `mcp__code_memory__*` names from `_CODE_MEMORY_TOOLS`,
+   added only when the code-memory server resolves. It preserves the caller's
    separator style and skips names already present.
-3. When the code-memory server resolves, `_code_memory_tool_names` appends the
-   `mcp__code_memory__*` names from the fixed `_CODE_MEMORY_TOOLS` allowlist.
-4. `_memory_mcp_args` builds the single `--mcp-config` flag containing whichever
-   of the two servers are enabled and resolvable.
 
-Because both servers expose only read-only tools, **no write, merge, or
-mutate tool ever reaches any agent through MCP**. The allowlist is additive:
-it can only grant the specific read tools named in the two constants
-(`_MEMORY_RECALL_TOOLS`, `_CODE_MEMORY_TOOLS`), never widen beyond them.
+Because the two sets are populated independently, they are not guaranteed
+identical. In practice the code-memory sets match, while `alfred_memory`
+registers eleven server tools and `_MEMORY_RECALL_TOOLS` allowlists ten
+(`alfred_memory_doctor` is the one it omits; `alfred_brain_status` gives an agent
+the same doctor output). The allowlist is the tighter of the two.
+
+Both servers expose only read-only tools, so **no write, merge, or mutate tool
+ever reaches any agent through MCP**, regardless of which set you read. Keeping
+the allowlist from two fixed constants also means a future upstream tool cannot
+silently widen agent capability without a code change to
+`_MEMORY_RECALL_TOOLS` or `_CODE_MEMORY_TOOLS`.
 
 ## Configuration and disabling
 
 All knobs are environment variables. Set them in `$ALFRED_HOME/.env`. Defaults
-work out of the box; both servers are on by default.
+work out of the box; both servers are on by default (on Claude firings, the only
+firings that get MCP at all).
 
 | Variable | Default | What it does |
 |---|---|---|
-| `ALFRED_MEMORY_MCP` | `1` (on) | Attach the `alfred_memory` MCP to firings. Any of `0`, `false`, `no`, `off`, or empty disables it. |
-| `ALFRED_CODE_MEMORY_MCP` | `1` (on) | Attach the `code_memory` MCP to firings. Same disable values. |
+| `ALFRED_MEMORY_MCP` | `1` (on) | Attach the `alfred_memory` MCP to Claude firings. Any of `0`, `false`, `no`, `off`, or empty disables it. |
+| `ALFRED_CODE_MEMORY_MCP` | `1` (on) | Attach the `code_memory` MCP to Claude firings. Same disable values. |
 | `ALFRED_MCP_ALLOW_RAW_MEMORY` | (unset) | When `1` / `true` / `yes`, `alfred_memory_candidates` includes full bodies, evidence, and review notes instead of previews. Leave unset for preview-only. |
 | `ALFRED_FLEET_BRAIN_DB` | `$ALFRED_HOME/fleet-brain.db` (else `~/.alfred/fleet-brain.db`) | Explicit path to the SQLite brain the `alfred_memory` server reads. |
 | `ALFRED_HOME` | `~/.alfred` | Runtime home. Resolves the default brain path and the code-memory cache. |
@@ -160,18 +200,22 @@ work out of the box; both servers are on by default.
 The full code-memory knob set (scope lists, index directories, timeouts) lives
 in [CODE_MEMORY.md](CODE_MEMORY.md).
 
-To turn MCP off entirely for a run, set both `ALFRED_MEMORY_MCP=0` and
+To turn MCP off entirely for a Claude run, set both `ALFRED_MEMORY_MCP=0` and
 `ALFRED_CODE_MEMORY_MCP=0`. Agents still run; they just fall back to reading and
-grepping the working tree directly.
+grepping the working tree directly, the same way a Codex-routed agent already
+does.
 
 ## Adding your own MCP server
 
-Today the runner wires exactly the two servers above. It does not read an
-arbitrary user MCP registry, so a server you add would need explicit wiring in
-`lib/agent_runner/process.py`: add it to the `mcpServers` map that
-`_memory_mcp_args` builds, and add its tool names to the allowlist the way
-`_code_memory_tool_names` does. Nothing consumes a user-supplied MCP config
-automatically yet, so this is a code change, not a config toggle.
+Today the runner wires exactly the two servers above, and only on the Claude
+path. It does not read an arbitrary user MCP registry, so a server you add would
+need explicit wiring in `lib/agent_runner/process.py`: add it to the
+`mcpServers` map that `_memory_mcp_args` builds, and add its tool names to the
+allowlist the way `_code_memory_tool_names` does. Both of those run inside
+`claude_invoke` / `claude_invoke_streaming`, so a server wired there reaches
+Claude firings only; `codex_invoke` has no MCP attachment point. Nothing consumes
+a user-supplied MCP config automatically yet, so this is a code change, not a
+config toggle.
 
 Before you attach anything, keep the same posture the built-in servers hold:
 read-only tools, a fixed tool allowlist (so an upstream update cannot silently
