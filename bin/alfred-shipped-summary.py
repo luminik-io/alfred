@@ -49,6 +49,13 @@ from agent_runner import (  # noqa: E402
     preflight,
     slack_post,
 )
+from self_proof import (  # noqa: E402
+    DEFAULT_WINDOW_DAYS,
+    compute_self_proof,
+)
+from self_proof import (  # noqa: E402
+    resolve_repos as resolve_self_proof_repos,
+)
 
 AGENT = "shipped-summary"
 PR_FIELDS = (
@@ -488,6 +495,14 @@ def render_slack(data: dict[str, Any]) -> str:
         ),
     ]
 
+    # Self-proof recap line: the share of merged PRs (agent + human) shipped by
+    # Alfred agents. Only appended when a self-proof block is present so a plain
+    # shipped summary is unchanged. The share is honest on empty windows: the
+    # headline says "no merged PRs" rather than quoting a fabricated 0%.
+    self_proof = data.get("self_proof")
+    if isinstance(self_proof, dict) and self_proof.get("headline"):
+        lines.append(f"\n:robot_face: *Self-proof* {self_proof['headline']}")
+
     if data.get("query_warnings"):
         lines.append("\n*Query warnings*")
         for warning in data["query_warnings"][:6]:
@@ -546,6 +561,92 @@ def render_slack(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _self_proof_gh_json(args: list[str], **_ignored: Any) -> Any:
+    """Adapt agent_runner.gh_json to the self_proof gh callable contract.
+
+    ``self_proof`` passes ``gh``-subcommand args WITHOUT a leading ``gh`` and
+    expects ``None`` on failure; ``agent_runner.gh_json`` wants the full argv
+    and takes only ``cmd`` and ``default`` (its internal ``run`` applies its
+    own timeout), so any keyword the caller passes (e.g. ``timeout``) is
+    accepted here and dropped rather than forwarded. Bridging this way keeps
+    the fleet's preflighted gh wrapper (with its auth + PATH handling) as what
+    actually runs without raising ``TypeError`` per repo.
+    """
+    return gh_json(["gh", *args], default=None)
+
+
+def compute_self_proof_stat(
+    repos: list[str] | None,
+    *,
+    days: int,
+) -> dict[str, Any]:
+    """Resolve the self-proof repo set and compute the stat via the fleet gh.
+
+    Explicit repos may be bare names (the shipped-summary convention); they are
+    resolved to ``owner/repo`` slugs through GH_ORG before querying, the same
+    way ``fetch_merged_prs`` resolves them. Unresolvable bare names are dropped
+    rather than sent to gh as bad slugs.
+    """
+    resolved = resolve_self_proof_repos(repos)
+    slugged: list[str] = []
+    for repo in resolved:
+        try:
+            slugged.append(repo_slug(repo))
+        except ValueError:
+            continue
+    return compute_self_proof(slugged, days=days, gh_json=_self_proof_gh_json)
+
+
+def render_self_proof(data: dict[str, Any]) -> str:
+    """Human-readable self-proof report for the terminal / Slack."""
+    aggregate = data.get("aggregate") or {}
+    lines = [
+        f"*Alfred self-proof - last {data.get('window_days', DEFAULT_WINDOW_DAYS)} days*",
+        data.get("headline", ""),
+        "",
+        "*By repo*",
+    ]
+    per_repo = data.get("per_repo") or []
+    if not per_repo:
+        lines.append("- (no repos configured)")
+    for row in per_repo:
+        if row.get("errored"):
+            lines.append(f"- `{row['repo']}`: GitHub query failed (excluded)")
+        elif row.get("capped"):
+            lines.append(
+                f"- `{row['repo']}`: query hit the page cap; counts would be "
+                "incomplete, so this repo is excluded"
+            )
+        elif row.get("no_data"):
+            lines.append(f"- `{row['repo']}`: no merged PRs in window")
+        else:
+            share = row.get("share_pct")
+            share_str = f"{share:g}%" if share is not None else "n/a"
+            lines.append(
+                f"- `{row['repo']}`: {row['agent_shipped']}/{row['merged_total']} "
+                f"merged PRs shipped by agents ({share_str})"
+            )
+    if aggregate.get("merged_total"):
+        share = aggregate.get("share_pct")
+        share_str = f"{share:g}%" if share is not None else "n/a"
+        lines.append("")
+        lines.append(
+            f"*Aggregate* {aggregate['agent_shipped']}/{aggregate['merged_total']} "
+            f"merged PRs ({share_str}) across "
+            f"{aggregate['repos_counted']} repos"
+        )
+    warnings = [f"- {repo}: GitHub data unavailable" for repo in (data.get("errors") or [])[:6]]
+    warnings.extend(
+        f"- {repo}: page-capped query; excluded from the share"
+        for repo in (data.get("capped") or [])[:6]
+    )
+    if warnings:
+        lines.append("")
+        lines.append("*Query warnings*")
+        lines.extend(warnings)
+    return "\n".join(line for line in lines if line is not None)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Summarize shipped GitHub activity")
     parser.add_argument("--period", choices=["daily", "weekly"], default="daily")
@@ -560,12 +661,88 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="skip per-PR file lookups for model/config change detection",
     )
+    parser.add_argument(
+        "--self-proof",
+        action="store_true",
+        help=(
+            "compute only the self-proof stat: the share of merged PRs across "
+            "the self-proof repo set that were shipped by Alfred agents"
+        ),
+    )
+    parser.add_argument(
+        "--with-self-proof",
+        action="store_true",
+        help="append the self-proof stat to the normal shipped summary",
+    )
+    parser.add_argument(
+        "--self-proof-days",
+        type=int,
+        help=(
+            "window in days for the self-proof stat "
+            f"(default: {DEFAULT_WINDOW_DAYS}, or --days when set)"
+        ),
+    )
+    parser.add_argument(
+        "--self-proof-json",
+        metavar="PATH",
+        help="write the self-proof stat as JSON to PATH ('-' for stdout)",
+    )
     return parser
+
+
+def _self_proof_window_days(args: argparse.Namespace) -> int:
+    if args.self_proof_days is not None:
+        return max(1, args.self_proof_days)
+    if args.days is not None:
+        return max(1, args.days)
+    return DEFAULT_WINDOW_DAYS
+
+
+def _write_self_proof_json(path: str, data: dict[str, Any]) -> None:
+    text = json.dumps(data, indent=2, default=str) + "\n"
+    if path == "-":
+        sys.stdout.write(text)
+        return
+    out_path = Path(path).expanduser()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(text, encoding="utf-8")
+
+
+def run_self_proof(args: argparse.Namespace) -> int:
+    """Standalone `--self-proof` path.
+
+    Self-proof resolves its own repo set (self repo + ALFRED_SHIPPED_REPOS by
+    default), so it does not require the shipped-summary repo envs to be set.
+    """
+    try:
+        preflight(PREFLIGHT)
+    except PreflightFailed:
+        return 0
+    if doctor_mode():
+        print(f"[{AGENT.upper()}-DOCTOR-OK]")
+        return 0
+
+    data = compute_self_proof_stat(args.repo, days=_self_proof_window_days(args))
+
+    if args.self_proof_json:
+        _write_self_proof_json(args.self_proof_json, data)
+    if args.json:
+        print(json.dumps(data, indent=2, default=str))
+    elif not args.self_proof_json:
+        msg = render_self_proof(data)
+        print(msg)
+        if args.slack:
+            slack_post(msg)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.self_proof:
+        return run_self_proof(args)
+
     repos = args.repo or configured_repos(args.period)
     if not repos and not doctor_requested():
         print(
@@ -586,6 +763,17 @@ def main(argv: list[str] | None = None) -> int:
 
     period = resolve_period(args)
     data = collect(period, repos, fetch_files=not args.no_file_scan)
+
+    # Weekly recap opts in to the self-proof line; daily stays lean unless asked.
+    # The proof line measures the SAME repos the summary just collected (the
+    # resolved --repo / ALFRED_SHIPPED_SUMMARY_*_REPOS set), so a scheduled
+    # weekly recap cannot summarize real merged PRs and then append a
+    # contradictory "No merged PRs" self-proof line resolved from different
+    # env knobs.
+    if args.with_self_proof or args.period == "weekly":
+        data["self_proof"] = compute_self_proof_stat(repos, days=_self_proof_window_days(args))
+    if args.self_proof_json and data.get("self_proof"):
+        _write_self_proof_json(args.self_proof_json, data["self_proof"])
 
     if args.json:
         print(json.dumps(data, indent=2, default=str))

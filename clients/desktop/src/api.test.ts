@@ -19,6 +19,7 @@ import {
   installAlfredCore,
   initialBaseUrl,
   isHostedBrowser,
+  loadCustomAgents,
   loadRosterTheme,
   loadShipped,
   loadSnapshot,
@@ -27,6 +28,8 @@ import {
   startLocalRuntime,
   streamComposeConverse,
   streamFiringTail,
+  supportsMutations,
+  supportsNativeActions,
 } from "./api";
 import type { ConverseRequest } from "./types";
 
@@ -243,6 +246,30 @@ describe("hosted browser (served by alfred serve)", () => {
     expect(isHostedBrowser()).toBe(false);
   });
 
+  it("supportsMutations is true for a hosted browser but supportsNativeActions is not", () => {
+    // The hosted browser can send token-gated HTTP writes (queue actions,
+    // custom-agent save/delete) even though it has no native bridge. Panels that
+    // gate an HTTP mutation must use supportsMutations, not supportsNativeActions,
+    // or they wrongly hide working controls in the browser build.
+    vi.stubEnv("DEV", false);
+    expect(supportsMutations()).toBe(true);
+    expect(supportsNativeActions()).toBe(false);
+  });
+
+  it("supportsMutations is false in the token-less Vite dev preview", () => {
+    // DEV=true (vitest default), no Tauri bridge: no launch token, so writes
+    // would 403. Both predicates are false here.
+    delete window.__TAURI_INTERNALS__;
+    expect(supportsMutations()).toBe(false);
+    expect(supportsNativeActions()).toBe(false);
+  });
+
+  it("supportsMutations and supportsNativeActions are both true in the native shell", () => {
+    window.__TAURI_INTERNALS__ = {};
+    expect(supportsMutations()).toBe(true);
+    expect(supportsNativeActions()).toBe(true);
+  });
+
   it("uses the page origin as the base URL when hosted", () => {
     vi.stubEnv("DEV", false);
     // jsdom's default origin is http://localhost:3000.
@@ -273,6 +300,32 @@ describe("hosted browser (served by alfred serve)", () => {
     const read = seen.find((r) => r.method === undefined || r.method === "GET");
     expect(mutation?.token).toBe("hosted-token-abc");
     expect(read?.token).toBeUndefined();
+  });
+
+  it("attaches the injected token to a privileged include_prompt custom-agents READ", async () => {
+    // The custom-agents inventory WITH include_prompt=1 is gated the same way as
+    // a mutation server-side, so the hosted browser must send the token on this
+    // GET too, or the panel 403s. A plain (non-prompt) read stays token-less.
+    vi.stubEnv("DEV", false);
+    setInjectedToken("hosted-token-xyz");
+    const seen: Array<{ url: string; token: string | undefined; method: string | undefined }> = [];
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      seen.push({
+        url: String(input),
+        token: ((init?.headers as Record<string, string>) || {})["X-Alfred-Token"],
+        method: init?.method,
+      });
+      return new Response(JSON.stringify({ agents: [], count: 0 }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await loadCustomAgents(DEFAULT_BASE_URL, { includePrompt: true });
+    await loadCustomAgents(DEFAULT_BASE_URL);
+
+    const privileged = seen.find((r) => r.url.includes("include_prompt"));
+    const plain = seen.find((r) => !r.url.includes("include_prompt"));
+    expect(privileged?.token).toBe("hosted-token-xyz");
+    expect(plain?.token).toBeUndefined();
   });
 
   it("sends no token when the page has none injected (server then 403s)", async () => {

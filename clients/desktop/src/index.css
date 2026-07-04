@@ -46,18 +46,18 @@
   /* Filled-button accent sits a touch deeper than the signature glow so white
    * button text clears WCAG AA (4.5:1) on it; --accent/--ring keep the brighter
    * steel violet for active states and focus rings. */
-  --primary: oklch(0.56 0.19 282);
+  --primary: oklch(0.56 0.19 262);
   --primary-foreground: oklch(0.99 0.008 272);
   --secondary: oklch(0.25 0.02 270 / 80%);
   --secondary-foreground: oklch(0.93 0.014 272);
   --muted: oklch(0.25 0.018 270 / 72%);
   --muted-foreground: oklch(0.72 0.022 272);
-  --accent: oklch(0.64 0.19 282);
+  --accent: oklch(0.64 0.19 262);
   --accent-foreground: oklch(0.99 0.008 272);
   --destructive: oklch(0.64 0.20 25);
   --border: oklch(0.86 0.03 270 / 0.10);
   --input: oklch(0.86 0.03 270 / 0.13);
-  --ring: oklch(0.64 0.19 282);
+  --ring: oklch(0.64 0.19 262);
   --chart-1: oklch(0.62 0.17 280);
   --chart-2: oklch(0.66 0.15 230);
   --chart-3: oklch(0.70 0.16 320);
@@ -75,18 +75,38 @@
   --hairline: oklch(0.9 0.025 270 / 0.08);
   --border-strong: oklch(0.86 0.03 270 / 0.18);
 
-  /* GLASS chrome: translucent layers + blur + a cool specular highlight. */
-  --glass: oklch(0.21 0.02 270 / 0.70);
-  --glass-strong: oklch(0.235 0.021 270 / 0.82);
-  --glass-highlight: rgba(214, 220, 255, 0.10);
-  --glass-shadow: rgba(0, 0, 0, 0.44);
-  --glass-blur: 24px;
-  --glass-saturate: 140%;
+  /* GLASS chrome: translucent layers + heavy blur + a cool specular highlight.
+   * Pushed to an aggressive Giga.ai register: the panes read as genuinely
+   * translucent frosted glass floating over the ambient wash, with a luminous
+   * brand edge and layered depth shadows. Data surfaces stay flat (see
+   * --surface); text always lands on the >=90%-opaque --card/--popover fills so
+   * contrast holds WCAG AA even with the blur cranked. */
+  --glass: oklch(0.21 0.02 270 / 0.58);
+  --glass-strong: oklch(0.235 0.021 270 / 0.72);
+  --glass-highlight: rgba(224, 230, 255, 0.16);
+  --glass-shadow: rgba(0, 0, 0, 0.52);
+  --glass-blur: 30px;
+  /* Heavy blur for the hero prominence surfaces (palette, dialogs, sidebar,
+     workflow nodes). Chrome that must feel like thick glass uses this. */
+  --glass-blur-heavy: 44px;
+  --glass-saturate: 175%;
+  /* Luminous brand edge: the cobalt->teal light-catch used on the top hairline
+     and glow rings of prominence glass, so edges glow instead of just outline. */
+  --glass-edge: color-mix(in oklch, var(--accent), transparent 40%);
+  --glass-edge-2: color-mix(in oklch, var(--brand-teal), transparent 52%);
+  /* Layered depth shadow stack: an inset specular, a near tight ambient
+     occlusion, and a wide soft cast, so glass reads as lifted off the plane. */
+  --glass-depth:
+    inset 0 1px 0 var(--glass-highlight),
+    0 2px 6px rgba(0, 0, 0, 0.30),
+    0 24px 64px var(--glass-shadow);
+  /* Ambient color glow bled behind prominence glass for real layered depth. */
+  --glass-glow: color-mix(in oklch, var(--accent), transparent 82%);
 
   /* Steel-violet signature, soft + ink variants for fills/labels. */
   --accent-2: oklch(0.66 0.15 250);
   --accent-ink: oklch(0.98 0.01 270);
-  --accent-soft: oklch(0.64 0.19 282 / 18%);
+  --accent-soft: oklch(0.64 0.19 262 / 18%);
 
   /* Status palette (STATUS ONLY: never decorative). */
   --ok: oklch(0.72 0.15 150);
@@ -101,20 +121,25 @@
   --cyan: oklch(0.74 0.13 220);
   --rose: oklch(0.70 0.16 354);
   --violet: oklch(0.66 0.17 300);
+  /* Marketing-site teal (#00E5C7 family): the second brand accent, paired with
+     the cobalt --accent for luminous glass edges so the app matches the site. */
+  --brand-teal: oklch(0.83 0.14 178);
 
-  /* Ambient radial depth wash behind the content plane. */
-  --ambient: oklch(0.62 0.19 282 / 0.13);
+  /* Ambient radial depth field behind the content plane. Two brand blooms give
+     the heavy glass blur something luminous to refract (cobalt + teal). */
+  --ambient: oklch(0.62 0.19 262 / 0.20);
+  --ambient-2: oklch(0.78 0.13 190 / 0.10);
 
-  --radius: 0.5rem;
+  --radius: 0;
 
   --sidebar: oklch(0.175 0.018 268 / 0.74);
   --sidebar-foreground: oklch(0.93 0.014 272);
-  --sidebar-primary: oklch(0.64 0.19 282);
+  --sidebar-primary: oklch(0.64 0.19 262);
   --sidebar-primary-foreground: oklch(0.99 0.008 272);
   --sidebar-accent: oklch(0.25 0.02 270 / 70%);
   --sidebar-accent-foreground: oklch(0.96 0.01 272);
   --sidebar-border: oklch(0.86 0.03 270 / 0.10);
-  --sidebar-ring: oklch(0.64 0.19 282);
+  --sidebar-ring: oklch(0.64 0.19 262);
 }
 
 /* Alfred Dark is also the explicit named selection. */
@@ -138,18 +163,18 @@
   --card-foreground: oklch(0.23 0.012 75);
   --popover: oklch(0.994 0.006 90 / 0.98);
   --popover-foreground: oklch(0.23 0.012 75);
-  --primary: oklch(0.52 0.19 280);
+  --primary: oklch(0.52 0.19 262);
   --primary-foreground: oklch(0.99 0.005 90);
   --secondary: oklch(0.935 0.012 88 / 80%);
   --secondary-foreground: oklch(0.28 0.016 78);
   --muted: oklch(0.928 0.010 88 / 78%);
   --muted-foreground: oklch(0.46 0.018 78);
-  --accent: oklch(0.52 0.19 280);
+  --accent: oklch(0.52 0.19 262);
   --accent-foreground: oklch(0.99 0.005 90);
   --destructive: oklch(0.55 0.22 25);
   --border: oklch(0.30 0.016 75 / 0.12);
   --input: oklch(0.30 0.016 75 / 0.14);
-  --ring: oklch(0.52 0.19 280);
+  --ring: oklch(0.52 0.19 262);
   --chart-1: oklch(0.52 0.19 280);
   --chart-2: oklch(0.55 0.15 230);
   --chart-3: oklch(0.56 0.17 320);
@@ -161,15 +186,23 @@
   --surface-3: oklch(0.949 0.012 88);
   --hairline: oklch(0.30 0.016 75 / 0.10);
   --border-strong: oklch(0.30 0.016 75 / 0.20);
-  --glass: oklch(0.994 0.006 90 / 0.66);
-  --glass-strong: oklch(0.995 0.006 90 / 0.85);
-  --glass-highlight: rgba(255, 252, 246, 0.55);
-  --glass-shadow: rgba(72, 56, 40, 0.10);
-  --glass-blur: 24px;
-  --glass-saturate: 140%;
+  --glass: oklch(0.994 0.006 90 / 0.56);
+  --glass-strong: oklch(0.995 0.006 90 / 0.80);
+  --glass-highlight: rgba(255, 253, 248, 0.75);
+  --glass-shadow: rgba(72, 56, 40, 0.14);
+  --glass-blur: 30px;
+  --glass-blur-heavy: 44px;
+  --glass-saturate: 165%;
+  --glass-edge: color-mix(in oklch, var(--accent), transparent 45%);
+  --glass-edge-2: color-mix(in oklch, var(--brand-teal), transparent 50%);
+  --glass-depth:
+    inset 0 1px 0 var(--glass-highlight),
+    0 2px 8px rgba(72, 56, 40, 0.08),
+    0 22px 56px var(--glass-shadow);
+  --glass-glow: color-mix(in oklch, var(--accent), transparent 88%);
   --accent-2: oklch(0.50 0.16 250);
   --accent-ink: oklch(0.99 0.005 90);
-  --accent-soft: oklch(0.52 0.19 280 / 12%);
+  --accent-soft: oklch(0.52 0.19 262 / 12%);
   --ok: oklch(0.55 0.15 150);
   --warn: oklch(0.62 0.14 70);
   --error: oklch(0.55 0.22 25);
@@ -180,15 +213,17 @@
   --cyan: oklch(0.52 0.13 220);
   --rose: oklch(0.55 0.18 354);
   --violet: oklch(0.52 0.19 300);
-  --ambient: oklch(0.55 0.14 90 / 0.07);
+  --brand-teal: oklch(0.62 0.12 178);
+  --ambient: oklch(0.55 0.18 262 / 0.10);
+  --ambient-2: oklch(0.70 0.12 190 / 0.08);
   --sidebar: oklch(0.985 0.010 90 / 0.74);
   --sidebar-foreground: oklch(0.28 0.016 78);
-  --sidebar-primary: oklch(0.52 0.19 280);
+  --sidebar-primary: oklch(0.52 0.19 262);
   --sidebar-primary-foreground: oklch(0.99 0.005 90);
   --sidebar-accent: oklch(0.93 0.008 270 / 72%);
   --sidebar-accent-foreground: oklch(0.27 0.018 270);
   --sidebar-border: oklch(0.22 0.02 270 / 0.12);
-  --sidebar-ring: oklch(0.52 0.19 280);
+  --sidebar-ring: oklch(0.52 0.19 262);
 }
 
 /* --- Linear Crisp: flatter and denser. Glass is dialed to near-flat
@@ -204,18 +239,18 @@
   --card-foreground: oklch(0.95 0.006 275);
   --popover: oklch(0.19 0.009 275 / 98%);
   --popover-foreground: oklch(0.95 0.006 275);
-  --primary: oklch(0.56 0.15 278);
+  --primary: oklch(0.56 0.15 262);
   --primary-foreground: oklch(0.99 0.005 275);
   --secondary: oklch(0.22 0.009 275);
   --secondary-foreground: oklch(0.92 0.006 275);
   --muted: oklch(0.22 0.008 275);
   --muted-foreground: oklch(0.68 0.012 275);
-  --accent: oklch(0.64 0.15 278);
+  --accent: oklch(0.64 0.15 262);
   --accent-foreground: oklch(0.99 0.005 275);
   --destructive: oklch(0.64 0.20 25);
   --border: oklch(1 0 0 / 0.08);
   --input: oklch(1 0 0 / 0.10);
-  --ring: oklch(0.64 0.15 278);
+  --ring: oklch(0.64 0.15 262);
   --chart-1: oklch(0.64 0.15 278);
   --chart-2: oklch(0.66 0.14 225);
   --chart-3: oklch(0.70 0.15 320);
@@ -232,10 +267,20 @@
   --glass-highlight: rgba(255, 255, 255, 0.05);
   --glass-shadow: rgba(0, 0, 0, 0.30);
   --glass-blur: 4px;
+  /* Linear Crisp stays deliberately flat: heavy blur tracks the base blur so
+     prominence surfaces never frost, and the edge/depth tokens stay quiet. */
+  --glass-blur-heavy: 6px;
   --glass-saturate: 110%;
+  --glass-edge: color-mix(in oklch, var(--accent), transparent 62%);
+  --glass-edge-2: color-mix(in oklch, var(--brand-teal), transparent 70%);
+  --glass-depth:
+    inset 0 1px 0 var(--glass-highlight),
+    0 1px 3px rgba(0, 0, 0, 0.24),
+    0 12px 30px var(--glass-shadow);
+  --glass-glow: color-mix(in oklch, var(--accent), transparent 92%);
   --accent-2: oklch(0.66 0.14 240);
   --accent-ink: oklch(0.99 0.005 275);
-  --accent-soft: oklch(0.64 0.15 278 / 14%);
+  --accent-soft: oklch(0.64 0.15 262 / 14%);
   --ok: oklch(0.72 0.15 150);
   --warn: oklch(0.78 0.13 75);
   --error: oklch(0.64 0.20 25);
@@ -246,16 +291,18 @@
   --cyan: oklch(0.74 0.12 215);
   --rose: oklch(0.70 0.16 354);
   --violet: oklch(0.66 0.15 300);
-  --ambient: oklch(0.64 0.15 278 / 0.05);
-  --radius: 0.375rem;
+  --brand-teal: oklch(0.82 0.13 178);
+  --ambient: oklch(0.64 0.15 262 / 0.05);
+  --ambient-2: oklch(0.64 0.15 262 / 0.02);
+  --radius: 0;
   --sidebar: oklch(0.165 0.008 275 / 0.96);
   --sidebar-foreground: oklch(0.92 0.006 275);
-  --sidebar-primary: oklch(0.64 0.15 278);
+  --sidebar-primary: oklch(0.64 0.15 262);
   --sidebar-primary-foreground: oklch(0.99 0.005 275);
   --sidebar-accent: oklch(0.22 0.009 275);
   --sidebar-accent-foreground: oklch(0.95 0.006 275);
   --sidebar-border: oklch(1 0 0 / 0.08);
-  --sidebar-ring: oklch(0.64 0.15 278);
+  --sidebar-ring: oklch(0.64 0.15 262);
 }
 
 /* Linear Crisp light: dense, flat, near-white. */
@@ -267,18 +314,18 @@
   --card-foreground: oklch(0.24 0.01 275);
   --popover: oklch(1 0 0 / 0.99);
   --popover-foreground: oklch(0.24 0.01 275);
-  --primary: oklch(0.54 0.18 278);
+  --primary: oklch(0.54 0.18 262);
   --primary-foreground: oklch(0.99 0.004 275);
   --secondary: oklch(0.95 0.004 275);
   --secondary-foreground: oklch(0.28 0.012 275);
   --muted: oklch(0.95 0.003 275);
   --muted-foreground: oklch(0.46 0.014 275);
-  --accent: oklch(0.54 0.18 278);
+  --accent: oklch(0.54 0.18 262);
   --accent-foreground: oklch(0.99 0.004 275);
   --destructive: oklch(0.55 0.22 25);
   --border: oklch(0.24 0.012 275 / 0.12);
   --input: oklch(0.24 0.012 275 / 0.14);
-  --ring: oklch(0.54 0.18 278);
+  --ring: oklch(0.54 0.18 262);
   --chart-1: oklch(0.54 0.18 278);
   --chart-2: oklch(0.55 0.14 225);
   --chart-3: oklch(0.56 0.16 320);
@@ -295,10 +342,18 @@
   --glass-highlight: rgba(255, 255, 255, 0.5);
   --glass-shadow: rgba(36, 34, 60, 0.10);
   --glass-blur: 4px;
+  --glass-blur-heavy: 6px;
   --glass-saturate: 110%;
+  --glass-edge: color-mix(in oklch, var(--accent), transparent 62%);
+  --glass-edge-2: color-mix(in oklch, var(--brand-teal), transparent 68%);
+  --glass-depth:
+    inset 0 1px 0 var(--glass-highlight),
+    0 1px 3px rgba(36, 34, 60, 0.08),
+    0 12px 28px var(--glass-shadow);
+  --glass-glow: color-mix(in oklch, var(--accent), transparent 94%);
   --accent-2: oklch(0.50 0.15 240);
   --accent-ink: oklch(0.99 0.004 275);
-  --accent-soft: oklch(0.54 0.18 278 / 12%);
+  --accent-soft: oklch(0.54 0.18 262 / 12%);
   --ok: oklch(0.55 0.15 150);
   --warn: oklch(0.62 0.14 70);
   --error: oklch(0.55 0.22 25);
@@ -309,16 +364,18 @@
   --cyan: oklch(0.52 0.12 215);
   --rose: oklch(0.55 0.18 354);
   --violet: oklch(0.52 0.18 300);
-  --ambient: oklch(0.54 0.18 278 / 0.06);
-  --radius: 0.375rem;
+  --brand-teal: oklch(0.60 0.11 178);
+  --ambient: oklch(0.54 0.18 262 / 0.06);
+  --ambient-2: oklch(0.54 0.18 262 / 0.03);
+  --radius: 0;
   --sidebar: oklch(0.99 0.002 275 / 0.96);
   --sidebar-foreground: oklch(0.28 0.012 275);
-  --sidebar-primary: oklch(0.54 0.18 278);
+  --sidebar-primary: oklch(0.54 0.18 262);
   --sidebar-primary-foreground: oklch(0.99 0.004 275);
   --sidebar-accent: oklch(0.95 0.004 275);
   --sidebar-accent-foreground: oklch(0.28 0.012 275);
   --sidebar-border: oklch(0.24 0.012 275 / 0.12);
-  --sidebar-ring: oklch(0.54 0.18 278);
+  --sidebar-ring: oklch(0.54 0.18 262);
 }
 
 @theme inline {
@@ -391,11 +448,21 @@ body {
   min-width: 320px;
   margin: 0;
   overflow: hidden;
+  /* Layered ambient depth field: two brand blooms (cobalt top-left, teal
+     bottom-right) over the base. This is what the heavy backdrop-blur refracts,
+     so glass chrome reads as genuinely translucent (Giga-style) rather than as
+     flat dark cards. Each theme sets --ambient / --ambient-2; Linear Crisp keeps
+     them near-zero for its flat plane. */
   background:
     radial-gradient(
-      120% 80% at 50% -10%,
+      90% 70% at 12% -8%,
       var(--ambient) 0%,
-      transparent 60%
+      transparent 52%
+    ),
+    radial-gradient(
+      80% 70% at 100% 108%,
+      var(--ambient-2, var(--ambient)) 0%,
+      transparent 55%
     ),
     var(--background);
   background-attachment: fixed;
@@ -439,7 +506,7 @@ body {
   place-items: center;
   overflow: visible;
   border: 0;
-  border-radius: 8px;
+  border-radius: 0;
   background: transparent;
   box-shadow: none;
 }
@@ -456,14 +523,92 @@ body {
 }
 
 .alfred-glass {
-  border: 1px solid color-mix(in oklch, var(--border), white 8%);
+  border: 1px solid color-mix(in oklch, var(--border), white 10%);
   background:
-    linear-gradient(180deg, var(--glass-highlight), transparent 34%),
-    color-mix(in oklch, var(--card), var(--background) 7%);
+    linear-gradient(180deg, var(--glass-highlight), transparent 30%),
+    color-mix(in oklch, var(--card), var(--background) 5%);
   box-shadow:
     inset 0 1px 0 var(--glass-highlight),
-    0 10px 32px var(--glass-shadow);
+    0 2px 6px rgba(0, 0, 0, 0.24),
+    0 16px 44px var(--glass-shadow);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+/* PROMINENT-SURFACE GLASS (command palette, dialogs, sheets, popovers). A real
+ * backdrop blur + saturation over a translucent popover, layered translucent
+ * depth, and a 1px luminous top hairline tinted with the brand cobalt->teal so
+ * these hero chrome surfaces read as glass and match the marketing site. Text
+ * sits on --popover-foreground over a >=90%-opaque popover fill, so contrast
+ * holds WCAG AA; where backdrop-filter is unsupported the popover fill alone is
+ * already AA-safe (see @supports fallback). Corners stay sharp (zero radius).
+ *
+ * POSITIONING IS OFF-LIMITS HERE. This helper is applied to surfaces that are
+ * already positioned by Tailwind utilities (DialogContent/CommandDialog use
+ * `fixed`, PopoverContent is Radix-positioned). It must therefore set ONLY
+ * background / border / box-shadow / backdrop-filter and NEVER position, inset,
+ * top/left, or transform, or it would override a dialog's `fixed` centering and
+ * drop the modal into normal document flow (Codex P1 on PR #385). The luminous
+ * top hairline is drawn as a non-repeating gradient layer in `background` (not a
+ * positioned ::before), so no positioning context is needed. The rule also lives
+ * inside @layer components so it can never win a specificity tie against a
+ * Tailwind utility in @layer utilities.
+ *
+ * The look is deliberately aggressive: heavy blur (--glass-blur-heavy) and high
+ * saturation over layered translucent depth (a top specular sheen, a brand-tinted
+ * radial wash bled from the top-right corner, then the translucent popover fill
+ * kept >=88% opaque so text-on-glass holds WCAG AA), a stronger drop shadow, and
+ * an inset accent hairline. Three stacked background layers read as real thick
+ * glass, not a single flat tint. */
+@layer components {
+  .alfred-surface-glass {
+    border: 1px solid
+      color-mix(in oklch, var(--accent) 26%, color-mix(in oklch, var(--border), white 12%));
+    /* Layer order (top paints first): the luminous cobalt->teal 1px hairline
+       pinned to the top edge, the specular highlight sheen, a brand-tinted radial
+       wash bled from the top-right corner, then the translucent popover fill. The
+       hairline is a non-repeating top-anchored gradient layer (not a positioned
+       ::before), so this helper needs no positioning context and never disturbs a
+       dialog's `fixed` centering. */
+    background:
+      linear-gradient(
+        90deg,
+        transparent,
+        var(--glass-edge),
+        var(--glass-edge-2),
+        transparent
+      ) top / 100% 1px no-repeat,
+      linear-gradient(180deg, var(--glass-highlight), transparent 26%),
+      radial-gradient(
+        120% 100% at 100% 0%,
+        var(--glass-glow),
+        transparent 55%
+      ),
+      color-mix(in oklch, var(--popover), transparent 10%);
+    box-shadow:
+      inset 0 1px 0 var(--glass-highlight),
+      inset 0 0 0 1px color-mix(in oklch, var(--accent), transparent 88%),
+      0 2px 8px rgba(0, 0, 0, 0.28),
+      0 28px 72px var(--glass-shadow);
+    backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturate));
+  }
+
+  /* Where the backdrop filter cannot render, fall back to an opaque popover fill
+     (keeping the luminous hairline layer) so text-on-glass never loses contrast. */
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .alfred-surface-glass {
+      background:
+        linear-gradient(
+          90deg,
+          transparent,
+          var(--glass-edge),
+          var(--glass-edge-2),
+          transparent
+        ) top / 100% 1px no-repeat,
+        var(--popover);
+    }
+  }
 }
 
 .alfred-glass-shell {
@@ -471,48 +616,90 @@ body {
   box-shadow:
     inset -1px 0 0 color-mix(in oklch, var(--sidebar-border), transparent 0%),
     inset 0 1px 0 var(--glass-highlight);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturate));
 }
 
 .alfred-glass-shell [data-sidebar="sidebar"] {
+  position: relative;
   overflow: hidden;
   border: 0;
-  border-right: 1px solid color-mix(in oklch, var(--sidebar-border), white 8%);
+  border-right: 1px solid color-mix(in oklch, var(--sidebar-border), white 10%);
   border-radius: 0;
+  /* Deep frosted rail: a specular sheen, a diagonal cobalt->teal brand wash for
+     layered depth, then the (translucent) sidebar fill over the heavy blur. */
   background:
-    linear-gradient(180deg, var(--glass-highlight), transparent 28%),
+    linear-gradient(180deg, var(--glass-highlight), transparent 24%),
     linear-gradient(
-      150deg,
-      color-mix(in oklch, var(--primary), transparent 88%),
-      transparent 40%,
-      color-mix(in oklch, var(--accent), transparent 92%) 100%
+      152deg,
+      color-mix(in oklch, var(--primary), transparent 84%),
+      transparent 38%,
+      color-mix(in oklch, var(--brand-teal), transparent 90%) 100%
     ),
     color-mix(in oklch, var(--sidebar), transparent 0%);
   box-shadow:
     inset 0 1px 0 var(--glass-highlight),
-    10px 0 44px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    16px 0 56px rgba(0, 0, 0, 0.14);
+  backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturate));
+}
+
+/* Luminous right edge on the rail: a vertical brand light-catch, so the sidebar
+   glass has a lit seam against the content plane. */
+.alfred-glass-shell [data-sidebar="sidebar"]::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 1px;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    var(--glass-edge),
+    var(--glass-edge-2) 60%,
+    transparent
+  );
+  opacity: 0.7;
 }
 
 .alfred-page-hero {
   position: relative;
   overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--border), white 8%);
+  isolation: isolate;
+  border: 1px solid color-mix(in oklch, var(--border), white 10%);
   border-radius: var(--radius-lg);
   background:
-    linear-gradient(180deg, var(--glass-highlight), transparent 30%),
-    color-mix(in oklch, var(--card), var(--background) 6%);
+    linear-gradient(180deg, var(--glass-highlight), transparent 26%),
+    radial-gradient(
+      90% 140% at 0% 0%,
+      var(--glass-glow),
+      transparent 55%
+    ),
+    color-mix(in oklch, var(--card), var(--background) 4%);
   box-shadow:
     inset 0 1px 0 var(--glass-highlight),
-    0 12px 32px var(--glass-shadow);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    0 2px 6px rgba(0, 0, 0, 0.22),
+    0 18px 48px var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturate));
 }
 
+/* Luminous top edge on page heroes: the cobalt->teal brand light-catch. */
 .alfred-page-hero::before {
-  content: none;
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  pointer-events: none;
+  z-index: 1;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--glass-edge),
+    var(--glass-edge-2),
+    transparent
+  );
+  opacity: 0.85;
 }
 
 .dark .alfred-glass-shell {
@@ -542,14 +729,15 @@ body {
 .command-center__route,
 .command-center__pulse,
 .command-center__capacity {
-  border: 1px solid color-mix(in oklch, var(--border), white 8%);
+  border: 1px solid color-mix(in oklch, var(--border), white 10%);
   border-radius: var(--radius-xl);
   background:
-    linear-gradient(180deg, var(--glass-highlight), transparent 32%),
-    color-mix(in oklch, var(--card), var(--background) 4%);
+    linear-gradient(180deg, var(--glass-highlight), transparent 28%),
+    color-mix(in oklch, var(--card), var(--background) 3%);
   box-shadow:
     inset 0 1px 0 var(--glass-highlight),
-    0 18px 54px var(--glass-shadow);
+    0 2px 6px rgba(0, 0, 0, 0.24),
+    0 22px 60px var(--glass-shadow);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
@@ -587,7 +775,20 @@ body {
 }
 
 .command-center__top::before {
-  content: none;
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  pointer-events: none;
+  z-index: 1;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--glass-edge),
+    var(--glass-edge-2),
+    transparent
+  );
+  opacity: 0.85;
 }
 
 .command-center__title,
@@ -983,7 +1184,7 @@ body {
   gap: 0.25rem;
   padding: 0.25rem;
   border: 1px solid color-mix(in oklch, var(--border), white 8%);
-  border-radius: 0.75rem;
+  border-radius: 0;
   background: color-mix(in oklch, var(--card), var(--background) 8%);
 }
 
@@ -992,7 +1193,7 @@ body {
   align-items: center;
   gap: 0.4rem;
   border: 0;
-  border-radius: 0.55rem;
+  border-radius: 0;
   background: transparent;
   padding: 0.4rem 0.7rem;
   color: var(--muted-foreground);
@@ -1050,6 +1251,10 @@ body {
    Height tracks the viewport so it stays in frame across screen sizes; the
    graph re-fits on resize (see FitToContainer). */
 .workflow-graph {
+  /* Positioned so the absolutely-positioned .wf-legend anchors to this canvas
+     (not the viewport), keeping the legend inside the graph and inside element
+     screenshots of .workflow-graph. */
+  position: relative;
   min-height: 420px;
   height: min(78svh, 760px);
   border: 1px solid var(--border);
@@ -1085,10 +1290,172 @@ body {
   stroke-width: 2;
 }
 
+/* The human-approval handoff (plan -> approved work) is the most important edge
+   in the pipeline: draw it as a brighter accent dashed line so the operator's
+   go-ahead gate reads at a glance and never looks like an automatic handoff. */
+.workflow-graph .wf-edge--gate .react-flow__edge-path {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+}
+
+/* Edge handoff labels: a small readable chip at the midpoint so a newcomer can
+   read the pipeline verbs (scope / approved plan / pull request / merged). */
+.workflow-graph .react-flow__edge-textwrapper .react-flow__edge-textbg {
+  fill: color-mix(in oklch, var(--card), var(--background) 4%);
+  fill-opacity: 0.92;
+}
+
+.workflow-graph .react-flow__edge-text {
+  fill: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.workflow-graph .wf-edge--gate .react-flow__edge-text {
+  fill: color-mix(in oklch, var(--accent), var(--foreground) 30%);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .workflow-graph .react-flow__edge.animated .react-flow__edge-path {
     animation: none;
   }
+}
+
+/* Legend: a quiet glass card pinned top-left, explaining the pipeline flow,
+   the node status colors, and the two edge kinds (handoff vs. your approval).
+   Purely explanatory chrome, so it never intercepts canvas pointer events. */
+.wf-legend {
+  position: absolute;
+  /* Above the React Flow panes (nodes/edges sit around z 2-4) so the legend is
+     never occluded by the graph it explains. */
+  z-index: 20;
+  top: 0.85rem;
+  right: 0.85rem;
+  max-width: 15rem;
+  padding: 0.7rem 0.8rem;
+  pointer-events: none;
+  border: 1px solid
+    color-mix(in oklch, var(--accent) 26%, color-mix(in oklch, var(--border), white 12%));
+  border-radius: var(--radius-lg);
+  /* A hair more opaque than hero glass: the legend overlays busy canvas, so its
+     fill must stay legible while still reading as frosted brand glass. A faint
+     brand-wash corner + a defined outer shadow make it register as a distinct
+     panel even over an empty near-black region of the canvas. */
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 34%),
+    radial-gradient(120% 120% at 100% 0%, var(--glass-glow), transparent 60%),
+    var(--popover);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 2px 8px rgba(0, 0, 0, 0.32),
+    0 20px 48px var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturate));
+}
+
+.wf-legend {
+  position: absolute;
+  overflow: hidden;
+}
+
+/* Luminous top edge matching the hero-glass language. */
+.wf-legend::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--glass-edge),
+    var(--glass-edge-2),
+    transparent
+  );
+  opacity: 0.9;
+}
+
+.wf-legend__title {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.wf-legend__flow {
+  margin: 0.28rem 0 0.55rem;
+  color: var(--foreground);
+  font-family: var(--font-heading);
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.wf-legend__flow span {
+  margin: 0 0.12rem;
+  color: var(--accent);
+}
+
+.wf-legend__items {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.3rem 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wf-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.wf-legend__item--edge {
+  grid-column: span 1;
+}
+
+.wf-legend__swatch {
+  width: 0.6rem;
+  height: 0.6rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--wf-legend-tone, var(--muted-foreground));
+}
+
+.wf-legend__swatch[data-tone="ok"] {
+  background: var(--primary);
+}
+.wf-legend__swatch[data-tone="warn"] {
+  background: oklch(0.78 0.16 80);
+}
+.wf-legend__swatch[data-tone="error"] {
+  background: var(--destructive);
+}
+.wf-legend__swatch[data-tone="idle"] {
+  background: color-mix(in oklch, var(--muted-foreground), var(--border) 30%);
+}
+
+.wf-legend__edge {
+  width: 0.9rem;
+  height: 0;
+  flex: 0 0 auto;
+  border-top: 2px solid color-mix(in oklch, var(--primary), var(--border) 40%);
+}
+
+.wf-legend__edge--gate {
+  border-top-style: dashed;
+  border-top-color: var(--accent);
 }
 
 .workflow-graph .react-flow__controls {
@@ -1129,8 +1496,8 @@ body {
 }
 
 .workflow-graph .react-flow__minimap-node {
-  rx: 3;
-  ry: 3;
+  rx: 0;
+  ry: 0;
 }
 
 /* Lane heading above each column. */
@@ -1161,12 +1528,25 @@ body {
   gap: 0.45rem 0.65rem;
   width: 232px;
   padding: 0.7rem 0.8rem 0.7rem 0.95rem;
-  border: 1px solid color-mix(in oklch, var(--wf-tone), var(--border) 62%);
+  border: 1px solid color-mix(in oklch, var(--wf-tone), var(--border) 55%);
   border-radius: var(--radius-lg);
-  background: color-mix(in oklch, var(--card), var(--background) 5%);
+  /* Glass node: a translucent tone-tinted pane over the canvas with a heavy
+     backdrop blur, layered depth, and a luminous top hairline, so the workflow
+     graph reads as floating glass chrome (not flat cards). Corners stay sharp. */
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 30%),
+    radial-gradient(
+      120% 120% at 100% 0%,
+      color-mix(in oklch, var(--wf-tone), transparent 82%),
+      transparent 60%
+    ),
+    color-mix(in oklch, var(--wf-tone) 12%, color-mix(in oklch, var(--card), transparent 8%));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 6px 18px rgba(0, 0, 0, 0.1);
+    inset 0 1px 0 var(--glass-highlight),
+    0 2px 6px rgba(0, 0, 0, 0.26),
+    0 14px 34px var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturate));
   cursor: pointer;
   transition:
     border-color 140ms ease,
@@ -1218,7 +1598,7 @@ body {
   place-items: center;
   width: 2.1rem;
   height: 2.1rem;
-  border-radius: 0.7rem;
+  border-radius: 0;
   background: color-mix(in oklch, var(--agent-accent), transparent 82%);
   color: var(--agent-accent);
   font-family: var(--font-heading);
@@ -1257,7 +1637,7 @@ body {
   align-items: center;
   gap: 0.3rem;
   padding: 0.18rem 0.45rem;
-  border-radius: 999px;
+  border-radius: 0;
   border: 1px solid color-mix(in oklch, var(--wf-tone), var(--border) 55%);
   background: color-mix(in oklch, var(--wf-tone), var(--card) 88%);
   color: color-mix(in oklch, var(--wf-tone), var(--foreground) 45%);
@@ -1321,7 +1701,7 @@ body {
   overflow: hidden;
   min-height: 9.5rem;
   border: 1px solid color-mix(in oklch, var(--agent-accent), var(--border) 72%);
-  border-radius: 1rem;
+  border-radius: 0;
   background: linear-gradient(
     160deg,
     color-mix(in oklch, var(--agent-accent), var(--card) 86%),
@@ -1481,7 +1861,7 @@ body {
 .agent-inspector,
 .agents-deck__empty {
   border: 1px solid color-mix(in oklch, var(--border), white 8%);
-  border-radius: 1rem;
+  border-radius: 0;
   background: color-mix(in oklch, var(--card), var(--background) 8%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
@@ -1536,7 +1916,7 @@ body {
   gap: 0.75rem;
   align-items: center;
   border: 1px solid color-mix(in oklch, var(--agent-accent), var(--border) 84%);
-  border-radius: 0.875rem;
+  border-radius: 0;
   background: color-mix(in oklch, var(--card), var(--background) 8%);
   padding: 0.7rem;
   color: var(--foreground);
@@ -1597,7 +1977,7 @@ body {
   margin-left: 0.5rem;
   display: inline-block;
   padding: 0.05rem 0.4rem;
-  border-radius: 999px;
+  border-radius: 0;
   border: 1px solid color-mix(in oklch, var(--border), transparent 35%);
   background: color-mix(in oklch, var(--secondary), transparent 40%);
   color: var(--muted-foreground);
@@ -2030,7 +2410,7 @@ body {
   width: 2.85rem;
   aspect-ratio: 1;
   border: 1px solid color-mix(in oklch, var(--agent-accent), white 26%);
-  border-radius: 0.95rem;
+  border-radius: 0;
   background: color-mix(in oklch, var(--agent-accent), var(--card) 76%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.24),
@@ -2076,7 +2456,7 @@ body {
 .agent-drawer__latest,
 .agent-drawer__schedule {
   border: 1px solid color-mix(in oklch, var(--agent-accent), var(--border) 84%);
-  border-radius: 0.875rem;
+  border-radius: 0;
   background: color-mix(in oklch, var(--card), var(--background) 9%);
   padding: 0.85rem;
 }
@@ -2163,7 +2543,7 @@ body {
   gap: 0.125rem;
   padding: 0.625rem;
   border: 1px solid color-mix(in oklch, var(--metric-tone), var(--border) 74%);
-  border-radius: 0.625rem;
+  border-radius: 0;
   background: color-mix(in oklch, var(--card), var(--metric-tone) 4%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
@@ -2397,7 +2777,7 @@ body {
   align-items: center;
   gap: 0.4rem;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 0;
   background: color-mix(in oklch, var(--muted), transparent 42%);
   padding: 0.25rem 0.5rem;
   color: var(--muted-foreground);
@@ -2408,7 +2788,7 @@ body {
 .status-pill span {
   width: 0.42rem;
   height: 0.42rem;
-  border-radius: 999px;
+  border-radius: 0;
   background: currentColor;
 }
 
@@ -2446,7 +2826,7 @@ body {
   justify-content: center;
   gap: 0.45rem;
   border: 1px solid var(--border);
-  border-radius: 0.65rem;
+  border-radius: 0;
   min-height: 2.25rem;
   padding: 0.5rem 0.75rem;
   font: inherit;
@@ -2567,7 +2947,7 @@ body {
 .command-result__ok {
   margin-left: auto;
   border: 1px solid color-mix(in oklch, var(--ok), transparent 62%);
-  border-radius: 999px;
+  border-radius: 0;
   padding: 0.2rem 0.45rem;
   color: color-mix(in oklch, var(--ok), var(--foreground) 20%);
   font-size: 0.68rem;
@@ -2606,7 +2986,7 @@ body {
 .cli-chip-list code {
   overflow: auto;
   border: 1px solid var(--hairline);
-  border-radius: 0.65rem;
+  border-radius: 0;
   background: color-mix(in oklch, var(--black), var(--background) 8%);
   color: color-mix(in oklch, var(--foreground), var(--muted-foreground) 8%);
   font-family: var(--font-mono);
@@ -2630,7 +3010,7 @@ body {
   overflow: auto;
   padding: 0.85rem 0.95rem;
   border: 1px solid var(--hairline);
-  border-radius: 0.65rem;
+  border-radius: 0;
   background: color-mix(in oklch, var(--card), var(--background) 8%);
   color: var(--foreground);
   font-size: 0.85rem;
@@ -2676,7 +3056,7 @@ body {
   overflow: auto;
   margin: 0.5rem 0;
   padding: 0.6rem 0.7rem;
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: color-mix(in oklch, var(--black), var(--background) 8%);
   font-family: var(--font-mono);
   font-size: 0.76rem;
@@ -2684,7 +3064,7 @@ body {
 }
 .detail-md :not(pre) > code {
   padding: 0.08rem 0.3rem;
-  border-radius: 0.35rem;
+  border-radius: 0;
   background: color-mix(in oklch, var(--black), var(--background) 12%);
   font-family: var(--font-mono);
   font-size: 0.78rem;
@@ -2721,7 +3101,7 @@ body {
   align-items: center;
   gap: 0.55rem;
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  border-radius: 0;
   margin: 0.75rem 0;
   padding: 0.65rem 0.75rem;
   background: color-mix(in oklch, var(--muted), var(--card) 45%);
@@ -2914,7 +3294,7 @@ body {
 .attention-card code {
   display: inline-block;
   margin-top: 0.4rem;
-  border-radius: 0.45rem;
+  border-radius: 0;
   background: color-mix(in oklch, var(--muted), transparent 42%);
   padding: 0.2rem 0.4rem;
   font-size: 0.72rem;
@@ -2953,7 +3333,7 @@ body {
 .tag-row span,
 .compact-meta div {
   border: 1px solid var(--hairline);
-  border-radius: 999px;
+  border-radius: 0;
   background: color-mix(in oklch, var(--muted), transparent 38%);
   padding: 0.2rem 0.5rem;
 }
@@ -3143,7 +3523,7 @@ body {
   width: 100%;
   min-height: 2.75rem;
   border: 1px solid transparent;
-  border-radius: 0.6rem;
+  border-radius: 0;
   padding: 0.45rem 0.6rem;
   color: var(--foreground);
   background: transparent;
@@ -3228,7 +3608,7 @@ body {
   width: fit-content;
   max-width: min(42rem, 92%);
   border: 1px solid var(--hairline);
-  border-radius: 1.1rem;
+  border-radius: 0;
   padding: 0.7rem 0.9rem;
   background: color-mix(in oklch, var(--card), var(--background) 8%);
   animation: alfred-rise 180ms ease-out both;
@@ -3269,7 +3649,7 @@ body {
   min-height: 1.6rem;
   width: 1.6rem;
   border: 1px solid transparent;
-  border-radius: 0.5rem;
+  border-radius: 0;
   color: var(--muted-foreground);
   background: transparent;
   opacity: 0.7;
@@ -3319,7 +3699,7 @@ body {
 }
 
 .ask-bubble__md :not(pre) > code {
-  border-radius: 0.4rem;
+  border-radius: 0;
   padding: 0.1rem 0.3rem;
   background: color-mix(in oklch, var(--black), var(--background) 10%);
 }
@@ -3328,7 +3708,7 @@ body {
 .ask-code {
   margin: 0.55rem 0;
   border: 1px solid var(--hairline);
-  border-radius: 0.6rem;
+  border-radius: 0;
   overflow: hidden;
   background: color-mix(in oklch, var(--black), var(--background) 10%);
 }
@@ -3358,7 +3738,7 @@ body {
   min-height: 1.6rem;
   width: 1.6rem;
   border: 1px solid transparent;
-  border-radius: 0.45rem;
+  border-radius: 0;
   color: var(--muted-foreground);
   background: transparent;
   opacity: 0.75;
@@ -3399,7 +3779,7 @@ body {
   height: 1rem;
   margin-left: 2px;
   vertical-align: text-bottom;
-  border-radius: 1px;
+  border-radius: 0;
   background: var(--primary);
   animation: alfred-caret 1s steps(2, start) infinite;
 }
@@ -3581,7 +3961,7 @@ body {
   gap: 0.4rem;
   min-height: 2.1rem;
   border: 1px solid var(--hairline);
-  border-radius: 999px;
+  border-radius: 0;
   padding: 0.4rem 0.8rem;
   color: var(--foreground);
   background: color-mix(in oklch, var(--card), var(--background) 10%);
@@ -3667,7 +4047,7 @@ body {
   height: 2.25rem;
   flex: 0 0 auto;
   border: 1px solid color-mix(in oklch, var(--primary), transparent 70%);
-  border-radius: 999px;
+  border-radius: 0;
   color: var(--primary-foreground);
   background: var(--primary);
   box-shadow: 0 8px 20px color-mix(in oklch, var(--primary), transparent 82%);
@@ -3734,7 +4114,7 @@ body {
   margin-top: 0.25rem;
   overflow: hidden;
   border: 1px solid var(--hairline);
-  border-radius: 999px;
+  border-radius: 0;
   padding: 0.18rem 0.45rem;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4057,7 +4437,7 @@ body {
   display: grid;
   width: 100%;
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  border-radius: 0;
   background: color-mix(in oklch, var(--card), var(--background) 10%);
   color: var(--foreground);
   text-align: left;
@@ -4142,7 +4522,7 @@ body {
 
 .tail-status {
   margin-left: 0.45rem;
-  border-radius: 999px;
+  border-radius: 0;
   background: color-mix(in oklch, var(--muted), transparent 36%);
   padding: 0.2rem 0.45rem;
   color: var(--muted-foreground);
@@ -4208,7 +4588,7 @@ body {
   display: grid;
   grid-template-columns: 4.8rem minmax(0, 1fr);
   gap: 0.6rem;
-  border-radius: 0.55rem;
+  border-radius: 0;
   padding: 0.4rem 0.5rem;
   background: color-mix(in oklch, var(--black), var(--background) 18%);
   font-family: var(--font-mono);
@@ -4258,7 +4638,7 @@ body {
   align-items: center;
   justify-content: center;
   padding: 0 0.3rem;
-  border-radius: 999px;
+  border-radius: 0;
   background: color-mix(in oklch, var(--destructive), transparent 82%);
   color: var(--destructive);
   font-size: 0.68rem;
@@ -4292,7 +4672,7 @@ body {
 
 .run-card {
   border: 1px solid var(--hairline);
-  border-radius: 0.75rem;
+  border-radius: 0;
   background: color-mix(in oklch, var(--card), var(--background) 8%);
   transition:
     border-color 0.15s ease,
@@ -4315,7 +4695,7 @@ body {
   color: var(--foreground);
   text-align: left;
   cursor: pointer;
-  border-radius: 0.75rem;
+  border-radius: 0;
 }
 
 .run-card__head:focus-visible {
@@ -4375,7 +4755,7 @@ body {
 
 .run-card__cause {
   flex: 0 0 auto;
-  border-radius: 999px;
+  border-radius: 0;
   padding: 0.12rem 0.5rem;
   background: color-mix(in oklch, var(--destructive), transparent 84%);
   color: var(--destructive);
@@ -4386,7 +4766,7 @@ body {
 
 .run-card__live {
   flex: 0 0 auto;
-  border-radius: 999px;
+  border-radius: 0;
   padding: 0.12rem 0.45rem;
   background: color-mix(in oklch, var(--primary), transparent 82%);
   color: var(--primary);
@@ -4412,7 +4792,7 @@ body {
   align-items: center;
   gap: 0.45rem;
   margin: 0 0 0.6rem;
-  border-radius: 0.6rem;
+  border-radius: 0;
   padding: 0.5rem 0.6rem;
   background: color-mix(in oklch, var(--destructive), transparent 88%);
   color: var(--destructive);
@@ -4426,7 +4806,7 @@ body {
 
 .run-card__outcome {
   margin-left: 0.4rem;
-  border-radius: 0.4rem;
+  border-radius: 0;
   padding: 0.05rem 0.35rem;
   background: color-mix(in oklch, var(--destructive), transparent 80%);
   font-family: var(--font-mono);
@@ -4658,7 +5038,7 @@ body {
 
 .lesson-card__where {
   border: 1px solid var(--hairline);
-  border-radius: 999px;
+  border-radius: 0;
   padding: 0.15rem 0.4rem;
 }
 
@@ -4690,7 +5070,7 @@ body {
 
 .health-list div {
   border: 1px solid var(--hairline);
-  border-radius: 0.65rem;
+  border-radius: 0;
   padding: 0.6rem;
 }
 
@@ -4739,7 +5119,7 @@ body {
   .panel,
   .command-result,
   .notice-panel {
-    border-radius: 0.85rem;
+    border-radius: 0;
   }
 
   .request-thread__head,
@@ -4817,7 +5197,7 @@ body {
   gap: 0.32rem;
   height: 20px;
   border: 1px solid color-mix(in oklch, var(--chip-tone), transparent 64%);
-  border-radius: 999px;
+  border-radius: 0;
   background: color-mix(in oklch, var(--chip-tone), transparent 88%);
   padding: 0 8px;
   color: color-mix(in oklch, var(--chip-tone), var(--foreground) 22%);
@@ -4854,7 +5234,7 @@ body {
   align-items: center;
   height: 20px;
   border: 1px solid var(--hairline);
-  border-radius: 6px;
+  border-radius: 0;
   background: color-mix(in oklch, var(--muted), transparent 42%);
   padding: 0 8px;
   color: var(--muted-foreground);
@@ -4927,7 +5307,7 @@ body {
   width: 1.65rem;
   height: 1.65rem;
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: color-mix(in oklch, var(--card), var(--background) 6%);
   color: var(--muted-foreground);
   cursor: pointer;
@@ -5073,7 +5453,7 @@ body {
   min-width: 0;
   min-height: 2.25rem;
   border: 1px solid var(--border);
-  border-radius: 0.65rem;
+  border-radius: 0;
   background: color-mix(in oklch, var(--background), var(--surface) 22%);
   color: var(--foreground);
   font: inherit;
@@ -5193,7 +5573,7 @@ body {
   min-width: 1.25rem;
   height: 1.1rem;
   padding: 0 0.35rem;
-  border-radius: 999px;
+  border-radius: 0;
   background: color-mix(in oklch, var(--muted), transparent 30%);
   color: var(--muted-foreground);
   font-size: 0.68rem;
@@ -5228,7 +5608,7 @@ body {
   gap: 0.3rem;
   width: fit-content;
   border: 1px solid var(--hairline);
-  border-radius: 999px;
+  border-radius: 0;
   padding: 0.2rem 0.55rem;
   background: transparent;
   color: var(--muted-foreground);
@@ -5379,7 +5759,7 @@ body {
   gap: 0.5rem;
   padding: 0.25rem 0.35rem;
   border: 0;
-  border-radius: 999px;
+  border-radius: 0;
   background: transparent;
   color: var(--muted-foreground);
   cursor: pointer;
@@ -5476,7 +5856,7 @@ body {
   height: 2.5rem;
   flex-shrink: 0;
   border: 1px solid color-mix(in oklch, var(--primary), transparent 60%);
-  border-radius: 999px;
+  border-radius: 0;
   background: color-mix(in oklch, var(--primary), transparent 84%);
   color: var(--primary);
   box-shadow: inset 0 1px 0 var(--glass-highlight);
@@ -5555,7 +5935,7 @@ body {
   max-width: 34rem;
   padding: 0.55rem 0.95rem;
   border: 1px solid color-mix(in oklch, var(--primary), transparent 65%);
-  border-radius: 999px;
+  border-radius: 0;
   background: color-mix(in oklch, var(--primary), transparent 88%);
   font-size: 0.82rem;
   line-height: 1.35;
@@ -5884,7 +6264,7 @@ body {
   height: 3.25rem;
   flex: 0 0 auto;
   overflow: hidden;
-  border-radius: 0.6rem;
+  border-radius: 0;
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -5901,7 +6281,7 @@ body {
 .appearance__swatch-card {
   inset: 0.55rem 0.55rem auto 0.55rem;
   height: 0.85rem;
-  border-radius: 0.3rem;
+  border-radius: 0;
 }
 
 .appearance__swatch-accent {
@@ -5909,7 +6289,7 @@ body {
   bottom: 0.55rem;
   width: 1.5rem;
   height: 0.5rem;
-  border-radius: 999px;
+  border-radius: 0;
 }
 
 .appearance__swatch[data-theme-preview="alfred"] .appearance__swatch-bg {
@@ -5919,7 +6299,7 @@ body {
   background: oklch(0.20 0.019 270);
 }
 .appearance__swatch[data-theme-preview="alfred"] .appearance__swatch-accent {
-  background: oklch(0.64 0.19 282);
+  background: oklch(0.64 0.19 262);
 }
 
 .appearance__swatch[data-theme-preview="linear"] .appearance__swatch-bg {
@@ -5929,7 +6309,7 @@ body {
   background: oklch(0.205 0.009 275);
 }
 .appearance__swatch[data-theme-preview="linear"] .appearance__swatch-accent {
-  background: oklch(0.64 0.15 278);
+  background: oklch(0.64 0.15 262);
 }
 
 .appearance__segment {

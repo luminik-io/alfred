@@ -398,3 +398,109 @@ def test_wildcard_counts_unlabelled_prs(monkeypatch, tmp_path):
     prs = mod.fetch_merged_prs("alfred", _period(mod), [])
 
     assert [pr["number"] for pr in prs] == [1]
+
+
+# --------------------------------------------------------------------------
+# self-proof wiring (the computation itself is covered in test_self_proof.py)
+# --------------------------------------------------------------------------
+
+
+def test_self_proof_gh_adapter_ignores_extra_kwargs(monkeypatch, tmp_path):
+    """The adapter must never forward kwargs agent_runner.gh_json rejects.
+
+    agent_runner.gh_json accepts only (cmd, default); an earlier draft passed
+    timeout= through, raising TypeError per repo and turning every self-proof
+    run into a false "No merged PRs" report. Guard against regression with a
+    strict-signature stand-in.
+    """
+    mod = load_module(monkeypatch, tmp_path)
+
+    def strict_gh_json(cmd, default=None):
+        assert cmd[:2] == ["gh", "pr"]
+        return [{"number": 1}]
+
+    monkeypatch.setattr(mod, "gh_json", strict_gh_json)
+    assert mod._self_proof_gh_json(["pr", "list"], timeout=30) == [{"number": 1}]
+    assert mod._self_proof_gh_json(["pr", "list"]) == [{"number": 1}]
+
+
+def test_compute_self_proof_stat_slugs_bare_repo_names(monkeypatch, tmp_path):
+    """Bare repo names resolve through GH_ORG before hitting gh, like the summary."""
+    mod = load_module(monkeypatch, tmp_path)
+    captured = {}
+
+    def fake_compute(repos, *, days, gh_json):
+        captured["repos"] = repos
+        captured["days"] = days
+        return {"aggregate": {}, "per_repo": [], "headline": "x", "sentence": "y"}
+
+    monkeypatch.setattr(mod, "compute_self_proof", fake_compute)
+    mod.compute_self_proof_stat(["backend", "acme/web"], days=7)
+    assert captured["repos"] == ["myorg/backend", "acme/web"]
+    assert captured["days"] == 7
+
+
+def test_weekly_summary_reuses_summary_repos_for_self_proof(monkeypatch, tmp_path, capsys):
+    """The weekly recap's proof line measures the repos the summary collected.
+
+    A scheduled weekly recap configured via ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS
+    must not resolve the proof line from the separate self-proof envs; that
+    could summarize real merged PRs and then append a contradictory "No merged
+    PRs" line.
+    """
+    mod = load_module(monkeypatch, tmp_path)
+    monkeypatch.setenv("ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS", "weekly-app")
+    monkeypatch.setattr(mod, "preflight", lambda spec: None)
+    monkeypatch.setattr(mod, "doctor_mode", lambda: False)
+    monkeypatch.setattr(mod, "doctor_requested", lambda: False)
+    monkeypatch.setattr(
+        mod,
+        "collect",
+        lambda period, repos, fetch_files=True: {
+            "period": {"label": "test", "start": "", "end": ""},
+            "repos": repos,
+            "prs": [],
+            "issues_opened": [],
+            "issues_closed": [],
+            "query_warnings": [],
+            "model_related_prs": [],
+            "model_defaults": [],
+            "engine_overrides": [],
+        },
+    )
+    captured = {}
+
+    def fake_stat(repos, *, days):
+        captured["repos"] = repos
+        return {"headline": "proof-line", "aggregate": {}, "per_repo": []}
+
+    monkeypatch.setattr(mod, "compute_self_proof_stat", fake_stat)
+    assert mod.main(["--period", "weekly"]) == 0
+    assert captured["repos"] == ["weekly-app"]
+    assert "proof-line" in capsys.readouterr().out
+
+
+def test_render_self_proof_reports_capped_repo(monkeypatch, tmp_path):
+    mod = load_module(monkeypatch, tmp_path)
+    data = {
+        "window_days": 7,
+        "headline": "No merged PRs in the configured repos in the last 7 days yet.",
+        "per_repo": [
+            {
+                "repo": "acme/firehose",
+                "merged_total": 0,
+                "agent_shipped": 0,
+                "share_pct": None,
+                "no_data": True,
+                "errored": False,
+                "capped": True,
+            }
+        ],
+        "aggregate": {"merged_total": 0, "agent_shipped": 0, "share_pct": None},
+        "errors": [],
+        "capped": ["acme/firehose"],
+    }
+    out = mod.render_self_proof(data)
+    assert "page cap" in out
+    assert "excluded" in out
+    assert "page-capped query" in out

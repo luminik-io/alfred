@@ -129,6 +129,128 @@ def maybe_set_global_block_for_result(
 
 
 # --------------------------------------------------------------------------
+# Per-engine quota-exhaustion backoff (the codex "hit your usage limit" wall)
+#
+# Distinct from the fleet-wide global block: a global block pauses ALL agents
+# on ANY provider limit, whereas this parks a SINGLE engine (codex) until its
+# named resume instant while leaving the other engine (claude) free to run.
+# The hybrid router consults ``engine_quota_backoff`` before dispatching to an
+# engine so an exhausted engine is skipped, not fired into repeatedly. State
+# lives at ``${STATE_ROOT}/_engine_quota/<engine>.json`` so it survives across
+# firings and is shared by every worker on the host.
+#
+# The resume instant comes from the parsed exhaustion message
+# (``parse_quota_resume_at`` in result.py). When the message carried no
+# parseable resume hint we fall back to a conservative default window
+# (``ALFRED_ENGINE_QUOTA_DEFAULT_HOURS``, default 5h -- the codex 5-hour
+# window) so an un-dated wall still parks the engine for a sane interval
+# instead of hammering it every tick.
+# --------------------------------------------------------------------------
+
+
+def _engine_quota_path(engine: str) -> Path:
+    safe = (engine or "unknown").strip().lower().replace("/", "-") or "unknown"
+    return STATE_ROOT / "_engine_quota" / f"{safe}.json"
+
+
+def record_engine_quota_exhausted(
+    engine: str,
+    *,
+    resume_at: str | None,
+    reason: str = "",
+) -> str:
+    """Park ``engine`` until ``resume_at`` after a hard quota-exhaustion wall.
+
+    ``resume_at`` is a ``YYYY-MM-DDTHH:MM:SSZ`` UTC string parsed from the
+    exhaustion message, or ``None`` when the message carried no resume hint
+    (then a default window is applied). Returns the effective until-instant.
+    Dry-run never writes; the operator still gets the until-string so the
+    happy-path messaging renders.
+    """
+    until = (resume_at or "").strip()
+    if not until:
+        default_hours = 5
+        raw = os.environ.get("ALFRED_ENGINE_QUOTA_DEFAULT_HOURS", "").strip()
+        if raw:
+            try:
+                default_hours = max(1, min(168, int(raw)))
+            except ValueError:
+                default_hours = 5
+        until = (datetime.now(UTC) + timedelta(hours=default_hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    payload = {
+        "engine": (engine or "unknown").strip().lower(),
+        "until": until,
+        "reason": reason.strip(),
+        "recorded_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    if is_dry_run():
+        dry_run_log(
+            "quota",
+            f"would park engine {payload['engine']} until {until} "
+            f"(reason: {reason.strip() or 'usage limit'}); skipped",
+        )
+        return until
+    path = _engine_quota_path(engine)
+    with contextlib.suppress(OSError):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write(path, json.dumps(payload, indent=2))
+    return until
+
+
+def engine_quota_backoff(engine: str) -> dict[str, str] | None:
+    """Return the active quota-backoff record for ``engine``, or ``None``.
+
+    Active means an on-disk record exists whose ``until`` is still in the
+    future. An expired record is cleaned up on read (best-effort) so the
+    engine resumes automatically once its window rolls over, no operator
+    action required. A corrupt or unparseable record fails open (returns
+    ``None``): a bad state file must never permanently wedge an engine.
+    """
+    path = _engine_quota_path(engine)
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    until = str(data.get("until", "")).strip()
+    try:
+        exp = datetime.strptime(until, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    except ValueError:
+        return None
+    if datetime.now(UTC) >= exp:
+        with contextlib.suppress(OSError):
+            path.unlink()
+        return None
+    return {
+        "engine": str(data.get("engine", engine)),
+        "until": until,
+        "reason": str(data.get("reason", "")),
+    }
+
+
+def is_engine_quota_exhausted(engine: str) -> bool:
+    """True when ``engine`` is currently parked by a quota-backoff record."""
+    return engine_quota_backoff(engine) is not None
+
+
+def clear_engine_quota_backoff(engine: str) -> bool:
+    """Forget an engine's quota-backoff record (operator resume path).
+
+    Returns ``True`` when a record existed and was removed.
+    """
+    path = _engine_quota_path(engine)
+    if not path.exists():
+        return False
+    with contextlib.suppress(OSError):
+        path.unlink()
+        return True
+    return False
+
+
+# --------------------------------------------------------------------------
 # Event log
 # --------------------------------------------------------------------------
 

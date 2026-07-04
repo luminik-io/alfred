@@ -27,6 +27,16 @@
       "files_changed": 2092
     }
   },
+  "self_proof": {
+    "window_days": 30,
+    "agent_shipped": 0,
+    "merged_total": 0,
+    "share_pct": null,
+    "repos_counted": 0,
+    "repo_word": "repo",
+    "headline": "No merged PRs in the last 30 days yet.",
+    "sentence": "No merged PRs to measure in the last 30 days yet."
+  },
   "trend": [],
   "prs": [],
   "issues": []

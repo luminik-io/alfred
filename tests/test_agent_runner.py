@@ -840,9 +840,15 @@ def test_codex_invoke_can_bypass_approvals_and_sandbox(tmp_path, monkeypatch):
     assert "--sandbox" not in cmd
 
 
-def test_codex_invoke_usage_limit_gets_rate_limit_subtype(tmp_path, monkeypatch):
+def test_codex_invoke_usage_limit_gets_quota_exhausted_subtype(tmp_path, monkeypatch):
+    """A hard "hit your usage limit" wall is a credit exhaustion, not a
+    transient 429. It classifies distinctly as ``error_quota_exhausted`` so
+    the scheduler parks codex until its window resets instead of retrying into
+    the wall. (Previously this collapsed into ``error_rate_limit``.)"""
     import agent_runner as ar
     from agent_runner import process as process_mod
+
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
 
     def fake_run(cmd, *, cwd=None, timeout=None, capture=None, env=None, input_text=None):
         return subprocess.CompletedProcess(
@@ -858,8 +864,13 @@ def test_codex_invoke_usage_limit_gets_rate_limit_subtype(tmp_path, monkeypatch)
     out = ar.codex_invoke("review", workdir=tmp_path, agent="reviewer", firing_id="fire-1")
 
     assert out.success is False
-    assert out.subtype == "error_rate_limit"
+    assert out.subtype == "error_quota_exhausted"
     assert out.stop_reason == "error"
+    # No parseable resume date in the message -> the default window still parks
+    # the engine (a non-null resume instant is recorded).
+    assert out.raw.get("quota_resume_at") in (None, "") or isinstance(
+        out.raw.get("quota_resume_at"), str
+    )
 
 
 @pytest.mark.parametrize(

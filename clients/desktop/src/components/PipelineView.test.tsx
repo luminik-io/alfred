@@ -8,7 +8,7 @@ import type { PlanDraft, ShippedBoard, ShippedCard } from "../types";
 // PipelineView merges the old Work board and Plans page into the single
 // lifecycle board. Render in desktop-capable mode so the queue actions appear.
 vi.mock("../api", () => ({
-  supportsNativeActions: () => true,
+  supportsMutations: () => true,
 }));
 
 vi.mock("../lib/links", async () => {
@@ -391,6 +391,34 @@ describe("PipelineView", () => {
       expect.objectContaining({ plan_id: "compose-thin" }),
     );
     expect(screen.queryByLabelText(/selected plan details/i)).not.toBeInTheDocument();
+  });
+
+  it("offers the inline Discard on a low-signal draft once its disclosure is expanded", async () => {
+    const onDiscardPlan = vi.fn();
+    const user = userEvent.setup();
+    renderPipeline({
+      plans: [
+        plan({
+          plan_id: "compose-lowsig",
+          title: "vague half-formed idea",
+          status: "needs scope",
+          parent: null,
+          source: "compose",
+          // readiness_score at/under READINESS_FLOOR (40) => low-signal lane.
+          readiness_score: 12,
+          readiness_ok: false,
+        }),
+      ],
+      onDiscardPlan,
+    });
+    // Low-signal drafts collapse behind a "N low signal" disclosure.
+    await user.click(screen.getByRole("button", { name: /low signal/i }));
+    // The inline discard must be present on the low-signal card too (regression:
+    // it was previously omitted, leaving junk drafts undiscardable from the face).
+    await user.click(screen.getByRole("button", { name: "Discard this draft" }));
+    expect(onDiscardPlan).toHaveBeenCalledWith(
+      expect.objectContaining({ plan_id: "compose-lowsig" }),
+    );
   });
 
   it("does not offer an inline discard on a genuine Batman go/no-go plan", () => {

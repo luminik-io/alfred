@@ -1,6 +1,6 @@
 # Bootstrap
 
-End-to-end setup for consuming Alfred as the framework for your own Claude Code fleet on a fresh host. Plan ~60 minutes the first time, most of it on AWS IAM and the Anthropic Claude Code CLI.
+End-to-end setup for running Alfred as your own small, named engineering team on top of Claude Code and Codex, on a fresh host. Plan ~60 minutes the first time, most of it on AWS IAM and the Anthropic Claude Code CLI.
 
 The fleet runs on a single always-on host. A Mac Mini works. An old laptop with the lid open works. A Debian/Ubuntu box works. Not a server-class deployment.
 

@@ -858,6 +858,19 @@ export function supportsConversation(): boolean {
   return isTauri() || isHostedBrowser();
 }
 
+// True when this client can send state-mutating HTTP requests to `alfred serve`
+// with a valid launch token. That is either the Tauri desktop shell (the Rust
+// bridge injects the token) OR the browser shell served by `alfred serve` (the
+// server injects the per-launch token into the page as `<meta name="alfred-
+// token">`, and `browserFetch` attaches it on writes). The Vite dev preview is
+// deliberately excluded: it has no token, so its writes would 403. Panels that
+// gate an HTTP mutation (queue actions, custom-agent save/delete) must use this,
+// NOT `supportsNativeActions()`, or they wrongly hide working controls in the
+// hosted browser build.
+export function supportsMutations(): boolean {
+  return isTauri() || isHostedBrowser();
+}
+
 export async function runNativeAction(
   action: NativeAction,
   target?: string,
@@ -906,7 +919,9 @@ async function readAlfredJson<T>(
   const command = options.token ? "fetch_alfred_json_with_token" : "fetch_alfred_json";
   const text = isTauri()
     ? await invokeAlfredJson(command, { baseUrl: resolvedBaseUrl, path })
-    : await browserFetch(resolvedBaseUrl, path, "GET");
+    : await browserFetch(resolvedBaseUrl, path, "GET", undefined, undefined, {
+        token: options.token,
+      });
   return JSON.parse(text) as T;
 }
 
@@ -968,6 +983,7 @@ async function browserFetch(
   method: "GET" | "POST" | "DELETE",
   body?: string,
   signal?: AbortSignal,
+  options: { token?: boolean } = {},
 ): Promise<string> {
   const url = new URL(path, normalizedBaseUrl(baseUrl));
   const devProxyPath = shouldUseDevProxy(url) ? `/alfred-api${path}` : url.toString();
@@ -977,9 +993,13 @@ async function browserFetch(
   }
   // Hosted browser (served by `alfred serve`): attach the injected per-launch
   // token so state-mutating requests pass the server's `_authorized_mutation`
-  // gate. Reads (GET) need no token; the dev-proxy path injects it server-side,
-  // so we only add it for the direct same-origin hosted case.
-  if (method !== "GET" && !shouldUseDevProxy(url) && isHostedBrowser()) {
+  // gate. Most reads (GET) need no token, but a privileged read (e.g. the
+  // custom-agents inventory WITH `include_prompt=1`) is gated the same way, so
+  // an explicit `options.token` forces the token onto a GET too. The dev-proxy
+  // path injects the token server-side, so we only add it for the direct
+  // same-origin hosted case.
+  const needsToken = method !== "GET" || options.token === true;
+  if (needsToken && !shouldUseDevProxy(url) && isHostedBrowser()) {
     const token = hostedBrowserToken();
     if (token) {
       headers["X-Alfred-Token"] = token;

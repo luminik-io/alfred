@@ -382,10 +382,104 @@ def run_lifecycle_doctor(
     return 0 if all(result.ok for result in results) else 1
 
 
+# --------------------------------------------------------------------------
+# Deep headless-auth probe (scrubbed-env, mimics launchd)
+# --------------------------------------------------------------------------
+
+# Env keys that make an interactive shell "look" authenticated but that a
+# launchd-spawned firing never inherits. Scrubbing them reproduces the exact
+# outage class where `claude` works in the terminal yet 401s under the
+# scheduler: the credential lived only in the interactive session's env, not in
+# $ALFRED_HOME/.env that agent-launch actually loads.
+_INTERACTIVE_ONLY_ENV_KEYS: tuple[str, ...] = (
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "ANTHROPIC_API_KEY",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_SECURITY_TOKEN",
+    "OPENAI_API_KEY",
+)
+
+
+def _scrubbed_launchd_env(base_env: Mapping[str, str]) -> dict[str, str]:
+    """Build the minimal env a launchd firing actually sees.
+
+    Starts from a bare env (PATH/HOME/ALFRED_HOME/WORKSPACE_ROOT + the CLI
+    path knobs), then overlays ``$ALFRED_HOME/.env`` the way ``agent-launch``
+    does. Any interactive-only credential that was NOT persisted to ``.env`` is
+    dropped, so the probe fails exactly where a scheduled firing would. This is
+    the ``env -i`` mimic the deep check needs: a token in Keychain or a shell
+    rc file is invisible here.
+    """
+    keep = ("PATH", "HOME", "ALFRED_HOME", "WORKSPACE_ROOT", "CLAUDE_BIN", "CLAUDE_CONFIG_DIR")
+    scrubbed: dict[str, str] = {k: base_env[k] for k in keep if k in base_env}
+    # Overlay .env exactly like the runtime loader: only these persisted values
+    # are legitimately visible to a scheduled firing.
+    home = (scrubbed.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")).strip()
+    env_path = Path(home) / ".env"
+    try:
+        with open(env_path, encoding="utf-8") as fh:
+            for raw_line in fh:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                name, _, value = line.partition("=")
+                name = name.removeprefix("export").strip()
+                if name and name.isidentifier():
+                    scrubbed[name] = decode_env_value(value.strip())
+    except OSError:
+        pass
+    return scrubbed
+
+
+def run_deep_auth_probe(
+    *,
+    env: Mapping[str, str] | None = None,
+    command_runner: CommandRunner | None = None,
+    stream: TextIO | None = None,
+) -> int:
+    """Run the headless Claude auth probe from a scrubbed launchd-like env.
+
+    This is the opt-in deep check behind ``alfred doctor --deep``. It proves a
+    minimal ``claude -p`` invocation works under the exact env a launchd firing
+    sees (bare env + ``$ALFRED_HOME/.env`` overlay), catching the silent-401
+    class that the cheap presence check cannot: a token that resolves
+    interactively but was never persisted where the scheduler can read it.
+    """
+    out = stream or sys.stdout
+    base_env = dict(os.environ if env is None else env)
+    scrubbed = _scrubbed_launchd_env(base_env)
+    print("=> deep headless-auth probe (scrubbed env, mimics launchd `env -i`)", file=out)
+    print(f"    ALFRED_HOME={scrubbed.get('ALFRED_HOME', '(unset)')}", file=out)
+    result = check_claude_oauth(scrubbed, command_runner=command_runner)
+    print(file=out)
+    print(f"  {result.name}:", file=out)
+    for line in result.lines:
+        print(f"    {line}", file=out)
+    print(f"    {'ok' if result.ok else 'FAIL'}", file=out)
+    if result.hint:
+        print(f"    HINT: {result.hint}", file=out)
+    if not result.ok:
+        print(
+            "\n  A scheduled firing would 401 with this env. Persist the token with "
+            "`alfred setup-token` so it lands in $ALFRED_HOME/.env.",
+            file=out,
+        )
+    return 0 if result.ok else 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate the Batman lifecycle path.")
     parser.add_argument("--fixture", type=Path, default=None)
+    parser.add_argument(
+        "--deep",
+        action="store_true",
+        help="run only the scrubbed-env headless Claude auth probe",
+    )
     args = parser.parse_args(argv)
+    if args.deep:
+        return run_deep_auth_probe()
     return run_lifecycle_doctor(fixture=args.fixture)
 
 

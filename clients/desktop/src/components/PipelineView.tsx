@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { supportsNativeActions } from "../api";
+import { supportsMutations } from "../api";
 import { exactTime, friendlyTime } from "../format";
 import {
   agentForShipped,
@@ -180,7 +180,12 @@ export function PipelineView({
     (columns &&
       (columns.queued.length || columns.in_progress.length || columns.shipped.length));
 
-  const canQueue = Boolean(onQueueAction) && supportsNativeActions();
+  // Queue actions (assign / give-go-ahead / hold / done) are token-gated HTTP
+  // writes to /api/queue, which succeed from the Tauri shell AND the browser
+  // shell served by `alfred serve`. Gate on `supportsMutations()`, not
+  // `supportsNativeActions()`, so the hosted browser build is not left with a
+  // read-only board it can never act on.
+  const canQueue = Boolean(onQueueAction) && supportsMutations();
   const generatedAt = board?.generated_at;
   const status = loadError
     ? "Work refresh failed."
@@ -311,6 +316,7 @@ export function PipelineView({
                         selected={selection?.kind === "plan" && selection.id === entry.plan.plan_id}
                         onSelect={() => setSelection({ kind: "plan", id: entry.plan.plan_id })}
                         onDecision={onDecision}
+                        onDiscardPlan={onDiscardPlan}
                       />
                     ))
                   : null}

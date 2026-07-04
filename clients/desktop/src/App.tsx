@@ -114,7 +114,7 @@ function App() {
 
   const { theme, toggle: toggleTheme, themeName, setThemeName, mode, setMode } =
     useTheme();
-  const { rosterTheme, customNames, setRosterTheme, setCustomNames, saveError: rosterSaveError } =
+  const { rosterTheme, customNames, setRosterTheme, saveCustomNames, saveError: rosterSaveError } =
     useRosterTheme(baseUrl);
   const [customThemeEditorOpen, setCustomThemeEditorOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -489,8 +489,9 @@ function App() {
         open={customThemeEditorOpen}
         value={customNames}
         agents={customThemeAgents}
+        saveError={rosterSaveError}
         onOpenChange={setCustomThemeEditorOpen}
-        onSave={setCustomNames}
+        onSave={saveCustomNames}
       />
     </AppShell>
   );

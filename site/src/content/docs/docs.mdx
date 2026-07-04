@@ -1,12 +1,12 @@
 ---
 title: Alfred
-description: Alfred is a local fleet of autonomous coding agents that turns Slack requests, rough plans, specs, and GitHub issues into pull requests, reviews, safe merges, and Slack reports while you are away.
+description: Alfred turns Claude Code and Codex into a small, named engineering team that remembers. Agents plan, build, review each other, and open pull requests, and a run that learns a durable lesson teaches it to the fleet.
 template: splash
 head:
   - tag: title
-    content: "Alfred: autonomous coding agents for lean engineering teams"
+    content: "Alfred: an engineering team, built on Claude Code and Codex, that remembers"
 hero:
-  tagline: "Local coding agents that turn Slack requests, specs, and labeled issues into pull requests, reviews, safe merges, and Slack updates."
+  tagline: "Named agents plan, build, review each other, and open pull requests, and a run that learns a durable lesson teaches it to the fleet."
   image:
     file: ../../assets/alfred-logo-transparent.png
     alt: Alfred shield logo
@@ -25,7 +25,9 @@ import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
 ## Why Alfred exists
 
-Interactive coding agents finish a prompt while you sit at the keyboard. Alfred is built for engineering work that should keep moving while you are away: planned features, follow-up tests, reviewer comments, dependency bumps, docs gaps, multi-repo rollouts.
+Interactive coding agents finish a prompt while you sit at the keyboard, and each session forgets what the last one learned. Alfred is built for engineering work that should keep moving while you are away, handled by a small named team that carries its lessons forward: planned features, follow-up tests, reviewer comments, dependency bumps, docs gaps, multi-repo rollouts.
+
+Alfred gives Claude Code and Codex two things a single session does not have. First, a memory: before a run an agent recalls what earlier runs learned, and after a run it files new lessons when it learned something durable, so the fleet stops rediscovering the same repo conventions and re-making the same mistakes. Second, judgment: named agents each do one job, Ra's al Ghul reviews the code a different agent wrote, and a drafted plan waits behind an approval gate until you approve it. Alfred never merges its own work by default.
 
 You do not sit in front of Claude or Codex and keep prompting every step. You give Alfred the goal, the repos, and the approval rules; Alfred keeps the loop moving until it has a pull request, a review finding, or a decision to bring back to Slack.
 
