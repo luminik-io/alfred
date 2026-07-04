@@ -1974,10 +1974,13 @@ body {
   min-height: 0;
 }
 
-/* The roster subtab: the custom-agents disclosure is auto height; the fleet deck
-   below takes the rest and scrolls internally. */
-.agents-page [key="fleet-roster"],
-.agents-page > .space-y-4 > .motion-fade {
+/* The roster subtab (and the sibling Lessons view) render as a
+   `space-y-4 motion-fade` wrapper that is a direct child of `.agents-page`.
+   React never emits `key` to the DOM and both classes sit on the same node, so
+   the old `[key="fleet-roster"]` / `.space-y-4 > .motion-fade` selectors both
+   missed. Target the real wrapper so `min-height: 0` reaches the flex child and
+   the fleet deck below takes the rest and scrolls internally. */
+.agents-page > .space-y-4.motion-fade {
   min-height: 0;
 }
 
@@ -2113,6 +2116,13 @@ body {
   grid-template-columns: minmax(16rem, 0.8fr) minmax(0, 1.2fr);
   gap: 0.75rem;
   align-items: start;
+}
+
+/* With the form closed the body renders only the inventory list, so drop the
+   second (form) column and let the list fill the panel width instead of hiding
+   in the narrow left column with the rest of the panel blank. */
+.custom-agents-panel__body[data-expanded="false"] {
+  grid-template-columns: 1fr;
 }
 
 .custom-agents-panel__list,
