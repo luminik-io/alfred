@@ -40,6 +40,7 @@ from typing import Any
 from .config import (
     _truthy_env,
     dry_run_log,
+    env_int,
     is_dry_run,
     normalize_engine,
 )
@@ -78,6 +79,8 @@ from .result import (
     looks_quota_exhausted,
     parse_quota_resume_at,
 )
+from .rubric import GraderVerdict
+from .rubric import grade as grade_transcript
 from .skills_context import skills_context_for_role
 from .transcripts import (
     _extract_codex_session_id,
@@ -1207,6 +1210,109 @@ def _with_skills_block(prompt: str, role: str | None, agent: str = "") -> str:
     return f"{prompt}\n\n{block}"
 
 
+# --------------------------------------------------------------------------
+# Self-grading rubric gate (opt-in)
+#
+# When a caller passes ``rubric=...`` (or sets ``ALFRED_RUBRIC``), a cheap
+# SEPARATE grader LLM re-reads the finished run's result text against the
+# rubric and returns a structured verdict (see lib/agent_runner/rubric.py).
+# The verdict is stashed on ``result.raw["rubric_verdict"]`` so a runner can
+# decide whether to open a PR. This is a forward-looking SUCCESS gate; it is
+# fully OFF by default and never changes behavior when no rubric is set.
+# --------------------------------------------------------------------------
+
+
+def _resolve_rubric(rubric: str | None) -> str | None:
+    """Resolve the active rubric: explicit arg wins, else ``ALFRED_RUBRIC``.
+
+    Returns ``None`` (gate off) when neither is set to non-empty text.
+    """
+    if rubric is not None and rubric.strip():
+        return rubric
+    env_rubric = os.environ.get("ALFRED_RUBRIC", "").strip()
+    return env_rubric or None
+
+
+def _rubric_max_iterations() -> int:
+    """Read the rubric loop bound from ``ALFRED_RUBRIC_MAX_ITERATIONS``.
+
+    Defaults to 3 (the deepagents RubricMiddleware range is 2-3), clamped to
+    ``[1, 10]``. Only the primitive loop in ``rubric.py`` consumes this;
+    ``invoke_agent_engine`` grades once per run and leaves iteration to a
+    caller-driven loop.
+    """
+    return env_int("ALFRED_RUBRIC_MAX_ITERATIONS", 3, minimum=1, maximum=10)
+
+
+def _default_rubric_grader(
+    *,
+    grader_engine: str,
+    agent: str,
+    firing_id: str,
+    workdir: Path,
+    codex_model: str | None,
+) -> Callable[[str], str]:
+    """Build a grader_fn that runs a cheap, read-only grader engine.
+
+    The grader is a SEPARATE cheap invocation (Codex/Haiku-class): it reads
+    the prompt and returns raw text for ``rubric.grade`` to parse. It runs
+    read-only (no repo mutation) and short-timeout, because grading is a
+    judging pass, not more implementation work. Injectable so tests never
+    reach a real engine.
+
+    Defaults to the Codex engine (cheapest available here). If the operator
+    pins ``grader_engine="claude"`` we route to a non-streaming claude invoke
+    with a compact model, but Codex is the intended default.
+    """
+
+    def _grader(prompt: str) -> str:
+        engine = normalize_engine(grader_engine, default="codex")
+        if engine == "claude":
+            res = claude_invoke(
+                prompt,
+                workdir=workdir,
+                allowed_tools="",
+                timeout=180,
+                model=codex_model,
+            )
+        else:
+            res = codex_invoke(
+                prompt,
+                workdir=workdir,
+                agent=f"{agent}-grader",
+                firing_id=f"{firing_id}-grader",
+                timeout=180,
+                sandbox="read-only",
+            )
+        return res.result_text or ""
+
+    return _grader
+
+
+def _apply_rubric_gate(
+    result: ClaudeResult,
+    *,
+    rubric: str,
+    grader_fn: Callable[[str], str],
+) -> GraderVerdict:
+    """Grade ``result.result_text`` against ``rubric`` and stash the verdict.
+
+    Returns the verdict AND records it (serialized) on
+    ``result.raw["rubric_verdict"]`` so callers reading only the
+    ``ClaudeResult`` still see the gate outcome. Never raises: a grader that
+    errors yields a ``grader_error`` verdict from ``grade`` itself.
+    """
+    verdict = grade_transcript(result.result_text or "", rubric, grader_fn=grader_fn)
+    result.raw = dict(result.raw or {})
+    result.raw["rubric_verdict"] = {
+        "result": verdict.result,
+        "explanation": verdict.explanation,
+        "terminal_reason": verdict.terminal_reason,
+        "criteria": [{"name": c.name, "passed": c.passed, "gap": c.gap} for c in verdict.criteria],
+    }
+    return verdict
+
+
 def invoke_agent_engine(
     prompt: str,
     *,
@@ -1231,6 +1337,9 @@ def invoke_agent_engine(
     memory_repo: str | None = None,
     memory_query: str | None = None,
     memory_limit: int = 3,
+    rubric: str | None = None,
+    rubric_grader_engine: str | None = None,
+    rubric_grader_fn: Callable[[str], str] | None = None,
 ) -> tuple[ClaudeResult, str]:
     """Invoke a prompt through Claude, Codex, or Claude-first hybrid.
 
@@ -1249,6 +1358,17 @@ def invoke_agent_engine(
     appended to the prompt (progressive disclosure: the agent reads each SKILL.md
     body on demand). A codename with no skill role, or the gate off, leaves the
     prompt untouched.
+
+    ``rubric`` opts IN to the self-grading gate. When set (or when
+    ``ALFRED_RUBRIC`` is exported), a cheap SEPARATE grader engine re-reads the
+    finished run's ``result_text`` against the rubric and the structured verdict
+    is stashed on ``result.raw["rubric_verdict"]`` (see ``rubric.py``) so a
+    caller can decide whether to open a PR. This does NOT change the invocation
+    result or open/block any PR itself. Fully OFF by default: with no rubric the
+    behavior is byte-identical to before. ``rubric_grader_engine`` picks the
+    grader engine (defaults to ``ALFRED_RUBRIC_GRADER_ENGINE`` or Codex, the
+    cheapest here); ``rubric_grader_fn`` injects a grader directly (tests use
+    this so no real LLM runs).
     """
     mode = normalize_engine(engine)
     claude_call = claude_fn or claude_invoke_streaming
@@ -1415,4 +1535,25 @@ def invoke_agent_engine(
             result=result,
             engine_used=engine_used,
         )
+
+    # Opt-in self-grading gate. Only runs when a rubric is configured, so the
+    # default path is untouched. The verdict is stashed on the result's raw
+    # envelope for a caller to act on; PR-open blocking is a follow-up wired in
+    # the runners (owned by a separate change).
+    active_rubric = _resolve_rubric(rubric)
+    if active_rubric is not None and not is_dry_run():
+        grader_fn = rubric_grader_fn or _default_rubric_grader(
+            grader_engine=(
+                rubric_grader_engine
+                or os.environ.get("ALFRED_RUBRIC_GRADER_ENGINE", "").strip()
+                or "codex"
+            ),
+            agent=agent,
+            firing_id=firing_id,
+            workdir=workdir,
+            codex_model=codex_model,
+        )
+        with contextlib.suppress(Exception):
+            _apply_rubric_gate(result, rubric=active_rubric, grader_fn=grader_fn)
+
     return result, engine_used
