@@ -46,6 +46,7 @@ from agent_runner import (
     is_dry_run,
     is_globally_blocked,
     is_repo_paused,
+    issue_memory_query,
     load_prompt,
     local_repo_dir,
     optional_env_int,
@@ -1450,6 +1451,11 @@ def main() -> int:
         events.emit("firing_complete", outcome="silent_no_work")
         print("[SILENT]")
         return 0
+    # ``pick_issue`` returns ``(str, dict)`` on a hit and ``(None, None)`` on a
+    # miss, so a truthy ``repo`` guarantees a real issue dict. Narrow it once
+    # here so the rest of the firing (and the recall query below) reads fields
+    # off a concrete dict instead of ``dict | None``.
+    assert issue is not None
 
     issue_num = issue["number"]
 
@@ -1571,6 +1577,12 @@ def main() -> int:
         codex_add_dirs=[(WORKSPACE / local_repo_dir(repo) / ".git").resolve()],
         on_fallback=_on_engine_fallback,
         memory_repo=f"{GH_ORG}/{repo}" if GH_ORG else repo,
+        # Recall lessons relevant to THIS issue (title + body slice), not just
+        # generic repo/codename recency. None when both are empty preserves the
+        # historical recency-only recall.
+        memory_query=issue_memory_query(
+            str(issue.get("title") or ""), str(issue.get("body") or "")
+        ),
     )
     import json as _json
 

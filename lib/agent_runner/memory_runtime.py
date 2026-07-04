@@ -34,6 +34,38 @@ class MemoryReflection:
     severity: str = "info"
 
 
+# Upper bound on the derived recall query. Long enough to carry the issue
+# title plus a meaningful slice of the body into AMS semantic search, short
+# enough that the query stays a focused topic signal rather than a wall of text.
+_MEMORY_QUERY_MAX_CHARS = 240
+
+
+def issue_memory_query(
+    title: str | None,
+    body: str | None = None,
+    *,
+    max_chars: int = _MEMORY_QUERY_MAX_CHARS,
+) -> str | None:
+    """Derive a bounded, whitespace-collapsed recall query from an issue.
+
+    Combines the issue ``title`` with a leading slice of ``body`` so recalled
+    lessons are relevant to the work actually being done, not just the
+    repo/codename. Returns ``None`` when nothing usable is present so callers
+    preserve the historical recency-only recall (never a worse default).
+    """
+    parts: list[str] = []
+    for value in (title, body):
+        collapsed = " ".join(str(value or "").split()).strip()
+        if collapsed:
+            parts.append(collapsed)
+    if not parts:
+        return None
+    query = " ".join(parts)
+    if max_chars > 0 and len(query) > max_chars:
+        query = query[:max_chars].rstrip()
+    return query or None
+
+
 def load_runtime_memory(env: Mapping[str, str] | None = None):
     """Return the configured memory provider, or ``None`` on any failure."""
     try:

@@ -49,6 +49,7 @@ from agent_runner import (
     invoke_agent_engine,
     is_globally_blocked,
     is_repo_paused,
+    issue_memory_query,
     local_repo_dir,
     make_worktree,
     maybe_set_global_block_for_result,
@@ -274,6 +275,10 @@ def main() -> int:
         codex_bypass_approvals_and_sandbox=True,
         on_fallback=_on_engine_fallback,
         memory_repo=f"{GH_ORG}/{repo}" if GH_ORG else repo,
+        # Bane has no issue; its scoped context is the coverage hint for this
+        # repo. Recall lessons relevant to that focus area, not just recency.
+        # None when the hint is empty preserves recency-only recall.
+        memory_query=issue_memory_query(coverage_hint),
     )
     spend.increment(firings_today=1, turns_today=result.num_turns, cost_usd_today=result.cost_usd)
     # Report the result subtype directly. If a hybrid fallback happened,
