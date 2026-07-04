@@ -95,8 +95,11 @@ export function chipToneClass(tone: ChipTone): string {
   return `alfred-chip--${tone}`;
 }
 
-// Plain-language agent attribution for a shipped/board card ("Lucius shipped
-// this"). Reads the author, labels, and agent evidence for a known codename.
+// The canonical CODENAME behind a shipped/board card, detected from the author,
+// labels, and agent evidence. Returns the codename (e.g. "lucius"), NOT a themed
+// display name, so callers resolve the visible name through the active roster
+// theme (resolveThemedIdentity) exactly like the Roster page. Unknown cards
+// return null.
 export function agentForShipped(card: ShippedCard): string | null {
   const tokens = [
     card.author || "",
@@ -104,16 +107,16 @@ export function agentForShipped(card: ShippedCard): string | null {
     ...(card.agent_evidence || []),
   ].map((token) => token.toLowerCase());
   if (tokens.some((t) => t.includes("batman") || t.includes("agent:large-feature"))) {
-    return "Batman";
+    return "batman";
   }
   if (tokens.some((t) => t.includes("lucius") || t.includes("agent:implement"))) {
-    return "Lucius";
+    return "lucius";
   }
-  if (tokens.some((t) => t.includes("nightwing"))) return "Nightwing";
-  if (tokens.some((t) => t.includes("damian"))) return "Damian";
-  if (tokens.some((t) => t.includes("bane"))) return "Bane";
+  if (tokens.some((t) => t.includes("nightwing"))) return "nightwing";
+  if (tokens.some((t) => t.includes("damian"))) return "damian";
+  if (tokens.some((t) => t.includes("bane"))) return "bane";
   if (tokens.some((t) => t.includes("rasalghul") || t.includes("ra's al ghul"))) {
-    return "Ra's al Ghul";
+    return "rasalghul";
   }
   return null;
 }

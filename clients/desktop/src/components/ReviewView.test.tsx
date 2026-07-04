@@ -286,6 +286,64 @@ describe("ReviewView", () => {
     expect(screen.getByText(/shipped and merged into web/i)).toBeInTheDocument();
   });
 
+  it("re-skins the Agent roles panel under the active roster theme", () => {
+    // The server reports the Batman-default display name/role for the fleet.
+    // A Justice-League theme must re-skin the panel (Superman / Senior developer),
+    // not surface the raw "Lucius" server label.
+    const { container } = renderReview({
+      rosterTheme: "justice-league",
+      snapshot: snapshot({
+        status: {
+          agents: [
+            agent({
+              codename: "lucius",
+              display_name: "Lucius",
+              role_title: "Senior Developer",
+              purpose: "Ships scoped implementation issues as pull requests.",
+            }),
+          ],
+          total_today: 1,
+          reliability: { status: "ok" },
+        },
+      }),
+    });
+    const panel = container.querySelector(".command-center__agent-route");
+    expect(panel).not.toBeNull();
+    const scope = within(panel as HTMLElement);
+    expect(scope.getByText("Superman")).toBeInTheDocument();
+    expect(scope.queryByText("Lucius")).not.toBeInTheDocument();
+  });
+
+  it("re-skins the fallback Agent roles panel when the server reports no agents", () => {
+    const { container } = renderReview({
+      rosterTheme: "justice-league",
+      snapshot: snapshot({
+        status: { agents: [], total_today: 0, reliability: { status: "ok" } },
+      }),
+    });
+    const panel = container.querySelector(".command-center__agent-route");
+    const scope = within(panel as HTMLElement);
+    // Fallback seeds (batman / lucius / drake) re-skinned to the JL personas.
+    expect(scope.getByText("Batman")).toBeInTheDocument();
+    expect(scope.getByText("Superman")).toBeInTheDocument();
+    expect(scope.getByText("Green Arrow")).toBeInTheDocument();
+    expect(scope.queryByText("Lucius")).not.toBeInTheDocument();
+    expect(scope.queryByText("Drake")).not.toBeInTheDocument();
+  });
+
+  it("keeps the Batman roster on the Agent roles panel when no theme is set", () => {
+    const { container } = renderReview({
+      snapshot: snapshot({
+        status: { agents: [], total_today: 0, reliability: { status: "ok" } },
+      }),
+    });
+    const panel = container.querySelector(".command-center__agent-route");
+    const scope = within(panel as HTMLElement);
+    expect(scope.getByText("Batman")).toBeInTheDocument();
+    expect(scope.getByText("Lucius")).toBeInTheDocument();
+    expect(scope.getByText("Drake")).toBeInTheDocument();
+  });
+
   it("opens Running when queued board work exists alongside shipped proof", () => {
     renderReview({
       shipped: board({
