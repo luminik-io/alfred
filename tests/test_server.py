@@ -337,6 +337,22 @@ def test_api_memory_candidates_promote_and_reject(
                 "review_note": review_note,
             }
 
+        def retire_memory_candidate(
+            self,
+            candidate_id: str,
+            *,
+            reviewer: str,
+            note: str = "",
+        ) -> dict[str, object] | None:
+            self.calls.append(("retire", (candidate_id, reviewer, note)))
+            return {
+                "id": candidate_id,
+                "agent": "lucius",
+                "repo": "example-org/alfred",
+                "status": "retired",
+                "review_note": note,
+            }
+
     brain = FakeBrain()
     monkeypatch.setattr(server_views, "_memory_brain", lambda *_a, **_kw: (brain, None))
     client = TestClient(create_app(FilesystemReader(state_root=state)))
@@ -378,6 +394,27 @@ def test_api_memory_candidates_promote_and_reject(
     assert rejected.status_code == 200
     assert rejected.json()["status"] == "rejected"
     assert rejected.json()["review_note"] == "too broad"
+
+    # Undo an auto-remembered lesson: the retire route forgets it and flips the
+    # row to retired.
+    retired_action = client.post(
+        f"/api/memory/candidates/{candidate_id}/retire",
+        json={"reviewer": "operator", "note": "wrong"},
+        headers=_auth_headers(state),
+    )
+    assert retired_action.status_code == 200
+    assert retired_action.json()["status"] == "retired"
+    assert ("retire", (candidate_id, "operator", "wrong")) in brain.calls
+
+    # An unknown / never-promoted lesson retire is a clean 404 (nothing live to
+    # walk back), not a 500.
+    monkeypatch.setattr(brain, "retire_memory_candidate", lambda *_a, **_kw: None)
+    missing = client.post(
+        f"/api/memory/candidates/{candidate_id}/retire",
+        json={},
+        headers=_auth_headers(state),
+    )
+    assert missing.status_code == 404
 
 
 class _StubRecallProvider:

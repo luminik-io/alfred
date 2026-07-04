@@ -823,6 +823,13 @@ def register_routes(app: FastAPI) -> None:
     async def api_reject_memory_candidate(request: Request, candidate_id: str) -> JSONResponse:
         return await _api_memory_candidate_action(request, candidate_id, action="reject")
 
+    @app.post("/api/memory/candidates/{candidate_id}/retire", response_class=JSONResponse)
+    async def api_retire_memory_candidate(request: Request, candidate_id: str) -> JSONResponse:
+        # Undo an auto-remembered lesson: forget it from AMS recall and retire
+        # the row. The ``candidate_id`` may be the raw id or the
+        # ``lesson:memory_candidate:<id>`` recall id a lesson surfaces under.
+        return await _api_memory_candidate_action(request, candidate_id, action="retire")
+
     @app.get("/api/memory/lessons", response_class=JSONResponse)
     async def api_memory_lessons(request: Request, limit: int = 50) -> JSONResponse:
         """The lessons Alfred is actually using in recall (promoted + auto-promoted),
@@ -1455,6 +1462,21 @@ async def _api_memory_candidate_action(
             )
             if candidate is None:
                 return JSONResponse({"error": "memory candidate not found"}, status_code=404)
+            return JSONResponse(_candidate_to_api(candidate))
+        if action == "retire":
+            # Undo an auto-remembered lesson: forget it from AMS recall and flip
+            # the row to retired. A 404 means the id is unknown or was never a
+            # promoted lesson (nothing live to walk back).
+            candidate = brain.retire_memory_candidate(
+                candidate_id,
+                reviewer=reviewer,
+                note=note,
+            )
+            if candidate is None:
+                return JSONResponse(
+                    {"error": "memory lesson not found or not promoted"},
+                    status_code=404,
+                )
             return JSONResponse(_candidate_to_api(candidate))
     except MemoryPromotionError:
         # The promoted lesson is written to Redis AMS first; an unreachable AMS

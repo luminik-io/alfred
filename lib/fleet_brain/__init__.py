@@ -198,6 +198,19 @@ def _lesson_memory_id(candidate_id: str) -> str:
     return f"{_LESSON_MEMORY_ID_PREFIX}{candidate_id}"
 
 
+def _candidate_id_from_lesson_id(lesson_id: str) -> str:
+    """Recover the source candidate id from a promoted lesson's memory id.
+
+    Recall lessons carry the deterministic ``lesson:memory_candidate:<id>``
+    memory id ``promote_memory_candidate`` wrote, so the desktop undo affordance
+    can retire a lesson it only knows by its recall id. A plain candidate id
+    (no prefix) is returned unchanged, so callers may pass either form."""
+    text = (lesson_id or "").strip()
+    if text.startswith(_LESSON_MEMORY_ID_PREFIX):
+        return text[len(_LESSON_MEMORY_ID_PREFIX) :]
+    return text
+
+
 def _aware_utc(value: datetime | None) -> datetime | None:
     """Return ``value`` as a UTC-aware datetime, or None. A naive datetime is
     assumed to already be UTC (the store persists UTC)."""
@@ -1290,6 +1303,68 @@ class FleetBrain:
                 ", ".join(sorted(forget_failed)),
             )
         return reverted
+
+    def retire_memory_candidate(
+        self,
+        candidate_id: str,
+        *,
+        reviewer: str = "operator",
+        note: str = "",
+        lesson_forgetter: Any | None = None,
+    ) -> MemoryCandidate | None:
+        """Undo a single promoted lesson: forget it from AMS and retire the row.
+
+        The per-lesson counterpart to ``revert_auto_promotions``. It powers the
+        desktop "undo / retire" affordance so a bad auto-promotion is one click
+        to walk back, without opening the whole batch. Accepts either a raw
+        candidate id or the ``lesson:memory_candidate:<id>`` recall id a lesson
+        surfaces under (see ``_candidate_id_from_lesson_id``), so the client can
+        retire a lesson it only knows by its recall id.
+
+        The AMS forget happens FIRST and the row is flipped to ``retired`` ONLY
+        once the lesson is actually gone, mirroring ``revert_auto_promotions`` /
+        ``consolidate_lessons``: the ledger never records a retire while the
+        lesson is still live in recall. Returns the updated candidate, or ``None``
+        if the candidate is unknown or was never a promoted (``validated``)
+        lesson. Raises :class:`MemoryPromotionError` if the AMS forget fails, so
+        the caller can surface a retryable error rather than silently claiming a
+        retire that did not happen.
+        """
+        cid = _candidate_id_from_lesson_id(candidate_id)
+        candidate = self.store.get_memory_candidate(cid)
+        if candidate is None or candidate.status != "validated":
+            return None
+        lesson_id = candidate.promoted_lesson_id or _lesson_memory_id(candidate.id)
+        forgetter = lesson_forgetter
+        if forgetter is None:
+            forgetter = self._lesson_provider()
+        forgotten = True
+        if forgetter is not None:
+            try:
+                forgotten = bool(forgetter.forget_lesson(lesson_id))
+            except Exception as exc:
+                _LOG.exception(
+                    "retire_memory_candidate: AMS forget failed for candidate %s",
+                    candidate.id,
+                )
+                raise MemoryPromotionError(
+                    f"retire_memory_candidate: AMS forget failed for {candidate.id!r}"
+                ) from exc
+        if not forgotten:
+            # The lesson is still live in AMS recall; do NOT record a retire.
+            raise MemoryPromotionError(
+                f"retire_memory_candidate: AMS forget returned false for {candidate.id!r}"
+            )
+        return self.store.update_memory_candidate(
+            replace(
+                candidate,
+                status="retired",
+                reviewed_at=datetime.now(UTC),
+                reviewed_by=reviewer.strip() or "operator",
+                review_note=note.strip() or None,
+                promoted_lesson_id=None,
+            )
+        )
 
     def consolidate_lessons(
         self,

@@ -18,6 +18,7 @@ import {
   rememberBaseUrl,
   removeTrustedSlackUser,
   rejectMemoryCandidate,
+  retireMemoryLesson,
   runNativeAction,
   setQueuePickup,
   setTrayStatus,
@@ -438,7 +439,7 @@ export function useAlfred() {
   );
 
   const runMemoryCandidateAction = useCallback(
-    async (candidateId: string, action: "promote" | "reject") => {
+    async (candidateId: string, action: "promote" | "reject" | "retire") => {
       // One memory action at a time. The cards only disable their own buttons,
       // so this guards against a click on another card while one is in flight.
       // The ref is set synchronously, so even two clicks in the same tick can't
@@ -451,15 +452,23 @@ export function useAlfred() {
       setBusyMemoryAction(key);
       setActionNotice(null);
       try {
-        await (action === "promote"
-          ? promoteMemoryCandidate(baseUrl, candidateId)
-          : rejectMemoryCandidate(baseUrl, candidateId));
+        if (action === "promote") {
+          await promoteMemoryCandidate(baseUrl, candidateId);
+        } else if (action === "reject") {
+          await rejectMemoryCandidate(baseUrl, candidateId);
+        } else {
+          // Undo an auto-remembered lesson. The id passed in is the lesson's
+          // recall id; retireMemoryLesson strips it to the candidate id.
+          await retireMemoryLesson(baseUrl, candidateId);
+        }
         setActionNotice({
           tone: "ok",
           message:
             action === "promote"
-              ? `Promoted memory candidate ${candidateId}.`
-              : `Rejected memory candidate ${candidateId}.`,
+              ? "Kept this lesson. Alfred will use it next time."
+              : action === "reject"
+                ? "Dismissed. Alfred will not remember this."
+                : "Removed from memory. Alfred will not use this lesson.",
           domain: "memory",
         });
         await refresh(baseUrl);

@@ -750,6 +750,32 @@ export async function rejectMemoryCandidate(
   );
 }
 
+// The AMS memory id a promoted lesson surfaces under. Auto-remembered lessons
+// carry this deterministic id (see fleet_brain._lesson_memory_id); stripping it
+// recovers the candidate id the retire route validates.
+const LESSON_MEMORY_ID_PREFIX = "lesson:memory_candidate:";
+
+export function lessonCandidateId(lessonId: string): string {
+  const clean = (lessonId || "").trim();
+  return clean.startsWith(LESSON_MEMORY_ID_PREFIX)
+    ? clean.slice(LESSON_MEMORY_ID_PREFIX.length)
+    : clean;
+}
+
+// Undo an auto-remembered lesson: forget it from recall and retire the row.
+// Accepts the lesson's recall id (or a bare candidate id) and sends the bare
+// candidate id the server route validates.
+export async function retireMemoryLesson(
+  baseUrl: string,
+  lessonId: string,
+): Promise<MemoryCandidateActionResponse> {
+  return writeAlfredJson(
+    baseUrl,
+    `/api/memory/candidates/${memoryPathSegment(lessonCandidateId(lessonId))}/retire`,
+    {},
+  );
+}
+
 // Read the current trusted-Slack-approver list on its own (the snapshot batch
 // also fetches it, but the onboarding Slack step needs a standalone read so it
 // can show who is already trusted without pulling the whole dashboard).

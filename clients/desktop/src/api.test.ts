@@ -23,7 +23,9 @@ import {
   loadRosterTheme,
   loadShipped,
   loadSnapshot,
+  lessonCandidateId,
   promoteMemoryCandidate,
+  retireMemoryLesson,
   saveRosterTheme,
   startLocalRuntime,
   streamComposeConverse,
@@ -569,6 +571,34 @@ describe("loadSnapshot degradation", () => {
     const result = await promoteMemoryCandidate(DEFAULT_BASE_URL, "mem:1");
 
     expect(result.lesson_id).toBe("lesson-1");
+  });
+
+  it("strips the recall prefix to recover a lesson's candidate id", () => {
+    expect(lessonCandidateId("lesson:memory_candidate:mem-1")).toBe("mem-1");
+    // A bare candidate id passes through unchanged.
+    expect(lessonCandidateId("mem-1")).toBe("mem-1");
+  });
+
+  it("undoes an auto-remembered lesson via the retire route using the candidate id", async () => {
+    const fetch = vi.fn(async (input: string, init?: RequestInit) => {
+      // The recall prefix is stripped so the server route (which forbids colons
+      // in the id segment) sees the bare candidate id.
+      expect(String(input)).toContain("/api/memory/candidates/mem-1/retire");
+      expect(String(input)).not.toContain("lesson:memory_candidate");
+      expect(init?.method).toBe("POST");
+      return new Response(
+        JSON.stringify({ id: "mem-1", status: "retired" }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await retireMemoryLesson(
+      DEFAULT_BASE_URL,
+      "lesson:memory_candidate:mem-1",
+    );
+
+    expect(result.status).toBe("retired");
   });
 
   it("posts conversational control turns through the local API", async () => {
