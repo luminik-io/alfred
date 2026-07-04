@@ -703,7 +703,13 @@ def looks_like_question(text: str) -> bool:
         second = tokens[1] if len(tokens) > 1 else ""
         if second == "you":
             pass  # fall through to the build-verb check below
-        elif second in {"i", "we"} and _has_info_verb_in_verb_position(tokens):
+        elif (
+            second in {"i", "we"}
+            and _has_info_verb_in_verb_position(tokens)
+            and not _has_build_verb_in_verb_position(tokens)
+        ):
+            # "can I see the status" is a question, but a build verb wins: "can we
+            # find a way to ADD dark mode?" carries real work and stays build.
             return True
         else:
             return False

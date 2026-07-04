@@ -155,6 +155,9 @@ def test_no_engine_classifier_routes_modal_status_questions_by_subject() -> None
     for message in (
         "Can we show paused agents in the roster?",
         "Could the dashboard include a pause button?",
+        # An info verb does not win over a build verb also in verb position.
+        "Can we find a way to add dark mode?",
+        "Could we get the app to support markdown?",
     ):
         assert (
             cc.classify_message_intent(message, draft=_empty_draft()) == cc.INTENT_BUILD
