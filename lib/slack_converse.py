@@ -711,10 +711,13 @@ class SlackConverseOutcome:
     # engine failure hiding locally available fleet status. True whenever a real
     # conversation or build turn was rendered.
     answered: bool = True
-    # The file-affordance fingerprint this turn showed (or carried forward). The
-    # listener persists it per thread and passes it back as
-    # ``prior_offer_signature`` next turn so the offer block is not repeated
-    # verbatim. Empty when no answer was rendered.
+    # The file-affordance fingerprint the listener should persist for the next
+    # turn, passed back as ``prior_offer_signature`` so the offer block is not
+    # repeated verbatim. This is the CURRENT turn's fingerprint only when the
+    # offer actually reached Slack (the final chat.update landed); on a degraded
+    # delivery it is the PRIOR fingerprint carried forward unchanged, so an offer
+    # the user never saw is not treated as already shown. Empty when no answer
+    # was rendered.
     offer_signature: str = ""
 
 
@@ -860,6 +863,18 @@ def run_slack_converse(
         )
 
     reply = reply_box.get("reply")
+    # The affordance fingerprint the listener should persist for the next turn.
+    # The file offer is only appended in the FINAL render, so it reached the user
+    # only if the final chat.update landed (``result.finalized``). When delivery
+    # was degraded (a persistent 429 past the backoff budget, or a transport
+    # error on the final update), the user never saw the "reply ``ship it``"
+    # affordance, so we must NOT advance the signature: carry the prior one
+    # forward unchanged so the next turn re-shows the offer rather than
+    # suppressing one that never landed.
+    if result.finalized:
+        offer_signature = reply.offer_signature if reply else prior_offer_signature
+    else:
+        offer_signature = prior_offer_signature
     return SlackConverseOutcome(
         handled=True,
         intent=reply.intent if reply else "",
@@ -870,8 +885,9 @@ def run_slack_converse(
         # the listener can tell a clean success from a degraded delivery.
         finalized=result.finalized,
         # Carry the affordance fingerprint forward so the listener can persist it
-        # and feed it back next turn, keeping the file offer from repeating.
-        offer_signature=reply.offer_signature if reply else prior_offer_signature,
+        # and feed it back next turn, keeping the file offer from repeating. Only
+        # advanced when the offer actually reached Slack (see above).
+        offer_signature=offer_signature,
     )
 
 

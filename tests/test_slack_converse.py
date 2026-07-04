@@ -784,6 +784,71 @@ def test_run_slack_converse_suppresses_repeat_offer_with_prior_signature(
     assert client.updates[-1]["text"] == "Refining the toggle."
 
 
+def test_degraded_delivery_does_not_advance_offer_signature(tmp_path: Path) -> None:
+    # The offer is only appended in the FINAL render, so a build turn whose final
+    # chat.update fails means the user never saw the "reply `ship it`" affordance.
+    # The outcome must NOT advance the signature to this turn's fingerprint;
+    # otherwise the next turn would suppress an offer that never reached Slack.
+    # It carries the PRIOR signature forward unchanged instead.
+    class FailingUpdates(FakeSlackClient):
+        def chat_update(self, **kwargs: object) -> dict:
+            raise RuntimeError("permanent transport failure")
+
+    client = FailingUpdates(replies={"ok": True, "messages": []})
+    turn = _turn("Scoping the export.", INTENT_BUILD, title="CSV export")
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text("", encoding="utf-8")
+
+    outcome = sc.run_slack_converse(
+        client=client,
+        config=_enabled_config(),
+        channel="C1",
+        thread_ts="1.0",
+        user_message="export attendees to csv",
+        bridge_enabled=True,
+        build_turn=_fake_build_turn(turn, ""),
+        transcript_for=lambda fid: transcript,
+        extract_tokens=lambda p: [],
+        now=FakeClock(),
+        prior_offer_signature="",
+    )
+    assert outcome.handled is True
+    assert outcome.finalized is False
+    # New offer never reached Slack: signature stays at the prior (empty) value so
+    # the next turn re-shows the offer rather than suppressing it.
+    assert outcome.offer_signature == ""
+
+
+def test_degraded_delivery_keeps_prior_signature_unchanged(tmp_path: Path) -> None:
+    # Same principle when a prior offer WAS already shown: a degraded turn must
+    # not overwrite the persisted signature (whether or not the draft changed),
+    # because whatever this turn would have shown never landed.
+    class FailingUpdates(FakeSlackClient):
+        def chat_update(self, **kwargs: object) -> dict:
+            raise RuntimeError("permanent transport failure")
+
+    client = FailingUpdates(replies={"ok": True, "messages": []})
+    turn = _turn("Now a PDF instead.", INTENT_BUILD, title="PDF report")
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text("", encoding="utf-8")
+
+    outcome = sc.run_slack_converse(
+        client=client,
+        config=_enabled_config(),
+        channel="C1",
+        thread_ts="1.0",
+        user_message="actually make it a pdf",
+        bridge_enabled=True,
+        build_turn=_fake_build_turn(turn, ""),
+        transcript_for=lambda fid: transcript,
+        extract_tokens=lambda p: [],
+        now=FakeClock(),
+        prior_offer_signature="offer:csv export",
+    )
+    assert outcome.finalized is False
+    assert outcome.offer_signature == "offer:csv export"
+
+
 def test_run_slack_converse_streams_partial_tokens(tmp_path: Path) -> None:
     client = FakeSlackClient(replies={"ok": True, "messages": []})
     turn = _turn("Final answer.", INTENT_CONVERSATION)

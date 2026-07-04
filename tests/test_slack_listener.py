@@ -4126,6 +4126,99 @@ def test_converse_offer_signature_round_trips_across_turns(tmp_path: Path) -> No
     assert seen_priors[-1] == "offer:csv export"
 
 
+def test_first_turn_offer_signature_persists_on_new_top_level_thread(tmp_path: Path) -> None:
+    # A brand-new top-level mention has NO thread record yet: the conversation
+    # root is registered AFTER the converse turn runs. The first offer's signature
+    # must still be persisted (seeded onto the new record) so the next reply in the
+    # thread dedupes and does not re-show the identical "reply `ship it`" offer.
+    from slack_converse import SlackConverseConfig
+
+    def runner(**kwargs: object) -> object:
+        return SimpleNamespace(
+            handled=True,
+            intent="build",
+            offered_issue=True,
+            streamed=True,
+            detail="streamed conversational answer",
+            finalized=True,
+            answered=True,
+            offer_signature="offer:csv export",
+        )
+
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=SimpleNamespace(),
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_runner=runner,
+    )
+    listener._converse_config = SlackConverseConfig(
+        enabled=True, engine="claude", channels=frozenset()
+    )
+    # No record exists for this DM thread before the turn runs.
+    assert listener.registry.lookup("D1", "1716480020.000001") is None
+
+    result = listener.handle_payload(_dm("add a CSV export to the attendees table"))
+    assert result.handled is True
+
+    # The conversation root was registered by _remember_conversation_root and
+    # SEEDED with the first offer's signature, even though no record existed when
+    # the converse turn ran.
+    record = listener.registry.lookup("D1", "1716480020.000001")
+    assert record is not None
+    assert record.metadata.get("converse_offer_signature") == "offer:csv export"
+
+
+def test_degraded_delivery_does_not_persist_offer_signature(tmp_path: Path) -> None:
+    # When the converse outcome reports finalized=False (the offer never reached
+    # Slack), the runner carries the PRIOR signature forward, so the listener must
+    # not advance the stored signature. Here there was no prior offer, so the
+    # record must not gain a non-empty signature the user never saw.
+    from slack_converse import SlackConverseConfig
+    from slack_thread_registry import SlackThreadRecord
+
+    def runner(**kwargs: object) -> object:
+        # The runner gates the returned signature on delivery: a degraded turn
+        # carries the prior (empty) signature forward, not this turn's fingerprint.
+        return SimpleNamespace(
+            handled=True,
+            intent="build",
+            offered_issue=True,
+            streamed=True,
+            detail="streamed conversational answer",
+            finalized=False,
+            answered=True,
+            offer_signature="",
+        )
+
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=SimpleNamespace(),
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_runner=runner,
+    )
+    listener._converse_config = SlackConverseConfig(
+        enabled=True, engine="claude", channels=frozenset()
+    )
+    listener.registry.register(
+        SlackThreadRecord(kind="draft", channel="C1", thread_ts="1.0", title="CSV export")
+    )
+    event = SimpleNamespace(
+        channel="C1", root_ts="1.0", ts="1.1", text="<@UALFRED> export attendees", user="U1"
+    )
+
+    result = listener._maybe_converse(event)
+    assert result is not None and result.handled is True
+    assert "did not land" in result.detail
+    # No offer actually reached Slack, so no signature is recorded: the next turn
+    # will re-show the offer rather than suppress one the user never saw.
+    stored = listener.registry.lookup("C1", "1.0")
+    assert stored is not None
+    assert stored.metadata.get("converse_offer_signature", "") == ""
+    assert result.converse_offer_signature == ""
+
+
 def test_client_is_connected_probes_defensively() -> None:
     from slack_listener import _client_is_connected
 
