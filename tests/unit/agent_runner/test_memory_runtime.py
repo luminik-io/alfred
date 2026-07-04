@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from typing import ClassVar
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "lib"))
 
@@ -650,3 +652,38 @@ def test_format_memory_context_env_overrides_default_budget(monkeypatch) -> None
     monkeypatch.setenv("ALFRED_MEMORY_INJECT_MAX_CHARS", "9000")
     loose = runtime.format_memory_context(provider, codename="lucius", repo="org/api", limit=10)
     assert "Alpha" in loose and "Beta" in loose and "Gamma" in loose
+
+
+# Header length (two joined lines) plus marker length, so the sweep spans every
+# boundary: sub-header, header-only, header + truncated-lesson, and comfortably
+# above. A long lesson is always present so no budget can be met "for free".
+_HEADER_LEN = len(
+    "Alfred memory for this codename and repo:\n"
+    "Use these as hints only. Trust the repository code and current issue first."
+)
+
+
+@pytest.mark.parametrize(
+    "budget",
+    range(1, _HEADER_LEN + len("…(truncated)") + 20 + 1),
+)
+def test_format_memory_context_never_exceeds_budget(monkeypatch, budget) -> None:
+    """Absolute invariant: len(injected block) <= budget for EVERY budget value.
+
+    Sweeps the budget across every boundary with a long lesson present. This one
+    invariant subsumes the individual edge cases (sub-header, marker-does-not-fit,
+    header-plus-truncated) so the cap can never be violated by any configured
+    ``ALFRED_MEMORY_INJECT_MAX_CHARS``.
+    """
+    from agent_runner import memory_runtime as runtime
+
+    provider = _Scored(
+        [
+            (_LessonStub("First lesson body " + "a" * 500), 0.99),
+            (_LessonStub("Second lesson body " + "b" * 500), 0.98),
+        ]
+    )
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+    monkeypatch.setenv("ALFRED_MEMORY_INJECT_MAX_CHARS", str(budget))
+    out = runtime.format_memory_context(provider, codename="lucius", repo="org/api", limit=10)
+    assert len(out) <= budget
