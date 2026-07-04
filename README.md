@@ -15,9 +15,9 @@
 
 Alfred gives your local coding CLIs a small, named team and a memory. Named
 agents plan the work, write the code, review each other, and open pull requests.
-Every run also teaches the fleet something it keeps: a repo convention, a fix
-that worked, a mistake not to repeat. The next run starts from what the last one
-learned instead of from zero.
+When a run learns something durable, it also teaches the fleet and keeps it: a
+repo convention, a fix that worked, a mistake not to repeat. The next run starts
+from what earlier runs learned instead of from zero.
 
 The team is deliberately small and legible. You can name every agent and say
 what each one does:
@@ -58,7 +58,8 @@ flowchart LR
 ### Why Alfred
 
 - **The fleet remembers between runs.** Before a run, an agent recalls the
-  lessons earlier runs learned; after a run, it files new ones. Alfred keeps
+  lessons earlier runs learned; after a run, it files new ones when it learned
+  something durable. Alfred keeps
   those lessons in a local memory (Redis Agent Memory for the semantic lessons,
   a local FleetBrain ledger for the review queue and failure history), so the
   fleet stops rediscovering the same repo conventions and re-making the same
