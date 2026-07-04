@@ -19,18 +19,25 @@ import { useAskThread } from "./useAskThread";
 // toggle; every converse call sends plain.
 const PLACEHOLDER = "Ask a question, or describe a change you want made.";
 
+// Generic starter prompts for a new thread. Each seeds the composer (it does NOT
+// auto-send) so the person can edit before sending. Wording stays repo-agnostic
+// on purpose: it shows the SHAPE of a good request without naming any real repo.
 const STARTERS = [
   {
-    label: "How does Alfred work?",
-    text: "How does Alfred work, and what can you do for me?",
+    label: "Add tests to a module",
+    text: "Add tests to a module that is under-covered, so a regression there is caught before it ships.",
   },
   {
-    label: "Ship a feature",
-    text: "Add a CSV export to the attendees table so sales can download the filtered rows they see.",
+    label: "Fix a failing CI check",
+    text: "A CI check is failing on the main branch. Find the cause and fix it so the pipeline goes green again.",
   },
   {
-    label: "Fix a workflow",
-    text: "The review queue is hard to scan at small window sizes. Make it usable without hiding important decisions.",
+    label: "Tidy a README",
+    text: "Tidy up a README so a new contributor can set the project up and run it without guessing.",
+  },
+  {
+    label: "Add logging to a code path",
+    text: "Add clear logging to a code path that is hard to debug in production, without making the logs noisy.",
   },
 ];
 

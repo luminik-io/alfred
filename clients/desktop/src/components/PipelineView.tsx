@@ -607,6 +607,12 @@ function BoardLifecycleCard({
   const agent = codename
     ? resolveThemedIdentity({ codename }, rosterTheme, customNames).name
     : null;
+  // A working PR still in draft is in review/verification, not merged. That is
+  // representable straight from existing card data (kind + is_draft on the
+  // working lane), so surface a small "In review" indicator; anything not
+  // representable is skipped rather than fabricated.
+  const inReview =
+    column === "in_progress" && card.kind === "pr" && card.is_draft === true;
   // A gated plan (agent:plan-pending-approval) is a decision waiting on the
   // operator. The `queue` action strips the gate label (see lib/issue_queue.py),
   // so it IS the in-app "give the go-ahead" path: a card that says "Needs your
@@ -657,18 +663,43 @@ function BoardLifecycleCard({
         <Ban size={14} aria-hidden="true" />
       </button>
     ) : null;
+  const attribution =
+    agent || inReview ? (
+      <span className="board-attribution">
+        {agent ? <AgentAvatar name={agent} /> : null}
+        {agent ? <span className="board-attribution__name">{agent}</span> : null}
+        {inReview ? (
+          <span className="board-attribution__state" title="Pull request is in review">
+            In review
+          </span>
+        ) : null}
+      </span>
+    ) : null;
   return (
     <LifecycleCard
       chip={boardCardChip(card, column)}
       repos={repoChips([card.repo])}
       age={card.timestamp}
       outcome={cardOutcome(card)}
-      attribution={agent ? <span>{agent}</span> : null}
+      attribution={attribution}
       action={action}
       hoverActions={hoverActions}
       selected={selected}
       onSelect={onSelect}
     />
+  );
+}
+
+// The per-card agent avatar chip: a monogram from the themed agent name, using
+// the SAME resolved-identity name and the same monogram styling as the Roster
+// page (charAt(0), --agent-accent). Purely decorative, so it is aria-hidden and
+// the visible name beside it carries the attribution for assistive tech.
+function AgentAvatar({ name }: { name: string }) {
+  const monogram = name.trim().charAt(0).toUpperCase() || "A";
+  return (
+    <span className="board-avatar" aria-hidden="true">
+      {monogram}
+    </span>
   );
 }
 
