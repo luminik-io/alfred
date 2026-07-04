@@ -1243,12 +1243,20 @@ class Reporter(Protocol):
 # ---------------------------------------------------------------------------
 
 _BUNDLE_TITLE_RE = re.compile(r"bundle:\s*(?P<slug>[a-z0-9][a-z0-9\-]*)", re.IGNORECASE)
+# All section blocks terminate at the next recognized section heading (or a
+# markdown H-heading, or end of body). The cross-repo contract adds
+# `Contract:`/`Shared:`/sequencing headings to that set, so a parent that puts
+# a contract block between `Children:` and `Done when:` does not leak its
+# contract lines into the children (or repos) section as child-work entries.
+_SECTION_BOUNDARY = (
+    r"repos?|children|done\s*when|contract|shared|sequenc\w*|landing\s*order|rollout\s*order"
+)
 _REPOS_BLOCK_RE = re.compile(
-    r"^\s*repos?\s*:\s*$(.*?)(?=^\s*(?:children|done\s*when)\s*:|^\#|\Z)",
+    rf"^\s*repos?\s*:\s*$(.*?)(?=^\s*(?:{_SECTION_BOUNDARY})\s*:|^\#|\Z)",
     re.IGNORECASE | re.MULTILINE | re.DOTALL,
 )
 _CHILDREN_BLOCK_RE = re.compile(
-    r"^\s*children\s*:\s*$(.*?)(?=^\s*done\s*when\s*:|^\#|\Z)",
+    rf"^\s*children\s*:\s*$(.*?)(?=^\s*(?:{_SECTION_BOUNDARY})\s*:|^\#|\Z)",
     re.IGNORECASE | re.MULTILINE | re.DOTALL,
 )
 _DONE_BLOCK_RE = re.compile(
@@ -1260,13 +1268,12 @@ _DONE_BLOCK_RE = re.compile(
 # `Contract:` (or `Shared:`) block, and an optional sequencing block, are parsed
 # from the parent body if present; both degrade to empty and never raise.
 _CONTRACT_BLOCK_RE = re.compile(
-    r"^\s*(?:contract|shared)\s*:\s*$(.*?)"
-    r"(?=^\s*(?:repos?|children|done\s*when|shared|contract|sequenc\w*|landing\s*order|rollout\s*order)\s*:|^\#|\Z)",
+    rf"^\s*(?:contract|shared)\s*:\s*$(.*?)(?=^\s*(?:{_SECTION_BOUNDARY})\s*:|^\#|\Z)",
     re.IGNORECASE | re.MULTILINE | re.DOTALL,
 )
 _SEQUENCING_BLOCK_RE = re.compile(
-    r"^\s*(?:sequenc\w*|landing\s*order|rollout\s*order)\s*:\s*$(.*?)"
-    r"(?=^\s*(?:repos?|children|done\s*when|shared|contract|sequenc\w*|landing\s*order|rollout\s*order)\s*:|^\#|\Z)",
+    rf"^\s*(?:sequenc\w*|landing\s*order|rollout\s*order)\s*:\s*$(.*?)"
+    rf"(?=^\s*(?:{_SECTION_BOUNDARY})\s*:|^\#|\Z)",
     re.IGNORECASE | re.MULTILINE | re.DOTALL,
 )
 

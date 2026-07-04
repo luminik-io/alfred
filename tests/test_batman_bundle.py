@@ -1247,3 +1247,59 @@ def test_contract_reattached_once_after_operator_feedback():
     nango = next(c for c in amended.children if c.repo == "myorg/nango")
     assert "myorg/backend" in nango.body
     assert "BillingStatus" in nango.body
+
+
+def test_children_section_terminates_at_contract_and_sequencing_headings():
+    """When the parent orders blocks as Children: -> Contract: -> Sequencing:
+    -> Done when:, the child parser must stop at the Contract:/Sequencing:
+    headings so their lines are NOT swallowed as child-work entries, and the
+    contract block must still parse correctly."""
+    body = """
+Bundle: billing-v2 rollout
+
+Repos:
+- myorg/backend
+- myorg/frontend
+
+Children:
+- backend: add /billing/v2 endpoints behind the billing-v2 flag
+- frontend: wire the billing settings page to the v2 endpoints
+
+Contract:
+- `POST /billing/v2/subscribe` returns `{status, planId}`
+- shared enum `BillingStatus` = active | past_due | canceled
+
+Sequencing:
+- backend migration lands before frontend consumes it
+
+Done when:
+- both repos speak the v2 contract
+"""
+    plan = _parse_parent(body)
+
+    # (a) exactly the two real children parsed; no contract/sequencing lines
+    # leaked in as child work.
+    assert len(plan.children) == 2, [c.title for c in plan.children]
+    child_titles = [c.title for c in plan.children]
+    assert child_titles == [
+        "add /billing/v2 endpoints behind the billing-v2 flag",
+        "wire the billing settings page to the v2 endpoints",
+    ], child_titles
+    joined_titles = " ".join(child_titles)
+    for leaked in ("BillingStatus", "POST /billing/v2/subscribe", "migration lands"):
+        assert leaked not in joined_titles, leaked
+    # No child repo token got invented from a contract/sequencing bullet.
+    assert {c.repo for c in plan.children} == {"myorg/backend", "myorg/frontend"}
+
+    # (b) the contract block still parses correctly off the same body.
+    assert list(plan.contract_lines) == [
+        "`POST /billing/v2/subscribe` returns `{status, planId}`",
+        "shared enum `BillingStatus` = active | past_due | canceled",
+    ], plan.contract_lines
+    assert list(plan.sequencing_lines) == ["backend migration lands before frontend consumes it"], (
+        plan.sequencing_lines
+    )
+    # And it lands in the child bodies.
+    backend = {c.repo.rsplit("/", 1)[-1]: c for c in plan.children}["backend"]
+    assert "BillingStatus" in backend.body
+    assert "backend migration lands before frontend consumes it" in backend.body
