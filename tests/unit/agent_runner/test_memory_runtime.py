@@ -522,3 +522,101 @@ def test_format_memory_context_chain_keeps_unscored_member_under_high_threshold(
 
     assert "Weak redis lesson." not in out
     assert "Unscored fleet lesson." in out
+
+
+def test_format_memory_context_under_budget_is_unchanged(monkeypatch) -> None:
+    """A small block well under the cap is injected verbatim (no cap side effects)."""
+    from agent_runner import memory_runtime as runtime
+
+    provider = _Scored(
+        [
+            (_LessonStub("Lesson one."), 0.9),
+            (_LessonStub("Lesson two."), 0.9),
+            (_LessonStub("Lesson three."), 0.9),
+        ]
+    )
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+    monkeypatch.delenv("ALFRED_MEMORY_INJECT_MAX_CHARS", raising=False)
+    out = runtime.format_memory_context(provider, codename="lucius", repo="org/api", limit=5)
+
+    assert out == (
+        "Alfred memory for this codename and repo:\n"
+        "Use these as hints only. Trust the repository code and current issue first.\n"
+        "1.  Lesson one.\n"
+        "2.  Lesson two.\n"
+        "3.  Lesson three."
+    )
+    assert len(out) <= runtime._DEFAULT_INJECT_MAX_CHARS
+
+
+def test_format_memory_context_over_budget_drops_tail(monkeypatch) -> None:
+    """Many long lessons over the cap keep the top ones and drop the tail."""
+    from agent_runner import memory_runtime as runtime
+
+    body = "x" * 400  # each formatted lesson line is well over the tiny budget slice
+    provider = _Scored(
+        [
+            (_LessonStub(f"First {body}"), 0.99),
+            (_LessonStub(f"Second {body}"), 0.98),
+            (_LessonStub(f"Third {body}"), 0.97),
+            (_LessonStub(f"Fourth {body}"), 0.96),
+        ]
+    )
+    # Budget fits the header plus roughly two lesson lines, not all four.
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+    monkeypatch.setenv("ALFRED_MEMORY_INJECT_MAX_CHARS", "1050")
+    out = runtime.format_memory_context(provider, codename="lucius", repo="org/api", limit=10)
+
+    assert len(out) <= 1050
+    assert "First" in out  # top lesson kept
+    assert "Fourth" not in out  # tail dropped
+    assert runtime._TRUNCATION_MARKER not in out  # whole lessons only, no mid-lesson cut
+
+
+def test_format_memory_context_single_over_budget_lesson_is_truncated(monkeypatch) -> None:
+    """A lone lesson larger than the whole budget is still injected, truncated."""
+    from agent_runner import memory_runtime as runtime
+
+    provider = _Scored([(_LessonStub("Huge " + "y" * 5000), 0.99)])
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+    monkeypatch.setenv("ALFRED_MEMORY_INJECT_MAX_CHARS", "300")
+    out = runtime.format_memory_context(provider, codename="lucius", repo="org/api", limit=5)
+
+    assert len(out) <= 300
+    assert "Alfred memory for this codename and repo:" in out
+    assert runtime._TRUNCATION_MARKER in out
+    assert "Huge" in out  # the one lesson is still present (truncated)
+
+
+def test_format_memory_context_env_overrides_default_budget(monkeypatch) -> None:
+    """The env var overrides the 8000-char default cap."""
+    from agent_runner import memory_runtime as runtime
+
+    assert runtime._inject_max_chars({}) == runtime._DEFAULT_INJECT_MAX_CHARS
+    assert runtime._inject_max_chars({"ALFRED_MEMORY_INJECT_MAX_CHARS": "1234"}) == 1234
+    # Non-positive / unparseable values fall back to the default (cap never off).
+    assert runtime._inject_max_chars({"ALFRED_MEMORY_INJECT_MAX_CHARS": "0"}) == (
+        runtime._DEFAULT_INJECT_MAX_CHARS
+    )
+    assert runtime._inject_max_chars({"ALFRED_MEMORY_INJECT_MAX_CHARS": "nope"}) == (
+        runtime._DEFAULT_INJECT_MAX_CHARS
+    )
+
+    body = "z" * 400
+    provider = _Scored(
+        [
+            (_LessonStub(f"Alpha {body}"), 0.99),
+            (_LessonStub(f"Beta {body}"), 0.98),
+            (_LessonStub(f"Gamma {body}"), 0.97),
+        ]
+    )
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+    # Tight override keeps only the first lesson; a generous one keeps all three.
+    monkeypatch.setenv("ALFRED_MEMORY_INJECT_MAX_CHARS", "560")
+    tight = runtime.format_memory_context(provider, codename="lucius", repo="org/api", limit=10)
+    assert "Alpha" in tight and "Gamma" not in tight
+    assert len(tight) <= 560
+
+    monkeypatch.setenv("ALFRED_MEMORY_INJECT_MAX_CHARS", "9000")
+    loose = runtime.format_memory_context(provider, codename="lucius", repo="org/api", limit=10)
+    assert "Alpha" in loose and "Beta" in loose and "Gamma" in loose

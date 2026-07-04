@@ -99,6 +99,34 @@ def _recall_relevance_threshold(env: Mapping[str, str] | None = None) -> float:
     return max(0.0, min(1.0, value))
 
 
+_DEFAULT_INJECT_MAX_CHARS = 8000
+_TRUNCATION_MARKER = "…(truncated)"
+
+
+def _inject_max_chars(env: Mapping[str, str] | None = None) -> int:
+    """Hard character budget for the formatted memory block prepended to a prompt.
+
+    Config-driven via ``ALFRED_MEMORY_INJECT_MAX_CHARS`` (a positive integer of
+    characters). Default ``8000`` mirrors ECC's ``ECC_SESSION_START_MAX_CHARS``
+    so "memory on by default" can never silently balloon the run prompt and
+    inflate the per-PR share of quota. Whole lessons are kept from the top
+    (recall is ordered by relevance/recency) until the next would exceed the
+    budget; a lone over-budget lesson is still injected but hard-truncated with
+    a clear marker. A non-positive or unparseable value falls back to the
+    default rather than disabling the cap.
+    """
+    raw = (env or os.environ).get("ALFRED_MEMORY_INJECT_MAX_CHARS")
+    if raw is None or not str(raw).strip():
+        return _DEFAULT_INJECT_MAX_CHARS
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return _DEFAULT_INJECT_MAX_CHARS
+    if value <= 0:
+        return _DEFAULT_INJECT_MAX_CHARS
+    return value
+
+
 def _normalized_body(body: str) -> str:
     """Whitespace- and case-folded body used as a dedup key."""
     return " ".join(str(body or "").split()).strip().casefold()
@@ -219,6 +247,14 @@ def format_memory_context(
     relevance threshold (``ALFRED_MEMORY_RECALL_THRESHOLD``) is dropped, and
     near-duplicate bodies are collapsed so the same lesson is never injected
     twice. This reuses the provider's own scoring rather than always injecting.
+
+    The final formatted block is then bounded to a hard character budget
+    (``ALFRED_MEMORY_INJECT_MAX_CHARS``, default ``8000``): the two header
+    lines are always kept, and whole lessons are appended from the top
+    (highest relevance/recency first) only while they fit. Tail lessons that
+    would blow the budget are dropped; if even the first lesson overflows on
+    its own it is still injected but hard-truncated with a clear marker. Under
+    budget the output is byte-for-byte identical to the pre-cap behavior.
     """
     if provider is None or getattr(provider, "name", "") == "null":
         return ""
@@ -237,18 +273,60 @@ def format_memory_context(
         return ""
     if not lessons:
         return ""
-    lines = [
+    header = [
         "Alfred memory for this codename and repo:",
         "Use these as hints only. Trust the repository code and current issue first.",
     ]
+    lesson_lines: list[str] = []
     for idx, lesson in enumerate(lessons[:limit], start=1):
         severity = "" if getattr(lesson, "severity", "info") == "info" else "!"
         tags = getattr(lesson, "tags", []) or []
         tag_text = f" [{', '.join(tags)}]" if tags else ""
         body = str(getattr(lesson, "body", "")).strip()
         if body:
-            lines.append(f"{idx}. {severity}{tag_text} {body}".strip())
+            lesson_lines.append(f"{idx}. {severity}{tag_text} {body}".strip())
+    budget = _inject_max_chars()
+    lines = _apply_inject_budget(header, lesson_lines, budget)
     return "\n".join(lines).strip()
+
+
+def _apply_inject_budget(header: list[str], lesson_lines: list[str], budget: int) -> list[str]:
+    """Bound ``header + lesson_lines`` to ``budget`` total characters.
+
+    The header is always retained. Lesson lines are kept whole, from the top,
+    only while the running ``len("\\n".join(lines))`` stays within ``budget``;
+    the first line that would exceed it and every line after are dropped. If the
+    single highest-priority lesson already overflows the remaining budget it is
+    hard-truncated (with :data:`_TRUNCATION_MARKER`) rather than dropped, so at
+    least one lesson is always injected. Falls back to no capping when ``budget``
+    cannot fit even the header alone.
+    """
+
+    def joined_len(lines: list[str]) -> int:
+        return len("\n".join(lines))
+
+    kept = list(header)
+    if joined_len(kept) >= budget:
+        # Budget too small for even the header + one lesson; still guarantee a
+        # single (possibly truncated) lesson so memory is never wholly silent.
+        if lesson_lines:
+            kept.append(lesson_lines[0])
+        return kept
+    for line in lesson_lines:
+        if joined_len([*kept, line]) <= budget:
+            kept.append(line)
+            continue
+        # This lesson does not fit. If no lesson has been added yet, inject the
+        # top lesson truncated to the remaining budget so recall is never empty.
+        if len(kept) == len(header):
+            remaining = budget - joined_len(kept) - 1  # -1 for the joining "\n"
+            body_room = remaining - len(_TRUNCATION_MARKER)
+            if body_room > 0:
+                kept.append(line[:body_room].rstrip() + _TRUNCATION_MARKER)
+            else:
+                kept.append(_TRUNCATION_MARKER)
+        break
+    return kept
 
 
 def memory_reflection_instructions() -> str:
