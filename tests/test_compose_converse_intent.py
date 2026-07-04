@@ -124,8 +124,7 @@ def test_no_engine_classifier_keeps_list_status_questions_conversational() -> No
         "Can you provide an overview of what shipped today?",
     ):
         assert (
-            cc.classify_message_intent(message, draft=_empty_draft())
-            == cc.INTENT_CONVERSATION
+            cc.classify_message_intent(message, draft=_empty_draft()) == cc.INTENT_CONVERSATION
         ), message
     # A genuine build request phrased the same way still routes to build.
     assert (
@@ -133,7 +132,9 @@ def test_no_engine_classifier_keeps_list_status_questions_conversational() -> No
         == cc.INTENT_BUILD
     )
     assert (
-        cc.classify_message_intent("Can you show paused agents in the roster?", draft=_empty_draft())
+        cc.classify_message_intent(
+            "Can you show paused agents in the roster?", draft=_empty_draft()
+        )
         == cc.INTENT_BUILD
     )
 
@@ -149,8 +150,7 @@ def test_no_engine_classifier_routes_modal_status_questions_by_subject() -> None
         "Could we get the list of paused agents?",
     ):
         assert (
-            cc.classify_message_intent(message, draft=_empty_draft())
-            == cc.INTENT_CONVERSATION
+            cc.classify_message_intent(message, draft=_empty_draft()) == cc.INTENT_CONVERSATION
         ), message
     for message in (
         "Can we show paused agents in the roster?",
@@ -159,9 +159,7 @@ def test_no_engine_classifier_routes_modal_status_questions_by_subject() -> None
         "Can we find a way to add dark mode?",
         "Could we get the app to support markdown?",
     ):
-        assert (
-            cc.classify_message_intent(message, draft=_empty_draft()) == cc.INTENT_BUILD
-        ), message
+        assert cc.classify_message_intent(message, draft=_empty_draft()) == cc.INTENT_BUILD, message
 
 
 def test_heuristic_keeps_build_when_a_draft_already_has_content() -> None:
