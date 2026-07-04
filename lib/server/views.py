@@ -2107,6 +2107,11 @@ def _converse_turn_payload(turn: Any, *, draft_id: str, saved_path: Path) -> dic
         # turn). The client renders the inline plan card only for "build" turns,
         # so a "who are you?" answer reads as a normal chat reply.
         "intent": getattr(turn, "intent", "build"),
+        # OPTIONAL client-executable action REQUEST for this turn, or null. The
+        # model names an allowlisted tool + args; a later client orchestrator
+        # executes it under the token gate (nothing runs server-side here).
+        # Backward-compatible: existing consumers that ignore this are unaffected.
+        "action": _converse_action_payload(getattr(turn, "action", None)),
         "readiness": {
             "score": turn.readiness.score,
             "ready": turn.readiness.ready,
@@ -2126,6 +2131,21 @@ def _converse_turn_payload(turn: Any, *, draft_id: str, saved_path: Path) -> dic
             "rollout": turn.draft.rollout,
             "open_questions": turn.draft.open_questions,
         },
+    }
+
+
+def _converse_action_payload(action: Any) -> dict[str, Any] | None:
+    """Serialize an optional ``ConverseAction`` as ``{tool, args}`` or ``None``.
+
+    ``compose_converse.parse_action`` has already validated the tool against the
+    allowlist and bounded the args, so this only projects the object to JSON.
+    ``None`` (the common case: a turn requested no action) serializes to ``null``.
+    """
+    if action is None:
+        return None
+    return {
+        "tool": getattr(action, "tool", ""),
+        "args": dict(getattr(action, "args", {}) or {}),
     }
 
 

@@ -111,6 +111,95 @@ class ConverseReadiness:
     missing: tuple[str, ...] = ()
 
 
+# The bounded vocabulary of client-side actions a converse turn may REQUEST.
+# The model only ever produces a validated request object here: it names one of
+# these tools and supplies args. Nothing in this module executes an action - a
+# later desktop PR owns the client orchestrator that runs the request under the
+# existing token gate. Keeping the model sandboxed (Read/Grep/Glob only) while
+# it names a well-typed action is the request/execute split: the model requests,
+# the client executes. Any tool name outside this set is rejected and the action
+# is dropped, leaving a normal conversational/build turn intact.
+ACTION_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "propose_theme",
+        "save_theme",
+        "connect_github",
+        "list_repos",
+        "select_repos",
+        "list_playbooks",
+        "compose_playbook",
+        "file_issue",
+        "install_core",
+        "start_runtime",
+    }
+)
+
+# Bound the parsed action-args so a hostile or runaway model turn cannot smuggle
+# an oversized blob through the action channel. Args are advisory request data
+# for a future client; they are never executed here. An action whose args exceed
+# either bound is dropped (the turn degrades to a normal turn, never raises).
+MAX_ACTION_ARGS_KEYS = 40
+MAX_ACTION_ARGS_CHARS = 8000
+
+
+@dataclass(frozen=True)
+class ConverseAction:
+    """A validated, client-executable action REQUEST emitted by a turn.
+
+    ``tool`` is always a member of ``ACTION_ALLOWLIST``; ``args`` is a plain
+    JSON-shaped dict of request parameters. This object carries no authority to
+    run anything: it is a typed request that a later client orchestrator will
+    execute under the operator's token gate. The model stays read-only.
+    """
+
+    tool: str
+    args: dict[str, Any]
+
+
+def parse_action(raw: Any) -> ConverseAction | None:
+    """Validate a model-emitted ``{tool, args}`` block into a ``ConverseAction``.
+
+    Defensive by construction, mirroring the JSON-extraction style already used
+    in this module: it NEVER raises. Any malformed, unknown, or oversized action
+    returns ``None`` so the caller drops the action and keeps the turn's text as
+    a normal conversational/build turn. Specifically it drops the action when:
+
+    * the block is not a dict, or
+    * ``tool`` is missing / not a string / not in ``ACTION_ALLOWLIST``, or
+    * ``args`` is present but is not a dict, or
+    * ``args`` exceeds the bounded key count or serialized size.
+
+    A missing ``args`` is treated as an empty dict so a bare
+    ``{"tool": "list_repos"}`` request is honored.
+    """
+    if not isinstance(raw, dict):
+        return None
+    tool = raw.get("tool")
+    if not isinstance(tool, str):
+        return None
+    tool = tool.strip()
+    if tool not in ACTION_ALLOWLIST:
+        return None
+    raw_args = raw.get("args")
+    if raw_args is None:
+        args: dict[str, Any] = {}
+    elif isinstance(raw_args, dict):
+        args = raw_args
+    else:
+        return None
+    if len(args) > MAX_ACTION_ARGS_KEYS:
+        return None
+    try:
+        serialized = json.dumps(args, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        return None
+    if len(serialized) > MAX_ACTION_ARGS_CHARS:
+        return None
+    # Normalize keys to strings so the request object is uniformly JSON-shaped
+    # for the client, without mutating the model's supplied values.
+    return ConverseAction(tool=tool, args={str(key): value for key, value in args.items()})
+
+
 # The two turn kinds the interrogator distinguishes. ``conversation`` is a
 # greeting / identity / capability / how-it-works / small-talk turn that gets a
 # plain answer and never produces a plan card; ``build`` is the spec-building
@@ -133,6 +222,12 @@ class ConverseTurn:
     # The client renders the inline plan card only for ``build`` turns, so a
     # "who are you?" answer reads as a normal chat reply, not a planning form.
     intent: str = INTENT_BUILD
+    # An OPTIONAL, validated client-executable action REQUEST for this turn. The
+    # model may name one allowlisted tool (theme builder / onboarding steps) plus
+    # args; a later client orchestrator executes it under the token gate. ``None``
+    # is the default and the common case: most turns request no action, and any
+    # malformed/unknown/oversized action is dropped to ``None`` rather than raised.
+    action: ConverseAction | None = None
 
 
 def parse_messages(raw: Any) -> list[ConverseMessage]:
@@ -467,7 +562,10 @@ def parse_turn(
     can surface an honest error rather than a fabricated turn. ``intent`` is the
     model's own classification of the turn (conversation vs build); when the
     model omits it, a conservative heuristic over the latest user message fills
-    it in so the client never has to guess.
+    it in so the client never has to guess. An OPTIONAL ``action`` block, when
+    present and valid (allowlisted tool + bounded dict args), is attached as a
+    client-executable request; a malformed/unknown/oversized action is dropped
+    to ``None`` so a bad action degrades to a normal turn and never raises.
     """
     obj = _extract_json_object(raw_text)
     if obj is None:
@@ -485,7 +583,15 @@ def parse_turn(
         draft=draft,
         done=done,
     )
-    return ConverseTurn(reply=reply, draft=draft, readiness=readiness, done=done, intent=intent)
+    action = parse_action(obj.get("action"))
+    return ConverseTurn(
+        reply=reply,
+        draft=draft,
+        readiness=readiness,
+        done=done,
+        intent=intent,
+        action=action,
+    )
 
 
 # Short, common openers that are almost never a build request on their own. Used
