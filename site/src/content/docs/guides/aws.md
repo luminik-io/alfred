@@ -7,7 +7,7 @@ Alfred uses AWS for two optional things: **Secrets Manager** (Slack webhook, Sen
 
 If you don't need either, skip this. Put `SLACK_WEBHOOK_URL` in `$ALFRED_HOME/.env` directly. The framework runs fine without an AWS account.
 
-Full guide at [`docs/AWS_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/AWS_SETUP.md). Highlights:
+Full guide at [`docs/AWS_SETUP.md`](https://github.com/luminik-io/alfred/blob/main/docs/AWS_SETUP.md). Highlights:
 
 ## Why per-agent IAM
 
@@ -53,7 +53,7 @@ aws --profile "$AWS_ADMIN_PROFILE" iam put-user-policy \
   --policy-document file:///tmp/policy.json
 ```
 
-Policy templates for Slack reader, ECS read-only, CloudWatch logs etc. live in [`docs/AWS_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/AWS_SETUP.md#2-attach-a-scoped-inline-policy).
+Policy templates for Slack reader, ECS read-only, CloudWatch logs etc. live in [`docs/AWS_SETUP.md`](https://github.com/luminik-io/alfred/blob/main/docs/AWS_SETUP.md#2-attach-a-scoped-inline-policy).
 
 ## Secret naming convention
 
@@ -69,7 +69,7 @@ The secret ID prefix `alfred/` is the default convention. Adjust to your fleet's
 
 ## Key rotation
 
-Every 90 days minimum. Mint new key → update `~/.aws/credentials` → verify with `aws sts get-caller-identity` → delete old key. See the runbook in [`docs/AWS_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/AWS_SETUP.md#5-rotate-keys).
+Every 90 days minimum. Mint new key → update `~/.aws/credentials` → verify with `aws sts get-caller-identity` → delete old key. See the runbook in [`docs/AWS_SETUP.md`](https://github.com/luminik-io/alfred/blob/main/docs/AWS_SETUP.md#5-rotate-keys).
 
 ## Troubleshooting
 

@@ -11,7 +11,7 @@ Redis Agent Memory is the default recalled-lesson store. FleetBrain keeps the
 review queue, firing history, failure patterns, GitHub cache, file touches, and
 evidence that makes those lessons trustworthy.
 
-Full source doc: [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/FLEET_BRAIN.md).
+Full source doc: [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred/blob/main/docs/FLEET_BRAIN.md).
 
 ## What it stores
 
@@ -198,4 +198,4 @@ See also:
 
 - [State and memory](/concepts/state-and-memory/)
 - [Alfred CLI](/reference/cli/)
-- [`docs/MEMORY_PROVIDERS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/MEMORY_PROVIDERS.md)
+- [`docs/MEMORY_PROVIDERS.md`](https://github.com/luminik-io/alfred/blob/main/docs/MEMORY_PROVIDERS.md)

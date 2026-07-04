@@ -1,8 +1,8 @@
 {
   "generated_at": "2026-06-22T02:36:52.381Z",
   "source": {
-    "repo": "luminik-io/alfred-os",
-    "url": "https://github.com/luminik-io/alfred-os",
+    "repo": "luminik-io/alfred",
+    "url": "https://github.com/luminik-io/alfred",
     "note": "Public Alfred activity from GitHub. Dependabot is excluded. The committed JSON is a seed; main-branch site builds refresh it before deploy."
   },
   "window": {

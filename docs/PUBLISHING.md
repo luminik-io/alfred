@@ -15,8 +15,8 @@ workflow. It should not use the legacy "Deploy from a branch" Pages builder.
 3. Configure GitHub Pages:
 
    ```sh
-   gh api --method PUT repos/luminik-io/alfred-os/pages -f build_type=workflow
-   gh api repos/luminik-io/alfred-os/pages --jq '{build_type,status,html_url,https_enforced}'
+   gh api --method PUT repos/luminik-io/alfred/pages -f build_type=workflow
+   gh api repos/luminik-io/alfred/pages --jq '{build_type,status,html_url,https_enforced}'
    ```
 
    Expected `build_type`: `workflow`.
@@ -24,8 +24,8 @@ workflow. It should not use the legacy "Deploy from a branch" Pages builder.
 4. Dispatch the site workflow:
 
    ```sh
-   gh workflow run site.yml --repo luminik-io/alfred-os --ref main
-   gh run list --repo luminik-io/alfred-os --workflow Site --limit 3
+   gh workflow run site.yml --repo luminik-io/alfred --ref main
+   gh run list --repo luminik-io/alfred --workflow Site --limit 3
    ```
 
 5. Verify the deployed site:
@@ -36,13 +36,13 @@ workflow. It should not use the legacy "Deploy from a branch" Pages builder.
 
 ## Common Failure: README Site
 
-If `https://luminik-io.github.io/alfred-os/` shows a plain README/Jekyll page
+If `https://luminik-io.github.io/alfred/` shows a plain README/Jekyll page
 instead of the Starlight docs site, Pages is using the legacy branch/root
 builder. Switch the source to GitHub Actions:
 
 ```sh
-gh api --method PUT repos/luminik-io/alfred-os/pages -f build_type=workflow
-gh workflow run site.yml --repo luminik-io/alfred-os --ref main
+gh api --method PUT repos/luminik-io/alfred/pages -f build_type=workflow
+gh workflow run site.yml --repo luminik-io/alfred --ref main
 ```
 
 GitHub's CDN can cache the previous page for a few minutes. A hard refresh or a
@@ -73,7 +73,7 @@ Recommended Route53 + GitHub Pages checks:
 2. Ensure GitHub Pages has the same custom domain:
 
    ```sh
-   gh api repos/luminik-io/alfred-os/pages --jq '{cname,html_url,https_enforced}'
+   gh api repos/luminik-io/alfred/pages --jq '{cname,html_url,https_enforced}'
    ```
 
 3. Set repository variables:

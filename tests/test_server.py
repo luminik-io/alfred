@@ -2794,6 +2794,30 @@ def test_server_agents_conf_path_uses_default_home_when_no_checkout(
     assert schedule_mod.agents_conf_path() == home_conf
 
 
+def test_server_agents_conf_path_finds_renamed_workspace_slug(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A source checkout at <workspace>/alfred (the post-rename slug) must be
+    # discovered by the schedule resolver, so the docs and resolver agree.
+    import server.schedule as schedule_mod
+
+    workspace = tmp_path / "code"
+    ws_conf = workspace / "alfred" / "launchd" / "agents.conf"
+    ws_conf.parent.mkdir(parents=True)
+    ws_conf.write_text(
+        "alfred.batman\tbatman.py\tinterval:3600\tno\talfred.batman\tarchitect\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path / "empty-home"))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.chdir(tmp_path)
+
+    assert schedule_mod.agents_conf_path() == ws_conf
+
+
 def test_state_root_for_conf_handles_runtime_layouts(tmp_path: Path) -> None:
     import server.schedule as schedule_mod
 

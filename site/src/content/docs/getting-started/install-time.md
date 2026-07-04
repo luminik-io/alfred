@@ -7,7 +7,7 @@ Honest read on install duration. The 30-minute fast path assumes a lot of
 prerequisites are already met. On a fresh machine, the real figure is one to
 two hours.
 
-This page mirrors [`docs/INSTALL_TIME.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/INSTALL_TIME.md).
+This page mirrors [`docs/INSTALL_TIME.md`](https://github.com/luminik-io/alfred/blob/main/docs/INSTALL_TIME.md).
 
 ## If you already have the prerequisites
 

@@ -3,7 +3,7 @@ title: Architecture
 description: Design rationale for host scheduling, worktrees, IAM-per-agent, codename pattern.
 ---
 
-Full design doc at [`ARCHITECTURE.md`](https://github.com/luminik-io/alfred-os/blob/main/ARCHITECTURE.md). The diagram companion, with mermaid diagrams for the agent lifecycle, model dispatch and tiers, distributed locking, the Slack-native flow, the [disk guardian](/concepts/disk-guardian/), and the [layered install](/concepts/layered-install/), is [`docs/ARCHITECTURE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/ARCHITECTURE.md). This page is the executive summary.
+Full design doc at [`ARCHITECTURE.md`](https://github.com/luminik-io/alfred/blob/main/ARCHITECTURE.md). The diagram companion, with mermaid diagrams for the agent lifecycle, model dispatch and tiers, distributed locking, the Slack-native flow, the [disk guardian](/concepts/disk-guardian/), and the [layered install](/concepts/layered-install/), is [`docs/ARCHITECTURE.md`](https://github.com/luminik-io/alfred/blob/main/docs/ARCHITECTURE.md). This page is the executive summary.
 
 ## The runtime boundary
 
@@ -195,8 +195,8 @@ See [codename pattern](/concepts/codename-pattern/) for more.
 
 ## Read order for new contributors
 
-1. [`ARCHITECTURE.md`](https://github.com/luminik-io/alfred-os/blob/main/ARCHITECTURE.md): full doc
-2. [`lib/agent_runner/`](https://github.com/luminik-io/alfred-os/tree/main/lib/agent_runner): package docstring + per-submodule responsibilities
-3. [`examples/bin/echo_summarise.py`](https://github.com/luminik-io/alfred-os/blob/main/examples/bin/echo_summarise.py): the smallest "real" agent showing the full pattern
-4. [`docs/STATE_MACHINE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/STATE_MACHINE.md): the cooperative coordination primitive
-5. [`examples/bin/`](https://github.com/luminik-io/alfred-os/tree/main/examples/bin): small runnable agents you can copy into a fleet
+1. [`ARCHITECTURE.md`](https://github.com/luminik-io/alfred/blob/main/ARCHITECTURE.md): full doc
+2. [`lib/agent_runner/`](https://github.com/luminik-io/alfred/tree/main/lib/agent_runner): package docstring + per-submodule responsibilities
+3. [`examples/bin/echo_summarise.py`](https://github.com/luminik-io/alfred/blob/main/examples/bin/echo_summarise.py): the smallest "real" agent showing the full pattern
+4. [`docs/STATE_MACHINE.md`](https://github.com/luminik-io/alfred/blob/main/docs/STATE_MACHINE.md): the cooperative coordination primitive
+5. [`examples/bin/`](https://github.com/luminik-io/alfred/tree/main/examples/bin): small runnable agents you can copy into a fleet

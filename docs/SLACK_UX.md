@@ -44,7 +44,7 @@ precision:
 ```text
 acceptance: the Slack plan thread shows clear next steps before approval
 test: add a regression test for unresolved questions
-add repo: luminik-io/alfred-os-site
+add repo: luminik-io/alfred-site
 remove repo: mobile
 question: should this include the docs site?
 open questions: none

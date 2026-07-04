@@ -5,7 +5,7 @@ description: Install, Pro vs Max sizing, account routing, engine routing, troubl
 
 Alfred is the scheduler and guardrail layer; Claude Code is the default engine. Codex can be enabled as an optional per-agent engine, including review-safe Codex-only or Claude-first hybrid routing.
 
-Full guide at [`docs/CLAUDE_CODE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/CLAUDE_CODE.md). Highlights:
+Full guide at [`docs/CLAUDE_CODE.md`](https://github.com/luminik-io/alfred/blob/main/docs/CLAUDE_CODE.md). Highlights:
 
 Default billing posture: Alfred uses the local CLI account you have already authenticated. It does not need Anthropic or OpenAI API keys for the normal Claude Code / Codex CLI flow.
 
@@ -117,7 +117,7 @@ If `ANTHROPIC_API_KEY` is present, Claude Code can use API billing instead of su
 
 ## Troubleshooting
 
-Full list at [`docs/CLAUDE_CODE.md#troubleshooting`](https://github.com/luminik-io/alfred-os/blob/main/docs/CLAUDE_CODE.md#troubleshooting). Most common:
+Full list at [`docs/CLAUDE_CODE.md#troubleshooting`](https://github.com/luminik-io/alfred/blob/main/docs/CLAUDE_CODE.md#troubleshooting). Most common:
 
 - `claude: command not found` from a scheduled agent: set `CLAUDE_BIN`.
 - `codex: command not found` from a scheduled agent: rerun `deploy.sh` after installing Codex, or set `CODEX_BIN`.

@@ -532,7 +532,7 @@ if [[ "$HOMEBREW_FORMULA_INSTALL" == "1" ]]; then
   INIT_CMD="alfred-init"
   SLACK_DOC="https://alfred.luminik.io/guides/slack/"
   INSTALL_DOC="https://alfred.luminik.io/getting-started/install/"
-  BOOTSTRAP_DOC="https://github.com/luminik-io/alfred-os/blob/main/BOOTSTRAP.md"
+  BOOTSTRAP_DOC="https://github.com/luminik-io/alfred/blob/main/BOOTSTRAP.md"
   LINUX_DOC="https://alfred.luminik.io/guides/linux/"
 else
   DEPLOY_CMD="bash deploy.sh"
@@ -599,5 +599,5 @@ cat <<EOF
      Linux specifics live in ${C_BLUE}${LINUX_DOC}${C_OFF}.
 
 If anything in this script went sideways, please open an issue at
-https://github.com/luminik-io/alfred-os/issues with the output.
+https://github.com/luminik-io/alfred/issues with the output.
 EOF

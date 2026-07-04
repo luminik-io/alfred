@@ -8,7 +8,7 @@ runs, plans, and memory, but plan discussion belongs in the Slack thread where
 the team can see scope, ask questions, approve, reject, and inspect follow-up
 PRs.
 
-Full design contract: [`docs/SLACK_UX.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_UX.md).
+Full design contract: [`docs/SLACK_UX.md`](https://github.com/luminik-io/alfred/blob/main/docs/SLACK_UX.md).
 
 ## The message contract
 
@@ -34,7 +34,7 @@ People can reply naturally, or use structured commands:
 ```text
 acceptance: the Slack plan thread shows clear next steps before approval
 test: add a regression test for unresolved questions
-add repo: luminik-io/alfred-os-site
+add repo: luminik-io/alfred-site
 remove repo: mobile
 question: should this include the docs site?
 open questions: none
@@ -137,7 +137,7 @@ The sweep runs inside the listener's idle loop on a cadence set by
 `ALFRED_SLACK_THREAD_SYNC_INTERVAL_S` (default 5 minutes), or on your own
 schedule with `alfred slack-thread-sync`. It only reads the issue and its linked
 PR; it never edits labels, claims issues, comments on GitHub, or runs code. Full
-setup is in [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md).
+setup is in [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/alfred/blob/main/docs/SLACK_SETUP.md).
 
 ## Plain mode
 

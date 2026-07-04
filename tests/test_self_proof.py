@@ -386,10 +386,10 @@ def test_resolve_repos_direct_env(monkeypatch):
 
 
 def test_resolve_repos_self_plus_shipped(monkeypatch):
-    monkeypatch.setenv("ALFRED_SELF_PROOF_SELF_REPO", "luminik-io/alfred-os")
+    monkeypatch.setenv("ALFRED_SELF_PROOF_SELF_REPO", "luminik-io/alfred")
     monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "acme/api, acme/web")
     assert sp.resolve_repos() == [
-        "luminik-io/alfred-os",
+        "luminik-io/alfred",
         "acme/api",
         "acme/web",
     ]

@@ -230,7 +230,7 @@ function html({ fontCss, logoData }) {
       </div>
       <div class="footer">
         <div class="url">alfred.luminik.io</div>
-        <div>luminik-io/alfred-os</div>
+        <div>luminik-io/alfred</div>
       </div>
     </div>
   </main>

@@ -9,7 +9,7 @@ Use this before tagging a public Alfred release.
 - Confirm GitHub Pages is set to workflow publishing, not branch/root publishing:
 
   ```sh
-  gh api repos/luminik-io/alfred-os/pages --jq '.build_type'
+  gh api repos/luminik-io/alfred/pages --jq '.build_type'
   # expected: workflow
   ```
 
@@ -58,7 +58,7 @@ Keep example secrets obviously fake, for example `xoxb-...` or `https://hooks.sl
 7. Re-run the `Site` workflow and verify the live docs page:
 
    ```sh
-   gh workflow run site.yml --repo luminik-io/alfred-os --ref main
+   gh workflow run site.yml --repo luminik-io/alfred --ref main
    curl -fsSL https://alfred.luminik.io/ | grep -E 'Alfred|Starlight'
    ```
 

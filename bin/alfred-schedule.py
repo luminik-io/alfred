@@ -72,7 +72,7 @@ def _discover_repo_root() -> Path:
             return candidate
 
     workspace = _workspace_root()
-    return workspace / "alfred-os"
+    return workspace / "alfred"
 
 
 def _repo_candidates() -> list[Path]:
@@ -86,8 +86,10 @@ def _repo_candidates() -> list[Path]:
     for parent in (Path.cwd(), *Path.cwd().parents):
         add(parent)
     workspace = _workspace_root()
-    add(workspace / "alfred-os")
+    # Prefer the renamed slug, matching the server schedule resolver
+    # (lib/server/schedule.py); keep alfred-os as a legacy fallback.
     add(workspace / "alfred")
+    add(workspace / "alfred-os")
     add(workspace / "product" / "alfred")
     script_path = Path(__file__).resolve()
     for parent in (script_path, *script_path.parents):

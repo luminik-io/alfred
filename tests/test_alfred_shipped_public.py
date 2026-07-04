@@ -214,7 +214,7 @@ def test_scrub_drops_private_repos(mod, window):
     # emitter must still scrub them at runtime.
     private_org = "lumi" + "nik-io"
     private_token = "lumi" + "nik-backend"
-    predecessor = "lumi" + "nik-io/alfred"
+    private_sibling = "lumi" + "nik-io/alfred-internal"
     raw = [
         {
             "repo": f"{private_org}/{private_token}",
@@ -228,15 +228,15 @@ def test_scrub_drops_private_repos(mod, window):
             "url": f"https://github.com/{private_org}/{private_token}/pull/1",
         },
         {
-            "repo": predecessor,
+            "repo": private_sibling,
             "number": 2,
-            "title": "former internal",
+            "title": "private sibling",
             "codename": "lucius",
             "merged_at": "2026-05-22T11:00:00Z",
             "lines_added": 1,
             "lines_removed": 0,
             "files_changed": 1,
-            "url": f"https://github.com/{predecessor}/pull/2",
+            "url": f"https://github.com/{private_sibling}/pull/2",
         },
         {
             "repo": "your-org/your-backend",
@@ -257,7 +257,84 @@ def test_scrub_drops_private_repos(mod, window):
     serialized = json.dumps(payload)
     # No private repo identifiers anywhere in the serialized feed.
     assert private_token not in serialized
-    assert predecessor not in serialized
+    assert private_sibling not in serialized
+
+
+def test_legacy_bare_alfred_and_internal_are_denied_by_default(mod):
+    # Both the new private sibling (alfred-internal) and the legacy bare
+    # "alfred" slug (which WAS the private repo before the rename) must be
+    # treated as private so pre-rename shipped state never leaks.
+    legacy_private = "lumi" + "nik-io/alfred"
+    new_private = "lumi" + "nik-io/alfred-internal"
+    assert mod.is_private_repo(legacy_private) is True
+    assert mod.is_private_repo(new_private) is True
+    # With no allowlist configured, both are dropped.
+    assert mod.filter_repo(legacy_private, []) is False
+    assert mod.filter_repo(new_private, []) is False
+
+
+def test_renamed_public_repo_publishes_only_when_explicitly_allowlisted(mod):
+    # The public repo now shares the bare "alfred" slug with the former private
+    # repo, so it is denied by default and opts in via an explicit allowlist
+    # entry, which overrides the private-pattern deny.
+    public_repo = "lumi" + "nik-io/alfred"
+    assert mod.filter_repo(public_repo, []) is False
+    assert mod.filter_repo(public_repo, [public_repo]) is True
+    # The allowlist override is scoped: it does not un-deny the private sibling.
+    new_private = "lumi" + "nik-io/alfred-internal"
+    assert mod.filter_repo(new_private, [public_repo]) is False
+
+
+def test_allowlisting_a_private_repo_never_un_denies_it(mod):
+    # The allowlist opt-in is scoped to the single renamed cutover slug. Listing
+    # any other private-pattern repo (the private sibling, or any luminik-* repo)
+    # must NOT publish it: private-pattern matches stay hard-denied regardless of
+    # the allowlist, so a mis-scoped allowlist can never leak a private feed.
+    pre = "lumi" + "nik"
+    sibling = f"{pre}-io/alfred-internal"
+    product = f"{pre}-io/{pre}-backend"
+    assert mod.is_private_repo(sibling) is True
+    assert mod.is_private_repo(product) is True
+    assert mod.filter_repo(sibling, [sibling]) is False
+    assert mod.filter_repo(product, [product]) is False
+    assert mod.filter_repo(product, [product, "your-org/your-backend"]) is False
+    # A genuinely public repo still opts in through the same allowlist.
+    assert mod.filter_repo("your-org/your-backend", [product, "your-org/your-backend"]) is True
+
+
+def test_build_feed_drops_legacy_private_alfred_records_across_rename(mod, window):
+    # Simulate shipped state captured before the rename: a PR whose repo slug
+    # is the legacy bare "alfred" (private at capture time). With the default
+    # empty allowlist it must not surface in the public feed.
+    legacy_private = "lumi" + "nik-io/alfred"
+    raw = [
+        {
+            "repo": legacy_private,
+            "number": 7,
+            "title": "internal work captured before the rename",
+            "codename": "lucius",
+            "merged_at": "2026-05-20T09:00:00Z",
+            "lines_added": 1,
+            "lines_removed": 0,
+            "files_changed": 1,
+            "url": f"https://github.com/{legacy_private}/pull/7",
+        },
+        {
+            "repo": "your-org/your-backend",
+            "number": 8,
+            "title": "public",
+            "codename": "lucius",
+            "merged_at": "2026-05-20T10:00:00Z",
+            "lines_added": 1,
+            "lines_removed": 0,
+            "files_changed": 1,
+            "url": "https://github.com/your-org/your-backend/pull/8",
+        },
+    ]
+    feed = mod.build_feed(raw, operator="your-org", window=window, allowlist=[])
+    payload = feed.to_dict()
+    assert [pr["repo"] for pr in payload["prs"]] == ["your-org/your-backend"]
+    assert legacy_private not in json.dumps(payload)
 
 
 def test_scrub_rewrites_private_token_in_title(mod):
@@ -267,6 +344,13 @@ def test_scrub_rewrites_private_token_in_title(mod):
     assert mod.scrub_title(f"Refactor {pre}-backend audit log") == "Refactor your-backend audit log"
     assert mod.scrub_title(f"Bump {pre}-Frontend deps") == "Bump your-frontend deps"
     assert mod.scrub_title("Wire billing-v2 settings panel") == "Wire billing-v2 settings panel"
+    # The private sibling of the public repo can be named in a title even when
+    # the PR's own repo is public; it must collapse to the neutral placeholder.
+    assert (
+        mod.scrub_title("Move alfred-internal state migration")
+        == "Move your-internal state migration"
+    )
+    assert mod.scrub_title("Sync alfred-Internal secrets") == "Sync your-internal secrets"
 
 
 def test_scrub_redacts_partner_names_in_title(mod):

@@ -10,7 +10,7 @@ import {
   updateReadmeSelfProof,
 } from "./lib/self-proof.mjs";
 
-const REPO = "luminik-io/alfred-os";
+const REPO = "luminik-io/alfred";
 const DAYS = Number.parseInt(process.env.ALFRED_IMPACT_DAYS || "30", 10);
 const OUT = resolve(
   dirname(fileURLToPath(import.meta.url)),

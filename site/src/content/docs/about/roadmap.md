@@ -5,7 +5,7 @@ description: Shipped, in flight, committed for next quarter, and on the horizon.
 
 What's shipped, what's actively being built, what's committed for next quarter, and what's on the horizon. Living doc; updated on every release.
 
-Full source at [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main/ROADMAP.md). The roadmap has four tiers, each with a different honesty contract:
+Full source at [`ROADMAP.md`](https://github.com/luminik-io/alfred/blob/main/ROADMAP.md). The roadmap has four tiers, each with a different honesty contract:
 
 - **Shipped** is in the tree. You can `git log` it.
 - **In flight** has actual work behind it this quarter. IC assigned, scope locked.

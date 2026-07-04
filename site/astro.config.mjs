@@ -98,9 +98,9 @@ const STRUCTURED_DATA = JSON.stringify({
         "A local runtime and coordination layer that turns Slack requests, GitHub issues, specs, and PR " +
         "feedback into autonomous Claude Code or Codex runs with isolated git " +
         "worktrees, label state, reviews, tests, and Slack reports.",
-      downloadUrl: "https://github.com/luminik-io/alfred-os",
+      downloadUrl: "https://github.com/luminik-io/alfred",
       softwareHelp: SITE_URL,
-      license: "https://github.com/luminik-io/alfred-os/blob/main/LICENSE",
+      license: "https://github.com/luminik-io/alfred/blob/main/LICENSE",
       isAccessibleForFree: true,
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
       author: { "@type": "Organization", name: "DataRavel Inc." },
@@ -292,11 +292,11 @@ export default defineConfig({
       },
       favicon: withBase("/favicon.png"),
       social: [
-        { icon: "github", label: "GitHub", href: "https://github.com/luminik-io/alfred-os" },
+        { icon: "github", label: "GitHub", href: "https://github.com/luminik-io/alfred" },
       ],
       editLink: {
         baseUrl:
-          "https://github.com/luminik-io/alfred-os/edit/main/site/",
+          "https://github.com/luminik-io/alfred/edit/main/site/",
       },
       lastUpdated: true,
       // Use the custom marketing 404 at src/pages/404.astro instead of

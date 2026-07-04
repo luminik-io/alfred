@@ -4,8 +4,8 @@
   <img src="assets/brand/alfred-logo-transparent.png" alt="Alfred logo" width="180">
 </p>
 
-[![CI](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml/badge.svg)](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml)
-[![Site](https://github.com/luminik-io/alfred-os/actions/workflows/site.yml/badge.svg)](https://alfred.luminik.io/)
+[![CI](https://github.com/luminik-io/alfred/actions/workflows/ci.yml/badge.svg)](https://github.com/luminik-io/alfred/actions/workflows/ci.yml)
+[![Site](https://github.com/luminik-io/alfred/actions/workflows/site.yml/badge.svg)](https://alfred.luminik.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![macOS](https://img.shields.io/badge/macOS-11%2B-black?logo=apple)
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
@@ -178,9 +178,9 @@ For a tool that touches repos, git, and Slack, the privacy claim is meant to be
 tested in the open. If you spot an undocumented network call, a privacy claim
 that does not match the code, or a containment boundary that can be bypassed,
 open a
-[Security or privacy audit finding](https://github.com/luminik-io/alfred-os/issues/new?template=audit.yml).
+[Security or privacy audit finding](https://github.com/luminik-io/alfred/issues/new?template=audit.yml).
 Exploitable vulnerabilities go through a private
-[security advisory](https://github.com/luminik-io/alfred-os/security/advisories/new)
+[security advisory](https://github.com/luminik-io/alfred/security/advisories/new)
 instead; see [`SECURITY.md`](SECURITY.md).
 
 ## Why use it
@@ -271,7 +271,7 @@ Advanced checks such as doctor, dry-run, memory, and code graph status are
 available in Setup.
 
 ```sh
-brew tap luminik-io/alfred-os https://github.com/luminik-io/alfred-os
+brew tap luminik-io/alfred https://github.com/luminik-io/alfred
 brew install --cask alfred-os    # signed, notarized macOS app, pulls in the CLI
 ```
 
@@ -302,7 +302,7 @@ GUI? Install the CLI on its own.
 macOS Homebrew path:
 
 ```sh
-brew tap luminik-io/alfred-os https://github.com/luminik-io/alfred-os
+brew tap luminik-io/alfred https://github.com/luminik-io/alfred
 brew install alfred-os
 alfred-install
 gh auth login                     # GitHub
@@ -313,8 +313,8 @@ alfred-init                       # choose agents, repos, codenames, Slack
 Source checkout path, for working from `main` or running the Linux installer:
 
 ```sh
-git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
-cd ~/code/alfred-os
+git clone https://github.com/luminik-io/alfred.git ~/code/alfred
+cd ~/code/alfred
 bash install.sh
 gh auth login                     # GitHub
 claude auth login                 # Claude Code auth
@@ -662,7 +662,7 @@ Documentation and website content are licensed under CC BY 4.0 - see [`LICENSE-d
 
 Alfred is named after Alfred Pennyworth: the calm system that keeps the cave
 running while the mission is in flight. The public repository is
-`luminik-io/alfred-os`, but the product name is Alfred. The default codenames
+`luminik-io/alfred`, but the product name is Alfred. The default codenames
 use the same theme: Batman is the architect, Lucius is the senior developer,
 Drake scopes smaller work, Ra's al Ghul reviews PRs, Bane adds tests, and
 Nightwing handles review fixes. You can keep those defaults, switch the visible

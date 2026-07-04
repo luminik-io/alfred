@@ -5,7 +5,7 @@ description: The default engineering roster, what each codename does, and how wo
 
 The default Alfred install ships an engineering-focused fleet. Each agent is a narrow specialist with its own schedule, turn budget, and tool list. Nothing chats with anything else: the agents coordinate through GitHub issues and PRs, and report to one Slack channel.
 
-Full role map at [`docs/AGENTS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/AGENTS.md).
+Full role map at [`docs/AGENTS.md`](https://github.com/luminik-io/alfred/blob/main/docs/AGENTS.md).
 
 ## How work flows
 
@@ -86,7 +86,7 @@ until their staging target URL or ECS cluster exists.
 
 | Codename | Role | Default schedule | What it does |
 |---|---|---|---|
-| **batman** | architect | every 1 h, approval-gated | Leads multi-repo features. Batman drafts the rollout, waits for Slack or Alfred client approval, files child `agent:implement` issues, and reports status so implementation can move in parallel. See [docs/BATMAN.md](https://github.com/luminik-io/alfred-os/blob/main/docs/BATMAN.md). |
+| **batman** | architect | every 1 h, approval-gated | Leads multi-repo features. Batman drafts the rollout, waits for Slack or Alfred client approval, files child `agent:implement` issues, and reports status so implementation can move in parallel. See [docs/BATMAN.md](https://github.com/luminik-io/alfred/blob/main/docs/BATMAN.md). |
 | **lucius** | feature-dev | every 20 min | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs the configured engine with the issue body + repo context, pushes a PR labelled `agent:authored`. |
 | **drake** | planner | every 2 h | Reads specs, roadmap, cross-repo open-issue list, and a code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in a rolling 24 h. |
 | **damian** | spec-bundle-planner | daily 09:00, opt-in | Walks `DAMIAN_SPEC_DIR`, identifies multi-repo features, and files `agent:bundle:<slug>` siblings across the affected repos. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to drake. |
@@ -108,7 +108,7 @@ These ship with plain-English names because they are fleet infrastructure, not r
 | **code-map-refresh** | indexing | every 6 h | Scans configured repos and writes `$ALFRED_HOME/state/code-map.json` with source files, symbols, imports, API calls, server routes, and contract drift. Drake, Batman, and code-map-aware review prompts can read it for cross-repo context. |
 | **agent-morning-brief** | reporting | daily 07:00 | Slack post: yesterday's shipped PRs, in-flight work, doctor status, anything red. |
 | **fleet-recap** | reporting | 07:30 + 22:00 | Aggregates per-agent spend, firings, and success rate. Posts to Slack. |
-| **curator** | content-quality | weekly | Opt-in. Fires the [slop detector](https://github.com/luminik-io/alfred-os/blob/main/docs/SLOP_DETECTOR.md) against `ALFRED_SLOP_TARGET_PATH`, posts findings to Slack. Read-only. Standalone CLI also available as `alfred slop-detect`. |
+| **curator** | content-quality | weekly | Opt-in. Fires the [slop detector](https://github.com/luminik-io/alfred/blob/main/docs/SLOP_DETECTOR.md) against `ALFRED_SLOP_TARGET_PATH`, posts findings to Slack. Read-only. Standalone CLI also available as `alfred slop-detect`. |
 
 ## Adding a codename for your own role
 
@@ -142,7 +142,7 @@ and the [tutorial](/getting-started/tutorial/) before writing bespoke runners.
 
 ## Roadmap categories
 
-The default install is engineering-only. Future categories are tracked in [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main/ROADMAP.md): sales/SDR agents, content agents, personal-assistant agents, finance-ops agents, and product-ops/SRE agents. Each needs its own integration surface (Apollo, Reddit, Gmail, and so on) and its own prompt/test/docs package. PRs proposing individual agents in these categories are welcome when they keep the core runtime optional and single-person.
+The default install is engineering-only. Future categories are tracked in [`ROADMAP.md`](https://github.com/luminik-io/alfred/blob/main/ROADMAP.md): sales/SDR agents, content agents, personal-assistant agents, finance-ops agents, and product-ops/SRE agents. Each needs its own integration surface (Apollo, Reddit, Gmail, and so on) and its own prompt/test/docs package. PRs proposing individual agents in these categories are welcome when they keep the core runtime optional and single-person.
 
 ## Memory
 
@@ -183,9 +183,9 @@ If you run Agent Memory Server on a different endpoint, set
 `ALFRED_REDIS_MEMORY_URL`. Leave it unset to use the bundled loopback server.
 
 Set `ALFRED_MEMORY_PROVIDERS=null` to turn memory off. Full reference:
-[`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/FLEET_BRAIN.md)
+[`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred/blob/main/docs/FLEET_BRAIN.md)
 and
-[`docs/MEMORY_PROVIDERS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/MEMORY_PROVIDERS.md).
+[`docs/MEMORY_PROVIDERS.md`](https://github.com/luminik-io/alfred/blob/main/docs/MEMORY_PROVIDERS.md).
 
 ## See also
 

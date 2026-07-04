@@ -9,7 +9,7 @@ steady-state firings don't pay an AWS round-trip every time. Agents that use
 `lib/slack_format.py` can also post Block Kit firing threads with an optional
 Slack bot token.
 
-Full guide at [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md). Highlights:
+Full guide at [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/alfred/blob/main/docs/SLACK_SETUP.md). Highlights:
 
 ## 1. Create the app
 
@@ -84,7 +84,7 @@ SLACK_HOME_CHANNEL=alfred
 ```
 
 Or store the token in AWS Secrets Manager at `alfred/slack-bot-token` and leave
-`SLACK_BOT_TOKEN` unset. See [Slack setup → Optional: bot token](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md#optional-bot-token-xoxb-).
+`SLACK_BOT_TOKEN` unset. See [Slack setup → Optional: bot token](https://github.com/luminik-io/alfred/blob/main/docs/SLACK_SETUP.md#optional-bot-token-xoxb-).
 
 ## Optional: Slack planning listener
 
@@ -111,7 +111,7 @@ For local smoke tests:
 alfred slack-listener once payload.json --trusted-user U0123ABCDEF --no-post
 ```
 
-See [Slack setup → Optional: Slack planning listener](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md#optional-slack-planning-listener).
+See [Slack setup → Optional: Slack planning listener](https://github.com/luminik-io/alfred/blob/main/docs/SLACK_SETUP.md#optional-slack-planning-listener).
 
 ## Optional: plan-mode approval gate
 
@@ -156,7 +156,7 @@ when you want Alfred to capture replies from approval threads.
 `slack-sdk` ships with the standard Alfred package. If you build a stripped-down
 environment by hand, install it directly with `pip install slack-sdk`.
 
-Full walkthrough at [`docs/SLACK_APPROVAL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_APPROVAL.md):
+Full walkthrough at [`docs/SLACK_APPROVAL.md`](https://github.com/luminik-io/alfred/blob/main/docs/SLACK_APPROVAL.md):
 app manifest snippet, env var reference, fallback strategy ordering,
 approver-only check semantics, and the
 [`agent:plan-pending-approval`](/concepts/state-machine/) label transition

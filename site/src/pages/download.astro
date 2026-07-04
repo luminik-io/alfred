@@ -17,7 +17,7 @@ import SectionHeader from "../components/marketing/SectionHeader.astro";
 import CodeBlock from "../components/marketing/CodeBlock.astro";
 import DownloadTracker from "../components/marketing/DownloadTracker.astro";
 
-const REPO = "https://github.com/luminik-io/alfred-os";
+const REPO = "https://github.com/luminik-io/alfred";
 const RELEASE = `${REPO}/releases/latest`;
 const RELEASE_DOWNLOADS = `${REPO}/releases/latest/download`;
 const MAC_DMG = `${RELEASE_DOWNLOADS}/Alfred.dmg`;
@@ -158,8 +158,8 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
           <CodeBlock
             title="install from source"
             lines={[
-              "$ git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os",
-              "$ cd ~/code/alfred-os",
+              "$ git clone https://github.com/luminik-io/alfred.git ~/code/alfred",
+              "$ cd ~/code/alfred",
               "$ bash install.sh",
             ]}
           />
@@ -178,7 +178,7 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
           <CodeBlock
             title="install with homebrew"
             lines={[
-              "$ brew tap luminik-io/alfred-os https://github.com/luminik-io/alfred-os",
+              "$ brew tap luminik-io/alfred https://github.com/luminik-io/alfred",
               "$ brew install alfred-os",
               "$ alfred-install",
             ]}

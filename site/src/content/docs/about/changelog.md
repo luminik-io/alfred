@@ -3,11 +3,11 @@ title: Changelog
 description: Recent Alfred releases. Full history in CHANGELOG.md.
 ---
 
-A readable summary of recent releases. The canonical, complete history lives in [`CHANGELOG.md`](https://github.com/luminik-io/alfred-os/blob/main/CHANGELOG.md) on GitHub, which follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format and [Semantic Versioning](https://semver.org/spec/v2.0.0.html); tagged releases are at [github.com/luminik-io/alfred-os/releases](https://github.com/luminik-io/alfred-os/releases). For forward-looking work (in flight, next, horizon), see the [roadmap](/about/roadmap/).
+A readable summary of recent releases. The canonical, complete history lives in [`CHANGELOG.md`](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md) on GitHub, which follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format and [Semantic Versioning](https://semver.org/spec/v2.0.0.html); tagged releases are at [github.com/luminik-io/alfred/releases](https://github.com/luminik-io/alfred/releases). For forward-looking work (in flight, next, horizon), see the [roadmap](/about/roadmap/).
 
 ## Unreleased
 
-Changes merged to `main` since the last tagged release. The running list is the [`[Next]` section of `CHANGELOG.md`](https://github.com/luminik-io/alfred-os/blob/main/CHANGELOG.md).
+Changes merged to `main` since the last tagged release. The running list is the [`[Next]` section of `CHANGELOG.md`](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md).
 
 ## 0.5.3 (2026-06-24)
 
@@ -56,7 +56,7 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 - **State machine + multi-repo**: atomic `LabelClient` for the issue-claim state machine, `cross_repo_pr` coordinator for stacked PRs across repos, managed `multi_worktree` pool, `alfred label-state` CLI.
 - **Damian + Batman planning/execution**: Damian files `agent:bundle:<slug>` siblings across affected repos; Batman executes the approved plan flow by applying the gate, preserving scope, and filing child issues.
 - **`slack_approval`**: reaction-based approval gate as a `typing.Protocol` so the call site can swap Slack for any other channel.
-- **FleetBrain local ledger**: review candidates, failure history, worker heartbeats, GitHub cache, and local reliability tooling. Redis Agent Memory is the default recalled-lesson store; FleetBrain remains the local evidence and review layer. See [Memory providers](https://github.com/luminik-io/alfred-os/blob/main/docs/MEMORY_PROVIDERS.md).
+- **FleetBrain local ledger**: review candidates, failure history, worker heartbeats, GitHub cache, and local reliability tooling. Redis Agent Memory is the default recalled-lesson store; FleetBrain remains the local evidence and review layer. See [Memory providers](https://github.com/luminik-io/alfred/blob/main/docs/MEMORY_PROVIDERS.md).
 - **`Connector` Protocol + Linear + Sentry**: pull-mode adapters into the `agent:implement` queue, env-only credentials, one bad connector cannot break the sync.
 - **`alfred serve` v1**: localhost-only, read-only FastAPI dashboard with three views (fleet status, recent firings, single-firing detail).
 - **`slop_detector`**: PR-time linter for AI-authored prose (banned vocabulary, em-dashes, hedged numbers, marketing fluff) with JSON-configurable rules.

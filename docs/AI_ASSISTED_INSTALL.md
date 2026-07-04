@@ -60,7 +60,7 @@ Values:
 - OPERATOR_NAME=<your-name>
 - OPERATOR_EMAIL=<your-email>
 - SLACK_WEBHOOK=skip
-- INSTALL_DIR=~/code/alfred-os
+- INSTALL_DIR=~/code/alfred
 - WORKSPACE_ROOT=~/code
 
 Rules:
@@ -90,11 +90,11 @@ Steps:
    export OPERATOR_NAME="<your-name>"
    export OPERATOR_EMAIL="<your-email>"
    export SLACK_WEBHOOK="skip"
-   export INSTALL_DIR=~/code/alfred-os
+   export INSTALL_DIR=~/code/alfred
    export WORKSPACE_ROOT=~/code
 
 1. Clone or update Alfred:
-   if [ ! -d "$INSTALL_DIR/.git" ]; then git clone https://github.com/luminik-io/alfred-os.git "$INSTALL_DIR"; fi
+   if [ ! -d "$INSTALL_DIR/.git" ]; then git clone https://github.com/luminik-io/alfred.git "$INSTALL_DIR"; fi
    cd "$INSTALL_DIR"
    git fetch --all --prune
    git checkout main

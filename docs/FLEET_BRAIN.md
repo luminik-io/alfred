@@ -390,8 +390,8 @@ Slack can also drive the review loop directly:
 ```text
 memory
 memories
-remember luminik-io/alfred-os: Slack memory candidates must stay reviewable.
-memory remember luminik-io/alfred-os: keep the namespace discoverable.
+remember luminik-io/alfred: Slack memory candidates must stay reviewable.
+memory remember luminik-io/alfred: keep the namespace discoverable.
 memory promote <candidate-id>
 memory reject <candidate-id> too vague for future recall
 memory harvest

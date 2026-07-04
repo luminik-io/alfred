@@ -7,7 +7,7 @@ Week one is install and verify. Week two is operating the thing. This is what we
 
 By the time you reach this page you have a deployed Alfred, an `alfred status` that comes back green, and at least one codename that has shipped a PR. The questions that remain are operational: how often should I look at Slack, which CLI command tells me what, what do the sentinels mean, and what do I do when the fleet goes quiet?
 
-This page is the runbook. Full doc at [`docs/OPERATING_THE_FLEET.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/OPERATING_THE_FLEET.md).
+This page is the runbook. Full doc at [`docs/OPERATING_THE_FLEET.md`](https://github.com/luminik-io/alfred/blob/main/docs/OPERATING_THE_FLEET.md).
 
 ## Daily Slack rhythm
 

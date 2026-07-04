@@ -5,7 +5,7 @@ description: Alfred runs on Debian/Ubuntu Linux via systemd --user timers. Insta
 
 Alfred runs on Linux. The scheduling layer is `systemd --user` timers, the Linux analogue of macOS `launchd` per-user agents. `install.sh`, `deploy.sh`, `bin/doctor.sh`, `alfred-status`, and the `alfred` CLI all detect the host OS and pick the right path. Supported distros: **Debian and Ubuntu** (apt).
 
-Full reference: [`docs/LINUX.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/LINUX.md).
+Full reference: [`docs/LINUX.md`](https://github.com/luminik-io/alfred/blob/main/docs/LINUX.md).
 
 ## The scheduler is the only OS-specific layer
 
@@ -60,8 +60,8 @@ Rendered systemd units use the `%h` specifier in place of your literal home dire
 ## Install
 
 ```sh
-git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
-cd ~/code/alfred-os
+git clone https://github.com/luminik-io/alfred.git ~/code/alfred
+cd ~/code/alfred
 bash install.sh
 ```
 
