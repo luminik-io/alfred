@@ -286,6 +286,98 @@ describe("ReviewView", () => {
     expect(screen.getByText(/shipped and merged into web/i)).toBeInTheDocument();
   });
 
+  it("re-skins the Shipped lane agent badges under the active roster theme", async () => {
+    // A Lucius-authored shipped PR must read as the Justice-League persona
+    // ("Superman") in the Shipped lane too, not the hardcoded Batman-cast name.
+    renderReview({
+      rosterTheme: "justice-league",
+      shipped: board({
+        columns: {
+          queued: [],
+          in_progress: [],
+          shipped: [
+            {
+              repo: "your-org/api",
+              number: 7,
+              title: "feat: add CSV export",
+              url: "https://github.com/your-org/api/pull/7",
+              author: "lucius",
+              kind: "pr",
+              timestamp: "2026-06-02T11:00:00Z",
+              age_days: 0,
+              is_draft: false,
+              labels: [],
+            },
+          ],
+        },
+        counts: { queued: 0, in_progress: 0, shipped: 1 },
+      }),
+    });
+    await userEvent.setup().click(screen.getByRole("tab", { name: /shipped/i }));
+    // Scope to the Shipped lane; the roles rail also re-skins lucius to Superman.
+    const lane = within(screen.getByRole("region", { name: "Shipped" }));
+    expect(lane.getByText("Superman")).toBeInTheDocument();
+    expect(lane.queryByText("Lucius")).not.toBeInTheDocument();
+  });
+
+  it("keeps the runtime field for the un-overridden part of a partial custom theme", () => {
+    // Operator customizes only Lucius's role, not the name. The name must keep
+    // the runtime/server value ("Lux Fox"); only the role takes the custom label.
+    const { container } = renderReview({
+      rosterTheme: "custom",
+      customNames: { names: {}, roles: { lucius: "Build lead" } },
+      snapshot: snapshot({
+        status: {
+          agents: [
+            agent({
+              codename: "lucius",
+              display_name: "Lux Fox",
+              role_title: "Senior Developer",
+              purpose: "Ships scoped implementation issues as pull requests.",
+            }),
+          ],
+          total_today: 1,
+          reliability: { status: "ok" },
+        },
+      }),
+    });
+    const panel = container.querySelector(".command-center__agent-route");
+    const scope = within(panel as HTMLElement);
+    // Name un-overridden: keeps the runtime display name.
+    expect(scope.getByText("Lux Fox")).toBeInTheDocument();
+    // Role overridden: takes the custom label, not the runtime role title.
+    expect(scope.getByText("Build lead")).toBeInTheDocument();
+    expect(scope.queryByText("Senior Developer")).not.toBeInTheDocument();
+  });
+
+  it("keeps the runtime role for a name-only custom override", () => {
+    // Mirror case: only the name is customized, so the role must keep the
+    // runtime/server value instead of being overwritten.
+    const { container } = renderReview({
+      rosterTheme: "custom",
+      customNames: { names: { lucius: "Lux Fox" }, roles: {} },
+      snapshot: snapshot({
+        status: {
+          agents: [
+            agent({
+              codename: "lucius",
+              display_name: "Lucius",
+              role_title: "Senior Developer",
+              purpose: "Ships scoped implementation issues as pull requests.",
+            }),
+          ],
+          total_today: 1,
+          reliability: { status: "ok" },
+        },
+      }),
+    });
+    const panel = container.querySelector(".command-center__agent-route");
+    const scope = within(panel as HTMLElement);
+    expect(scope.getByText("Lux Fox")).toBeInTheDocument();
+    // Role un-overridden: keeps the runtime role title.
+    expect(scope.getByText("Senior Developer")).toBeInTheDocument();
+  });
+
   it("re-skins the Agent roles panel under the active roster theme", () => {
     // The server reports the Batman-default display name/role for the fleet.
     // A Justice-League theme must re-skin the panel (Superman / Senior developer),

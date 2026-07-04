@@ -208,6 +208,9 @@ export function fleetPauseSummary(
 
 export type ShippedDigestItem = {
   card: ShippedCard;
+  // The canonical agent codename (e.g. "lucius"), or null. The visible name is
+  // resolved through the active roster theme by the caller (ReviewView), so the
+  // Shipped lane re-skins with the Roster page instead of a hardcoded name.
   agent: string | null;
   what: string;
   why: string;
@@ -217,7 +220,7 @@ export function buildShippedDigest(board: ShippedBoard | null): ShippedDigestIte
   const cards = board?.columns.shipped || [];
   return cards.map((card) => ({
     card,
-    agent: shippedAgent(card),
+    agent: shippedAgentCodename(card),
     what: shippedWhat(card),
     why: shippedWhy(card),
   }));
@@ -242,7 +245,7 @@ function shippedWhy(card: ShippedCard): string {
   const when = card.timestamp ? friendlyTime(card.timestamp) : "recently";
   // The agent is already shown as a badge on the card, so the sentence states
   // the outcome without repeating the agent name (no repeated info per card).
-  if (shippedAgent(card)) {
+  if (shippedAgentCodename(card)) {
     return `Shipped and merged into ${repo} ${when}.`;
   }
   const who = card.author ? `${card.author} ` : "";
@@ -254,7 +257,12 @@ function repoShortName(repo: string): string {
   return slash >= 0 ? repo.slice(slash + 1) : repo;
 }
 
-function shippedAgent(card: ShippedCard): string | null {
+// The canonical CODENAME behind a shipped card, detected from the author,
+// labels, and agent evidence. Returns the codename (e.g. "lucius"), NOT a themed
+// display name, so the Shipped lane resolves the visible name through the active
+// roster theme the same way the Work board and Roster page do. Kept in lockstep
+// with chips.agentForShipped.
+export function shippedAgentCodename(card: ShippedCard): string | null {
   const tokens = [
     card.author || "",
     ...(card.labels || []),
@@ -262,16 +270,16 @@ function shippedAgent(card: ShippedCard): string | null {
   ].map((token) => token.toLowerCase());
 
   if (tokens.some((token) => token.includes("batman") || token.includes("agent:large-feature"))) {
-    return "Batman";
+    return "batman";
   }
   if (tokens.some((token) => token.includes("lucius") || token.includes("agent:implement"))) {
-    return "Lucius";
+    return "lucius";
   }
-  if (tokens.some((token) => token.includes("nightwing"))) return "Nightwing";
-  if (tokens.some((token) => token.includes("damian"))) return "Damian";
-  if (tokens.some((token) => token.includes("bane"))) return "Bane";
+  if (tokens.some((token) => token.includes("nightwing"))) return "nightwing";
+  if (tokens.some((token) => token.includes("damian"))) return "damian";
+  if (tokens.some((token) => token.includes("bane"))) return "bane";
   if (tokens.some((token) => token.includes("rasalghul") || token.includes("ra's al ghul"))) {
-    return "Ra's al Ghul";
+    return "rasalghul";
   }
   return null;
 }

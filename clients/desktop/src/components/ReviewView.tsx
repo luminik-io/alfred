@@ -21,6 +21,7 @@ import {
   type CustomRosterNames,
   DEFAULT_ROSTER_THEME,
   EMPTY_CUSTOM_NAMES,
+  normalizeCodename,
   resolveThemedIdentity,
   type RosterThemeId,
 } from "../lib/agentThemes";
@@ -155,7 +156,20 @@ export function ReviewView({
       columns: { ...shipped.columns, shipped: shipped.columns.shipped.filter(within) },
     };
   }, [shipped, shippedDays]);
-  const filteredDigest = useMemo(() => buildShippedDigest(filteredShipped), [filteredShipped]);
+  const filteredDigest = useMemo(() => {
+    // buildShippedDigest carries the canonical codename; resolve the visible
+    // badge name through the active roster theme so the Shipped lane re-skins
+    // with the Roster page (Justice League, custom, ...) instead of the
+    // hardcoded Batman-cast name.
+    return buildShippedDigest(filteredShipped).map((item) =>
+      item.agent
+        ? {
+            ...item,
+            agent: resolveThemedIdentity({ codename: item.agent }, rosterTheme, customNames).name,
+          }
+        : item,
+    );
+  }, [filteredShipped, rosterTheme, customNames]);
   // A paused fleet is not "running", so a mostly/all-paused fleet with no live
   // firing prefers the shipped proof (or needs-you) over an empty Running lane.
   const fleetHeld = fleet.allPaused || fleet.mostlyPaused;
@@ -520,24 +534,29 @@ function buildRouteCards(
         themeId,
         customNames,
       );
+      const short = normalizeCodename(agent.codename);
       const known = ROUTE_AGENT_PRIORITY.includes(agent.codename) ||
         identity.name !== titleFromCodename(agent.codename);
-      // A non-default preset owns the display name/role for a known fleet agent
-      // (the server default is just the Batman name); otherwise a server that
-      // genuinely renames an unknown agent is still honored.
-      const themeOwns =
-        themeId !== DEFAULT_ROSTER_THEME && themeId !== "custom" && known;
-      const hasCustom =
-        themeId === "custom" &&
-        (Boolean(customNames.names[agent.codename]?.trim()) ||
-          Boolean(customNames.roles[agent.codename]?.trim()));
-      const useTheme = themeOwns || hasCustom;
+      // Name and role are resolved PER FIELD, mirroring agentProfile() so a
+      // partial custom theme (only names.lucius, or only roles.lucius) keeps the
+      // runtime/server value for the un-overridden field instead of overwriting
+      // both. Under a non-default preset the theme owns both fields for a known
+      // fleet agent (the server default is just the Batman name); a genuine
+      // server rename of an unknown agent is still honored.
+      const presetReskinsKnown =
+        themeId !== "custom" && themeId !== DEFAULT_ROSTER_THEME && known;
+      const hasCustomName =
+        themeId === "custom" && Boolean(customNames.names[short]?.trim());
+      const hasCustomRole =
+        themeId === "custom" && Boolean(customNames.roles[short]?.trim());
+      const themeOwnsName = hasCustomName || presetReskinsKnown;
+      const themeOwnsRole = hasCustomRole || presetReskinsKnown;
       return {
         codename: agent.codename,
-        displayName: useTheme
+        displayName: themeOwnsName
           ? identity.name
           : agent.display_name || identity.name,
-        roleTitle: useTheme
+        roleTitle: themeOwnsRole
           ? identity.roleLabel
           : agent.role_title || identity.roleLabel,
         purpose: agent.purpose || "Handles scheduled local Alfred work.",
