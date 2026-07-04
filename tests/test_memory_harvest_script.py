@@ -50,6 +50,7 @@ def _run_harvest(tmp_path: Path, db: Path, *args: str) -> subprocess.CompletedPr
     [
         ("memory-harvest.py", "[MEMORY-HARVEST-DOCTOR-OK]"),
         ("memory-auto-promote.py", "[MEMORY-AUTO-PROMOTE-DOCTOR-OK]"),
+        ("memory-consolidate.py", "[MEMORY-CONSOLIDATE-DOCTOR-OK]"),
     ],
 )
 def test_memory_wrappers_doctor_mode_short_circuits(
@@ -182,3 +183,181 @@ def test_slack_trigger_uses_rendered_queued_candidates(
     assert script.main([]) == 0
     assert posts == []
     assert "queued=0" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# memory-consolidate.py scheduled runner
+# ---------------------------------------------------------------------------
+
+
+def _run_consolidate(tmp_path: Path, db: Path, *args: str, arm: bool = False):
+    env = {
+        **os.environ,
+        "ALFRED_HOME": str(tmp_path / "alfred"),
+        "ALFRED_FLEET_BRAIN_DB": str(db),
+    }
+    if arm:
+        env["ALFRED_MEMORY_CONSOLIDATE"] = "1"
+    else:
+        env.pop("ALFRED_MEMORY_CONSOLIDATE", None)
+    return subprocess.run(
+        [sys.executable, str(REPO_ROOT / "bin" / "memory-consolidate.py"), *args],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=30,
+    )
+
+
+def test_memory_consolidate_disarmed_is_noop(tmp_path: Path) -> None:
+    db = tmp_path / "brain.db"
+    FleetBrain(db_path=db)  # create the schema
+
+    result = _run_consolidate(tmp_path, db, "--json", "--no-slack", arm=False)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["enabled"] is False
+    assert payload["decayed"] == 0
+    assert payload["merged"] == 0
+
+
+def test_memory_consolidate_dry_run_reports_without_writing(tmp_path: Path) -> None:
+    """Armed + dry-run never touches AMS, so it runs end to end with no server."""
+    db = tmp_path / "brain.db"
+    FleetBrain(db_path=db)
+
+    result = _run_consolidate(tmp_path, db, "--dry-run", "--json", "--no-slack", arm=True)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["enabled"] is True
+    assert payload["dry_run"] is True
+
+
+def test_memory_consolidate_honors_persisted_env_opt_in(tmp_path: Path) -> None:
+    """Arming ALFRED_MEMORY_CONSOLIDATE in $ALFRED_HOME/.env (NOT the process
+    env) is enough for the scheduled runner: the persisted opt-in is loaded."""
+    alfred_home = tmp_path / "alfred"
+    alfred_home.mkdir()
+    (alfred_home / ".env").write_text("ALFRED_MEMORY_CONSOLIDATE=1\n")
+    db = tmp_path / "brain.db"
+    FleetBrain(db_path=db)
+
+    env = {
+        **os.environ,
+        "ALFRED_HOME": str(alfred_home),
+        "ALFRED_FLEET_BRAIN_DB": str(db),
+    }
+    env.pop("ALFRED_MEMORY_CONSOLIDATE", None)  # only the persisted file arms it
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "bin" / "memory-consolidate.py"),
+            "--dry-run",
+            "--json",
+            "--no-slack",
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["enabled"] is True
+
+
+def test_memory_consolidate_disarmed_does_not_create_ledger(tmp_path: Path) -> None:
+    """A disarmed scheduled run is a true no-op that never opens/creates the DB,
+    even when ALFRED_FLEET_BRAIN_DB points at a not-yet-existing path."""
+    alfred_home = tmp_path / "alfred"
+    missing_db = tmp_path / "nested" / "not-created" / "brain.db"
+
+    env = {
+        **os.environ,
+        "ALFRED_HOME": str(alfred_home),
+        "ALFRED_FLEET_BRAIN_DB": str(missing_db),
+    }
+    env.pop("ALFRED_MEMORY_CONSOLIDATE", None)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "bin" / "memory-consolidate.py"),
+            "--json",
+            "--no-slack",
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["enabled"] is False
+    # The disarmed run must not have created the DB (its parent dir does not even
+    # exist), proving it never opened the ledger.
+    assert not missing_db.exists()
+
+
+def test_memory_consolidate_module_loads() -> None:
+    spec = util.spec_from_file_location(
+        "memory_consolidate_script", REPO_ROOT / "bin" / "memory-consolidate.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    # The runner exposes a build_parser with the documented flags.
+    parser = module.build_parser()
+    ns = parser.parse_args(["--stale-days", "90", "--dry-run"])
+    assert ns.stale_days == 90
+    assert ns.dry_run is True
+
+
+def test_memory_consolidate_empty_child_output_is_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A child that crashes before printing JSON (empty stdout, rc!=0) must be a
+    hard failure, not a false 'disabled/no-op' that skips the failure path."""
+    spec = util.spec_from_file_location(
+        "memory_consolidate_empty_test", REPO_ROOT / "bin" / "memory-consolidate.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    # A stub "brain script" that prints nothing and exits nonzero.
+    crasher = tmp_path / "crasher.py"
+    crasher.write_text("import sys\nsys.exit(3)\n")
+    monkeypatch.setattr(module, "_brain_script", lambda: crasher)
+
+    import argparse
+
+    args = argparse.Namespace(stale_days=180, dry_run=False, timeout=30)
+    with pytest.raises(RuntimeError) as excinfo:
+        module._run_consolidate(args)
+    assert "rc=3" in str(excinfo.value)
+
+
+def test_memory_consolidate_main_reports_child_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The runner's main() returns nonzero (not 0) when the child crashes empty."""
+    db = tmp_path / "brain.db"
+    FleetBrain(db_path=db)
+    # Point the wrapper's brain script at a crasher so the child exits empty rc!=0.
+    crasher = tmp_path / "crash.py"
+    crasher.write_text("import sys\nsys.exit(2)\n")
+    spec = util.spec_from_file_location(
+        "memory_consolidate_main_test", REPO_ROOT / "bin" / "memory-consolidate.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module, "_brain_script", lambda: crasher)
+    monkeypatch.setattr(module, "_post_slack", lambda *a, **k: True)
+
+    rc = module.main(["--no-slack"])
+    assert rc == 1

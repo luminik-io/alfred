@@ -1730,3 +1730,85 @@ def test_stats_reports_graph_edge_and_code_owner_counts(db_path: Path) -> None:
     stats = brain.stats()
     assert stats["graph_edges"] >= 1
     assert stats["code_owners"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# lesson_stats: lesson-quality metrics
+# ---------------------------------------------------------------------------
+
+
+def test_lesson_stats_empty_ledger(brain: FleetBrain) -> None:
+    stats = brain.lesson_stats()
+    assert stats["total"] == 0
+    assert stats["states"] == {
+        "candidate": 0,
+        "validated": 0,
+        "rejected": 0,
+        "retired": 0,
+    }
+    # No auto-decided candidates yet -> rates are None (no divide-by-zero).
+    assert stats["auto_promote_acceptance_rate"] is None
+    assert stats["judge_rejection_rate"] is None
+    assert stats["held_for_review"] == 0
+    assert stats["recall_hits"] is None
+
+
+def test_lesson_stats_counts_states_and_rates(brain: FleetBrain) -> None:
+    ams = _FakeAMS()
+    brain._lesson_provider = lambda env=None: ams  # type: ignore[method-assign]
+
+    # Two auto-validated lessons.
+    for i in range(2):
+        c = brain.propose_memory(codename="a", repo="r", body=f"auto-keep-{i}", evidence="e")
+        brain.promote_memory_candidate(c.id, reviewer="auto", lesson_writer=ams)
+    # One auto-rejected lesson.
+    auto_rej = brain.propose_memory(codename="a", repo="r", body="auto-reject", evidence="e")
+    brain.reject_memory_candidate(auto_rej.id, reviewer="auto")
+    # One human-rejected lesson (not counted in the auto rates).
+    human_rej = brain.propose_memory(codename="a", repo="r", body="human-reject", evidence="e")
+    brain.reject_memory_candidate(human_rej.id, reviewer="operator")
+    # One held-for-review pending candidate.
+    held = brain.propose_memory(codename="a", repo="r", body="risky", evidence="e")
+    brain.hold_candidate_for_review(held.id, note="needs a human")
+    # One plain pending candidate.
+    brain.propose_memory(codename="a", repo="r", body="fresh", evidence="e")
+
+    stats = brain.lesson_stats()
+    assert stats["total"] == 6
+    assert stats["states"]["validated"] == 2
+    assert stats["states"]["rejected"] == 2  # one auto, one human
+    assert stats["states"]["candidate"] == 2  # held + fresh
+    assert stats["auto_validated"] == 2
+    assert stats["auto_rejected"] == 1
+    # A judge decision is saved, hard-rejected, OR held: the held candidate is a
+    # judge rejection, so 4 auto decisions total (2 saved, 1 rejected, 1 held).
+    assert stats["auto_decided"] == 4
+    assert stats["auto_promote_acceptance_rate"] == round(2 / 4, 4)
+    assert stats["judge_rejection_rate"] == round(2 / 4, 4)
+    assert stats["held_for_review"] == 1
+
+
+def test_lesson_stats_counts_retired(brain: FleetBrain) -> None:
+    ams = _FakeAMS()
+    brain._lesson_provider = lambda env=None: ams  # type: ignore[method-assign]
+    old = datetime.now(UTC) - timedelta(days=400)
+    c = brain.propose_memory(codename="a", repo="r", body="stale", evidence="e", created_at=old)
+    # Promote with an old reviewed_at so consolidation (which ages from the
+    # promotion time) sees it as stale.
+    brain.promote_memory_candidate(c.id, reviewer="auto", reviewed_at=old, lesson_writer=ams)
+
+    brain.consolidate_lessons(env={"ALFRED_MEMORY_CONSOLIDATE": "1"}, lesson_forgetter=ams)
+
+    stats = brain.lesson_stats()
+    assert stats["states"]["retired"] == 1
+    assert stats["states"]["validated"] == 0
+
+
+def test_consolidate_rejects_negative_stale_days(brain: FleetBrain) -> None:
+    # A negative stale_days must be rejected, not clamped to 0 (which would set
+    # the cutoff to now and forget every promoted lesson). Reject before any
+    # read/write, even when armed.
+    import pytest
+
+    with pytest.raises(ValueError, match="stale_days"):
+        brain.consolidate_lessons(stale_days=-1, env={"ALFRED_MEMORY_CONSOLIDATE": "1"})

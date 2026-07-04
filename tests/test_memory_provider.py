@@ -38,6 +38,7 @@ from memory.config import (  # noqa: E402
     build_chain,
     load_provider,
     parse_provider_names,
+    recall_lessons,
 )
 from memory.gbrain_stub import GBrainProvider  # noqa: E402
 from memory.providers import (  # noqa: E402
@@ -954,3 +955,37 @@ def test_redis_provider_recall_scored_normalizes_score_and_distance() -> None:
     assert bodies["High-relevance lesson."] == 0.9
     assert abs(bodies["Low-relevance lesson."] - 0.25) < 1e-9
     assert bodies["Unscored lesson."] is None
+
+
+# ---------------------------------------------------------------------------
+# recall_lessons: the AMS-aware read surface behind the lessons CLI + API
+# ---------------------------------------------------------------------------
+
+
+def test_recall_lessons_uses_injected_provider() -> None:
+    """recall_lessons routes through the provider chain, not local list_lessons,
+    so an AMS-backed lesson is surfaced to the CLI / API read surfaces."""
+    ams_lesson = _make_lesson("AMS-backed lesson", codename="lucius", repo="acme/api")
+    provider = _StaticProvider(name="redis", lessons=[ams_lesson])
+
+    out = recall_lessons(codename="lucius", repo="acme/api", limit=50, provider=provider)
+
+    assert [lesson.body for lesson in out] == ["AMS-backed lesson"]
+    assert provider.recall_calls == 1
+
+
+def test_recall_lessons_merges_and_dedupes_across_chain() -> None:
+    """A chained AMS + local provider merges both, deduped by lesson id."""
+    shared = _make_lesson("shared", codename="lucius", repo="acme/api")
+    ams_only = _make_lesson("ams-only", codename="lucius", repo="acme/api")
+    local_only = _make_lesson("local-only", codename="lucius", repo="acme/api")
+    redis = _StaticProvider(name="redis", lessons=[shared, ams_only])
+    fleet = _StaticProvider(name="fleet", lessons=[shared, local_only])
+    chain = ChainedMemoryProvider(providers=[redis, fleet])
+
+    out = recall_lessons(limit=50, provider=chain)
+
+    bodies = {lesson.body for lesson in out}
+    assert bodies == {"shared", "ams-only", "local-only"}
+    # shared appears once despite being returned by both providers.
+    assert sum(1 for lesson in out if lesson.body == "shared") == 1

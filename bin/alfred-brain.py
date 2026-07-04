@@ -93,6 +93,7 @@ for candidate in (
 from fleet_brain import (  # noqa: E402
     FleetBrain,
     MemoryPromotionError,
+    consolidate_enabled,
     default_db_path,
     direct_auto_promote_env,
 )
@@ -106,6 +107,44 @@ def _build_brain(args: argparse.Namespace, env: dict[str, str] | None = None) ->
     if env is not None:
         return FleetBrain.from_env(env)
     return FleetBrain()
+
+
+def _recall_lessons(
+    args: argparse.Namespace,
+    *,
+    codename: str | None,
+    repo: str | None,
+    query: str | None,
+    limit: int,
+) -> list[Any]:
+    """Recall lessons across the whole provider chain (AMS + local), not just the
+    local SQLite ledger.
+
+    The promoted-lesson backend is Redis AMS, so ``FleetBrain.recall`` alone
+    (local SQLite) shows nothing on an AMS-primary install. Route through the
+    configured chain so the CLI displays what Alfred actually remembers.
+
+    ``--db`` still scopes the LOCAL ledger read: it is threaded to the fleet
+    provider via ``ALFRED_FLEET_BRAIN_DB`` so ``alfred-brain --db X lessons ...``
+    reads ledger X (not the default), preserving the documented per-invocation
+    override. A build error is logged (never silent) and degrades to a local
+    recall against the same requested db.
+    """
+    env: dict[str, str] | None = None
+    if args.db:
+        env = dict(os.environ)
+        env["ALFRED_FLEET_BRAIN_DB"] = str(args.db)
+    try:
+        from memory.config import recall_lessons
+
+        return recall_lessons(codename=codename, repo=repo, query=query, limit=limit, env=env)
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "alfred-brain: provider-chain recall failed; falling back to local ledger"
+        )
+        return _build_brain(args, env).recall(
+            codename=codename, repo=repo, query=query, limit=limit
+        )
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -131,8 +170,9 @@ def cmd_status(args: argparse.Namespace) -> int:
 def cmd_lessons(args: argparse.Namespace) -> int:
     codename = None if args.codename == "-" else args.codename
     repo = None if args.repo == "-" else args.repo
-    brain = _build_brain(args)
-    lessons = brain.recall(codename=codename, repo=repo, query=args.query, limit=args.limit)
+    lessons = _recall_lessons(
+        args, codename=codename, repo=repo, query=args.query, limit=args.limit
+    )
     if args.json:
         payload = [
             {
@@ -641,6 +681,82 @@ def cmd_auto_promote(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_stats(args: argparse.Namespace) -> int:
+    """Lesson-quality metrics: state counts + auto-promote/judge rates."""
+    brain = _build_brain(args)
+    stats = brain.lesson_stats()
+    if args.json:
+        print(json.dumps(stats, indent=2, sort_keys=True))
+        return 0
+    states = stats["states"]
+    print(f"alfred-brain: lesson quality ({stats['total']} candidate(s) total)")
+    print(
+        f"  states      candidate={states['candidate']} validated={states['validated']} "
+        f"rejected={states['rejected']} retired={states['retired']}"
+    )
+    print(f"  held        {stats['held_for_review']} pending, set aside for review")
+    acceptance = stats["auto_promote_acceptance_rate"]
+    rejection = stats["judge_rejection_rate"]
+    if stats["auto_decided"]:
+        print(
+            f"  auto-promote acceptance {acceptance:.1%} "
+            f"({stats['auto_validated']}/{stats['auto_decided']} decided)"
+        )
+        print(f"  judge       rejection {rejection:.1%}")
+    else:
+        print("  auto-promote no auto-decided candidates yet")
+    return 0
+
+
+def cmd_consolidate(args: argparse.Namespace) -> int:
+    """Periodic consolidation/decay pass (gated, off by default)."""
+    # Honor the persisted opt-in the same way auto-promote does: load
+    # $ALFRED_HOME/.env so arming ALFRED_MEMORY_CONSOLIDATE there (per the docs
+    # and the scheduler wrapper) is enough, without launchd also exporting it.
+    env_src = direct_auto_promote_env()
+    # Gate on the opt-in BEFORE opening the ledger: a disarmed weekly run must be
+    # a true no-op that never constructs FleetBrain (which would ensure_schema()
+    # and create/write the SQLite DB, and could exit nonzero + Slack a false
+    # failure if ALFRED_FLEET_BRAIN_DB points at an unwritable path).
+    if not consolidate_enabled(env_src):
+        disabled = {
+            "enabled": False,
+            "dry_run": bool(args.dry_run),
+            "decayed": 0,
+            "merged": 0,
+            "ams_forget_attempted": 0,
+            "ams_forgotten": 0,
+            "ams_forget_failed": 0,
+        }
+        if args.json:
+            print(json.dumps(disabled, indent=2, sort_keys=True))
+        else:
+            print("consolidate disabled (ALFRED_MEMORY_CONSOLIDATE off); no-op")
+        return 0
+
+    brain = _build_brain(args, env_src)
+    summary = brain.consolidate_lessons(
+        stale_days=args.stale_days,
+        dry_run=args.dry_run,
+        env=env_src,
+    )
+    ams_failed = int(summary.get("ams_forget_failed") or 0)
+    if args.json:
+        print(json.dumps(summary, indent=2, sort_keys=True))
+    elif not summary.get("enabled"):
+        print("consolidate disabled (ALFRED_MEMORY_CONSOLIDATE off); no-op")
+    else:
+        print(
+            "consolidate "
+            f"enabled=true dry_run={summary.get('dry_run')} "
+            f"decayed={summary.get('decayed')} merged={summary.get('merged')} "
+            f"ams_forget_attempted={summary.get('ams_forget_attempted', 0)} "
+            f"ams_forgotten={summary.get('ams_forgotten', 0)} "
+            f"ams_forget_failed={ams_failed}"
+        )
+    return 1 if ams_failed else 0
+
+
 def _build_redis_provider() -> RedisAgentMemoryProvider:
     return RedisAgentMemoryProvider.from_env()
 
@@ -1135,6 +1251,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_status = sub.add_parser("status", help="row counts and db path")
     p_status.set_defaults(func=cmd_status)
 
+    p_stats = sub.add_parser(
+        "stats",
+        help="lesson-quality metrics (state counts, auto-promote + judge rates)",
+    )
+    p_stats.add_argument("--json", action="store_true")
+    p_stats.set_defaults(func=cmd_stats)
+
     p_lessons = sub.add_parser("lessons", help="recall lessons for a codename / repo")
     p_lessons.add_argument("codename", help="codename or '-' to widen")
     p_lessons.add_argument("repo", help="repo full_name or '-' to widen")
@@ -1319,6 +1442,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_auto_promote.add_argument("--json", action="store_true")
     p_auto_promote.set_defaults(func=cmd_auto_promote)
+
+    p_consolidate = sub.add_parser(
+        "consolidate",
+        help=(
+            "periodic consolidation/decay pass over promoted lessons "
+            "(no-op unless ALFRED_MEMORY_CONSOLIDATE is armed)"
+        ),
+    )
+    p_consolidate.add_argument("--stale-days", type=int, default=180)
+    p_consolidate.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report counts without forgetting or writing anything.",
+    )
+    p_consolidate.add_argument("--json", action="store_true")
+    p_consolidate.set_defaults(func=cmd_consolidate)
 
     p_redis_status = sub.add_parser("redis-status", help="check Redis Agent Memory Server")
     p_redis_status.add_argument("--json", action="store_true")

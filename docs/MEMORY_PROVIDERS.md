@@ -168,10 +168,21 @@ so none of these are required; set them only to tune. Names and defaults are rea
 from `lib/memory/redis_agent_memory.py`, `lib/fleet_brain/__init__.py`, and
 `lib/memory_judge.py`.
 
+The **read (recall) path** carries a separate, lower budget from writes. Recall
+runs inline before a firing and its result is optional (a miss falls back to
+FleetBrain), so it must never pay the full write-path retry cost: a
+dead-but-not-yet-tripped AMS would otherwise cost `timeout_s * (max_retries + 1)`
+(~6s by default) on every recall. Recall uses `ALFRED_REDIS_MEMORY_RECALL_TIMEOUT_S`
+and `ALFRED_REDIS_MEMORY_RECALL_MAX_RETRIES` instead, while reflect / promote
+writes keep the full `ALFRED_REDIS_MEMORY_TIMEOUT_S` + `ALFRED_REDIS_MEMORY_MAX_RETRIES`
+budget. All four still share the one circuit breaker.
+
 | Variable | Default | What it controls |
 |---|---|---|
-| `ALFRED_REDIS_MEMORY_TIMEOUT_S` | `2.0` | Per-request AMS HTTP timeout, in seconds. |
-| `ALFRED_REDIS_MEMORY_MAX_RETRIES` | `2` | Retry attempts for a transient AMS request failure before giving up on that call. |
+| `ALFRED_REDIS_MEMORY_TIMEOUT_S` | `2.0` | Per-request AMS HTTP timeout for WRITES (reflect / promote / forget), in seconds. |
+| `ALFRED_REDIS_MEMORY_MAX_RETRIES` | `2` | Retry attempts for a transient WRITE failure before giving up on that call. |
+| `ALFRED_REDIS_MEMORY_RECALL_TIMEOUT_S` | `1.0` | Per-request AMS HTTP timeout for the read (recall) path, in seconds. Lower so recall never blocks a firing. |
+| `ALFRED_REDIS_MEMORY_RECALL_MAX_RETRIES` | `0` | Retry attempts for a transient RECALL failure. Default 0: a recall miss falls back to FleetBrain rather than retrying. |
 | `ALFRED_REDIS_MEMORY_BREAKER_THRESHOLD` | `5` | Consecutive failures that trip the circuit breaker and short-circuit further AMS calls. |
 | `ALFRED_REDIS_MEMORY_BREAKER_COOLDOWN_S` | `30` | Seconds the breaker stays open before it allows a probe request again. |
 | `ALFRED_AUTO_PROMOTE_THRESHOLD` | `0.5` | Minimum candidate confidence to consider for auto-promotion (the LLM judge is the real decider above this bar). |

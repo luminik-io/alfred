@@ -122,7 +122,7 @@ describe("MemoryView", () => {
     expect(screen.getByText(/from a repeated problem alfred hit/i)).toBeInTheDocument();
   });
 
-  it("shows a calm empty state when nothing has been learned", () => {
+  it("shows the 'nothing learned yet' empty state only when there are no active lessons", () => {
     render(
       <MemoryView
         snapshot={snapshot({ memoryCandidates: { rows: [] } })}
@@ -137,6 +137,49 @@ describe("MemoryView", () => {
     expect(
       screen.getByText(/alfred has not learned anything new yet/i),
     ).toBeInTheDocument();
+  });
+
+  it("distinguishes an empty review queue with active lessons from nothing learned", () => {
+    // Review queue empty, but a lesson is already in active use (validated in
+    // AMS). The copy must NOT claim nothing was learned; it should say the
+    // queue is clear and show the active lessons below.
+    render(
+      <MemoryView
+        snapshot={snapshot({
+          memoryCandidates: { rows: [] },
+          memoryLessons: {
+            rows: [
+              {
+                id: "lesson:memory_candidate:1",
+                codename: "lucius",
+                repo: "your-org/api",
+                body: "GraphQL schema lives in src/schema.graphql.",
+                tags: ["graphql"],
+                severity: "info",
+                created_at: "2026-05-30T12:00:00Z",
+                firing_id: null,
+              },
+            ],
+          },
+        })}
+        actionNotice={null}
+        busyMemoryAction={null}
+        nativeBusy={null}
+        onMemoryCandidateAction={vi.fn()}
+        onRunLocalAction={vi.fn()}
+      />,
+    );
+
+    // Not the "nothing learned" copy...
+    expect(
+      screen.queryByText(/alfred has not learned anything new yet/i),
+    ).not.toBeInTheDocument();
+    // ...instead, the queue-empty copy plus the active lessons section.
+    expect(screen.getByText(/nothing is waiting for your review/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /lessons alfred is using/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/graphql schema lives in/i)).toBeInTheDocument();
   });
 
   it("keeps the Redis / memory probes behind a closed Advanced disclosure", async () => {

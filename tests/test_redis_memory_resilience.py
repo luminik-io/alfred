@@ -421,6 +421,118 @@ def test_recall_returns_empty_when_breaker_open() -> None:
     assert prov.recall(query="x") == []  # fail-fast, still []
 
 
+# ---------------------------------------------------------------------------
+# Read-path (recall) budget: recall must use a lower timeout / retry budget
+# than writes so a dead-but-not-yet-tripped AMS never blocks a firing.
+# ---------------------------------------------------------------------------
+
+
+def test_recall_uses_recall_budget_not_write_budget() -> None:
+    """recall() makes recall_max_retries+1 attempts at recall_timeout_s, even
+    when the write budget (max_retries/timeout_s) is larger."""
+    attempts: list[float] = []
+
+    def transport(method, url, payload, headers, timeout):
+        attempts.append(timeout)
+        raise _AmsHttpError(503, "down")
+
+    prov = RedisAgentMemoryProvider(
+        transport=transport,
+        max_retries=5,
+        timeout_s=2.0,
+        recall_max_retries=0,
+        recall_timeout_s=0.5,
+        breaker_threshold=100,
+        sleep=lambda _s: None,
+    )
+    assert prov.recall(query="anything") == []
+    # No retries on the read path: exactly one transport attempt.
+    assert len(attempts) == 1
+    # And it used the recall timeout, not the (larger) write timeout.
+    assert attempts == [0.5]
+
+
+def test_write_path_keeps_full_retry_budget() -> None:
+    """reflect() keeps the full write budget: max_retries retries at timeout_s."""
+    attempts: list[float] = []
+
+    def transport(method, url, payload, headers, timeout):
+        attempts.append(timeout)
+        raise _AmsHttpError(503, "down")
+
+    prov = RedisAgentMemoryProvider(
+        transport=transport,
+        max_retries=2,
+        timeout_s=2.0,
+        recall_max_retries=0,
+        recall_timeout_s=0.5,
+        breaker_threshold=100,
+        sleep=lambda _s: None,
+    )
+    with pytest.raises(NotImplementedError):
+        prov.reflect(codename="robin", repo="acme/api", body="a lesson")
+    # 1 initial + 2 retries = 3 attempts, all at the write timeout.
+    assert len(attempts) == 3
+    assert attempts == [2.0, 2.0, 2.0]
+
+
+def test_recall_retries_when_recall_budget_allows() -> None:
+    """A non-zero recall_max_retries still retries the read path."""
+    attempts: list[float] = []
+
+    def transport(method, url, payload, headers, timeout):
+        attempts.append(timeout)
+        if len(attempts) == 1:
+            raise _AmsHttpError(503, "down")
+        return {"memories": []}
+
+    prov = RedisAgentMemoryProvider(
+        transport=transport,
+        max_retries=5,
+        recall_max_retries=1,
+        recall_timeout_s=1.0,
+        breaker_threshold=100,
+        sleep=lambda _s: None,
+    )
+    assert prov.recall(query="x") == []
+    assert len(attempts) == 2
+    assert attempts == [1.0, 1.0]
+
+
+def test_recall_budget_env_defaults() -> None:
+    """from_env reads the recall budget knobs with the documented defaults."""
+    prov = RedisAgentMemoryProvider.from_env(env={})
+    assert prov.recall_timeout_s == 1.0
+    assert prov.recall_max_retries == 0
+    # Writes keep their own (larger) defaults.
+    assert prov.timeout_s == 2.0
+    assert prov.max_retries == 2
+
+
+def test_recall_budget_env_overrides() -> None:
+    """The recall knobs are env-tunable and independent of the write knobs."""
+    prov = RedisAgentMemoryProvider.from_env(
+        env={
+            "ALFRED_REDIS_MEMORY_RECALL_TIMEOUT_S": "0.25",
+            "ALFRED_REDIS_MEMORY_RECALL_MAX_RETRIES": "3",
+            "ALFRED_REDIS_MEMORY_TIMEOUT_S": "4.0",
+            "ALFRED_REDIS_MEMORY_MAX_RETRIES": "1",
+        }
+    )
+    assert prov.recall_timeout_s == 0.25
+    assert prov.recall_max_retries == 3
+    assert prov.timeout_s == 4.0
+    assert prov.max_retries == 1
+
+
+def test_recall_budget_env_bad_values_fall_back() -> None:
+    """A malformed recall timeout falls back to the default instead of raising."""
+    prov = RedisAgentMemoryProvider.from_env(
+        env={"ALFRED_REDIS_MEMORY_RECALL_TIMEOUT_S": "not-a-number"}
+    )
+    assert prov.recall_timeout_s == 1.0
+
+
 def test_reflect_raises_on_exhausted() -> None:
     """reflect() still raises NotImplementedError after retries exhausted."""
 
@@ -524,12 +636,16 @@ def test_forget_lesson_swallows_transport_error() -> None:
     assert prov.forget_lesson("m1") is False
 
 
-def test_empty_memory_id_is_noop_success() -> None:
+def test_empty_memory_id_returns_false_without_calling_transport() -> None:
+    """A blank id forgets nothing, so it must return False (not a false success):
+    callers gate a destructive follow-up (retire the row) on a True return."""
+
     def transport(method, url, payload, headers, timeout):
         raise AssertionError("transport should not be called for empty id")
 
     prov = _provider(transport)
-    assert prov.forget_lesson("  ") is True
+    assert prov.forget_lesson("  ") is False
+    assert prov.forget_lesson("") is False
 
 
 def test_ams_reset_limit_caps_total_attempts(monkeypatch, capsys) -> None:

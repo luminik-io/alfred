@@ -380,43 +380,119 @@ def test_api_memory_candidates_promote_and_reject(
     assert rejected.json()["review_note"] == "too broad"
 
 
+class _StubRecallProvider:
+    """A memory provider whose recall returns a fixed lesson list.
+
+    Stands in for the AMS-backed chain so the /api/memory/lessons test can prove
+    the endpoint surfaces lessons from recall (AMS), not the local SQLite ledger.
+    """
+
+    name = "stub"
+
+    def __init__(self, lessons: list[Lesson]) -> None:
+        self._lessons = lessons
+        self.calls: list[dict[str, object]] = []
+
+    def recall(
+        self,
+        *,
+        query: str | None = None,
+        codename: str | None = None,
+        repo: str | None = None,
+        limit: int = 5,
+    ) -> list[Lesson]:
+        self.calls.append({"query": query, "codename": codename, "repo": repo, "limit": limit})
+        return self._lessons[:limit]
+
+
 def test_api_memory_lessons_lists_active_lessons(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """The endpoint surfaces lessons from the provider chain (AMS + local),
+    not the local SQLite ledger, so an AMS-primary install is not shown empty."""
     state = tmp_path / "state"
-
-    class FakeBrain:
-        def health(self) -> dict[str, bool]:
-            return {"ok": True}
-
-        def list_lessons(self, *, limit: int) -> list[Lesson]:
-            assert limit <= 200
-            return [
-                Lesson(
-                    id="lesson:1",
-                    codename="lucius",
-                    repo="example-org/alfred",
-                    body="GraphQL schema lives in src/schema.graphql.",
-                    tags=["graphql"],
-                    created_at=datetime(2026, 5, 30, 12, 0, tzinfo=UTC),
-                    firing_id=None,
-                )
-            ]
-
-    brain = FakeBrain()
-    monkeypatch.setattr(server_views, "_memory_brain", lambda *_a, **_kw: (brain, None))
-    client = TestClient(create_app(FilesystemReader(state_root=state)))
+    provider = _StubRecallProvider(
+        [
+            Lesson(
+                id="lesson:memory_candidate:1",
+                codename="lucius",
+                repo="example-org/alfred",
+                body="GraphQL schema lives in src/schema.graphql.",
+                tags=["graphql"],
+                created_at=datetime(2026, 5, 30, 12, 0, tzinfo=UTC),
+                firing_id=None,
+            )
+        ]
+    )
+    app = create_app(FilesystemReader(state_root=state))
+    app.state.memory_provider = provider
+    client = TestClient(app)
 
     resp = client.get("/api/memory/lessons")
     assert resp.status_code == 200
     rows = resp.json()["rows"]
     assert len(rows) == 1
-    assert rows[0]["id"] == "lesson:1"
+    assert rows[0]["id"] == "lesson:memory_candidate:1"
     assert rows[0]["codename"] == "lucius"
     assert rows[0]["body"].startswith("GraphQL")
     assert rows[0]["tags"] == ["graphql"]
     assert rows[0]["severity"] == "info"
+    # Proves the read went through recall (the AMS-aware path), not list_lessons.
+    assert provider.calls and provider.calls[0]["limit"] <= 200
+
+
+def test_api_memory_stats_returns_quality_metrics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The stats endpoint surfaces lesson-quality metrics from the ledger."""
+    state = tmp_path / "state"
+    payload = {
+        "total": 4,
+        "states": {"candidate": 1, "validated": 2, "rejected": 1, "retired": 0},
+        "auto_validated": 2,
+        "auto_rejected": 1,
+        "auto_decided": 3,
+        "auto_promote_acceptance_rate": 0.6667,
+        "judge_rejection_rate": 0.3333,
+        "held_for_review": 1,
+        "recall_hits": None,
+    }
+
+    class FakeBrain:
+        def health(self) -> dict[str, bool]:
+            return {"ok": True}
+
+        def lesson_stats(self) -> dict[str, object]:
+            return payload
+
+    monkeypatch.setattr(server_views, "_memory_brain", lambda *_a, **_kw: (FakeBrain(), None))
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    resp = client.get("/api/memory/stats")
+    assert resp.status_code == 200
+    stats = resp.json()["stats"]
+    assert stats["total"] == 4
+    assert stats["states"]["validated"] == 2
+    assert stats["auto_promote_acceptance_rate"] == 0.6667
+    assert stats["judge_rejection_rate"] == 0.3333
+    assert stats["held_for_review"] == 1
+
+
+def test_api_memory_stats_reports_error_when_ledger_down(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unreachable ledger returns null stats + an error, never a 500."""
+    state = tmp_path / "state"
+    monkeypatch.setattr(server_views, "_memory_brain", lambda *_a, **_kw: (None, "internal error"))
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    resp = client.get("/api/memory/stats")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["stats"] is None
+    assert body["error"] == "internal error"
 
 
 def test_api_memory_candidate_value_error_is_bad_request(
@@ -3484,6 +3560,12 @@ def test_api_memory_routes_work_with_empty_real_fleet_brain(
     home = tmp_path / "alfred-home"
     monkeypatch.setenv("ALFRED_HOME", str(home))
     monkeypatch.delenv("ALFRED_FLEET_BRAIN_DB", raising=False)
+    # /api/memory/lessons now reads across the whole provider chain (AMS + local)
+    # so an AMS-primary install is not shown empty. Pin the chain to the local
+    # ledger here so the "empty clean install" assertion is deterministic and
+    # cannot reach a stray AMS on the test host; AMS-backed recall is covered by
+    # test_api_memory_lessons_lists_active_lessons.
+    monkeypatch.setenv("ALFRED_MEMORY_PROVIDERS", "fleet")
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     candidates = client.get("/api/memory/candidates")

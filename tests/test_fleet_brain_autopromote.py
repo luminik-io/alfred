@@ -19,7 +19,7 @@ import pytest
 _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "lib"))
 
-from datetime import UTC, datetime  # noqa: E402
+from datetime import UTC, datetime, timedelta  # noqa: E402
 
 from fleet_brain import FleetBrain, Lesson, direct_auto_promote_env, new_id  # noqa: E402
 
@@ -629,3 +629,269 @@ def test_ams_write_failure_leaves_candidate_pending(brain: FleetBrain) -> None:
     again = brain.auto_promote_candidates(env=ARM, judge=lambda _p: _verdict(0.97))
     assert c.id in again["promoted"]
     assert brain.ams.reflected[-1]["memory_id"] == f"lesson:memory_candidate:{c.id}"  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
+# consolidate_lessons: gated decay + merge over promoted lessons
+# ---------------------------------------------------------------------------
+
+ARM_CONSOLIDATE = {"ALFRED_MEMORY_CONSOLIDATE": "1"}
+
+
+def _promote_auto(
+    brain: FleetBrain,
+    body: str,
+    *,
+    created_at: datetime,
+    promoted_at: datetime | None = None,
+    confidence: float = 0.95,
+    repo: str = "acme/api",
+    codename: str = "lucius",
+) -> str:
+    """Stage a candidate with an explicit age and promote it as an auto lesson.
+
+    ``created_at`` is the proposal time; ``promoted_at`` (default = ``created_at``)
+    is stamped as the promotion time (``reviewed_at``), which is what
+    consolidation ages from. Returns the candidate id; its promoted lesson is
+    written to the fixture's _FakeAMS with a deterministic memory id."""
+    cand = brain.propose_memory(
+        codename=codename,
+        repo=repo,
+        body=body,
+        evidence="saw it",
+        confidence=confidence,
+        created_at=created_at,
+    )
+    brain.promote_memory_candidate(cand.id, reviewer="auto", reviewed_at=promoted_at or created_at)
+    return cand.id
+
+
+def test_consolidate_disarmed_is_a_noop(brain: FleetBrain) -> None:
+    old = datetime.now(UTC) - timedelta(days=365)
+    _promote_auto(brain, "a stale lesson", created_at=old)
+
+    summary = brain.consolidate_lessons(env={})  # not armed
+
+    assert summary["enabled"] is False
+    assert summary["decayed"] == 0
+    assert summary["merged"] == 0
+    # Disarmed must not even forget from AMS.
+    assert brain.ams.forgotten == []  # type: ignore[attr-defined]
+
+
+def test_consolidate_decays_stale_promoted_lessons(brain: FleetBrain) -> None:
+    old = datetime.now(UTC) - timedelta(days=200)
+    fresh = datetime.now(UTC) - timedelta(days=1)
+    stale_id = _promote_auto(brain, "an old lesson", created_at=old)
+    fresh_id = _promote_auto(brain, "a recent lesson", created_at=fresh)
+
+    summary = brain.consolidate_lessons(env=ARM_CONSOLIDATE, stale_days=180)
+
+    assert summary["enabled"] is True
+    assert summary["decayed"] == 1
+    assert summary["merged"] == 0
+    assert summary["ams_forgotten"] == 1
+    # The stale lesson was forgotten from AMS and its row retired.
+    assert f"lesson:memory_candidate:{stale_id}" in brain.ams.forgotten  # type: ignore[attr-defined]
+    assert _status(brain, stale_id) == "retired"
+    # The fresh one is untouched.
+    assert _status(brain, fresh_id) == "validated"
+
+
+def test_consolidate_merges_duplicate_auto_lessons(brain: FleetBrain) -> None:
+    older = datetime.now(UTC) - timedelta(days=3)
+    newer = datetime.now(UTC) - timedelta(days=1)
+    keep_id = _promote_auto(brain, "Duplicate lesson body.", created_at=older)
+    dup_id = _promote_auto(brain, "duplicate lesson body.", created_at=newer)
+
+    summary = brain.consolidate_lessons(env=ARM_CONSOLIDATE, stale_days=180)
+
+    assert summary["merged"] == 1
+    assert summary["decayed"] == 0
+    # The newer duplicate loses; the oldest is kept live.
+    assert _status(brain, dup_id) == "retired"
+    assert _status(brain, keep_id) == "validated"
+    assert f"lesson:memory_candidate:{dup_id}" in brain.ams.forgotten  # type: ignore[attr-defined]
+    assert f"lesson:memory_candidate:{keep_id}" not in brain.ams.forgotten  # type: ignore[attr-defined]
+
+
+def test_consolidate_leaves_human_reviewed_duplicates_alone(brain: FleetBrain) -> None:
+    """Merge is only for auto-promoted lessons; a human who kept both wins."""
+    older = datetime.now(UTC) - timedelta(days=3)
+    newer = datetime.now(UTC) - timedelta(days=1)
+    a = brain.propose_memory(
+        codename="lucius", repo="acme/api", body="Same body.", evidence="e", created_at=older
+    )
+    b = brain.propose_memory(
+        codename="lucius", repo="acme/api", body="same body.", evidence="e", created_at=newer
+    )
+    brain.promote_memory_candidate(a.id, reviewer="operator")
+    brain.promote_memory_candidate(b.id, reviewer="operator")
+
+    summary = brain.consolidate_lessons(env=ARM_CONSOLIDATE, stale_days=180)
+
+    assert summary["merged"] == 0
+    assert _status(brain, a.id) == "validated"
+    assert _status(brain, b.id) == "validated"
+
+
+def test_consolidate_dry_run_writes_nothing(brain: FleetBrain) -> None:
+    old = datetime.now(UTC) - timedelta(days=200)
+    stale_id = _promote_auto(brain, "an old lesson", created_at=old)
+
+    summary = brain.consolidate_lessons(env=ARM_CONSOLIDATE, stale_days=180, dry_run=True)
+
+    assert summary["dry_run"] is True
+    assert summary["decayed"] == 1  # would decay
+    assert summary["ams_forgotten"] == 0
+    assert brain.ams.forgotten == []  # type: ignore[attr-defined]
+    # Nothing was actually retired.
+    assert _status(brain, stale_id) == "validated"
+
+
+def test_consolidate_keeps_row_validated_when_ams_forget_fails(brain: FleetBrain) -> None:
+    class FailingForgetter:
+        def __init__(self) -> None:
+            self.attempted: list[str] = []
+
+        def forget_lesson(self, lesson_id: str) -> bool:
+            self.attempted.append(lesson_id)
+            return False
+
+    old = datetime.now(UTC) - timedelta(days=200)
+    stale_id = _promote_auto(brain, "an old lesson", created_at=old)
+    forgetter = FailingForgetter()
+
+    summary = brain.consolidate_lessons(
+        env=ARM_CONSOLIDATE, stale_days=180, lesson_forgetter=forgetter
+    )
+
+    # The AMS forget failed, so the ledger must NOT claim a decay.
+    assert summary["decayed"] == 0
+    assert summary["ams_forget_attempted"] == 1
+    assert summary["ams_forgotten"] == 0
+    assert summary["ams_forget_failed"] == 1
+    assert forgetter.attempted == [f"lesson:memory_candidate:{stale_id}"]
+    # Row stays validated (live) so a later pass retries.
+    assert _status(brain, stale_id) == "validated"
+
+
+def test_consolidate_does_not_merge_across_repo_scope(brain: FleetBrain) -> None:
+    """Identical bodies for DIFFERENT repos are not redundant: AMS recall is
+    topic-scoped, so each answers a different scope and both must stay live."""
+    older = datetime.now(UTC) - timedelta(days=3)
+    newer = datetime.now(UTC) - timedelta(days=1)
+    api_id = _promote_auto(brain, "Same body.", created_at=older, repo="acme/api")
+    web_id = _promote_auto(brain, "same body.", created_at=newer, repo="acme/web")
+
+    summary = brain.consolidate_lessons(env=ARM_CONSOLIDATE, stale_days=180)
+
+    assert summary["merged"] == 0
+    assert _status(brain, api_id) == "validated"
+    assert _status(brain, web_id) == "validated"
+
+
+def test_consolidate_does_not_merge_across_codename_scope(brain: FleetBrain) -> None:
+    older = datetime.now(UTC) - timedelta(days=3)
+    newer = datetime.now(UTC) - timedelta(days=1)
+    a_id = _promote_auto(brain, "Same body.", created_at=older, codename="lucius")
+    b_id = _promote_auto(brain, "same body.", created_at=newer, codename="drake")
+
+    summary = brain.consolidate_lessons(env=ARM_CONSOLIDATE, stale_days=180)
+
+    assert summary["merged"] == 0
+    assert _status(brain, a_id) == "validated"
+    assert _status(brain, b_id) == "validated"
+
+
+def test_consolidate_ages_from_promotion_time_not_proposal_time(brain: FleetBrain) -> None:
+    """A candidate that sat in review past stale_days but was promoted TODAY has
+    a fresh active lesson and must not be forgotten on the next pass."""
+    proposed_long_ago = datetime.now(UTC) - timedelta(days=400)
+    promoted_today = datetime.now(UTC) - timedelta(hours=1)
+    cid = _promote_auto(
+        brain,
+        "recently promoted, long-pending lesson",
+        created_at=proposed_long_ago,
+        promoted_at=promoted_today,
+    )
+
+    summary = brain.consolidate_lessons(env=ARM_CONSOLIDATE, stale_days=180)
+
+    # Aged from promotion time (fresh), so NOT decayed.
+    assert summary["decayed"] == 0
+    assert _status(brain, cid) == "validated"
+    assert brain.ams.forgotten == []  # type: ignore[attr-defined]
+
+
+def test_consolidate_malformed_flag_stays_disarmed(brain: FleetBrain) -> None:
+    """A destructive opt-in must fail closed: a typo does not arm consolidation."""
+    old = datetime.now(UTC) - timedelta(days=400)
+    stale_id = _promote_auto(brain, "a stale lesson", created_at=old)
+
+    summary = brain.consolidate_lessons(env={"ALFRED_MEMORY_CONSOLIDATE": "maybe"})
+
+    assert summary["enabled"] is False
+    assert summary["decayed"] == 0
+    assert brain.ams.forgotten == []  # type: ignore[attr-defined]
+    assert _status(brain, stale_id) == "validated"
+
+
+def test_consolidate_arms_on_recognized_truthy_tokens(brain: FleetBrain) -> None:
+    for token in ("1", "true", "yes", "on", "enabled"):
+        assert (
+            brain.consolidate_lessons(env={"ALFRED_MEMORY_CONSOLIDATE": token})["enabled"] is True
+        ), token
+    for token in ("0", "false", "no", "off", "", "maybe", "2"):
+        assert (
+            brain.consolidate_lessons(env={"ALFRED_MEMORY_CONSOLIDATE": token})["enabled"] is False
+        ), token
+
+
+def test_consolidate_enabled_predicate_matches_summary_gate() -> None:
+    """The exported consolidate_enabled predicate (used to gate before opening
+    the ledger) matches the arm/disarm semantics of consolidate_lessons."""
+    from fleet_brain import consolidate_enabled
+
+    for token in ("1", "true", "yes", "on", "enabled"):
+        assert consolidate_enabled({"ALFRED_MEMORY_CONSOLIDATE": token}) is True, token
+    for token in ("0", "false", "no", "off", "", "maybe", "2"):
+        assert consolidate_enabled({"ALFRED_MEMORY_CONSOLIDATE": token}) is False, token
+    assert consolidate_enabled({}) is False
+
+
+def test_consolidate_threads_env_into_lesson_forgetter() -> None:
+    """The forget step must build the AMS provider from the SAME merged env
+    consolidation gated on (the persisted .env in the scheduled case), not
+    os.environ, so it forgets from the operator's configured AMS, not defaults."""
+    import tempfile
+
+    fb = FleetBrain(db_path=Path(tempfile.mkdtemp()) / "brain.db")
+    ams = _FakeAMS()
+    received_env: list[object] = []
+
+    def _spy_provider(env=None):  # type: ignore[no-untyped-def]
+        received_env.append(env)
+        return ams
+
+    fb._lesson_provider = _spy_provider  # type: ignore[method-assign]
+
+    old = datetime.now(UTC) - timedelta(days=400)
+    cand = fb.propose_memory(
+        codename="lucius", repo="acme/api", body="old lesson", evidence="e", created_at=old
+    )
+    fb.promote_memory_candidate(cand.id, reviewer="auto", reviewed_at=old, lesson_writer=ams)
+
+    merged_env = {
+        "ALFRED_MEMORY_CONSOLIDATE": "1",
+        "ALFRED_REDIS_MEMORY_URL": "http://ams.from-dotenv:9999",
+        "ALFRED_REDIS_MEMORY_NAMESPACE": "operator-ns",
+        "ALFRED_REDIS_MEMORY_TOKEN": "persisted-token",
+    }
+    summary = fb.consolidate_lessons(env=merged_env, stale_days=180)
+
+    assert summary["decayed"] == 1
+    assert summary["ams_forgotten"] == 1
+    # The forgetter was built with the merged env, not None/os.environ.
+    assert received_env, "consolidation should have built the AMS forgetter"
+    assert received_env[0] is merged_env

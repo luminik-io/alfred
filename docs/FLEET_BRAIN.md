@@ -69,6 +69,7 @@ The operator surface is `alfred brain ...`, a passthrough to the standalone
 
 ```
 alfred brain status
+alfred brain stats [--json]                   # lesson-quality metrics
 alfred brain lessons <codename> <repo>
 alfred brain lessons - your-org/api          # widen codename
 alfred brain reflect <codename> <repo> <body> [--tag T --severity warning]
@@ -89,11 +90,17 @@ alfred brain governor [--json]
 alfred brain doctor [--json]
 alfred brain redis-status [--json]
 alfred brain redis-sync [--codename C] [--repo R] [--dry-run]
+alfred brain consolidate [--stale-days 180] [--dry-run] [--json]
 alfred github-poll --repo your-org/api --repo your-org/web
 alfred brain forget <id>
 alfred brain forget --before 30d
 alfred brain export [--out PATH]
 ```
+
+`alfred brain stats` reports lesson-quality metrics: candidate counts by state
+(candidate / validated / rejected / retired), the auto-promote acceptance rate,
+and the judge rejection rate. The same numbers are served to the desktop client
+at `GET /api/memory/stats`.
 
 Sample session:
 
@@ -333,6 +340,28 @@ as a manual promotion, recorded with `reviewer="auto"` so the batch stays
 auditable. Auto-promoted lessons are written to Redis Agent Memory Server under
 a deterministic candidate-derived memory id, so the write is idempotent and can
 be reverted with the auto-promotion rollback lever.
+
+## Consolidation and decay
+
+Over time the promoted-lesson set accumulates stale and near-duplicate lessons.
+`alfred brain consolidate` (`FleetBrain.consolidate_lessons`) is a conservative,
+invalidate-not-delete pass over validated (promoted) candidates:
+
+- **decay**: a promoted lesson older than `--stale-days` (default 180) has its
+  Redis AMS lesson forgotten and its candidate row flipped to `retired`, so
+  recall stops surfacing it but the audit row is kept;
+- **merge**: auto-promoted lessons whose bodies normalize to the same text are
+  collapsed to the oldest; the rest are forgotten from AMS and retired.
+
+A row is retired ONLY once its AMS lesson is actually forgotten, so the ledger
+never claims a decay/merge while the lesson is still live in recall (the same
+honesty guarantee as the auto-promotion rollback lever). It is OFF by default:
+the pass is a true no-op unless `ALFRED_MEMORY_CONSOLIDATE` is set to a
+recognized truthy value in `$ALFRED_HOME/.env`. Pass `--dry-run` to report the
+counts without forgetting or writing anything, and `--json` for the machine
+summary (`decayed`, `merged`, and the `ams_forget_*` counters). A scheduled
+runner, `bin/memory-consolidate.py`, is wired into `agents.conf.example` as an
+opt-in weekly row; scheduling it while disarmed is safe.
 
 ## Read-only MCP bridge
 

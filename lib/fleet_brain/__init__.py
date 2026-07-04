@@ -62,6 +62,7 @@ from .graph import (
     parse_codeowners,
 )
 from .store import (
+    _AUTO_HELD_MARKER,
     BundleItem,
     CodeOwnerRow,
     FailureEvent,
@@ -111,6 +112,7 @@ __all__ = [
     "Store",
     "WorkerHeartbeat",
     "WorkerStatus",
+    "consolidate_enabled",
     "default_db_path",
     "densify_enabled",
     "direct_auto_promote_env",
@@ -172,10 +174,10 @@ AUTO_PROMOTE_NO_JUDGE_THRESHOLD = 0.9
 
 # A candidate the auto-promoter has set aside for a human keeps status
 # ``candidate`` (so it stays in the review queue and the dedup index) but its
-# review_note is stamped with this marker. Subsequent runs see the marker and
-# never re-judge the row, so a held candidate cannot starve the per-run judge
-# budget or re-post the same alert every run.
-_AUTO_HELD_MARKER = "[held-for-review]"
+# review_note is stamped with this marker (``_AUTO_HELD_MARKER``, imported from
+# .store so the store's stats query and this hold path share one source).
+# Subsequent runs see the marker and never re-judge the row, so a held candidate
+# cannot starve the per-run judge budget or re-post the same alert every run.
 _TRUTHY_ENV_TOKENS = {"1", "true", "yes", "on", "enabled"}
 _FALSY_ENV_TOKENS = {"0", "false", "no", "off", "disabled"}
 _RECOGNIZED_ENV_TOKENS = _TRUTHY_ENV_TOKENS | _FALSY_ENV_TOKENS
@@ -196,6 +198,16 @@ def _lesson_memory_id(candidate_id: str) -> str:
     return f"{_LESSON_MEMORY_ID_PREFIX}{candidate_id}"
 
 
+def _aware_utc(value: datetime | None) -> datetime | None:
+    """Return ``value`` as a UTC-aware datetime, or None. A naive datetime is
+    assumed to already be UTC (the store persists UTC)."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value
+
+
 class MemoryPromotionError(RuntimeError):
     """Raised when a candidate could not be written to Redis AMS.
 
@@ -213,6 +225,28 @@ def _env_kill_switch_on(name: str, env: Mapping[str, str] | None = None) -> bool
     if raw is None or not value:
         return False
     return value not in _FALSY_ENV_TOKENS
+
+
+def _env_opt_in_armed(name: str, env: Mapping[str, str] | None = None) -> bool:
+    """Default OFF; arms ONLY on a recognized truthy token, fail closed otherwise.
+
+    For destructive opt-in switches (e.g. ``ALFRED_MEMORY_CONSOLIDATE``) where a
+    typo must NOT arm the feature. Unlike ``_env_kill_switch_on`` (which arms on
+    any nonblank non-falsy value), an unrecognized token like ``maybe`` stays
+    disarmed here so a config typo cannot run a destructive pass."""
+    src = env if env is not None else os.environ
+    value = _env_token(src.get(name))
+    return value in _TRUTHY_ENV_TOKENS
+
+
+def consolidate_enabled(env: Mapping[str, str] | None = None) -> bool:
+    """Whether the consolidation/decay pass is armed (``ALFRED_MEMORY_CONSOLIDATE``).
+
+    Off by default; arms only on a recognized truthy token (fail-closed on a
+    typo). This is the SAME predicate ``consolidate_lessons`` gates on, exported
+    so a caller (the CLI, the scheduled runner) can check the opt-in BEFORE
+    opening the ledger and avoid touching the store on a disarmed no-op run."""
+    return _env_opt_in_armed("ALFRED_MEMORY_CONSOLIDATE", env)
 
 
 def _env_flag_default_on(name: str, env: Mapping[str, str] | None = None) -> bool:
@@ -1257,6 +1291,190 @@ class FleetBrain:
             )
         return reverted
 
+    def consolidate_lessons(
+        self,
+        *,
+        stale_days: int = 180,
+        dry_run: bool = False,
+        env: Mapping[str, str] | None = None,
+        lesson_forgetter: Any | None = None,
+    ) -> dict[str, Any]:
+        """Periodic consolidation/decay pass over promoted lessons (OFF by default).
+
+        Two minimal, invalidate-not-delete operations over validated (promoted)
+        candidates whose lesson lives in Redis AMS:
+
+          * decay: a promoted candidate older than ``stale_days`` has its AMS
+            lesson forgotten and its row flipped to ``retired`` so recall stops
+            surfacing it, but the audit row is kept (never deleted);
+          * merge: auto-promoted (``reviewed_by == "auto"``) promoted candidates
+            whose bodies normalize to the same text are collapsed to the oldest;
+            the rest have their AMS lesson forgotten and are retired.
+
+        A candidate is retired ONLY once its AMS lesson is actually forgotten:
+        if the forget fails (a transient outage, or forgetting disabled
+        server-side) the row is left ``validated`` and logged, so the ledger
+        never claims a decay/merge while the lesson is still live in AMS recall.
+        This mirrors the revert lever and keeps the two paths honest.
+
+        Gated behind ``ALFRED_MEMORY_CONSOLIDATE`` so it never runs unless armed;
+        ``dry_run`` reports counts without writing. Deliberately conservative (no
+        LLM merge yet) so it can be scheduled safely -- scheduling it disarmed is
+        a true no-op. ``lesson_forgetter`` is the AMS provider; tests inject a
+        stub. Returns a summary dict (always safe to log)."""
+        # A negative stale_days is invalid input, not "0". Clamping it to 0 would
+        # set the cutoff to NOW and forget/retire every promoted lesson, so
+        # reject it up front (fail fast, before any read or write).
+        if int(stale_days) < 0:
+            raise ValueError(f"stale_days must be >= 0, got {stale_days}")
+        summary: dict[str, Any] = {
+            "enabled": consolidate_enabled(env),
+            "dry_run": bool(dry_run),
+            "decayed": 0,
+            "merged": 0,
+            "ams_forget_attempted": 0,
+            "ams_forgotten": 0,
+            "ams_forget_failed": 0,
+        }
+        if not summary["enabled"]:
+            # No-op when disarmed: do not even read the ledger.
+            return summary
+
+        # Enumerate every validated (promoted) candidate via offset paging. A
+        # promoted candidate carries a promoted_lesson_id; that is the AMS key.
+        validated: list[MemoryCandidate] = []
+        page = 500
+        offset = 0
+        while True:
+            batch = self.list_memory_candidates(status="validated", limit=page, offset=offset)
+            validated.extend(cand for cand in batch if cand.promoted_lesson_id is not None)
+            if len(batch) < page:
+                break
+            offset += page
+
+        cutoff = datetime.now(UTC) - timedelta(days=int(stale_days))
+        stale: list[MemoryCandidate] = []
+        fresh_auto: list[MemoryCandidate] = []
+        for cand in validated:
+            # Age from PROMOTION time (when the lesson entered AMS recall), not
+            # the original proposal time: a candidate that sat in review past
+            # stale_days and was promoted today has a FRESH active lesson and
+            # must not be forgotten on the next pass. reviewed_at is the
+            # promotion timestamp for a promoted candidate; fall back to
+            # created_at only if it is somehow missing.
+            promoted_at = _aware_utc(cand.reviewed_at) or _aware_utc(cand.created_at)
+            if promoted_at is not None and promoted_at < cutoff:
+                stale.append(cand)
+            elif cand.reviewed_by == "auto":
+                # Only auto-promoted lessons are merge-eligible; human-reviewed
+                # lessons are left alone (a human deliberately kept both).
+                fresh_auto.append(cand)
+
+        # Merge losers: among still-fresh auto-promoted candidates, keep the
+        # OLDEST per (repo, codename, normalized body) and mark the rest for
+        # retirement. Scope the group by repo + codename because AMS recall is
+        # topic-scoped: two identical-body lessons for DIFFERENT repos/codenames
+        # are not redundant (each answers a different recall scope), so they must
+        # not collapse into one. (Stale rows already decay above and are excluded
+        # here to avoid double-counting the same candidate.)
+        by_scoped_body: dict[tuple[str, str, str], list[MemoryCandidate]] = {}
+        for cand in fresh_auto:
+            key = (cand.repo, cand.codename, _canonical_memory_body(cand.body))
+            by_scoped_body.setdefault(key, []).append(cand)
+        merge_losers: list[MemoryCandidate] = []
+        for group in by_scoped_body.values():
+            if len(group) < 2:
+                continue
+            ordered = sorted(group, key=lambda c: (c.created_at, c.id))
+            merge_losers.extend(ordered[1:])
+
+        decay_reason = f"consolidate: decayed (stale > {int(stale_days)}d)"
+        merge_reason = "consolidate: merged (duplicate of an older lesson)"
+        decayed = self._retire_consolidated(
+            stale,
+            reason=decay_reason,
+            dry_run=dry_run,
+            lesson_forgetter=lesson_forgetter,
+            summary=summary,
+            env=env,
+        )
+        merged = self._retire_consolidated(
+            merge_losers,
+            reason=merge_reason,
+            dry_run=dry_run,
+            lesson_forgetter=lesson_forgetter,
+            summary=summary,
+            env=env,
+        )
+        summary["decayed"] = decayed
+        summary["merged"] = merged
+        return summary
+
+    def _retire_consolidated(
+        self,
+        candidates: list[MemoryCandidate],
+        *,
+        reason: str,
+        dry_run: bool,
+        lesson_forgetter: Any | None,
+        summary: dict[str, Any],
+        env: Mapping[str, str] | None = None,
+    ) -> int:
+        """Forget each candidate's AMS lesson then retire the row.
+
+        Retires ONLY once the AMS lesson is forgotten, so the ledger never marks
+        a lesson consolidated while it is still live in AMS recall. In dry-run
+        mode nothing is forgotten or written; the count is what WOULD change.
+        Shared by the decay and merge passes; increments the ams_forget counters
+        on ``summary`` in place. Returns the number retired (or, in dry-run, the
+        number that would be).
+
+        ``env`` is the SAME merged env ``consolidate_lessons`` gated on (the
+        persisted ``$ALFRED_HOME/.env`` in the scheduled case). It is threaded
+        into the AMS forgetter so the destructive forget uses the operator's
+        configured AMS URL/namespace/token from ``.env`` instead of falling back
+        to ``os.environ`` defaults and forgetting from the wrong server."""
+        if dry_run:
+            return len(candidates)
+        if not candidates:
+            return 0
+        forgetter = lesson_forgetter
+        if forgetter is None:
+            try:
+                forgetter = self._lesson_provider(env)
+            except Exception:
+                summary["ams_forget_failed"] += len(candidates)
+                _LOG.exception("consolidate_lessons: could not build AMS lesson forgetter")
+                return 0
+        retired = 0
+        for candidate in candidates:
+            lesson_id = candidate.promoted_lesson_id or _lesson_memory_id(candidate.id)
+            summary["ams_forget_attempted"] += 1
+            forgotten = False
+            try:
+                forgotten = bool(forgetter.forget_lesson(lesson_id))
+            except Exception:
+                _LOG.exception(
+                    "consolidate_lessons: AMS forget failed for candidate %s",
+                    candidate.id,
+                )
+            if not forgotten:
+                summary["ams_forget_failed"] += 1
+                continue
+            summary["ams_forgotten"] += 1
+            self.store.update_memory_candidate(
+                replace(
+                    candidate,
+                    status="retired",
+                    reviewed_at=datetime.now(UTC),
+                    reviewed_by="consolidate",
+                    review_note=reason,
+                    promoted_lesson_id=None,
+                )
+            )
+            retired += 1
+        return retired
+
     def record_failure(
         self,
         *,
@@ -1877,6 +2095,64 @@ class FleetBrain:
 
     def stats(self) -> dict[str, int]:
         return self.store.stats()
+
+    def lesson_stats(self) -> dict[str, Any]:
+        """Lesson-quality metrics for the operator (``alfred brain stats``).
+
+        Cheap COUNT(*) rollups over the candidate ledger plus two derived rates.
+        All counts come from a single store call so this is safe to poll:
+
+          * ``states``: candidate counts by review state
+            (candidate / validated / rejected / retired);
+          * ``auto_promote_acceptance_rate``: of the candidates an auto-run has
+            DECIDED, the fraction it saved. A judge decision is one of: saved
+            (auto-validated), hard-rejected (auto-rejected), or HELD for a human
+            (a duplicate, or scored below the bar) -- held rows are the judge's
+            usual rejection, so they count as decided. ``None`` when the
+            auto-promoter has decided nothing yet (no divide-by-zero);
+          * ``judge_rejection_rate``: of those same auto-decided candidates, the
+            fraction the judge/gate did NOT save (auto-rejected plus held).
+            ``None`` when none decided;
+          * ``held_for_review``: still-pending candidates an auto-run set aside
+            for a human (also counted as judge rejections above).
+
+        Recall hit counts are intentionally omitted: the ledger does not record
+        per-recall hits, so surfacing them would need a new write path on the hot
+        recall loop. The field is reserved (``recall_hits: None``) so the shape
+        can grow without a breaking change.
+        """
+        raw = self.store.memory_candidate_stats()
+        auto_validated = int(raw.get("auto_validated", 0))
+        auto_rejected = int(raw.get("auto_rejected", 0))
+        held = int(raw.get("held", 0))
+        # The judge rejects almost entirely by HOLDING (a duplicate, or a lesson
+        # below the confidence bar, is set aside for a human rather than stored
+        # as status='rejected'). Count held rows as auto-decided rejections so
+        # judge_rejection_rate reflects real judge behavior instead of staying
+        # near zero.
+        auto_rejections = auto_rejected + held
+        auto_decided = auto_validated + auto_rejections
+        acceptance: float | None = None
+        rejection: float | None = None
+        if auto_decided:
+            acceptance = round(auto_validated / auto_decided, 4)
+            rejection = round(auto_rejections / auto_decided, 4)
+        return {
+            "total": int(raw.get("total", 0)),
+            "states": {
+                "candidate": int(raw.get("candidate", 0)),
+                "validated": int(raw.get("validated", 0)),
+                "rejected": int(raw.get("rejected", 0)),
+                "retired": int(raw.get("retired", 0)),
+            },
+            "auto_validated": auto_validated,
+            "auto_rejected": auto_rejected,
+            "auto_decided": auto_decided,
+            "auto_promote_acceptance_rate": acceptance,
+            "judge_rejection_rate": rejection,
+            "held_for_review": int(raw.get("held", 0)),
+            "recall_hits": None,
+        }
 
     def health(self) -> dict[str, Any]:
         """Return a cheap liveness check for local API callers.

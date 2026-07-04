@@ -167,6 +167,30 @@ def test_record_reflections_can_write_direct_lessons(monkeypatch) -> None:
     assert provider.reflections[0]["body"] == "Use fixture factory."
 
 
+def test_record_reflections_logs_when_no_provider_accepts(monkeypatch, caplog) -> None:
+    """A dropped reflection (no candidate-capable provider) must not vanish
+    silently: it is counted and surfaced as a warning."""
+    import logging
+
+    from agent_runner import memory_runtime as runtime
+
+    class ReadOnlyProvider:
+        # No `brain`/propose_memory, so the candidate write path finds nothing.
+        name = "readonly"
+
+    monkeypatch.delenv("ALFRED_MEMORY_REFLECTION_MODE", raising=False)  # candidate mode
+    with caplog.at_level(logging.WARNING, logger="agent_runner.memory_runtime"):
+        written = runtime.record_reflections(
+            ReadOnlyProvider(),
+            [runtime.MemoryReflection(body="A lost lesson.", tags=())],
+            codename="lucius",
+            repo="org/api",
+            firing_id="fid-1",
+        )
+    assert written == 0
+    assert any("dropped 1 of 1 reflection" in record.getMessage() for record in caplog.records)
+
+
 def test_record_firing_records_failure_memory() -> None:
     from agent_runner import memory_runtime as runtime
     from agent_runner.result import ClaudeResult
