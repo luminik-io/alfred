@@ -112,6 +112,7 @@ __all__ = [
     "Store",
     "WorkerHeartbeat",
     "WorkerStatus",
+    "candidate_id_from_lesson_id",
     "consolidate_enabled",
     "default_db_path",
     "densify_enabled",
@@ -198,7 +199,7 @@ def _lesson_memory_id(candidate_id: str) -> str:
     return f"{_LESSON_MEMORY_ID_PREFIX}{candidate_id}"
 
 
-def _candidate_id_from_lesson_id(lesson_id: str) -> str:
+def candidate_id_from_lesson_id(lesson_id: str) -> str:
     """Recover the source candidate id from a promoted lesson's memory id.
 
     Recall lessons carry the deterministic ``lesson:memory_candidate:<id>``
@@ -1318,7 +1319,7 @@ class FleetBrain:
         desktop "undo / retire" affordance so a bad auto-promotion is one click
         to walk back, without opening the whole batch. Accepts either a raw
         candidate id or the ``lesson:memory_candidate:<id>`` recall id a lesson
-        surfaces under (see ``_candidate_id_from_lesson_id``), so the client can
+        surfaces under (see ``candidate_id_from_lesson_id``), so the client can
         retire a lesson it only knows by its recall id.
 
         The AMS forget happens FIRST and the row is flipped to ``retired`` ONLY
@@ -1330,7 +1331,7 @@ class FleetBrain:
         the caller can surface a retryable error rather than silently claiming a
         retire that did not happen.
         """
-        cid = _candidate_id_from_lesson_id(candidate_id)
+        cid = candidate_id_from_lesson_id(candidate_id)
         candidate = self.store.get_memory_candidate(cid)
         if candidate is None or candidate.status != "validated":
             return None

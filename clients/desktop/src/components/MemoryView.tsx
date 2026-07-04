@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 import { friendlyTime, titleCase } from "../format";
-import { supportsNativeActions } from "../api";
+import { isCandidateBackedLesson, supportsNativeActions } from "../api";
 import type { MemoryCandidate, MemoryLesson, Snapshot } from "../types";
 import type { ActionNotice, NativeActionRequest } from "../lib/uiTypes";
 import { EmptyState, PanelHeader, SignalCard } from "./atoms";
@@ -130,7 +130,11 @@ export function MemoryView({
 
 // One lesson Alfred auto-remembered, shown with a quiet undo affordance so a bad
 // auto-promotion is one click to walk back. Retiring uses the lesson's recall id
-// (the API strips it back to the candidate id the server route validates).
+// (the API strips it back to the candidate id the server route validates). Undo
+// is only offered for candidate-backed lessons: /api/memory/lessons returns
+// every recalled lesson from the provider chain, and a synced or directly
+// reflected lesson has no candidate row to retire (the route would 404), so it
+// reads as a plain fact with no action rather than a broken button.
 function ActiveLessonRow({
   lesson,
   busyMemoryAction,
@@ -140,6 +144,7 @@ function ActiveLessonRow({
   busyMemoryAction: string | null;
   onMemoryCandidateAction: (candidateId: string, action: "promote" | "reject" | "retire") => void;
 }) {
+  const canUndo = isCandidateBackedLesson(lesson.id);
   const isRetiring = busyMemoryAction === `${lesson.id}:retire`;
   return (
     <li className="active-lesson">
@@ -150,16 +155,18 @@ function ActiveLessonRow({
           {lesson.repo ? ` · ${lesson.repo}` : ""} · {friendlyTime(lesson.created_at)}
         </span>
       </div>
-      <button
-        className="text-button active-lesson__undo"
-        type="button"
-        disabled={isRetiring}
-        aria-busy={isRetiring}
-        onClick={() => onMemoryCandidateAction(lesson.id, "retire")}
-      >
-        <Undo2 size={15} aria-hidden="true" />
-        <span>{isRetiring ? "Undoing" : "Undo"}</span>
-      </button>
+      {canUndo ? (
+        <button
+          className="text-button active-lesson__undo"
+          type="button"
+          disabled={isRetiring}
+          aria-busy={isRetiring}
+          onClick={() => onMemoryCandidateAction(lesson.id, "retire")}
+        >
+          <Undo2 size={15} aria-hidden="true" />
+          <span>{isRetiring ? "Undoing" : "Undo"}</span>
+        </button>
+      ) : null}
     </li>
   );
 }

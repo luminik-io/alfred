@@ -37,6 +37,7 @@ from fleet_brain import (  # noqa: E402
     Lesson,
     MemoryPromotionError,
     SQLiteStore,
+    candidate_id_from_lesson_id,
     new_id,
 )
 from fleet_brain.schema import (  # noqa: E402
@@ -500,6 +501,17 @@ def test_revert_auto_promotions_forgets_lessons_and_reopens(brain: FleetBrain) -
     assert reopened is not None
     assert reopened.status == "candidate"
     assert reopened.promoted_lesson_id is None
+
+
+def test_candidate_id_from_lesson_id_strips_only_the_recall_prefix() -> None:
+    # Strips the deterministic recall prefix, passes any other id through
+    # unchanged so both forms (recall id, bare candidate id) are accepted.
+    assert candidate_id_from_lesson_id("lesson:memory_candidate:ABC123") == "ABC123"
+    assert candidate_id_from_lesson_id("ABC123") == "ABC123"
+    # A different colon id is NOT a recall id, so it is returned verbatim (the
+    # server's regex, not this helper, rejects it).
+    assert candidate_id_from_lesson_id("some:other:id") == "some:other:id"
+    assert candidate_id_from_lesson_id("  lesson:memory_candidate:X  ") == "X"
 
 
 def test_retire_memory_candidate_forgets_one_lesson_and_retires_it(brain: FleetBrain) -> None:

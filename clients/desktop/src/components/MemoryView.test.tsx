@@ -7,6 +7,11 @@ import type { MemoryCandidate, MemoryLesson, Snapshot } from "../types";
 
 vi.mock("../api", () => ({
   supportsNativeActions: () => true,
+  // Real prefix check so the "hide Undo on non-candidate lessons" behavior is
+  // exercised, not stubbed away.
+  isCandidateBackedLesson: (lessonId: string) =>
+    (lessonId || "").startsWith("lesson:memory_candidate:") &&
+    lessonId.length > "lesson:memory_candidate:".length,
 }));
 
 function candidate(overrides: Partial<MemoryCandidate> = {}): MemoryCandidate {
@@ -108,6 +113,36 @@ describe("MemoryView", () => {
     // candidate id the server retire route validates.
     await user.click(screen.getByRole("button", { name: /^undo$/i }));
     expect(onMemoryCandidateAction).toHaveBeenCalledWith("lesson:memory_candidate:1", "retire");
+  });
+
+  it("hides Undo on non-candidate-backed lessons so it never offers a broken action", () => {
+    render(
+      <MemoryView
+        snapshot={snapshot({
+          memoryLessons: {
+            rows: [
+              // A synced / directly-reflected lesson: its id is not the
+              // lesson:memory_candidate:<id> recall id, so there is no candidate
+              // to retire and Undo must not appear.
+              lesson({ id: "synced-lesson-42", body: "Prefer the shared client." }),
+              // A candidate-backed lesson keeps its Undo.
+              lesson({ id: "lesson:memory_candidate:7", body: "GraphQL schema lives here." }),
+            ],
+          },
+        })}
+        actionNotice={null}
+        busyMemoryAction={null}
+        nativeBusy={null}
+        onMemoryCandidateAction={vi.fn()}
+        onRunLocalAction={vi.fn()}
+      />,
+    );
+
+    // Both lessons render as facts...
+    expect(screen.getByText(/prefer the shared client/i)).toBeInTheDocument();
+    expect(screen.getByText(/graphql schema lives here/i)).toBeInTheDocument();
+    // ...but only the candidate-backed one has an Undo.
+    expect(screen.getAllByRole("button", { name: /^undo$/i })).toHaveLength(1);
   });
 
   it("shows the undoing state for the lesson being retired", () => {

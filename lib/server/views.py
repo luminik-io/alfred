@@ -1423,6 +1423,15 @@ async def _api_memory_candidate_action(
 ) -> JSONResponse:
     if not _same_origin_post(request) or not _authorized_mutation(request):
         return JSONResponse({"error": "forbidden"}, status_code=403)
+    # Normalize a lesson recall id (``lesson:memory_candidate:<id>``) to the bare
+    # candidate id BEFORE validation: /api/memory/lessons hands the client that
+    # recall id, and ``_MEMORY_ID_RE`` rejects the colons in it, so without this
+    # the retire route would 400 the very id it documents as accepted. Stripping
+    # is a no-op for a bare id, so promote/reject stay unaffected. FleetBrain
+    # owns the prefix, so import its stripper rather than re-encode it here.
+    from fleet_brain import candidate_id_from_lesson_id
+
+    candidate_id = candidate_id_from_lesson_id(candidate_id)
     if not _MEMORY_ID_RE.fullmatch(candidate_id):
         return JSONResponse({"error": "memory candidate id is invalid"}, status_code=400)
     body, error_response = await _read_json_body(request)

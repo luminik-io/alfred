@@ -406,6 +406,21 @@ def test_api_memory_candidates_promote_and_reject(
     assert retired_action.json()["status"] == "retired"
     assert ("retire", (candidate_id, "operator", "wrong")) in brain.calls
 
+    # The retire route accepts the FULL recall id /api/memory/lessons hands the
+    # client (lesson:memory_candidate:<id>): it is normalized to the bare
+    # candidate id BEFORE the id regex (which forbids colons) validates it, so it
+    # does not 400 the very id it documents as supported.
+    brain.calls.clear()
+    recall_retired = client.post(
+        f"/api/memory/candidates/lesson:memory_candidate:{candidate_id}/retire",
+        json={"reviewer": "operator", "note": "wrong"},
+        headers=_auth_headers(state),
+    )
+    assert recall_retired.status_code == 200
+    assert recall_retired.json()["status"] == "retired"
+    # The brain was called with the bare candidate id, not the recall id.
+    assert ("retire", (candidate_id, "operator", "wrong")) in brain.calls
+
     # An unknown / never-promoted lesson retire is a clean 404 (nothing live to
     # walk back), not a 500.
     monkeypatch.setattr(brain, "retire_memory_candidate", lambda *_a, **_kw: None)
@@ -574,6 +589,10 @@ def test_api_memory_candidate_colon_id_is_rejected(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # A colon id that is NOT the ``lesson:memory_candidate:`` recall prefix stays
+    # rejected: only the known recall prefix is normalized away, so a stray or
+    # crafted colon id (any other shape) is still a 400 that never reaches
+    # FleetBrain.
     state = tmp_path / "state"
 
     class Brain:
@@ -587,13 +606,56 @@ def test_api_memory_candidate_colon_id_is_rejected(
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     response = client.post(
-        "/api/memory/candidates/lesson:memory_candidate:abc/promote",
+        "/api/memory/candidates/some:other:id/promote",
         json={"reviewer": "operator", "note": "bad"},
         headers=_auth_headers(state),
     )
 
     assert response.status_code == 400
     assert response.json()["error"] == "memory candidate id is invalid"
+
+
+def test_api_memory_candidate_recall_id_is_normalized_before_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The recall id /api/memory/lessons hands the client
+    # (lesson:memory_candidate:<id>) is normalized to the bare candidate id
+    # BEFORE the colon-forbidding regex validates it, so it reaches FleetBrain
+    # rather than 400ing. Covers promote (any action shares the normalization).
+    state = tmp_path / "state"
+    seen: list[str] = []
+
+    class Brain:
+        def health(self) -> dict[str, bool]:
+            return {"ok": True}
+
+        def promote_memory_candidate(
+            self, candidate_id: str, *, reviewer: str, review_note: str = ""
+        ) -> Lesson:
+            seen.append(candidate_id)
+            return Lesson(
+                id=f"lesson:memory_candidate:{candidate_id}",
+                codename="lucius",
+                repo="example-org/alfred",
+                body="body",
+                tags=[],
+                created_at=datetime(2026, 5, 30, 12, 0, tzinfo=UTC),
+                firing_id=None,
+            )
+
+    monkeypatch.setattr(server_views, "_memory_brain", lambda *_a, **_kw: (Brain(), None))
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/memory/candidates/lesson:memory_candidate:ABC123/promote",
+        json={"reviewer": "operator"},
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    # FleetBrain saw the bare candidate id, not the recall id.
+    assert seen == ["ABC123"]
 
 
 def test_api_memory_candidate_unknown_id_is_not_found(

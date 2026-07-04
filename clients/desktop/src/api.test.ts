@@ -23,6 +23,7 @@ import {
   loadRosterTheme,
   loadShipped,
   loadSnapshot,
+  isCandidateBackedLesson,
   lessonCandidateId,
   promoteMemoryCandidate,
   retireMemoryLesson,
@@ -577,6 +578,17 @@ describe("loadSnapshot degradation", () => {
     expect(lessonCandidateId("lesson:memory_candidate:mem-1")).toBe("mem-1");
     // A bare candidate id passes through unchanged.
     expect(lessonCandidateId("mem-1")).toBe("mem-1");
+  });
+
+  it("recognizes only candidate-backed lessons as retirable", () => {
+    // Candidate-backed recall ids can be retired (Undo offered).
+    expect(isCandidateBackedLesson("lesson:memory_candidate:mem-1")).toBe(true);
+    // Synced / directly-reflected / plain lesson ids cannot (no candidate row),
+    // so the UI must not offer Undo on them.
+    expect(isCandidateBackedLesson("synced-lesson-42")).toBe(false);
+    expect(isCandidateBackedLesson("mem-1")).toBe(false);
+    // The bare prefix with no id is not a real lesson.
+    expect(isCandidateBackedLesson("lesson:memory_candidate:")).toBe(false);
   });
 
   it("undoes an auto-remembered lesson via the retire route using the candidate id", async () => {

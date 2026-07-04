@@ -762,6 +762,16 @@ export function lessonCandidateId(lessonId: string): string {
     : clean;
 }
 
+// True only for lessons backed by a memory_candidate row (the ones retire can
+// walk back). /api/memory/lessons returns EVERY recalled lesson from the
+// provider chain, including synced or directly-reflected lessons whose ids are
+// not the candidate recall id; those have no candidate to retire, so the UI must
+// not offer Undo on them (the retire route would 404).
+export function isCandidateBackedLesson(lessonId: string): boolean {
+  const clean = (lessonId || "").trim();
+  return clean.startsWith(LESSON_MEMORY_ID_PREFIX) && clean.length > LESSON_MEMORY_ID_PREFIX.length;
+}
+
 // Undo an auto-remembered lesson: forget it from recall and retire the row.
 // Accepts the lesson's recall id (or a bare candidate id) and sends the bare
 // candidate id the server route validates.
