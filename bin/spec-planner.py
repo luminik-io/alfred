@@ -73,7 +73,7 @@ from damian_planner import (  # noqa: E402
     render_plan_for_prompt,
 )
 
-CODENAME = os.environ.get("AGENT_CODENAME", "damian")
+CODENAME = os.environ.get("AGENT_CODENAME", "spec-planner")
 DAMIAN_ENGINE = agent_engine(CODENAME, default="hybrid")
 
 # Prompt path: alfred-init seeds the role file at this location and the

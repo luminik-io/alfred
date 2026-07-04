@@ -231,12 +231,21 @@ export type FiringsResponse = {
   rows: FiringRecord[];
 };
 
-// assign -> choose Batman or Lucius, then label for that lane
-// queue  -> arm an issue for Lucius pickup directly (agent:implement)
+// assign -> choose the architect or the senior dev lane, then label for it
+// queue  -> arm an issue for senior-dev pickup directly (agent:implement)
 // hold   -> take it out of Alfred's reach (do-not-pickup)
 // done   -> close the issue using GitHub's native closed state (no new label)
 export type QueueAction = "assign" | "queue" | "hold" | "done";
-export type AssignmentTargetAgent = "auto" | "batman" | "lucius";
+// Canonical assignment lanes are the role slugs ("architect", "senior-dev").
+// The legacy Batman-cast codenames ("batman", "lucius") stay in the union for
+// back-compat: the server's assignment resolver accepts them as aliases, so an
+// older client (or a UI option value not yet migrated) still routes correctly.
+export type AssignmentTargetAgent =
+  | "auto"
+  | "architect"
+  | "senior-dev"
+  | "batman"
+  | "lucius";
 
 // Response from POST /api/queue (assign, arm, hold, or close an issue).
 export type QueueActionResponse = {

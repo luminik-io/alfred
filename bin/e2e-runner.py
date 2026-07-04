@@ -3,16 +3,16 @@
 
 Operator drops their own Playwright tests at ${ALFRED_HOME}/tests/huntress/
 (the working directory the runner shells `npx playwright test` in). The
-target URL is read from ALFRED_HUNTRESS_TARGET_URL.
+target URL is read from ALFRED_E2E_RUNNER_TARGET_URL.
 
 Test-account credentials are fetched from AWS Secrets Manager
-(ALFRED_HUNTRESS_SECRET_ID, default "alfred/huntress/test-account") and
+(ALFRED_E2E_RUNNER_SECRET_ID, default "alfred/huntress/test-account") and
 exposed to the Playwright process as HUNTRESS_EMAIL / HUNTRESS_PASSWORD.
 The tests must be written to read those env vars.
 
-Optional: ALFRED_HUNTRESS_AWS_PROFILE selects an AWS_PROFILE for both
+Optional: ALFRED_E2E_RUNNER_AWS_PROFILE selects an AWS_PROFILE for both
 the secret fetch and the screenshot upload. Without it the default
-credential chain applies. ALFRED_HUNTRESS_S3_BUCKET, when set, receives
+credential chain applies. ALFRED_E2E_RUNNER_S3_BUCKET, when set, receives
 test-failed PNG screenshots for inclusion in Slack failure messages.
 """
 
@@ -45,23 +45,23 @@ from agent_runner import (
     with_lock,
 )
 
-AGENT = os.environ.get("AGENT_CODENAME", "huntress")
+AGENT = os.environ.get("AGENT_CODENAME", "e2e-runner")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 
 HUNTRESS_DIR = Path(
-    os.environ.get("ALFRED_HUNTRESS_TESTS_DIR", str(ALFRED_HOME / "tests" / "huntress"))
+    os.environ.get("ALFRED_E2E_RUNNER_TESTS_DIR", str(ALFRED_HOME / "tests" / "huntress"))
 )
-TARGET_URL = os.environ.get("ALFRED_HUNTRESS_TARGET_URL", "")
-AWS_PROFILE = os.environ.get("ALFRED_HUNTRESS_AWS_PROFILE", "")
-SECRET_ID = os.environ.get("ALFRED_HUNTRESS_SECRET_ID", "alfred/huntress/test-account")
+TARGET_URL = os.environ.get("ALFRED_E2E_RUNNER_TARGET_URL", "")
+AWS_PROFILE = os.environ.get("ALFRED_E2E_RUNNER_AWS_PROFILE", "")
+SECRET_ID = os.environ.get("ALFRED_E2E_RUNNER_SECRET_ID", "alfred/huntress/test-account")
 REGION = os.environ.get("AWS_REGION", "us-east-1")
-S3_BUCKET = os.environ.get("ALFRED_HUNTRESS_S3_BUCKET", "")
-ECS_CLUSTER = os.environ.get("ALFRED_HUNTRESS_ECS_CLUSTER", "")
+S3_BUCKET = os.environ.get("ALFRED_E2E_RUNNER_S3_BUCKET", "")
+ECS_CLUSTER = os.environ.get("ALFRED_E2E_RUNNER_ECS_CLUSTER", "")
 ECS_SERVICES = [
-    s.strip() for s in os.environ.get("ALFRED_HUNTRESS_ECS_SERVICES", "").split(",") if s.strip()
+    s.strip() for s in os.environ.get("ALFRED_E2E_RUNNER_ECS_SERVICES", "").split(",") if s.strip()
 ]
 DEPLOY_REF_REPO = os.environ.get(
-    "ALFRED_HUNTRESS_DEPLOY_REF_REPO", ""
+    "ALFRED_E2E_RUNNER_DEPLOY_REF_REPO", ""
 )  # local dir under WORKSPACE for SHA reporting
 
 PREFLIGHT = PreflightSpec(
@@ -116,7 +116,7 @@ def main() -> int:
         if doctor_mode():
             print(f"[{AGENT.upper()}-DOCTOR-OK]")
             return 0
-        print(f"[{AGENT.upper()}-IDLE] no target URL configured (set ALFRED_HUNTRESS_TARGET_URL)")
+        print(f"[{AGENT.upper()}-IDLE] no target URL configured (set ALFRED_E2E_RUNNER_TARGET_URL)")
         return 0
     if not HUNTRESS_DIR.is_dir():
         if doctor_mode():

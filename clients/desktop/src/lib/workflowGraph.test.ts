@@ -28,9 +28,9 @@ function input(codename: string, role: WorkflowRole): WorkflowNodeInput {
 const ROSTER: WorkflowNodeInput[] = [
   input("robin", "triage"),
   input("batman", "architect"),
-  input("lucius", "implement"),
-  input("bane", "implement"),
-  input("rasalghul", "review"),
+  input("lucius", "senior-dev"),
+  input("bane", "senior-dev"),
+  input("rasalghul", "reviewer"),
   input("automerge", "ship"),
   input("gordon", "ops"),
 ];
@@ -61,10 +61,10 @@ describe("buildWorkflowGraph", () => {
   });
 
   it("wires handoff edges between present lanes and drops edges to absent lanes", () => {
-    // Only architect + implement present: the architect->implement edge
-    // survives; edges to missing lanes (e.g. implement->review) do not.
+    // Only architect + senior-dev present: the architect->senior-dev edge
+    // survives; edges to missing lanes (e.g. senior-dev->reviewer) do not.
     const { nodes, edges } = buildWorkflowGraph(
-      [input("batman", "architect"), input("lucius", "implement")],
+      [input("batman", "architect"), input("lucius", "senior-dev")],
       null,
     );
     const agentIds = nodes.filter((n) => n.type === "agent").map((n) => n.id);
@@ -76,14 +76,14 @@ describe("buildWorkflowGraph", () => {
   });
 
   it("wires every agent in a multi-agent lane into the pipeline, not just the first", () => {
-    // implement has three agents; each must hand off into the review lane so no
-    // secondary agent (bane, nightwing) is left without a pipeline edge.
+    // senior-dev has three agents; each must hand off into the reviewer lane so
+    // no secondary agent (bane, nightwing) is left without a pipeline edge.
     const { nodes, edges } = buildWorkflowGraph(
       [
-        input("lucius", "implement"),
-        input("bane", "implement"),
-        input("nightwing", "implement"),
-        input("rasalghul", "review"),
+        input("lucius", "senior-dev"),
+        input("bane", "senior-dev"),
+        input("nightwing", "senior-dev"),
+        input("rasalghul", "reviewer"),
       ],
       null,
     );
@@ -104,7 +104,7 @@ describe("buildWorkflowGraph", () => {
 
   it("marks the selected node and animates its incident edges", () => {
     const { nodes, edges } = buildWorkflowGraph(
-      [input("lucius", "implement"), input("rasalghul", "review")],
+      [input("lucius", "senior-dev"), input("rasalghul", "reviewer")],
       "rasalghul",
     );
     const selected = nodes.find((n) => n.id === "rasalghul");

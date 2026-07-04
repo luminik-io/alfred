@@ -119,7 +119,7 @@ class PlanDraft:
     path: str
     preview: str
     content: str
-    source: str = "batman"
+    source: str = "architect"
     readiness_score: int | None = None
     readiness_ok: bool | None = None
     revision_count: int = 0
@@ -493,7 +493,7 @@ class FilesystemReader:
 
     def _plan_root(self) -> Path:
         """Resolve the Batman plan directory next to ``state/``."""
-        return self.state_root.parent / "batman-plans"
+        return self.state_root.parent / "architect-plans"
 
     def _planning_draft_root(self) -> Path:
         """Resolve the Slack/local planning draft directory."""
@@ -510,7 +510,7 @@ class FilesystemReader:
             logger.debug("read plan %s: %s", path, exc)
             return None
         updated_at = _mtime_iso(path)
-        source = "followup" if path.parent == self._followup_root() else "batman"
+        source = "followup" if path.parent == self._followup_root() else "architect"
         plan = _plan_from_markdown(
             plan_id=path.stem,
             path=str(path),
@@ -529,7 +529,7 @@ class FilesystemReader:
         read the marker here and reflect ``approved``/``declined`` so a decided
         plan reports its real state and drops out of the Needs-you queue.
         """
-        if plan.source != "batman":
+        if plan.source != "architect":
             return plan
         issue_num = issue_num_from_plan_id(plan.plan_id)
         if issue_num is None:
@@ -623,7 +623,7 @@ def _plan_from_markdown(
     path: str,
     updated_at: str | None,
     content: str,
-    source: str = "batman",
+    source: str = "architect",
 ) -> PlanDraft:
     title = "Slack follow-up" if source == "followup" else "Batman plan"
     status = "needs follow-up" if source == "followup" else "draft"

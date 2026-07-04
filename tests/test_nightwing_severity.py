@@ -17,7 +17,7 @@ def nightwing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspace"))
     sys.path.insert(0, str(LIB_DIR))
     module_name = "nightwing_under_test"
-    spec = importlib.util.spec_from_file_location(module_name, BIN_DIR / "nightwing.py")
+    spec = importlib.util.spec_from_file_location(module_name, BIN_DIR / "fixer.py")
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     try:

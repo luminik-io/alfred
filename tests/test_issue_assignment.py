@@ -57,7 +57,7 @@ def test_single_repo_work_routes_to_lucius() -> None:
     decision = ia.decide_assignment(_issue())
 
     assert decision.route == ia.ROUTE_LUCIUS
-    assert decision.agent == "lucius"
+    assert decision.agent == "senior-dev"
     assert decision.add_labels == (IMPLEMENT,)
     assert "single-repo" in decision.reason
 
@@ -66,7 +66,7 @@ def test_auto_assignment_target_is_same_as_no_target() -> None:
     decision = ia.decide_assignment(_issue(), target_agent="auto")
 
     assert decision.route == ia.ROUTE_LUCIUS
-    assert decision.agent == "lucius"
+    assert decision.agent == "senior-dev"
     assert decision.add_labels == (IMPLEMENT,)
 
 
@@ -79,7 +79,7 @@ def test_multi_surface_work_routes_to_batman() -> None:
     )
 
     assert decision.route == ia.ROUTE_BATMAN
-    assert decision.agent == "batman"
+    assert decision.agent == "architect"
     assert decision.add_labels == (LARGE_FEATURE,)
     assert "multiple product surfaces" in decision.reason
 
@@ -88,7 +88,7 @@ def test_explicit_batman_assignment_overrides_single_repo_default() -> None:
     decision = ia.decide_assignment(_issue(), target_agent="architect")
 
     assert decision.route == ia.ROUTE_BATMAN
-    assert decision.agent == "batman"
+    assert decision.agent == "architect"
     assert decision.add_labels == (LARGE_FEATURE,)
     assert decision.remove_labels == ()
     assert "Batman" in decision.reason
@@ -101,7 +101,7 @@ def test_explicit_lucius_assignment_can_reroute_large_feature() -> None:
     )
 
     assert decision.route == ia.ROUTE_LUCIUS
-    assert decision.agent == "lucius"
+    assert decision.agent == "senior-dev"
     assert decision.add_labels == (IMPLEMENT,)
     assert decision.remove_labels == (LARGE_FEATURE,)
     assert "Lucius" in decision.reason
@@ -114,7 +114,7 @@ def test_explicit_batman_assignment_can_reroute_lucius_issue() -> None:
     )
 
     assert decision.route == ia.ROUTE_BATMAN
-    assert decision.agent == "batman"
+    assert decision.agent == "architect"
     assert decision.add_labels == (LARGE_FEATURE,)
     assert decision.remove_labels == (IMPLEMENT,)
 
@@ -150,7 +150,7 @@ def test_vague_work_routes_to_human_scope() -> None:
 
 def test_existing_agent_labels_are_noops() -> None:
     assert ia.decide_assignment(_issue(labels=(IMPLEMENT,))).route == ia.ROUTE_ALREADY_ROUTED
-    assert ia.decide_assignment(_issue(labels=(LARGE_FEATURE,))).agent == "batman"
+    assert ia.decide_assignment(_issue(labels=(LARGE_FEATURE,))).agent == "architect"
 
 
 def test_human_blocking_labels_block_assignment() -> None:
@@ -332,7 +332,7 @@ def test_assign_issue_accepts_explicit_target_agent(monkeypatch) -> None:
     )
 
     assert result.ok
-    assert result.decision.agent == "batman"
+    assert result.decision.agent == "architect"
     edit = calls[-1]
     assert "--add-label" in edit
     assert LARGE_FEATURE in edit

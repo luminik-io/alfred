@@ -161,11 +161,19 @@ class _LazyModule:
 agent_runner = _LazyModule("agent_runner")
 scheduler = _LazyModule("scheduler")
 
-OPT_IN_AGENTS = {"batman"}
-ENGINE_AGENTS = ("bane", "batman", "drake", "lucius", "nightwing", "rasalghul", "robin")
+OPT_IN_AGENTS = {"architect"}
+ENGINE_AGENTS = (
+    "architect",
+    "fixer",
+    "planner",
+    "reviewer",
+    "senior-dev",
+    "test-engineer",
+    "triage",
+)
 CUSTOM_AGENT_SCRIPT = "custom-agent.py"
 ENGINE_SCRIPTS = (*(f"{agent}.py" for agent in ENGINE_AGENTS), CUSTOM_AGENT_SCRIPT)
-NATIVE_DRY_RUN_SCRIPTS = {"lucius.py", "hello.py", "echo_summarise.py"}
+NATIVE_DRY_RUN_SCRIPTS = {"senior-dev.py", "hello.py", "echo_summarise.py"}
 
 
 def _safe_expanduser(path: Path) -> Path:
@@ -235,23 +243,27 @@ def _switch_value(raw: str) -> str:
 
 
 DEFAULT_AGENT_CATALOG: dict[str, dict[str, str]] = {
-    "lucius": {"script": "lucius.py", "schedule": "interval:1200", "role": "feature dev"},
-    "drake": {"script": "drake.py", "schedule": "interval:7200", "role": "issue planner"},
-    "bane": {"script": "bane.py", "schedule": "interval:14400", "role": "test coverage"},
-    "rasalghul": {"script": "rasalghul.py", "schedule": "interval:1800", "role": "PR review"},
-    "nightwing": {"script": "nightwing.py", "schedule": "interval:2700", "role": "CI repair"},
-    "robin": {"script": "robin.py", "schedule": "interval:10800", "role": "bug triage"},
-    "batman": {
-        "script": "batman.py",
+    "senior-dev": {"script": "senior-dev.py", "schedule": "interval:1200", "role": "feature dev"},
+    "planner": {"script": "planner.py", "schedule": "interval:7200", "role": "issue planner"},
+    "test-engineer": {
+        "script": "test-engineer.py",
+        "schedule": "interval:14400",
+        "role": "test coverage",
+    },
+    "reviewer": {"script": "reviewer.py", "schedule": "interval:1800", "role": "PR review"},
+    "fixer": {"script": "fixer.py", "schedule": "interval:2700", "role": "CI repair"},
+    "triage": {"script": "triage.py", "schedule": "interval:10800", "role": "bug triage"},
+    "architect": {
+        "script": "architect.py",
         "schedule": "interval:3600",
         "role": "cross-repo architect",
     },
-    "huntress": {
-        "script": "huntress.py",
+    "e2e-runner": {
+        "script": "e2e-runner.py",
         "schedule": "interval:1800",
         "role": "staging smoke runner",
     },
-    "gordon": {"script": "gordon.py", "schedule": "cron:8:00", "role": "ops morning"},
+    "ops-watch": {"script": "ops-watch.py", "schedule": "cron:8:00", "role": "ops morning"},
     "automerge": {"script": "automerge.py", "schedule": "interval:900", "role": "PR automerge"},
     "agent-cleanup": {
         "script": "agent-cleanup.py",
@@ -1459,13 +1471,28 @@ def cmd_dry_run(
 
 def _normalize_agent_name(agent: str) -> str:
     raw = agent.strip().lower()
+    # Canonical identities are role slugs. The Batman-cast codenames stay as
+    # aliases so operator muscle-memory ("run lucius", "dry-run batman") keeps
+    # resolving to the slug that names the runner module.
     aliases = {
-        "review": "rasalghul",
-        "ras": "rasalghul",
-        "ras-al-ghul": "rasalghul",
-        "tim": "drake",
-        "tim-drake": "drake",
-        "night-wing": "nightwing",
+        "review": "reviewer",
+        "reviewer": "reviewer",
+        "ras": "reviewer",
+        "ras-al-ghul": "reviewer",
+        "rasalghul": "reviewer",
+        "tim": "planner",
+        "tim-drake": "planner",
+        "drake": "planner",
+        "night-wing": "fixer",
+        "nightwing": "fixer",
+        "lucius": "senior-dev",
+        "batman": "architect",
+        "bruce": "architect",
+        "bane": "test-engineer",
+        "robin": "triage",
+        "huntress": "e2e-runner",
+        "gordon": "ops-watch",
+        "damian": "spec-planner",
     }
     return aliases.get(raw, raw)
 

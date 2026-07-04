@@ -476,14 +476,24 @@ _NON_WORK_ISSUE_LABELS = frozenset({"batman:fanout-complete"})
 _AGENT_BRANCH_PREFIXES = (
     "alfred/",
     "alfred-nightly/",
+    "architect/",
     "automerge/",
     "bane/",
     "batman/",
     "damian/",
+    "e2e-runner/",
+    "fixer/",
     "lucius/",
     "nightwing/",
+    "ops-watch/",
+    "planner/",
     "rasalghul/",
+    "reviewer/",
     "robin/",
+    "senior-dev/",
+    "spec-planner/",
+    "test-engineer/",
+    "triage/",
 )
 
 

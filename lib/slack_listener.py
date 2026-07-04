@@ -2765,7 +2765,7 @@ def _assignment_agent_display(agent: str) -> str:
     normalized = agent.strip().lower()
     if normalized in {"architect", "batman", "bruce"}:
         return "Batman · Architect"
-    if normalized in {"developer", "lucius", "senior dev", "senior developer"}:
+    if normalized in {"senior-dev", "developer", "lucius", "senior dev", "senior developer"}:
         return "Lucius · Senior Developer"
     return agent
 

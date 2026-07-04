@@ -50,9 +50,9 @@ def _auth_headers(state: Path, **extra: str) -> dict[str, str]:
 
 def test_json_api_status_firings_and_plans(tmp_path: Path) -> None:
     state = tmp_path / "state"
-    plans = tmp_path / "batman-plans"
+    plans = tmp_path / "architect-plans"
     _write_jsonl(
-        state / "batman" / "events" / "2026-05-27-1200-aa.jsonl",
+        state / "architect" / "events" / "2026-05-27-1200-aa.jsonl",
         [
             {"ts": "2026-05-27T12:00:00Z", "event": "firing_started"},
             {"ts": "2026-05-27T12:04:00Z", "event": "firing_complete"},
@@ -71,11 +71,11 @@ def test_json_api_status_firings_and_plans(tmp_path: Path) -> None:
     status = client.get("/api/status")
     assert status.status_code == 200
     batman = status.json()["agents"][0]
-    assert batman["codename"] == "batman"
+    assert batman["codename"] == "architect"
     assert batman["display_name"] == "Batman"
     assert batman["role_title"] == "Architect"
 
-    firings = client.get("/api/firings", params={"codename": "batman"})
+    firings = client.get("/api/firings", params={"codename": "architect"})
     assert firings.status_code == 200
     assert firings.json()["rows"][0]["status"] == "ok"
 
@@ -201,7 +201,7 @@ def test_api_status_reports_paused_state_from_marker(tmp_path: Path) -> None:
 
 def test_api_status_orders_and_profiles_core_agents(tmp_path: Path) -> None:
     state = tmp_path / "state"
-    for codename in ("rasalghul", "lucius", "drake", "batman"):
+    for codename in ("reviewer", "senior-dev", "planner", "architect"):
         _write_jsonl(
             state / codename / "events" / f"2026-05-30-1000-{codename}.jsonl",
             [{"ts": "2026-05-30T10:00:00Z", "event": "firing_complete"}],
@@ -210,10 +210,10 @@ def test_api_status_orders_and_profiles_core_agents(tmp_path: Path) -> None:
 
     agents = client.get("/api/status").json()["agents"]
     assert [agent["codename"] for agent in agents[:4]] == [
-        "batman",
-        "lucius",
-        "drake",
-        "rasalghul",
+        "architect",
+        "senior-dev",
+        "planner",
+        "reviewer",
     ]
     assert agents[0]["role_title"] == "Architect"
     assert agents[1]["role_title"] == "Senior Developer"
@@ -234,15 +234,15 @@ def test_api_status_includes_scheduled_agents_before_first_firing(tmp_path: Path
     conf.parent.mkdir(parents=True)
     conf.write_text(
         "# label\tscript\tschedule\tneeds_java\tlog_stem\trole\n"
-        "alfred.lucius\tlucius.py\tinterval:1200\tno\talfred.lucius\tfeature dev\n"
-        "alfred.batman\tbatman.py\tinterval:3600\tno\talfred.batman\tcross-repo architect\n"
+        "alfred.senior-dev\tlucius.py\tinterval:1200\tno\talfred.senior-dev\tfeature dev\n"
+        "alfred.architect\tbatman.py\tinterval:3600\tno\talfred.architect\tcross-repo architect\n"
         "alfred.agent-cleanup\tagent-cleanup.py\tcron:3:00\tno\t"
         "alfred.agent-cleanup\thygiene\n"
         "alfred.memory-auto-promote\tmemory-auto-promote.py\tcron:8:20\tno\t"
         "alfred.memory-auto-promote\tmemory auto-promote\n"
         "alfred.shipped-summary-daily\tshipped-summary-daily.sh\tcron:7:35\tno\t"
         "alfred.shipped-summary\tshipped summary daily\n"
-        "#alfred.huntress\thuntress.py\tinterval:1800\tno\talfred.huntress\tstaging smoke runner\n",
+        "#alfred.e2e-runner\thuntress.py\tinterval:1800\tno\talfred.e2e-runner\tstaging smoke runner\n",
         encoding="utf-8",
     )
     client = TestClient(create_app(FilesystemReader(state_root=state)))
@@ -251,21 +251,21 @@ def test_api_status_includes_scheduled_agents_before_first_firing(tmp_path: Path
     by_codename = {agent["codename"]: agent for agent in agents}
 
     assert [agent["codename"] for agent in agents] == [
-        "batman",
-        "lucius",
+        "architect",
+        "senior-dev",
         "agent-cleanup",
         "memory-auto-promote",
         "shipped-summary-daily",
     ]
-    assert by_codename["batman"]["status"] == "idle"
-    assert by_codename["batman"]["last_summary"] == "no firings yet"
-    assert by_codename["batman"]["loaded"] is True
-    assert by_codename["batman"]["display_name"] == "Batman"
+    assert by_codename["architect"]["status"] == "idle"
+    assert by_codename["architect"]["last_summary"] == "no firings yet"
+    assert by_codename["architect"]["loaded"] is True
+    assert by_codename["architect"]["display_name"] == "Batman"
     assert by_codename["agent-cleanup"]["display_name"] == "Agent Cleanup"
     assert "cleanup" not in by_codename
     assert by_codename["memory-auto-promote"]["role_title"] == "Memory Judge"
     assert by_codename["shipped-summary-daily"]["role_title"] == "Shipping Digest"
-    assert "huntress" not in by_codename
+    assert "e2e-runner" not in by_codename
 
 
 def test_api_memory_candidates_promote_and_reject(
@@ -3416,10 +3416,10 @@ def test_draft_from_payload_filters_invalid_repo_slugs() -> None:
 def _write_batman_plan(tmp_path: Path, issue_num: int, *, title: str) -> Path:
     """Save a Batman plan exactly where ``draft_plan`` writes one.
 
-    ``batman-plans`` is the sibling of the reader's ``state`` root, so it lands
-    at ``tmp_path/batman-plans/{issue_num}-plan.md`` (state_root.parent).
+    ``architect-plans`` is the sibling of the reader's ``state`` root, so it
+    lands at ``tmp_path/architect-plans/{issue_num}-plan.md`` (state_root.parent).
     """
-    plans = tmp_path / "batman-plans"
+    plans = tmp_path / "architect-plans"
     plans.mkdir(parents=True, exist_ok=True)
     path = plans / f"{issue_num}-plan.md"
     path.write_text(
@@ -3451,10 +3451,10 @@ def test_plan_decision_approve_writes_batman_marker(tmp_path: Path) -> None:
     assert body["issue_number"] == 13
     assert body["status"] == "approved"
     # The marker lands exactly where Batman's file poll watches it:
-    # $ALFRED_HOME/batman/approvals/{issue_num}.approved (state_root.parent).
-    approved = tmp_path / "batman" / "approvals" / "13.approved"
-    rejected = tmp_path / "batman" / "approvals" / "13.rejected"
-    record = tmp_path / "batman" / "approval-decisions" / "13.json"
+    # $ALFRED_HOME/architect/approvals/{issue_num}.approved (state_root.parent).
+    approved = tmp_path / "architect" / "approvals" / "13.approved"
+    rejected = tmp_path / "architect" / "approvals" / "13.rejected"
+    record = tmp_path / "architect" / "approval-decisions" / "13.json"
     assert approved.exists()
     assert not rejected.exists()
     assert record.exists()
@@ -3477,7 +3477,7 @@ def test_plan_decision_decline_writes_rejected_marker_with_reason(
 
     assert response.status_code == 200
     assert response.json()["status"] == "declined"
-    rejected = tmp_path / "batman" / "approvals" / "21.rejected"
+    rejected = tmp_path / "architect" / "approvals" / "21.rejected"
     assert rejected.exists()
     # Batman reads the reject body as a short detail string; ours carries the
     # source and the operator reason.
@@ -3503,7 +3503,7 @@ def test_plan_decision_flip_clears_contradicting_marker(tmp_path: Path) -> None:
         json={"decision": "decline"},
     )
 
-    approvals = tmp_path / "batman" / "approvals"
+    approvals = tmp_path / "architect" / "approvals"
     assert not (approvals / "7.approved").exists()
     assert (approvals / "7.rejected").exists()
 
@@ -3583,7 +3583,7 @@ def test_plan_decision_refuses_non_batman_plan(tmp_path: Path) -> None:
 def test_decided_batman_plan_reflects_status_and_leaves_queue(tmp_path: Path) -> None:
     # A genuine Batman go/no-go plan reads as "draft" until decided. Once the
     # marker exists, the reader reflects approved/declined so the client's
-    # Needs-you filter (source==batman + waiting status) drops it.
+    # Needs-you filter (source==architect + waiting status) drops it.
     state = tmp_path / "state"
     state.mkdir(parents=True)
     _write_batman_plan(tmp_path, 13, title="Add CSV export")
@@ -3591,7 +3591,7 @@ def test_decided_batman_plan_reflects_status_and_leaves_queue(tmp_path: Path) ->
 
     before = reader.get_plan("13-plan")
     assert before is not None
-    assert before.source == "batman"
+    assert before.source == "architect"
     assert "draft" in before.status.lower()
 
     client = TestClient(create_app(reader))
@@ -3625,7 +3625,7 @@ def test_decided_batman_plan_stays_decided_after_marker_is_consumed(
         json={"decision": "approve"},
     )
     assert response.status_code == 200
-    marker = tmp_path / "batman" / "approvals" / "13.approved"
+    marker = tmp_path / "architect" / "approvals" / "13.approved"
     assert marker.exists()
 
     marker.unlink()

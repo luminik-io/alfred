@@ -3138,7 +3138,7 @@ def test_conversation_thread_reply_can_complete_agent_clarification(tmp_path: Pa
 
     assert reply.action == "intent_confirmation_posted"
     assert "Confirm reschedule" in poster.messages[-1]["text"]
-    assert "batman" in poster.messages[-1]["text"]
+    assert "architect" in poster.messages[-1]["text"]
     assert "daily@09:00" in poster.messages[-1]["text"]
 
 
@@ -3189,7 +3189,7 @@ def test_conversation_thread_schedule_asks_cadence_after_agent_reply(tmp_path: P
         }
     )
     assert agent_reply.action == "intent_clarify"
-    assert "What cadence should `batman` use?" in poster.messages[-1]["text"]
+    assert "What cadence should `architect` use?" in poster.messages[-1]["text"]
 
     cadence_reply = listener.handle_payload(
         {
@@ -3206,7 +3206,7 @@ def test_conversation_thread_schedule_asks_cadence_after_agent_reply(tmp_path: P
         }
     )
     assert cadence_reply.action == "intent_confirmation_posted"
-    assert "batman" in poster.messages[-1]["text"]
+    assert "architect" in poster.messages[-1]["text"]
     assert "daily@09:00" in poster.messages[-1]["text"]
 
 
@@ -3260,7 +3260,7 @@ def test_conversation_thread_schedule_accepts_agent_and_cadence_reply(
     )
 
     assert combined_reply.action == "intent_confirmation_posted"
-    assert "lucius" in poster.messages[-1]["text"]
+    assert "senior-dev" in poster.messages[-1]["text"]
     assert "20m" in poster.messages[-1]["text"]
 
 
@@ -3385,7 +3385,7 @@ def test_conversation_thread_schedule_preserves_cadence_before_agent_reply(
     )
 
     assert agent_reply.action == "intent_confirmation_posted"
-    assert "lucius" in poster.messages[-1]["text"]
+    assert "senior-dev" in poster.messages[-1]["text"]
     assert "20m" in poster.messages[-1]["text"]
 
 
@@ -3441,7 +3441,7 @@ def test_conversation_thread_schedule_normalizes_human_cadence_reply(
     )
 
     assert cadence_reply.action == "intent_confirmation_posted"
-    assert "batman" in poster.messages[-1]["text"]
+    assert "architect" in poster.messages[-1]["text"]
     assert "20m" in poster.messages[-1]["text"]
 
 
@@ -3497,7 +3497,7 @@ def test_conversation_thread_schedule_reasks_for_invalid_cadence_reply(
     )
 
     assert cadence_reply.action == "intent_clarify"
-    assert "What cadence should `batman` use?" in poster.messages[-1]["text"]
+    assert "What cadence should `architect` use?" in poster.messages[-1]["text"]
     assert "Confirm reschedule" not in poster.messages[-1]["text"]
 
 
@@ -3557,8 +3557,8 @@ def test_conversation_thread_reply_can_complete_dry_run_clarification(tmp_path: 
     )
 
     assert reply.action == "intent_dry_run_agent"
-    assert control.calls == ["dry-run batman"]
-    assert "I ran the dry-run for `batman`." in poster.messages[-1]["text"]
+    assert control.calls == ["dry-run architect"]
+    assert "I ran the dry-run for `architect`." in poster.messages[-1]["text"]
 
 
 def test_conversation_thread_completed_dry_run_allows_later_read_only_reply(
@@ -3622,7 +3622,7 @@ def test_conversation_thread_completed_dry_run_allows_later_read_only_reply(
     )
 
     assert reply.action == "conversation_control_runs"
-    assert control.calls == ["dry-run batman", "runs"]
+    assert control.calls == ["dry-run architect", "runs"]
     assert "Which agent should I dry-run?" not in poster.messages[-1]["text"]
 
 

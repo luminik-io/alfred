@@ -11,11 +11,21 @@ import { ROSTER_MANIFEST } from "./rosterManifest";
 // stages, left to right. The themed display name + role label come from a
 // separate theme mapping (see agentThemes.ts); this module is identity-free.
 
+// Canonical role slugs, matching the shared roster manifest (lib/roster_manifest.json).
+// Each is both an agent identity and a pipeline lane. The Batman-cast codenames
+// (Lucius, Drake, ...) are display names layered on top by the theme mapping;
+// this axis is identity-free.
 export type WorkflowRole =
   | "triage"
+  | "spec-planner"
+  | "planner"
   | "architect"
-  | "implement"
-  | "review"
+  | "senior-dev"
+  | "test-engineer"
+  | "fixer"
+  | "reviewer"
+  | "e2e-runner"
+  | "ops-watch"
   | "ship"
   | "ops";
 
@@ -23,10 +33,16 @@ export type WorkflowRole =
 // canvas lays out and the order the list view groups by.
 export const WORKFLOW_ROLES: readonly WorkflowRole[] = [
   "triage",
+  "spec-planner",
+  "planner",
   "architect",
-  "implement",
-  "review",
+  "senior-dev",
+  "test-engineer",
+  "fixer",
+  "reviewer",
+  "e2e-runner",
   "ship",
+  "ops-watch",
   "ops",
 ] as const;
 
@@ -38,9 +54,15 @@ export const FALLBACK_ROLE: WorkflowRole = "ops";
 // names, not agent names, so they are identical across every roster theme.
 export const ROLE_LANE_LABEL: Record<WorkflowRole, string> = {
   triage: "Triage & plan",
+  "spec-planner": "Spec planning",
+  planner: "Planning",
   architect: "Architect",
-  implement: "Implement",
-  review: "Review",
+  "senior-dev": "Implement",
+  "test-engineer": "Tests",
+  fixer: "Review fixes",
+  reviewer: "Review",
+  "e2e-runner": "End-to-end",
+  "ops-watch": "Ops watch",
   ship: "Ship",
   ops: "Ops & health",
 };
@@ -51,10 +73,10 @@ export const ROLE_LANE_LABEL: Record<WorkflowRole, string> = {
 // to a role automatically wires it into the flow without touching a name list.
 export const ROLE_EDGES: readonly [WorkflowRole, WorkflowRole][] = [
   ["triage", "architect"],
-  ["triage", "implement"],
-  ["architect", "implement"],
-  ["implement", "review"],
-  ["review", "ship"],
+  ["triage", "senior-dev"],
+  ["architect", "senior-dev"],
+  ["senior-dev", "reviewer"],
+  ["reviewer", "ship"],
   ["ship", "ops"],
 ];
 
@@ -63,17 +85,17 @@ export const ROLE_EDGES: readonly [WorkflowRole, WorkflowRole][] = [
 // of inferring it from lane order alone. Keyed by "source->target" role pair.
 export const ROLE_EDGE_LABEL: Record<string, string> = {
   "triage->architect": "scope",
-  "triage->implement": "approved plan",
-  "architect->implement": "design",
-  "implement->review": "pull request",
-  "review->ship": "approved",
+  "triage->senior-dev": "approved plan",
+  "architect->senior-dev": "design",
+  "senior-dev->reviewer": "pull request",
+  "reviewer->ship": "approved",
   "ship->ops": "merged",
 };
 
 // The single handoff that carries the human approval gate (the Drake gate): a
 // plan only becomes implementation work once the operator approves it. Rendered
 // distinctly so the most important interaction in Alfred reads at a glance.
-export const APPROVAL_GATE_ROLE_EDGE = "triage->implement";
+export const APPROVAL_GATE_ROLE_EDGE = "triage->senior-dev";
 
 // Name-keyed role hints for the default fleet. The runtime does not always send
 // a machine-readable role for every agent, so we seed the canonical codenames
@@ -87,15 +109,15 @@ export const CODENAME_ROLE_HINTS: Record<string, WorkflowRole> = Object.fromEntr
 // intentionally checked before fuzzy keyword buckets so strings like "code map
 // refresh" stay in ops instead of matching the generic "code" implement bucket.
 const ROLE_TITLE_HINTS: Record<string, WorkflowRole> = {
-  "feature dev": "implement",
-  "issue planner": "triage",
-  "test coverage": "implement",
-  "pr review": "review",
-  "ci repair": "implement",
+  "feature dev": "senior-dev",
+  "issue planner": "planner",
+  "test coverage": "test-engineer",
+  "pr review": "reviewer",
+  "ci repair": "fixer",
   "bug triage": "triage",
   "cross repo architect": "architect",
-  "staging smoke runner": "ops",
-  "ops morning": "ops",
+  "staging smoke runner": "e2e-runner",
+  "ops morning": "ops-watch",
   "pr automerge": "ship",
   "agent cleanup": "ops",
   "memory harvest": "ops",
@@ -113,11 +135,11 @@ const ROLE_TITLE_HINTS: Record<string, WorkflowRole> = {
 // when the runtime reports one but the codename is unknown to us. Ordered by
 // specificity so "reviewer" wins over a generic "engineer" mention.
 const ROLE_KEYWORDS: ReadonlyArray<[WorkflowRole, readonly string[]]> = [
-  ["review", ["review", "reviewer", "qa", "quality", "approve", "gatekeep"]],
+  ["reviewer", ["review", "reviewer", "qa", "quality", "approve", "gatekeep"]],
   ["ship", ["ship", "merge", "release", "deploy", "publish"]],
   ["architect", ["architect", "plan", "design", "spec", "lead"]],
   ["triage", ["triage", "intake", "groom", "scope", "manager", "product"]],
-  ["implement", ["implement", "develop", "engineer", "build", "code", "fix"]],
+  ["senior-dev", ["implement", "develop", "engineer", "build", "code", "fix"]],
   [
     "ops",
     [

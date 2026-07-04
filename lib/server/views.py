@@ -1045,7 +1045,7 @@ def register_routes(app: FastAPI) -> None:
         plan = request.app.state.reader.get_plan(plan_id)
         if plan is None:
             return JSONResponse({"error": "plan not found"}, status_code=404)
-        if plan.source != "batman":
+        if plan.source != "architect":
             return JSONResponse(
                 {"error": "only Batman go/no-go plans can be decided here"},
                 status_code=400,

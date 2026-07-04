@@ -34,39 +34,39 @@ describe("agentProfile under a custom theme", () => {
   // than replace it with a Batman default or a titleized codename.
   it("keeps runtime labels for an agent with no custom override", () => {
     const profile = agentProfile(
-      row("lucius", { display_name: "Q Branch", role_title: "Gadget lead" }),
+      row("senior-dev", { display_name: "Q Branch", role_title: "Gadget lead" }),
       undefined,
       "custom",
-      { names: { batman: "Sherlock" }, roles: { batman: "Lead detective" } },
+      { names: { architect: "Sherlock" }, roles: { architect: "Lead detective" } },
     );
-    // lucius was not named in the custom map, so the server labels still win.
+    // senior-dev was not named in the custom map, so the server labels still win.
     expect(profile.name).toBe("Q Branch");
     expect(profile.roleLabel).toBe("Gadget lead");
   });
 
   it("applies the custom override only to the named agent", () => {
     const custom = {
-      names: { batman: "Sherlock" },
-      roles: { batman: "Lead detective" },
+      names: { architect: "Sherlock" },
+      roles: { architect: "Lead detective" },
     };
-    const batman = agentProfile(
-      row("batman", { display_name: "Server Batman", role_title: "Server role" }),
+    const architect = agentProfile(
+      row("architect", { display_name: "Server Batman", role_title: "Server role" }),
       undefined,
       "custom",
       custom,
     );
     // The named agent takes the operator's authored name and role label, which
     // override even a server-provided label.
-    expect(batman.name).toBe("Sherlock");
-    expect(batman.roleLabel).toBe("Lead detective");
+    expect(architect.name).toBe("Sherlock");
+    expect(architect.roleLabel).toBe("Lead detective");
   });
 
   it("keeps the runtime name when only the role is customized", () => {
     const profile = agentProfile(
-      row("lucius", { display_name: "Q Branch", role_title: "Gadget lead" }),
+      row("senior-dev", { display_name: "Q Branch", role_title: "Gadget lead" }),
       undefined,
       "custom",
-      { names: {}, roles: { lucius: "Quartermaster" } },
+      { names: {}, roles: { "senior-dev": "Quartermaster" } },
     );
     // Only the role was overridden, so the runtime name is preserved.
     expect(profile.name).toBe("Q Branch");
@@ -82,11 +82,11 @@ describe("agentProfile under a preset roster theme", () => {
   // fleet agent, or picking Transformers/Justice League changes nothing.
   it("re-skins a known fleet agent with the selected preset name", () => {
     const profile = agentProfile(
-      row("lucius", { display_name: "Lucius", role_title: "Senior Developer" }),
+      row("senior-dev", { display_name: "Lucius", role_title: "Senior Developer" }),
       undefined,
       "transformers",
     );
-    // lucius -> Ironhide under Transformers (see lib/roster_manifest.json).
+    // senior-dev -> Ironhide under Transformers (see lib/roster_manifest.json).
     expect(profile.name).toBe("Ironhide");
     // Preset role labels come from the manifest, not the runtime's Batman label.
     expect(profile.roleLabel).toBe("Senior developer");
@@ -94,13 +94,13 @@ describe("agentProfile under a preset roster theme", () => {
 
   it("re-skins a known fleet agent under Justice League", () => {
     const profile = agentProfile(
-      row("batman", { display_name: "Batman", role_title: "Architect" }),
+      row("architect", { display_name: "Batman", role_title: "Architect" }),
       undefined,
       "justice-league",
     );
-    // batman stays "Batman" under Justice League, but a re-mapped agent changes.
+    // architect stays "Batman" under Justice League, but a re-mapped agent changes.
     const flash = agentProfile(
-      row("robin", { display_name: "Robin", role_title: "Bug Triage" }),
+      row("triage", { display_name: "Robin", role_title: "Bug Triage" }),
       undefined,
       "justice-league",
     );
@@ -110,7 +110,7 @@ describe("agentProfile under a preset roster theme", () => {
 
   it("keeps the shipped names under the default Batman theme", () => {
     const profile = agentProfile(
-      row("lucius", { display_name: "Lucius", role_title: "Senior Developer" }),
+      row("senior-dev", { display_name: "Lucius", role_title: "Senior Developer" }),
       undefined,
       "batman",
     );

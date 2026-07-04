@@ -29,7 +29,7 @@ def load_bin_module(name: str, monkeypatch: pytest.MonkeyPatch):
 
 
 def test_robin_rejects_triages_outside_candidate_set(monkeypatch):
-    robin = load_bin_module("robin.py", monkeypatch)
+    robin = load_bin_module("triage.py", monkeypatch)
     candidates = [
         ("backend", {"number": 10}),
         ("frontend", {"number": 20}),
@@ -55,7 +55,7 @@ def test_robin_rejects_triages_outside_candidate_set(monkeypatch):
 
 
 def test_robin_parse_triage_payload_accepts_fenced_json_with_trailing_reasoning(monkeypatch):
-    robin = load_bin_module("robin.py", monkeypatch)
+    robin = load_bin_module("triage.py", monkeypatch)
     payload = """```json
 {
   "triages": [
@@ -73,7 +73,7 @@ Reasoning: specs drift is never security P0.
 
 
 def test_robin_parse_triage_payload_accepts_prose_before_fenced_json(monkeypatch):
-    robin = load_bin_module("robin.py", monkeypatch)
+    robin = load_bin_module("triage.py", monkeypatch)
     payload = """All five are specs-drift issues.
 
 ```json
@@ -91,7 +91,7 @@ def test_robin_parse_triage_payload_accepts_prose_before_fenced_json(monkeypatch
 
 
 def test_robin_parse_triage_payload_skips_unrelated_json_before_triages(monkeypatch):
-    robin = load_bin_module("robin.py", monkeypatch)
+    robin = load_bin_module("triage.py", monkeypatch)
     payload = """Debug note: {"note": "not the triage payload"}
 
 ```json
@@ -110,7 +110,7 @@ def test_robin_parse_triage_payload_skips_unrelated_json_before_triages(monkeypa
 
 def test_robin_skips_feature_and_bundle_candidates(monkeypatch):
     monkeypatch.setenv("GH_ORG", "myorg")
-    robin = load_bin_module("robin.py", monkeypatch)
+    robin = load_bin_module("triage.py", monkeypatch)
     monkeypatch.setattr(robin, "TRIAGE_REPOS", ["backend"])
     monkeypatch.setattr(robin, "_load_touched", lambda: set())
     monkeypatch.setattr(robin, "is_repo_paused", lambda repo: False)
@@ -162,7 +162,7 @@ def test_robin_skips_feature_and_bundle_candidates(monkeypatch):
 
 
 def test_robin_strips_implement_when_current_labels_are_gated(monkeypatch):
-    robin = load_bin_module("robin.py", monkeypatch)
+    robin = load_bin_module("triage.py", monkeypatch)
 
     labels, gate_labels = robin.labels_to_add_for_triage(
         "severity:p1",
@@ -175,7 +175,7 @@ def test_robin_strips_implement_when_current_labels_are_gated(monkeypatch):
 
 
 def test_robin_keeps_implement_for_ungated_bug(monkeypatch):
-    robin = load_bin_module("robin.py", monkeypatch)
+    robin = load_bin_module("triage.py", monkeypatch)
 
     labels, gate_labels = robin.labels_to_add_for_triage(
         "severity:p1",
@@ -188,7 +188,7 @@ def test_robin_keeps_implement_for_ungated_bug(monkeypatch):
 
 
 def test_robin_keeps_implement_for_product_labels(monkeypatch):
-    robin = load_bin_module("robin.py", monkeypatch)
+    robin = load_bin_module("triage.py", monkeypatch)
 
     labels, gate_labels = robin.labels_to_add_for_triage(
         "severity:p1",
@@ -201,7 +201,7 @@ def test_robin_keeps_implement_for_product_labels(monkeypatch):
 
 
 def test_robin_refetch_failure_strips_implement(monkeypatch):
-    robin = load_bin_module("robin.py", monkeypatch)
+    robin = load_bin_module("triage.py", monkeypatch)
 
     labels = robin.labels_to_add_when_refetch_fails(
         "severity:p1",
@@ -268,7 +268,7 @@ def test_automerge_blocks_review_for_stale_head_even_when_commit_is_old(monkeypa
 
 
 def test_rasalghul_attaches_reviewed_head_sha(monkeypatch):
-    rasalghul = load_bin_module("rasalghul.py", monkeypatch)
+    rasalghul = load_bin_module("reviewer.py", monkeypatch)
     body = f"{rasalghul.REVIEW_AUTHOR_PREFIX}\n\nShip-ready: yes\n"
 
     out = rasalghul.attach_review_head_sha(body, "ABC1234")
@@ -278,7 +278,7 @@ def test_rasalghul_attaches_reviewed_head_sha(monkeypatch):
 
 
 def test_rasalghul_diff_too_large_review_stamps_head_sha(monkeypatch):
-    rasalghul = load_bin_module("rasalghul.py", monkeypatch)
+    rasalghul = load_bin_module("reviewer.py", monkeypatch)
 
     out = rasalghul.diff_too_large_review_body(5039, 4000, "ABC1234")
 
@@ -289,7 +289,7 @@ def test_rasalghul_diff_too_large_review_stamps_head_sha(monkeypatch):
 
 
 def test_lucius_wip_salvage_pr_failure_releases_to_retry_queue(monkeypatch):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     releases = []
     monkeypatch.setattr(lucius, "release_issue", lambda *a, **kw: releases.append((a, kw)))
 
@@ -299,7 +299,7 @@ def test_lucius_wip_salvage_pr_failure_releases_to_retry_queue(monkeypatch):
         (
             ("backend", 42),
             {
-                "codename": "lucius",
+                "codename": "senior-dev",
                 "firing_id": "fid-1",
                 "outcome": "partial-pr-create-failed",
             },
@@ -308,7 +308,7 @@ def test_lucius_wip_salvage_pr_failure_releases_to_retry_queue(monkeypatch):
 
 
 def test_lucius_wip_salvage_success_transitions_to_pr_open(monkeypatch):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     releases = []
     monkeypatch.setattr(lucius, "release_issue", lambda *a, **kw: releases.append((a, kw)))
 
@@ -319,7 +319,7 @@ def test_lucius_wip_salvage_success_transitions_to_pr_open(monkeypatch):
 
 
 def test_lucius_wraps_issue_payload_as_untrusted(monkeypatch):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     issue = {
         "number": 42,
         "url": "https://github.com/acme/app/issues/42",
@@ -341,7 +341,7 @@ def test_lucius_wraps_issue_payload_as_untrusted(monkeypatch):
 
 
 def test_lucius_issue_author_trust_fails_closed(monkeypatch):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     monkeypatch.setattr(
         lucius,
         "fetch_issue_author_trust",
@@ -358,7 +358,7 @@ def test_lucius_issue_author_trust_fails_closed(monkeypatch):
 
 
 def test_lucius_issue_author_trust_allows_repo_members(monkeypatch):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     monkeypatch.setattr(
         lucius,
         "fetch_issue_author_trust",
@@ -375,8 +375,8 @@ def test_lucius_issue_author_trust_allows_repo_members(monkeypatch):
 
 
 def test_lucius_existing_authored_pr_removes_issue_from_implement_queue(monkeypatch):
-    monkeypatch.setenv("ALFRED_LUCIUS_REPOS", "backend")
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_REPOS", "backend")
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     edits = []
     monkeypatch.setattr(lucius, "is_repo_paused", lambda repo: False)
     monkeypatch.setattr(
@@ -411,8 +411,8 @@ def test_lucius_existing_authored_pr_removes_issue_from_implement_queue(monkeypa
 
 
 def test_lucius_pick_issue_accepts_batman_bundle_child(monkeypatch):
-    monkeypatch.setenv("ALFRED_LUCIUS_REPOS", "backend")
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_REPOS", "backend")
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     monkeypatch.setattr(lucius, "is_repo_paused", lambda repo: False)
     monkeypatch.setattr(lucius, "issue_has_open_dependencies", lambda repo, issue: False)
     monkeypatch.setattr(lucius, "find_open_authored_pr_for_issue", lambda repo, issue: None)
@@ -443,7 +443,7 @@ def test_lucius_pick_issue_accepts_batman_bundle_child(monkeypatch):
 
 
 def test_lucius_unknown_author_trust_moves_issue_out_of_queue(monkeypatch):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
 
     class FakeEvents:
         def __init__(self):
@@ -528,7 +528,7 @@ def test_lock_pid_identity_probe_failure_is_unknown(monkeypatch, tmp_path):
 
 
 def test_drake_daily_cap_query_limit_tracks_configured_cap(monkeypatch):
-    drake = load_bin_module("drake.py", monkeypatch)
+    drake = load_bin_module("planner.py", monkeypatch)
     calls = []
     monkeypatch.setattr(drake, "DAILY_ISSUE_CAP", 200)
     monkeypatch.setattr(drake, "gh_json", lambda cmd, default=None: calls.append(cmd) or [])
@@ -541,7 +541,7 @@ def test_drake_daily_cap_query_limit_tracks_configured_cap(monkeypatch):
 
 def test_drake_prompt_uses_load_prompt_substitution(monkeypatch, tmp_path):
     monkeypatch.setenv("GH_ORG", "luminik")
-    drake = load_bin_module("drake.py", monkeypatch)
+    drake = load_bin_module("planner.py", monkeypatch)
     prompt = tmp_path / "planner.md"
     prompt.write_text("${AGENT_CODENAME} ${GH_ORG} ${PLANNER_REPOS} ${FEATURE_DEV_CODENAME}")
     monkeypatch.setattr(drake, "GH_ORG", "luminik")
@@ -552,12 +552,12 @@ def test_drake_prompt_uses_load_prompt_substitution(monkeypatch, tmp_path):
 
     text = drake.build_prompt()
 
-    assert text == "Drake luminik backend,frontend Custom-Lucius\nstate-context"
+    assert text == "Planner luminik backend,frontend Custom-Lucius\nstate-context"
 
 
 def test_lucius_build_prompt_includes_operator_prompt(monkeypatch, tmp_path):
     monkeypatch.setenv("GH_ORG", "luminik")
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     prompt = tmp_path / "lucius.md"
     prompt.write_text("Read specs from ${WORKSPACE_ROOT}/product/specs for #${ISSUE_NUMBER}.")
     monkeypatch.setattr(lucius, "PROMPT_PATH", prompt)
@@ -580,7 +580,7 @@ def test_lucius_build_prompt_includes_operator_prompt(monkeypatch, tmp_path):
 
 
 def test_lucius_refreshes_pre_push_after_preflight_checkout_sync(monkeypatch):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     calls: list[tuple[str, object]] = []
 
     monkeypatch.setenv("ALFRED_DOCTOR", "1")
@@ -609,7 +609,7 @@ def test_lucius_refreshes_pre_push_after_preflight_checkout_sync(monkeypatch):
 
 
 def test_nightwing_refreshes_pre_push_after_preflight_checkout_sync(monkeypatch):
-    nightwing = load_bin_module("nightwing.py", monkeypatch)
+    nightwing = load_bin_module("fixer.py", monkeypatch)
     calls: list[tuple[str, object]] = []
 
     monkeypatch.setenv("ALFRED_DOCTOR", "1")
@@ -637,7 +637,7 @@ def test_nightwing_refreshes_pre_push_after_preflight_checkout_sync(monkeypatch)
 
 
 def test_lucius_infers_node_pre_push_from_package_json(monkeypatch, tmp_path):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "package.json").write_text(
@@ -660,7 +660,7 @@ def test_lucius_infers_node_pre_push_from_package_json(monkeypatch, tmp_path):
 
 
 def test_lucius_bun_pre_push_runs_package_test_script(monkeypatch, tmp_path):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "package.json").write_text(
@@ -676,7 +676,7 @@ def test_lucius_bun_pre_push_runs_package_test_script(monkeypatch, tmp_path):
 
 
 def test_lucius_npm_pre_push_does_not_create_lockfile(monkeypatch, tmp_path):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "package.json").write_text(
@@ -692,7 +692,7 @@ def test_lucius_npm_pre_push_does_not_create_lockfile(monkeypatch, tmp_path):
 
 def test_lucius_prefers_gradle_for_backend_suffix_over_package_json(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     repo = tmp_path / "workspace" / "service"
     repo.mkdir(parents=True)
     (repo / "package.json").write_text(
@@ -710,7 +710,7 @@ def test_lucius_prefers_gradle_for_backend_suffix_over_package_json(monkeypatch,
 
 
 def test_lucius_dependency_lockfile_drift_detects_dependency_change(monkeypatch, tmp_path):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     (tmp_path / "package.json").write_text(
         json.dumps({"dependencies": {"niyora-sync": "1.0.0"}}),
         encoding="utf-8",
@@ -731,7 +731,7 @@ def test_lucius_dependency_lockfile_drift_detects_dependency_change(monkeypatch,
 
 
 def test_lucius_nested_lockfile_drift_requires_local_lockfile(monkeypatch, tmp_path):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     package_dir = tmp_path / "packages" / "widget"
     package_dir.mkdir(parents=True)
     (package_dir / "package.json").write_text(
@@ -760,7 +760,7 @@ def test_lucius_nested_lockfile_drift_requires_local_lockfile(monkeypatch, tmp_p
 
 
 def test_lucius_nested_lockfile_drift_treats_deleted_local_lock_as_missing(monkeypatch, tmp_path):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     package_dir = tmp_path / "packages" / "widget"
     package_dir.mkdir(parents=True)
     (package_dir / "package.json").write_text(
@@ -797,7 +797,7 @@ def test_lucius_nested_lockfile_drift_treats_deleted_local_lock_as_missing(monke
 
 
 def test_lucius_git_helpers_use_worktree_base_branch(monkeypatch, tmp_path):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     commands: list[list[str]] = []
 
     def fake_run(cmd, **_kwargs):
@@ -832,7 +832,7 @@ def test_lucius_git_helpers_use_worktree_base_branch(monkeypatch, tmp_path):
 
 
 def test_lucius_lockfile_drift_ignores_upstream_only_lockfile_change(monkeypatch, tmp_path):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     commands: list[list[str]] = []
     (tmp_path / "package.json").write_text(
         json.dumps({"dependencies": {"niyora-sync": "1.0.0"}}),
@@ -876,7 +876,7 @@ def test_lucius_lockfile_drift_ignores_upstream_only_lockfile_change(monkeypatch
 
 
 def test_lucius_push_blocks_when_pre_push_fails(monkeypatch, tmp_path):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     releases: list[dict] = []
     posts: list[str] = []
 
@@ -923,7 +923,7 @@ def test_lucius_push_blocks_when_pre_push_fails(monkeypatch, tmp_path):
         {
             "repo": "mobile",
             "issue": 83,
-            "codename": "lucius",
+            "codename": "senior-dev",
             "firing_id": "fid-1",
             "outcome": "pre-push-checks-failed",
         }
@@ -932,7 +932,7 @@ def test_lucius_push_blocks_when_pre_push_fails(monkeypatch, tmp_path):
 
 
 def test_lucius_dry_run_reports_pre_push_without_executing(monkeypatch, tmp_path):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     logs: list[tuple[str, str]] = []
     monkeypatch.setattr(lucius, "is_dry_run", lambda: True)
     monkeypatch.setattr(lucius, "PRE_PUSH", {"backend": "./gradlew check"})
@@ -956,7 +956,7 @@ def test_lucius_dry_run_reports_pre_push_without_executing(monkeypatch, tmp_path
 
 
 def test_lucius_partial_salvage_push_skips_pre_push_but_runs_workflow_gate(monkeypatch, tmp_path):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     pushed: list[tuple[Path, str]] = []
     validations: list[tuple[Path, str | None]] = []
 
@@ -994,7 +994,7 @@ def test_lucius_partial_salvage_push_skips_pre_push_but_runs_workflow_gate(monke
 
 
 def test_lucius_partial_salvage_preserves_invalid_workflow_changes(monkeypatch, tmp_path):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     releases: list[dict] = []
     posts: list[str] = []
 
@@ -1043,7 +1043,7 @@ def test_lucius_partial_salvage_preserves_invalid_workflow_changes(monkeypatch, 
         {
             "repo": "mobile",
             "issue": 83,
-            "codename": "lucius",
+            "codename": "senior-dev",
             "firing_id": "fid-1",
             "outcome": "workflow-validation-failed",
         }
@@ -1052,8 +1052,8 @@ def test_lucius_partial_salvage_preserves_invalid_workflow_changes(monkeypatch, 
 
 
 def test_bane_workflow_validation_failure_counts_as_failure(monkeypatch, tmp_path):
-    monkeypatch.setenv("ALFRED_BANE_REPOS", "backend")
-    bane = load_bin_module("bane.py", monkeypatch)
+    monkeypatch.setenv("ALFRED_TEST_ENGINEER_REPOS", "backend")
+    bane = load_bin_module("test-engineer.py", monkeypatch)
     increments: list[dict] = []
     posts: list[str] = []
 
@@ -1121,11 +1121,11 @@ def test_bane_workflow_validation_failure_counts_as_failure(monkeypatch, tmp_pat
         {"firings_today": 1, "turns_today": 3, "cost_usd_today": 0.12},
         {"failures_today": 1, "consecutive_failures": 1},
     ]
-    assert posts and "[BANE-WORKFLOW-VALIDATION-FAILED]" in posts[0]
+    assert posts and "[TEST-ENGINEER-WORKFLOW-VALIDATION-FAILED]" in posts[0]
 
 
 def test_lucius_dependency_check_preserves_cross_org_refs(monkeypatch):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     monkeypatch.setattr(lucius, "GH_ORG", "acme")
     calls: list[list[str]] = []
 
@@ -1147,7 +1147,7 @@ def test_lucius_dependency_check_preserves_cross_org_refs(monkeypatch):
 
 
 def test_lucius_dependency_lookup_failure_warns_once_and_blocks(monkeypatch, tmp_path):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     monkeypatch.setattr(lucius, "GH_ORG", "acme")
     monkeypatch.setattr(
         lucius,
@@ -1172,7 +1172,7 @@ def test_lucius_dependency_lookup_failure_warns_once_and_blocks(monkeypatch, tmp
     assert lucius.issue_has_open_dependencies("backend", issue) is True
     assert posts == [
         (
-            "[LUCIUS-DEPENDENCY-LOOKUP-FAILED] holding backend#42; "
+            "[SENIOR-DEV-DEPENDENCY-LOOKUP-FAILED] holding backend#42; "
             "could not resolve dependency acme/backend#6",
             "warn",
         )
@@ -1180,7 +1180,7 @@ def test_lucius_dependency_lookup_failure_warns_once_and_blocks(monkeypatch, tmp
 
 
 def test_lucius_dependency_lookup_failure_suppresses_when_ledger_write_fails(monkeypatch):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
 
     class FailingLedger:
         parent = SimpleNamespace(mkdir=lambda *a, **kw: None)
@@ -1199,7 +1199,7 @@ def test_lucius_dependency_lookup_failure_suppresses_when_ledger_write_fails(mon
 def test_lucius_dependency_lookup_failure_treats_non_object_ledger_as_corrupt(
     monkeypatch, tmp_path
 ):
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     ledger = tmp_path / "dependency-lookup-warnings.json"
     ledger.write_text("[]", encoding="utf-8")
     monkeypatch.setattr(lucius, "DEPENDENCY_WARNING_LEDGER", ledger)
@@ -1211,7 +1211,7 @@ def test_lucius_dependency_lookup_failure_treats_non_object_ledger_as_corrupt(
 
 
 def test_nightwing_workflow_validation_failure_posts_slack(monkeypatch):
-    nightwing = load_bin_module("nightwing.py", monkeypatch)
+    nightwing = load_bin_module("fixer.py", monkeypatch)
     posts: list[tuple[str, str | None]] = []
     events: list[tuple[str, dict]] = []
     validation = SimpleNamespace(
@@ -1244,7 +1244,7 @@ def test_nightwing_workflow_validation_failure_posts_slack(monkeypatch):
     assert "workflow validation failed for comment 456" in reason
     assert posts == [
         (
-            "[NIGHTWING-WORKFLOW-VALIDATION-FAILED] PR 123 comment 456; "
+            "[FIXER-WORKFLOW-VALIDATION-FAILED] PR 123 comment 456; "
             "files=.github/workflows/ci.yml; recovery_ref=recovery/nightwing. invalid workflow",
             "warn",
         )
@@ -1263,8 +1263,8 @@ def test_nightwing_workflow_validation_failure_posts_slack(monkeypatch):
 
 def test_nightwing_validation_failure_compares_to_pr_head_and_exits_cleanly(monkeypatch, tmp_path):
     monkeypatch.setenv("GH_ORG", "acme")
-    monkeypatch.setenv("ALFRED_NIGHTWING_REPOS", "service-web")
-    nightwing = load_bin_module("nightwing.py", monkeypatch)
+    monkeypatch.setenv("ALFRED_FIXER_REPOS", "service-web")
+    nightwing = load_bin_module("fixer.py", monkeypatch)
     wt = tmp_path / "wt"
     wt.mkdir()
     validation_bases: list[str | None] = []
@@ -1365,7 +1365,7 @@ def test_nightwing_validation_failure_compares_to_pr_head_and_exits_cleanly(monk
 
 
 def test_huntress_redacts_logs_and_creates_private_run_dir(monkeypatch):
-    huntress = load_bin_module("huntress.py", monkeypatch)
+    huntress = load_bin_module("e2e-runner.py", monkeypatch)
 
     assert huntress.redact_text("email=a@example.com password=s3cr3t", ["s3cr3t"]) == (
         "email=a@example.com password=[REDACTED]"
@@ -1380,8 +1380,8 @@ def test_huntress_redacts_logs_and_creates_private_run_dir(monkeypatch):
 
 
 def test_huntress_idles_without_target_before_preflight(monkeypatch, capsys):
-    monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
-    huntress = load_bin_module("huntress.py", monkeypatch)
+    monkeypatch.delenv("ALFRED_E2E_RUNNER_TARGET_URL", raising=False)
+    huntress = load_bin_module("e2e-runner.py", monkeypatch)
     monkeypatch.setattr(huntress, "TARGET_URL", "")
     monkeypatch.setattr(huntress, "with_lock", lambda agent: None)
     monkeypatch.setattr(huntress, "doctor_mode", lambda: False)
@@ -1393,11 +1393,11 @@ def test_huntress_idles_without_target_before_preflight(monkeypatch, capsys):
 
     assert huntress.main() == 0
 
-    assert "[HUNTRESS-IDLE] no target URL configured" in capsys.readouterr().out
+    assert "[E2E-RUNNER-IDLE] no target URL configured" in capsys.readouterr().out
 
 
 def test_gordon_raises_on_aws_failure(monkeypatch):
-    gordon = load_bin_module("gordon.py", monkeypatch)
+    gordon = load_bin_module("ops-watch.py", monkeypatch)
 
     class Result:
         returncode = 1
@@ -1411,8 +1411,8 @@ def test_gordon_raises_on_aws_failure(monkeypatch):
 
 
 def test_gordon_idles_without_cluster_before_preflight(monkeypatch, capsys):
-    monkeypatch.delenv("ALFRED_GORDON_ECS_CLUSTER", raising=False)
-    gordon = load_bin_module("gordon.py", monkeypatch)
+    monkeypatch.delenv("ALFRED_OPS_WATCH_ECS_CLUSTER", raising=False)
+    gordon = load_bin_module("ops-watch.py", monkeypatch)
     monkeypatch.setattr(gordon, "STAGING_CLUSTER", "")
     monkeypatch.setattr(gordon, "with_lock", lambda agent: None)
     monkeypatch.setattr(gordon, "doctor_mode", lambda: False)
@@ -1424,11 +1424,11 @@ def test_gordon_idles_without_cluster_before_preflight(monkeypatch, capsys):
 
     assert gordon.main() == 0
 
-    assert "[GORDON-IDLE] no ECS cluster configured" in capsys.readouterr().out
+    assert "[OPS-WATCH-IDLE] no ECS cluster configured" in capsys.readouterr().out
 
 
 def test_gordon_raises_on_ecs_service_failures(monkeypatch):
-    gordon = load_bin_module("gordon.py", monkeypatch)
+    gordon = load_bin_module("ops-watch.py", monkeypatch)
     monkeypatch.setattr(gordon, "STAGING_CLUSTER", "cluster")
     monkeypatch.setattr(gordon, "SERVICE_TO_REPO", {"svc": ("org/repo", "main")})
     monkeypatch.setattr(
@@ -1442,7 +1442,7 @@ def test_gordon_raises_on_ecs_service_failures(monkeypatch):
 
 
 def test_gordon_raises_when_requested_service_missing(monkeypatch):
-    gordon = load_bin_module("gordon.py", monkeypatch)
+    gordon = load_bin_module("ops-watch.py", monkeypatch)
     monkeypatch.setattr(gordon, "STAGING_CLUSTER", "cluster")
     monkeypatch.setattr(gordon, "SERVICE_TO_REPO", {"svc": ("org/repo", "main")})
     monkeypatch.setattr(gordon, "_aws_json", lambda *a, **kw: {"services": [], "failures": []})
@@ -1452,7 +1452,7 @@ def test_gordon_raises_when_requested_service_missing(monkeypatch):
 
 
 def test_gordon_reports_drift_when_optional_sentry_fetch_fails(monkeypatch):
-    gordon = load_bin_module("gordon.py", monkeypatch)
+    gordon = load_bin_module("ops-watch.py", monkeypatch)
 
     class FakeEvents:
         def __init__(self, *a, **kw):

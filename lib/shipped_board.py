@@ -91,14 +91,24 @@ _DEFAULT_AGENT_SHIPPED_LABELS = (
 _DEFAULT_AGENT_BRANCH_PREFIXES = (
     "alfred/",
     "alfred-nightly/",
+    "architect/",
     "automerge/",
     "bane/",
     "batman/",
     "damian/",
+    "e2e-runner/",
+    "fixer/",
     "lucius/",
     "nightwing/",
+    "ops-watch/",
+    "planner/",
     "rasalghul/",
+    "reviewer/",
     "robin/",
+    "senior-dev/",
+    "spec-planner/",
+    "test-engineer/",
+    "triage/",
 )
 
 

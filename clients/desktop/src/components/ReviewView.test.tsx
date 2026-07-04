@@ -388,7 +388,7 @@ describe("ReviewView", () => {
         status: {
           agents: [
             agent({
-              codename: "lucius",
+              codename: "senior-dev",
               display_name: "Lucius",
               role_title: "Senior Developer",
               purpose: "Ships scoped implementation issues as pull requests.",

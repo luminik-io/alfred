@@ -45,7 +45,7 @@ from agent_runner import (
     with_lock,
 )
 
-AGENT = os.environ.get("AGENT_CODENAME", "rasalghul")
+AGENT = os.environ.get("AGENT_CODENAME", "reviewer")
 RASALGHUL_ENGINE = agent_engine(AGENT, default="hybrid")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 
@@ -56,22 +56,22 @@ PREFLIGHT = PreflightSpec(
 )
 
 REVIEW_REPOS = [
-    r.strip() for r in os.environ.get("ALFRED_RASALGHUL_REPOS", "").split(",") if r.strip()
+    r.strip() for r in os.environ.get("ALFRED_REVIEWER_REPOS", "").split(",") if r.strip()
 ]
 
 # Specs / docs PRs are markdown-heavy; line count != review effort.
 # Operator can name the docs-style repos to get a higher diff cap; default cap
 # applies to everything else.
 SPECS_REPOS = {
-    r.strip() for r in os.environ.get("ALFRED_RASALGHUL_SPECS_REPOS", "").split(",") if r.strip()
+    r.strip() for r in os.environ.get("ALFRED_REVIEWER_SPECS_REPOS", "").split(",") if r.strip()
 }
-DIFF_LINE_CAP_DEFAULT = int(os.environ.get("ALFRED_RASALGHUL_DIFF_CAP", "4000"))
-DIFF_LINE_CAP_SPECS = int(os.environ.get("ALFRED_RASALGHUL_DIFF_CAP_SPECS", "8000"))
+DIFF_LINE_CAP_DEFAULT = int(os.environ.get("ALFRED_REVIEWER_DIFF_CAP", "4000"))
+DIFF_LINE_CAP_SPECS = int(os.environ.get("ALFRED_REVIEWER_DIFF_CAP_SPECS", "8000"))
 
-DAILY_TURN_CAP = int(os.environ.get("ALFRED_RASALGHUL_TURN_CAP", "800"))
-DAILY_REVIEW_CAP = int(os.environ.get("ALFRED_RASALGHUL_REVIEW_CAP", "30"))
-RASALGHUL_TIMEOUT = env_int("ALFRED_RASALGHUL_TIMEOUT", 900, minimum=60)
-RASALGHUL_FALLBACK_TIMEOUT = env_int("ALFRED_RASALGHUL_FALLBACK_TIMEOUT", 1800, minimum=60)
+DAILY_TURN_CAP = int(os.environ.get("ALFRED_REVIEWER_TURN_CAP", "800"))
+DAILY_REVIEW_CAP = int(os.environ.get("ALFRED_REVIEWER_REVIEW_CAP", "30"))
+RASALGHUL_TIMEOUT = env_int("ALFRED_REVIEWER_TIMEOUT", 900, minimum=60)
+RASALGHUL_FALLBACK_TIMEOUT = env_int("ALFRED_REVIEWER_FALLBACK_TIMEOUT", 1800, minimum=60)
 REVIEW_AUTHOR_PREFIX = f"{AGENT.title()} - review"
 REVIEWED_HEAD_SHA = re.compile(
     r"^Reviewed-head-sha:\s*([0-9a-f]{7,40})\s*$",
@@ -252,7 +252,7 @@ def main() -> int:
     with_lock(AGENT)
 
     if not REVIEW_REPOS and not doctor_requested():
-        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_RASALGHUL_REPOS)")
+        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_REVIEWER_REPOS)")
         return 0
 
     try:
@@ -484,7 +484,7 @@ Ship-ready: yes / no - <one sentence>
         claude_allowed_tools="Read,Bash,Glob,Grep",
         agent=AGENT,
         firing_id=events.firing_id,
-        claude_max_turns=optional_env_int("ALFRED_RASALGHUL_MAX_TURNS", minimum=40),
+        claude_max_turns=optional_env_int("ALFRED_REVIEWER_MAX_TURNS", minimum=40),
         timeout=RASALGHUL_TIMEOUT,
         codex_timeout=RASALGHUL_FALLBACK_TIMEOUT,
         codex_sandbox="read-only",

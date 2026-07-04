@@ -36,25 +36,25 @@ def test_is_agent_enabled_returns_default_when_file_missing():
 
     assert not ar.FLEET_ENABLED_FILE.exists()
     # Default-enabled (opt-out) for stable agents.
-    assert ar.is_agent_enabled("lucius") is True
-    assert ar.is_agent_enabled("lucius", default=True) is True
+    assert ar.is_agent_enabled("senior-dev") is True
+    assert ar.is_agent_enabled("senior-dev", default=True) is True
     # Default-disabled (opt-in) for new/in-burn-in agents.
-    assert ar.is_agent_enabled("batman", default=False) is False
+    assert ar.is_agent_enabled("architect", default=False) is False
 
 
 def test_is_agent_enabled_respects_default_when_file_present():
     import agent_runner as ar
 
     ar.FLEET_ENABLED_FILE.parent.mkdir(parents=True, exist_ok=True)
-    ar.FLEET_ENABLED_FILE.write_text("batman\nlucius\n")
+    ar.FLEET_ENABLED_FILE.write_text("architect\nsenior-dev\n")
     # Listed: enabled regardless of default.
-    assert ar.is_agent_enabled("batman", default=False) is True
-    assert ar.is_agent_enabled("lucius", default=False) is True
+    assert ar.is_agent_enabled("architect", default=False) is True
+    assert ar.is_agent_enabled("senior-dev", default=False) is True
     # Not listed: the caller's default still decides. This lets the same file
     # gate opt-in runners while normal launchd-scheduled agents remain visible
     # and runnable unless explicitly paused/unloaded.
-    assert ar.is_agent_enabled("nightwing", default=True) is True
-    assert ar.is_agent_enabled("nightwing", default=False) is False
+    assert ar.is_agent_enabled("fixer", default=True) is True
+    assert ar.is_agent_enabled("fixer", default=False) is False
 
 
 def test_read_enabled_codenames_skips_blank_and_comments():
@@ -64,32 +64,32 @@ def test_read_enabled_codenames_skips_blank_and_comments():
     ar.FLEET_ENABLED_FILE.write_text(
         "# This file managed by alfred CLI\n"
         "\n"
-        "batman\n"
+        "architect\n"
         "  # indented comment\n"
-        "lucius # MVP burn-in\n"
+        "senior-dev # MVP burn-in\n"
         "\n"
     )
     out = ar.list_enabled_agents()
-    assert out == ["batman", "lucius"]
+    assert out == ["architect", "senior-dev"]
 
 
 def test_enable_agent_round_trip():
     import agent_runner as ar
 
-    out = ar.enable_agent("batman")
-    assert "batman" in out
+    out = ar.enable_agent("architect")
+    assert "architect" in out
     assert ar.FLEET_ENABLED_FILE.exists()
-    assert ar.is_agent_enabled("batman") is True
-    assert ar.is_agent_enabled("nightwing", default=True) is True  # default-enabled
+    assert ar.is_agent_enabled("architect") is True
+    assert ar.is_agent_enabled("fixer", default=True) is True  # default-enabled
 
 
 def test_enable_agent_idempotent():
     import agent_runner as ar
 
-    ar.enable_agent("batman")
-    out = ar.enable_agent("batman")
+    ar.enable_agent("architect")
+    out = ar.enable_agent("architect")
     # Single occurrence even when called twice.
-    assert out.count("batman") == 1
+    assert out.count("architect") == 1
 
 
 def test_disable_agent_idempotent_when_not_present():
@@ -97,20 +97,20 @@ def test_disable_agent_idempotent_when_not_present():
 
     # Disabling a never-enabled agent must not raise and must not change
     # state, idempotent contract per the helper docstring.
-    ar.enable_agent("lucius")
+    ar.enable_agent("senior-dev")
     out = ar.disable_agent("never-listed")
-    assert out == ["lucius"]
+    assert out == ["senior-dev"]
 
 
 def test_disable_agent_round_trip():
     import agent_runner as ar
 
-    ar.enable_agent("batman")
-    ar.enable_agent("lucius")
-    out = ar.disable_agent("batman")
-    assert out == ["lucius"]
-    assert ar.is_agent_enabled("batman", default=False) is False
-    assert ar.is_agent_enabled("lucius") is True
+    ar.enable_agent("architect")
+    ar.enable_agent("senior-dev")
+    out = ar.disable_agent("architect")
+    assert out == ["senior-dev"]
+    assert ar.is_agent_enabled("architect", default=False) is False
+    assert ar.is_agent_enabled("senior-dev") is True
 
 
 def test_enable_agent_rejects_empty_codename():
@@ -125,7 +125,7 @@ def test_enable_agent_rejects_empty_codename():
 def test_atomic_write_leaves_no_tmp_orphan(tmp_path):
     import agent_runner as ar
 
-    ar.enable_agent("batman")
+    ar.enable_agent("architect")
     # The atomic write must not leave a *.tmp file behind.
     parent = ar.FLEET_ENABLED_FILE.parent
     leftover = list(parent.glob("*.tmp"))
@@ -135,13 +135,13 @@ def test_atomic_write_leaves_no_tmp_orphan(tmp_path):
 def test_write_dedupes_silently():
     import agent_runner as ar
 
-    ar.enable_agent("batman")
+    ar.enable_agent("architect")
     # Manually inject duplicates into the file to mimic a hand-edit, then
     # any subsequent enable/disable should normalize the state.
-    ar.FLEET_ENABLED_FILE.write_text("batman\nbatman\nlucius\n")
-    out = ar.enable_agent("nightwing")
+    ar.FLEET_ENABLED_FILE.write_text("architect\narchitect\nsenior-dev\n")
+    out = ar.enable_agent("fixer")
     # Sorted, deduped.
-    assert out == ["batman", "lucius", "nightwing"]
+    assert out == ["architect", "fixer", "senior-dev"]
 
 
 # ---------------------------------------------------------------------------
@@ -176,13 +176,13 @@ def test_cli_enable_then_enabled_agents_round_trip(tmp_path):
         "ALFRED_HOME": str(tmp_path / "alfred"),
         "WORKSPACE_ROOT": str(tmp_path / "workspace"),
     }
-    res = _run_cli("enable", "batman", env_extra=env)
+    res = _run_cli("enable", "architect", env_extra=env)
     assert res.returncode == 0, res.stderr
-    assert "enabled batman" in res.stdout
+    assert "enabled architect" in res.stdout
 
     res = _run_cli("enabled-agents", env_extra=env)
     assert res.returncode == 0
-    assert "batman" in res.stdout
+    assert "architect" in res.stdout
 
 
 def test_cli_disable_idempotent(tmp_path):
@@ -217,7 +217,7 @@ def test_cli_native_dry_run_loads_launcher_env(monkeypatch, tmp_path):
         encoding="utf-8",
     )
     (runtime / "launchd" / "agents.conf").write_text(
-        "custom.fleet.lucius\tlucius.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
+        "custom.fleet.senior-dev\tsenior-dev.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("HOME", str(home))
@@ -236,20 +236,20 @@ def test_cli_native_dry_run_loads_launcher_env(monkeypatch, tmp_path):
     monkeypatch.setattr(cli.subprocess, "run", fake_run)
 
     rc = cli.cmd_dry_run(
-        argparse.Namespace(codename="lucius", native=True, simulate=False, json=False)
+        argparse.Namespace(codename="senior-dev", native=True, simulate=False, json=False)
     )
 
     assert rc == 0
     env = captured["env"]
     assert isinstance(env, dict)
-    assert captured["cmd"] == [sys.executable, str(CLI.parent / "lucius.py"), "--dry-run"]
+    assert captured["cmd"] == [sys.executable, str(CLI.parent / "senior-dev.py"), "--dry-run"]
     assert env["ALFRED_HOME"] == str(runtime)
     assert env["WORKSPACE_ROOT"] == str(workspace)
     assert env["CUSTOM_FROM_ENV"] == "loaded-from-env"
     assert "ALFREDRC" not in env
     assert env["ALFRED_DRY_RUN"] == "1"
-    assert env["AGENT_CODENAME"] == "lucius"
-    assert env["LAUNCHD_LABEL"] == "custom.fleet.lucius"
+    assert env["AGENT_CODENAME"] == "senior-dev"
+    assert env["LAUNCHD_LABEL"] == "custom.fleet.senior-dev"
     assert str(CLI.parent.parent / "lib") in env["PYTHONPATH"].split(os.pathsep)
     assert "WORKSPACE_ROOT" not in os.environ
 
@@ -260,7 +260,7 @@ def test_cli_native_dry_run_all_reuses_launcher_env(monkeypatch, tmp_path):
     workspace.mkdir()
     (runtime / "launchd").mkdir(parents=True)
     (runtime / "launchd" / "agents.conf").write_text(
-        "custom.fleet.lucius\tlucius.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
+        "custom.fleet.senior-dev\tsenior-dev.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
         encoding="utf-8",
     )
     monkeypatch.delenv("ALFRED_HOME", raising=False)
@@ -298,7 +298,7 @@ def test_cli_native_dry_run_all_reuses_launcher_env(monkeypatch, tmp_path):
     assert captured[0]["ALFRED_HOME"] == str(runtime)
     assert captured[0]["WORKSPACE_ROOT"] == str(workspace)
     assert captured[0]["CUSTOM_FROM_LAUNCHER"] == "loaded-once"
-    assert captured[0]["LAUNCHD_LABEL"] == "custom.fleet.lucius"
+    assert captured[0]["LAUNCHD_LABEL"] == "custom.fleet.senior-dev"
     assert "ALFRED_HOME" not in os.environ
     assert "WORKSPACE_ROOT" not in os.environ
 
@@ -308,14 +308,14 @@ def test_cli_engine_set_supports_batman(tmp_path):
         "ALFRED_HOME": str(tmp_path / "alfred"),
         "WORKSPACE_ROOT": str(tmp_path / "workspace"),
     }
-    res = _run_cli("engine", "set", "batman", "codex", env_extra=env)
+    res = _run_cli("engine", "set", "architect", "codex", env_extra=env)
     assert res.returncode == 0, res.stderr
-    assert "batman engine set to codex" in res.stdout
-    assert (tmp_path / "alfred" / "state" / "engines" / "batman").read_text().strip() == "codex"
+    assert "architect engine set to codex" in res.stdout
+    assert (tmp_path / "alfred" / "state" / "engines" / "architect").read_text().strip() == "codex"
 
-    status = _run_cli("engine", "status", "batman", env_extra=env)
+    status = _run_cli("engine", "status", "architect", env_extra=env)
     assert status.returncode == 0, status.stderr
-    assert "batman engine: codex" in status.stdout
+    assert "architect engine: codex" in status.stdout
 
 
 def test_cli_engine_status_lists_known_agents(tmp_path):
@@ -325,7 +325,15 @@ def test_cli_engine_status_lists_known_agents(tmp_path):
     }
     res = _run_cli("engine", "status", env_extra=env)
     assert res.returncode == 0, res.stderr
-    for agent in ("bane", "batman", "drake", "lucius", "nightwing", "rasalghul", "robin"):
+    for agent in (
+        "test-engineer",
+        "architect",
+        "planner",
+        "senior-dev",
+        "fixer",
+        "reviewer",
+        "triage",
+    ):
         assert agent in res.stdout
     assert "Codex fallback only on capability gaps" in res.stdout
     assert "auth/limit/budget" not in res.stdout
@@ -392,7 +400,7 @@ def test_cli_codex_status_reports_binary_and_engines(tmp_path):
 
     assert res.returncode == 0, res.stderr
     assert "codex version: codex-test" in res.stdout
-    assert "engine lucius:" in res.stdout
+    assert "engine senior-dev:" in res.stdout
     assert "Probe with: alfred codex probe" in res.stdout
 
 
@@ -493,19 +501,19 @@ def test_cli_status_reports_local_snapshot(tmp_path):
     launchd = alfred / "launchd"
     launchd.mkdir(parents=True)
     (launchd / "agents.conf").write_text(
-        "my.fleet.batman\tbatman.py\tinterval:5400\tno\t\tBundle coordinator\n"
+        "my.fleet.architect\tarchitect.py\tinterval:5400\tno\t\tBundle coordinator\n"
     )
-    wait_dir = alfred / "state" / "batman" / "approval-waits"
+    wait_dir = alfred / "state" / "architect" / "approval-waits"
     wait_dir.mkdir(parents=True)
     (wait_dir / "firing.json").write_text(
         '{"firing_id":"abc","pid":0,"created_at":"2026-05-12T10:00:00Z","issues":[{"number":504}]}'
     )
     day = datetime.now(UTC).strftime("%Y-%m-%d")
-    events_dir = alfred / "state" / "batman" / "events"
+    events_dir = alfred / "state" / "architect" / "events"
     events_dir.mkdir(parents=True)
     (events_dir / f"{day.replace('-', '')}-101500-abcd.jsonl").write_text(
-        f'{{"ts":"{day}T10:15:00Z","agent":"batman","firing_id":"abc","event":"firing_started"}}\n'
-        f'{{"ts":"{day}T10:15:05Z","agent":"batman","firing_id":"abc","event":"firing_complete","outcome":"silent_no_work"}}\n'
+        f'{{"ts":"{day}T10:15:00Z","agent":"architect","firing_id":"abc","event":"firing_started"}}\n'
+        f'{{"ts":"{day}T10:15:05Z","agent":"architect","firing_id":"abc","event":"firing_complete","outcome":"silent_no_work"}}\n'
     )
     env = {
         "ALFRED_HOME": str(alfred),
@@ -517,7 +525,7 @@ def test_cli_status_reports_local_snapshot(tmp_path):
     assert res.returncode == 0, res.stderr
     assert "alfred-status @" in res.stdout
     assert "approval wait dead #504" in res.stdout
-    batman_row = next(line for line in res.stdout.splitlines() if line.startswith("batman"))
+    batman_row = next(line for line in res.stdout.splitlines() if line.startswith("architect"))
     assert " 1     0   0" in batman_row
 
 
@@ -557,7 +565,7 @@ def test_cli_status_uses_custom_agent_manifest_engine_default(tmp_path):
     assert res.returncode == 0, res.stderr
     row = next(line for line in res.stdout.splitlines() if line.startswith("release-captain"))
     assert row.split()[2] == "codex"
-    assert any(line.startswith("batman") for line in res.stdout.splitlines())
+    assert any(line.startswith("architect") for line in res.stdout.splitlines())
 
     engine_state = alfred / "state" / "engines"
     engine_state.mkdir(parents=True)
@@ -609,7 +617,7 @@ def test_cli_status_treats_empty_runtime_conf_as_authoritative(tmp_path):
     assert res.returncode == 0, res.stderr
     rows = res.stdout.splitlines()
     assert any(line.startswith("release-captain") for line in rows)
-    assert not any(line.startswith("batman") for line in rows)
+    assert not any(line.startswith("architect") for line in rows)
 
 
 def test_cli_engine_set_accepts_configured_runtime_codename(tmp_path):
@@ -617,7 +625,7 @@ def test_cli_engine_set_accepts_configured_runtime_codename(tmp_path):
     launchd = alfred / "launchd"
     launchd.mkdir(parents=True)
     (launchd / "agents.conf").write_text(
-        "my.fleet.marshall\tlucius.py\tinterval:1200\tyes\t\tCustom feature engineer\n"
+        "my.fleet.marshall\tsenior-dev.py\tinterval:1200\tyes\t\tCustom feature engineer\n"
     )
     env = {
         "ALFRED_HOME": str(alfred),
@@ -641,10 +649,10 @@ def test_cli_engine_set_rasalghul_uses_canonical_engine_state_only(tmp_path):
         "WORKSPACE_ROOT": str(tmp_path / "workspace"),
     }
 
-    res = _run_cli("engine", "set", "rasalghul", "codex", env_extra=env)
+    res = _run_cli("engine", "set", "reviewer", "codex", env_extra=env)
 
     assert res.returncode == 0, res.stderr
-    assert (alfred / "state" / "engines" / "rasalghul").read_text().strip() == "codex"
+    assert (alfred / "state" / "engines" / "reviewer").read_text().strip() == "codex"
     assert not (alfred / "state" / "review-engine").exists()
 
 
@@ -667,12 +675,12 @@ def test_cli_agents_does_not_disable_default_agents_when_gate_file_exists(tmp_pa
     launchd = alfred / "launchd"
     launchd.mkdir(parents=True)
     (launchd / "agents.conf").write_text(
-        "my.fleet.batman\tbatman.py\tinterval:5400\tno\t\tBundle coordinator\n"
-        "my.fleet.lucius\tlucius.py\tinterval:1200\tyes\t\tFeature dev\n"
+        "my.fleet.architect\tarchitect.py\tinterval:5400\tno\t\tBundle coordinator\n"
+        "my.fleet.senior-dev\tsenior-dev.py\tinterval:1200\tyes\t\tFeature dev\n"
     )
     gate = alfred / "state" / "fleet"
     gate.mkdir(parents=True)
-    (gate / "enabled.txt").write_text("batman\n")
+    (gate / "enabled.txt").write_text("architect\n")
     env = {
         "ALFRED_HOME": str(alfred),
         "WORKSPACE_ROOT": str(tmp_path / "workspace"),
@@ -683,7 +691,7 @@ def test_cli_agents_does_not_disable_default_agents_when_gate_file_exists(tmp_pa
     lines = {
         line.split()[0]: line
         for line in res.stdout.splitlines()
-        if line.startswith(("batman", "lucius"))
+        if line.startswith(("architect", "senior-dev"))
     }
-    assert "yes" in lines["batman"].split()
-    assert "yes" in lines["lucius"].split()
+    assert "yes" in lines["architect"].split()
+    assert "yes" in lines["senior-dev"].split()

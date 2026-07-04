@@ -32,7 +32,7 @@ def load_bin_module(name: str, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 def lucius(monkeypatch):
     monkeypatch.setenv("GH_ORG", "myorg")
-    return load_bin_module("lucius.py", monkeypatch)
+    return load_bin_module("senior-dev.py", monkeypatch)
 
 
 def test_test_evidence_from_passed_pre_push(lucius, monkeypatch):

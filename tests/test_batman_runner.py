@@ -15,7 +15,7 @@ from types import SimpleNamespace
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
-RUNNER = REPO / "bin" / "batman.py"
+RUNNER = REPO / "bin" / "architect.py"
 
 
 @pytest.fixture(autouse=True)

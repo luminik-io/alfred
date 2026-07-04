@@ -47,7 +47,7 @@ def _render(tmp_path: Path, conf_text: str, env: dict[str, str] | None = None) -
 
 
 def test_render_emits_alfred_role_env_when_role_column_set(tmp_path):
-    conf = "my.fleet.lucius\tlucius.py\tinterval:600\tno\t\tSingle-repo feature engineer\n"
+    conf = "my.fleet.lucius\tsenior-dev.py\tinterval:600\tno\t\tSingle-repo feature engineer\n"
     out_dir = _render(tmp_path, conf)
     plist = (out_dir / "my.fleet.lucius.plist").read_text()
     assert "ALFRED_LUCIUS_ROLE" in plist
@@ -82,11 +82,11 @@ def test_render_escapes_xml_special_characters_in_role(tmp_path):
 
 
 def test_render_invokes_agent_launch_and_sets_codename_env(tmp_path):
-    conf = "my.fleet.marshall\tlucius.py\tinterval:600\tno\t\tFeature dev\n"
+    conf = "my.fleet.marshall\tsenior-dev.py\tinterval:600\tno\t\tFeature dev\n"
     out_dir = _render(tmp_path, conf)
     plist_data = plistlib.loads((out_dir / "my.fleet.marshall.plist").read_bytes())
     assert Path(plist_data["ProgramArguments"][0]).name == "agent-launch"
-    assert plist_data["ProgramArguments"][1] == "lucius.py"
+    assert plist_data["ProgramArguments"][1] == "senior-dev.py"
     env = plist_data["EnvironmentVariables"]
     assert env["AGENT_CODENAME"] == "marshall"
     assert env["LAUNCHD_LABEL"] == "my.fleet.marshall"
@@ -120,7 +120,7 @@ def test_render_appends_enabled_custom_agents_from_manifest(tmp_path):
         ),
         encoding="utf-8",
     )
-    conf = "my.fleet.lucius\tlucius.py\tinterval:600\tno\t\tFeature dev\n"
+    conf = "my.fleet.lucius\tsenior-dev.py\tinterval:600\tno\t\tFeature dev\n"
 
     out_dir = _render(tmp_path, conf, env={"ALFRED_HOME": str(runtime)})
 
@@ -159,12 +159,12 @@ def test_render_skips_custom_agent_rows_that_collide_with_base_conf(tmp_path):
         ),
         encoding="utf-8",
     )
-    conf = "alfred.release-captain\tlucius.py\tinterval:600\tno\t\tFeature dev\n"
+    conf = "alfred.release-captain\tsenior-dev.py\tinterval:600\tno\t\tFeature dev\n"
 
     out_dir = _render(tmp_path, conf, env={"ALFRED_HOME": str(runtime)})
 
     plist_data = plistlib.loads((out_dir / "alfred.release-captain.plist").read_bytes())
-    assert plist_data["ProgramArguments"][1] == "lucius.py"
+    assert plist_data["ProgramArguments"][1] == "senior-dev.py"
     assert len(list(out_dir.glob("alfred.release-captain.plist"))) == 1
 
 
@@ -227,7 +227,7 @@ def test_render_fails_when_custom_agent_manifest_is_malformed(tmp_path):
     shutil.copy(RENDER_SH, work / "render.sh")
     shutil.copy(TEMPLATE, work / "_template.plist")
     (work / "agents.conf").write_text(
-        "my.fleet.lucius\tlucius.py\tinterval:600\tno\t\tFeature dev\n",
+        "my.fleet.lucius\tsenior-dev.py\tinterval:600\tno\t\tFeature dev\n",
         encoding="utf-8",
     )
     out_dir = tmp_path / "out"

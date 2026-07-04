@@ -44,30 +44,30 @@ SYSTEMD_USER_DIR = Path(
 )
 
 ENGINE_AWARE_AGENTS = {
-    "bane",
-    "batman",
-    "drake",
-    "lucius",
-    "nightwing",
-    "rasalghul",
-    "robin",
+    "architect",
+    "fixer",
+    "planner",
+    "reviewer",
+    "senior-dev",
+    "test-engineer",
+    "triage",
 }
 
 DEFAULT_AGENT_NAMES = [
     "agent-cleanup",
     "agent-morning-brief",
+    "architect",
     "automerge",
-    "bane",
-    "batman",
     "code-map-refresh",
-    "drake",
+    "fixer",
     "fleet-doctor",
     "fleet-recap-morning",
     "fleet-recap-evening",
-    "lucius",
-    "nightwing",
-    "rasalghul",
-    "robin",
+    "planner",
+    "reviewer",
+    "senior-dev",
+    "test-engineer",
+    "triage",
 ]
 
 
@@ -372,7 +372,7 @@ def _lock_status(agent: str) -> tuple[bool, bool, int | None, float | None]:
 
 
 def _approval_wait_status(agent: str) -> dict[str, Any]:
-    if agent != "batman":
+    if agent != "architect":
         return {
             "firing_id": None,
             "issue_numbers": [],
@@ -381,7 +381,7 @@ def _approval_wait_status(agent: str) -> dict[str, Any]:
             "pid": None,
             "pid_alive": None,
         }
-    wait_dir = STATE_ROOT / "batman" / "approval-waits"
+    wait_dir = STATE_ROOT / "architect" / "approval-waits"
     if not wait_dir.is_dir():
         return {
             "firing_id": None,

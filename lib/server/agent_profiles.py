@@ -51,7 +51,7 @@ class _ProfileDisplay:
 # manifest codename must have an entry here; ``_build_profiles`` asserts the two
 # stay in lockstep at import time.
 _PROFILE_DISPLAY: dict[str, _ProfileDisplay] = {
-    "batman": _ProfileDisplay(
+    "architect": _ProfileDisplay(
         display_name="Batman",
         role_title="Architect",
         purpose="Plans and coordinates multi-repo work with approval.",
@@ -60,7 +60,7 @@ _PROFILE_DISPLAY: dict[str, _ProfileDisplay] = {
         theme_accent="#3B82F6",
         order=10,
     ),
-    "lucius": _ProfileDisplay(
+    "senior-dev": _ProfileDisplay(
         display_name="Lucius",
         role_title="Senior Developer",
         purpose="Ships scoped implementation issues as pull requests.",
@@ -69,7 +69,7 @@ _PROFILE_DISPLAY: dict[str, _ProfileDisplay] = {
         theme_accent="#7CE2B0",
         order=20,
     ),
-    "drake": _ProfileDisplay(
+    "planner": _ProfileDisplay(
         display_name="Drake",
         role_title="Planner",
         purpose="Turns specs and loose requests into implementation-ready issues.",
@@ -78,7 +78,7 @@ _PROFILE_DISPLAY: dict[str, _ProfileDisplay] = {
         theme_accent="#00E5C7",
         order=30,
     ),
-    "rasalghul": _ProfileDisplay(
+    "reviewer": _ProfileDisplay(
         display_name="Ras al Ghul",
         role_title="Reviewer",
         purpose="Reviews PR diffs, tests, and posts P0/P1 findings.",
@@ -87,7 +87,7 @@ _PROFILE_DISPLAY: dict[str, _ProfileDisplay] = {
         theme_accent="#A78BFA",
         order=40,
     ),
-    "bane": _ProfileDisplay(
+    "test-engineer": _ProfileDisplay(
         display_name="Bane",
         role_title="Test Engineer",
         purpose="Adds or strengthens tests around shipped code paths.",
@@ -96,7 +96,7 @@ _PROFILE_DISPLAY: dict[str, _ProfileDisplay] = {
         theme_accent="#F59E0B",
         order=50,
     ),
-    "nightwing": _ProfileDisplay(
+    "fixer": _ProfileDisplay(
         display_name="Nightwing",
         role_title="Fixer",
         purpose="Applies high-priority review and CI feedback.",
@@ -105,7 +105,7 @@ _PROFILE_DISPLAY: dict[str, _ProfileDisplay] = {
         theme_accent="#8FA6C9",
         order=60,
     ),
-    "robin": _ProfileDisplay(
+    "triage": _ProfileDisplay(
         display_name="Robin",
         role_title="Bug Triage",
         purpose="Labels and scopes bug reports for the fleet.",
@@ -114,7 +114,7 @@ _PROFILE_DISPLAY: dict[str, _ProfileDisplay] = {
         theme_accent="#F87171",
         order=70,
     ),
-    "damian": _ProfileDisplay(
+    "spec-planner": _ProfileDisplay(
         display_name="Damian",
         role_title="Spec Planner",
         purpose="Plans spec-level bundles before implementation starts.",
@@ -123,7 +123,7 @@ _PROFILE_DISPLAY: dict[str, _ProfileDisplay] = {
         theme_accent="#14B8A6",
         order=80,
     ),
-    "huntress": _ProfileDisplay(
+    "e2e-runner": _ProfileDisplay(
         display_name="Huntress",
         role_title="QA Runner",
         purpose="Runs end-to-end smoke checks and reports failures.",
@@ -132,7 +132,7 @@ _PROFILE_DISPLAY: dict[str, _ProfileDisplay] = {
         theme_accent="#EC4899",
         order=90,
     ),
-    "gordon": _ProfileDisplay(
+    "ops-watch": _ProfileDisplay(
         display_name="Gordon",
         role_title="Ops Watch",
         purpose="Checks uptime, incidents, and operational health.",

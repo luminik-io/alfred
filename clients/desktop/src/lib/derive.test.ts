@@ -387,9 +387,9 @@ describe("buildShippedDigest", () => {
     expect(digest).toHaveLength(1);
     // Conventional-commit prefix is stripped and the sentence is capitalised.
     expect(digest[0].what).toBe("Add CSV export.");
-    // The digest carries the canonical codename now; the visible name is
+    // The digest carries the canonical codename slug now; the visible name is
     // resolved through the active roster theme by the caller (ReviewView).
-    expect(digest[0].agent).toBe("lucius");
+    expect(digest[0].agent).toBe("senior-dev");
     expect(digest[0].why).toContain("merged into api");
     // Card hygiene: the agent is in the `agent` field/badge, not repeated in the sentence.
     expect(digest[0].why).toMatch(/^Shipped and merged into api/);

@@ -210,8 +210,8 @@ removed = 0
 freed_mb = 0.0
 for prefix in configured_tmp_prefixes():
     patterns = [f"{prefix}-{suffix}" for suffix in TMP_SUFFIXES]
-    if prefix == "rasalghul":
-        patterns.append("rasalghul-*")
+    if prefix == "reviewer":
+        patterns.append("reviewer-*")
     for pattern in patterns:
         for p in Path("/tmp").glob(pattern):
             try:

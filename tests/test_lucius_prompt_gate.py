@@ -32,7 +32,7 @@ def lucius(tmp_path, monkeypatch):
     monkeypatch.setenv("GH_ORG", "myorg")
     if str(_LIB) not in sys.path:
         sys.path.insert(0, str(_LIB))
-    spec = importlib.util.spec_from_file_location("lucius_under_test", _BIN / "lucius.py")
+    spec = importlib.util.spec_from_file_location("lucius_under_test", _BIN / "senior-dev.py")
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

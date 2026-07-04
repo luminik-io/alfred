@@ -346,7 +346,7 @@ def test_lucius_runner_dry_run_completes_full_lifecycle_exit_0(tmp_path):
     """Lucius runs pick -> claim -> worktree -> invoke -> push/PR -> release
     with zero host config and exits 0 on the happy path."""
     proc = _run_example(
-        "bin/lucius.py",
+        "bin/senior-dev.py",
         {"ALFRED_DRY_RUN": "1", "AGENT_CODENAME": "lucius-dry-run-test"},
         tmp_path,
     )
