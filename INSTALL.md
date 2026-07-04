@@ -4,6 +4,22 @@ Fresh Mac or Debian/Ubuntu host to a working Alfred fleet skeleton, ~30 minutes.
 
 For AWS IAM-per-agent, Slack, and troubleshooting, read [`BOOTSTRAP.md`](BOOTSTRAP.md) after this.
 
+## Try the demo first
+
+Before you install against your own repos, see the whole loop in one run. All
+you need is an authenticated `claude` CLI (no GitHub, no Slack, no tokens):
+
+```sh
+git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
+cd ~/code/alfred-os
+./bin/alfred demo
+```
+
+It runs a real plan, an approval gate, a build in an isolated worktree, an
+adversarial review that catches a planted bug, a fix, and a local ship on a
+throwaway sample repo, in one short run. See [`docs/DEMO.md`](docs/DEMO.md) for
+the full walkthrough. Then come back here to point Alfred at your own code.
+
 ## Two ways to install
 
 **Desktop-first path.** Install the signed Alfred app on macOS or Linux, open it, and click **Install or repair** in Setup. The native app bundles Alfred core resources, bootstraps dependencies, seeds the full built-in runtime roster, deploys the local CLI/agents into `~/.alfred`, starts `alfred serve`, detects existing installs, connects GitHub plus Claude or Codex, helps you pick repos, and lets you choose a roster theme or custom display names. Repo-scoped agents stay idle until onboarding saves repositories. Batman is included as the cross-repo architect, but it stays idle until you configure `BATMAN_PARENT_REPO`. The Homebrew cask also depends on the CLI formula, but direct DMG/AppImage/.deb installs no longer need a separate CLI install first.

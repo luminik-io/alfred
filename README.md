@@ -90,6 +90,38 @@ flowchart LR
 
 Docs site: https://alfred.luminik.io
 
+## See it in one run: `alfred demo`
+
+Before you install anything against your own repos, watch the whole loop once
+on a throwaway sample project. The only thing you need is an authenticated
+`claude` CLI (the Claude subscription you already pay for). No GitHub, no
+Slack, no tokens.
+
+```sh
+alfred demo          # installed
+./bin/alfred demo    # from a source checkout
+```
+
+It copies a tiny bundled sample repo into a temp dir, then runs a compressed
+pipeline of real `claude` calls against it and streams the story to your
+terminal:
+
+- **Drake** drafts a plan for a missing feature.
+- You approve it at a real gate (press Enter, or type `n` to decline).
+- **Lucius** implements it in an isolated git worktree.
+- **Ra's al Ghul** reviews it and catches a real bug planted in the sample,
+  verified with an actual reproduction before blocking.
+- **Lucius** fixes the bug and adds a regression test.
+- The change is verified (real diff, sample tests pass), then committed
+  locally with a pull-request-style summary.
+
+Four real, sequential model calls, so it is bounded by real latency rather
+than a canned script: expect roughly two to three minutes, and the closing
+line reports your run's actual measured time. It never fakes success: a
+missing CLI, a failed call, an unchanged worktree, or a failing test suite
+stops the run honestly. Full walkthrough and flags in
+[`docs/DEMO.md`](docs/DEMO.md).
+
 ## Privacy: what Alfred touches, and what it does not
 
 Alfred touches your repos, your git history, and optionally Slack, so what it can

@@ -72,6 +72,11 @@ Subcommands today:
                               using the stable alfred-codegraph@1 contract.
   alfred capabilities         Inspect local code graph, token, and skill
                               capabilities Alfred can use during setup.
+  alfred demo                 Watch the whole loop (plan, approve, build,
+                              review that catches a planted bug, fix, ship)
+                              on a throwaway sample repo in about a minute.
+                              Needs only an authenticated `claude` CLI: no
+                              GitHub, no Slack, no tokens.
   alfred serve                Open the read-only localhost dashboard over
                               fleet state and reliability-governor actions.
   alfred slack-listener       Run the Slack-native planning listener, or
@@ -1838,6 +1843,18 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
 
 
+def cmd_demo(args: argparse.Namespace) -> int:
+    script = _HERE / "alfred-demo.py"
+    forwarded: list[str] = []
+    if args.keep:
+        forwarded.append("--keep")
+    if args.yes:
+        forwarded.append("--yes")
+    if args.timeout is not None:
+        forwarded.extend(["--timeout", str(args.timeout)])
+    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-serve.py"
     forwarded: list[str] = []
@@ -3024,6 +3041,21 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_mcp = sub.add_parser("mcp", help="serve read-only Alfred MCP tools")
     p_mcp.add_argument("mcp_args", nargs=argparse.REMAINDER)
     p_mcp.set_defaults(func=cmd_mcp)
+
+    p_demo = sub.add_parser(
+        "demo",
+        help="watch the team plan, build, catch a bug, and ship in a minute (needs claude)",
+    )
+    p_demo.add_argument(
+        "--keep", action="store_true", help="keep the throwaway demo repo and print its path"
+    )
+    p_demo.add_argument(
+        "--yes", action="store_true", help="auto-approve the plan gate without waiting for Enter"
+    )
+    p_demo.add_argument(
+        "--timeout", type=int, help="per-step engine wall-clock ceiling in seconds"
+    )
+    p_demo.set_defaults(func=cmd_demo)
 
     p_serve = sub.add_parser("serve", help="open the read-only localhost dashboard")
     p_serve.add_argument("--host", help="bind address passed to alfred-serve")
