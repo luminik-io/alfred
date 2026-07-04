@@ -2094,6 +2094,75 @@ def test_distinct_api_sent_messages_are_not_collapsed(tmp_path: Path) -> None:
     assert len(converse_calls) == 2
 
 
+def test_ignored_message_copy_does_not_strand_the_app_mention(tmp_path: Path) -> None:
+    """The plain message copy of an @mention must not consume the dedup key.
+
+    Slack delivers a channel @mention as both a plain message event and an
+    app_mention event, and the delivery order is not guaranteed. The ambient path
+    deliberately IGNORES the message copy in favour of the app_mention. If the
+    message copy (which arrives first here) marked the shared message-identity
+    dedup key, the real app_mention would be misread as a duplicate and the
+    mention lost entirely (P1 from review). The key must be marked only after a
+    delivery is handled, so the ignored copy leaves it free for the app_mention.
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    poster = Poster()
+    converse_calls: list[dict] = []
+
+    def converse_runner(**kwargs):
+        converse_calls.append(kwargs)
+        client = kwargs["client"]
+        client.chat_postMessage(
+            channel=kwargs["channel"], thread_ts=kwargs["thread_ts"], text="Fleet status."
+        )
+        return SimpleNamespace(handled=True, answered=True, intent="conversation", streamed=False)
+
+    from slack_converse import SlackConverseConfig
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="U0BOT",
+        converse_config=SlackConverseConfig(enabled=True, engine="claude", channels=frozenset()),
+        converse_runner=converse_runner,
+    )
+
+    # No client_msg_id, same ts across both deliveries. Message copy arrives FIRST.
+    message_copy = {
+        "event_id": "EvMsg",
+        "event": {
+            "type": "message",
+            "channel": "C1",
+            "channel_type": "channel",
+            "user": "U1",
+            "text": "<@U0BOT> what's the fleet doing?",
+            "ts": "1716480080.000001",
+        },
+    }
+    app_mention = {
+        "event_id": "EvMention",
+        "event": {
+            "type": "app_mention",
+            "channel": "C1",
+            "user": "U1",
+            "text": "<@U0BOT> what's the fleet doing?",
+            "ts": "1716480080.000001",
+        },
+    }
+
+    first = listener.handle_payload(message_copy)
+    second = listener.handle_payload(app_mention)
+
+    # The message copy is ignored, but the app_mention still runs the turn.
+    assert first.handled is False
+    assert second.handled is True
+    assert second.action == "converse"
+    assert len(converse_calls) == 1
+    assert len(poster.messages) == 1
+
+
 def test_conversation_thread_read_only_control_skips_pending_clarification(
     tmp_path: Path,
 ) -> None:

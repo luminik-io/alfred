@@ -312,6 +312,19 @@ class SeenEventStore:
             handle.write(_utc_now() + "\n")
         return False
 
+    def has_seen(self, event_id: str) -> bool:
+        """True iff ``event_id`` was already marked, WITHOUT marking it now.
+
+        Lets a caller test for a prior delivery and defer the mark until it knows
+        the current delivery will actually be handled, so an ignored delivery
+        (e.g. the plain ``message`` copy of an @mention that the ambient path
+        drops in favour of the ``app_mention`` copy) never consumes the key and
+        strand the delivery that should handle it.
+        """
+        if not event_id:
+            return False
+        return (self.root / f"{_safe_event_id(event_id)}.seen").exists()
+
 
 class SlackPlanningListener:
     def __init__(
@@ -416,14 +429,17 @@ class SlackPlanningListener:
             return ListenerResult(False, "duplicate", "event already processed")
         # Slack delivers a single @mention as BOTH an ``app_mention`` and a
         # ``message`` event, each with a distinct envelope ``event_id`` but the
-        # same ``client_msg_id``. De-duplicate on that message identity too (see
-        # ``SlackInputEvent.dedup_key``) so one user message never runs two turns
-        # (two model calls, two replies). Marked after the envelope check so a
-        # re-delivery of either event type collapses onto the first. Empty for a
-        # reaction or an event without a ``client_msg_id``, in which case the
-        # envelope check above is the only de-dup (no content key to collide on).
+        # same message identity (see ``SlackInputEvent.dedup_key``). De-duplicate
+        # on that identity too so one user message never runs two turns (two model
+        # calls, two replies). CRUCIAL: only test the key here; do NOT mark it
+        # yet. The plain ``message`` copy of an @mention is deliberately IGNORED
+        # by the ambient path in favour of the ``app_mention`` copy, so marking
+        # the shared key on that ignored copy would make the real ``app_mention``
+        # look like a duplicate and strand the mention entirely. We mark the key
+        # only after a delivery is actually handled (see ``_finish`` below), so an
+        # ignored copy leaves the key free for the copy that does the work.
         dedup_key = event.dedup_key
-        if dedup_key and self.seen.mark_seen(dedup_key):
+        if dedup_key and self.seen.has_seen(dedup_key):
             return ListenerResult(False, "duplicate", "message already processed")
         if self.bot_user_id and event.user == self.bot_user_id:
             return ListenerResult(False, "ignored", "bot self-message")
@@ -435,18 +451,33 @@ class SlackPlanningListener:
 
         record = self.registry.lookup(event.channel, event.root_ts)
         if record is not None and event.is_reaction:
-            return self._handle_thread_reaction(event, record)
+            return self._finish(event, dedup_key, self._handle_thread_reaction(event, record))
         if record is not None and event.is_thread_reply:
-            return self._handle_registered_thread(event, record)
+            return self._finish(event, dedup_key, self._handle_registered_thread(event, record))
         if event.is_reaction:
             return ListenerResult(False, "ignored", "reaction is not on a registered thread")
         if event.is_direct_intake:
             result = self._handle_direct_intake(event)
-            return self._remember_conversation_root(event, result)
+            return self._finish(event, dedup_key, self._remember_conversation_root(event, result))
         if event.is_plain_channel_message:
             result = self._maybe_handle_ambient(event)
-            return self._remember_conversation_root(event, result)
+            return self._finish(event, dedup_key, self._remember_conversation_root(event, result))
         return ListenerResult(False, "ignored", "message is not a registered thread or intake")
+
+    def _finish(
+        self, event: SlackInputEvent, dedup_key: str, result: ListenerResult
+    ) -> ListenerResult:
+        """Mark the message-identity dedup key iff this delivery was handled.
+
+        Marking only on a handled result means an ignored delivery (the plain
+        ``message`` copy of an @mention the ambient path drops) never consumes the
+        shared key, so the ``app_mention`` copy that should do the work is not
+        misread as a duplicate. A handled delivery marks the key so a later
+        duplicate copy of the same message is collapsed.
+        """
+        if dedup_key and result.handled:
+            self.seen.mark_seen(dedup_key)
+        return result
 
     def _handle_thread_reaction(
         self,
