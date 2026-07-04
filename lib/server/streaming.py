@@ -211,6 +211,15 @@ def _sse(event: str, data: Any) -> bytes:
 # operator could never turn keep-alives off.
 HEARTBEAT_SECONDS = _env_float("ALFRED_SSE_HEARTBEAT_SECONDS", 15.0)
 
+# How often the converse stream re-reads the running turn's transcript for new
+# assistant text. This is the floor on how quickly a freshly written token
+# reaches the client, so it dominates the chat's felt latency: at 150ms tokens
+# arrived in coarse, laggy batches. 40ms feels live (well under a paint frame's
+# worth of perceptible lag) while keeping the per-poll transcript read cheap.
+# Env-overridable per the config-driven-tunables rule; floored to a small
+# positive value so a bad env value can never spin the loop with no sleep.
+CONVERSE_POLL_SECONDS = max(0.005, _env_float("ALFRED_CONVERSE_POLL_SECONDS", 0.04))
+
 
 def _sse_comment() -> bytes:
     """A Server-Sent-Events comment line (keep-alive).
@@ -281,7 +290,7 @@ async def stream_converse_turn(
     extract_tokens: Callable[[Path], list[str]],
     transcript_path: Path,
     reconcile: Callable[[Any], dict[str, Any]],
-    poll_seconds: float = 0.15,
+    poll_seconds: float = CONVERSE_POLL_SECONDS,
     heartbeat_seconds: float = HEARTBEAT_SECONDS,
 ) -> AsyncIterator[bytes]:
     """Stream a Compose converse turn token by token, then reconcile.

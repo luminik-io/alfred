@@ -377,6 +377,64 @@ describe("Ask recent-threads switcher (last-5 persistence)", () => {
 
 });
 
+describe("Ask streaming render is incremental (perf)", () => {
+  // The in-flight reply must render as fast raw text, NOT re-parse markdown +
+  // run syntax highlighting on every token. Only when the turn settles does the
+  // full markdown pass run. This is the fix for the chat feeling slow: parsing
+  // the whole growing reply per token was O(n^2) and dominated frame time.
+  it("renders the streaming reply as plain text, then rich markdown on settle", async () => {
+    // A stream that emits a fenced code block, then blocks until we release it,
+    // so we can inspect the DOM mid-flight before the turn reconciles.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const replyBody = "Here is code:\n\n```js\nconst a = 1;\n```";
+    streamMock.mockImplementation(async (_baseUrl, _request, onToken) => {
+      onToken(replyBody);
+      await gate;
+      return converseResponse({ reply: replyBody });
+    });
+
+    const user = userEvent.setup();
+    const { container } = renderChat();
+    await send(user, "show me code");
+
+    // Mid-stream: the raw text is on screen via the fast streaming container,
+    // and NO highlighted code block (.ask-code) has been parsed yet.
+    await waitFor(() =>
+      expect(container.querySelector(".ask-bubble__stream-text")).toBeInTheDocument(),
+    );
+    expect(container.querySelector(".ask-code")).not.toBeInTheDocument();
+
+    // Settle: the same text now renders through the memoized markdown pass, so
+    // the fenced block becomes a real highlighted code block and the fast
+    // streaming container is gone.
+    release();
+    await waitFor(() =>
+      expect(container.querySelector(".ask-code")).toBeInTheDocument(),
+    );
+    expect(container.querySelector(".ask-bubble__stream-text")).not.toBeInTheDocument();
+  });
+
+  it("coalesces a burst of tokens into the final reply text", async () => {
+    // Many onToken calls in one microtask tick must all land (buffered and
+    // flushed), producing the complete concatenated reply, not a dropped tail.
+    streamMock.mockImplementation(async (_baseUrl, _request, onToken) => {
+      for (const word of ["The ", "quick ", "brown ", "fox ", "jumps."]) {
+        onToken(word);
+      }
+      return converseResponse({ reply: "The quick brown fox jumps." });
+    });
+    const user = userEvent.setup();
+    renderChat();
+    await send(user, "stream a sentence");
+    expect(
+      await screen.findByText(/the quick brown fox jumps\./i),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("Ask hero and copy", () => {
   it("shows the ask-anything hero and no plain/technical toggle", () => {
     renderChat();
