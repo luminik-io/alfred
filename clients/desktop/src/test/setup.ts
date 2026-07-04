@@ -60,6 +60,12 @@ if (!Element.prototype.scrollTo) {
   Element.prototype.scrollTo = () => undefined;
 }
 
+// App scrolls the window to the top on route change via window.scrollTo, which
+// jsdom does not implement; stub it so full-App renders do not throw in effects.
+if (typeof window.scrollTo !== "function") {
+  window.scrollTo = (() => undefined) as typeof window.scrollTo;
+}
+
 // React Flow (the workflow graph) observes its container size; jsdom has no
 // ResizeObserver, so stub it. The graph renders no measurable nodes in jsdom,
 // so component tests that need to select a specific agent use the List view.

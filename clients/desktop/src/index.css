@@ -123,6 +123,9 @@
      a fainter cool-blue counter-leak lower-left. */
   --ambient: oklch(0.64 0.21 286 / 0.18);
   --ambient-2: oklch(0.60 0.17 250 / 0.10);
+  /* Soft center lift: a raised dark indigo so the middle of the near-black floor
+     reads as gently lit, not a dead void. Tuned per mode via this token. */
+  --ambient-center: oklch(0.20 0.02 271 / 0.40);
 
   --radius: 0;
 
@@ -208,6 +211,10 @@
   /* A whisper of warm atmosphere so light mode still feels lit, not flat. */
   --ambient: oklch(0.60 0.16 90 / 0.10);
   --ambient-2: oklch(0.55 0.14 60 / 0.06);
+  /* Warm-paper center lift: a faint warm near-white glow so the middle reads as
+     softly lit paper. Never the dark indigo of the dark theme (that painted a
+     dark blotch across the light canvas). */
+  --ambient-center: oklch(0.97 0.02 85 / 0.30);
   --sidebar: oklch(0.986 0.008 65 / 0.72);
   --sidebar-foreground: oklch(0.29 0.014 48);
   --sidebar-primary: oklch(0.545 0.205 33);
@@ -278,6 +285,8 @@
   --brand-teal: oklch(0.72 0.13 232);
   --ambient: oklch(0.64 0.18 286 / 0.06);
   --ambient-2: oklch(0.60 0.15 250 / 0.04);
+  /* Linear Crisp is deliberately flat: no center lift. */
+  --ambient-center: transparent;
   --radius: 0;
   --sidebar: oklch(0.165 0.005 40 / 0.96);
   --sidebar-foreground: oklch(0.92 0.005 55);
@@ -345,6 +354,8 @@
   --brand-teal: oklch(0.55 0.12 232);
   --ambient: oklch(0.52 0.19 283 / 0.07);
   --ambient-2: oklch(0.50 0.15 250 / 0.04);
+  /* Linear Crisp is deliberately flat: no center lift. */
+  --ambient-center: transparent;
   --radius: 0;
   --sidebar: oklch(0.99 0.002 55 / 0.96);
   --sidebar-foreground: oklch(0.28 0.010 48);
@@ -457,11 +468,14 @@ body {
   background: var(--background);
 }
 
-/* The painted atmosphere: a broad steel-violet bloom off the top-right, a fainter
- * cool counter-leak from the lower-left, and a soft center lift. --ambient /
- * --ambient-2 are set per theme (Linear + light dial them far down), so this one
- * rule serves every theme. It sits at z-index 0 behind the content plane
- * (#root is z-index 1) and never intercepts pointer events. */
+/* The painted atmosphere: a broad accent bloom off the top-right, a fainter
+ * counter-leak from the lower-left, and a soft center lift. --ambient /
+ * --ambient-2 / --ambient-center are ALL theme tokens, so this one rule serves
+ * every theme and each mode tints + places the lift for itself: Alfred Dark
+ * lifts a dark indigo, warm-paper light lifts a faint warm glow (never a dark
+ * blotch), and Linear Crisp zeroes the lift for a flat plane. It sits at z-index
+ * 0 behind the content plane (#root is z-index 1) and never intercepts pointer
+ * events. */
 .alfred-app-atmosphere {
   position: fixed;
   inset: 0;
@@ -470,7 +484,7 @@ body {
   background:
     radial-gradient(120% 80% at 78% -8%, var(--ambient), transparent 55%),
     radial-gradient(90% 70% at 6% 108%, var(--ambient-2), transparent 60%),
-    radial-gradient(60% 50% at 50% 50%, oklch(0.20 0.02 271 / 0.4), transparent 70%);
+    radial-gradient(60% 50% at 50% 50%, var(--ambient-center), transparent 70%);
 }
 
 /* A faint hairline grid, masked to the top, adds texture the glass distorts so
@@ -490,13 +504,8 @@ body {
   mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7), transparent 70%);
 }
 
-/* Linear Crisp is flatter: drop the center lift and the grid for a clean plane. */
-:root[data-theme="linear"] .alfred-app-atmosphere {
-  background:
-    radial-gradient(120% 80% at 78% -8%, var(--ambient), transparent 55%),
-    radial-gradient(90% 70% at 6% 108%, var(--ambient-2), transparent 60%);
-}
-
+/* Linear Crisp is flatter: it zeroes --ambient-center (below) so the center lift
+ * drops out via the token, and drops the grid here for a clean plane. */
 :root[data-theme="linear"] .alfred-app-atmosphere::before {
   opacity: 0;
 }
@@ -5782,15 +5791,17 @@ body {
 .alfred-onboarding {
   --alfred-onboarding-accent: var(--primary);
   position: relative;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  /* Fill the content area and vertically center the shell, so the wizard reads
-     as one floating card in the frame rather than a top-anchored page that
-     scrolls. */
+  /* Two-column takeover: a fixed-width value/brand rail on the left and the
+     step column on the right, together filling the whole content frame so the
+     wizard reads as one composed product intro with no dead space. It collapses
+     to a single column below the tablet breakpoint (rail stacks above). */
+  display: grid;
+  grid-template-columns: minmax(19rem, 24rem) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 1.25rem;
   min-height: 100%;
   height: 100%;
-  padding: 0.5rem 0;
+  padding: 0.25rem 0;
 }
 
 /* Onboarding is the one place we lean into spectacle: amp the same painted
@@ -5821,17 +5832,17 @@ body {
     );
 }
 
-/* The floating glass shell rides above the amped bloom. .alfred-glass supplies
+/* The step column: the right track of the takeover grid. .alfred-glass supplies
  * the translucency, specular top border, blur, and ambient shadow per the theme
- * tokens; this lays out the head / stepper / panel / footer stack and caps the
- * width so the journey reads as one calm, lifted card. */
+ * tokens; this lays out the head / stepper / panel / footer stack and fills its
+ * grid track so the journey fills the frame beside the rail. */
 .alfred-onboarding-shell {
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 56rem;
-  /* Cap the shell to the frame so a tall step scrolls inside the panel, never
-     the page. head + stepper + footer stay fixed; the panel flexes. */
+  min-width: 0;
+  /* Fill the frame; a tall step scrolls inside the panel, never the page.
+     head + stepper + footer stay fixed; the panel flexes. */
   max-height: 100%;
   display: flex;
   flex-direction: column;
@@ -5845,6 +5856,134 @@ body {
     inset 0 1px 0 var(--glass-highlight),
     0 2px 10px color-mix(in oklch, var(--glass-shadow), transparent 40%),
     0 32px 80px var(--glass-shadow);
+}
+
+/* The left value/brand rail: brand mark, the value promise headline, and the
+ * trust + spend reassurance pinned to the foot. It fills the left track and
+ * carries a soft accent wash so the frame reads as one composed surface. */
+.alfred-onboarding-rail {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-width: 0;
+  max-height: 100%;
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  padding: 1.9rem 1.8rem;
+  background:
+    radial-gradient(
+      120% 80% at 0% 0%,
+      color-mix(in oklch, var(--accent), transparent 80%),
+      transparent 58%
+    ),
+    radial-gradient(
+      120% 90% at 100% 100%,
+      color-mix(in oklch, var(--accent-2), transparent 86%),
+      transparent 60%
+    ),
+    linear-gradient(180deg, var(--glass-highlight), transparent 30%),
+    color-mix(in oklch, var(--card), transparent 12%);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 32px 80px var(--glass-shadow);
+}
+
+.alfred-onboarding-rail__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.alfred-onboarding-rail__wordmark {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.alfred-onboarding-rail__name {
+  font-family: var(--font-heading);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.alfred-onboarding-rail__kicker {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.alfred-onboarding-rail__promise {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  /* Push the promise toward the vertical center of the rail, foot stays pinned. */
+  margin-top: auto;
+}
+
+.alfred-onboarding-rail__eyebrow {
+  margin: 0;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--accent), var(--foreground) 45%);
+}
+
+.alfred-onboarding-rail__headline {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.75rem;
+  font-weight: 500;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+
+.alfred-onboarding-rail__sub {
+  margin: 0;
+  max-width: 22rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+
+.alfred-onboarding-rail__foot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-top: auto;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.alfred-onboarding-rail__trust {
+  margin: 0;
+  padding-left: 0.85rem;
+  border-left: 2px solid color-mix(in oklch, var(--accent), transparent 40%);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--foreground);
+}
+
+.alfred-onboarding-rail__cost {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+}
+
+.alfred-onboarding-rail__progress {
+  margin: 0;
+  font-size: 0.74rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: color-mix(in oklch, var(--accent), var(--foreground) 40%);
 }
 
 .alfred-onboarding-shell__head {
@@ -6097,42 +6236,23 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Step 0 welcome leans typographic, echoing the Fey / Clay near-black onboarding
- * the spec cites. A soft steel-violet wash sits behind the headline only. */
+/* Step 0 welcome leans typographic. Left-aligned to sit inside the right step
+ * column beside the value rail (the rail carries the persistent promise + wash),
+ * so the welcome body is action-focused: heading, detected inventory, CTAs. */
 .alfred-onboarding-welcome {
   position: relative;
   display: grid;
   gap: 1.5rem;
-  padding: 1.25rem 0.5rem 0.5rem;
-  text-align: center;
+  padding: 0.5rem 0.25rem;
+  text-align: left;
 }
 
-.alfred-onboarding-welcome::before {
-  content: "";
-  position: absolute;
-  inset: -1.5rem 8% auto 8%;
-  height: 9rem;
-  background: radial-gradient(
-    60% 100% at 50% 0%,
-    color-mix(in oklch, var(--primary), transparent 82%),
-    transparent 70%
-  );
-  pointer-events: none;
-  z-index: 0;
-}
-
-.alfred-onboarding-welcome > * {
-  position: relative;
-  z-index: 1;
-}
-
-/* The trust differentiator, elevated to a quiet pill directly under the value
- * line: the one-time, can't-miss "no API keys, runs on the subscriptions you
- * already pay for" point. A bordered steel-violet chip, not buried fine print. */
+/* The trust differentiator, a quiet pill under the welcome heading: the
+ * can't-miss "no API keys, runs on the subscriptions you already pay for" point.
+ * A bordered steel-violet chip, not buried fine print. */
 .alfred-onboarding-welcome__trust {
   display: inline-flex;
   align-items: center;
-  justify-self: center;
   gap: 0.5rem;
   max-width: 34rem;
   padding: 0.55rem 0.95rem;
@@ -6181,6 +6301,51 @@ body {
   color: var(--accent);
 }
 
+/* Below the wide breakpoint the two-column takeover collapses to a single column:
+ * the value rail stacks above the step column as a compact banner (its promise
+ * headline hides, the brand + trust + progress stay) so the step card gets the
+ * full width. */
+@media (max-width: 1024px) {
+  .alfred-onboarding {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: min-content minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .alfred-onboarding-rail {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1.25rem;
+    max-height: none;
+    padding: 1rem 1.25rem;
+  }
+
+  .alfred-onboarding-rail__promise {
+    display: none;
+  }
+
+  .alfred-onboarding-rail__foot {
+    flex: 1 1 auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 1.25rem;
+    margin: 0;
+    padding: 0;
+    border-top: 0;
+  }
+
+  .alfred-onboarding-rail__trust {
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .alfred-onboarding-rail__progress {
+    margin-left: auto;
+  }
+}
+
 /* Responsive: below the tablet breakpoint the shell tightens its padding and the
  * stepper collapses inactive labels to dots so the row stays on one line with no
  * horizontal scroll. The footer never truncates because Back / Continue are
@@ -6194,6 +6359,11 @@ body {
   .alfred-onboarding-shell__head {
     flex-direction: column;
     gap: 0.75rem;
+  }
+
+  .alfred-onboarding-rail__trust,
+  .alfred-onboarding-rail__cost {
+    flex-basis: 100%;
   }
 }
 

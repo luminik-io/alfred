@@ -683,8 +683,55 @@ export function OnboardingView({
     };
   }
 
+  const completedCount = stepperItems.filter((s) => s.state === "done").length;
+
   return (
     <section className="alfred-onboarding" aria-label="Set up Alfred" onKeyDown={onKeyDown}>
+      {/* Left rail: brand + the value promise + trust + a spend reassurance. It
+          fills the left of the frame so the takeover reads as one composed
+          product intro, not a card floating in a void. Collapses above the main
+          column at narrow widths. */}
+      <aside className="alfred-onboarding-rail alfred-glass" aria-hidden="true">
+        <div className="alfred-onboarding-rail__brand">
+          <span className="alfred-brand-mark size-9 shrink-0">
+            <img
+              src="/brand/alfred-logo-transparent.png"
+              alt=""
+              className="alfred-brand-logo size-9 object-contain"
+            />
+          </span>
+          <span className="alfred-onboarding-rail__wordmark">
+            <span className="alfred-onboarding-rail__name">Alfred</span>
+            <span className="alfred-onboarding-rail__kicker">Autonomous coding agents</span>
+          </span>
+        </div>
+
+        <div className="alfred-onboarding-rail__promise">
+          <p className="alfred-onboarding-rail__eyebrow">Set up in about two minutes</p>
+          <h2 className="alfred-onboarding-rail__headline">
+            Wake up to shipped work you can trust.
+          </h2>
+          <p className="alfred-onboarding-rail__sub">
+            Alfred opens pull requests, handles reviews, and reports back, all on
+            your own machine while you stay in control.
+          </p>
+        </div>
+
+        <div className="alfred-onboarding-rail__foot">
+          <p className="alfred-onboarding-rail__trust">
+            No API keys. Alfred runs on the Claude and Codex subscriptions you
+            already pay for.
+          </p>
+          <p className="alfred-onboarding-rail__cost">
+            No per-request bill. Watch live usage and limits any time in the
+            sidebar.
+          </p>
+          <p className="alfred-onboarding-rail__progress">
+            {completedCount} of {ONBOARDING_STEP_ORDER.length} steps done
+          </p>
+        </div>
+      </aside>
+
       <div className="alfred-onboarding-shell alfred-glass">
         <header className="alfred-onboarding-shell__head">
           <div className="min-w-0">

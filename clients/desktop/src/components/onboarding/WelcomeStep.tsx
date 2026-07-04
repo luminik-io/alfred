@@ -45,20 +45,20 @@ export function WelcomeStep({
           : "Get started";
 
   return (
-    <div className="alfred-onboarding-welcome grid gap-7 text-center">
-      <div className="mx-auto grid max-w-xl gap-4">
+    <div className="alfred-onboarding-welcome grid gap-6">
+      <div className="grid max-w-xl gap-3">
         <span
-          className="status-live-glow mx-auto flex size-12 items-center justify-center rounded-none border border-primary/40 bg-primary/15 text-primary"
+          className="status-live-glow flex size-12 items-center justify-center rounded-none border border-primary/40 bg-primary/15 text-primary"
           aria-hidden="true"
         >
           <Sparkles size={22} />
         </span>
-        <h2 className="font-heading text-3xl font-medium tracking-tight text-foreground md:text-4xl">
-          Wake up to shipped work you can trust.
+        <h2 className="font-heading text-2xl font-medium tracking-tight text-foreground">
+          Let's get you set up.
         </h2>
         <p className="text-base text-muted-foreground">
-          Alfred opens pull requests, handles reviews, and reports back, all on
-          your own machine, while you stay in control.
+          A few short steps. Alfred checks this Mac, connects to GitHub, and ends
+          on a real result you can see.
         </p>
       </div>
 
@@ -72,7 +72,7 @@ export function WelcomeStep({
 
       <InstallInventoryPanel inventory={install} queue={queue} />
 
-      <div className="mx-auto flex flex-wrap items-center justify-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"
           size="lg"
