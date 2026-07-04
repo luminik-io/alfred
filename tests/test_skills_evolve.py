@@ -125,6 +125,16 @@ def test_lesson_created_at_normalizes_naive_to_utc() -> None:
     assert skills_evolve._lesson_created_at(NoTs()) is None
 
 
+def test_default_proposed_dir_uses_the_canonical_skills_root() -> None:
+    """The draft dir resolves via skill_packs.skills_root (wheel-layout safe)."""
+    import skill_packs
+
+    assert (
+        skills_evolve.default_proposed_dir()
+        == skill_packs.skills_root() / "first_party" / "_proposed"
+    )
+
+
 def test_cluster_multi_tag_lesson_contributes_to_each_tag() -> None:
     lessons = [
         StubLesson("l1", ["auth", "backend"]),

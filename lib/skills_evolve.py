@@ -54,12 +54,17 @@ _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
 
 def default_proposed_dir() -> Path:
-    """Where drafts land: ``skills/first_party/_proposed/`` in this repo.
+    """Where drafts land: ``skills/first_party/_proposed/`` under the skills root.
 
-    Resolved relative to this module (``lib/skills_evolve.py`` -> repo root ->
-    ``skills/first_party/_proposed``), so it works from a source checkout.
+    Resolved via :func:`skill_packs.skills_root`, which already handles all three
+    layouts (source checkout, deployed ``$ALFRED_HOME/lib`` runtime, and an
+    installed wheel where ``skills/`` is packaged as a sibling of the module).
+    A hand-rolled parent-of-parent walk would be wrong in the wheel layout
+    (it points above ``site-packages``), so we reuse the canonical resolver.
     """
-    return Path(__file__).resolve().parent.parent / "skills" / "first_party" / "_proposed"
+    import skill_packs
+
+    return skill_packs.skills_root() / "first_party" / "_proposed"
 
 
 # Length of the stable hash suffix appended to every draft name. 8 hex chars of
