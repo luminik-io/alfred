@@ -167,7 +167,11 @@ def parse_action(raw: Any) -> ConverseAction | None:
     * the block is not a dict, or
     * ``tool`` is missing / not a string / not in ``ACTION_ALLOWLIST``, or
     * ``args`` is present but is not a dict, or
-    * ``args`` exceeds the bounded key count or serialized size.
+    * ``args`` exceeds the bounded key count or serialized size, or
+    * ``args`` contains a non-finite float (``NaN`` / ``Infinity``) anywhere in
+      its values. Python's ``json.loads`` accepts those by default, but they are
+      not valid JSON and a downstream client would choke re-serializing them, so
+      a request carrying one is dropped rather than forwarded.
 
     A missing ``args`` is treated as an empty dict so a bare
     ``{"tool": "list_repos"}`` request is honored.
@@ -190,7 +194,11 @@ def parse_action(raw: Any) -> ConverseAction | None:
     if len(args) > MAX_ACTION_ARGS_KEYS:
         return None
     try:
-        serialized = json.dumps(args, ensure_ascii=False, default=str)
+        # allow_nan=False makes json.dumps raise on NaN/Infinity anywhere in the
+        # (possibly nested) args, so a non-finite value drops the whole action
+        # via the shared except below. default=str keeps non-JSON scalars from
+        # raising for an unrelated reason (they serialize to a string instead).
+        serialized = json.dumps(args, ensure_ascii=False, default=str, allow_nan=False)
     except (TypeError, ValueError):
         return None
     if len(serialized) > MAX_ACTION_ARGS_CHARS:

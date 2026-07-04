@@ -80,10 +80,42 @@ def test_parse_action_rejects_oversized_args_by_serialized_size() -> None:
     assert cc.parse_action({"tool": "save_theme", "args": args}) is None
 
 
+def test_parse_action_rejects_non_finite_float_args() -> None:
+    # Python json.loads accepts NaN/Infinity by default, but they are not valid
+    # JSON and a downstream client would choke re-serializing them, so a request
+    # carrying one is dropped rather than forwarded. Never raises.
+    assert cc.parse_action({"tool": "save_theme", "args": {"x": float("nan")}}) is None
+    assert cc.parse_action({"tool": "save_theme", "args": {"x": float("inf")}}) is None
+    assert cc.parse_action({"tool": "save_theme", "args": {"x": float("-inf")}}) is None
+
+
+def test_parse_action_rejects_nested_non_finite_float_args() -> None:
+    # A non-finite value nested inside a list or sub-dict is caught too.
+    assert cc.parse_action({"tool": "save_theme", "args": {"m": [1, float("nan")]}}) is None
+    assert cc.parse_action({"tool": "save_theme", "args": {"m": {"k": float("inf")}}}) is None
+
+
 def test_parse_action_never_raises_on_garbage() -> None:
     # A grab-bag of hostile / malformed inputs must all degrade to None.
     for garbage in ({}, {"tool": ""}, {"tool": "  "}, {"tool": "unknown", "args": 5}, 3.14, True):
         assert cc.parse_action(garbage) is None
+
+
+def test_parse_turn_drops_non_finite_action_but_keeps_reply() -> None:
+    # A NaN in the action args drops the action; the turn's text survives. Built
+    # by hand (not json.dumps, which rejects NaN) to mimic what a model produces
+    # via json.loads, which does accept NaN/Infinity.
+    obj = {
+        "reply": "Saving your theme.",
+        "draft": {},
+        "readiness": {"score": 0, "ready": False, "missing": []},
+        "done": False,
+        "action": {"tool": "save_theme", "args": {"opacity": float("nan")}},
+    }
+    turn = cc.parse_turn(json.dumps(obj, allow_nan=True), base_draft=_empty_draft())
+    assert turn is not None
+    assert turn.action is None
+    assert turn.reply == "Saving your theme."
 
 
 # --- parse_turn: action threads through --------------------------------------
@@ -209,3 +241,18 @@ def test_api_payload_action_is_null_when_absent() -> None:
     assert payload["action"] is None
     # The rest of the contract is byte-for-byte the same as before the field.
     assert set(payload) >= {"reply", "intent", "readiness", "done", "draft", "draft_id"}
+
+
+# --- Output contract / prompt schema documents the action field --------------
+
+
+def test_output_contract_documents_the_action_field_and_allowlist() -> None:
+    # parse_turn reads obj["action"], so the schema the model is handed must tell
+    # it the field exists and which tool names are valid, or a flow that enables
+    # actions could never produce output the parser understands.
+    contract = (REPO_ROOT / "prompts" / "spec-interrogator.md").read_text(encoding="utf-8")
+    assert '"action"' in contract
+    # Every allowlisted tool name is named in the contract so the model knows the
+    # full vocabulary; this stays in lockstep with ACTION_ALLOWLIST.
+    for tool in cc.ACTION_ALLOWLIST:
+        assert f"`{tool}`" in contract, tool
