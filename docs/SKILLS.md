@@ -146,10 +146,15 @@ Available skills (invoke by name when the trigger matches; read the SKILL.md ...
 ```
 
 Role filtering uses the manifest `roles`: a firing only sees skills recommended
-for its role. It is on by default and gated by `ALFRED_SKILLS_INJECT` (set to
+for its role. The role is derived automatically from the agent codename via the
+canonical roster map (`lib/agent_roster.py`, e.g. `lucius` -> `feature-dev`,
+`rasalghul` -> `pr-review`), so injection is active for every existing caller
+with no code change; a caller may still pass an explicit `role=` to override.
+Operational codenames with no skill role (automerge, memory-harvest, ...) inject
+nothing. It is on by default and gated by `ALFRED_SKILLS_INJECT` (set to
 `0`/`false`/`no`/`off` to disable), mirroring the `ALFRED_*_MCP` convention. When
-no installed skill matches the role, or the gate is off, the prompt is left
-untouched.
+no installed skill matches the role, no role resolves, or the gate is off, the
+prompt is left untouched.
 
 ### `alfred skills evolve`: from memory to skill proposals
 

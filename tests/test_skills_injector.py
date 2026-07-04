@@ -181,6 +181,36 @@ def test_process_swallows_injector_error(monkeypatch: pytest.MonkeyPatch) -> Non
     assert process._with_skills_block("PROMPT", "feature-dev") == "PROMPT"
 
 
+# --------------------------------------------------------------------------
+# Role derivation from codename (the fix: injection with no caller change)
+# --------------------------------------------------------------------------
+
+
+def test_resolve_firing_role_derives_from_codename() -> None:
+    assert process._resolve_firing_role(None, "lucius") == "feature-dev"
+    assert process._resolve_firing_role(None, "drake") == "planner"
+    assert process._resolve_firing_role(None, "rasalghul") == "pr-review"
+    assert process._resolve_firing_role(None, "Lucius") == "feature-dev"  # case-insensitive
+
+
+def test_resolve_firing_role_explicit_overrides_codename() -> None:
+    assert process._resolve_firing_role("pr-review", "lucius") == "pr-review"
+
+
+def test_resolve_firing_role_unknown_codename_is_none() -> None:
+    assert process._resolve_firing_role(None, "automerge") is None
+    assert process._resolve_firing_role(None, "") is None
+
+
+def test_with_skills_block_derives_role_from_agent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        process, "skills_context_for_role", lambda role: f"[{role}]" if role else ""
+    )
+    out = process._with_skills_block("PROMPT", None, "lucius")
+    assert out == "PROMPT\n\n[feature-dev]"
+    assert process._with_skills_block("PROMPT", None, "automerge") == "PROMPT"
+
+
 def test_invoke_agent_engine_injects_role_block(monkeypatch: pytest.MonkeyPatch) -> None:
     """End-to-end: the role block reaches the prompt the engine actually runs."""
     monkeypatch.setattr(
@@ -221,12 +251,7 @@ def test_invoke_agent_engine_injects_role_block(monkeypatch: pytest.MonkeyPatch)
     assert "[skills for feature-dev]" in seen["prompt"]
 
 
-def test_invoke_agent_engine_no_role_leaves_prompt_clean(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        process, "skills_context_for_role", lambda role: f"[skills for {role}]" if role else ""
-    )
-    seen: dict[str, str] = {}
-
+def _fake_claude_capturing(seen: dict[str, str]):
     def fake_claude(prompt, **kwargs):
         seen["prompt"] = prompt
         from agent_runner.result import ClaudeResult
@@ -243,15 +268,46 @@ def test_invoke_agent_engine_no_role_leaves_prompt_clean(monkeypatch: pytest.Mon
             error_message=None,
         )
 
+    return fake_claude
+
+
+def test_invoke_agent_engine_derives_role_from_codename(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No explicit role: the codename drives injection for every existing caller."""
+    monkeypatch.setattr(
+        process, "skills_context_for_role", lambda role: f"[skills for {role}]" if role else ""
+    )
+    seen: dict[str, str] = {}
     process.invoke_agent_engine(
-        "just this",
+        "do the thing",
         engine="claude",
-        agent="lucius",
+        agent="lucius",  # -> feature-dev via the roster map
         firing_id="f1",
         workdir=Path("."),
         claude_allowed_tools="Read",
         timeout=10,
-        claude_fn=fake_claude,
+        claude_fn=_fake_claude_capturing(seen),
+    )
+    assert "do the thing" in seen["prompt"]
+    assert "[skills for feature-dev]" in seen["prompt"]
+
+
+def test_invoke_agent_engine_operational_codename_leaves_prompt_clean(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An operational codename with no skill role injects nothing."""
+    monkeypatch.setattr(
+        process, "skills_context_for_role", lambda role: f"[skills for {role}]" if role else ""
+    )
+    seen: dict[str, str] = {}
+    process.invoke_agent_engine(
+        "just this",
+        engine="claude",
+        agent="automerge",  # no skill role -> no injection
+        firing_id="f1",
+        workdir=Path("."),
+        claude_allowed_tools="Read",
+        timeout=10,
+        claude_fn=_fake_claude_capturing(seen),
     )
     assert "just this" in seen["prompt"]
     assert "[skills for" not in seen["prompt"]

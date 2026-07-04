@@ -1166,18 +1166,42 @@ def codex_invoke(
 # --------------------------------------------------------------------------
 
 
-def _with_skills_block(prompt: str, role: str | None) -> str:
+def _resolve_firing_role(role: str | None, agent: str) -> str | None:
+    """Resolve the skill-pack role for a firing.
+
+    An explicit ``role`` always wins (the override). When it is ``None`` -- which
+    is every production caller today, since none pass a role -- the role is
+    derived from the agent ``codename`` via the canonical
+    :data:`agent_roster.CODENAME_TO_PACK_ROLE` map. That is what makes skill
+    injection active for the whole fleet without touching any caller. A codename
+    with no engineering skill role (operational agents) resolves to ``None`` and
+    injects nothing.
+    """
+    if role is not None:
+        return role
+    with contextlib.suppress(Exception):
+        from agent_roster import pack_role_for_codename
+
+        return pack_role_for_codename(agent)
+    return None
+
+
+def _with_skills_block(prompt: str, role: str | None, agent: str = "") -> str:
     """Append the role-scoped skills block to ``prompt`` when injection is on.
 
-    Metadata-only progressive disclosure: names the skills a firing of ``role``
-    may invoke and where to read each one, without inlining any body. Gated by
-    ``ALFRED_SKILLS_INJECT`` (default on) inside :func:`skills_context_for_role`.
-    Behavior-preserving when no skills match or the gate is off: the helper
-    returns ``""`` and the prompt is returned unchanged.
+    ``role`` is the explicit override; when it is ``None`` the role is derived
+    from the agent ``codename`` (:func:`_resolve_firing_role`), so every existing
+    caller gets injection automatically. Metadata-only progressive disclosure:
+    names the skills a firing of that role may invoke and where to read each one,
+    without inlining any body. Gated by ``ALFRED_SKILLS_INJECT`` (default on)
+    inside :func:`skills_context_for_role`. Behavior-preserving when no skills
+    match, no role resolves, or the gate is off: the prompt is returned
+    unchanged.
     """
+    resolved = _resolve_firing_role(role, agent)
     block = ""
     with contextlib.suppress(Exception):
-        block = skills_context_for_role(role)
+        block = skills_context_for_role(resolved)
     if not block:
         return prompt
     return f"{prompt}\n\n{block}"
@@ -1217,10 +1241,14 @@ def invoke_agent_engine(
     one-line Slack warning.
 
     ``role`` is the firing's agent role (feature-dev, pr-review, planner, ...).
-    When set and ``ALFRED_SKILLS_INJECT`` is not disabled, a compact
-    metadata-only block naming the skills recommended for that role is appended
-    to the prompt (progressive disclosure: the agent reads each SKILL.md body on
-    demand). Omitting ``role`` or disabling the gate leaves the prompt untouched.
+    It is an OPTIONAL override: when omitted (as every production caller does
+    today), the role is derived from the agent ``codename`` via the canonical
+    roster map, so skill injection is active for the whole fleet with no caller
+    change. When a role resolves and ``ALFRED_SKILLS_INJECT`` is not disabled, a
+    compact metadata-only block naming the skills recommended for that role is
+    appended to the prompt (progressive disclosure: the agent reads each SKILL.md
+    body on demand). A codename with no skill role, or the gate off, leaves the
+    prompt untouched.
     """
     mode = normalize_engine(engine)
     claude_call = claude_fn or claude_invoke_streaming
@@ -1234,7 +1262,7 @@ def invoke_agent_engine(
         query=memory_query,
         limit=memory_limit,
     )
-    prompt_with_context = _with_skills_block(prompt_with_context, role)
+    prompt_with_context = _with_skills_block(prompt_with_context, role, agent)
     prompt_for_engine, context_governance = govern_prompt_context(prompt_with_context)
 
     def _stamp_context_governance(result: ClaudeResult) -> ClaudeResult:
