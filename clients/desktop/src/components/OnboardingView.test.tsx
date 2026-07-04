@@ -207,13 +207,13 @@ describe("OnboardingView seven-step takeover", () => {
       await screen.findByText(/wake up to shipped work you can trust/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/opens pull requests, handles reviews, and reports back in slack/i),
+      screen.getByText(/opens pull requests, handles reviews, and reports back/i),
     ).toBeInTheDocument();
     // The trust differentiator is on the first screen, not buried.
     expect(
       screen.getByText(/runs on the claude max and codex pro subscriptions you already pay for/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/you will not need a terminal/i)).toBeInTheDocument();
+    expect(screen.getByText(/no terminal, no api keys/i)).toBeInTheDocument();
     // The persistent rail shows all seven steps.
     expect(screen.getByRole("button", { name: /^welcome$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^tools$/i })).toBeInTheDocument();
@@ -245,7 +245,7 @@ describe("OnboardingView seven-step takeover", () => {
     renderOnboarding();
 
     expect(await screen.findByText(/existing setup/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /review your alfred setup/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /review your setup/i })).toBeInTheDocument();
     expect(screen.queryByText(/^first run$/i)).not.toBeInTheDocument();
     expect(await screen.findByText(/found an alfred setup on this mac/i)).toBeInTheDocument();
     expect(screen.getAllByText("/tmp/alfred-home").length).toBeGreaterThan(0);
@@ -275,7 +275,7 @@ describe("OnboardingView seven-step takeover", () => {
     renderOnboarding();
 
     // On the welcome step of a detected install, the rail must not read 0 done.
-    expect(await screen.findByText(/review your alfred setup/i)).toBeInTheDocument();
+    expect(await screen.findByText(/review your setup/i)).toBeInTheDocument();
     const progress = await screen.findByLabelText(/of 7 onboarding steps complete/i);
     const match = /(\d+) of 7 onboarding steps complete/.exec(progress.getAttribute("aria-label") || "");
     expect(match).not.toBeNull();
@@ -321,7 +321,7 @@ describe("OnboardingView seven-step takeover", () => {
     renderOnboarding({ connected: false });
 
     expect(screen.getByText(/^first run$/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /let's connect alfred/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /set up alfred/i })).toBeInTheDocument();
     expect(screen.queryByText(/checking setup/i)).not.toBeInTheDocument();
   });
 

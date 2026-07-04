@@ -121,49 +121,49 @@ const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
   },
   engine: {
     key: "engine",
-    title: "Connect your tools",
+    title: "Let's find your coding tools.",
     railTitle: "Tools",
-    blurb: "Alfred checks Claude Code and Codex on this Mac. No API keys.",
+    blurb: "Alfred checks for Claude Code and Codex on this Mac. No keys, no config.",
     icon: TerminalSquare,
     optional: false,
   },
   github: {
     key: "github",
-    title: "Connect GitHub",
+    title: "Connect GitHub.",
     railTitle: "GitHub",
-    blurb: "Alfred reuses your GitHub sign-in.",
+    blurb: "Alfred reuses your existing GitHub sign-in. It only touches the repos you pick next.",
     icon: GitPullRequest,
     optional: false,
   },
   repos: {
     key: "repos",
-    title: "Choose repositories",
+    title: "Where should Alfred work?",
     railTitle: "Repositories",
-    blurb: "Pick the projects Alfred may work in.",
+    blurb: "Pick the projects Alfred may open pull requests in. You can change this anytime.",
     icon: Plug,
     optional: false,
   },
   team: {
     key: "team",
-    title: "Name your team",
+    title: "Name your team.",
     railTitle: "Team",
-    blurb: "Pick visible names for the same senior-engineering roles.",
+    blurb: "Same senior-engineering roles, your names. Purely cosmetic.",
     icon: Users,
     optional: false,
   },
   slack: {
     key: "slack",
-    title: "Connect Slack",
+    title: "Want approvals in Slack?",
     railTitle: "Slack",
-    blurb: "Optional. Approvals and questions in Slack too.",
+    blurb: "Optional. Get questions and approve work from Slack. Skip it and everything happens here.",
     icon: MessageCircle,
     optional: true,
   },
   request: {
     key: "request",
-    title: "Your first request",
+    title: "Give Alfred its first job.",
     railTitle: "First request",
-    blurb: "End on a real result, or a sample to look at first.",
+    blurb: "Type a real task, or watch a sample first.",
     icon: ListChecks,
     optional: false,
   },
@@ -666,20 +666,20 @@ export function OnboardingView({
   const canReadSetupStatus = connected || loading || statusLoading;
   let shellCopy = {
     eyebrow: "First run",
-    title: "Let's connect Alfred",
-    lede: "Seven short steps, about two minutes. You will not need a terminal.",
+    title: "Set up Alfred",
+    lede: "A few short steps, about two minutes. No terminal, no API keys.",
   };
   if (status === null && !statusError && canReadSetupStatus) {
     shellCopy = {
       eyebrow: "Checking setup",
       title: "Checking this Mac",
-      lede: "Alfred is reading the local runtime before choosing the right setup path.",
+      lede: "Reading the local runtime to pick the right setup path for you.",
     };
   } else if (installInitialized) {
     shellCopy = {
       eyebrow: "Existing setup",
-      title: "Review your Alfred setup",
-      lede: "Alfred found a local runtime on this Mac. Recheck tools, repos, team names, and Slack before shipping more work.",
+      title: "Review your setup",
+      lede: "Alfred is already installed on this Mac. Recheck tools, repos, team names, and Slack before you ship more work.",
     };
   }
 
@@ -867,12 +867,17 @@ export function OnboardingView({
               </Button>
             ) : null}
             {nextKey ? (
-              <Button type="button" size="sm" onClick={advance}>
+              <Button type="button" size="sm" className="btn-primary-glow" onClick={advance}>
                 <span>Continue</span>
                 <ArrowRight size={15} aria-hidden="true" />
               </Button>
             ) : (
-              <Button type="button" size="sm" onClick={() => onSwitch?.("home")}>
+              <Button
+                type="button"
+                size="sm"
+                className="btn-primary-glow"
+                onClick={() => onSwitch?.("home")}
+              >
                 <span>Go to Inbox</span>
                 <ArrowRight size={15} aria-hidden="true" />
               </Button>

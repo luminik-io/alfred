@@ -48,7 +48,7 @@ export function WelcomeStep({
     <div className="alfred-onboarding-welcome grid gap-7 text-center">
       <div className="mx-auto grid max-w-xl gap-4">
         <span
-          className="mx-auto flex size-12 items-center justify-center rounded-none border border-primary/30 bg-primary/15 text-primary"
+          className="status-live-glow mx-auto flex size-12 items-center justify-center rounded-none border border-primary/40 bg-primary/15 text-primary"
           aria-hidden="true"
         >
           <Sparkles size={22} />
@@ -57,8 +57,8 @@ export function WelcomeStep({
           Wake up to shipped work you can trust.
         </h2>
         <p className="text-base text-muted-foreground">
-          Alfred opens pull requests, handles reviews, and reports back in Slack,
-          all on your own machine while you stay in control.
+          Alfred opens pull requests, handles reviews, and reports back, all on
+          your own machine, while you stay in control.
         </p>
       </div>
 
@@ -76,6 +76,7 @@ export function WelcomeStep({
         <Button
           type="button"
           size="lg"
+          className="btn-primary-glow"
           disabled={installBusy}
           onClick={needsNativeInstall ? onInstallCore : onGetStarted}
         >
