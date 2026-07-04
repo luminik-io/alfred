@@ -4069,6 +4069,63 @@ def test_converse_clean_finalization_has_no_degraded_marker(tmp_path: Path) -> N
     assert "did not land" not in result.detail
 
 
+def test_converse_offer_signature_round_trips_across_turns(tmp_path: Path) -> None:
+    # The listener must persist the affordance fingerprint a converse turn showed
+    # and feed it back on the next turn so the "reply `ship it`" boilerplate is
+    # not repeated (the operator's "repeating same messages" complaint).
+    from slack_converse import SlackConverseConfig
+    from slack_thread_registry import SlackThreadRecord
+
+    seen_priors: list[str] = []
+
+    def runner(**kwargs: object) -> object:
+        seen_priors.append(str(kwargs.get("prior_offer_signature", "")))
+        return SimpleNamespace(
+            handled=True,
+            intent="build",
+            offered_issue=True,
+            streamed=True,
+            detail="streamed conversational answer",
+            finalized=True,
+            answered=True,
+            offer_signature="offer:csv export",
+        )
+
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=SimpleNamespace(),
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_runner=runner,
+    )
+    listener._converse_config = SlackConverseConfig(
+        enabled=True, engine="claude", channels=frozenset()
+    )
+    # A registered thread record is what the signature is persisted onto.
+    listener.registry.register(
+        SlackThreadRecord(kind="draft", channel="C1", thread_ts="1.0", title="CSV export")
+    )
+    event = SimpleNamespace(
+        channel="C1", root_ts="1.0", ts="1.1", text="<@UALFRED> export attendees", user="U1"
+    )
+
+    first = listener._maybe_converse(event)
+    assert first is not None and first.handled is True
+    # First turn had no prior signature; the returned one is now persisted.
+    assert seen_priors[-1] == ""
+    stored = listener.registry.lookup("C1", "1.0")
+    assert stored is not None
+    assert stored.metadata.get("converse_offer_signature") == "offer:csv export"
+
+    # Second turn on the same thread: the listener feeds the stored signature back
+    # so the runner can suppress the repeat.
+    event2 = SimpleNamespace(
+        channel="C1", root_ts="1.0", ts="1.2", text="<@UALFRED> also by date", user="U1"
+    )
+    listener._maybe_converse(event2)
+    assert seen_priors[-1] == "offer:csv export"
+
+
 def test_client_is_connected_probes_defensively() -> None:
     from slack_listener import _client_is_connected
 

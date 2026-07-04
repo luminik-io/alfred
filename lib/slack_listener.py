@@ -23,7 +23,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Iterable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -1206,6 +1206,12 @@ class SlackPlanningListener:
         text = (event.text or "").strip()
         if not text:
             return None
+        # The file-affordance fingerprint this thread last showed. Feeding it back
+        # in lets the runner suppress the identical "reply `ship it` to file it"
+        # block when nothing about the affordance changed, so a build thread does
+        # not repeat the same boilerplate on every turn. Best-effort: absent when
+        # the thread has not been registered yet.
+        prior_offer_signature = self._converse_offer_signature(event.channel, event.root_ts)
         try:
             outcome = self._converse_runner(
                 client=self.poster,
@@ -1218,6 +1224,7 @@ class SlackPlanningListener:
                 bridge_enabled=self.bridge.config.enabled,
                 workdir=Path.cwd(),
                 suppress_engine_error=suppress_engine_error,
+                prior_offer_signature=prior_offer_signature,
             )
         except Exception as exc:
             print(
@@ -1247,7 +1254,57 @@ class SlackPlanningListener:
                 file=sys.stderr,
             )
             detail = f"{detail} (final delivery did not land)"
+        # Persist the affordance fingerprint this turn showed so the next turn in
+        # the thread can suppress a repeat of the same file offer. Best-effort:
+        # a persistence failure never blocks the answer that already posted.
+        self._store_converse_offer_signature(
+            event.channel,
+            event.root_ts,
+            getattr(outcome, "offer_signature", ""),
+        )
         return ListenerResult(True, action, detail=detail)
+
+    _CONVERSE_OFFER_SIGNATURE_KEY = "converse_offer_signature"
+
+    def _converse_offer_signature(self, channel: str, thread_ts: str) -> str:
+        """Read the file-affordance fingerprint this thread last showed.
+
+        Best-effort: an unregistered thread, a missing key, or any read error
+        returns an empty string, which makes the runner treat the affordance as
+        new and show the offer once (the safe default). It never raises.
+        """
+        try:
+            record = self.registry.lookup(channel, thread_ts)
+        except Exception:
+            return ""
+        if record is None:
+            return ""
+        value = record.metadata.get(self._CONVERSE_OFFER_SIGNATURE_KEY)
+        return value if isinstance(value, str) else ""
+
+    def _store_converse_offer_signature(self, channel: str, thread_ts: str, signature: str) -> None:
+        """Persist the affordance fingerprint for the next turn in this thread.
+
+        Merged into the existing thread record's metadata so no other thread
+        state is lost. Best-effort: when the thread has no record yet (a bare
+        mention that never became a draft) or the write fails, we silently skip;
+        the only cost is that the very next turn may re-show the offer once.
+        """
+        try:
+            record = self.registry.lookup(channel, thread_ts)
+        except Exception:
+            return
+        if record is None:
+            return
+        current = record.metadata.get(self._CONVERSE_OFFER_SIGNATURE_KEY)
+        if isinstance(current, str) and current == signature:
+            return
+        metadata = dict(record.metadata)
+        metadata[self._CONVERSE_OFFER_SIGNATURE_KEY] = signature
+        try:
+            self.registry.register(replace(record, metadata=metadata))
+        except Exception:
+            return
 
     # ------------------------------------------------------------------
     # Conversational intent router (additive fallback)
