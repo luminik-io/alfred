@@ -701,18 +701,18 @@ def looks_like_question(text: str) -> bool:
         #     ("can I see the fleet status?", "could we get the paused agents?")
         #     -> a status question, not a change request.
         second = tokens[1] if len(tokens) > 1 else ""
-        if second == "you":
-            pass  # fall through to the build-verb check below
-        elif (
-            second in {"i", "we"}
-            and _has_info_verb_in_verb_position(tokens)
-            and not _has_build_verb_in_verb_position(tokens)
-        ):
-            # "can I see the status" is a question, but a build verb wins: "can we
-            # find a way to ADD dark mode?" carries real work and stays build.
-            return True
-        else:
-            return False
+        if second != "you":
+            # A first-person subject asking with an information verb and no build
+            # verb is a status question ("can I see the fleet status?"). Anything
+            # else with a non-"you" subject is a change request: a build verb wins
+            # ("can we find a way to ADD dark mode?") and a noun subject names a
+            # thing to change ("could the dashboard include X?"). Only "can you
+            # ..." falls through to the shared build-verb check below.
+            return (
+                second in {"i", "we"}
+                and _has_info_verb_in_verb_position(tokens)
+                and not _has_build_verb_in_verb_position(tokens)
+            )
     elif first in _WH_OPENERS:
         # An interrogative opener asks ABOUT something rather than
         # commissioning it: "how do I add a new repo?" and "what changes
