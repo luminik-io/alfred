@@ -3170,12 +3170,20 @@ body {
 }
 
 .active-lesson {
-  display: grid;
-  gap: 0.2rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: color-mix(in oklch, var(--card), var(--background) 8%);
+}
+
+.active-lesson__text {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
 }
 
 .active-lesson__what {
@@ -3186,6 +3194,16 @@ body {
 .active-lesson__where {
   color: var(--muted-foreground);
   font-size: 0.72rem;
+}
+
+.active-lesson__undo {
+  flex: none;
+}
+
+.lessons-review {
+  margin-top: 1.5rem;
+  display: grid;
+  gap: 0.5rem;
 }
 
 .attention-card,

@@ -3,10 +3,15 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { MemoryView } from "./MemoryView";
-import type { MemoryCandidate, Snapshot } from "../types";
+import type { MemoryCandidate, MemoryLesson, Snapshot } from "../types";
 
 vi.mock("../api", () => ({
   supportsNativeActions: () => true,
+  // Real prefix check so the "hide Undo on non-candidate lessons" behavior is
+  // exercised, not stubbed away.
+  isCandidateBackedLesson: (lessonId: string) =>
+    (lessonId || "").startsWith("lesson:memory_candidate:") &&
+    lessonId.length > "lesson:memory_candidate:".length,
 }));
 
 function candidate(overrides: Partial<MemoryCandidate> = {}): MemoryCandidate {
@@ -27,6 +32,20 @@ function candidate(overrides: Partial<MemoryCandidate> = {}): MemoryCandidate {
   };
 }
 
+function lesson(overrides: Partial<MemoryLesson> = {}): MemoryLesson {
+  return {
+    id: "lesson:memory_candidate:1",
+    codename: "lucius",
+    repo: "your-org/api",
+    body: "GraphQL schema lives in src/schema.graphql.",
+    tags: ["graphql"],
+    severity: "info",
+    created_at: "2026-05-30T12:00:00Z",
+    firing_id: null,
+    ...overrides,
+  };
+}
+
 function snapshot(overrides: Partial<Snapshot> = {}): Snapshot {
   return {
     loadedAt: new Date("2026-05-30T12:00:00Z"),
@@ -40,7 +59,8 @@ function snapshot(overrides: Partial<Snapshot> = {}): Snapshot {
       stale_workers: [],
       promotion_suggestions: [],
     },
-    memoryCandidates: { rows: [candidate()] },
+    memoryCandidates: { rows: [] },
+    memoryLessons: { rows: [lesson()] },
     firings: [],
     plans: [],
     trustedSlack: null,
@@ -49,7 +69,32 @@ function snapshot(overrides: Partial<Snapshot> = {}): Snapshot {
 }
 
 describe("MemoryView", () => {
-  it("renders a lesson as a plain-language card and keeps the keep/dismiss actions", async () => {
+  it("leads with what Alfred remembered on its own, no click required", () => {
+    render(
+      <MemoryView
+        snapshot={snapshot()}
+        actionNotice={null}
+        busyMemoryAction={null}
+        nativeBusy={null}
+        onMemoryCandidateAction={vi.fn()}
+        onRunLocalAction={vi.fn()}
+      />,
+    );
+
+    // The intro reframes memory as automatic, not a review queue.
+    expect(screen.getByText(/alfred remembers what it learns on its own/i)).toBeInTheDocument();
+    // The auto-remembered lessons lead the surface.
+    expect(
+      screen.getByRole("heading", { name: /lessons alfred is using/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/graphql schema lives in/i)).toBeInTheDocument();
+    // No pile of "keep this lesson" cards as the primary action.
+    expect(
+      screen.queryByRole("button", { name: /keep this lesson/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("gives every auto-remembered lesson an undo affordance that retires it", async () => {
     const onMemoryCandidateAction = vi.fn();
     const user = userEvent.setup();
 
@@ -64,104 +109,89 @@ describe("MemoryView", () => {
       />,
     );
 
-    // The lesson body is the headline, framed in plain words around it.
-    expect(screen.getByRole("heading", { name: /use request fixtures/i })).toBeInTheDocument();
-    // Provenance reads in plain language: where it came from + who noticed it.
-    expect(screen.getByText(/from a slack conversation/i)).toBeInTheDocument();
-    expect(screen.getByText(/about your-org\/api/i)).toBeInTheDocument();
-    expect(screen.getByText(/noticed by lucius/i)).toBeInTheDocument();
-    // There is an explanation of what keeping a lesson does.
-    expect(screen.getByText(/keeping a lesson lets alfred use it/i)).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: /keep this lesson/i }));
-    expect(onMemoryCandidateAction).toHaveBeenCalledWith("mem:1", "promote");
-
-    await user.click(screen.getByRole("button", { name: /dismiss/i }));
-    expect(onMemoryCandidateAction).toHaveBeenCalledWith("mem:1", "reject");
+    // Undo uses the lesson's recall id; the action layer strips it to the
+    // candidate id the server retire route validates.
+    await user.click(screen.getByRole("button", { name: /^undo$/i }));
+    expect(onMemoryCandidateAction).toHaveBeenCalledWith("lesson:memory_candidate:1", "retire");
   });
 
-  it("hides the raw JSON evidence behind a closed disclosure", () => {
+  it("hides Undo on non-candidate-backed lessons so it never offers a broken action", () => {
+    render(
+      <MemoryView
+        snapshot={snapshot({
+          memoryLessons: {
+            rows: [
+              // A synced / directly-reflected lesson: its id is not the
+              // lesson:memory_candidate:<id> recall id, so there is no candidate
+              // to retire and Undo must not appear.
+              lesson({ id: "synced-lesson-42", body: "Prefer the shared client." }),
+              // A candidate-backed lesson keeps its Undo.
+              lesson({ id: "lesson:memory_candidate:7", body: "GraphQL schema lives here." }),
+            ],
+          },
+        })}
+        actionNotice={null}
+        busyMemoryAction={null}
+        nativeBusy={null}
+        onMemoryCandidateAction={vi.fn()}
+        onRunLocalAction={vi.fn()}
+      />,
+    );
+
+    // Both lessons render as facts...
+    expect(screen.getByText(/prefer the shared client/i)).toBeInTheDocument();
+    expect(screen.getByText(/graphql schema lives here/i)).toBeInTheDocument();
+    // ...but only the candidate-backed one has an Undo.
+    expect(screen.getAllByRole("button", { name: /^undo$/i })).toHaveLength(1);
+  });
+
+  it("shows the undoing state for the lesson being retired", () => {
     render(
       <MemoryView
         snapshot={snapshot()}
         actionNotice={null}
-        busyMemoryAction={null}
+        busyMemoryAction={"lesson:memory_candidate:1:retire"}
         nativeBusy={null}
         onMemoryCandidateAction={vi.fn()}
         onRunLocalAction={vi.fn()}
       />,
     );
 
-    const evidenceSummary = screen.getByText("Technical detail");
-    const evidenceDetails = evidenceSummary.closest("details");
-    expect(evidenceDetails).not.toBeNull();
-    // Disclosure is closed by default: the raw JSON is not surfaced up front.
-    expect(evidenceDetails).not.toHaveAttribute("open");
+    expect(screen.getByRole("button", { name: /undoing/i })).toBeDisabled();
   });
 
-  it("maps planning and repeated-failure sources to plain origins", () => {
+  it("demotes low-confidence candidates to a secondary confirmation section", async () => {
+    const onMemoryCandidateAction = vi.fn();
+    const user = userEvent.setup();
+
     render(
       <MemoryView
-        snapshot={snapshot({
-          memoryCandidates: {
-            rows: [
-              candidate({ id: "mem:2", source: "planning", body: "Planning lesson." }),
-              candidate({ id: "mem:3", source: "memory_candidate", body: "Failure lesson." }),
-            ],
-          },
-        })}
+        snapshot={snapshot({ memoryCandidates: { rows: [candidate()] } })}
         actionNotice={null}
         busyMemoryAction={null}
         nativeBusy={null}
-        onMemoryCandidateAction={vi.fn()}
+        onMemoryCandidateAction={onMemoryCandidateAction}
         onRunLocalAction={vi.fn()}
       />,
     );
 
-    expect(screen.getByText(/from planning a request/i)).toBeInTheDocument();
-    expect(screen.getByText(/from a repeated problem alfred hit/i)).toBeInTheDocument();
-  });
-
-  it("shows the 'nothing learned yet' empty state only when there are no active lessons", () => {
-    render(
-      <MemoryView
-        snapshot={snapshot({ memoryCandidates: { rows: [] } })}
-        actionNotice={null}
-        busyMemoryAction={null}
-        nativeBusy={null}
-        onMemoryCandidateAction={vi.fn()}
-        onRunLocalAction={vi.fn()}
-      />,
-    );
-
+    // The pending queue is a secondary section, not the lead.
     expect(
-      screen.getByText(/alfred has not learned anything new yet/i),
+      screen.getByRole("heading", { name: /waiting for your confirmation/i }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /use request fixtures/i })).toBeInTheDocument();
+
+    // Keep / dismiss still work for the candidates that were not sure enough.
+    await user.click(screen.getByRole("button", { name: /keep this lesson/i }));
+    expect(onMemoryCandidateAction).toHaveBeenCalledWith("mem:1", "promote");
+    await user.click(screen.getByRole("button", { name: /dismiss/i }));
+    expect(onMemoryCandidateAction).toHaveBeenCalledWith("mem:1", "reject");
   });
 
-  it("distinguishes an empty review queue with active lessons from nothing learned", () => {
-    // Review queue empty, but a lesson is already in active use (validated in
-    // AMS). The copy must NOT claim nothing was learned; it should say the
-    // queue is clear and show the active lessons below.
+  it("shows the 'nothing remembered yet' empty state when there is nothing at all", () => {
     render(
       <MemoryView
-        snapshot={snapshot({
-          memoryCandidates: { rows: [] },
-          memoryLessons: {
-            rows: [
-              {
-                id: "lesson:memory_candidate:1",
-                codename: "lucius",
-                repo: "your-org/api",
-                body: "GraphQL schema lives in src/schema.graphql.",
-                tags: ["graphql"],
-                severity: "info",
-                created_at: "2026-05-30T12:00:00Z",
-                firing_id: null,
-              },
-            ],
-          },
-        })}
+        snapshot={snapshot({ memoryCandidates: { rows: [] }, memoryLessons: { rows: [] } })}
         actionNotice={null}
         busyMemoryAction={null}
         nativeBusy={null}
@@ -170,16 +200,13 @@ describe("MemoryView", () => {
       />,
     );
 
-    // Not the "nothing learned" copy...
     expect(
-      screen.queryByText(/alfred has not learned anything new yet/i),
+      screen.getByText(/alfred has not remembered anything yet/i),
+    ).toBeInTheDocument();
+    // No confirmation section when there is nothing pending.
+    expect(
+      screen.queryByRole("heading", { name: /waiting for your confirmation/i }),
     ).not.toBeInTheDocument();
-    // ...instead, the queue-empty copy plus the active lessons section.
-    expect(screen.getByText(/nothing is waiting for your review/i)).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: /lessons alfred is using/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/graphql schema lives in/i)).toBeInTheDocument();
   });
 
   it("keeps the Redis / memory probes behind a closed Advanced disclosure", async () => {
@@ -188,7 +215,7 @@ describe("MemoryView", () => {
 
     render(
       <MemoryView
-        snapshot={snapshot({ memoryCandidates: { rows: [] } })}
+        snapshot={snapshot({ memoryLessons: { rows: [] } })}
         actionNotice={null}
         busyMemoryAction={null}
         nativeBusy={null}
@@ -225,25 +252,10 @@ describe("MemoryView", () => {
     });
   });
 
-  it("surfaces the active lessons Alfred is using below the review queue", () => {
+  it("hides the raw JSON evidence behind a closed disclosure on a pending candidate", () => {
     render(
       <MemoryView
-        snapshot={snapshot({
-          memoryLessons: {
-            rows: [
-              {
-                id: "lesson:1",
-                codename: "lucius",
-                repo: "your-org/api",
-                body: "GraphQL schema lives in src/schema.graphql.",
-                tags: ["graphql"],
-                severity: "info",
-                created_at: "2026-05-30T12:00:00Z",
-                firing_id: null,
-              },
-            ],
-          },
-        })}
+        snapshot={snapshot({ memoryCandidates: { rows: [candidate()] }, memoryLessons: { rows: [] } })}
         actionNotice={null}
         busyMemoryAction={null}
         nativeBusy={null}
@@ -252,26 +264,10 @@ describe("MemoryView", () => {
       />,
     );
 
-    expect(
-      screen.getByRole("heading", { name: /lessons alfred is using/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/graphql schema lives in/i)).toBeInTheDocument();
-  });
-
-  it("omits the active-lessons section when there are none", () => {
-    render(
-      <MemoryView
-        snapshot={snapshot()}
-        actionNotice={null}
-        busyMemoryAction={null}
-        nativeBusy={null}
-        onMemoryCandidateAction={vi.fn()}
-        onRunLocalAction={vi.fn()}
-      />,
-    );
-
-    expect(
-      screen.queryByRole("heading", { name: /lessons alfred is using/i }),
-    ).not.toBeInTheDocument();
+    const evidenceSummary = screen.getByText("Technical detail");
+    const evidenceDetails = evidenceSummary.closest("details");
+    expect(evidenceDetails).not.toBeNull();
+    // Disclosure is closed by default: the raw JSON is not surfaced up front.
+    expect(evidenceDetails).not.toHaveAttribute("open");
   });
 });

@@ -8,13 +8,14 @@ import {
   Repeat,
   Sparkles,
   TerminalSquare,
+  Undo2,
   Wand2,
   X,
 } from "lucide-react";
 
 import { friendlyTime, titleCase } from "../format";
-import { supportsNativeActions } from "../api";
-import type { MemoryCandidate, Snapshot } from "../types";
+import { isCandidateBackedLesson, supportsNativeActions } from "../api";
+import type { MemoryCandidate, MemoryLesson, Snapshot } from "../types";
 import type { ActionNotice, NativeActionRequest } from "../lib/uiTypes";
 import { EmptyState, PanelHeader, SignalCard } from "./atoms";
 
@@ -30,7 +31,7 @@ export function MemoryView({
   actionNotice: ActionNotice;
   busyMemoryAction: string | null;
   nativeBusy: string | null;
-  onMemoryCandidateAction: (candidateId: string, action: "promote" | "reject") => void;
+  onMemoryCandidateAction: (candidateId: string, action: "promote" | "reject" | "retire") => void;
   onRunLocalAction: (request: NativeActionRequest) => void;
 }) {
   const candidates = snapshot?.memoryCandidates.rows || [];
@@ -40,10 +41,10 @@ export function MemoryView({
 
   return (
     <section className="panel animate-rise">
-      <PanelHeader eyebrow="Learnings" title="What Alfred has learned" />
+      <PanelHeader eyebrow="Learnings" title="What Alfred remembers" />
       <p className="panel-intro">
-        When Alfred notices something worth remembering, it writes a short learning here for you to
-        confirm. Keep the ones that look right and Alfred will use them next time. Dismiss the rest.
+        Alfred remembers what it learns on its own, so there is nothing to click. The lessons it is
+        using are below. If one looks wrong, undo it and Alfred will forget it.
       </p>
 
       {actionNotice ? (
@@ -57,23 +58,30 @@ export function MemoryView({
         </div>
       ) : null}
 
-      {candidatesError ? (
+      {candidatesError && !activeLessons.length ? (
         <EmptyState
           title="Alfred could not load its lessons right now."
           body="The connection to Alfred's memory was interrupted. This usually clears on the next refresh. The technical detail is in Advanced below."
           tone="error"
         />
-      ) : candidates.length ? (
-        <div className="lesson-list">
-          {candidates.map((candidate) => (
-            <LessonCard
-              key={candidate.id}
-              candidate={candidate}
-              busyMemoryAction={busyMemoryAction}
-              onMemoryCandidateAction={onMemoryCandidateAction}
-            />
-          ))}
-        </div>
+      ) : activeLessons.length ? (
+        <section className="lessons-active" aria-label="Lessons Alfred is using">
+          <h3 className="subsection-title">Lessons Alfred is using</h3>
+          <p className="lessons-active__intro">
+            Alfred remembered these on its own and applies them as it works. Undo any that look
+            wrong.
+          </p>
+          <ul className="active-lesson-list">
+            {activeLessons.map((lesson) => (
+              <ActiveLessonRow
+                key={lesson.id}
+                lesson={lesson}
+                busyMemoryAction={busyMemoryAction}
+                onMemoryCandidateAction={onMemoryCandidateAction}
+              />
+            ))}
+          </ul>
+        </section>
       ) : suggestions.length ? (
         <div className="attention-list">
           {suggestions.map((signal, index) => (
@@ -83,38 +91,31 @@ export function MemoryView({
             />
           ))}
         </div>
-      ) : activeLessons.length ? (
-        <EmptyState
-          title="Nothing is waiting for your review."
-          body="Alfred has no new learnings to confirm right now. The lessons it is already using are below."
-          tone="ok"
-        />
       ) : (
         <EmptyState
-          title="Alfred has not learned anything new yet."
-          body="As Alfred works on your projects, anything worth remembering shows up here for you to confirm. Nothing needs your attention right now."
+          title="Alfred has not remembered anything yet."
+          body="As Alfred works on your projects, anything worth remembering is saved here automatically. Nothing needs your attention."
           tone="ok"
         />
       )}
 
-      {activeLessons.length ? (
-        <section className="lessons-active" aria-label="Lessons Alfred is using">
-          <h3 className="subsection-title">Lessons Alfred is using</h3>
+      {candidates.length ? (
+        <section className="lessons-review" aria-label="Lessons waiting for your confirmation">
+          <h3 className="subsection-title">Waiting for your confirmation</h3>
           <p className="lessons-active__intro">
-            Confirmed lessons Alfred now applies as it works, including ones you kept and ones it
-            accepted on its own.
+            Alfred was not sure enough to remember these on its own. You can keep or dismiss them, or
+            just leave them; Alfred will not act on them until you do.
           </p>
-          <ul className="active-lesson-list">
-            {activeLessons.map((lesson) => (
-              <li key={lesson.id} className="active-lesson">
-                <span className="active-lesson__what">{lesson.body}</span>
-                <span className="active-lesson__where">
-                  {prettyAgent(lesson.codename)}
-                  {lesson.repo ? ` · ${lesson.repo}` : ""} · {friendlyTime(lesson.created_at)}
-                </span>
-              </li>
+          <div className="lesson-list">
+            {candidates.map((candidate) => (
+              <LessonCard
+                key={candidate.id}
+                candidate={candidate}
+                busyMemoryAction={busyMemoryAction}
+                onMemoryCandidateAction={onMemoryCandidateAction}
+              />
             ))}
-          </ul>
+          </div>
         </section>
       ) : null}
 
@@ -124,6 +125,49 @@ export function MemoryView({
         onRunLocalAction={onRunLocalAction}
       />
     </section>
+  );
+}
+
+// One lesson Alfred auto-remembered, shown with a quiet undo affordance so a bad
+// auto-promotion is one click to walk back. Retiring uses the lesson's recall id
+// (the API strips it back to the candidate id the server route validates). Undo
+// is only offered for candidate-backed lessons: /api/memory/lessons returns
+// every recalled lesson from the provider chain, and a synced or directly
+// reflected lesson has no candidate row to retire (the route would 404), so it
+// reads as a plain fact with no action rather than a broken button.
+function ActiveLessonRow({
+  lesson,
+  busyMemoryAction,
+  onMemoryCandidateAction,
+}: {
+  lesson: MemoryLesson;
+  busyMemoryAction: string | null;
+  onMemoryCandidateAction: (candidateId: string, action: "promote" | "reject" | "retire") => void;
+}) {
+  const canUndo = isCandidateBackedLesson(lesson.id);
+  const isRetiring = busyMemoryAction === `${lesson.id}:retire`;
+  return (
+    <li className="active-lesson">
+      <div className="active-lesson__text">
+        <span className="active-lesson__what">{lesson.body}</span>
+        <span className="active-lesson__where">
+          {prettyAgent(lesson.codename)}
+          {lesson.repo ? ` · ${lesson.repo}` : ""} · {friendlyTime(lesson.created_at)}
+        </span>
+      </div>
+      {canUndo ? (
+        <button
+          className="text-button active-lesson__undo"
+          type="button"
+          disabled={isRetiring}
+          aria-busy={isRetiring}
+          onClick={() => onMemoryCandidateAction(lesson.id, "retire")}
+        >
+          <Undo2 size={15} aria-hidden="true" />
+          <span>{isRetiring ? "Undoing" : "Undo"}</span>
+        </button>
+      ) : null}
+    </li>
   );
 }
 
@@ -172,7 +216,7 @@ function LessonCard({
 }: {
   candidate: MemoryCandidate;
   busyMemoryAction: string | null;
-  onMemoryCandidateAction: (candidateId: string, action: "promote" | "reject") => void;
+  onMemoryCandidateAction: (candidateId: string, action: "promote" | "reject" | "retire") => void;
 }) {
   const isPromoting = busyMemoryAction === `${candidate.id}:promote`;
   const isRejecting = busyMemoryAction === `${candidate.id}:reject`;

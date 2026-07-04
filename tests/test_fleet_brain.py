@@ -37,6 +37,7 @@ from fleet_brain import (  # noqa: E402
     Lesson,
     MemoryPromotionError,
     SQLiteStore,
+    candidate_id_from_lesson_id,
     new_id,
 )
 from fleet_brain.schema import (  # noqa: E402
@@ -500,6 +501,95 @@ def test_revert_auto_promotions_forgets_lessons_and_reopens(brain: FleetBrain) -
     assert reopened is not None
     assert reopened.status == "candidate"
     assert reopened.promoted_lesson_id is None
+
+
+def test_candidate_id_from_lesson_id_strips_only_the_recall_prefix() -> None:
+    # Strips the deterministic recall prefix, passes any other id through
+    # unchanged so both forms (recall id, bare candidate id) are accepted.
+    assert candidate_id_from_lesson_id("lesson:memory_candidate:ABC123") == "ABC123"
+    assert candidate_id_from_lesson_id("ABC123") == "ABC123"
+    # A different colon id is NOT a recall id, so it is returned verbatim (the
+    # server's regex, not this helper, rejects it).
+    assert candidate_id_from_lesson_id("some:other:id") == "some:other:id"
+    assert candidate_id_from_lesson_id("  lesson:memory_candidate:X  ") == "X"
+
+
+def test_retire_memory_candidate_forgets_one_lesson_and_retires_it(brain: FleetBrain) -> None:
+    # The desktop undo affordance: retiring a single auto-remembered lesson
+    # forgets it from AMS and flips ONLY that row to retired (no batch revert).
+    candidate = brain.propose_memory(
+        codename="lucius", repo="org/api", body="Use the fixture factory.", confidence=0.7
+    )
+    ams = _FakeAMS()
+    brain.promote_memory_candidate(
+        candidate.id, reviewer="auto", review_note="auto-promoted", lesson_writer=ams
+    )
+
+    retired = brain.retire_memory_candidate(candidate.id, lesson_forgetter=ams)
+    assert retired is not None
+    assert retired.status == "retired"
+    assert retired.promoted_lesson_id is None
+    assert ams.forgotten == [f"lesson:memory_candidate:{candidate.id}"]
+
+    row = brain.store.get_memory_candidate(candidate.id)
+    assert row is not None and row.status == "retired"
+
+
+def test_retire_accepts_the_lesson_recall_id(brain: FleetBrain) -> None:
+    # The client only knows a lesson by its recall id
+    # (``lesson:memory_candidate:<id>``); retire must accept that form and strip
+    # it back to the candidate id.
+    candidate = brain.propose_memory(
+        codename="lucius", repo="org/api", body="Prefer the shared client.", confidence=0.7
+    )
+    ams = _FakeAMS()
+    brain.promote_memory_candidate(
+        candidate.id, reviewer="auto", review_note="auto-promoted", lesson_writer=ams
+    )
+
+    recall_id = f"lesson:memory_candidate:{candidate.id}"
+    retired = brain.retire_memory_candidate(recall_id, lesson_forgetter=ams)
+    assert retired is not None
+    assert retired.id == candidate.id
+    assert retired.status == "retired"
+
+
+def test_retire_unknown_or_unpromoted_candidate_returns_none(brain: FleetBrain) -> None:
+    ams = _FakeAMS()
+    # Unknown id -> None, nothing forgotten.
+    assert brain.retire_memory_candidate("DOESNOTEXIST", lesson_forgetter=ams) is None
+    # A still-pending candidate was never a live lesson, so there is nothing to
+    # walk back: None, and no forget.
+    candidate = brain.propose_memory(
+        codename="lucius", repo="org/api", body="pending", confidence=0.7
+    )
+    assert brain.retire_memory_candidate(candidate.id, lesson_forgetter=ams) is None
+    assert ams.forgotten == []
+    assert brain.store.get_memory_candidate(candidate.id).status == "candidate"  # type: ignore[union-attr]
+
+
+def test_retire_leaves_lesson_live_when_ams_forget_fails(brain: FleetBrain) -> None:
+    # A failed AMS forget must NOT record a retire: that would claim the lesson
+    # is gone while it is still live in recall.
+    candidate = brain.propose_memory(
+        codename="lucius", repo="org/api", body="Use the fixture factory.", confidence=0.7
+    )
+    ams = _FakeAMS()
+    brain.promote_memory_candidate(
+        candidate.id, reviewer="auto", review_note="auto-promoted", lesson_writer=ams
+    )
+
+    class _ForgetFails:
+        name = "redis"
+
+        def forget_lesson(self, _lesson_id: str) -> bool:
+            return False
+
+    with pytest.raises(MemoryPromotionError):
+        brain.retire_memory_candidate(candidate.id, lesson_forgetter=_ForgetFails())
+    still = brain.store.get_memory_candidate(candidate.id)
+    assert still is not None and still.status == "validated"
+    assert still.promoted_lesson_id is not None
 
 
 def test_promote_provider_construction_failure_is_memory_promotion_error(

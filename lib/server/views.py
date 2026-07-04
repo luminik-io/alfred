@@ -823,6 +823,13 @@ def register_routes(app: FastAPI) -> None:
     async def api_reject_memory_candidate(request: Request, candidate_id: str) -> JSONResponse:
         return await _api_memory_candidate_action(request, candidate_id, action="reject")
 
+    @app.post("/api/memory/candidates/{candidate_id}/retire", response_class=JSONResponse)
+    async def api_retire_memory_candidate(request: Request, candidate_id: str) -> JSONResponse:
+        # Undo an auto-remembered lesson: forget it from AMS recall and retire
+        # the row. The ``candidate_id`` may be the raw id or the
+        # ``lesson:memory_candidate:<id>`` recall id a lesson surfaces under.
+        return await _api_memory_candidate_action(request, candidate_id, action="retire")
+
     @app.get("/api/memory/lessons", response_class=JSONResponse)
     async def api_memory_lessons(request: Request, limit: int = 50) -> JSONResponse:
         """The lessons Alfred is actually using in recall (promoted + auto-promoted),
@@ -1416,6 +1423,15 @@ async def _api_memory_candidate_action(
 ) -> JSONResponse:
     if not _same_origin_post(request) or not _authorized_mutation(request):
         return JSONResponse({"error": "forbidden"}, status_code=403)
+    # Normalize a lesson recall id (``lesson:memory_candidate:<id>``) to the bare
+    # candidate id BEFORE validation: /api/memory/lessons hands the client that
+    # recall id, and ``_MEMORY_ID_RE`` rejects the colons in it, so without this
+    # the retire route would 400 the very id it documents as accepted. Stripping
+    # is a no-op for a bare id, so promote/reject stay unaffected. FleetBrain
+    # owns the prefix, so import its stripper rather than re-encode it here.
+    from fleet_brain import candidate_id_from_lesson_id
+
+    candidate_id = candidate_id_from_lesson_id(candidate_id)
     if not _MEMORY_ID_RE.fullmatch(candidate_id):
         return JSONResponse({"error": "memory candidate id is invalid"}, status_code=400)
     body, error_response = await _read_json_body(request)
@@ -1455,6 +1471,21 @@ async def _api_memory_candidate_action(
             )
             if candidate is None:
                 return JSONResponse({"error": "memory candidate not found"}, status_code=404)
+            return JSONResponse(_candidate_to_api(candidate))
+        if action == "retire":
+            # Undo an auto-remembered lesson: forget it from AMS recall and flip
+            # the row to retired. A 404 means the id is unknown or was never a
+            # promoted lesson (nothing live to walk back).
+            candidate = brain.retire_memory_candidate(
+                candidate_id,
+                reviewer=reviewer,
+                note=note,
+            )
+            if candidate is None:
+                return JSONResponse(
+                    {"error": "memory lesson not found or not promoted"},
+                    status_code=404,
+                )
             return JSONResponse(_candidate_to_api(candidate))
     except MemoryPromotionError:
         # The promoted lesson is written to Redis AMS first; an unreachable AMS
