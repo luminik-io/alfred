@@ -406,6 +406,36 @@ describe("ReviewView", () => {
     expect(scope.queryByText("Lucius")).not.toBeInTheDocument();
   });
 
+  it("keeps a genuinely-unknown dotted agent's runtime label under a preset", () => {
+    // "org.acme" normalizes to "acme", which is NOT a known fleet codename, so
+    // the Justice League preset must NOT re-skin it. It keeps the server-
+    // provided display name and role, never a titleized or blank persona.
+    const { container } = renderReview({
+      rosterTheme: "justice-league",
+      snapshot: snapshot({
+        status: {
+          agents: [
+            agent({
+              codename: "org.acme",
+              display_name: "Acme Runner",
+              role_title: "Custom Ops",
+              purpose: "A team-provided agent the roster theme has no persona for.",
+            }),
+          ],
+          total_today: 1,
+          reliability: { status: "ok" },
+        },
+      }),
+    });
+    const panel = container.querySelector(".command-center__agent-route");
+    const scope = within(panel as HTMLElement);
+    expect(scope.getByText("Acme Runner")).toBeInTheDocument();
+    expect(scope.getByText("Custom Ops")).toBeInTheDocument();
+    // No JL persona bleeds onto an unknown agent.
+    expect(scope.queryByText("Superman")).not.toBeInTheDocument();
+    expect(scope.queryByText("Acme")).not.toBeInTheDocument();
+  });
+
   it("re-skins the fallback Agent roles panel when the server reports no agents", () => {
     const { container } = renderReview({
       rosterTheme: "justice-league",

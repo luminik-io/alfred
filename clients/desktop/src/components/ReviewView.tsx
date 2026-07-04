@@ -17,6 +17,7 @@ import type { CSSProperties } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { exactTime, friendlyTime } from "../format";
+import { isKnownFleetCodename } from "../lib/agentRoster";
 import {
   type CustomRosterNames,
   DEFAULT_ROSTER_THEME,
@@ -535,14 +536,19 @@ function buildRouteCards(
         customNames,
       );
       const short = normalizeCodename(agent.codename);
-      const known = ROUTE_AGENT_PRIORITY.includes(agent.codename) ||
-        identity.name !== titleFromCodename(agent.codename);
+      // Membership in the roster manifest, using the same predicate
+      // agentProfile()/resolveThemedIdentity rely on. A dotted/namespaced
+      // codename whose base is NOT a known fleet codename (e.g. "org.acme")
+      // stays unknown, so the preset never overwrites its runtime label with a
+      // titleized or blank re-skin.
+      const known = isKnownFleetCodename(agent.codename);
       // Name and role are resolved PER FIELD, mirroring agentProfile() so a
       // partial custom theme (only names.lucius, or only roles.lucius) keeps the
       // runtime/server value for the un-overridden field instead of overwriting
       // both. Under a non-default preset the theme owns both fields for a known
       // fleet agent (the server default is just the Batman name); a genuine
-      // server rename of an unknown agent is still honored.
+      // server rename of an unknown agent (including an unknown dotted one) is
+      // still honored.
       const presetReskinsKnown =
         themeId !== "custom" && themeId !== DEFAULT_ROSTER_THEME && known;
       const hasCustomName =
@@ -626,15 +632,6 @@ function DecisionCard({
       </CardContent>
     </Card>
   );
-}
-
-function titleFromCodename(value: string): string {
-  return value
-    .replace(/[_-]+/g, " ")
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(" ");
 }
 
 function ActivityLane({
