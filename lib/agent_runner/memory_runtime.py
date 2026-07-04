@@ -253,8 +253,11 @@ def format_memory_context(
     lines are always kept, and whole lessons are appended from the top
     (highest relevance/recency first) only while they fit. Tail lessons that
     would blow the budget are dropped; if even the first lesson overflows on
-    its own it is still injected but hard-truncated with a clear marker. Under
-    budget the output is byte-for-byte identical to the pre-cap behavior.
+    its own it is still injected but hard-truncated with a clear marker. If the
+    cap is set below the header length itself, no block is injected at all (the
+    empty string is returned) rather than emitting a header that exceeds the
+    cap. Under budget the output is byte-for-byte identical to the pre-cap
+    behavior.
     """
     if provider is None or getattr(provider, "name", "") == "null":
         return ""
@@ -293,13 +296,18 @@ def format_memory_context(
 def _apply_inject_budget(header: list[str], lesson_lines: list[str], budget: int) -> list[str]:
     """Bound ``header + lesson_lines`` to ``budget`` total characters.
 
-    The header is always retained. Lesson lines are kept whole, from the top,
-    only while the running ``len("\\n".join(lines))`` stays within ``budget``;
-    the first line that would exceed it and every line after are dropped. If the
-    single highest-priority lesson already overflows the remaining budget it is
-    hard-truncated (with :data:`_TRUNCATION_MARKER`) rather than dropped, so at
-    least one lesson is always injected. Falls back to no capping when ``budget``
-    cannot fit even the header alone.
+    Returns the lines to inject, or an empty list meaning "inject nothing".
+
+    If the header alone already meets or exceeds ``budget`` there is no room for
+    any real content, so the whole block is dropped rather than emitting a
+    header that itself blows the cap: a sub-header budget means "inject
+    essentially nothing", so we inject nothing and the caller gets an empty
+    string. Otherwise the header is retained and lesson lines are kept whole,
+    from the top, only while the running ``len("\\n".join(lines))`` stays within
+    ``budget``; the first line that would exceed it and every line after are
+    dropped. If the single highest-priority lesson still overflows the remaining
+    room it is hard-truncated (with :data:`_TRUNCATION_MARKER`) rather than
+    dropped, so at least one lesson is always injected once the header fits.
     """
 
     def joined_len(lines: list[str]) -> int:
@@ -307,17 +315,8 @@ def _apply_inject_budget(header: list[str], lesson_lines: list[str], budget: int
 
     kept = list(header)
     if joined_len(kept) >= budget:
-        # Budget too small for even the header. Do NOT blow past the cap by
-        # appending a whole lesson: inject at most a hard-truncated first lesson
-        # into whatever room remains (often none), so the budget stays a real
-        # ceiling. When the header already meets/exceeds the budget there is no
-        # room and the block is header-only.
-        if lesson_lines:
-            remaining = budget - joined_len(kept) - 1  # -1 for the joining "\n"
-            body_room = remaining - len(_TRUNCATION_MARKER)
-            if body_room > 0:
-                kept.append(lesson_lines[0][:body_room].rstrip() + _TRUNCATION_MARKER)
-        return kept
+        # Budget cannot fit even the header. Honor the cap: inject nothing.
+        return []
     for line in lesson_lines:
         if joined_len([*kept, line]) <= budget:
             kept.append(line)

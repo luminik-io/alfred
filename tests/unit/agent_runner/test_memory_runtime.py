@@ -588,23 +588,34 @@ def test_format_memory_context_single_over_budget_lesson_is_truncated(monkeypatc
     assert "Huge" in out  # the one lesson is still present (truncated)
 
 
-def test_format_memory_context_tiny_budget_does_not_append_whole_lesson(monkeypatch) -> None:
-    """A budget smaller than the header must NOT blow past the cap by appending a
-    whole lesson. The first lesson is hard-truncated into whatever room remains
-    (often none), so the block never contains the full lesson body."""
+def test_format_memory_context_sub_header_cap_injects_nothing(monkeypatch) -> None:
+    """A cap below the header length honors the budget by injecting nothing.
+
+    The two header lines alone run ~117 chars. A cap under that cannot hold even
+    the header, so the block is dropped entirely (empty string) rather than
+    emitting a header (or header-plus-truncated-lesson) that itself exceeds the
+    cap. A sub-header budget means "inject essentially nothing", so inject
+    nothing.
+    """
     from agent_runner import memory_runtime as runtime
 
     full_body = "z" * 4000
-    provider = _Scored([(_LessonStub(full_body), 0.99)])
+    provider = _Scored(
+        [
+            (_LessonStub(full_body), 0.99),
+            (_LessonStub("Another relevant lesson."), 0.98),
+        ]
+    )
     monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
     # Below the ~117-char header length: the degenerate tiny-cap branch.
     monkeypatch.setenv("ALFRED_MEMORY_INJECT_MAX_CHARS", "40")
     out = runtime.format_memory_context(provider, codename="lucius", repo="org/api", limit=5)
 
-    # The full lesson body must never be appended whole under a tiny cap.
+    # Sub-header cap -> no block at all: no header, no lesson, no marker.
+    assert out == ""
+    assert "Alfred memory" not in out
     assert full_body not in out
-    # Header framing is still present; no unbounded lesson tail.
-    assert "Alfred memory for this codename and repo:" in out
+    assert runtime._TRUNCATION_MARKER not in out
 
 
 def test_format_memory_context_env_overrides_default_budget(monkeypatch) -> None:
