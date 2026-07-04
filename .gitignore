@@ -255,3 +255,8 @@ uv.lock
 screenshots/
 .deepsec/
 .astro/
+
+# Local design-review captures (screenshots, before/after). Temporary review
+# artifacts belong in the internal repo, never committed to the public one.
+clients/desktop/.design-review/
+.design-review/
