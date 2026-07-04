@@ -846,6 +846,7 @@ def register_routes(app: FastAPI) -> None:
         except Exception:  # pragma: no cover - local bridge can be down
             logger.exception("api_memory_lessons: failed to recall lessons")
             return JSONResponse({"rows": [], "error": _GENERIC_ERROR})
+        lessons = _dedupe_lessons_for_display(lessons)
         return JSONResponse({"rows": [_lesson_to_api(lesson) for lesson in lessons]})
 
     @app.get("/api/memory/stats", response_class=JSONResponse)
@@ -1363,6 +1364,42 @@ def _lesson_to_api(lesson: Any) -> dict[str, Any]:
             payload["severity"] = "info"
         return payload
     return {}
+
+
+def _lesson_display_key(lesson: Any) -> str | None:
+    """A stable identity for one lesson body, used to collapse duplicate
+    promoted lessons in the client list. Mirrors the candidate dedup key
+    (lowercased, whitespace-collapsed) but reads the recall Lesson's body.
+
+    Returns ``None`` when there is no body to key on, so such rows are left
+    untouched rather than merged into a single empty-body entry."""
+    body = _lesson_field(lesson, "body") or _lesson_field(lesson, "text")
+    if not isinstance(body, str):
+        return None
+    normalized = re.sub(r"\s+", " ", body.strip().lower())
+    return normalized or None
+
+
+def _dedupe_lessons_for_display(lessons: list[Any]) -> list[Any]:
+    """Collapse promoted lessons that share an identical body.
+
+    The recall chain merges backends by lesson id, so the same fact promoted
+    more than once (e.g. auto-promoted on several firings before a human
+    reviewed it) surfaces as several rows with distinct ids but identical text.
+    Showing "Use the API fixture factory." five times is noise, so keep the
+    first occurrence of each body (recall is already ordered by relevance and
+    recency) and drop later identical ones. Lessons with no usable body key are
+    always kept."""
+    seen: set[str] = set()
+    deduped: list[Any] = []
+    for lesson in lessons:
+        key = _lesson_display_key(lesson)
+        if key is not None:
+            if key in seen:
+                continue
+            seen.add(key)
+        deduped.append(lesson)
+    return deduped
 
 
 def _memory_status_filter(status: str) -> str | None:

@@ -493,6 +493,51 @@ def test_api_memory_lessons_lists_active_lessons(
     assert provider.calls and provider.calls[0]["limit"] <= 200
 
 
+def test_api_memory_lessons_collapses_duplicate_bodies(
+    tmp_path: Path,
+) -> None:
+    """The same fact promoted more than once (distinct ids, identical body)
+    surfaces from recall as several rows; the endpoint collapses them to one so
+    the client does not show 'Use the API fixture factory.' five times. Bodies
+    that differ only by case/whitespace count as the same; genuinely distinct
+    lessons are all kept."""
+    state = tmp_path / "state"
+
+    def _lesson(lesson_id: str, body: str, minute: int) -> Lesson:
+        return Lesson(
+            id=lesson_id,
+            codename="lucius",
+            repo="example-org/api",
+            body=body,
+            tags=["fixtures"],
+            created_at=datetime(2026, 6, 26, 19, minute, tzinfo=UTC),
+            firing_id=None,
+        )
+
+    provider = _StubRecallProvider(
+        [
+            _lesson("lesson:memory_candidate:1", "Use the API fixture factory.", 10),
+            _lesson("lesson:memory_candidate:2", "Use the API fixture factory.", 0),
+            # Same body, only case + trailing whitespace differ -> still a dup.
+            _lesson("lesson:memory_candidate:3", "use the API fixture factory.  ", 56),
+            _lesson("lesson:memory_candidate:4", "Mock the outbound HTTP client.", 53),
+        ]
+    )
+    app = create_app(FilesystemReader(state_root=state))
+    app.state.memory_provider = provider
+    client = TestClient(app)
+
+    rows = client.get("/api/memory/lessons").json()["rows"]
+
+    bodies = [row["body"] for row in rows]
+    assert bodies == [
+        "Use the API fixture factory.",
+        "Mock the outbound HTTP client.",
+    ]
+    # The first occurrence wins (recall is ordered by relevance/recency).
+    assert rows[0]["id"] == "lesson:memory_candidate:1"
+
+
 def test_api_memory_stats_returns_quality_metrics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
