@@ -227,7 +227,7 @@ export function SetupView({
                 className="secondary-button"
                 type="button"
                 disabled={!canRun || nativeBusy === "auth_status:fleet"}
-                onClick={() => onRunLocalAction({ action: "auth_status" })}
+                onClick={() => onRunLocalAction({ action: "auth_status", refreshAfter: true })}
               >
                 <CheckCircle2 size={16} aria-hidden="true" />
                 <span>Auth check</span>

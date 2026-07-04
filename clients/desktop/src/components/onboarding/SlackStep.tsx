@@ -34,16 +34,26 @@ export function SlackStep({
   const [users, setUsers] = useState<TrustedSlackUser[]>([]);
   const [userId, setUserId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!connected) return;
     let cancelled = false;
+    setLoadError(null);
     loadTrustedSlackUsers(baseUrl)
       .then((result) => {
         if (!cancelled) setUsers(result.users || []);
       })
-      .catch(() => {
-        // A missing list is not fatal here; the step still lets Dev add one.
+      .catch((err) => {
+        // A missing list is not fatal here (the step still lets Dev add one),
+        // but a silent empty list hides whoever is already trusted, so surface
+        // the failure quietly instead of swallowing it.
+        if (!cancelled) {
+          setLoadError(
+            errorDetail(err) ||
+              "Could not read who is already trusted. You can still add an approver.",
+          );
+        }
       });
     return () => {
       cancelled = true;
@@ -118,6 +128,15 @@ export function SlackStep({
                 </Button>
               </div>
             </form>
+
+            {loadError ? (
+              <p
+                className="mt-3 rounded-lg border border-border/70 bg-muted/35 px-3 py-2 text-xs text-muted-foreground"
+                role="status"
+              >
+                {loadError}
+              </p>
+            ) : null}
 
             {users.length ? (
               <ul className="mt-3 grid gap-2" aria-label="Trusted Slack approvers">

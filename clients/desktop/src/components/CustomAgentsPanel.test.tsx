@@ -9,14 +9,14 @@ const apiMocks = vi.hoisted(() => ({
   deleteCustomAgent: vi.fn(),
   loadCustomAgents: vi.fn(),
   saveCustomAgent: vi.fn(),
-  supportsNativeActions: vi.fn(),
+  supportsMutations: vi.fn(),
 }));
 
 vi.mock("../api", () => ({
   deleteCustomAgent: apiMocks.deleteCustomAgent,
   loadCustomAgents: apiMocks.loadCustomAgents,
   saveCustomAgent: apiMocks.saveCustomAgent,
-  supportsNativeActions: apiMocks.supportsNativeActions,
+  supportsMutations: apiMocks.supportsMutations,
 }));
 
 const EMPTY: CustomAgentsResponse = {
@@ -63,8 +63,8 @@ describe("CustomAgentsPanel", () => {
     apiMocks.deleteCustomAgent.mockReset();
     apiMocks.loadCustomAgents.mockReset();
     apiMocks.saveCustomAgent.mockReset();
-    apiMocks.supportsNativeActions.mockReset();
-    apiMocks.supportsNativeActions.mockReturnValue(true);
+    apiMocks.supportsMutations.mockReset();
+    apiMocks.supportsMutations.mockReturnValue(true);
     apiMocks.loadCustomAgents.mockResolvedValue(EMPTY);
   });
 
@@ -156,7 +156,7 @@ describe("CustomAgentsPanel", () => {
   });
 
   it("keeps browser preview read-only", async () => {
-    apiMocks.supportsNativeActions.mockReturnValue(false);
+    apiMocks.supportsMutations.mockReturnValue(false);
     renderPanel();
 
     expect(await screen.findByText("No custom agents yet.")).toBeInTheDocument();
@@ -165,7 +165,7 @@ describe("CustomAgentsPanel", () => {
   });
 
   it("falls back to prompt-free inventory when browser preview lacks the token", async () => {
-    apiMocks.supportsNativeActions.mockReturnValue(false);
+    apiMocks.supportsMutations.mockReturnValue(false);
     apiMocks.loadCustomAgents
       .mockRejectedValueOnce(new Error("This action needs the Alfred desktop app."))
       .mockResolvedValueOnce({

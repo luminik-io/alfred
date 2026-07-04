@@ -295,9 +295,7 @@ export function useAskThread({
       const finishIfCurrent = () => {
         if (abortRef.current === controller) {
           busyRef.current = false;
-          busyRef.current = false;
-      busyRef.current = false;
-    setBusy(false);
+          setBusy(false);
         }
       };
 

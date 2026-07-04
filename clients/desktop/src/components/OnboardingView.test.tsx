@@ -189,6 +189,7 @@ async function gotoStep(user: ReturnType<typeof userEvent.setup>, railName: RegE
 
 beforeEach(() => {
   vi.spyOn(api, "supportsNativeActions").mockReturnValue(true);
+  vi.spyOn(api, "supportsMutations").mockReturnValue(true);
   vi.spyOn(api, "loadSetupStatus").mockResolvedValue(makeStatus());
   vi.spyOn(api, "loadSetupRepos").mockResolvedValue(REPOS);
   vi.spyOn(api, "loadSetupPlaybooks").mockResolvedValue(PLAYBOOKS);
@@ -1101,7 +1102,10 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("degrades mutating steps gracefully off-Tauri with a clear note", async () => {
+    // The token-less dev preview: neither native actions nor token-gated HTTP
+    // mutations are available, so the mutating steps show the read-only note.
     vi.spyOn(api, "supportsNativeActions").mockReturnValue(false);
+    vi.spyOn(api, "supportsMutations").mockReturnValue(false);
     renderOnboarding({ canRun: false });
     const user = userEvent.setup();
     await gotoStep(user, /^first request$/i);

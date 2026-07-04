@@ -73,6 +73,10 @@ export type UseRosterTheme = {
   customNames: CustomRosterNames;
   setRosterTheme: (next: RosterThemeId) => void;
   setCustomNames: (next: CustomRosterNames) => void;
+  // Awaitable custom-roster save: resolves when the server persists the roster,
+  // rejects when the save fails, so a caller can gate UI (close a dialog) on the
+  // real outcome instead of a fire-and-forget resolve.
+  saveCustomNames: (next: CustomRosterNames) => Promise<void>;
   // Non-null when the most recent save did not reach the server (no token, 403,
   // offline). The local picker still reflects the choice, but Slack and a fresh
   // reload keep the old persisted roster until a save succeeds, so the UI must be
@@ -105,8 +109,16 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   // B is queued behind it. Re-editing the same runtime coalesces to the latest.
   const saveSeqRef = useRef(0);
   const inFlightRef = useRef(false);
+  // Each queued/in-flight save can carry an optional settler so an awaiting
+  // caller (the custom-theme editor) learns the real POST outcome instead of a
+  // fire-and-forget resolve. A superseded save settles as resolved (its choice
+  // was replaced by a newer one, so from the caller's view nothing failed).
+  type SaveSettler = { resolve: () => void; reject: (err: unknown) => void };
   const pendingRef = useRef<
-    Map<string, { theme: RosterThemeId; custom: CustomRosterNames; seq: number }>
+    Map<
+      string,
+      { theme: RosterThemeId; custom: CustomRosterNames; seq: number; settler?: SaveSettler }
+    >
   >(new Map());
   // The latest seq issued per runtime url. Staleness is per runtime: a save's
   // outcome is suppressed only when a NEWER save for the SAME runtime supersedes
@@ -161,7 +173,13 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   // Persist a theme switch to the server when connected. localStorage is always
   // written via the effect above, so a failed POST still keeps the local choice.
   const runSave = useCallback(
-    (url: string, theme: RosterThemeId, custom: CustomRosterNames, seq: number) => {
+    (
+      url: string,
+      theme: RosterThemeId,
+      custom: CustomRosterNames,
+      seq: number,
+      settler?: SaveSettler,
+    ) => {
       // Only a custom save carries the roster. A preset switch must omit both
       // maps so the server retains the authored custom roster (it replaces the
       // retained maps only when an explicit payload is present); sending empty
@@ -173,11 +191,16 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
       inFlightRef.current = true;
       void saveRosterTheme(url, body)
         .then(() => {
+          // A newer save for this runtime has superseded this one: it owns the
+          // agreed state, not us. From an awaiting caller's view its choice was
+          // replaced, not failed, so settle as resolved and stay quiet.
+          if (seq !== latestSeqByUrlRef.current.get(url)) {
+            settler?.resolve();
+            return;
+          }
           // The server is now the agreed source of truth; clear any prior
           // failure and record this runtime as synced so a racing GET cannot
-          // clobber the choice we just persisted. Skip if a newer save has
-          // since been issued: that save owns the agreed state, not this one.
-          if (seq !== latestSeqByUrlRef.current.get(url)) return;
+          // clobber the choice we just persisted.
           // Only record hydration when this save targeted the runtime the
           // desktop is still connected to; a save that completed against a
           // runtime we have since left must not mark the current one synced.
@@ -191,13 +214,19 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
             saveErrorUrlRef.current = null;
             setSaveError(null);
           }
+          settler?.resolve();
         })
         .catch((err: unknown) => {
+          // A superseded save stays quiet; the newer one reports its own
+          // outcome. Settle the awaiting caller as resolved: its choice was
+          // replaced by a later save, so this failure is not the caller's.
+          if (seq !== latestSeqByUrlRef.current.get(url)) {
+            settler?.resolve();
+            return;
+          }
           // The local value still reflects the choice, but Slack and a fresh
           // reload keep the old server state. Surface that so the change does
-          // not silently look successful. A superseded save stays quiet; the
-          // newer one reports its own outcome.
-          if (seq !== latestSeqByUrlRef.current.get(url)) return;
+          // not silently look successful.
           // The optimistic hydration recorded in persist() assumed this save
           // would land. It did not, so the server still holds the old roster.
           // Clear the marker for this runtime (if it is still ours) so an
@@ -212,6 +241,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
               ? `Could not save to Alfred: ${err.message}`
               : "Could not save to Alfred. The roster is local-only until a save succeeds.",
           );
+          settler?.reject(err);
         })
         .finally(() => {
           inFlightRef.current = false;
@@ -223,23 +253,27 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           if (nextUrl !== undefined) {
             const next = pendingRef.current.get(nextUrl)!;
             pendingRef.current.delete(nextUrl);
-            runSave(nextUrl, next.theme, next.custom, next.seq);
+            runSave(nextUrl, next.theme, next.custom, next.seq, next.settler);
           }
         });
     },
     [],
   );
 
+  // Persist a change to the server. Returns a promise that settles on the real
+  // POST outcome (rejects on failure) so a caller can await it; the fire-and-
+  // forget callers below simply ignore the returned promise.
   const persist = useCallback(
-    (theme: RosterThemeId, custom: CustomRosterNames) => {
+    (theme: RosterThemeId, custom: CustomRosterNames): Promise<void> => {
       if (!baseUrl) {
         // Offline change: keep it in memory/localStorage but do NOT mark the
         // hook hydrated. When the runtime later connects, the hydration effect
         // must still read the server's persisted roster rather than skip it.
         // A connection-level error is not tied to a specific synced runtime.
         saveErrorUrlRef.current = null;
-        setSaveError("Not connected: this roster is local-only until Alfred is reachable.");
-        return;
+        const message = "Not connected: this roster is local-only until Alfred is reachable.";
+        setSaveError(message);
+        return Promise.reject(new Error(message));
       }
       // The operator's change now owns this runtime's state locally. Record the
       // runtime as synced immediately, before the (possibly queued) save even
@@ -251,15 +285,21 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
       hydratedUrlRef.current = baseUrl;
       const seq = ++saveSeqRef.current;
       latestSeqByUrlRef.current.set(baseUrl, seq);
-      if (inFlightRef.current) {
-        // A save is already running. Queue this choice under its runtime url;
-        // the in-flight save's finally() drains it once the socket is free.
-        // Same-runtime re-edits coalesce to the latest; other runtimes keep
-        // their own queued edits.
-        pendingRef.current.set(baseUrl, { theme, custom, seq });
-        return;
-      }
-      runSave(baseUrl, theme, custom, seq);
+      return new Promise<void>((resolve, reject) => {
+        const settler: SaveSettler = { resolve, reject };
+        if (inFlightRef.current) {
+          // A save is already running. Queue this choice under its runtime url;
+          // the in-flight save's finally() drains it once the socket is free.
+          // Same-runtime re-edits coalesce to the latest; other runtimes keep
+          // their own queued edits. A coalesced-out edit's settler resolves:
+          // its choice was replaced by the newer queued one, not failed.
+          const superseded = pendingRef.current.get(baseUrl);
+          superseded?.settler?.resolve();
+          pendingRef.current.set(baseUrl, { theme, custom, seq, settler });
+          return;
+        }
+        runSave(baseUrl, theme, custom, seq, settler);
+      });
     },
     [baseUrl, runSave],
   );
@@ -267,20 +307,40 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   const setRosterTheme = useCallback(
     (next: RosterThemeId) => {
       setRosterThemeState(next);
-      persist(next, customNames);
+      // The preset picker is fire-and-forget: a failure surfaces via saveError.
+      void persist(next, customNames).catch(() => {});
     },
     [customNames, persist],
   );
 
-  const setCustomNames = useCallback(
-    (next: CustomRosterNames) => {
-      // Editing the custom roster also selects it, so the change is visible.
+  // Awaitable custom-roster save. Updates local state (selecting the custom
+  // theme so the change is visible) and returns the real POST outcome so a
+  // caller (the custom-theme editor) can close only on success and keep the
+  // dialog open, with the error shown, on failure. Rejects on a failed save.
+  const saveCustomNames = useCallback(
+    (next: CustomRosterNames): Promise<void> => {
       setCustomNamesState(next);
       setRosterThemeState("custom");
-      persist("custom", next);
+      return persist("custom", next);
     },
     [persist],
   );
 
-  return { rosterTheme, customNames, setRosterTheme, setCustomNames, saveError };
+  // Fire-and-forget custom-roster setter for callers that do not await the
+  // outcome (kept for API compatibility); failures still surface via saveError.
+  const setCustomNames = useCallback(
+    (next: CustomRosterNames) => {
+      void saveCustomNames(next).catch(() => {});
+    },
+    [saveCustomNames],
+  );
+
+  return {
+    rosterTheme,
+    customNames,
+    setRosterTheme,
+    setCustomNames,
+    saveCustomNames,
+    saveError,
+  };
 }

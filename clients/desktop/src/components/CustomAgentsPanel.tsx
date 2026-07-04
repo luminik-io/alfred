@@ -14,7 +14,7 @@ import {
   deleteCustomAgent,
   loadCustomAgents,
   saveCustomAgent,
-  supportsNativeActions,
+  supportsMutations,
 } from "../api";
 import type {
   CustomAgentEngine,
@@ -64,7 +64,11 @@ export function CustomAgentsPanel({
   baseUrl: string;
   onChanged?: () => void;
 }) {
-  const canMutate = supportsNativeActions();
+  // Save/enable/pause/delete are token-gated HTTP writes to /api/custom-agents,
+  // which work from the Tauri shell AND the browser shell served by `alfred
+  // serve`. Only the token-less Vite dev preview is read-only. Gate on
+  // `supportsMutations()` so the hosted browser build can actually manage agents.
+  const canMutate = supportsMutations();
   const [snapshot, setSnapshot] = useState<CustomAgentsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);

@@ -36,19 +36,31 @@ export function CustomThemeEditor({
   open,
   value,
   agents,
+  saveError,
   onOpenChange,
   onSave,
 }: {
   open: boolean;
   value: CustomRosterNames;
   agents?: readonly EditableAgent[];
+  // The most recent roster save failure from useRosterTheme, threaded in so the
+  // editor can keep itself open and show the error inline instead of closing
+  // optimistically and hiding a failed save behind the (now dismissed) dialog.
+  saveError?: string | null;
   onOpenChange: (open: boolean) => void;
-  onSave: (next: CustomRosterNames) => void | Promise<void>;
+  // Awaitable save: resolves when the roster is persisted server-side, rejects
+  // on a failed save. The editor closes only on resolve and stays open with the
+  // error on reject, so a slow failure can no longer close the dialog first.
+  onSave: (next: CustomRosterNames) => Promise<void>;
 }) {
   const editableRoster = useMemo(() => [...(agents ?? editableAgents())], [agents]);
   const [names, setNames] = useState<Record<string, string>>(value.names);
   const [roles, setRoles] = useState<Record<string, string>>(value.roles);
   const [saving, setSaving] = useState(false);
+  // A save failure surfaced locally by awaiting onSave (which rejects on a
+  // failed POST). Shown alongside any parent-supplied `saveError` so a rejection
+  // is visible even before the parent's state re-renders.
+  const [localError, setLocalError] = useState<string | null>(null);
 
   // Re-seed the draft whenever the editor (re)opens with the persisted maps, so
   // a cancelled edit never leaks into the next open.
@@ -56,6 +68,7 @@ export function CustomThemeEditor({
     if (open) {
       setNames({ ...value.names });
       setRoles({ ...value.roles });
+      setLocalError(null);
     }
   }, [open, value.names, value.roles]);
 
@@ -81,13 +94,27 @@ export function CustomThemeEditor({
 
   const handleSave = async () => {
     setSaving(true);
+    setLocalError(null);
     try {
+      // onSave is the awaitable saveCustomNames: it resolves only once the
+      // server persists the roster and rejects on a failed POST. Close on
+      // success; on failure stay open so the operator sees the error and can
+      // retry. Tying closure to the real outcome (not a timer) fixes the race
+      // where a slow failure closed the dialog before the error surfaced.
       await onSave({ names: clean(names), roles: clean(roles) });
       onOpenChange(false);
+    } catch (err) {
+      setLocalError(
+        err instanceof Error && err.message
+          ? err.message
+          : "Could not save the roster. It is local-only until a save succeeds.",
+      );
     } finally {
       setSaving(false);
     }
   };
+
+  const shownError = localError ?? saveError ?? null;
 
   const byRole = useMemo(() => {
     const groups = new Map<WorkflowRole, typeof editableRoster>();
@@ -158,6 +185,14 @@ export function CustomThemeEditor({
             ))}
           </div>
         </ScrollArea>
+        {shownError ? (
+          <p
+            className="custom-theme-editor__error text-sm text-destructive"
+            role="alert"
+          >
+            {shownError}
+          </p>
+        ) : null}
         <DialogFooter className="custom-theme-editor__footer gap-2 sm:justify-between">
           <Button type="button" variant="ghost" size="sm" onClick={reset}>
             Reset all
