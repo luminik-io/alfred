@@ -131,10 +131,15 @@ function WorkflowLegend() {
   );
 }
 
+// Fit/reset uses the SAME zoom bounds as the canvas and the pure zoom helpers
+// (clampWorkflowZoom / fitToViewZoom), so the live fit-to-view control lands on
+// exactly the level the tested helpers compute. Diverging bounds here would let
+// a very wide graph stay clipped after a reset (fit stopping short of the real
+// min) and a tiny graph reset to a different scale than fitToViewZoom asserts.
 const FIT_OPTIONS = {
   padding: WORKFLOW_ZOOM.fitPadding,
-  minZoom: 0.45,
-  maxZoom: 1.4,
+  minZoom: WORKFLOW_ZOOM.min,
+  maxZoom: WORKFLOW_ZOOM.max,
 } as const;
 
 // MiniMap node color tracks the agent's live status, so the overview reads the
