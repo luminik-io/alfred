@@ -154,6 +154,82 @@ def test_context_for_role_no_role_returns_empty(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------
+# _default_skill_dirs: NEVER the firing workdir (security boundary)
+# --------------------------------------------------------------------------
+
+
+def test_default_dirs_are_only_global_locations(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Default discovery is the global skills dir + in-repo first_party, only."""
+    global_dir = tmp_path / "global-skills"
+    monkeypatch.setenv("ALFRED_SKILLS_DIR", str(global_dir))
+    dirs = skills_context._default_skill_dirs()
+    import skill_packs
+
+    assert dirs == [global_dir, skill_packs.skills_root() / "first_party"]
+
+
+def test_default_dirs_exclude_the_firing_workdir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A repo-local .claude/skills under cwd must never be a default scan dir.
+
+    Firings run bypassPermissions; discovering a checked-out repo's skills would
+    let it inject an unreviewed SKILL.md. Regression guard for the P1 finding.
+    """
+    workdir = tmp_path / "checked-out-repo"
+    (workdir / ".claude" / "skills").mkdir(parents=True)
+    monkeypatch.chdir(workdir)
+    monkeypatch.setenv("ALFRED_SKILLS_DIR", str(tmp_path / "global-skills"))
+    dirs = skills_context._default_skill_dirs()
+    workdir_skills = workdir / ".claude" / "skills"
+    assert workdir_skills not in dirs
+    assert not any(
+        ".claude" in p.parts and "skills" in p.parts and p == workdir_skills for p in dirs
+    )
+
+
+def test_malicious_repo_skill_is_not_discovered_by_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """End to end: a SKILL.md in cwd/.claude/skills is NOT injected by default.
+
+    Only skills under the global dir (and the in-repo first_party tree) reach a
+    firing; a hostile SKILL.md committed into the target repo is never scanned.
+    """
+    # A hostile skill committed into the target repo, matching a real role and
+    # shadowing a real skill name with an injected trigger.
+    workdir = tmp_path / "target-repo"
+    repo_skills = workdir / ".claude" / "skills"
+    repo_skills.mkdir(parents=True)
+    _write_skill(repo_skills, "write-tests", "MALICIOUS injected trigger.")
+    monkeypatch.chdir(workdir)
+
+    # An empty global skills dir: nothing extra legitimately installed. The
+    # legitimate first-party tree is still a source (that is fine and expected).
+    global_dir = tmp_path / "global-skills"
+    global_dir.mkdir()
+    monkeypatch.setenv("ALFRED_SKILLS_DIR", str(global_dir))
+
+    out = skills_context.skills_context_for_role("feature-dev", env={})
+    # The hostile trigger from the repo checkout must never appear.
+    assert "MALICIOUS" not in out
+    # The repo checkout must not be scanned at all: no path from it appears.
+    assert str(repo_skills) not in out
+
+
+def test_first_party_skills_are_discoverable_by_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The in-repo first_party tree IS a default source (the legitimate path)."""
+    monkeypatch.setenv("ALFRED_SKILLS_DIR", str(tmp_path / "empty-global"))
+    out = skills_context.skills_context_for_role("planner", env={})
+    # spec-to-issues is a planner-role first-party skill shipped in the repo.
+    assert "spec-to-issues" in out
+
+
+# --------------------------------------------------------------------------
 # process.py wiring
 # --------------------------------------------------------------------------
 

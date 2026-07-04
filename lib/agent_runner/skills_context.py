@@ -214,19 +214,32 @@ def _skills_inject_enabled(env: dict[str, str] | None = None) -> bool:
 def _default_skill_dirs() -> list[Path]:
     """Directories to scan for installed skills, in precedence order.
 
-    ``ALFRED_SKILLS_DIR`` (or the Claude personal skills dir) first, then a
-    project-local ``.claude/skills`` under the current working directory. The
-    first occurrence of a skill name wins, so an explicitly configured dir
-    shadows the project dir.
+    ONLY global, operator-controlled locations are scanned:
+
+    1. ``ALFRED_SKILLS_DIR`` (or the Claude personal skills dir, default
+       ``~/.claude/skills``) -- where ``alfred skills install`` places skills.
+    2. The in-repo ``skills/first_party`` tree -- the Alfred-authored skills that
+       ship with this checkout of alfred-os.
+
+    The firing's working directory (a checked-out target repo) is DELIBERATELY
+    NOT scanned. Firings run under ``--permission-mode bypassPermissions``, so a
+    repo-local ``<workdir>/.claude/skills/`` would let a checked-out repo shadow
+    or inject an unreviewed ``SKILL.md`` into an autonomous run just by committing
+    it. Skill injection must come only from the operator-curated global set.
+    Per-repo project-skill discovery is a future, trust-gated feature (see
+    ``docs/SKILLS.md``); it is intentionally absent here.
+
+    The first occurrence of a skill name wins, so the operator's installed skills
+    dir shadows a same-named first-party skill.
     """
     dirs: list[Path] = []
     try:
         import skill_packs
 
         dirs.append(skill_packs.default_skills_dir())
+        dirs.append(skill_packs.skills_root() / "first_party")
     except Exception:
         pass
-    dirs.append(Path.cwd() / ".claude" / "skills")
     return dirs
 
 

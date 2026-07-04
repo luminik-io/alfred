@@ -156,17 +156,21 @@ nothing. It is on by default and gated by `ALFRED_SKILLS_INJECT` (set to
 no installed skill matches the role, no role resolves, or the gate is off, the
 prompt is left untouched.
 
-The injector discovers skills from the configured global skills dir
-(`ALFRED_SKILLS_DIR`, default `~/.claude/skills`) plus the repo's
-`skills/first_party` tree, not from the firing's checkout. That is deliberate:
-the fleet's installed skill set is host-global and role-scoped, so a firing sees
-the same curated skills regardless of which repo it happens to be working in,
-and a repo cannot inject an unreviewed skill into an autonomous run just by
-committing a `SKILL.md`. **Follow-up:** per-repo project-skill discovery (reading
-`<firing-workdir>/.claude/skills` so a repo can ship its own project skills to
-its own firings) is a deliberate future step. It needs a trust decision first
-(project skills are repo-controlled, so they must be treated as lower-trust than
-the curated global set), which is why it is not wired in this change.
+The injector discovers skills ONLY from global, operator-controlled locations:
+the configured global skills dir (`ALFRED_SKILLS_DIR`, default `~/.claude/skills`,
+where `alfred skills install` places skills) plus the in-repo `skills/first_party`
+tree. It does **not** scan the firing's working directory. That is a security
+boundary, not just a convention: firings run under
+`--permission-mode bypassPermissions`, so scanning a checked-out repo's
+`<workdir>/.claude/skills/` would let that repo shadow or inject an unreviewed
+`SKILL.md` into an autonomous run just by committing one. Injection therefore
+comes only from the operator-curated set, and a firing sees the same skills
+regardless of which repo it is working in. **Follow-up:** per-repo project-skill
+discovery (reading `<firing-workdir>/.claude/skills` so a repo can ship its own
+project skills to its own firings) is a deliberate, trust-gated future step.
+Project skills are repo-controlled, so they must be treated as lower-trust than
+the curated global set (and gated behind an explicit opt-in) before they can be
+injected; that is why repo-local skills are intentionally NOT auto-injected here.
 
 ### `alfred skills evolve`: from memory to skill proposals
 
