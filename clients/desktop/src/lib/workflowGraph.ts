@@ -65,6 +65,55 @@ export type AgentNodeData = WorkflowNodeInput & {
 
 export type LaneNodeData = { label: string; [key: string]: unknown };
 
+// Canvas zoom bounds and fit padding, shared by the React Flow canvas and the
+// pure zoom-state helpers below so the component and its tests agree on one set
+// of numbers. Kept generous enough that the whole pipeline fits at the low end
+// and a single card is readable at the high end.
+export const WORKFLOW_ZOOM = {
+  min: 0.35,
+  max: 1.75,
+  // Multiplicative step for a single zoom-in / zoom-out control press, matching
+  // React Flow's own zoomIn/zoomOut factor so the buttons and the wheel agree.
+  step: 1.2,
+  // Padding fraction left around the graph when fitting all nodes in view.
+  fitPadding: 0.14,
+} as const;
+
+/** Clamp a zoom level to the canvas bounds. Pure. */
+export function clampWorkflowZoom(zoom: number): number {
+  if (!Number.isFinite(zoom)) return WORKFLOW_ZOOM.min;
+  return Math.min(WORKFLOW_ZOOM.max, Math.max(WORKFLOW_ZOOM.min, zoom));
+}
+
+/** The next zoom level after a zoom-in press, clamped to the max. Pure. */
+export function zoomInLevel(zoom: number): number {
+  return clampWorkflowZoom(zoom * WORKFLOW_ZOOM.step);
+}
+
+/** The next zoom level after a zoom-out press, clamped to the min. Pure. */
+export function zoomOutLevel(zoom: number): number {
+  return clampWorkflowZoom(zoom / WORKFLOW_ZOOM.step);
+}
+
+/**
+ * The zoom the "reset / fit to view" control lands on for a given content and
+ * viewport size: the largest zoom (within bounds) at which the whole graph
+ * bounding box, plus its padding, still fits the viewport. Pure so the fit math
+ * is testable without a live canvas; the live canvas uses React Flow's fitView,
+ * which computes the same quantity.
+ */
+export function fitToViewZoom(
+  content: { width: number; height: number },
+  viewport: { width: number; height: number },
+): number {
+  if (content.width <= 0 || content.height <= 0) return WORKFLOW_ZOOM.min;
+  if (viewport.width <= 0 || viewport.height <= 0) return WORKFLOW_ZOOM.min;
+  const pad = 1 + WORKFLOW_ZOOM.fitPadding * 2;
+  const scaleX = viewport.width / (content.width * pad);
+  const scaleY = viewport.height / (content.height * pad);
+  return clampWorkflowZoom(Math.min(scaleX, scaleY));
+}
+
 /**
  * Lay the pipeline out with dagre as a left-to-right DAG. We seed each agent and
  * lane label as a sized node, add the surviving handoffs as edges, and pin the

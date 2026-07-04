@@ -1,3 +1,4 @@
+import { isKnownFleetCodename } from "./agentRoster";
 import {
   type CustomRosterNames,
   DEFAULT_ROSTER_THEME,
@@ -42,19 +43,33 @@ export function agentProfile(
     themeId,
     customNames,
   );
-  // The runtime's own labels win when set, so existing server-side naming is
-  // preserved; otherwise the theme persona supplies the name and role label.
-  // Under the `custom` theme the operator's authored override wins, but ONLY for
-  // an agent they actually named/relabeled: an un-overridden agent must keep its
-  // runtime label rather than be replaced by a Batman default or a titleized
-  // codename. So the override is scoped per agent and per field, not theme-wide.
+  // Name/label resolution has to honor two things at once:
+  //   1. A non-Batman preset must actually re-skin the KNOWN fleet. The runtime
+  //      reports a `display_name`/`role_title` for every default agent, and those
+  //      defaults ARE the Batman roster (see lib/server/agent_profiles.py). If the
+  //      runtime label always won, picking Transformers or Justice League would
+  //      never change a single name, because the server keeps sending "Batman",
+  //      "Lucius", etc. So for a known fleet codename under a non-default preset,
+  //      the selected THEME is the source of truth for the display name.
+  //   2. A server that genuinely renames an UNKNOWN agent (one the theme has no
+  //      persona for) must still be honored, and the operator's per-agent custom
+  //      overrides must still win under the `custom` theme. Neither of those is a
+  //      re-skin of the shipped roster, so the runtime label is kept there.
   const short = normalizeCodename(row.codename);
+  const known = isKnownFleetCodename(row.codename);
   const hasCustomName = themeId === "custom" && Boolean(customNames.names[short]?.trim());
   const hasCustomRole = themeId === "custom" && Boolean(customNames.roles[short]?.trim());
-  const name = hasCustomName
+  // A preset (not custom) other than the shipped Batman roster owns the display
+  // name/role label for any known fleet agent: the runtime default is just the
+  // Batman name, so letting it win would defeat the theme switch entirely.
+  const presetReskinsKnown =
+    themeId !== "custom" && themeId !== DEFAULT_ROSTER_THEME && known;
+  const themeOwnsName = hasCustomName || presetReskinsKnown;
+  const themeOwnsRole = hasCustomRole || presetReskinsKnown;
+  const name = themeOwnsName
     ? identity.name
     : row.summary?.display_name || schedule?.display_name || identity.name;
-  const roleLabel = hasCustomRole
+  const roleLabel = themeOwnsRole
     ? identity.roleLabel
     : row.summary?.role_title || schedule?.role_title || identity.roleLabel;
   const purpose = row.summary?.purpose || schedule?.purpose || "";
