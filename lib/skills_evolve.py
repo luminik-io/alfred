@@ -33,7 +33,7 @@ import re
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 __all__ = [
@@ -134,8 +134,21 @@ def _lesson_repo(lesson: object) -> str:
 
 
 def _lesson_created_at(lesson: object) -> datetime | None:
+    """Return the lesson's ``created_at`` as an AWARE UTC datetime, or ``None``.
+
+    Recalled lessons can carry a naive ``created_at`` (no tzinfo). ``--since`` is
+    parsed as an aware UTC datetime, and comparing a naive to an aware datetime
+    raises ``TypeError``. So a naive value is normalized to UTC here
+    (``assume UTC``); an already-aware value is returned unchanged (its instant is
+    correct regardless of the named zone). A missing or non-datetime value
+    returns ``None`` and is treated as "no timestamp" by callers (never raises).
+    """
     value = getattr(lesson, "created_at", None)
-    return value if isinstance(value, datetime) else None
+    if not isinstance(value, datetime):
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value
 
 
 def cluster_lessons(

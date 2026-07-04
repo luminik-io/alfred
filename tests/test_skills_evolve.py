@@ -73,6 +73,58 @@ def test_cluster_since_filters_old_lessons() -> None:
     assert "old" not in bodies
 
 
+def test_cluster_since_handles_naive_created_at_without_raising() -> None:
+    """A NAIVE created_at must not raise when compared to an aware --since cutoff.
+
+    Recalled lessons can carry naive timestamps; --since is aware UTC. Comparing
+    the two directly raises TypeError. A naive value is assumed UTC, so it filters
+    correctly. Both a naive-older and a naive-newer lesson must sort right around
+    the cutoff.
+    """
+    cutoff = datetime(2026, 6, 1, tzinfo=UTC)
+    naive_old = datetime(2026, 5, 1)  # naive, before the cutoff -> filtered out
+    naive_new_1 = datetime(2026, 6, 15)  # naive, after the cutoff -> kept
+    naive_new_2 = datetime(2026, 6, 20)  # naive, after the cutoff -> kept
+    lessons = [
+        StubLesson("old-naive", ["x"], created_at=naive_old),
+        StubLesson("new-naive-1", ["x"], created_at=naive_new_1),
+        StubLesson("new-naive-2", ["x"], created_at=naive_new_2),
+    ]
+    # Must not raise even though created_at is naive and since is aware.
+    clusters = skills_evolve.cluster_lessons(lessons, since=cutoff)
+    assert len(clusters) == 1
+    bodies = {str(x.body) for x in clusters[0].lessons}
+    assert bodies == {"new-naive-1", "new-naive-2"}  # older naive one dropped
+
+
+def test_cluster_since_mixes_naive_and_aware_safely() -> None:
+    """A cluster with both naive and aware timestamps filters without raising."""
+    cutoff = datetime(2026, 6, 1, tzinfo=UTC)
+    lessons = [
+        StubLesson("aware-new", ["x"], created_at=datetime(2026, 7, 1, tzinfo=UTC)),
+        StubLesson("naive-new", ["x"], created_at=datetime(2026, 7, 2)),  # naive, kept
+        StubLesson("naive-old", ["x"], created_at=datetime(2026, 1, 1)),  # naive, dropped
+    ]
+    clusters = skills_evolve.cluster_lessons(lessons, since=cutoff)
+    assert len(clusters) == 1
+    bodies = {str(x.body) for x in clusters[0].lessons}
+    assert bodies == {"aware-new", "naive-new"}
+
+
+def test_lesson_created_at_normalizes_naive_to_utc() -> None:
+    """The helper returns an aware UTC datetime for a naive created_at."""
+    naive = StubLesson("n", ["x"], created_at=datetime(2026, 5, 1))
+    got = skills_evolve._lesson_created_at(naive)
+    assert got is not None and got.tzinfo is not None
+    assert got == datetime(2026, 5, 1, tzinfo=UTC)
+    # A missing/non-datetime created_at is treated as no timestamp (never raises).
+
+    class NoTs:
+        created_at = None
+
+    assert skills_evolve._lesson_created_at(NoTs()) is None
+
+
 def test_cluster_multi_tag_lesson_contributes_to_each_tag() -> None:
     lessons = [
         StubLesson("l1", ["auth", "backend"]),
