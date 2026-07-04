@@ -39,7 +39,7 @@ function scopeText(repos: string[]): string | null {
 // plan names a concrete target repo. Filing a repo-less draft is refused by the
 // file-issue path (the server enforces repo allowlisting), so promising "this
 // files a real issue" there would overpromise. Returns null when there is no
-// repo; the card shows a neutral "add a repo" hint instead (see repoHintText).
+// repo; the card shows a neutral hint instead (see hintText).
 function consequenceText(repos: string[]): string | null {
   const clean = cleanRepos(repos);
   if (!clean.length) return null;
@@ -50,10 +50,15 @@ function consequenceText(repos: string[]): string | null {
   return `This files a real issue${target}. An engineer-agent picks it up and opens a pull request you review.`;
 }
 
-// The neutral hint shown in place of the consequence line when the plan has no
-// repo yet, so the person knows what is still missing before filing can succeed
-// rather than being promised a filing that would fail.
-const REPO_HINT = "Name the repo this should change to file it.";
+// The neutral hint shown in place of the filing promise when the draft is not yet
+// fileable, so the person knows what is still needed rather than being promised a
+// filing that would be refused. It names the actual gap: a missing repo, or a
+// repo'd-but-not-ready plan that still needs firming up.
+function hintText(hasRepo: boolean): string {
+  return hasRepo
+    ? "Add the missing detail and this becomes fileable."
+    : "Name the repo this should change to file it.";
+}
 
 // The inline lifecycle card rendered when a turn produces a saved draft, wired
 // as an assistant-ui "alfred-draft" tool-call part. One primary action: File
@@ -78,14 +83,20 @@ export function AskDraftPart({ args }: ToolCallMessagePartProps<DraftToolArgs>) 
   const problem = (draft.problem || "").trim();
   const desired = (draft.desiredBehavior || "").trim();
   const testPlan = (draft.testPlan || "").trim();
-  // Whether the plan carries any structured detail worth a section block. A thin
-  // early draft (title + repo only) shows no sections and reads as a quiet offer.
-  const hasDetail = Boolean(problem || desired || scope || acceptance.length || testPlan);
-  // The consequence line is repo-gated: it only promises a real filing when a
-  // concrete target repo exists (the file path refuses repo-less drafts). With no
-  // repo, show the neutral "name the repo" hint instead of overpromising.
-  const consequence = consequenceText(draft.repos);
+  // Whether the plan carries ACTUAL structured content worth a section block. A
+  // bare repo is not "detail" (a title + repo-only draft stays the simple card),
+  // so repo presence does NOT count here; only the real fields do. The Scope
+  // section still renders inside the block once that content exists, carrying the
+  // repo alongside the desired behavior.
+  const hasDetail = Boolean(problem || desired || acceptance.length || testPlan);
+  // The consequence line promises a real filing, so it is gated on the SAME
+  // readiness the File issue button uses: only a draft the server judges ready to
+  // file shows "This files a real issue on <repo>". A repo-less OR not-yet-ready
+  // draft shows the neutral hint (what is still needed) instead of overpromising a
+  // filing that would be refused.
   const hasRepo = cleanRepos(draft.repos).length > 0;
+  const consequence = consequenceText(draft.repos);
+  const canPromiseFiling = Boolean(draft.ready) && Boolean(consequence);
 
   return (
     <div className="ask-draft" aria-label="Plan Alfred is shaping">
@@ -169,13 +180,13 @@ export function AskDraftPart({ args }: ToolCallMessagePartProps<DraftToolArgs>) 
         </div>
       ) : null}
       {!filed ? (
-        hasRepo && consequence ? (
+        canPromiseFiling && consequence ? (
           <p className="ask-draft__consequence" role="note">
             {consequence}
           </p>
         ) : (
           <p className="ask-draft__consequence ask-draft__consequence--hint" role="note">
-            {REPO_HINT}
+            {hintText(hasRepo)}
           </p>
         )
       ) : null}

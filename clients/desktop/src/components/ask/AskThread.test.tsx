@@ -630,4 +630,83 @@ describe("Ask plan card enrichment", () => {
     expect(consequence).not.toHaveClass("ask-draft__consequence--hint");
     expect(consequence).toHaveTextContent(/files a real issue on frontend/i);
   });
+
+  it("keeps a title + repo-only draft as the simple card (no enriched block, no filing promise)", async () => {
+    // A bare repo is not "detail": a draft carrying only a title and a repo must
+    // stay the simple card, not expand the Intent/Scope/Done-when block, and must
+    // not promise a filing until it is actually ready.
+    streamMock.mockImplementation(async () =>
+      converseResponse({
+        readiness: { score: 45, ready: false, missing: ["a problem statement"] },
+        draft: {
+          title: "Add CSV export to the attendees table",
+          problem: "",
+          user: "",
+          current_behavior: "",
+          desired_behavior: "",
+          repos: ["your-org/frontend"],
+          acceptance_criteria: [],
+          test_plan: "",
+          out_of_scope: "",
+          rollout: "",
+          open_questions: "",
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    const { container } = renderChat();
+
+    await send(user, "Add a CSV download button in the frontend");
+    await screen.findByLabelText(/plan alfred is shaping/i);
+
+    // No enriched detail block and no section headers for a repo-only draft.
+    expect(container.querySelector(".ask-draft__detail")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Intent$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Scope$/)).not.toBeInTheDocument();
+    // The repo is present but the draft is not ready, so no filing promise.
+    const consequence = container.querySelector(".ask-draft__consequence");
+    expect(consequence).toBeInTheDocument();
+    expect(consequence).toHaveClass("ask-draft__consequence--hint");
+    expect(consequence).not.toHaveTextContent(/files a real issue/i);
+    expect(consequence).toHaveTextContent(/add the missing detail/i);
+  });
+
+  it("shows the hint (not the filing promise) for a repo'd but unready draft with detail", async () => {
+    // Has a repo AND real structured content, but the server judges it not ready
+    // (a required field like the test plan is missing). The enriched block shows,
+    // but the filing promise is gated on readiness, so the hint appears instead.
+    streamMock.mockImplementation(async () =>
+      converseResponse({
+        readiness: { score: 70, ready: false, missing: ["a test plan"] },
+        draft: {
+          title: "Add CSV export to the attendees table",
+          problem: "Sales reps cannot export the attendees they filtered.",
+          user: "Sales rep",
+          current_behavior: "",
+          desired_behavior: "A download button exports the visible rows as CSV.",
+          repos: ["your-org/frontend"],
+          acceptance_criteria: ["The button downloads only the filtered rows."],
+          test_plan: "",
+          out_of_scope: "",
+          rollout: "",
+          open_questions: "",
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    const { container } = renderChat();
+
+    await send(user, "Add a CSV download button in the frontend");
+    await screen.findByLabelText(/plan alfred is shaping/i);
+
+    // The enriched block DOES render (there is real content).
+    expect(container.querySelector(".ask-draft__detail")).toBeInTheDocument();
+    expect(screen.getByText(/^Intent$/)).toBeInTheDocument();
+    // But the filing promise is withheld because the draft is not ready.
+    const consequence = container.querySelector(".ask-draft__consequence");
+    expect(consequence).toBeInTheDocument();
+    expect(consequence).toHaveClass("ask-draft__consequence--hint");
+    expect(consequence).not.toHaveTextContent(/files a real issue/i);
+    expect(consequence).toHaveTextContent(/add the missing detail/i);
+  });
 });
