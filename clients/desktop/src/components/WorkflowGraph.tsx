@@ -17,6 +17,7 @@ import {
   type AgentNodeData,
   buildWorkflowGraph,
   type LaneNodeData,
+  WORKFLOW_ZOOM,
   type WorkflowNodeInput,
 } from "../lib/workflowGraph";
 import { AlfredStatusDot } from "./ui/alfred";
@@ -130,7 +131,11 @@ function WorkflowLegend() {
   );
 }
 
-const FIT_OPTIONS = { padding: 0.14, minZoom: 0.45, maxZoom: 1.4 } as const;
+const FIT_OPTIONS = {
+  padding: WORKFLOW_ZOOM.fitPadding,
+  minZoom: 0.45,
+  maxZoom: 1.4,
+} as const;
 
 // MiniMap node color tracks the agent's live status, so the overview reads the
 // same as the canvas. The minimap paints into a raw SVG, so resolve theme
@@ -219,13 +224,15 @@ export function WorkflowGraph({
         nodeTypes={NODE_TYPES}
         fitView
         fitViewOptions={FIT_OPTIONS}
-        minZoom={0.35}
-        maxZoom={1.75}
-        // Trackpad/touch-first canvas controls (Figma/n8n style): two-finger
-        // scroll pans, pinch (or ctrl/cmd + scroll) zooms, drag pans. The +/-
-        // controls and fit button cover mouse-only users.
-        panOnScroll
-        zoomOnScroll={false}
+        minZoom={WORKFLOW_ZOOM.min}
+        maxZoom={WORKFLOW_ZOOM.max}
+        // Canvas controls: the mouse wheel and trackpad two-finger scroll zoom
+        // the canvas (the primary way to zoom in on a cramped pipeline), pinch
+        // zooms on touch, and click-drag pans. The +/- and fit-to-view controls
+        // (bottom-left) and the minimap cover keyboard/mouse-only panning, so a
+        // mouse user never has to drag to see a node clipped off an edge.
+        zoomOnScroll
+        panOnScroll={false}
         zoomOnPinch
         panOnDrag
         zoomOnDoubleClick={false}
