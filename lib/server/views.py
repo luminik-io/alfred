@@ -1367,9 +1367,13 @@ def _lesson_to_api(lesson: Any) -> dict[str, Any]:
 
 
 def _lesson_display_key(lesson: Any) -> str | None:
-    """A stable identity for one lesson body, used to collapse duplicate
-    promoted lessons in the client list. Mirrors the candidate dedup key
-    (lowercased, whitespace-collapsed) but reads the recall Lesson's body.
+    """A stable identity for one lesson, used to collapse duplicate promoted
+    lessons in the client list. Mirrors the candidate dedup key (lowercased,
+    whitespace-collapsed body) but SCOPES it by repo + codename: the same body
+    under two different repos (or two different agents) is two distinct active
+    lessons, each with its own row metadata and Undo, so they must not collapse
+    into one. Only a body repeated for the same repo AND codename is a true
+    duplicate (the same fact auto-promoted on several firings).
 
     Returns ``None`` when there is no body to key on, so such rows are left
     untouched rather than merged into a single empty-body entry."""
@@ -1377,7 +1381,13 @@ def _lesson_display_key(lesson: Any) -> str | None:
     if not isinstance(body, str):
         return None
     normalized = re.sub(r"\s+", " ", body.strip().lower())
-    return normalized or None
+    if not normalized:
+        return None
+    repo = _lesson_field(lesson, "repo")
+    codename = _lesson_field(lesson, "codename")
+    scope_repo = repo.strip().lower() if isinstance(repo, str) else ""
+    scope_codename = codename.strip().lower() if isinstance(codename, str) else ""
+    return f"{scope_repo}\x1f{scope_codename}\x1f{normalized}"
 
 
 def _dedupe_lessons_for_display(lessons: list[Any]) -> list[Any]:
@@ -1387,9 +1397,10 @@ def _dedupe_lessons_for_display(lessons: list[Any]) -> list[Any]:
     more than once (e.g. auto-promoted on several firings before a human
     reviewed it) surfaces as several rows with distinct ids but identical text.
     Showing "Use the API fixture factory." five times is noise, so keep the
-    first occurrence of each body (recall is already ordered by relevance and
-    recency) and drop later identical ones. Lessons with no usable body key are
-    always kept."""
+    first occurrence of each (repo, codename, body) (recall is already ordered by
+    relevance and recency) and drop later identical ones. The same body under a
+    different repo or agent is a distinct lesson and is kept. Lessons with no
+    usable body key are always kept."""
     seen: set[str] = set()
     deduped: list[Any] = []
     for lesson in lessons:
