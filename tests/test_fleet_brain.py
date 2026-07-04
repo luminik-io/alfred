@@ -1804,3 +1804,15 @@ def test_lesson_stats_counts_retired(brain: FleetBrain) -> None:
     stats = brain.lesson_stats()
     assert stats["states"]["retired"] == 1
     assert stats["states"]["validated"] == 0
+
+
+def test_consolidate_rejects_negative_stale_days(brain: FleetBrain) -> None:
+    # A negative stale_days must be rejected, not clamped to 0 (which would set
+    # the cutoff to now and forget every promoted lesson). Reject before any
+    # read/write, even when armed.
+    import pytest
+
+    with pytest.raises(ValueError, match="stale_days"):
+        brain.consolidate_lessons(
+            stale_days=-1, env={"ALFRED_MEMORY_CONSOLIDATE": "1"}
+        )

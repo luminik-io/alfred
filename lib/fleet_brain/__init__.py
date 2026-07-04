@@ -1322,6 +1322,11 @@ class FleetBrain:
         LLM merge yet) so it can be scheduled safely -- scheduling it disarmed is
         a true no-op. ``lesson_forgetter`` is the AMS provider; tests inject a
         stub. Returns a summary dict (always safe to log)."""
+        # A negative stale_days is invalid input, not "0". Clamping it to 0 would
+        # set the cutoff to NOW and forget/retire every promoted lesson, so
+        # reject it up front (fail fast, before any read or write).
+        if int(stale_days) < 0:
+            raise ValueError(f"stale_days must be >= 0, got {stale_days}")
         summary: dict[str, Any] = {
             "enabled": consolidate_enabled(env),
             "dry_run": bool(dry_run),
@@ -1349,7 +1354,7 @@ class FleetBrain:
                 break
             offset += page
 
-        cutoff = datetime.now(UTC) - timedelta(days=max(0, int(stale_days)))
+        cutoff = datetime.now(UTC) - timedelta(days=int(stale_days))
         stale: list[MemoryCandidate] = []
         fresh_auto: list[MemoryCandidate] = []
         for cand in validated:
