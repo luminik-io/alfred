@@ -390,6 +390,18 @@ def run_demo(
     _emit(events, "ship", "detail", "Running the sample test suite before committing.")
     test_summary = _verify_tests(workdir)
     _emit(events, "ship", "detail", f"Tests: {test_summary}")
+    if bug_caught:
+        # The reviewer blocked on the titlecase whitespace bug and Lucius
+        # applied a fix. Before committing under a "fix" summary, re-run the
+        # reviewer's exact reproduction so the demo never claims to have fixed
+        # a bug the fix did not actually resolve.
+        _emit(
+            events,
+            "ship",
+            "detail",
+            "Re-running the reviewer's reproduction to confirm the bug is fixed.",
+        )
+        _verify_planted_bug_fixed(workdir)
     diff_summary = _finalize_and_summarize(workdir, include_fix=bug_caught)
     _emit(events, "ship", "done", diff_summary, diff_summary=diff_summary)
 
@@ -493,6 +505,50 @@ def _verify_tests(workdir: Path) -> str:
     return lines[-1] if lines else "test suite passed"
 
 
+# The exact reproduction the reviewer runs (see ``_REVIEW_PROMPT``): the
+# planted defect collapses the two-space input to one space, so a genuine fix
+# must return the input unchanged. Kept as a standalone script so it runs the
+# sample's real ``titlecase`` in a subprocess, exactly as a user's build would.
+_BUG_REPRO_SCRIPT = (
+    "import textkit,sys;"
+    'out=textkit.titlecase("a  b");'
+    "sys.stdout.write(out);"
+    'sys.exit(0 if out=="A  B" else 1)'
+)
+
+
+def _verify_planted_bug_fixed(workdir: Path) -> None:
+    """Re-run the reviewer's reproduction and require the planted bug is gone.
+
+    The generic sample suite does not cover ``titlecase("a  b")``, so a fix
+    step that edits some other file but leaves ``titlecase`` collapsing spaces
+    would still pass ``_verify_tests`` and ship under a "fix titlecase
+    whitespace bug" summary. This targeted gate closes that hole: it runs the
+    exact reproduction the reviewer used and raises at the ship step unless the
+    two-space input now round-trips (``"a  b"`` -> ``"A  B"``).
+    """
+    import sys
+
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", _BUG_REPRO_SCRIPT],
+            cwd=str(workdir),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise DemoEngineError("ship", f"could not verify the planted bug was fixed: {exc}") from exc
+    if proc.returncode != 0:
+        got = (proc.stdout or "").strip() or "<no output>"
+        raise DemoEngineError(
+            "ship",
+            "the reviewer blocked on the titlecase whitespace bug, but the fix did "
+            f'not resolve it: titlecase("a  b") returned {got!r}, expected "A  B". '
+            "not shipping a fix that does not fix the reported bug",
+        )
+
+
 def _git_checked(args: list[str], *, cwd: Path, step: str) -> None:
     """Run a git command and raise :class:`DemoEngineError` on failure."""
     proc = subprocess.run(
@@ -561,7 +617,23 @@ def _finalize_and_summarize(workdir: Path, *, include_fix: bool) -> str:
     message = "feat(textkit): add slugify"
     if include_fix:
         message += " and fix titlecase whitespace bug"
-    _git_checked(["add", "-A"], cwd=workdir, step="ship")
+    # Stage everything except python test-cache artifacts. The sample repo
+    # git-ignores these, but the ``:(exclude)`` pathspecs keep them out of the
+    # shipped commit even on a host whose git does not honor the ignore, so the
+    # PR-style diff only ever contains real source changes.
+    _git_checked(
+        [
+            "add",
+            "-A",
+            "--",
+            ".",
+            ":(exclude)**/__pycache__/**",
+            ":(exclude)**/.pytest_cache/**",
+            ":(exclude)**/*.pyc",
+        ],
+        cwd=workdir,
+        step="ship",
+    )
     _git_checked(["commit", "--quiet", "-m", message], cwd=workdir, step="ship")
 
     diffstat = _git_capture(["diff", "--stat", "HEAD~1", "HEAD"], cwd=workdir)

@@ -12,9 +12,37 @@ import shutil
 import subprocess
 from pathlib import Path
 
-# examples/demo-repo lives two levels up from lib/demo/sample_repo.py:
-#   lib/demo/sample_repo.py -> lib/demo -> lib -> <repo root>
-SAMPLE_REPO_DIR: Path = Path(__file__).resolve().parents[2] / "examples" / "demo-repo"
+
+def _resolve_sample_repo_dir() -> Path:
+    """Locate the bundled ``examples/demo-repo`` across all install layouts.
+
+    Three layouts are supported, mirroring how :mod:`skill_packs` resolves the
+    curated skill registry so the demo works everywhere the CLI does, not just
+    in a source checkout:
+
+    * Source checkout: ``lib/demo/sample_repo.py`` -> repo root ->
+      ``examples/demo-repo``.
+    * Deployed runtime: ``deploy.sh`` copies ``lib/`` to ``$ALFRED_HOME/lib``
+      and ``examples/`` to ``$ALFRED_HOME/examples``, so the same
+      root-relative walk resolves (``$ALFRED_HOME/lib/demo/sample_repo.py`` ->
+      ``$ALFRED_HOME/examples/demo-repo``).
+    * Installed wheel: ``sources = ["lib"]`` flattens ``lib`` to the wheel
+      root and ``force-include`` packages the sample as
+      ``demo/examples/demo-repo``, a sibling tree of this module.
+
+    The packaged sibling is checked first (it only exists in a wheel), then the
+    repo-root layout used by a source checkout and a deployed runtime. The
+    first location that actually exists wins; the root layout is the fallback
+    so a fresh checkout still resolves.
+    """
+    here = Path(__file__).resolve().parent
+    packaged = here / "examples" / "demo-repo"
+    if packaged.is_dir():
+        return packaged
+    return here.parents[1] / "examples" / "demo-repo"
+
+
+SAMPLE_REPO_DIR: Path = _resolve_sample_repo_dir()
 
 
 def _git(args: list[str], *, cwd: Path) -> None:

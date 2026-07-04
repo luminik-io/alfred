@@ -135,9 +135,10 @@ RUNTIME_LAUNCHD="$ALFRED_HOME/launchd"
 RUNTIME_SYSTEMD="$ALFRED_HOME/systemd"
 RUNTIME_PROMPTS="$ALFRED_HOME/prompts"
 RUNTIME_SKILLS="$ALFRED_HOME/skills"
+RUNTIME_EXAMPLES="$ALFRED_HOME/examples"
 LOCAL_BIN="${HOME}/.local/bin"
 
-mkdir -p "$RUNTIME_BIN" "$RUNTIME_LIB" "$RUNTIME_LAUNCHD" "$RUNTIME_SYSTEMD" "$RUNTIME_PROMPTS" "$RUNTIME_SKILLS" "$LOCAL_BIN"
+mkdir -p "$RUNTIME_BIN" "$RUNTIME_LIB" "$RUNTIME_LAUNCHD" "$RUNTIME_SYSTEMD" "$RUNTIME_PROMPTS" "$RUNTIME_SKILLS" "$RUNTIME_EXAMPLES" "$LOCAL_BIN"
 
 echo "[alfred-os/deploy] ALFRED_HOME=$ALFRED_HOME WORKSPACE_ROOT=$WORKSPACE_ROOT"
 
@@ -226,6 +227,24 @@ if [ -d "$REPO_DIR/skills" ]; then
   find "$RUNTIME_SKILLS" -type f -exec chmod 644 {} +
   if [ ! -f "$RUNTIME_SKILLS/packs.toml" ]; then
     echo "[alfred-os/deploy] ERROR: skills/packs.toml missing after copy" >&2
+    exit 1
+  fi
+fi
+
+# The demo sample repo (examples/demo-repo) must ship with the runtime the
+# same way skills/ does: lib/demo/sample_repo.py resolves it relative to
+# $ALFRED_HOME ($ALFRED_HOME/lib -> $ALFRED_HOME/examples/demo-repo), so
+# without this copy `alfred demo` fails with "sample repo not found" on a
+# deployed runtime.
+if [ -d "$REPO_DIR/examples" ]; then
+  echo "[alfred-os/deploy] copying examples/ (alfred demo sample repo)"
+  if same_dir "$REPO_DIR/examples" "$RUNTIME_EXAMPLES"; then
+    echo "[alfred-os/deploy] examples/ already in runtime root"
+  else
+    cp -R "$REPO_DIR/examples/." "$RUNTIME_EXAMPLES/"
+  fi
+  if [ ! -d "$RUNTIME_EXAMPLES/demo-repo" ]; then
+    echo "[alfred-os/deploy] ERROR: examples/demo-repo missing after copy" >&2
     exit 1
   fi
 fi

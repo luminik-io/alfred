@@ -77,12 +77,14 @@ class ScriptedEngine:
         noop_build: bool = False,
         break_tests: bool = False,
         omit_review_verdict: bool = False,
+        broken_fix: bool = False,
     ) -> None:
         self.catch_bug = catch_bug
         self.fail_step = fail_step
         self.noop_build = noop_build
         self.break_tests = break_tests
         self.omit_review_verdict = omit_review_verdict
+        self.broken_fix = broken_fix
         self.calls: list[EngineCall] = []
 
     def __call__(self, call: EngineCall) -> EngineOutcome:
@@ -111,6 +113,9 @@ class ScriptedEngine:
             verdict = REVIEW_BLOCK_SENTINEL if self.catch_bug else REVIEW_PASS_SENTINEL
             return EngineOutcome(success=True, text=f"{finding}\n{verdict}")
         if call.step == "fix":
+            if self.broken_fix:
+                self._fix_titlecase_noop(call.workdir)
+                return EngineOutcome(success=True, text="[DEMO-FIX-DONE] (did not really fix it)")
             self._fix_titlecase(call.workdir)
             return EngineOutcome(success=True, text="[DEMO-FIX-DONE] preserve whitespace runs")
         raise AssertionError(f"unexpected step {call.step}")
@@ -126,9 +131,43 @@ class ScriptedEngine:
 
     @staticmethod
     def _fix_titlecase(workdir: Path) -> None:
+        """Genuinely repair the planted bug so titlecase preserves spacing.
+
+        Mirrors what a real fix step must do: rewrite ``titlecase`` to keep the
+        exact input whitespace (``"a  b"`` -> ``"A  B"``) instead of collapsing
+        runs, and add a regression test. The ship step's post-fix gate
+        re-runs the reviewer's reproduction, so an appended comment (which does
+        not actually fix ``titlecase``) would now be rejected.
+        """
         lib = workdir / "textkit.py"
         text = lib.read_text()
-        lib.write_text(text + "\n# fix: preserve whitespace runs in titlecase\n")
+        text = text.replace(
+            "    words = text.split()\n"
+            '    return " ".join(word[:1].upper() + word[1:].lower() for word in words)',
+            "    import re\n"
+            "    return re.sub(\n"
+            '        r"\\S+",\n'
+            "        lambda m: m.group(0)[:1].upper() + m.group(0)[1:].lower(),\n"
+            "        text,\n"
+            "    )",
+        )
+        lib.write_text(text)
+        tests = workdir / "test_textkit.py"
+        tests.write_text(
+            tests.read_text() + "\n\ndef test_titlecase_preserves_double_space() -> None:\n"
+            '    assert textkit.titlecase("a  b") == "A  B"\n'
+        )
+
+    @staticmethod
+    def _fix_titlecase_noop(workdir: Path) -> None:
+        """A "fix" that edits a real file but leaves titlecase broken.
+
+        Simulates a fix step that reports success and changes the worktree, but
+        does not actually resolve the reported whitespace bug. The ship step's
+        post-fix reproduction gate must catch this and refuse to ship.
+        """
+        lib = workdir / "textkit.py"
+        lib.write_text(lib.read_text() + "\n# touched, but titlecase still collapses spaces\n")
 
     @staticmethod
     def _append_failing_test(workdir: Path) -> None:
@@ -311,6 +350,60 @@ def test_ship_fails_when_sample_tests_fail(tmp_path):
         timeout=30,
     ).stdout.strip()
     assert head == "Initial textkit snapshot"
+
+
+def test_ship_fails_when_fix_does_not_fix_the_planted_bug(tmp_path):
+    """A fix that edits a file but leaves titlecase broken must not ship.
+
+    The generic sample suite does not cover ``titlecase("a  b")``, so without
+    the post-fix reproduction gate a no-op-on-titlecase fix would pass tests
+    and ship under a "fix titlecase whitespace bug" summary. The gate re-runs
+    the reviewer's exact reproduction and blocks.
+    """
+    engine = ScriptedEngine(catch_bug=True, broken_fix=True)
+    with pytest.raises(DemoEngineError) as exc_info:
+        _run(engine, tmp_path)
+    assert exc_info.value.step == "ship"
+    assert "did not resolve it" in exc_info.value.message
+    # Nothing was committed: HEAD is still the initial snapshot.
+    import subprocess
+
+    head = subprocess.run(
+        ["git", "log", "-1", "--pretty=%s"],
+        cwd=str(tmp_path / "textkit"),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    ).stdout.strip()
+    assert head == "Initial textkit snapshot"
+
+
+def test_shipped_commit_excludes_test_cache_artifacts(tmp_path):
+    """The shipped commit must never contain __pycache__/.pytest_cache/*.pyc.
+
+    The sample suite runs before the commit and can create python test-cache
+    artifacts in the worktree. Those must stay out of the shipped diff (the
+    sample repo git-ignores them and the commit pathspec excludes them), so
+    the PR-style diff only ever contains real source changes.
+    """
+    engine = ScriptedEngine(catch_bug=True)
+    result, _events = _run(engine, tmp_path)
+    assert result.shipped is True
+
+    import subprocess
+
+    tree = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", "HEAD"],
+        cwd=str(tmp_path / "textkit"),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    ).stdout
+    assert "__pycache__" not in tree
+    assert ".pytest_cache" not in tree
+    assert ".pyc" not in tree
+    # The real source change is present.
+    assert "textkit.py" in tree
 
 
 # ---------------------------------------------------------------------------

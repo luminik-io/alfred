@@ -61,6 +61,11 @@ sources = ["lib"]
 # `skills` -> `skills` lands it as a sibling of `skill_packs.py`.
 [tool.hatch.build.targets.wheel.force-include]
 "skills" = "skills"
+# Ship the `alfred demo` sample repo alongside lib/demo so the installed
+# `alfred demo` command finds it. `sources = ["lib"]` flattens `lib/demo` to
+# `demo` at the wheel root, so mapping the sample under `demo/examples/demo-repo`
+# lands it as a sibling tree of `sample_repo.py`.
+"examples/demo-repo" = "demo/examples/demo-repo"
 
 [tool.hatch.build.targets.sdist]
 exclude = [
