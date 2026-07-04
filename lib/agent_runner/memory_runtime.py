@@ -307,10 +307,16 @@ def _apply_inject_budget(header: list[str], lesson_lines: list[str], budget: int
 
     kept = list(header)
     if joined_len(kept) >= budget:
-        # Budget too small for even the header + one lesson; still guarantee a
-        # single (possibly truncated) lesson so memory is never wholly silent.
+        # Budget too small for even the header. Do NOT blow past the cap by
+        # appending a whole lesson: inject at most a hard-truncated first lesson
+        # into whatever room remains (often none), so the budget stays a real
+        # ceiling. When the header already meets/exceeds the budget there is no
+        # room and the block is header-only.
         if lesson_lines:
-            kept.append(lesson_lines[0])
+            remaining = budget - joined_len(kept) - 1  # -1 for the joining "\n"
+            body_room = remaining - len(_TRUNCATION_MARKER)
+            if body_room > 0:
+                kept.append(lesson_lines[0][:body_room].rstrip() + _TRUNCATION_MARKER)
         return kept
     for line in lesson_lines:
         if joined_len([*kept, line]) <= budget:
