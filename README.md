@@ -11,22 +11,29 @@
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-**An autonomous engineering team that ships while you are away.**
+**Turn Claude Code and Codex into an engineering team that remembers.**
 
-Alfred is a local, private fleet of coding agents. You give the goal, the repos,
-and the approval rules. Alfred keeps the loop moving until it has a pull request,
-a review finding, or a decision to bring back to Slack. It never merges its own
-work unless you let it.
+Alfred gives your local coding CLIs a small, named team and a memory. Named
+agents plan the work, write the code, review each other, and open pull requests.
+When a run learns something durable, it also teaches the fleet and keeps it: a
+repo convention, a fix that worked, a mistake not to repeat. The next run starts
+from what earlier runs learned instead of from zero.
+
+The team is deliberately small and legible. You can name every agent and say
+what each one does:
 
 - **Drake** turns your plans into scoped tasks.
 - **Lucius** writes the code and opens pull requests.
-- **Ra's al Ghul** reviews them.
+- **Ra's al Ghul** reviews them, as a second agent, not the one who wrote them.
 - **Bane** adds the tests.
 - **Nightwing** clears the review comments.
 - **Batman** is the OSS architect for multi-repo work: he plans large
   features, waits for approval, and files scoped child issues. Lucius, Bane,
   Nightwing, Ra's al Ghul, and the merge gate carry those child issues through
   reviewed PRs.
+
+Alfred never merges its own work unless you let it. A drafted plan waits behind
+an approval gate until you approve it, so unapproved work does not ship.
 
 **It runs on the Claude Max or Codex Pro subscription you already pay for. No API
 keys, no separate token bill.** Alfred shells out to your local `claude` and
@@ -50,6 +57,22 @@ flowchart LR
 
 ### Why Alfred
 
+- **The fleet remembers between runs.** Before a run, an agent recalls the
+  lessons earlier runs learned; after a run, it files new ones when it learned
+  something durable. Alfred keeps
+  those lessons in a local memory (Redis Agent Memory for the semantic lessons,
+  a local FleetBrain ledger for the review queue and failure history), so the
+  fleet stops rediscovering the same repo conventions and re-making the same
+  mistakes. See [Memory](docs/MEMORY_PROVIDERS.md).
+- **Named roles and a real second opinion.** The team is small and each agent
+  has one job. Ra's al Ghul reviews the code a different agent wrote, so review
+  is a separate step, not the author grading their own work. Narrow scopes keep
+  the fleet's Slack channel and PR history easy to follow.
+- **An approval gate that refuses unapproved work.** A drafted single-repo plan
+  waits behind an approval gate (`agent:plan-pending-approval`) until you approve
+  it, and Alfred never merges its own work by default. This is a team you
+  supervise, not autonomy you hope for. Each run is also contained in an isolated
+  worktree and bounded by a hard spend cap.
 - **Pull requests are the artifact.** Every run ends in a real PR on GitHub you
   can read, diff, and merge, not a chat transcript or a hidden change. The
   review, the tests, and the history are all where your team already looks.
@@ -57,9 +80,6 @@ flowchart LR
   against the CLIs you already authenticated. Alfred does not send code to
   Alfred or Luminik servers. Task context goes only to the model provider you
   chose, GitHub, and Slack when you configured Slack.
-- **A team you supervise, not autonomy you hope for.** Each run is contained in
-  an isolated worktree, bounded by a hard spend cap, and held at an approval
-  gate you control. Slack is the planning surface; you keep merge authority.
 - **Alfred proves itself on its own repo.** A measurable, re-quotable stat:
   <!-- SELF_PROOF -->No merged PRs in Alfred's own repo in the last 30 days yet<!-- /SELF_PROOF -->.
   The line between the markers is generated from live GitHub data by
@@ -133,10 +153,11 @@ instead; see [`SECURITY.md`](SECURITY.md).
 
 ## Why use it
 
-Interactive coding agents finish one prompt while you sit at the keyboard.
-Alfred is for the engineering work that should keep moving after you step away:
-planned features, reviewer comments, follow-up tests, dependency bumps, docs
-gaps, and multi-repo rollouts.
+Interactive coding agents finish one prompt while you sit at the keyboard, and
+each session forgets what the last one learned. Alfred is for the engineering
+work that should keep moving after you step away, handled by a team that carries
+its lessons forward: planned features, reviewer comments, follow-up tests,
+dependency bumps, docs gaps, and multi-repo rollouts.
 
 - **Narrow, single-purpose roles.** Drake plans, Lucius implements, Ra's al
   Ghul reviews, Bane adds tests, Nightwing clears review comments, and Batman
