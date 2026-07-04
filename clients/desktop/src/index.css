@@ -4051,6 +4051,14 @@ body {
   line-height: 1.45;
 }
 
+/* Repo-less state: a neutral "still missing" hint, not a consequence. Drop the
+   accent wash + rail so it does not read as a confirmed filing. */
+.ask-draft__consequence--hint {
+  border-left-color: var(--hairline);
+  background: color-mix(in oklch, var(--muted), transparent 55%);
+  color: var(--muted-foreground);
+}
+
 @media (max-width: 520px) {
   .ask-draft__section {
     grid-template-columns: minmax(0, 1fr);

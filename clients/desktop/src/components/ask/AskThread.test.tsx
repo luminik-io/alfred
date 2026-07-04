@@ -561,9 +561,73 @@ describe("Ask plan card enrichment", () => {
     expect(container.querySelector(".ask-draft__detail")).not.toBeInTheDocument();
     expect(screen.queryByText(/^Intent$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Done when$/)).not.toBeInTheDocument();
-    // The consequence line still shows (repo-agnostic when no repo is named).
+    // With no repo, the card must NOT promise a real filing; it shows the neutral
+    // "name the repo" hint instead.
     const consequence = container.querySelector(".ask-draft__consequence");
     expect(consequence).toBeInTheDocument();
-    expect(consequence).toHaveTextContent(/files a real issue\./i);
+    expect(consequence).not.toHaveTextContent(/files a real issue/i);
+    expect(consequence).toHaveTextContent(/name the repo/i);
+  });
+
+  it("does not promise a real filing for a repo-less draft, but does once a repo is named", async () => {
+    // Repo-less: the file path refuses it, so the "files a real issue" line must
+    // not appear (it would overpromise). The neutral hint appears instead.
+    streamMock.mockImplementationOnce(async () =>
+      converseResponse({
+        readiness: { score: 55, ready: false, missing: ["a repo"] },
+        draft: {
+          title: "Add CSV export to the attendees table",
+          problem: "Sales reps cannot export attendees.",
+          user: "Sales rep",
+          current_behavior: "",
+          desired_behavior: "A download button exports the visible rows as CSV.",
+          repos: [],
+          acceptance_criteria: [],
+          test_plan: "",
+          out_of_scope: "",
+          rollout: "",
+          open_questions: "",
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    const { container } = renderChat();
+
+    await send(user, "Add a CSV download button");
+    await screen.findByLabelText(/plan alfred is shaping/i);
+    let consequence = container.querySelector(".ask-draft__consequence");
+    expect(consequence).toBeInTheDocument();
+    expect(consequence).not.toHaveTextContent(/files a real issue/i);
+    expect(consequence).toHaveClass("ask-draft__consequence--hint");
+    expect(consequence).toHaveTextContent(/name the repo/i);
+
+    // A follow-up turn names a repo: now the consequence line promises the filing.
+    streamMock.mockImplementationOnce(async () =>
+      converseResponse({
+        readiness: { score: 90, ready: true, missing: [] },
+        draft: {
+          title: "Add CSV export to the attendees table",
+          problem: "Sales reps cannot export attendees.",
+          user: "Sales rep",
+          current_behavior: "",
+          desired_behavior: "A download button exports the visible rows as CSV.",
+          repos: ["your-org/frontend"],
+          acceptance_criteria: [],
+          test_plan: "",
+          out_of_scope: "",
+          rollout: "",
+          open_questions: "",
+        },
+      }),
+    );
+    await send(user, "It is in the frontend");
+    await screen.findByText(/^Ready to file$/);
+    // The second turn appends a new draft card, so read the LAST consequence line
+    // (the repo-named one), not the earlier repo-less hint still in the transcript.
+    const all = container.querySelectorAll(".ask-draft__consequence");
+    consequence = all[all.length - 1];
+    expect(consequence).toBeInTheDocument();
+    expect(consequence).not.toHaveClass("ask-draft__consequence--hint");
+    expect(consequence).toHaveTextContent(/files a real issue on frontend/i);
   });
 });
