@@ -560,6 +560,53 @@ def test_api_memory_lessons_collapses_duplicate_bodies(
     ]
 
 
+def test_api_memory_lessons_limit_counts_unique_rows(
+    tmp_path: Path,
+) -> None:
+    """The display limit must count UNIQUE lessons. If recall were capped at the
+    display limit and that page were all duplicates, dedupe would underfill the
+    list (return fewer than `limit` rows even when more unique lessons exist).
+    The endpoint over-fetches, dedupes, then caps, so a request for 2 rows
+    against a duplicate-heavy pool still yields 2 distinct lessons."""
+    state = tmp_path / "state"
+
+    def _lesson(lesson_id: str, body: str, minute: int) -> Lesson:
+        return Lesson(
+            id=lesson_id,
+            codename="lucius",
+            repo="example-org/api",
+            body=body,
+            tags=["fixtures"],
+            created_at=datetime(2026, 6, 26, 19, minute, tzinfo=UTC),
+            firing_id=None,
+        )
+
+    # The two most-recent recall rows are the SAME lesson; distinct lessons only
+    # appear deeper in the list. A fetch capped at limit=2 would dedupe to a
+    # single row; the over-fetch surfaces the distinct ones.
+    provider = _StubRecallProvider(
+        [
+            _lesson("lesson:memory_candidate:1", "Use the API fixture factory.", 10),
+            _lesson("lesson:memory_candidate:2", "Use the API fixture factory.", 9),
+            _lesson("lesson:memory_candidate:3", "Mock the outbound HTTP client.", 8),
+            _lesson("lesson:memory_candidate:4", "Prefer table-driven tests.", 7),
+        ]
+    )
+    app = create_app(FilesystemReader(state_root=state))
+    app.state.memory_provider = provider
+    client = TestClient(app)
+
+    rows = client.get("/api/memory/lessons?limit=2").json()["rows"]
+
+    # Two UNIQUE rows, not one underfilled row.
+    assert [row["id"] for row in rows] == [
+        "lesson:memory_candidate:1",
+        "lesson:memory_candidate:3",
+    ]
+    # Proves recall over-fetched beyond the display limit before deduping.
+    assert provider.calls and provider.calls[0]["limit"] > 2
+
+
 def test_api_memory_stats_returns_quality_metrics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

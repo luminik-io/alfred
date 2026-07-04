@@ -841,12 +841,20 @@ def register_routes(app: FastAPI) -> None:
         nothing on an AMS-primary install and the client would show an empty
         "lessons Alfred is using" section even when it has promoted lessons.
         """
+        display_limit = min(max(1, limit), 200)
+        # Over-fetch before deduping so the display limit is honored in UNIQUE
+        # rows. If we recalled exactly `display_limit` rows and some were
+        # duplicates, dedupe would underfill the list (return fewer than
+        # `display_limit` unique lessons even when more exist further down
+        # recall). Pull a larger pool (bounded by the recall ceiling), dedupe,
+        # then cap to the requested number of unique lessons.
+        fetch_limit = min(max(display_limit * 4, display_limit + 50), 200)
         try:
-            lessons = _recall_lessons_via_chain(request, limit=min(max(1, limit), 200))
+            lessons = _recall_lessons_via_chain(request, limit=fetch_limit)
         except Exception:  # pragma: no cover - local bridge can be down
             logger.exception("api_memory_lessons: failed to recall lessons")
             return JSONResponse({"rows": [], "error": _GENERIC_ERROR})
-        lessons = _dedupe_lessons_for_display(lessons)
+        lessons = _dedupe_lessons_for_display(lessons)[:display_limit]
         return JSONResponse({"rows": [_lesson_to_api(lesson) for lesson in lessons]})
 
     @app.get("/api/memory/stats", response_class=JSONResponse)

@@ -278,7 +278,11 @@ class RedisAgentMemoryProvider:
         text = (query or " ".join(x for x in (codename, repo) if x) or "alfred").strip()
         payload: dict[str, Any] = {
             "text": text,
-            "limit": max(1, int(limit)),
+            # Clamp to the AMS search page cap. The /search endpoint rejects
+            # limits above _AMS_SEARCH_PAGE_LIMIT with a 4xx that recall swallows
+            # as [], which would blank the caller (e.g. the lessons rail). Match
+            # the list_lessons clamp so every caller is safe to over-fetch.
+            "limit": min(max(1, int(limit)), _AMS_SEARCH_PAGE_LIMIT),
             "search_mode": self.search_mode,
             "namespace": {"eq": self.namespace},
         }
@@ -325,7 +329,11 @@ class RedisAgentMemoryProvider:
         text = (query or " ".join(x for x in (codename, repo) if x) or "alfred").strip()
         payload: dict[str, Any] = {
             "text": text,
-            "limit": max(1, int(limit)),
+            # Clamp to the AMS search page cap. The /search endpoint rejects
+            # limits above _AMS_SEARCH_PAGE_LIMIT with a 4xx that recall swallows
+            # as [], which would blank the caller (e.g. the lessons rail). Match
+            # the list_lessons clamp so every caller is safe to over-fetch.
+            "limit": min(max(1, int(limit)), _AMS_SEARCH_PAGE_LIMIT),
             "search_mode": self.search_mode,
             "namespace": {"eq": self.namespace},
         }

@@ -25,6 +25,7 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "lib"))
 
 from memory.redis_agent_memory import (  # noqa: E402
+    _AMS_SEARCH_PAGE_LIMIT,
     RedisAgentMemoryProvider,
     _AmsHttpError,
     _BreakerState,
@@ -99,6 +100,30 @@ def test_transient_retries_then_succeeds() -> None:
     assert len(prov._test_sleeps) == 1  # type: ignore[attr-defined]
     # A trailing success closes the breaker streak.
     assert prov._breaker.consecutive == 0
+
+
+def test_recall_clamps_search_limit_to_page_cap() -> None:
+    """recall/recall_scored must clamp the search limit to the AMS page cap.
+
+    The /search endpoint rejects limits above the cap with a 4xx that recall
+    swallows as [], which would blank the caller (e.g. the lessons rail). An
+    over-fetch of 120 must reach the transport as 100, not 120."""
+    captured: list[dict[str, Any]] = []
+
+    def transport(method, url, payload, headers, timeout):
+        captured.append(payload)
+        return {"results": []}
+
+    prov = _provider(transport, max_retries=0)
+    prov.recall(query="find callers of foo", codename="lucius", repo="org/api", limit=120)
+    prov.recall_scored(query="find callers of foo", codename="lucius", repo="org/api", limit=120)
+
+    assert captured, "no search request was issued"
+    assert all(p["limit"] == _AMS_SEARCH_PAGE_LIMIT for p in captured), captured
+    # A within-cap limit is passed through unchanged.
+    captured.clear()
+    prov.recall(query="x", codename="lucius", repo="org/api", limit=5)
+    assert captured[0]["limit"] == 5
 
 
 def test_no_status_exception_is_transient_and_bounded() -> None:
