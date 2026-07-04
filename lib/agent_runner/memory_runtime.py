@@ -298,43 +298,51 @@ def _apply_inject_budget(header: list[str], lesson_lines: list[str], budget: int
 
     Returns the lines to inject, or an empty list meaning "inject nothing".
 
-    ``budget`` is an ABSOLUTE ceiling: the returned lines, joined with newlines,
-    are guaranteed to be at most ``budget`` characters for every value of
-    ``budget`` (down to ``1``). The header is retained and lesson lines are kept
-    whole, from the top, only while the running ``len("\\n".join(lines))`` stays
-    within ``budget``; the first line that would exceed it and every line after
-    are dropped. If the single highest-priority lesson still overflows the
-    remaining room it is hard-truncated (with :data:`_TRUNCATION_MARKER`) so at
-    least one lesson is injected when there is room for it. A final backstop then
-    pops any trailing line that would breach the ceiling (covering the corner
-    where the marker itself does not fit) and drops the whole block when even the
-    header cannot fit: a sub-header budget means "inject essentially nothing", so
-    nothing is injected and the caller gets an empty string.
+    The block is ALL OR NOTHING: it is either the full two-line header plus at
+    least one (possibly hard-truncated) lesson, all within ``budget``, or it is
+    empty. A partial or lone-header block is never emitted. If the full header
+    plus even a minimal truncated lesson cannot fit the budget, ``[]`` is
+    returned up front.
+
+    ``budget`` is also an ABSOLUTE ceiling: the returned lines, joined with
+    newlines, are guaranteed to be at most ``budget`` characters for every value
+    of ``budget`` (down to ``1``). Whole lessons are kept from the top only while
+    the running ``len("\\n".join(lines))`` stays within ``budget``; the first
+    line that would exceed it and every line after are dropped. If the single
+    highest-priority lesson still overflows the remaining room it is
+    hard-truncated (with :data:`_TRUNCATION_MARKER`). A final pop-until-fits
+    backstop then enforces the ceiling belt-and-suspenders.
     """
 
     def joined_len(lines: list[str]) -> int:
         return len("\n".join(lines))
 
+    # All-or-nothing gate: unless the FULL header plus a minimal truncated lesson
+    # (one joining newline + the marker) fits, inject nothing. This forbids a
+    # partial/lone-header block at any sub-header or barely-above-header budget.
+    if joined_len(header) + 1 + len(_TRUNCATION_MARKER) > budget:
+        return []
     kept = list(header)
     for line in lesson_lines:
         if joined_len([*kept, line]) <= budget:
             kept.append(line)
             continue
         # This lesson does not fit whole. If no lesson has been added yet, inject
-        # the top lesson truncated to the remaining room so recall is not empty.
-        # Only append the marker when the body has real room after it; otherwise
-        # leave the block header-only and let the backstop below enforce the cap.
+        # the top lesson truncated to the remaining room so at least one lesson is
+        # always present (the up-front gate guarantees room for the marker plus
+        # the joining newline; ``body_room`` may be 0, giving a marker-only line).
         if len(kept) == len(header):
             remaining = budget - joined_len(kept) - 1  # -1 for the joining "\n"
             body_room = remaining - len(_TRUNCATION_MARKER)
-            if body_room > 0:
-                kept.append(line[:body_room].rstrip() + _TRUNCATION_MARKER)
+            kept.append(line[:body_room].rstrip() + _TRUNCATION_MARKER)
         break
     # Absolute backstop: no value of the budget may be exceeded. Pop trailing
     # lines until the block fits (or nothing is left).
     while kept and joined_len(kept) > budget:
         kept.pop()
-    if joined_len(kept) > budget:  # only the header remained and it still overflows
+    # The block is all-or-nothing: either the full header plus a lesson, or empty.
+    # If the backstop reduced it to header-only (or less), inject nothing.
+    if len(kept) <= len(header):
         return []
     return kept
 

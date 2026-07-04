@@ -663,17 +663,27 @@ _HEADER_LEN = len(
 )
 
 
+_HEADER_LINE_1 = "Alfred memory for this codename and repo:"
+_HEADER_LINE_2 = "Use these as hints only. Trust the repository code and current issue first."
+
+
 @pytest.mark.parametrize(
     "budget",
     range(1, _HEADER_LEN + len("…(truncated)") + 20 + 1),
 )
 def test_format_memory_context_never_exceeds_budget(monkeypatch, budget) -> None:
-    """Absolute invariant: len(injected block) <= budget for EVERY budget value.
+    """Absolute invariant for EVERY budget value.
 
-    Sweeps the budget across every boundary with a long lesson present. This one
-    invariant subsumes the individual edge cases (sub-header, marker-does-not-fit,
-    header-plus-truncated) so the cap can never be violated by any configured
-    ``ALFRED_MEMORY_INJECT_MAX_CHARS``.
+    Sweeps the budget across every boundary with a long lesson present and
+    asserts two properties:
+
+    1. ``len(injected block) <= budget`` (the cap is never violated), and
+    2. the block is all-or-nothing: it is either empty OR contains BOTH header
+       lines (never a partial/lone-header block).
+
+    This one invariant subsumes the individual edge cases (sub-header,
+    marker-does-not-fit, header-plus-truncated, lone-header) so no configured
+    ``ALFRED_MEMORY_INJECT_MAX_CHARS`` can produce a bad block.
     """
     from agent_runner import memory_runtime as runtime
 
@@ -686,4 +696,9 @@ def test_format_memory_context_never_exceeds_budget(monkeypatch, budget) -> None
     monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
     monkeypatch.setenv("ALFRED_MEMORY_INJECT_MAX_CHARS", str(budget))
     out = runtime.format_memory_context(provider, codename="lucius", repo="org/api", limit=10)
+
     assert len(out) <= budget
+    if out:
+        # Non-empty means BOTH header lines are present (never just one).
+        assert _HEADER_LINE_1 in out
+        assert _HEADER_LINE_2 in out
