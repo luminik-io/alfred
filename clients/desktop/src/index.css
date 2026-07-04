@@ -33,95 +33,110 @@
 :root {
   color-scheme: dark;
 
-  /* --- Alfred Dark (default) = VERMILION NOIR. A warm near-black base (hue ~40,
-   * a deliberate low chroma so it reads as intentional graphite, not gray) with a
-   * vivid ember/vermilion signature accent. Inspired by Giga.ai's warm-charcoal +
-   * hot-accent glass, but a distinct ember identity (not their exact vermilion).
-   * Elevation steps are clear, hairlines carry a faint warm tint, and the accent
-   * glows. The filled --primary sits deep enough that white button text clears
-   * WCAG AA (4.5:1); --accent/--ring keep the brighter ember for glow + focus. */
-  --background: oklch(0.155 0.008 40);
-  --foreground: oklch(0.975 0.006 60);
-  --card: oklch(0.205 0.010 40 / 92%);
-  --card-foreground: oklch(0.975 0.006 60);
-  --popover: oklch(0.205 0.010 40 / 96%);
-  --popover-foreground: oklch(0.975 0.006 60);
-  --primary: oklch(0.585 0.208 33);
-  --primary-foreground: oklch(0.99 0.005 60);
-  --secondary: oklch(0.255 0.012 45 / 80%);
-  --secondary-foreground: oklch(0.94 0.008 60);
-  --muted: oklch(0.255 0.010 45 / 72%);
-  --muted-foreground: oklch(0.735 0.014 55);
-  --accent: oklch(0.66 0.205 34);
-  --accent-foreground: oklch(0.99 0.005 60);
-  --destructive: oklch(0.64 0.20 25);
-  --border: oklch(0.90 0.02 55 / 0.10);
-  --input: oklch(0.90 0.02 55 / 0.13);
-  --ring: oklch(0.66 0.205 34);
-  --chart-1: oklch(0.66 0.205 34);
-  --chart-2: oklch(0.78 0.14 62);
-  --chart-3: oklch(0.72 0.13 200);
-  --chart-4: oklch(0.72 0.15 150);
-  --chart-5: oklch(0.70 0.16 320);
+  /* --- Alfred Dark (default) = STEEL-VIOLET NOIR (Giga-grade). A near-black cool
+   * indigo FLOOR (L 0.115) sits well below the first surface rung so glass panels
+   * visibly float and the painted accent bloom (see .alfred-app-atmosphere) can
+   * actually be seen. Chroma is lifted off "gray with a rumor of blue" into deep
+   * cool ink, hairlines run a hair brighter/cooler so glass edges read crisp on
+   * near-black, and the accent EMITS light via the glow primitives below. The
+   * filled --primary (L 0.58) keeps white button text at WCAG AA; --accent/--ring
+   * run brighter for glow + focus. Elevation ladder: floor 0.115 -> surface 0.16
+   * -> surface-2 0.205 -> surface-3 0.25 -> card 0.175 (floats via blur+shadow). */
+  --background: oklch(0.115 0.018 270);
+  --foreground: oklch(0.975 0.010 275);
+  --card: oklch(0.175 0.021 271 / 92%);
+  --card-foreground: oklch(0.975 0.010 275);
+  --popover: oklch(0.185 0.021 271 / 97%);
+  --popover-foreground: oklch(0.975 0.010 275);
+  /* L 0.57 keeps white --primary-foreground at 4.69:1 (clears WCAG AA 4.5). */
+  --primary: oklch(0.57 0.205 285);
+  --primary-foreground: oklch(0.99 0.006 275);
+  --secondary: oklch(0.235 0.024 271 / 82%);
+  --secondary-foreground: oklch(0.94 0.012 275);
+  --muted: oklch(0.235 0.022 271 / 72%);
+  --muted-foreground: oklch(0.74 0.024 275);
+  --accent: oklch(0.68 0.21 286);
+  --accent-foreground: oklch(0.99 0.006 275);
+  --destructive: oklch(0.64 0.21 25);
+  --border: oklch(0.90 0.03 275 / 0.12);
+  --input: oklch(0.90 0.03 275 / 0.15);
+  --ring: oklch(0.68 0.21 286);
+  --chart-1: oklch(0.66 0.19 284);
+  --chart-2: oklch(0.68 0.16 228);
+  --chart-3: oklch(0.72 0.17 320);
+  --chart-4: oklch(0.74 0.16 152);
+  --chart-5: oklch(0.80 0.14 76);
 
-  /* Deep ink used behind code blocks and live-tail rows. */
-  --black: oklch(0.115 0.006 40);
+  /* Deep ink used behind code blocks and live-tail rows: the true black. */
+  --black: oklch(0.085 0.012 270);
 
-  /* Flat DATA surfaces: opaque, hairline-separated, no blur. Clear elevation
-     steps and a hint of warmth so panels read as warm graphite, not gray. */
-  --surface: oklch(0.205 0.010 40);
-  --surface-2: oklch(0.240 0.011 42);
-  --surface-3: oklch(0.275 0.012 44);
-  --hairline: oklch(0.92 0.02 55 / 0.08);
-  --border-strong: oklch(0.90 0.02 55 / 0.18);
+  /* Flat DATA surfaces: opaque, hairline-separated, no blur. Wider elevation
+     steps (0.16 / 0.205 / 0.25) so panels read as clearly lifted, not stacked. */
+  --surface: oklch(0.160 0.020 271);
+  --surface-2: oklch(0.205 0.022 271);
+  --surface-3: oklch(0.250 0.023 271);
+  --hairline: oklch(0.92 0.03 275 / 0.09);
+  --border-strong: oklch(0.90 0.03 275 / 0.20);
 
   /* AGGRESSIVE GIGA-LEVEL GLASS: heavy blur, very translucent fills so the
-     ambient ember field shows through, a warm specular highlight, and deep
+     ambient bloom shows through the sidebar, a cool specular highlight, and deep
      layered shadows. --glass-blur is dialed high on prominent chrome. */
-  --glass: oklch(0.20 0.011 40 / 0.58);
-  --glass-strong: oklch(0.225 0.012 42 / 0.72);
-  --glass-highlight: rgba(255, 236, 224, 0.12);
-  --glass-shadow: rgba(0, 0, 0, 0.62);
-  --glass-blur: 34px;
-  --glass-saturate: 155%;
+  --glass: oklch(0.185 0.022 271 / 0.62);
+  --glass-strong: oklch(0.215 0.023 271 / 0.78);
+  --glass-highlight: rgba(202, 212, 255, 0.12);
+  --glass-shadow: rgba(0, 0, 0, 0.52);
+  --glass-blur: 28px;
+  --glass-saturate: 150%;
 
-  /* Ember signature, soft + ink variants for fills/labels. */
-  --accent-2: oklch(0.78 0.14 62);
-  --accent-ink: oklch(0.99 0.006 60);
-  --accent-soft: oklch(0.66 0.205 34 / 18%);
+  /* Steel-violet signature, soft + ink variants for fills/labels. */
+  --accent-2: oklch(0.70 0.16 250);
+  --accent-ink: oklch(0.98 0.008 275);
+  --accent-soft: oklch(0.68 0.21 286 / 20%);
 
-  /* Status palette (STATUS ONLY: never decorative). ok/warn shift off the ember
+  /* Accent glow primitives (see .btn-primary-glow / .nav-item-active below). Not
+     a color swap: an emission layer. Radial bloom, accent-tinted hover shadow. */
+  --accent-glow: oklch(0.68 0.21 286 / 0.55);
+  --accent-glow-soft: oklch(0.68 0.21 286 / 0.22);
+
+  /* Status palette (STATUS ONLY: never decorative). ok/warn shift off the accent
      hue so status never reads as brand accent. */
-  --ok: oklch(0.74 0.15 158);
-  --warn: oklch(0.80 0.13 85);
+  --ok: oklch(0.74 0.16 152);
+  --warn: oklch(0.80 0.14 76);
   --error: oklch(0.64 0.21 25);
 
   /* Supporting hues for agent accents + chips (kept wide so per-agent accents
-     stay distinct against the ember brand). */
-  --bright: oklch(0.975 0.006 60);
-  --text: oklch(0.965 0.006 60);
-  --blue: oklch(0.68 0.14 235);
-  --cobalt: oklch(0.62 0.15 258);
-  --cyan: oklch(0.76 0.12 205);
-  --rose: oklch(0.70 0.17 3);
-  --violet: oklch(0.66 0.17 300);
-  /* Amber is the second brand accent, paired with the ember --accent for the
-     luminous prismatic glass edges (ember -> amber shimmer). */
-  --brand-teal: oklch(0.82 0.14 72);
+     stay distinct against the steel-violet brand). */
+  --bright: oklch(0.98 0.008 275);
+  --text: oklch(0.965 0.010 275);
+  --blue: oklch(0.68 0.16 250);
+  --cobalt: oklch(0.60 0.17 270);
+  --cyan: oklch(0.76 0.14 220);
+  --rose: oklch(0.72 0.17 354);
+  --violet: oklch(0.68 0.18 302);
+  /* The second brand accent, paired with --accent for the luminous prismatic
+     glass edges (violet -> cool-blue shimmer). Kept under the --brand-teal name
+     so every glass-edge rule that references it stays intact. */
+  --brand-teal: oklch(0.72 0.14 232);
 
-  /* Ambient radial depth wash: a warm ember orb behind the content plane. */
-  --ambient: oklch(0.62 0.20 34 / 0.16);
+  /* Ambient radial depth: a steel-violet bloom PAINTED behind the content plane
+     by .alfred-app-atmosphere. --ambient is the main off-center bloom; --ambient-2
+     a fainter cool-blue counter-leak lower-left. */
+  --ambient: oklch(0.64 0.21 286 / 0.18);
+  --ambient-2: oklch(0.60 0.17 250 / 0.10);
+  /* Soft center lift: a raised dark indigo so the middle of the near-black floor
+     reads as gently lit, not a dead void. Tuned per mode via this token. */
+  --ambient-center: oklch(0.20 0.02 271 / 0.40);
 
   --radius: 0;
 
-  --sidebar: oklch(0.175 0.009 40 / 0.66);
-  --sidebar-foreground: oklch(0.94 0.008 60);
-  --sidebar-primary: oklch(0.66 0.205 34);
-  --sidebar-primary-foreground: oklch(0.99 0.005 60);
-  --sidebar-accent: oklch(0.255 0.012 45 / 70%);
-  --sidebar-accent-foreground: oklch(0.965 0.006 60);
-  --sidebar-border: oklch(0.90 0.02 55 / 0.10);
-  --sidebar-ring: oklch(0.66 0.205 34);
+  --sidebar: oklch(0.145 0.020 270 / 0.68);
+  --sidebar-foreground: oklch(0.94 0.012 275);
+  --sidebar-primary: oklch(0.68 0.21 286);
+  --sidebar-primary-foreground: oklch(0.99 0.006 275);
+  --sidebar-accent: oklch(0.235 0.024 271 / 72%);
+  --sidebar-accent-foreground: oklch(0.965 0.010 275);
+  --sidebar-border: oklch(0.90 0.03 275 / 0.11);
+  --sidebar-ring: oklch(0.68 0.21 286);
 }
 
 /* Alfred Dark is also the explicit named selection. */
@@ -145,19 +160,21 @@
   --card-foreground: oklch(0.23 0.012 45);
   --popover: oklch(0.995 0.005 65 / 0.98);
   --popover-foreground: oklch(0.23 0.012 45);
-  --primary: oklch(0.545 0.205 33);
+  /* Accent pulled one notch more saturated (steel-violet, hue 283) to match the
+     darker mode's new vividness, so the two modes read as one product. */
+  --primary: oklch(0.53 0.205 283);
   --primary-foreground: oklch(0.99 0.005 65);
   --secondary: oklch(0.945 0.010 62 / 80%);
   --secondary-foreground: oklch(0.29 0.014 48);
   --muted: oklch(0.938 0.009 62 / 78%);
   --muted-foreground: oklch(0.47 0.016 50);
-  --accent: oklch(0.55 0.21 33);
+  --accent: oklch(0.53 0.205 283);
   --accent-foreground: oklch(0.99 0.005 65);
   --destructive: oklch(0.55 0.22 25);
   --border: oklch(0.30 0.014 45 / 0.12);
   --input: oklch(0.30 0.014 45 / 0.14);
-  --ring: oklch(0.55 0.21 33);
-  --chart-1: oklch(0.55 0.21 33);
+  --ring: oklch(0.53 0.205 283);
+  --chart-1: oklch(0.53 0.205 283);
   --chart-2: oklch(0.62 0.14 62);
   --chart-3: oklch(0.55 0.12 200);
   --chart-4: oklch(0.55 0.15 150);
@@ -172,11 +189,14 @@
   --glass-strong: oklch(0.996 0.005 65 / 0.84);
   --glass-highlight: rgba(255, 250, 244, 0.60);
   --glass-shadow: rgba(74, 44, 28, 0.12);
-  --glass-blur: 30px;
-  --glass-saturate: 150%;
-  --accent-2: oklch(0.60 0.14 62);
+  /* Paper needs a touch less blur than the dark glass. */
+  --glass-blur: 22px;
+  --glass-saturate: 130%;
+  --accent-2: oklch(0.55 0.14 250);
   --accent-ink: oklch(0.99 0.005 65);
-  --accent-soft: oklch(0.55 0.21 33 / 12%);
+  --accent-soft: oklch(0.53 0.205 283 / 12%);
+  --accent-glow: oklch(0.53 0.205 283 / 0.30);
+  --accent-glow-soft: oklch(0.53 0.205 283 / 0.12);
   --ok: oklch(0.55 0.15 158);
   --warn: oklch(0.62 0.14 80);
   --error: oklch(0.55 0.22 25);
@@ -187,8 +207,14 @@
   --cyan: oklch(0.50 0.12 205);
   --rose: oklch(0.55 0.18 3);
   --violet: oklch(0.52 0.19 300);
-  --brand-teal: oklch(0.60 0.13 72);
-  --ambient: oklch(0.60 0.17 34 / 0.08);
+  --brand-teal: oklch(0.55 0.13 232);
+  /* A whisper of warm atmosphere so light mode still feels lit, not flat. */
+  --ambient: oklch(0.60 0.16 90 / 0.10);
+  --ambient-2: oklch(0.55 0.14 60 / 0.06);
+  /* Warm-paper center lift: a faint warm near-white glow so the middle reads as
+     softly lit paper. Never the dark indigo of the dark theme (that painted a
+     dark blotch across the light canvas). */
+  --ambient-center: oklch(0.97 0.02 85 / 0.30);
   --sidebar: oklch(0.986 0.008 65 / 0.72);
   --sidebar-foreground: oklch(0.29 0.014 48);
   --sidebar-primary: oklch(0.545 0.205 33);
@@ -212,18 +238,18 @@
   --card-foreground: oklch(0.95 0.005 55);
   --popover: oklch(0.19 0.006 40 / 98%);
   --popover-foreground: oklch(0.95 0.005 55);
-  --primary: oklch(0.575 0.19 33);
+  --primary: oklch(0.575 0.19 285);
   --primary-foreground: oklch(0.99 0.005 55);
   --secondary: oklch(0.22 0.006 42);
   --secondary-foreground: oklch(0.92 0.005 55);
   --muted: oklch(0.22 0.006 42);
   --muted-foreground: oklch(0.68 0.010 50);
-  --accent: oklch(0.64 0.19 34);
+  --accent: oklch(0.64 0.19 286);
   --accent-foreground: oklch(0.99 0.005 55);
   --destructive: oklch(0.64 0.20 25);
   --border: oklch(1 0 0 / 0.08);
   --input: oklch(1 0 0 / 0.10);
-  --ring: oklch(0.64 0.19 34);
+  --ring: oklch(0.64 0.19 286);
   --chart-1: oklch(0.64 0.15 278);
   --chart-2: oklch(0.66 0.14 225);
   --chart-3: oklch(0.70 0.15 320);
@@ -241,9 +267,11 @@
   --glass-shadow: rgba(0, 0, 0, 0.30);
   --glass-blur: 4px;
   --glass-saturate: 110%;
-  --accent-2: oklch(0.78 0.13 62);
+  --accent-2: oklch(0.70 0.15 250);
   --accent-ink: oklch(0.99 0.005 55);
-  --accent-soft: oklch(0.64 0.19 34 / 14%);
+  --accent-soft: oklch(0.64 0.19 286 / 14%);
+  --accent-glow: oklch(0.64 0.19 286 / 0.32);
+  --accent-glow-soft: oklch(0.64 0.19 286 / 0.14);
   --ok: oklch(0.72 0.15 158);
   --warn: oklch(0.80 0.13 85);
   --error: oklch(0.64 0.20 25);
@@ -254,17 +282,20 @@
   --cyan: oklch(0.74 0.12 205);
   --rose: oklch(0.70 0.16 3);
   --violet: oklch(0.66 0.15 300);
-  --brand-teal: oklch(0.80 0.13 72);
-  --ambient: oklch(0.64 0.18 34 / 0.06);
+  --brand-teal: oklch(0.72 0.13 232);
+  --ambient: oklch(0.64 0.18 286 / 0.06);
+  --ambient-2: oklch(0.60 0.15 250 / 0.04);
+  /* Linear Crisp is deliberately flat: no center lift. */
+  --ambient-center: transparent;
   --radius: 0;
   --sidebar: oklch(0.165 0.005 40 / 0.96);
   --sidebar-foreground: oklch(0.92 0.005 55);
-  --sidebar-primary: oklch(0.64 0.19 34);
+  --sidebar-primary: oklch(0.64 0.19 286);
   --sidebar-primary-foreground: oklch(0.99 0.005 55);
   --sidebar-accent: oklch(0.22 0.006 42);
   --sidebar-accent-foreground: oklch(0.95 0.005 55);
   --sidebar-border: oklch(1 0 0 / 0.08);
-  --sidebar-ring: oklch(0.64 0.19 34);
+  --sidebar-ring: oklch(0.64 0.19 286);
 }
 
 /* Linear Crisp light: dense, flat, near-white. */
@@ -276,18 +307,18 @@
   --card-foreground: oklch(0.24 0.008 45);
   --popover: oklch(1 0 0 / 0.99);
   --popover-foreground: oklch(0.24 0.008 45);
-  --primary: oklch(0.545 0.20 33);
+  --primary: oklch(0.52 0.20 283);
   --primary-foreground: oklch(0.99 0.004 55);
   --secondary: oklch(0.95 0.004 55);
   --secondary-foreground: oklch(0.28 0.010 48);
   --muted: oklch(0.95 0.003 55);
   --muted-foreground: oklch(0.46 0.012 50);
-  --accent: oklch(0.545 0.20 33);
+  --accent: oklch(0.52 0.20 283);
   --accent-foreground: oklch(0.99 0.004 55);
   --destructive: oklch(0.55 0.22 25);
   --border: oklch(0.24 0.010 45 / 0.12);
   --input: oklch(0.24 0.010 45 / 0.14);
-  --ring: oklch(0.545 0.20 33);
+  --ring: oklch(0.52 0.20 283);
   --chart-1: oklch(0.54 0.18 278);
   --chart-2: oklch(0.55 0.14 225);
   --chart-3: oklch(0.56 0.16 320);
@@ -305,9 +336,11 @@
   --glass-shadow: rgba(36, 34, 60, 0.10);
   --glass-blur: 4px;
   --glass-saturate: 110%;
-  --accent-2: oklch(0.58 0.13 62);
+  --accent-2: oklch(0.55 0.13 250);
   --accent-ink: oklch(0.99 0.004 55);
-  --accent-soft: oklch(0.545 0.20 33 / 12%);
+  --accent-soft: oklch(0.52 0.20 283 / 12%);
+  --accent-glow: oklch(0.52 0.20 283 / 0.28);
+  --accent-glow-soft: oklch(0.52 0.20 283 / 0.12);
   --ok: oklch(0.55 0.15 158);
   --warn: oklch(0.62 0.14 80);
   --error: oklch(0.55 0.22 25);
@@ -318,17 +351,20 @@
   --cyan: oklch(0.50 0.12 205);
   --rose: oklch(0.55 0.18 3);
   --violet: oklch(0.52 0.18 300);
-  --brand-teal: oklch(0.58 0.12 72);
-  --ambient: oklch(0.545 0.19 34 / 0.07);
+  --brand-teal: oklch(0.55 0.12 232);
+  --ambient: oklch(0.52 0.19 283 / 0.07);
+  --ambient-2: oklch(0.50 0.15 250 / 0.04);
+  /* Linear Crisp is deliberately flat: no center lift. */
+  --ambient-center: transparent;
   --radius: 0;
   --sidebar: oklch(0.99 0.002 55 / 0.96);
   --sidebar-foreground: oklch(0.28 0.010 48);
-  --sidebar-primary: oklch(0.545 0.20 33);
+  --sidebar-primary: oklch(0.52 0.20 283);
   --sidebar-primary-foreground: oklch(0.99 0.004 55);
   --sidebar-accent: oklch(0.95 0.004 55);
   --sidebar-accent-foreground: oklch(0.28 0.010 48);
   --sidebar-border: oklch(0.24 0.010 45 / 0.12);
-  --sidebar-ring: oklch(0.545 0.20 33);
+  --sidebar-ring: oklch(0.52 0.20 283);
 }
 
 @theme inline {
@@ -378,13 +414,13 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* WCAG guard for the loud ember --accent used as a menu/select FOCUS fill.
+/* WCAG guard for the loud steel-violet --accent used as a menu/select FOCUS fill.
  * shadcn menus pair `bg-accent` with `text-accent-foreground` (white), but the
- * signature ember --accent (L 0.66) only clears AA-large against white (3.31).
- * Small menu text must clear AA (4.5), so on these highlighted items we swap the
- * foreground to a near-black ink, which reads 5.5:1+ on the ember fill. The
- * bright ember stays for glows/borders/buttons where --primary (L 0.585, white
- * text 4.5 AA) or decoration carries it. */
+ * signature --accent (L 0.68) only clears AA-large against white (~3.3). Small
+ * menu text must clear AA (4.5), so on these highlighted items we swap the
+ * foreground to a near-black cool ink, which reads 5.5:1+ on the violet fill.
+ * The bright accent stays for glows/borders/buttons where --primary (L 0.58,
+ * white text 4.5 AA) or decoration carries it. */
 @layer components {
   [role="menuitem"][data-highlighted],
   [role="menuitemcheckbox"][data-highlighted],
@@ -393,14 +429,14 @@
   [data-slot="dropdown-menu-item"][data-highlighted],
   [data-slot="select-item"][data-highlighted],
   [data-slot="command-item"][data-selected="true"] {
-    color: oklch(0.16 0.02 40);
+    color: oklch(0.15 0.03 275);
   }
   [role="menuitem"][data-highlighted] svg,
   [role="option"][data-highlighted] svg,
   [data-slot="dropdown-menu-item"][data-highlighted] svg,
   [data-slot="select-item"][data-highlighted] svg,
   [data-slot="command-item"][data-selected="true"] svg {
-    color: oklch(0.16 0.02 40);
+    color: oklch(0.15 0.03 275);
   }
 }
 
@@ -419,44 +455,46 @@
   }
 }
 
-/* One ambient radial depth gradient (very low-opacity steel-violet) behind the
- * content plane, over the flat near-black base. Each theme sets --ambient and
- * --background; the wash is identical structure across themes so the rule lives
- * once here. Linear Crisp sets --ambient lower for its flatter look. */
-/* Two ambient ember light-leaks (Giga-style) over the warm near-black base: a
-   broad wash from the top and a tighter glow drifting from the upper-left, plus a
-   faint cool amber counter-leak lower-right so the field reads prismatic, not
-   monochrome. These are what the aggressive glass distorts, so glass reads as
-   real frosted glass and not a flat translucent box. */
+/* The body is now just the flat near-black floor. The depth (the single biggest
+ * "Giga" move) is a real, large, off-center accent bloom PAINTED by the
+ * .alfred-app-atmosphere layer, mounted once at the app root behind everything.
+ * Keeping the floor flat here and the bloom on a dedicated fixed layer lets the
+ * glass sidebar/panels bleed it through their blur, and keeps the whole thing
+ * GPU-cheap (one fixed layer of static radial gradients, no animation). */
 body {
   min-width: 320px;
   margin: 0;
   overflow: hidden;
-  background:
-    radial-gradient(
-      120% 82% at 50% -12%,
-      var(--ambient) 0%,
-      transparent 58%
-    ),
-    radial-gradient(
-      52% 46% at 12% 6%,
-      color-mix(in oklch, var(--accent), transparent 78%) 0%,
-      transparent 62%
-    ),
-    radial-gradient(
-      44% 40% at 92% 96%,
-      color-mix(in oklch, var(--brand-teal), transparent 84%) 0%,
-      transparent 60%
-    ),
-    var(--background);
-  background-attachment: fixed;
+  background: var(--background);
 }
 
-body::before {
-  pointer-events: none;
+/* The painted atmosphere: a broad accent bloom off the top-right, a fainter
+ * counter-leak from the lower-left, and a soft center lift. --ambient /
+ * --ambient-2 / --ambient-center are ALL theme tokens, so this one rule serves
+ * every theme and each mode tints + places the lift for itself: Alfred Dark
+ * lifts a dark indigo, warm-paper light lifts a faint warm glow (never a dark
+ * blotch), and Linear Crisp zeroes the lift for a flat plane. It sits at z-index
+ * 0 behind the content plane (#root is z-index 1) and never intercepts pointer
+ * events. */
+.alfred-app-atmosphere {
   position: fixed;
   inset: 0;
   z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 80% at 78% -8%, var(--ambient), transparent 55%),
+    radial-gradient(90% 70% at 6% 108%, var(--ambient-2), transparent 60%),
+    radial-gradient(60% 50% at 50% 50%, var(--ambient-center), transparent 70%);
+}
+
+/* A faint hairline grid, masked to the top, adds texture the glass distorts so
+ * panels read as real frosted glass. Kept on the atmosphere layer so it rides
+ * behind the content plane with the bloom. Linear Crisp drops it for a clean
+ * flat plane; light mode softens it. */
+.alfred-app-atmosphere::before {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
   content: "";
   opacity: 0.5;
   background-image:
@@ -466,9 +504,50 @@ body::before {
   mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7), transparent 70%);
 }
 
-/* Linear Crisp is flatter: drop the ambient grid entirely for a clean plane. */
-:root[data-theme="linear"] body::before {
+/* Linear Crisp is flatter: it zeroes --ambient-center (below) so the center lift
+ * drops out via the token, and drops the grid here for a clean plane. */
+:root[data-theme="linear"] .alfred-app-atmosphere::before {
   opacity: 0;
+}
+
+/* Onboarding leans into spectacle: the takeover amps the same bloom (see
+ * .alfred-onboarding). */
+
+/* ACCENT THAT EMITS LIGHT. Reusable glow utilities, used sparingly: the single
+ * primary CTA per surface, the active nav item, live/running status, focus.
+ * Never decorative on data. */
+.btn-primary-glow {
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--accent), transparent 40%),
+    0 8px 24px -6px var(--accent-glow-soft),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  transition:
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.btn-primary-glow:hover {
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--accent), transparent 20%),
+    0 10px 34px -6px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+/* Active sidebar item: a soft accent rail + wash, not a heavy fill. */
+.nav-item-active {
+  background: linear-gradient(90deg, var(--accent-soft), transparent 70%);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* Running/live status dot: a soft accent bloom. */
+.status-live-glow {
+  box-shadow: 0 0 0 4px var(--accent-glow-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-primary-glow {
+    transition: none;
+  }
 }
 
 #root {
@@ -5738,33 +5817,200 @@ body {
 
 .alfred-onboarding {
   --alfred-onboarding-accent: var(--primary);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  /* Fill the content area and vertically center the shell, so the wizard reads
-     as one floating card in the frame rather than a top-anchored page that
-     scrolls. */
+  position: relative;
+  /* Two-column takeover: a fixed-width value/brand rail on the left and the
+     step column on the right, together filling the whole content frame so the
+     wizard reads as one composed product intro with no dead space. It collapses
+     to a single column below the tablet breakpoint (rail stacks above). */
+  display: grid;
+  grid-template-columns: minmax(19rem, 24rem) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 1.25rem;
   min-height: 100%;
   height: 100%;
-  padding: 0.5rem 0;
+  padding: 0.25rem 0;
 }
 
-/* The floating glass shell. .alfred-glass already supplies the translucency,
- * specular top border, blur, and ambient shadow per the theme tokens; this only
- * lays out the head / stepper / panel / footer stack and caps the width so the
- * journey reads as one calm card, not a full-bleed page. */
+/* Onboarding is the one place we lean into spectacle: amp the same painted
+ * atmosphere ~1.4x with a bright accent bloom rising behind the shell, so the
+ * takeover reads as a product intro, not a form floating in a void. GPU-cheap
+ * (static radial gradients on one layer), behind the shell, no pointer events. */
+.alfred-onboarding::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      70% 55% at 50% 8%,
+      color-mix(in oklch, var(--accent), transparent 74%),
+      transparent 62%
+    ),
+    radial-gradient(
+      60% 60% at 88% 4%,
+      color-mix(in oklch, var(--brand-teal), transparent 82%),
+      transparent 60%
+    ),
+    radial-gradient(
+      55% 60% at 8% 100%,
+      color-mix(in oklch, var(--accent-2), transparent 86%),
+      transparent 60%
+    );
+}
+
+/* The step column: the right track of the takeover grid. .alfred-glass supplies
+ * the translucency, specular top border, blur, and ambient shadow per the theme
+ * tokens; this lays out the head / stepper / panel / footer stack and fills its
+ * grid track so the journey fills the frame beside the rail. */
 .alfred-onboarding-shell {
+  position: relative;
+  z-index: 1;
   width: 100%;
-  max-width: 52rem;
-  /* Cap the shell to the frame so a tall step scrolls inside the panel, never
-     the page. head + stepper + footer stay fixed; the panel flexes. */
+  min-width: 0;
+  /* Fill the frame; a tall step scrolls inside the panel, never the page.
+     head + stepper + footer stay fixed; the panel flexes. */
   max-height: 100%;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
   border-radius: var(--radius-xl);
-  padding: 1.6rem 1.75rem;
+  padding: 1.75rem 2rem;
   overflow: hidden;
+  /* A touch stronger shadow than base glass so the shell reads as clearly lifted
+     above the amped bloom. */
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 2px 10px color-mix(in oklch, var(--glass-shadow), transparent 40%),
+    0 32px 80px var(--glass-shadow);
+}
+
+/* The left value/brand rail: brand mark, the value promise headline, and the
+ * trust + spend reassurance pinned to the foot. It fills the left track and
+ * carries a soft accent wash so the frame reads as one composed surface. */
+.alfred-onboarding-rail {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-width: 0;
+  max-height: 100%;
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  padding: 1.9rem 1.8rem;
+  background:
+    radial-gradient(
+      120% 80% at 0% 0%,
+      color-mix(in oklch, var(--accent), transparent 80%),
+      transparent 58%
+    ),
+    radial-gradient(
+      120% 90% at 100% 100%,
+      color-mix(in oklch, var(--accent-2), transparent 86%),
+      transparent 60%
+    ),
+    linear-gradient(180deg, var(--glass-highlight), transparent 30%),
+    color-mix(in oklch, var(--card), transparent 12%);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 32px 80px var(--glass-shadow);
+}
+
+.alfred-onboarding-rail__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.alfred-onboarding-rail__wordmark {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.alfred-onboarding-rail__name {
+  font-family: var(--font-heading);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.alfred-onboarding-rail__kicker {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.alfred-onboarding-rail__promise {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  /* Push the promise toward the vertical center of the rail, foot stays pinned. */
+  margin-top: auto;
+}
+
+.alfred-onboarding-rail__eyebrow {
+  margin: 0;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--accent), var(--foreground) 45%);
+}
+
+.alfred-onboarding-rail__headline {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.75rem;
+  font-weight: 500;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+
+.alfred-onboarding-rail__sub {
+  margin: 0;
+  max-width: 22rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+
+.alfred-onboarding-rail__foot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-top: auto;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.alfred-onboarding-rail__trust {
+  margin: 0;
+  padding-left: 0.85rem;
+  border-left: 2px solid color-mix(in oklch, var(--accent), transparent 40%);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--foreground);
+}
+
+.alfred-onboarding-rail__cost {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+}
+
+.alfred-onboarding-rail__progress {
+  margin: 0;
+  font-size: 0.74rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: color-mix(in oklch, var(--accent), var(--foreground) 40%);
 }
 
 .alfred-onboarding-shell__head {
@@ -6017,42 +6263,23 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Step 0 welcome leans typographic, echoing the Fey / Clay near-black onboarding
- * the spec cites. A soft steel-violet wash sits behind the headline only. */
+/* Step 0 welcome leans typographic. Left-aligned to sit inside the right step
+ * column beside the value rail (the rail carries the persistent promise + wash),
+ * so the welcome body is action-focused: heading, detected inventory, CTAs. */
 .alfred-onboarding-welcome {
   position: relative;
   display: grid;
   gap: 1.5rem;
-  padding: 1.25rem 0.5rem 0.5rem;
-  text-align: center;
+  padding: 0.5rem 0.25rem;
+  text-align: left;
 }
 
-.alfred-onboarding-welcome::before {
-  content: "";
-  position: absolute;
-  inset: -1.5rem 8% auto 8%;
-  height: 9rem;
-  background: radial-gradient(
-    60% 100% at 50% 0%,
-    color-mix(in oklch, var(--primary), transparent 82%),
-    transparent 70%
-  );
-  pointer-events: none;
-  z-index: 0;
-}
-
-.alfred-onboarding-welcome > * {
-  position: relative;
-  z-index: 1;
-}
-
-/* The trust differentiator, elevated to a quiet pill directly under the value
- * line: the one-time, can't-miss "no API keys, runs on the subscriptions you
- * already pay for" point. A bordered steel-violet chip, not buried fine print. */
+/* The trust differentiator, a quiet pill under the welcome heading: the
+ * can't-miss "no API keys, runs on the subscriptions you already pay for" point.
+ * A bordered steel-violet chip, not buried fine print. */
 .alfred-onboarding-welcome__trust {
   display: inline-flex;
   align-items: center;
-  justify-self: center;
   gap: 0.5rem;
   max-width: 34rem;
   padding: 0.55rem 0.95rem;
@@ -6076,6 +6303,76 @@ body {
   }
 }
 
+/* The first-request cost reassurance: a quiet inline glass callout (not a warning
+ * banner) that appears once the first job fires. Tells a solo builder spend is
+ * legible and under control before anything runs for real. */
+.alfred-onboarding-cost-chip {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid color-mix(in oklch, var(--accent) 22%, var(--border));
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(90deg, var(--accent-soft), transparent 72%),
+    color-mix(in oklch, var(--card), transparent 12%);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--foreground);
+}
+
+.alfred-onboarding-cost-chip > svg {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+  color: var(--accent);
+}
+
+/* Below the wide breakpoint the two-column takeover collapses to a single column:
+ * the value rail stacks above the step column as a compact banner (its promise
+ * headline hides, the brand + trust + progress stay) so the step card gets the
+ * full width. */
+@media (max-width: 1024px) {
+  .alfred-onboarding {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: min-content minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .alfred-onboarding-rail {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1.25rem;
+    max-height: none;
+    padding: 1rem 1.25rem;
+  }
+
+  .alfred-onboarding-rail__promise {
+    display: none;
+  }
+
+  .alfred-onboarding-rail__foot {
+    flex: 1 1 auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 1.25rem;
+    margin: 0;
+    padding: 0;
+    border-top: 0;
+  }
+
+  .alfred-onboarding-rail__trust {
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .alfred-onboarding-rail__progress {
+    margin-left: auto;
+  }
+}
+
 /* Responsive: below the tablet breakpoint the shell tightens its padding and the
  * stepper collapses inactive labels to dots so the row stays on one line with no
  * horizontal scroll. The footer never truncates because Back / Continue are
@@ -6089,6 +6386,11 @@ body {
   .alfred-onboarding-shell__head {
     flex-direction: column;
     gap: 0.75rem;
+  }
+
+  .alfred-onboarding-rail__trust,
+  .alfred-onboarding-rail__cost {
+    flex-basis: 100%;
   }
 }
 

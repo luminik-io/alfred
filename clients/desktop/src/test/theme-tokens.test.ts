@@ -107,14 +107,17 @@ describe("theme token completeness (do not revert)", () => {
     expect(declaredTokens(linearBody).has("--glass-blur")).toBe(true);
   });
 
-  it("defines the ember (Vermilion Noir) signature accent on the Alfred default", () => {
+  it("defines the steel-violet (Giga-grade) signature accent on the Alfred default", () => {
     const body = blockBody(css, ":root {");
-    // The operator-directed Alfred accent (2026-07 aggressive overhaul): a vivid
-    // ember/vermilion (hue ~34), replacing the former steel-cobalt the operator
-    // found generic. It lives on --accent / --ring (active + focus glow); the
-    // filled --primary sits a touch deeper (L 0.585) so white button text clears
-    // WCAG AA on the fill.
-    expect(body).toMatch(/--accent:\s*oklch\(0\.66 0\.205 34\)/);
-    expect(body).toMatch(/--ring:\s*oklch\(0\.66 0\.205 34\)/);
+    // The operator-directed Alfred accent (2026-07 Giga-grade dark overhaul): a
+    // saturated steel-violet (hue ~286) over a near-black cool-indigo floor, so
+    // the accent emits light onto near-black. It lives on --accent / --ring
+    // (active + focus glow); the filled --primary sits a touch deeper (L 0.58) so
+    // white button text clears WCAG AA on the fill.
+    expect(body).toMatch(/--accent:\s*oklch\(0\.68 0\.21 286\)/);
+    expect(body).toMatch(/--ring:\s*oklch\(0\.68 0\.21 286\)/);
+    // The accent-glow emission primitives (not a color swap) must be present.
+    expect(body).toMatch(/--accent-glow:/);
+    expect(body).toMatch(/--accent-glow-soft:/);
   });
 });

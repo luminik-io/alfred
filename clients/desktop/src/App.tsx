@@ -32,7 +32,8 @@ import {
 } from "./components/ui";
 import { useAlfred } from "./hooks/useAlfred";
 import { useDesktopRoute } from "./hooks/useDesktopRoute";
-import { hasStoredBaseUrl, supportsNativeActions } from "./api";
+import { loadSetupStatus, supportsNativeActions } from "./api";
+import { isSetupComplete } from "./lib/setupCompletion";
 import { FLEET_SUBTABS, PRIMARY_TABS } from "./lib/primaryTabs";
 import {
   editableAgents,
@@ -138,44 +139,74 @@ function App() {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [tab, fleetTab, setupMode]);
 
-  // First-run routing. A clean launch with no `alfred serve` running settles
-  // with a connection error and no snapshot. Without this, that user lands on
-  // an empty Home behind an error banner with no obvious next step; the setup
-  // wizard is only reachable by hunting through Settings. So the very first
-  // time the initial load settles with no server reachable and Alfred has
-  // never connected on this machine, route the user straight into guided
-  // onboarding. It fires once: once they have connected, or once we have
-  // redirected, we never yank them out of wherever they navigate next.
+  // First-run routing. On boot, land the user in the ONBOARDING takeover unless
+  // the local Alfred setup is actually complete. Two cases route to onboarding:
   //
-  // Seed the guard from the persisted base URL so a returning user who has
-  // connected before (and therefore has a stored URL) is never force-routed
-  // into onboarding on a cold start where the runtime simply is not up yet.
-  // Without this seed both signals reset every process start and the wizard
-  // re-fires for established users.
-  const [firstRunRouted, setFirstRunRouted] = useState(() => hasStoredBaseUrl());
-  const hasEverConnected = useRef(false);
+  //   1. No `alfred serve` reachable (fresh machine, runtime not up): the initial
+  //      load settles with a connection error and no snapshot. Route to the
+  //      wizard so the user has an obvious next step instead of an empty Home
+  //      behind an error banner.
+  //   2. Runtime reachable but setup NOT complete (fresh/re-install: no engine
+  //      detected, GitHub not connected, or no repository selected). We fetch the
+  //      real server setup state (/api/setup/status) once and route to onboarding
+  //      when isSetupComplete() is false. This is based on substantive
+  //      completion, not the mere presence of a runtime directory, so a
+  //      half-initialised install still lands in onboarding.
+  //
+  // A returning user with a completed setup boots straight to the Inbox. The
+  // decision fires exactly once per launch: once we route (or confirm complete)
+  // we never yank the user out of wherever they navigate next. It is NOT seeded
+  // from the persisted base URL, so a re-install that left a stored URL but an
+  // incomplete setup is still routed to onboarding.
+  const routeToOnboarding = useCallback(() => {
+    setSetupMode("guided");
+    setTab("settings");
+    setSettingsTab("setup");
+  }, [setSetupMode, setTab, setSettingsTab]);
+  // The decision is made exactly once per launch and tracked in a ref, NOT in
+  // state: routing changes the tab, which re-renders and would re-run this
+  // effect. A state guard plus an effect-cleanup cancel would cancel the
+  // in-flight setup-status fetch the moment the guard flipped, so the async
+  // branch could never route. The ref lets the effect no-op on re-run while the
+  // original fetch resolves and routes freely.
+  const firstRunDecided = useRef(false);
+  const mountedRef = useRef(true);
   useEffect(() => {
-    if (snapshot && !error) {
-      hasEverConnected.current = true;
-    }
-  }, [snapshot, error]);
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   useEffect(() => {
-    if (firstRunRouted) return;
+    if (firstRunDecided.current) return;
     // Wait for the initial load to settle before deciding anything.
     if (loading) return;
-    if (hasEverConnected.current || snapshot) {
-      // Already connected at least once: this is not a fresh first run.
-      setFirstRunRouted(true);
+
+    if (error && !snapshot) {
+      // Fresh machine, runtime not up yet: take the user to the wizard.
+      firstRunDecided.current = true;
+      routeToOnboarding();
       return;
     }
-    if (error) {
-      // Fresh machine, runtime not up yet: take the user to the wizard.
-      setFirstRunRouted(true);
-      setSetupMode("guided");
-      setTab("settings");
-      setSettingsTab("setup");
+
+    if (snapshot && !error) {
+      // Runtime reachable: consult the real setup-completion state once. Only an
+      // affirmatively-complete setup skips onboarding and lands on the Inbox.
+      firstRunDecided.current = true;
+      void loadSetupStatus(baseUrl)
+        .then((status) => {
+          if (!mountedRef.current) return;
+          if (!isSetupComplete(status)) {
+            routeToOnboarding();
+          }
+          // Complete setup: leave the default route (Inbox) untouched.
+        })
+        .catch(() => {
+          // If we cannot read setup state, do not force onboarding on a user who
+          // is otherwise connected; leave them on the default route.
+        });
     }
-  }, [firstRunRouted, loading, error, snapshot, setSetupMode, setTab, setSettingsTab]);
+  }, [loading, error, snapshot, baseUrl, routeToOnboarding]);
 
   const commands = useMemo<Command[]>(() => {
     const nav: Command[] = PRIMARY_TABS.map((item) => ({

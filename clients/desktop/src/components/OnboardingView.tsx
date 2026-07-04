@@ -121,49 +121,49 @@ const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
   },
   engine: {
     key: "engine",
-    title: "Connect your tools",
+    title: "Let's find your coding tools.",
     railTitle: "Tools",
-    blurb: "Alfred checks Claude Code and Codex on this Mac. No API keys.",
+    blurb: "Alfred checks for Claude Code and Codex on this Mac. No keys, no config.",
     icon: TerminalSquare,
     optional: false,
   },
   github: {
     key: "github",
-    title: "Connect GitHub",
+    title: "Connect GitHub.",
     railTitle: "GitHub",
-    blurb: "Alfred reuses your GitHub sign-in.",
+    blurb: "Alfred reuses your existing GitHub sign-in. It only touches the repos you pick next.",
     icon: GitPullRequest,
     optional: false,
   },
   repos: {
     key: "repos",
-    title: "Choose repositories",
+    title: "Where should Alfred work?",
     railTitle: "Repositories",
-    blurb: "Pick the projects Alfred may work in.",
+    blurb: "Pick the projects Alfred may open pull requests in. You can change this anytime.",
     icon: Plug,
     optional: false,
   },
   team: {
     key: "team",
-    title: "Name your team",
+    title: "Name your team.",
     railTitle: "Team",
-    blurb: "Pick visible names for the same senior-engineering roles.",
+    blurb: "Same senior-engineering roles, your names. Purely cosmetic.",
     icon: Users,
     optional: false,
   },
   slack: {
     key: "slack",
-    title: "Connect Slack",
+    title: "Want approvals in Slack?",
     railTitle: "Slack",
-    blurb: "Optional. Approvals and questions in Slack too.",
+    blurb: "Optional. Get questions and approve work from Slack. Skip it and everything happens here.",
     icon: MessageCircle,
     optional: true,
   },
   request: {
     key: "request",
-    title: "Your first request",
+    title: "Give Alfred its first job.",
     railTitle: "First request",
-    blurb: "End on a real result, or a sample to look at first.",
+    blurb: "Type a real task, or watch a sample first.",
     icon: ListChecks,
     optional: false,
   },
@@ -666,25 +666,72 @@ export function OnboardingView({
   const canReadSetupStatus = connected || loading || statusLoading;
   let shellCopy = {
     eyebrow: "First run",
-    title: "Let's connect Alfred",
-    lede: "Seven short steps, about two minutes. You will not need a terminal.",
+    title: "Set up Alfred",
+    lede: "A few short steps, about two minutes. No terminal, no API keys.",
   };
   if (status === null && !statusError && canReadSetupStatus) {
     shellCopy = {
       eyebrow: "Checking setup",
       title: "Checking this Mac",
-      lede: "Alfred is reading the local runtime before choosing the right setup path.",
+      lede: "Reading the local runtime to pick the right setup path for you.",
     };
   } else if (installInitialized) {
     shellCopy = {
       eyebrow: "Existing setup",
-      title: "Review your Alfred setup",
-      lede: "Alfred found a local runtime on this Mac. Recheck tools, repos, team names, and Slack before shipping more work.",
+      title: "Review your setup",
+      lede: "Alfred is already installed on this Mac. Recheck tools, repos, team names, and Slack before you ship more work.",
     };
   }
 
+  const completedCount = stepperItems.filter((s) => s.state === "done").length;
+
   return (
     <section className="alfred-onboarding" aria-label="Set up Alfred" onKeyDown={onKeyDown}>
+      {/* Left rail: brand + the value promise + trust + a spend reassurance. It
+          fills the left of the frame so the takeover reads as one composed
+          product intro, not a card floating in a void. Collapses above the main
+          column at narrow widths. */}
+      <aside className="alfred-onboarding-rail alfred-glass" aria-hidden="true">
+        <div className="alfred-onboarding-rail__brand">
+          <span className="alfred-brand-mark size-9 shrink-0">
+            <img
+              src="/brand/alfred-logo-transparent.png"
+              alt=""
+              className="alfred-brand-logo size-9 object-contain"
+            />
+          </span>
+          <span className="alfred-onboarding-rail__wordmark">
+            <span className="alfred-onboarding-rail__name">Alfred</span>
+            <span className="alfred-onboarding-rail__kicker">Autonomous coding agents</span>
+          </span>
+        </div>
+
+        <div className="alfred-onboarding-rail__promise">
+          <p className="alfred-onboarding-rail__eyebrow">Set up in about two minutes</p>
+          <h2 className="alfred-onboarding-rail__headline">
+            Wake up to shipped work you can trust.
+          </h2>
+          <p className="alfred-onboarding-rail__sub">
+            Alfred opens pull requests, handles reviews, and reports back, all on
+            your own machine while you stay in control.
+          </p>
+        </div>
+
+        <div className="alfred-onboarding-rail__foot">
+          <p className="alfred-onboarding-rail__trust">
+            No API keys. Alfred runs on the Claude and Codex subscriptions you
+            already pay for.
+          </p>
+          <p className="alfred-onboarding-rail__cost">
+            No per-request bill. Watch live usage and limits any time in the
+            sidebar.
+          </p>
+          <p className="alfred-onboarding-rail__progress">
+            {completedCount} of {ONBOARDING_STEP_ORDER.length} steps done
+          </p>
+        </div>
+      </aside>
+
       <div className="alfred-onboarding-shell alfred-glass">
         <header className="alfred-onboarding-shell__head">
           <div className="min-w-0">
@@ -867,12 +914,17 @@ export function OnboardingView({
               </Button>
             ) : null}
             {nextKey ? (
-              <Button type="button" size="sm" onClick={advance}>
+              <Button type="button" size="sm" className="btn-primary-glow" onClick={advance}>
                 <span>Continue</span>
                 <ArrowRight size={15} aria-hidden="true" />
               </Button>
             ) : (
-              <Button type="button" size="sm" onClick={() => onSwitch?.("home")}>
+              <Button
+                type="button"
+                size="sm"
+                className="btn-primary-glow"
+                onClick={() => onSwitch?.("home")}
+              >
                 <span>Go to Inbox</span>
                 <ArrowRight size={15} aria-hidden="true" />
               </Button>

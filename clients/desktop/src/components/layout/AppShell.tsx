@@ -74,7 +74,11 @@ export function AppShell({
 }) {
   return (
     <TooltipProvider delayDuration={150}>
-      <SidebarProvider>
+      {/* The painted depth atmosphere: a fixed layer behind the content plane
+          that the glass sidebar/panels bleed through their blur. See
+          .alfred-app-atmosphere in index.css. */}
+      <div className="alfred-app-atmosphere" aria-hidden="true" />
+      <SidebarProvider className="relative z-[1]">
         <Sidebar
           collapsible="icon"
           variant="sidebar"

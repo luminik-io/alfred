@@ -1,4 +1,4 @@
-import { ArrowRight, PlayCircle, Sparkles, Trash2 } from "lucide-react";
+import { ArrowRight, GaugeCircle, PlayCircle, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import {
@@ -69,6 +69,11 @@ export function FirstRequestStep({
   const demoSeeded = demoSeededOverride ?? demoPresent;
   const [clearBusy, setClearBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Once the first job fires (a real request drafted or a sample seeded), show a
+  // plain "what this costs" reassurance so a solo builder sees spend is legible
+  // and under control before anything runs for real. It is an honest range on
+  // the subscriptions they already pay for, not a per-token invoice.
+  const [firstJobFired, setFirstJobFired] = useState(false);
 
   // Once the server confirms a state that matches the optimistic override,
   // drop the override so the component tracks server truth again.
@@ -96,9 +101,13 @@ export function FirstRequestStep({
     setBusyKey(key);
     try {
       const result = await composeSetupPlaybook(baseUrl, key);
+      // This path navigates to Compose immediately, which unmounts this step, so
+      // the inline cost chip below would never be seen. Fold the spend
+      // reassurance into the success notice instead, so it surfaces on the screen
+      // the user actually lands on.
       setNotice({
         tone: "ok",
-        message: `Drafted your first request: "${result.title}". Refine it in Ask, then save the plan.`,
+        message: `Drafted your first request: "${result.title}". Refine it in Ask, then save the plan. It runs on the Claude and Codex subscriptions you already pay for, with no per-request bill, and you can watch usage in the sidebar.`,
       });
       onComplete("request");
       onSwitch?.("compose");
@@ -114,6 +123,7 @@ export function FirstRequestStep({
     try {
       await seedSetupDemo(baseUrl);
       setDemoSeededOverride(true);
+      setFirstJobFired(true);
       await onSeedDemo();
       setNotice({
         tone: "ok",
@@ -151,6 +161,17 @@ export function FirstRequestStep({
         <Card size="sm" className="rounded-lg border-border/70 bg-muted/35 shadow-none">
           <CardContent className="px-3 text-sm text-muted-foreground">{error}</CardContent>
         </Card>
+      ) : null}
+
+      {firstJobFired || demoSeeded ? (
+        <div className="alfred-onboarding-cost-chip" role="status">
+          <GaugeCircle size={16} aria-hidden="true" />
+          <span>
+            Here's what this costs: it runs on the Claude and Codex subscriptions
+            you already pay for, so there's no per-request bill. Watch live usage
+            and limits any time in the sidebar.
+          </span>
+        </div>
       ) : null}
 
       <div className="grid gap-2">
