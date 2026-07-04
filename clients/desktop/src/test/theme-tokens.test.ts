@@ -107,15 +107,14 @@ describe("theme token completeness (do not revert)", () => {
     expect(declaredTokens(linearBody).has("--glass-blur")).toBe(true);
   });
 
-  it("defines the brand cobalt signature accent on the Alfred default", () => {
+  it("defines the ember (Vermilion Noir) signature accent on the Alfred default", () => {
     const body = blockBody(css, ":root {");
-    // The operator-locked Alfred accent: the marketing site's cobalt-blue
-    // (#5789FF family, hue 262) so the app and site read as one product. Only
-    // the hue rotated from the former steel-violet (282); lightness/chroma are
-    // unchanged, so every WCAG contrast ratio is preserved. It lives on
-    // --accent / --ring (active + focus glow); --primary sits a touch deeper so
-    // white button text clears WCAG AA.
-    expect(body).toMatch(/--accent:\s*oklch\(0\.64 0\.19 262\)/);
-    expect(body).toMatch(/--ring:\s*oklch\(0\.64 0\.19 262\)/);
+    // The operator-directed Alfred accent (2026-07 aggressive overhaul): a vivid
+    // ember/vermilion (hue ~34), replacing the former steel-cobalt the operator
+    // found generic. It lives on --accent / --ring (active + focus glow); the
+    // filled --primary sits a touch deeper (L 0.585) so white button text clears
+    // WCAG AA on the fill.
+    expect(body).toMatch(/--accent:\s*oklch\(0\.66 0\.205 34\)/);
+    expect(body).toMatch(/--ring:\s*oklch\(0\.66 0\.205 34\)/);
   });
 });

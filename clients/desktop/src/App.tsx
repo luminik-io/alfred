@@ -398,7 +398,7 @@ function App() {
       ) : null}
 
       {tab === "fleet" ? (
-        <section className="space-y-4" aria-label="Agents">
+        <section className="agents-page space-y-4" aria-label="Agents">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div className="space-y-1">
               <h1 className="font-heading text-2xl font-medium tracking-normal text-foreground">
