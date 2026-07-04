@@ -35,6 +35,7 @@ from agent_runner import (
     invoke_agent_engine,
     is_globally_blocked,
     is_repo_paused,
+    issue_memory_query,
     local_repo_dir,
     maybe_set_global_block_for_result,
     optional_env_int,
@@ -490,6 +491,11 @@ Ship-ready: yes / no - <one sentence>
         codex_add_dirs=[tmp, WORKSPACE_ROOT],
         on_fallback=_on_engine_fallback,
         memory_repo=f"{GH_ORG}/{repo}" if GH_ORG else repo,
+        # Rasalghul reviews a PR; recall lessons relevant to what this PR is
+        # about (its title + body) so review hints match the change under
+        # review, not just repo/codename recency. None when both are empty
+        # preserves recency-only recall.
+        memory_query=issue_memory_query(pr_title, pr_body),
     )
     spend.increment(firings_today=1, turns_today=result.num_turns, cost_usd_today=result.cost_usd)
     events.emit(

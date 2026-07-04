@@ -112,6 +112,97 @@ def test_invoke_agent_engine_prepends_memory_and_records_reflection(monkeypatch)
     assert provider.brain.firings[0]["firing_id"] == "fid-1"
 
 
+def test_issue_memory_query_derives_bounded_query() -> None:
+    from agent_runner.memory_runtime import issue_memory_query
+
+    # Title plus body slice, whitespace-collapsed.
+    query = issue_memory_query(
+        "Fix GraphQL schema loader", "The\n\tloader   crashes on empty files."
+    )
+    assert query is not None
+    assert "Fix GraphQL schema loader" in query
+    assert "loader crashes on empty files." in query
+    assert "\n" not in query and "\t" not in query
+
+    # Title only still yields a query.
+    assert issue_memory_query("Fix GraphQL schema loader") == "Fix GraphQL schema loader"
+
+    # Empty / whitespace-only inputs preserve recency-only recall (None).
+    assert issue_memory_query("", "") is None
+    assert issue_memory_query(None, None) is None
+    assert issue_memory_query("   \n\t  ") is None
+
+
+def test_issue_memory_query_is_bounded() -> None:
+    from agent_runner.memory_runtime import issue_memory_query
+
+    long_body = "word " * 500
+    query = issue_memory_query("Title", long_body, max_chars=64)
+    assert query is not None
+    assert len(query) <= 64
+    assert query.startswith("Title")
+
+
+def test_invoke_agent_engine_recalls_issue_relevant_lesson(monkeypatch) -> None:
+    """The lesson matching the issue-derived query is what lands in the prompt,
+    not an unrelated repo/codename-generic lesson."""
+    import agent_runner.process as proc
+
+    class Lesson:
+        def __init__(self, body: str) -> None:
+            self.body = body
+            self.tags: list[str] = []
+            self.severity = "info"
+
+    class Provider:
+        name = "fleet"
+
+        def recall(self, *, codename, repo, query, limit):
+            # Provider returns DIFFERENT lessons depending on the query, the way
+            # AMS semantic search does. A None/empty query returns a generic
+            # recency lesson; an issue-derived query returns the relevant one.
+            if query and "graphql" in query.lower():
+                return [Lesson("GraphQL schema lives under src/schema.graphql.")]
+            return [Lesson("Generic: run the linter before pushing.")]
+
+    provider = Provider()
+    monkeypatch.setattr(proc, "load_runtime_memory", lambda: provider)
+    captured: dict[str, str] = {}
+
+    def fake_claude(prompt, **kwargs):
+        captured["prompt"] = prompt
+        return proc.ClaudeResult(
+            success=True,
+            subtype="success",
+            num_turns=1,
+            cost_usd=0.0,
+            session_id="s",
+            result_text="done",
+            raw={},
+            stop_reason="end_turn",
+            error_message=None,
+        )
+
+    from agent_runner.memory_runtime import issue_memory_query
+
+    proc.invoke_agent_engine(
+        "Implement the issue.",
+        engine="claude",
+        agent="lucius",
+        firing_id="fid-1",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        claude_fn=fake_claude,
+        memory_repo="org/api",
+        memory_query=issue_memory_query("Fix GraphQL schema loader", "Loader crashes."),
+    )
+
+    # The issue-relevant lesson is injected; the generic recency lesson is not.
+    assert "GraphQL schema lives under src/schema.graphql." in captured["prompt"]
+    assert "run the linter before pushing" not in captured["prompt"]
+
+
 def test_record_reflections_defaults_to_candidates(monkeypatch) -> None:
     from agent_runner import memory_runtime as runtime
 

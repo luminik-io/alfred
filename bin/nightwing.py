@@ -46,6 +46,7 @@ from agent_runner import (
     invoke_agent_engine,
     is_globally_blocked,
     is_repo_paused,
+    issue_memory_query,
     local_repo_dir,
     make_worktree_from_branch,
     maybe_set_global_block_for_result,
@@ -705,6 +706,11 @@ def main() -> int:
             codex_bypass_approvals_and_sandbox=True,
             on_fallback=_on_engine_fallback,
             memory_repo=f"{GH_ORG}/{repo}" if GH_ORG else repo,
+            # Nightwing has no issue; its scoped context is the review comment
+            # it is resolving (file path + comment body). Recall lessons
+            # relevant to that, not just repo/codename recency. None when both
+            # are empty preserves recency-only recall.
+            memory_query=issue_memory_query(cpath, cbody),
         )
         total_turns += result.num_turns
         engine_counts[engine_used] = engine_counts.get(engine_used, 0) + 1
