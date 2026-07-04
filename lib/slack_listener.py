@@ -13,6 +13,7 @@ Execution remains gated by the existing reaction approval flow.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import inspect
 import json
 import math
@@ -178,10 +179,46 @@ class SlackInputEvent:
     thread_ts: str
     channel_type: str = ""
     reaction: str = ""
+    client_msg_id: str = ""
 
     @property
     def root_ts(self) -> str:
         return self.thread_ts or self.ts
+
+    @property
+    def dedup_key(self) -> str:
+        """A key identifying the underlying message, not the delivery envelope.
+
+        Slack delivers one @mention as BOTH an ``app_mention`` and a ``message``
+        event, each with its own envelope ``event_id``, so de-duplicating on
+        ``event_id`` alone lets a single user message run two turns (two model
+        calls, two replies). This key ignores the envelope so the duplicate pair
+        collapses onto the first delivery.
+
+        Two tiers, both stable across the app_mention/message pair of one message:
+
+        1. ``client_msg_id`` when present. A real client stamps every message
+           with a unique ``client_msg_id`` that both deliveries share, so this is
+           the precise identity and never collides across distinct messages.
+        2. A hash of ``(channel, thread_ts, user, ts, normalized text)`` when
+           there is no ``client_msg_id`` (an API-sent message, e.g. one posted by
+           another bot or via ``chat.postMessage``, carries none). Both deliveries
+           of one such message share all five fields -- crucially the same ``ts``,
+           which Slack assigns once per message -- so they collapse, while any two
+           genuinely different messages differ in ``ts`` (and usually text) and
+           stay distinct.
+
+        Returns an empty string for a reaction (no message body to identify), so
+        a reaction is de-duplicated only on its envelope ``event_id``.
+        """
+        if self.is_reaction:
+            return ""
+        if self.client_msg_id:
+            return f"msg:{self.client_msg_id}"
+        normalized = " ".join((self.text or "").split()).lower()
+        raw = "\x1f".join((self.channel, self.thread_ts or self.ts, self.user, self.ts, normalized))
+        digest = hashlib.sha256(raw.encode("utf-8", "replace")).hexdigest()[:32]
+        return f"msg:hash:{digest}"
 
     @property
     def is_thread_reply(self) -> bool:
@@ -274,6 +311,19 @@ class SeenEventStore:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(_utc_now() + "\n")
         return False
+
+    def has_seen(self, event_id: str) -> bool:
+        """True iff ``event_id`` was already marked, WITHOUT marking it now.
+
+        Lets a caller test for a prior delivery and defer the mark until it knows
+        the current delivery will actually be handled, so an ignored delivery
+        (e.g. the plain ``message`` copy of an @mention that the ambient path
+        drops in favour of the ``app_mention`` copy) never consumes the key and
+        strand the delivery that should handle it.
+        """
+        if not event_id:
+            return False
+        return (self.root / f"{_safe_event_id(event_id)}.seen").exists()
 
 
 class SlackPlanningListener:
@@ -377,6 +427,20 @@ class SlackPlanningListener:
             return ListenerResult(False, "ignored", "unsupported Slack event")
         if self.seen.mark_seen(event.event_id):
             return ListenerResult(False, "duplicate", "event already processed")
+        # Slack delivers a single @mention as BOTH an ``app_mention`` and a
+        # ``message`` event, each with a distinct envelope ``event_id`` but the
+        # same message identity (see ``SlackInputEvent.dedup_key``). De-duplicate
+        # on that identity too so one user message never runs two turns (two model
+        # calls, two replies). CRUCIAL: only test the key here; do NOT mark it
+        # yet. The plain ``message`` copy of an @mention is deliberately IGNORED
+        # by the ambient path in favour of the ``app_mention`` copy, so marking
+        # the shared key on that ignored copy would make the real ``app_mention``
+        # look like a duplicate and strand the mention entirely. We mark the key
+        # only after a delivery is actually handled (see ``_finish`` below), so an
+        # ignored copy leaves the key free for the copy that does the work.
+        dedup_key = event.dedup_key
+        if dedup_key and self.seen.has_seen(dedup_key):
+            return ListenerResult(False, "duplicate", "message already processed")
         if self.bot_user_id and event.user == self.bot_user_id:
             return ListenerResult(False, "ignored", "bot self-message")
         trusted_user_ids = self._trusted_user_ids()
@@ -387,18 +451,33 @@ class SlackPlanningListener:
 
         record = self.registry.lookup(event.channel, event.root_ts)
         if record is not None and event.is_reaction:
-            return self._handle_thread_reaction(event, record)
+            return self._finish(event, dedup_key, self._handle_thread_reaction(event, record))
         if record is not None and event.is_thread_reply:
-            return self._handle_registered_thread(event, record)
+            return self._finish(event, dedup_key, self._handle_registered_thread(event, record))
         if event.is_reaction:
             return ListenerResult(False, "ignored", "reaction is not on a registered thread")
         if event.is_direct_intake:
             result = self._handle_direct_intake(event)
-            return self._remember_conversation_root(event, result)
+            return self._finish(event, dedup_key, self._remember_conversation_root(event, result))
         if event.is_plain_channel_message:
             result = self._maybe_handle_ambient(event)
-            return self._remember_conversation_root(event, result)
+            return self._finish(event, dedup_key, self._remember_conversation_root(event, result))
         return ListenerResult(False, "ignored", "message is not a registered thread or intake")
+
+    def _finish(
+        self, event: SlackInputEvent, dedup_key: str, result: ListenerResult
+    ) -> ListenerResult:
+        """Mark the message-identity dedup key iff this delivery was handled.
+
+        Marking only on a handled result means an ignored delivery (the plain
+        ``message`` copy of an @mention the ambient path drops) never consumes the
+        shared key, so the ``app_mention`` copy that should do the work is not
+        misread as a duplicate. A handled delivery marks the key so a later
+        duplicate copy of the same message is collapsed.
+        """
+        if dedup_key and result.handled:
+            self.seen.mark_seen(dedup_key)
+        return result
 
     def _handle_thread_reaction(
         self,
@@ -565,9 +644,19 @@ class SlackPlanningListener:
         # existing approval bridge has something concrete to graduate. The bare
         # ``ship it`` reply carries no scope, so seed the draft from the latest
         # substantive request earlier in the thread, falling back to the reply.
-        if self.bridge.is_approval(text=event.text):
+        #
+        # In a channel the approval reply must @-mention the bot, so it arrives as
+        # "<@BOTID> ship it". Strip the mention before the approval check so the
+        # whole-token match still fires; otherwise the leading mention token
+        # defeats the match and "ship it" loops back into another converse turn
+        # that just re-offers to file, and nothing is ever filed.
+        if self.bridge.is_approval(text=_strip_mentions(event.text)):
             source_text = self._ship_it_source_text(event)
-            return self._open_planning_draft(event, source_text=source_text)
+            # Key the materialized draft on the PARENT thread so later steering
+            # replies in this thread reach the draft-revision handler (and a
+            # reaction on the thread root can file it), instead of stranding the
+            # draft under the ship-it message ts where nothing can reach it.
+            return self._open_planning_draft(event, source_text=source_text, register_on_root=True)
 
         # A free-form reply in an Alfred-started thread is a conversation turn:
         # answer it (streamed, with the prior thread messages as context) rather
@@ -582,11 +671,15 @@ class SlackPlanningListener:
         """Pick the build request a ``ship it`` reply is approving.
 
         A bare ``ship it`` carries no scope of its own; the actual request is an
-        earlier human turn in the same thread. Read the bounded thread context
-        (best-effort, the same reader converse uses) and return the most recent
-        human turn that is not itself an approval token. Falls back to the reply
-        text when no prior human turn is recoverable, so the draft path always has
-        something to refine.
+        earlier human turn in the same thread, and specifically the ORIGINAL task
+        description, not a later short acceptance / ack line ("yes", "accepted",
+        "spec accepted and marked done") and not an opening greeting / capability
+        question ("hi Alfred", "what can you do"). Seeding from either produced a
+        draft titled after the wrong turn with no real scope. Read the bounded
+        thread context and return the EARLIEST substantive human turn that is not
+        an approval token, a short acceptance / ack, or a conversational opener;
+        fall back to the most recent such turn, then to the reply text, so the
+        draft path always has something to refine.
         """
         reply_text = (event.text or "").strip()
         if self.poster is None:
@@ -607,14 +700,43 @@ class SlackPlanningListener:
                 file=sys.stderr,
             )
             return reply_text
-        for message in reversed(context):
-            if message.role != "user":
-                continue
-            candidate = (message.content or "").strip()
-            if not candidate or self.bridge.is_approval(text=candidate):
-                continue
-            return candidate
+        # Human turns in thread order (oldest first). The original build request
+        # is the first substantive one; a later short acceptance / ack is not it.
+        human_turns = [
+            (message.content or "").strip()
+            for message in context
+            if message.role == "user" and (message.content or "").strip()
+        ]
+        substantive = [text for text in human_turns if self._is_substantive_request(text)]
+        if substantive:
+            # Earliest substantive turn = the original task the plan was built for.
+            return substantive[0]
+        # Nothing that reads like a real request: fall back to the most recent
+        # non-approval human turn (better than the bare "ship it"), then the reply.
+        for text in reversed(human_turns):
+            if not self.bridge.is_approval(text=text):
+                return text
         return reply_text
+
+    def _is_substantive_request(self, text: str) -> bool:
+        """True iff ``text`` reads as a real build request, not chatter.
+
+        Excludes approval tokens, short acceptance / ack lines, conversational
+        openers (greetings, capability / identity questions, thanks), and
+        read-only status / answer questions ("what's the fleet doing?", "why did
+        a run fail?"), so seeding a ship-it draft never picks any of those over
+        the actual task in a mixed conversation-to-build thread.
+        """
+        if self.bridge.is_approval(text=text):
+            return False
+        if _looks_like_acceptance(text):
+            return False
+        # A read-only status / diagnostic question is not a build request.
+        if _looks_like_status_or_answer(text):
+            return False
+        # A greeting / capability / thanks opener yields a canned reply; a real
+        # build request does not, so no canned reply means a substantive turn.
+        return conversational_reply(text) is None
 
     def _maybe_complete_thread_clarification(
         self,
@@ -939,12 +1061,14 @@ class SlackPlanningListener:
                 detail="greeting or capability question",
             )
 
-        # Conversational, streamed answer (off by default). When armed, free-form
-        # prose is classified through the same compose_converse intent path the
-        # desktop Ask uses and streamed back; a build request gets a prose offer
-        # to file an issue rather than a silent planning draft. Only when this is
-        # disabled or yields no answer do we fall through to planning intake.
-        converse = self._maybe_converse(event)
+        # Conversational, streamed answer. Free-form prose is classified through
+        # the same compose_converse intent path the desktop Ask uses and streamed
+        # back; a build request gets a prose offer to file an issue rather than a
+        # silent planning draft. When converse is disabled, yields no answer, or
+        # the model turn fails, we fall through to planning intake:
+        # ``suppress_engine_error`` keeps a failed turn from stranding the user on
+        # the generic "could not reach" message before that intake runs.
+        converse = self._maybe_converse(event, suppress_engine_error=True)
         if converse is not None:
             return converse
 
@@ -955,6 +1079,7 @@ class SlackPlanningListener:
         event: SlackInputEvent,
         *,
         source_text: str,
+        register_on_root: bool = False,
     ) -> ListenerResult:
         """Refine ``source_text`` into a saved planning draft and register it.
 
@@ -963,6 +1088,17 @@ class SlackPlanningListener:
         bridge can later graduate it into a GitHub issue. Both the top-level
         intake and a ``ship it`` reply in a conversation thread funnel here so the
         bridge always has a saved draft to act on.
+
+        ``register_on_root`` controls the thread key the draft record is stored
+        under. A top-level intake keys on its own root (the default). A ``ship
+        it`` that materializes a draft out of an existing conversation thread must
+        key on the PARENT ``thread_ts`` (``register_on_root=True``): otherwise the
+        draft is stored under the ship-it message ts while later steering replies
+        (``repo:`` / ``desired:`` ...) in the parent thread resolve to the parent
+        ``thread_ts`` and route to the conversation handler, never reaching the
+        draft-revision handler, so the draft stays at ``needs_scope`` forever.
+        Keying the draft on the parent root supersedes the conversation record so
+        those steering replies reach :meth:`_handle_draft_revision`.
         """
         draft = draft_from_slack_text(source_text)
         refined = refine_issue_draft(
@@ -1006,7 +1142,10 @@ class SlackPlanningListener:
                 readiness_ok=refined.readiness.ok,
                 readiness_score=refined.readiness.score,
             )
-        registered_thread_ts = event.ts if event.is_thread_reply else event.root_ts
+        if register_on_root:
+            registered_thread_ts = event.root_ts
+        else:
+            registered_thread_ts = event.ts if event.is_thread_reply else event.root_ts
         record = self.registry.register(
             SlackThreadRecord(
                 kind="draft",
@@ -1032,15 +1171,29 @@ class SlackPlanningListener:
             readiness_score=refined.readiness.score,
         )
 
-    def _maybe_converse(self, event: SlackInputEvent) -> ListenerResult | None:
+    def _maybe_converse(
+        self,
+        event: SlackInputEvent,
+        *,
+        suppress_engine_error: bool = False,
+    ) -> ListenerResult | None:
         """Stream a conversational answer for a trusted mention / thread reply.
 
-        Returns a :class:`ListenerResult` when the converse path posted an
+        Returns a :class:`ListenerResult` when the converse path posted a real
         answer (a plain reply for a ``conversation`` turn, or a prose answer plus
         an offer to file an issue for a ``build`` turn), or ``None`` to fall
         through to the caller's prior behavior. Inert unless converse is enabled
         and the channel is allowed; the model and Slack client are reached only
         through the injected runner.
+
+        ``suppress_engine_error`` is set by callers that own a deterministic
+        fallback (a status query answered from local fleet state, or planning
+        intake). It tells the runner not to strand the user on the generic
+        "could not reach the engine" message when the model turn fails, so a
+        transient engine failure falls through to that fallback instead of hiding
+        locally available fleet status. A turn that ran but could not produce an
+        answer (``answered`` is False) always returns ``None`` here so the caller
+        falls through, whether or not the generic guidance was posted.
 
         SAFETY: this never files an issue or runs anything. A ``build`` turn only
         ever OFFERS the existing approval bridge in prose; the issue itself is
@@ -1064,6 +1217,7 @@ class SlackPlanningListener:
                 exclude_ts=event.ts,
                 bridge_enabled=self.bridge.config.enabled,
                 workdir=Path.cwd(),
+                suppress_engine_error=suppress_engine_error,
             )
         except Exception as exc:
             print(
@@ -1072,6 +1226,11 @@ class SlackPlanningListener:
             )
             return None
         if outcome is None or not getattr(outcome, "handled", False):
+            return None
+        # A turn that ran but could not produce a real answer (engine error,
+        # timeout, unparseable output) must not short-circuit the deterministic
+        # fallback: report it as unhandled here so the caller falls through.
+        if not getattr(outcome, "answered", True):
             return None
         from compose_converse import INTENT_BUILD
 
@@ -1272,7 +1431,22 @@ class SlackPlanningListener:
         needs scope?" -> the planning inbox, otherwise fleet status) and the
         handler's structured output is framed with a short conversational
         lead-in instead of being dumped raw.
+
+        Conversation-first: when converse is engaged, a status question is
+        answered by the streamed, LLM-backed converse turn (which carries a live
+        fleet snapshot as grounding), so "what's the fleet doing?" reads like a
+        colleague's answer rather than a raw control-handler dump. The terse
+        control-handler summary below is the fallback when converse is not
+        engaged OR the model turn failed (engine error, timeout, unparseable
+        output), so a transient engine failure never hides locally available
+        fleet status. ``suppress_engine_error`` keeps a failed turn from
+        stranding the user on the generic "could not reach" message before this
+        deterministic answer runs.
         """
+        converse = self._maybe_converse(event, suppress_engine_error=True)
+        if converse is not None:
+            return converse
+
         verb, lead_in = _status_query_plan(event.text)
         control = self.control_handler.handle(
             verb,
@@ -2312,6 +2486,7 @@ def parse_slack_payload(payload: dict[str, Any]) -> SlackInputEvent | None:
         ts=ts,
         thread_ts=str(event.get("thread_ts") or ""),
         channel_type=str(event.get("channel_type") or ""),
+        client_msg_id=str(event.get("client_msg_id") or ""),
     )
 
 
@@ -2925,14 +3100,208 @@ def _list_field(fields: dict[str, str], key: str) -> list[str]:
     return [item.strip().lstrip("-*").strip() for item in re.split(r",|;|\n", raw) if item.strip()]
 
 
+# Extensions that mark a "word/word" token as a source-file path, not a GitHub
+# repo slug. A prose reference like "llm/sanitize.py" or "script/style.css" must
+# never be parsed as an owner/repo scope.
+_CODE_PATH_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        "py",
+        "ts",
+        "tsx",
+        "js",
+        "jsx",
+        "mjs",
+        "cjs",
+        "kt",
+        "kts",
+        "java",
+        "go",
+        "rs",
+        "rb",
+        "php",
+        "cs",
+        "cpp",
+        "cc",
+        "c",
+        "h",
+        "hpp",
+        "swift",
+        "m",
+        "mm",
+        "scala",
+        "clj",
+        "ex",
+        "exs",
+        "html",
+        "htm",
+        "css",
+        "scss",
+        "sass",
+        "less",
+        "json",
+        "yaml",
+        "yml",
+        "toml",
+        "xml",
+        "md",
+        "mdx",
+        "txt",
+        "sh",
+        "bash",
+        "sql",
+        "vue",
+        "svelte",
+        "astro",
+        "proto",
+        "graphql",
+        "gql",
+    }
+)
+
+
+def _looks_like_repo_slug(token: str) -> bool:
+    """True iff ``token`` is a plausible GitHub ``owner/repo``, not a file path.
+
+    Rejects tokens whose repo segment carries a source-file extension
+    ("llm/sanitize.py"), so a code reference in prose is never mistaken for a
+    repo scope. Requires exactly one slash and non-empty, non-dot segments.
+    """
+    if token.count("/") != 1:
+        return False
+    owner, name = token.split("/", 1)
+    if not owner or not name or owner in {".", ".."} or name in {".", ".."}:
+        return False
+    # A trailing ".ext" on the repo name where ext is a known source extension
+    # marks this as a file path (e.g. "sanitize.py"), not a repo.
+    if "." in name:
+        ext = name.rsplit(".", 1)[-1].lower()
+        if ext in _CODE_PATH_EXTENSIONS:
+            return False
+    return True
+
+
+# Short acceptance / ack phrases a person types once a plan is locked, before or
+# alongside "ship it". These are NOT the build request, so ``_ship_it_source_text``
+# skips them when choosing what scope to seed the draft from.
+_ACCEPTANCE_PHRASES: frozenset[str] = frozenset(
+    {
+        "accepted",
+        "spec accepted",
+        "spec accepted and marked done",
+        "marked done",
+        "done",
+        "sounds good",
+        "sounds right",
+        "looks good",
+        "looks right",
+        "looks great",
+        "perfect",
+        "great",
+        "yes",
+        "yep",
+        "yeah",
+        "correct",
+        "that is right",
+        "thats right",
+        "agreed",
+        "confirmed",
+        "ok",
+        "okay",
+    }
+)
+# An acceptance line is short: a real build request is longer than this many
+# words, so a longer turn is never mistaken for a bare acknowledgement.
+_ACCEPTANCE_MAX_WORDS = 6
+
+
+def _looks_like_acceptance(text: str) -> bool:
+    """True iff ``text`` reads as a short acceptance / ack, not a build request.
+
+    Matches a small closed set of whole-message acknowledgements (after stripping
+    mentions and trailing punctuation), and only when the message is short, so a
+    real request that merely contains the word "done" is never suppressed.
+    """
+    cleaned = _strip_mentions(text)
+    normalized = re.sub(r"[^\w\s]", " ", cleaned).lower()
+    normalized = " ".join(normalized.split())
+    if not normalized:
+        return False
+    if len(normalized.split()) > _ACCEPTANCE_MAX_WORDS:
+        return False
+    return normalized in _ACCEPTANCE_PHRASES
+
+
+# Read-only / status-question cues. A ship-it draft must not be seeded from a
+# status turn ("what's the fleet doing?", "why did lucius fail on #1038?") that
+# happened to come before the real build request in the same thread. These are
+# substrings matched against the normalized turn; each is distinctive enough to
+# a read-only question that it never appears in a genuine build request.
+_STATUS_QUESTION_CUES: tuple[str, ...] = (
+    "what's the fleet doing",
+    "whats the fleet doing",
+    "what is the fleet doing",
+    "what's the status",
+    "whats the status",
+    "what is the status",
+    "fleet status",
+    "status of the fleet",
+    "what shipped",
+    "what did you ship",
+    "what's shipped",
+    "what is shipped",
+    "what have you shipped",
+    "what's blocked",
+    "whats blocked",
+    "what is blocked",
+    "what's running",
+    "whats running",
+    "what is running",
+    "what are you working on",
+    "what's queued",
+    "whats queued",
+    "what is queued",
+    "what's in the inbox",
+    "how does review work",
+    "why did",
+    "why is",
+    "why was",
+)
+
+
+def _looks_like_status_or_answer(text: str) -> bool:
+    """True iff ``text`` reads as a read-only status / answer question.
+
+    Covers both a leading-verb read-only control command ("status", "runs",
+    "plans") and a natural-language status / diagnostic question ("what's the
+    fleet doing?", "why did lucius fail?"). Used to keep such a turn from being
+    picked as the build request a ship-it draft is seeded from.
+    """
+    cleaned = _strip_mentions(text).strip()
+    if not cleaned:
+        return False
+    if _is_read_only_control_text(cleaned):
+        return True
+    normalized = re.sub(r"\s+", " ", cleaned.lower()).strip()
+    return any(cue in normalized for cue in _STATUS_QUESTION_CUES)
+
+
 def _repos_from_text(text: str) -> list[str]:
-    repos = re.findall(r"\b[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\b", text)
+    # Only whole "word/word" tokens NOT embedded in a longer slash path: a
+    # negative lookaround rejects "a/b/c" and "script/style/on" so a multi
+    # segment code path is never harvested as a repo.
+    tokens = re.findall(r"(?<![\w/])[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?![\w/])", text)
     seen: set[str] = set()
     out: list[str] = []
-    for repo in repos:
-        if repo not in seen:
-            seen.add(repo)
-            out.append(repo)
+    for token in tokens:
+        # Trim sentence punctuation the char class swept in: "fix octo/app."
+        # matches as "octo/app." because "." is a valid slug character mid-name
+        # but a trailing "." is really the sentence period. A leading/trailing
+        # dot, comma, or other punctuation is never part of a GitHub owner/repo.
+        repo = token.strip(".,;:!?-")
+        if not repo or repo in seen or not _looks_like_repo_slug(repo):
+            continue
+        seen.add(repo)
+        out.append(repo)
     return out
 
 
@@ -2942,11 +3311,45 @@ def _title_from_text(text: str) -> str:
     return first[:90] or "Untitled Alfred work"
 
 
+# A Slack user mention is either bare ("<@U0AEG9M3ZDH>") or carries a display
+# label after a pipe ("<@U0AEG9M3ZDH|alfred>"). ``_strip_mentions`` must remove
+# BOTH forms whole: dropping only the "<@...>" wrapper of the piped form would
+# leave the bare label ("alfred") behind, which then breaks a whole-token
+# approval match like "ship it".
+_USER_MENTION_RE = re.compile(r"<@[A-Z0-9]+(?:\|[^>]*)?>")
+# The piped user-mention form specifically. ``_clean_slack_text`` canonicalizes
+# it to the bare "<@ID>" form so (a) the generic "<url|display>" link rule below
+# never rewrites it into its bare label, and (b) the resulting token still looks
+# like a mention, so ``mentions_bot`` (which detects the ambient/app_mention
+# duplicate delivery) keeps working.
+_PIPED_USER_MENTION_RE = re.compile(r"<@([A-Z0-9]+)\|[^>]*>")
+# The "*Sent using* <@app>" attribution Slack appends to a message a user posts
+# through an app integration. Optional italics, optional whitespace/newline, then
+# a user mention (piped or bare). Stripped so it never contaminates a match.
+_SENT_USING_FOOTER_RE = re.compile(
+    r"\s*\*?\s*Sent using\s*\*?\s*<@[A-Z0-9]+(?:\|[^>]*)?>",
+    re.IGNORECASE,
+)
+
+
 def _strip_mentions(text: str) -> str:
-    return re.sub(r"<@[^>]+>", "", text).strip()
+    return _USER_MENTION_RE.sub("", text or "").strip()
 
 
 def _clean_slack_text(text: str) -> str:
+    # Slack appends an italic "*Sent using* <@app>" attribution footer to a
+    # message a user posts THROUGH an app integration (rather than typing it in
+    # the client). It is never user content, and left in place it defeats a
+    # whole-token match: "ship it" arrives as "ship it *Sent using* <@app>" and
+    # no longer reads as an approval. Strip the footer first so every downstream
+    # match (approval, intent, converse) sees the real message.
+    text = _SENT_USING_FOOTER_RE.sub(" ", text)
+    # Order matters. Canonicalize a piped user mention "<@ID|label>" to the bare
+    # "<@ID>" FIRST, so the generic "<url|display>" link rule below does not
+    # rewrite it into its bare label (which would leave e.g. "alfred ship it" and
+    # defeat a whole-token approval match), and so the bare "<@ID>" token still
+    # survives for ``mentions_bot`` to recognise a duplicate delivery.
+    text = _PIPED_USER_MENTION_RE.sub(r"<@\1>", text)
     text = re.sub(r"<mailto:[^|>]+\|([^>]+)>", r"\1", text)
     text = re.sub(r"<([^|>]+)\|([^>]+)>", r"\2", text)
     return "\n".join(line.strip() for line in text.splitlines() if line.strip())

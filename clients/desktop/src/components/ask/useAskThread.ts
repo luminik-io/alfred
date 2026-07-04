@@ -12,7 +12,7 @@ import {
   filePlanIssue,
   isLiveSessionUnavailable,
   streamComposeConverse,
-  supportsNativeActions,
+  supportsConversation,
 } from "../../api";
 import {
   clearConversations,
@@ -149,10 +149,15 @@ export function useAskThread({
   baseUrl: string;
   selectedRepos: string[];
 }) {
-  // Whether a live engine is reachable. Starts true on native, false in the
-  // browser; flips to false the first time the server reports no engine so we
-  // stop attempting the streaming path.
-  const [hasEngine, setHasEngine] = useState(supportsNativeActions());
+  // Whether a live engine is reachable. The conversational engine runs
+  // server-side in `alfred serve`, so BOTH the native Tauri window and the
+  // hosted browser shell start able to converse (`supportsConversation`); only
+  // a bare non-served page (dev preview with no backend) starts false. It flips
+  // to false the first time the server reports no engine so we stop attempting
+  // the streaming path. Previously this was gated on `supportsNativeActions`
+  // (Tauri-only), which left the browser Ask stuck on the offline draft
+  // fallback even though the server had a live engine.
+  const [hasEngine, setHasEngine] = useState(supportsConversation());
 
   // Rehydrate the most recent conversation so a closed window picks back up
   // where it left off. Best-effort: a missing or malformed store reads empty.

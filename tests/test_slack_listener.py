@@ -13,7 +13,9 @@ if str(LIB) not in sys.path:
 
 from slack_listener import (  # noqa: E402
     SlackPlanningListener,
+    _clean_slack_text,
     _short_plain,
+    _strip_mentions,
     _thread_title_from_text,
     conversational_reply,
     draft_from_slack_text,
@@ -1663,11 +1665,736 @@ def test_conversation_thread_ship_it_opens_a_planning_draft(tmp_path: Path) -> N
     assert result.action == "draft_created"
     assert result.thread_kind == "draft"
     assert converse_calls == []
-    # The draft is seeded from the discussed request, not the bare "ship it".
-    record = registry.lookup("C1", "1716480001.000001")
+    # The draft is registered on the PARENT thread root (not the ship-it ts), so
+    # later steering replies in this thread can reach the draft-revision handler.
+    record = registry.lookup("C1", "1716480000.000000")
+    assert record is not None
+    assert record.kind == "draft"
+    # Seeded from the discussed request, not the bare "ship it".
+    assert "dark mode" in (record.title or "").lower()
+
+
+def test_clean_slack_text_canonicalizes_piped_user_mention() -> None:
+    """A labelled mention "<@ID|label>" must become the bare "<@ID>", not "label".
+
+    The generic "<url|display>" link rule would otherwise rewrite a piped user
+    mention to its bare label, leaving e.g. "alfred ship it" and defeating a
+    whole-token approval match. Canonicalizing to "<@ID>" keeps the token
+    recognizable (for mentions_bot) and strippable (for the approval check),
+    while a real link or a plain request is untouched.
+    """
+    assert _clean_slack_text("<@U0BOT|alfred> ship it") == "<@U0BOT> ship it"
+    assert _clean_slack_text("<@U0BOT> ship it") == "<@U0BOT> ship it"
+    # After stripping the (now bare) mention, the approval token stands alone.
+    assert _strip_mentions(_clean_slack_text("<@U0BOT|Alfred> ship it")) == "ship it"
+    # A real request keeps its words; a genuine link keeps its display text.
+    assert _clean_slack_text("<@U0BOT|alfred> add dark mode") == "<@U0BOT> add dark mode"
+    assert _clean_slack_text("see <https://x.test|the docs>") == "see the docs"
+
+
+def test_clean_slack_text_strips_sent_using_attribution_footer() -> None:
+    """Slack's "*Sent using* <@app>" footer on app-posted messages must be
+    dropped, otherwise "ship it" arrives as "ship it *Sent using* <@app>" and
+    fails the whole-token approval match."""
+    piped = "<@U0BOT|alfred> ship it *Sent using* <@U0APP|Claude>"
+    assert _strip_mentions(_clean_slack_text(piped)) == "ship it"
+    bare = "<@U0BOT> ship it *Sent using* <@U0APP>"
+    assert _strip_mentions(_clean_slack_text(bare)) == "ship it"
+    # A message with no footer is unchanged.
+    assert _strip_mentions(_clean_slack_text("<@U0BOT> ship it")) == "ship it"
+
+
+def test_conversation_thread_mention_prefixed_ship_it_files(tmp_path: Path) -> None:
+    """A channel approval reply "<@BOT|label> ship it" must still file.
+
+    In a channel the user must @-mention the bot, so the approval carries a
+    leading mention token. Slack renders that mention with a display label as
+    "<@BOTID|alfred>", and the generic link cleaner used to rewrite it to the
+    bare label "alfred", leaving "alfred ship it" -- which fails the whole-token
+    approval match, so "ship it" looped back into another converse turn that just
+    re-offered to file, and nothing was ever filed (BUG 1 from live testing).
+    The piped mention must now be canonicalized/stripped so the approval fires.
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    registry.register(
+        SlackThreadRecord(
+            kind="conversation",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="Dark mode",
+            status="open",
+        )
+    )
+    poster = ConversationReplyPoster(
+        [
+            {"user": "U1", "text": "Add a dark mode toggle to settings", "ts": "1716480000.000000"},
+            {"user": "UALFRED", "text": "I can turn this into an issue.", "ts": "1716480000.5"},
+            {"user": "U1", "text": "<@UALFRED|alfred> ship it", "ts": "1716480001.000001"},
+        ]
+    )
+    converse_calls: list[dict] = []
+
+    def converse_runner(**kwargs):
+        converse_calls.append(kwargs)
+        return SimpleNamespace(handled=True, answered=True, intent="build", streamed=False)
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_runner=converse_runner,
+    )
+
+    # The labelled-mention approval arrives as an app_mention reply in the thread.
+    result = listener.handle_payload(
+        {
+            "event_id": "EvMentionShipIt",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": "<@UALFRED|alfred> ship it",
+                "ts": "1716480001.000001",
+                "thread_ts": "1716480000.000000",
+            },
+        }
+    )
+
+    # It filed a real draft, it did NOT loop back into converse.
+    assert result.handled is True
+    assert result.action == "draft_created"
+    assert result.thread_kind == "draft"
+    assert converse_calls == []
+    # Registered on the parent thread root, not the ship-it ts.
+    record = registry.lookup("C1", "1716480000.000000")
     assert record is not None
     assert record.kind == "draft"
     assert "dark mode" in (record.title or "").lower()
+    # A real planning-draft payload was persisted (draft_path set + on disk).
+    assert result.draft_path
+    assert Path(result.draft_path).is_file()
+
+
+def test_ship_it_seeds_from_original_request_not_acceptance(tmp_path: Path) -> None:
+    """The draft must carry the ORIGINAL request's scope, not a later ack line.
+
+    Live regression: shipping a well-scoped plan produced a draft titled after a
+    subsequent "Spec accepted and marked done" ack, with code paths parsed as
+    repo slugs ("llm/sanitize.py", "script/style"). The draft must seed from the
+    earliest substantive build request and must not turn file paths into repos.
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    registry.register(
+        SlackThreadRecord(
+            kind="conversation",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="sanitize",
+            status="open",
+        )
+    )
+    poster = ConversationReplyPoster(
+        [
+            {
+                "user": "U1",
+                "text": (
+                    "strip dangerous tags from user HTML in llm/sanitize.py, "
+                    "covering script/style/on* handlers"
+                ),
+                "ts": "1716480000.000000",
+            },
+            {"user": "UALFRED", "text": "Here is the plan. Ready.", "ts": "1716480000.5"},
+            {"user": "U1", "text": "Spec accepted and marked done", "ts": "1716480000.9"},
+        ]
+    )
+
+    def converse_runner(**kwargs):
+        raise AssertionError("ship it must file, not re-enter converse")
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_runner=converse_runner,
+    )
+
+    result = listener.handle_payload(
+        {
+            "event_id": "EvShipScope",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": "<@UALFRED|alfred> ship it",
+                "ts": "1716480001.000001",
+                "thread_ts": "1716480000.000000",
+            },
+        }
+    )
+
+    assert result.action == "draft_created"
+    payload = json.loads(Path(result.draft_path).read_text(encoding="utf-8"))
+    title = (payload["draft"]["title"] or "").lower()
+    # Titled after the original request, NOT the acceptance ack.
+    assert "accepted" not in title
+    assert "marked done" not in title
+    assert "strip dangerous tags" in title
+    # Code paths are NOT parsed as repo slugs.
+    assert "llm/sanitize.py" not in payload["draft"]["repos"]
+    assert "script/style" not in payload["draft"]["repos"]
+
+
+def test_ship_it_skips_conversational_opener_when_seeding(tmp_path: Path) -> None:
+    """A greeting opener must not be seeded as the build request.
+
+    Review P2: a thread that starts with "hi Alfred" then asks for real work must
+    seed the ship-it draft from the actual request, not the greeting.
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    registry.register(
+        SlackThreadRecord(
+            kind="conversation",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="x",
+            status="open",
+        )
+    )
+    poster = ConversationReplyPoster(
+        [
+            {"user": "U1", "text": "hi Alfred", "ts": "1716480000.000000"},
+            {"user": "UALFRED", "text": "Hi! What can I help with?", "ts": "1716480000.3"},
+            {
+                "user": "U1",
+                "text": "add a CSV export to the attendees table",
+                "ts": "1716480000.6",
+            },
+        ]
+    )
+
+    def converse_runner(**kwargs):
+        raise AssertionError("ship it must file, not re-enter converse")
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_runner=converse_runner,
+    )
+
+    result = listener.handle_payload(
+        {
+            "event_id": "EvShipGreet",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": "<@UALFRED|alfred> ship it",
+                "ts": "1716480001.000001",
+                "thread_ts": "1716480000.000000",
+            },
+        }
+    )
+
+    assert result.action == "draft_created"
+    title = json.loads(Path(result.draft_path).read_text(encoding="utf-8"))["draft"][
+        "title"
+    ].lower()
+    assert "csv export" in title
+    assert "hi alfred" not in title
+
+
+def test_ship_it_skips_status_question_when_seeding(tmp_path: Path) -> None:
+    """A read-only status question must not be seeded as the build request.
+
+    Review P2: a mixed thread that opens with a status question ("what's the
+    fleet doing?") and later contains the real work must seed the ship-it draft
+    from the work request, not the status turn.
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    registry.register(
+        SlackThreadRecord(
+            kind="conversation",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="x",
+            status="open",
+        )
+    )
+    poster = ConversationReplyPoster(
+        [
+            {"user": "U1", "text": "what's the fleet doing?", "ts": "1716480000.000000"},
+            {"user": "UALFRED", "text": "Lucius is idle, Bane is running.", "ts": "1716480000.3"},
+            {
+                "user": "U1",
+                "text": "add a CSV export to the attendees table",
+                "ts": "1716480000.6",
+            },
+        ]
+    )
+
+    def converse_runner(**kwargs):
+        raise AssertionError("ship it must file, not re-enter converse")
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_runner=converse_runner,
+    )
+
+    result = listener.handle_payload(
+        {
+            "event_id": "EvShipStatus",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": "<@UALFRED|alfred> ship it",
+                "ts": "1716480001.000001",
+                "thread_ts": "1716480000.000000",
+            },
+        }
+    )
+
+    assert result.action == "draft_created"
+    title = json.loads(Path(result.draft_path).read_text(encoding="utf-8"))["draft"][
+        "title"
+    ].lower()
+    assert "csv export" in title
+    assert "fleet doing" not in title
+
+
+def test_looks_like_status_or_answer_precision() -> None:
+    from slack_listener import _looks_like_status_or_answer
+
+    # Read-only status / diagnostic questions are status turns.
+    for text in (
+        "what's the fleet doing?",
+        "why did lucius fail on #1038?",
+        "what did you ship today?",
+        "what's blocked right now?",
+        "status",
+        "how does review work?",
+        "<@U0BOT> what's the fleet doing?",
+    ):
+        assert _looks_like_status_or_answer(text) is True, text
+    # Real build requests are NOT status turns, even when they mention status.
+    for text in (
+        "add a dark mode toggle to the settings screen",
+        "fix the login bug in acme/api",
+        "add a status page to the dashboard",
+        "why the export breaks: add a null check to the CSV writer",
+    ):
+        assert _looks_like_status_or_answer(text) is False, text
+
+
+def test_repos_from_text_trims_trailing_sentence_punctuation() -> None:
+    from slack_listener import _repos_from_text
+
+    # A sentence period swept into the token must be trimmed before validation.
+    assert _repos_from_text("please fix octo/app.") == ["octo/app"]
+    assert _repos_from_text("change acme/api, and acme/web.") == ["acme/api", "acme/web"]
+    assert _repos_from_text("update owner/repo!") == ["owner/repo"]
+    # A code path with an extension is still rejected, even with a trailing dot.
+    assert _repos_from_text("edit llm/sanitize.py.") == []
+
+
+def test_parent_thread_steering_after_ship_it_reaches_draft_revision(tmp_path: Path) -> None:
+    """After ship it materializes a draft, steering replies must update it.
+
+    Live regression: the draft was keyed on the ship-it message ts, so later
+    "repo:/desired:/acceptance:" replies in the parent thread routed to the
+    conversation handler and never reached the draft, leaving it stuck at
+    needs_scope. Keying the draft on the parent thread root fixes reachability.
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    registry.register(
+        SlackThreadRecord(
+            kind="conversation",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="export",
+            status="open",
+        )
+    )
+    poster = ConversationReplyPoster(
+        [
+            {
+                "user": "U1",
+                "text": "add a CSV export to the attendees table",
+                "ts": "1716480000.000000",
+            },
+            {"user": "UALFRED", "text": "I can file it.", "ts": "1716480000.5"},
+        ]
+    )
+
+    def converse_runner(**kwargs):
+        raise AssertionError("ship it and steering must not re-enter converse")
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_runner=converse_runner,
+    )
+
+    ship = listener.handle_payload(
+        {
+            "event_id": "EvShip",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": "<@UALFRED|alfred> ship it",
+                "ts": "1716480001.000001",
+                "thread_ts": "1716480000.000000",
+            },
+        }
+    )
+    assert ship.action == "draft_created"
+
+    # A steering reply in the PARENT thread must reach the draft-revision handler.
+    steer = listener.handle_payload(
+        {
+            "event_id": "EvSteer",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": "<@UALFRED> repo: acme-io/frontend\nacceptance: exported CSV matches the visible rows",
+                "ts": "1716480002.000002",
+                "thread_ts": "1716480000.000000",
+            },
+        }
+    )
+    assert steer.action == "plan_revised" or steer.action.startswith("draft_")
+    # The draft record now carries the steered repo scope.
+    record = registry.lookup("C1", "1716480000.000000")
+    assert record is not None
+    assert record.kind == "draft"
+
+
+def test_mention_prefixed_open_questions_none_clears_the_blocker(tmp_path: Path) -> None:
+    """A single-line "<@BOT> open questions: none" steering reply clears the block.
+
+    Live regression: the mention-prefixed single-line clearing form was captured
+    as an operator note instead of parsed, so the open_questions_unresolved
+    blocker stayed and readiness could not pass. A fully-scoped draft with one
+    open question must reach ready after this reply.
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    draft_path = tmp_path / "draft.json"
+    # A draft that is complete except for one open question, so clearing it is
+    # the only thing standing between the draft and ready.
+    draft_path.write_text(
+        json.dumps(
+            {
+                "draft": {
+                    "title": "Strip dangerous tags from user HTML",
+                    "problem": "User HTML can carry script/style/on* handlers (XSS).",
+                    "user": "Any viewer of user content",
+                    "current_behavior": "Raw user HTML is rendered.",
+                    "desired_behavior": "Dangerous tags and handlers are stripped.",
+                    "repos": ["acme-io/api"],
+                    "acceptance_criteria": ["script and style tags are removed"],
+                    "test_plan": "Unit tests over the sanitizer.",
+                    "out_of_scope": "",
+                    "rollout": "",
+                    "open_questions": "Should we also strip data: URIs?",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry.register(
+        SlackThreadRecord(
+            kind="draft",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="Strip dangerous tags from user HTML",
+            status="needs_scope",
+            draft_path=str(draft_path),
+        )
+    )
+    poster = ConversationReplyPoster([])
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="U0BOT",
+    )
+
+    result = listener.handle_payload(
+        {
+            "event_id": "EvClearQ",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": "<@U0BOT> open questions: none",
+                "ts": "1716480003.000003",
+                "thread_ts": "1716480000.000000",
+            },
+        }
+    )
+
+    assert result.action == "draft_revised"
+    assert result.readiness_ok is True
+    payload = json.loads(draft_path.read_text(encoding="utf-8"))
+    open_questions = payload["draft"]["open_questions"]
+    assert "Operator note" not in open_questions
+    assert "None" in open_questions
+
+
+def test_duplicate_mention_delivery_is_processed_once(tmp_path: Path) -> None:
+    """One @mention arrives as app_mention AND message; it must run one turn.
+
+    Slack delivers a single mention as two events with distinct envelope
+    ``event_id`` values but the same ``client_msg_id``. Without content-level
+    de-dup the conversation path runs two model turns and posts two identical
+    replies (BUG 2 from live testing). The second delivery must be reported as a
+    duplicate and never reach the converse runner.
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    poster = Poster()
+    converse_calls: list[dict] = []
+
+    def converse_runner(**kwargs):
+        converse_calls.append(kwargs)
+        client = kwargs["client"]
+        client.chat_postMessage(
+            channel=kwargs["channel"],
+            thread_ts=kwargs["thread_ts"],
+            text="Here is what the fleet is doing.",
+        )
+        return SimpleNamespace(handled=True, answered=True, intent="conversation", streamed=False)
+
+    from slack_converse import SlackConverseConfig
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_config=SlackConverseConfig(enabled=True, engine="claude", channels=frozenset()),
+        converse_runner=converse_runner,
+    )
+
+    def _delivery(event_type: str, event_id: str) -> dict:
+        return {
+            "event_id": event_id,
+            "event": {
+                "type": event_type,
+                "channel": "C1",
+                "user": "U1",
+                "text": "<@UALFRED> what's the fleet doing?",
+                "ts": "1716480050.000001",
+                "client_msg_id": "cmid-abc-123",
+            },
+        }
+
+    first = listener.handle_payload(_delivery("app_mention", "EvA"))
+    second = listener.handle_payload(_delivery("message", "EvB"))
+
+    assert first.handled is True
+    assert first.action == "converse"
+    # The second delivery of the same message is a duplicate: one turn, one reply.
+    assert second.handled is False
+    assert second.action == "duplicate"
+    assert len(converse_calls) == 1
+    assert len(poster.messages) == 1
+
+
+def test_duplicate_api_sent_message_without_client_msg_id_is_deduped(tmp_path: Path) -> None:
+    """An API-sent message carries no client_msg_id and must still de-dupe.
+
+    A message posted via chat.postMessage (another bot / API) is delivered as
+    both an app_mention and a message event but carries no client_msg_id, so the
+    client_msg_id path cannot collapse them (BUG from live testing: both ran and
+    the conversation replied twice). The content-hash fallback keyed on
+    (channel, thread_ts, user, ts, normalized text) -- all identical across the
+    two deliveries of one message -- must collapse them to a single turn.
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    poster = Poster()
+    converse_calls: list[dict] = []
+
+    def converse_runner(**kwargs):
+        converse_calls.append(kwargs)
+        client = kwargs["client"]
+        client.chat_postMessage(
+            channel=kwargs["channel"], thread_ts=kwargs["thread_ts"], text="Fleet status."
+        )
+        return SimpleNamespace(handled=True, answered=True, intent="conversation", streamed=False)
+
+    from slack_converse import SlackConverseConfig
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_config=SlackConverseConfig(enabled=True, engine="claude", channels=frozenset()),
+        converse_runner=converse_runner,
+    )
+
+    def _delivery(event_type: str, event_id: str) -> dict:
+        # No client_msg_id (API-sent). Same ts across both deliveries.
+        return {
+            "event_id": event_id,
+            "event": {
+                "type": event_type,
+                "channel": "C1",
+                "user": "U1",
+                "text": "<@UALFRED|alfred> what's the fleet doing?",
+                "ts": "1716480060.000001",
+            },
+        }
+
+    first = listener.handle_payload(_delivery("app_mention", "EvA"))
+    second = listener.handle_payload(_delivery("message", "EvB"))
+
+    assert first.handled is True
+    assert first.action == "converse"
+    assert second.handled is False
+    assert second.action == "duplicate"
+    assert len(converse_calls) == 1
+    assert len(poster.messages) == 1
+
+
+def test_distinct_api_sent_messages_are_not_collapsed(tmp_path: Path) -> None:
+    """Two genuinely different API-sent messages (distinct ts) both run.
+
+    The content-hash fallback must not over-collapse: two different messages
+    have different ts (Slack assigns one per message) and usually different text,
+    so they must each run their own turn.
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    poster = Poster()
+    converse_calls: list[dict] = []
+
+    def converse_runner(**kwargs):
+        converse_calls.append(kwargs)
+        return SimpleNamespace(handled=True, answered=True, intent="conversation", streamed=False)
+
+    from slack_converse import SlackConverseConfig
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_config=SlackConverseConfig(enabled=True, engine="claude", channels=frozenset()),
+        converse_runner=converse_runner,
+    )
+
+    def _msg(text: str, ts: str, event_id: str) -> dict:
+        return {
+            "event_id": event_id,
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": text,
+                "ts": ts,
+            },
+        }
+
+    first = listener.handle_payload(
+        _msg("<@UALFRED> what's the fleet doing?", "1716480070.000001", "EvA")
+    )
+    second = listener.handle_payload(
+        _msg("<@UALFRED> what shipped today?", "1716480071.000002", "EvB")
+    )
+
+    assert first.action == "converse"
+    assert second.action == "converse"
+    assert len(converse_calls) == 2
+
+
+def test_ignored_message_copy_does_not_strand_the_app_mention(tmp_path: Path) -> None:
+    """The plain message copy of an @mention must not consume the dedup key.
+
+    Slack delivers a channel @mention as both a plain message event and an
+    app_mention event, and the delivery order is not guaranteed. The ambient path
+    deliberately IGNORES the message copy in favour of the app_mention. If the
+    message copy (which arrives first here) marked the shared message-identity
+    dedup key, the real app_mention would be misread as a duplicate and the
+    mention lost entirely (P1 from review). The key must be marked only after a
+    delivery is handled, so the ignored copy leaves it free for the app_mention.
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    poster = Poster()
+    converse_calls: list[dict] = []
+
+    def converse_runner(**kwargs):
+        converse_calls.append(kwargs)
+        client = kwargs["client"]
+        client.chat_postMessage(
+            channel=kwargs["channel"], thread_ts=kwargs["thread_ts"], text="Fleet status."
+        )
+        return SimpleNamespace(handled=True, answered=True, intent="conversation", streamed=False)
+
+    from slack_converse import SlackConverseConfig
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="U0BOT",
+        converse_config=SlackConverseConfig(enabled=True, engine="claude", channels=frozenset()),
+        converse_runner=converse_runner,
+    )
+
+    # No client_msg_id, same ts across both deliveries. Message copy arrives FIRST.
+    message_copy = {
+        "event_id": "EvMsg",
+        "event": {
+            "type": "message",
+            "channel": "C1",
+            "channel_type": "channel",
+            "user": "U1",
+            "text": "<@U0BOT> what's the fleet doing?",
+            "ts": "1716480080.000001",
+        },
+    }
+    app_mention = {
+        "event_id": "EvMention",
+        "event": {
+            "type": "app_mention",
+            "channel": "C1",
+            "user": "U1",
+            "text": "<@U0BOT> what's the fleet doing?",
+            "ts": "1716480080.000001",
+        },
+    }
+
+    first = listener.handle_payload(message_copy)
+    second = listener.handle_payload(app_mention)
+
+    # The message copy is ignored, but the app_mention still runs the turn.
+    assert first.handled is False
+    assert second.handled is True
+    assert second.action == "converse"
+    assert len(converse_calls) == 1
+    assert len(poster.messages) == 1
 
 
 def test_conversation_thread_read_only_control_skips_pending_clarification(

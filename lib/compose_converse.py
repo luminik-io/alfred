@@ -417,14 +417,26 @@ def render_system_prompt(
     code_map: str,
     intake_guidance: str,
     loader: Callable[..., str],
+    operational_grounding: str = "",
 ) -> str:
-    """Render the interrogator system prompt with grounding via ``load_prompt``."""
+    """Render the interrogator system prompt with grounding via ``load_prompt``.
+
+    ``operational_grounding`` is an optional live snapshot of fleet state (see
+    ``converse_grounding.build_operational_grounding``) so a conversation turn can
+    answer status questions from real data. It defaults to empty, in which case
+    the ``${OPERATIONAL_GROUNDING}`` placeholder resolves to a short note that no
+    live status is available, keeping the rendered prompt clean for callers that
+    do not supply it.
+    """
     return loader(
         prompt_path,
         extra_vars={
             "REPO_GROUNDING": repo_grounding,
             "CODE_MAP": code_map,
             "INTAKE_GUIDANCE": intake_guidance,
+            "OPERATIONAL_GROUNDING": (
+                operational_grounding.strip() or "No live fleet status is available for this turn."
+            ),
         },
     )
 

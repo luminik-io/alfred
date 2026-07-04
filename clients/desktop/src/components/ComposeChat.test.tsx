@@ -19,6 +19,9 @@ vi.mock("../api", async () => {
   return {
     ...actual,
     supportsNativeActions: () => true,
+    // The conversational surface runs whenever an engine is reachable (native
+    // or hosted-browser); this suite exercises that live-converse path.
+    supportsConversation: () => true,
     composeConverse: vi.fn(),
     composeDraft: vi.fn(),
     conversationControl: vi.fn(),

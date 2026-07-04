@@ -17,6 +17,9 @@ vi.mock("../api", () => ({
       : false,
   streamComposeConverse: vi.fn(),
   supportsNativeActions: () => false,
+  // This suite exercises the offline draft-fallback surface, so conversation is
+  // explicitly unavailable (a bare preview with no served backend).
+  supportsConversation: () => false,
 }));
 
 const composeDraftMock = vi.mocked(composeDraft);

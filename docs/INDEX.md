@@ -29,6 +29,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`FLEET_BRAIN.md`](FLEET_BRAIN.md): local memory schema, reviewable lesson candidates, failure history, CLI, and read-only MCP bridge.
 - [`CODE_MEMORY.md`](CODE_MEMORY.md): the code-structure memory layer. codebase-memory-mcp indexes in-scope repos into a code graph and answers read-only symbol, caller, and ownership queries the fleet can call on demand.
 - [`MEMORY_PROVIDERS.md`](MEMORY_PROVIDERS.md): Redis Agent Memory, FleetBrain's local ledger role, provider chaining, and optional read-only fallback stores.
+- [`CONVERSATION.md`](CONVERSATION.md): Alfred's conversational surfaces. How a Slack mention, DM, or desktop Ask message becomes a natural, streamed, context-grounded reply (repositories, live fleet status, lessons), when it offers a plan versus answers a question, the streaming transport, the safety rails, and configuration.
 - [`SLACK_UX.md`](SLACK_UX.md): Slack-native message shape, planning replies, approval flow, and anti-patterns.
 - [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md): Alfred Desktop design rationale and tab-by-tab tour, the Slack-native boundary, the `alfred serve` API and native allowlist, and building native installers.
 - [`SERVE.md`](SERVE.md): `alfred serve`, the localhost-only read-only dashboard over state, saved Batman plans, the fleet brain, and planning drafts. The operator's pane of glass and the API Alfred Desktop runs on.
