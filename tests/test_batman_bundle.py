@@ -1082,3 +1082,262 @@ def test_create_issue_continues_when_label_create_fails(monkeypatch):
         labels=["agent:bundle:foo"],
     )
     assert url == "https://github.com/acme/backend/issues/9"
+
+
+# ---------------------------------------------------------------------------
+# Hybrid Batman: cross-repo contract block in child issues.
+#
+# Batman stays the planner and does not open PRs; it centralizes a
+# machine-readable contract into every child issue so per-repo implementers
+# are not blind to sibling repos, shared interfaces, and landing order.
+# ---------------------------------------------------------------------------
+
+_CONTRACT_HEADING = "## Cross-repo contract"
+
+
+def _canonical_body_with_contract():
+    return """
+Bundle: billing-v2 rollout
+
+Repos:
+- myorg/backend
+- myorg/frontend
+- myorg/mobile
+
+Children:
+- backend: add /billing/v2 endpoints behind the billing-v2 flag
+- frontend: wire the billing settings page to the v2 endpoints
+- mobile: read the subscription paywall from the v2 schema
+
+Contract:
+- `POST /billing/v2/subscribe` returns `{status, planId}`
+- shared enum `BillingStatus` = active | past_due | canceled
+- event `billing.subscription.updated` carries `planId`
+
+Sequencing:
+- backend migration lands before frontend consumes it
+- mobile ships last, after the v2 schema is live
+
+Done when:
+- all three repos speak the v2 contract
+"""
+
+
+def test_child_issue_body_carries_cross_repo_contract():
+    """Every filed child body must contain the contract section so the
+    per-repo implementer sees the whole system, not just its own repo."""
+    plan = _parse_parent(_canonical_body_with_contract())
+    assert len(plan.children) == 3, [c.repo for c in plan.children]
+    for child in plan.children:
+        assert _CONTRACT_HEADING in child.body, child.repo
+        # Exactly one contract block per child (never double-appended).
+        assert child.body.count(_CONTRACT_HEADING) == 1, child.repo
+        # Code-graph pointer is always present.
+        assert "code_memory" in child.body, child.repo
+
+
+def test_contract_lists_siblings_with_scopes():
+    """Repo A's contract must name siblings B and C with their scope
+    one-liners, and must NOT list the target repo itself."""
+    plan = _parse_parent(_canonical_body_with_contract())
+    by_repo = {c.repo.rsplit("/", 1)[-1]: c for c in plan.children}
+    backend_body = by_repo["backend"].body
+
+    # Siblings appear with their titles.
+    assert "myorg/frontend" in backend_body
+    assert "wire the billing settings page" in backend_body
+    assert "myorg/mobile" in backend_body
+    assert "subscription paywall" in backend_body
+
+    # The target repo is not listed as its own sibling.
+    sibling_section = backend_body.split("Sibling repos in this rollout", 1)[1]
+    assert "`myorg/backend`" not in sibling_section
+
+
+def test_contract_includes_shared_interfaces_and_sequencing():
+    """When the parent plan supplies a Contract: block and sequencing, both
+    surface in the child body so implementers agree on shared shapes and
+    landing order."""
+    plan = _parse_parent(_canonical_body_with_contract())
+    backend_body = {c.repo.rsplit("/", 1)[-1]: c for c in plan.children}["backend"].body
+
+    assert "Shared interfaces and invariants" in backend_body
+    assert "BillingStatus" in backend_body
+    assert "billing.subscription.updated" in backend_body
+
+    assert "Landing order" in backend_body
+    assert "backend migration lands before frontend consumes it" in backend_body
+
+
+def test_contract_without_contract_section_still_removes_blindness():
+    """A plan with NO Contract:/Sequencing: block still emits the siblings +
+    code-graph pointer block, and never crashes."""
+    body = """
+Bundle: billing-v2 rollout
+
+Repos:
+- myorg/backend
+- myorg/frontend
+
+Children:
+- backend: add /billing/v2 endpoints
+- frontend: wire the settings page
+
+Done when:
+- both repos speak v2
+"""
+    plan = _parse_parent(body)
+    assert len(plan.children) == 2
+    for child in plan.children:
+        assert _CONTRACT_HEADING in child.body
+        assert "Sibling repos in this rollout" in child.body
+        assert "code_memory" in child.body
+        # No shared-interface section when none was supplied.
+        assert "Shared interfaces and invariants" not in child.body
+        assert "Landing order" not in child.body
+    # Backend names frontend as its sibling and vice versa.
+    backend = {c.repo.rsplit("/", 1)[-1]: c for c in plan.children}["backend"]
+    assert "myorg/frontend" in backend.body
+
+
+def test_build_cross_repo_contract_is_pure_and_bounded():
+    """The block builder is a pure function of its inputs and stays bounded
+    even with an oversized contract."""
+    import batman as bm
+
+    children = (
+        bm.ChildIssue(repo="acme/a", title="do A", body="", labels=()),
+        bm.ChildIssue(repo="acme/b", title="do B", body="", labels=()),
+    )
+    huge = [f"line {i}" for i in range(500)]
+    block = bm.build_cross_repo_contract(
+        target_repo="acme/a",
+        children=children,
+        bundle_slug="demo",
+        contract_lines=huge,
+    )
+    # Deterministic: same inputs, same output.
+    again = bm.build_cross_repo_contract(
+        target_repo="acme/a",
+        children=children,
+        bundle_slug="demo",
+        contract_lines=huge,
+    )
+    assert block == again
+    # Bounded output: the builder never emits the full 500-line contract.
+    assert block.count("- line ") <= 100
+    # Sibling named, self excluded.
+    assert "`acme/b`: do B" in block
+    assert "`acme/a`:" not in block
+
+
+def test_contract_sibling_list_is_bounded_with_more_indicator():
+    """With many children and very long scopes, the sibling list in the
+    contract block must be bounded in both entry count and per-line length,
+    and must show a "+N more" indicator when siblings are dropped."""
+    import batman as bm
+
+    long_scope = "x" * 1000
+    children = tuple(
+        bm.ChildIssue(repo=f"acme/repo{i:02d}", title=long_scope, body="", labels=())
+        for i in range(40)
+    )
+    block = bm.build_cross_repo_contract(
+        target_repo="acme/repo00",
+        children=children,
+        bundle_slug="demo",
+    )
+    # Deterministic.
+    again = bm.build_cross_repo_contract(
+        target_repo="acme/repo00",
+        children=children,
+        bundle_slug="demo",
+    )
+    assert block == again
+
+    sibling_lines = [line for line in block.splitlines() if line.startswith("- `acme/repo")]
+    # 39 siblings (self excluded) but capped at _MAX_CONTRACT_LINES shown.
+    assert len(sibling_lines) <= bm._MAX_CONTRACT_LINES, len(sibling_lines)
+    # Every shown sibling line is length-bounded (not the raw 1000-char scope).
+    for line in sibling_lines:
+        assert len(line) <= bm._MAX_CONTRACT_LINE_LEN + len("- "), len(line)
+    # The dropped-siblings indicator is present and counts correctly.
+    dropped = 39 - len(sibling_lines)
+    assert dropped > 0
+    assert f"(+{dropped} more sibling repo(s) in this rollout)" in block
+    # Self never listed as its own sibling.
+    assert "`acme/repo00`:" not in block
+
+
+def test_contract_reattached_once_after_operator_feedback():
+    """Operator feedback that adds a repo must give the new child a contract
+    and must not double-append the block on existing children."""
+    import batman as bm
+
+    plan = _parse_parent(_canonical_body_with_contract())
+    amended = bm._apply_operator_feedback_to_plan(plan, ["add repo: myorg/nango"])
+    repos = {c.repo for c in amended.children}
+    assert "myorg/nango" in repos
+    for child in amended.children:
+        assert child.body.count(_CONTRACT_HEADING) == 1, child.repo
+        assert "code_memory" in child.body
+    # The new child names an existing sibling, and shared interfaces carried over.
+    nango = next(c for c in amended.children if c.repo == "myorg/nango")
+    assert "myorg/backend" in nango.body
+    assert "BillingStatus" in nango.body
+
+
+def test_children_section_terminates_at_contract_and_sequencing_headings():
+    """When the parent orders blocks as Children: -> Contract: -> Sequencing:
+    -> Done when:, the child parser must stop at the Contract:/Sequencing:
+    headings so their lines are NOT swallowed as child-work entries, and the
+    contract block must still parse correctly."""
+    body = """
+Bundle: billing-v2 rollout
+
+Repos:
+- myorg/backend
+- myorg/frontend
+
+Children:
+- backend: add /billing/v2 endpoints behind the billing-v2 flag
+- frontend: wire the billing settings page to the v2 endpoints
+
+Contract:
+- `POST /billing/v2/subscribe` returns `{status, planId}`
+- shared enum `BillingStatus` = active | past_due | canceled
+
+Sequencing:
+- backend migration lands before frontend consumes it
+
+Done when:
+- both repos speak the v2 contract
+"""
+    plan = _parse_parent(body)
+
+    # (a) exactly the two real children parsed; no contract/sequencing lines
+    # leaked in as child work.
+    assert len(plan.children) == 2, [c.title for c in plan.children]
+    child_titles = [c.title for c in plan.children]
+    assert child_titles == [
+        "add /billing/v2 endpoints behind the billing-v2 flag",
+        "wire the billing settings page to the v2 endpoints",
+    ], child_titles
+    joined_titles = " ".join(child_titles)
+    for leaked in ("BillingStatus", "POST /billing/v2/subscribe", "migration lands"):
+        assert leaked not in joined_titles, leaked
+    # No child repo token got invented from a contract/sequencing bullet.
+    assert {c.repo for c in plan.children} == {"myorg/backend", "myorg/frontend"}
+
+    # (b) the contract block still parses correctly off the same body.
+    assert list(plan.contract_lines) == [
+        "`POST /billing/v2/subscribe` returns `{status, planId}`",
+        "shared enum `BillingStatus` = active | past_due | canceled",
+    ], plan.contract_lines
+    assert list(plan.sequencing_lines) == ["backend migration lands before frontend consumes it"], (
+        plan.sequencing_lines
+    )
+    # And it lands in the child bodies.
+    backend = {c.repo.rsplit("/", 1)[-1]: c for c in plan.children}["backend"]
+    assert "BillingStatus" in backend.body
+    assert "backend migration lands before frontend consumes it" in backend.body
