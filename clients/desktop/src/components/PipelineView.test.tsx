@@ -85,6 +85,38 @@ describe("PipelineView", () => {
     expect(screen.getByText(/nothing in the pipeline yet/i)).toBeInTheDocument();
   });
 
+  it("shows the shipped-card attribution under the active roster theme", () => {
+    // A Lucius-authored shipped card must read as the Justice-League persona
+    // ("Superman"), not the hardcoded Batman-cast name, when the theme is set.
+    renderPipeline({
+      rosterTheme: "justice-league",
+      board: board({
+        columns: {
+          queued: [],
+          in_progress: [],
+          shipped: [card({ kind: "pr", number: 9, title: "feat: add export", author: "lucius" })],
+        },
+        counts: { queued: 0, in_progress: 0, shipped: 1 },
+      }),
+    });
+    expect(screen.getByText("Superman")).toBeInTheDocument();
+    expect(screen.queryByText("Lucius")).not.toBeInTheDocument();
+  });
+
+  it("defaults the shipped-card attribution to the Batman roster when no theme is set", () => {
+    renderPipeline({
+      board: board({
+        columns: {
+          queued: [],
+          in_progress: [],
+          shipped: [card({ kind: "pr", number: 9, title: "feat: add export", author: "lucius" })],
+        },
+        counts: { queued: 0, in_progress: 0, shipped: 1 },
+      }),
+    });
+    expect(screen.getByText("Lucius")).toBeInTheDocument();
+  });
+
   it("renders a server hard failure as an honest error, not a false-empty board", () => {
     renderPipeline({
       board: board({ error: "GitHub data unavailable for 3 watched repos" }),

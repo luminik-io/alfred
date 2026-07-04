@@ -17,6 +17,15 @@ import type { CSSProperties } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { exactTime, friendlyTime } from "../format";
+import { isKnownFleetCodename } from "../lib/agentRoster";
+import {
+  type CustomRosterNames,
+  DEFAULT_ROSTER_THEME,
+  EMPTY_CUSTOM_NAMES,
+  normalizeCodename,
+  resolveThemedIdentity,
+  type RosterThemeId,
+} from "../lib/agentThemes";
 import {
   buildActiveThreads,
   buildCostHealth,
@@ -68,25 +77,28 @@ type RouteCard = {
   themeAccent: string;
 };
 
-const FALLBACK_ROUTE_CARDS: RouteCard[] = [
+// The fallback roster carries canonical CODENAMES only. The visible name + role
+// label come from the active roster theme (resolveThemedIdentity), so this panel
+// re-skins with the Roster page instead of hardcoding Batman-cast names.
+type FallbackRouteSeed = {
+  codename: string;
+  purpose: string;
+  themeAccent: string;
+};
+
+const FALLBACK_ROUTE_SEEDS: FallbackRouteSeed[] = [
   {
     codename: "batman",
-    displayName: "Batman",
-    roleTitle: "Architect",
     purpose: "Plans and coordinates multi-repo work with approval.",
     themeAccent: "var(--primary)",
   },
   {
     codename: "lucius",
-    displayName: "Lucius",
-    roleTitle: "Senior Developer",
     purpose: "Ships scoped implementation issues as pull requests.",
     themeAccent: "var(--blue)",
   },
   {
     codename: "drake",
-    displayName: "Drake",
-    roleTitle: "Spec Planner",
     purpose: "Turns vague work into implementation-ready issues.",
     themeAccent: "var(--accent)",
   },
@@ -111,6 +123,8 @@ export function ReviewView({
   onOpenThread,
   onPlanDecision,
   busyPlanAction,
+  rosterTheme = DEFAULT_ROSTER_THEME,
+  customNames = EMPTY_CUSTOM_NAMES,
 }: {
   snapshot: Snapshot | null;
   needsYou: AttentionItem[];
@@ -121,6 +135,8 @@ export function ReviewView({
   onOpenThread?: (thread: RequestThreadModel) => void;
   onPlanDecision?: (plan: PlanDraft, decision: PlanDecision) => void;
   busyPlanAction?: string | null;
+  rosterTheme?: RosterThemeId;
+  customNames?: CustomRosterNames;
 }) {
   const running = buildRunning(snapshot);
   const health = buildCostHealth(snapshot);
@@ -129,7 +145,10 @@ export function ReviewView({
   const fleet = buildFleetActivity(snapshot);
   const decisions = needsYou.length;
   const [shippedDays, setShippedDays] = useState<number>(1);
-  const routeCards = useMemo(() => buildRouteCards(snapshot), [snapshot]);
+  const routeCards = useMemo(
+    () => buildRouteCards(snapshot, rosterTheme, customNames),
+    [snapshot, rosterTheme, customNames],
+  );
   const filteredShipped = useMemo<ShippedBoard | null>(() => {
     if (!shipped) return null;
     const within = (card: ShippedCard) => card.age_days == null || card.age_days <= shippedDays;
@@ -138,7 +157,20 @@ export function ReviewView({
       columns: { ...shipped.columns, shipped: shipped.columns.shipped.filter(within) },
     };
   }, [shipped, shippedDays]);
-  const filteredDigest = useMemo(() => buildShippedDigest(filteredShipped), [filteredShipped]);
+  const filteredDigest = useMemo(() => {
+    // buildShippedDigest carries the canonical codename; resolve the visible
+    // badge name through the active roster theme so the Shipped lane re-skins
+    // with the Roster page (Justice League, custom, ...) instead of the
+    // hardcoded Batman-cast name.
+    return buildShippedDigest(filteredShipped).map((item) =>
+      item.agent
+        ? {
+            ...item,
+            agent: resolveThemedIdentity({ codename: item.agent }, rosterTheme, customNames).name,
+          }
+        : item,
+    );
+  }, [filteredShipped, rosterTheme, customNames]);
   // A paused fleet is not "running", so a mostly/all-paused fleet with no live
   // firing prefers the shipped proof (or needs-you) over an empty Running lane.
   const fleetHeld = fleet.allPaused || fleet.mostlyPaused;
@@ -451,9 +483,35 @@ function NeedsYouLane({
   );
 }
 
-function buildRouteCards(snapshot: Snapshot | null): RouteCard[] {
+// The fallback cards, resolved through the active roster theme so a preset such
+// as Justice League re-skins them just like the Roster page.
+function fallbackRouteCards(
+  themeId: RosterThemeId,
+  customNames: CustomRosterNames,
+): RouteCard[] {
+  return FALLBACK_ROUTE_SEEDS.map((seed) => {
+    const identity = resolveThemedIdentity(
+      { codename: seed.codename },
+      themeId,
+      customNames,
+    );
+    return {
+      codename: seed.codename,
+      displayName: identity.name,
+      roleTitle: identity.roleLabel,
+      purpose: seed.purpose,
+      themeAccent: seed.themeAccent,
+    };
+  });
+}
+
+function buildRouteCards(
+  snapshot: Snapshot | null,
+  themeId: RosterThemeId = DEFAULT_ROSTER_THEME,
+  customNames: CustomRosterNames = EMPTY_CUSTOM_NAMES,
+): RouteCard[] {
   const agents = snapshot?.status.agents || [];
-  if (!agents.length) return FALLBACK_ROUTE_CARDS;
+  if (!agents.length) return fallbackRouteCards(themeId, customNames);
   const byCodename = new Map(agents.map((agent) => [agent.codename, agent]));
   const prioritized = [
     ...ROUTE_AGENT_PRIORITY.map((codename) => byCodename.get(codename)).filter(
@@ -464,14 +522,54 @@ function buildRouteCards(snapshot: Snapshot | null): RouteCard[] {
   const cards = prioritized
     .filter((agent) => agent.display_name || agent.role_title || agent.purpose)
     .slice(0, 3)
-    .map((agent) => ({
-      codename: agent.codename,
-      displayName: agent.display_name || titleFromCodename(agent.codename),
-      roleTitle: agent.role_title || "Agent",
-      purpose: agent.purpose || "Handles scheduled local Alfred work.",
-      themeAccent: agent.theme_accent || "var(--primary)",
-    }));
-  return cards.length ? cards : FALLBACK_ROUTE_CARDS;
+    .map((agent) => {
+      // Resolve the visible name + role label through the active theme, exactly
+      // as the Roster page does (agentProfile), so a themed roster re-skins this
+      // panel instead of showing the raw Batman-default server labels.
+      const identity = resolveThemedIdentity(
+        {
+          codename: agent.codename,
+          roleTitle: agent.role_title,
+          purpose: agent.purpose,
+        },
+        themeId,
+        customNames,
+      );
+      const short = normalizeCodename(agent.codename);
+      // Membership in the roster manifest, using the same predicate
+      // agentProfile()/resolveThemedIdentity rely on. A dotted/namespaced
+      // codename whose base is NOT a known fleet codename (e.g. "org.acme")
+      // stays unknown, so the preset never overwrites its runtime label with a
+      // titleized or blank re-skin.
+      const known = isKnownFleetCodename(agent.codename);
+      // Name and role are resolved PER FIELD, mirroring agentProfile() so a
+      // partial custom theme (only names.lucius, or only roles.lucius) keeps the
+      // runtime/server value for the un-overridden field instead of overwriting
+      // both. Under a non-default preset the theme owns both fields for a known
+      // fleet agent (the server default is just the Batman name); a genuine
+      // server rename of an unknown agent (including an unknown dotted one) is
+      // still honored.
+      const presetReskinsKnown =
+        themeId !== "custom" && themeId !== DEFAULT_ROSTER_THEME && known;
+      const hasCustomName =
+        themeId === "custom" && Boolean(customNames.names[short]?.trim());
+      const hasCustomRole =
+        themeId === "custom" && Boolean(customNames.roles[short]?.trim());
+      const themeOwnsName = hasCustomName || presetReskinsKnown;
+      const themeOwnsRole = hasCustomRole || presetReskinsKnown;
+      return {
+        codename: agent.codename,
+        displayName: themeOwnsName
+          ? identity.name
+          : agent.display_name || identity.name,
+        roleTitle: themeOwnsRole
+          ? identity.roleLabel
+          : agent.role_title || identity.roleLabel,
+        purpose: agent.purpose || "Handles scheduled local Alfred work.",
+        themeAccent: agent.theme_accent || "var(--primary)",
+      };
+    });
+  return cards.length ? cards : fallbackRouteCards(themeId, customNames);
 }
 
 function DecisionCard({
@@ -534,15 +632,6 @@ function DecisionCard({
       </CardContent>
     </Card>
   );
-}
-
-function titleFromCodename(value: string): string {
-  return value
-    .replace(/[_-]+/g, " ")
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(" ");
 }
 
 function ActivityLane({

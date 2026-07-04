@@ -23,6 +23,13 @@ import {
   type BoardColumn,
 } from "../lib/chips";
 import {
+  type CustomRosterNames,
+  DEFAULT_ROSTER_THEME,
+  EMPTY_CUSTOM_NAMES,
+  resolveThemedIdentity,
+  type RosterThemeId,
+} from "../lib/agentThemes";
+import {
   dedupePlans,
   isLowSignalPlan,
   planNeedsAttention,
@@ -112,6 +119,8 @@ export function PipelineView({
   onDiscardPlan,
   onFileIssue,
   onFollowupAction,
+  rosterTheme = DEFAULT_ROSTER_THEME,
+  customNames = EMPTY_CUSTOM_NAMES,
 }: {
   board: ShippedBoard | null;
   state: "idle" | "loading" | "error";
@@ -126,6 +135,8 @@ export function PipelineView({
   onDiscardPlan: (plan: PlanDraft) => void;
   onFileIssue: (plan: PlanDraft) => void;
   onFollowupAction: (plan: PlanDraft, action: FollowupAction) => void;
+  rosterTheme?: RosterThemeId;
+  customNames?: CustomRosterNames;
 }) {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [showLowSignal, setShowLowSignal] = useState(false);
@@ -293,6 +304,8 @@ export function PipelineView({
                 canQueue={canQueue}
                 busyQueue={busyQueue}
                 onQueueAction={onQueueAction}
+                rosterTheme={rosterTheme}
+                customNames={customNames}
               />
             ))}
             {lowSignal.length ? (
@@ -346,6 +359,8 @@ export function PipelineView({
                       canQueue={canQueue}
                       busyQueue={busyQueue}
                       onQueueAction={onQueueAction}
+                      rosterTheme={rosterTheme}
+                      customNames={customNames}
                     />
                   ))
                 ) : (
@@ -572,6 +587,8 @@ function BoardLifecycleCard({
   canQueue,
   busyQueue,
   onQueueAction,
+  rosterTheme,
+  customNames,
 }: {
   card: ShippedCard;
   column: BoardColumn;
@@ -580,8 +597,16 @@ function BoardLifecycleCard({
   canQueue?: boolean;
   busyQueue?: string | null;
   onQueueAction?: QueueActionHandler;
+  rosterTheme: RosterThemeId;
+  customNames: CustomRosterNames;
 }) {
-  const agent = agentForShipped(card);
+  // Resolve the detected codename through the ACTIVE roster theme so the shipped
+  // attribution reads the same themed name as the Roster page, not a hardcoded
+  // Batman-cast name.
+  const codename = agentForShipped(card);
+  const agent = codename
+    ? resolveThemedIdentity({ codename }, rosterTheme, customNames).name
+    : null;
   // A gated plan (agent:plan-pending-approval) is a decision waiting on the
   // operator. The `queue` action strips the gate label (see lib/issue_queue.py),
   // so it IS the in-app "give the go-ahead" path: a card that says "Needs your

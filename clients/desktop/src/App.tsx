@@ -302,6 +302,8 @@ function App() {
           onOpenThread={setOpenThread}
           onPlanDecision={runPlanDecision}
           busyPlanAction={busyPlanAction}
+          rosterTheme={rosterTheme}
+          customNames={customNames}
         />
       ) : null}
       {tab === "pipeline" ? (
@@ -320,6 +322,8 @@ function App() {
             onDiscardPlan={runPlanDiscard}
             onFileIssue={runPlanIssueFile}
             onFollowupAction={runFollowupAction}
+            rosterTheme={rosterTheme}
+            customNames={customNames}
           />
         </section>
       ) : null}
