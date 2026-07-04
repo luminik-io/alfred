@@ -68,9 +68,7 @@ def _run_consolidate(args: argparse.Namespace) -> dict[str, Any]:
         stdout, stderr = proc.communicate()
         detail = _short((stderr or stdout or "").strip(), 500)
         suffix = f": {detail}" if detail else ""
-        raise RuntimeError(
-            f"memory consolidate timed out after {args.timeout}s{suffix}"
-        ) from exc
+        raise RuntimeError(f"memory consolidate timed out after {args.timeout}s{suffix}") from exc
 
     # rc 1 WITH a valid JSON summary means "AMS forget failed" (real, but the
     # payload is still useful). A crash BEFORE any JSON is printed must surface

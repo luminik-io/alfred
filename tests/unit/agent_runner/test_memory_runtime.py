@@ -188,9 +188,7 @@ def test_record_reflections_logs_when_no_provider_accepts(monkeypatch, caplog) -
             firing_id="fid-1",
         )
     assert written == 0
-    assert any(
-        "dropped 1 of 1 reflection" in record.getMessage() for record in caplog.records
-    )
+    assert any("dropped 1 of 1 reflection" in record.getMessage() for record in caplog.records)
 
 
 def test_record_firing_records_failure_memory() -> None:

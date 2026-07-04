@@ -662,9 +662,7 @@ def _promote_auto(
         confidence=confidence,
         created_at=created_at,
     )
-    brain.promote_memory_candidate(
-        cand.id, reviewer="auto", reviewed_at=promoted_at or created_at
-    )
+    brain.promote_memory_candidate(cand.id, reviewer="auto", reviewed_at=promoted_at or created_at)
     return cand.id
 
 
@@ -842,13 +840,11 @@ def test_consolidate_malformed_flag_stays_disarmed(brain: FleetBrain) -> None:
 def test_consolidate_arms_on_recognized_truthy_tokens(brain: FleetBrain) -> None:
     for token in ("1", "true", "yes", "on", "enabled"):
         assert (
-            brain.consolidate_lessons(env={"ALFRED_MEMORY_CONSOLIDATE": token})["enabled"]
-            is True
+            brain.consolidate_lessons(env={"ALFRED_MEMORY_CONSOLIDATE": token})["enabled"] is True
         ), token
     for token in ("0", "false", "no", "off", "", "maybe", "2"):
         assert (
-            brain.consolidate_lessons(env={"ALFRED_MEMORY_CONSOLIDATE": token})["enabled"]
-            is False
+            brain.consolidate_lessons(env={"ALFRED_MEMORY_CONSOLIDATE": token})["enabled"] is False
         ), token
 
 

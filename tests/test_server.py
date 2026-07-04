@@ -485,9 +485,7 @@ def test_api_memory_stats_reports_error_when_ledger_down(
 ) -> None:
     """An unreachable ledger returns null stats + an error, never a 500."""
     state = tmp_path / "state"
-    monkeypatch.setattr(
-        server_views, "_memory_brain", lambda *_a, **_kw: (None, "internal error")
-    )
+    monkeypatch.setattr(server_views, "_memory_brain", lambda *_a, **_kw: (None, "internal error"))
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     resp = client.get("/api/memory/stats")
