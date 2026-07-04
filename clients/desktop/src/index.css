@@ -3737,6 +3737,15 @@ body {
   padding: 0;
 }
 
+/* The in-flight reply renders as fast raw text (no per-token markdown parse);
+   preserve its newlines and wrapping so it reads like prose until it settles
+   into the rich markdown pass. */
+.ask-bubble__stream-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* A live caret on the streaming assistant turn, so tokens visibly land. */
 .ask-bubble__md--streaming > :last-child::after {
   content: "";

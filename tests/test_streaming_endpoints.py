@@ -297,3 +297,22 @@ def test_stream_converse_turn_heartbeat_disabled_with_zero(tmp_path: Path) -> No
     # heartbeat_seconds=0 disables keep-alives entirely (the env knob must be
     # able to turn the feature off, not be floored to a 1s spam).
     assert ": keep-alive" not in asyncio.run(_collect())
+
+
+def test_converse_poll_default_is_snappy() -> None:
+    # The converse poll interval is the floor on how fast a written token reaches
+    # the client, so it must stay small (the chat felt slow at 150ms). Guard the
+    # default so it is not quietly regressed back up.
+    assert streaming.CONVERSE_POLL_SECONDS <= 0.05
+    assert streaming.CONVERSE_POLL_SECONDS > 0
+
+
+def test_converse_poll_is_env_overridable(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Config-driven tunable: an operator can widen or tighten the poll without a
+    # code change, and a garbage value floors to a small positive (never 0/spin).
+    monkeypatch.setenv("ALFRED_CONVERSE_POLL_SECONDS", "0.02")
+    assert streaming._env_float("ALFRED_CONVERSE_POLL_SECONDS", 0.04) == 0.02
+    assert max(0.005, streaming._env_float("ALFRED_CONVERSE_POLL_SECONDS", 0.04)) == 0.02
+
+    monkeypatch.setenv("ALFRED_CONVERSE_POLL_SECONDS", "not-a-number")
+    assert max(0.005, streaming._env_float("ALFRED_CONVERSE_POLL_SECONDS", 0.04)) == 0.04

@@ -1,7 +1,7 @@
 import { Check, Copy, ExternalLink, RotateCcw } from "lucide-react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
-import { useState } from "react";
-import ReactMarkdown from "react-markdown";
+import { memo, useState } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import {
@@ -32,9 +32,46 @@ export type AskMessageContext = {
   lastReplyId: string | null;
 };
 
-// The text part renderer: rich markdown for assistant prose, plain text for the
-// user. A streaming assistant part shows a live caret; an empty streaming part
-// shows the three-dot typing indicator.
+// Static component maps for ReactMarkdown / plugin arrays, hoisted so they are
+// not rebuilt on every render (a new object each token would defeat memoization
+// and force react-markdown to re-run its full pipeline needlessly).
+const MARKDOWN_COMPONENTS: Components = {
+  a: ({ href, children }) => <SafeMarkdownLink href={href}>{children}</SafeMarkdownLink>,
+  pre: CodeBlock,
+};
+const REMARK_PLUGINS = [remarkGfm];
+const REHYPE_PLUGINS: [typeof rehypeHighlight, { detect: boolean; ignoreMissing: boolean }][] = [
+  [rehypeHighlight, { detect: true, ignoreMissing: true }],
+];
+
+// The settled-assistant markdown renderer. Memoized on `text` so an unrelated
+// message updating (or the streaming message's OWN later tokens, once settled)
+// does not re-run the react-markdown + remark-gfm + rehype-highlight pipeline.
+// This pipeline is the heaviest work in the thread; parsing + syntax
+// highlighting the full accumulated reply on every token was the dominant cause
+// of the chat feeling slow (an O(n^2) reparse over the whole message per chunk).
+const AssistantMarkdown = memo(function AssistantMarkdown({ text }: { text: string }) {
+  return (
+    <div className="ask-bubble__md">
+      <ReactMarkdown
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
+        components={MARKDOWN_COMPONENTS}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
+});
+
+// The text part renderer: rich markdown for settled assistant prose, plain text
+// for the user AND for the assistant WHILE it streams. Re-parsing markdown on
+// every token is what made the chat feel slow, so the in-flight reply renders as
+// fast whitespace-preserving text with a live caret; the moment the turn settles
+// the same text is handed to the memoized markdown renderer for the final rich
+// pass (code highlighting, links, lists). Because streamed prose is plain text,
+// the swap is visually seamless. An empty streaming part shows the three-dot
+// typing indicator.
 function AskTextPart(role: "user" | "assistant"): TextMessagePartComponent {
   return function TextPart({ text, status }) {
     const streaming = status?.type === "running";
@@ -50,20 +87,16 @@ function AskTextPart(role: "user" | "assistant"): TextMessagePartComponent {
         </span>
       );
     }
-    return (
-      <div className={`ask-bubble__md${streaming ? " ask-bubble__md--streaming" : ""}`}>
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
-          components={{
-            a: ({ href, children }) => <SafeMarkdownLink href={href}>{children}</SafeMarkdownLink>,
-            pre: CodeBlock,
-          }}
-        >
-          {text}
-        </ReactMarkdown>
-      </div>
-    );
+    if (streaming) {
+      // Fast path: raw whitespace-preserving text, no markdown parse or syntax
+      // highlight per token. The <p> is the caret's `> :last-child` anchor.
+      return (
+        <div className="ask-bubble__md ask-bubble__md--streaming">
+          <p className="ask-bubble__stream-text">{text}</p>
+        </div>
+      );
+    }
+    return <AssistantMarkdown text={text} />;
   };
 }
 

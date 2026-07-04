@@ -381,27 +381,74 @@ export function useAskThread({
         return;
       }
 
-      const renderToken = (fragment: string) => {
-        if (!isCurrent()) return;
+      // Coalesce streamed fragments to at most one state update per animation
+      // frame. A fast model can emit many tokens between paints; a setTurns per
+      // token forced a React commit (and, before, a full markdown reparse) for
+      // each one. Buffering fragments and flushing on rAF holds 60fps under a
+      // token burst while keeping the reply visually live. `flushTokens` also
+      // runs synchronously before the turn settles so no buffered text is lost.
+      let pendingFragments = "";
+      let rafHandle: number | null = null;
+      const applyPending = () => {
+        rafHandle = null;
+        if (!pendingFragments) return;
+        // A frame scheduled just before an abort/stop must not resurrect text
+        // into a turn the stop already finalized.
+        if (!isCurrent()) {
+          pendingFragments = "";
+          return;
+        }
+        const chunk = pendingFragments;
+        pendingFragments = "";
         setTurns((prev) => {
           const next = [...prev];
           const last = next[next.length - 1];
           if (last && last.kind === "message" && last.role === "assistant" && last.pending) {
-            next[next.length - 1] = { ...last, content: last.content + fragment };
+            next[next.length - 1] = { ...last, content: last.content + chunk };
           }
           return next;
         });
+      };
+      const scheduleFlush =
+        typeof requestAnimationFrame === "function"
+          ? () => {
+              if (rafHandle === null) rafHandle = requestAnimationFrame(applyPending);
+            }
+          : applyPending;
+      const flushTokens = () => {
+        if (rafHandle !== null && typeof cancelAnimationFrame === "function") {
+          cancelAnimationFrame(rafHandle);
+          rafHandle = null;
+        }
+        applyPending();
+      };
+      // Drop any buffered fragment and cancel a scheduled flush without applying
+      // it. Used when the streamed turn is abandoned (transport retry, abort).
+      const discardPending = () => {
+        pendingFragments = "";
+        if (rafHandle !== null && typeof cancelAnimationFrame === "function") {
+          cancelAnimationFrame(rafHandle);
+        }
+        rafHandle = null;
+      };
+      const renderToken = (fragment: string) => {
+        if (!isCurrent()) return;
+        pendingFragments += fragment;
+        scheduleFlush();
       };
 
       try {
         let reply: ConverseResponse;
         try {
           reply = await streamComposeConverse(baseUrl, converseRequest, renderToken, controller.signal);
+          // Land any fragment still buffered from the last frame before settle.
+          flushTokens();
         } catch (streamErr) {
           if (controller.signal.aborted) return;
           if (isLiveSessionUnavailable(streamErr)) throw streamErr;
-          // A transport failure (not a missing engine): retry buffered.
-          renderToken("");
+          // A transport failure (not a missing engine): retry buffered. Drop any
+          // partial streamed text and reset to a fresh pending placeholder.
+          discardPending();
           if (isCurrent()) {
             setTurns([
               ...nextTurns,
