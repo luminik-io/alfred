@@ -370,15 +370,31 @@ def parse_verdict(raw_output: str) -> GraderVerdict:
     explanation = str(data.get("explanation", "") or "").strip()
     criteria = _coerce_criteria(data.get("criteria"))
 
-    # Consistency guard: a "satisfied" verdict that still lists a failing
-    # criterion is internally inconsistent. Trust the criteria (the concrete
-    # evidence) over the headline and downgrade, so a grader cannot pass a run
-    # while simultaneously reporting an unmet criterion.
-    if result == "satisfied" and any(not c.passed for c in criteria):
-        result = "needs_revision"
-        explanation = (
-            explanation + " "
-        ).strip() + "(downgraded: verdict said satisfied but a criterion was unmet)"
+    # Gate-bypass guard: a terminal "satisfied" verdict is only trustworthy
+    # when the grader actually evaluated at least one criterion AND every
+    # evaluated criterion passed. Two ways a "satisfied" is NOT trustworthy:
+    #
+    #  1. No criteria at all (empty or omitted list). A lazy or malformed
+    #     grader that answers ``{"result":"satisfied","criteria":[]}`` would
+    #     otherwise wave a run through the gate without evaluating anything, so
+    #     we refuse to accept a zero-criterion "satisfied".
+    #  2. At least one evaluated criterion FAILED. Trust the concrete evidence
+    #     (the criteria) over the headline and downgrade.
+    #
+    # Either case downgrades to ``needs_revision`` with a clear explanation.
+    # "failed" / "needs_revision" headlines are left untouched: they can
+    # legitimately carry zero or failing criteria.
+    if result == "satisfied":
+        if not criteria:
+            result = "needs_revision"
+            explanation = (explanation + " ").strip() + (
+                "(downgraded: grader returned satisfied without evaluating any criteria)"
+            )
+        elif any(not c.passed for c in criteria):
+            result = "needs_revision"
+            explanation = (explanation + " ").strip() + (
+                "(downgraded: verdict said satisfied but a criterion was unmet)"
+            )
 
     return GraderVerdict(
         result=result,  # type: ignore[arg-type]

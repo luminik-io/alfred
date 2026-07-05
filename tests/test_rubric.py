@@ -129,6 +129,51 @@ def test_grade_satisfied_with_failing_criterion_is_downgraded():
     assert "downgraded" in verdict.explanation
 
 
+def test_grade_satisfied_with_empty_criteria_is_not_terminal_satisfied():
+    # Gate-bypass guard: a lazy/malformed grader that answers "satisfied" with
+    # an EMPTY criteria list must NOT pass the gate; it evaluated nothing.
+    payload = json.dumps({"result": "satisfied", "explanation": "lgtm", "criteria": []})
+    verdict = rb.grade("x", "done", grader_fn=lambda _p: payload)
+    assert verdict.result == "needs_revision"
+    assert verdict.result != "satisfied"
+    assert "without evaluating any criteria" in verdict.explanation
+
+
+def test_grade_satisfied_omitting_criteria_is_not_terminal_satisfied():
+    # Same guard when the criteria key is OMITTED entirely (defaults to empty).
+    payload = json.dumps({"result": "satisfied", "explanation": "lgtm"})
+    verdict = rb.grade("x", "done", grader_fn=lambda _p: payload)
+    assert verdict.result == "needs_revision"
+    assert verdict.criteria == []
+    assert "without evaluating any criteria" in verdict.explanation
+
+
+def test_grade_satisfied_with_one_passed_criterion_still_passes():
+    # A satisfied verdict WITH at least one evaluated+passed criterion is
+    # trustworthy and stays terminal-satisfied.
+    payload = json.dumps(
+        {
+            "result": "satisfied",
+            "explanation": "all met",
+            "criteria": [{"name": "tests pass", "passed": True, "gap": None}],
+        }
+    )
+    verdict = rb.grade("x", "done", grader_fn=lambda _p: payload)
+    assert verdict.result == "satisfied"
+    assert verdict.is_terminal is True
+    assert verdict.terminal_reason is None
+
+
+def test_grade_failed_and_needs_revision_with_empty_criteria_unchanged():
+    # The empty-criteria guard is scoped to "satisfied" only: a "failed" or
+    # "needs_revision" headline with zero criteria is left as-is (legitimate).
+    failed = json.dumps({"result": "failed", "explanation": "broken", "criteria": []})
+    assert rb.grade("x", "done", grader_fn=lambda _p: failed).result == "failed"
+
+    needs = json.dumps({"result": "needs_revision", "explanation": "wip", "criteria": []})
+    assert rb.grade("x", "done", grader_fn=lambda _p: needs).result == "needs_revision"
+
+
 @pytest.mark.parametrize(
     ("passed_value", "expected"),
     [
@@ -814,7 +859,14 @@ def test_invoke_agent_engine_grader_engine_from_env(monkeypatch):
     def fake_claude_invoke(prompt, **_kwargs):
         used.append("claude")
         return _ok_result(
-            ar, json.dumps({"result": "satisfied", "explanation": "ok", "criteria": []})
+            ar,
+            json.dumps(
+                {
+                    "result": "satisfied",
+                    "explanation": "ok",
+                    "criteria": [{"name": "tests pass", "passed": True, "gap": None}],
+                }
+            ),
         )
 
     monkeypatch.setattr(proc, "claude_invoke", fake_claude_invoke)
@@ -1060,7 +1112,13 @@ def test_successful_primary_run_is_still_graded(monkeypatch):
 
     def grader_fn(prompt: str) -> str:
         grader_calls.append(prompt)
-        return json.dumps({"result": "satisfied", "explanation": "ok", "criteria": []})
+        return json.dumps(
+            {
+                "result": "satisfied",
+                "explanation": "ok",
+                "criteria": [{"name": "tests pass", "passed": True, "gap": None}],
+            }
+        )
 
     out, _engine = ar.invoke_agent_engine(
         "hi",
