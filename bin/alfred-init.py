@@ -99,6 +99,12 @@ AGENT_CATALOG: dict[str, tuple[str, str, bool, str]] = {
         False,
         "interval:3600",
     ),
+    "spec_planner": (
+        "spec-planner",
+        "spec-bundle planner (drafts multi-repo bundles from a spec directory)",
+        True,
+        "cron:9:00",
+    ),
     "smoke_runner": (
         "e2e-runner",
         "staging smoke runner (hits a URL on schedule)",
@@ -245,6 +251,7 @@ PROMPT_TEMPLATE_BY_ROLE = {
     "ci_repair": "review-fix.md",
     "bug_triage": "bug-triage.md",
     "cross_repo_coordinator": "cross-repo-coordinator.md",
+    "spec_planner": "spec-bundle-planner.md",
     "smoke_runner": "post-deploy-smoke.md",
     "ops_morning": "ecs-monitor.md",
 }

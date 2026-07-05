@@ -161,7 +161,7 @@ class _LazyModule:
 agent_runner = _LazyModule("agent_runner")
 scheduler = _LazyModule("scheduler")
 
-OPT_IN_AGENTS = {"architect"}
+OPT_IN_AGENTS = {"architect", "spec-planner"}
 ENGINE_AGENTS = (
     "architect",
     "fixer",
@@ -257,6 +257,11 @@ DEFAULT_AGENT_CATALOG: dict[str, dict[str, str]] = {
         "script": "architect.py",
         "schedule": "interval:3600",
         "role": "cross-repo architect",
+    },
+    "spec-planner": {
+        "script": "spec-planner.py",
+        "schedule": "cron:9:00",
+        "role": "spec-bundle planner",
     },
     "e2e-runner": {
         "script": "e2e-runner.py",

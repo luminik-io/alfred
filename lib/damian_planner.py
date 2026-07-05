@@ -69,15 +69,21 @@ class PlannerConfig:
     """Operator-supplied configuration for one damian firing.
 
     All knobs are env-driven so a launchd / systemd unit can configure
-    the planner without a config file:
+    the planner without a config file. The canonical keys are slug-based
+    (``ALFRED_SPEC_PLANNER_*``, matching what ``alfred-init`` writes for the
+    ``spec-planner`` role); the Batman-cast ``DAMIAN_*`` keys stay as legacy
+    fallbacks so a config written before the rename keeps working:
 
-    - ``DAMIAN_SCAN_REPOS``: comma-separated repo slugs the planner is
-      allowed to file bundles into. Empty means the planner exits as a
-      no-op (no implicit fallback to a hardcoded list).
-    - ``DAMIAN_SPEC_DIR``: directory the default markdown parser walks
-      to discover specs. Resolved relative to ``WORKSPACE_ROOT`` when
-      relative, used as-is when absolute.
-    - ``DAMIAN_DAILY_BUNDLE_CAP``: max bundles the planner may emit per
+    - ``ALFRED_SPEC_PLANNER_REPOS`` (legacy ``DAMIAN_SCAN_REPOS``):
+      comma-separated repo slugs the planner is allowed to file bundles
+      into. Empty means the planner exits as a no-op (no implicit fallback
+      to a hardcoded list).
+    - ``ALFRED_SPEC_PLANNER_SPEC_DIR`` (legacy ``DAMIAN_SPEC_DIR``):
+      directory the default markdown parser walks to discover specs.
+      Resolved relative to ``WORKSPACE_ROOT`` when relative, used as-is
+      when absolute.
+    - ``ALFRED_SPEC_PLANNER_DAILY_BUNDLE_CAP`` (legacy
+      ``DAMIAN_DAILY_BUNDLE_CAP``): max bundles the planner may emit per
       firing. Read by the runner; surfaced here so dry-runs match the
       runtime ceiling.
     """
@@ -89,13 +95,23 @@ class PlannerConfig:
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> PlannerConfig:
         environ = env if env is not None else os.environ
-        raw_repos = (environ.get("DAMIAN_SCAN_REPOS") or "").strip()
+
+        def _first(*names: str) -> str:
+            # Prefer the canonical slug key; fall back to the legacy DAMIAN_ key
+            # so pre-rename configs keep scoping the agent.
+            for name in names:
+                value = (environ.get(name) or "").strip()
+                if value:
+                    return value
+            return ""
+
+        raw_repos = _first("ALFRED_SPEC_PLANNER_REPOS", "DAMIAN_SCAN_REPOS")
         repos = tuple(token.strip() for token in raw_repos.split(",") if token.strip())
 
-        raw_spec = (environ.get("DAMIAN_SPEC_DIR") or "").strip()
+        raw_spec = _first("ALFRED_SPEC_PLANNER_SPEC_DIR", "DAMIAN_SPEC_DIR")
         spec_dir: Path | None = Path(raw_spec).expanduser() if raw_spec else None
 
-        cap_raw = (environ.get("DAMIAN_DAILY_BUNDLE_CAP") or "").strip()
+        cap_raw = _first("ALFRED_SPEC_PLANNER_DAILY_BUNDLE_CAP", "DAMIAN_DAILY_BUNDLE_CAP")
         try:
             cap = int(cap_raw) if cap_raw else 3
         except ValueError:

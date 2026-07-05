@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
-"""``damian``, spec-level multi-repo bundle planner.
+"""``spec-planner``, spec-level multi-repo bundle planner (was ``damian``).
 
-Damian sits between drake (single-repo issue filer) and batman
-(cross-repo plan coordinator). Drake keeps the per-repo
-``agent:implement`` queue full; damian keeps the multi-repo
-``agent:bundle:<slug>`` queue full so batman has work to plan.
+The spec-bundle planner sits between the planner (single-repo issue filer)
+and the architect (cross-repo plan coordinator). The planner keeps the
+per-repo ``agent:implement`` queue full; the spec-bundle planner keeps the
+multi-repo ``agent:bundle:<slug>`` queue full so the architect has work to
+plan.
 
 Wiring:
 
   - Reads ``GH_ORG`` for repo-qualified ``gh`` calls.
-  - Reads ``DAMIAN_SCAN_REPOS`` (comma-separated repo slugs) to scope
-    bundle filing. Empty means damian exits as a no-op - a fresh install
-    is not assumed to know which repos are bundle-eligible.
-  - Reads ``DAMIAN_SPEC_DIR`` (absolute path or path relative to
-    ``WORKSPACE_ROOT``) for the spec markdown the default parser walks.
+  - Reads ``ALFRED_SPEC_PLANNER_REPOS`` (legacy ``DAMIAN_SCAN_REPOS``),
+    comma-separated repo slugs, to scope bundle filing. Empty means the
+    planner exits as a no-op - a fresh install is not assumed to know which
+    repos are bundle-eligible.
+  - Reads ``ALFRED_SPEC_PLANNER_SPEC_DIR`` (legacy ``DAMIAN_SPEC_DIR``),
+    an absolute path or a path relative to ``WORKSPACE_ROOT``, for the spec
+    markdown the default parser walks.
   - Loads the operator-customizable prompt at
     ``${ALFRED_HOME}/prompts/<codename>.md`` (seeded by ``alfred-init``
     from ``prompts/spec-bundle-planner.md``).
-  - Honours the fleet enable file: ``damian`` ships opt-in (like
-    ``batman``) so the runner exits early until the operator enables it.
+  - Honours the fleet enable file: ``spec-planner`` ships opt-in (like the
+    architect) so the runner exits early until the operator enables it.
 
 This file is the runner skeleton: preflight, build the candidate plan
 via ``lib/damian_planner.py``, dispatch the LLM to actually file the
@@ -83,7 +86,7 @@ PROMPT_PATH = ALFRED_HOME / "prompts" / f"{CODENAME}.md"
 
 
 def _resolve_spec_dir(config: PlannerConfig) -> Path | None:
-    """Resolve ``DAMIAN_SPEC_DIR`` against ``WORKSPACE_ROOT`` when relative.
+    """Resolve the configured spec dir against ``WORKSPACE_ROOT`` when relative.
 
     Returns ``None`` when nothing is configured so the planner emits the
     expected empty plan instead of guessing at a path on disk.
@@ -115,13 +118,13 @@ def main() -> int:
         print(f"[{CODENAME.upper()}-DOCTOR-OK]")
         return 0
 
-    # Damian is opt-in: it files multi-repo bundles, which only makes
-    # sense once the operator has at least two repos wired and a spec
-    # directory the planner can read. Fresh installs stay quiet until
-    # ``alfred enable damian`` flips the gate.
+    # The spec-bundle planner is opt-in: it files multi-repo bundles, which
+    # only makes sense once the operator has at least two repos wired and a
+    # spec directory the planner can read. Fresh installs stay quiet until
+    # ``alfred enable spec-planner`` flips the gate.
     if not is_agent_enabled(CODENAME, default=False):
         print(
-            f"[DAMIAN-SKIP] {CODENAME} not enabled in fleet file; "
+            f"[{CODENAME.upper()}-SKIP] {CODENAME} not enabled in fleet file; "
             f"run `alfred enable {CODENAME}` to opt in.",
             file=sys.stderr,
         )
@@ -136,7 +139,7 @@ def main() -> int:
     try:
         preflight(spec)
     except Exception as e:
-        print(f"[DAMIAN-PREFLIGHT-FAIL] {e}", file=sys.stderr)
+        print(f"[{CODENAME.upper()}-PREFLIGHT-FAIL] {e}", file=sys.stderr)
         return 0
 
     with_lock(CODENAME)
@@ -144,15 +147,16 @@ def main() -> int:
     config = PlannerConfig.from_env()
     if not config.scan_repos:
         print(
-            "[DAMIAN-IDLE] no repos configured (set DAMIAN_SCAN_REPOS=your-org/your-backend,your-org/your-frontend)",
+            f"[{CODENAME.upper()}-IDLE] no repos configured "
+            "(set ALFRED_SPEC_PLANNER_REPOS=your-org/your-backend,your-org/your-frontend)",
         )
         return 0
 
     spec_dir = _resolve_spec_dir(config)
     if spec_dir is None:
         print(
-            "[DAMIAN-IDLE] no spec directory configured "
-            "(set DAMIAN_SPEC_DIR to a markdown spec dir relative to WORKSPACE_ROOT)",
+            f"[{CODENAME.upper()}-IDLE] no spec directory configured "
+            "(set ALFRED_SPEC_PLANNER_SPEC_DIR to a markdown spec dir relative to WORKSPACE_ROOT)",
         )
         return 0
 
@@ -166,16 +170,16 @@ def main() -> int:
     )
 
     if plan.is_empty:
-        print(f"[DAMIAN-NOOP] {summary}")
+        print(f"[{CODENAME.upper()}-NOOP] {summary}")
         return 0
 
     if not PROMPT_PATH.exists():
         # No prompt seeded yet: surface the candidate plan as a Slack
         # signal so the operator can run alfred-init / seed the prompt
-        # before damian starts filing bundles unattended.
+        # before the planner starts filing bundles unattended.
         body = render_plan_for_prompt(plan)
         msg = (
-            f"[DAMIAN-PLAN-DRAFTED] prompt at {PROMPT_PATH} not found; "
+            f"[{CODENAME.upper()}-PLAN-DRAFTED] prompt at {PROMPT_PATH} not found; "
             f"draft plan ready ({summary}). Seed the prompt to enable filing.\n{body}"
         )
         print(msg)
@@ -209,10 +213,10 @@ def main() -> int:
     # codex equivalent) without prescribing one engine. The deterministic
     # part - what to file, which repos, which slugs - is what matters
     # for the OSS surface; the LLM call itself is fleet-specific.
-    print(f"[DAMIAN-PLAN-DRAFTED] {summary} engine={DAMIAN_ENGINE}")
+    print(f"[{CODENAME.upper()}-PLAN-DRAFTED] {summary} engine={DAMIAN_ENGINE}")
     print(composed)
     slack_post(
-        f"[DAMIAN-PLAN-DRAFTED] {summary} engine={DAMIAN_ENGINE}",
+        f"[{CODENAME.upper()}-PLAN-DRAFTED] {summary} engine={DAMIAN_ENGINE}",
         severity="info",
     )
     return 0
