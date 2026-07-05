@@ -38,6 +38,8 @@ import type {
   Snapshot,
   SaveCustomAgentResponse,
   StatusResponse,
+  ThemeBuilderRequest,
+  ThemeBuilderResponse,
   TrustedSlackUsersResponse,
   UsageResponse,
 } from "./types";
@@ -463,6 +465,21 @@ export async function conversationControl(
   signal?: AbortSignal,
 ): Promise<ConversationControlResponse> {
   return writeAlfredJson(baseUrl, "/api/conversation/control", request, signal);
+}
+
+// One turn of the conversational roster theme builder. The server asks a short
+// vibe question, then proposes a full role-slug -> display-name mapping as a
+// `propose_theme` action. When no live engine is configured the server returns a
+// 503 with `error: "live_session_unavailable"`; the caller catches that (via
+// isLiveSessionUnavailable) and falls back to the manual custom theme editor.
+// Nothing is saved here: the client pre-fills the editor with the proposal and
+// saves it via saveRosterTheme only after the person confirms.
+export async function themeBuilderConverse(
+  baseUrl: string,
+  request: ThemeBuilderRequest,
+  signal?: AbortSignal,
+): Promise<ThemeBuilderResponse> {
+  return writeAlfredJson(baseUrl, "/api/theme-builder/converse", request, signal);
 }
 
 // One turn of the conversational, repo-grounded spec-builder. The server runs a

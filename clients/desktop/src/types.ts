@@ -523,6 +523,29 @@ export type ConverseRequest = {
   plain?: boolean;
 };
 
+// POST /api/theme-builder/converse: one assistant turn of the conversational
+// roster theme builder. The server asks a short "what vibe?" question, then
+// proposes a full role-slug -> display-name mapping as a `propose_theme` action.
+// `action` is null on a plain vibe-asking turn, and carries the proposed maps
+// when the model has cast a team. Nothing is saved server-side: the client
+// pre-fills the custom theme editor with the proposal for the person to confirm.
+export type ThemeProposalAction = {
+  tool: "propose_theme";
+  args: {
+    custom_names: Record<string, string>;
+    custom_roles: Record<string, string>;
+  };
+};
+
+export type ThemeBuilderResponse = {
+  reply: string;
+  action: ThemeProposalAction | null;
+};
+
+export type ThemeBuilderRequest = {
+  messages: ConverseMessage[];
+};
+
 export type ConversationControlRequest = {
   text: string;
   actor_user_id?: string;

@@ -187,7 +187,7 @@ async fn request_alfred_json(
     url.set_query(query);
 
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(20))
+        .timeout(request_timeout(&path_part))
         .user_agent("Alfred Desktop/0.1")
         .build()
         .map_err(|err| format!("could not prepare local request: {err}"))?;
@@ -235,6 +235,53 @@ async fn request_alfred_json(
     }
 
     Ok(body)
+}
+
+/// The buffered JSON bridge timeout for an ordinary request. Most endpoints
+/// answer well within this; it only needs to be widened for a request whose body
+/// is produced by a live model turn.
+const DEFAULT_REQUEST_TIMEOUT_S: u64 = 20;
+
+/// The largest server-side model-turn budget the bridge fronts. The buffered
+/// converse turns run a subprocess bounded by their own timeout: the compose
+/// interrogator at `compose_converse.DEFAULT_TIMEOUT` (180s) and the roster-theme
+/// builder at the smaller `theme_builder.DEFAULT_TIMEOUT` (120s). The bridge must
+/// clear the larger of the two, so track 180s here; bump it if the server budget
+/// ever grows.
+const SERVER_MODEL_TURN_BUDGET_S: u64 = 180;
+
+/// Network + subprocess-teardown slack added on top of the server budget so the
+/// bridge always outlives the server's own timeout by a clear margin, never ties
+/// it. Without this the bridge and the subprocess share the same deadline and can
+/// trip at the same instant, surfacing a client-side timeout in place of the
+/// server's own timeout or error.
+const MODEL_TURN_TIMEOUT_MARGIN_S: u64 = 30;
+
+/// The timeout for a buffered POST whose response is produced by a live model
+/// turn (the conversational Compose and roster-theme builders). Such a turn is an
+/// LLM call that routinely runs past the default budget, so the 20s ceiling would
+/// abort a healthy turn. Derived as the server turn budget PLUS a margin (210s),
+/// so the server's own timeout, not the bridge, is the one that fires on a turn
+/// that runs right up to the server deadline. Streaming turns bypass this bridge
+/// entirely (they ride the webview's own fetch); this only covers the buffered
+/// one-shot POSTs.
+const MODEL_TURN_REQUEST_TIMEOUT_S: u64 = SERVER_MODEL_TURN_BUDGET_S + MODEL_TURN_TIMEOUT_MARGIN_S;
+
+/// Pick the buffered-request timeout for an API path. Only the model-turn POST
+/// paths get the longer budget; every other request keeps the tight default so a
+/// hung endpoint still fails fast.
+fn request_timeout(path: &str) -> Duration {
+    if is_model_turn_path(path) {
+        Duration::from_secs(MODEL_TURN_REQUEST_TIMEOUT_S)
+    } else {
+        Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_S)
+    }
+}
+
+/// True for the buffered POST paths whose response body is produced by a live
+/// model turn and so needs the longer timeout.
+fn is_model_turn_path(path: &str) -> bool {
+    is_allowed_compose_converse(path) || is_allowed_theme_builder_converse(path)
 }
 
 /// Header the server requires on every state-mutating request. It carries the
@@ -608,6 +655,7 @@ fn validate_api_path<'a>(
     } else if method == Method::POST {
         is_allowed_compose_draft(path_part)
             || is_allowed_compose_converse(path_part)
+            || is_allowed_theme_builder_converse(path_part)
             || is_allowed_conversation_control(path_part)
             || is_allowed_custom_agents_write(path_part)
             || is_allowed_roster_theme_action(path_part)
@@ -661,6 +709,16 @@ fn is_allowed_compose_converse(path: &str) -> bool {
     // own fetch and never goes through this Rust bridge, so only the buffered
     // one-shot fallback needs to be on the contract here.
     path == "/api/compose/converse"
+}
+
+fn is_allowed_theme_builder_converse(path: &str) -> bool {
+    // POST /api/theme-builder/converse runs one conversational roster-theme turn:
+    // the model asks a short vibe question, then proposes a full role-slug ->
+    // display-name map. It is an LLM turn, so it rides the long-model-turn timeout
+    // below rather than the default buffered budget. Missing from the contract, it
+    // was dead in the packaged app because only this Rust bridge enforces the POST
+    // allowlist (the browser dev mode bypasses it).
+    path == "/api/theme-builder/converse"
 }
 
 fn is_allowed_conversation_control(path: &str) -> bool {
@@ -2568,6 +2626,57 @@ done"#;
         let err = validate_api_path("/api/compose/converse", &Method::GET)
             .expect_err("compose converse must not be reachable via GET");
         assert!(err.contains("desktop contract"));
+    }
+
+    #[test]
+    fn theme_builder_converse_is_allowlisted_for_post() {
+        // POST /api/theme-builder/converse is the conversational roster-theme turn.
+        // Without it on the contract the feature was dead in the packaged app.
+        let (path, query) = validate_api_path("/api/theme-builder/converse", &Method::POST)
+            .expect("theme-builder converse should be accepted for POST");
+        assert_eq!(path, "/api/theme-builder/converse");
+        assert_eq!(query, None);
+        assert!(is_allowed_theme_builder_converse(
+            "/api/theme-builder/converse"
+        ));
+        // A near-miss path must stay off the rule.
+        assert!(!is_allowed_theme_builder_converse(
+            "/api/theme-builder/converse/stream"
+        ));
+        // It is not a read route, so a GET stays blocked.
+        let err = validate_api_path("/api/theme-builder/converse", &Method::GET)
+            .expect_err("theme-builder converse must not be reachable via GET");
+        assert!(err.contains("desktop contract"));
+    }
+
+    #[test]
+    fn model_turn_paths_get_the_longer_timeout() {
+        // A model-turn POST (Compose or roster-theme builder) runs an LLM call that
+        // routinely outlasts the 20s default, so it rides the longer budget.
+        let long = Duration::from_secs(MODEL_TURN_REQUEST_TIMEOUT_S);
+        let short = Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_S);
+        assert_eq!(request_timeout("/api/compose/converse"), long);
+        assert_eq!(request_timeout("/api/theme-builder/converse"), long);
+        // Every other path keeps the tight default so a hung endpoint fails fast.
+        assert_eq!(request_timeout("/api/roster-theme"), short);
+        assert_eq!(request_timeout("/api/conversation/control"), short);
+        assert_eq!(request_timeout("/api/status"), short);
+        assert!(long > short);
+    }
+
+    #[test]
+    fn model_turn_timeout_clears_the_server_budget_with_margin() {
+        // The bridge must OUTLIVE the server-side turn budget, not tie it: a turn
+        // that runs right up to the server deadline would otherwise trip the bridge
+        // and the subprocess at the same instant, hiding the server's own error
+        // behind a client timeout. So the bridge is server budget PLUS a margin.
+        assert_eq!(MODEL_TURN_REQUEST_TIMEOUT_S, 210);
+        assert!(MODEL_TURN_REQUEST_TIMEOUT_S > SERVER_MODEL_TURN_BUDGET_S);
+        assert_eq!(
+            MODEL_TURN_REQUEST_TIMEOUT_S,
+            SERVER_MODEL_TURN_BUDGET_S + MODEL_TURN_TIMEOUT_MARGIN_S
+        );
+        assert!(MODEL_TURN_TIMEOUT_MARGIN_S > 0);
     }
 
     #[test]

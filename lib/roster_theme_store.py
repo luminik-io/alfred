@@ -174,6 +174,44 @@ PRESET_DISPLAY_NAMES: dict[str, dict[str, str]] = {
 }
 
 
+@dataclass(frozen=True)
+class RosterContractAgent:
+    """One fleet agent the theme builder may name.
+
+    Keyed by ``codename`` (the stable role-slug identity the store persists under)
+    with its plain ``role_label`` and the shipped Batman ``base_name`` so a prompt
+    can show the model exactly which agents to name and what they are called today.
+    """
+
+    codename: str
+    role: str
+    role_label: str
+    base_name: str
+
+
+def roster_contract_agents() -> tuple[RosterContractAgent, ...]:
+    """The full roster the theme builder proposes names for.
+
+    Derived from ``roster_manifest.json`` (the single roster contract both Python
+    and the desktop share), so a new codename never drifts between the theme
+    builder prompt and what the custom store can actually persist. Every agent is
+    included; the model is asked to cover the engineering roles first.
+    """
+    out: list[RosterContractAgent] = []
+    for agent in _MANIFEST_AGENTS:
+        codename = str(agent["codename"])
+        role = str(agent["role"])
+        out.append(
+            RosterContractAgent(
+                codename=codename,
+                role=role,
+                role_label=_ROLE_LABELS_DEFAULT.get(role, role),
+                base_name=BATMAN_BASE_NAMES.get(codename, codename),
+            )
+        )
+    return tuple(out)
+
+
 class RosterThemeError(ValueError):
     """Raised when an inbound theme payload fails validation."""
 
@@ -499,8 +537,10 @@ __all__ = [
     "DEFAULT_THEME_ID",
     "PRESET_THEME_IDS",
     "VALID_THEME_IDS",
+    "RosterContractAgent",
     "RosterThemeError",
     "RosterThemeState",
     "RosterThemeStore",
     "default_theme_state",
+    "roster_contract_agents",
 ]

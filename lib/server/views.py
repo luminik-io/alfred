@@ -695,6 +695,35 @@ def register_routes(app: FastAPI) -> None:
             return JSONResponse({"error": "invalid roster theme payload"}, status_code=400)
         return JSONResponse(state.to_dict())
 
+    @app.post("/api/theme-builder/converse", response_class=JSONResponse)
+    async def api_theme_builder_converse(request: Request) -> JSONResponse:
+        """Run one turn of the conversational roster theme builder.
+
+        Body: ``{ messages: [{role, content}] }``. Each call runs ONE assistant
+        turn via the agent-engine dispatch, seeded with the theme-builder system
+        prompt + the roster contract (role-slugs, role labels, current names) read
+        server-side from ``roster_manifest.json``. The model asks a short vibe
+        question, then proposes a full role-slug -> display-name mapping as a
+        ``propose_theme`` action.
+
+        Returns ``{ reply, action }`` where ``action`` is either ``null`` (a plain
+        vibe-asking turn) or ``{tool: "propose_theme", args: {custom_names,
+        custom_roles}}``. Nothing is saved here: the client pre-fills the custom
+        theme editor with the proposal, the person confirms, and the client saves
+        it via ``POST /api/roster-theme`` with ``theme: "custom"``. Degrades with a
+        503 when no live engine is configured so the client falls back to the
+        manual editor.
+        """
+        if not _same_origin_post(request) or not _authorized_mutation(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        try:
+            body = json.loads((await request.body()).decode("utf-8") or "{}")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return JSONResponse({"error": "request body must be JSON"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "request body must be a JSON object"}, status_code=400)
+        return _run_theme_builder_converse(request, body)
+
     @app.get("/api/custom-agents", response_class=JSONResponse)
     async def api_custom_agents(request: Request) -> JSONResponse:
         store = CustomAgentStore.from_state_root(_state_root(request))
@@ -1826,6 +1855,109 @@ def _compose_playbook_draft(
             },
         }
     )
+
+
+def _theme_builder_prompt_path() -> Path:
+    override = os.environ.get("ALFRED_THEME_BUILDER_PROMPT")
+    if override:
+        return Path(override)
+    relative = Path("prompts") / "theme-builder.md"
+    candidates: list[Path] = []
+    runtime_home = os.environ.get("ALFRED_HOME")
+    if runtime_home:
+        candidates.append(Path(runtime_home) / relative)
+    candidates.append(Path(__file__).resolve().parents[2] / relative)
+    candidates.append(Path.cwd() / relative)
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return candidates[0]
+
+
+def _run_theme_builder_converse(request: Request, body: dict[str, Any]) -> JSONResponse:
+    """One turn of the conversational roster theme builder.
+
+    Reuses the compose converse plumbing (message parsing, untrusted transcript,
+    action parsing, engine dispatch) but produces a draft-free theme turn: a
+    reply plus an optional ``propose_theme`` action. Nothing is persisted here,
+    the client saves a confirmed proposal via ``POST /api/roster-theme``. If no
+    engine is configured (or it returns nothing usable) we degrade with a clear
+    503 so the client falls back to the manual custom theme editor.
+    """
+    import compose_converse as cc
+    import theme_builder as tb
+
+    messages = cc.parse_messages(body.get("messages"))
+    if not messages:
+        return JSONResponse(
+            {"error": "send at least one message to start the conversation"},
+            status_code=400,
+        )
+
+    engine = tb.engine_from_env()
+    if not engine:
+        return JSONResponse(
+            {
+                "error": "live_session_unavailable",
+                "detail": (
+                    "No conversational engine is configured for the theme builder. "
+                    "Set ALFRED_THEME_BUILDER_ENGINE (or the compose converse "
+                    "engine) to enable the chat, or use the manual editor."
+                ),
+            },
+            status_code=503,
+        )
+
+    try:
+        from agent_runner.metadata import load_prompt
+    except Exception:  # pragma: no cover - load_prompt is always importable
+        return JSONResponse(
+            {"error": "theme builder prompt loader unavailable"},
+            status_code=503,
+        )
+
+    try:
+        system_prompt = tb.render_system_prompt(
+            prompt_path=_theme_builder_prompt_path(),
+            loader=load_prompt,
+        )
+    except OSError:
+        return JSONResponse(
+            {
+                "error": "live_session_unavailable",
+                "detail": (
+                    "The theme-builder prompt could not be loaded. Check the "
+                    "runtime deploy, or use the manual editor."
+                ),
+            },
+            status_code=503,
+        )
+
+    # ``run_turn`` distinguishes a terminal engine failure (returns ``None``) from
+    # a transient malformed turn (returns a soft ``retry_turn`` with a reply and no
+    # proposal). Only the terminal case degrades to the 503 the client treats as
+    # engine-unavailable; the transient case flows through as a normal 200 turn so
+    # the chat stays open and the person can just resend.
+    turn = tb.run_turn(
+        system_prompt=system_prompt,
+        messages=messages,
+        engine=engine,
+        workdir=_planning_workdir(request),
+        valid_slugs=tb.valid_codenames(),
+        required_slugs=tb.required_codenames(),
+    )
+    if turn is None:
+        return JSONResponse(
+            {
+                "error": "live_session_unavailable",
+                "detail": (
+                    "The theme-builder engine could not run this turn. "
+                    "Check the runtime, or use the manual editor."
+                ),
+            },
+            status_code=503,
+        )
+    return JSONResponse(tb.turn_payload(turn))
 
 
 def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONResponse:

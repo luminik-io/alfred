@@ -23,6 +23,7 @@ import { RequestThread } from "./components/RequestThread";
 import { ReviewView } from "./components/ReviewView";
 import { CustomThemeEditor } from "./components/CustomThemeEditor";
 import { RosterThemePicker } from "./components/RosterThemePicker";
+import { ThemeBuilderDialog } from "./components/ThemeBuilderDialog";
 import { SetupView } from "./components/SetupView";
 import { Tabs, type TabItem } from "./components/Tabs";
 import {
@@ -36,6 +37,7 @@ import { loadSetupStatus, supportsNativeActions } from "./api";
 import { isSetupComplete } from "./lib/setupCompletion";
 import { FLEET_SUBTABS, PRIMARY_TABS } from "./lib/primaryTabs";
 import {
+  type CustomRosterNames,
   editableAgents,
   type EditableAgentSource,
   normalizeCodename,
@@ -118,6 +120,11 @@ function App() {
   const { rosterTheme, customNames, setRosterTheme, saveCustomNames, saveError: rosterSaveError } =
     useRosterTheme(baseUrl);
   const [customThemeEditorOpen, setCustomThemeEditorOpen] = useState(false);
+  // The "Name your team" chat surface, and a proposed roster it hands off to the
+  // editor. When `themeProposal` is set, the CustomThemeEditor opens pre-filled
+  // with the proposal (an editable preview) instead of the persisted names.
+  const [themeBuilderOpen, setThemeBuilderOpen] = useState(false);
+  const [themeProposal, setThemeProposal] = useState<CustomRosterNames | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // The Setup tab splits into Setup (get Alfred running) and Settings (appearance
   // and preferences), so theme selection no longer crowds the onboarding flow.
@@ -448,7 +455,11 @@ function App() {
               <RosterThemePicker
                 value={rosterTheme}
                 onChange={setRosterTheme}
-                onEditCustom={() => setCustomThemeEditorOpen(true)}
+                onEditCustom={() => {
+                  setThemeProposal(null);
+                  setCustomThemeEditorOpen(true);
+                }}
+                onNameYourTeam={() => setThemeBuilderOpen(true)}
                 saveError={rosterSaveError}
               />
             ) : null}
@@ -520,12 +531,35 @@ function App() {
         commands={commands}
       />
 
+      <ThemeBuilderDialog
+        open={themeBuilderOpen}
+        baseUrl={baseUrl}
+        onOpenChange={setThemeBuilderOpen}
+        onPropose={(names) => {
+          // A proposed team pre-fills the editor as an editable preview; the
+          // person tweaks + confirms there, which saves via saveCustomNames.
+          setThemeProposal(names);
+          setCustomThemeEditorOpen(true);
+        }}
+        onManualEdit={() => {
+          setThemeProposal(null);
+          setCustomThemeEditorOpen(true);
+        }}
+      />
+
       <CustomThemeEditor
         open={customThemeEditorOpen}
-        value={customNames}
+        // A live proposal from the chat wins as the editable preview; otherwise
+        // the editor opens with the persisted custom names.
+        value={themeProposal ?? customNames}
         agents={customThemeAgents}
         saveError={rosterSaveError}
-        onOpenChange={setCustomThemeEditorOpen}
+        onOpenChange={(next) => {
+          setCustomThemeEditorOpen(next);
+          // Drop the one-shot proposal once the editor closes so the next manual
+          // open starts from the persisted names, not a stale proposal.
+          if (!next) setThemeProposal(null);
+        }}
         onSave={saveCustomNames}
       />
     </AppShell>

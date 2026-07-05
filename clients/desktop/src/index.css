@@ -2027,9 +2027,30 @@ body {
   min-width: 8.5rem;
 }
 
-.roster-theme-picker__edit {
+.roster-theme-picker__edit,
+.roster-theme-picker__name-team {
   flex: 0 0 auto;
   gap: 0.35rem;
+}
+
+/* "Name your team" chat bubbles. User turns sit to the right, Alfred to the left,
+   both on the same tokens the Ask surface uses so the chat matches every theme. */
+.theme-builder__bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-width: 88%;
+}
+
+.theme-builder__bubble--user {
+  margin-left: auto;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.theme-builder__bubble--assistant {
+  margin-right: auto;
+  align-items: flex-start;
 }
 
 .custom-theme-editor__legend {

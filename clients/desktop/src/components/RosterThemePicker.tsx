@@ -1,4 +1,4 @@
-import { AlertTriangle, Pencil, Sparkles } from "lucide-react";
+import { AlertTriangle, Pencil, Sparkles, WandSparkles } from "lucide-react";
 
 import {
   ROSTER_THEME_IDS,
@@ -23,11 +23,15 @@ export function RosterThemePicker({
   value,
   onChange,
   onEditCustom,
+  onNameYourTeam,
   saveError = null,
 }: {
   value: RosterThemeId;
   onChange: (next: RosterThemeId) => void;
   onEditCustom?: () => void;
+  // Opens the conversational "Name your team" chat: describe a vibe and Alfred
+  // proposes a full roster you review in the editor before saving.
+  onNameYourTeam?: () => void;
   // When the last save did not reach the runtime, the choice is local-only and
   // Slack keeps the old roster; show that so the picker never looks successful.
   saveError?: string | null;
@@ -52,6 +56,18 @@ export function RosterThemePicker({
           ))}
         </SelectContent>
       </Select>
+      {onNameYourTeam ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="roster-theme-picker__name-team"
+          onClick={onNameYourTeam}
+        >
+          <WandSparkles aria-hidden="true" className="size-3.5" />
+          Name your team
+        </Button>
+      ) : null}
       {onEditCustom ? (
         <Button
           type="button"
