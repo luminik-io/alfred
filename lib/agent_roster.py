@@ -38,14 +38,14 @@ __all__ = ["CODENAME_TO_PACK_ROLE", "pack_role_for_codename"]
 # operational codenames (automerge, memory-*, fleet-*, code-map-refresh, ...)
 # are intentionally omitted so they inject nothing.
 CODENAME_TO_PACK_ROLE: dict[str, str] = {
-    "lucius": "feature-dev",
-    "drake": "planner",
-    "bane": "test-coverage",
-    "rasalghul": "pr-review",
-    "nightwing": "review-fix",
-    "robin": "bug-triage",
-    "gordon": "deploy-monitor",
-    "huntress": "e2e-smoke",
+    "senior-dev": "feature-dev",
+    "planner": "planner",
+    "test-engineer": "test-coverage",
+    "reviewer": "pr-review",
+    "fixer": "review-fix",
+    "triage": "bug-triage",
+    "ops-watch": "deploy-monitor",
+    "e2e-runner": "e2e-smoke",
 }
 
 
