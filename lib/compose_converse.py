@@ -156,7 +156,7 @@ class ConverseAction:
     args: dict[str, Any]
 
 
-def parse_action(raw: Any) -> ConverseAction | None:
+def parse_action(raw: Any, *, allowlist: frozenset[str] | None = None) -> ConverseAction | None:
     """Validate a model-emitted ``{tool, args}`` block into a ``ConverseAction``.
 
     Defensive by construction, mirroring the JSON-extraction style already used
@@ -165,7 +165,7 @@ def parse_action(raw: Any) -> ConverseAction | None:
     a normal conversational/build turn. Specifically it drops the action when:
 
     * the block is not a dict, or
-    * ``tool`` is missing / not a string / not in ``ACTION_ALLOWLIST``, or
+    * ``tool`` is missing / not a string / not in the allowlist, or
     * ``args`` is present but is not a dict, or
     * ``args`` exceeds the bounded key count or serialized size, or
     * ``args`` contains a non-finite float (``NaN`` / ``Infinity``) anywhere in
@@ -175,14 +175,21 @@ def parse_action(raw: Any) -> ConverseAction | None:
 
     A missing ``args`` is treated as an empty dict so a bare
     ``{"tool": "list_repos"}`` request is honored.
+
+    ``allowlist`` bounds which tool names are accepted; it defaults to the shared
+    ``ACTION_ALLOWLIST``. A caller with its own scoped vocabulary (the onboarding
+    converse flow) passes its subset here, so the args-bounds + non-finite gate
+    stays a single implementation without every surface sharing one tool set.
     """
+    if allowlist is None:
+        allowlist = ACTION_ALLOWLIST
     if not isinstance(raw, dict):
         return None
     tool = raw.get("tool")
     if not isinstance(tool, str):
         return None
     tool = tool.strip()
-    if tool not in ACTION_ALLOWLIST:
+    if tool not in allowlist:
         return None
     raw_args = raw.get("args")
     if raw_args is None:

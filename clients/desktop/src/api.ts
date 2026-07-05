@@ -22,6 +22,8 @@ import type {
   MemoryLessonsResponse,
   NativeAction,
   NativeCommandResult,
+  OnboardingConverseRequest,
+  OnboardingConverseResponse,
   PlanDecision,
   PlanDecisionResponse,
   PlansResponse,
@@ -480,6 +482,21 @@ export async function themeBuilderConverse(
   signal?: AbortSignal,
 ): Promise<ThemeBuilderResponse> {
   return writeAlfredJson(baseUrl, "/api/theme-builder/converse", request, signal);
+}
+
+// One turn of the conversational Ask-driven onboarding guide. The server asks a
+// short setup question, then requests one scoped action the client executes
+// under the same token gate the stepped flow uses. When no live engine is
+// configured the server returns a 503 with `error: "live_session_unavailable"`;
+// the caller catches that (via isLiveSessionUnavailable) and falls back to the
+// stepped onboarding flow. Nothing is executed server-side: the client runs the
+// SAME setup handler both paths share, so they cannot drift.
+export async function onboardingConverse(
+  baseUrl: string,
+  request: OnboardingConverseRequest,
+  signal?: AbortSignal,
+): Promise<OnboardingConverseResponse> {
+  return writeAlfredJson(baseUrl, "/api/onboarding/converse", request, signal);
 }
 
 // One turn of the conversational, repo-grounded spec-builder. The server runs a

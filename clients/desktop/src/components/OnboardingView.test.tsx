@@ -147,6 +147,7 @@ function defaultRosterProps() {
     rosterSaveError: null,
     onRosterThemeChange: vi.fn(),
     onEditCustomTheme: vi.fn(),
+    onSaveCustomNames: vi.fn(async () => undefined),
   };
 }
 

@@ -546,6 +546,43 @@ export type ThemeBuilderRequest = {
   messages: ConverseMessage[];
 };
 
+// POST /api/onboarding/converse: one assistant turn of the conversational
+// Ask-driven onboarding guide. Alfred asks a short setup question, then REQUESTS
+// one scoped action the client executes under the same token gate the stepped
+// flow uses. `action` is null on a plain question turn, and carries a validated
+// `{tool, args}` request when Alfred asks the app to run a step. Nothing is
+// executed server-side: the client runs the SAME setup handler both paths share.
+export type OnboardingActionTool =
+  | "check_engine"
+  | "connect_github"
+  | "set_repos"
+  | "pick_agents"
+  | "propose_theme"
+  | "save_theme"
+  | "set_schedule"
+  | "finish_setup";
+
+// A validated onboarding action request. Args are a plain JSON dict shaped per
+// tool by the server (repos for set_repos, custom_names/custom_roles for the
+// theme tools, cadence for set_schedule); the client reads only the fields it
+// needs and re-validates on the concrete write.
+export type OnboardingAction = {
+  tool: OnboardingActionTool;
+  args: Record<string, unknown>;
+};
+
+export type OnboardingConverseResponse = {
+  reply: string;
+  action: OnboardingAction | null;
+  // True only on the terminal finish_setup turn, so the client can route to the
+  // board once the guided flow is complete.
+  done: boolean;
+};
+
+export type OnboardingConverseRequest = {
+  messages: ConverseMessage[];
+};
+
 export type ConversationControlRequest = {
   text: string;
   actor_user_id?: string;
