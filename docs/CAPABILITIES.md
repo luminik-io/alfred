@@ -3,8 +3,10 @@
 `alfred capabilities` is a read-only inventory of the local features that make
 the fleet useful beyond a bare scheduler. It does not install packages or make
 network calls. The native onboarding flow uses the same payload on the Tools
-step, so a user can see whether code graph memory, context compression, and
-engineering skill packs are ready before they let the fleet run real work.
+step, whether you set Alfred up by chatting or by stepping through the form (see
+[`ONBOARDING.md`](ONBOARDING.md)), so a user can see whether code graph memory,
+context compression, and engineering skill packs are ready before they let the
+fleet run real work.
 
 ```sh
 alfred capabilities

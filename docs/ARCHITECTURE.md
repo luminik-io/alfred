@@ -343,5 +343,7 @@ flowchart TD
 - [`SLACK_UX.md`](SLACK_UX.md) and [`SLACK_APPROVAL.md`](SLACK_APPROVAL.md): the Slack message contract and the reaction approval gate.
 - [`SLACK_SETUP.md`](SLACK_SETUP.md): control commands, thread-sync, and the issue bridge setup.
 - [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md): the desktop control surface and how to build native installers.
+- [`IDENTITY_AND_THEMES.md`](IDENTITY_AND_THEMES.md): why roles are the canonical identity and themes only supply display names.
+- [`ONBOARDING.md`](ONBOARDING.md): the conversational and stepped setup paths and the theme builder.
 - [`PLAIN_MODE.md`](PLAIN_MODE.md): the non-technical intake profile.
 - [`INSTALL_TIERS.md`](INSTALL_TIERS.md): the three install tiers and what each one needs.

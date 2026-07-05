@@ -1,14 +1,22 @@
-# Batman: the architect agent
+# The architect role (Batman in the default theme)
 
-Batman is Alfred's OSS architect agent for features that span more than one
-repository. It reads a single parent issue, drafts the rollout, posts the plan
-to Slack or the local client for operator approval, files scoped child issues
+This page is about the `architect` role: Alfred's OSS agent for features that
+span more than one repository. The canonical identity is the role, `architect`.
+"Batman" is the name the default `batman` theme paints on it, and this page uses
+that name throughout for readability. Switch themes and the same role shows a
+different name (Optimus Prime in Transformers, for example); the role, its
+labels, and its behavior do not change. For the identity model, see
+[Identity and themes](IDENTITY_AND_THEMES.md).
+
+The architect reads a single parent issue, drafts the rollout, posts the plan to
+Slack or the local client for operator approval, files scoped child issues
 across the named repos, and posts a follow-up report naming the child issues it
 filed.
 
-Use Batman when the change spans multiple repos or packages and needs one
+Use the architect when the change spans multiple repos or packages and needs one
 accountable agent above the repo-local work. For a feature that fits in one
-repo, the right shape is Drake scoping the issue and Lucius implementing it.
+repo, the right shape is the `planner` role (Drake) scoping the issue and the
+`senior-dev` role (Lucius) implementing it.
 
 ## When to reach for Batman
 

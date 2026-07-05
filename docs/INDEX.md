@@ -8,6 +8,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`DEMO.md`](DEMO.md): `alfred demo`, the one-run tour. Watch the team plan, build in an isolated worktree, catch a planted bug in review, fix it, and ship locally on a throwaway sample repo, with only an authenticated `claude` CLI.
 - [`../INSTALL.md`](../INSTALL.md): from-zero local install.
 - [`AI_ASSISTED_INSTALL.md`](AI_ASSISTED_INSTALL.md): copy-paste prompt and guardrails for Claude Code, Codex, or another local coding assistant to install Alfred.
+- [`ONBOARDING.md`](ONBOARDING.md): the two setup paths (chat with Alfred, or step through the form), the onboarding action allowlist, the human-approval gate on side-effectful actions, and the conversational theme builder for naming your team.
 - [`INSTALL_TIERS.md`](INSTALL_TIERS.md): the three install tiers (`core`, `client`, `slack`) and how the CLI and fleet run fully standalone.
 - [`WORKSPACE_PATTERNS.md`](WORKSPACE_PATTERNS.md): one-repo, multi-repo, specs-led, and Batman planning layouts.
 - [`MONOREPO.md`](MONOREPO.md): running Alfred against a pnpm, Turborepo, or Cargo workspace.
@@ -23,8 +24,9 @@ Current map of the public docs. Trust code first, then this index.
 
 - [`../ARCHITECTURE.md`](../ARCHITECTURE.md): design rationale for host scheduling, worktrees, IAM, spend guards, and plan review.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md): the diagram companion. Mermaid diagrams for the agent lifecycle, model dispatch and tiers, distributed locking, the Slack conversational flow, the desktop app, the disk guardian, and the layered install and distribution.
-- [`AGENTS.md`](AGENTS.md): default agent roles, stable runtime codenames, and custom display-name themes.
-- [`BATMAN.md`](BATMAN.md): the architect agent for features spanning more than one repo. It reads a parent issue, drafts the rollout for operator approval, and files scoped child issues across the named repos.
+- [`IDENTITY_AND_THEMES.md`](IDENTITY_AND_THEMES.md): the canonical identity model. Role-slugs are the identity; themes (the default `batman` roster plus presets and custom names) supply display names; how names resolve across Slack, the desktop app, and the CLI; and how to pick or build a theme.
+- [`AGENTS.md`](AGENTS.md): the default engineering roles, the stable runtime identity, and the display-name themes layered on top.
+- [`BATMAN.md`](BATMAN.md): the `architect` role (Batman in the default theme) for features spanning more than one repo. It reads a parent issue, drafts the rollout for operator approval, and files scoped child issues across the named repos.
 - [`STATE_MACHINE.md`](STATE_MACHINE.md): issue claim lifecycle and stale-claim recovery.
 - [`VERIFICATION.md`](VERIFICATION.md): the `## Verification evidence` block on every agent PR. Test-check summary, diff summary, engine self-assessment against the issue's acceptance criteria, and optional opt-in before/after screenshots, with an honest "not captured" for anything that could not run.
 - [`STATE_AND_MEMORY.md`](STATE_AND_MEMORY.md): what Alfred remembers between firings, where every state file lives, and the local fleet-brain memory layer.
@@ -32,9 +34,9 @@ Current map of the public docs. Trust code first, then this index.
 - [`CODE_MEMORY.md`](CODE_MEMORY.md): the code-structure memory layer. codebase-memory-mcp indexes in-scope repos into a code graph and answers read-only symbol, caller, and ownership queries the fleet can call on demand.
 - [`MEMORY_PROVIDERS.md`](MEMORY_PROVIDERS.md): Redis Agent Memory, FleetBrain's local ledger role, provider chaining, and optional read-only fallback stores.
 - [`MCP.md`](MCP.md): the MCP servers Alfred attaches to Claude-engine firings only (Codex-routed firings get no MCP). The read-only `alfred_memory` server over the fleet brain, the consumed `code_memory` (codebase-memory-mcp) code graph, per-role tool scoping, safety model, and configuration.
-- [`CONVERSATION.md`](CONVERSATION.md): Alfred's conversational surfaces. How a Slack mention, DM, or desktop Ask message becomes a natural, streamed, context-grounded reply (repositories, live fleet status, lessons), when it offers a plan versus answers a question, the streaming transport, the safety rails, and configuration.
+- [`CONVERSATION.md`](CONVERSATION.md): Alfred's conversational surfaces after setup. How a Slack mention, DM, or desktop Ask message becomes a natural, streamed, context-grounded reply (repositories, live fleet status, lessons), when it offers a plan versus answers a question, the streaming transport, the safety rails, and configuration. For conversational setup, see [`ONBOARDING.md`](ONBOARDING.md).
 - [`SLACK_UX.md`](SLACK_UX.md): Slack-native message shape, planning replies, approval flow, and anti-patterns.
-- [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md): Alfred Desktop design rationale and tab-by-tab tour, the Slack-native boundary, the `alfred serve` API and native allowlist, and building native installers.
+- [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md): Alfred Desktop design rationale and tab-by-tab tour, the Setup screen (guided install plus conversational onboarding and the theme builder), the Slack-native boundary, the `alfred serve` API and native allowlist, and building native installers.
 - [`SERVE.md`](SERVE.md): `alfred serve`, the localhost-only read-only dashboard over state, saved Batman plans, the fleet brain, and planning drafts. The operator's pane of glass and the API Alfred Desktop runs on.
 - [`DESIGN.md`](DESIGN.md): the visual language for the native app and the site. Color tokens, the Instrument Sans plus Quicksand plus Fragment Mono type stack, glass surfaces, motion and `prefers-reduced-motion`, and accessibility.
 - [`THEME_SYSTEM.md`](THEME_SYSTEM.md): the desktop two-axis theme model. The `data-theme` palette and `.dark`/`.light` mode axes, the `:root` token contract, and glass versus flat surface tokens.
@@ -60,7 +62,7 @@ Current map of the public docs. Trust code first, then this index.
 ## Reference
 
 - [`OUTPUT_SAMPLES.md`](OUTPUT_SAMPLES.md): every shape of Slack post, doctor run, issue body, PR, and state JSON in one place.
-- [`GLOSSARY.md`](GLOSSARY.md): one-sentence definitions for every codename, label, sentinel, and runtime concept.
+- [`GLOSSARY.md`](GLOSSARY.md): one-sentence definitions for every role, themed name, label, sentinel, and runtime concept.
 - [`BATMAN_PARENT_ISSUE_TEMPLATE.md`](BATMAN_PARENT_ISSUE_TEMPLATE.md): the exact parent-issue body shape Batman's lifecycle parser expects, the gotchas it does not surface, and a copy-paste template.
 - [`SHIPPED_EMITTER.md`](SHIPPED_EMITTER.md): the `alfred-shipped-public` emitter that scrubs local state through a field allowlist and redaction table to publish a weekly shipped-work feed for your own repos.
 - [`SLOP_DETECTOR.md`](SLOP_DETECTOR.md): the read-only, stdlib-only `alfred slop-detect` scanner that flags LLM-cliche vocabulary and phrasing in prose and exits non-zero in CI.
