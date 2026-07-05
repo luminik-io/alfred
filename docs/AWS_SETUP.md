@@ -186,12 +186,12 @@ aws --profile <your-codename>-cron secretsmanager get-secret-value \
 
 ## 4. Configure the scheduled agent env
 
-The rendered plists do not have an `AWS_PROFILE` column. `alfred-init` writes role-specific profile variables such as `ALFRED_HUNTRESS_AWS_PROFILE` and `ALFRED_GORDON_AWS_PROFILE` into `$ALFRED_HOME/.env`; `bin/agent-launch` loads that file at firing time; the stable role runner then sets `AWS_PROFILE` only around the AWS calls it owns.
+The rendered plists do not have an `AWS_PROFILE` column. `alfred-init` writes role-specific profile variables such as `ALFRED_E2E_RUNNER_AWS_PROFILE` and `ALFRED_OPS_WATCH_AWS_PROFILE` into `$ALFRED_HOME/.env`; `bin/agent-launch` loads that file at run time; the stable role runner then sets `AWS_PROFILE` only around the AWS calls it owns.
 
 For per-agent profiles, the cleanest pattern is to set `AWS_PROFILE` inside the agent's Python runner before any `subprocess.run(["aws", ...])` call:
 
 ```python
-# In your agent's stable role runner, such as bin/huntress.py:
+# In your agent's stable role runner, such as bin/e2e-runner.py:
 import os
 os.environ["AWS_PROFILE"] = "<your-codename>-cron"
 # Strip any leakage from the operator's session:
@@ -200,7 +200,7 @@ for k in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
     os.environ.pop(k, None)
 ```
 
-This is what the shipped `bin/gordon.py` runner does when AWS monitoring is enabled.
+This is what the shipped `bin/ops-watch.py` runner does when AWS monitoring is enabled.
 
 ## 5. Rotate keys
 

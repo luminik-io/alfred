@@ -1,12 +1,12 @@
-"""Spec-bundle planner primitives for the ``damian`` codename role.
+"""Spec-bundle planner primitives for the ``spec-planner`` role.
 
-``damian`` is Alfred's spec-aware, multi-repo bundle planner. It sits one
-level above ``drake`` (single-repo issue filer) and feeds ``batman``
-(cross-repo architect) by emitting ``agent:bundle:<slug>``
+The spec-planner is Alfred's spec-aware, multi-repo bundle planner. It sits one
+level above the ``planner`` role (single-repo issue filer) and feeds the
+``architect`` role (cross-repo architect) by emitting ``agent:bundle:<slug>``
 siblings across two or more configured repos.
 
 This module is the pure-data layer: spec parsing, multi-repo detection,
-bundle-shape construction. The runner shell in ``bin/damian.py`` wires
+bundle-shape construction. The runner shell in ``bin/spec-planner.py`` wires
 preflight, the LLM call, and the sentinel-driven reporting around these
 primitives. Keeping the logic here means a fleet can dry-run the planner
 without touching GitHub or any LLM.
@@ -29,7 +29,7 @@ Design notes:
   constants in ``lib.batman`` so the module is usable today.
 
 The planner does not call gh, claude, or codex itself. It produces a
-``Plan`` - a list of ``SpecBundle`` candidates - that ``bin/damian.py``
+``Plan`` - a list of ``SpecBundle`` candidates - that ``bin/spec-planner.py``
 formats into the LLM prompt context. The LLM does the final filing via
 ``gh issue create``; this layer keeps the candidate-list logic pure.
 """
@@ -364,14 +364,14 @@ class MarkdownSpecParser:
 GhClient = Callable[[list[str]], list[dict]]
 """A callable that runs a ``gh`` JSON query and returns the decoded rows.
 
-The default implementation in ``bin/damian.py`` is the existing
+The default implementation in ``bin/spec-planner.py`` is the existing
 ``agent_runner.gh_json`` helper; tests pass a fake.
 """
 
 
 def _default_gh_client(_cmd: list[str]) -> list[dict]:
     # The pure-data planner never reaches this in unit tests because they
-    # inject a fake. Production wiring lives in ``bin/damian.py``.
+    # inject a fake. Production wiring lives in ``bin/spec-planner.py``.
     return []
 
 

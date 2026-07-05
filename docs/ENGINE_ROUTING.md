@@ -20,7 +20,7 @@ This page covers the three modes, the precedence chain, the fallback behavior, t
 
 The framework reads the engine for each firing from a precedence chain. The first source that returns a normalized mode wins.
 
-1. `ALFRED_<CODENAME>_ENGINE` (e.g. `ALFRED_LUCIUS_ENGINE=claude`, `ALFRED_RASALGHUL_ENGINE=codex`).
+1. `ALFRED_<CODENAME>_ENGINE`, where the codename is the role slug (e.g. `ALFRED_SENIOR_DEV_ENGINE=claude`, `ALFRED_REVIEWER_ENGINE=codex`).
 2. `ALFRED_ENGINE` for fleet-wide testing (useful in `alfred-dry-run`).
 3. `$ALFRED_HOME/state/engines/<codename>`, written by `alfred engine set`.
 4. The codename's compiled-in default, usually `hybrid`.

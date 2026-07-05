@@ -237,8 +237,8 @@ MCP server, and a CLI wrapper.
   They are complementary, not redundant: the condenser shrinks history, headroom
   shrinks individual large inputs.
 - If you adopt headroom, the hook point is **prompt assembly**, not transcript
-  condensation. The framework builds a firing prompt in the role builders (for
-  example `build_prompt` in `bin/lucius.py`), which inline a repo `CLAUDE.md` and
+  condensation. The framework builds a run prompt in the role builders (for
+  example `build_prompt` in `bin/senior-dev.py`), which inline a repo `CLAUDE.md` and
   issue payload. A `compress()` call there, on the largest inlined blocks, is the
   natural insertion. It should stay behind an env flag (opt-in), mirroring the
   condenser's `ALFRED_CONDENSER_ENABLED` switch, so a fleet that does not want a

@@ -250,8 +250,8 @@ You've hit a provider usage limit. `cat $ALFRED_HOME/state/global-blocked-until.
 **Unexpected API charges.**
 Check whether `ANTHROPIC_API_KEY` is set in your shell, scheduler environment, or `$ALFRED_HOME/.env`. For subscription-backed runs, unset it and re-run `claude /status` interactively to confirm the active account. If Codex is unexpectedly using API billing, check whether `OPENAI_API_KEY` is set or whether Codex was logged in through an API-key flow instead of ChatGPT-plan auth.
 
-**`error_max_turns` on every firing of one agent.**
-That agent's max-turns budget is too tight for the work. Either widen the budget in the stable role runner (look for `max_turns=` in files such as `bin/lucius.py`), or scope-cap the issues that agent picks up.
+**`error_max_turns` on every run of one agent.**
+That agent's max-turns budget is too tight for the work. Either widen the budget in the stable role runner (look for `max_turns=` in files such as `bin/senior-dev.py`), or scope-cap the issues that agent picks up.
 
 **`session_id` resume doesn't work.**
 The framework writes `last_session_id_per_target` into the agent's spend file (`$ALFRED_HOME/state/<agent>/spend-YYYY-MM-DD.json`). If this is empty, resume isn't being attempted. Check the agent's prompt; it should pass `--resume <session_id>` when re-firing on the same issue after a max-turns event.

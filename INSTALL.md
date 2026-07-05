@@ -209,19 +209,19 @@ them immediately for teams that want that level of automation.
 
 **When do I need Batman?**
 
-| Your fleet has | Do you need Batman? |
+| Your fleet has | Do you need the architect role (Batman in the default theme)? |
 | --- | --- |
-| 1 repo | No. Drake + Lucius + Ra's al Ghul handle single-repo work fine on their own. |
+| 1 repo | No. The planner, senior-dev, and reviewer roles handle single-repo work fine on their own. |
 | 2 to 3 related repos (frontend + backend, or app + web + mobile) | Yes, highly recommended. The single-issue fans-out-to-N-PRs pattern is the daily payoff. |
-| 5+ repos with mostly-independent work | Yes for cross-repo features. Batman no-ops on firings that find nothing cross-cutting, so the cost is the firing itself. |
-| Strict approval gates required before any cross-repo work lands | Yes. Batman's `BATMAN_AUTO_EXECUTE=approval-gate` is the cleanest checkpoint pattern Alfred ships. |
+| 5+ repos with mostly-independent work | Yes for cross-repo features. The architect no-ops on runs that find nothing cross-cutting, so the cost is the run itself. |
+| Strict approval gates required before any cross-repo work lands | Yes. The architect's `BATMAN_AUTO_EXECUTE=approval-gate` is the cleanest checkpoint pattern Alfred ships. |
 
-Batman is present in the full-fleet config from the start and stays protected by
-the runner gate until you arm it with `alfred enable batman`.
+The architect role is present in the full-fleet config from the start and stays
+protected by the runner gate until you arm it with `alfred enable architect`.
 
-Huntress and Gordon are present in the full-fleet config too. They load with the
-rest of the scheduler and self-idle until `ALFRED_HUNTRESS_TARGET_URL` or
-`ALFRED_GORDON_ECS_CLUSTER` is configured.
+The e2e-runner and ops-watch roles are present in the full-fleet config too. They
+load with the rest of the scheduler and self-idle until
+`ALFRED_E2E_RUNNER_TARGET_URL` or `ALFRED_OPS_WATCH_ECS_CLUSTER` is configured.
 
 ### 7. Framework-only deploy + verify
 

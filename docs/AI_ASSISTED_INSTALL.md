@@ -236,9 +236,9 @@ export REPOS="my-org/api,my-org/web,my-org/mobile"
 This writes per-agent repo env vars such as:
 
 ```sh
-ALFRED_DRAKE_REPOS=api,web,mobile
-ALFRED_LUCIUS_REPOS=api,web,mobile
-ALFRED_RASALGHUL_REPOS=api,web,mobile
+ALFRED_PLANNER_REPOS=api,web,mobile
+ALFRED_SENIOR_DEV_REPOS=api,web,mobile
+ALFRED_REVIEWER_REPOS=api,web,mobile
 ```
 
 Alfred expects those local checkouts under `$WORKSPACE_ROOT/product/<repo>`.

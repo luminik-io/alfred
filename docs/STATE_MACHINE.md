@@ -77,10 +77,10 @@ Where the label comes from depends on the path:
   directly with only `agent:implement` (the bridge's default
   `config.label`) and no gate label. These issues are immediately eligible for
   pickup, by design; do not expect an approved draft to be held.
-- **Multi-repo Batman bundles** use a different approval surface. The bundle
-  parent carries `agent:plan-pending-approval` while Batman waits on the
+- **Multi-repo architect bundles** use a different approval surface. The bundle
+  parent carries `agent:plan-pending-approval` while the architect waits on the
   operator's Slack approval reaction; the parent's label is added and removed by
-  Batman's parent flow only ([`bin/batman.py`](../bin/batman.py)). The bundle's
+  the architect's parent flow only ([`bin/architect.py`](../bin/architect.py)). The bundle's
   sibling child issues carry no gate label.
 
 ## Claim comments

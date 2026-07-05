@@ -78,7 +78,7 @@ Use this when you have one app, one library, or one Mac/iOS app repo:
   --slack-webhook skip
 ```
 
-This creates labels on `my-org/my-app`, writes `ALFRED_LUCIUS_REPOS=my-app`
+This creates labels on `my-org/my-app`, writes `ALFRED_SENIOR_DEV_REPOS=my-app`
 and similar variables into `$ALFRED_HOME/.env`, deploys the full fleet, and runs
 doctor.
 
@@ -104,9 +104,9 @@ If you need different repo lists per agent, run the interactive wizard or edit
 the generated variables in `$ALFRED_HOME/.env`:
 
 ```sh
-ALFRED_DRAKE_REPOS=api,web,mobile
-ALFRED_LUCIUS_REPOS=api,web
-ALFRED_RASALGHUL_REPOS=api,web,mobile
+ALFRED_PLANNER_REPOS=api,web,mobile
+ALFRED_SENIOR_DEV_REPOS=api,web
+ALFRED_REVIEWER_REPOS=api,web,mobile
 ```
 
 Then redeploy:
@@ -191,7 +191,7 @@ explicit so operators can decide how much autonomy they want.
 
 - `WORKSPACE_ROOT` is not the repo folder. It is the parent that contains the
   `product/` directory.
-- A repo name in `ALFRED_LUCIUS_REPOS=api` means local checkout
+- A repo name in `ALFRED_SENIOR_DEV_REPOS=api` means local checkout
   `$WORKSPACE_ROOT/product/api`.
 - `--repos` can be bare names (`api,web`) or full slugs (`my-org/api,my-org/web`).
 - `GH_ORG` must match the owner of the selected repos.

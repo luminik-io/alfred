@@ -15,9 +15,9 @@ The repos referenced below are placeholders. Replace them with your own fleet:
 Fleet configuration for this example:
 
 ```sh
-ALFRED_DRAKE_REPOS=your-backend,your-frontend,your-mobile
-ALFRED_LUCIUS_REPOS=your-backend,your-frontend,your-mobile
-ALFRED_RASALGHUL_REPOS=your-backend,your-frontend,your-mobile
+ALFRED_PLANNER_REPOS=your-backend,your-frontend,your-mobile
+ALFRED_SENIOR_DEV_REPOS=your-backend,your-frontend,your-mobile
+ALFRED_REVIEWER_REPOS=your-backend,your-frontend,your-mobile
 BATMAN_PARENT_REPO=your-org/your-specs
 BATMAN_AUTO_EXECUTE=approval-gate
 ```
