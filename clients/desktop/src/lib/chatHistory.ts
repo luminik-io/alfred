@@ -44,6 +44,12 @@ export type PersistedDraftTurn = {
     repos: string[];
     ready: boolean;
     questions: string[];
+    // Structured plan sections, carried so a resumed thread re-renders the same
+    // enriched card. Optional: an older stored draft simply omits them.
+    problem?: string;
+    desiredBehavior?: string;
+    acceptanceCriteria?: string[];
+    testPlan?: string;
   };
 };
 

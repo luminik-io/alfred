@@ -84,6 +84,29 @@ def test_skills_install_fetch_dry_run_previews_without_yes(cli_module, capsys) -
     assert "git clone" in out
 
 
+def test_skills_install_starter_lands_first_party_set(cli_module, capsys, tmp_path: Path) -> None:
+    rc = _run(cli_module, ["skills", "install", "--starter"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "starter set" in out
+    # Each first-party skill copied into the isolated skills dir.
+    for name in ("spec-to-issues", "write-tests", "review-security"):
+        assert (tmp_path / "skills" / name / "SKILL.md").is_file()
+
+
+def test_skills_install_starter_dry_run_writes_nothing(cli_module, capsys, tmp_path: Path) -> None:
+    rc = _run(cli_module, ["skills", "install", "--starter", "--dry-run"])
+    assert rc == 0
+    assert "Would install starter set" in capsys.readouterr().out
+    assert not (tmp_path / "skills" / "spec-to-issues").exists()
+
+
+def test_skills_install_starter_rejects_pack_and_flag(cli_module, capsys) -> None:
+    rc = _run(cli_module, ["skills", "install", "write-tests", "--starter"])
+    assert rc == 2
+    assert "not both" in capsys.readouterr().err
+
+
 def test_skills_installed_reflects_prior_install(cli_module, capsys, tmp_path: Path) -> None:
     assert _run(cli_module, ["skills", "install", "security-and-hardening"]) == 0
     capsys.readouterr()

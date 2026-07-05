@@ -260,3 +260,6 @@ screenshots/
 # artifacts belong in the internal repo, never committed to the public one.
 clients/desktop/.design-review/
 .design-review/
+
+# alfred skills evolve drafts (proposals; not tracked, review then promote by hand)
+skills/first_party/_proposed/*/

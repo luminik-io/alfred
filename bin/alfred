@@ -2687,7 +2687,14 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_skills_list.add_argument("--json", action="store_true")
     p_skills_list.set_defaults(func=cmd_skills)
     p_skills_install = skills_sub.add_parser("install", help="install one pack into the skills dir")
-    p_skills_install.add_argument("pack", help="pack name (see `alfred skills list`)")
+    p_skills_install.add_argument(
+        "pack", nargs="?", help="pack name (see `alfred skills list`); omit with --starter"
+    )
+    p_skills_install.add_argument(
+        "--starter",
+        action="store_true",
+        help="install the default first-party starter set (local copy, no network)",
+    )
     p_skills_install.add_argument(
         "--yes",
         action="store_true",
@@ -2700,6 +2707,14 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_skills_installed = skills_sub.add_parser("installed", help="list installed packs")
     p_skills_installed.add_argument("--json", action="store_true")
     p_skills_installed.set_defaults(func=cmd_skills)
+    p_skills_evolve = skills_sub.add_parser(
+        "evolve", help="draft SKILL.md proposals from promoted memory (never installs)"
+    )
+    p_skills_evolve.add_argument("--since", help="only lessons created on/after this ISO date")
+    p_skills_evolve.add_argument(
+        "--dry-run", action="store_true", help="report the proposals without writing any draft"
+    )
+    p_skills_evolve.set_defaults(func=cmd_skills)
 
     p_telemetry = sub.add_parser("telemetry", help="manage anonymous usage totals")
     telemetry_sub = p_telemetry.add_subparsers(dest="telemetry_command", required=True)
@@ -3079,9 +3094,7 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_demo.add_argument(
         "--yes", action="store_true", help="auto-approve the plan gate without waiting for Enter"
     )
-    p_demo.add_argument(
-        "--timeout", type=int, help="per-step engine wall-clock ceiling in seconds"
-    )
+    p_demo.add_argument("--timeout", type=int, help="per-step engine wall-clock ceiling in seconds")
     p_demo.set_defaults(func=cmd_demo)
 
     p_serve = sub.add_parser("serve", help="open the read-only localhost dashboard")

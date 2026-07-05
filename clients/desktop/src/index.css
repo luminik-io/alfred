@@ -3984,6 +3984,88 @@ body {
   line-height: 1.45;
 }
 
+/* Enriched plan sections: a quiet, hairline-separated brief (Intent / Scope /
+   Done when / Verified by) below the lifecycle card. Flat data surface (no
+   glass), matching the dense lists elsewhere. Each section is omitted when it
+   has no data, so a header never sits above nothing. */
+.ask-draft__detail {
+  display: grid;
+  gap: 0.6rem;
+  border-top: 1px solid var(--hairline);
+  padding-top: 0.6rem;
+}
+
+.ask-draft__section {
+  display: grid;
+  grid-template-columns: minmax(0, 6.5rem) minmax(0, 1fr);
+  gap: 0.15rem 0.85rem;
+  align-items: start;
+}
+
+.ask-draft__section-label {
+  color: var(--muted-foreground);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding-top: 0.08rem;
+}
+
+.ask-draft__section-body {
+  min-width: 0;
+  color: color-mix(in oklch, var(--muted-foreground), var(--foreground) 30%);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.ask-draft__section-body p {
+  margin: 0;
+}
+
+.ask-draft__section-body p + p {
+  margin-top: 0.3rem;
+}
+
+.ask-draft__scope {
+  color: var(--foreground);
+}
+
+.ask-draft__criteria {
+  display: grid;
+  gap: 0.28rem;
+  margin: 0;
+  padding-left: 1rem;
+}
+
+/* The plain-words consequence line for the File issue action: what happens when
+   you file. Uses the accent-soft wash so it reads as a deliberate note, not an
+   error. Status color is never borrowed here. */
+.ask-draft__consequence {
+  margin: 0;
+  border-left: 2px solid color-mix(in oklch, var(--primary), var(--border) 30%);
+  border-radius: 0;
+  background: var(--accent-soft);
+  padding: 0.5rem 0.7rem;
+  color: color-mix(in oklch, var(--muted-foreground), var(--foreground) 26%);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+/* Repo-less state: a neutral "still missing" hint, not a consequence. Drop the
+   accent wash + rail so it does not read as a confirmed filing. */
+.ask-draft__consequence--hint {
+  border-left-color: var(--hairline);
+  background: color-mix(in oklch, var(--muted), transparent 55%);
+  color: var(--muted-foreground);
+}
+
+@media (max-width: 520px) {
+  .ask-draft__section {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.1rem;
+  }
+}
+
 .ask-draft__notice {
   margin: 0;
   font-size: 0.82rem;
@@ -5471,6 +5553,53 @@ body {
   display: inline-flex;
   gap: 0.4rem;
   flex: 0 0 auto;
+}
+
+/* Board card attribution: a small agent avatar chip, the themed agent name, and
+   an optional review-state pill. The avatar mirrors the Roster monogram styling
+   (--agent-accent soft fill + accent ink), scaled down for the dense board. */
+.board-attribution {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.board-avatar {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--agent-accent, var(--primary)), var(--border) 55%);
+  background: color-mix(in oklch, var(--agent-accent, var(--primary)), transparent 82%);
+  color: color-mix(in oklch, var(--agent-accent, var(--primary)), var(--foreground) 34%);
+  font-family: var(--font-heading);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.board-attribution__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-attribution__state {
+  flex: 0 0 auto;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--cyan), var(--border) 55%);
+  background: color-mix(in oklch, var(--cyan), transparent 86%);
+  color: color-mix(in oklch, var(--cyan), var(--foreground) 34%);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 /* The Pipeline board: lifecycle columns as flat lanes with light chrome. No

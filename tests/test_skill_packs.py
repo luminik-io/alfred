@@ -82,6 +82,68 @@ def test_parse_rejects_bad_install_shape() -> None:
         skill_packs._parse_pack({"name": "x", "install": "bogus"})
 
 
+def test_parse_rejects_first_party_without_path() -> None:
+    with pytest.raises(ValueError, match="must set first_party_path"):
+        skill_packs._parse_pack({"name": "x", "install": "first_party"})
+
+
+# --------------------------------------------------------------------------
+# First-party tier
+# --------------------------------------------------------------------------
+
+
+def test_shipped_manifest_has_first_party_packs() -> None:
+    packs = skill_packs.load_manifest()
+    first_party = [p for p in packs if p.is_first_party]
+    names = {p.name for p in first_party}
+    assert "spec-to-issues" in names
+    assert "write-tests" in names
+    assert len(first_party) == 6
+
+
+def test_first_party_packs_point_at_a_real_skill_dir() -> None:
+    root = skill_packs.skills_root() / "first_party"
+    for p in skill_packs.load_manifest():
+        if p.is_first_party:
+            src = root / p.first_party_path
+            assert (src / "SKILL.md").is_file(), f"{p.name} has no SKILL.md at {src}"
+
+
+def test_first_party_packs_are_local_copy_and_mit() -> None:
+    for p in skill_packs.load_manifest():
+        if p.is_first_party:
+            assert p.is_local_copy
+            assert not p.is_fetch
+            assert p.license == "MIT"
+
+
+def test_install_first_party_copies_skill(tmp_path: Path) -> None:
+    packs = skill_packs.load_manifest()
+    pack = next(p for p in packs if p.name == "spec-to-issues")
+    result = skill_packs.install_pack(pack, skills_dir=tmp_path)
+    assert result.dest == tmp_path / "spec-to-issues"
+    assert (result.dest / "SKILL.md").is_file()
+    # The reference file rides along with the copytree.
+    assert (result.dest / "references" / "spec-shape.md").is_file()
+
+
+def test_install_first_party_missing_source_raises(tmp_path: Path) -> None:
+    bad = _pack(install="first_party", first_party_path="nope", vendored_path=None)
+    with pytest.raises(FileNotFoundError, match="first-party source missing"):
+        skill_packs.install_pack(bad, skills_dir=tmp_path)
+
+
+def test_starter_packs_are_the_default_first_party_set() -> None:
+    packs = skill_packs.load_manifest()
+    starter = skill_packs.starter_packs(packs)
+    assert starter, "expected a non-empty starter set"
+    for p in starter:
+        assert p.default_install
+        assert p.is_local_copy  # never pulls a network fetch implicitly
+    # All six first-party skills are in the starter set.
+    assert {p.name for p in starter} >= {"spec-to-issues", "write-tests", "review-security"}
+
+
 def test_parse_rejects_vendored_without_path() -> None:
     with pytest.raises(ValueError, match="must set vendored_path"):
         skill_packs._parse_pack({"name": "x", "install": "vendored"})

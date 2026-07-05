@@ -28,6 +28,14 @@ skill's `SKILL.md` frontmatter (`license: MIT`) but ships no standalone
 MIT grant and copyright line so the vendored copy is explicit and
 self-contained.
 
+## First-party skills (Alfred-authored)
+
+The skills under `skills/first_party/` (`spec-to-issues`, `write-tests`,
+`review-security`, `add-observability`, `migrate-dependency`,
+`changelog-and-release-notes`) are written by the alfred-os project and licensed
+MIT under this repo's `LICENSE`. They carry no upstream attribution because they
+have no upstream: they are our own work.
+
 ## Reference-install skills (fetched from source, not copied in)
 
 These are NOT vendored. The `alfred skills install` command fetches them from

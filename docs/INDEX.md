@@ -13,6 +13,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`MONOREPO.md`](MONOREPO.md): running Alfred against a pnpm, Turborepo, or Cargo workspace.
 - [`MULTI_REPO_WORKED_EXAMPLE.md`](MULTI_REPO_WORKED_EXAMPLE.md): one feature shipped across three repos using the full fleet, including Batman.
 - [`SPECS_DRIVEN_DEVELOPMENT.md`](SPECS_DRIVEN_DEVELOPMENT.md): turning specs into issue queues, Batman plans, and reviewable PRs.
+- [`SPEC_DRIVEN_FOR_EVERYONE.md`](SPEC_DRIVEN_FOR_EVERYONE.md): the plain-language version of spec-driven work for a non-technical reader. Describe an outcome, answer a question or two, approve a preview.
 - [`INSTALL_TIME.md`](INSTALL_TIME.md): honest read on existing-setup (30 min) and fresh-machine (60 to 120 min) install duration.
 - [`../BOOTSTRAP.md`](../BOOTSTRAP.md): full operations setup for a first fleet.
 - [`TUTORIAL.md`](TUTORIAL.md): build the Echo example agent end-to-end.
@@ -30,6 +31,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`FLEET_BRAIN.md`](FLEET_BRAIN.md): local memory schema, reviewable lesson candidates, failure history, CLI, and read-only MCP bridge.
 - [`CODE_MEMORY.md`](CODE_MEMORY.md): the code-structure memory layer. codebase-memory-mcp indexes in-scope repos into a code graph and answers read-only symbol, caller, and ownership queries the fleet can call on demand.
 - [`MEMORY_PROVIDERS.md`](MEMORY_PROVIDERS.md): Redis Agent Memory, FleetBrain's local ledger role, provider chaining, and optional read-only fallback stores.
+- [`MCP.md`](MCP.md): the MCP servers Alfred attaches to Claude-engine firings only (Codex-routed firings get no MCP). The read-only `alfred_memory` server over the fleet brain, the consumed `code_memory` (codebase-memory-mcp) code graph, per-role tool scoping, safety model, and configuration.
 - [`CONVERSATION.md`](CONVERSATION.md): Alfred's conversational surfaces. How a Slack mention, DM, or desktop Ask message becomes a natural, streamed, context-grounded reply (repositories, live fleet status, lessons), when it offers a plan versus answers a question, the streaming transport, the safety rails, and configuration.
 - [`SLACK_UX.md`](SLACK_UX.md): Slack-native message shape, planning replies, approval flow, and anti-patterns.
 - [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md): Alfred Desktop design rationale and tab-by-tab tour, the Slack-native boundary, the `alfred serve` API and native allowlist, and building native installers.
