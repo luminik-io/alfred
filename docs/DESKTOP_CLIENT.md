@@ -33,7 +33,7 @@ The app is a Tauri shell around a React UI. It opens on Inbox and keeps primary 
 | **Ask** | Plain-language planning intake backed by the same readiness engine as Slack. | Draft or refine a plan before it is converted into an issue or spec. |
 | **Work** | The Kanban board: Queued / Working now / Shipped, saved plans, Slack follow-ups, and local draft actions. | Queue an issue, hold work, mark work done, convert follow-ups, or inspect saved detail in-app. |
 | **Agents** | The agent roster, activity feed, latest-run inspector, and memory learning queue. | Pause, resume, run once, dry-run a codename, promote or reject memory candidates, and inspect firing traces. |
-| **Setup** | Guided install, onboarding, and repair: existing install inventory, runtime, auth, repos, engine checks, capability checks, full-fleet roster seed, roster naming, Slack collaborators, and demo data. | Install or repair Alfred core, start or reconnect the local runtime, run curated checks in-app, scope the fleet to repositories, choose a roster theme or custom display names, and add or remove local trusted Slack collaborators. |
+| **Setup** | Guided install, onboarding, and repair: existing install inventory, runtime, auth, repos, engine checks, capability checks, full-fleet roster seed, roster naming, Slack collaborators, and demo data. Onboarding runs either as a chat with Alfred or as the stepped form. | Install or repair Alfred core, start or reconnect the local runtime, run curated checks in-app, scope the fleet to repositories, choose a roster theme, name the team by chatting with the theme builder or set custom display names by hand, and add or remove local trusted Slack collaborators. |
 
 Plans carry their origin so the Slack collaboration trail stays visible while the app keeps a clean local draft inbox.
 
@@ -90,7 +90,9 @@ The app visibly separates promoted lessons from candidates and raw logs.
 
 ### Setup in detail
 
-Setup is a guided doctor and onboarding flow: discover existing Alfred files, install or repair bundled Alfred core, seed the full built-in runtime roster, deploy the CLI/agents into `~/.alfred`, start or reconnect the local runtime, verify GitHub auth, Slack bot/webhook, engine CLIs, launchd or systemd timers, watched repos, roster theme or custom display names, memory provider, code-memory graph layer, and browser dependencies for agents that need them. Repo-scoped agents stay idle until repositories are saved, and Batman stays idle until `BATMAN_PARENT_REPO` is configured. Failures tell you what Alfred checked, why it matters, and the smallest next step.
+Setup is a guided doctor and onboarding flow: discover existing Alfred files, install or repair bundled Alfred core, seed the full built-in runtime roster, deploy the CLI/agents into `~/.alfred`, start or reconnect the local runtime, verify GitHub auth, Slack bot/webhook, engine CLIs, launchd or systemd timers, watched repos, roster theme or custom display names, memory provider, code-memory graph layer, and browser dependencies for agents that need them. Repo-scoped agents stay idle until repositories are saved, and the `architect` role (Batman in the default theme) stays idle until `BATMAN_PARENT_REPO` is configured. Failures tell you what Alfred checked, why it matters, and the smallest next step.
+
+Onboarding runs two ways, and they land the same config. You can **chat with Alfred**: it asks a setup question, then proposes the next action (check the engines, connect GitHub, set repos, pick agents, propose or save a theme, set a schedule, finish). Only the engine check auto-proceeds; every other proposed action, including starting the GitHub sign-in and previewing a theme, runs after you click its button, and anything that changes config, such as saving repos, saving a theme, or setting a schedule, waits for that Approve. Or you can **step through the form** with the same fields. Both paths call the same underlying setup handlers, so they cannot drift. When no engine is configured, the chat path falls back to the stepped form. Naming the team has its own small chat, the **theme builder**: describe a vibe and Alfred proposes a full role-to-name mapping you tweak and save through the normal theme editor. Full walkthrough in [`ONBOARDING.md`](ONBOARDING.md).
 
 ## How it talks to the fleet
 
@@ -190,6 +192,9 @@ POST /api/plans/{plan_id}/file-issue
 POST /api/plans/draft
 POST /api/compose/converse
 POST /api/compose/converse/stream
+POST /api/onboarding/converse
+POST /api/theme-builder/converse
+POST /api/roster-theme
 GET  /api/memory/candidates
 POST /api/memory/candidates/{id}/promote
 POST /api/memory/candidates/{id}/reject

@@ -19,18 +19,22 @@ When a run learns something durable, it also teaches the fleet and keeps it: a
 repo convention, a fix that worked, a mistake not to repeat. The next run starts
 from what earlier runs learned instead of from zero.
 
-The team is deliberately small and legible. You can name every agent and say
-what each one does:
+The team is deliberately small and legible. Each agent has a **role** (its
+canonical identity) and a display **name** from the theme you pick. The default
+`batman` theme names them after the Gotham cast, shown in parentheses below:
 
-- **Drake** turns your plans into scoped tasks.
-- **Lucius** writes the code and opens pull requests.
-- **Ra's al Ghul** reviews them, as a second agent, not the one who wrote them.
-- **Bane** adds the tests.
-- **Nightwing** clears the review comments.
-- **Batman** is the OSS architect for multi-repo work: he plans large
-  features, waits for approval, and files scoped child issues. Lucius, Bane,
-  Nightwing, Ra's al Ghul, and the merge gate carry those child issues through
-  reviewed PRs.
+- The **planner** (Drake) turns your plans into scoped tasks.
+- The **senior developer** (Lucius) writes the code and opens pull requests.
+- The **reviewer** (Ra's al Ghul) reviews them, as a second agent, not the one
+  who wrote them.
+- The **test engineer** (Bane) adds the tests.
+- The **fixer** (Nightwing) clears the review comments.
+- The **architect** (Batman) handles multi-repo work: it plans large features,
+  waits for approval, and files scoped child issues. The other roles and the
+  merge gate carry those child issues through reviewed PRs.
+
+You can rename the whole team, or invent your own, without changing any of the
+machinery underneath. See [Identity and themes](docs/IDENTITY_AND_THEMES.md).
 
 Alfred never merges its own work unless you let it. A drafted plan waits behind
 an approval gate until you approve it, so unapproved work does not ship.
@@ -386,11 +390,12 @@ Use doctor and dry-run to verify the machine before trusting scheduled work:
 ```sh
 alfred auth status
 alfred doctor
-alfred dry-run lucius
+alfred dry-run senior-dev
 ```
 
-Dry-run is a diagnostic path. It resolves the codename and prints the firing
-steps without touching the scheduler, GitHub, Slack, engines, or local files. See
+Dry-run is a diagnostic path. It resolves the role-slug (the default-theme names
+like `lucius` still resolve too, as aliases) and prints the run steps without
+touching the scheduler, GitHub, Slack, engines, or local files. See
 [`docs/DRY_RUN.md`](docs/DRY_RUN.md) for the exact boundary.
 
 ## System shape
@@ -515,7 +520,7 @@ the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
 | [`bin/alfred-usage.py`](bin/alfred-usage.py) | Live Claude + Codex subscription usage for the rolling 5-hour and weekly limit windows, read from the engines' own local CLI state (no billing API). The same data is served over the live `GET /api/usage` endpoint; this is its `alfred usage` CLI front end. |
 | [`bin/alfred-shipped-summary.py`](bin/alfred-shipped-summary.py) | Daily/weekly shipped-work report across configured repos: merged PRs, issues, LOC, and model/config changes. Also available as `alfred shipped`. |
 | [`bin/shipped-summary-daily.sh`](bin/shipped-summary-daily.sh), [`bin/shipped-summary-weekly.sh`](bin/shipped-summary-weekly.sh) | Launchd wrappers for scheduled shipped-work Slack reports. |
-| [`bin/batman.py`](bin/batman.py) | Architect agent for cross-repo work. It reads `agent:large-feature` parent issues from `BATMAN_PARENT_REPO`, applies approved repo-scope amendments, files scoped child `agent:implement` issues, and carries approved thread notes into those issues when `BATMAN_AUTO_EXECUTE` allows it. |
+| [`bin/architect.py`](bin/architect.py) | The `architect` role's runner (Batman in the default theme) for cross-repo work. It reads `agent:large-feature` parent issues from `BATMAN_PARENT_REPO`, applies approved repo-scope amendments, files scoped child `agent:implement` issues, and carries approved thread notes into those issues when `BATMAN_AUTO_EXECUTE` allows it. |
 | [`bin/fleet-doctor.py`](bin/fleet-doctor.py) | Daily fleet-health snapshot. Read-only checks (paused repos, global block, stale worktrees, runner gate list) → severity-stripe Slack thread. |
 | [`bin/memory-harvest.py`](bin/memory-harvest.py) | Optional scheduled memory-harvest wrapper. Queues reviewable repeated-failure candidates and nudges Slack when there is something to review. |
 | [`bin/proof-telemetry.py`](bin/proof-telemetry.py) | Anonymous usage-total reporter. Posts aggregate counts to Alfred's hosted collector by default; `ALFRED_TELEMETRY_ENABLED=0` turns it off; fail-soft. |
@@ -541,6 +546,8 @@ the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
 - [Install](INSTALL.md): fresh-machine walkthrough.
 - [Install tiers](docs/INSTALL_TIERS.md): `core` (standalone, headless), recommended `client` (desktop), optional `slack`.
 - [AI-assisted install](docs/AI_ASSISTED_INSTALL.md): copy-paste prompt for Claude Code, Codex, or another local coding assistant.
+- [Setting Alfred up](docs/ONBOARDING.md): the two setup paths (chat or stepped form), the onboarding action allowlist, the approval gate, and the theme builder.
+- [Identity and themes](docs/IDENTITY_AND_THEMES.md): roles are the canonical identity; themes supply the display names.
 - [Workspace patterns](docs/WORKSPACE_PATTERNS.md): one-repo, multi-repo, specs-led, and Batman planning layouts.
 - [Specs-driven development](docs/SPECS_DRIVEN_DEVELOPMENT.md): how to turn specs into issue queues, Batman plans, and reviewable PRs.
 - [Spec-driven work in plain words](docs/SPEC_DRIVEN_FOR_EVERYONE.md): the non-technical version. Describe an outcome, answer a question or two, approve a preview.
@@ -574,35 +581,41 @@ the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
 
 Rendered version: https://alfred.luminik.io/.
 
-## Codename pattern
+## Roles and themes
 
-The framework expects one agent script per narrow specialist, named after a
-coherent fictional team, coordinating via labels and gh state rather than
-in-process calls. The shipped examples use Batman side-characters:
+The framework expects one agent script per narrow specialist, identified by its
+**role** and coordinating via labels and gh state rather than in-process calls.
+The default full fleet ships these roles, shown here with the name each one
+takes in the default `batman` theme:
 
-- **Batman** (architect)
-- **Lucius** (feature dev)
-- **Drake** (planner)
-- **Bane** (test coverage)
-- **Ra's al Ghul** (PR review)
-- **Robin** (bug triage)
-- **Nightwing** (review-fix)
-- **Huntress** (post-deploy smoke)
-- **Gordon** (deploy health)
+- `architect` (Batman)
+- `senior-dev` (Lucius)
+- `planner` (Drake)
+- `test-engineer` (Bane)
+- `reviewer` (Ra's al Ghul)
+- `triage` (Robin)
+- `fixer` (Nightwing)
+- `e2e-runner` (Huntress)
+- `ops-watch` (Gordon)
 
-Pick whatever fictional roster fits. The naming pattern matters for two reasons.
-Codenames appear in PR titles, Slack messages, and commit-trailer metadata, so a
-coherent roster makes the fleet's channel scannable. And narrow scopes per
-codename force design quality: "what does Bane do?" is a sharper question than
-"what does the test agent do?".
+The role is the canonical identity: PR titles, commit-trailer metadata,
+scheduler labels, GitHub labels, and worktree paths all key off it. A theme only
+supplies the display names, so a coherent roster makes the fleet's Slack channel
+scannable while the machinery stays stable. Narrow scopes force design quality:
+"what does the test-engineer do?" is a sharper question than "what does the test
+agent do?".
 
-In the desktop app, roster themes and custom names are display identity only.
-They change the names and role labels shown in Agents, onboarding, and Slack,
-while stable runtime codenames, scheduler labels, GitHub labels, worktrees, and
-merge gates stay unchanged. If you add a new agent script later, the custom roster
-editor can name that live agent too.
+Pick whatever roster fits. The desktop app ships the Batman, Transformers, and
+Justice League presets, and you can author custom names by hand or by chatting
+with the theme builder. Roster themes and custom names are display identity
+only: they change the names and role labels shown in Agents, onboarding, and
+Slack, while roles, runtime codenames, scheduler labels, GitHub labels,
+worktrees, and merge gates stay unchanged. If you add a new agent script later,
+the custom roster editor can name that live agent too.
 
-See [Architecture → Codename pattern](https://alfred.luminik.io/concepts/codename-pattern/) for more.
+See [Identity and themes](docs/IDENTITY_AND_THEMES.md) for the full model and
+[Architecture → Codename pattern](https://alfred.luminik.io/concepts/codename-pattern/)
+for more.
 
 ## Design boundaries
 
@@ -664,9 +677,9 @@ Documentation and website content are licensed under CC BY 4.0 - see [`LICENSE-d
 
 Alfred is named after Alfred Pennyworth: the calm system that keeps the cave
 running while the mission is in flight. The public repository is
-`luminik-io/alfred`, but the product name is Alfred. The default codenames
-use the same theme: Batman is the architect, Lucius is the senior developer,
-Drake scopes smaller work, Ra's al Ghul reviews PRs, Bane adds tests, and
-Nightwing handles review fixes. You can keep those defaults, switch the visible
-roster to another preset, or define custom display names without changing the
-underlying agent roles.
+`luminik-io/alfred`, but the product name is Alfred. The default `batman` theme
+names the roles after the same cast: the `architect` role shows as Batman, the
+`senior-dev` role as Lucius, the `planner` role as Drake, the `reviewer` role as
+Ra's al Ghul, the `test-engineer` role as Bane, and the `fixer` role as
+Nightwing. You can keep those defaults, switch the visible roster to another
+preset, or define custom display names without changing the underlying roles.

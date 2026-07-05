@@ -14,6 +14,15 @@ level of a capable teammate. Only when you clearly ask for work to be built does
 Alfred shift into planning, and even then it offers a plan in plain language
 first and waits for your go-ahead before anything is filed or run.
 
+This page covers talking to Alfred once it is set up. There is also a
+conversational *setup* path, where Alfred asks you setup questions and proposes
+each step under an approval gate. That is a separate flow with its own action
+allowlist; see [Setting Alfred up](ONBOARDING.md).
+
+When Alfred names an agent in a reply, it uses the display name from your active
+theme (the default `batman` theme shows "Lucius" for the `senior-dev` role, and
+so on). See [Identity and themes](IDENTITY_AND_THEMES.md).
+
 ## What a message does
 
 Every mention, DM, or Ask message is answered conversationally by default. The

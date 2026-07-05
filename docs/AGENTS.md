@@ -1,6 +1,6 @@
 # Agents
 
-The agents shipped in Alfred are engineering-focused. Each is a narrow specialist. Runtime codenames default to Batman side-characters; Alfred Desktop lets you choose a visible roster theme or custom display names without changing scheduler labels, GitHub labels, worktree names, or merge gates.
+The agents shipped in Alfred are engineering-focused. Each is a narrow specialist identified by its **role** (a slug like `senior-dev` or `reviewer`). The role is the canonical identity: scheduler labels, GitHub labels, worktree names, and merge gates all key off it. A **theme** supplies the display names you see; the default `batman` theme names the roles after the Gotham cast (the `senior-dev` role shows as "Lucius", and so on). Alfred Desktop lets you switch to another theme or author custom names without changing any of the machinery. See [Identity and themes](IDENTITY_AND_THEMES.md) for the full model.
 
 ## Fleet map
 
@@ -58,37 +58,45 @@ issue-claim overrides.
 The repo ships these agents. Schedules are sensible defaults; override
 per-agent in `agents.conf`.
 
-The recommended engineering hierarchy starts with Batman, Lucius, and Drake:
-Batman is the architect for cross-repo features, Lucius ships repo-local
-implementation PRs, and Drake scopes smaller single-repo requests. A full
-install configures the whole engineering fleet, including Batman, from the
-start. High-impact parent-plan execution stays behind the runner gate and the
-approval mode you choose, so a one-repo install can keep Batman visible without
-letting it file work until multi-repo or multi-package plans are ready.
+The recommended engineering hierarchy starts with the `architect`, `senior-dev`,
+and `planner` roles (Batman, Lucius, and Drake in the default theme): the
+architect handles cross-repo features, the senior developer ships repo-local
+implementation PRs, and the planner scopes smaller single-repo requests. A full
+install configures the whole engineering fleet, including the architect, from
+the start. High-impact parent-plan execution stays behind the runner gate and
+the approval mode you choose, so a one-repo install can keep the architect
+visible without letting it file work until multi-repo or multi-package plans are
+ready.
 
-| Codename | Role | Default schedule | Default repos | What it does |
+The table below lists each agent by its **role**, which is the runner identity:
+the role-slug is the `bin/<slug>.py` script name, the scheduler label, and the
+key every GitHub label and worktree path uses. The **name** column is only what
+the default `batman` theme shows; switch themes to change it, and the role stays
+put.
+
+| Role (runner) | Name (default theme) | Default schedule | Default repos | What it does |
 |---|---|---|---|---|
-| **batman** | architect | every 1 h, approval-gated | `BATMAN_PARENT_REPO` | Coordinates multi-repo features. Batman drafts the rollout from parent issues, waits for Slack or Alfred client approval, files child `agent:implement` issues, and reports status so implementation can move in parallel. |
-| **lucius** | feature-dev | every 20 min | `ALFRED_LUCIUS_REPOS` | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs `claude -p` with the issue body + repo context, pushes a PR labelled `agent:authored`. |
-| **drake** | planner | every 2 h | all in-scope repos | Reads specs / roadmap / `IMMEDIATE_NEXT_STEPS` / cross-repo open-issue list / code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in rolling 24 h. |
-| **damian** | spec-bundle-planner | daily 09:00, opt-in | `DAMIAN_SCAN_REPOS` | Reads `DAMIAN_SPEC_DIR` end-to-end, identifies multi-repo features, files `agent:bundle:<slug>` siblings across affected repos. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to drake. Prompt seeded from `prompts/spec-bundle-planner.md`. |
-| **bane** | test-coverage | every 4 h | `ALFRED_BANE_REPOS` (round-robin) | Picks the lowest-coverage actively-changed file. Writes tests. Opens PR. |
-| **rasalghul** | code-review | every 30 min | all in-scope repos | Multi-axis review (correctness, security, perf, maintainability) on every fresh PR. Posts as comment. |
-| **nightwing** | review-fix | every 45 min | all `agent:authored` PRs | Lands fixes for P0 / P1 reviewer comments (CodeRabbit, Codex, rasalghul) on agent-authored PRs. |
-| **robin** | bug-triage | every 3 h | all in-scope repos | Classifies new bug-report issues. Adds severity labels, asks for repro info, hands off to lucius via `agent:implement`. Has a local touched-issues ledger so it doesn't re-triage. |
-| **huntress** | post-deploy-smoke | every 30 min | staging only | Runs Playwright smoke tests against `ALFRED_HUNTRESS_TARGET_URL`. Reports failures with screenshots. |
-| **gordon** | deploy-health | daily 08:00 | ECS + Sentry | Diffs ECS staging task-def image SHA against repo `main` HEAD; pulls top-5 unresolved Sentry issues from the last 24 h. Quiet on healthy days, Slack-posts on drift / Sentry signal. Read-only. |
-| **automerge** | utility | every 15 min | all `agent:authored` PRs | Squash-merges PRs that pass: 30 min age, CI green, no unresolved P0 reviewer comments, latest rasalghul comment ends "Ship-ready: yes". Never touches non-`agent:authored` PRs. |
-| **agent-cleanup** | utility | daily 03:00 | n/a | Sweeps stale `/tmp/<agent>-debug-*`, abandoned worktrees, expired spend files, expired transcripts, stuck locks (>4h), stale `agent:in-flight` claims (>4h via `force_release_stale_claim`). |
-| **code-map-refresh** | utility | every 6 h | `ALFRED_CODE_MAP_REPOS` | Scans configured repos and writes `${ALFRED_HOME}/state/code-map.json` with source files, symbols, imports, API calls, server routes, and contract drift. Drake, Batman, and code-map-aware review prompts can read it for cross-repo context. |
-| **agent-morning-brief** | utility | daily 07:00 | n/a | Slack post: yesterday's PRs shipped, in-flight work, doctor status, anything red. |
-| **fleet-recap** | utility | 07:30 + 22:00 | n/a | Two firings of the same script. Aggregates per-agent spend / firings / success rate. Posts to Slack. |
-| **alfred-nightly** | utility | weekly Sun 22:00, opt-in | `ALFRED_NIGHTLY_NPM_REPOS`, `ALFRED_NIGHTLY_ADVISORY_REPOS` | Weekly dependency updater. Applies safe-band npm bumps (caret-compatible, pre-push verified) and opens one PR per npm repo; gradle/pip repos get an advisory-only Slack report, never a PR. Major bumps and CVEs are surfaced but not auto-merged. A no-op until the repo lists are set. |
-| **cold-backup** | utility | weekly Sun 04:00, opt-in | `ALFRED_BACKUP_DEST` | Archives `$ALFRED_HOME/state`, the cron store, and the runtime plists, uploads the tarball to an S3 prefix, and prunes to a retention window. `--local-only` skips S3. A no-op until a destination is set. |
+| `architect` (`bin/architect.py`) | Batman | every 1 h, approval-gated | `BATMAN_PARENT_REPO` | Coordinates multi-repo features. Drafts the rollout from parent issues, waits for Slack or Alfred client approval, files child `agent:implement` issues, and reports status so implementation can move in parallel. |
+| `senior-dev` (`bin/senior-dev.py`) | Lucius | every 20 min | `ALFRED_SENIOR_DEV_REPOS` | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs `claude -p` with the issue body + repo context, pushes a PR labelled `agent:authored`. |
+| `planner` (`bin/planner.py`) | Drake | every 2 h | all in-scope repos | Reads specs / roadmap / `IMMEDIATE_NEXT_STEPS` / cross-repo open-issue list / code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in rolling 24 h. |
+| `spec-planner` (`bin/spec-planner.py`) | Damian | daily 09:00, opt-in | `DAMIAN_SCAN_REPOS` | Reads `DAMIAN_SPEC_DIR` end-to-end, identifies multi-repo features, files `agent:bundle:<slug>` siblings across affected repos. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to the planner. Prompt seeded from `prompts/spec-bundle-planner.md`. |
+| `test-engineer` (`bin/test-engineer.py`) | Bane | every 4 h | `ALFRED_TEST_ENGINEER_REPOS` (round-robin) | Picks the lowest-coverage actively-changed file. Writes tests. Opens PR. |
+| `reviewer` (`bin/reviewer.py`) | Ra's al Ghul | every 30 min | all in-scope repos | Multi-axis review (correctness, security, perf, maintainability) on every fresh PR. Posts as comment. |
+| `fixer` (`bin/fixer.py`) | Nightwing | every 45 min | all `agent:authored` PRs | Lands fixes for P0 / P1 reviewer comments (CodeRabbit, Codex, the reviewer) on agent-authored PRs. |
+| `triage` (`bin/triage.py`) | Robin | every 3 h | all in-scope repos | Classifies new bug-report issues. Adds severity labels, asks for repro info, hands off to the senior-dev role via `agent:implement`. Has a local touched-issues ledger so it doesn't re-triage. |
+| `e2e-runner` (`bin/e2e-runner.py`) | Huntress | every 30 min | staging only | Runs Playwright smoke tests against `ALFRED_E2E_RUNNER_TARGET_URL`. Reports failures with screenshots. |
+| `ops-watch` (`bin/ops-watch.py`) | Gordon | daily 08:00 | ECS + Sentry | Diffs ECS staging task-def image SHA against repo `main` HEAD; pulls top-5 unresolved Sentry issues from the last 24 h. Quiet on healthy days, Slack-posts on drift / Sentry signal. Read-only. |
+| `automerge` (`bin/automerge.py`) | Auto-merge | every 15 min | all `agent:authored` PRs | Squash-merges PRs that pass: 30 min age, CI green, no unresolved P0 reviewer comments, latest reviewer comment ends "Ship-ready: yes". Never touches non-`agent:authored` PRs. |
+| `agent-cleanup` (`bin/agent-cleanup.py`) | Agent cleanup | daily 03:00 | n/a | Sweeps stale `/tmp/<agent>-debug-*`, abandoned worktrees, expired spend files, expired transcripts, stuck locks (>4h), stale `agent:in-flight` claims (>4h via `force_release_stale_claim`). |
+| `code-map-refresh` (`bin/code-map-refresh.py`) | Code map | every 6 h | `ALFRED_CODE_MAP_REPOS` | Scans configured repos and writes `${ALFRED_HOME}/state/code-map.json` with source files, symbols, imports, API calls, server routes, and contract drift. The planner, architect, and code-map-aware review prompts can read it for cross-repo context. |
+| `agent-morning-brief` (`bin/agent-morning-brief.py`) | Morning brief | daily 07:00 | n/a | Slack post: yesterday's PRs shipped, in-flight work, doctor status, anything red. |
+| `fleet-recap` (`bin/fleet-recap.sh`) | Fleet recap | 07:30 + 22:00 | n/a | Two scheduled runs of the same script (labelled `fleet-recap-morning` and `fleet-recap-evening`). Aggregates per-agent spend / runs / success rate. Posts to Slack. |
+| `alfred-nightly` (`bin/alfred-nightly.py`) | Nightly | weekly Sun 22:00, opt-in | `ALFRED_NIGHTLY_NPM_REPOS`, `ALFRED_NIGHTLY_ADVISORY_REPOS` | Weekly dependency updater. Applies safe-band npm bumps (caret-compatible, pre-push verified) and opens one PR per npm repo; gradle/pip repos get an advisory-only Slack report, never a PR. Major bumps and CVEs are surfaced but not auto-merged. A no-op until the repo lists are set. |
+| `cold-backup` (`bin/alfred-cold-backup.py`) | Cold backup | weekly Sun 04:00, opt-in | `ALFRED_BACKUP_DEST` | Archives `$ALFRED_HOME/state`, the cron store, and the runtime plists, uploads the tarball to an S3 prefix, and prunes to a retention window. `--local-only` skips S3. A no-op until a destination is set. |
 
 ## Roster customization
 
-The stable runtime codename is the machine identity. It appears in PR titles, commit-trailer metadata, log filenames, worktree paths, and the host scheduler label or unit. The visible roster name is the human identity. Alfred Desktop can apply preset themes or custom names and role labels across the desktop and Slack while the runtime codename stays stable.
+The role (and its stable runtime codename) is the machine identity. It appears in PR titles, commit-trailer metadata, log filenames, worktree paths, and the host scheduler label or unit. The visible roster name is the human identity, supplied by the active theme. Alfred Desktop can apply preset themes or custom names and role labels across the desktop and Slack while the role and runtime codename stay stable. The full identity model is in [Identity and themes](IDENTITY_AND_THEMES.md).
 
 ### Why the defaults are Batman
 
@@ -99,7 +107,7 @@ Two reasons:
 
 ### Picking your own visible roster
 
-If you want a different visible roster, use Alfred Desktop's Team step or Agents roster picker. Pick something coherent. Some examples:
+If you want a different visible roster, use Alfred Desktop's Team step or Agents roster picker, or build one by chatting with the theme builder (see [Setting Alfred up](ONBOARDING.md)). Pick something coherent. Some examples:
 
 - **Greek pantheon**: Athena (planner), Hephaestus (feature dev), Iris (notifier), Asclepius (deploy health).
 - **The Wire**: Bunk (review), McNulty (triage), Omar (security audit), Lester (bug investigation).
@@ -109,7 +117,7 @@ If you want a different visible roster, use Alfred Desktop's Team step or Agents
 Constraints for custom display names:
 
 - Short single-line names. Long names pollute Slack scrolling.
-- Pronounceable. You'll say "lucius shipped #303" out loud at some point.
+- Pronounceable. You'll say the display name (like "Lucius shipped #303") out loud at some point.
 - Consistent across the fleet. Don't mix Batman + Star Wars; pick one universe.
 
 The utility agents (`automerge`, `agent-cleanup`, `code-map-refresh`, `agent-morning-brief`, `fleet-recap`) are infrastructure and ship with plain-English names. You can give them visible names too, but most people leave them plain.
@@ -119,11 +127,11 @@ The utility agents (`automerge`, `agent-cleanup`, `code-map-refresh`, `agent-mor
 ```mermaid
 flowchart TB
     init["alfred-init or Desktop setup<br/><i>install full fleet</i>"]
-    conf["agents.conf<br/><code>alfred.lucius  lucius.py  interval:1200</code>"]
-    unit["alfred.lucius scheduler unit<br/>Environment:<br/><code>AGENT_CODENAME=lucius</code>"]
-    runner["bin/lucius.py<br/><code>AGENT = os.environ.get('AGENT_CODENAME', 'lucius')</code>"]
+    conf["agents.conf<br/><code>alfred.senior-dev  senior-dev.py  interval:1200</code>"]
+    unit["alfred.senior-dev scheduler unit<br/>Environment:<br/><code>AGENT_CODENAME=senior-dev</code>"]
+    runner["bin/senior-dev.py<br/><code>AGENT = os.environ.get('AGENT_CODENAME', 'senior-dev')</code>"]
     theme["$ALFRED_HOME/state/roster-theme/roster-theme.json<br/><i>display roster</i>"]
-    output["Desktop / Slack: 'Ironhide shipped: ...'<br/>PR title and worktree keep <code>lucius</code>"]
+    output["Desktop / Slack: 'Lucius shipped: ...'<br/>PR title and worktree keep <code>senior-dev</code>"]
 
     init --> conf
     conf -- "render.sh" --> unit
@@ -133,14 +141,15 @@ flowchart TB
     theme --> output
 ```
 
-The agent script lives at `bin/<role>.py` (e.g. `bin/lucius.py` is the feature-dev script's default name). The runtime codename is set via:
+The agent script lives at `bin/<role-slug>.py` (for example `bin/senior-dev.py`
+is the feature-dev role). The role-slug is the runtime identity, set via:
 
-1. The scheduler unit environment: `AGENT_CODENAME=<codename>`. Rendered from the label suffix in `agents.conf`.
-2. The agent runner reads `AGENT = os.environ.get("AGENT_CODENAME", "<default>")` at startup.
-3. PR titles, log paths, worktree paths, and label-claim comments use the codename from `AGENT`.
-4. Desktop and Slack labels resolve a visible display name from the roster-theme store when one is configured.
+1. The scheduler unit environment: `AGENT_CODENAME=<role-slug>`. Rendered from the label suffix in `agents.conf`.
+2. The agent runner reads `AGENT = os.environ.get("AGENT_CODENAME", "<role-slug>")` at startup.
+3. PR titles, log paths, worktree paths, and label-claim comments use the role-slug from `AGENT`.
+4. Desktop and Slack resolve a visible display name from the roster-theme store, so `senior-dev` shows as "Lucius" in the default theme (or "Ironhide" under Transformers).
 
-The bin script filename stays `lucius.py` because it is the role implementation. Custom roster names change what humans see, not the role implementation or the scheduler contract.
+The bin script filename stays `senior-dev.py` because it is the role implementation. A theme changes what humans see, never the role implementation or the scheduler contract.
 
 ## Adding a custom runtime agent
 
@@ -167,17 +176,17 @@ bash deploy.sh
 alfred status
 ```
 
-The runtime codename must be new, lowercase, and hyphenated
-(`release-captain`, not `Lucius`). Built-in codenames such as `lucius`,
-`batman`, and `nightwing` are reserved. Use `alfred agent list --json` to inspect
-the manifest and `alfred agent remove <codename>` to delete one. Run
+The runtime role-slug must be new, lowercase, and hyphenated
+(`release-captain`). Built-in role-slugs such as `senior-dev`, `architect`, and
+`fixer` are reserved. Use `alfred agent list --json` to inspect
+the manifest and `alfred agent remove <role-slug>` to delete one. Run
 `bash deploy.sh` after add, update, or remove so the host scheduler is rendered
 from the current manifest.
 
 ### Bespoke script path
 
 If the role needs special deterministic code, write a dedicated
-`bin/<role>.py` following the pattern in `bin/lucius.py`, then add a row to
+`bin/<role-slug>.py` following the pattern in `bin/senior-dev.py`, then add a row to
 `launchd/agents.conf` and run `bash deploy.sh`. The existing primitives in
 `lib/agent_runner/` cover the common patterns: lock, preflight, spend, gh,
 slack, claim/release, engine invocation, and event logs. Read
