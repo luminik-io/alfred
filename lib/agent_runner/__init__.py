@@ -272,6 +272,7 @@ from .process import (
     gh_json,
     invoke_agent_engine,
     pid_start_key,
+    resolve_grader_engine,
     run,
     short,
 )
@@ -309,6 +310,22 @@ from .result import (
     _quarantine_stale_claude_credentials,
     _should_retry_claude_auth,
     dry_run_claude_result,
+)
+
+# --------------------------------------------------------------------------
+# Self-grading rubric gate (forward-looking success gate)
+# --------------------------------------------------------------------------
+from .rubric import (
+    DEFAULT_MAX_ITERATIONS,
+    MAX_CRITERIA,
+    MAX_TRANSCRIPT_CHARS,
+    CriterionEval,
+    GraderVerdict,
+    Rubric,
+    build_grader_prompt,
+    grade,
+    parse_verdict,
+    run_rubric_loop,
 )
 from .state import (
     _LOCK_GRACE_SECONDS,
@@ -427,8 +444,20 @@ __all__ = [
     "gh_json",
     "invoke_agent_engine",
     "pid_start_key",
+    "resolve_grader_engine",
     "run",
     "short",
+    # rubric self-grading gate
+    "CriterionEval",
+    "GraderVerdict",
+    "Rubric",
+    "DEFAULT_MAX_ITERATIONS",
+    "MAX_CRITERIA",
+    "MAX_TRANSCRIPT_CHARS",
+    "build_grader_prompt",
+    "grade",
+    "parse_verdict",
+    "run_rubric_loop",
     # transcripts
     "codex_artifact_paths",
     "transcript_path",
