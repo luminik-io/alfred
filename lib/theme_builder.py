@@ -68,6 +68,15 @@ PROPOSE_THEME_TOOL = "propose_theme"
 MAX_PROPOSED_ENTRIES = 128
 MAX_LABEL_LEN = 64
 
+# The roster roles a theme MAY leave unnamed. A complete proposal must cover every
+# core engineering role, but the ops and release agents are OPTIONAL: a small
+# theme can omit them and they inherit their base-theme display names at save
+# time. Keyed on the manifest ``role`` identity (not the codename) so a new ops or
+# release agent is optional by construction, never a newly-forced name. This is
+# the ONE place that decides required-vs-optional; the prompt is seeded from the
+# same split via ``required_codenames`` / ``build_roster_contract``.
+OPTIONAL_ROLES = frozenset({"ops", "ops-watch", "ship"})
+
 
 @dataclass(frozen=True)
 class ThemeProposal:
@@ -146,6 +155,20 @@ def valid_codenames(agents: Iterable[RosterContractAgent] | None = None) -> froz
     return frozenset(agent.codename for agent in roster)
 
 
+def required_codenames(agents: Iterable[RosterContractAgent] | None = None) -> frozenset[str]:
+    """The role-slugs a COMPLETE proposal MUST name: every core engineering role.
+
+    A saveable theme has to cast every core role; the ops and release agents
+    (``OPTIONAL_ROLES``) may be omitted and fall back to their base-theme names at
+    save time. Derived from the roster contract by excluding the optional roles, so
+    this stays in lockstep with the manifest and never drifts from the prompt,
+    which is seeded from the same split. The single source of truth for the
+    completeness gate, the route, and the tests.
+    """
+    roster = list(agents) if agents is not None else list(roster_contract_agents())
+    return frozenset(agent.codename for agent in roster if agent.role not in OPTIONAL_ROLES)
+
+
 def build_prompt(*, system_prompt: str, messages: Iterable[cc.ConverseMessage]) -> str:
     """Assemble the full single-turn prompt: system + untrusted transcript.
 
@@ -169,47 +192,54 @@ def parse_proposal(
     raw: Any,
     *,
     valid: frozenset[str],
+    required: frozenset[str] | None = None,
 ) -> ThemeProposal | None:
     """Validate a ``propose_theme`` action's args into a COMPLETE ``ThemeProposal``.
 
     Defensive by construction, mirroring ``compose_converse.parse_action``: it
     NEVER raises. Returns ``None`` (drop the proposal, keep the turn's reply as a
-    normal conversational reply) unless the args name the WHOLE team: naming the
-    roster is the whole point, so a roles-only proposal, one whose every name
-    entry is invalid, or a PARTIAL map that leaves some roster role unnamed is not
-    a final proposal and must not pre-fill the editor. A partial map is treated as
-    still-in-progress: the turn's reply stands and the model is expected to keep
-    asking until every role has a name.
+    normal conversational reply) unless the args name every REQUIRED role: naming
+    the core team is the whole point, so a roles-only proposal, one whose every
+    name entry is invalid, or a PARTIAL map that leaves a required role unnamed is
+    not a final proposal and must not pre-fill the editor. A partial map is treated
+    as still-in-progress: the turn's reply stands and the model is expected to keep
+    asking until every required role has a name.
 
-    Only when ``custom_names`` covers every role in ``valid`` (the canonical
-    roster contract the builder names, i.e. ``valid_codenames()`` /
-    ``roster_contract_agents()``) is a proposal returned as complete and
-    saveable. Unknown role-slugs, blank/over-long labels, and non-string values
-    are dropped entry-by-entry; if that dropping leaves any contract role
+    ``valid`` bounds which slugs may appear at all (the full roster contract,
+    ``valid_codenames()``). ``required`` is the completeness set: the core
+    engineering roles every saveable theme must cast (``required_codenames()``);
+    it defaults to ``required_codenames()`` when omitted. The ops and release
+    agents (``OPTIONAL_ROLES``) may be omitted from the map; they inherit their
+    base-theme display names at save time, so a small theme naming only the core
+    roles IS complete. Unknown role-slugs, blank/over-long labels, and non-string
+    values are dropped entry-by-entry; if that dropping leaves any REQUIRED role
     unnamed, the whole proposal degrades to ``None``. Entry count is capped.
 
     Display names must be DISTINCT across roles (two agents sharing one persona is
     a broken roster). Duplicate names, compared case-insensitively on the trimmed
-    label, are dropped beyond the first occurrence; because a dropped duplicate
-    leaves its role unnamed, such a map is incomplete and degrades to ``None``.
-    Custom role labels are kept only for names that survive, so a role override
-    never clings to a dropped name.
+    label, are dropped beyond the first occurrence; if a dropped duplicate leaves a
+    required role unnamed, the map is incomplete and degrades to ``None``. Custom
+    role labels are kept only for names that survive, so a role override never
+    clings to a dropped name.
 
     ``args`` is expected to be ``{custom_names: {slug: name}, custom_roles?:
     {slug: label}}``. A bare ``names``/``roles`` alias is also accepted so a
     slightly-off model output still lands.
     """
+    if required is None:
+        required = required_codenames()
     if not isinstance(raw, dict):
         return None
     names = _clean_name_map(
         raw.get("custom_names") if raw.get("custom_names") is not None else raw.get("names"),
         valid=valid,
     )
-    # A COMPLETE proposal MUST name every role in the roster contract. A roles-only
-    # turn, a partial map (some role still unnamed), or one whose names collided or
-    # were all invalid is an in-progress conversational reply, not a saveable theme,
-    # so drop the action entirely and let the model keep asking.
-    if not names or not valid or not valid <= set(names):
+    # A COMPLETE proposal MUST name every REQUIRED (core engineering) role. A
+    # roles-only turn, a partial map that leaves a required role unnamed, or one
+    # whose names collided or were all invalid is an in-progress conversational
+    # reply, not a saveable theme, so drop the action entirely and let the model
+    # keep asking. Optional ops/release roles may be omitted (base-name fallback).
+    if not names or not required or not required <= set(names):
         return None
     roles = _clean_slug_map(
         raw.get("custom_roles") if raw.get("custom_roles") is not None else raw.get("roles"),
@@ -289,27 +319,40 @@ def _clean_label(value: Any) -> str | None:
     return text[:MAX_LABEL_LEN]
 
 
-def parse_turn(raw_text: str, *, valid: frozenset[str]) -> ThemeBuilderTurn | None:
+def parse_turn(
+    raw_text: str,
+    *,
+    valid: frozenset[str],
+    required: frozenset[str] | None = None,
+) -> ThemeBuilderTurn | None:
     """Parse the model's JSON output into a ``ThemeBuilderTurn``.
 
     Returns ``None`` when the model did not return usable JSON so the caller can
     surface an honest error rather than a fabricated turn. A turn always carries a
-    ``reply``; a ``propose_theme`` action, when present and valid, is attached as
-    a ``ThemeProposal``. A malformed/unknown/non-propose action degrades to no
-    proposal (the reply still stands), never raises.
+    ``reply``; a ``propose_theme`` action is attached as a ``ThemeProposal`` only
+    when it names every REQUIRED role. A malformed/unknown/non-propose action, or a
+    map that leaves a required role unnamed, degrades to no proposal (the reply
+    still stands), never raises. ``required`` defaults to ``required_codenames()``.
     """
+    if required is None:
+        required = required_codenames()
     obj = cc._extract_json_object(raw_text)
     if obj is None:
         return None
     reply = str(obj.get("reply") or "").strip()
-    proposal = _proposal_from_obj(obj.get("action"), valid=valid)
+    proposal = _proposal_from_obj(obj.get("action"), valid=valid, required=required)
     if not reply and proposal is None:
         # A turn with no reply and no proposal is useless; treat as a parse miss.
         return None
     return ThemeBuilderTurn(reply=reply, proposal=proposal)
 
 
-def _proposal_from_obj(raw_action: Any, *, valid: frozenset[str]) -> ThemeProposal | None:
+def _proposal_from_obj(
+    raw_action: Any,
+    *,
+    valid: frozenset[str],
+    required: frozenset[str],
+) -> ThemeProposal | None:
     """Extract a proposal from the turn's optional ``action`` block.
 
     Reuses ``compose_converse.parse_action`` for the allowlist + args bounds, then
@@ -319,7 +362,7 @@ def _proposal_from_obj(raw_action: Any, *, valid: frozenset[str]) -> ThemePropos
     action = cc.parse_action(raw_action)
     if action is None or action.tool != PROPOSE_THEME_TOOL:
         return None
-    return parse_proposal(action.args, valid=valid)
+    return parse_proposal(action.args, valid=valid, required=required)
 
 
 def run_turn(
@@ -329,6 +372,7 @@ def run_turn(
     engine: str,
     workdir: Path,
     valid_slugs: frozenset[str],
+    required_slugs: frozenset[str] | None = None,
     timeout: int = DEFAULT_TIMEOUT,
     invoke: Callable[..., Any] | None = None,
     firing_id: str | None = None,
@@ -336,10 +380,13 @@ def run_turn(
     """Run one theme-builder turn through the agent-engine dispatch.
 
     ``invoke`` defaults to ``agent_runner.invoke_agent_engine`` but is injected in
-    tests so no live model call is made. Returns ``None`` when the engine failed
-    or returned unparseable output, so the caller surfaces an honest error rather
-    than a fabricated turn.
+    tests so no live model call is made. ``required_slugs`` is the completeness
+    set the proposal must cover (defaults to ``required_codenames()``). Returns
+    ``None`` when the engine failed or returned unparseable output, so the caller
+    surfaces an honest error rather than a fabricated turn.
     """
+    if required_slugs is None:
+        required_slugs = required_codenames()
     engine_invoke = invoke
     if engine_invoke is None:
         try:
@@ -371,7 +418,7 @@ def run_turn(
         return None
     if not getattr(result, "success", False) or not getattr(result, "result_text", ""):
         return None
-    return parse_turn(result.result_text, valid=valid_slugs)
+    return parse_turn(result.result_text, valid=valid_slugs, required=required_slugs)
 
 
 def proposal_payload(proposal: ThemeProposal | None) -> dict[str, Any] | None:
@@ -404,6 +451,7 @@ def turn_payload(turn: ThemeBuilderTurn) -> dict[str, Any]:
 __all__ = [
     "BUILDER_AGENT",
     "ENGINE_ENV",
+    "OPTIONAL_ROLES",
     "PROPOSE_THEME_TOOL",
     "ThemeBuilderTurn",
     "ThemeProposal",
@@ -415,6 +463,7 @@ __all__ = [
     "prompt_relative_path",
     "proposal_payload",
     "render_system_prompt",
+    "required_codenames",
     "run_turn",
     "turn_payload",
     "valid_codenames",

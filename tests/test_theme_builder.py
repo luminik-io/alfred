@@ -23,8 +23,9 @@ import compose_converse as cc  # noqa: E402
 import theme_builder as tb  # noqa: E402
 from roster_theme_store import roster_contract_agents  # noqa: E402
 
-# The engineering role-slugs the prompt asks the model to cover first, plus a few
-# ops slugs, all sourced from the shipped manifest.
+# The nine core engineering role-slugs the prompt lists and a complete proposal
+# must cover. Kept as a literal here only to assert the code derives the SAME set;
+# the completeness gate itself uses ``tb.required_codenames()``.
 _ENGINEERING_SLUGS = {
     "triage",
     "planner",
@@ -46,12 +47,29 @@ def _valid() -> frozenset[str]:
     return tb.valid_codenames()
 
 
-def _full_names(**overrides: str) -> dict[str, str]:
-    """A full-coverage name map: every roster contract role gets a distinct name.
+def _required() -> frozenset[str]:
+    return tb.required_codenames()
 
-    A complete proposal must name EVERY role in the roster contract, so tests that
-    expect a saveable proposal seed a full map. Each role gets a distinct
+
+def _required_names(**overrides: str) -> dict[str, str]:
+    """A minimal COMPLETE name map: every REQUIRED core role, no optional ones.
+
+    A complete proposal must name every required role but MAY omit the optional
+    ops/release agents. Seeding only the required roles proves that a small theme
+    which skips the ops agents still parses as complete. Each role gets a distinct
     slug-derived name by default; ``overrides`` swap in specific names/slugs.
+    """
+    names = {slug: f"Name-{slug}" for slug in _required()}
+    names.update(overrides)
+    return names
+
+
+def _full_names(**overrides: str) -> dict[str, str]:
+    """A full-coverage name map: EVERY roster role (required + optional) named.
+
+    A superset of ``_required_names`` used where a test wants the whole roster
+    covered. Each role gets a distinct slug-derived name; ``overrides`` swap in
+    specific names/slugs.
     """
     names = {slug: f"Name-{slug}" for slug in _valid()}
     names.update(overrides)
@@ -68,6 +86,24 @@ def test_roster_contract_agents_covers_the_engineering_roster() -> None:
 
 def test_valid_codenames_matches_the_manifest() -> None:
     assert tb.valid_codenames() == frozenset(a.codename for a in roster_contract_agents())
+
+
+def test_required_codenames_is_exactly_the_core_engineering_roles() -> None:
+    # The completeness set the code derives must equal the nine core roles the
+    # prompt lists, so prompt and gate never diverge.
+    assert tb.required_codenames() == frozenset(_ENGINEERING_SLUGS)
+
+
+def test_required_codenames_excludes_optional_ops_and_release_agents() -> None:
+    # Ops and release agents are optional: they are in the full roster but never
+    # in the required set, so a theme may omit them.
+    required = tb.required_codenames()
+    optional = tb.valid_codenames() - required
+    assert optional  # there ARE optional agents (ops/release)
+    for agent in roster_contract_agents():
+        if agent.role in tb.OPTIONAL_ROLES:
+            assert agent.codename in optional
+            assert agent.codename not in required
 
 
 def test_build_roster_contract_lists_every_agent_with_slug_and_name() -> None:
@@ -109,17 +145,40 @@ def test_parse_proposal_accepts_a_full_team() -> None:
     assert proposal.custom_roles == {}
 
 
+def test_parse_proposal_accepts_required_roles_omitting_optional_ops() -> None:
+    # The core case that broke the flow: the model follows the prompt and names
+    # every required engineering role but omits the optional ops/release agents.
+    # That IS a complete, saveable proposal; the omitted agents keep base names.
+    names = _required_names(architect="Gandalf", reviewer="Galadriel")
+    assert not (tb.valid_codenames() - _required()) & set(names)  # no optional slugs present
+    proposal = tb.parse_proposal({"custom_names": names}, valid=_valid())
+    assert proposal is not None
+    assert set(proposal.custom_names) == _required()
+
+
 def test_parse_proposal_single_name_is_not_a_complete_proposal() -> None:
     # A single valid name is a half-named team, not a saveable theme. It must
     # degrade to None (in-progress) so a partial map never pre-fills the editor.
     assert tb.parse_proposal({"custom_names": {"architect": "Gandalf"}}, valid=_valid()) is None
 
 
-def test_parse_proposal_partial_map_is_not_complete() -> None:
-    # Naming most of the team but leaving one role out is still in-progress.
-    names = _full_names()
-    names.pop(next(iter(names)))
+def test_parse_proposal_omitting_a_required_role_is_not_complete() -> None:
+    # Naming all but one REQUIRED role is still in-progress and degrades to None.
+    names = _required_names()
+    names.pop("architect")
     assert tb.parse_proposal({"custom_names": names}, valid=_valid()) is None
+
+
+def test_parse_proposal_optional_ops_names_are_kept_when_present() -> None:
+    # Naming an optional ops agent alongside the full required set is allowed: the
+    # name is kept, and the proposal stays complete.
+    optional_slug = next(iter(tb.valid_codenames() - _required()))
+    names = _required_names()
+    names[optional_slug] = "Extra"
+    proposal = tb.parse_proposal({"custom_names": names}, valid=_valid())
+    assert proposal is not None
+    assert proposal.custom_names[optional_slug] == "Extra"
+    assert _required() <= set(proposal.custom_names)
 
 
 def test_parse_proposal_drops_unknown_slugs_and_stays_incomplete() -> None:
@@ -259,6 +318,20 @@ def test_parse_turn_proposes_a_full_team() -> None:
     assert set(turn.proposal.custom_names) >= _ENGINEERING_SLUGS
 
 
+def test_parse_turn_required_only_team_forwards_a_complete_proposal() -> None:
+    # The model names every required role and omits the optional ops agents (as the
+    # prompt permits). The turn forwards a complete proposal, not a stalled reply.
+    names = _required_names(architect="Gandalf")
+    raw = (
+        '{"reply": "Middle-earth it is.",'
+        '"action": {"tool": "propose_theme", "args": {"custom_names": ' + _json(names) + "}}}"
+    )
+    turn = tb.parse_turn(raw, valid=_valid())
+    assert turn is not None
+    assert turn.proposal is not None
+    assert set(turn.proposal.custom_names) == _required()
+
+
 def test_parse_turn_partial_team_degrades_to_reply() -> None:
     # A propose_theme turn that names only some roles is in-progress: keep the
     # reply, forward no action, so the client keeps chatting instead of opening a
@@ -373,6 +446,32 @@ def test_run_turn_parses_injected_engine_proposal() -> None:
     assert set(turn.proposal.custom_names) == _valid()
     assert turn.proposal.custom_names["architect"] == "Ripley"
     assert turn.proposal.custom_names["reviewer"] == "HAL"
+
+
+def test_run_turn_completes_on_required_roles_with_optional_ops_omitted() -> None:
+    # End to end through run_turn: a required-only map (ops omitted) is complete,
+    # using the default required set the route also passes.
+    names = _required_names(architect="Ripley")
+    payload = (
+        '{"reply": "Sci-fi crew, aye.",'
+        '"action": {"tool": "propose_theme", "args": {"custom_names": ' + _json(names) + "}}}"
+    )
+
+    def fake_invoke(prompt: str, **kwargs: object) -> tuple[_FakeResult, str]:
+        return _FakeResult(success=True, result_text=payload), "claude"
+
+    turn = tb.run_turn(
+        system_prompt="SYSTEM propose_theme",
+        messages=_messages("sci-fi crew"),
+        engine="claude",
+        workdir=REPO_ROOT,
+        valid_slugs=_valid(),
+        required_slugs=_required(),
+        invoke=fake_invoke,
+    )
+    assert turn is not None
+    assert turn.proposal is not None
+    assert set(turn.proposal.custom_names) == _required()
 
 
 def test_run_turn_returns_none_when_engine_fails() -> None:

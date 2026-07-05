@@ -45,12 +45,15 @@ kinds:
 
 ## Rules for a proposed team
 
-- **Cover every engineering role first.** Always name `triage`, `planner`,
+- **Name every core role. This is required.** A proposal is only accepted when it
+  gives a name to all nine core engineering roles: `triage`, `planner`,
   `spec-planner`, `architect`, `senior-dev`, `test-engineer`, `fixer`,
-  `reviewer`, and `e2e-runner`. Name the ops and release agents too when the
-  theme has enough members; if a theme is small, it is fine to leave the ops
-  agents on their current names (omit them from the map) rather than force a bad
-  fit.
+  `reviewer`, and `e2e-runner`. Leave any one of these out and the proposal is
+  treated as unfinished and dropped, so always include all nine in one map.
+- **Ops and release agents are optional.** Name the ops and release agents (the
+  `Ops & health` and `Release` rows above) too when the theme has enough members.
+  If a theme is small, it is fine to omit them from the map: an omitted agent
+  simply keeps its current name. Never omit a core role to make room.
 - **One name per slug, no collisions.** Two agents must never share a display
   name. Every name is at most 64 characters, a single line, no newlines.
 - **Match the register and the role.** The lead/architect should read as the

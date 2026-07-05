@@ -1939,6 +1939,7 @@ def _run_theme_builder_converse(request: Request, body: dict[str, Any]) -> JSONR
         engine=engine,
         workdir=_planning_workdir(request),
         valid_slugs=tb.valid_codenames(),
+        required_slugs=tb.required_codenames(),
     )
     if turn is None:
         return JSONResponse(
