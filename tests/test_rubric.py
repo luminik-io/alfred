@@ -129,6 +129,62 @@ def test_grade_satisfied_with_failing_criterion_is_downgraded():
     assert "downgraded" in verdict.explanation
 
 
+@pytest.mark.parametrize(
+    ("passed_value", "expected"),
+    [
+        # Real JSON booleans.
+        (True, True),
+        (False, False),
+        # STRING booleans: the bug being guarded. "false" must be False, not a
+        # truthy non-empty string.
+        ("false", False),
+        ("False", False),
+        ("FALSE", False),
+        ("0", False),
+        ("no", False),
+        ("off", False),
+        ("null", False),
+        ("true", True),
+        ("True", True),
+        ("yes", True),
+        ("1", True),
+        # Numbers use their own truthiness.
+        (0, False),
+        (1, True),
+        # Unrecognized / junk -> conservative False (no positive evidence).
+        ("maybe", False),
+        (None, False),
+        ([], False),
+    ],
+)
+def test_grade_parses_string_and_native_booleans(passed_value, expected):
+    payload = json.dumps(
+        {
+            "result": "satisfied" if expected else "needs_revision",
+            "explanation": "x",
+            "criteria": [{"name": "tests pass", "passed": passed_value, "gap": "g"}],
+        }
+    )
+    verdict = rb.grade("x", "done", grader_fn=lambda _p: payload)
+    assert verdict.criteria[0].passed is expected
+
+
+def test_grade_string_false_criterion_is_treated_as_failing():
+    # A grader that emits the STRING "false" for a criterion while claiming the
+    # overall verdict is "satisfied" must be downgraded, exactly as a native
+    # False would be. This is the concrete regression from Codex P2.
+    payload = json.dumps(
+        {
+            "result": "satisfied",
+            "explanation": "claims done",
+            "criteria": [{"name": "tests pass", "passed": "false", "gap": "no test run"}],
+        }
+    )
+    verdict = rb.grade("x", "done", grader_fn=lambda _p: payload)
+    assert verdict.criteria[0].passed is False
+    assert verdict.result == "needs_revision"  # downgraded, not waved through
+
+
 def test_oversized_transcript_is_truncated_before_grading():
     captured: dict[str, str] = {}
 
@@ -292,6 +348,67 @@ def test_loop_max_iterations_floored_at_one():
         run_fn=run_fn, rubric="done", grader_fn=lambda _p: _needs_revision_json(), max_iterations=0
     )
     assert len(calls) == 1  # 0 clamped up to 1
+
+
+def test_loop_run_fn_real_error_is_not_masked():
+    # A genuine bug in the implementer run (here a TypeError raised from INSIDE
+    # run_fn's body, unrelated to the feedback kwarg) must propagate, not be
+    # swallowed and mis-reported as a grader/needs_revision outcome.
+    def run_fn(feedback=None):
+        raise TypeError("real bug inside the run, not a signature mismatch")
+
+    with pytest.raises(TypeError, match="real bug inside the run"):
+        rb.run_rubric_loop(
+            run_fn=run_fn,
+            rubric="done",
+            grader_fn=lambda _p: _needs_revision_json(),
+            max_iterations=3,
+        )
+
+
+def test_loop_run_fn_error_on_revision_is_not_masked():
+    # First pass succeeds and the grader asks for a revision; the SECOND call
+    # (the revision) raises a real error. It must propagate rather than be
+    # caught by the feedback-threading logic.
+    calls = {"n": 0}
+
+    def run_fn(feedback=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return "first attempt"
+        raise ValueError("revision blew up for a real reason")
+
+    with pytest.raises(ValueError, match="revision blew up"):
+        rb.run_rubric_loop(
+            run_fn=run_fn,
+            rubric="done",
+            grader_fn=lambda _p: _needs_revision_json(),
+            max_iterations=3,
+        )
+    assert calls["n"] == 2  # it did attempt the revision, then raised
+
+
+def test_loop_feedback_threaded_only_when_signature_accepts_it():
+    # A run_fn that declares **kwargs should receive feedback; one with no
+    # feedback-compatible parameter should be called bare (no TypeError-catch
+    # heuristic involved).
+    seen_kwargs: list[dict] = []
+
+    def run_fn(**kwargs):
+        seen_kwargs.append(kwargs)
+        return "attempt"
+
+    grader_outputs = [_needs_revision_json(), _satisfied_json()]
+    call_index = {"i": 0}
+
+    def grader_fn(_prompt):
+        out = grader_outputs[call_index["i"]]
+        call_index["i"] += 1
+        return out
+
+    rb.run_rubric_loop(run_fn=run_fn, rubric="done", grader_fn=grader_fn, max_iterations=3)
+    assert seen_kwargs[0] == {}  # first pass, no feedback
+    assert "feedback" in seen_kwargs[1]  # revision threaded through **kwargs
 
 
 # --------------------------------------------------------------------------
@@ -509,3 +626,199 @@ def test_resolve_rubric_precedence(monkeypatch):
     monkeypatch.setenv("ALFRED_RUBRIC", "from env")
     assert proc._resolve_rubric(None) == "from env"
     assert proc._resolve_rubric("explicit") == "explicit"
+
+
+# --------------------------------------------------------------------------
+# Greptile P1: grader engine is resolved on its OWN axis (never the run's)
+# --------------------------------------------------------------------------
+
+
+def test_resolve_grader_engine_precedence():
+    import agent_runner.process as proc
+
+    # Explicit, known engines win.
+    assert proc.resolve_grader_engine("claude") == "claude"
+    assert proc.resolve_grader_engine("codex") == "codex"
+    assert proc.resolve_grader_engine("CLAUDE") == "claude"
+    # Unset / blank / unknown / hybrid -> cheap read-only default, never a
+    # two-engine fallback chain for a grade.
+    assert proc.resolve_grader_engine(None) == "codex"
+    assert proc.resolve_grader_engine("") == "codex"
+    assert proc.resolve_grader_engine("hybrid") == "codex"
+    assert proc.resolve_grader_engine("nonsense") == "codex"
+
+
+def test_default_grader_uses_selected_claude_engine_not_the_run_engine(monkeypatch):
+    # The run under review is Codex, but the grader is pinned to Claude. The
+    # grader MUST invoke the Claude engine, not inherit the run's Codex engine.
+    import agent_runner.process as proc
+
+    used: list[str] = []
+
+    def fake_claude_invoke(prompt, **_kwargs):
+        used.append("claude")
+        return _ok_result(
+            proc, json.dumps({"result": "satisfied", "explanation": "ok", "criteria": []})
+        )
+
+    def fake_codex_invoke(prompt, **_kwargs):
+        used.append("codex")
+        return _ok_result(
+            proc, json.dumps({"result": "satisfied", "explanation": "ok", "criteria": []})
+        )
+
+    monkeypatch.setattr(proc, "claude_invoke", fake_claude_invoke)
+    monkeypatch.setattr(proc, "codex_invoke", fake_codex_invoke)
+
+    grader = proc._default_rubric_grader(
+        grader_engine="claude",
+        agent="batman",
+        firing_id="f1",
+        workdir=Path("/tmp"),
+        codex_model=None,
+    )
+    out = grader("some grader prompt")
+    assert used == ["claude"]  # selected grader engine, NOT the run's engine
+    assert '"result"' in out
+
+
+def test_default_grader_defaults_to_codex(monkeypatch):
+    import agent_runner.process as proc
+
+    used: list[str] = []
+
+    def fake_codex_invoke(prompt, **_kwargs):
+        used.append("codex")
+        return _ok_result(
+            proc, json.dumps({"result": "satisfied", "explanation": "ok", "criteria": []})
+        )
+
+    def fake_claude_invoke(prompt, **_kwargs):
+        used.append("claude")
+        pytest.fail("claude must not be used when no grader engine is pinned")
+
+    monkeypatch.setattr(proc, "codex_invoke", fake_codex_invoke)
+    monkeypatch.setattr(proc, "claude_invoke", fake_claude_invoke)
+
+    grader = proc._default_rubric_grader(
+        grader_engine=None,
+        agent="batman",
+        firing_id="f1",
+        workdir=Path("/tmp"),
+        codex_model=None,
+    )
+    grader("prompt")
+    assert used == ["codex"]
+
+
+def test_invoke_agent_engine_grader_engine_from_env(monkeypatch):
+    # ALFRED_RUBRIC_GRADER_ENGINE selects the grader engine end-to-end.
+    import agent_runner as ar
+    import agent_runner.process as proc
+
+    monkeypatch.setenv("ALFRED_RUBRIC_GRADER_ENGINE", "claude")
+    used: list[str] = []
+
+    def fake_run_codex(*_args, **_kwargs):
+        return _ok_result(ar, "the run output")
+
+    def fake_claude_invoke(prompt, **_kwargs):
+        used.append("claude")
+        return _ok_result(
+            ar, json.dumps({"result": "satisfied", "explanation": "ok", "criteria": []})
+        )
+
+    monkeypatch.setattr(proc, "claude_invoke", fake_claude_invoke)
+    out, _engine = ar.invoke_agent_engine(
+        "hi",
+        engine="codex",
+        agent="batman",
+        firing_id="f1",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        codex_fn=fake_run_codex,
+        rubric="tests pass",
+    )
+    assert used == ["claude"]  # grader engine came from env, not the codex run
+    assert out.raw["rubric_verdict"]["result"] == "satisfied"
+
+
+# --------------------------------------------------------------------------
+# Codex P2: transient grader failures route through retry/backoff
+# --------------------------------------------------------------------------
+
+
+def _rate_limited_result(proc):
+    return proc.ClaudeResult(
+        success=False,
+        subtype="error_rate_limit",
+        num_turns=0,
+        cost_usd=0.0,
+        session_id=None,
+        result_text="rate limited",
+        raw={},
+        stop_reason="error",
+        error_message="429",
+    )
+
+
+def test_default_grader_retries_transient_rate_limit(monkeypatch):
+    # A rate-limited grader engine must be retried (via llm_retry.retry_call),
+    # not immediately error the gate. First call rate-limits, second succeeds.
+    import agent_runner.process as proc
+
+    attempts = {"n": 0}
+
+    def fake_codex_invoke(prompt, **_kwargs):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            return _rate_limited_result(proc)
+        return _ok_result(
+            proc, json.dumps({"result": "satisfied", "explanation": "ok", "criteria": []})
+        )
+
+    monkeypatch.setattr(proc, "codex_invoke", fake_codex_invoke)
+    # Make retry backoff instant so the test is fast + deterministic.
+    monkeypatch.setenv("ALFRED_LLM_BACKOFF_BASE_S", "0")
+    monkeypatch.setenv("ALFRED_LLM_BACKOFF_MAX_S", "0")
+
+    grader = proc._default_rubric_grader(
+        grader_engine="codex",
+        agent="batman",
+        firing_id="f1",
+        workdir=Path("/tmp"),
+        codex_model=None,
+    )
+    out = grader("prompt")
+    assert attempts["n"] == 2  # retried after the rate limit, then succeeded
+    assert '"result"' in out
+
+
+def test_default_grader_transient_exhaustion_yields_empty_for_grader_error(monkeypatch):
+    # If the grader engine stays rate-limited past all retries, the grader_fn
+    # returns empty text so grade() records a safe grader_error verdict (never
+    # a false pass).
+    import agent_runner.process as proc
+
+    def always_rate_limited(prompt, **_kwargs):
+        return _rate_limited_result(proc)
+
+    monkeypatch.setattr(proc, "codex_invoke", always_rate_limited)
+    # Keep the retry budget tiny and backoff instant so the test is fast.
+    monkeypatch.setenv("ALFRED_LLM_MAX_RETRIES", "2")
+    monkeypatch.setenv("ALFRED_LLM_BACKOFF_BASE_S", "0")
+    monkeypatch.setenv("ALFRED_LLM_BACKOFF_MAX_S", "0")
+
+    grader = proc._default_rubric_grader(
+        grader_engine="codex",
+        agent="batman",
+        firing_id="f1",
+        workdir=Path("/tmp"),
+        codex_model=None,
+    )
+    raw = grader("prompt")
+    assert raw == ""  # exhausted -> empty -> grade() -> grader_error
+    verdict = rb.parse_verdict(raw)
+    assert verdict.result == "failed"
+    assert verdict.terminal_reason == "grader_error"

@@ -271,6 +271,7 @@ from .process import (
     gh_json,
     invoke_agent_engine,
     pid_start_key,
+    resolve_grader_engine,
     run,
     short,
 )
@@ -441,6 +442,7 @@ __all__ = [
     "gh_json",
     "invoke_agent_engine",
     "pid_start_key",
+    "resolve_grader_engine",
     "run",
     "short",
     # rubric self-grading gate

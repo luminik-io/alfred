@@ -39,6 +39,7 @@ What this module does NOT own:
 
 from __future__ import annotations
 
+import inspect
 import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -288,12 +289,40 @@ def _extract_json_object(text: str) -> str | None:
     return None
 
 
+#: String spellings a grader might emit for a boolean TRUE. A criterion is a
+#: PASS only on positive evidence, so ONLY these resolve to ``True``; every
+#: other string (explicit false spellings like "false"/"0"/"no", and any
+#: unrecognized text) resolves to ``False`` rather than truthy-stringing to
+#: True.
+_TRUE_STRINGS: frozenset[str] = frozenset({"true", "1", "yes", "on"})
+
+
+def _coerce_passed(value: Any) -> bool:
+    """Coerce a grader's ``passed`` field to a real bool, defensively.
+
+    A real JSON boolean is honored directly. A STRING boolean ("false" /
+    "False" / "0" / "no" / "off") must resolve to ``False`` rather than
+    truthy-stringing a non-empty ``"false"`` to ``True`` (the bug this guards).
+    Numbers use their own truthiness. Anything unrecognized falls back to
+    ``False`` so absence of clear positive evidence never becomes a pass.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        # A string is True only for an explicit true spelling; every other
+        # string (explicit false spellings AND unknown text) is False.
+        return value.strip().lower() in _TRUE_STRINGS
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return False
+
+
 def _coerce_criteria(raw: Any) -> list[CriterionEval]:
     """Coerce the ``criteria`` field of a grader response into typed evals.
 
     Defensive: skips non-dict entries, tolerates missing keys, coerces
-    ``passed`` truthiness, and caps the list at :data:`MAX_CRITERIA` so a
-    grader cannot flood the verdict.
+    ``passed`` (including STRING booleans) via :func:`_coerce_passed`, and caps
+    the list at :data:`MAX_CRITERIA` so a grader cannot flood the verdict.
     """
     if not isinstance(raw, list):
         return []
@@ -302,7 +331,7 @@ def _coerce_criteria(raw: Any) -> list[CriterionEval]:
         if not isinstance(item, dict):
             continue
         name = str(item.get("name", "") or "").strip() or "criterion"
-        passed = bool(item.get("passed", False))
+        passed = _coerce_passed(item.get("passed", False))
         gap_val = item.get("gap")
         gap = None if gap_val in (None, "", "null") else str(gap_val).strip()
         out.append(CriterionEval(name=name, passed=passed, gap=gap))
@@ -468,17 +497,40 @@ def run_rubric_loop(
     return transcript, verdicts
 
 
-def _call_run_fn(run_fn: Callable[..., str], feedback: str | None) -> str:
-    """Invoke ``run_fn``, passing ``feedback`` only when it accepts it.
+def _run_fn_accepts_feedback(run_fn: Callable[..., str]) -> bool:
+    """True when ``run_fn`` can receive a ``feedback`` keyword argument.
 
-    The first iteration has no feedback. On revisions we prefer to pass
-    ``feedback=...``; if the callable does not accept that keyword we fall
-    back to a bare call so simple test doubles and legacy run functions still
-    work.
+    Decided by INSPECTING the signature up front, not by calling and catching
+    ``TypeError``. Catching the error would conflate "this callable does not
+    take feedback" with "this callable raised a TypeError from a real bug in
+    its body", silently masking the latter. If the signature cannot be
+    introspected (e.g. a C builtin), we conservatively assume it does NOT take
+    feedback and call it bare.
     """
-    if feedback is None:
-        return run_fn()
     try:
-        return run_fn(feedback=feedback)
-    except TypeError:
+        sig = inspect.signature(run_fn)
+    except (TypeError, ValueError):
+        return False
+    for param in sig.parameters.values():
+        if param.kind is inspect.Parameter.VAR_KEYWORD:
+            return True  # **kwargs absorbs feedback
+        if param.name == "feedback" and param.kind in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        ):
+            return True
+    return False
+
+
+def _call_run_fn(run_fn: Callable[..., str], feedback: str | None) -> str:
+    """Invoke ``run_fn``, threading ``feedback`` only when its signature takes it.
+
+    The first iteration has no feedback. On revisions we pass ``feedback=...``
+    only when :func:`_run_fn_accepts_feedback` confirms the callable declares
+    it. Any exception the run itself raises propagates unchanged: a real bug in
+    the implementer run must NOT be swallowed and mis-reported as a grader
+    outcome.
+    """
+    if feedback is None or not _run_fn_accepts_feedback(run_fn):
         return run_fn()
+    return run_fn(feedback=feedback)

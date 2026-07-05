@@ -1244,9 +1244,65 @@ def _rubric_max_iterations() -> int:
     return env_int("ALFRED_RUBRIC_MAX_ITERATIONS", 3, minimum=1, maximum=10)
 
 
+#: Grader engines the gate knows how to run. Only these two are cheap+local
+#: engines here; the hybrid pseudo-engine is not a real grader target, so we
+#: resolve it down to the cheap default rather than run a fallback chain for a
+#: read-only judging pass.
+_GRADER_ENGINES: frozenset[str] = frozenset({"codex", "claude"})
+
+#: Default grader engine: the cheapest read-only judge available here.
+_DEFAULT_GRADER_ENGINE = "codex"
+
+
+def resolve_grader_engine(grader_engine: str | None) -> str:
+    """Resolve the grader engine INDEPENDENTLY of the primary run's engine.
+
+    The grader is a separate cheap judging pass, so its engine is chosen on its
+    own axis and must never be inherited from the run under review by accident.
+    Precedence: an explicit ``grader_engine`` (arg or
+    ``ALFRED_RUBRIC_GRADER_ENGINE``) wins when it names a known grader engine;
+    otherwise we default to the cheap read-only :data:`_DEFAULT_GRADER_ENGINE`.
+    ``hybrid`` (or any unknown value) resolves to the cheap default rather than
+    running a two-engine fallback chain for a grade.
+    """
+    candidate = (grader_engine or "").strip().lower()
+    if candidate in _GRADER_ENGINES:
+        return candidate
+    return _DEFAULT_GRADER_ENGINE
+
+
+class _GraderTransientError(RuntimeError):
+    """Raised when a grader ENGINE returns a transient (retryable) result.
+
+    Carries an HTTP-shaped ``status_code`` so ``llm_retry.classify_exception``
+    maps it to a retryable code (429 -> rate_limit, 503 -> server_error), which
+    lets ``retry_call`` back off and re-invoke the grader instead of erroring
+    the whole gate. Non-transient failures never raise this; they just surface
+    their (empty) text and the parser degrades to ``grader_error``.
+    """
+
+    def __init__(self, message: str, *, status_code: int) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+# Grader engine result subtypes that are transient (a temporary provider wall
+# on the CHEAP grade), worth a bounded retry rather than failing the gate.
+_GRADER_TRANSIENT_SUBTYPES: frozenset[str] = frozenset(
+    {"error_rate_limit", "error_overloaded", "error_timeout"}
+)
+
+
+def _grader_status_for_subtype(subtype: str) -> int:
+    """Map a transient grader subtype to an HTTP status for the classifier."""
+    if subtype in {"error_rate_limit", "error_overloaded"}:
+        return 429
+    return 503  # error_timeout and any other transient -> server_error shape
+
+
 def _default_rubric_grader(
     *,
-    grader_engine: str,
+    grader_engine: str | None,
     agent: str,
     firing_id: str,
     workdir: Path,
@@ -1254,36 +1310,64 @@ def _default_rubric_grader(
 ) -> Callable[[str], str]:
     """Build a grader_fn that runs a cheap, read-only grader engine.
 
-    The grader is a SEPARATE cheap invocation (Codex/Haiku-class): it reads
-    the prompt and returns raw text for ``rubric.grade`` to parse. It runs
+    The grader is a SEPARATE cheap invocation (Codex/Haiku-class): it reads the
+    prompt and returns raw text for ``rubric.grade`` to parse. It runs
     read-only (no repo mutation) and short-timeout, because grading is a
-    judging pass, not more implementation work. Injectable so tests never
-    reach a real engine.
+    judging pass, not more implementation work. Injectable so tests never reach
+    a real engine.
 
-    Defaults to the Codex engine (cheapest available here). If the operator
-    pins ``grader_engine="claude"`` we route to a non-streaming claude invoke
-    with a compact model, but Codex is the intended default.
+    The grader engine is resolved by :func:`resolve_grader_engine` on its OWN
+    axis, so it is always the SELECTED grader engine and never silently the
+    primary run's engine. A transient grader failure (rate limit / overload /
+    timeout on the cheap grade) is retried with bounded backoff via
+    ``llm_retry.retry_call`` instead of erroring the gate; a fatal failure
+    surfaces empty text and the parser degrades to ``grader_error``.
     """
+    from llm_retry import classify_exception, is_retryable_code, retry_call
 
-    def _grader(prompt: str) -> str:
-        engine = normalize_engine(grader_engine, default="codex")
+    engine = resolve_grader_engine(grader_engine)
+
+    def _invoke_once() -> ClaudeResult:
         if engine == "claude":
-            res = claude_invoke(
-                prompt,
+            return claude_invoke(
+                prompt_holder["prompt"],
                 workdir=workdir,
                 allowed_tools="",
                 timeout=180,
                 model=codex_model,
             )
-        else:
-            res = codex_invoke(
-                prompt,
-                workdir=workdir,
-                agent=f"{agent}-grader",
-                firing_id=f"{firing_id}-grader",
-                timeout=180,
-                sandbox="read-only",
+        return codex_invoke(
+            prompt_holder["prompt"],
+            workdir=workdir,
+            agent=f"{agent}-grader",
+            firing_id=f"{firing_id}-grader",
+            timeout=180,
+            sandbox="read-only",
+        )
+
+    def _invoke_raising_on_transient() -> ClaudeResult:
+        res = _invoke_once()
+        if not res.success and res.subtype in _GRADER_TRANSIENT_SUBTYPES:
+            raise _GraderTransientError(
+                f"grader engine {engine} transient failure: {res.subtype}",
+                status_code=_grader_status_for_subtype(res.subtype),
             )
+        return res
+
+    prompt_holder: dict[str, str] = {}
+
+    def _grader(prompt: str) -> str:
+        prompt_holder["prompt"] = prompt
+        try:
+            res = retry_call(
+                _invoke_raising_on_transient,
+                is_retryable=lambda exc: is_retryable_code(classify_exception(exc)),
+            )
+        except _GraderTransientError:
+            # Retries exhausted on a still-transient grader wall. Surface no
+            # text so the parser records a safe grader_error verdict (which is
+            # terminal + failed) rather than pretending the run passed.
+            return ""
         return res.result_text or ""
 
     return _grader
@@ -1544,9 +1628,7 @@ def invoke_agent_engine(
     if active_rubric is not None and not is_dry_run():
         grader_fn = rubric_grader_fn or _default_rubric_grader(
             grader_engine=(
-                rubric_grader_engine
-                or os.environ.get("ALFRED_RUBRIC_GRADER_ENGINE", "").strip()
-                or "codex"
+                rubric_grader_engine or os.environ.get("ALFRED_RUBRIC_GRADER_ENGINE", "").strip()
             ),
             agent=agent,
             firing_id=firing_id,
