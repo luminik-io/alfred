@@ -1318,7 +1318,11 @@ def _default_rubric_grader(
 
     The grader engine is resolved by :func:`resolve_grader_engine` on its OWN
     axis, so it is always the SELECTED grader engine and never silently the
-    primary run's engine. A transient grader failure (rate limit / overload /
+    primary run's engine. ``codex_model`` is the PRIMARY run's Codex-specific
+    model; it is forwarded to the grader ONLY when the grader engine is also
+    Codex. A Claude grader never receives a Codex model string (and vice
+    versa): a mismatched grader engine gets ``model=None`` so the engine picks
+    its own default. A transient grader failure (rate limit / overload /
     timeout on the cheap grade) is retried with bounded backoff via
     ``llm_retry.retry_call`` instead of erroring the gate; a fatal failure
     surfaces empty text and the parser degrades to ``grader_error``.
@@ -1326,15 +1330,22 @@ def _default_rubric_grader(
     from llm_retry import classify_exception, is_retryable_code, retry_call
 
     engine = resolve_grader_engine(grader_engine)
+    # Only forward an engine-specific model to the engine it belongs to. The
+    # only engine-specific model threaded in here is the primary run's Codex
+    # model, so it is valid solely for a Codex grader; a Claude grader must not
+    # receive it. When the grader engine does not match, the grader runs on its
+    # own default model (``None`` -> the engine's CLI-default).
+    grader_codex_model = codex_model if engine == "codex" else None
 
     def _invoke_once() -> ClaudeResult:
         if engine == "claude":
+            # No Codex model leaks here; Claude uses its own default model.
             return claude_invoke(
                 prompt_holder["prompt"],
                 workdir=workdir,
                 allowed_tools="",
                 timeout=180,
-                model=codex_model,
+                model=None,
             )
         return codex_invoke(
             prompt_holder["prompt"],
@@ -1343,6 +1354,7 @@ def _default_rubric_grader(
             firing_id=f"{firing_id}-grader",
             timeout=180,
             sandbox="read-only",
+            model=grader_codex_model,
         )
 
     def _invoke_raising_on_transient() -> ClaudeResult:

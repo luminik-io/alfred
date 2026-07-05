@@ -711,6 +711,95 @@ def test_default_grader_defaults_to_codex(monkeypatch):
     assert used == ["codex"]
 
 
+def test_claude_grader_does_not_receive_primary_codex_model(monkeypatch):
+    # Codex P2: grader=claude while the primary run supplied a Codex-specific
+    # model. The Codex model must NOT be forwarded to the Claude grader; Claude
+    # runs on its own default (model=None).
+    import agent_runner.process as proc
+
+    seen: dict[str, object] = {}
+
+    def fake_claude_invoke(prompt, **kwargs):
+        seen["engine"] = "claude"
+        seen["model"] = kwargs.get("model")
+        return _ok_result(
+            proc, json.dumps({"result": "satisfied", "explanation": "ok", "criteria": []})
+        )
+
+    def fake_codex_invoke(prompt, **kwargs):
+        pytest.fail("codex must not be invoked for a claude grader")
+
+    monkeypatch.setattr(proc, "claude_invoke", fake_claude_invoke)
+    monkeypatch.setattr(proc, "codex_invoke", fake_codex_invoke)
+
+    grader = proc._default_rubric_grader(
+        grader_engine="claude",
+        agent="batman",
+        firing_id="f1",
+        workdir=Path("/tmp"),
+        codex_model="gpt-5-codex",  # a Codex-specific model from the primary run
+    )
+    grader("prompt")
+    assert seen["engine"] == "claude"
+    # The Codex model was NOT leaked to the Claude grader.
+    assert seen["model"] is None
+    assert seen["model"] != "gpt-5-codex"
+
+
+def test_codex_grader_forwards_matching_codex_model(monkeypatch):
+    # The matching-engine case still forwards correctly: a Codex grader with a
+    # Codex model from the primary run receives that model.
+    import agent_runner.process as proc
+
+    seen: dict[str, object] = {}
+
+    def fake_codex_invoke(prompt, **kwargs):
+        seen["engine"] = "codex"
+        seen["model"] = kwargs.get("model")
+        return _ok_result(
+            proc, json.dumps({"result": "satisfied", "explanation": "ok", "criteria": []})
+        )
+
+    monkeypatch.setattr(proc, "codex_invoke", fake_codex_invoke)
+
+    grader = proc._default_rubric_grader(
+        grader_engine="codex",
+        agent="batman",
+        firing_id="f1",
+        workdir=Path("/tmp"),
+        codex_model="gpt-5-codex",
+    )
+    grader("prompt")
+    assert seen["engine"] == "codex"
+    assert seen["model"] == "gpt-5-codex"  # matching engine -> model forwarded
+
+
+def test_default_codex_grader_without_model_passes_none(monkeypatch):
+    # No primary Codex model -> the Codex grader gets model=None and relies on
+    # the engine's own default (behavior-preserving with the pre-fix path).
+    import agent_runner.process as proc
+
+    seen: dict[str, object] = {}
+
+    def fake_codex_invoke(prompt, **kwargs):
+        seen["model"] = kwargs.get("model")
+        return _ok_result(
+            proc, json.dumps({"result": "satisfied", "explanation": "ok", "criteria": []})
+        )
+
+    monkeypatch.setattr(proc, "codex_invoke", fake_codex_invoke)
+
+    grader = proc._default_rubric_grader(
+        grader_engine="codex",
+        agent="batman",
+        firing_id="f1",
+        workdir=Path("/tmp"),
+        codex_model=None,
+    )
+    grader("prompt")
+    assert seen["model"] is None
+
+
 def test_invoke_agent_engine_grader_engine_from_env(monkeypatch):
     # ALFRED_RUBRIC_GRADER_ENGINE selects the grader engine end-to-end.
     import agent_runner as ar
