@@ -46,6 +46,18 @@ def _valid() -> frozenset[str]:
     return tb.valid_codenames()
 
 
+def _full_names(**overrides: str) -> dict[str, str]:
+    """A full-coverage name map: every roster contract role gets a distinct name.
+
+    A complete proposal must name EVERY role in the roster contract, so tests that
+    expect a saveable proposal seed a full map. Each role gets a distinct
+    slug-derived name by default; ``overrides`` swap in specific names/slugs.
+    """
+    names = {slug: f"Name-{slug}" for slug in _valid()}
+    names.update(overrides)
+    return names
+
+
 # --- roster contract seeding -------------------------------------------------
 
 
@@ -89,51 +101,80 @@ def test_render_system_prompt_injects_the_contract() -> None:
 # --- parse_proposal: validation ----------------------------------------------
 
 
-def test_parse_proposal_accepts_known_slugs() -> None:
-    proposal = tb.parse_proposal(
-        {"custom_names": {"architect": "Gandalf", "reviewer": "Galadriel"}},
-        valid=_valid(),
-    )
+def test_parse_proposal_accepts_a_full_team() -> None:
+    names = _full_names(architect="Gandalf", reviewer="Galadriel")
+    proposal = tb.parse_proposal({"custom_names": names}, valid=_valid())
     assert proposal is not None
-    assert proposal.custom_names == {"architect": "Gandalf", "reviewer": "Galadriel"}
+    assert proposal.custom_names == names
     assert proposal.custom_roles == {}
 
 
-def test_parse_proposal_drops_unknown_slugs_but_keeps_the_rest() -> None:
+def test_parse_proposal_single_name_is_not_a_complete_proposal() -> None:
+    # A single valid name is a half-named team, not a saveable theme. It must
+    # degrade to None (in-progress) so a partial map never pre-fills the editor.
+    assert tb.parse_proposal({"custom_names": {"architect": "Gandalf"}}, valid=_valid()) is None
+
+
+def test_parse_proposal_partial_map_is_not_complete() -> None:
+    # Naming most of the team but leaving one role out is still in-progress.
+    names = _full_names()
+    names.pop(next(iter(names)))
+    assert tb.parse_proposal({"custom_names": names}, valid=_valid()) is None
+
+
+def test_parse_proposal_drops_unknown_slugs_and_stays_incomplete() -> None:
+    # An unknown slug is dropped entry-by-entry; with only one real name left the
+    # map does not cover the roster, so the proposal degrades to None.
     proposal = tb.parse_proposal(
         {"custom_names": {"architect": "Gandalf", "not-a-real-agent": "Nobody"}},
         valid=_valid(),
     )
+    assert proposal is None
+
+
+def test_parse_proposal_drops_unknown_slugs_but_completes_with_full_map() -> None:
+    # Unknown slugs are dropped, but the surviving full-coverage map still lands.
+    names = _full_names(architect="Gandalf")
+    proposal = tb.parse_proposal(
+        {"custom_names": {**names, "not-a-real-agent": "Nobody"}},
+        valid=_valid(),
+    )
     assert proposal is not None
-    assert proposal.custom_names == {"architect": "Gandalf"}
+    assert proposal.custom_names == names
 
 
 def test_parse_proposal_accepts_names_alias() -> None:
     # A slightly-off model output using `names` instead of `custom_names` still lands.
-    proposal = tb.parse_proposal({"names": {"architect": "Gandalf"}}, valid=_valid())
+    names = _full_names(architect="Gandalf")
+    proposal = tb.parse_proposal({"names": names}, valid=_valid())
     assert proposal is not None
-    assert proposal.custom_names == {"architect": "Gandalf"}
+    assert proposal.custom_names == names
 
 
 def test_parse_proposal_normalizes_dotted_slug() -> None:
-    proposal = tb.parse_proposal({"custom_names": {"alfred.architect": "Gandalf"}}, valid=_valid())
+    names = _full_names(architect="Gandalf")
+    # Present the architect entry dotted; it must normalize to the bare slug and
+    # still count toward full coverage.
+    del names["architect"]
+    proposal = tb.parse_proposal(
+        {"custom_names": {**names, "alfred.architect": "Gandalf"}}, valid=_valid()
+    )
     assert proposal is not None
-    assert proposal.custom_names == {"architect": "Gandalf"}
+    assert proposal.custom_names["architect"] == "Gandalf"
 
 
 def test_parse_proposal_bounds_label_length() -> None:
-    proposal = tb.parse_proposal({"custom_names": {"architect": "G" * 200}}, valid=_valid())
+    proposal = tb.parse_proposal({"custom_names": _full_names(architect="G" * 200)}, valid=_valid())
     assert proposal is not None
     assert len(proposal.custom_names["architect"]) == tb.MAX_LABEL_LEN
 
 
-def test_parse_proposal_drops_blank_and_non_string_labels() -> None:
-    proposal = tb.parse_proposal(
-        {"custom_names": {"architect": "   ", "reviewer": 42, "planner": "Ok"}},
-        valid=_valid(),
-    )
-    assert proposal is not None
-    assert proposal.custom_names == {"planner": "Ok"}
+def test_parse_proposal_blank_or_non_string_label_leaves_map_incomplete() -> None:
+    # A blank or non-string label drops that entry; the resulting map no longer
+    # covers the roster, so the proposal degrades to None.
+    names = _full_names()
+    names["architect"] = "   "  # dropped by _clean_label
+    assert tb.parse_proposal({"custom_names": names}, valid=_valid()) is None
 
 
 def test_parse_proposal_returns_none_when_nothing_usable() -> None:
@@ -146,7 +187,7 @@ def test_parse_proposal_returns_none_when_nothing_usable() -> None:
 def test_parse_proposal_carries_custom_roles() -> None:
     proposal = tb.parse_proposal(
         {
-            "custom_names": {"architect": "Gandalf"},
+            "custom_names": _full_names(architect="Gandalf"),
             "custom_roles": {"architect": "Grey Wizard"},
         },
         valid=_valid(),
@@ -178,53 +219,19 @@ def test_parse_proposal_rejects_when_names_present_but_all_invalid() -> None:
     )
 
 
-def test_parse_proposal_drops_duplicate_display_names_first_wins() -> None:
-    # Two agents cast as the same persona is a broken roster. The first slug keeps
-    # the name; the later duplicate is dropped so the surviving names stay distinct.
-    proposal = tb.parse_proposal(
-        {"custom_names": {"architect": "Gandalf", "reviewer": "Gandalf"}},
-        valid=_valid(),
-    )
-    assert proposal is not None
-    assert proposal.custom_names == {"architect": "Gandalf"}
+def test_parse_proposal_duplicate_display_name_leaves_map_incomplete() -> None:
+    # Two agents cast as the same persona is a broken roster: the later duplicate
+    # is dropped, which leaves its role unnamed, so the map is incomplete and the
+    # proposal degrades to None.
+    names = _full_names(architect="Gandalf", reviewer="Gandalf")
+    assert tb.parse_proposal({"custom_names": names}, valid=_valid()) is None
 
 
 def test_parse_proposal_dedup_is_case_and_whitespace_insensitive() -> None:
-    proposal = tb.parse_proposal(
-        {"custom_names": {"architect": "Gandalf", "reviewer": "  gandalf "}},
-        valid=_valid(),
-    )
-    assert proposal is not None
-    assert proposal.custom_names == {"architect": "Gandalf"}
-
-
-def test_parse_proposal_keeps_distinct_names_after_dropping_a_duplicate() -> None:
-    proposal = tb.parse_proposal(
-        {
-            "custom_names": {
-                "architect": "Gandalf",
-                "reviewer": "Gandalf",
-                "planner": "Aragorn",
-            }
-        },
-        valid=_valid(),
-    )
-    assert proposal is not None
-    assert proposal.custom_names == {"architect": "Gandalf", "planner": "Aragorn"}
-
-
-def test_parse_proposal_drops_role_label_for_a_deduped_name() -> None:
-    # A role override must not cling to a slug whose name was dropped as a duplicate.
-    proposal = tb.parse_proposal(
-        {
-            "custom_names": {"architect": "Gandalf", "reviewer": "Gandalf"},
-            "custom_roles": {"reviewer": "The Grey"},
-        },
-        valid=_valid(),
-    )
-    assert proposal is not None
-    assert proposal.custom_names == {"architect": "Gandalf"}
-    assert proposal.custom_roles == {}
+    # A case/whitespace-variant duplicate is still a duplicate; the dropped entry
+    # leaves its role unnamed, so the whole proposal degrades to None.
+    names = _full_names(architect="Gandalf", reviewer="  gandalf ")
+    assert tb.parse_proposal({"custom_names": names}, valid=_valid()) is None
 
 
 # --- parse_turn --------------------------------------------------------------
@@ -239,7 +246,7 @@ def test_parse_turn_vibe_question_has_no_proposal() -> None:
 
 
 def test_parse_turn_proposes_a_full_team() -> None:
-    names = {slug: slug.title().replace("-", "") for slug in _ENGINEERING_SLUGS}
+    names = _full_names(architect="Gandalf")
     raw = (
         '{"reply": "Middle-earth it is. Your architect is Gandalf.",'
         '"action": {"tool": "propose_theme", "args": {"custom_names": ' + _json(names) + "}}}"
@@ -247,8 +254,24 @@ def test_parse_turn_proposes_a_full_team() -> None:
     turn = tb.parse_turn(raw, valid=_valid())
     assert turn is not None
     assert turn.proposal is not None
-    # Every engineering role is named.
+    # Every roster role is named, and the whole map covers the contract.
+    assert set(turn.proposal.custom_names) == _valid()
     assert set(turn.proposal.custom_names) >= _ENGINEERING_SLUGS
+
+
+def test_parse_turn_partial_team_degrades_to_reply() -> None:
+    # A propose_theme turn that names only some roles is in-progress: keep the
+    # reply, forward no action, so the client keeps chatting instead of opening a
+    # half-filled editor.
+    raw = (
+        '{"reply": "Your architect is Gandalf. Who should lead review?",'
+        '"action": {"tool": "propose_theme", "args": {"custom_names": '
+        '{"architect": "Gandalf"}}}}'
+    )
+    turn = tb.parse_turn(raw, valid=_valid())
+    assert turn is not None
+    assert turn.proposal is None
+    assert "Gandalf" in turn.reply
 
 
 def test_parse_turn_roles_only_action_degrades_to_reply() -> None:
@@ -266,9 +289,10 @@ def test_parse_turn_roles_only_action_degrades_to_reply() -> None:
     assert "vibe" in turn.reply
 
 
-def test_parse_turn_does_not_forward_duplicate_names() -> None:
-    # A duplicate display name across roles is deduped (first wins); the surviving
-    # distinct proposal still forwards.
+def test_parse_turn_duplicate_names_degrade_to_reply() -> None:
+    # A duplicate display name across roles drops the collided entry, leaving a
+    # role unnamed. That map no longer covers the roster, so the turn keeps its
+    # reply and forwards no proposal.
     raw = (
         '{"reply": "Middle-earth it is.",'
         '"action": {"tool": "propose_theme", "args": {"custom_names": '
@@ -276,8 +300,8 @@ def test_parse_turn_does_not_forward_duplicate_names() -> None:
     )
     turn = tb.parse_turn(raw, valid=_valid())
     assert turn is not None
-    assert turn.proposal is not None
-    assert turn.proposal.custom_names == {"architect": "Gandalf", "planner": "Aragorn"}
+    assert turn.proposal is None
+    assert "Middle-earth" in turn.reply
 
 
 def test_parse_turn_ignores_non_propose_action() -> None:
@@ -324,10 +348,10 @@ class _FakeResult:
 
 
 def test_run_turn_parses_injected_engine_proposal() -> None:
+    names = _full_names(architect="Ripley", reviewer="HAL")
     payload = (
         '{"reply": "Sci-fi crew, aye.",'
-        '"action": {"tool": "propose_theme", "args": {"custom_names": '
-        '{"architect": "Ripley", "reviewer": "HAL"}}}}'
+        '"action": {"tool": "propose_theme", "args": {"custom_names": ' + _json(names) + "}}}"
     )
 
     def fake_invoke(prompt: str, **kwargs: object) -> tuple[_FakeResult, str]:
@@ -346,7 +370,9 @@ def test_run_turn_parses_injected_engine_proposal() -> None:
     )
     assert turn is not None
     assert turn.proposal is not None
-    assert turn.proposal.custom_names == {"architect": "Ripley", "reviewer": "HAL"}
+    assert set(turn.proposal.custom_names) == _valid()
+    assert turn.proposal.custom_names["architect"] == "Ripley"
+    assert turn.proposal.custom_names["reviewer"] == "HAL"
 
 
 def test_run_turn_returns_none_when_engine_fails() -> None:

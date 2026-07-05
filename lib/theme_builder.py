@@ -170,23 +170,30 @@ def parse_proposal(
     *,
     valid: frozenset[str],
 ) -> ThemeProposal | None:
-    """Validate a ``propose_theme`` action's args into a ``ThemeProposal``.
+    """Validate a ``propose_theme`` action's args into a COMPLETE ``ThemeProposal``.
 
     Defensive by construction, mirroring ``compose_converse.parse_action``: it
     NEVER raises. Returns ``None`` (drop the proposal, keep the turn's reply as a
-    normal conversational reply) when the args carry no usable NAMES: naming the
-    team is the whole point, so a roles-only proposal, or one whose every name
-    entry is invalid, is not a proposal at all and must not pre-fill an empty
-    editor. Unknown role-slugs, blank/over-long labels, and non-string values are
-    dropped entry-by-entry rather than failing the whole proposal, so a mostly-good
-    map still previews. Entry count is capped.
+    normal conversational reply) unless the args name the WHOLE team: naming the
+    roster is the whole point, so a roles-only proposal, one whose every name
+    entry is invalid, or a PARTIAL map that leaves some roster role unnamed is not
+    a final proposal and must not pre-fill the editor. A partial map is treated as
+    still-in-progress: the turn's reply stands and the model is expected to keep
+    asking until every role has a name.
+
+    Only when ``custom_names`` covers every role in ``valid`` (the canonical
+    roster contract the builder names, i.e. ``valid_codenames()`` /
+    ``roster_contract_agents()``) is a proposal returned as complete and
+    saveable. Unknown role-slugs, blank/over-long labels, and non-string values
+    are dropped entry-by-entry; if that dropping leaves any contract role
+    unnamed, the whole proposal degrades to ``None``. Entry count is capped.
 
     Display names must be DISTINCT across roles (two agents sharing one persona is
     a broken roster). Duplicate names, compared case-insensitively on the trimmed
-    label, are dropped beyond the first occurrence so the surviving names stay
-    distinct; if de-duplicating leaves no valid name, the proposal degrades to
-    ``None``. Custom role labels are kept for whatever names survive, so a role
-    override never clings to a dropped name.
+    label, are dropped beyond the first occurrence; because a dropped duplicate
+    leaves its role unnamed, such a map is incomplete and degrades to ``None``.
+    Custom role labels are kept only for names that survive, so a role override
+    never clings to a dropped name.
 
     ``args`` is expected to be ``{custom_names: {slug: name}, custom_roles?:
     {slug: label}}``. A bare ``names``/``roles`` alias is also accepted so a
@@ -198,10 +205,11 @@ def parse_proposal(
         raw.get("custom_names") if raw.get("custom_names") is not None else raw.get("names"),
         valid=valid,
     )
-    # A proposal MUST name at least one agent. A roles-only turn (or one whose
-    # names were all invalid or collided away) is a conversational reply, not a
-    # theme, so drop the action entirely.
-    if not names:
+    # A COMPLETE proposal MUST name every role in the roster contract. A roles-only
+    # turn, a partial map (some role still unnamed), or one whose names collided or
+    # were all invalid is an in-progress conversational reply, not a saveable theme,
+    # so drop the action entirely and let the model keep asking.
+    if not names or not valid or not valid <= set(names):
         return None
     roles = _clean_slug_map(
         raw.get("custom_roles") if raw.get("custom_roles") is not None else raw.get("roles"),
