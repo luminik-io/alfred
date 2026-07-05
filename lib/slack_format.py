@@ -60,16 +60,15 @@ def _escape_slack_text(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def _themed_codename_label(codename: str) -> str:
-    """Format ``"<name> (<role>)"`` honoring the persisted roster theme.
+def _themed_name(codename: str) -> str | None:
+    """Resolve a bare agent display name under the active roster theme.
 
-    The default (Batman) theme reproduces ``codename_with_role`` exactly, so a
-    fork with no theme set sees no change. When the operator has saved a
-    ``custom`` theme via the desktop, an agent's themed display name and role
-    label (persisted under the runtime state dir) replace the bare codename and
-    the env role, so the Slack post matches what the desktop shows. Never
-    raises: any failure reading the store falls back to ``codename_with_role``
-    so a firing post always goes out.
+    Returns the theme's display name for a known fleet codename (the Batman-cast
+    name under the default theme, the preset's name under a preset, the
+    operator's name under a custom theme) or ``None`` for a codename outside the
+    known fleet. Never raises: a failure reading the store degrades to ``None``
+    so the caller keeps the shipped rendering. Shared by ``_themed_codename_label``
+    and the Slack/CLI surfaces that render a name with no role suffix.
     """
     try:
         from agent_runner.paths import STATE_ROOT
@@ -77,26 +76,71 @@ def _themed_codename_label(codename: str) -> str:
 
         state = RosterThemeStore.from_state_root(STATE_ROOT).load()
     except Exception:  # rendering must never fail on store reads
-        return codename_with_role(codename)
+        return None
+    return state.themed_name_for(codename)
 
-    # Resolve the display name under whatever theme is active so Slack matches
-    # the desktop: a custom theme uses the operator's name (else the Batman
-    # base); a preset (Transformers, Justice League) uses the preset's themed
-    # name; the Batman theme returns None and keeps the shipped
-    # ``codename_with_role`` rendering. A codename outside the active theme also
-    # returns None and falls back, so a firing always posts a name.
-    name = state.themed_display_name_for(codename)
+
+def _themed_role(codename: str) -> str | None:
+    """Resolve the Batman-base role label for a known codename, or ``None``.
+
+    Used to pair a themed name with the role label the desktop shows. Presets
+    and the Batman base share ``ROLE_LABELS_DEFAULT``; a custom theme overlays
+    the operator's per-agent role. Never raises.
+    """
+    try:
+        from agent_runner.paths import STATE_ROOT
+        from roster_theme_store import BATMAN_BASE_ROLES, RosterThemeStore
+
+        state = RosterThemeStore.from_state_root(STATE_ROOT).load()
+    except Exception:  # rendering must never fail on store reads
+        return None
+    themed = state.themed_role_label_for(codename)
+    if themed:
+        return themed
+    # The default Batman theme's ``themed_role_label_for`` returns ``None`` so
+    # the shipped env-role path is preserved for unknown codenames; a KNOWN slug
+    # still gets its Batman-base role label so the name reads with its role.
+    return BATMAN_BASE_ROLES.get(codename.split(".")[-1].strip().lower())
+
+
+def _themed_codename_label(codename: str) -> str:
+    """Format ``"<name> (<role>)"`` honoring the persisted roster theme.
+
+    The default (Batman) theme renders the Batman-cast name for a known role
+    slug (``senior-dev`` -> ``Lucius``), matching the desktop. After the
+    role-slug rename the codename is a slug, so a surface that printed the bare
+    codename would show ``senior-dev`` instead of ``Lucius``; resolving through
+    the theme closes that gap. When the operator has saved a preset or a
+    ``custom`` theme via the desktop, the agent's themed display name and role
+    label (persisted under the runtime state dir) replace the slug and the env
+    role, so the Slack post matches what the desktop shows. Never raises: any
+    failure reading the store falls back to ``codename_with_role`` so a firing
+    post always goes out.
+    """
+    name = _themed_name(codename)
     if not name:
+        # A codename outside the known fleet keeps the shipped rendering: the
+        # bare codename plus the ``ALFRED_<CODENAME>_ROLE`` env label.
         return codename_with_role(codename)
-    # Match the desktop's role fallback: a custom theme with a name but no
-    # per-agent role label, and every preset, fall back to the Batman-base role
-    # label (not the ``ALFRED_<CODENAME>_ROLE`` env label), so the same saved
-    # theme renders identically on both surfaces. Only a codename outside that
-    # base falls through to the env role, preserving the shipped behavior there.
-    role = state.themed_role_label_for(codename) or agent_role(codename)
+    # Match the desktop's role fallback: the Batman-base role label for the slug
+    # (not the ``ALFRED_<CODENAME>_ROLE`` env label), else the env role for a
+    # codename the base does not know, so the same saved theme renders
+    # identically on both surfaces.
+    role = _themed_role(codename) or agent_role(codename)
     safe_name = _escape_slack_text(name)
     safe_role = _escape_slack_text(role) if role else role
     return f"{safe_name} ({safe_role})" if safe_role else safe_name
+
+
+def themed_agent_name(codename: str) -> str:
+    """Public: the active theme's display name for ``codename``, bare (no role).
+
+    For surfaces that render just a name and have no role suffix: the Slack
+    assignment lane and the CLI status table. Falls back to the raw codename for
+    a codename outside the known fleet, so an unknown agent still prints
+    something. Never raises.
+    """
+    return _themed_name(codename) or codename
 
 
 SLACK_API = "https://slack.com/api"
@@ -523,4 +567,5 @@ __all__ = [
     "firing_thread_root",
     "github_issue_link",
     "github_url_link",
+    "themed_agent_name",
 ]

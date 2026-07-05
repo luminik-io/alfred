@@ -525,8 +525,60 @@ def test_cli_status_reports_local_snapshot(tmp_path):
     assert res.returncode == 0, res.stderr
     assert "alfred-status @" in res.stdout
     assert "approval wait dead #504" in res.stdout
-    batman_row = next(line for line in res.stdout.splitlines() if line.startswith("architect"))
+    # The human table shows the roster theme's name; the default Batman theme
+    # renders the ``architect`` slug as "Batman".
+    batman_row = next(line for line in res.stdout.splitlines() if line.startswith("Batman"))
     assert " 1     0   0" in batman_row
+
+
+def test_cli_status_human_name_follows_persisted_roster_theme(tmp_path):
+    alfred = tmp_path / "alfred"
+    launchd = alfred / "launchd"
+    launchd.mkdir(parents=True)
+    (launchd / "agents.conf").write_text(
+        "my.fleet.architect\tarchitect.py\tinterval:5400\tno\t\tBundle coordinator\n"
+    )
+    theme_dir = alfred / "state" / "roster-theme"
+    theme_dir.mkdir(parents=True)
+    (theme_dir / "roster-theme.json").write_text(
+        json.dumps({"version": 1, "theme": "transformers", "custom_names": {}, "custom_roles": {}}),
+        encoding="utf-8",
+    )
+    env = {
+        "ALFRED_HOME": str(alfred),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+    }
+
+    res = _run_cli("status", env_extra=env)
+
+    assert res.returncode == 0, res.stderr
+    # The persisted Transformers theme renames the ``architect`` slug's human
+    # column to "Optimus Prime", matching the desktop; the raw slug never shows.
+    assert any(line.startswith("Optimus Prime") for line in res.stdout.splitlines())
+    assert not any(line.startswith("architect") for line in res.stdout.splitlines())
+
+
+def test_cli_status_json_keeps_raw_slug_and_adds_themed_name(tmp_path):
+    alfred = tmp_path / "alfred"
+    launchd = alfred / "launchd"
+    launchd.mkdir(parents=True)
+    (launchd / "agents.conf").write_text(
+        "my.fleet.architect\tarchitect.py\tinterval:5400\tno\t\tBundle coordinator\n"
+    )
+    env = {
+        "ALFRED_HOME": str(alfred),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+    }
+
+    res = _run_cli("status", "--json", env_extra=env)
+
+    assert res.returncode == 0, res.stderr
+    payload = json.loads(res.stdout)
+    architect = next(a for a in payload["agents"] if a["agent"] == "architect")
+    # Machine-readable JSON keeps the raw slug on ``agent`` and exposes the themed
+    # human name separately so downstream consumers are not broken by the rename.
+    assert architect["agent"] == "architect"
+    assert architect["display_name"] == "Batman"
 
 
 def test_cli_status_uses_custom_agent_manifest_engine_default(tmp_path):
@@ -563,18 +615,21 @@ def test_cli_status_uses_custom_agent_manifest_engine_default(tmp_path):
     res = _run_cli("status", env_extra=env)
 
     assert res.returncode == 0, res.stderr
-    row = next(line for line in res.stdout.splitlines() if line.startswith("release-captain"))
-    assert row.split()[2] == "codex"
-    assert any(line.startswith("architect") for line in res.stdout.splitlines())
+    # A custom agent the roster theme does not know keeps its manifest
+    # display name in the human table.
+    row = next(line for line in res.stdout.splitlines() if line.startswith("Release Captain"))
+    assert row.split()[3] == "codex"
+    # A fleet slug renders under the default Batman theme ("architect" -> "Batman").
+    assert any(line.startswith("Batman") for line in res.stdout.splitlines())
 
     engine_state = alfred / "state" / "engines"
     engine_state.mkdir(parents=True)
     (engine_state / "release-captain").write_text("claude\n", encoding="utf-8")
     overridden = _run_cli("status", env_extra=env)
     row = next(
-        line for line in overridden.stdout.splitlines() if line.startswith("release-captain")
+        line for line in overridden.stdout.splitlines() if line.startswith("Release Captain")
     )
-    assert row.split()[2] == "claude"
+    assert row.split()[3] == "claude"
 
 
 def test_cli_status_treats_empty_runtime_conf_as_authoritative(tmp_path):
@@ -616,8 +671,10 @@ def test_cli_status_treats_empty_runtime_conf_as_authoritative(tmp_path):
 
     assert res.returncode == 0, res.stderr
     rows = res.stdout.splitlines()
-    assert any(line.startswith("release-captain") for line in rows)
-    assert not any(line.startswith("architect") for line in rows)
+    # An empty runtime conf drops the fleet; only the custom agent remains, shown
+    # by its manifest display name. No fleet slug (Batman) leaks in.
+    assert any(line.startswith("Release Captain") for line in rows)
+    assert not any(line.startswith("Batman") for line in rows)
 
 
 def test_cli_engine_set_accepts_configured_runtime_codename(tmp_path):

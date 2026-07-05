@@ -344,3 +344,44 @@ def test_themed_label_escapes_slack_markup(tmp_path, monkeypatch):
     assert "<!channel>" not in label
     assert "<@U123>" not in label
     assert label == "&lt;!channel&gt; &amp; &lt;@U123&gt; (&lt;lead&gt;)"
+
+
+def test_themed_label_default_theme_resolves_slug_to_batman_cast_name(monkeypatch):
+    import slack_format as sf
+
+    # After the role-slug rename the codename is a slug (``senior-dev``). With no
+    # theme persisted the default Batman theme must still render the Batman-cast
+    # name and its base role, NOT the bare slug, so the Slack post reads the same
+    # as it did before the rename.
+    assert sf._themed_codename_label("senior-dev") == "Lucius (Senior developer)"
+    assert sf._themed_codename_label("architect") == "Batman (Architect)"
+
+
+def test_themed_agent_name_default_theme_is_batman_cast_bare_name(monkeypatch):
+    import slack_format as sf
+
+    # ``themed_agent_name`` is the bare-name resolver (no role suffix) the Slack
+    # assignment lane and CLI status table use. Default theme -> Batman-cast name.
+    assert sf.themed_agent_name("senior-dev") == "Lucius"
+    assert sf.themed_agent_name("architect") == "Batman"
+
+
+def test_themed_agent_name_preset_and_custom(tmp_path, monkeypatch):
+    import slack_format as sf
+
+    _persist_theme(tmp_path, theme="transformers")
+    assert sf.themed_agent_name("senior-dev") == "Ironhide"
+    assert sf.themed_agent_name("architect") == "Optimus Prime"
+
+    _persist_theme(tmp_path, theme="custom", custom_names={"architect": "Sherlock"})
+    assert sf.themed_agent_name("architect") == "Sherlock"
+    # A custom theme that did not name this agent keeps its Batman-base name.
+    assert sf.themed_agent_name("senior-dev") == "Lucius"
+
+
+def test_themed_agent_name_unknown_codename_returns_raw(monkeypatch):
+    import slack_format as sf
+
+    # A codename outside the known fleet has no theme name; keep the bare slug so
+    # the caller still prints something (a custom agent falls here).
+    assert sf.themed_agent_name("release-captain") == "release-captain"

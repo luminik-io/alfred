@@ -13,6 +13,7 @@ if str(LIB) not in sys.path:
 
 from slack_listener import (  # noqa: E402
     SlackPlanningListener,
+    _assignment_agent_display,
     _clean_slack_text,
     _short_plain,
     _strip_mentions,
@@ -2701,6 +2702,56 @@ def test_conversation_thread_repo_reply_completes_bare_issue_clarification(
     assert reply.action == "intent_confirmation_posted"
     assert "Confirm queue" in poster.messages[-1]["text"]
     assert "acme-io/acme-backend#4" in poster.messages[-1]["text"]
+
+
+def _persist_roster_theme(monkeypatch, tmp_path: Path, **payload) -> None:
+    """Point the theme store at a tmp state root and save a theme.
+
+    ``_assignment_agent_display`` resolves names through the roster theme at
+    ``agent_runner.paths.STATE_ROOT``. Redirect that constant to a tmp dir so the
+    test never touches the operator's real state.
+    """
+    import agent_runner.paths as paths
+    from roster_theme_store import RosterThemeStore
+
+    state_root = tmp_path / "state"
+    monkeypatch.setattr(paths, "STATE_ROOT", state_root)
+    RosterThemeStore.from_state_root(state_root).save(**payload)
+
+
+def test_assignment_agent_display_default_theme_is_batman_cast(monkeypatch, tmp_path) -> None:
+    import agent_runner.paths as paths
+
+    # No theme persisted: the default Batman theme renders the assignable lanes
+    # by their Batman-cast names. The slug identity is themed, not printed raw.
+    monkeypatch.setattr(paths, "STATE_ROOT", tmp_path / "empty-state")
+    assert _assignment_agent_display("architect") == "Batman · Architect"
+    assert _assignment_agent_display("senior-dev") == "Lucius · Senior developer"
+    # Batman-cast aliases still resolve to the same themed lane label.
+    assert _assignment_agent_display("lucius") == "Lucius · Senior developer"
+
+
+def test_assignment_agent_display_follows_preset_theme(monkeypatch, tmp_path) -> None:
+    # A saved preset re-skins the lane name on Slack the way the desktop does.
+    _persist_roster_theme(monkeypatch, tmp_path, theme="transformers")
+    assert _assignment_agent_display("architect") == "Optimus Prime · Architect"
+    assert _assignment_agent_display("senior-dev") == "Ironhide · Senior developer"
+
+
+def test_assignment_agent_display_follows_custom_theme(monkeypatch, tmp_path) -> None:
+    # An operator custom name shows on the assignment lane too; a slug the custom
+    # theme did not rename keeps its Batman-base name.
+    _persist_roster_theme(
+        monkeypatch, tmp_path, theme="custom", custom_names={"architect": "Sherlock"}
+    )
+    assert _assignment_agent_display("architect") == "Sherlock · Architect"
+    assert _assignment_agent_display("senior-dev") == "Lucius · Senior developer"
+
+
+def test_assignment_agent_display_unknown_agent_falls_through(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr("agent_runner.paths.STATE_ROOT", tmp_path / "empty-state")
+    # A lane outside the two assignable slugs is returned as given.
+    assert _assignment_agent_display("mystery-lane") == "mystery-lane"
 
 
 def test_conversation_thread_repo_reply_preserves_assignment_agent(

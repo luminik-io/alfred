@@ -281,6 +281,37 @@ class RosterThemeState:
             return BATMAN_BASE_ROLES.get(_normalize_codename(codename) or "")
         return None
 
+    def themed_name_for(self, codename: str) -> str | None:
+        """Display name for a codename under the ACTIVE theme, base name included.
+
+        Unlike :meth:`themed_display_name_for`, this always resolves a known
+        fleet codename to a real display name under EVERY theme, including the
+        default ``batman`` theme (which returns the Batman-cast name, not
+        ``None``). It exists for surfaces that render a bare agent name and have
+        no ``codename_with_role`` role suffix to fall back on: the CLI status
+        table and the Slack assignment lane. After the role-slug rename the
+        codename is a slug (``senior-dev``), so a surface that printed the raw
+        codename would show ``senior-dev`` instead of the theme's name; this
+        resolver closes that gap.
+
+        Resolution per theme:
+
+        * ``custom``  -> the operator's name, else the Batman base name.
+        * a preset    -> the preset's themed name (``Ironhide``).
+        * ``batman``  -> the Batman-cast base name (``Lucius``).
+
+        Returns ``None`` only for a codename outside the known fleet, so the
+        caller can keep the bare slug for an unknown agent rather than inventing
+        a name.
+        """
+        if self.theme == CUSTOM_THEME_ID:
+            return self.custom_display_name_for(codename)
+        preset = PRESET_DISPLAY_NAMES.get(self.theme)
+        if preset is not None:
+            return preset.get(_normalize_codename(codename) or "")
+        # The default ``batman`` theme: the base name IS the themed name.
+        return BATMAN_BASE_NAMES.get(_normalize_codename(codename) or "")
+
 
 def default_theme_state() -> RosterThemeState:
     """The unchanged default: the Batman roster, no custom names."""

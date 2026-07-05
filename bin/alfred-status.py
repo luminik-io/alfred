@@ -30,6 +30,7 @@ for candidate in (
 
 import agent_runner  # noqa: E402
 from custom_agents import CustomAgentStore  # noqa: E402
+from slack_format import themed_agent_name  # noqa: E402
 
 ALFRED_HOME = agent_runner.ALFRED_HOME
 STATE_ROOT = agent_runner.STATE_ROOT
@@ -81,11 +82,15 @@ class AgentRecord:
     role: str
     disabled: bool
     engine_default: str | None = None
+    # A custom agent's operator-chosen display name from its manifest. Fleet
+    # agents leave this ``None`` and resolve their name through the roster theme.
+    display_name: str | None = None
 
 
 @dataclass
 class AgentSnapshot:
     agent: str
+    display_name: str
     label: str
     role: str
     schedule: str
@@ -241,6 +246,7 @@ def _custom_agent_records() -> list[AgentRecord]:
             role=agent.role_title,
             disabled=not agent.enabled,
             engine_default=agent.engine,
+            display_name=agent.display_name,
         )
         for agent in agents
     ]
@@ -482,8 +488,17 @@ def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnap
         except OSError:
             pass
 
+    # The human-facing name: the roster theme's display name for a fleet slug
+    # (Batman-cast by default, the preset's or the operator's custom name
+    # otherwise). A codename the roster does not know (a custom agent) keeps its
+    # manifest ``display_name``, else the bare codename. The raw slug stays on
+    # ``agent`` for machine-readable JSON consumers.
+    themed = themed_agent_name(record.codename)
+    display_name = themed if themed != record.codename else (record.display_name or record.codename)
+
     return AgentSnapshot(
         agent=record.codename,
+        display_name=display_name,
         label=record.label,
         role=record.role,
         schedule=record.schedule,
@@ -594,7 +609,7 @@ def render_table(snapshots: list[AgentSnapshot], globals_: dict[str, Any]) -> st
             state_chunks.append("stderr fresh")
         state = ", ".join(state_chunks) if state_chunks else "ok"
         lines.append(
-            f"{s.agent:<22} {loaded:<5} {(s.engine or '-'):<6} {fired:<8} "
+            f"{s.display_name:<22} {loaded:<5} {(s.engine or '-'):<6} {fired:<8} "
             f"{s.today_firings:<5} {s.today_successes:<3} {s.today_failures:<4} "
             f"{s.today_consecutive_failures:<6} {s.today_turns:<6} {state}"
         )
@@ -652,7 +667,7 @@ def render_slack(snapshots: list[AgentSnapshot], globals_: dict[str, Any]) -> st
             if s.approval_wait_issue_numbers and s.approval_wait_pid_alive is False:
                 issues = ", ".join(f"#{n}" for n in s.approval_wait_issue_numbers)
                 why.append(f"dead approval wait {issues}")
-            lines.append(f"  - {s.agent}: {', '.join(why)}")
+            lines.append(f"  - {s.display_name}: {', '.join(why)}")
     else:
         lines.append("No active agents flagged.")
     if approval_waits:
@@ -661,7 +676,7 @@ def render_slack(snapshots: list[AgentSnapshot], globals_: dict[str, Any]) -> st
         for s in approval_waits:
             issues = ", ".join(f"#{n}" for n in s.approval_wait_issue_numbers)
             lines.append(
-                f"  - {s.agent}: waiting on {issues} for {_duration(s.approval_wait_age_seconds)}"
+                f"  - {s.display_name}: waiting on {issues} for {_duration(s.approval_wait_age_seconds)}"
             )
     return "\n".join(lines)
 

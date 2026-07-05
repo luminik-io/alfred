@@ -40,6 +40,7 @@ from planning_assistant import (
     render_post_pr_feedback_ack,
     render_post_pr_followup_block,
 )
+from roster_theme_store import BATMAN_BASE_ROLES
 from slack_approval import (
     ThreadFeedback,
     default_slack_client,
@@ -53,7 +54,7 @@ from slack_converse import (
     gather_thread_context,
     run_slack_converse,
 )
-from slack_format import github_issue_link, github_url_link
+from slack_format import github_issue_link, github_url_link, themed_agent_name
 from slack_intent import (
     ACTION_ASSIGN,
     ACTION_DRY_RUN_AGENT,
@@ -814,8 +815,8 @@ class SlackPlanningListener:
         clarification = clarify_for_mutating(turn.action, repo, issue, candidates)
         if turn.action == ACTION_ASSIGN and not clarification and unsupported_assignment_agent:
             clarification = (
-                "I can route GitHub issues to Batman · Architect or "
-                "Lucius · Senior Developer. Which lane should handle "
+                f"I can route GitHub issues to {_assignment_agent_display('architect')} or "
+                f"{_assignment_agent_display('senior-dev')}. Which lane should handle "
                 f"`{repo}#{issue}`?"
             )
         record_text = event.text
@@ -2732,7 +2733,10 @@ def _intent_action_verb(action: str) -> str:
 
 def _intent_action_effect(action: str) -> str:
     return {
-        ACTION_ASSIGN: "choose Batman or Lucius and label the issue for that lane",
+        ACTION_ASSIGN: (
+            f"choose {themed_agent_name('architect')} or {themed_agent_name('senior-dev')} "
+            "and label the issue for that lane"
+        ),
         ACTION_QUEUE: "make it eligible for autonomous pickup",
         ACTION_HOLD: "take it out of Alfred's reach",
         ACTION_RUN_AGENT: "trigger one manual agent run now",
@@ -2762,12 +2766,25 @@ def _intent_action_target_display(intent: Intent) -> str:
 
 
 def _assignment_agent_display(agent: str) -> str:
+    """Render the assignment-lane label ``<themed name> · <role>``.
+
+    The two assignable lanes are the ``architect`` and ``senior-dev`` slugs. The
+    display name comes from the active roster theme (Batman-cast by default,
+    ``Optimus Prime`` under Transformers, the operator's custom name) so the
+    Slack confirmation matches what the desktop shows; only the raw slug is
+    unthemed and unknown agents fall through unchanged.
+    """
     normalized = agent.strip().lower()
+    slug = ""
     if normalized in {"architect", "batman", "bruce"}:
-        return "Batman · Architect"
-    if normalized in {"senior-dev", "developer", "lucius", "senior dev", "senior developer"}:
-        return "Lucius · Senior Developer"
-    return agent
+        slug = "architect"
+    elif normalized in {"senior-dev", "developer", "lucius", "senior dev", "senior developer"}:
+        slug = "senior-dev"
+    if not slug:
+        return agent
+    name = themed_agent_name(slug)
+    role = BATMAN_BASE_ROLES.get(slug, "")
+    return f"{name} · {role}" if role else name
 
 
 def _control_command_for_agent_intent(action: str) -> str:
@@ -3038,7 +3055,7 @@ def render_bridge_outcome_ack(outcome: Any, *, summary: str = "") -> str:
                 "",
                 "It is now in the autonomous queue. The fleet still claims it "
                 "through every existing gate (claim-lock, spend caps, review, "
-                "Batman approval) before any change ships.",
+                f"{themed_agent_name('architect')} approval) before any change ships.",
             ]
         )
         return "\n".join(lines)

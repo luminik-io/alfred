@@ -276,3 +276,28 @@ def test_themed_display_name_custom_theme_uses_custom_overlay() -> None:
     assert state.themed_role_label_for("architect") == "Lead detective"
     # An unnamed agent still resolves to its Batman-base name under custom.
     assert state.themed_display_name_for("senior-dev") == BATMAN_BASE_NAMES["senior-dev"]
+
+
+def test_themed_name_for_resolves_under_every_theme() -> None:
+    # Unlike ``themed_display_name_for``, ``themed_name_for`` always returns a real
+    # display name for a known slug, INCLUDING the default Batman theme (so a
+    # bare-name surface never shows the raw slug after the rename).
+    batman = RosterThemeState(theme="batman", custom_names={}, custom_roles={})
+    assert batman.themed_name_for("senior-dev") == "Lucius"
+    assert batman.themed_name_for("architect") == "Batman"
+
+    preset = RosterThemeState(theme="transformers", custom_names={}, custom_roles={})
+    assert preset.themed_name_for("senior-dev") == "Ironhide"
+
+    custom = RosterThemeState(
+        theme="custom", custom_names={"architect": "Sherlock"}, custom_roles={}
+    )
+    assert custom.themed_name_for("architect") == "Sherlock"
+    assert custom.themed_name_for("senior-dev") == BATMAN_BASE_NAMES["senior-dev"]
+
+
+def test_themed_name_for_unknown_codename_is_none() -> None:
+    # A codename outside the known fleet has no themed name under any theme.
+    for theme in ("batman", "transformers", "custom"):
+        state = RosterThemeState(theme=theme, custom_names={}, custom_roles={})
+        assert state.themed_name_for("release-captain") is None
