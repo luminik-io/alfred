@@ -344,3 +344,92 @@ def test_themed_label_escapes_slack_markup(tmp_path, monkeypatch):
     assert "<!channel>" not in label
     assert "<@U123>" not in label
     assert label == "&lt;!channel&gt; &amp; &lt;@U123&gt; (&lt;lead&gt;)"
+
+
+def test_themed_label_default_theme_resolves_slug_to_batman_cast_name(monkeypatch):
+    import slack_format as sf
+
+    # After the role-slug rename the codename is a slug (``senior-dev``). With no
+    # theme persisted the default Batman theme must still render the Batman-cast
+    # name and its base role, NOT the bare slug, so the Slack post reads the same
+    # as it did before the rename.
+    assert sf._themed_codename_label("senior-dev") == "Lucius (Senior developer)"
+    assert sf._themed_codename_label("architect") == "Batman (Architect)"
+
+
+def test_themed_agent_name_default_theme_is_batman_cast_bare_name(monkeypatch):
+    import slack_format as sf
+
+    # ``themed_agent_name`` is the bare-name resolver (no role suffix) the Slack
+    # assignment lane and CLI status table use. Default theme -> Batman-cast name.
+    assert sf.themed_agent_name("senior-dev") == "Lucius"
+    assert sf.themed_agent_name("architect") == "Batman"
+
+
+def test_themed_agent_name_preset_and_custom(tmp_path, monkeypatch):
+    import slack_format as sf
+
+    _persist_theme(tmp_path, theme="transformers")
+    assert sf.themed_agent_name("senior-dev") == "Ironhide"
+    assert sf.themed_agent_name("architect") == "Optimus Prime"
+
+    _persist_theme(tmp_path, theme="custom", custom_names={"architect": "Sherlock"})
+    assert sf.themed_agent_name("architect") == "Sherlock"
+    # A custom theme that did not name this agent keeps its Batman-base name.
+    assert sf.themed_agent_name("senior-dev") == "Lucius"
+
+
+def test_themed_agent_name_unknown_codename_returns_raw(monkeypatch):
+    import slack_format as sf
+
+    # A codename outside the known fleet has no theme name; keep the bare slug so
+    # the caller still prints something (a custom agent falls here).
+    assert sf.themed_agent_name("release-captain") == "release-captain"
+
+
+def test_escape_mrkdwn_neutralizes_markup_and_entities():
+    import slack_format as sf
+
+    ZWSP = "​"
+    # Slack entity chars become HTML entities so a mention/broadcast/link can't fire.
+    assert sf.escape_mrkdwn("<@U123> & <!channel>") == "&lt;@U123&gt; &amp; &lt;!channel&gt;"
+    # Formatting markup chars keep their glyph but gain a zero-width space so they
+    # cannot pair into bold/italic/strike/code.
+    assert sf.escape_mrkdwn("*Boss*") == f"*{ZWSP}Boss*{ZWSP}"
+    assert sf.escape_mrkdwn("_x_ ~y~ `z`") == f"_{ZWSP}x_{ZWSP} ~{ZWSP}y~{ZWSP} `{ZWSP}z`{ZWSP}"
+    # A plain label is returned unchanged (no markup, no entities).
+    assert sf.escape_mrkdwn("Optimus Prime") == "Optimus Prime"
+
+
+def test_themed_agent_name_stays_raw_for_non_slack_surfaces(tmp_path, monkeypatch):
+    import slack_format as sf
+
+    # ``themed_agent_name`` feeds the plain-text CLI too, so it must NOT escape:
+    # the raw operator name comes back verbatim. Slack callers escape themselves.
+    _persist_theme(tmp_path, theme="custom", custom_names={"architect": "*Boss* <@U123>"})
+    assert sf.themed_agent_name("architect") == "*Boss* <@U123>"
+    assert "​" not in sf.themed_agent_name("architect")
+
+
+def test_themed_agent_role_uses_custom_role_overlay(tmp_path, monkeypatch):
+    import slack_format as sf
+
+    # A custom theme's per-agent role label wins over the manifest default, so the
+    # role a surface renders matches what the operator set on the desktop.
+    _persist_theme(
+        tmp_path,
+        theme="custom",
+        custom_names={"architect": "Sherlock"},
+        custom_roles={"architect": "Lead detective"},
+    )
+    assert sf.themed_agent_role("architect") == "Lead detective"
+    # An agent the custom theme did not re-role keeps its Batman-base role label.
+    assert sf.themed_agent_role("senior-dev") == "Senior developer"
+
+
+def test_themed_agent_role_unknown_codename_is_none(monkeypatch):
+    import slack_format as sf
+
+    # No theme persisted (default Batman) and a codename outside the fleet: no
+    # themed role, so the caller keeps its own fallback.
+    assert sf.themed_agent_role("release-captain") is None
