@@ -40,7 +40,6 @@ from planning_assistant import (
     render_post_pr_feedback_ack,
     render_post_pr_followup_block,
 )
-from roster_theme_store import BATMAN_BASE_ROLES
 from slack_approval import (
     ThreadFeedback,
     default_slack_client,
@@ -54,7 +53,13 @@ from slack_converse import (
     gather_thread_context,
     run_slack_converse,
 )
-from slack_format import github_issue_link, github_url_link, themed_agent_name
+from slack_format import (
+    escape_mrkdwn,
+    github_issue_link,
+    github_url_link,
+    themed_agent_name,
+    themed_agent_role,
+)
 from slack_intent import (
     ACTION_ASSIGN,
     ACTION_DRY_RUN_AGENT,
@@ -2734,7 +2739,8 @@ def _intent_action_verb(action: str) -> str:
 def _intent_action_effect(action: str) -> str:
     return {
         ACTION_ASSIGN: (
-            f"choose {themed_agent_name('architect')} or {themed_agent_name('senior-dev')} "
+            f"choose {escape_mrkdwn(themed_agent_name('architect'))} or "
+            f"{escape_mrkdwn(themed_agent_name('senior-dev'))} "
             "and label the issue for that lane"
         ),
         ACTION_QUEUE: "make it eligible for autonomous pickup",
@@ -2766,13 +2772,15 @@ def _intent_action_target_display(intent: Intent) -> str:
 
 
 def _assignment_agent_display(agent: str) -> str:
-    """Render the assignment-lane label ``<themed name> · <role>``.
+    """Render the assignment-lane label ``<themed name> · <role>`` for Slack mrkdwn.
 
     The two assignable lanes are the ``architect`` and ``senior-dev`` slugs. The
-    display name comes from the active roster theme (Batman-cast by default,
-    ``Optimus Prime`` under Transformers, the operator's custom name) so the
-    Slack confirmation matches what the desktop shows; only the raw slug is
-    unthemed and unknown agents fall through unchanged.
+    display name AND the role label come from the active roster theme (Batman-cast
+    by default, ``Optimus Prime`` under Transformers, the operator's custom name
+    and custom role under a custom theme) so the Slack confirmation matches what
+    the desktop shows. Both are operator-authored under a custom theme, so both
+    are escaped for Slack mrkdwn (``escape_mrkdwn``) before they land in the
+    message body. Unknown agents fall through with the raw value escaped.
     """
     normalized = agent.strip().lower()
     slug = ""
@@ -2781,10 +2789,10 @@ def _assignment_agent_display(agent: str) -> str:
     elif normalized in {"senior-dev", "developer", "lucius", "senior dev", "senior developer"}:
         slug = "senior-dev"
     if not slug:
-        return agent
-    name = themed_agent_name(slug)
-    role = BATMAN_BASE_ROLES.get(slug, "")
-    return f"{name} · {role}" if role else name
+        return escape_mrkdwn(agent)
+    name = escape_mrkdwn(themed_agent_name(slug))
+    role = themed_agent_role(slug)
+    return f"{name} · {escape_mrkdwn(role)}" if role else name
 
 
 def _control_command_for_agent_intent(action: str) -> str:
@@ -3055,7 +3063,7 @@ def render_bridge_outcome_ack(outcome: Any, *, summary: str = "") -> str:
                 "",
                 "It is now in the autonomous queue. The fleet still claims it "
                 "through every existing gate (claim-lock, spend caps, review, "
-                f"{themed_agent_name('architect')} approval) before any change ships.",
+                f"{escape_mrkdwn(themed_agent_name('architect'))} approval) before any change ships.",
             ]
         )
         return "\n".join(lines)

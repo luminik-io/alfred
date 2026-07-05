@@ -2754,6 +2754,43 @@ def test_assignment_agent_display_unknown_agent_falls_through(monkeypatch, tmp_p
     assert _assignment_agent_display("mystery-lane") == "mystery-lane"
 
 
+def test_assignment_agent_display_uses_custom_role_label(monkeypatch, tmp_path) -> None:
+    # A custom theme's per-agent role label must show on the assignment lane, not
+    # the manifest default ("Architect"), so Slack matches the desktop.
+    _persist_roster_theme(
+        monkeypatch,
+        tmp_path,
+        theme="custom",
+        custom_names={"architect": "Sherlock"},
+        custom_roles={"architect": "Lead detective"},
+    )
+    assert _assignment_agent_display("architect") == "Sherlock · Lead detective"
+
+
+def test_assignment_agent_display_escapes_mrkdwn_markup(monkeypatch, tmp_path) -> None:
+    # The lane label lands in a Slack mrkdwn body, so an operator custom name and
+    # role carrying mrkdwn markup must be neutralized: entity chars escaped and
+    # formatting chars broken with a zero-width space. The value never renders as
+    # bold/italic/strike/code or a mention.
+    _persist_roster_theme(
+        monkeypatch,
+        tmp_path,
+        theme="custom",
+        custom_names={"architect": "*Boss* <@U123>"},
+        custom_roles={"architect": "~Lead~ & chief"},
+    )
+    display = _assignment_agent_display("architect")
+    # Entities escaped; no live mention or ampersand.
+    assert "<@U123>" not in display
+    assert "&lt;@U123&gt;" in display
+    assert "&amp; chief" in display
+    # No unbroken markup pair survives; each markup char gained a zero-width space.
+    ZWSP = "​"
+    assert "*Boss*" not in display
+    assert f"*{ZWSP}Boss*{ZWSP}" in display
+    assert f"~{ZWSP}Lead~{ZWSP}" in display
+
+
 def test_conversation_thread_repo_reply_preserves_assignment_agent(
     tmp_path: Path,
 ) -> None:

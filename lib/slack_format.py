@@ -48,16 +48,39 @@ from datetime import UTC, datetime
 from agent_runner.metadata import agent_role, codename_with_role
 from slack_approval import resolve_bot_token as _resolve_bot_token
 
+# Zero-width space. Inserted after a mrkdwn markup char so an operator-authored
+# label like ``*Boss*`` or ``~x~`` cannot form a matched formatting pair: the
+# visible glyph stays, but Slack no longer renders it as bold/italic/strike/code.
+_ZERO_WIDTH_SPACE = "​"
+_MRKDWN_MARKUP_CHARS = ("*", "_", "~", "`")
+
+
+def escape_mrkdwn(text: str) -> str:
+    """Neutralize Slack mrkdwn in an operator-authored display label.
+
+    Custom roster-theme names and role labels are operator-authored and land in
+    Slack ``mrkdwn`` message bodies, so an unescaped value can break or inject
+    Slack formatting:
+
+    * ``<@U123>`` / ``<!channel>`` render as a mention or a broadcast. Slack
+      decodes ``&amp;``, ``&lt;`` and ``&gt;`` back to the literal characters, so
+      escaping ``& < >`` keeps the visible text without triggering a link.
+    * ``*Boss*``, ``_x_``, ``~x~`` and `` `x` `` render as bold / italic /
+      strike / code. A zero-width space after each markup char keeps the glyph
+      visible but stops it pairing into formatting.
+
+    Only the Slack mrkdwn path needs this; the desktop and the plain-text CLI
+    render the raw label unchanged.
+    """
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    for ch in _MRKDWN_MARKUP_CHARS:
+        text = text.replace(ch, ch + _ZERO_WIDTH_SPACE)
+    return text
+
 
 def _escape_slack_text(text: str) -> str:
-    """Neutralize Slack markup in operator-authored labels.
-
-    Custom names and roles flow into mrkdwn message bodies, where a value like
-    ``<!channel>`` or ``<@U123>`` would render as a broadcast or a mention. Slack
-    decodes ``&amp;``, ``&lt;`` and ``&gt;`` back to the literal characters, so the
-    label keeps its visible text without triggering a mention or a link.
-    """
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    """Backwards-compatible alias: escape an operator label for Slack mrkdwn."""
+    return escape_mrkdwn(text)
 
 
 def _themed_name(codename: str) -> str | None:
@@ -135,12 +158,24 @@ def _themed_codename_label(codename: str) -> str:
 def themed_agent_name(codename: str) -> str:
     """Public: the active theme's display name for ``codename``, bare (no role).
 
-    For surfaces that render just a name and have no role suffix: the Slack
-    assignment lane and the CLI status table. Falls back to the raw codename for
-    a codename outside the known fleet, so an unknown agent still prints
-    something. Never raises.
+    Returns the RAW (unescaped) display name for surfaces that render just a
+    name: the CLI status table (plain text, no escaping) and the Slack
+    assignment lane (which escapes at its own interpolation site via
+    ``escape_mrkdwn``). Falls back to the raw codename for a codename outside the
+    known fleet, so an unknown agent still prints something. Never raises.
     """
     return _themed_name(codename) or codename
+
+
+def themed_agent_role(codename: str) -> str | None:
+    """Public: the active theme's role label for ``codename``, or ``None``.
+
+    Honors a ``custom`` theme's per-agent ``custom_roles`` overlay (via
+    ``themed_role_label_for``), else the Batman-base role label for a known slug.
+    Returns ``None`` for a codename the roster does not know. Raw (unescaped);
+    the Slack caller escapes via ``escape_mrkdwn``. Never raises.
+    """
+    return _themed_role(codename)
 
 
 SLACK_API = "https://slack.com/api"
@@ -562,10 +597,12 @@ __all__ = [
     "SEVERITY_COLOUR",
     "SEVERITY_EMOJI",
     "ThreadHandle",
+    "escape_mrkdwn",
     "firing_thread_close",
     "firing_thread_reply",
     "firing_thread_root",
     "github_issue_link",
     "github_url_link",
     "themed_agent_name",
+    "themed_agent_role",
 ]
