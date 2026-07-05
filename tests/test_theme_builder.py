@@ -504,6 +504,56 @@ def test_run_turn_never_raises_on_engine_exception() -> None:
     assert turn is None
 
 
+def test_run_turn_malformed_output_is_retryable_not_terminal() -> None:
+    # The engine RAN and returned text, but the text does not parse into a turn.
+    # That is a transient hiccup: run_turn returns a soft retryable turn (a reply,
+    # no proposal), NOT None, so the route keeps the chat open instead of surfacing
+    # the terminal engine-unavailable 503.
+    def fake_invoke(prompt: str, **kwargs: object) -> tuple[_FakeResult, str]:
+        return _FakeResult(success=True, result_text="not json at all"), "claude"
+
+    turn = tb.run_turn(
+        system_prompt="SYSTEM",
+        messages=_messages("a band"),
+        engine="claude",
+        workdir=REPO_ROOT,
+        valid_slugs=_valid(),
+        invoke=fake_invoke,
+    )
+    assert turn is not None
+    assert turn.proposal is None
+    assert turn.reply == tb.RETRY_REPLY
+    # And it serializes as an ordinary 200 turn payload (no error code, no action).
+    payload = tb.turn_payload(turn)
+    assert payload["reply"] == tb.RETRY_REPLY
+    assert payload["action"] is None
+    assert "error" not in payload
+
+
+def test_run_turn_terminal_failure_stays_none_distinct_from_retry() -> None:
+    # A genuinely failed engine run (no result text / not success) is terminal and
+    # stays None, distinct from the transient retry turn above.
+    def fail(prompt: str, **kwargs: object) -> tuple[_FakeResult, str]:
+        return _FakeResult(success=False, result_text=""), "claude"
+
+    turn = tb.run_turn(
+        system_prompt="SYSTEM",
+        messages=_messages("a band"),
+        engine="claude",
+        workdir=REPO_ROOT,
+        valid_slugs=_valid(),
+        invoke=fail,
+    )
+    assert turn is None
+
+
+def test_retry_turn_is_a_soft_reply_with_no_proposal() -> None:
+    turn = tb.retry_turn()
+    assert turn.proposal is None
+    assert turn.reply == tb.RETRY_REPLY
+    assert turn.reply.strip()
+
+
 # --- payload -----------------------------------------------------------------
 
 

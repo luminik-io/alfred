@@ -53,6 +53,13 @@ BUILDER_AGENT = "theme-builder"
 DEFAULT_TIMEOUT = 120
 DEFAULT_MAX_TURNS = 4
 
+# The soft reply surfaced when the engine RAN but returned output we could not
+# parse into a turn. This is a transient hiccup (a malformed one-off), not a
+# configured-engine outage, so we keep the chat open and ask the person to try
+# again rather than dropping to the terminal manual-editor fallback. The engine
+# being missing or truly unavailable stays a separate, terminal signal.
+RETRY_REPLY = "Sorry, I lost the thread on that one. Could you say it again?"
+
 # The prompt lives with the other engineering prompts and is loaded via
 # ``load_prompt`` per the repo convention.
 _PROMPT_RELATIVE = Path("prompts") / "theme-builder.md"
@@ -101,6 +108,17 @@ class ThemeBuilderTurn:
 
     reply: str
     proposal: ThemeProposal | None = None
+
+
+def retry_turn() -> ThemeBuilderTurn:
+    """A soft, retryable turn for a transient malformed-output hiccup.
+
+    Returned when the engine RAN but its output did not parse into a usable turn.
+    Carries a plain reply asking the person to try again and NO proposal, so the
+    chat stays open and the person can just resend, rather than the route
+    surfacing a terminal engine-unavailable signal for a one-off parse miss.
+    """
+    return ThemeBuilderTurn(reply=RETRY_REPLY)
 
 
 def engine_from_env() -> str:
@@ -381,9 +399,17 @@ def run_turn(
 
     ``invoke`` defaults to ``agent_runner.invoke_agent_engine`` but is injected in
     tests so no live model call is made. ``required_slugs`` is the completeness
-    set the proposal must cover (defaults to ``required_codenames()``). Returns
-    ``None`` when the engine failed or returned unparseable output, so the caller
-    surfaces an honest error rather than a fabricated turn.
+    set the proposal must cover (defaults to ``required_codenames()``).
+
+    Distinguishes two failure modes so the caller can react differently:
+
+    * The engine could not run at all (unimportable dispatch, raised, returned
+      nothing, or reported failure): returns ``None``. This is the terminal
+      engine-unavailable signal.
+    * The engine RAN and produced text, but that text did not parse into a usable
+      turn: returns a soft ``retry_turn()`` instead of ``None``. A malformed
+      one-off is transient, so the caller keeps the chat open and lets the person
+      resend rather than surfacing a terminal outage.
     """
     if required_slugs is None:
         required_slugs = required_codenames()
@@ -418,7 +444,13 @@ def run_turn(
         return None
     if not getattr(result, "success", False) or not getattr(result, "result_text", ""):
         return None
-    return parse_turn(result.result_text, valid=valid_slugs, required=required_slugs)
+    # The engine ran and returned text. If that text does not parse, it is a
+    # transient hiccup, not an outage: degrade to a soft retryable turn (chat
+    # stays open) rather than the terminal ``None``.
+    turn = parse_turn(result.result_text, valid=valid_slugs, required=required_slugs)
+    if turn is None:
+        return retry_turn()
+    return turn
 
 
 def proposal_payload(proposal: ThemeProposal | None) -> dict[str, Any] | None:
@@ -453,6 +485,7 @@ __all__ = [
     "ENGINE_ENV",
     "OPTIONAL_ROLES",
     "PROPOSE_THEME_TOOL",
+    "RETRY_REPLY",
     "ThemeBuilderTurn",
     "ThemeProposal",
     "build_prompt",
@@ -464,6 +497,7 @@ __all__ = [
     "proposal_payload",
     "render_system_prompt",
     "required_codenames",
+    "retry_turn",
     "run_turn",
     "turn_payload",
     "valid_codenames",

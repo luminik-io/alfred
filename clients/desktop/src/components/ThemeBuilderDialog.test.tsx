@@ -112,6 +112,44 @@ describe("ThemeBuilderDialog", () => {
     expect(props.onOpenChange).toHaveBeenLastCalledWith(false);
   });
 
+  it("keeps the chat open and retryable on a transient malformed turn", async () => {
+    const user = userEvent.setup();
+    // The server surfaces a transient parse miss as a normal 200 turn with a soft
+    // retry reply and no action (NOT a 503), so the person can just resend.
+    const retry: ThemeBuilderResponse = {
+      reply: "Sorry, I lost the thread on that one. Could you say it again?",
+      action: null,
+    };
+    converseMock.mockResolvedValueOnce(retry);
+    renderDialog();
+
+    await user.type(screen.getByLabelText(/describe a vibe/i), "a jazz trio");
+    await user.click(screen.getByRole("button", { name: /send/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/lost the thread on that one/i)).toBeInTheDocument(),
+    );
+    // The composer stays available (no engine-down fallback, no manual-editor
+    // offer), so a resend is possible.
+    expect(screen.getByLabelText(/describe a vibe/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /edit names by hand/i }),
+    ).not.toBeInTheDocument();
+
+    // A resend goes through and lands a proposal, proving the session was kept open.
+    const proposal: ThemeBuilderResponse = {
+      reply: "Cool jazz it is.",
+      action: {
+        tool: "propose_theme",
+        args: { custom_names: { architect: "Miles" }, custom_roles: {} },
+      },
+    };
+    converseMock.mockResolvedValueOnce(proposal);
+    await user.type(screen.getByLabelText(/describe a vibe/i), "cool jazz");
+    await user.click(screen.getByRole("button", { name: /send/i }));
+    await waitFor(() => expect(converseMock).toHaveBeenCalledTimes(2));
+  });
+
   it("shows a plain error on a non-engine failure and keeps chatting", async () => {
     const user = userEvent.setup();
     converseMock.mockRejectedValue(new Error("network blip"));

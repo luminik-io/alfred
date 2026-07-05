@@ -1933,6 +1933,11 @@ def _run_theme_builder_converse(request: Request, body: dict[str, Any]) -> JSONR
             status_code=503,
         )
 
+    # ``run_turn`` distinguishes a terminal engine failure (returns ``None``) from
+    # a transient malformed turn (returns a soft ``retry_turn`` with a reply and no
+    # proposal). Only the terminal case degrades to the 503 the client treats as
+    # engine-unavailable; the transient case flows through as a normal 200 turn so
+    # the chat stays open and the person can just resend.
     turn = tb.run_turn(
         system_prompt=system_prompt,
         messages=messages,
@@ -1946,8 +1951,8 @@ def _run_theme_builder_converse(request: Request, body: dict[str, Any]) -> JSONR
             {
                 "error": "live_session_unavailable",
                 "detail": (
-                    "The conversational engine did not return a usable turn. "
-                    "Try again, or use the manual editor."
+                    "The theme-builder engine could not run this turn. "
+                    "Check the runtime, or use the manual editor."
                 ),
             },
             status_code=503,
