@@ -242,15 +242,30 @@ async fn request_alfred_json(
 /// is produced by a live model turn.
 const DEFAULT_REQUEST_TIMEOUT_S: u64 = 20;
 
+/// The largest server-side model-turn budget the bridge fronts. The buffered
+/// converse turns run a subprocess bounded by their own timeout: the compose
+/// interrogator at `compose_converse.DEFAULT_TIMEOUT` (180s) and the roster-theme
+/// builder at the smaller `theme_builder.DEFAULT_TIMEOUT` (120s). The bridge must
+/// clear the larger of the two, so track 180s here; bump it if the server budget
+/// ever grows.
+const SERVER_MODEL_TURN_BUDGET_S: u64 = 180;
+
+/// Network + subprocess-teardown slack added on top of the server budget so the
+/// bridge always outlives the server's own timeout by a clear margin, never ties
+/// it. Without this the bridge and the subprocess share the same deadline and can
+/// trip at the same instant, surfacing a client-side timeout in place of the
+/// server's own timeout or error.
+const MODEL_TURN_TIMEOUT_MARGIN_S: u64 = 30;
+
 /// The timeout for a buffered POST whose response is produced by a live model
 /// turn (the conversational Compose and roster-theme builders). Such a turn is an
 /// LLM call that routinely runs past the default budget, so the 20s ceiling would
-/// abort a healthy turn. Kept just past the server-side turn budget
-/// (`theme_builder.DEFAULT_TIMEOUT` / the compose interrogator) so the server's
-/// own timeout, not the bridge, is the one that fires. Streaming turns bypass this
-/// bridge entirely (they ride the webview's own fetch); this only covers the
-/// buffered one-shot POSTs.
-const MODEL_TURN_REQUEST_TIMEOUT_S: u64 = 180;
+/// abort a healthy turn. Derived as the server turn budget PLUS a margin (210s),
+/// so the server's own timeout, not the bridge, is the one that fires on a turn
+/// that runs right up to the server deadline. Streaming turns bypass this bridge
+/// entirely (they ride the webview's own fetch); this only covers the buffered
+/// one-shot POSTs.
+const MODEL_TURN_REQUEST_TIMEOUT_S: u64 = SERVER_MODEL_TURN_BUDGET_S + MODEL_TURN_TIMEOUT_MARGIN_S;
 
 /// Pick the buffered-request timeout for an API path. Only the model-turn POST
 /// paths get the longer budget; every other request keeps the tight default so a
@@ -2621,7 +2636,9 @@ done"#;
             .expect("theme-builder converse should be accepted for POST");
         assert_eq!(path, "/api/theme-builder/converse");
         assert_eq!(query, None);
-        assert!(is_allowed_theme_builder_converse("/api/theme-builder/converse"));
+        assert!(is_allowed_theme_builder_converse(
+            "/api/theme-builder/converse"
+        ));
         // A near-miss path must stay off the rule.
         assert!(!is_allowed_theme_builder_converse(
             "/api/theme-builder/converse/stream"
@@ -2645,6 +2662,21 @@ done"#;
         assert_eq!(request_timeout("/api/conversation/control"), short);
         assert_eq!(request_timeout("/api/status"), short);
         assert!(long > short);
+    }
+
+    #[test]
+    fn model_turn_timeout_clears_the_server_budget_with_margin() {
+        // The bridge must OUTLIVE the server-side turn budget, not tie it: a turn
+        // that runs right up to the server deadline would otherwise trip the bridge
+        // and the subprocess at the same instant, hiding the server's own error
+        // behind a client timeout. So the bridge is server budget PLUS a margin.
+        assert_eq!(MODEL_TURN_REQUEST_TIMEOUT_S, 210);
+        assert!(MODEL_TURN_REQUEST_TIMEOUT_S > SERVER_MODEL_TURN_BUDGET_S);
+        assert_eq!(
+            MODEL_TURN_REQUEST_TIMEOUT_S,
+            SERVER_MODEL_TURN_BUDGET_S + MODEL_TURN_TIMEOUT_MARGIN_S
+        );
+        assert!(MODEL_TURN_TIMEOUT_MARGIN_S > 0);
     }
 
     #[test]
