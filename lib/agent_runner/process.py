@@ -1286,18 +1286,32 @@ class _GraderTransientError(RuntimeError):
         self.status_code = status_code
 
 
-# Grader engine result subtypes that are transient (a temporary provider wall
-# on the CHEAP grade), worth a bounded retry rather than failing the gate.
-_GRADER_TRANSIENT_SUBTYPES: frozenset[str] = frozenset(
-    {"error_rate_limit", "error_overloaded", "error_timeout"}
-)
+# Whether a failed grader result is worth a bounded retry (a temporary
+# provider wall on the CHEAP grade) is decided by the SHARED classifier in
+# reliability.py, not a duplicated list here, so the grader's retry policy can
+# never drift from the engine-wide one (which already treats
+# ``error_rate_limit`` / ``error_overloaded`` / ``error_timeout`` / ``error_api``
+# as TRANSIENT).
+def _grader_result_is_transient(result: ClaudeResult) -> bool:
+    """True when a failed grader result is a transient, retryable failure.
+
+    Delegates to the shared ``classify_result`` so the grade path and the
+    primary invoke path share one source of truth for what "transient" means.
+    """
+    return not result.success and classify_result(result) is FailureClass.TRANSIENT
+
+
+# Rate-limit / overload shapes map to 429; every other transient (timeout,
+# generic transport ``error_api``, ...) maps to a 503 server-error shape so the
+# HTTP-shaped classifier in ``llm_retry`` marks it retryable.
+_GRADER_RATE_LIMIT_SUBTYPES: frozenset[str] = frozenset({"error_rate_limit", "error_overloaded"})
 
 
 def _grader_status_for_subtype(subtype: str) -> int:
     """Map a transient grader subtype to an HTTP status for the classifier."""
-    if subtype in {"error_rate_limit", "error_overloaded"}:
+    if subtype in _GRADER_RATE_LIMIT_SUBTYPES:
         return 429
-    return 503  # error_timeout and any other transient -> server_error shape
+    return 503  # error_timeout / error_api / any other transient -> server_error shape
 
 
 def _default_rubric_grader(
@@ -1359,7 +1373,7 @@ def _default_rubric_grader(
 
     def _invoke_raising_on_transient() -> ClaudeResult:
         res = _invoke_once()
-        if not res.success and res.subtype in _GRADER_TRANSIENT_SUBTYPES:
+        if _grader_result_is_transient(res):
             raise _GraderTransientError(
                 f"grader engine {engine} transient failure: {res.subtype}",
                 status_code=_grader_status_for_subtype(res.subtype),
@@ -1638,16 +1652,34 @@ def invoke_agent_engine(
     # the runners (owned by a separate change).
     active_rubric = _resolve_rubric(rubric)
     if active_rubric is not None and not is_dry_run():
-        grader_fn = rubric_grader_fn or _default_rubric_grader(
-            grader_engine=(
-                rubric_grader_engine or os.environ.get("ALFRED_RUBRIC_GRADER_ENGINE", "").strip()
-            ),
-            agent=agent,
-            firing_id=firing_id,
-            workdir=workdir,
-            codex_model=codex_model,
-        )
-        with contextlib.suppress(Exception):
-            _apply_rubric_gate(result, rubric=active_rubric, grader_fn=grader_fn)
+        if not result.success:
+            # The primary run itself FAILED (Codex quota / rate-limit, Claude
+            # auth error, timeout, ...). Grading a failed run is pointless and
+            # wastes a grader call, so we skip it entirely and leave a clear
+            # note rather than a verdict. This mirrors the runners, which
+            # already gate their PR-open path on ``if not result.success``.
+            result.raw = dict(result.raw or {})
+            result.raw["rubric_verdict"] = {
+                "result": "not_graded",
+                "explanation": (
+                    "primary run did not succeed "
+                    f"(subtype={result.subtype}); rubric grading skipped"
+                ),
+                "terminal_reason": "primary_run_failed",
+                "criteria": [],
+            }
+        else:
+            grader_fn = rubric_grader_fn or _default_rubric_grader(
+                grader_engine=(
+                    rubric_grader_engine
+                    or os.environ.get("ALFRED_RUBRIC_GRADER_ENGINE", "").strip()
+                ),
+                agent=agent,
+                firing_id=firing_id,
+                workdir=workdir,
+                codex_model=codex_model,
+            )
+            with contextlib.suppress(Exception):
+                _apply_rubric_gate(result, rubric=active_rubric, grader_fn=grader_fn)
 
     return result, engine_used

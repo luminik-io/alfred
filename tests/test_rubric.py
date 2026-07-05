@@ -911,3 +911,168 @@ def test_default_grader_transient_exhaustion_yields_empty_for_grader_error(monke
     verdict = rb.parse_verdict(raw)
     assert verdict.result == "failed"
     assert verdict.terminal_reason == "grader_error"
+
+
+def _error_api_result(proc):
+    # error_api is TRANSIENT per the shared reliability classifier, so the
+    # grader retry policy must treat it as retryable too (no drift).
+    return proc.ClaudeResult(
+        success=False,
+        subtype="error_api",
+        num_turns=0,
+        cost_usd=0.0,
+        session_id=None,
+        result_text="transient api error",
+        raw={},
+        stop_reason="error",
+        error_message="api error",
+    )
+
+
+def test_default_grader_retries_error_api(monkeypatch):
+    # error_api is classified TRANSIENT by reliability.classify_result; the
+    # grader must retry it rather than fail the gate. Guards against the
+    # grader's transient policy drifting from the shared classifier.
+    import agent_runner.process as proc
+
+    # Sanity: the shared classifier really does treat error_api as transient,
+    # and our grader helper agrees.
+    assert proc._grader_result_is_transient(_error_api_result(proc)) is True
+
+    attempts = {"n": 0}
+
+    def fake_codex_invoke(prompt, **_kwargs):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            return _error_api_result(proc)
+        return _ok_result(
+            proc, json.dumps({"result": "satisfied", "explanation": "ok", "criteria": []})
+        )
+
+    monkeypatch.setattr(proc, "codex_invoke", fake_codex_invoke)
+    monkeypatch.setenv("ALFRED_LLM_BACKOFF_BASE_S", "0")
+    monkeypatch.setenv("ALFRED_LLM_BACKOFF_MAX_S", "0")
+
+    grader = proc._default_rubric_grader(
+        grader_engine="codex",
+        agent="batman",
+        firing_id="f1",
+        workdir=Path("/tmp"),
+        codex_model=None,
+    )
+    out = grader("prompt")
+    assert attempts["n"] == 2  # retried the error_api failure, then succeeded
+    assert '"result"' in out
+
+
+# --------------------------------------------------------------------------
+# Codex P2: a FAILED primary run is not graded (grader never called)
+# --------------------------------------------------------------------------
+
+
+def _failed_run_result(ar, subtype="error_rate_limit"):
+    return ar.ClaudeResult(
+        success=False,
+        subtype=subtype,
+        num_turns=0,
+        cost_usd=0.0,
+        session_id=None,
+        result_text="primary run hit a wall",
+        raw={},
+        stop_reason="error",
+        error_message="primary failure",
+    )
+
+
+def test_failed_primary_run_is_not_graded(monkeypatch):
+    import agent_runner as ar
+
+    grader_calls: list[str] = []
+
+    def fake_codex(*_args, **_kwargs):
+        return _failed_run_result(ar, subtype="error_rate_limit")
+
+    def grader_fn(prompt: str) -> str:
+        grader_calls.append(prompt)
+        return json.dumps({"result": "satisfied", "explanation": "ok", "criteria": []})
+
+    out, engine_used = ar.invoke_agent_engine(
+        "hi",
+        engine="codex",
+        agent="batman",
+        firing_id="f1",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        codex_fn=fake_codex,
+        rubric="tests pass",
+        rubric_grader_fn=grader_fn,
+    )
+
+    assert engine_used == "codex"
+    assert out.success is False
+    # The grader was NEVER called for a failed primary run.
+    assert grader_calls == []
+    # A clear not_graded note is left instead of a real verdict.
+    verdict = out.raw["rubric_verdict"]
+    assert verdict["result"] == "not_graded"
+    assert verdict["terminal_reason"] == "primary_run_failed"
+    assert "error_rate_limit" in verdict["explanation"]
+
+
+def test_failed_primary_run_does_not_build_default_grader(monkeypatch):
+    # Even without an injected grader_fn, a failed primary run must not spin up
+    # the real grader engine.
+    import agent_runner as ar
+    import agent_runner.process as proc
+
+    def fake_codex(*_args, **_kwargs):
+        return _failed_run_result(ar, subtype="error_authentication")
+
+    def boom(*_args, **_kwargs):
+        pytest.fail("the grader engine must not be invoked for a failed run")
+
+    monkeypatch.setattr(proc, "codex_invoke", boom)
+    monkeypatch.setattr(proc, "claude_invoke", boom)
+
+    out, _engine = ar.invoke_agent_engine(
+        "hi",
+        engine="codex",
+        agent="batman",
+        firing_id="f1",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        codex_fn=fake_codex,
+        rubric="tests pass",
+    )
+    assert out.raw["rubric_verdict"]["result"] == "not_graded"
+
+
+def test_successful_primary_run_is_still_graded(monkeypatch):
+    # Regression guard: the success path must still grade normally.
+    import agent_runner as ar
+
+    grader_calls: list[str] = []
+
+    def fake_codex(*_args, **_kwargs):
+        return _ok_result(ar)
+
+    def grader_fn(prompt: str) -> str:
+        grader_calls.append(prompt)
+        return json.dumps({"result": "satisfied", "explanation": "ok", "criteria": []})
+
+    out, _engine = ar.invoke_agent_engine(
+        "hi",
+        engine="codex",
+        agent="batman",
+        firing_id="f1",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        codex_fn=fake_codex,
+        rubric="tests pass",
+        rubric_grader_fn=grader_fn,
+    )
+    assert len(grader_calls) == 1
+    assert out.raw["rubric_verdict"]["result"] == "satisfied"
