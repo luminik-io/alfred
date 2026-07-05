@@ -750,8 +750,8 @@ def test_emergency_run_uses_aggressive_thresholds(tmp_path, monkeypatch):
     # A fresh Alfred-owned /tmp debug dir (mtime = now). A normal run would
     # skip it (under the 1-day gate); emergency must clear it. The prefix
     # must match a real bin/*.py stem so configured_tmp_prefixes() sweeps
-    # it - ``lucius`` (bin/lucius.py) is one such Alfred-owned agent.
-    fresh_debug = Path("/tmp") / "lucius-debug-emergencytest-xyz"
+    # it - ``senior-dev`` (bin/senior-dev.py) is one such Alfred-owned agent.
+    fresh_debug = Path("/tmp") / "senior-dev-debug-emergencytest-xyz"
     fresh_debug.mkdir(exist_ok=True)
     (fresh_debug / "scratch").write_text("x")
     try:

@@ -47,7 +47,7 @@ def test_pickup_query_excludes_the_approval_gate_at_the_source(monkeypatch):
     """The gh query must carry a ``-label:`` search qualifier for the gate, so
     gated issues never consume the ``--limit`` window."""
     monkeypatch.setenv("GH_ORG", "myorg")
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     monkeypatch.setattr(lucius, "LUCIUS_REPOS", ["backend"])
     monkeypatch.setattr(lucius, "is_repo_paused", lambda repo: False)
     monkeypatch.setattr(lucius, "is_dry_run", lambda: False)
@@ -79,7 +79,7 @@ def test_pickup_loop_skips_a_gated_issue_that_slips_through(monkeypatch):
     query and pick), the in-loop blocker check still skips it and falls through
     to the next ungated approved issue instead of returning the blocked one."""
     monkeypatch.setenv("GH_ORG", "myorg")
-    lucius = load_bin_module("lucius.py", monkeypatch)
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
     monkeypatch.setattr(lucius, "LUCIUS_REPOS", ["backend"])
     monkeypatch.setattr(lucius, "is_repo_paused", lambda repo: False)
     monkeypatch.setattr(lucius, "is_dry_run", lambda: False)

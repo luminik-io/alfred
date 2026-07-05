@@ -15,12 +15,12 @@ Scope (deliberately narrow - fast and cheap):
 3. Post a single Slack summary if anything's off; otherwise stay quiet.
 
 Configuration env vars:
-  ALFRED_GORDON_ECS_CLUSTER     ECS cluster name to query (required)
-  ALFRED_GORDON_AWS_PROFILE     AWS_PROFILE override (optional)
-  ALFRED_GORDON_SERVICES        comma-separated 'service-name=org/repo:branch'
+  ALFRED_OPS_WATCH_ECS_CLUSTER     ECS cluster name to query (required)
+  ALFRED_OPS_WATCH_AWS_PROFILE     AWS_PROFILE override (optional)
+  ALFRED_OPS_WATCH_SERVICES        comma-separated 'service-name=org/repo:branch'
                                 e.g. 'staging-api=myorg/backend:main,staging-fe=myorg/frontend:main'
-  ALFRED_GORDON_SENTRY_ORG      Sentry org slug (optional - skips Sentry section if unset)
-  ALFRED_GORDON_SENTRY_SECRET_ID  AWS Secrets Manager secret with auth_token
+  ALFRED_OPS_WATCH_SENTRY_ORG      Sentry org slug (optional - skips Sentry section if unset)
+  ALFRED_OPS_WATCH_SENTRY_SECRET_ID  AWS Secrets Manager secret with auth_token
                                   (default: alfred/sentry-api-token)
 """
 
@@ -51,21 +51,21 @@ from agent_runner import (
     with_lock,
 )
 
-AGENT = os.environ.get("AGENT_CODENAME", "gordon")
+AGENT = os.environ.get("AGENT_CODENAME", "ops-watch")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 
-AWS_PROFILE = os.environ.get("ALFRED_GORDON_AWS_PROFILE", "")
+AWS_PROFILE = os.environ.get("ALFRED_OPS_WATCH_AWS_PROFILE", "")
 REGION = os.environ.get("AWS_REGION", "us-east-1")
-STAGING_CLUSTER = os.environ.get("ALFRED_GORDON_ECS_CLUSTER", "")
-SENTRY_ORG = os.environ.get("ALFRED_GORDON_SENTRY_ORG", "")
-SENTRY_SECRET_ID = os.environ.get("ALFRED_GORDON_SENTRY_SECRET_ID", "alfred/sentry-api-token")
+STAGING_CLUSTER = os.environ.get("ALFRED_OPS_WATCH_ECS_CLUSTER", "")
+SENTRY_ORG = os.environ.get("ALFRED_OPS_WATCH_SENTRY_ORG", "")
+SENTRY_SECRET_ID = os.environ.get("ALFRED_OPS_WATCH_SENTRY_SECRET_ID", "alfred/sentry-api-token")
 
 
 def _parse_services_env() -> dict[str, tuple[str, str]]:
     """Parse 'svc1=org/repo1:main,svc2=org/repo2:main' into
     {svc1: (org/repo1, main), svc2: (org/repo2, main)}."""
     out: dict[str, tuple[str, str]] = {}
-    raw = os.environ.get("ALFRED_GORDON_SERVICES", "").strip()
+    raw = os.environ.get("ALFRED_OPS_WATCH_SERVICES", "").strip()
     if not raw:
         return out
     for entry in raw.split(","):
@@ -287,7 +287,9 @@ def main() -> int:
         if doctor_mode():
             print(f"[{AGENT.upper()}-DOCTOR-OK]")
             return 0
-        print(f"[{AGENT.upper()}-IDLE] no ECS cluster configured (set ALFRED_GORDON_ECS_CLUSTER)")
+        print(
+            f"[{AGENT.upper()}-IDLE] no ECS cluster configured (set ALFRED_OPS_WATCH_ECS_CLUSTER)"
+        )
         return 0
 
     try:

@@ -423,7 +423,7 @@ describe("useAlfred board assignment notices", () => {
 });
 
 describe("useAlfred plan go/no-go", () => {
-  function batmanPlan() {
+  function architectPlan() {
     return {
       plan_id: "13-plan",
       title: "Add CSV export",
@@ -434,7 +434,7 @@ describe("useAlfred plan go/no-go", () => {
       path: "",
       preview: "",
       content: "",
-      source: "batman",
+      source: "architect",
       readiness_score: null,
       readiness_ok: null,
       revision_count: 0,
@@ -456,7 +456,7 @@ describe("useAlfred plan go/no-go", () => {
     loadSnapshotMock.mockClear();
 
     await act(async () => {
-      await result.current.runPlanDecision(batmanPlan(), "approve");
+      await result.current.runPlanDecision(architectPlan(), "approve");
     });
 
     expect(hooks.decidePlanMock).toHaveBeenCalledWith(
@@ -483,7 +483,7 @@ describe("useAlfred plan go/no-go", () => {
     await waitFor(() => expect(result.current.snapshot).not.toBeNull());
 
     await act(async () => {
-      await result.current.runPlanDecision(batmanPlan(), "decline");
+      await result.current.runPlanDecision(architectPlan(), "decline");
     });
 
     expect(result.current.noticeFor("plans")?.tone).toBe("error");

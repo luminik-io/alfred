@@ -939,14 +939,14 @@ def test_resume_invokes_cli_with_exact_argv() -> None:
 def test_operator_run_invokes_cli_with_exact_argv() -> None:
     runner = FakeRunner()
     result = _handler(runner, operator_user_id="UOP").handle(
-        "run batman",
+        "run architect",
         trusted=True,
         actor_user_id="UOP",
     )
 
     assert result.action == "run"
     assert "Triggered" in result.text
-    assert runner.calls[-1] == ["/fake/alfred", "run", "batman"]
+    assert runner.calls[-1] == ["/fake/alfred", "run", "architect"]
 
 
 def test_operator_run_allows_configured_custom_codename() -> None:
@@ -967,7 +967,7 @@ def test_operator_run_allows_configured_custom_codename() -> None:
 def test_run_is_operator_only() -> None:
     runner = FakeRunner()
     result = _handler(runner, operator_user_id="UOP").handle(
-        "run batman",
+        "run architect",
         trusted=True,
         actor_user_id="UNEHA",
     )

@@ -126,14 +126,14 @@ def test_explicit_custom_payload_replaces_retained_roster(tmp_path: Path) -> Non
 
 def test_custom_display_name_falls_back_to_batman_base(tmp_path: Path) -> None:
     store = _store(tmp_path)
-    store.save(theme="custom", custom_names={"batman": "Sherlock"})
+    store.save(theme="custom", custom_names={"architect": "Sherlock"})
     loaded = _store(tmp_path).load()
-    # The renamed agent uses the operator name.
-    assert loaded.custom_display_name_for("batman") == "Sherlock"
-    # An un-renamed known agent uses the Batman-base name, not the bare codename,
-    # so the Slack path matches the desktop (which overlays on the same base).
-    assert loaded.custom_display_name_for("lucius") == "Lucius"
-    # An unknown codename has no base persona, so it returns None.
+    # The renamed agent (keyed by its role slug) uses the operator name.
+    assert loaded.custom_display_name_for("architect") == "Sherlock"
+    # An un-renamed known agent uses its Batman-theme display name, not the bare
+    # slug, so the Slack path matches the desktop (which overlays on the same base).
+    assert loaded.custom_display_name_for("senior-dev") == "Lucius"
+    # An unknown slug has no base persona, so it returns None.
     assert loaded.custom_display_name_for("mystery-bot") is None
 
 
@@ -148,16 +148,16 @@ def test_custom_role_label_falls_back_to_batman_base(tmp_path: Path) -> None:
     store = _store(tmp_path)
     store.save(
         theme="custom",
-        custom_names={"batman": "Sherlock"},
-        custom_roles={"batman": "Lead detective"},
+        custom_names={"architect": "Sherlock"},
+        custom_roles={"architect": "Lead detective"},
     )
     loaded = _store(tmp_path).load()
     # The operator role wins when set.
-    assert loaded.custom_role_label_for("batman") == "Lead detective"
+    assert loaded.custom_role_label_for("architect") == "Lead detective"
     # A known agent with no custom role uses the Batman-base role label, matching
     # the desktop, not the env role or None.
-    assert loaded.custom_role_label_for("lucius") == "Senior developer"
-    # An unknown codename has no base role, so it returns None and the caller
+    assert loaded.custom_role_label_for("senior-dev") == "Senior developer"
+    # An unknown slug has no base role, so it returns None and the caller
     # keeps the shipped env-role behavior.
     assert loaded.custom_role_label_for("mystery-bot") is None
 
@@ -252,10 +252,11 @@ def test_batman_base_uses_canonical_scheduled_codenames() -> None:
 
 def test_themed_display_name_resolves_preset_identity() -> None:
     state = RosterThemeState(theme="transformers", custom_names={}, custom_roles={})
-    assert state.themed_display_name_for("lucius") == "Ironhide"
-    assert state.themed_display_name_for("batman") == "Optimus Prime"
+    # The role slug is the identity key; the preset supplies the display name.
+    assert state.themed_display_name_for("senior-dev") == "Ironhide"
+    assert state.themed_display_name_for("architect") == "Optimus Prime"
     # Role label comes from the Batman base the presets share.
-    assert state.themed_role_label_for("lucius") == BATMAN_BASE_ROLES["lucius"]
+    assert state.themed_role_label_for("senior-dev") == BATMAN_BASE_ROLES["senior-dev"]
 
 
 def test_themed_display_name_batman_theme_keeps_shipped_behavior() -> None:
@@ -268,10 +269,10 @@ def test_themed_display_name_batman_theme_keeps_shipped_behavior() -> None:
 def test_themed_display_name_custom_theme_uses_custom_overlay() -> None:
     state = RosterThemeState(
         theme="custom",
-        custom_names={"batman": "Sherlock"},
-        custom_roles={"batman": "Lead detective"},
+        custom_names={"architect": "Sherlock"},
+        custom_roles={"architect": "Lead detective"},
     )
-    assert state.themed_display_name_for("batman") == "Sherlock"
-    assert state.themed_role_label_for("batman") == "Lead detective"
+    assert state.themed_display_name_for("architect") == "Sherlock"
+    assert state.themed_role_label_for("architect") == "Lead detective"
     # An unnamed agent still resolves to its Batman-base name under custom.
-    assert state.themed_display_name_for("lucius") == BATMAN_BASE_NAMES["lucius"]
+    assert state.themed_display_name_for("senior-dev") == BATMAN_BASE_NAMES["senior-dev"]

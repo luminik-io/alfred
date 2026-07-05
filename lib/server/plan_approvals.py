@@ -16,7 +16,7 @@ durable state when it consumes a marker; ``server/reader.py`` calls
 Needs-you queue. Keeping the path math here means the write side, read side,
 and Batman's file poll can never drift.
 
-A genuine Batman go/no-go plan is saved at ``$ALFRED_HOME/batman-plans/`` as
+A genuine Batman go/no-go plan is saved at ``$ALFRED_HOME/architect-plans/`` as
 ``{issue_num}-plan.md`` (``draft_plan`` in ``bin/batman.py``). The plan id the
 reader/client carries is the file stem (e.g. ``13-plan``); the issue number is
 the leading integer of that stem.
@@ -49,11 +49,11 @@ _ISSUE_NUM_RE = re.compile(r"^(\d+)")
 def approvals_dir(state_root: Path) -> Path:
     """Directory Batman's file-poll fallback watches.
 
-    Mirrors ``ALFRED_HOME / "batman" / "approvals"`` in ``lib.batman``:
+    Mirrors ``ALFRED_HOME / "architect" / "approvals"`` in ``lib.batman``:
     the reader's ``state_root`` is ``$ALFRED_HOME/state``, so the approvals
     directory is its sibling ``batman/approvals``.
     """
-    return Path(state_root).parent / "batman" / "approvals"
+    return Path(state_root).parent / "architect" / "approvals"
 
 
 def decision_records_dir(state_root: Path) -> Path:
@@ -63,7 +63,7 @@ def decision_records_dir(state_root: Path) -> Path:
     still needs a stable record so a decided plan never falls back to ``draft``
     after the marker has been consumed.
     """
-    return Path(state_root).parent / "batman" / "approval-decisions"
+    return Path(state_root).parent / "architect" / "approval-decisions"
 
 
 def issue_num_from_plan_id(plan_id: str) -> int | None:

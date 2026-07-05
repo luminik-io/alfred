@@ -866,7 +866,7 @@ class ApprovalResult:
 
 
 def _approval_marker_paths(issue_num: int) -> tuple[Path, Path]:
-    base = _alfred_runtime_home() / "batman" / "approvals"
+    base = _alfred_runtime_home() / "architect" / "approvals"
     return base / f"{issue_num}.approved", base / f"{issue_num}.rejected"
 
 
@@ -2167,7 +2167,7 @@ class SlackReporter:
         self,
         *,
         firing_id: str,
-        codename: str = "batman",
+        codename: str = "architect",
         thread_root: Callable | None = None,
         fallback_post: Callable | None = None,
         report_feedback_timeout_s: int | None = None,
@@ -2377,7 +2377,7 @@ class SlackReporter:
 
     def _write_plan_copy(self, plan: BundlePlan) -> Path | None:
         try:
-            root = _alfred_runtime_home() / "batman-plans"
+            root = _alfred_runtime_home() / "architect-plans"
             root.mkdir(parents=True, exist_ok=True)
             path = root / f"{plan.parent_issue_number}-plan.md"
             path.write_text(plan.plan_markdown, encoding="utf-8")

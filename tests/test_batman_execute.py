@@ -369,7 +369,7 @@ def test_in_app_approval_marker_grants_without_slack_poll(tmp_path: Path):
     )
     envelope = lifecycle.request_approval(plan)
     assert envelope is not None
-    marker = tmp_path / "alfred" / "batman" / "approvals" / "42.approved"
+    marker = tmp_path / "alfred" / "architect" / "approvals" / "42.approved"
     marker.parent.mkdir(parents=True)
     marker.write_text("", encoding="utf-8")
 
@@ -380,7 +380,7 @@ def test_in_app_approval_marker_grants_without_slack_poll(tmp_path: Path):
     assert "Alfred client" in verdict.detail
     assert gate.calls == []
     assert not marker.exists()
-    record = tmp_path / "alfred" / "batman" / "approval-decisions" / "42.json"
+    record = tmp_path / "alfred" / "architect" / "approval-decisions" / "42.json"
     assert json.loads(record.read_text(encoding="utf-8"))["decision"] == "approve"
 
 
@@ -389,7 +389,7 @@ def test_in_app_approval_marker_interrupts_active_slack_wait(tmp_path: Path):
 
     gh = FakeGitHubClient()
     reporter = FakeReporter()
-    marker = tmp_path / "alfred" / "batman" / "approvals" / "42.approved"
+    marker = tmp_path / "alfred" / "architect" / "approvals" / "42.approved"
 
     class MarkerGate:
         calls = 0
@@ -458,7 +458,7 @@ def test_file_approval_mode_consumes_rejection_marker_without_slack(tmp_path: Pa
     )
     envelope = lifecycle.request_approval(plan)
     assert envelope is not None
-    marker = tmp_path / "alfred" / "batman" / "approvals" / "42.rejected"
+    marker = tmp_path / "alfred" / "architect" / "approvals" / "42.rejected"
     marker.parent.mkdir(parents=True)
     marker.write_text("declined via Alfred client: scope too broad\n", encoding="utf-8")
 
@@ -468,7 +468,7 @@ def test_file_approval_mode_consumes_rejection_marker_without_slack(tmp_path: Pa
     assert verdict.verdict == EXEC_REJECTED
     assert "scope too broad" in verdict.detail
     assert not marker.exists()
-    record = tmp_path / "alfred" / "batman" / "approval-decisions" / "42.json"
+    record = tmp_path / "alfred" / "architect" / "approval-decisions" / "42.json"
     payload = json.loads(record.read_text(encoding="utf-8"))
     assert payload["decision"] == "decline"
     assert "scope too broad" in payload["reason"]
@@ -945,7 +945,7 @@ def test_slack_reporter_registers_plan_thread(tmp_path, monkeypatch):
     assert record.parent_repo == "your-org/parent"
     assert record.parent_issue == 77
     assert record.plan_path
-    assert Path(record.plan_path) == tmp_path / "alfred" / "batman-plans" / "77-plan.md"
+    assert Path(record.plan_path) == tmp_path / "alfred" / "architect-plans" / "77-plan.md"
     assert Path(record.plan_path).exists()
 
 
@@ -969,7 +969,7 @@ def test_slack_reporter_writes_local_plan_copy_when_slack_post_fails(tmp_path, m
 
     assert reporter.post_plan(plan, channel="alfred") is None
 
-    plan_path = tmp_path / "alfred" / "batman-plans" / "77-plan.md"
+    plan_path = tmp_path / "alfred" / "architect-plans" / "77-plan.md"
     assert plan_path.exists()
     assert "setup-page" in plan_path.read_text(encoding="utf-8")
     assert fallback_posts

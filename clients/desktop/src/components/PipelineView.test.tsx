@@ -198,7 +198,7 @@ describe("PipelineView", () => {
 
   it("places plans in the go-ahead column and board cards in their lifecycle columns", () => {
     renderPipeline({
-      plans: [plan({ title: "Approve the export plan", source: "batman", status: "draft" })],
+      plans: [plan({ title: "Approve the export plan", source: "architect", status: "draft" })],
       board: board({
         columns: {
           queued: [card()],
@@ -223,7 +223,7 @@ describe("PipelineView", () => {
       card({ number: 103, title: "bundle: super admin", labels: ["agent:plan-pending-approval"] }),
     ];
     renderPipeline({
-      plans: [plan({ title: "Approve the export plan", source: "batman", status: "draft" })],
+      plans: [plan({ title: "Approve the export plan", source: "architect", status: "draft" })],
       board: board({
         columns: {
           queued: [card({ number: 5, title: "A genuinely queued issue" })],
@@ -286,7 +286,7 @@ describe("PipelineView", () => {
 
   it("falls back to zero awaiting-approval when an older server omits the lane", () => {
     renderPipeline({
-      plans: [plan({ title: "Approve the export plan", source: "batman", status: "draft" })],
+      plans: [plan({ title: "Approve the export plan", source: "architect", status: "draft" })],
       board: board({
         columns: { queued: [card()], in_progress: [], shipped: [] },
         counts: { queued: 1, in_progress: 0, shipped: 0 },
@@ -298,7 +298,7 @@ describe("PipelineView", () => {
 
   it("uses the human chip vocabulary, never raw jargon, on card faces", () => {
     renderPipeline({
-      plans: [plan({ title: "Approve the export plan", source: "batman", status: "draft" })],
+      plans: [plan({ title: "Approve the export plan", source: "architect", status: "draft" })],
       board: board({
         columns: {
           queued: [card()],
@@ -341,7 +341,7 @@ describe("PipelineView", () => {
     const onDecision = vi.fn();
     const user = userEvent.setup();
     renderPipeline({
-      plans: [plan({ plan_id: "13-plan", title: "Add CSV export", source: "batman", status: "Draft (awaiting approval)" })],
+      plans: [plan({ plan_id: "13-plan", title: "Add CSV export", source: "architect", status: "Draft (awaiting approval)" })],
       onDecision,
     });
     await user.click(screen.getByRole("button", { name: /^approve/i }));
@@ -355,7 +355,7 @@ describe("PipelineView", () => {
     const onDecision = vi.fn();
     const user = userEvent.setup();
     renderPipeline({
-      plans: [plan({ plan_id: "13-plan", title: "Add CSV export", source: "batman", status: "Draft (awaiting approval)", readiness_score: 88 })],
+      plans: [plan({ plan_id: "13-plan", title: "Add CSV export", source: "architect", status: "Draft (awaiting approval)", readiness_score: 88 })],
       onDecision,
     });
     // Select the card body (no separate Inspect verb).
@@ -530,7 +530,7 @@ describe("PipelineView", () => {
         plan({
           plan_id: "13-plan",
           title: "Add CSV export",
-          source: "batman",
+          source: "architect",
           status: "Draft (awaiting approval)",
           parent: null,
         }),

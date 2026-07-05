@@ -191,6 +191,41 @@ def agent_engine(
     return normalize_engine(None, default=default)
 
 
+def agent_repos(
+    agent: str,
+    *,
+    default_env: str | None = None,
+    environ: dict[str, str] | None = None,
+) -> list[str]:
+    """Resolve the repo scope for one agent, keyed off its RESOLVED codename.
+
+    The runner's codename is operator-overridable (``AGENT_CODENAME``), and
+    ``alfred-init`` writes the repo scope to ``ALFRED_<CHOSEN>_REPOS`` derived
+    from that same chosen codename. Reading a hard-coded default-slug key would
+    strand an overridden agent with no repos ([AGENT-IDLE]). So the read is
+    keyed off ``agent`` (the resolved codename) first.
+
+    Precedence:
+
+    1. ``ALFRED_<AGENT>_REPOS`` (the chosen-codename key the wizard writes)
+    2. ``default_env`` (a legacy fixed key, when the agent shipped one) so a
+       config written before the rename still scopes the agent
+
+    Returns the parsed, de-blanked repo list (possibly empty).
+    """
+    env = environ if environ is not None else os.environ
+    slug = _agent_env_slug(agent)
+    primary = f"ALFRED_{slug}_REPOS"
+    for name in (primary, default_env):
+        if not name:
+            continue
+        raw = env.get(name, "")
+        repos = [r.strip() for r in raw.split(",") if r.strip()]
+        if repos:
+            return repos
+    return []
+
+
 def engine_preflight_bins(engine: str, *, hybrid_requires_codex: bool = False) -> list[str]:
     """Return load-bearing binaries for an engine mode.
 

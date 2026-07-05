@@ -137,15 +137,15 @@ def test_assign_issue_text_lane_beats_conflicting_model_lane() -> None:
     )
 
     assert intent.action == ACTION_ASSIGN
-    assert intent.agent == "batman"
+    assert intent.agent == "architect"
     assert intent.needs_clarification is False
 
 
 def test_assignment_lane_reply_tolerates_sentence_punctuation() -> None:
-    assert resolve_assignment_agent("Batman.") == ("batman", "")
-    assert resolve_assignment_agent("the architect.") == ("batman", "")
-    assert resolve_assignment_agent("Lucius.") == ("lucius", "")
-    assert resolve_assignment_agent("the senior developer.") == ("lucius", "")
+    assert resolve_assignment_agent("Batman.") == ("architect", "")
+    assert resolve_assignment_agent("the architect.") == ("architect", "")
+    assert resolve_assignment_agent("Lucius.") == ("senior-dev", "")
+    assert resolve_assignment_agent("the senior developer.") == ("senior-dev", "")
 
 
 def test_assign_issue_ignores_model_lane_without_explicit_text() -> None:
@@ -211,8 +211,8 @@ def test_assign_issue_to_fix_phrase_does_not_become_lane() -> None:
 
 
 def test_resolve_assignment_agent_accepts_article_prefixed_lane_reply() -> None:
-    assert resolve_assignment_agent("the architect") == ("batman", "")
-    assert resolve_assignment_agent("the senior developer") == ("lucius", "")
+    assert resolve_assignment_agent("the architect") == ("architect", "")
+    assert resolve_assignment_agent("the senior developer") == ("senior-dev", "")
 
 
 def test_run_agent_classifies_as_confirmable_mutation() -> None:
@@ -225,7 +225,7 @@ def test_run_agent_classifies_as_confirmable_mutation() -> None:
     )
 
     assert intent.action == ACTION_RUN_AGENT
-    assert intent.agent == "batman"
+    assert intent.agent == "architect"
     assert intent.is_mutating is True
     assert intent.needs_clarification is False
 
@@ -263,7 +263,7 @@ def test_dry_run_agent_is_read_only() -> None:
     )
 
     assert intent.action == ACTION_DRY_RUN_AGENT
-    assert intent.agent == "lucius"
+    assert intent.agent == "senior-dev"
     assert intent.is_mutating is False
     assert intent.needs_clarification is False
 
@@ -283,7 +283,7 @@ def test_schedule_agent_is_confirmable_mutation() -> None:
     )
 
     assert intent.action == ACTION_SCHEDULE_AGENT
-    assert intent.agent == "lucius"
+    assert intent.agent == "senior-dev"
     assert intent.schedule == "20m"
     assert intent.is_mutating is True
     assert intent.needs_clarification is False
@@ -299,7 +299,7 @@ def test_schedule_agent_missing_cadence_asks_for_clarification() -> None:
     )
 
     assert intent.action == ACTION_SCHEDULE_AGENT
-    assert intent.agent == "lucius"
+    assert intent.agent == "senior-dev"
     assert intent.needs_clarification is True
     assert "what cadence" in intent.clarification.lower()
 
@@ -318,16 +318,16 @@ def test_run_agent_missing_name_asks_for_clarification() -> None:
 
 
 def test_resolve_agent_codename_handles_aliases() -> None:
-    assert resolve_agent_codename("kick off Ra's al Ghul") == "rasalghul"
-    assert resolve_agent_codename("trigger Bruce") == "batman"
+    assert resolve_agent_codename("kick off Ra's al Ghul") == "reviewer"
+    assert resolve_agent_codename("trigger Bruce") == "architect"
     assert resolve_agent_codename("dry run the fleet", allow_all=True) == "all"
     assert resolve_agent_codename("run all") == ""
 
 
 def test_exact_agent_codenames_win_over_aliases() -> None:
     assert resolve_agent_codename("dry-run cleanup") == "cleanup"
-    assert resolve_agent_codename("pause Robin") == "robin"
-    assert resolve_agent_codename("run Damian Wayne") == "damian"
+    assert resolve_agent_codename("pause Robin") == "triage"
+    assert resolve_agent_codename("run Damian Wayne") == "spec-planner"
     assert resolve_agent_codename("run agent-cleanup") == "agent-cleanup"
 
 

@@ -72,7 +72,7 @@ from batman import (  # noqa: E402
 )
 from labels import PLAN_PENDING_APPROVAL  # noqa: E402
 
-CODENAME = os.environ.get("AGENT_CODENAME", "batman")
+CODENAME = os.environ.get("AGENT_CODENAME", "architect")
 BATMAN_ENGINE = agent_engine(CODENAME, default="hybrid")
 ENV_EXECUTING_FANOUT_STALE_AFTER_S = "BATMAN_EXECUTING_FANOUT_STALE_AFTER_S"
 DEFAULT_EXECUTING_FANOUT_STALE_AFTER_S = 3600
@@ -533,8 +533,8 @@ def _run_lifecycle_body(
 # ---------------------------------------------------------------------------
 
 
-_PENDING_APPROVAL_DIR = STATE_ROOT / "batman" / "pending-approvals"
-_COMPLETED_FANOUT_DIR = STATE_ROOT / "batman" / "completed-fanouts"
+_PENDING_APPROVAL_DIR = STATE_ROOT / "architect" / "pending-approvals"
+_COMPLETED_FANOUT_DIR = STATE_ROOT / "architect" / "completed-fanouts"
 _FINALIZATION_RETRY_FAILURES: list[tuple[str, int]] = []
 
 

@@ -130,11 +130,11 @@ def test_alfred_dry_run_simulates_any_codename_without_scheduler(tmp_path):
     alfred_home = tmp_path / "alfred"
     home.mkdir()
     alfred_home.mkdir()
-    _seed_conf(alfred_home, "my.fleet.drake\tdrake.py\tinterval:600\tno\t\tPlanner\n")
+    _seed_conf(alfred_home, "my.fleet.planner\tplanner.py\tinterval:600\tno\t\tPlanner\n")
 
-    res = _run_alfred(["dry-run", "drake"], home=home, alfred_home=alfred_home)
+    res = _run_alfred(["dry-run", "planner"], home=home, alfred_home=alfred_home)
     assert res.returncode == 0, res.stdout + res.stderr
-    assert "alfred dry-run: drake" in res.stdout
+    assert "alfred dry-run: planner" in res.stdout
     assert "mode: safe simulation" in res.stdout
     assert "would not: call the host scheduler" in res.stdout
 
@@ -146,11 +146,37 @@ def test_alfred_dry_run_json_reports_resolved_script(tmp_path):
     alfred_home.mkdir()
 
     res = _run_alfred(
-        ["dry-run", "lucius", "--simulate", "--json"], home=home, alfred_home=alfred_home
+        ["dry-run", "senior-dev", "--simulate", "--json"], home=home, alfred_home=alfred_home
     )
     assert res.returncode == 0, res.stdout + res.stderr
-    assert '"codename": "lucius"' in res.stdout
+    assert '"codename": "senior-dev"' in res.stdout
     assert '"mode": "simulated"' in res.stdout
+
+
+def test_alfred_dry_run_resolves_spec_planner_on_fresh_install(tmp_path):
+    # spec-planner (renamed from damian) is a canonical fleet runner. With NO
+    # agents.conf it must still resolve through the CLI DEFAULT_AGENT_CATALOG,
+    # otherwise a fresh install cannot schedule or dry-run it (the orphan bug).
+    home = tmp_path / "home"
+    alfred_home = tmp_path / "alfred"
+    home.mkdir()
+    alfred_home.mkdir()
+
+    res = _run_alfred(
+        ["dry-run", "spec-planner", "--simulate", "--json"], home=home, alfred_home=alfred_home
+    )
+    assert res.returncode == 0, res.stdout + res.stderr
+    payload = json.loads(res.stdout)
+    assert payload["codename"] == "spec-planner"
+    assert payload["script"].endswith("bin/spec-planner.py")
+    assert payload["schedule"] == "cron:9:00"
+
+    # The Batman-cast alias still resolves to the same slug runner.
+    res_alias = _run_alfred(
+        ["dry-run", "damian", "--simulate", "--json"], home=home, alfred_home=alfred_home
+    )
+    assert res_alias.returncode == 0, res_alias.stdout + res_alias.stderr
+    assert json.loads(res_alias.stdout)["script"].endswith("bin/spec-planner.py")
 
 
 def test_alfred_dry_run_all_uses_agents_conf_as_complete_roster(tmp_path):
@@ -184,12 +210,12 @@ def test_alfred_dry_run_telemetry_only_conf_uses_default_fleet(tmp_path):
     )
 
     res = _run_alfred(
-        ["dry-run", "lucius", "--simulate", "--json"], home=home, alfred_home=alfred_home
+        ["dry-run", "senior-dev", "--simulate", "--json"], home=home, alfred_home=alfred_home
     )
 
     assert res.returncode == 0, res.stdout + res.stderr
     payload = json.loads(res.stdout)
-    assert payload["codename"] == "lucius"
+    assert payload["codename"] == "senior-dev"
 
 
 def test_alfred_dry_run_all_omits_telemetry_support_row(tmp_path):

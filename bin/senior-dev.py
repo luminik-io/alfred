@@ -27,6 +27,7 @@ from agent_runner import (
     PreflightSpec,
     SpendState,
     agent_engine,
+    agent_repos,
     claim_issue,
     claude_invoke_streaming,
     codex_invoke,
@@ -92,7 +93,7 @@ if "--dry-run" in sys.argv:
 # the scheduler unit environment can set AGENT_CODENAME to rename the agent at
 # runtime without touching the source. Slack messages use AGENT.title() so a
 # renamed agent renders cleanly.
-AGENT = os.environ.get("AGENT_CODENAME", "lucius")
+AGENT = os.environ.get("AGENT_CODENAME", "senior-dev")
 LUCIUS_ENGINE = agent_engine(AGENT, default="hybrid")
 DEPENDENCY_WARNING_LEDGER = ALFRED_HOME / "state" / AGENT / "dependency-lookup-warnings.json"
 DEPENDENCY_WARNING_TTL_SECONDS = int(os.environ.get("ALFRED_DEPENDENCY_WARNING_TTL_S", "21600"))
@@ -109,9 +110,10 @@ LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 # fleet without editing source. Empty list = idle exit. In dry-run with nothing
 # configured, fall back to a clearly-fake repo so the narrated lifecycle has a
 # target to work against.
-LUCIUS_REPOS = [
-    r.strip() for r in os.environ.get("ALFRED_LUCIUS_REPOS", "").split(",") if r.strip()
-]
+# Keyed off the RESOLVED codename so an operator who renames this agent via
+# AGENT_CODENAME reads the same ALFRED_<CHOSEN>_REPOS key that alfred-init wrote.
+# The default-slug key stays as a legacy fallback for configs written earlier.
+LUCIUS_REPOS = agent_repos(AGENT, default_env="ALFRED_SENIOR_DEV_REPOS")
 if not LUCIUS_REPOS and is_dry_run():
     LUCIUS_REPOS = ["dry-run-repo"]
 
@@ -124,7 +126,7 @@ PREFLIGHT = PreflightSpec(
 )
 
 # Daily turn cap before auto-pausing the launchd agent. Override via env var.
-DAILY_TURN_CAP = int(os.environ.get("ALFRED_LUCIUS_TURN_CAP", "5000"))
+DAILY_TURN_CAP = int(os.environ.get("ALFRED_SENIOR_DEV_TURN_CAP", "5000"))
 PRE_PUSH_TIMEOUT_SECONDS = int(os.environ.get("ALFRED_PRE_PUSH_TIMEOUT_S", "900"))
 LUCIUS_WORKTREE_BASE_REF = "origin/main"
 LUCIUS_PR_BASE_BRANCH = "main"
@@ -451,7 +453,7 @@ def _build_self_assessment(
             # No hardcoded turn cap (policy: wall-clock timeout is the only
             # default ceiling); the call is a single no-tools JSON reply and
             # the operator can bound it via the env knob.
-            claude_max_turns=optional_env_int("ALFRED_LUCIUS_SELFASSESS_MAX_TURNS", minimum=1),
+            claude_max_turns=optional_env_int("ALFRED_SENIOR_DEV_SELFASSESS_MAX_TURNS", minimum=1),
             timeout=240,
             codex_timeout=240,
             codex_sandbox=codex_sandbox_for_agent(AGENT, default="read-only"),
@@ -1392,7 +1394,7 @@ def main() -> int:
         )
 
     if not LUCIUS_REPOS and not doctor_requested():
-        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_LUCIUS_REPOS)")
+        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_SENIOR_DEV_REPOS)")
         return 0
 
     try:
@@ -1547,7 +1549,7 @@ def main() -> int:
     # pre-push checks. The wall-clock ``timeout`` below is the only real
     # ceiling now; ``claude_invoke_streaming`` translates a ``None`` cap to
     # ``--max-turns _CLAUDE_UNLIMITED_TURNS`` so the CLI's hidden 40-
-    # turn default cannot kick in. ``ALFRED_LUCIUS_MAX_TURNS`` exists
+    # turn default cannot kick in. ``ALFRED_SENIOR_DEV_MAX_TURNS`` exists
     # as an emergency / debug knob; ``optional_env_int`` clamps it to
     # a sensible floor.
     def _on_engine_fallback(fallback_result):
@@ -1567,7 +1569,7 @@ def main() -> int:
         claude_allowed_tools="Read,Edit,Write,Bash,Grep",
         agent=AGENT,
         firing_id=events.firing_id,
-        claude_max_turns=optional_env_int("ALFRED_LUCIUS_MAX_TURNS", minimum=40),
+        claude_max_turns=optional_env_int("ALFRED_SENIOR_DEV_MAX_TURNS", minimum=40),
         timeout=2400,  # 40 min cap; compile + claude can stretch
         codex_timeout=2400,
         codex_sandbox=codex_sandbox_for_agent(AGENT, default="workspace-write"),

@@ -263,14 +263,14 @@ def test_process_swallows_injector_error(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_resolve_firing_role_derives_from_codename() -> None:
-    assert process._resolve_firing_role(None, "lucius") == "feature-dev"
-    assert process._resolve_firing_role(None, "drake") == "planner"
-    assert process._resolve_firing_role(None, "rasalghul") == "pr-review"
-    assert process._resolve_firing_role(None, "Lucius") == "feature-dev"  # case-insensitive
+    assert process._resolve_firing_role(None, "senior-dev") == "feature-dev"
+    assert process._resolve_firing_role(None, "planner") == "planner"
+    assert process._resolve_firing_role(None, "reviewer") == "pr-review"
+    assert process._resolve_firing_role(None, "Senior-Dev") == "feature-dev"  # case-insensitive
 
 
 def test_resolve_firing_role_explicit_overrides_codename() -> None:
-    assert process._resolve_firing_role("pr-review", "lucius") == "pr-review"
+    assert process._resolve_firing_role("pr-review", "senior-dev") == "pr-review"
 
 
 def test_resolve_firing_role_unknown_codename_is_none() -> None:
@@ -282,7 +282,7 @@ def test_with_skills_block_derives_role_from_agent(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(
         process, "skills_context_for_role", lambda role: f"[{role}]" if role else ""
     )
-    out = process._with_skills_block("PROMPT", None, "lucius")
+    out = process._with_skills_block("PROMPT", None, "senior-dev")
     assert out == "PROMPT\n\n[feature-dev]"
     assert process._with_skills_block("PROMPT", None, "automerge") == "PROMPT"
 
@@ -313,7 +313,7 @@ def test_invoke_agent_engine_injects_role_block(monkeypatch: pytest.MonkeyPatch)
     result, engine = process.invoke_agent_engine(
         "do the thing",
         engine="claude",
-        agent="lucius",
+        agent="senior-dev",
         firing_id="f1",
         workdir=Path("."),
         claude_allowed_tools="Read",
@@ -356,7 +356,7 @@ def test_invoke_agent_engine_derives_role_from_codename(monkeypatch: pytest.Monk
     process.invoke_agent_engine(
         "do the thing",
         engine="claude",
-        agent="lucius",  # -> feature-dev via the roster map
+        agent="senior-dev",  # -> feature-dev via the roster map
         firing_id="f1",
         workdir=Path("."),
         claude_allowed_tools="Read",

@@ -15,10 +15,10 @@ Out of scope: any PR not labeled agent:authored. Human PRs untouched.
 
 Configuration:
   ALFRED_AUTOMERGE_REPOS     comma-separated repo slugs to watch
-  ALFRED_AUTOMERGE_REVIEW_AGENT  codename of review agent (default: rasalghul)
+  ALFRED_AUTOMERGE_REVIEW_AGENT  codename of review agent (default: reviewer)
                                  - PR comments starting with "<Codename> - review"
                                  are checked for "Ship-ready: yes"
-  ALFRED_AUTOMERGE_FIX_AGENT codename of fix agent (default: nightwing)
+  ALFRED_AUTOMERGE_FIX_AGENT codename of fix agent (default: fixer)
                                  - replies starting with "<Codename>: fixed in ..."
                                  mark a P0 comment as resolved
   ALFRED_AUTOMERGE_MIN_AGE_MIN  minimum PR age before auto-merge (default: 30)
@@ -54,8 +54,8 @@ from agent_runner import (
 AGENT = os.environ.get("AGENT_CODENAME", "automerge")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 
-REVIEW_AGENT = os.environ.get("ALFRED_AUTOMERGE_REVIEW_AGENT", "rasalghul").title()
-FIX_AGENT = os.environ.get("ALFRED_AUTOMERGE_FIX_AGENT", "nightwing").title()
+REVIEW_AGENT = os.environ.get("ALFRED_AUTOMERGE_REVIEW_AGENT", "reviewer").title()
+FIX_AGENT = os.environ.get("ALFRED_AUTOMERGE_FIX_AGENT", "fixer").title()
 
 PREFLIGHT = PreflightSpec(
     agent=AGENT,

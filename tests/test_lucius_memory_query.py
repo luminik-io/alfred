@@ -37,8 +37,8 @@ class _StopAfterInvoke(Exception):
 @pytest.fixture
 def lucius(monkeypatch):
     monkeypatch.setenv("GH_ORG", "myorg")
-    monkeypatch.setenv("ALFRED_LUCIUS_REPOS", "api")
-    return load_bin_module("lucius.py", monkeypatch)
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_REPOS", "api")
+    return load_bin_module("senior-dev.py", monkeypatch)
 
 
 def test_run_passes_issue_derived_memory_query(lucius, monkeypatch, tmp_path):

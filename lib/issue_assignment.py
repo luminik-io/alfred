@@ -41,8 +41,8 @@ from shipped_board import _gh_bin, _gh_subprocess_env
 
 logger = logging.getLogger(__name__)
 
-ROUTE_LUCIUS = "lucius"
-ROUTE_BATMAN = "batman"
+ROUTE_LUCIUS = "senior-dev"
+ROUTE_BATMAN = "architect"
 ROUTE_HUMAN_SCOPE = "human_scope"
 ROUTE_ALREADY_ROUTED = "already_routed"
 ROUTE_BLOCKED = "blocked"
@@ -317,7 +317,7 @@ def decide_assignment(
     if existing_agent == ROUTE_BATMAN:
         return AssignmentDecision(
             route=ROUTE_ALREADY_ROUTED,
-            agent="batman",
+            agent=ROUTE_BATMAN,
             add_labels=(),
             remove_labels=(),
             reason=f"already routed to {_agent_label(ROUTE_BATMAN)}",
@@ -327,7 +327,7 @@ def decide_assignment(
     if existing_agent == ROUTE_LUCIUS:
         return AssignmentDecision(
             route=ROUTE_ALREADY_ROUTED,
-            agent="lucius",
+            agent=ROUTE_LUCIUS,
             add_labels=(),
             remove_labels=(),
             reason=f"already routed to {_agent_label(ROUTE_LUCIUS)}",
@@ -351,7 +351,7 @@ def decide_assignment(
     if _should_route_to_batman(text, surfaces):
         return AssignmentDecision(
             route=ROUTE_BATMAN,
-            agent="batman",
+            agent=ROUTE_BATMAN,
             add_labels=_missing(labels, label_constants.LARGE_FEATURE),
             remove_labels=remove,
             reason=_batman_reason(text, surfaces),
@@ -371,7 +371,7 @@ def decide_assignment(
 
     return AssignmentDecision(
         route=ROUTE_LUCIUS,
-        agent="lucius",
+        agent=ROUTE_LUCIUS,
         add_labels=_missing(labels, label_constants.IMPLEMENT),
         remove_labels=remove,
         reason="single-repo implementation work",
@@ -596,6 +596,8 @@ def _normalize_assignment_target(raw: str) -> str:
     if not target or target in {"auto", "alfred"}:
         return ""
     aliases = {
+        # ROUTE_BATMAN is the canonical "architect" slug; the Batman-cast name
+        # is kept as an operator alias so "assign to Batman" still resolves.
         ROUTE_BATMAN: {
             "architect",
             "batman",
@@ -605,6 +607,7 @@ def _normalize_assignment_target(raw: str) -> str:
             "multi repo architect",
             "multi-repo architect",
         },
+        # ROUTE_LUCIUS is the canonical "senior-dev" slug; "Lucius" stays an alias.
         ROUTE_LUCIUS: {
             "developer",
             "implementation",
@@ -612,6 +615,7 @@ def _normalize_assignment_target(raw: str) -> str:
             "lucius",
             "lucius fox",
             "senior dev",
+            "senior-dev",
             "senior developer",
             "single repo",
             "single-repo",

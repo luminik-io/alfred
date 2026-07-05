@@ -561,38 +561,43 @@ _CURATED_SYNONYMS: dict[str, tuple[str, ...]] = {
 
 _CODENAME_RE = re.compile(r"^(?!-)[A-Za-z0-9._-]{1,64}$")
 
+# Keyed by the canonical role slug (the runnable codename). The Batman-cast
+# names ("lucius", "batman", "ra's al ghul", ...) are kept as aliases so
+# operator prose like "run lucius" or "why did batman fail" still resolves to
+# the slug that names the runner.
 _AGENT_ALIASES: dict[str, tuple[str, ...]] = {
     "agent-cleanup": ("agent-cleanup",),
     "alfred-nightly": ("alfred-nightly", "nightly"),
+    "architect": ("architect", "batman", "bruce"),
     "automerge": ("automerge", "auto merge"),
-    "bane": ("bane",),
-    "batman": ("batman", "bruce"),
     "brand-mention-scanner": ("brand-mention-scanner", "brand mention scanner"),
     "cleanup": ("cleanup", "janitor"),
     "code-map-refresh": ("code-map-refresh", "code map refresh"),
     "cold-backup": ("cold-backup", "cold backup"),
     "content-drift": ("content-drift", "content drift"),
-    "damian": ("damian", "damian wayne"),
-    "drake": ("drake",),
+    "e2e-runner": ("e2e-runner", "huntress", "e2e", "smoke runner"),
+    "fixer": ("fixer", "nightwing", "dick"),
     "fleet-doctor": ("fleet-doctor", "fleet doctor", "doctor"),
     "fleet-recap-evening": ("fleet-recap-evening", "evening recap"),
     "fleet-recap-morning": ("fleet-recap-morning", "morning recap"),
-    "gordon": ("gordon",),
-    "huntress": ("huntress",),
-    "lucius": ("lucius", "lucius fox"),
     "memory-harvest": ("memory-harvest", "memory harvest"),
     "morning-brief": ("morning-brief", "morning brief"),
-    "nightwing": ("nightwing", "dick"),
-    "rasalghul": (
+    "ops-watch": ("ops-watch", "gordon"),
+    "planner": ("planner", "drake"),
+    "reviewer": (
+        "reviewer",
         "rasalghul",
         "ras al ghul",
         "ra's al ghul",
         "ra's",
         "ras",
     ),
-    "robin": ("robin",),
+    "senior-dev": ("senior-dev", "lucius", "lucius fox", "senior dev"),
     "shipped-summary-daily": ("shipped-summary-daily", "daily shipped summary"),
     "shipped-summary-weekly": ("shipped-summary-weekly", "weekly shipped summary"),
+    "spec-planner": ("spec-planner", "damian", "damian wayne"),
+    "test-engineer": ("test-engineer", "bane"),
+    "triage": ("triage", "robin"),
 }
 
 _KNOWN_AGENT_CODENAMES = frozenset(_AGENT_ALIASES)
@@ -654,8 +659,10 @@ def resolve_agent_codename(
 
 def resolve_assignment_agent(text: str, *, model_agent: str = "") -> tuple[str, str]:
     """Resolve the requested issue-assignment lane, if the operator named one."""
+    # Keyed by the canonical assignment-lane slug; Batman-cast names stay as
+    # aliases so "assign to Batman" / "give it to Lucius" still resolves.
     aliases = {
-        "batman": (
+        "architect": (
             "architect",
             "batman",
             "bruce",
@@ -664,7 +671,8 @@ def resolve_assignment_agent(text: str, *, model_agent: str = "") -> tuple[str, 
             "multi repo",
             "multi-repo",
         ),
-        "lucius": (
+        "senior-dev": (
+            "senior-dev",
             "developer",
             "implementation",
             "implementation agent",
@@ -681,7 +689,7 @@ def resolve_assignment_agent(text: str, *, model_agent: str = "") -> tuple[str, 
         return "", ""
     if explicit == "alfred":
         return "", ""
-    if explicit in {"batman", "lucius"}:
+    if explicit in {"architect", "senior-dev"}:
         return explicit, ""
     return "", explicit
 

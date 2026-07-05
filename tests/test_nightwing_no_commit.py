@@ -28,7 +28,7 @@ def nightwing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("GH_ORG", "acme")
     sys.path.insert(0, str(LIB_DIR))
     module_name = "nightwing_under_test_no_commit"
-    spec = importlib.util.spec_from_file_location(module_name, BIN_DIR / "nightwing.py")
+    spec = importlib.util.spec_from_file_location(module_name, BIN_DIR / "fixer.py")
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     try:
@@ -214,7 +214,7 @@ def _pick_target_pr_row(num: int, *, labels: list[str]):
 
 def test_fixed_comment_ids_from_pr_comments_parses_nightwing_replies(nightwing):
     comments = [
-        {"body": "Nightwing: fixed in abc1234 (re: comment 4567890 from coderabbitai[bot])"},
+        {"body": "Fixer: fixed in abc1234 (re: comment 4567890 from coderabbitai[bot])"},
         {"body": "not a fixed reply"},
     ]
 
@@ -222,7 +222,7 @@ def test_fixed_comment_ids_from_pr_comments_parses_nightwing_replies(nightwing):
 
 
 def test_pick_target_skips_comment_fixed_by_prior_pr_reply(nightwing, monkeypatch):
-    monkeypatch.setenv("ALFRED_NIGHTWING_REPOS", "backend")
+    monkeypatch.setenv("ALFRED_FIXER_REPOS", "backend")
     fake_comment = {
         "id": 4567890,
         "user": {"login": "coderabbitai[bot]"},
@@ -230,9 +230,7 @@ def test_pick_target_skips_comment_fixed_by_prior_pr_reply(nightwing, monkeypatc
         "path": "src/x.py",
         "line": 1,
     }
-    fixed_reply = {
-        "body": "Nightwing: fixed in abc1234 (re: comment 4567890 from coderabbitai[bot])"
-    }
+    fixed_reply = {"body": "Fixer: fixed in abc1234 (re: comment 4567890 from coderabbitai[bot])"}
 
     def fake_gh_json(cmd, *, default):
         joined = " ".join(str(part) for part in cmd)
@@ -256,7 +254,7 @@ def test_pick_target_skips_comment_fixed_by_prior_pr_reply(nightwing, monkeypatc
 def test_pick_target_skips_pr_carrying_human_needed_label(nightwing, monkeypatch):
     """Once Nightwing escalates a PR, the operator owns it; subsequent
     firings must not re-pick its comments and burn turns."""
-    monkeypatch.setenv("ALFRED_NIGHTWING_REPOS", "backend")
+    monkeypatch.setenv("ALFRED_FIXER_REPOS", "backend")
 
     def fake_gh_json(cmd, *, default):
         if "pr" in cmd and "list" in cmd:
@@ -275,7 +273,7 @@ def test_pick_target_re_admits_pr_when_reset_label_also_present(nightwing, monke
     """`nightwing:reset` is the operator's `try again` signal; when both
     labels are set, the PR must enter the pool so the inner reset
     handler can clear state and Nightwing can attempt the comments."""
-    monkeypatch.setenv("ALFRED_NIGHTWING_REPOS", "backend")
+    monkeypatch.setenv("ALFRED_FIXER_REPOS", "backend")
 
     fake_comment = {
         "id": 1,

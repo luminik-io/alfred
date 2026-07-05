@@ -1,4 +1,4 @@
-"""Tests for ``lib/damian_planner.py`` and the ``bin/damian.py`` runner.
+"""Tests for ``lib/damian_planner.py`` and the ``bin/spec-planner.py`` runner.
 
 The planner is the deterministic, offline core: spec discovery, multi-repo
 detection, candidate-list construction. Tests build a tmp_path spec directory
@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
-RUNNER = REPO / "bin" / "damian.py"
+RUNNER = REPO / "bin" / "spec-planner.py"
 
 
 @pytest.fixture(autouse=True)
@@ -51,7 +51,30 @@ def _write_spec(spec_dir: Path, name: str, body: str) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def test_planner_config_reads_scan_repos_and_spec_dir(monkeypatch):
+def test_planner_config_reads_canonical_slug_keys(monkeypatch):
+    # The spec-planner role writes slug-based env keys via alfred-init; the
+    # runner must read the same keys so a fresh install actually scopes it.
+    monkeypatch.delenv("DAMIAN_SCAN_REPOS", raising=False)
+    monkeypatch.delenv("DAMIAN_SPEC_DIR", raising=False)
+    monkeypatch.delenv("DAMIAN_DAILY_BUNDLE_CAP", raising=False)
+    monkeypatch.setenv("ALFRED_SPEC_PLANNER_REPOS", "your-org/your-backend, your-org/your-frontend")
+    monkeypatch.setenv("ALFRED_SPEC_PLANNER_SPEC_DIR", "/abs/specs")
+    monkeypatch.setenv("ALFRED_SPEC_PLANNER_DAILY_BUNDLE_CAP", "5")
+
+    import damian_planner as dp
+
+    cfg = dp.PlannerConfig.from_env()
+    assert cfg.scan_repos == ("your-org/your-backend", "your-org/your-frontend")
+    assert cfg.spec_dir == Path("/abs/specs")
+    assert cfg.daily_bundle_cap == 5
+
+
+def test_planner_config_reads_legacy_damian_keys(monkeypatch):
+    # The Batman-cast DAMIAN_ keys stay as a legacy fallback so a config
+    # written before the rename keeps scoping the agent.
+    monkeypatch.delenv("ALFRED_SPEC_PLANNER_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SPEC_PLANNER_SPEC_DIR", raising=False)
+    monkeypatch.delenv("ALFRED_SPEC_PLANNER_DAILY_BUNDLE_CAP", raising=False)
     monkeypatch.setenv("DAMIAN_SCAN_REPOS", "your-org/your-backend, your-org/your-frontend")
     monkeypatch.setenv("DAMIAN_SPEC_DIR", "/abs/specs")
     monkeypatch.setenv("DAMIAN_DAILY_BUNDLE_CAP", "5")
@@ -62,6 +85,15 @@ def test_planner_config_reads_scan_repos_and_spec_dir(monkeypatch):
     assert cfg.scan_repos == ("your-org/your-backend", "your-org/your-frontend")
     assert cfg.spec_dir == Path("/abs/specs")
     assert cfg.daily_bundle_cap == 5
+
+
+def test_planner_config_slug_key_wins_over_legacy(monkeypatch):
+    monkeypatch.setenv("ALFRED_SPEC_PLANNER_REPOS", "org/canonical")
+    monkeypatch.setenv("DAMIAN_SCAN_REPOS", "org/stale")
+
+    import damian_planner as dp
+
+    assert dp.PlannerConfig.from_env().scan_repos == ("org/canonical",)
 
 
 def test_planner_config_defaults_to_empty_scope():
@@ -354,7 +386,7 @@ def test_render_plan_shows_bundles_and_counters(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Runner shell wiring (bin/damian.py)
+# Runner shell wiring (bin/spec-planner.py)
 # ---------------------------------------------------------------------------
 
 
@@ -375,7 +407,7 @@ def test_runner_exits_quietly_when_disabled(monkeypatch, capsys):
     rc = runner.main()
     assert rc == 0
     err = capsys.readouterr().err
-    assert "DAMIAN-SKIP" in err
+    assert "SPEC-PLANNER-SKIP" in err
 
 
 def test_runner_reports_idle_when_no_scan_repos(monkeypatch, capsys, tmp_path):
@@ -385,11 +417,12 @@ def test_runner_reports_idle_when_no_scan_repos(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(runner, "preflight", lambda *_a, **_k: None)
     monkeypatch.setattr(runner, "with_lock", lambda *_a, **_k: None)
     monkeypatch.delenv("DAMIAN_SCAN_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SPEC_PLANNER_REPOS", raising=False)
 
     rc = runner.main()
     assert rc == 0
     out = capsys.readouterr().out
-    assert "[DAMIAN-IDLE]" in out
+    assert "[SPEC-PLANNER-IDLE]" in out
 
 
 def test_runner_emits_noop_when_no_candidates(monkeypatch, capsys, tmp_path):
@@ -409,7 +442,7 @@ def test_runner_emits_noop_when_no_candidates(monkeypatch, capsys, tmp_path):
     rc = runner.main()
     assert rc == 0
     out = capsys.readouterr().out
-    assert "[DAMIAN-NOOP]" in out
+    assert "[SPEC-PLANNER-NOOP]" in out
 
 
 def test_runner_drafts_plan_when_prompt_missing(monkeypatch, capsys, tmp_path):
@@ -435,5 +468,5 @@ def test_runner_drafts_plan_when_prompt_missing(monkeypatch, capsys, tmp_path):
     rc = runner.main()
     assert rc == 0
     out = capsys.readouterr().out
-    assert "[DAMIAN-PLAN-DRAFTED]" in out
+    assert "[SPEC-PLANNER-PLAN-DRAFTED]" in out
     assert posted, "runner should slack-post the draft when no prompt is seeded"

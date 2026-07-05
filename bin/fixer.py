@@ -7,7 +7,7 @@ Per-repo pre-push commands load from $ALFRED_HOME/agents/<codename>.toml
 Reviewer comment matching: bot reviewers (CodeRabbit, Codex/ChatGPT, any
 "[bot]" login) are detected by login. The prose-style review agent (default:
 Ras al Ghul) is detected by the body prefix "<reviewer-codename>.title()", set
-ALFRED_NIGHTWING_REVIEW_AGENT to match the codename your review agent uses.
+ALFRED_FIXER_REVIEW_AGENT to match the codename your review agent uses.
 """
 
 from __future__ import annotations
@@ -33,6 +33,7 @@ from agent_runner import (
     PreflightSpec,
     SpendState,
     agent_engine,
+    agent_repos,
     claude_invoke_streaming,
     codex_invoke,
     codex_sandbox_for_agent,
@@ -61,21 +62,21 @@ from agent_runner import (
 from agent_runner.transcripts import transcript_path
 from workflow_validation import validate_changed_workflows
 
-AGENT = os.environ.get("AGENT_CODENAME", "nightwing")
+AGENT = os.environ.get("AGENT_CODENAME", "fixer")
 NIGHTWING_ENGINE = agent_engine(AGENT, default="hybrid")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
-REVIEW_AGENT_NAME = os.environ.get("ALFRED_NIGHTWING_REVIEW_AGENT", "rasalghul").title()
+REVIEW_AGENT_NAME = os.environ.get("ALFRED_FIXER_REVIEW_AGENT", "reviewer").title()
 
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
     bins=[*engine_preflight_bins(NIGHTWING_ENGINE), "gh", "git"],
     require_gh_auth=True,
 )
-WATCH_REPOS = [
-    r.strip() for r in os.environ.get("ALFRED_NIGHTWING_REPOS", "").split(",") if r.strip()
-]
+# Keyed off the RESOLVED codename (AGENT), with the default-slug key as a legacy
+# fallback, so an operator-renamed fixer reads its ALFRED_<CHOSEN>_REPOS key.
+WATCH_REPOS = agent_repos(AGENT, default_env="ALFRED_FIXER_REPOS")
 
-DAILY_TURN_CAP = int(os.environ.get("ALFRED_NIGHTWING_TURN_CAP", "600"))
+DAILY_TURN_CAP = int(os.environ.get("ALFRED_FIXER_TURN_CAP", "600"))
 
 # Persist comment IDs we've fixed (the issue-comments endpoint dedup loop
 # can't see issue-comment replies, so persist to disk too).
@@ -87,7 +88,7 @@ FIXED_COMMENT_IDS_FILE = STATE_ROOT / AGENT / "fixed-comment-ids.json"
 # state by adding `nightwing:reset` to the PR or by deleting the entry
 # from this file. See issue #109.
 NO_COMMIT_STREAKS_FILE = STATE_ROOT / AGENT / "no-commit-streaks.json"
-NO_COMMIT_ESCALATE_AFTER = int(os.environ.get("ALFRED_NIGHTWING_ESCALATE_AFTER", "3"))
+NO_COMMIT_ESCALATE_AFTER = int(os.environ.get("ALFRED_FIXER_ESCALATE_AFTER", "3"))
 ESCALATE_LABEL = "nightwing:human-needed"
 RESET_LABEL = "nightwing:reset"
 
@@ -549,7 +550,7 @@ def main() -> int:
     with_lock(AGENT)
 
     if not WATCH_REPOS and not doctor_requested():
-        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_NIGHTWING_REPOS)")
+        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_FIXER_REPOS)")
         return 0
 
     try:
@@ -699,7 +700,7 @@ def main() -> int:
             claude_allowed_tools="Read,Edit,Bash,Grep",
             agent=AGENT,
             firing_id=events.firing_id,
-            claude_max_turns=optional_env_int("ALFRED_NIGHTWING_MAX_TURNS", minimum=25),
+            claude_max_turns=optional_env_int("ALFRED_FIXER_MAX_TURNS", minimum=25),
             timeout=600,
             codex_timeout=600,
             codex_sandbox=codex_sandbox_for_agent(AGENT, default="workspace-write"),

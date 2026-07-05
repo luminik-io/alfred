@@ -27,14 +27,14 @@ import skill_packs  # noqa: E402
 
 
 def test_lookup_maps_known_codenames() -> None:
-    assert agent_roster.pack_role_for_codename("lucius") == "feature-dev"
-    assert agent_roster.pack_role_for_codename("drake") == "planner"
-    assert agent_roster.pack_role_for_codename("bane") == "test-coverage"
-    assert agent_roster.pack_role_for_codename("rasalghul") == "pr-review"
+    assert agent_roster.pack_role_for_codename("senior-dev") == "feature-dev"
+    assert agent_roster.pack_role_for_codename("planner") == "planner"
+    assert agent_roster.pack_role_for_codename("test-engineer") == "test-coverage"
+    assert agent_roster.pack_role_for_codename("reviewer") == "pr-review"
 
 
 def test_lookup_is_case_insensitive_and_trims() -> None:
-    assert agent_roster.pack_role_for_codename("  Lucius  ") == "feature-dev"
+    assert agent_roster.pack_role_for_codename("  Senior-Dev  ") == "feature-dev"
 
 
 def test_lookup_unknown_or_empty_is_none() -> None:
@@ -107,5 +107,44 @@ def test_roster_agrees_with_the_canonical_catalog() -> None:
 def test_catalog_parse_sanity() -> None:
     """The static parser actually found the engineering codenames it should."""
     catalog = _catalog_codename_to_role()
-    assert catalog.get("lucius") == "feature_dev"
-    assert re.match(r"^[a-z_]+$", catalog["lucius"])  # underscored vocabulary
+    assert catalog.get("senior-dev") == "feature_dev"
+    assert re.match(r"^[a-z_]+$", catalog["senior-dev"])  # underscored vocabulary
+
+
+def _cli_default_agent_catalog() -> dict[str, dict[str, str]]:
+    """Parse ``DEFAULT_AGENT_CATALOG`` from bin/alfred without importing it."""
+    src = (REPO_ROOT / "bin" / "alfred").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        target_name = None
+        value = None
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name):
+                    target_name = t.id
+            value = node.value
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            target_name = node.target.id
+            value = node.value
+        if target_name == "DEFAULT_AGENT_CATALOG" and value is not None:
+            return ast.literal_eval(value)
+    raise AssertionError("DEFAULT_AGENT_CATALOG not found in bin/alfred")
+
+
+def test_spec_planner_is_registered_and_consistent_across_catalogs() -> None:
+    """spec-planner (was damian) must be a resolvable, scheduled catalog entry.
+
+    It is a canonical fleet runner (bin/spec-planner.py, in the manifest and the
+    workflow roster), so it must appear in BOTH the alfred-init AGENT_CATALOG and
+    the CLI DEFAULT_AGENT_CATALOG, and the two must agree on the codename slug and
+    schedule; otherwise a fresh install cannot register or resolve it (orphan).
+    """
+    init_catalog = _catalog_codename_to_role()
+    assert init_catalog.get("spec-planner") == "spec_planner"
+
+    cli_catalog = _cli_default_agent_catalog()
+    assert "spec-planner" in cli_catalog, "spec-planner missing from CLI DEFAULT_AGENT_CATALOG"
+    assert cli_catalog["spec-planner"]["script"] == "spec-planner.py"
+    assert cli_catalog["spec-planner"]["schedule"] == "cron:9:00"
+    # The renamed runner file actually exists.
+    assert (REPO_ROOT / "bin" / "spec-planner.py").exists()

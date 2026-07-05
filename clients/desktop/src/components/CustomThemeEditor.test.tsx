@@ -13,7 +13,7 @@ describe("CustomThemeEditor", () => {
         agents={[
           {
             codename: "security-scout",
-            role: "review",
+            role: "reviewer",
             defaultName: "Sentinel",
             defaultRoleLabel: "Security reviewer",
           },

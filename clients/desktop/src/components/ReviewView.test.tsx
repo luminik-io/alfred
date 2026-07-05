@@ -388,7 +388,7 @@ describe("ReviewView", () => {
         status: {
           agents: [
             agent({
-              codename: "lucius",
+              codename: "senior-dev",
               display_name: "Lucius",
               role_title: "Senior Developer",
               purpose: "Ships scoped implementation issues as pull requests.",
@@ -758,7 +758,7 @@ describe("ReviewView", () => {
     expect(onSwitch).not.toHaveBeenCalled();
   });
 
-  it("approves a waiting Batman plan in-place from the Needs-you card", async () => {
+  it("approves a waiting architect plan in-place from the Needs-you card", async () => {
     const onPlanDecision = vi.fn();
     const plan = {
       plan_id: "13-plan",
@@ -770,7 +770,7 @@ describe("ReviewView", () => {
       path: "",
       preview: "",
       content: "",
-      source: "batman",
+      source: "architect",
       readiness_score: null,
       readiness_ok: null,
       revision_count: 0,

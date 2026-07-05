@@ -221,6 +221,38 @@ if [ -n "$dash_matches" ]; then
   fail=1
 fi
 
+# Identity-rename regression guard. Role slugs are the canonical agent identity
+# (senior-dev, architect, reviewer, ...); the Batman-cast codenames survive only
+# as display names and aliases. These greps catch the specific regressions that
+# would silently re-couple dispatch to a Batman codename:
+#   - the assignment routing constants pointing back at a raw codename,
+#   - a branch-prefix classifier that DROPS the new slug prefixes,
+#   - the runner repo/aws env-key write deriving its slug from the catalog
+#     default instead of the actually-chosen codename (the [AGENT-IDLE] bug).
+identity_fail=0
+# These guards only apply to Alfred's own source tree. When scrub-check runs
+# against an unrelated checkout (e.g. an isolated test fixture) the files are
+# absent, so skip the check rather than fail on a missing path.
+if [ -f lib/issue_assignment.py ] && grep -nE 'ROUTE_(LUCIUS|BATMAN)[[:space:]]*=[[:space:]]*"(lucius|batman)"' \
+    lib/issue_assignment.py >/dev/null 2>&1; then
+  grep -nE 'ROUTE_(LUCIUS|BATMAN)[[:space:]]*=[[:space:]]*"(lucius|batman)"' \
+    lib/issue_assignment.py >&2
+  echo "::error::assignment route constant re-coupled to a Batman codename; use the role slug" >&2
+  identity_fail=1
+fi
+if [ -f lib/shipped_board.py ] && ! grep -qE '"senior-dev/"' lib/shipped_board.py; then
+  echo "::error::lib/shipped_board.py branch-prefix list is missing the senior-dev/ slug prefix" >&2
+  identity_fail=1
+fi
+if [ -f bin/alfred-init.py ] && grep -nE 'out\[f"ALFRED_\{default_slug\}_(REPOS|AWS_PROFILE)' bin/alfred-init.py >/dev/null 2>&1; then
+  grep -nE 'out\[f"ALFRED_\{default_slug\}_(REPOS|AWS_PROFILE)' bin/alfred-init.py >&2
+  echo "::error::runner repo/aws env key WRITTEN from the catalog default, not the chosen codename (re-introduces the [AGENT-IDLE] bug)" >&2
+  identity_fail=1
+fi
+if [ "$identity_fail" -ne 0 ]; then
+  fail=1
+fi
+
 # Optional full git-history scan (slow). The working-tree scrub above only sees
 # the current checkout; this catches secrets/paths committed in the PAST. Run
 # before a public push or on a schedule:  bin/scrub-check.sh --history

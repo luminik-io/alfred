@@ -43,5 +43,5 @@ def test_profiles_expose_every_codename_once() -> None:
 def test_profiles_sorted_by_order() -> None:
     orders = [profile.order for profile in AGENT_PROFILES]
     assert orders == sorted(orders)
-    # Batman, Lucius, and Drake stay first regardless of manifest position.
-    assert [p.codename for p in AGENT_PROFILES[:3]] == ["batman", "lucius", "drake"]
+    # Architect, Senior Dev, and Planner stay first regardless of manifest position.
+    assert [p.codename for p in AGENT_PROFILES[:3]] == ["architect", "senior-dev", "planner"]

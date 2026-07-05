@@ -30,13 +30,13 @@ def load_runner(script: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.mark.parametrize(
     ("script", "env_key"),
     [
-        ("lucius.py", "ALFRED_LUCIUS_REPOS"),
-        ("drake.py", "ALFRED_DRAKE_REPOS"),
-        ("bane.py", "ALFRED_BANE_REPOS"),
+        ("senior-dev.py", "ALFRED_SENIOR_DEV_REPOS"),
+        ("planner.py", "ALFRED_PLANNER_REPOS"),
+        ("test-engineer.py", "ALFRED_TEST_ENGINEER_REPOS"),
         ("automerge.py", "ALFRED_AUTOMERGE_REPOS"),
-        ("rasalghul.py", "ALFRED_RASALGHUL_REPOS"),
-        ("nightwing.py", "ALFRED_NIGHTWING_REPOS"),
-        ("robin.py", "ALFRED_ROBIN_REPOS"),
+        ("reviewer.py", "ALFRED_REVIEWER_REPOS"),
+        ("fixer.py", "ALFRED_FIXER_REPOS"),
+        ("triage.py", "ALFRED_TRIAGE_REPOS"),
         ("code-map-refresh.py", "ALFRED_CODE_MAP_REPOS"),
     ],
 )

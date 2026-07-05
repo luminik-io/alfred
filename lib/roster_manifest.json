@@ -5,7 +5,7 @@
   "themes": {
     "batman": {
       "label": "Batman",
-      "blurb": "The shipped Gotham roster. Roles stay plain; names are the codenames."
+      "blurb": "The shipped Gotham roster. Roles stay the canonical identity; names are the display codenames."
     },
     "transformers": {
       "label": "Transformers",
@@ -13,20 +13,26 @@
     },
     "justice-league": {
       "label": "Justice League",
-      "blurb": "The League takes the pipeline. Batman architects, the others ship."
+      "blurb": "The League takes the pipeline. The architect leads, the others ship."
     }
   },
   "role_labels": {
     "triage": "Triage lead",
+    "spec-planner": "Spec planner",
+    "planner": "Planner",
     "architect": "Architect",
-    "implement": "Senior developer",
-    "review": "Reviewer",
+    "senior-dev": "Senior developer",
+    "test-engineer": "Test engineer",
+    "fixer": "Fixer",
+    "reviewer": "Reviewer",
+    "e2e-runner": "End-to-end runner",
+    "ops-watch": "Ops watch",
     "ship": "Release",
     "ops": "Ops & health"
   },
   "agents": [
     {
-      "codename": "robin",
+      "codename": "triage",
       "role": "triage",
       "names": {
         "batman": "Robin",
@@ -35,8 +41,8 @@
       }
     },
     {
-      "codename": "drake",
-      "role": "triage",
+      "codename": "planner",
+      "role": "planner",
       "names": {
         "batman": "Drake",
         "transformers": "Hot Rod",
@@ -44,8 +50,8 @@
       }
     },
     {
-      "codename": "damian",
-      "role": "triage",
+      "codename": "spec-planner",
+      "role": "spec-planner",
       "names": {
         "batman": "Damian",
         "transformers": "Blurr",
@@ -53,7 +59,7 @@
       }
     },
     {
-      "codename": "batman",
+      "codename": "architect",
       "role": "architect",
       "names": {
         "batman": "Batman",
@@ -62,8 +68,8 @@
       }
     },
     {
-      "codename": "lucius",
-      "role": "implement",
+      "codename": "senior-dev",
+      "role": "senior-dev",
       "names": {
         "batman": "Lucius",
         "transformers": "Ironhide",
@@ -71,8 +77,8 @@
       }
     },
     {
-      "codename": "bane",
-      "role": "implement",
+      "codename": "test-engineer",
+      "role": "test-engineer",
       "names": {
         "batman": "Bane",
         "transformers": "Grimlock",
@@ -80,8 +86,8 @@
       }
     },
     {
-      "codename": "nightwing",
-      "role": "implement",
+      "codename": "fixer",
+      "role": "fixer",
       "names": {
         "batman": "Nightwing",
         "transformers": "Sideswipe",
@@ -89,8 +95,8 @@
       }
     },
     {
-      "codename": "rasalghul",
-      "role": "review",
+      "codename": "reviewer",
+      "role": "reviewer",
       "names": {
         "batman": "Ra's al Ghul",
         "transformers": "Ratchet",
@@ -107,8 +113,8 @@
       }
     },
     {
-      "codename": "gordon",
-      "role": "ops",
+      "codename": "ops-watch",
+      "role": "ops-watch",
       "names": {
         "batman": "Gordon",
         "transformers": "Wheeljack",
@@ -125,8 +131,8 @@
       }
     },
     {
-      "codename": "huntress",
-      "role": "ops",
+      "codename": "e2e-runner",
+      "role": "e2e-runner",
       "names": {
         "batman": "Huntress",
         "transformers": "Arcee",

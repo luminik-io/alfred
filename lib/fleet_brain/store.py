@@ -482,14 +482,24 @@ AGENT_AUTHORED_LABEL: Final[str] = "agent:authored"
 AGENT_BRANCH_PREFIXES: Final[tuple[str, ...]] = (
     "alfred/",
     "alfred-nightly/",
+    "architect/",
     "automerge/",
     "bane/",
     "batman/",
     "damian/",
+    "e2e-runner/",
+    "fixer/",
     "lucius/",
     "nightwing/",
+    "ops-watch/",
+    "planner/",
     "rasalghul/",
+    "reviewer/",
     "robin/",
+    "senior-dev/",
+    "spec-planner/",
+    "test-engineer/",
+    "triage/",
 )
 NON_WORK_ISSUE_LABELS: Final[tuple[str, ...]] = ("batman:fanout-complete",)
 

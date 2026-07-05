@@ -96,9 +96,11 @@ export function chipToneClass(tone: ChipTone): string {
 }
 
 // The canonical CODENAME behind a shipped/board card, detected from the author,
-// labels, and agent evidence. Returns the codename (e.g. "lucius"), NOT a themed
-// display name, so callers resolve the visible name through the active roster
-// theme (resolveThemedIdentity) exactly like the Roster page. Unknown cards
+// labels, and agent evidence. Returns the codename SLUG (e.g. "senior-dev"), NOT
+// a themed display name, so callers resolve the visible name through the active
+// roster theme (resolveThemedIdentity) exactly like the Roster page. The Batman
+// -cast names still appear in author/evidence tokens, so they are matched here
+// but mapped to the canonical slug the manifest now carries. Unknown cards
 // return null.
 export function agentForShipped(card: ShippedCard): string | null {
   const tokens = [
@@ -106,17 +108,29 @@ export function agentForShipped(card: ShippedCard): string | null {
     ...(card.labels || []),
     ...(card.agent_evidence || []),
   ].map((token) => token.toLowerCase());
-  if (tokens.some((t) => t.includes("batman") || t.includes("agent:large-feature"))) {
-    return "batman";
+  if (
+    tokens.some(
+      (t) => t.includes("batman") || t.includes("architect") || t.includes("agent:large-feature"),
+    )
+  ) {
+    return "architect";
   }
-  if (tokens.some((t) => t.includes("lucius") || t.includes("agent:implement"))) {
-    return "lucius";
+  if (
+    tokens.some(
+      (t) => t.includes("lucius") || t.includes("senior-dev") || t.includes("agent:implement"),
+    )
+  ) {
+    return "senior-dev";
   }
-  if (tokens.some((t) => t.includes("nightwing"))) return "nightwing";
-  if (tokens.some((t) => t.includes("damian"))) return "damian";
-  if (tokens.some((t) => t.includes("bane"))) return "bane";
-  if (tokens.some((t) => t.includes("rasalghul") || t.includes("ra's al ghul"))) {
-    return "rasalghul";
+  if (tokens.some((t) => t.includes("nightwing") || t.includes("fixer"))) return "fixer";
+  if (tokens.some((t) => t.includes("damian") || t.includes("spec-planner"))) return "spec-planner";
+  if (tokens.some((t) => t.includes("bane") || t.includes("test-engineer"))) return "test-engineer";
+  if (
+    tokens.some(
+      (t) => t.includes("rasalghul") || t.includes("ra's al ghul") || t.includes("reviewer"),
+    )
+  ) {
+    return "reviewer";
   }
   return null;
 }

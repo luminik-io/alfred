@@ -87,7 +87,7 @@ def test_shell_target_runs_via_own_shebang(tmp_path: Path, alfred_home: Path) ->
 
 
 def test_dotpy_target_routes_through_venv(tmp_path: Path, alfred_home: Path) -> None:
-    target = tmp_path / "lucius.py"
+    target = tmp_path / "senior-dev.py"
     target.write_text("#!/usr/bin/env python3\nprint('python ran')\n")
     _make_executable(target)
 

@@ -63,49 +63,55 @@ from pathlib import Path
 # default schedule string in launchd/agents.conf format)
 AGENT_CATALOG: dict[str, tuple[str, str, bool, str]] = {
     "feature_dev": (
-        "lucius",
+        "senior-dev",
         "feature dev (picks agent:implement issues, opens PRs)",
         True,
         "interval:1200",
     ),
     "planner": (
-        "drake",
+        "planner",
         "issue planner (files agent:implement issues from specs)",
         True,
         "interval:7200",
     ),
     "test_coverage": (
-        "bane",
+        "test-engineer",
         "test coverage (writes tests for low-coverage changed files)",
         True,
         "interval:14400",
     ),
-    "pr_review": ("rasalghul", "PR review (multi-axis on every fresh PR)", True, "interval:1800"),
+    "pr_review": ("reviewer", "PR review (multi-axis on every fresh PR)", True, "interval:1800"),
     "ci_repair": (
-        "nightwing",
+        "fixer",
         "review fixes (lands P0/P1 reviewer comments on agent PRs)",
         True,
         "interval:2700",
     ),
     "bug_triage": (
-        "robin",
-        "bug triage (labels issues, asks repro, hands off to Lucius)",
+        "triage",
+        "bug triage (labels issues, asks repro, hands off to the senior dev)",
         True,
         "interval:10800",
     ),
     "cross_repo_coordinator": (
-        "batman",
+        "architect",
         "cross-repo architect (plans and files approved agent:large-feature bundles)",
         False,
         "interval:3600",
     ),
+    "spec_planner": (
+        "spec-planner",
+        "spec-bundle planner (drafts multi-repo bundles from a spec directory)",
+        True,
+        "cron:9:00",
+    ),
     "smoke_runner": (
-        "huntress",
+        "e2e-runner",
         "staging smoke runner (hits a URL on schedule)",
         False,
         "interval:1800",
     ),
-    "ops_morning": ("gordon", "ops morning (ECS + Sentry health roll-up)", False, "cron:8:00"),
+    "ops_morning": ("ops-watch", "ops morning (ECS + Sentry health roll-up)", False, "cron:8:00"),
     "automerge": ("automerge", "PR automerge (merges green, blessed PRs)", False, "interval:900"),
     "agent_cleanup": (
         "agent-cleanup",
@@ -245,6 +251,7 @@ PROMPT_TEMPLATE_BY_ROLE = {
     "ci_repair": "review-fix.md",
     "bug_triage": "bug-triage.md",
     "cross_repo_coordinator": "cross-repo-coordinator.md",
+    "spec_planner": "spec-bundle-planner.md",
     "smoke_runner": "post-deploy-smoke.md",
     "ops_morning": "ecs-monitor.md",
 }
@@ -273,16 +280,16 @@ SETUP_LABELS: list[tuple[str, str, str]] = [
 
 # Repo-operating agents that need runtime settings beyond selected repos.
 SPECIAL_PROMPTS = {
-    "batman": [
+    "architect": [
         (
             "BATMAN_PARENT_REPO",
-            "Parent issue repo Batman should read (owner/repo; blank keeps Batman idle)",
+            "Parent issue repo the architect should read (owner/repo; blank keeps it idle)",
         )
     ],
-    "huntress": [("ALFRED_HUNTRESS_TARGET_URL", "Staging URL Huntress should hit")],
-    "gordon": [
-        ("ALFRED_GORDON_ECS_CLUSTER", "ECS cluster name for Gordon"),
-        ("ALFRED_GORDON_SENTRY_ORG", "Sentry org slug for Gordon (blank to skip)"),
+    "e2e-runner": [("ALFRED_E2E_RUNNER_TARGET_URL", "Staging URL the e2e runner should hit")],
+    "ops-watch": [
+        ("ALFRED_OPS_WATCH_ECS_CLUSTER", "ECS cluster name for the ops watch"),
+        ("ALFRED_OPS_WATCH_SENTRY_ORG", "Sentry org slug for the ops watch (blank to skip)"),
     ],
 }
 
@@ -987,8 +994,13 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
         out["SLACK_WEBHOOK_SECRET_REGION"] = state.aws_region
     for role in state.enabled_roles:
         codename = state.codename_for(role)
-        default_codename = AGENT_CATALOG[role][0]
-        default_slug = default_codename.upper().replace("-", "_")
+        # Derive the per-agent env-key slug from the ACTUAL chosen codename, not
+        # the catalog default. A role's codename floats via AGENT_CODENAME_<ROLE>
+        # overrides; the runner reads ALFRED_<CHOSEN>_REPOS at boot. Keying the
+        # write off the default codename would write ALFRED_<DEFAULT>_REPOS while
+        # the runner reads ALFRED_<CHOSEN>_REPOS, so an overridden agent would
+        # boot with empty repos and silently idle ([AGENT-IDLE]).
+        codename_slug = codename.upper().replace("-", "_")
         out[f"AGENT_CODENAME_{role.upper()}"] = codename
         repos = state.role_to_repos.get(role, [])
         if repos:
@@ -999,7 +1011,7 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
                 for env_key in ROLE_REPO_ENV_KEYS[role]:
                     out[env_key] = ",".join(runtime_repos)
             else:
-                out[f"ALFRED_{default_slug}_REPOS"] = ",".join(runtime_repos)
+                out[f"ALFRED_{codename_slug}_REPOS"] = ",".join(runtime_repos)
         if role == "morning_brief":
             agents = morning_brief_agents(state)
             if agents:
@@ -1007,7 +1019,7 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
         for k, v in state.role_to_extras.get(role, {}).items():
             out[k] = v
         if state.use_aws and codename in state.aws_agent_profiles:
-            out[f"ALFRED_{default_slug}_AWS_PROFILE"] = state.aws_agent_profiles[codename]
+            out[f"ALFRED_{codename_slug}_AWS_PROFILE"] = state.aws_agent_profiles[codename]
     if "memory_auto_promote" in state.enabled_roles:
         out.update(memory_auto_promote_control_assignments(state))
     # Anonymous proof-telemetry is opt-out. New installs use Alfred's hosted
@@ -1357,10 +1369,16 @@ def step_4_aws(state: WizardState, *, non_interactive: bool) -> None:
         ok("Skipping per-agent AWS profiles.")
         return
     state.use_aws = True
-    aws_consumers = ["huntress", "gordon"]
+    # The IAM-scoped agents are the staging smoke runner and the ops-morning
+    # watch. Resolve their codenames from the catalog (via each role's chosen
+    # codename) so this list cannot drift from the canonical identity the way a
+    # hard-coded Batman-cast list ("huntress", "gordon") did after the rename.
+    aws_consumer_roles = ("smoke_runner", "ops_morning")
+    aws_consumers = [state.codename_for(role) for role in aws_consumer_roles]
+    enabled_codenames = {state.codename_for(r) for r in state.enabled_roles}
     for codename in aws_consumers:
         # Only prompt if this agent is enabled.
-        if codename not in {state.codename_for(r) for r in state.enabled_roles}:
+        if codename not in enabled_codenames:
             continue
         default_profile = f"{codename}-cron"
         profile = ask(
@@ -1941,7 +1959,7 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
     - ``slack_webhook`` (str), ``slack_storage`` (``"env"`` or
       ``"aws"``): Slack post target and credential storage.
     - ``use_aws`` (bool), ``aws_agent_profiles`` (dict): per-agent
-      AWS profile names for IAM-scoped agents (huntress, gordon).
+      AWS profile names for IAM-scoped agents (e2e-runner, ops-watch).
     - ``agents`` (list[str]): codenames or role-keys to enable.
     - ``repos`` (str | list[str]): convenience override applied to
       every repo-operating agent. For per-agent scoping use

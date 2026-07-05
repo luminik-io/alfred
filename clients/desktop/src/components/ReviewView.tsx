@@ -67,7 +67,7 @@ const SHIPPED_WINDOWS: Array<{ key: number; label: string }> = [
   { key: 14, label: "14 days" },
 ];
 
-const ROUTE_AGENT_PRIORITY = ["batman", "lucius", "drake", "damian", "bane"];
+const ROUTE_AGENT_PRIORITY = ["architect", "senior-dev", "planner", "spec-planner", "test-engineer"];
 
 type RouteCard = {
   codename: string;
@@ -88,17 +88,17 @@ type FallbackRouteSeed = {
 
 const FALLBACK_ROUTE_SEEDS: FallbackRouteSeed[] = [
   {
-    codename: "batman",
+    codename: "architect",
     purpose: "Plans and coordinates multi-repo work with approval.",
     themeAccent: "var(--primary)",
   },
   {
-    codename: "lucius",
+    codename: "senior-dev",
     purpose: "Ships scoped implementation issues as pull requests.",
     themeAccent: "var(--blue)",
   },
   {
-    codename: "drake",
+    codename: "planner",
     purpose: "Turns vague work into implementation-ready issues.",
     themeAccent: "var(--accent)",
   },

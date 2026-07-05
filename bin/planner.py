@@ -45,6 +45,7 @@ from agent_runner import (
     PreflightSpec,
     SpendState,
     agent_engine,
+    agent_repos,
     claude_invoke_streaming,
     codex_invoke,
     codex_sandbox_for_agent,
@@ -67,11 +68,14 @@ from agent_runner import (
     with_lock,
 )
 
-AGENT = os.environ.get("AGENT_CODENAME", "drake")
+AGENT = os.environ.get("AGENT_CODENAME", "planner")
 DRAKE_ENGINE = agent_engine(AGENT, default="hybrid")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 
-DRAKE_REPOS = [r.strip() for r in os.environ.get("ALFRED_DRAKE_REPOS", "").split(",") if r.strip()]
+# Keyed off the RESOLVED codename (AGENT), with the default-slug key as a legacy
+# fallback, so an operator-renamed planner reads the ALFRED_<CHOSEN>_REPOS key
+# that alfred-init wrote rather than idling.
+DRAKE_REPOS = agent_repos(AGENT, default_env="ALFRED_PLANNER_REPOS")
 
 
 def _build_state_machine_context() -> str:
@@ -140,7 +144,7 @@ def _build_state_machine_context() -> str:
 PROMPT_PATH = ALFRED_HOME / "prompts" / f"{AGENT}.md"
 DAILY_ISSUE_CAP_DEFAULT = 200
 DAILY_ISSUE_CAP = env_int(
-    "ALFRED_DRAKE_DAILY_ISSUE_CAP",
+    "ALFRED_PLANNER_DAILY_ISSUE_CAP",
     default=DAILY_ISSUE_CAP_DEFAULT,
     minimum=20,
 )
@@ -188,7 +192,7 @@ def build_prompt() -> str:
             extra_vars={
                 "AGENT_CODENAME": AGENT.title(),
                 "FEATURE_DEV_CODENAME": os.environ.get(
-                    "AGENT_CODENAME_FEATURE_DEV", "lucius"
+                    "AGENT_CODENAME_FEATURE_DEV", "senior-dev"
                 ).title(),
                 "GH_ORG": GH_ORG,
                 "ALFRED_HOME": str(ALFRED_HOME),
@@ -204,7 +208,7 @@ def main() -> int:
     with_lock(AGENT)
 
     if not DRAKE_REPOS and not doctor_requested():
-        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_DRAKE_REPOS)")
+        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_PLANNER_REPOS)")
         return 0
 
     try:
@@ -287,7 +291,7 @@ def main() -> int:
         claude_allowed_tools="Read,Bash,Grep,Glob",
         agent=AGENT,
         firing_id=events.firing_id,
-        claude_max_turns=optional_env_int("ALFRED_DRAKE_MAX_TURNS", minimum=40),
+        claude_max_turns=optional_env_int("ALFRED_PLANNER_MAX_TURNS", minimum=40),
         timeout=1800,  # 30 min cap; Drake reads + greps + creates, no compile
         codex_timeout=1800,
         codex_sandbox=codex_sandbox_for_agent(AGENT, default="workspace-write"),

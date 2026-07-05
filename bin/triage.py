@@ -23,6 +23,7 @@ from agent_runner import (
     PreflightSpec,
     SpendState,
     agent_engine,
+    agent_repos,
     claude_invoke_streaming,
     codex_invoke,
     codex_sandbox_for_agent,
@@ -44,7 +45,7 @@ from agent_runner import (
     with_lock,
 )
 
-AGENT = os.environ.get("AGENT_CODENAME", "robin")
+AGENT = os.environ.get("AGENT_CODENAME", "triage")
 ROBIN_ENGINE = agent_engine(AGENT, default="hybrid")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 
@@ -54,7 +55,9 @@ PREFLIGHT = PreflightSpec(
     require_gh_auth=True,
 )
 
-TRIAGE_REPOS = [r.strip() for r in os.environ.get("ALFRED_ROBIN_REPOS", "").split(",") if r.strip()]
+# Keyed off the RESOLVED codename (AGENT), with the default-slug key as a legacy
+# fallback, so an operator-renamed triage agent reads its ALFRED_<CHOSEN>_REPOS key.
+TRIAGE_REPOS = agent_repos(AGENT, default_env="ALFRED_TRIAGE_REPOS")
 
 # Persistent dedup ledger. The same issue can survive a label-add failure
 # (gh returns success but the label is missing on next read, eventual
@@ -62,9 +65,9 @@ TRIAGE_REPOS = [r.strip() for r in os.environ.get("ALFRED_ROBIN_REPOS", "").spli
 # ledger is the local-truth backstop. If we've touched the issue in the
 # last TOUCHED_TTL_DAYS days, skip regardless of GitHub state.
 TOUCHED_LEDGER = STATE_ROOT / AGENT / "touched.jsonl"
-TOUCHED_TTL_DAYS = int(os.environ.get("ALFRED_ROBIN_TOUCHED_TTL_DAYS", "7"))
-DAILY_TRIAGE_CAP = int(os.environ.get("ALFRED_ROBIN_DAILY_CAP", "50"))
-DAILY_TURN_CAP = int(os.environ.get("ALFRED_ROBIN_TURN_CAP", "600"))
+TOUCHED_TTL_DAYS = int(os.environ.get("ALFRED_TRIAGE_TOUCHED_TTL_DAYS", "7"))
+DAILY_TRIAGE_CAP = int(os.environ.get("ALFRED_TRIAGE_DAILY_CAP", "50"))
+DAILY_TURN_CAP = int(os.environ.get("ALFRED_TRIAGE_TURN_CAP", "600"))
 
 SEVERITY_LABELS = [
     ("severity:p0", "b60205", "Production broken / data loss / security leak"),
@@ -305,7 +308,7 @@ def main() -> int:
     with_lock(AGENT)
 
     if not TRIAGE_REPOS and not doctor_requested():
-        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_ROBIN_REPOS)")
+        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_TRIAGE_REPOS)")
         return 0
 
     try:
@@ -419,7 +422,7 @@ Output - print EXACTLY this JSON to stdout, nothing else:
         claude_allowed_tools="Read,Bash,Glob,Grep",
         agent=AGENT,
         firing_id=events.firing_id,
-        claude_max_turns=optional_env_int("ALFRED_ROBIN_MAX_TURNS", minimum=20),
+        claude_max_turns=optional_env_int("ALFRED_TRIAGE_MAX_TURNS", minimum=20),
         timeout=600,
         codex_timeout=600,
         codex_sandbox=codex_sandbox_for_agent(AGENT, default="workspace-write"),

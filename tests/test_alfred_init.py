@@ -22,6 +22,7 @@ import subprocess
 import sys
 import urllib.parse
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -55,9 +56,9 @@ def test_discover_agents_empty(tmp_path, init_mod):
 def test_discover_agents_finds_known_codenames(tmp_path, init_mod):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    (bin_dir / "lucius.py").write_text("# lucius runner\n")
-    (bin_dir / "drake.py").write_text("# drake runner\n")
-    (bin_dir / "batman.py").write_text("# batman runner\n")
+    (bin_dir / "senior-dev.py").write_text("# lucius runner\n")
+    (bin_dir / "planner.py").write_text("# drake runner\n")
+    (bin_dir / "architect.py").write_text("# batman runner\n")
     (bin_dir / "unknown.py").write_text("# not in catalog\n")
     out = init_mod.discover_agents(bin_dir)
     assert "feature_dev" in out
@@ -134,8 +135,11 @@ def _state_with(
 def test_render_agents_conf_basic(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path, roles=("feature_dev", "planner"))
     text = init_mod.render_agents_conf(state)
-    assert "alfred.lucius\tlucius.py\tinterval:1200\tno\talfred.lucius\tfeature dev" in text
-    assert "alfred.drake\tdrake.py\tinterval:7200\tno\talfred.drake\tissue planner" in text
+    assert (
+        "alfred.senior-dev\tsenior-dev.py\tinterval:1200\tno\talfred.senior-dev\tfeature dev"
+        in text
+    )
+    assert "alfred.planner\tplanner.py\tinterval:7200\tno\talfred.planner\tissue planner" in text
     # Header comment present.
     assert text.startswith("# agents.conf")
 
@@ -183,7 +187,7 @@ def test_render_agents_conf_custom_codename(init_mod, tmp_path):
         init_mod, tmp_path, roles=("feature_dev",), codenames={"feature_dev": "robin-hood"}
     )
     text = init_mod.render_agents_conf(state)
-    assert "alfred.robin-hood\tlucius.py" in text
+    assert "alfred.robin-hood\tsenior-dev.py" in text
 
 
 def test_render_agents_conf_schedules_batman_without_parent_repo(init_mod, tmp_path):
@@ -191,38 +195,39 @@ def test_render_agents_conf_schedules_batman_without_parent_repo(init_mod, tmp_p
     text = init_mod.render_agents_conf(state)
     assert "# gated until configured: batman needs BATMAN_PARENT_REPO" not in text
     assert (
-        "\nalfred.batman\tbatman.py\tinterval:3600\tno\talfred.batman\tcross-repo architect" in text
+        "\nalfred.architect\tarchitect.py\tinterval:3600\tno\talfred.architect\tcross-repo architect"
+        in text
     )
 
 
 def test_render_agents_conf_schedules_health_rows_without_env(init_mod, tmp_path, monkeypatch):
-    monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
-    monkeypatch.delenv("ALFRED_GORDON_ECS_CLUSTER", raising=False)
+    monkeypatch.delenv("ALFRED_E2E_RUNNER_TARGET_URL", raising=False)
+    monkeypatch.delenv("ALFRED_OPS_WATCH_ECS_CLUSTER", raising=False)
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner", "ops_morning"))
 
     text = init_mod.render_agents_conf(state)
 
     assert "# gated until configured:" not in text
-    assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
-    assert "\nalfred.gordon\tgordon.py\tcron:8:00" in text
+    assert "\nalfred.e2e-runner\te2e-runner.py\tinterval:1800" in text
+    assert "\nalfred.ops-watch\tops-watch.py\tcron:8:00" in text
 
 
 def test_render_agents_conf_schedules_health_rows_with_config(init_mod, tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
-    monkeypatch.delenv("ALFRED_GORDON_ECS_CLUSTER", raising=False)
+    monkeypatch.delenv("ALFRED_E2E_RUNNER_TARGET_URL", raising=False)
+    monkeypatch.delenv("ALFRED_OPS_WATCH_ECS_CLUSTER", raising=False)
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner", "ops_morning"))
     state.role_to_extras["smoke_runner"] = {
-        "ALFRED_HUNTRESS_TARGET_URL": "https://staging.example.com"
+        "ALFRED_E2E_RUNNER_TARGET_URL": "https://staging.example.com"
     }
-    state.role_to_extras["ops_morning"] = {"ALFRED_GORDON_ECS_CLUSTER": "staging"}
+    state.role_to_extras["ops_morning"] = {"ALFRED_OPS_WATCH_ECS_CLUSTER": "staging"}
 
     text = init_mod.render_agents_conf(state)
 
-    assert "#alfred.huntress" not in text
-    assert "#alfred.gordon" not in text
-    assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
-    assert "\nalfred.gordon\tgordon.py\tcron:8:00" in text
+    assert "#alfred.e2e-runner" not in text
+    assert "#alfred.ops-watch" not in text
+    assert "\nalfred.e2e-runner\te2e-runner.py\tinterval:1800" in text
+    assert "\nalfred.ops-watch\tops-watch.py\tcron:8:00" in text
 
 
 def test_render_agents_conf_schedules_batman_with_explicit_parent_repo(
@@ -234,50 +239,50 @@ def test_render_agents_conf_schedules_batman_with_explicit_parent_repo(
 
     text = init_mod.render_agents_conf(state)
 
-    assert "#alfred.batman" not in text
-    assert "\nalfred.batman\tbatman.py\tinterval:3600" in text
+    assert "#alfred.architect" not in text
+    assert "\nalfred.architect\tarchitect.py\tinterval:3600" in text
 
 
 def test_render_agents_conf_does_not_gate_health_rows_on_transient_env(
     init_mod, tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("ALFRED_HUNTRESS_TARGET_URL", "https://staging.example.com")
+    monkeypatch.setenv("ALFRED_E2E_RUNNER_TARGET_URL", "https://staging.example.com")
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
 
     text = init_mod.render_agents_conf(state)
 
     assert "# gated until configured:" not in text
-    assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
+    assert "\nalfred.e2e-runner\te2e-runner.py\tinterval:1800" in text
 
 
 def test_render_agents_conf_schedules_health_rows_with_runtime_env_file(
     init_mod, tmp_path, monkeypatch
 ):
-    monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
+    monkeypatch.delenv("ALFRED_E2E_RUNNER_TARGET_URL", raising=False)
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
     state.alfred_home.mkdir(exist_ok=True)
     (state.alfred_home / ".env").write_text(
-        "ALFRED_HUNTRESS_TARGET_URL=https://staging.example.com\n"
+        "ALFRED_E2E_RUNNER_TARGET_URL=https://staging.example.com\n"
     )
 
     text = init_mod.render_agents_conf(state)
 
-    assert "#alfred.huntress" not in text
-    assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
+    assert "#alfred.e2e-runner" not in text
+    assert "\nalfred.e2e-runner\te2e-runner.py\tinterval:1800" in text
 
 
 def test_render_agents_conf_schedules_health_rows_with_managed_env_file(
     init_mod, tmp_path, monkeypatch
 ):
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
+    monkeypatch.delenv("ALFRED_E2E_RUNNER_TARGET_URL", raising=False)
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
     state.env_file.write_text(
         "\n".join(
             [
                 "# operator settings stay above",
                 init_mod.ALFRED_ENV_BANNER,
-                "ALFRED_HUNTRESS_TARGET_URL=https://old.example.com",
+                "ALFRED_E2E_RUNNER_TARGET_URL=https://old.example.com",
                 "",
             ]
         )
@@ -286,19 +291,19 @@ def test_render_agents_conf_schedules_health_rows_with_managed_env_file(
     text = init_mod.render_agents_conf(state)
 
     assert "# gated until configured:" not in text
-    assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
+    assert "\nalfred.e2e-runner\te2e-runner.py\tinterval:1800" in text
 
 
 def test_render_agents_conf_schedules_health_rows_with_unmanaged_env_file(
     init_mod, tmp_path, monkeypatch
 ):
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
+    monkeypatch.delenv("ALFRED_E2E_RUNNER_TARGET_URL", raising=False)
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
     state.env_file.write_text(
         "\n".join(
             [
-                "ALFRED_HUNTRESS_TARGET_URL=https://handwritten.example.com",
+                "ALFRED_E2E_RUNNER_TARGET_URL=https://handwritten.example.com",
                 init_mod.ALFRED_ENV_BANNER,
                 "",
             ]
@@ -307,8 +312,8 @@ def test_render_agents_conf_schedules_health_rows_with_unmanaged_env_file(
 
     text = init_mod.render_agents_conf(state)
 
-    assert "#alfred.huntress" not in text
-    assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
+    assert "#alfred.e2e-runner" not in text
+    assert "\nalfred.e2e-runner\te2e-runner.py\tinterval:1800" in text
 
 
 def test_render_agents_conf_schedules_health_rows_with_custom_env_file(
@@ -317,17 +322,17 @@ def test_render_agents_conf_schedules_health_rows_with_custom_env_file(
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
-    monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
+    monkeypatch.delenv("ALFRED_E2E_RUNNER_TARGET_URL", raising=False)
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
     state.env_file = tmp_path / "override.env"
     state.role_to_extras["smoke_runner"] = {
-        "ALFRED_HUNTRESS_TARGET_URL": "https://staging.example.com"
+        "ALFRED_E2E_RUNNER_TARGET_URL": "https://staging.example.com"
     }
 
     text = init_mod.render_agents_conf(state)
 
     assert "# gated until configured:" not in text
-    assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
+    assert "\nalfred.e2e-runner\te2e-runner.py\tinterval:1800" in text
 
 
 def test_step_7_repos_preserves_managed_special_prompt_defaults(init_mod, tmp_path, monkeypatch):
@@ -338,9 +343,9 @@ def test_step_7_repos_preserves_managed_special_prompt_defaults(init_mod, tmp_pa
             [
                 "# operator-owned settings",
                 init_mod.ALFRED_ENV_BANNER,
-                "ALFRED_HUNTRESS_TARGET_URL=https://staging.example.com",
-                "ALFRED_GORDON_ECS_CLUSTER=staging",
-                "ALFRED_GORDON_SENTRY_ORG=acme",
+                "ALFRED_E2E_RUNNER_TARGET_URL=https://staging.example.com",
+                "ALFRED_OPS_WATCH_ECS_CLUSTER=staging",
+                "ALFRED_OPS_WATCH_SENTRY_ORG=acme",
                 "",
             ]
         )
@@ -349,15 +354,15 @@ def test_step_7_repos_preserves_managed_special_prompt_defaults(init_mod, tmp_pa
     init_mod.step_7_repos(state, repos_arg=None, non_interactive=True)
 
     assert state.role_to_extras["smoke_runner"] == {
-        "ALFRED_HUNTRESS_TARGET_URL": "https://staging.example.com"
+        "ALFRED_E2E_RUNNER_TARGET_URL": "https://staging.example.com"
     }
     assert state.role_to_extras["ops_morning"] == {
-        "ALFRED_GORDON_ECS_CLUSTER": "staging",
-        "ALFRED_GORDON_SENTRY_ORG": "acme",
+        "ALFRED_OPS_WATCH_ECS_CLUSTER": "staging",
+        "ALFRED_OPS_WATCH_SENTRY_ORG": "acme",
     }
     text = init_mod.render_agents_conf(state)
-    assert "#alfred.huntress" not in text
-    assert "#alfred.gordon" not in text
+    assert "#alfred.e2e-runner" not in text
+    assert "#alfred.ops-watch" not in text
 
 
 def test_step_7_repos_keeps_config_special_prompt_over_managed_default(
@@ -365,12 +370,14 @@ def test_step_7_repos_keeps_config_special_prompt_over_managed_default(
 ):
     monkeypatch.setenv("HOME", str(tmp_path))
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
-    state.role_to_extras["smoke_runner"] = {"ALFRED_HUNTRESS_TARGET_URL": "https://new.example.com"}
+    state.role_to_extras["smoke_runner"] = {
+        "ALFRED_E2E_RUNNER_TARGET_URL": "https://new.example.com"
+    }
     state.env_file.write_text(
         "\n".join(
             [
                 init_mod.ALFRED_ENV_BANNER,
-                "ALFRED_HUNTRESS_TARGET_URL=https://old.example.com",
+                "ALFRED_E2E_RUNNER_TARGET_URL=https://old.example.com",
                 "",
             ]
         )
@@ -379,7 +386,7 @@ def test_step_7_repos_keeps_config_special_prompt_over_managed_default(
     init_mod.step_7_repos(state, repos_arg=None, non_interactive=True)
 
     assert state.role_to_extras["smoke_runner"] == {
-        "ALFRED_HUNTRESS_TARGET_URL": "https://new.example.com"
+        "ALFRED_E2E_RUNNER_TARGET_URL": "https://new.example.com"
     }
 
 
@@ -466,8 +473,30 @@ def test_env_assignments_includes_codenames_and_repos(init_mod, tmp_path):
     )
     out = init_mod.env_assignments_for(state)
     assert out["GH_ORG"] == "acme"
-    assert out["AGENT_CODENAME_FEATURE_DEV"] == "lucius"
-    assert out["ALFRED_LUCIUS_REPOS"] == "foo,bar"
+    assert out["AGENT_CODENAME_FEATURE_DEV"] == "senior-dev"
+    assert out["ALFRED_SENIOR_DEV_REPOS"] == "foo,bar"
+
+
+def test_env_assignments_repos_key_follows_overridden_codename(init_mod, tmp_path):
+    # An operator can override a role's codename (role_to_codename / the
+    # AGENT_CODENAME_<ROLE> config). The runner reads its repo scope from
+    # ALFRED_<RESOLVED_CODENAME>_REPOS (agent_runner.agent_repos keys off the
+    # resolved AGENT_CODENAME). So the wizard MUST write the repo scope to that
+    # same overridden-codename key, not the catalog default; keying the write to
+    # the default would leave the renamed agent with no repos and it would idle.
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("feature_dev",),
+        codenames={"feature_dev": "oracle"},
+        repos={"feature_dev": ["acme/foo"]},
+    )
+    out = init_mod.env_assignments_for(state)
+    assert out["AGENT_CODENAME_FEATURE_DEV"] == "oracle"
+    # Written to the chosen-codename key the runner will read.
+    assert out["ALFRED_ORACLE_REPOS"] == "foo"
+    # NOT written to the catalog-default key (that would strand the agent).
+    assert "ALFRED_SENIOR_DEV_REPOS" not in out
 
 
 def test_env_assignments_batman_requires_explicit_parent_repo(init_mod, tmp_path):
@@ -478,7 +507,7 @@ def test_env_assignments_batman_requires_explicit_parent_repo(init_mod, tmp_path
         repos={"cross_repo_coordinator": ["acme/api", "acme/web"]},
     )
     out = init_mod.env_assignments_for(state)
-    assert out["AGENT_CODENAME_CROSS_REPO_COORDINATOR"] == "batman"
+    assert out["AGENT_CODENAME_CROSS_REPO_COORDINATOR"] == "architect"
     assert "BATMAN_PARENT_REPO" not in out
     assert out["BATMAN_ROLLOUT_ORDER"] == "api,web"
     removed_scan_key = "BATMAN" + "_SCAN_REPOS"
@@ -571,7 +600,9 @@ def test_env_assignments_wires_repo_scoped_utility_agents(init_mod, tmp_path):
 
     assert out["ALFRED_AUTOMERGE_REPOS"] == "api,web"
     assert out["ALFRED_MORNING_BRIEF_REPOS"] == "api,web"
-    assert out["ALFRED_MORNING_BRIEF_AGENTS"] == "lucius,automerge,agent-cleanup,code-map-refresh"
+    assert (
+        out["ALFRED_MORNING_BRIEF_AGENTS"] == "senior-dev,automerge,agent-cleanup,code-map-refresh"
+    )
     assert out["ALFRED_SHIPPED_SUMMARY_DAILY_REPOS"] == "api,web"
     assert out["ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS"] == "mobile"
     assert "ALFRED_SHIPPED_SUMMARY_REPOS" not in out
@@ -599,9 +630,37 @@ def test_env_assignments_slack_aws(init_mod, tmp_path):
 def test_env_assignments_aws_profile_per_agent(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
     state.use_aws = True
-    state.aws_agent_profiles = {"huntress": "acme-cron"}
+    state.aws_agent_profiles = {"e2e-runner": "acme-cron"}
     out = init_mod.env_assignments_for(state)
-    assert out["ALFRED_HUNTRESS_AWS_PROFILE"] == "acme-cron"
+    assert out["ALFRED_E2E_RUNNER_AWS_PROFILE"] == "acme-cron"
+
+
+def test_step_4_aws_prompts_for_renamed_slug_consumers(init_mod, tmp_path, monkeypatch):
+    # After the rename the IAM-scoped agents are e2e-runner and ops-watch (was
+    # huntress and gordon). step_4_aws must prompt for the CURRENT codenames, or
+    # env_assignments_for never gets a profile to emit and AWS-backed checks fall
+    # back to ambient credentials.
+    state = _state_with(init_mod, tmp_path, roles=("smoke_runner", "ops_morning"))
+
+    monkeypatch.setattr(init_mod, "ask_yes_no", lambda *a, **k: True)
+    monkeypatch.setattr(init_mod, "ask", lambda prompt, default, **k: default)
+    monkeypatch.setattr(
+        init_mod,
+        "run",
+        lambda *a, **k: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+
+    init_mod.step_4_aws(state, non_interactive=True)
+
+    assert state.use_aws is True
+    # Both renamed slugs are prompted and recorded (with the default profile).
+    assert state.aws_agent_profiles == {
+        "e2e-runner": "e2e-runner-cron",
+        "ops-watch": "ops-watch-cron",
+    }
+    # And the old Batman-cast codenames are NOT used.
+    assert "huntress" not in state.aws_agent_profiles
+    assert "gordon" not in state.aws_agent_profiles
 
 
 def test_env_assignments_preserve_memory_auto_promote_stop_controls(init_mod, tmp_path):
@@ -982,7 +1041,7 @@ def test_upsert_env_file_preserves_later_runtime_blocks(tmp_path, init_mod):
         "OPERATOR_NAME=Prasad\n\n"
         f"{init_mod.ALFRED_ENV_BANNER}\n"
         "GH_ORG=old-org\n"
-        "ALFRED_LUCIUS_REPOS=old-org/api\n"
+        "ALFRED_SENIOR_DEV_REPOS=old-org/api\n"
         "CLAUDE_CODE_OAUTH_TOKEN=runtime-token-for-test\n"
         "# alfred-batman-setup, generated below this line. Safe to re-run.\n"
         "BATMAN_PARENT_REPO=old-org/specs\n",
@@ -993,15 +1052,15 @@ def test_upsert_env_file_preserves_later_runtime_blocks(tmp_path, init_mod):
         rc,
         {
             "GH_ORG": "new-org",
-            "ALFRED_LUCIUS_REPOS": "new-org/api",
+            "ALFRED_SENIOR_DEV_REPOS": "new-org/api",
         },
     )
 
     text = rc.read_text(encoding="utf-8")
     assert "GH_ORG=old-org" not in text
-    assert "ALFRED_LUCIUS_REPOS=old-org/api" not in text
+    assert "ALFRED_SENIOR_DEV_REPOS=old-org/api" not in text
     assert "GH_ORG=new-org" in text
-    assert "ALFRED_LUCIUS_REPOS=new-org/api" in text
+    assert "ALFRED_SENIOR_DEV_REPOS=new-org/api" in text
     assert "CLAUDE_CODE_OAUTH_TOKEN=runtime-token-for-test" in text
     assert "alfred-batman-setup, generated" in text
     assert "BATMAN_PARENT_REPO=old-org/specs" in text
@@ -1133,7 +1192,7 @@ def test_slack_webhook_regex_rejects_other(init_mod):
 
 
 def test_codename_regex(init_mod):
-    assert init_mod.CODENAME_RE.match("lucius")
+    assert init_mod.CODENAME_RE.match("senior-dev")
     assert init_mod.CODENAME_RE.match("agent-cleanup")
     assert init_mod.CODENAME_RE.match("a1")
     assert not init_mod.CODENAME_RE.match("Lucius")
@@ -1149,9 +1208,9 @@ def test_codename_regex(init_mod):
 
 def test_load_config_round_trip(tmp_path, init_mod):
     cfg = tmp_path / "answers.json"
-    cfg.write_text('{"gh_org": "acme", "agents": ["lucius"]}')
+    cfg.write_text('{"gh_org": "acme", "agents": ["senior-dev"]}')
     loaded = init_mod.load_config(cfg)
-    assert loaded == {"gh_org": "acme", "agents": ["lucius"]}
+    assert loaded == {"gh_org": "acme", "agents": ["senior-dev"]}
 
 
 def test_apply_config_overrides(init_mod, tmp_path):
@@ -1167,14 +1226,14 @@ def test_apply_config_overrides(init_mod, tmp_path):
             "slack_webhook": "https://hooks.slack.com/services/X/Y/Z",
             "slack_storage": "aws",
             "use_aws": True,
-            "aws_agent_profiles": {"huntress": "acme-cron"},
-            "agents": ["lucius", "drake"],
+            "aws_agent_profiles": {"e2e-runner": "acme-cron"},
+            "agents": ["senior-dev", "planner"],
         },
     )
     assert state.gh_org == "acme"
     assert state.slack_storage == "aws"
     assert state.use_aws is True
-    assert state.aws_agent_profiles == {"huntress": "acme-cron"}
+    assert state.aws_agent_profiles == {"e2e-runner": "acme-cron"}
     assert "feature_dev" in state.enabled_roles
     assert "planner" in state.enabled_roles
 
@@ -1189,10 +1248,10 @@ def test_apply_config_overrides_role_repos_by_codename_and_role_key(init_mod, tm
         state,
         {
             "role_repos": {
-                "lucius": ["acme/api", "acme/web"],
+                "senior-dev": ["acme/api", "acme/web"],
                 "feature_dev": ["acme/api", "acme/web"],  # role-key alias for the same role
-                "drake": "acme/api",  # string singleton is accepted
-                "BANE": ["acme/api"],  # case-insensitive
+                "planner": "acme/api",  # string singleton is accepted
+                "TEST-ENGINEER": ["acme/api"],  # case-insensitive
             },
         },
     )
@@ -1211,7 +1270,7 @@ def test_apply_config_overrides_role_codename_and_schedule(init_mod, tmp_path):
         state,
         {
             "role_codename": {"feature_dev": "implementer"},
-            "role_schedule": {"lucius": "interval:1800", "drake": "cron:7:30"},
+            "role_schedule": {"senior-dev": "interval:1800", "planner": "cron:7:30"},
         },
     )
     assert state.role_to_codename["feature_dev"] == "implementer"
@@ -1230,20 +1289,20 @@ def test_apply_config_overrides_role_extras(init_mod, tmp_path):
         state,
         {
             "role_extras": {
-                "huntress": {
-                    "ALFRED_HUNTRESS_TARGET_URL": "https://staging.example.com",
+                "e2e-runner": {
+                    "ALFRED_E2E_RUNNER_TARGET_URL": "https://staging.example.com",
                 },
                 "ops_morning": {
-                    "ALFRED_GORDON_ECS_CLUSTER": "staging",
+                    "ALFRED_OPS_WATCH_ECS_CLUSTER": "staging",
                 },
             },
         },
     )
 
     assert state.role_to_extras["smoke_runner"] == {
-        "ALFRED_HUNTRESS_TARGET_URL": "https://staging.example.com",
+        "ALFRED_E2E_RUNNER_TARGET_URL": "https://staging.example.com",
     }
-    assert state.role_to_extras["ops_morning"] == {"ALFRED_GORDON_ECS_CLUSTER": "staging"}
+    assert state.role_to_extras["ops_morning"] == {"ALFRED_OPS_WATCH_ECS_CLUSTER": "staging"}
 
 
 def test_apply_config_overrides_ignores_unknown_agent_keys(init_mod, tmp_path, capsys):
@@ -1331,7 +1390,7 @@ def test_step_6_codenames_preserves_config_overrides(init_mod, tmp_path):
     state.role_to_codename["feature_dev"] = "implementer"
     init_mod.step_6_codenames(state, non_interactive=True)
     assert state.role_to_codename["feature_dev"] == "implementer"
-    assert state.role_to_codename["planner"] == "drake"  # default fill
+    assert state.role_to_codename["planner"] == "planner"  # default fill
 
 
 def test_step_6_codenames_fails_on_config_collision(init_mod, tmp_path):
@@ -1341,8 +1400,8 @@ def test_step_6_codenames_fails_on_config_collision(init_mod, tmp_path):
         repo_root=tmp_path,
     )
     state.enabled_roles = ["feature_dev", "planner"]
-    state.role_to_codename["feature_dev"] = "drake"
-    state.role_to_codename["planner"] = "drake"  # collision with feature_dev
+    state.role_to_codename["feature_dev"] = "planner"
+    state.role_to_codename["planner"] = "planner"  # collision with feature_dev
     with pytest.raises(SystemExit):
         init_mod.step_6_codenames(state, non_interactive=True)
 
@@ -1397,14 +1456,14 @@ def test_pick_agents_lists_gated_marker(init_mod, tmp_path, capsys):
     assert "(gated)" in out, "Expected `(gated)` marker in the agent picker output"
     # Marker must sit on Batman's line and NOT on a starter line.
     batman_line = next(
-        (line for line in out.splitlines() if "batman" in line and "(gated)" in line),
+        (line for line in out.splitlines() if "architect" in line and "(gated)" in line),
         "",
     )
     assert batman_line, "Expected the (gated) marker on Batman's row specifically"
     starter_lines = [
         line
         for line in out.splitlines()
-        if any(name in line for name in ("lucius", "drake", "rasalghul"))
+        if any(name in line for name in ("senior-dev", "planner", "reviewer"))
     ]
     assert starter_lines, "Expected at least one starter agent row in the output"
     for line in starter_lines:
@@ -1490,7 +1549,7 @@ def test_noninteractive_single_repo_starter_main(monkeypatch, tmp_path, init_mod
     prompts_dir = repo_root / "prompts"
     bin_dir.mkdir(parents=True)
     prompts_dir.mkdir()
-    for name in ["lucius.py", "drake.py", "rasalghul.py", "agent-cleanup.py"]:
+    for name in ["senior-dev.py", "planner.py", "reviewer.py", "agent-cleanup.py"]:
         (bin_dir / name).write_text("# runner\n")
     for name in ["feature-dev.md", "planner.md", "code-review.md"]:
         (prompts_dir / name).write_text(f"{name} template\n")
@@ -1551,13 +1610,13 @@ def test_noninteractive_single_repo_starter_main(monkeypatch, tmp_path, init_mod
 
     assert rc == 0
     generated_rc = env_file.read_text()
-    assert "ALFRED_LUCIUS_REPOS=palette\n" in generated_rc
-    assert "ALFRED_DRAKE_REPOS=palette\n" in generated_rc
-    assert "ALFRED_RASALGHUL_REPOS=palette\n" in generated_rc
+    assert "ALFRED_SENIOR_DEV_REPOS=palette\n" in generated_rc
+    assert "ALFRED_PLANNER_REPOS=palette\n" in generated_rc
+    assert "ALFRED_REVIEWER_REPOS=palette\n" in generated_rc
     assert "acme/palette" in set(label_repos)
-    assert (alfred_home / "prompts" / "lucius.md").exists()
-    assert (alfred_home / "prompts" / "drake.md").exists()
-    assert (alfred_home / "prompts" / "rasalghul.md").exists()
+    assert (alfred_home / "prompts" / "senior-dev.md").exists()
+    assert (alfred_home / "prompts" / "planner.md").exists()
+    assert (alfred_home / "prompts" / "reviewer.md").exists()
     assert any(cmd[0] == "bash" and cmd[1].endswith("deploy.sh") for cmd in subprocesses)
     assert any(cmd[0] == "bash" and cmd[1].endswith("doctor.sh") for cmd in subprocesses)
 
@@ -1568,7 +1627,7 @@ def test_seed_runtime_roster_writes_runtime_config_without_auth(monkeypatch, tmp
     prompts_dir = repo_root / "prompts"
     bin_dir.mkdir(parents=True)
     prompts_dir.mkdir()
-    for name in ["lucius.py", "drake.py", "bane.py", "batman.py", "nightwing.py"]:
+    for name in ["senior-dev.py", "planner.py", "test-engineer.py", "architect.py", "fixer.py"]:
         (bin_dir / name).write_text("# runner\n")
     for name in [
         "feature-dev.md",
@@ -1610,21 +1669,21 @@ def test_seed_runtime_roster_writes_runtime_config_without_auth(monkeypatch, tmp
     assert rc == 0
     runtime_conf = alfred_home / "launchd" / "agents.conf"
     conf = runtime_conf.read_text()
-    assert "alfred.lucius\tlucius.py" in conf
-    assert "alfred.drake\tdrake.py" in conf
-    assert "alfred.bane\tbane.py" in conf
-    assert "alfred.batman\tbatman.py" in conf
-    assert "alfred.nightwing\tnightwing.py" in conf
+    assert "alfred.senior-dev\tsenior-dev.py" in conf
+    assert "alfred.planner\tplanner.py" in conf
+    assert "alfred.test-engineer\ttest-engineer.py" in conf
+    assert "alfred.architect\tarchitect.py" in conf
+    assert "alfred.fixer\tfixer.py" in conf
     assert "proof-telemetry" not in conf
     assert not (repo_root / "launchd" / "agents.conf").exists()
 
     env_text = env_file.read_text()
-    assert "AGENT_CODENAME_FEATURE_DEV=lucius\n" in env_text
-    assert "AGENT_CODENAME_CROSS_REPO_COORDINATOR=batman\n" in env_text
-    assert "ALFRED_LUCIUS_REPOS" not in env_text
+    assert "AGENT_CODENAME_FEATURE_DEV=senior-dev\n" in env_text
+    assert "AGENT_CODENAME_CROSS_REPO_COORDINATOR=architect\n" in env_text
+    assert "ALFRED_SENIOR_DEV_REPOS" not in env_text
     assert "ALFRED_TELEMETRY_URL" not in env_text
-    assert (alfred_home / "prompts" / "lucius.md").exists()
-    assert (alfred_home / "prompts" / "batman.md").exists()
+    assert (alfred_home / "prompts" / "senior-dev.md").exists()
+    assert (alfred_home / "prompts" / "architect.md").exists()
 
 
 def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
@@ -1635,7 +1694,7 @@ def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
     prompts_dir = repo_root / "prompts"
     bin_dir.mkdir(parents=True)
     prompts_dir.mkdir()
-    for name in ["lucius.py", "drake.py", "batman.py"]:
+    for name in ["senior-dev.py", "planner.py", "architect.py"]:
         (bin_dir / name).write_text("# runner\n")
     for name in ["feature-dev.md", "planner.md", "cross-repo-coordinator.md"]:
         (prompts_dir / name).write_text(f"{name} template\n")
@@ -1652,8 +1711,8 @@ def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
                 "SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T000/B000/token",
                 "ALFRED_TELEMETRY_ENABLED=1",
                 "ALFRED_TELEMETRY_URL=https://telemetry.example/ingest",
-                "ALFRED_LUCIUS_REPOS=api",
-                "ALFRED_DRAKE_REPOS=api",
+                "ALFRED_SENIOR_DEV_REPOS=api",
+                "ALFRED_PLANNER_REPOS=api",
                 "AGENT_CODENAME_FEATURE_DEV=fox",
                 "",
             ]
@@ -1692,17 +1751,17 @@ def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
     assert "SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T000/B000/token\n" in env_text
     assert "ALFRED_TELEMETRY_ENABLED=1\n" in env_text
     assert "ALFRED_TELEMETRY_URL=https://telemetry.example/ingest\n" in env_text
-    assert "ALFRED_LUCIUS_REPOS=api\n" in env_text
-    assert "ALFRED_DRAKE_REPOS=api\n" in env_text
+    assert "ALFRED_SENIOR_DEV_REPOS=api\n" in env_text
+    assert "ALFRED_PLANNER_REPOS=api\n" in env_text
     assert "AGENT_CODENAME_FEATURE_DEV=fox\n" in env_text
-    assert "AGENT_CODENAME_CROSS_REPO_COORDINATOR=batman\n" in env_text
+    assert "AGENT_CODENAME_CROSS_REPO_COORDINATOR=architect\n" in env_text
 
     conf = (alfred_home / "launchd" / "agents.conf").read_text()
-    assert "alfred.fox\tlucius.py" in conf
-    assert "alfred.lucius\tlucius.py" not in conf
+    assert "alfred.fox\tsenior-dev.py" in conf
+    assert "alfred.senior-dev\tsenior-dev.py" not in conf
     assert "alfred.proof-telemetry\tproof-telemetry.py" in conf
     assert (alfred_home / "prompts" / "fox.md").exists()
-    assert not (alfred_home / "prompts" / "lucius.md").exists()
+    assert not (alfred_home / "prompts" / "senior-dev.md").exists()
 
 
 def test_starter_roles_and_agents_arg(init_mod):
@@ -1731,12 +1790,12 @@ def test_starter_roles_and_agents_arg(init_mod):
     assert init_mod.roles_from_agents_arg("recommended", available) == available
     assert init_mod.roles_from_agents_arg("starter", available) == init_mod.starter_roles(available)
     assert init_mod.roles_from_agents_arg("all", available) == available
-    assert init_mod.roles_from_agents_arg("recommended,lucius", available) == ["feature_dev"]
-    assert init_mod.roles_from_agents_arg("batman,lucius", available) == [
+    assert init_mod.roles_from_agents_arg("recommended,senior-dev", available) == ["feature_dev"]
+    assert init_mod.roles_from_agents_arg("architect,senior-dev", available) == [
         "feature_dev",
         "cross_repo_coordinator",
     ]
-    assert init_mod.roles_from_agents_arg("starter,batman", available) == [
+    assert init_mod.roles_from_agents_arg("starter,architect", available) == [
         "planner",
         "feature_dev",
         "pr_review",
@@ -1758,7 +1817,7 @@ def test_seed_prompt_templates_does_not_overwrite(init_mod, tmp_path):
     )
     state.enabled_roles = ["planner"]
     created = init_mod.seed_prompt_templates(state)
-    assert created == [tmp_path / "alfred" / "prompts" / "drake.md"]
+    assert created == [tmp_path / "alfred" / "prompts" / "planner.md"]
     assert created[0].read_text() == "planner template\n"
     created[0].write_text("custom\n")
     assert init_mod.seed_prompt_templates(state) == []

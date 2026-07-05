@@ -257,11 +257,12 @@ function repoShortName(repo: string): string {
   return slash >= 0 ? repo.slice(slash + 1) : repo;
 }
 
-// The canonical CODENAME behind a shipped card, detected from the author,
-// labels, and agent evidence. Returns the codename (e.g. "lucius"), NOT a themed
-// display name, so the Shipped lane resolves the visible name through the active
-// roster theme the same way the Work board and Roster page do. Kept in lockstep
-// with chips.agentForShipped.
+// The canonical CODENAME SLUG behind a shipped card, detected from the author,
+// labels, and agent evidence. Returns the codename slug (e.g. "senior-dev"), NOT
+// a themed display name, so the Shipped lane resolves the visible name through
+// the active roster theme the same way the Work board and Roster page do. The
+// Batman-cast names still appear in author/evidence tokens, so they are matched
+// but mapped to the canonical slug. Kept in lockstep with chips.agentForShipped.
 export function shippedAgentCodename(card: ShippedCard): string | null {
   const tokens = [
     card.author || "",
@@ -269,17 +270,44 @@ export function shippedAgentCodename(card: ShippedCard): string | null {
     ...(card.agent_evidence || []),
   ].map((token) => token.toLowerCase());
 
-  if (tokens.some((token) => token.includes("batman") || token.includes("agent:large-feature"))) {
-    return "batman";
+  if (
+    tokens.some(
+      (token) =>
+        token.includes("batman") ||
+        token.includes("architect") ||
+        token.includes("agent:large-feature"),
+    )
+  ) {
+    return "architect";
   }
-  if (tokens.some((token) => token.includes("lucius") || token.includes("agent:implement"))) {
-    return "lucius";
+  if (
+    tokens.some(
+      (token) =>
+        token.includes("lucius") ||
+        token.includes("senior-dev") ||
+        token.includes("agent:implement"),
+    )
+  ) {
+    return "senior-dev";
   }
-  if (tokens.some((token) => token.includes("nightwing"))) return "nightwing";
-  if (tokens.some((token) => token.includes("damian"))) return "damian";
-  if (tokens.some((token) => token.includes("bane"))) return "bane";
-  if (tokens.some((token) => token.includes("rasalghul") || token.includes("ra's al ghul"))) {
-    return "rasalghul";
+  if (tokens.some((token) => token.includes("nightwing") || token.includes("fixer"))) {
+    return "fixer";
+  }
+  if (tokens.some((token) => token.includes("damian") || token.includes("spec-planner"))) {
+    return "spec-planner";
+  }
+  if (tokens.some((token) => token.includes("bane") || token.includes("test-engineer"))) {
+    return "test-engineer";
+  }
+  if (
+    tokens.some(
+      (token) =>
+        token.includes("rasalghul") ||
+        token.includes("ra's al ghul") ||
+        token.includes("reviewer"),
+    )
+  ) {
+    return "reviewer";
   }
   return null;
 }
@@ -515,15 +543,15 @@ export function buildActiveThreads(board: ShippedBoard | null, limit = 6): Reque
   return cards.slice(0, limit).map((card) => threadForCard(card, board));
 }
 
-// A plan is a genuine go/no-go decision only when Batman is awaiting a sign-off
-// on it. That is exactly `source === "batman"`: those are the plans posted for
-// approval (Slack reaction or the in-app approve/decline). Compose working
-// drafts (`source` "compose"/"planning") and stale Slack follow-ups
+// A plan is a genuine go/no-go decision only when the architect is awaiting a
+// sign-off on it. That is exactly `source === "architect"`: those are the plans
+// posted for approval (Slack reaction or the in-app approve/decline). Compose
+// working drafts (`source` "compose"/"planning") and stale Slack follow-ups
 // (`source === "followup"`) are NOT decisions waiting on the operator before
 // work starts, so they must not inflate the Needs-you count. A plan whose
 // status already reads approved/declined has been decided and drops out too.
 export function planNeedsAttention(plan: PlanDraft): boolean {
-  if (plan.source !== "batman") return false;
+  if (plan.source !== "architect") return false;
   const status = plan.status.toLowerCase();
   if (status.includes("approved") || status.includes("declined")) return false;
   return (

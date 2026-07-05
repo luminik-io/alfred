@@ -38,6 +38,7 @@ from agent_runner import (
     PreflightSpec,
     SpendState,
     agent_engine,
+    agent_repos,
     claude_invoke_streaming,
     codex_invoke,
     codex_sandbox_for_agent,
@@ -64,12 +65,14 @@ from agent_runner import (
 )
 from workflow_validation import validate_changed_workflows
 
-AGENT = os.environ.get("AGENT_CODENAME", "bane")
+AGENT = os.environ.get("AGENT_CODENAME", "test-engineer")
 BANE_ENGINE = agent_engine(AGENT, default="hybrid")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 LAST_REPO_FILE = STATE_ROOT / AGENT / "last-repo.txt"
 
-ROTATION = [r.strip() for r in os.environ.get("ALFRED_BANE_REPOS", "").split(",") if r.strip()]
+# Keyed off the RESOLVED codename (AGENT), with the default-slug key as a legacy
+# fallback, so an operator-renamed test-engineer reads its ALFRED_<CHOSEN>_REPOS key.
+ROTATION = agent_repos(AGENT, default_env="ALFRED_TEST_ENGINEER_REPOS")
 
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
@@ -198,7 +201,7 @@ def main() -> int:
     with_lock(AGENT)
 
     if not ROTATION and not doctor_requested():
-        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_BANE_REPOS)")
+        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_TEST_ENGINEER_REPOS)")
         return 0
 
     try:
@@ -268,7 +271,7 @@ def main() -> int:
         claude_allowed_tools="Read,Edit,Write,Bash,Grep",
         agent=AGENT,
         firing_id=events.firing_id,
-        claude_max_turns=optional_env_int("ALFRED_BANE_MAX_TURNS", minimum=40),
+        claude_max_turns=optional_env_int("ALFRED_TEST_ENGINEER_MAX_TURNS", minimum=40),
         timeout=1200,
         codex_timeout=1200,
         codex_sandbox=codex_sandbox_for_agent(AGENT, default="workspace-write"),

@@ -9,12 +9,12 @@ def _source(name: str) -> str:
 
 def test_codex_builder_agents_with_gh_or_worktree_access_bypass_sandbox() -> None:
     """Codex sandboxing cannot read the macOS keychain-backed gh auth reliably."""
-    for name in ("bane.py", "drake.py", "lucius.py", "nightwing.py", "robin.py"):
+    for name in ("test-engineer.py", "planner.py", "senior-dev.py", "fixer.py", "triage.py"):
         assert "codex_bypass_approvals_and_sandbox=True" in _source(name)
 
 
 def test_rasalghul_codex_fallback_stays_read_only() -> None:
-    source = _source("rasalghul.py")
+    source = _source("reviewer.py")
     assert 'codex_sandbox="read-only"' in source
     assert "codex_bypass_approvals_and_sandbox=True" not in source
 
@@ -23,5 +23,5 @@ def test_lucius_grants_codex_source_gitdir_for_worktree_commits() -> None:
     """Lucius hands Codex the source repo's .git dir so it can commit from a
     worktree. The slug-to-local mapping (``local_repo_dir``) is consulted so
     multi-repo fleets with slug-vs-dir-name mismatches resolve correctly."""
-    source = _source("lucius.py")
+    source = _source("senior-dev.py")
     assert 'codex_add_dirs=[(WORKSPACE / local_repo_dir(repo) / ".git").resolve()]' in source

@@ -592,7 +592,7 @@ def test_followup_assignment_preserves_named_target_agent(tmp_path: Path, monkey
     )
     assert confirmed.handled is True
     assert confirmed.action == "intent_assign_issue"
-    assert calls == [{"repo": "acme-io/acme-backend", "number": 4, "target_agent": "batman"}]
+    assert calls == [{"repo": "acme-io/acme-backend", "number": 4, "target_agent": "architect"}]
 
 
 def test_followup_without_prior_target_still_clarifies(tmp_path: Path, monkeypatch) -> None:
@@ -836,7 +836,7 @@ def test_conversational_dry_run_executes_directly(tmp_path: Path, monkeypatch) -
 
     assert result.handled is True
     assert result.action == "intent_dry_run_agent"
-    assert control.calls == ["dry-run lucius"]
+    assert control.calls == ["dry-run senior-dev"]
     assert "I ran the dry-run" in poster.messages[-1]["text"]
 
 
@@ -875,7 +875,7 @@ def test_conversational_dry_run_failure_does_not_claim_success(tmp_path: Path, m
 
     assert result.handled is True
     assert result.action == "intent_dry_run_agent_failed"
-    assert control.calls == ["dry-run lucius"]
+    assert control.calls == ["dry-run senior-dev"]
     assert "Dry-run failed" in poster.messages[-1]["text"]
     assert "I ran the dry-run" not in poster.messages[-1]["text"]
 
@@ -914,7 +914,7 @@ def test_conversational_run_posts_confirmation_then_executes(tmp_path: Path, mon
     assert control.calls == []
     card = json.dumps(poster.messages[-1]["blocks"])
     assert "trigger" in card
-    assert "`batman`" in card
+    assert "`architect`" in card
 
     confirmed = listener.handle_payload(
         _reaction(
@@ -927,7 +927,7 @@ def test_conversational_run_posts_confirmation_then_executes(tmp_path: Path, mon
 
     assert confirmed.handled is True
     assert confirmed.action == "intent_run_agent"
-    assert control.calls == ["run batman"]
+    assert control.calls == ["run architect"]
     assert "Triggered" in poster.messages[-1]["text"]
 
 
@@ -981,7 +981,7 @@ def test_confirmed_agent_command_failure_marks_thread_failed(tmp_path: Path, mon
 
     assert confirmed.handled is True
     assert confirmed.action == "intent_run_agent_failed"
-    assert control.calls == ["run batman"]
+    assert control.calls == ["run architect"]
     assert "Could not run" in poster.messages[-1]["text"]
     record = SlackThreadRegistry(tmp_path / "slack-threads").lookup("D1", poster.card_ts())
     assert record is not None
@@ -1029,7 +1029,7 @@ def test_conversational_schedule_posts_confirmation_then_executes(
     assert control.calls == []
     card = json.dumps(poster.messages[-1]["blocks"])
     assert "reschedule" in card
-    assert "`lucius -> 20m`" in card
+    assert "`senior-dev -> 20m`" in card
 
     confirmed = listener.handle_payload(
         _reaction(
@@ -1041,7 +1041,7 @@ def test_conversational_schedule_posts_confirmation_then_executes(
     )
 
     assert confirmed.action == "intent_schedule_agent"
-    assert control.calls == ["schedule set lucius 20m"]
+    assert control.calls == ["schedule set senior-dev 20m"]
     assert "updated lucius" in poster.messages[-1]["text"]
 
 
@@ -1284,7 +1284,7 @@ def test_conversational_assign_to_named_role_passes_target_agent(
     )
     assert confirmed.handled is True
     assert confirmed.action == "intent_assign_issue"
-    assert calls == [{"repo": "acme-io/acme-frontend", "number": 12, "target_agent": "batman"}]
+    assert calls == [{"repo": "acme-io/acme-frontend", "number": 12, "target_agent": "architect"}]
     assert "Batman" in poster.messages[-1]["text"]
 
 

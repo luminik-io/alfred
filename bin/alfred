@@ -161,11 +161,19 @@ class _LazyModule:
 agent_runner = _LazyModule("agent_runner")
 scheduler = _LazyModule("scheduler")
 
-OPT_IN_AGENTS = {"batman"}
-ENGINE_AGENTS = ("bane", "batman", "drake", "lucius", "nightwing", "rasalghul", "robin")
+OPT_IN_AGENTS = {"architect", "spec-planner"}
+ENGINE_AGENTS = (
+    "architect",
+    "fixer",
+    "planner",
+    "reviewer",
+    "senior-dev",
+    "test-engineer",
+    "triage",
+)
 CUSTOM_AGENT_SCRIPT = "custom-agent.py"
 ENGINE_SCRIPTS = (*(f"{agent}.py" for agent in ENGINE_AGENTS), CUSTOM_AGENT_SCRIPT)
-NATIVE_DRY_RUN_SCRIPTS = {"lucius.py", "hello.py", "echo_summarise.py"}
+NATIVE_DRY_RUN_SCRIPTS = {"senior-dev.py", "hello.py", "echo_summarise.py"}
 
 
 def _safe_expanduser(path: Path) -> Path:
@@ -235,23 +243,32 @@ def _switch_value(raw: str) -> str:
 
 
 DEFAULT_AGENT_CATALOG: dict[str, dict[str, str]] = {
-    "lucius": {"script": "lucius.py", "schedule": "interval:1200", "role": "feature dev"},
-    "drake": {"script": "drake.py", "schedule": "interval:7200", "role": "issue planner"},
-    "bane": {"script": "bane.py", "schedule": "interval:14400", "role": "test coverage"},
-    "rasalghul": {"script": "rasalghul.py", "schedule": "interval:1800", "role": "PR review"},
-    "nightwing": {"script": "nightwing.py", "schedule": "interval:2700", "role": "CI repair"},
-    "robin": {"script": "robin.py", "schedule": "interval:10800", "role": "bug triage"},
-    "batman": {
-        "script": "batman.py",
+    "senior-dev": {"script": "senior-dev.py", "schedule": "interval:1200", "role": "feature dev"},
+    "planner": {"script": "planner.py", "schedule": "interval:7200", "role": "issue planner"},
+    "test-engineer": {
+        "script": "test-engineer.py",
+        "schedule": "interval:14400",
+        "role": "test coverage",
+    },
+    "reviewer": {"script": "reviewer.py", "schedule": "interval:1800", "role": "PR review"},
+    "fixer": {"script": "fixer.py", "schedule": "interval:2700", "role": "CI repair"},
+    "triage": {"script": "triage.py", "schedule": "interval:10800", "role": "bug triage"},
+    "architect": {
+        "script": "architect.py",
         "schedule": "interval:3600",
         "role": "cross-repo architect",
     },
-    "huntress": {
-        "script": "huntress.py",
+    "spec-planner": {
+        "script": "spec-planner.py",
+        "schedule": "cron:9:00",
+        "role": "spec-bundle planner",
+    },
+    "e2e-runner": {
+        "script": "e2e-runner.py",
         "schedule": "interval:1800",
         "role": "staging smoke runner",
     },
-    "gordon": {"script": "gordon.py", "schedule": "cron:8:00", "role": "ops morning"},
+    "ops-watch": {"script": "ops-watch.py", "schedule": "cron:8:00", "role": "ops morning"},
     "automerge": {"script": "automerge.py", "schedule": "interval:900", "role": "PR automerge"},
     "agent-cleanup": {
         "script": "agent-cleanup.py",
@@ -1218,13 +1235,24 @@ def _record_map() -> dict[str, dict[str, str]]:
 
 
 def _resolve_label(name: str) -> str | None:
-    """Accept a codename or a full label; return the full label or None."""
+    """Accept a codename, a Batman-cast alias, or a full label; return the label.
+
+    Canonical identities are role slugs, but the Batman-cast codenames survive as
+    aliases (see ``_normalize_agent_name``). Operator commands like ``alfred run
+    lucius`` must still resolve, so an alias is normalized to its slug before the
+    lookup. The raw name is tried first so a literal slug or full label keeps
+    working even if it is not in the alias table.
+    """
     mapping = _label_map()
     if name in mapping:
         return mapping[name]
     # Already a full label present in agents.conf?
     if name in mapping.values():
         return name
+    # Fall back to the Batman-cast alias -> slug map ("lucius" -> "senior-dev").
+    normalized = _normalize_agent_name(name)
+    if normalized != name and normalized in mapping:
+        return mapping[normalized]
     return None
 
 
@@ -1459,13 +1487,28 @@ def cmd_dry_run(
 
 def _normalize_agent_name(agent: str) -> str:
     raw = agent.strip().lower()
+    # Canonical identities are role slugs. The Batman-cast codenames stay as
+    # aliases so operator muscle-memory ("run lucius", "dry-run batman") keeps
+    # resolving to the slug that names the runner module.
     aliases = {
-        "review": "rasalghul",
-        "ras": "rasalghul",
-        "ras-al-ghul": "rasalghul",
-        "tim": "drake",
-        "tim-drake": "drake",
-        "night-wing": "nightwing",
+        "review": "reviewer",
+        "reviewer": "reviewer",
+        "ras": "reviewer",
+        "ras-al-ghul": "reviewer",
+        "rasalghul": "reviewer",
+        "tim": "planner",
+        "tim-drake": "planner",
+        "drake": "planner",
+        "night-wing": "fixer",
+        "nightwing": "fixer",
+        "lucius": "senior-dev",
+        "batman": "architect",
+        "bruce": "architect",
+        "bane": "test-engineer",
+        "robin": "triage",
+        "huntress": "e2e-runner",
+        "gordon": "ops-watch",
+        "damian": "spec-planner",
     }
     return aliases.get(raw, raw)
 

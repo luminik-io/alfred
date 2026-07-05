@@ -67,6 +67,19 @@ PR_ALLOWED_FIELDS: frozenset[str] = frozenset(
 
 KNOWN_CODENAMES: frozenset[str] = frozenset(
     {
+        # Canonical role-slug identities.
+        "architect",
+        "e2e-runner",
+        "fixer",
+        "ops-watch",
+        "planner",
+        "reviewer",
+        "senior-dev",
+        "spec-planner",
+        "test-engineer",
+        "triage",
+        # Legacy Batman-cast codenames kept so historical branches/authors in
+        # the public feed still classify correctly.
         "lucius",
         "batman",
         "drake",
