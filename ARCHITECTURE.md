@@ -120,7 +120,7 @@ WORKTREE_ROOT = ALFRED_HOME / "worktrees"
 # wt = ~/.alfred/worktrees/<agent>-<repo>-<issue>-<ts>/
 ```
 
-In a fleet script such as `bin/lucius.py`:
+In a role runner such as `bin/senior-dev.py`:
 
 ```py
 wt, branch = make_worktree(local, AGENT, str(issue_num))

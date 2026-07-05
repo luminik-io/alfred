@@ -1,7 +1,7 @@
 """Operator control over Alfred's pickup queue.
 
 The fleet only picks up issues labeled ``agent:implement`` and never touches an
-issue labeled ``do-not-pickup`` (see ``labels.py`` and ``bin/lucius.py``). This
+issue labeled ``do-not-pickup`` (see ``labels.py`` and ``bin/senior-dev.py``). This
 module lets the operator flip that from the native client or Slack:
 
 * **queue**  -> add ``agent:implement``, remove ``do-not-pickup`` and the

@@ -69,7 +69,7 @@ configured, the PR body has no evidence block at all.
 
 The self-assessment tier makes one extra engine call per PR. Its turns and
 cost are recorded against the same daily spend caps as the implementation
-call, and the operator can bound it with `ALFRED_LUCIUS_SELFASSESS_MAX_TURNS`.
+call, and the operator can bound it with `ALFRED_SENIOR_DEV_SELFASSESS_MAX_TURNS`.
 
 ## Test and diff evidence
 
@@ -185,8 +185,8 @@ that already passed its real checks.
   runner coupling, so they are unit-tested against stubbed inputs. Every
   external command (screenshot, engine call) is injectable; the tests never
   launch a browser or an LLM.
-- The runner glue lives in the PR-create path of the feature-dev agent
-  ([`../bin/lucius.py`](../bin/lucius.py)). Lucius is wired first; the same
+- The runner glue lives in the PR-create path of the senior-dev role
+  ([`../bin/senior-dev.py`](../bin/senior-dev.py)). The senior-dev is wired first; the same
   helpers can be reused by other agents that open PRs.
 - Evidence generation is wrapped so it can never block a PR: any error inside
   it degrades to an honest note in the block, and the PR opens regardless.

@@ -31,9 +31,9 @@ my-monorepo/
 whole thing as one GitHub repo. In `$ALFRED_HOME/.env`:
 
 ```sh
-ALFRED_LUCIUS_REPOS=my-monorepo
-ALFRED_DRAKE_REPOS=my-monorepo
-ALFRED_RASALGHUL_REPOS=my-monorepo
+ALFRED_SENIOR_DEV_REPOS=my-monorepo
+ALFRED_PLANNER_REPOS=my-monorepo
+ALFRED_REVIEWER_REPOS=my-monorepo
 ```
 
 Or via the installer:

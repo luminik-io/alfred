@@ -33,7 +33,7 @@ Two equivalent switches:
   ALFRED_DRY_RUN=1 python3 examples/bin/echo_summarise.py
   ```
 
-- The `--dry-run` CLI flag, accepted by the example runners and `bin/lucius.py`:
+- The `--dry-run` CLI flag, accepted by the example runners and `bin/senior-dev.py`:
 
   ```sh
   python3 examples/bin/echo_summarise.py --dry-run
@@ -93,7 +93,7 @@ checked at exactly these boundaries in [`lib/agent_runner/`](../lib/agent_runner
 - **Missing `GH_ORG`**: `_full_repo` falls back to a `dry-run-org/<repo>`
   placeholder instead of raising, so a missing org can't crash the narrated
   lifecycle.
-- **Missing repo env vars** (`ECHO_REPO_SLUG`, `ALFRED_LUCIUS_REPOS`): the
+- **Missing repo env vars** (`ECHO_REPO_SLUG`, `ALFRED_SENIOR_DEV_REPOS`): the
   runners fall back to a `dry-run-repo` / `dry-run-org/dry-run-repo` slug.
 - **Preflight gaps**: `preflight()` still runs and reports what is missing. In
   dry-run, the runner narrates the gap and continues. A real firing still exits
@@ -120,7 +120,7 @@ $ PYTHONPATH=lib python3 examples/bin/echo_summarise.py --dry-run
 ```
 
 The same works for [`examples/bin/hello.py`](../examples/bin/hello.py) (the
-minimal agent) and [`bin/lucius.py`](../bin/lucius.py) (the feature-dev agent,
+minimal agent) and [`bin/senior-dev.py`](../bin/senior-dev.py) (the feature-dev agent,
 which additionally narrates the worktree and push steps).
 
 ## Adding dry-run support to your own runner

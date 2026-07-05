@@ -626,8 +626,8 @@ def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
 # plan-approve-execute-report lifecycle
 # ---------------------------------------------------------------------------
 #
-# The block below implements Batman's full plan -> approve -> execute -> report
-# cycle. Wire it up via ``BatmanLifecycle`` in ``bin/batman.py``.
+# The block below implements the architect's full plan -> approve -> execute -> report
+# cycle. Wire it up via ``BatmanLifecycle`` in ``bin/architect.py``.
 #
 # Design rules (SOLID, DRY, 12-factor):
 #

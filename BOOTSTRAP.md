@@ -209,8 +209,8 @@ Any failure prints the `[<AGENT>-PREFLIGHT-FAILED]` block naming each gap: missi
 `ALFRED_DOCTOR=1` is the env var the agents themselves check; `alfred doctor` sets it and invokes every agent. You can also run a single agent in doctor mode:
 
 ```sh
-ALFRED_DOCTOR=1 ~/.alfred/bin/lucius.py
-# [LUCIUS-DOCTOR-OK]
+ALFRED_DOCTOR=1 ~/.alfred/bin/senior-dev.py
+# [SENIOR-DEV-DOCTOR-OK]
 ```
 
 This is also the right command after you rotate AWS keys, refresh `aws sso login`, swap Claude account via `alfred claude swap`, or change anything in IAM policy: re-run `alfred doctor` and confirm every configured agent passes.

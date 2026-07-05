@@ -16,8 +16,8 @@ durable state when it consumes a marker; ``server/reader.py`` calls
 Needs-you queue. Keeping the path math here means the write side, read side,
 and Batman's file poll can never drift.
 
-A genuine Batman go/no-go plan is saved at ``$ALFRED_HOME/architect-plans/`` as
-``{issue_num}-plan.md`` (``draft_plan`` in ``bin/batman.py``). The plan id the
+A genuine architect go/no-go plan is saved at ``$ALFRED_HOME/architect-plans/`` as
+``{issue_num}-plan.md`` (``draft_plan`` in ``bin/architect.py``). The plan id the
 reader/client carries is the file stem (e.g. ``13-plan``); the issue number is
 the leading integer of that stem.
 """
