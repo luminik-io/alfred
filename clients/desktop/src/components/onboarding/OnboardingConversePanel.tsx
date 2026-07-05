@@ -100,12 +100,21 @@ export function OnboardingConversePanel({
         // A step was requested: run it through the shared setup handler, never
         // in this panel. Feed the outcome back as a user-role note so the model
         // treats it as ground truth for the next turn (the app said so, not the
-        // person), then loop once so Alfred acknowledges and moves on.
+        // person).
         const result = await onRunAction(turn.action);
         if (controller.signal.aborted) return;
         appendBubble({ role: "assistant", content: result.note });
+        // The terminal turn carries the finish_setup action AND done. Because the
+        // server only sets done on that action, the done check has to run even
+        // when an action is present: run the action, then honor done and route
+        // out, rather than recursing past it (which would never re-surface done).
+        if (turn.done) {
+          onDone();
+          return;
+        }
         // Thread the machine outcome to the model as a user turn so its next
-        // step reflects what actually happened.
+        // step reflects what actually happened, then loop once so Alfred
+        // acknowledges the result and moves to the next step.
         transcriptRef.current = [
           ...transcriptRef.current,
           {
@@ -118,6 +127,7 @@ export function OnboardingConversePanel({
         await runTurn(controller);
         return;
       }
+      // A plain turn (no action) can still carry done in principle; honor it.
       if (turn.done) {
         onDone();
       }

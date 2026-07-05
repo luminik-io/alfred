@@ -15,7 +15,13 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { errorDetail, loadSetupStatus, saveSetupRepos, supportsMutations } from "../api";
+import {
+  errorDetail,
+  loadSchedule,
+  loadSetupStatus,
+  saveSetupRepos,
+  supportsMutations,
+} from "../api";
 import { pollGithubAuthStatus } from "../lib/githubAuth";
 import {
   type CustomRosterNames,
@@ -128,6 +134,27 @@ function asStringRecord(value: unknown): Record<string, string> | null {
     if (typeof raw === "string") out[key] = raw;
   }
   return out;
+}
+
+/**
+ * Map an onboarding cadence (off/hourly/daily/weekly, the vocabulary the server
+ * validates) to the canonical schedule string the native `alfred schedule set`
+ * primitive accepts (see bin/alfred-schedule.py canonical_schedule). `off` has
+ * no per-agent "set" form; it is handled separately by unloading the scheduler
+ * with the existing `pause` action. Returns null for an unknown cadence so the
+ * caller can report a real failure instead of writing a bogus schedule.
+ */
+function scheduleForCadence(cadence: string): string | null {
+  switch (cadence) {
+    case "hourly":
+      return "1h";
+    case "daily":
+      return "daily@09:00";
+    case "weekly":
+      return "weekly@mon:09:00";
+    default:
+      return null;
+  }
 }
 
 const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
@@ -395,7 +422,11 @@ export function OnboardingView({
     }
   }, [baseUrl, connected]);
 
-  const startGithubAuthLogin = useCallback(async () => {
+  // Returns the FRESH GitHub-connected verdict once the device flow settles, so a
+  // caller (the conversational connect_github executor) can report the real
+  // outcome instead of the stale pre-action render value. `false` also covers a
+  // guard bail, an interrupted/stale request, a timeout, or an error.
+  const startGithubAuthLogin = useCallback(async (): Promise<boolean> => {
     if (!canRun || !connected) {
       githubAuthFlowRequestSeq.current = null;
       setGithubAuthFlow({
@@ -403,7 +434,7 @@ export function OnboardingView({
         state: "error",
         message: "Open Alfred in the desktop app and install or connect the local runtime first.",
       });
-      return;
+      return false;
     }
 
     const requestAuthId = ++githubAuthRequestSeq.current;
@@ -423,12 +454,16 @@ export function OnboardingView({
       connectionGenerationRef.current === requestGeneration &&
       githubAuthRequestSeq.current === requestAuthId;
 
+    // The fresh GitHub verdict from the poll, returned to the caller. Stays false
+    // through any early bail so a stale/interrupted/failed flow never reports a
+    // false success.
+    let githubConnectedAfter = false;
     try {
       const result = await onRunLocalAction({ action: "github_auth_login" });
       const pollBelongsToCurrentRuntime = isCurrentRequest();
       if (!pollBelongsToCurrentRuntime) {
         interruptStaleGithubAuthRequest(requestAuthId);
-        return;
+        return false;
       }
       if (!result) {
         throw new Error("Could not start GitHub sign-in.");
@@ -464,12 +499,17 @@ export function OnboardingView({
 
       if (!isCurrentRequest()) {
         interruptStaleGithubAuthRequest(requestAuthId);
-        return;
+        return false;
       }
       githubAuthFlowRequestSeq.current = null;
       if (poll.status) {
         setStatus(poll.status);
       }
+      // The verdict returned to the caller is the FRESH status the poll landed on,
+      // not the stale pre-action render value: prefer the polled status's github
+      // flag, and treat a success poll as connected even if the status snapshot is
+      // momentarily absent.
+      githubConnectedAfter = Boolean(poll.status?.github.ok) || poll.state === "success";
       if (poll.state === "success") {
         setGithubAuthFlow({
           state: "success",
@@ -490,7 +530,7 @@ export function OnboardingView({
     } catch (err) {
       if (!isCurrentRequest()) {
         interruptStaleGithubAuthRequest(requestAuthId);
-        return;
+        return false;
       }
       githubAuthFlowRequestSeq.current = null;
       setGithubAuthFlow({
@@ -504,6 +544,7 @@ export function OnboardingView({
         setStatusLoading(false);
       }
     }
+    return githubConnectedAfter;
   }, [baseUrl, canRun, connected, interruptStaleGithubAuthRequest, onRunLocalAction]);
 
   useEffect(() => {
@@ -550,9 +591,12 @@ export function OnboardingView({
                 note: "GitHub sign-in needs the local runtime. Open the desktop app, then retry.",
               };
             }
-            await startGithubAuthLogin();
+            // Use the FRESH verdict the device flow settled on, not the stale
+            // pre-action `githubConnected` render value: a flow that just
+            // succeeded must report success to the next model turn.
+            const connectedAfter = await startGithubAuthLogin();
             await refreshStatus();
-            return githubConnected
+            return connectedAfter
               ? { ok: true, note: "GitHub is connected." }
               : {
                   ok: false,
@@ -611,17 +655,74 @@ export function OnboardingView({
             return { ok: true, note: "Saved your team names." };
           }
           case "set_schedule": {
-            // The cadence is recorded as a preference here; the concrete schedule
-            // is applied on deploy. Acknowledge the chosen cadence.
+            // Persist the cadence through the SAME native primitive the Fleet view
+            // uses (`alfred schedule set` / `pause`), never a fake acknowledgement.
+            // `off` unloads the scheduler via the existing pause action; a cadence
+            // is applied to every currently scheduled agent via `schedule set`.
             const cadence =
               typeof action.args.cadence === "string" ? action.args.cadence : "daily";
-            return {
-              ok: true,
-              note:
-                cadence === "off"
-                  ? "Alfred will only run when you ask."
-                  : `Alfred will sweep for work ${cadence}.`,
-            };
+            if (!canRun || !connected) {
+              return {
+                ok: false,
+                note: "Setting a schedule needs the local runtime. Open the desktop app, then retry.",
+              };
+            }
+            if (cadence === "off") {
+              const result = await onRunLocalAction({
+                action: "pause",
+                target: "all",
+                refreshAfter: true,
+              });
+              if (!result || !result.success) {
+                return {
+                  ok: false,
+                  note: "Could not pause the schedule. Try again, or set it on the Fleet page.",
+                };
+              }
+              return { ok: true, note: "Paused the schedule. Alfred will only run when you ask." };
+            }
+            const mapped = scheduleForCadence(cadence);
+            if (mapped === null) {
+              return {
+                ok: false,
+                note: "I did not recognize that cadence. Try off, hourly, daily, or weekly.",
+              };
+            }
+            // Re-cadence every scheduled agent through the native primitive. Read
+            // the live schedule so we target the agents that actually exist.
+            let runs: { codename: string }[] = [];
+            try {
+              runs = (await loadSchedule(baseUrl)).runs ?? [];
+            } catch {
+              runs = [];
+            }
+            const codenames = Array.from(
+              new Set(runs.map((run) => run.codename).filter((name): name is string => Boolean(name))),
+            );
+            if (!codenames.length) {
+              return {
+                ok: false,
+                note: "No scheduled agents are set up yet, so there is nothing to re-time. You can set schedules on the Fleet page after setup.",
+              };
+            }
+            let applied = 0;
+            for (const codename of codenames) {
+              const result = await onRunLocalAction({
+                action: "schedule",
+                target: codename,
+                cadence: mapped,
+                refreshAfter: false,
+              });
+              if (result && result.success) applied += 1;
+            }
+            if (applied === 0) {
+              return {
+                ok: false,
+                note: "Could not save the schedule. Try again, or set it on the Fleet page.",
+              };
+            }
+            await refreshStatus();
+            return { ok: true, note: `Alfred will sweep for work ${cadence}.` };
           }
           case "finish_setup": {
             await refreshStatus();
@@ -648,6 +749,7 @@ export function OnboardingView({
       connected,
       engineReady,
       githubConnected,
+      onRunLocalAction,
       onSaveCustomNames,
       refreshStatus,
       startGithubAuthLogin,

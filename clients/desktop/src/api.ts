@@ -861,6 +861,13 @@ export async function setQueuePickup(
   return writeAlfredJson(baseUrl, "/api/queue", { repo, number, action, target_agent });
 }
 
+// The upcoming scheduled agent runs parsed from agents.conf. Read-only; the
+// conversational onboarding's set_schedule uses it to learn which agents to
+// re-cadence through the native `alfred schedule set` primitive.
+export async function loadSchedule(baseUrl: string): Promise<ScheduleResponse> {
+  return readAlfredJson<ScheduleResponse>(baseUrl, "/api/schedule");
+}
+
 export async function loadSetupStatus(baseUrl: string): Promise<SetupStatus> {
   return withTimeout(
     readAlfredJson<SetupStatus>(baseUrl, "/api/setup/status"),

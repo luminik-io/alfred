@@ -1227,3 +1227,139 @@ describe("OnboardingView seven-step takeover", () => {
     expect(screen.getByRole("button", { name: /^back$/i })).toBeDisabled();
   });
 });
+
+describe("OnboardingView conversational setup actions", () => {
+  function makeNativeResult(
+    overrides: Partial<import("../types").NativeCommandResult> = {},
+  ): import("../types").NativeCommandResult {
+    return {
+      command: ["alfred"],
+      stdout: "",
+      stderr: "",
+      status: 0,
+      success: true,
+      pid: 1,
+      message: "ok",
+      ...overrides,
+    };
+  }
+
+  // Open the "Set it up by chatting" panel and send one message so the scripted
+  // converse turn runs its action through the shared executor.
+  async function enterChatAndSend(user: ReturnType<typeof userEvent.setup>, text: string) {
+    await user.click(await screen.findByRole("button", { name: /set it up by chatting/i }));
+    const input = await screen.findByLabelText(/message alfred to set up/i);
+    await user.type(input, text);
+    await user.click(screen.getByRole("button", { name: /send/i }));
+  }
+
+  it("reports a successful GitHub device flow to the model (Codex P2 fresh status)", async () => {
+    // GitHub starts disconnected; the device flow succeeds and the poll lands on a
+    // connected status. The executor must report success from the FRESH verdict,
+    // not the stale pre-action render value.
+    vi.spyOn(api, "loadSetupStatus")
+      .mockResolvedValueOnce(
+        makeStatus({ github: { ok: false, account: null, detail: "Not signed in to GitHub." } }),
+      )
+      .mockResolvedValue(
+        makeStatus({ github: { ok: true, account: "octocat", detail: "Signed in as octocat." } }),
+      );
+    const onRunLocalAction = vi.fn(async () =>
+      makeNativeResult({
+        message: "GitHub sign-in started.",
+        github_auth: {
+          device_url: "https://github.com/login/device",
+          device_code: "ABCD-1234",
+          poll_interval_ms: 50,
+          timeout_ms: 1_000,
+        },
+      }),
+    );
+
+    // First converse turn requests connect_github; capture the SECOND turn's
+    // messages, which carry the threaded [setup] outcome note.
+    let secondTurnMessages: { role: string; content: string }[] = [];
+    const converse = vi
+      .spyOn(api, "onboardingConverse")
+      .mockResolvedValueOnce({
+        reply: "Connecting GitHub.",
+        action: { tool: "connect_github", args: {} },
+        done: false,
+      })
+      .mockImplementationOnce(async (_base, request) => {
+        secondTurnMessages = request.messages;
+        return { reply: "Great, you are connected.", action: null, done: false };
+      });
+
+    renderOnboarding({ onRunLocalAction });
+    const user = userEvent.setup();
+    await enterChatAndSend(user, "connect github");
+
+    await waitFor(() => expect(converse).toHaveBeenCalledTimes(2));
+    expect(onRunLocalAction).toHaveBeenCalledWith({ action: "github_auth_login" });
+    // The outcome threaded back to the model reports success, not "did not complete".
+    const note = secondTurnMessages.find((m) => m.content.includes("[setup] connect_github"));
+    expect(note?.content).toContain("connect_github completed");
+    expect(note?.content).not.toContain("did not complete");
+  });
+
+  it("persists the requested schedule through the native primitive (Codex P2)", async () => {
+    // set_schedule with a daily cadence must call the native `alfred schedule set`
+    // primitive for each scheduled agent, not just acknowledge it.
+    vi.spyOn(api, "loadSchedule").mockResolvedValue({
+      runs: [
+        {
+          codename: "batman",
+          role: "architect",
+          kind: "cron-daily",
+          cadence: "daily at 09:00",
+          next_fire_at: null,
+          raw_schedule: "cron:9:0",
+        },
+        {
+          codename: "lucius",
+          role: "ops",
+          kind: "interval",
+          cadence: "every 20m",
+          next_fire_at: null,
+          raw_schedule: "interval:1200",
+        },
+      ],
+    });
+    const onRunLocalAction = vi.fn(async () => makeNativeResult({ message: "schedule set" }));
+    let secondTurnMessages: { role: string; content: string }[] = [];
+    const converse = vi
+      .spyOn(api, "onboardingConverse")
+      .mockResolvedValueOnce({
+        reply: "Setting a daily cadence.",
+        action: { tool: "set_schedule", args: { cadence: "daily" } },
+        done: false,
+      })
+      .mockImplementationOnce(async (_base, request) => {
+        secondTurnMessages = request.messages;
+        return { reply: "Done.", action: null, done: false };
+      });
+
+    renderOnboarding({ onRunLocalAction });
+    const user = userEvent.setup();
+    await enterChatAndSend(user, "daily please");
+
+    await waitFor(() => expect(converse).toHaveBeenCalledTimes(2));
+    // The cadence is mapped to the canonical schedule and written for each agent
+    // through the SAME native primitive the Fleet view uses.
+    expect(onRunLocalAction).toHaveBeenCalledWith({
+      action: "schedule",
+      target: "batman",
+      cadence: "daily@09:00",
+      refreshAfter: false,
+    });
+    expect(onRunLocalAction).toHaveBeenCalledWith({
+      action: "schedule",
+      target: "lucius",
+      cadence: "daily@09:00",
+      refreshAfter: false,
+    });
+    const note = secondTurnMessages.find((m) => m.content.includes("[setup] set_schedule"));
+    expect(note?.content).toContain("set_schedule completed");
+  });
+});
