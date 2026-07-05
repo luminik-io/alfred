@@ -22,6 +22,7 @@ import subprocess
 import sys
 import urllib.parse
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -632,6 +633,34 @@ def test_env_assignments_aws_profile_per_agent(init_mod, tmp_path):
     state.aws_agent_profiles = {"e2e-runner": "acme-cron"}
     out = init_mod.env_assignments_for(state)
     assert out["ALFRED_E2E_RUNNER_AWS_PROFILE"] == "acme-cron"
+
+
+def test_step_4_aws_prompts_for_renamed_slug_consumers(init_mod, tmp_path, monkeypatch):
+    # After the rename the IAM-scoped agents are e2e-runner and ops-watch (was
+    # huntress and gordon). step_4_aws must prompt for the CURRENT codenames, or
+    # env_assignments_for never gets a profile to emit and AWS-backed checks fall
+    # back to ambient credentials.
+    state = _state_with(init_mod, tmp_path, roles=("smoke_runner", "ops_morning"))
+
+    monkeypatch.setattr(init_mod, "ask_yes_no", lambda *a, **k: True)
+    monkeypatch.setattr(init_mod, "ask", lambda prompt, default, **k: default)
+    monkeypatch.setattr(
+        init_mod,
+        "run",
+        lambda *a, **k: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+
+    init_mod.step_4_aws(state, non_interactive=True)
+
+    assert state.use_aws is True
+    # Both renamed slugs are prompted and recorded (with the default profile).
+    assert state.aws_agent_profiles == {
+        "e2e-runner": "e2e-runner-cron",
+        "ops-watch": "ops-watch-cron",
+    }
+    # And the old Batman-cast codenames are NOT used.
+    assert "huntress" not in state.aws_agent_profiles
+    assert "gordon" not in state.aws_agent_profiles
 
 
 def test_env_assignments_preserve_memory_auto_promote_stop_controls(init_mod, tmp_path):

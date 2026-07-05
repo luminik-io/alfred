@@ -1369,10 +1369,16 @@ def step_4_aws(state: WizardState, *, non_interactive: bool) -> None:
         ok("Skipping per-agent AWS profiles.")
         return
     state.use_aws = True
-    aws_consumers = ["huntress", "gordon"]
+    # The IAM-scoped agents are the staging smoke runner and the ops-morning
+    # watch. Resolve their codenames from the catalog (via each role's chosen
+    # codename) so this list cannot drift from the canonical identity the way a
+    # hard-coded Batman-cast list ("huntress", "gordon") did after the rename.
+    aws_consumer_roles = ("smoke_runner", "ops_morning")
+    aws_consumers = [state.codename_for(role) for role in aws_consumer_roles]
+    enabled_codenames = {state.codename_for(r) for r in state.enabled_roles}
     for codename in aws_consumers:
         # Only prompt if this agent is enabled.
-        if codename not in {state.codename_for(r) for r in state.enabled_roles}:
+        if codename not in enabled_codenames:
             continue
         default_profile = f"{codename}-cron"
         profile = ask(
@@ -1953,7 +1959,7 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
     - ``slack_webhook`` (str), ``slack_storage`` (``"env"`` or
       ``"aws"``): Slack post target and credential storage.
     - ``use_aws`` (bool), ``aws_agent_profiles`` (dict): per-agent
-      AWS profile names for IAM-scoped agents (huntress, gordon).
+      AWS profile names for IAM-scoped agents (e2e-runner, ops-watch).
     - ``agents`` (list[str]): codenames or role-keys to enable.
     - ``repos`` (str | list[str]): convenience override applied to
       every repo-operating agent. For per-agent scoping use
