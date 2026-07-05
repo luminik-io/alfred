@@ -173,10 +173,20 @@ def parse_proposal(
     """Validate a ``propose_theme`` action's args into a ``ThemeProposal``.
 
     Defensive by construction, mirroring ``compose_converse.parse_action``: it
-    NEVER raises. Returns ``None`` (drop the proposal, keep the turn's reply) when
-    the args carry no usable names. Unknown role-slugs, blank/over-long labels,
-    and non-string values are dropped entry-by-entry rather than failing the
-    whole proposal, so a mostly-good map still previews. Entry count is capped.
+    NEVER raises. Returns ``None`` (drop the proposal, keep the turn's reply as a
+    normal conversational reply) when the args carry no usable NAMES: naming the
+    team is the whole point, so a roles-only proposal, or one whose every name
+    entry is invalid, is not a proposal at all and must not pre-fill an empty
+    editor. Unknown role-slugs, blank/over-long labels, and non-string values are
+    dropped entry-by-entry rather than failing the whole proposal, so a mostly-good
+    map still previews. Entry count is capped.
+
+    Display names must be DISTINCT across roles (two agents sharing one persona is
+    a broken roster). Duplicate names, compared case-insensitively on the trimmed
+    label, are dropped beyond the first occurrence so the surviving names stay
+    distinct; if de-duplicating leaves no valid name, the proposal degrades to
+    ``None``. Custom role labels are kept for whatever names survive, so a role
+    override never clings to a dropped name.
 
     ``args`` is expected to be ``{custom_names: {slug: name}, custom_roles?:
     {slug: label}}``. A bare ``names``/``roles`` alias is also accepted so a
@@ -184,17 +194,54 @@ def parse_proposal(
     """
     if not isinstance(raw, dict):
         return None
-    names = _clean_slug_map(
+    names = _clean_name_map(
         raw.get("custom_names") if raw.get("custom_names") is not None else raw.get("names"),
         valid=valid,
     )
+    # A proposal MUST name at least one agent. A roles-only turn (or one whose
+    # names were all invalid or collided away) is a conversational reply, not a
+    # theme, so drop the action entirely.
+    if not names:
+        return None
     roles = _clean_slug_map(
         raw.get("custom_roles") if raw.get("custom_roles") is not None else raw.get("roles"),
         valid=valid,
     )
-    if not names and not roles:
-        return None
+    # Role labels only make sense for a named agent; drop any that reference a
+    # slug that did not survive name validation/dedup.
+    roles = {slug: label for slug, label in roles.items() if slug in names}
     return ThemeProposal(custom_names=names, custom_roles=roles)
+
+
+def _clean_name_map(value: Any, *, valid: frozenset[str]) -> dict[str, str]:
+    """Clean the display-name map, keeping names DISTINCT across roles.
+
+    Like ``_clean_slug_map`` but enforces the one-persona-per-name rule: a display
+    name already claimed by an earlier slug (case-insensitive on the trimmed
+    label) is dropped rather than duplicated, so no two agents can share a
+    persona. First occurrence wins.
+    """
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, str] = {}
+    seen_names: set[str] = set()
+    for key, raw in value.items():
+        slug = _normalize_slug(key)
+        if slug not in valid:
+            continue
+        label = _clean_label(raw)
+        if label is None:
+            continue
+        name_key = label.casefold()
+        if name_key in seen_names:
+            # A duplicate display name (two agents cast as the same persona) is a
+            # broken roster; keep the first, drop the rest.
+            continue
+        seen_names.add(name_key)
+        out[slug] = label
+        if len(out) >= MAX_PROPOSED_ENTRIES:
+            break
+    return out
 
 
 def _clean_slug_map(value: Any, *, valid: frozenset[str]) -> dict[str, str]:
@@ -203,9 +250,7 @@ def _clean_slug_map(value: Any, *, valid: frozenset[str]) -> dict[str, str]:
         return {}
     out: dict[str, str] = {}
     for key, raw in value.items():
-        slug = str(key or "").strip().lower()
-        # Slack/runtime codenames sometimes arrive dotted; key on the last segment.
-        slug = (slug.split(".")[-1] or "").strip()
+        slug = _normalize_slug(key)
         if slug not in valid:
             continue
         label = _clean_label(raw)
@@ -215,6 +260,16 @@ def _clean_slug_map(value: Any, *, valid: frozenset[str]) -> dict[str, str]:
         if len(out) >= MAX_PROPOSED_ENTRIES:
             break
     return out
+
+
+def _normalize_slug(key: Any) -> str:
+    """Normalize a proposal key to a bare role-slug.
+
+    Slack/runtime codenames sometimes arrive dotted (``alfred.architect``); key on
+    the last segment so the map matches the role-slugs the store persists under.
+    """
+    slug = str(key or "").strip().lower()
+    return (slug.split(".")[-1] or "").strip()
 
 
 def _clean_label(value: Any) -> str | None:

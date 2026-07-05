@@ -155,6 +155,78 @@ def test_parse_proposal_carries_custom_roles() -> None:
     assert proposal.custom_roles == {"architect": "Grey Wizard"}
 
 
+def test_parse_proposal_rejects_roles_only_proposal() -> None:
+    # Naming the team is the whole point: a proposal that carries only role labels
+    # and no display names is not a theme. It must degrade to None so the client
+    # keeps chatting instead of pre-filling an empty editor.
+    assert tb.parse_proposal({"custom_roles": {"architect": "Grey Wizard"}}, valid=_valid()) is None
+
+
+def test_parse_proposal_rejects_when_names_present_but_all_invalid() -> None:
+    # custom_names is present but every entry is an unknown slug, so no valid name
+    # survives. With roles alongside, the proposal must STILL degrade to None
+    # rather than forward a roles-only theme.
+    assert (
+        tb.parse_proposal(
+            {
+                "custom_names": {"ghost": "Nobody"},
+                "custom_roles": {"architect": "Grey Wizard"},
+            },
+            valid=_valid(),
+        )
+        is None
+    )
+
+
+def test_parse_proposal_drops_duplicate_display_names_first_wins() -> None:
+    # Two agents cast as the same persona is a broken roster. The first slug keeps
+    # the name; the later duplicate is dropped so the surviving names stay distinct.
+    proposal = tb.parse_proposal(
+        {"custom_names": {"architect": "Gandalf", "reviewer": "Gandalf"}},
+        valid=_valid(),
+    )
+    assert proposal is not None
+    assert proposal.custom_names == {"architect": "Gandalf"}
+
+
+def test_parse_proposal_dedup_is_case_and_whitespace_insensitive() -> None:
+    proposal = tb.parse_proposal(
+        {"custom_names": {"architect": "Gandalf", "reviewer": "  gandalf "}},
+        valid=_valid(),
+    )
+    assert proposal is not None
+    assert proposal.custom_names == {"architect": "Gandalf"}
+
+
+def test_parse_proposal_keeps_distinct_names_after_dropping_a_duplicate() -> None:
+    proposal = tb.parse_proposal(
+        {
+            "custom_names": {
+                "architect": "Gandalf",
+                "reviewer": "Gandalf",
+                "planner": "Aragorn",
+            }
+        },
+        valid=_valid(),
+    )
+    assert proposal is not None
+    assert proposal.custom_names == {"architect": "Gandalf", "planner": "Aragorn"}
+
+
+def test_parse_proposal_drops_role_label_for_a_deduped_name() -> None:
+    # A role override must not cling to a slug whose name was dropped as a duplicate.
+    proposal = tb.parse_proposal(
+        {
+            "custom_names": {"architect": "Gandalf", "reviewer": "Gandalf"},
+            "custom_roles": {"reviewer": "The Grey"},
+        },
+        valid=_valid(),
+    )
+    assert proposal is not None
+    assert proposal.custom_names == {"architect": "Gandalf"}
+    assert proposal.custom_roles == {}
+
+
 # --- parse_turn --------------------------------------------------------------
 
 
@@ -177,6 +249,35 @@ def test_parse_turn_proposes_a_full_team() -> None:
     assert turn.proposal is not None
     # Every engineering role is named.
     assert set(turn.proposal.custom_names) >= _ENGINEERING_SLUGS
+
+
+def test_parse_turn_roles_only_action_degrades_to_reply() -> None:
+    # A propose_theme turn with only role labels and no names keeps the reply but
+    # forwards no action, so the client keeps chatting instead of opening an empty
+    # editor.
+    raw = (
+        '{"reply": "Which vibe should the roles take?",'
+        '"action": {"tool": "propose_theme", "args": {"custom_roles": '
+        '{"architect": "Grey Wizard"}}}}'
+    )
+    turn = tb.parse_turn(raw, valid=_valid())
+    assert turn is not None
+    assert turn.proposal is None
+    assert "vibe" in turn.reply
+
+
+def test_parse_turn_does_not_forward_duplicate_names() -> None:
+    # A duplicate display name across roles is deduped (first wins); the surviving
+    # distinct proposal still forwards.
+    raw = (
+        '{"reply": "Middle-earth it is.",'
+        '"action": {"tool": "propose_theme", "args": {"custom_names": '
+        '{"architect": "Gandalf", "reviewer": "Gandalf", "planner": "Aragorn"}}}}'
+    )
+    turn = tb.parse_turn(raw, valid=_valid())
+    assert turn is not None
+    assert turn.proposal is not None
+    assert turn.proposal.custom_names == {"architect": "Gandalf", "planner": "Aragorn"}
 
 
 def test_parse_turn_ignores_non_propose_action() -> None:
