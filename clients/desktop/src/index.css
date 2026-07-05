@@ -2053,6 +2053,26 @@ body {
   align-items: flex-start;
 }
 
+/* Conversational onboarding chat bubbles. Same layout + tokens as the theme
+   builder so the "Set it up by chatting" surface matches every theme. */
+.onboarding-converse__bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-width: 88%;
+}
+
+.onboarding-converse__bubble--user {
+  margin-left: auto;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.onboarding-converse__bubble--assistant {
+  margin-right: auto;
+  align-items: flex-start;
+}
+
 .custom-theme-editor__legend {
   padding-inline: 0;
 }

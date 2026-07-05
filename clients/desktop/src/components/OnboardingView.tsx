@@ -15,7 +15,13 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { errorDetail, loadSetupStatus, supportsMutations } from "../api";
+import {
+  errorDetail,
+  loadSchedule,
+  loadSetupStatus,
+  saveSetupRepos,
+  supportsMutations,
+} from "../api";
 import { pollGithubAuthStatus } from "../lib/githubAuth";
 import {
   type CustomRosterNames,
@@ -26,8 +32,12 @@ import {
   type RosterThemeId,
 } from "../lib/agentThemes";
 import type { NativeActionRequest, TabKey } from "../lib/uiTypes";
-import type { NativeCommandResult, SetupStatus } from "../types";
+import type { NativeCommandResult, OnboardingAction, SetupStatus } from "../types";
 import { EngineStep } from "./onboarding/EngineStep";
+import {
+  OnboardingConversePanel,
+  type OnboardingActionResult,
+} from "./onboarding/OnboardingConversePanel";
 import { FirstRequestStep } from "./onboarding/FirstRequestStep";
 import { GitHubStep } from "./onboarding/GitHubStep";
 import { ReposStep } from "./onboarding/ReposStep";
@@ -110,6 +120,43 @@ const ROSTER_PREVIEW_AGENTS = (() => {
 
 const GITHUB_DEVICE_URL = "https://github.com/login/device";
 
+/**
+ * Coerce a loosely-typed action-arg value into a string->string record, keeping
+ * only string values. The onboarding action args arrive as `Record<string,
+ * unknown>` (validated + bounded server-side); this narrows the theme maps to
+ * the `CustomRosterNames` shape without trusting the wire type. Returns null when
+ * the value is not an object, so the caller can degrade gracefully.
+ */
+function asStringRecord(value: unknown): Record<string, string> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const out: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof raw === "string") out[key] = raw;
+  }
+  return out;
+}
+
+/**
+ * Map an onboarding cadence (off/hourly/daily/weekly, the vocabulary the server
+ * validates) to the canonical schedule string the native `alfred schedule set`
+ * primitive accepts (see bin/alfred-schedule.py canonical_schedule). `off` has
+ * no per-agent "set" form; it is handled separately by unloading the scheduler
+ * with the existing `pause` action. Returns null for an unknown cadence so the
+ * caller can report a real failure instead of writing a bogus schedule.
+ */
+function scheduleForCadence(cadence: string): string | null {
+  switch (cadence) {
+    case "hourly":
+      return "1h";
+    case "daily":
+      return "daily@09:00";
+    case "weekly":
+      return "weekly@mon:09:00";
+    default:
+      return null;
+  }
+}
+
 const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
   welcome: {
     key: "welcome",
@@ -185,6 +232,7 @@ export function OnboardingView({
   onRunLocalAction,
   onRosterThemeChange,
   onEditCustomTheme,
+  onSaveCustomNames,
   onOpenConnection,
   onSwitch,
   onRefreshBoard,
@@ -205,6 +253,12 @@ export function OnboardingView({
   onRunLocalAction: (request: NativeActionRequest) => Promise<NativeCommandResult | null>;
   onRosterThemeChange: (next: RosterThemeId) => void;
   onEditCustomTheme: () => void;
+  /**
+   * Persist custom roster names/roles. The SAME shared handler the custom theme
+   * editor saves through; the conversational onboarding's save_theme action
+   * reuses it so both paths write the roster identically.
+   */
+  onSaveCustomNames: (next: CustomRosterNames) => Promise<void>;
   /** Jump to the full connection + diagnostics surface (the advanced handoff). */
   onOpenConnection: () => void;
   /** Navigate to another primary surface (e.g. Inbox, Ask) after an action. */
@@ -223,6 +277,10 @@ export function OnboardingView({
   const [statusLoading, setStatusLoading] = useState(false);
   const [notice, setNotice] = useState<OnboardingNotice>(null);
   const [stepKey, setStepKey] = useState<OnboardingStepKey>("welcome");
+  // The setup surface: the stepped click-through, or the conversational chat. The
+  // chat is an alternative entry from Welcome; the person can drop back to
+  // stepped at any point (and the engine-unavailable fallback does so too).
+  const [mode, setMode] = useState<"stepped" | "chat">("stepped");
   // True once the first request / demo landed, so the rail shows the journey
   // complete even though the user has already been routed to Home / Ask.
   const [requestDone, setRequestDone] = useState(false);
@@ -321,12 +379,16 @@ export function OnboardingView({
     }
   }, [connected, setInterruptedGithubAuthFlow]);
 
-  const refreshStatus = useCallback(async () => {
+  // Re-read setup status and RETURN the fresh snapshot (or null when it could not
+  // be read), so a caller that acts on the result reads the fresh value instead
+  // of the closed-over `status`/`engineReady` render values, which are only
+  // scheduled React state updates that have not landed yet.
+  const refreshStatus = useCallback(async (): Promise<SetupStatus | null> => {
     if (!connected) {
       statusRequestSeq.current += 1;
       setStatus(null);
       setStatusLoading(false);
-      return;
+      return null;
     }
     const requestId = ++statusRequestSeq.current;
     const requestBaseUrl = baseUrl;
@@ -343,6 +405,10 @@ export function OnboardingView({
         setStatus(next);
         setStatusError(null);
       }
+      // Return the fresh snapshot regardless of whether this request is still the
+      // current one: the caller wants the value it just fetched, not the render
+      // state. A superseded request still read a valid status.
+      return next;
     } catch (err) {
       if (
         statusRequestSeq.current === requestId &&
@@ -352,6 +418,7 @@ export function OnboardingView({
       ) {
         setStatusError(errorDetail(err) || "Could not read setup status.");
       }
+      return null;
     } finally {
       if (
         statusRequestSeq.current === requestId &&
@@ -364,7 +431,11 @@ export function OnboardingView({
     }
   }, [baseUrl, connected]);
 
-  const startGithubAuthLogin = useCallback(async () => {
+  // Returns the FRESH GitHub-connected verdict once the device flow settles, so a
+  // caller (the conversational connect_github executor) can report the real
+  // outcome instead of the stale pre-action render value. `false` also covers a
+  // guard bail, an interrupted/stale request, a timeout, or an error.
+  const startGithubAuthLogin = useCallback(async (): Promise<boolean> => {
     if (!canRun || !connected) {
       githubAuthFlowRequestSeq.current = null;
       setGithubAuthFlow({
@@ -372,7 +443,7 @@ export function OnboardingView({
         state: "error",
         message: "Open Alfred in the desktop app and install or connect the local runtime first.",
       });
-      return;
+      return false;
     }
 
     const requestAuthId = ++githubAuthRequestSeq.current;
@@ -392,12 +463,16 @@ export function OnboardingView({
       connectionGenerationRef.current === requestGeneration &&
       githubAuthRequestSeq.current === requestAuthId;
 
+    // The fresh GitHub verdict from the poll, returned to the caller. Stays false
+    // through any early bail so a stale/interrupted/failed flow never reports a
+    // false success.
+    let githubConnectedAfter = false;
     try {
       const result = await onRunLocalAction({ action: "github_auth_login" });
       const pollBelongsToCurrentRuntime = isCurrentRequest();
       if (!pollBelongsToCurrentRuntime) {
         interruptStaleGithubAuthRequest(requestAuthId);
-        return;
+        return false;
       }
       if (!result) {
         throw new Error("Could not start GitHub sign-in.");
@@ -433,12 +508,17 @@ export function OnboardingView({
 
       if (!isCurrentRequest()) {
         interruptStaleGithubAuthRequest(requestAuthId);
-        return;
+        return false;
       }
       githubAuthFlowRequestSeq.current = null;
       if (poll.status) {
         setStatus(poll.status);
       }
+      // The verdict returned to the caller is the FRESH status the poll landed on,
+      // not the stale pre-action render value: prefer the polled status's github
+      // flag, and treat a success poll as connected even if the status snapshot is
+      // momentarily absent.
+      githubConnectedAfter = Boolean(poll.status?.github.ok) || poll.state === "success";
       if (poll.state === "success") {
         setGithubAuthFlow({
           state: "success",
@@ -459,7 +539,7 @@ export function OnboardingView({
     } catch (err) {
       if (!isCurrentRequest()) {
         interruptStaleGithubAuthRequest(requestAuthId);
-        return;
+        return false;
       }
       githubAuthFlowRequestSeq.current = null;
       setGithubAuthFlow({
@@ -473,6 +553,7 @@ export function OnboardingView({
         setStatusLoading(false);
       }
     }
+    return githubConnectedAfter;
   }, [baseUrl, canRun, connected, interruptStaleGithubAuthRequest, onRunLocalAction]);
 
   useEffect(() => {
@@ -484,6 +565,207 @@ export function OnboardingView({
   const capabilityActionableCount = status?.capability_plane?.summary.actionable ?? 0;
   const toolsReady = engineReady && capabilityActionableCount === 0;
   const reposSelected = (status?.repos.count ?? 0) > 0;
+
+  // Execute one onboarding action REQUESTED by the conversational guide. This is
+  // the single source of truth: every branch runs the SAME handler the stepped
+  // flow already uses (the GitHub device flow, saveSetupRepos, onSaveCustomNames,
+  // refreshStatus), never a duplicate config write. The panel only requests; this
+  // executor runs it under the same token gate. Returns a plain result note the
+  // panel threads back into the chat.
+  const runOnboardingAction = useCallback(
+    async (action: OnboardingAction): Promise<OnboardingActionResult> => {
+      try {
+        switch (action.tool) {
+          case "check_engine": {
+            // Read the FRESH status the refresh just fetched, not the closed-over
+            // `status`/`engineReady` render values (those are only scheduled state
+            // updates and would report stale "no engine" on a first run).
+            const fresh = await refreshStatus();
+            const engines = (fresh?.engines ?? [])
+              .filter((engine) => engine.installed)
+              .map((engine) => engine.name);
+            if (Boolean(fresh?.engine_ready) || engines.length > 0) {
+              const list = engines.length ? engines.join(" and ") : "a coding engine";
+              return { ok: true, note: `Found ${list} on this Mac.` };
+            }
+            return {
+              ok: false,
+              note: "No coding engine detected yet. Install Claude Code or Codex, then say so.",
+            };
+          }
+          case "connect_github": {
+            if (githubConnected) {
+              return { ok: true, note: "GitHub is already connected." };
+            }
+            if (!canRun || !connected) {
+              return {
+                ok: false,
+                note: "GitHub sign-in needs the local runtime. Open the desktop app, then retry.",
+              };
+            }
+            // Use the FRESH verdict the device flow settled on, not the stale
+            // pre-action `githubConnected` render value: a flow that just
+            // succeeded must report success to the next model turn.
+            const connectedAfter = await startGithubAuthLogin();
+            await refreshStatus();
+            return connectedAfter
+              ? { ok: true, note: "GitHub is connected." }
+              : {
+                  ok: false,
+                  note: "Started GitHub sign-in. Finish it in your browser, then tell me when it is done.",
+                };
+          }
+          case "set_repos": {
+            if (!canMutate) {
+              return {
+                ok: false,
+                note: "I cannot save repos in this read-only preview. Use the step-by-step setup to pick repos.",
+              };
+            }
+            const repos = Array.isArray(action.args.repos)
+              ? action.args.repos.filter((repo): repo is string => typeof repo === "string")
+              : [];
+            if (!repos.length) {
+              return {
+                ok: false,
+                note: "No valid repo names came through. Which repos should I watch?",
+              };
+            }
+            await saveSetupRepos(baseUrl, repos);
+            await refreshStatus();
+            return { ok: true, note: `Alfred will work in ${repos.join(", ")}.` };
+          }
+          case "pick_agents": {
+            // The fleet is fixed; picking agents is a display preference the
+            // person can refine on the Team step. Acknowledge without a write.
+            const roles = Array.isArray(action.args.roles)
+              ? action.args.roles.filter((role): role is string => typeof role === "string")
+              : [];
+            const note = roles.length
+              ? `Noted: ${roles.join(", ")}. You can fine-tune names on the Team step.`
+              : "The full senior-engineering team is ready. You can rename it next.";
+            return { ok: true, note };
+          }
+          case "propose_theme": {
+            // A proposal is a preview, not a save. Surface it; the person confirms
+            // by asking to save (the model then sends save_theme).
+            return {
+              ok: true,
+              note: "Here is a proposed team. Say the word and I will save it, or ask for tweaks.",
+            };
+          }
+          case "save_theme": {
+            const names = asStringRecord(action.args.custom_names);
+            const roles = asStringRecord(action.args.custom_roles);
+            if (!names || Object.keys(names).length === 0) {
+              return {
+                ok: false,
+                note: "That team was not complete. Let's name every core role first.",
+              };
+            }
+            await onSaveCustomNames({ names, roles: roles ?? {} });
+            return { ok: true, note: "Saved your team names." };
+          }
+          case "set_schedule": {
+            // Persist the cadence through the SAME native primitive the Fleet view
+            // uses (`alfred schedule set` / `pause`), never a fake acknowledgement.
+            // `off` unloads the scheduler via the existing pause action; a cadence
+            // is applied to every currently scheduled agent via `schedule set`.
+            const cadence =
+              typeof action.args.cadence === "string" ? action.args.cadence : "daily";
+            if (!canRun || !connected) {
+              return {
+                ok: false,
+                note: "Setting a schedule needs the local runtime. Open the desktop app, then retry.",
+              };
+            }
+            if (cadence === "off") {
+              const result = await onRunLocalAction({
+                action: "pause",
+                target: "all",
+                refreshAfter: true,
+              });
+              if (!result || !result.success) {
+                return {
+                  ok: false,
+                  note: "Could not pause the schedule. Try again, or set it on the Fleet page.",
+                };
+              }
+              return { ok: true, note: "Paused the schedule. Alfred will only run when you ask." };
+            }
+            const mapped = scheduleForCadence(cadence);
+            if (mapped === null) {
+              return {
+                ok: false,
+                note: "I did not recognize that cadence. Try off, hourly, daily, or weekly.",
+              };
+            }
+            // Re-cadence every scheduled agent through the native primitive. Read
+            // the live schedule so we target the agents that actually exist.
+            let runs: { codename: string }[] = [];
+            try {
+              runs = (await loadSchedule(baseUrl)).runs ?? [];
+            } catch {
+              runs = [];
+            }
+            const codenames = Array.from(
+              new Set(runs.map((run) => run.codename).filter((name): name is string => Boolean(name))),
+            );
+            if (!codenames.length) {
+              return {
+                ok: false,
+                note: "No scheduled agents are set up yet, so there is nothing to re-time. You can set schedules on the Fleet page after setup.",
+              };
+            }
+            let applied = 0;
+            for (const codename of codenames) {
+              const result = await onRunLocalAction({
+                action: "schedule",
+                target: codename,
+                cadence: mapped,
+                refreshAfter: false,
+              });
+              if (result && result.success) applied += 1;
+            }
+            if (applied === 0) {
+              return {
+                ok: false,
+                note: "Could not save the schedule. Try again, or set it on the Fleet page.",
+              };
+            }
+            await refreshStatus();
+            return { ok: true, note: `Alfred will sweep for work ${cadence}.` };
+          }
+          case "finish_setup": {
+            await refreshStatus();
+            setRequestDone(true);
+            return {
+              ok: true,
+              note: "Setup is done. Give Alfred its first job whenever you are ready.",
+            };
+          }
+          default:
+            return { ok: false, note: "I do not know how to do that step yet." };
+        }
+      } catch (err) {
+        return {
+          ok: false,
+          note: errorDetail(err) || (err instanceof Error ? err.message : "That step failed."),
+        };
+      }
+    },
+    [
+      baseUrl,
+      canMutate,
+      canRun,
+      connected,
+      githubConnected,
+      onRunLocalAction,
+      onSaveCustomNames,
+      refreshStatus,
+      startGithubAuthLogin,
+    ],
+  );
 
   const currentIndex = ONBOARDING_STEP_ORDER.indexOf(stepKey);
 
@@ -751,6 +1033,24 @@ export function OnboardingView({
           </Button>
         </header>
 
+        {mode === "chat" ? (
+          // The conversational entry: Alfred drives setup one step at a time via
+          // /api/onboarding/converse, executing each requested step through the
+          // SAME handlers the stepped flow uses (runOnboardingAction). The person
+          // can drop back to the stepped flow at any point.
+          <div className="alfred-onboarding-shell__panel motion-fade">
+            <OnboardingConversePanel
+              baseUrl={baseUrl}
+              onRunAction={runOnboardingAction}
+              onDone={() => {
+                setRequestDone(true);
+                onSwitch?.("home");
+              }}
+              onUseStepped={() => setMode("stepped")}
+            />
+          </div>
+        ) : (
+          <>
         <Stepper
           steps={stepperItems}
           activeKey={stepKey}
@@ -790,6 +1090,7 @@ export function OnboardingView({
               nativeBusy={nativeBusy}
               onInstallCore={onInstallCore}
               onGetStarted={() => goToStep("engine")}
+              onChatSetup={() => setMode("chat")}
               onDevShortcut={() => goToStep("github")}
             />
           ) : null}
@@ -931,6 +1232,8 @@ export function OnboardingView({
             )}
           </div>
         </footer>
+          </>
+        )}
       </div>
     </section>
   );

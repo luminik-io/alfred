@@ -22,6 +22,8 @@ import type {
   MemoryLessonsResponse,
   NativeAction,
   NativeCommandResult,
+  OnboardingConverseRequest,
+  OnboardingConverseResponse,
   PlanDecision,
   PlanDecisionResponse,
   PlansResponse,
@@ -482,6 +484,21 @@ export async function themeBuilderConverse(
   return writeAlfredJson(baseUrl, "/api/theme-builder/converse", request, signal);
 }
 
+// One turn of the conversational Ask-driven onboarding guide. The server asks a
+// short setup question, then requests one scoped action the client executes
+// under the same token gate the stepped flow uses. When no live engine is
+// configured the server returns a 503 with `error: "live_session_unavailable"`;
+// the caller catches that (via isLiveSessionUnavailable) and falls back to the
+// stepped onboarding flow. Nothing is executed server-side: the client runs the
+// SAME setup handler both paths share, so they cannot drift.
+export async function onboardingConverse(
+  baseUrl: string,
+  request: OnboardingConverseRequest,
+  signal?: AbortSignal,
+): Promise<OnboardingConverseResponse> {
+  return writeAlfredJson(baseUrl, "/api/onboarding/converse", request, signal);
+}
+
 // One turn of the conversational, repo-grounded spec-builder. The server runs a
 // single live interrogator turn and returns the reply + accumulating spec +
 // readiness. When no live engine is configured the server returns a 503 with
@@ -842,6 +859,13 @@ export async function setQueuePickup(
 ): Promise<QueueActionResponse> {
   const target_agent = action === "assign" && targetAgent !== "auto" ? targetAgent : undefined;
   return writeAlfredJson(baseUrl, "/api/queue", { repo, number, action, target_agent });
+}
+
+// The upcoming scheduled agent runs parsed from agents.conf. Read-only; the
+// conversational onboarding's set_schedule uses it to learn which agents to
+// re-cadence through the native `alfred schedule set` primitive.
+export async function loadSchedule(baseUrl: string): Promise<ScheduleResponse> {
+  return readAlfredJson<ScheduleResponse>(baseUrl, "/api/schedule");
 }
 
 export async function loadSetupStatus(baseUrl: string): Promise<SetupStatus> {

@@ -429,6 +429,7 @@ function App() {
               onRunLocalAction={runLocalAction}
               onRosterThemeChange={setRosterTheme}
               onEditCustomTheme={() => setCustomThemeEditorOpen(true)}
+              onSaveCustomNames={saveCustomNames}
               onOpenConnection={() => {
                 setSetupMode("advanced");
               }}

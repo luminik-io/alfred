@@ -1,4 +1,4 @@
-import { ArrowRight, Download, KeyRound, Server, Sparkles } from "lucide-react";
+import { ArrowRight, Download, KeyRound, MessageCircle, Server, Sparkles } from "lucide-react";
 
 import type { SetupInstallInventory, SetupStatus } from "../../types";
 import { InstallInventoryPanel } from "./InstallInventoryPanel";
@@ -22,6 +22,7 @@ export function WelcomeStep({
   nativeBusy,
   onInstallCore,
   onGetStarted,
+  onChatSetup,
   onDevShortcut,
 }: {
   install?: SetupInstallInventory | null;
@@ -31,6 +32,8 @@ export function WelcomeStep({
   nativeBusy: string | null;
   onInstallCore: () => void;
   onGetStarted: () => void;
+  // Open the conversational setup: Alfred walks the person through setup in chat.
+  onChatSetup: () => void;
   onDevShortcut: () => void;
 }) {
   const needsNativeInstall = canRun && !connected;
@@ -92,7 +95,12 @@ export function WelcomeStep({
             <ArrowRight size={16} aria-hidden="true" />
             <span>Continue setup</span>
           </Button>
-        ) : null}
+        ) : (
+          <Button type="button" variant="outline" size="lg" onClick={onChatSetup}>
+            <MessageCircle size={16} aria-hidden="true" />
+            <span>Set it up by chatting</span>
+          </Button>
+        )}
         <Button type="button" variant="ghost" size="lg" onClick={onDevShortcut}>
           <Server size={16} aria-hidden="true" />
           <span>I have a server running</span>

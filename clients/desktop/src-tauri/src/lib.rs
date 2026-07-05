@@ -281,7 +281,9 @@ fn request_timeout(path: &str) -> Duration {
 /// True for the buffered POST paths whose response body is produced by a live
 /// model turn and so needs the longer timeout.
 fn is_model_turn_path(path: &str) -> bool {
-    is_allowed_compose_converse(path) || is_allowed_theme_builder_converse(path)
+    is_allowed_compose_converse(path)
+        || is_allowed_theme_builder_converse(path)
+        || is_allowed_onboarding_converse(path)
 }
 
 /// Header the server requires on every state-mutating request. It carries the
@@ -656,6 +658,7 @@ fn validate_api_path<'a>(
         is_allowed_compose_draft(path_part)
             || is_allowed_compose_converse(path_part)
             || is_allowed_theme_builder_converse(path_part)
+            || is_allowed_onboarding_converse(path_part)
             || is_allowed_conversation_control(path_part)
             || is_allowed_custom_agents_write(path_part)
             || is_allowed_roster_theme_action(path_part)
@@ -719,6 +722,18 @@ fn is_allowed_theme_builder_converse(path: &str) -> bool {
     // was dead in the packaged app because only this Rust bridge enforces the POST
     // allowlist (the browser dev mode bypasses it).
     path == "/api/theme-builder/converse"
+}
+
+fn is_allowed_onboarding_converse(path: &str) -> bool {
+    // POST /api/onboarding/converse runs one conversational setup turn: Alfred
+    // asks a short setup question, then requests one scoped action (check the
+    // engines, connect GitHub, pick repos, name the team, set a schedule,
+    // finish) the client executes under the token gate. It is an LLM turn, so it
+    // rides the long-model-turn timeout rather than the default buffered budget.
+    // Like the theme-builder route, it must be on the contract here because only
+    // this Rust bridge enforces the POST allowlist (the browser dev mode
+    // bypasses it).
+    path == "/api/onboarding/converse"
 }
 
 fn is_allowed_conversation_control(path: &str) -> bool {
@@ -2650,13 +2665,35 @@ done"#;
     }
 
     #[test]
+    fn onboarding_converse_is_allowlisted_for_post() {
+        // POST /api/onboarding/converse is the conversational setup turn. Without
+        // it on the contract the feature would be dead in the packaged app, since
+        // only this Rust bridge enforces the POST allowlist.
+        let (path, query) = validate_api_path("/api/onboarding/converse", &Method::POST)
+            .expect("onboarding converse should be accepted for POST");
+        assert_eq!(path, "/api/onboarding/converse");
+        assert_eq!(query, None);
+        assert!(is_allowed_onboarding_converse("/api/onboarding/converse"));
+        // A near-miss path must stay off the rule.
+        assert!(!is_allowed_onboarding_converse(
+            "/api/onboarding/converse/stream"
+        ));
+        // It is not a read route, so a GET stays blocked.
+        let err = validate_api_path("/api/onboarding/converse", &Method::GET)
+            .expect_err("onboarding converse must not be reachable via GET");
+        assert!(err.contains("desktop contract"));
+    }
+
+    #[test]
     fn model_turn_paths_get_the_longer_timeout() {
-        // A model-turn POST (Compose or roster-theme builder) runs an LLM call that
-        // routinely outlasts the 20s default, so it rides the longer budget.
+        // A model-turn POST (Compose, roster-theme builder, or onboarding guide)
+        // runs an LLM call that routinely outlasts the 20s default, so it rides
+        // the longer budget.
         let long = Duration::from_secs(MODEL_TURN_REQUEST_TIMEOUT_S);
         let short = Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_S);
         assert_eq!(request_timeout("/api/compose/converse"), long);
         assert_eq!(request_timeout("/api/theme-builder/converse"), long);
+        assert_eq!(request_timeout("/api/onboarding/converse"), long);
         // Every other path keeps the tight default so a hung endpoint fails fast.
         assert_eq!(request_timeout("/api/roster-theme"), short);
         assert_eq!(request_timeout("/api/conversation/control"), short);

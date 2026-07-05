@@ -724,6 +724,35 @@ def register_routes(app: FastAPI) -> None:
             return JSONResponse({"error": "request body must be a JSON object"}, status_code=400)
         return _run_theme_builder_converse(request, body)
 
+    @app.post("/api/onboarding/converse", response_class=JSONResponse)
+    async def api_onboarding_converse(request: Request) -> JSONResponse:
+        """Run one turn of the conversational Ask-driven onboarding guide.
+
+        Body: ``{ messages: [{role, content}] }``. Each call runs ONE assistant
+        turn via the agent-engine dispatch, seeded with the onboarding system
+        prompt. Alfred asks a short setup question, then REQUESTS a structured
+        action (check the engines, connect GitHub, pick repos, name the team, set
+        a schedule, finish) that the DESKTOP CLIENT executes under the same token
+        gate the stepped flow uses. The model never writes config or a token: it
+        only proposes the next step.
+
+        Returns ``{ reply, action, done }`` where ``action`` is either ``null`` (a
+        plain question turn) or ``{tool, args}`` for one scoped onboarding action.
+        Nothing is executed here: the client runs the SAME setup handler the
+        stepped OnboardingView already drives, so the two paths cannot drift.
+        Degrades with a 503 when no live engine is configured so the client falls
+        back to the stepped flow.
+        """
+        if not _same_origin_post(request) or not _authorized_mutation(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        try:
+            body = json.loads((await request.body()).decode("utf-8") or "{}")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return JSONResponse({"error": "request body must be JSON"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "request body must be a JSON object"}, status_code=400)
+        return _run_onboarding_converse(request, body)
+
     @app.get("/api/custom-agents", response_class=JSONResponse)
     async def api_custom_agents(request: Request) -> JSONResponse:
         store = CustomAgentStore.from_state_root(_state_root(request))
@@ -1958,6 +1987,107 @@ def _run_theme_builder_converse(request: Request, body: dict[str, Any]) -> JSONR
             status_code=503,
         )
     return JSONResponse(tb.turn_payload(turn))
+
+
+def _onboarding_prompt_path() -> Path:
+    override = os.environ.get("ALFRED_ONBOARDING_PROMPT")
+    if override:
+        return Path(override)
+    relative = Path("prompts") / "onboarding.md"
+    candidates: list[Path] = []
+    runtime_home = os.environ.get("ALFRED_HOME")
+    if runtime_home:
+        candidates.append(Path(runtime_home) / relative)
+    candidates.append(Path(__file__).resolve().parents[2] / relative)
+    candidates.append(Path.cwd() / relative)
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return candidates[0]
+
+
+def _run_onboarding_converse(request: Request, body: dict[str, Any]) -> JSONResponse:
+    """One turn of the conversational Ask-driven onboarding guide.
+
+    Reuses the compose converse plumbing (message parsing, untrusted transcript,
+    action parsing, engine dispatch) but produces an onboarding turn: a reply
+    plus an optional scoped action the client executes. Nothing is persisted
+    here; the client runs the same setup handler the stepped flow uses. If no
+    engine is configured (or it returns nothing usable) we degrade with a clear
+    503 so the client falls back to the stepped onboarding flow.
+    """
+    import compose_converse as cc
+    import onboarding_converse as ob
+
+    messages = cc.parse_messages(body.get("messages"))
+    if not messages:
+        return JSONResponse(
+            {"error": "send at least one message to start the conversation"},
+            status_code=400,
+        )
+
+    engine = ob.engine_from_env()
+    if not engine:
+        return JSONResponse(
+            {
+                "error": "live_session_unavailable",
+                "detail": (
+                    "No conversational engine is configured for onboarding. Set "
+                    "ALFRED_ONBOARDING_ENGINE (or the compose converse engine) to "
+                    "enable the chat, or use the stepped setup."
+                ),
+            },
+            status_code=503,
+        )
+
+    try:
+        from agent_runner.metadata import load_prompt
+    except Exception:  # pragma: no cover - load_prompt is always importable
+        return JSONResponse(
+            {"error": "onboarding prompt loader unavailable"},
+            status_code=503,
+        )
+
+    try:
+        system_prompt = ob.render_system_prompt(
+            prompt_path=_onboarding_prompt_path(),
+            loader=load_prompt,
+        )
+    except OSError:
+        return JSONResponse(
+            {
+                "error": "live_session_unavailable",
+                "detail": (
+                    "The onboarding prompt could not be loaded. Check the runtime "
+                    "deploy, or use the stepped setup."
+                ),
+            },
+            status_code=503,
+        )
+
+    # ``run_turn`` distinguishes a terminal engine failure (returns ``None``) from
+    # a transient malformed turn (returns a soft ``retry_turn`` with a reply and no
+    # action). Only the terminal case degrades to the 503 the client treats as
+    # engine-unavailable; the transient case flows through as a normal 200 turn so
+    # the chat stays open and the person can just resend.
+    turn = ob.run_turn(
+        system_prompt=system_prompt,
+        messages=messages,
+        engine=engine,
+        workdir=_planning_workdir(request),
+    )
+    if turn is None:
+        return JSONResponse(
+            {
+                "error": "live_session_unavailable",
+                "detail": (
+                    "The onboarding engine could not run this turn. Check the "
+                    "runtime, or use the stepped setup."
+                ),
+            },
+            status_code=503,
+        )
+    return JSONResponse(ob.turn_payload(turn))
 
 
 def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONResponse:
