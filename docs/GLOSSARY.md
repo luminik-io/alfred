@@ -59,9 +59,10 @@ the machine uses. See [Identity and themes](IDENTITY_AND_THEMES.md).
   See also: [Claude Code guide](CLAUDE_CODE.md).
 - **conversational onboarding**: The chat-driven setup path (`POST
   /api/onboarding/converse`) where Alfred asks setup questions and proposes
-  actions the client runs under a human gate; read-only actions auto-proceed,
-  side-effectful ones need an explicit Approve. Reuses the same handlers as the
-  stepped Setup form. See also: [Setting Alfred up](ONBOARDING.md).
+  actions the client runs under a human gate; only the engine check
+  auto-proceeds, and every other action needs a click before it runs. Reuses the
+  same handlers as the stepped Setup form. See also:
+  [Setting Alfred up](ONBOARDING.md).
 - **code-map**: JSON snapshot of every watched repo's source files, symbols,
   imports, API calls, server routes, and contract drift, written to
   `$ALFRED_HOME/state/code-map.json` by `code-map-refresh`.

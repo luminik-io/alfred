@@ -30,28 +30,31 @@ Alfred can only propose actions from a fixed, short list. Anything outside this
 list is dropped, so a stray phrase in your message can never trigger something
 unexpected.
 
-| Action | What it does | Needs your approval? |
+| Action | What it does | Auto-proceeds? |
 |---|---|---|
-| `check_engine` | Shows whether your Claude and Codex CLIs are ready. | No, read-only |
-| `connect_github` | Starts the GitHub sign-in flow. | No, read-only status |
-| `set_repos` | Scopes the fleet to the repositories you named. | Yes |
-| `pick_agents` | Records which roles you want surfaced. | Yes |
-| `propose_theme` | Suggests names for your team (the theme builder). | No, a preview |
-| `save_theme` | Saves your chosen team names. | Yes |
-| `set_schedule` | Sets how often the fleet runs (off, hourly, daily, weekly). | Yes |
-| `finish_setup` | Ends the guided flow and routes you to the board. | Yes |
+| `check_engine` | Shows whether your Claude and Codex CLIs are ready. | Yes, read-only |
+| `connect_github` | Starts the GitHub sign-in flow. | No, click to run |
+| `set_repos` | Scopes the fleet to the repositories you named. | No, click Approve |
+| `pick_agents` | Records which roles you want surfaced. | No, click Approve |
+| `propose_theme` | Suggests names for your team (the theme builder). | No, click to preview |
+| `save_theme` | Saves your chosen team names. | No, click Approve |
+| `set_schedule` | Sets how often the fleet runs (off, hourly, daily, weekly). | No, click Approve |
+| `finish_setup` | Ends the guided flow and routes you to the board. | No, click Approve |
 
 ### The approval gate
 
-The split is deliberate. Read-only actions (checking the engines, reading GitHub
-status, previewing a theme) auto-proceed, because they change nothing. Actions
-that change something (saving repos, saving a theme, setting a schedule,
-finishing setup) run only after you click Approve. Alfred proposes; you decide.
+The split is deliberate, and the desktop client is conservative about it. Only
+`check_engine`, a pure read of your local CLI status, auto-proceeds, because it
+changes nothing and reading it straight away keeps the flow smooth. Every other
+proposed action, including starting the GitHub sign-in and previewing a theme,
+parks behind a labeled button you click before it runs. Nothing that touches
+config, such as saving repos, saving a theme, or setting a schedule, happens
+without that click. Alfred proposes; you decide.
 
 Because the conversational path reuses the same setup handlers as the stepped
-form, every side-effectful action passes through the same human gate a stepped
-write would. There is no faster, quieter path to changing your config just
-because you typed it in chat.
+form, every action passes through the same human gate a stepped write would.
+There is no faster, quieter path to changing your config just because you typed
+it in chat.
 
 ### When the chat is not available
 
