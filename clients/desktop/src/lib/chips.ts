@@ -108,16 +108,28 @@ export function agentForShipped(card: ShippedCard): string | null {
     ...(card.labels || []),
     ...(card.agent_evidence || []),
   ].map((token) => token.toLowerCase());
-  if (tokens.some((t) => t.includes("batman") || t.includes("agent:large-feature"))) {
+  if (
+    tokens.some(
+      (t) => t.includes("batman") || t.includes("architect") || t.includes("agent:large-feature"),
+    )
+  ) {
     return "architect";
   }
-  if (tokens.some((t) => t.includes("lucius") || t.includes("agent:implement"))) {
+  if (
+    tokens.some(
+      (t) => t.includes("lucius") || t.includes("senior-dev") || t.includes("agent:implement"),
+    )
+  ) {
     return "senior-dev";
   }
-  if (tokens.some((t) => t.includes("nightwing"))) return "fixer";
-  if (tokens.some((t) => t.includes("damian"))) return "spec-planner";
-  if (tokens.some((t) => t.includes("bane"))) return "test-engineer";
-  if (tokens.some((t) => t.includes("rasalghul") || t.includes("ra's al ghul"))) {
+  if (tokens.some((t) => t.includes("nightwing") || t.includes("fixer"))) return "fixer";
+  if (tokens.some((t) => t.includes("damian") || t.includes("spec-planner"))) return "spec-planner";
+  if (tokens.some((t) => t.includes("bane") || t.includes("test-engineer"))) return "test-engineer";
+  if (
+    tokens.some(
+      (t) => t.includes("rasalghul") || t.includes("ra's al ghul") || t.includes("reviewer"),
+    )
+  ) {
     return "reviewer";
   }
   return null;

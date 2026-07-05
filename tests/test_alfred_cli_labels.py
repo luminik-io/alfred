@@ -40,6 +40,29 @@ def test_label_catalogue_includes_lifecycle_batman_and_operator_labels(cli_modul
     assert "do-not-merge" in names
 
 
+def test_resolve_label_normalizes_batman_cast_alias(
+    cli_module, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Canonical scheduler labels key on the role slug, but operator muscle-memory
+    # still types the Batman-cast codename ("alfred run lucius"). run/pause/resume
+    # resolve via _resolve_label, so it must normalize the alias to the slug
+    # before the lookup or the command fails even though the alias exists.
+    monkeypatch.setattr(
+        cli_module,
+        "_label_map",
+        lambda: {"senior-dev": "alfred.senior-dev", "planner": "alfred.planner"},
+    )
+    # Batman-cast alias resolves to the slug's label.
+    assert cli_module._resolve_label("lucius") == "alfred.senior-dev"
+    assert cli_module._resolve_label("drake") == "alfred.planner"
+    # The canonical slug and the full label still resolve unchanged.
+    assert cli_module._resolve_label("senior-dev") == "alfred.senior-dev"
+    assert cli_module._resolve_label("alfred.senior-dev") == "alfred.senior-dev"
+    # An unknown name (and an alias whose slug is not loaded) resolves to None.
+    assert cli_module._resolve_label("nonesuch") is None
+    assert cli_module._resolve_label("batman") is None
+
+
 def test_labels_check_reports_missing_without_creating(
     cli_module, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:

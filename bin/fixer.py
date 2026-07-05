@@ -33,6 +33,7 @@ from agent_runner import (
     PreflightSpec,
     SpendState,
     agent_engine,
+    agent_repos,
     claude_invoke_streaming,
     codex_invoke,
     codex_sandbox_for_agent,
@@ -71,7 +72,9 @@ PREFLIGHT = PreflightSpec(
     bins=[*engine_preflight_bins(NIGHTWING_ENGINE), "gh", "git"],
     require_gh_auth=True,
 )
-WATCH_REPOS = [r.strip() for r in os.environ.get("ALFRED_FIXER_REPOS", "").split(",") if r.strip()]
+# Keyed off the RESOLVED codename (AGENT), with the default-slug key as a legacy
+# fallback, so an operator-renamed fixer reads its ALFRED_<CHOSEN>_REPOS key.
+WATCH_REPOS = agent_repos(AGENT, default_env="ALFRED_FIXER_REPOS")
 
 DAILY_TURN_CAP = int(os.environ.get("ALFRED_FIXER_TURN_CAP", "600"))
 

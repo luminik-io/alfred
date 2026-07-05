@@ -23,6 +23,7 @@ from agent_runner import (
     PreflightSpec,
     SpendState,
     agent_engine,
+    agent_repos,
     claude_invoke_streaming,
     codex_invoke,
     codex_sandbox_for_agent,
@@ -54,9 +55,9 @@ PREFLIGHT = PreflightSpec(
     require_gh_auth=True,
 )
 
-TRIAGE_REPOS = [
-    r.strip() for r in os.environ.get("ALFRED_TRIAGE_REPOS", "").split(",") if r.strip()
-]
+# Keyed off the RESOLVED codename (AGENT), with the default-slug key as a legacy
+# fallback, so an operator-renamed triage agent reads its ALFRED_<CHOSEN>_REPOS key.
+TRIAGE_REPOS = agent_repos(AGENT, default_env="ALFRED_TRIAGE_REPOS")
 
 # Persistent dedup ledger. The same issue can survive a label-add failure
 # (gh returns success but the label is missing on next read, eventual

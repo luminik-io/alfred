@@ -476,6 +476,28 @@ def test_env_assignments_includes_codenames_and_repos(init_mod, tmp_path):
     assert out["ALFRED_SENIOR_DEV_REPOS"] == "foo,bar"
 
 
+def test_env_assignments_repos_key_follows_overridden_codename(init_mod, tmp_path):
+    # An operator can override a role's codename (role_to_codename / the
+    # AGENT_CODENAME_<ROLE> config). The runner reads its repo scope from
+    # ALFRED_<RESOLVED_CODENAME>_REPOS (agent_runner.agent_repos keys off the
+    # resolved AGENT_CODENAME). So the wizard MUST write the repo scope to that
+    # same overridden-codename key, not the catalog default; keying the write to
+    # the default would leave the renamed agent with no repos and it would idle.
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("feature_dev",),
+        codenames={"feature_dev": "oracle"},
+        repos={"feature_dev": ["acme/foo"]},
+    )
+    out = init_mod.env_assignments_for(state)
+    assert out["AGENT_CODENAME_FEATURE_DEV"] == "oracle"
+    # Written to the chosen-codename key the runner will read.
+    assert out["ALFRED_ORACLE_REPOS"] == "foo"
+    # NOT written to the catalog-default key (that would strand the agent).
+    assert "ALFRED_SENIOR_DEV_REPOS" not in out
+
+
 def test_env_assignments_batman_requires_explicit_parent_repo(init_mod, tmp_path):
     state = _state_with(
         init_mod,

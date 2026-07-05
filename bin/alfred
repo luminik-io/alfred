@@ -1230,13 +1230,24 @@ def _record_map() -> dict[str, dict[str, str]]:
 
 
 def _resolve_label(name: str) -> str | None:
-    """Accept a codename or a full label; return the full label or None."""
+    """Accept a codename, a Batman-cast alias, or a full label; return the label.
+
+    Canonical identities are role slugs, but the Batman-cast codenames survive as
+    aliases (see ``_normalize_agent_name``). Operator commands like ``alfred run
+    lucius`` must still resolve, so an alias is normalized to its slug before the
+    lookup. The raw name is tried first so a literal slug or full label keeps
+    working even if it is not in the alias table.
+    """
     mapping = _label_map()
     if name in mapping:
         return mapping[name]
     # Already a full label present in agents.conf?
     if name in mapping.values():
         return name
+    # Fall back to the Batman-cast alias -> slug map ("lucius" -> "senior-dev").
+    normalized = _normalize_agent_name(name)
+    if normalized != name and normalized in mapping:
+        return mapping[normalized]
     return None
 
 

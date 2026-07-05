@@ -38,6 +38,7 @@ from agent_runner import (
     PreflightSpec,
     SpendState,
     agent_engine,
+    agent_repos,
     claude_invoke_streaming,
     codex_invoke,
     codex_sandbox_for_agent,
@@ -69,9 +70,9 @@ BANE_ENGINE = agent_engine(AGENT, default="hybrid")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 LAST_REPO_FILE = STATE_ROOT / AGENT / "last-repo.txt"
 
-ROTATION = [
-    r.strip() for r in os.environ.get("ALFRED_TEST_ENGINEER_REPOS", "").split(",") if r.strip()
-]
+# Keyed off the RESOLVED codename (AGENT), with the default-slug key as a legacy
+# fallback, so an operator-renamed test-engineer reads its ALFRED_<CHOSEN>_REPOS key.
+ROTATION = agent_repos(AGENT, default_env="ALFRED_TEST_ENGINEER_REPOS")
 
 PREFLIGHT = PreflightSpec(
     agent=AGENT,

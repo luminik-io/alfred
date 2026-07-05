@@ -527,6 +527,50 @@ def test_agent_engine_env_override_wins(monkeypatch):
     assert ar.agent_engine("batman", default="hybrid") == "claude"
 
 
+def test_agent_repos_reads_resolved_codename_key():
+    import agent_runner as ar
+
+    # The runner resolves its codename from AGENT_CODENAME; agent_repos must key
+    # the repo-scope read off that resolved codename so an operator-renamed agent
+    # reads the ALFRED_<CHOSEN>_REPOS key the wizard wrote (not a fixed default).
+    env = {"ALFRED_ORACLE_REPOS": "acme/api,acme/web"}
+    assert ar.agent_repos("oracle", default_env="ALFRED_SENIOR_DEV_REPOS", environ=env) == [
+        "acme/api",
+        "acme/web",
+    ]
+
+
+def test_agent_repos_falls_back_to_legacy_default_env():
+    import agent_runner as ar
+
+    # A config written before the rename only set the default-slug key; the
+    # unrenamed agent still finds its repos through the legacy fallback.
+    env = {"ALFRED_SENIOR_DEV_REPOS": "acme/api"}
+    assert ar.agent_repos("senior-dev", default_env="ALFRED_SENIOR_DEV_REPOS", environ=env) == [
+        "acme/api"
+    ]
+
+
+def test_agent_repos_prefers_resolved_key_over_legacy():
+    import agent_runner as ar
+
+    # When both are present, the chosen-codename key wins so an override is not
+    # silently shadowed by a stale default-slug value.
+    env = {
+        "ALFRED_ORACLE_REPOS": "acme/api",
+        "ALFRED_SENIOR_DEV_REPOS": "stale/repo",
+    }
+    assert ar.agent_repos("oracle", default_env="ALFRED_SENIOR_DEV_REPOS", environ=env) == [
+        "acme/api"
+    ]
+
+
+def test_agent_repos_empty_when_nothing_configured():
+    import agent_runner as ar
+
+    assert ar.agent_repos("senior-dev", default_env="ALFRED_SENIOR_DEV_REPOS", environ={}) == []
+
+
 def test_engine_preflight_bins_treats_hybrid_as_claude_first():
     import agent_runner as ar
 

@@ -45,6 +45,7 @@ from agent_runner import (
     PreflightSpec,
     SpendState,
     agent_engine,
+    agent_repos,
     claude_invoke_streaming,
     codex_invoke,
     codex_sandbox_for_agent,
@@ -71,9 +72,10 @@ AGENT = os.environ.get("AGENT_CODENAME", "planner")
 DRAKE_ENGINE = agent_engine(AGENT, default="hybrid")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 
-DRAKE_REPOS = [
-    r.strip() for r in os.environ.get("ALFRED_PLANNER_REPOS", "").split(",") if r.strip()
-]
+# Keyed off the RESOLVED codename (AGENT), with the default-slug key as a legacy
+# fallback, so an operator-renamed planner reads the ALFRED_<CHOSEN>_REPOS key
+# that alfred-init wrote rather than idling.
+DRAKE_REPOS = agent_repos(AGENT, default_env="ALFRED_PLANNER_REPOS")
 
 
 def _build_state_machine_context() -> str:

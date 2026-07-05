@@ -27,6 +27,7 @@ from agent_runner import (
     PreflightSpec,
     SpendState,
     agent_engine,
+    agent_repos,
     claim_issue,
     claude_invoke_streaming,
     codex_invoke,
@@ -109,9 +110,10 @@ LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 # fleet without editing source. Empty list = idle exit. In dry-run with nothing
 # configured, fall back to a clearly-fake repo so the narrated lifecycle has a
 # target to work against.
-LUCIUS_REPOS = [
-    r.strip() for r in os.environ.get("ALFRED_SENIOR_DEV_REPOS", "").split(",") if r.strip()
-]
+# Keyed off the RESOLVED codename so an operator who renames this agent via
+# AGENT_CODENAME reads the same ALFRED_<CHOSEN>_REPOS key that alfred-init wrote.
+# The default-slug key stays as a legacy fallback for configs written earlier.
+LUCIUS_REPOS = agent_repos(AGENT, default_env="ALFRED_SENIOR_DEV_REPOS")
 if not LUCIUS_REPOS and is_dry_run():
     LUCIUS_REPOS = ["dry-run-repo"]
 

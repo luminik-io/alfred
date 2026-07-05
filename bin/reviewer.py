@@ -24,6 +24,7 @@ from agent_runner import (
     PreflightSpec,
     SpendState,
     agent_engine,
+    agent_repos,
     claude_invoke_streaming,
     codex_invoke,
     doctor_mode,
@@ -55,9 +56,9 @@ PREFLIGHT = PreflightSpec(
     require_gh_auth=True,
 )
 
-REVIEW_REPOS = [
-    r.strip() for r in os.environ.get("ALFRED_REVIEWER_REPOS", "").split(",") if r.strip()
-]
+# Keyed off the RESOLVED codename (AGENT), with the default-slug key as a legacy
+# fallback, so an operator-renamed reviewer reads its ALFRED_<CHOSEN>_REPOS key.
+REVIEW_REPOS = agent_repos(AGENT, default_env="ALFRED_REVIEWER_REPOS")
 
 # Specs / docs PRs are markdown-heavy; line count != review effort.
 # Operator can name the docs-style repos to get a higher diff cap; default cap

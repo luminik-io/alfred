@@ -44,6 +44,25 @@ describe("agentForShipped", () => {
     ).toBe("reviewer");
   });
 
+  it("attributes slugged evidence (branch prefixes, labels) to the role slug", () => {
+    // After the rename, PR evidence / branch prefixes are slugged, e.g.
+    // `senior-dev-pr-open` or `agent/senior-dev/123`. The .includes match on the
+    // slug substring covers both branch-prefix forms.
+    expect(
+      agentForShipped(card({ author: "", agent_evidence: ["senior-dev-pr-open"] })),
+    ).toBe("senior-dev");
+    expect(
+      agentForShipped(card({ author: "", labels: ["agent/senior-dev/123"] })),
+    ).toBe("senior-dev");
+    expect(agentForShipped(card({ author: "architect" }))).toBe("architect");
+    expect(
+      agentForShipped(card({ author: "", agent_evidence: ["reviewer-approved"] })),
+    ).toBe("reviewer");
+    expect(agentForShipped(card({ author: "fixer" }))).toBe("fixer");
+    expect(agentForShipped(card({ author: "spec-planner" }))).toBe("spec-planner");
+    expect(agentForShipped(card({ author: "test-engineer" }))).toBe("test-engineer");
+  });
+
   it("returns null when no known codename is present", () => {
     expect(agentForShipped(card({ author: "someone-else", labels: [] }))).toBeNull();
   });

@@ -10,6 +10,7 @@ import {
   dedupePlans,
   fleetPauseSummary,
   planNeedsAttention,
+  shippedAgentCodename,
   threadForCompose,
 } from "./derive";
 import type {
@@ -117,7 +118,7 @@ describe("buildNeedsYou (calm client-owned decisions)", () => {
       path: "",
       preview: "Review before work starts.",
       content: "",
-      source: "batman",
+      source: "architect",
       readiness_score: null,
       readiness_ok: true,
       revision_count: 0,
@@ -131,9 +132,9 @@ describe("buildNeedsYou (calm client-owned decisions)", () => {
   });
 
   it("does NOT count compose drafts or stale Slack follow-ups as decisions waiting", () => {
-    // The old count conflated batman-plans (real go/no-go), planning-drafts
+    // The old count conflated architect-plans (real go/no-go), planning-drafts
     // (Compose working docs), and followups (stale Slack snapshots). Only
-    // source==="batman" is a genuine decision before work starts.
+    // source==="architect" is a genuine decision before work starts.
     const draftLike = (overrides: Partial<PlanDraft>): PlanDraft => ({
       plan_id: "x",
       title: "t",
@@ -221,26 +222,59 @@ describe("planNeedsAttention", () => {
     path: "",
     preview: "",
     content: "",
-    source: "batman",
+    source: "architect",
     readiness_score: null,
     readiness_ok: true,
     revision_count: 0,
   };
-  it("flags an awaiting Batman go/no-go plan", () => {
-    expect(planNeedsAttention({ ...base, status: "draft" })).toBe(true);
+  it("flags an awaiting architect go/no-go plan", () => {
+    expect(planNeedsAttention({ ...base, source: "architect", status: "draft" })).toBe(true);
     expect(planNeedsAttention({ ...base, status: "Draft (awaiting approval)" })).toBe(true);
     expect(planNeedsAttention({ ...base, status: "blocked" })).toBe(true);
   });
-  it("excludes non-Batman sources (compose drafts, Slack follow-ups)", () => {
+  it("excludes non-architect sources (compose drafts, Slack follow-ups)", () => {
     expect(planNeedsAttention({ ...base, source: "compose", status: "draft" })).toBe(false);
     expect(planNeedsAttention({ ...base, source: "planning", status: "draft" })).toBe(false);
     expect(planNeedsAttention({ ...base, source: "followup", status: "needs follow-up" })).toBe(
       false,
     );
   });
-  it("drops a decided Batman plan out of the queue", () => {
-    expect(planNeedsAttention({ ...base, status: "approved" })).toBe(false);
-    expect(planNeedsAttention({ ...base, status: "declined" })).toBe(false);
+  it("drops a decided architect plan out of the queue", () => {
+    expect(planNeedsAttention({ ...base, source: "architect", status: "approved" })).toBe(false);
+    expect(planNeedsAttention({ ...base, source: "architect", status: "declined" })).toBe(false);
+  });
+});
+
+describe("shippedAgentCodename", () => {
+  it("attributes the old Batman-cast tokens to the canonical role slug", () => {
+    expect(shippedAgentCodename(shippedCard({ author: "batman" }))).toBe("architect");
+    expect(shippedAgentCodename(shippedCard({ author: "lucius" }))).toBe("senior-dev");
+    expect(shippedAgentCodename(shippedCard({ author: "nightwing-bot" }))).toBe("fixer");
+    expect(shippedAgentCodename(shippedCard({ author: "damian" }))).toBe("spec-planner");
+    expect(shippedAgentCodename(shippedCard({ author: "bane" }))).toBe("test-engineer");
+    expect(
+      shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["rasalghul"] })),
+    ).toBe("reviewer");
+  });
+
+  it("attributes slugged evidence (branch prefixes, labels) to the role slug", () => {
+    expect(
+      shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["senior-dev-pr-open"] })),
+    ).toBe("senior-dev");
+    expect(
+      shippedAgentCodename(shippedCard({ author: "", labels: ["agent/senior-dev/123"] })),
+    ).toBe("senior-dev");
+    expect(shippedAgentCodename(shippedCard({ author: "architect" }))).toBe("architect");
+    expect(
+      shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["reviewer-approved"] })),
+    ).toBe("reviewer");
+    expect(shippedAgentCodename(shippedCard({ author: "fixer" }))).toBe("fixer");
+    expect(shippedAgentCodename(shippedCard({ author: "spec-planner" }))).toBe("spec-planner");
+    expect(shippedAgentCodename(shippedCard({ author: "test-engineer" }))).toBe("test-engineer");
+  });
+
+  it("stays in lockstep with chips.agentForShipped and returns null for unknowns", () => {
+    expect(shippedAgentCodename(shippedCard({ author: "someone-else", labels: [] }))).toBeNull();
   });
 });
 
@@ -276,7 +310,7 @@ describe("dedupePlans", () => {
     expect(rows.map((row) => row.revisions)).toEqual([1, 1]);
   });
 
-  it("keeps Batman approval plans distinct from matching compose drafts", () => {
+  it("keeps architect approval plans distinct from matching compose drafts", () => {
     const rows = dedupePlans([
       {
         ...base,
@@ -285,14 +319,14 @@ describe("dedupePlans", () => {
       },
       {
         ...base,
-        plan_id: "batman",
+        plan_id: "architect",
         title: "Add CSV export",
-        source: "batman",
+        source: "architect",
       },
     ]);
 
     expect(rows).toHaveLength(2);
-    expect(rows.map((row) => row.plan.plan_id)).toEqual(["compose", "batman"]);
+    expect(rows.map((row) => row.plan.plan_id)).toEqual(["compose", "architect"]);
   });
 
   it("keeps filed drafts distinct from matching unfiled drafts", () => {
