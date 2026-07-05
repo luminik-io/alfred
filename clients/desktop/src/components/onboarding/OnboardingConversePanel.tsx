@@ -1,8 +1,8 @@
-import { ArrowRight, Send, Sparkles } from "lucide-react";
+import { ArrowRight, Check, Send, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { isLiveSessionUnavailable, onboardingConverse } from "../../api";
-import type { ConverseMessage, OnboardingAction } from "../../types";
+import type { ConverseMessage, OnboardingAction, OnboardingActionTool } from "../../types";
 import { Button } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
 import { Textarea } from "../ui/textarea";
@@ -16,6 +16,14 @@ import { Textarea } from "../ui/textarea";
  * result of that handler is fed back into the chat as an assistant note so the
  * person sees what happened, and the conversation continues.
  *
+ * ACTION GATE (#415 request/execute split): the model only ever PROPOSES an
+ * action; a SIDE-EFFECTFUL one (sign in to GitHub, write repos, save the team,
+ * set a schedule, finish) never runs without an explicit user click on an
+ * Approve affordance in that turn. Only READ-ONLY actions (a status re-read like
+ * check_engine) auto-proceed, so the good UX where a check flows straight to the
+ * model's next prompt is preserved. This stops one user send from silently
+ * chaining side-effectful setup steps with no confirmation between them.
+ *
  * The panel reuses the ThemeBuilderDialog chat primitives (bubbles, ScrollArea,
  * Textarea composer). It does NOT hand-roll config-writing: every side effect
  * goes through `onRunAction`.
@@ -26,6 +34,29 @@ import { Textarea } from "../ui/textarea";
  */
 
 type ChatBubble = { role: "user" | "assistant"; content: string };
+
+// The onboarding actions that only READ state (no config write, no external
+// side effect). These may run without an explicit confirmation so a status check
+// can flow straight into the model's next prompt. Every other action is
+// side-effectful and must wait for a user click. Kept as an explicit allowlist
+// so a new tool is side-effectful (gated) by default, never auto-run by
+// omission.
+const READ_ONLY_ACTIONS: ReadonlySet<OnboardingActionTool> = new Set<OnboardingActionTool>([
+  "check_engine",
+]);
+
+// A short, human label for the Approve button per action, so the person knows
+// what they are confirming before it runs.
+const ACTION_APPROVE_LABEL: Record<OnboardingActionTool, string> = {
+  check_engine: "Check tools",
+  connect_github: "Connect GitHub",
+  set_repos: "Save repositories",
+  pick_agents: "Use these agents",
+  propose_theme: "Preview team",
+  save_theme: "Save team names",
+  set_schedule: "Set schedule",
+  finish_setup: "Finish setup",
+};
 
 const GREETING: ChatBubble = {
   role: "assistant",
@@ -63,10 +94,17 @@ export function OnboardingConversePanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [engineDown, setEngineDown] = useState(false);
+  // A side-effectful action the model proposed and is waiting on the user to
+  // approve. While set, the composer is replaced by an Approve/Skip affordance;
+  // nothing runs until the user clicks. Read-only actions never land here.
+  const [pendingAction, setPendingAction] = useState<OnboardingAction | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
-  // The running transcript sent to the server. Kept in a ref so an action's
-  // follow-up note can be threaded in without racing a stale render.
+  // The running transcript sent to the server. This is the MODEL-facing history
+  // and is a SUPERSET of the visible bubbles: internal `[setup]` outcome notes
+  // are threaded here for the model but never rendered as a chat bubble. Kept in
+  // a ref so an action's follow-up note can be threaded in without racing a
+  // stale render.
   const transcriptRef = useRef<ChatBubble[]>([GREETING]);
 
   useEffect(() => {
@@ -76,15 +114,62 @@ export function OnboardingConversePanel({
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  // Append a VISIBLE chat bubble: it renders AND joins the model transcript. The
+  // visible list is tracked separately (not derived from the transcript) so a
+  // transcript-only `[setup]` note added via threadModelNote can never leak into
+  // the rendered bubbles.
   const appendBubble = useCallback((bubble: ChatBubble) => {
     transcriptRef.current = [...transcriptRef.current, bubble];
-    setBubbles(transcriptRef.current);
+    setBubbles((prev) => [...prev, bubble]);
   }, []);
 
-  // Send the current transcript for one model turn, run any requested action
-  // through the shared handlers, and thread the outcome back into the chat. A
-  // turn that requests an action loops once more so the model can acknowledge
-  // the result and move to the next step.
+  // Thread a MODEL-ONLY note into the transcript WITHOUT rendering it. Used for
+  // the internal `[setup] ...` outcome the model reads as ground truth; the
+  // person sees the plain assistant confirmation bubble instead, never the
+  // bracketed machine note.
+  const threadModelNote = useCallback((content: string) => {
+    transcriptRef.current = [...transcriptRef.current, { role: "user", content }];
+  }, []);
+
+  // executeAction and runTurn are mutually recursive (an executed action loops
+  // back into the next model turn). A ref breaks the callback cycle so neither
+  // useCallback depends on the other and the deps stay honest.
+  const runTurnRef = useRef<(controller: AbortController) => Promise<void>>(async () => {});
+
+  // Run one proposed action through the shared setup handler, thread its outcome
+  // back to the model, honor a terminal finish_setup, then continue the chat.
+  // The caller is responsible for the approval gate: this always executes.
+  const executeAction = useCallback(
+    async (action: OnboardingAction, done: boolean, controller: AbortController): Promise<void> => {
+      // The step runs through the shared handler, never in this panel.
+      const result = await onRunAction(action);
+      if (controller.signal.aborted) return;
+      // The person sees a plain confirmation bubble.
+      appendBubble({ role: "assistant", content: result.note });
+      // The terminal turn carries the finish_setup action AND done. Because the
+      // server only sets done on that action, honor done AFTER running it, then
+      // route out rather than continuing the chat.
+      if (done) {
+        onDone();
+        return;
+      }
+      // Thread the machine outcome to the model (transcript-only) so its next
+      // step reflects what actually happened, then take one more model turn so
+      // Alfred acknowledges the result and proposes the next step.
+      threadModelNote(
+        result.ok
+          ? `[setup] ${action.tool} completed: ${result.note}`
+          : `[setup] ${action.tool} did not complete: ${result.note}`,
+      );
+      await runTurnRef.current(controller);
+    },
+    [appendBubble, onDone, onRunAction, threadModelNote],
+  );
+
+  // Send the current transcript for one model turn and process the result. A
+  // READ-ONLY action runs immediately (the check flows into the next prompt); a
+  // SIDE-EFFECTFUL action is parked as `pendingAction` and NOT executed until the
+  // user approves it, so no config write or external step runs unconfirmed.
   const runTurn = useCallback(
     async (controller: AbortController): Promise<void> => {
       const wire: ConverseMessage[] = transcriptRef.current.map((b) => ({
@@ -97,34 +182,16 @@ export function OnboardingConversePanel({
         appendBubble({ role: "assistant", content: turn.reply });
       }
       if (turn.action) {
-        // A step was requested: run it through the shared setup handler, never
-        // in this panel. Feed the outcome back as a user-role note so the model
-        // treats it as ground truth for the next turn (the app said so, not the
-        // person).
-        const result = await onRunAction(turn.action);
-        if (controller.signal.aborted) return;
-        appendBubble({ role: "assistant", content: result.note });
-        // The terminal turn carries the finish_setup action AND done. Because the
-        // server only sets done on that action, the done check has to run even
-        // when an action is present: run the action, then honor done and route
-        // out, rather than recursing past it (which would never re-surface done).
-        if (turn.done) {
-          onDone();
+        const readOnly = READ_ONLY_ACTIONS.has(turn.action.tool);
+        if (readOnly && !turn.done) {
+          // A read-only check auto-proceeds so the good UX is preserved.
+          await executeAction(turn.action, false, controller);
           return;
         }
-        // Thread the machine outcome to the model as a user turn so its next
-        // step reflects what actually happened, then loop once so Alfred
-        // acknowledges the result and moves to the next step.
-        transcriptRef.current = [
-          ...transcriptRef.current,
-          {
-            role: "user",
-            content: result.ok
-              ? `[setup] ${turn.action.tool} completed: ${result.note}`
-              : `[setup] ${turn.action.tool} did not complete: ${result.note}`,
-          },
-        ];
-        await runTurn(controller);
+        // A side-effectful action (or a done-bearing terminal action) waits for
+        // an explicit user click before it runs. Park it; the Approve affordance
+        // in the composer area drives executeAction.
+        setPendingAction(turn.action);
         return;
       }
       // A plain turn (no action) can still carry done in principle; honor it.
@@ -132,16 +199,18 @@ export function OnboardingConversePanel({
         onDone();
       }
     },
-    [appendBubble, baseUrl, onDone, onRunAction],
+    [appendBubble, baseUrl, executeAction, onDone],
   );
 
+  // Keep the ref pointing at the latest runTurn so executeAction's recursion
+  // always calls the current closure.
+  useEffect(() => {
+    runTurnRef.current = runTurn;
+  }, [runTurn]);
+
   const drive = useCallback(
-    async (userText: string | null) => {
+    async (work: (controller: AbortController) => Promise<void>) => {
       if (busy || engineDown) return;
-      if (userText) {
-        appendBubble({ role: "user", content: userText });
-      }
-      setInput("");
       setBusy(true);
       setError(null);
 
@@ -150,7 +219,7 @@ export function OnboardingConversePanel({
       abortRef.current = controller;
 
       try {
-        await runTurn(controller);
+        await work(controller);
       } catch (err) {
         if (controller.signal.aborted) return;
         if (isLiveSessionUnavailable(err)) {
@@ -166,14 +235,37 @@ export function OnboardingConversePanel({
         }
       }
     },
-    [appendBubble, busy, engineDown, runTurn],
+    [busy, engineDown],
   );
 
   const send = useCallback(() => {
     const text = input.trim();
-    if (!text) return;
-    void drive(text);
-  }, [drive, input]);
+    if (!text || busy || engineDown || pendingAction) return;
+    appendBubble({ role: "user", content: text });
+    setInput("");
+    void drive((controller) => runTurn(controller));
+  }, [appendBubble, busy, drive, engineDown, input, pendingAction, runTurn]);
+
+  // The user approved the parked side-effectful action: run it now.
+  const approvePending = useCallback(() => {
+    const action = pendingAction;
+    if (!action || busy) return;
+    setPendingAction(null);
+    // finish_setup is the terminal action; done is carried only by it.
+    const done = action.tool === "finish_setup";
+    void drive((controller) => executeAction(action, done, controller));
+  }, [busy, drive, executeAction, pendingAction]);
+
+  // The user declined the parked action: drop it and let them redirect the chat
+  // by typing. Nothing is executed. A note tells the model the step was skipped
+  // so its next turn does not silently re-propose the same step.
+  const skipPending = useCallback(() => {
+    const action = pendingAction;
+    if (!action || busy) return;
+    setPendingAction(null);
+    threadModelNote(`[setup] ${action.tool} was skipped by the person.`);
+    appendBubble({ role: "assistant", content: "Skipped. What would you like to do instead?" });
+  }, [appendBubble, busy, pendingAction, threadModelNote]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
@@ -234,6 +326,37 @@ export function OnboardingConversePanel({
             <ArrowRight aria-hidden="true" className="size-4" />
             <span>Set up step by step</span>
           </Button>
+        </div>
+      ) : pendingAction ? (
+        // The action gate: a side-effectful step is proposed and waits for the
+        // person to approve it before anything runs. Nothing here executes until
+        // the click.
+        <div className="onboarding-converse__approval grid gap-2" role="group" aria-label="Approve setup step">
+          <p className="onboarding-converse__approval-hint text-xs text-muted-foreground">
+            Alfred wants to run a setup step. Nothing happens until you approve it.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              className="btn-primary-glow onboarding-converse__approve"
+              disabled={busy}
+              onClick={approvePending}
+            >
+              <Check aria-hidden="true" className="size-4" />
+              <span>{ACTION_APPROVE_LABEL[pendingAction.tool]}</span>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="onboarding-converse__skip"
+              disabled={busy}
+              onClick={skipPending}
+            >
+              <span>Not now</span>
+            </Button>
+          </div>
         </div>
       ) : (
         <>

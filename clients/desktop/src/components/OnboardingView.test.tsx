@@ -1245,12 +1245,18 @@ describe("OnboardingView conversational setup actions", () => {
   }
 
   // Open the "Set it up by chatting" panel and send one message so the scripted
-  // converse turn runs its action through the shared executor.
+  // converse turn is issued.
   async function enterChatAndSend(user: ReturnType<typeof userEvent.setup>, text: string) {
     await user.click(await screen.findByRole("button", { name: /set it up by chatting/i }));
     const input = await screen.findByLabelText(/message alfred to set up/i);
     await user.type(input, text);
     await user.click(screen.getByRole("button", { name: /send/i }));
+  }
+
+  // A side-effectful action is parked behind an Approve button; click it so the
+  // shared executor actually runs the step (the #415 human-gate).
+  async function approveStep(user: ReturnType<typeof userEvent.setup>, buttonName: RegExp) {
+    await user.click(await screen.findByRole("button", { name: buttonName }));
   }
 
   it("reports a successful GitHub device flow to the model (Codex P2 fresh status)", async () => {
@@ -1294,6 +1300,9 @@ describe("OnboardingView conversational setup actions", () => {
     renderOnboarding({ onRunLocalAction });
     const user = userEvent.setup();
     await enterChatAndSend(user, "connect github");
+
+    // connect_github is side-effectful: approve it before it runs.
+    await approveStep(user, /connect github/i);
 
     await waitFor(() => expect(converse).toHaveBeenCalledTimes(2));
     expect(onRunLocalAction).toHaveBeenCalledWith({ action: "github_auth_login" });
@@ -1344,6 +1353,9 @@ describe("OnboardingView conversational setup actions", () => {
     const user = userEvent.setup();
     await enterChatAndSend(user, "daily please");
 
+    // set_schedule is side-effectful: approve it before it runs.
+    await approveStep(user, /set schedule/i);
+
     await waitFor(() => expect(converse).toHaveBeenCalledTimes(2));
     // The cadence is mapped to the canonical schedule and written for each agent
     // through the SAME native primitive the Fleet view uses.
@@ -1361,5 +1373,42 @@ describe("OnboardingView conversational setup actions", () => {
     });
     const note = secondTurnMessages.find((m) => m.content.includes("[setup] set_schedule"));
     expect(note?.content).toContain("set_schedule completed");
+  });
+
+  it("reports engine-present from fresh status on check_engine (Codex P2)", async () => {
+    // check_engine must read the FRESH status the refresh fetched, not the stale
+    // closure. Seed a fresh status that has an installed engine and assert the
+    // outcome threaded to the model reports it found the engine.
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        engine_ready: true,
+        engines: [
+          { name: "claude", installed: true, path: "/opt/homebrew/bin/claude" },
+          { name: "codex", installed: false, path: null },
+        ],
+      }),
+    );
+    let secondTurnMessages: { role: string; content: string }[] = [];
+    const converse = vi
+      .spyOn(api, "onboardingConverse")
+      .mockResolvedValueOnce({
+        reply: "Checking your tools.",
+        action: { tool: "check_engine", args: {} },
+        done: false,
+      })
+      .mockImplementationOnce(async (_base, request) => {
+        secondTurnMessages = request.messages;
+        return { reply: "Great.", action: null, done: false };
+      });
+
+    renderOnboarding();
+    const user = userEvent.setup();
+    // check_engine is read-only, so it auto-proceeds with no approval click.
+    await enterChatAndSend(user, "start");
+
+    await waitFor(() => expect(converse).toHaveBeenCalledTimes(2));
+    const note = secondTurnMessages.find((m) => m.content.includes("[setup] check_engine"));
+    expect(note?.content).toContain("check_engine completed");
+    expect(note?.content).toContain("claude");
   });
 });

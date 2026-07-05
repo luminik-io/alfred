@@ -379,12 +379,16 @@ export function OnboardingView({
     }
   }, [connected, setInterruptedGithubAuthFlow]);
 
-  const refreshStatus = useCallback(async () => {
+  // Re-read setup status and RETURN the fresh snapshot (or null when it could not
+  // be read), so a caller that acts on the result reads the fresh value instead
+  // of the closed-over `status`/`engineReady` render values, which are only
+  // scheduled React state updates that have not landed yet.
+  const refreshStatus = useCallback(async (): Promise<SetupStatus | null> => {
     if (!connected) {
       statusRequestSeq.current += 1;
       setStatus(null);
       setStatusLoading(false);
-      return;
+      return null;
     }
     const requestId = ++statusRequestSeq.current;
     const requestBaseUrl = baseUrl;
@@ -401,6 +405,10 @@ export function OnboardingView({
         setStatus(next);
         setStatusError(null);
       }
+      // Return the fresh snapshot regardless of whether this request is still the
+      // current one: the caller wants the value it just fetched, not the render
+      // state. A superseded request still read a valid status.
+      return next;
     } catch (err) {
       if (
         statusRequestSeq.current === requestId &&
@@ -410,6 +418,7 @@ export function OnboardingView({
       ) {
         setStatusError(errorDetail(err) || "Could not read setup status.");
       }
+      return null;
     } finally {
       if (
         statusRequestSeq.current === requestId &&
@@ -568,11 +577,14 @@ export function OnboardingView({
       try {
         switch (action.tool) {
           case "check_engine": {
-            await refreshStatus();
-            const engines = (status?.engines ?? [])
+            // Read the FRESH status the refresh just fetched, not the closed-over
+            // `status`/`engineReady` render values (those are only scheduled state
+            // updates and would report stale "no engine" on a first run).
+            const fresh = await refreshStatus();
+            const engines = (fresh?.engines ?? [])
               .filter((engine) => engine.installed)
               .map((engine) => engine.name);
-            if (engineReady || engines.length > 0) {
+            if (Boolean(fresh?.engine_ready) || engines.length > 0) {
               const list = engines.length ? engines.join(" and ") : "a coding engine";
               return { ok: true, note: `Found ${list} on this Mac.` };
             }
@@ -747,13 +759,11 @@ export function OnboardingView({
       canMutate,
       canRun,
       connected,
-      engineReady,
       githubConnected,
       onRunLocalAction,
       onSaveCustomNames,
       refreshStatus,
       startGithubAuthLogin,
-      status,
     ],
   );
 
