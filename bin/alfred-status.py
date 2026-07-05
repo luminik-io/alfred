@@ -30,7 +30,7 @@ for candidate in (
 
 import agent_runner  # noqa: E402
 from custom_agents import CustomAgentStore  # noqa: E402
-from slack_format import themed_agent_name  # noqa: E402
+from slack_format import escape_mrkdwn, themed_agent_name  # noqa: E402
 
 ALFRED_HOME = agent_runner.ALFRED_HOME
 STATE_ROOT = agent_runner.STATE_ROOT
@@ -667,7 +667,7 @@ def render_slack(snapshots: list[AgentSnapshot], globals_: dict[str, Any]) -> st
             if s.approval_wait_issue_numbers and s.approval_wait_pid_alive is False:
                 issues = ", ".join(f"#{n}" for n in s.approval_wait_issue_numbers)
                 why.append(f"dead approval wait {issues}")
-            lines.append(f"  - {s.display_name}: {', '.join(why)}")
+            lines.append(f"  - {escape_mrkdwn(s.display_name)}: {', '.join(why)}")
     else:
         lines.append("No active agents flagged.")
     if approval_waits:
@@ -676,7 +676,8 @@ def render_slack(snapshots: list[AgentSnapshot], globals_: dict[str, Any]) -> st
         for s in approval_waits:
             issues = ", ".join(f"#{n}" for n in s.approval_wait_issue_numbers)
             lines.append(
-                f"  - {s.display_name}: waiting on {issues} for {_duration(s.approval_wait_age_seconds)}"
+                f"  - {escape_mrkdwn(s.display_name)}: waiting on {issues} "
+                f"for {_duration(s.approval_wait_age_seconds)}"
             )
     return "\n".join(lines)
 

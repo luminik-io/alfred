@@ -149,6 +149,7 @@ def test_write_dedupes_silently():
 # ---------------------------------------------------------------------------
 
 CLI = Path(__file__).resolve().parent.parent / "bin" / "alfred"
+STATUS_CLI = Path(__file__).resolve().parent.parent / "bin" / "alfred-status.py"
 
 
 def _load_cli_module():
@@ -156,6 +157,18 @@ def _load_cli_module():
     spec = importlib.util.spec_from_loader("alfred_cli", loader)
     mod = importlib.util.module_from_spec(spec)
     sys.modules["alfred_cli"] = mod
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _load_status_module():
+    # Register in sys.modules before exec so the module's @dataclass decorators
+    # can resolve their own module (dataclasses looks it up by __module__).
+    loader = importlib.machinery.SourceFileLoader("alfred_status_cli", str(STATUS_CLI))
+    spec = importlib.util.spec_from_loader("alfred_status_cli", loader)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["alfred_status_cli"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     return mod
@@ -579,6 +592,94 @@ def test_cli_status_json_keeps_raw_slug_and_adds_themed_name(tmp_path):
     # human name separately so downstream consumers are not broken by the rename.
     assert architect["agent"] == "architect"
     assert architect["display_name"] == "Batman"
+
+
+def _status_snapshot(status_mod, **overrides):
+    """Build an AgentSnapshot with sane defaults; override only what a test needs."""
+    fields = {
+        "agent": "release-captain",
+        "display_name": "Release Captain",
+        "label": "alfred.release-captain",
+        "role": "Release coordinator",
+        "schedule": "-",
+        "loaded": True,
+        "disabled": False,
+        "engine": "codex",
+        "locked": False,
+        "stale_lock": False,
+        "lock_pid": None,
+        "lock_age_seconds": None,
+        "paused": False,
+        "paused_since": None,
+        "last_fired": None,
+        "last_event": None,
+        "today_firings": 0,
+        "today_successes": 0,
+        "today_failures": 0,
+        "today_consecutive_failures": 0,
+        "today_turns": 0,
+        "today_cost_usd": 0.0,
+        "blocked_until": None,
+        "last_stderr_tail": None,
+        "approval_wait_firing_id": None,
+        "approval_wait_issue_numbers": [],
+        "approval_wait_created_at": None,
+        "approval_wait_age_seconds": None,
+        "approval_wait_pid": None,
+        "approval_wait_pid_alive": None,
+    }
+    fields.update(overrides)
+    return status_mod.AgentSnapshot(**fields)
+
+
+def test_render_slack_escapes_mrkdwn_in_display_name():
+    status = _load_status_module()
+    ZWSP = "​"
+    # A custom agent's display name (or a custom roster-theme label) can carry
+    # mrkdwn markup. render_slack interpolates it into a Slack mrkdwn body, so it
+    # must be escaped at both the flagged and approval-wait interpolation sites.
+    flagged = _status_snapshot(
+        status,
+        display_name="*Boss* <@U123> ~x~",
+        stale_lock=True,
+    )
+    waiting = _status_snapshot(
+        status,
+        display_name="_Deputy_ & `chief`",
+        approval_wait_issue_numbers=[7],
+        approval_wait_pid_alive=True,
+        approval_wait_age_seconds=42.0,
+    )
+    out = status.render_slack([flagged, waiting], {"global_block": None})
+
+    # Flagged line: markup neutralized, mention escaped to an entity.
+    assert "*Boss*" not in out
+    assert f"*{ZWSP}Boss*{ZWSP}" in out
+    assert "&lt;@U123&gt;" in out
+    assert f"~{ZWSP}x~{ZWSP}" in out
+    # Approval-wait line: same neutralization on the second interpolation site.
+    assert "_Deputy_" not in out
+    assert f"_{ZWSP}Deputy_{ZWSP}" in out
+    assert "&amp;" in out
+    assert f"`{ZWSP}chief`{ZWSP}" in out
+
+
+def test_render_table_keeps_display_name_raw():
+    status = _load_status_module()
+    # The plain-text CLI table must NOT escape: the raw operator name shows
+    # verbatim, no HTML entities and no zero-width spaces.
+    snap = _status_snapshot(status, display_name="*Boss* <@U123>", stale_lock=True)
+    table = status.render_table(
+        [snap],
+        {
+            "host_scheduler": "launchd",
+            "global_block": None,
+            "slack_webhook_cache_age_hours": None,
+        },
+    )
+    assert "*Boss* <@U123>" in table
+    assert "​" not in table
+    assert "&lt;" not in table
 
 
 def test_cli_status_uses_custom_agent_manifest_engine_default(tmp_path):
