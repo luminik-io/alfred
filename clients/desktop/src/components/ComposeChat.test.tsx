@@ -376,14 +376,14 @@ describe("ComposeView (conversational)", () => {
     controlMock.mockResolvedValueOnce({
       handled: true,
       action: "run",
-      text: "*Triggered one run* `batman`.",
+      text: "*Triggered one run* `architect`.",
       detail: "",
       actor_user_id: "ULOCALCLIENT",
     });
     const user = userEvent.setup();
     renderChat();
 
-    await send(user, "run batman");
+    await send(user, "run architect");
 
     await waitFor(() => expect(controlMock).toHaveBeenCalledTimes(1));
     expect(streamMock).not.toHaveBeenCalled();

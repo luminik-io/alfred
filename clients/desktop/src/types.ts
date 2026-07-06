@@ -237,15 +237,7 @@ export type FiringsResponse = {
 // done   -> close the issue using GitHub's native closed state (no new label)
 export type QueueAction = "assign" | "queue" | "hold" | "done";
 // Canonical assignment lanes are the role slugs ("architect", "senior-dev").
-// The legacy Batman-cast codenames ("batman", "lucius") stay in the union for
-// back-compat: the server's assignment resolver accepts them as aliases, so an
-// older client (or a UI option value not yet migrated) still routes correctly.
-export type AssignmentTargetAgent =
-  | "auto"
-  | "architect"
-  | "senior-dev"
-  | "batman"
-  | "lucius";
+export type AssignmentTargetAgent = "auto" | "architect" | "senior-dev";
 
 // Response from POST /api/queue (assign, arm, hold, or close an issue).
 export type QueueActionResponse = {
@@ -412,8 +404,8 @@ export type FilePlanIssueResponse = {
   error?: string;
 };
 
-// The go/no-go an operator can record on a genuine Batman plan from the client.
-// The server writes the same marker Batman's file poll watches.
+// The go/no-go an operator can record on a genuine architect plan from the client.
+// The server writes the same marker the architect's file poll watches.
 export type PlanDecision = "approve" | "decline";
 
 export type PlanDecisionResponse = {

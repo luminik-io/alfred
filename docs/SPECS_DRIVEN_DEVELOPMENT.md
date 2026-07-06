@@ -84,15 +84,15 @@ How to revert or disable the change if it breaks.
 1. **Drake reads specs and roadmap context.** It files scoped
    `agent:implement` issues only when the acceptance criteria are concrete and
    testable.
-2. **Damian fills the multi-repo bundle queue.** Where Drake handles
-   single-repo work, Damian walks `DAMIAN_SPEC_DIR` once a day, identifies
+2. **spec-planner fills the multi-repo bundle queue.** Where Drake handles
+   single-repo work, spec-planner walks `ALFRED_SPEC_PLANNER_SPEC_DIR` once a day, identifies
    specs whose acceptance criteria touch two or more configured repos, and
    files the matching `agent:bundle:<slug>` sibling issues. All-or-nothing per
    bundle: if any sibling-create fails, the previously-created siblings are
-   rolled back so Batman never picks up a half-filed bundle. Damian is
+   rolled back so Architect never picks up a half-filed bundle. spec-planner is
    opt-in and capped at three bundles per firing.
-3. **Batman plans multi-repo work.** Labelled `agent:large-feature` parent
-   issues in `BATMAN_PARENT_REPO` become rollout plans across the configured
+3. **Architect plans multi-repo work.** Labelled `agent:large-feature` parent
+   issues in `ARCHITECT_PARENT_REPO` become rollout plans across the configured
    repos. Approved parent plans can file child `agent:implement` issues. Plans
    are visible in Slack and in `alfred serve` under Plans.
 4. **Lucius implements one repo at a time.** It claims a single
@@ -207,7 +207,7 @@ The issue body should name:
 
 Batman parses `Repos:`, `Children:`, and `Done when:` blocks from parent
 issues, posts the plan to Slack or local logs, and can file child issues only
-when `BATMAN_AUTO_EXECUTE` allows it. Treat the Slack thread as the place to
+when `ARCHITECT_AUTO_EXECUTE` allows it. Treat the Slack thread as the place to
 change the plan before approval. Plain-English feedback is enough: "remove
 mobile", "make this read-only", "add an empty state", or "split this into two
 PRs".

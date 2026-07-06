@@ -19,7 +19,7 @@ command verb** to act on the fleet without leaving Slack:
 * ``memory promote <id>``  -> operator-only: promote a memory candidate
 * ``memory reject <id>``   -> operator-only: reject a memory candidate
 * ``memory redis``         -> check the local Redis Agent Memory Server
-* ``assign <issue>``       -> operator-only: route an issue to Batman/Lucius
+* ``assign <issue>``       -> operator-only: route an issue to architect/senior-dev
 * ``trusted``              -> list Slack users who can collaborate on plans
 * ``trust <@user>``        -> operator-only: add a trusted collaborator
 * ``untrust <@user>``      -> operator-only: remove a local collaborator
@@ -397,7 +397,7 @@ class SlackControlHandler:
         arg: str,
         actor_user_id: str | None,
     ) -> ControlResult:
-        """`assign <issue>` decides Batman vs Lucius and labels the issue.
+        """`assign <issue>` decides architect vs senior-dev and labels the issue.
 
         Assignment can make an issue eligible for autonomous pickup, so it is
         operator-only, matching ``queue``.
@@ -1031,7 +1031,7 @@ class SlackControlHandler:
                 "run_rejected",
                 text=(
                     "*Rejected:* `run all` is intentionally unavailable.\n\n"
-                    "Trigger one agent at a time, e.g. `run batman`."
+                    "Trigger one agent at a time, e.g. `run architect`."
                 ),
                 detail="run all rejected",
             )
@@ -1135,7 +1135,7 @@ def _usage_for_malformed(text: str) -> str | None:
             f"*Usage:* `{first} <codename>`\n\n"
             f"Give exactly one agent codename"
             f"{' (or `all`)' if first in {'pause', 'resume', 'dry-run'} else ''}, "
-            f"e.g. `{first} lucius`."
+            f"e.g. `{first} senior-dev`."
         )
     if first in {"trust", "untrust"}:
         return (
@@ -1161,7 +1161,7 @@ def _usage_for_malformed(text: str) -> str | None:
     if first == "assign":
         return (
             "*Usage:* `assign owner/repo#123`\n\n"
-            "Only the configured approver can route an issue to Batman or Lucius."
+            "Only the configured approver can route an issue to architect or senior-dev."
         )
     if first == "remember":
         return render_remember_usage()
@@ -1179,10 +1179,10 @@ def render_help() -> str:
             '- "How is the fleet doing?"',
             '- "What shipped today?"',
             '- "What is blocked in the planning inbox?"',
-            '- "Run Batman now."',
-            '- "Dry-run Lucius."',
+            '- "Run architect now."',
+            '- "Dry-run senior-dev."',
             '- "Pause Nightwing for a bit."',
-            '- "Change Lucius to every 20 minutes."',
+            '- "Change senior-dev to every 20 minutes."',
             '- "Assign example-org/alfred#123 to Alfred."',
             '- "Queue example-org/alfred#123 for Alfred."',
             '- "Put that issue on hold."',
@@ -1193,7 +1193,7 @@ def render_help() -> str:
             "questions answer directly.",
             "",
             "Power-user shorthand still works for exact operations like `status`, "
-            "`runs`, `plans`, `schedule list`, `schedule show lucius`, "
+            "`runs`, `plans`, `schedule list`, `schedule show senior-dev`, "
             "`memory`, `trusted`, `trust <@user>`, and `untrust <@user>`.",
         ]
     )

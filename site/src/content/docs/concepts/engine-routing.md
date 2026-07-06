@@ -21,7 +21,7 @@ This page covers the three modes, the precedence chain, the fallback behavior, t
 
 The framework reads the engine for each firing from a precedence chain. The first source that returns a normalized mode wins.
 
-1. `ALFRED_<CODENAME>_ENGINE` (e.g. `ALFRED_LUCIUS_ENGINE=claude`, `ALFRED_RASALGHUL_ENGINE=codex`).
+1. `ALFRED_<CODENAME>_ENGINE` (e.g. `ALFRED_SENIOR_DEV_ENGINE=claude`, `ALFRED_REVIEWER_ENGINE=codex`).
 2. `ALFRED_ENGINE` for fleet-wide testing (useful in `alfred-dry-run`).
 3. `$ALFRED_HOME/state/engines/<codename>`, written by `alfred engine set`.
 4. The codename's compiled-in default, usually `hybrid`.
@@ -30,9 +30,9 @@ Alfred CLI:
 
 ```sh
 alfred engine status                 # one line per codename, resolved mode
-alfred engine status lucius          # one codename, plus where the value came from
-alfred engine set lucius hybrid      # persist to $ALFRED_HOME/state/engines/lucius
-alfred engine set rasalghul codex
+alfred engine status senior-dev      # one codename, plus where the value came from
+alfred engine set senior-dev hybrid  # persist to $ALFRED_HOME/state/engines/senior-dev
+alfred engine set reviewer codex
 alfred codex status                  # check the Codex CLI is reachable
 alfred codex probe                   # run one tiny non-interactive request
 alfred auth status                   # auth-surface check across both engines
@@ -67,15 +67,15 @@ The shipped fleet has the following defaults. Override per codename when your ac
 
 | Codename | Default mode | Why |
 |---|---|---|
-| **batman** | `hybrid` | Architect for cross-repo execution. Long-context planning prefers Claude; Codex fallback gives the architect lane a second model when Claude produced no useful plan. |
-| **lucius** | `hybrid` | Builder. Wants Claude for first-class code generation, with Codex available only for capability gaps. |
-| **drake** | `claude` | Planner. Cross-repo grep plus issue-filing benefits from Claude's longer effective context and tool integration. |
-| **bane** | `hybrid` | Test-coverage builder. Same posture as Lucius; tests are valuable enough to fall back rather than skip. |
-| **rasalghul** | `codex` | Reviewer. An independent reviewer on a different model surfaces blind spots the builder model shares. Also preserves Claude quota for builders. |
-| **nightwing** | `hybrid` | Review-fix builder. Needs Claude for the same reasons as Lucius. |
-| **robin** | `hybrid` | Bug triage. Light-touch; either engine works. |
-| **huntress** | `claude` | Post-deploy smoke. Lower volume; Claude is fine. |
-| **gordon** | `claude` | Deploy-health. Read-only; quiet on healthy days. |
+| **architect** | `hybrid` | Cross-repo execution. Long-context planning prefers Claude; Codex fallback gives the architect lane a second model when Claude produced no useful plan. |
+| **senior-dev** | `hybrid` | Builder. Wants Claude for first-class code generation, with Codex available only for capability gaps. |
+| **planner** | `claude` | Planner. Cross-repo grep plus issue-filing benefits from Claude's longer effective context and tool integration. |
+| **test-engineer** | `hybrid` | Test-coverage builder. Same posture as senior-dev; tests are valuable enough to fall back rather than skip. |
+| **reviewer** | `codex` | Independent reviewer on a different model surfaces blind spots the builder model shares. Also preserves Claude quota for builders. |
+| **fixer** | `hybrid` | Review-fix builder. Needs Claude for the same reasons as senior-dev. |
+| **triage** | `hybrid` | Bug triage. Light-touch; either engine works. |
+| **e2e-runner** | `claude` | Post-deploy smoke. Lower volume; Claude is fine. |
+| **ops-watch** | `claude` | Deploy-health. Read-only; quiet on healthy days. |
 | **automerge** | n/a | No engine call. |
 | **agent-cleanup** | n/a | No engine call. |
 

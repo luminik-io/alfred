@@ -12,8 +12,17 @@ REPO = Path(__file__).resolve().parent.parent
 
 
 def _clean_env(**overrides: str) -> dict[str, str]:
-    env = {**os.environ, **overrides}
-    env.pop("WORKSPACE_ROOT", None)
+    env = dict(os.environ)
+    for key in list(env):
+        if key.startswith("ALFRED_") or key in {
+            "ALFRED_HOME",
+            "ALFREDRC",
+            "GH_ORG",
+            "OPERATOR_NAME",
+            "WORKSPACE_ROOT",
+        }:
+            env.pop(key, None)
+    env.update(overrides)
     return env
 
 

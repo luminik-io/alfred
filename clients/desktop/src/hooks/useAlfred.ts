@@ -64,7 +64,7 @@ type ShippedRefreshOptions = { demo?: boolean };
 export type UseAlfred = ReturnType<typeof useAlfred>;
 
 function assignmentLabel(target: AssignmentTargetAgent | string): string {
-  if (target === "batman") return "Batman";
+  if (target === "batman") return "architect";
   if (target === "lucius") return "Lucius";
   return "Alfred";
 }
@@ -271,8 +271,8 @@ export function useAlfred() {
     [baseUrl, refresh],
   );
 
-  // Record a real go/no-go on a genuine Batman plan. Approve starts that exact
-  // scope; decline stops it. The server writes the marker Batman's file poll
+  // Record a real go/no-go on a genuine architect plan. Approve starts that exact
+  // scope; decline stops it. The server writes the marker the architect's file poll
   // watches, so this needs no Slack round-trip. Refresh after so the decided
   // plan reflects its new status and drops out of Needs-you.
   const runPlanDecision = useCallback(
@@ -285,8 +285,8 @@ export function useAlfred() {
         const target = `issue #${result.issue_number}`;
         const message =
           decision === "approve"
-            ? `Approved ${target}. Batman starts this exact scope on its next run.`
-            : `Declined ${target}. Batman will not start this work.`;
+            ? `Approved ${target}. architect starts this exact scope on its next run.`
+            : `Declined ${target}. architect will not start this work.`;
         setActionNotice({ tone: "ok", message, domain: "plans" });
         // Refresh both surfaces so the decision is live: the snapshot drops the
         // plan out of Needs-you, and the Work board picks up the newly queued

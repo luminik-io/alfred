@@ -186,8 +186,8 @@ def test_assign_issue_explicit_unsupported_lane_asks() -> None:
     assert intent.action == ACTION_ASSIGN
     assert intent.agent == ""
     assert intent.needs_clarification is True
-    assert "Batman" in intent.clarification
-    assert "Lucius" in intent.clarification
+    assert "`architect`" in intent.clarification
+    assert "`senior-dev`" in intent.clarification
 
 
 def test_assign_issue_to_fix_phrase_does_not_become_lane() -> None:

@@ -175,7 +175,16 @@ def _load_status_module():
 
 
 def _run_cli(*argv: str, env_extra: dict[str, str] | None = None) -> subprocess.CompletedProcess:
-    full_env = {**os.environ, **(env_extra or {})}
+    full_env = dict(os.environ)
+    for key in list(full_env):
+        if key.startswith("ALFRED_") or key in {
+            "ALFRED_HOME",
+            "GH_ORG",
+            "OPERATOR_NAME",
+            "WORKSPACE_ROOT",
+        }:
+            full_env.pop(key, None)
+    full_env.update(env_extra or {})
     return subprocess.run(
         [sys.executable, str(CLI), *argv],
         capture_output=True,

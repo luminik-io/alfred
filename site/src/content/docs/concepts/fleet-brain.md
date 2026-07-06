@@ -35,9 +35,9 @@ review queues and history that should influence future firings.
 
 ```sh
 alfred brain status
-alfred brain lessons lucius your-org/api
-alfred brain reflect lucius your-org/api "Run npm test before opening frontend PRs" --tag tests
-alfred brain propose lucius your-org/api "Use request fixtures for API tests" --tag tests
+alfred brain lessons senior-dev your-org/api
+alfred brain reflect senior-dev your-org/api "Run npm test before opening frontend PRs" --tag tests
+alfred brain propose senior-dev your-org/api "Use request fixtures for API tests" --tag tests
 alfred brain candidates
 alfred brain promote <candidate-id>
 alfred brain reject <candidate-id> --note "too vague"
@@ -78,7 +78,7 @@ Check the local memory server:
 ```sh
 alfred brain redis-status
 alfred brain redis-sync --dry-run
-alfred brain redis-sync --codename lucius --repo your-org/api
+alfred brain redis-sync --codename senior-dev --repo your-org/api
 ```
 
 Only reviewed local lessons are synced. Raw transcripts, event logs, and

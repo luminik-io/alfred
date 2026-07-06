@@ -47,18 +47,18 @@ from agent_runner import (
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "reviewer")
-RASALGHUL_ENGINE = agent_engine(AGENT, default="hybrid")
+REVIEWER_ENGINE = agent_engine(AGENT, default="hybrid")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
-    bins=[*engine_preflight_bins(RASALGHUL_ENGINE), "gh", "git"],
+    bins=[*engine_preflight_bins(REVIEWER_ENGINE), "gh", "git"],
     require_gh_auth=True,
 )
 
-# Keyed off the RESOLVED codename (AGENT), with the default-slug key as a legacy
-# fallback, so an operator-renamed reviewer reads its ALFRED_<CHOSEN>_REPOS key.
-REVIEW_REPOS = agent_repos(AGENT, default_env="ALFRED_REVIEWER_REPOS")
+# Keyed off the runtime role slug. Themes and custom visible names do not change
+# the machine identity or env-var contract.
+REVIEW_REPOS = agent_repos(AGENT)
 
 # Specs / docs PRs are markdown-heavy; line count != review effort.
 # Operator can name the docs-style repos to get a higher diff cap; default cap
@@ -71,8 +71,8 @@ DIFF_LINE_CAP_SPECS = int(os.environ.get("ALFRED_REVIEWER_DIFF_CAP_SPECS", "8000
 
 DAILY_TURN_CAP = int(os.environ.get("ALFRED_REVIEWER_TURN_CAP", "800"))
 DAILY_REVIEW_CAP = int(os.environ.get("ALFRED_REVIEWER_REVIEW_CAP", "30"))
-RASALGHUL_TIMEOUT = env_int("ALFRED_REVIEWER_TIMEOUT", 900, minimum=60)
-RASALGHUL_FALLBACK_TIMEOUT = env_int("ALFRED_REVIEWER_FALLBACK_TIMEOUT", 1800, minimum=60)
+REVIEWER_TIMEOUT = env_int("ALFRED_REVIEWER_TIMEOUT", 900, minimum=60)
+REVIEWER_FALLBACK_TIMEOUT = env_int("ALFRED_REVIEWER_FALLBACK_TIMEOUT", 1800, minimum=60)
 REVIEW_AUTHOR_PREFIX = f"{AGENT.title()} - review"
 REVIEWED_HEAD_SHA = re.compile(
     r"^Reviewed-head-sha:\s*([0-9a-f]{7,40})\s*$",
@@ -478,7 +478,7 @@ Ship-ready: yes / no - <one sentence>
 
     result, engine_used = invoke_agent_engine(
         prompt,
-        engine=RASALGHUL_ENGINE,
+        engine=REVIEWER_ENGINE,
         claude_fn=claude_invoke_streaming,
         codex_fn=codex_invoke,
         workdir=local_path,
@@ -486,8 +486,8 @@ Ship-ready: yes / no - <one sentence>
         agent=AGENT,
         firing_id=events.firing_id,
         claude_max_turns=optional_env_int("ALFRED_REVIEWER_MAX_TURNS", minimum=40),
-        timeout=RASALGHUL_TIMEOUT,
-        codex_timeout=RASALGHUL_FALLBACK_TIMEOUT,
+        timeout=REVIEWER_TIMEOUT,
+        codex_timeout=REVIEWER_FALLBACK_TIMEOUT,
         codex_sandbox="read-only",
         codex_add_dirs=[tmp, WORKSPACE_ROOT],
         on_fallback=_on_engine_fallback,

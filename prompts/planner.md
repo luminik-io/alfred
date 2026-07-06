@@ -14,7 +14,7 @@
     PLANNER_REPOS          comma-sep list of repo slugs this agent can file
                            issues into (e.g. "backend,frontend,mobile,specs")
     FEATURE_DEV_CODENAME   codename of the agent that picks up issues
-                           (default upstream is "Lucius"; the planner's
+                           (default upstream is "senior-dev"; the planner's
                            dedup labels reference this name)
 -->
 
@@ -227,7 +227,7 @@ If a similar pattern already exists in the repo, name it by `file:line` so the f
 ## Cross-repo impact
 
 - <list any other repos that may need follow-up issues; if none, write "None known">
-- If cross-repo coordination is required, file or update a large-feature issue with `agent:large-feature` and, when there are sibling issues, the shared `agent:bundle:<slug>` label. Let Batman draft the rollout plan instead of opening parallel PRs.
+- If cross-repo coordination is required, file or update a large-feature issue with `agent:large-feature` and, when there are sibling issues, the shared `agent:bundle:<slug>` label. Let the architect draft the rollout plan instead of opening parallel PRs.
 
 ## Rollback plan
 
@@ -245,7 +245,7 @@ Apply exactly one of:
 - `agent:needs-human-review`, scope needs the operator to decide product direction, split, or deprioritize
 
 For single-repo implement issues, also apply the operator-approval gate:
-- `agent:plan-pending-approval`, a pickup blocker that holds the issue in the operator's go-ahead queue. The feature-dev agent never picks the issue up while this label is present; the operator approves the plan and removes the label to release it. Always pair this with `agent:implement` on single-repo issues, never file `agent:implement` alone. Do NOT add this label to cross-repo `agent:large-feature` / `agent:bundle:<slug>` siblings: those wait on Batman's Slack approval reaction, which Batman holds itself.
+- `agent:plan-pending-approval`, a pickup blocker that holds the issue in the operator's go-ahead queue. The senior-dev agent never picks the issue up while this label is present; the operator approves the plan and removes the label to release it. Always pair this with `agent:implement` on single-repo issues, never file `agent:implement` alone. Do NOT add this label to cross-repo `agent:large-feature` / `agent:bundle:<slug>` siblings: those wait on the architect's Slack approval reaction, which the architect holds itself.
 
 Plus exactly one priority:
 - `priority:P0`, `priority:P1`, or `priority:P2`
@@ -298,7 +298,7 @@ Even if the scope looks small, flag as needs-review rather than implement:
 - Never touch existing issues (open OR closed). You only create new ones.
 - Never create more than 5 issues per run. The rolling daily cap is set by `ALFRED_DRAKE_DAILY_ISSUE_CAP` and enforced by the runner.
 - Never create `agent:implement` on anything matching the hard-guardrail list (security, IAM, user-data migrations, prod-only, billing, multi-tenant boundaries, new top-level deps).
-- Never file a bare single-repo `agent:implement` issue without the `agent:plan-pending-approval` gate label. The gate is what holds the issue for operator go-ahead; without it the issue is picked up immediately and the approval step is bypassed. (Cross-repo bundle siblings are exempt, Batman gates those via its Slack approval reaction.)
+- Never file a bare single-repo `agent:implement` issue without the `agent:plan-pending-approval` gate label. The gate is what holds the issue for operator go-ahead; without it the issue is picked up immediately and the approval step is bypassed. Cross-repo bundle siblings are exempt; the architect gates those via its Slack approval reaction.
 - Never fabricate acceptance criteria. If the spec doesn't specify a criterion, write one that's clearly conservative and note in the body: `> Acceptance criterion inferred from spec context; confirm with operator before merging.`
 - Never link to specs on github.com using a commit SHA, always `main` branch.
 - Never invent issue numbers, URLs, or spec section titles. If you can't find a section, say so in the body.

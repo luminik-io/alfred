@@ -79,9 +79,9 @@ The `alfred` CLI is OS-agnostic; the same verbs work on Linux:
 
 ```sh
 alfred agents              # roster, with a systemd-load column
-alfred pause lucius        # disable --now the timer, write the pause marker
-alfred resume lucius       # clear the marker, enable --now the timer
-alfred run lucius          # one-shot: stop + start the .service now
+alfred pause senior-dev    # disable --now the timer, write the pause marker
+alfred resume senior-dev   # clear the marker, enable --now the timer
+alfred run senior-dev      # one-shot: stop + start the .service now
 alfred status              # health snapshot; reads the systemd timer roster
 alfred doctor         # preflight every agent
 ```
@@ -90,8 +90,8 @@ Raw `systemctl` still works if you prefer it:
 
 ```sh
 systemctl --user list-timers
-systemctl --user status alfred.lucius.timer
-journalctl --user -u alfred.lucius -n 50
+systemctl --user status alfred.senior-dev.timer
+journalctl --user -u alfred.senior-dev -n 50
 ```
 
 Note that agents also write to `/tmp/<log_stem>.{stdout,stderr}` (the
@@ -170,7 +170,7 @@ switch:
 
 ```sh
 alfred claude secondary
-systemctl --user restart alfred.lucius.timer
+systemctl --user restart alfred.senior-dev.timer
 ```
 
 If you prefer static routing, set `CLAUDE_CONFIG_DIR` directly in

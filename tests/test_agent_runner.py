@@ -125,7 +125,7 @@ def test_preflight_suppresses_slack_when_not_under_launchd(monkeypatch):
     posted: list[str] = []
     monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: posted.append(msg))
 
-    spec = ar.PreflightSpec(agent="lucius", env_vars=["ALFRED_HOME"])
+    spec = ar.PreflightSpec(agent="senior-dev", env_vars=["ALFRED_HOME"])
     with pytest.raises(ar.PreflightFailed):
         ar.preflight(spec)
     assert posted == []
@@ -141,7 +141,7 @@ def test_preflight_suppresses_slack_when_launchd_env_is_placeholder(monkeypatch)
     posted: list[str] = []
     monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: posted.append(msg))
 
-    spec = ar.PreflightSpec(agent="lucius", env_vars=["ALFRED_HOME"])
+    spec = ar.PreflightSpec(agent="senior-dev", env_vars=["ALFRED_HOME"])
     with pytest.raises(ar.PreflightFailed):
         ar.preflight(spec)
     assert posted == []
@@ -150,30 +150,30 @@ def test_preflight_suppresses_slack_when_launchd_env_is_placeholder(monkeypatch)
 def test_preflight_posts_slack_under_launchd(monkeypatch):
     import agent_runner as ar
 
-    monkeypatch.setenv("XPC_SERVICE_NAME", "alfred.lucius")
+    monkeypatch.setenv("XPC_SERVICE_NAME", "alfred.senior-dev")
     monkeypatch.delenv("ALFRED_DOCTOR", raising=False)
     monkeypatch.delenv("ALFRED_HOME", raising=False)
     posted: list[str] = []
     monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: posted.append(msg))
 
-    spec = ar.PreflightSpec(agent="lucius", env_vars=["ALFRED_HOME"])
+    spec = ar.PreflightSpec(agent="senior-dev", env_vars=["ALFRED_HOME"])
     with pytest.raises(ar.PreflightFailed):
         ar.preflight(spec)
     assert len(posted) == 1
-    assert "lucius preflight failed" in posted[0]
+    assert "senior-dev preflight failed" in posted[0]
 
 
 @pytest.mark.parametrize("doctor_value", ["0", "false", "no", "off"])
 def test_preflight_posts_slack_when_doctor_env_is_false(monkeypatch, doctor_value):
     import agent_runner as ar
 
-    monkeypatch.setenv("XPC_SERVICE_NAME", "alfred.lucius")
+    monkeypatch.setenv("XPC_SERVICE_NAME", "alfred.senior-dev")
     monkeypatch.setenv("ALFRED_DOCTOR", doctor_value)
     monkeypatch.delenv("ALFRED_HOME", raising=False)
     posted: list[str] = []
     monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: posted.append(msg))
 
-    spec = ar.PreflightSpec(agent="lucius", env_vars=["ALFRED_HOME"])
+    spec = ar.PreflightSpec(agent="senior-dev", env_vars=["ALFRED_HOME"])
     with pytest.raises(ar.PreflightFailed):
         ar.preflight(spec)
     assert len(posted) == 1
@@ -189,7 +189,7 @@ def test_preflight_force_slack_env_overrides_manual_suppression(monkeypatch):
     posted: list[str] = []
     monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: posted.append(msg))
 
-    spec = ar.PreflightSpec(agent="lucius", env_vars=["ALFRED_HOME"])
+    spec = ar.PreflightSpec(agent="senior-dev", env_vars=["ALFRED_HOME"])
     with pytest.raises(ar.PreflightFailed):
         ar.preflight(spec)
     assert len(posted) == 1
@@ -310,16 +310,16 @@ def test_load_prompt_leaves_unset_vars_as_literal(tmp_path):
 def test_agent_role_returns_empty_when_unset(monkeypatch):
     import agent_runner as ar
 
-    monkeypatch.delenv("ALFRED_LUCIUS_ROLE", raising=False)
-    assert ar.agent_role("lucius") == ""
+    monkeypatch.delenv("ALFRED_SENIOR_DEV_ROLE", raising=False)
+    assert ar.agent_role("senior-dev") == ""
     assert ar.agent_role("") == ""
 
 
 def test_agent_role_reads_alfred_codename_role_env(monkeypatch):
     import agent_runner as ar
 
-    monkeypatch.setenv("ALFRED_LUCIUS_ROLE", "Single-repo feature engineer")
-    assert ar.agent_role("lucius") == "Single-repo feature engineer"
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_ROLE", "Single-repo feature engineer")
+    assert ar.agent_role("senior-dev") == "Single-repo feature engineer"
 
 
 def test_agent_role_translates_dash_to_underscore_for_compound_codenames(monkeypatch):
@@ -336,22 +336,22 @@ def test_agent_role_translates_dash_to_underscore_for_compound_codenames(monkeyp
 def test_codename_with_role_formats_when_role_set(monkeypatch):
     import agent_runner as ar
 
-    monkeypatch.setenv("ALFRED_LUCIUS_ROLE", "Single-repo feature engineer")
-    assert ar.codename_with_role("lucius") == "lucius (Single-repo feature engineer)"
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_ROLE", "Single-repo feature engineer")
+    assert ar.codename_with_role("senior-dev") == "senior-dev (Single-repo feature engineer)"
 
 
 def test_codename_with_role_falls_back_to_bare_codename_when_no_role(monkeypatch):
     import agent_runner as ar
 
-    monkeypatch.delenv("ALFRED_LUCIUS_ROLE", raising=False)
-    assert ar.codename_with_role("lucius") == "lucius"
+    monkeypatch.delenv("ALFRED_SENIOR_DEV_ROLE", raising=False)
+    assert ar.codename_with_role("senior-dev") == "senior-dev"
 
 
 def test_commit_trailer_is_git_interpret_trailers_compatible():
     import agent_runner as ar
 
-    t = ar.commit_trailer("lucius", "2026-04-29-1647-bf3a")
-    assert "Agent-Codename: lucius" in t
+    t = ar.commit_trailer("senior-dev", "2026-04-29-1647-bf3a")
+    assert "Agent-Codename: senior-dev" in t
     assert "Agent-Firing-Id: 2026-04-29-1647-bf3a" in t
     # Trailer keys: "Word-Word: value" - parseable by `git interpret-trailers --parse`.
     for line in t.splitlines():
@@ -364,7 +364,7 @@ def test_commit_trailer_extra_keys():
     import agent_runner as ar
 
     t = ar.commit_trailer(
-        "lucius",
+        "senior-dev",
         "2026-04-29",
         extra={"issue": "myorg/backend#275", "model_used": "claude-opus-4-7"},
     )
@@ -377,23 +377,23 @@ def test_handoff_table_round_trip():
     import agent_runner as ar
 
     ht = ar.HandoffTable()
-    ht.add("drake", "issue_filed", "lucius")
-    ht.add("lucius", "pr_opened", "rasalghul")
+    ht.add("drake", "issue_filed", "senior-dev")
+    ht.add("senior-dev", "pr_opened", "rasalghul")
     ht.add("rasalghul", "review_p1", "nightwing")
 
     assert ht.consumers("drake") == ["issue_filed"]
-    assert sorted(ht.producers("rasalghul")) == [("lucius", "pr_opened")]
+    assert sorted(ht.producers("rasalghul")) == [("senior-dev", "pr_opened")]
 
 
 def test_handoff_table_validate_flags_unknowns():
     import agent_runner as ar
 
     ht = ar.HandoffTable()
-    ht.add("drake", "issue_filed", "lucius")
-    ht.add("lucius", "pr_opened", "rasalghul")
+    ht.add("drake", "issue_filed", "senior-dev")
+    ht.add("senior-dev", "pr_opened", "rasalghul")
 
-    issues = ht.validate(known_codenames={"drake", "lucius"})
-    # rasalghul missing; drake known; lucius known
+    issues = ht.validate(known_codenames={"drake", "senior-dev"})
+    # rasalghul missing; drake known; senior-dev known
     assert any("rasalghul" in m for m in issues)
     assert not any("drake" in m for m in issues)
 
@@ -406,7 +406,7 @@ def test_event_log_writes_jsonl(tmp_path, monkeypatch):
             del sys.modules[m]
     import agent_runner as ar
 
-    ev = ar.EventLog(agent="lucius", firing_id="test-firing-1")
+    ev = ar.EventLog(agent="senior-dev", firing_id="test-firing-1")
     ev.emit("preflight_passed")
     ev.emit("issue_picked", repo="myorg/backend", number=275)
     ev.emit("pr_opened", url="https://example.com/pr/1", files_changed=12)
@@ -416,7 +416,7 @@ def test_event_log_writes_jsonl(tmp_path, monkeypatch):
 
     records = [json.loads(line) for line in lines]
     for r in records:
-        assert r["agent"] == "lucius"
+        assert r["agent"] == "senior-dev"
         assert r["firing_id"] == "test-firing-1"
         assert "ts" in r and r["ts"].endswith("Z")
 
@@ -513,62 +513,51 @@ def test_route_llm_codex_dispatches_without_claude(monkeypatch):
 def test_agent_engine_reads_state_file_before_default():
     import agent_runner as ar
 
-    target = ar.STATE_ROOT / "engines" / "batman"
+    target = ar.STATE_ROOT / "engines" / "architect"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("codex\n")
 
-    assert ar.agent_engine("batman", default="hybrid") == "codex"
+    assert ar.agent_engine("architect", default="hybrid") == "codex"
 
 
 def test_agent_engine_env_override_wins(monkeypatch):
     import agent_runner as ar
 
-    monkeypatch.setenv("ALFRED_BATMAN_ENGINE", "claude")
-    assert ar.agent_engine("batman", default="hybrid") == "claude"
+    monkeypatch.setenv("ALFRED_ARCHITECT_ENGINE", "claude")
+    assert ar.agent_engine("architect", default="hybrid") == "claude"
 
 
-def test_agent_repos_reads_resolved_codename_key():
+def test_agent_repos_reads_runtime_role_key():
     import agent_runner as ar
 
-    # The runner resolves its codename from AGENT_CODENAME; agent_repos must key
-    # the repo-scope read off that resolved codename so an operator-renamed agent
-    # reads the ALFRED_<CHOSEN>_REPOS key the wizard wrote (not a fixed default).
-    env = {"ALFRED_ORACLE_REPOS": "acme/api,acme/web"}
-    assert ar.agent_repos("oracle", default_env="ALFRED_SENIOR_DEV_REPOS", environ=env) == [
+    env = {"ALFRED_SENIOR_DEV_REPOS": "acme/api,acme/web"}
+    assert ar.agent_repos("senior-dev", environ=env) == [
         "acme/api",
         "acme/web",
     ]
 
 
-def test_agent_repos_falls_back_to_legacy_default_env():
+def test_agent_repos_ignores_theme_display_name_keys():
     import agent_runner as ar
 
-    # A config written before the rename only set the default-slug key; the
-    # unrenamed agent still finds its repos through the legacy fallback.
-    env = {"ALFRED_SENIOR_DEV_REPOS": "acme/api"}
-    assert ar.agent_repos("senior-dev", default_env="ALFRED_SENIOR_DEV_REPOS", environ=env) == [
-        "acme/api"
-    ]
+    env = {"ALFRED_" + "LUCIUS" + "_REPOS": "stale/api"}
+    assert ar.agent_repos("senior-dev", environ=env) == []
 
 
-def test_agent_repos_prefers_resolved_key_over_legacy():
+def test_agent_repos_does_not_fall_back_to_other_role_keys():
     import agent_runner as ar
 
-    # When both are present, the chosen-codename key wins so an override is not
-    # silently shadowed by a stale default-slug value.
     env = {
-        "ALFRED_ORACLE_REPOS": "acme/api",
-        "ALFRED_SENIOR_DEV_REPOS": "stale/repo",
+        "ALFRED_ORACLE_REPOS": "stale/api",
+        "ALFRED_SENIOR_DEV_REPOS": "acme/api",
     }
-    assert ar.agent_repos("oracle", default_env="ALFRED_SENIOR_DEV_REPOS", environ=env) == [
-        "acme/api"
-    ]
+    assert ar.agent_repos("oracle", environ=env) == ["stale/api"]
 
 
 def test_agent_repos_empty_when_nothing_configured():
     import agent_runner as ar
 
-    assert ar.agent_repos("senior-dev", default_env="ALFRED_SENIOR_DEV_REPOS", environ={}) == []
+    assert ar.agent_repos("senior-dev", environ={}) == []
 
 
 def test_engine_preflight_bins_treats_hybrid_as_claude_first():
@@ -615,7 +604,7 @@ def test_invoke_agent_engine_codex_skips_claude():
     out, engine_used = ar.invoke_agent_engine(
         "hi",
         engine="codex",
-        agent="batman",
+        agent="architect",
         firing_id="f1",
         workdir=Path("/tmp"),
         claude_allowed_tools="Read",
@@ -665,7 +654,7 @@ def test_invoke_agent_engine_hybrid_transient_retries_claude_no_fallback(monkeyp
     out, engine_used = ar.invoke_agent_engine(
         "hi",
         engine="hybrid",
-        agent="batman",
+        agent="architect",
         firing_id="f1",
         workdir=Path("/tmp"),
         claude_allowed_tools="Read",
@@ -723,7 +712,7 @@ def test_invoke_agent_engine_hybrid_falls_back_on_capability_gap():
     out, engine_used = ar.invoke_agent_engine(
         "hi",
         engine="hybrid",
-        agent="batman",
+        agent="architect",
         firing_id="f1",
         workdir=Path("/tmp"),
         claude_allowed_tools="Read",
@@ -869,7 +858,7 @@ def test_codex_invoke_can_bypass_approvals_and_sandbox(tmp_path, monkeypatch):
     out = ar.codex_invoke(
         "implement",
         workdir=tmp_path,
-        agent="lucius",
+        agent="senior-dev",
         firing_id="fire-1",
         timeout=30,
         sandbox="workspace-write",
@@ -1154,9 +1143,9 @@ def test_is_repo_paused_fail_open_on_corrupt_file(tmp_path):
 def test_parse_claim_comment_round_trip():
     import agent_runner as ar
 
-    body = "<!-- agent-claim:codename=lucius firing_id=20260501-194217-643a ts=2026-05-01T19:42:33Z -->"
+    body = "<!-- agent-claim:codename=senior-dev firing_id=20260501-194217-643a ts=2026-05-01T19:42:33Z -->"
     meta = ar._parse_claim_comment(body)
-    assert meta["codename"] == "lucius"
+    assert meta["codename"] == "senior-dev"
     assert meta["firing_id"] == "20260501-194217-643a"
     assert meta["ts"] == "2026-05-01T19:42:33Z"
 
@@ -1164,9 +1153,9 @@ def test_parse_claim_comment_round_trip():
 def test_parse_release_comment_carries_outcome():
     import agent_runner as ar
 
-    body = "<!-- agent-release:codename=lucius firing_id=abc outcome=success pr=https://github.com/foo/bar/pull/42 ts=2026-05-01T20:00:00Z -->"
+    body = "<!-- agent-release:codename=senior-dev firing_id=abc outcome=success pr=https://github.com/foo/bar/pull/42 ts=2026-05-01T20:00:00Z -->"
     meta = ar._parse_claim_comment(body)
-    assert meta["codename"] == "lucius"
+    assert meta["codename"] == "senior-dev"
     assert meta["outcome"] == "success"
     assert meta["pr"] == "https://github.com/foo/bar/pull/42"
 
@@ -1193,7 +1182,7 @@ def test_force_release_stale_claim_preserves_original_claim_identity(monkeypatch
         "myrepo",
         42,
         sweep_id="sweep-1",
-        released_codename="lucius",
+        released_codename="senior-dev",
         released_firing_id="firing-1",
     )
 
@@ -1207,7 +1196,7 @@ def test_force_release_stale_claim_preserves_original_claim_identity(monkeypatch
         (
             "myrepo",
             42,
-            "<!-- agent-release:codename=lucius firing_id=firing-1 "
+            "<!-- agent-release:codename=senior-dev firing_id=firing-1 "
             "outcome=stale-swept swept_by=sweep-1 ts=2026-05-09T10:00:00Z -->",
         )
     ]
@@ -1232,7 +1221,7 @@ def test_force_release_stale_claim_reports_comment_failure(monkeypatch):
         "myrepo",
         42,
         sweep_id="sweep-1",
-        released_codename="lucius",
+        released_codename="senior-dev",
         released_firing_id="firing-1",
     )
 
@@ -1252,11 +1241,11 @@ def test_force_release_stale_claim_keeps_fresh_in_flight(monkeypatch):
             "comments": [
                 {
                     "createdAt": "2026-05-09T13:34:44Z",
-                    "body": "<!-- agent-claim:codename=lucius firing_id=old-fid ts=2026-05-09T13:34:43Z -->",
+                    "body": "<!-- agent-claim:codename=senior-dev firing_id=old-fid ts=2026-05-09T13:34:43Z -->",
                 },
                 {
                     "createdAt": "2099-01-01T00:00:00Z",
-                    "body": "<!-- agent-claim:codename=batman firing_id=new-fid ts=2099-01-01T00:00:00Z -->",
+                    "body": "<!-- agent-claim:codename=architect firing_id=new-fid ts=2099-01-01T00:00:00Z -->",
                 },
             ],
             "labels": [{"name": "agent:in-flight"}],
@@ -1268,11 +1257,11 @@ def test_force_release_stale_claim_keeps_fresh_in_flight(monkeypatch):
         "myrepo",
         42,
         sweep_id="sweep-1",
-        released_codename="lucius",
+        released_codename="senior-dev",
         released_firing_id="old-fid",
     )
     assert edits == []
-    assert comments and "codename=lucius" in comments[0][2]
+    assert comments and "codename=senior-dev" in comments[0][2]
 
 
 def test_force_release_stale_claim_uses_sweep_age_window(monkeypatch):
@@ -1291,11 +1280,11 @@ def test_force_release_stale_claim_uses_sweep_age_window(monkeypatch):
             "comments": [
                 {
                     "createdAt": "2026-05-09T13:34:44Z",
-                    "body": "<!-- agent-claim:codename=lucius firing_id=old-fid ts=2026-05-09T13:34:43Z -->",
+                    "body": "<!-- agent-claim:codename=senior-dev firing_id=old-fid ts=2026-05-09T13:34:43Z -->",
                 },
                 {
                     "createdAt": staleish_ts,
-                    "body": f"<!-- agent-claim:codename=batman firing_id=staleish-fid ts={staleish_ts} -->",
+                    "body": f"<!-- agent-claim:codename=architect firing_id=staleish-fid ts={staleish_ts} -->",
                 },
             ],
             "labels": [{"name": "agent:in-flight"}],
@@ -1307,7 +1296,7 @@ def test_force_release_stale_claim_uses_sweep_age_window(monkeypatch):
         "myrepo",
         42,
         sweep_id="sweep-1",
-        released_codename="lucius",
+        released_codename="senior-dev",
         released_firing_id="old-fid",
         max_age_hours=1,
     )
@@ -1317,7 +1306,7 @@ def test_force_release_stale_claim_uses_sweep_age_window(monkeypatch):
             {"add_labels": ["agent:implement"], "remove_labels": ["agent:in-flight"]},
         )
     ]
-    assert comments and "codename=lucius" in comments[0][2]
+    assert comments and "codename=senior-dev" in comments[0][2]
 
 
 def test_force_release_stale_claim_does_not_keep_malformed_timestamp(monkeypatch):
@@ -1334,11 +1323,11 @@ def test_force_release_stale_claim_does_not_keep_malformed_timestamp(monkeypatch
             "comments": [
                 {
                     "createdAt": "2026-05-09T13:34:44Z",
-                    "body": "<!-- agent-claim:codename=lucius firing_id=old-fid ts=2026-05-09T13:34:43Z -->",
+                    "body": "<!-- agent-claim:codename=senior-dev firing_id=old-fid ts=2026-05-09T13:34:43Z -->",
                 },
                 {
                     "createdAt": "not-a-date",
-                    "body": "<!-- agent-claim:codename=batman firing_id=broken-fid ts=not-a-date -->",
+                    "body": "<!-- agent-claim:codename=architect firing_id=broken-fid ts=not-a-date -->",
                 },
             ],
             "labels": [{"name": "agent:in-flight"}],
@@ -1350,7 +1339,7 @@ def test_force_release_stale_claim_does_not_keep_malformed_timestamp(monkeypatch
         "myrepo",
         42,
         sweep_id="sweep-1",
-        released_codename="lucius",
+        released_codename="senior-dev",
         released_firing_id="old-fid",
     )
     assert edits == [
@@ -1374,7 +1363,7 @@ def test_force_release_stale_claim_label_drift_keeps_in_flight(monkeypatch):
             "comments": [
                 {
                     "createdAt": "2026-05-09T13:34:44Z",
-                    "body": "<!-- agent-claim:codename=lucius firing_id=old-fid ts=2026-05-09T13:34:43Z -->",
+                    "body": "<!-- agent-claim:codename=senior-dev firing_id=old-fid ts=2026-05-09T13:34:43Z -->",
                 }
             ],
             "labels": [{"name": "agent:in-flight"}],
@@ -1386,7 +1375,7 @@ def test_force_release_stale_claim_label_drift_keeps_in_flight(monkeypatch):
         "myrepo",
         42,
         sweep_id="sweep-1",
-        released_codename="lucius",
+        released_codename="senior-dev",
         released_firing_id="old-fid",
         label_drift=True,
     )
@@ -1433,34 +1422,11 @@ def test_stale_unreleased_claim_comment_does_not_block_forever(monkeypatch):
     comments_data = [
         {
             "createdAt": "2026-05-09T13:34:44Z",
-            "body": "<!-- agent-claim:codename=lucius firing_id=old-fid ts=2026-05-09T13:34:43Z -->",
+            "body": "<!-- agent-claim:codename=senior-dev firing_id=old-fid ts=2026-05-09T13:34:43Z -->",
         },
         {
             "createdAt": "2026-05-28T19:17:08Z",
-            "body": "<!-- agent-claim:codename=batman firing_id=new-fid ts=2026-05-28T19:17:07Z -->",
-        },
-    ]
-    monkeypatch.setattr(
-        ar,
-        "_issue_state",
-        lambda repo, num: {"comments": comments_data, "labels": [], "state": "OPEN"},
-    )
-
-    assert ar._detect_contested_claim("myrepo", 42, codename="batman", firing_id="new-fid") is None
-
-
-def test_fresh_unreleased_claim_still_wins_race(monkeypatch):
-    import agent_runner as ar
-
-    monkeypatch.setenv("ALFRED_CLAIM_MAX_AGE_HOURS", "4")
-    comments_data = [
-        {
-            "createdAt": "2099-01-01T00:00:00Z",
-            "body": "<!-- agent-claim:codename=lucius firing_id=old-fid ts=2099-01-01T00:00:00Z -->",
-        },
-        {
-            "createdAt": "2099-01-01T00:01:00Z",
-            "body": "<!-- agent-claim:codename=batman firing_id=new-fid ts=2099-01-01T00:01:00Z -->",
+            "body": "<!-- agent-claim:codename=architect firing_id=new-fid ts=2026-05-28T19:17:07Z -->",
         },
     ]
     monkeypatch.setattr(
@@ -1470,8 +1436,33 @@ def test_fresh_unreleased_claim_still_wins_race(monkeypatch):
     )
 
     assert (
-        ar._detect_contested_claim("myrepo", 42, codename="batman", firing_id="new-fid")
-        == "lucius:old-fid"
+        ar._detect_contested_claim("myrepo", 42, codename="architect", firing_id="new-fid") is None
+    )
+
+
+def test_fresh_unreleased_claim_still_wins_race(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setenv("ALFRED_CLAIM_MAX_AGE_HOURS", "4")
+    comments_data = [
+        {
+            "createdAt": "2099-01-01T00:00:00Z",
+            "body": "<!-- agent-claim:codename=senior-dev firing_id=old-fid ts=2099-01-01T00:00:00Z -->",
+        },
+        {
+            "createdAt": "2099-01-01T00:01:00Z",
+            "body": "<!-- agent-claim:codename=architect firing_id=new-fid ts=2099-01-01T00:01:00Z -->",
+        },
+    ]
+    monkeypatch.setattr(
+        ar,
+        "_issue_state",
+        lambda repo, num: {"comments": comments_data, "labels": [], "state": "OPEN"},
+    )
+
+    assert (
+        ar._detect_contested_claim("myrepo", 42, codename="architect", firing_id="new-fid")
+        == "senior-dev:old-fid"
     )
 
 
@@ -1494,7 +1485,7 @@ def test_find_stale_claims_catches_label_drift(monkeypatch):
             "comments": [
                 {
                     "createdAt": "2026-05-09T13:34:44Z",
-                    "body": "<!-- agent-claim:codename=lucius firing_id=old-fid ts=2026-05-09T13:34:43Z -->",
+                    "body": "<!-- agent-claim:codename=senior-dev firing_id=old-fid ts=2026-05-09T13:34:43Z -->",
                 },
             ],
         },
@@ -1505,7 +1496,7 @@ def test_find_stale_claims_catches_label_drift(monkeypatch):
     assert stale[0]["repo"] == "myrepo"
     assert stale[0]["number"] == 42
     assert stale[0]["title"] == "stale drift"
-    assert stale[0]["codename"] == "lucius"
+    assert stale[0]["codename"] == "senior-dev"
     assert stale[0]["firing_id"] == "old-fid"
     assert stale[0]["max_age_hours"] == 4
     assert stale[0]["label_drift"] is True
@@ -1530,7 +1521,7 @@ def test_claim_issue_rolls_back_when_claim_comment_fails(monkeypatch):
     monkeypatch.setattr(ar, "gh_issue_edit", lambda *a, **kw: edits.append((a, kw)) or True)
     monkeypatch.setattr(ar, "gh_issue_comment", lambda *a, **kw: False)
 
-    assert not ar.claim_issue("myrepo", 42, codename="lucius", firing_id="fid-1")
+    assert not ar.claim_issue("myrepo", 42, codename="senior-dev", firing_id="fid-1")
     assert edits == [
         (
             ("myrepo", 42),
@@ -1672,7 +1663,7 @@ def test_claim_issue_allows_bundle_labels_for_batman_claim(monkeypatch):
     monkeypatch.setattr(ar, "gh_issue_comment", lambda *a, **kw: comments.append((a, kw)) or True)
     monkeypatch.setattr(ar, "_detect_contested_claim", lambda *a, **kw: None)
 
-    assert ar.claim_issue("myrepo", 62, codename="batman", firing_id="fid-1")
+    assert ar.claim_issue("myrepo", 62, codename="architect", firing_id="fid-1")
     assert edits == [
         (
             ("myrepo", 62),
@@ -1691,7 +1682,7 @@ def test_release_issue_reports_comment_failure(monkeypatch):
     assert not ar.release_issue(
         "myrepo",
         42,
-        codename="lucius",
+        codename="senior-dev",
         firing_id="fid-1",
         outcome="success",
     )

@@ -25,8 +25,8 @@ read-only sandbox and writes artifacts to `/tmp/alfred-codex-probe-*`.
 alfred engine status
 alfred engine status rasalghul
 alfred engine set rasalghul codex
-alfred engine set lucius hybrid
-alfred engine set lucius claude
+alfred engine set senior-dev hybrid
+alfred engine set senior-dev claude
 ```
 
 | Mode | Behavior |

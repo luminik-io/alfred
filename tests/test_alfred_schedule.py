@@ -29,8 +29,8 @@ def _write_conf(repo: Path) -> Path:
         "\n".join(
             [
                 "# test agents.conf",
-                "alfred.lucius\tlucius.py\tinterval:600\tyes\t\topus\tEngineer",
-                "alfred.batman\tbatman.py\tinterval:5400\tyes\t\topus\tCoordinator",
+                "alfred.senior-dev\tsenior-dev.py\tinterval:600\tyes\t\topus\tEngineer",
+                "alfred.architect\tarchitect.py\tinterval:5400\tyes\t\topus\tCoordinator",
                 "alfred.gordon\tgordon.py\tcron:8:00\tno\t\t\tWatch",
             ]
         )
@@ -66,7 +66,7 @@ def test_update_schedule_dry_run_does_not_write(tmp_path: Path) -> None:
     conf = _write_conf(tmp_path)
     before = conf.read_text(encoding="utf-8")
 
-    result = sched.update_schedule(conf, "lucius", "20m", dry_run=True)
+    result = sched.update_schedule(conf, "senior-dev", "20m", dry_run=True)
 
     assert result["oldSchedule"] == "interval:600"
     assert result["newSchedule"] == "interval:1200"
@@ -78,12 +78,12 @@ def test_update_schedule_writes_only_target_row(tmp_path: Path) -> None:
     sched = _load_schedule_module()
     conf = _write_conf(tmp_path)
 
-    result = sched.update_schedule(conf, "lucius", "20m")
+    result = sched.update_schedule(conf, "senior-dev", "20m")
 
     assert result["changed"] is True
     text = conf.read_text(encoding="utf-8")
-    assert "alfred.lucius\tlucius.py\tinterval:1200" in text
-    assert "alfred.batman\tbatman.py\tinterval:5400" in text
+    assert "alfred.senior-dev\tsenior-dev.py\tinterval:1200" in text
+    assert "alfred.architect\tarchitect.py\tinterval:5400" in text
     assert "alfred.gordon\tgordon.py\tcron:8:00" in text
 
 
@@ -95,8 +95,8 @@ def test_update_schedule_accepts_existing_dot_suffixed_labels(tmp_path: Path) ->
         "\n".join(
             [
                 "# existing operator config",
-                "my.fleet.lucius\tlucius.py\tinterval:600\tyes\t\topus\tEngineer",
-                "my.fleet.batman\tbatman.py\tinterval:5400\tyes\t\topus\tCoordinator",
+                "my.fleet.senior-dev\tsenior-dev.py\tinterval:600\tyes\t\topus\tEngineer",
+                "my.fleet.architect\tarchitect.py\tinterval:5400\tyes\t\topus\tCoordinator",
             ]
         )
         + "\n",
@@ -104,16 +104,16 @@ def test_update_schedule_accepts_existing_dot_suffixed_labels(tmp_path: Path) ->
     )
 
     _, rows = sched.load_schedules(conf)
-    assert [row.codename for row in rows] == ["lucius", "batman"]
-    assert sched.find_schedule(rows, "my.fleet.lucius").label == "my.fleet.lucius"
+    assert [row.codename for row in rows] == ["senior-dev", "architect"]
+    assert sched.find_schedule(rows, "my.fleet.senior-dev").label == "my.fleet.senior-dev"
 
-    result = sched.update_schedule(conf, "lucius", "20m")
+    result = sched.update_schedule(conf, "senior-dev", "20m")
 
-    assert result["label"] == "my.fleet.lucius"
+    assert result["label"] == "my.fleet.senior-dev"
     assert result["newSchedule"] == "interval:1200"
     text = conf.read_text(encoding="utf-8")
-    assert "my.fleet.lucius\tlucius.py\tinterval:1200" in text
-    assert "my.fleet.batman\tbatman.py\tinterval:5400" in text
+    assert "my.fleet.senior-dev\tsenior-dev.py\tinterval:1200" in text
+    assert "my.fleet.architect\tarchitect.py\tinterval:5400" in text
 
 
 def test_agents_conf_path_prefers_renamed_alfred_checkout(
@@ -148,7 +148,7 @@ def test_unified_alfred_schedule_dispatch(tmp_path: Path) -> None:
     env["ALFRED_REPO"] = str(repo)
 
     res = subprocess.run(
-        [sys.executable, str(ALFRED), "schedule", "set", "lucius", "30m", "--dry-run"],
+        [sys.executable, str(ALFRED), "schedule", "set", "senior-dev", "30m", "--dry-run"],
         env=env,
         text=True,
         capture_output=True,
@@ -156,7 +156,7 @@ def test_unified_alfred_schedule_dispatch(tmp_path: Path) -> None:
     )
 
     assert res.returncode == 0, res.stderr
-    assert "would update lucius interval:600 -> interval:1800" in res.stdout
+    assert "would update senior-dev interval:600 -> interval:1800" in res.stdout
     assert "interval:600" in conf.read_text(encoding="utf-8")
 
 

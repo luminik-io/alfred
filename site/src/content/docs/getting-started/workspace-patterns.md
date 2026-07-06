@@ -78,7 +78,7 @@ only when you want Alfred to create labels there or pick issues and PRs from it.
 ## Batman
 
 Batman is included in the full fleet as the architect agent for cross-repo
-work. `BATMAN_PARENT_REPO` parent issues can go through plan, approval,
+work. `ARCHITECT_PARENT_REPO` parent issues can go through plan, approval,
 child-issue filing, and status reporting.
 
 Batman owns the feature shape above the repo-local work. It plans the rollout
@@ -95,7 +95,7 @@ Configure it with the rest of the fleet:
   --slack-webhook skip
 ```
 
-Then set `BATMAN_PARENT_REPO`, choose `BATMAN_AUTO_EXECUTE=approval-gate` when
+Then set `ARCHITECT_PARENT_REPO`, choose `ARCHITECT_AUTO_EXECUTE=approval-gate` when
 you want approved child filing, run `alfred labels bootstrap my-org/specs` for
 the parent repo if it sits outside `--repos`, and arm the runner gate with
 `alfred enable architect` when parent-plan work is ready.

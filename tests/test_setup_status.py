@@ -43,8 +43,8 @@ def _isolate_launcher_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MAP_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_WORKSPACE_SUBDIR", raising=False)
-    monkeypatch.delenv("BATMAN_AUTO_EXECUTE", raising=False)
-    monkeypatch.delenv("BATMAN_PARENT_REPO", raising=False)
+    monkeypatch.delenv("ARCHITECT_AUTO_EXECUTE", raising=False)
+    monkeypatch.delenv("ARCHITECT_PARENT_REPO", raising=False)
     monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
 
 
@@ -91,7 +91,7 @@ def test_bootstrap_status_includes_ready_first_run_checklist(
     conf = home / "launchd" / "agents.conf"
     conf.parent.mkdir(parents=True)
     conf.write_text(
-        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
+        "alfred.senior-dev\tsenior-dev.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
         encoding="utf-8",
     )
 
@@ -112,7 +112,7 @@ def test_bootstrap_status_includes_ready_first_run_checklist(
             "source": "workspace",
         }
     ]
-    assert by_key["batman_parent_repo"]["state"] == "optional"
+    assert by_key["architect_parent_repo"]["state"] == "optional"
 
 
 def test_bootstrap_status_first_run_blocks_missing_queue_and_local_paths(
@@ -135,7 +135,7 @@ def test_bootstrap_status_first_run_blocks_missing_queue_and_local_paths(
     conf = home / "launchd" / "agents.conf"
     conf.parent.mkdir(parents=True)
     conf.write_text(
-        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
+        "alfred.senior-dev\tsenior-dev.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
         encoding="utf-8",
     )
 
@@ -178,7 +178,7 @@ def test_bootstrap_status_first_run_uses_singular_blocker_headline(
     conf = home / "launchd" / "agents.conf"
     conf.parent.mkdir(parents=True)
     conf.write_text(
-        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
+        "alfred.senior-dev\tsenior-dev.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
         encoding="utf-8",
     )
 
@@ -212,7 +212,7 @@ def test_bootstrap_status_first_run_local_path_source_matches_found_checkout(
     conf = home / "launchd" / "agents.conf"
     conf.parent.mkdir(parents=True)
     conf.write_text(
-        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
+        "alfred.senior-dev\tsenior-dev.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
         encoding="utf-8",
     )
 
@@ -592,8 +592,8 @@ def test_install_inventory_reports_roster_theme_and_repo_local_map(
         json.dumps(
             {
                 "theme": "custom",
-                "custom_names": {"batman": "Sherlock", "lucius": "Watson"},
-                "custom_roles": {"batman": "Lead detective"},
+                "custom_names": {"architect": "Sherlock", "senior-dev": "Watson"},
+                "custom_roles": {"architect": "Lead detective"},
                 "updated_at": "2026-06-30T12:00:00Z",
             }
         ),
@@ -653,7 +653,7 @@ def test_roster_theme_inventory_coerces_updated_at_to_string(
     class FakeState:
         def __init__(self) -> None:
             self.theme = "custom"
-            self.custom_names = {"batman": "Sherlock"}
+            self.custom_names = {"architect": "Sherlock"}
             self.custom_roles = {}
             self.updated_at = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
 

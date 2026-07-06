@@ -8,8 +8,8 @@ const lifecycle = [
   {
     n: "01",
     title: "A timer starts the run",
-    body: "A built-in scheduler (launchd on macOS, systemd on Linux) starts each agent on its configured cadence. Lucius checks for implementation work every 20 minutes by default, and the fleet keeps running across reboots.",
-    log: "[12:00:00] launchd → ~/.alfred/bin/lucius.py",
+    body: "A built-in scheduler (launchd on macOS, systemd on Linux) starts each agent on its configured cadence. Senior-dev checks for implementation work every 20 minutes by default, and the fleet keeps running across reboots.",
+    log: "[12:00:00] launchd -> ~/.alfred/bin/senior-dev.py",
   },
   {
     n: "02",
@@ -20,8 +20,8 @@ const lifecycle = [
   {
     n: "03",
     title: "It picks up a task",
-    body: "Lucius looks at the open tasks marked agent:implement, takes the oldest one, and marks it agent:in-flight. Other agents see that label and leave it alone.",
-    log: "[12:00:03] lucius claimed your-backend#247  label=agent:in-flight",
+    body: "Senior-dev looks at the open tasks marked agent:implement, takes the oldest one, and marks it agent:in-flight. Other agents see that label and leave it alone.",
+    log: "[12:00:03] senior-dev claimed your-backend#247  label=agent:in-flight",
   },
   {
     n: "04",
@@ -54,7 +54,7 @@ const labels = [
   { label: "agent:in-flight", body: "Lucius adds this when it takes the task. Other agents see it and skip the task." },
   { label: "agent:pr-open", body: "Added when the agent opens a pull request. Ra's al Ghul watches for this label to start a review." },
   { label: "agent:done", body: "Added when the pull request merges. The task is finished and drops out of the active list." },
-  { label: "agent:needs-changes", body: "Ra's al Ghul adds this when a review asks for changes. Lucius picks it back up on its next run." },
+  { label: "agent:needs-changes", body: "Ra's al Ghul adds this when a review asks for changes. senior-dev picks it back up on its next run." },
 ];
 ---
 
@@ -122,9 +122,9 @@ const labels = [
       <CodeBlock
         title="terminal"
         lines={[
-	          "$ alfred dry-run lucius",
-	          "alfred dry-run: lucius",
-	          "  role: feature dev",
+	          "$ alfred dry-run senior-dev",
+	          "alfred dry-run: senior-dev",
+	          "  role: senior developer",
 	          "  mode: safe simulation",
 	          "  would: resolve config, acquire the agent lock, run preflight, and enter the runner",
 	          "  would not: call the host scheduler, mutate GitHub, post Slack, invoke an LLM, or edit files",

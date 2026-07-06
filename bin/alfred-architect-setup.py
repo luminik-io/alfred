@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Guided Batman first setup.
+"""Guided architect first setup.
 
-Batman needs a few settings that the base ``alfred-init`` flow cannot
+The architect role needs a few settings that the base ``alfred-init`` flow cannot
 derive safely: a Claude OAuth token for scheduler-spawned runs, a Slack
 bot token for approval gates, the operator's Slack member id, and the
 parent repo where large-feature issues live.
@@ -29,13 +29,13 @@ from typing import Any
 TOKEN_ENV = "CLAUDE_CODE_OAUTH_TOKEN"
 SLACK_BOT_TOKEN_ENV = "SLACK_BOT_TOKEN"
 OPERATOR_USER_ENV = "ALFRED_OPERATOR_SLACK_USER_ID"
-BATMAN_CHANNEL_ENV = "BATMAN_SLACK_CHANNEL"
-BATMAN_PARENT_REPO_ENV = "BATMAN_PARENT_REPO"
-BATMAN_AUTO_EXECUTE_ENV = "BATMAN_AUTO_EXECUTE"
-BATMAN_APPROVAL_MODE_ENV = "BATMAN_APPROVAL_MODE"
-BATMAN_PICKER_ENV = "BATMAN_PICKER"
-BATMAN_BUNDLE_PREFIX_ENV = "BATMAN_BUNDLE_SLUG_PREFIX"
-BATMAN_TIMEOUT_ENV = "BATMAN_APPROVAL_TIMEOUT_S"
+ARCHITECT_CHANNEL_ENV = "ARCHITECT_SLACK_CHANNEL"
+ARCHITECT_PARENT_REPO_ENV = "ARCHITECT_PARENT_REPO"
+ARCHITECT_AUTO_EXECUTE_ENV = "ARCHITECT_AUTO_EXECUTE"
+ARCHITECT_APPROVAL_MODE_ENV = "ARCHITECT_APPROVAL_MODE"
+ARCHITECT_PICKER_ENV = "ARCHITECT_PICKER"
+ARCHITECT_BUNDLE_PREFIX_ENV = "ARCHITECT_BUNDLE_SLUG_PREFIX"
+ARCHITECT_TIMEOUT_ENV = "ARCHITECT_APPROVAL_TIMEOUT_S"
 
 MODE_HALT = "0"
 MODE_APPROVAL_GATE = "approval-gate"
@@ -51,9 +51,9 @@ VALID_APPROVAL_MODES = (
 )
 VALID_PICKERS = ("oldest", "newest")
 
-BANNER = "# alfred-batman-setup, generated below this line. Safe to re-run."
+BANNER = "# alfred-architect-setup, generated below this line. Safe to re-run."
 BANNER_RE = re.compile(
-    r"\r?\n?# alfred-batman-setup, generated below this line\. Safe to re-run\."
+    r"\r?\n?# alfred-architect-setup, generated below this line\. Safe to re-run\."
     r"(?:\r?\n(?:export )?[A-Z0-9_]+=[^\r\n]*)*\r?\n?",
     re.MULTILINE,
 )
@@ -138,7 +138,7 @@ def read_env_file(path: Path) -> dict[str, str]:
     return out
 
 
-def upsert_batman_block(path: Path, kvs: dict[str, str]) -> None:
+def upsert_architect_block(path: Path, kvs: dict[str, str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = path.read_text(encoding="utf-8") if path.exists() else ""
     cleaned = BANNER_RE.sub("\n", existing).rstrip()
@@ -224,11 +224,11 @@ def env_or_config(env: dict[str, str], config: dict[str, str], key: str, default
 
 
 def infer_parent_repo(env: dict[str, str], config: dict[str, str]) -> str:
-    return env_or_config(env, config, BATMAN_PARENT_REPO_ENV)
+    return env_or_config(env, config, ARCHITECT_PARENT_REPO_ENV)
 
 
 @dataclass
-class BatmanSetupState:
+class ArchitectSetupState:
     repo_root: Path
     alfred_home: Path
     env_file: Path
@@ -237,7 +237,7 @@ class BatmanSetupState:
     updates: dict[str, str] = field(default_factory=dict)
 
     @classmethod
-    def from_args(cls, args: argparse.Namespace) -> BatmanSetupState:
+    def from_args(cls, args: argparse.Namespace) -> ArchitectSetupState:
         alfred_home = Path(
             args.alfred_home or os.environ.get("ALFRED_HOME") or Path.home() / ".alfred"
         )
@@ -266,8 +266,8 @@ def required_missing(values: dict[str, str]) -> list[str]:
     missing = []
     if not values.get(TOKEN_ENV):
         missing.append(TOKEN_ENV)
-    if not values.get(BATMAN_PARENT_REPO_ENV):
-        missing.append(BATMAN_PARENT_REPO_ENV)
+    if not values.get(ARCHITECT_PARENT_REPO_ENV):
+        missing.append(ARCHITECT_PARENT_REPO_ENV)
     if approval_requires_slack(values):
         if not values.get(SLACK_BOT_TOKEN_ENV):
             missing.append(SLACK_BOT_TOKEN_ENV)
@@ -278,24 +278,25 @@ def required_missing(values: dict[str, str]) -> list[str]:
 
 def approval_requires_slack(values: dict[str, str]) -> bool:
     return (
-        values.get(BATMAN_AUTO_EXECUTE_ENV) == MODE_APPROVAL_GATE
-        and values.get(BATMAN_APPROVAL_MODE_ENV, APPROVAL_MODE_SLACK_OR_FILE) != APPROVAL_MODE_FILE
+        values.get(ARCHITECT_AUTO_EXECUTE_ENV) == MODE_APPROVAL_GATE
+        and values.get(ARCHITECT_APPROVAL_MODE_ENV, APPROVAL_MODE_SLACK_OR_FILE)
+        != APPROVAL_MODE_FILE
     )
 
 
-def render_check_only(state: BatmanSetupState) -> int:
+def render_check_only(state: ArchitectSetupState) -> int:
     values = collect_values(state)
-    print("Batman setup status")
+    print("Architect setup status")
     for key in (
         TOKEN_ENV,
         SLACK_BOT_TOKEN_ENV,
         OPERATOR_USER_ENV,
-        BATMAN_CHANNEL_ENV,
-        BATMAN_PARENT_REPO_ENV,
-        BATMAN_AUTO_EXECUTE_ENV,
-        BATMAN_APPROVAL_MODE_ENV,
-        BATMAN_PICKER_ENV,
-        BATMAN_TIMEOUT_ENV,
+        ARCHITECT_CHANNEL_ENV,
+        ARCHITECT_PARENT_REPO_ENV,
+        ARCHITECT_AUTO_EXECUTE_ENV,
+        ARCHITECT_APPROVAL_MODE_ENV,
+        ARCHITECT_PICKER_ENV,
+        ARCHITECT_TIMEOUT_ENV,
     ):
         value = values.get(key, "")
         if value:
@@ -310,31 +311,31 @@ def render_check_only(state: BatmanSetupState) -> int:
     return 0
 
 
-def collect_values(state: BatmanSetupState) -> dict[str, str]:
-    mode = state.value(BATMAN_AUTO_EXECUTE_ENV, MODE_HALT).lower() or MODE_HALT
+def collect_values(state: ArchitectSetupState) -> dict[str, str]:
+    mode = state.value(ARCHITECT_AUTO_EXECUTE_ENV, MODE_HALT).lower() or MODE_HALT
     approval_mode = (
-        state.value(BATMAN_APPROVAL_MODE_ENV, APPROVAL_MODE_SLACK_OR_FILE).lower()
+        state.value(ARCHITECT_APPROVAL_MODE_ENV, APPROVAL_MODE_SLACK_OR_FILE).lower()
         or APPROVAL_MODE_SLACK_OR_FILE
     )
-    picker = state.value(BATMAN_PICKER_ENV, "oldest").lower() or "oldest"
+    picker = state.value(ARCHITECT_PICKER_ENV, "oldest").lower() or "oldest"
     return {
         TOKEN_ENV: state.runtime_value(TOKEN_ENV),
         SLACK_BOT_TOKEN_ENV: state.value(SLACK_BOT_TOKEN_ENV),
         OPERATOR_USER_ENV: state.value(OPERATOR_USER_ENV),
-        BATMAN_CHANNEL_ENV: normalize_channel(state.value(BATMAN_CHANNEL_ENV)),
-        BATMAN_PARENT_REPO_ENV: state.value(BATMAN_PARENT_REPO_ENV)
+        ARCHITECT_CHANNEL_ENV: normalize_channel(state.value(ARCHITECT_CHANNEL_ENV)),
+        ARCHITECT_PARENT_REPO_ENV: state.value(ARCHITECT_PARENT_REPO_ENV)
         or infer_parent_repo(state.env, state.config),
-        BATMAN_AUTO_EXECUTE_ENV: mode if mode in VALID_MODES else MODE_HALT,
-        BATMAN_APPROVAL_MODE_ENV: (
+        ARCHITECT_AUTO_EXECUTE_ENV: mode if mode in VALID_MODES else MODE_HALT,
+        ARCHITECT_APPROVAL_MODE_ENV: (
             approval_mode if approval_mode in VALID_APPROVAL_MODES else APPROVAL_MODE_SLACK_OR_FILE
         ),
-        BATMAN_PICKER_ENV: picker if picker in VALID_PICKERS else "oldest",
-        BATMAN_BUNDLE_PREFIX_ENV: state.value(BATMAN_BUNDLE_PREFIX_ENV),
-        BATMAN_TIMEOUT_ENV: state.value(BATMAN_TIMEOUT_ENV, "900") or "900",
+        ARCHITECT_PICKER_ENV: picker if picker in VALID_PICKERS else "oldest",
+        ARCHITECT_BUNDLE_PREFIX_ENV: state.value(ARCHITECT_BUNDLE_PREFIX_ENV),
+        ARCHITECT_TIMEOUT_ENV: state.value(ARCHITECT_TIMEOUT_ENV, "900") or "900",
     }
 
 
-def step_preflight(state: BatmanSetupState) -> None:
+def step_preflight(state: ArchitectSetupState) -> None:
     step("Preflight")
     state.alfred_home.mkdir(parents=True, exist_ok=True)
     state.env_file.parent.mkdir(parents=True, exist_ok=True)
@@ -353,7 +354,7 @@ def step_preflight(state: BatmanSetupState) -> None:
 
 
 def step_claude_oauth(
-    state: BatmanSetupState,
+    state: ArchitectSetupState,
     *,
     non_interactive: bool,
     skip_token_setup: bool,
@@ -364,7 +365,7 @@ def step_claude_oauth(
         return
     warn(f"{TOKEN_ENV} is not set")
     if skip_token_setup:
-        warn("Skipping token setup. Scheduled Batman firings will fail until the token is set.")
+        warn("Skipping token setup. Scheduled architect firings will fail until the token is set.")
         return
     if non_interactive:
         warn(
@@ -378,14 +379,14 @@ def step_claude_oauth(
             state.config = read_env_file(state.env_file)
             ok(f"{TOKEN_ENV} configured")
         else:
-            warn(f"`alfred setup-token` exited {rc}. Re-run it before enabling Batman.")
+            warn(f"`alfred setup-token` exited {rc}. Re-run it before enabling architect.")
     else:
         warn("Skipped token setup.")
 
 
 def step_slack_scopes() -> None:
     step("Slack bot scopes")
-    print("Required scopes for Batman approval gates:")
+    print("Required scopes for architect approval gates:")
     print("  - chat:write")
     print("  - reactions:read")
     print("  - channels:history for public channels, or groups:history for private channels")
@@ -393,7 +394,7 @@ def step_slack_scopes() -> None:
 
 
 def step_slack_token(
-    state: BatmanSetupState,
+    state: ArchitectSetupState,
     args: argparse.Namespace,
     *,
     values: dict[str, str],
@@ -425,7 +426,7 @@ def step_slack_token(
 
 
 def step_operator_user(
-    state: BatmanSetupState,
+    state: ArchitectSetupState,
     args: argparse.Namespace,
     *,
     values: dict[str, str],
@@ -459,14 +460,14 @@ def step_operator_user(
 
 
 def step_channel(
-    state: BatmanSetupState,
+    state: ArchitectSetupState,
     args: argparse.Namespace,
     *,
     values: dict[str, str],
     non_interactive: bool,
 ) -> None:
     step("Approval channel")
-    channel = normalize_channel(args.slack_channel or values[BATMAN_CHANNEL_ENV])
+    channel = normalize_channel(args.slack_channel or values[ARCHITECT_CHANNEL_ENV])
     if args.force or not channel:
         channel = normalize_channel(
             ask(
@@ -476,21 +477,21 @@ def step_channel(
             )
         )
     if channel:
-        state.updates[BATMAN_CHANNEL_ENV] = channel
-        ok(f"{BATMAN_CHANNEL_ENV}={channel}")
+        state.updates[ARCHITECT_CHANNEL_ENV] = channel
+        ok(f"{ARCHITECT_CHANNEL_ENV}={channel}")
     else:
-        warn("No Batman channel set. Runtime will fall back to SLACK_HOME_CHANNEL or alfred.")
+        warn("No architect channel set. Runtime will fall back to SLACK_HOME_CHANNEL or alfred.")
 
 
 def step_parent_repo(
-    state: BatmanSetupState,
+    state: ArchitectSetupState,
     args: argparse.Namespace,
     *,
     values: dict[str, str],
     non_interactive: bool,
 ) -> None:
     step("Parent repo")
-    parent_repo = args.parent_repo or values[BATMAN_PARENT_REPO_ENV]
+    parent_repo = args.parent_repo or values[ARCHITECT_PARENT_REPO_ENV]
     if args.force or not parent_repo:
         parent_repo = ask(
             "Parent repo for agent:large-feature issues",
@@ -499,17 +500,17 @@ def step_parent_repo(
         )
     problem = validate_parent_repo(parent_repo)
     if problem:
-        fail(f"{BATMAN_PARENT_REPO_ENV}: {problem}")
+        fail(f"{ARCHITECT_PARENT_REPO_ENV}: {problem}")
         raise SystemExit(1)
     if not parent_repo:
-        fail(f"{BATMAN_PARENT_REPO_ENV} is required")
+        fail(f"{ARCHITECT_PARENT_REPO_ENV} is required")
         raise SystemExit(1)
-    state.updates[BATMAN_PARENT_REPO_ENV] = parent_repo
-    ok(f"{BATMAN_PARENT_REPO_ENV}={parent_repo}")
+    state.updates[ARCHITECT_PARENT_REPO_ENV] = parent_repo
+    ok(f"{ARCHITECT_PARENT_REPO_ENV}={parent_repo}")
 
 
 def step_mode(
-    state: BatmanSetupState,
+    state: ArchitectSetupState,
     args: argparse.Namespace,
     *,
     values: dict[str, str],
@@ -519,7 +520,7 @@ def step_mode(
     print("  a) approval-gate: post a plan, wait for approval, then file children")
     print("  b) 1: execute immediately after planning")
     print("  c) 0: halt after plan")
-    configured_mode = state.value(BATMAN_AUTO_EXECUTE_ENV)
+    configured_mode = state.value(ARCHITECT_AUTO_EXECUTE_ENV)
     default_mode = args.mode or configured_mode or MODE_APPROVAL_GATE
     if default_mode == "a":
         default_mode = MODE_APPROVAL_GATE
@@ -533,27 +534,27 @@ def step_mode(
     mode_map = {"a": MODE_APPROVAL_GATE, "b": MODE_AUTO, "c": MODE_HALT}
     mode = mode_map.get(raw, raw)
     if mode not in VALID_MODES:
-        fail(f"{BATMAN_AUTO_EXECUTE_ENV}: expected one of {', '.join(VALID_MODES)}")
+        fail(f"{ARCHITECT_AUTO_EXECUTE_ENV}: expected one of {', '.join(VALID_MODES)}")
         raise SystemExit(1)
-    state.updates[BATMAN_AUTO_EXECUTE_ENV] = mode
-    ok(f"{BATMAN_AUTO_EXECUTE_ENV}={mode}")
+    state.updates[ARCHITECT_AUTO_EXECUTE_ENV] = mode
+    ok(f"{ARCHITECT_AUTO_EXECUTE_ENV}={mode}")
 
 
 def step_approval_mode(
-    state: BatmanSetupState,
+    state: ArchitectSetupState,
     args: argparse.Namespace,
     *,
     values: dict[str, str],
     non_interactive: bool,
 ) -> None:
-    if state.value(BATMAN_AUTO_EXECUTE_ENV) != MODE_APPROVAL_GATE:
+    if state.value(ARCHITECT_AUTO_EXECUTE_ENV) != MODE_APPROVAL_GATE:
         return
     step("Approval surface")
     print("  a) slack-or-file: Slack reactions plus Alfred client approve/decline")
     print("  b) slack: Slack reactions only")
     print("  c) file: Alfred client/file marker only")
     default_mode = (
-        args.approval_mode or values[BATMAN_APPROVAL_MODE_ENV] or APPROVAL_MODE_SLACK_OR_FILE
+        args.approval_mode or values[ARCHITECT_APPROVAL_MODE_ENV] or APPROVAL_MODE_SLACK_OR_FILE
     )
     mode_map = {
         "a": APPROVAL_MODE_SLACK_OR_FILE,
@@ -565,42 +566,42 @@ def step_approval_mode(
         raw = ask("Choice", default_mode, non_interactive=non_interactive).lower()
     mode = mode_map.get(raw, raw)
     if mode not in VALID_APPROVAL_MODES:
-        fail(f"{BATMAN_APPROVAL_MODE_ENV}: expected one of {', '.join(VALID_APPROVAL_MODES)}")
+        fail(f"{ARCHITECT_APPROVAL_MODE_ENV}: expected one of {', '.join(VALID_APPROVAL_MODES)}")
         raise SystemExit(1)
-    state.updates[BATMAN_APPROVAL_MODE_ENV] = mode
-    ok(f"{BATMAN_APPROVAL_MODE_ENV}={mode}")
+    state.updates[ARCHITECT_APPROVAL_MODE_ENV] = mode
+    ok(f"{ARCHITECT_APPROVAL_MODE_ENV}={mode}")
 
 
 def step_optional_knobs(
-    state: BatmanSetupState,
+    state: ArchitectSetupState,
     args: argparse.Namespace,
     *,
     values: dict[str, str],
 ) -> None:
-    picker = (args.picker or values[BATMAN_PICKER_ENV] or "oldest").lower()
+    picker = (args.picker or values[ARCHITECT_PICKER_ENV] or "oldest").lower()
     if picker not in VALID_PICKERS:
-        fail(f"{BATMAN_PICKER_ENV}: expected oldest or newest")
+        fail(f"{ARCHITECT_PICKER_ENV}: expected oldest or newest")
         raise SystemExit(1)
     timeout = str(
         args.approval_timeout_s
         if args.approval_timeout_s is not None
-        else values[BATMAN_TIMEOUT_ENV] or "900"
+        else values[ARCHITECT_TIMEOUT_ENV] or "900"
     )
     if not timeout.isdigit() or int(timeout) < 0:
-        fail(f"{BATMAN_TIMEOUT_ENV}: expected a non-negative integer")
+        fail(f"{ARCHITECT_TIMEOUT_ENV}: expected a non-negative integer")
         raise SystemExit(1)
-    state.updates[BATMAN_PICKER_ENV] = picker
-    state.updates[BATMAN_TIMEOUT_ENV] = timeout
+    state.updates[ARCHITECT_PICKER_ENV] = picker
+    state.updates[ARCHITECT_TIMEOUT_ENV] = timeout
     prefix = (
         args.bundle_slug_prefix
         if args.bundle_slug_prefix is not None
-        else values[BATMAN_BUNDLE_PREFIX_ENV]
+        else values[ARCHITECT_BUNDLE_PREFIX_ENV]
     )
     if prefix:
-        state.updates[BATMAN_BUNDLE_PREFIX_ENV] = prefix
+        state.updates[ARCHITECT_BUNDLE_PREFIX_ENV] = prefix
 
 
-def step_doctor(state: BatmanSetupState, *, skip_doctor: bool) -> None:
+def step_doctor(state: ArchitectSetupState, *, skip_doctor: bool) -> None:
     step("Smoke test")
     if skip_doctor:
         warn("Skipping lifecycle doctor.")
@@ -621,7 +622,7 @@ def step_doctor(state: BatmanSetupState, *, skip_doctor: bool) -> None:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Guided Batman setup wizard.")
+    parser = argparse.ArgumentParser(description="Guided architect setup wizard.")
     parser.add_argument(
         "--check-only", action="store_true", help="report setup state without writing"
     )
@@ -645,12 +646,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--operator-user-id", default="", help="Slack member id whose reactions count"
     )
     parser.add_argument(
-        "--slack-channel", default="", help="Slack channel name or id for Batman posts"
+        "--slack-channel", default="", help="Slack channel name or id for architect posts"
     )
     parser.add_argument(
-        "--parent-repo", default="", help="owner/repo that holds Batman parent issues"
+        "--parent-repo", default="", help="owner/repo that holds architect parent issues"
     )
-    parser.add_argument("--mode", choices=VALID_MODES, default="", help="Batman execution mode")
+    parser.add_argument("--mode", choices=VALID_MODES, default="", help="architect execution mode")
     parser.add_argument(
         "--approval-mode",
         choices=VALID_APPROVAL_MODES,
@@ -670,12 +671,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     non_interactive = args.non_interactive or bool(os.environ.get("ALFRED_NONINTERACTIVE"))
-    state = BatmanSetupState.from_args(args)
+    state = ArchitectSetupState.from_args(args)
 
     if args.check_only:
         return render_check_only(state)
 
-    print(f"{STYLE.BLUE}alfred-batman-setup{STYLE.OFF} guided setup.")
+    print(f"{STYLE.BLUE}alfred-architect-setup{STYLE.OFF} guided setup.")
     print(f"  Repo:        {state.repo_root}")
     print(f"  ALFRED_HOME: {state.alfred_home}")
     print(f"  .env:        {state.env_file}")
@@ -701,24 +702,24 @@ def main(argv: list[str] | None = None) -> int:
         step_channel(state, args, values=values, non_interactive=non_interactive)
         values = collect_values(state)
     else:
-        warn("Skipping Slack approval setup for this Batman mode.")
+        warn("Skipping Slack approval setup for this architect mode.")
     step_parent_repo(state, args, values=values, non_interactive=non_interactive)
     values = collect_values(state)
     step_optional_knobs(state, args, values=values)
 
-    upsert_batman_block(state.env_file, state.updates)
-    ok(f"wrote {len(state.updates)} Batman setting(s) to {state.env_file}")
+    upsert_architect_block(state.env_file, state.updates)
+    ok(f"wrote {len(state.updates)} architect setting(s) to {state.env_file}")
     step_doctor(state, skip_doctor=args.skip_doctor)
 
     print("\nDone. Next steps:")
-    print("  1. Read docs/BATMAN_PARENT_ISSUE_TEMPLATE.md for the parent issue format.")
-    print(f"  2. File an agent:large-feature issue in {state.updates[BATMAN_PARENT_REPO_ENV]}.")
-    if state.updates.get(BATMAN_AUTO_EXECUTE_ENV) != MODE_APPROVAL_GATE:
-        print("  3. Review Batman's drafted plan before filing child work.")
-    elif state.updates.get(BATMAN_APPROVAL_MODE_ENV) == APPROVAL_MODE_FILE:
-        print("  3. Approve or decline Batman plans from the Alfred client.")
+    print("  1. Read docs/ARCHITECT_PARENT_ISSUE_TEMPLATE.md for the parent issue format.")
+    print(f"  2. File an agent:large-feature issue in {state.updates[ARCHITECT_PARENT_REPO_ENV]}.")
+    if state.updates.get(ARCHITECT_AUTO_EXECUTE_ENV) != MODE_APPROVAL_GATE:
+        print("  3. Review the architect's drafted plan before filing child work.")
+    elif state.updates.get(ARCHITECT_APPROVAL_MODE_ENV) == APPROVAL_MODE_FILE:
+        print("  3. Approve or decline architect plans from the Alfred client.")
     else:
-        print("  3. Watch the configured Slack channel for Batman's plan post.")
+        print("  3. Watch the configured Slack channel for architect's plan post.")
         print("  4. React with :white_check_mark: to approve, or :x: to reject.")
     return 0
 

@@ -27,10 +27,10 @@ from slack_trust import SlackTrustStore  # noqa: E402
 STATUS_JSON = json.dumps(
     {
         "ts": "2026-05-30T00:00:00Z",
-        "global": {"locks": [{"agent": "lucius"}], "paused_repos": ["acme-org/api"]},
+        "global": {"locks": [{"agent": "senior-dev"}], "paused_repos": ["acme-org/api"]},
         "agents": [
             {
-                "codename": "lucius",
+                "codename": "senior-dev",
                 "loaded": True,
                 "paused": False,
                 "last_fired": "2026-05-30T11:00:00Z",
@@ -91,7 +91,7 @@ class FakeRunner:
                     [
                         {
                             "id": 101,
-                            "agent": "lucius",
+                            "agent": "senior-dev",
                             "repo": "example-org/alfred",
                             "body": "Keep Slack memory candidates reviewable.",
                             "confidence": 0.82,
@@ -178,7 +178,7 @@ class FakeRunner:
 
 
 def test_valid_codenames() -> None:
-    for good in ("lucius", "bane", "all", "ra-s-al-ghul", "agent.01", "a_b", "X9"):
+    for good in ("senior-dev", "bane", "all", "ra-s-al-ghul", "agent.01", "a_b", "X9"):
         assert is_valid_codename(good), good
 
 
@@ -194,13 +194,13 @@ def test_invalid_codenames_rejected() -> None:
         "",
         "-rf",  # leading hyphen -> could read as a flag
         "--force",
-        "lucius;rm -rf /",
-        "lucius rm",
+        "senior-dev;rm -rf /",
+        "senior-dev rm",
         "a b",
         "$(whoami)",
         "`id`",
-        "lucius|cat",
-        "lucius&&echo",
+        "senior-dev|cat",
+        "senior-dev&&echo",
         "name/with/slash",
         "x" * 65,
     ):
@@ -222,20 +222,20 @@ def test_leading_verb_parses() -> None:
     assert cmd is not None and cmd.verb == "memory" and cmd.arg == "promote 101"
     cmd = parse_control_command("remember example-org/alfred: keep it reviewable")
     assert cmd is not None and cmd.verb == "remember"
-    cmd = parse_control_command("pause lucius")
-    assert cmd is not None and cmd.verb == "pause" and cmd.arg == "lucius"
+    cmd = parse_control_command("pause senior-dev")
+    assert cmd is not None and cmd.verb == "pause" and cmd.arg == "senior-dev"
     cmd = parse_control_command("/resume bane")
     assert cmd is not None and cmd.verb == "resume" and cmd.arg == "bane"
-    cmd = parse_control_command("run batman")
-    assert cmd is not None and cmd.verb == "run" and cmd.arg == "batman"
+    cmd = parse_control_command("run architect")
+    assert cmd is not None and cmd.verb == "run" and cmd.arg == "architect"
     cmd = parse_control_command("dry-run all")
     assert cmd is not None and cmd.verb == "dry-run" and cmd.arg == "all"
-    cmd = parse_control_command("dryrun lucius")
-    assert cmd is not None and cmd.verb == "dry-run" and cmd.arg == "lucius"
-    cmd = parse_control_command("schedule show lucius")
-    assert cmd is not None and cmd.verb == "schedule" and cmd.arg == "show lucius"
-    cmd = parse_control_command("schedule set lucius 20m")
-    assert cmd is not None and cmd.verb == "schedule" and cmd.arg == "set lucius 20m"
+    cmd = parse_control_command("dryrun senior-dev")
+    assert cmd is not None and cmd.verb == "dry-run" and cmd.arg == "senior-dev"
+    cmd = parse_control_command("schedule show senior-dev")
+    assert cmd is not None and cmd.verb == "schedule" and cmd.arg == "show senior-dev"
+    cmd = parse_control_command("schedule set senior-dev 20m")
+    assert cmd is not None and cmd.verb == "schedule" and cmd.arg == "set senior-dev 20m"
     cmd = parse_control_command("plan followup-1")
     assert cmd is not None and cmd.verb == "plan" and cmd.arg == "followup-1"
     cmd = parse_control_command("draft followup-1")
@@ -249,8 +249,8 @@ def test_leading_verb_parses() -> None:
 
 
 def test_mentions_are_stripped_before_parse() -> None:
-    cmd = parse_control_command("<@UALFRED> pause lucius")
-    assert cmd is not None and cmd.verb == "pause" and cmd.arg == "lucius"
+    cmd = parse_control_command("<@UALFRED> pause senior-dev")
+    assert cmd is not None and cmd.verb == "pause" and cmd.arg == "senior-dev"
 
 
 def test_prose_is_not_a_command() -> None:
@@ -263,7 +263,7 @@ def test_prose_is_not_a_command() -> None:
         "help me add onboarding tests",
         "plans for the onboarding flow",
         "pause the project for the holidays",  # extra words -> not a command
-        "resume lucius and bane",  # two args -> not a clean command
+        "resume senior-dev and bane",  # two args -> not a clean command
     ):
         assert parse_control_command(prose) is None, prose
 
@@ -271,14 +271,14 @@ def test_prose_is_not_a_command() -> None:
 def test_pause_requires_single_valid_codename() -> None:
     assert parse_control_command("pause") is None
     assert parse_control_command("pause -rf") is None
-    assert parse_control_command("pause lucius extra") is None
+    assert parse_control_command("pause senior-dev extra") is None
     assert parse_control_command("pause name/with/slash") is None
 
 
 def test_run_commands_require_single_valid_codename() -> None:
     assert parse_control_command("run") is None
     assert parse_control_command("run -rf") is None
-    assert parse_control_command("run lucius extra") is None
+    assert parse_control_command("run senior-dev extra") is None
     assert parse_control_command("dry-run") is None
     assert parse_control_command("dry-run name/with/slash") is None
 
@@ -286,10 +286,10 @@ def test_run_commands_require_single_valid_codename() -> None:
 def test_schedule_commands_are_strict() -> None:
     assert parse_control_command("schedule") is not None
     assert parse_control_command("schedule list") is not None
-    assert parse_control_command("schedule show lucius") is not None
-    assert parse_control_command("schedule set lucius 20m") is not None
+    assert parse_control_command("schedule show senior-dev") is not None
+    assert parse_control_command("schedule set senior-dev 20m") is not None
     assert parse_control_command("schedule the onboarding review") is None
-    assert parse_control_command("schedule set lucius every 20 minutes") is None
+    assert parse_control_command("schedule set senior-dev every 20 minutes") is None
     assert parse_control_command("schedule set bad/name 20m") is None
 
     runner = FakeRunner()
@@ -307,7 +307,7 @@ def test_plan_commands_require_single_safe_id() -> None:
 
 def test_is_control_message_detects_leading_verb() -> None:
     assert is_control_message("status")
-    assert is_control_message("<@U1> pause lucius")
+    assert is_control_message("<@U1> pause senior-dev")
     assert is_control_message("pause")  # bare verb still detected (-> usage)
     assert is_control_message("plans")
     assert is_control_message("plan followup-1")
@@ -359,7 +359,7 @@ def _write_followup(state_root: Path, name: str = "slack-C1-1716480000") -> Path
 
 def test_untrusted_user_never_acts() -> None:
     runner = FakeRunner()
-    result = _handler(runner).handle("pause lucius", trusted=False)
+    result = _handler(runner).handle("pause senior-dev", trusted=False)
     assert result.handled is False
     assert result.action == "ignored_untrusted"
     assert runner.calls == []
@@ -371,7 +371,7 @@ def test_status_command_renders_snapshot() -> None:
     assert result.handled is True
     assert result.action == "status"
     assert "Fleet status" in result.text
-    assert "lucius" in result.text
+    assert "senior-dev" in result.text
     assert runner.calls == [["/fake/alfred", "status", "--json"]]
 
 
@@ -380,7 +380,7 @@ def test_runs_command_lists_recent_firings() -> None:
     result = _handler(runner).handle("runs", trusted=True)
     assert result.action == "runs"
     assert "Recent firings" in result.text
-    assert "lucius" in result.text
+    assert "senior-dev" in result.text
     assert "last fired 2026-05-30T11:00:00Z" in result.text
 
 
@@ -922,10 +922,10 @@ def test_memory_sync_json_failure_is_reported() -> None:
 
 def test_pause_invokes_cli_with_exact_argv() -> None:
     runner = FakeRunner()
-    result = _handler(runner).handle("pause lucius", trusted=True)
+    result = _handler(runner).handle("pause senior-dev", trusted=True)
     assert result.action == "pause"
     assert result.handled is True
-    assert runner.calls[-1] == ["/fake/alfred", "pause", "lucius"]
+    assert runner.calls[-1] == ["/fake/alfred", "pause", "senior-dev"]
     assert "Paused" in result.text
 
 
@@ -992,19 +992,19 @@ def test_run_all_is_rejected_without_cli_call() -> None:
 
 def test_dry_run_invokes_cli_with_exact_argv() -> None:
     runner = FakeRunner()
-    result = _handler(runner).handle("dry-run batman", trusted=True)
+    result = _handler(runner).handle("dry-run architect", trusted=True)
 
     assert result.action == "dry-run"
     assert "Dry-run" in result.text
-    assert runner.calls[-1] == ["/fake/alfred", "dry-run", "batman"]
+    assert runner.calls[-1] == ["/fake/alfred", "dry-run", "architect"]
 
 
 def test_dryrun_alias_invokes_cli_with_exact_argv() -> None:
     runner = FakeRunner()
-    result = _handler(runner).handle("dryrun lucius", trusted=True)
+    result = _handler(runner).handle("dryrun senior-dev", trusted=True)
 
     assert result.action == "dry-run"
-    assert runner.calls[-1] == ["/fake/alfred", "dry-run", "lucius"]
+    assert runner.calls[-1] == ["/fake/alfred", "dry-run", "senior-dev"]
 
 
 def test_schedule_list_invokes_cli_with_exact_argv() -> None:
@@ -1021,19 +1021,19 @@ def test_schedule_set_is_operator_only() -> None:
     handler = _handler(runner, operator_user_id="UOP")
 
     rejected = handler.handle(
-        "schedule set lucius 20m",
+        "schedule set senior-dev 20m",
         trusted=True,
         actor_user_id="UNEHA",
     )
     accepted = handler.handle(
-        "schedule set lucius 20m",
+        "schedule set senior-dev 20m",
         trusted=True,
         actor_user_id="UOP",
     )
 
     assert rejected.action == "schedule_rejected"
     assert accepted.action == "schedule"
-    assert runner.calls[-1] == ["/fake/alfred", "schedule", "set", "lucius", "20m"]
+    assert runner.calls[-1] == ["/fake/alfred", "schedule", "set", "senior-dev", "20m"]
 
 
 def test_run_prose_falls_through_to_planning_intake() -> None:
@@ -1060,14 +1060,14 @@ def test_two_word_run_prose_falls_through_for_operator() -> None:
 
 def test_pause_failure_is_reported() -> None:
     runner = FakeRunner(mutate_rc=1)
-    result = _handler(runner).handle("pause lucius", trusted=True)
+    result = _handler(runner).handle("pause senior-dev", trusted=True)
     assert result.action == "pause_failed"
     assert "Could not pause" in result.text
 
 
 def test_dry_run_failure_is_reported() -> None:
     runner = FakeRunner(mutate_rc=1)
-    result = _handler(runner).handle("dry-run lucius", trusted=True)
+    result = _handler(runner).handle("dry-run senior-dev", trusted=True)
     assert result.action == "dry-run_failed"
     assert "Could not dry-run" in result.text
 
@@ -1077,7 +1077,7 @@ def test_help_lists_commands_without_running_anything() -> None:
     result = _handler(runner).handle("help", trusted=True)
     assert result.action == "help"
     assert "talk to alfred naturally" in result.text.lower()
-    assert "Run Batman now" in result.text
+    assert "run architect" in result.text.lower()
     assert "trust <@user>" in result.text
     assert runner.calls == []
 

@@ -22,6 +22,11 @@ sys.path.insert(0, str(LIB))
 def cli_module(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path / ".alfred"))
     monkeypatch.setenv("GH_ORG", "acme")
+    for key in list(os.environ):
+        if key.startswith("ALFRED_") and key.endswith("_REPOS"):
+            monkeypatch.delenv(key, raising=False)
+    monkeypatch.delenv("LABEL_STATE_SWEEP_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_CLAIM_SWEEP_REPOS", raising=False)
     loader = SourceFileLoader("alfred_cli_labels", str(BIN))
     spec = importlib.util.spec_from_loader(loader.name, loader)
     assert spec and spec.loader
@@ -31,7 +36,7 @@ def cli_module(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     return mod
 
 
-def test_label_catalogue_includes_lifecycle_batman_and_operator_labels(cli_module) -> None:
+def test_label_catalogue_includes_lifecycle_architect_and_operator_labels(cli_module) -> None:
     names = {name for name, _, _ in cli_module._label_bootstrap_catalog()}
     assert "agent:implement" in names
     assert "agent:large-feature" in names
@@ -40,27 +45,53 @@ def test_label_catalogue_includes_lifecycle_batman_and_operator_labels(cli_modul
     assert "do-not-merge" in names
 
 
-def test_resolve_label_normalizes_batman_cast_alias(
+def test_resolve_label_uses_active_roster_theme_names(
     cli_module, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Canonical scheduler labels key on the role slug, but operator muscle-memory
-    # still types the Batman-cast codename ("alfred run lucius"). run/pause/resume
-    # resolve via _resolve_label, so it must normalize the alias to the slug
-    # before the lookup or the command fails even though the alias exists.
+    # Scheduler labels key on role slugs. Human names resolve through the active
+    # roster theme, so changing themes changes what the CLI accepts.
     monkeypatch.setattr(
         cli_module,
         "_label_map",
         lambda: {"senior-dev": "alfred.senior-dev", "planner": "alfred.planner"},
     )
-    # Batman-cast alias resolves to the slug's label.
     assert cli_module._resolve_label("lucius") == "alfred.senior-dev"
     assert cli_module._resolve_label("drake") == "alfred.planner"
-    # The canonical slug and the full label still resolve unchanged.
     assert cli_module._resolve_label("senior-dev") == "alfred.senior-dev"
     assert cli_module._resolve_label("alfred.senior-dev") == "alfred.senior-dev"
-    # An unknown name (and an alias whose slug is not loaded) resolves to None.
     assert cli_module._resolve_label("nonesuch") is None
     assert cli_module._resolve_label("batman") is None
+
+    theme_dir = Path(os.environ["ALFRED_HOME"]) / "state" / "roster-theme"
+    theme_dir.mkdir(parents=True)
+    (theme_dir / "roster-theme.json").write_text(
+        json.dumps({"version": 1, "theme": "transformers", "custom_names": {}, "custom_roles": {}}),
+        encoding="utf-8",
+    )
+    assert cli_module._resolve_label("ironhide") == "alfred.senior-dev"
+    assert cli_module._resolve_label("lucius") is None
+
+
+def test_agents_conf_path_falls_back_to_checkout_when_runtime_missing(
+    cli_module, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "empty-runtime"
+    checkout = tmp_path / "checkout"
+    runtime.mkdir()
+    (checkout / "bin").mkdir(parents=True)
+    (checkout / "launchd").mkdir()
+    checkout_conf = checkout / "launchd" / "agents.conf"
+    checkout_conf.write_text(
+        "my.fleet.architect\tarchitect.py\tinterval:3600\tno\t\tArchitect\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setattr(cli_module, "_HERE", checkout / "bin")
+
+    assert cli_module._agents_conf_path() == checkout_conf
+    assert [row["label"] for row in cli_module._parse_agents_conf(checkout_conf)] == [
+        "my.fleet.architect"
+    ]
 
 
 def test_labels_check_reports_missing_without_creating(
@@ -112,7 +143,7 @@ def test_labels_all_reads_fleet_repo_env(cli_module, monkeypatch: pytest.MonkeyP
     home = Path(os.environ["ALFRED_HOME"])
     home.mkdir(parents=True)
     (home / ".env").write_text(
-        "GH_ORG=acme\nALFRED_LUCIUS_REPOS=api,web\nALFRED_RASALGHUL_REPOS=web,mobile\n",
+        "GH_ORG=acme\nALFRED_SENIOR_DEV_REPOS=api,web\nALFRED_REVIEWER_REPOS=web,mobile\n",
         encoding="utf-8",
     )
     repos: list[str] = []
@@ -152,11 +183,11 @@ def test_labels_all_hydrates_fleet_repo_env_from_runtime_env(
     home = Path(os.environ["ALFRED_HOME"])
     home.mkdir(parents=True)
     (home / ".env").write_text(
-        "GH_ORG=acme\nALFRED_LUCIUS_REPOS=api,web\nALFRED_RASALGHUL_REPOS=web,mobile\n",
+        "GH_ORG=acme\nALFRED_SENIOR_DEV_REPOS=api,web\nALFRED_REVIEWER_REPOS=web,mobile\n",
         encoding="utf-8",
     )
-    monkeypatch.delenv("ALFRED_LUCIUS_REPOS", raising=False)
-    monkeypatch.delenv("ALFRED_RASALGHUL_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SENIOR_DEV_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_REVIEWER_REPOS", raising=False)
     repos: list[str] = []
     monkeypatch.setattr(
         cli_module,
@@ -195,10 +226,10 @@ def test_runtime_env_file_does_not_clobber_process_overrides(
     home = Path(os.environ["ALFRED_HOME"])
     home.mkdir(parents=True)
     (home / ".env").write_text(
-        "GH_ORG=acme\nALFRED_LUCIUS_REPOS=api,web\nALFRED_TELEMETRY_ENABLED=1\n",
+        "GH_ORG=acme\nALFRED_SENIOR_DEV_REPOS=api,web\nALFRED_TELEMETRY_ENABLED=1\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("ALFRED_LUCIUS_REPOS", "manual/repo")
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_REPOS", "manual/repo")
     monkeypatch.setenv("ALFRED_TELEMETRY_ENABLED", "0")
     repos: list[str] = []
     monkeypatch.setattr(

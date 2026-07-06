@@ -36,7 +36,7 @@ The native desktop app and the trust features around it: a signed Mac/Linux app 
 
 ### v0.4.0 (2026-05-23)
 
-Substrate, observability, planning, approval, memory, and connector primitives: the `agent_runner` package decomposition, `alfred metrics` / `alfred logs`, the issue-claim state machine and multi-repo coordination, Damian and Batman planning/execution, the FleetBrain ledger, the connector protocol, `alfred serve` v1, and the slop detector.
+Substrate, observability, planning, approval, memory, and connector primitives: the `agent_runner` package decomposition, `alfred metrics` / `alfred logs`, the issue-claim state machine and multi-repo coordination, spec-planner and architect planning/execution, the FleetBrain ledger, the connector protocol, `alfred serve` v1, and the slop detector.
 
 ### v0.3.0 and earlier
 

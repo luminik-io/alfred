@@ -104,7 +104,7 @@ function jsonFor(path: string): unknown {
           raw_schedule: "cron:2:00",
         },
         {
-          codename: "lucius",
+          codename: "senior-dev",
           role: "Single-repo engineer",
           kind: "interval",
           cadence: "every 10m",
@@ -116,7 +116,7 @@ function jsonFor(path: string): unknown {
   }
   if (path.includes(ENDPOINTS.status)) {
     return {
-      agents: [{ codename: "lucius" }],
+      agents: [{ codename: "senior-dev" }],
       total_today: 2,
       reliability: { status: "ok" },
       metrics: {
@@ -139,14 +139,14 @@ function jsonFor(path: string): unknown {
     };
   }
   if (path.includes(ENDPOINTS.firings)) {
-    return { rows: [{ firing_id: "f1", codename: "lucius" }] };
+    return { rows: [{ firing_id: "f1", codename: "senior-dev" }] };
   }
   if (path.includes(ENDPOINTS.memoryCandidates)) {
     return {
       rows: [
         {
           id: "mem:1",
-          codename: "lucius",
+          codename: "senior-dev",
           repo: "your-org/api",
           body: "Use request fixtures.",
           tags: ["tests"],
@@ -182,7 +182,7 @@ function jsonFor(path: string): unknown {
             number: 7,
             title: "Ship it",
             url: "https://example.com/pr/7",
-            author: "lucius",
+            author: "senior-dev",
             kind: "pr",
             timestamp: "2026-06-01T00:00:00Z",
             age_days: 1,
@@ -617,12 +617,12 @@ describe("loadSnapshot degradation", () => {
     const fetch = vi.fn(async (input: string, init?: RequestInit) => {
       expect(String(input)).toContain("/api/conversation/control");
       expect(init?.method).toBe("POST");
-      expect(init?.body).toBe(JSON.stringify({ text: "run batman" }));
+      expect(init?.body).toBe(JSON.stringify({ text: "run architect" }));
       return new Response(
         JSON.stringify({
           handled: true,
           action: "run",
-          text: "*Triggered one run* `batman`.",
+          text: "*Triggered one run* `architect`.",
           detail: "",
           actor_user_id: "ULOCALCLIENT",
         }),
@@ -632,7 +632,7 @@ describe("loadSnapshot degradation", () => {
     vi.stubGlobal("fetch", fetch);
 
     const result = await conversationControl(DEFAULT_BASE_URL, {
-      text: "run batman",
+      text: "run architect",
     });
 
     expect(result.handled).toBe(true);
@@ -650,7 +650,7 @@ describe("loadSnapshot degradation", () => {
           issue_number: 13,
           decision: "approve",
           status: "approved",
-          marker_path: "/tmp/state/../batman/approvals/13.approved",
+          marker_path: "/tmp/state/../architect/approvals/13.approved",
         }),
         { status: 200 },
       );
@@ -676,7 +676,7 @@ describe("loadSnapshot degradation", () => {
           issue_number: 21,
           decision: "decline",
           status: "declined",
-          marker_path: "/tmp/state/../batman/approvals/21.rejected",
+          marker_path: "/tmp/state/../architect/approvals/21.rejected",
         }),
         { status: 200 },
       );
@@ -973,8 +973,8 @@ describe("roster theme persistence", () => {
       return new Response(
         JSON.stringify({
           theme: "custom",
-          custom_names: { batman: "Sherlock" },
-          custom_roles: { batman: "Lead detective" },
+          custom_names: { architect: "Sherlock" },
+          custom_roles: { architect: "Lead detective" },
           updated_at: "2026-06-25T00:00:00Z",
         }),
         { status: 200 },
@@ -985,8 +985,8 @@ describe("roster theme persistence", () => {
     const result = await loadRosterTheme(DEFAULT_BASE_URL);
 
     expect(result.theme).toBe("custom");
-    expect(result.custom_names.batman).toBe("Sherlock");
-    expect(result.custom_roles.batman).toBe("Lead detective");
+    expect(result.custom_names.architect).toBe("Sherlock");
+    expect(result.custom_roles.architect).toBe("Lead detective");
   });
 
   it("posts the chosen theme and custom maps to persist them", async () => {
@@ -996,14 +996,14 @@ describe("roster theme persistence", () => {
       expect(init?.body).toBe(
         JSON.stringify({
           theme: "custom",
-          custom_names: { batman: "Sherlock" },
+          custom_names: { architect: "Sherlock" },
           custom_roles: {},
         }),
       );
       return new Response(
         JSON.stringify({
           theme: "custom",
-          custom_names: { batman: "Sherlock" },
+          custom_names: { architect: "Sherlock" },
           custom_roles: {},
           updated_at: "2026-06-25T00:00:00Z",
         }),
@@ -1014,12 +1014,12 @@ describe("roster theme persistence", () => {
 
     const result = await saveRosterTheme(DEFAULT_BASE_URL, {
       theme: "custom",
-      custom_names: { batman: "Sherlock" },
+      custom_names: { architect: "Sherlock" },
       custom_roles: {},
     });
 
     expect(result.theme).toBe("custom");
-    expect(result.custom_names.batman).toBe("Sherlock");
+    expect(result.custom_names.architect).toBe("Sherlock");
   });
 
   it("surfaces a server validation 400 as an ApiError", async () => {

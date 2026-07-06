@@ -168,7 +168,7 @@ Required only if you want Alfred to receive Slack events via Socket Mode. The
 planning listener lets trusted users DM or mention Alfred with rough work, and
 lets Alfred capture replies in registered plan/report threads. Chat edits
 drafts and follow-up context only; implementation still needs the normal
-approval gate. Registered Batman plan replies also write revision artifacts
+approval gate. Registered architect plan replies also write revision artifacts
 under `$ALFRED_HOME/state/plan-revisions/` and update the local thread status
 as `revised` or `needs_resolution`.
 
@@ -259,7 +259,7 @@ Alfred files one issue carrying the pickup label.
 the configured pickup label. It never runs code, opens worktrees, pushes
 branches, or spawns an agent. The created issue then enters the normal queue
 and is claimed through every existing gate (claim-lock, spend caps, review,
-Batman's multi-repo approval). The bridge reuses that safety machinery instead
+the architect's multi-repo approval). The bridge reuses that safety machinery instead
 of bypassing it.
 
 **Five gates are all required** before an issue is created:
@@ -335,7 +335,7 @@ from chat by **leading a message with a known verb**. These are handled by
 |---|---|
 | `status` | Fleet health from `alfred status --json` (loaded agents, pauses, locks). |
 | `runs` | Recent firings per agent (last-fired plus today's counts). |
-| `plans` | Local planning inbox: Batman plans, Slack planning drafts, and captured follow-ups. |
+| `plans` | Local planning inbox: Architect plans, Slack planning drafts, and captured follow-ups. |
 | `plan <id>` | Inspect one local plan or follow-up. Use `plans` to find the id. |
 | `draft <id>` | Convert a captured follow-up into a local planning draft. |
 | `handled <id>` | Configured-approver command. Archive a captured follow-up without creating a draft. |
@@ -355,7 +355,7 @@ from chat by **leading a message with a known verb**. These are handled by
 | `untrust <@user>` | Configured-approver command. Remove a locally trusted Slack collaborator. |
 | `help` | List these commands. |
 
-DM Alfred or @-mention it, e.g. `pause lucius` or `status`. Nothing extra to
+DM Alfred or @-mention it, e.g. `pause senior-dev` or `status`. Nothing extra to
 configure beyond the planning listener; the same trusted-user gate applies.
 
 Safety model:

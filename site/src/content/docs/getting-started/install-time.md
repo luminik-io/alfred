@@ -71,8 +71,8 @@ itself.
 Once `alfred doctor` is green, the host scheduler starts the firing cadence
 immediately. The first Drake firing will happen within the configured
 interval (default every 2 hours). If you want a faster first signal, file one
-`agent:implement` issue manually and wait 20 minutes for Lucius's next firing,
-or run `alfred run lucius --force` to trigger a firing on demand.
+`agent:implement` issue manually and wait 20 minutes for senior-dev's next firing,
+or run `alfred run senior-dev --force` to trigger a firing on demand.
 
 ## See also
 

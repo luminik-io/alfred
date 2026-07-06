@@ -42,10 +42,10 @@ global:
 agent       load  eng     fired  fires  ok  fail  streak  turns  cost    state
 ------------------------------------------------------------------------------
 drake       ✅    hybrid  12m    8      7   1     0       52     $0.96   ok
-lucius      ✅    hybrid  3m     12     9   3     0       78     $1.42   ok
+senior-dev      ✅    hybrid  3m     12     9   3     0       78     $1.42   ok
 rasalghul   ✅    hybrid  never  9      9   0     0       123    $2.30   ok
 bane        ✅    hybrid  never  1      1   0     0       49     $0.80   ok
-batman      ✅    hybrid  never  10     0   0     0       0      $0.00   ok
+architect      ✅    hybrid  never  10     0   0     0       0      $0.00   ok
 nightwing   ✅    hybrid  never  20     0   0     0       0      $0.00   ok
 huntress    ⏸     -       never  0      0   0     0       0      $0.00   ⏸️ paused
 ```
@@ -123,7 +123,7 @@ window. Reads:
 alfred metrics                          # last 7 days, per-agent
 alfred metrics --since 14d              # last 14 days
 alfred metrics --since 48h              # last 48h (rounds up to days)
-alfred metrics --codename lucius        # one codename only
+alfred metrics --codename senior-dev        # one codename only
 alfred metrics --by-day                 # daily totals instead of per-agent
 alfred metrics --json                   # machine-readable
 ```
@@ -138,7 +138,7 @@ alfred-metrics - last 7 days @ 2026-05-23 12:17 UTC
 
 codename     firings  ok    fail  turns   codex  ctok   cost     tools  top tool       skills
 --------------------------------------------------------------------------------------------------
-lucius       12       9     3     78      2      4500   $1.42    34     Bashx14        review x3
+senior-dev       12       9     3     78      2      4500   $1.42    34     Bashx14        review x3
 drake        8        7     1     52      0      0      $0.96    21     Readx9         -
 your-agent   3        2     1     14      0      0      $0.42    2      Readx1         -
 --------------------------------------------------------------------------------------------------
@@ -206,8 +206,8 @@ alfred logs <codename> --json                           # machine-readable
 ### Summary mode
 
 ```
-alfred-logs lucius - last 3 firings
-transcripts: ~/.alfred/state/transcripts/lucius/
+alfred-logs senior-dev - last 3 firings
+transcripts: ~/.alfred/state/transcripts/senior-dev/
 
 firing_id              when                   subtype        turns  cost    tools  edits  top tools
 ---------------------------------------------------------------------------------------------------
@@ -219,7 +219,7 @@ firing_id              when                   subtype        turns  cost    tool
 ### Tool-call rollup
 
 ```
-alfred-logs lucius --show-tool-calls - last 10 firings
+alfred-logs senior-dev --show-tool-calls - last 10 firings
 
 tool          calls
 ------------------------
@@ -297,7 +297,7 @@ for m in report.metrics:
     if m.tool_calls_total > 50:
         print(m.codename, m.tool_calls)
 
-for firing in list_firings(state, "lucius")[:5]:
+for firing in list_firings(state, "senior-dev")[:5]:
     s = transcript_summary(firing.path)
     print(firing.firing_id, s.tool_calls_by_name)
 ```

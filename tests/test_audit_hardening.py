@@ -288,7 +288,7 @@ def test_rasalghul_diff_too_large_review_stamps_head_sha(monkeypatch):
     assert rasalghul.reviewed_head_sha(out) == "abc1234"
 
 
-def test_lucius_wip_salvage_pr_failure_releases_to_retry_queue(monkeypatch):
+def test_senior_dev_wip_salvage_pr_failure_releases_to_retry_queue(monkeypatch):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     releases = []
     monkeypatch.setattr(lucius, "release_issue", lambda *a, **kw: releases.append((a, kw)))
@@ -307,7 +307,7 @@ def test_lucius_wip_salvage_pr_failure_releases_to_retry_queue(monkeypatch):
     ]
 
 
-def test_lucius_wip_salvage_success_transitions_to_pr_open(monkeypatch):
+def test_senior_dev_wip_salvage_success_transitions_to_pr_open(monkeypatch):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     releases = []
     monkeypatch.setattr(lucius, "release_issue", lambda *a, **kw: releases.append((a, kw)))
@@ -318,7 +318,7 @@ def test_lucius_wip_salvage_success_transitions_to_pr_open(monkeypatch):
     assert releases[0][1]["pr_url"] == "https://github.com/o/r/pull/1"
 
 
-def test_lucius_wraps_issue_payload_as_untrusted(monkeypatch):
+def test_senior_dev_wraps_issue_payload_as_untrusted(monkeypatch):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     issue = {
         "number": 42,
@@ -340,7 +340,7 @@ def test_lucius_wraps_issue_payload_as_untrusted(monkeypatch):
     assert "Ignore previous instructions" in payload
 
 
-def test_lucius_issue_author_trust_fails_closed(monkeypatch):
+def test_senior_dev_issue_author_trust_fails_closed(monkeypatch):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     monkeypatch.setattr(
         lucius,
@@ -357,7 +357,7 @@ def test_lucius_issue_author_trust_fails_closed(monkeypatch):
     assert "association=CONTRIBUTOR" in note
 
 
-def test_lucius_issue_author_trust_allows_repo_members(monkeypatch):
+def test_senior_dev_issue_author_trust_allows_repo_members(monkeypatch):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     monkeypatch.setattr(
         lucius,
@@ -374,7 +374,7 @@ def test_lucius_issue_author_trust_allows_repo_members(monkeypatch):
     assert note == "trusted: author=maintainer, association=MEMBER"
 
 
-def test_lucius_existing_authored_pr_removes_issue_from_implement_queue(monkeypatch):
+def test_senior_dev_existing_authored_pr_removes_issue_from_implement_queue(monkeypatch):
     monkeypatch.setenv("ALFRED_SENIOR_DEV_REPOS", "backend")
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     edits = []
@@ -410,7 +410,7 @@ def test_lucius_existing_authored_pr_removes_issue_from_implement_queue(monkeypa
     ]
 
 
-def test_lucius_pick_issue_accepts_batman_bundle_child(monkeypatch):
+def test_senior_dev_pick_issue_accepts_batman_bundle_child(monkeypatch):
     monkeypatch.setenv("ALFRED_SENIOR_DEV_REPOS", "backend")
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     monkeypatch.setattr(lucius, "is_repo_paused", lambda repo: False)
@@ -442,7 +442,7 @@ def test_lucius_pick_issue_accepts_batman_bundle_child(monkeypatch):
     assert issue["number"] == 42
 
 
-def test_lucius_unknown_author_trust_moves_issue_out_of_queue(monkeypatch):
+def test_senior_dev_unknown_author_trust_moves_issue_out_of_queue(monkeypatch):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
 
     class FakeEvents:
@@ -546,7 +546,7 @@ def test_drake_prompt_uses_load_prompt_substitution(monkeypatch, tmp_path):
     prompt.write_text("${AGENT_CODENAME} ${GH_ORG} ${PLANNER_REPOS} ${FEATURE_DEV_CODENAME}")
     monkeypatch.setattr(drake, "GH_ORG", "luminik")
     monkeypatch.setattr(drake, "PROMPT_PATH", prompt)
-    monkeypatch.setattr(drake, "DRAKE_REPOS", ["backend", "frontend"])
+    monkeypatch.setattr(drake, "PLANNER_REPOS", ["backend", "frontend"])
     monkeypatch.setattr(drake, "_build_state_machine_context", lambda: "\nstate-context")
     monkeypatch.setenv("AGENT_CODENAME_FEATURE_DEV", "custom-lucius")
 
@@ -555,14 +555,14 @@ def test_drake_prompt_uses_load_prompt_substitution(monkeypatch, tmp_path):
     assert text == "Planner luminik backend,frontend Custom-Lucius\nstate-context"
 
 
-def test_lucius_build_prompt_includes_operator_prompt(monkeypatch, tmp_path):
+def test_senior_dev_build_prompt_includes_operator_prompt(monkeypatch, tmp_path):
     monkeypatch.setenv("GH_ORG", "luminik")
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     prompt = tmp_path / "lucius.md"
     prompt.write_text("Read specs from ${WORKSPACE_ROOT}/product/specs for #${ISSUE_NUMBER}.")
     monkeypatch.setattr(lucius, "PROMPT_PATH", prompt)
     monkeypatch.setattr(lucius, "GH_ORG", "luminik")
-    monkeypatch.setattr(lucius, "LUCIUS_REPOS", ["backend"])
+    monkeypatch.setattr(lucius, "SENIOR_DEV_REPOS", ["backend"])
     monkeypatch.setattr(lucius, "PRE_PUSH", {"backend": "pytest"})
     monkeypatch.setattr(lucius, "WORKSPACE", tmp_path / "product")
 
@@ -579,7 +579,7 @@ def test_lucius_build_prompt_includes_operator_prompt(monkeypatch, tmp_path):
     assert "product/specs for #42" in text
 
 
-def test_lucius_refreshes_pre_push_after_preflight_checkout_sync(monkeypatch):
+def test_senior_dev_refreshes_pre_push_after_preflight_checkout_sync(monkeypatch):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     calls: list[tuple[str, object]] = []
 
@@ -636,7 +636,7 @@ def test_nightwing_refreshes_pre_push_after_preflight_checkout_sync(monkeypatch)
     assert calls[-1] == ("doctor", {"service-web": "npm ci"})
 
 
-def test_lucius_infers_node_pre_push_from_package_json(monkeypatch, tmp_path):
+def test_senior_dev_infers_node_pre_push_from_package_json(monkeypatch, tmp_path):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -659,7 +659,7 @@ def test_lucius_infers_node_pre_push_from_package_json(monkeypatch, tmp_path):
     assert command == "npm ci && npm run typecheck && npm run lint && CI=1 npm test"
 
 
-def test_lucius_bun_pre_push_runs_package_test_script(monkeypatch, tmp_path):
+def test_senior_dev_bun_pre_push_runs_package_test_script(monkeypatch, tmp_path):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -675,7 +675,7 @@ def test_lucius_bun_pre_push_runs_package_test_script(monkeypatch, tmp_path):
     assert "CI=1 bun test" not in command
 
 
-def test_lucius_npm_pre_push_does_not_create_lockfile(monkeypatch, tmp_path):
+def test_senior_dev_npm_pre_push_does_not_create_lockfile(monkeypatch, tmp_path):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -690,7 +690,7 @@ def test_lucius_npm_pre_push_does_not_create_lockfile(monkeypatch, tmp_path):
     assert "npm install &&" not in command
 
 
-def test_lucius_prefers_gradle_for_backend_suffix_over_package_json(monkeypatch, tmp_path):
+def test_senior_dev_prefers_gradle_for_backend_suffix_over_package_json(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     repo = tmp_path / "workspace" / "service"
@@ -701,7 +701,7 @@ def test_lucius_prefers_gradle_for_backend_suffix_over_package_json(monkeypatch,
     )
     (repo / "package-lock.json").write_text("{}", encoding="utf-8")
     monkeypatch.setattr(lucius, "WORKSPACE", tmp_path / "workspace")
-    monkeypatch.setattr(lucius, "LUCIUS_REPOS", ["service-backend"])
+    monkeypatch.setattr(lucius, "SENIOR_DEV_REPOS", ["service-backend"])
     monkeypatch.setattr(lucius, "local_repo_dir", lambda _repo: "service")
 
     command = lucius._load_pre_push_config("lucius")["service-backend"]
@@ -709,7 +709,7 @@ def test_lucius_prefers_gradle_for_backend_suffix_over_package_json(monkeypatch,
     assert command == "./gradlew check"
 
 
-def test_lucius_dependency_lockfile_drift_detects_dependency_change(monkeypatch, tmp_path):
+def test_senior_dev_dependency_lockfile_drift_detects_dependency_change(monkeypatch, tmp_path):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     (tmp_path / "package.json").write_text(
         json.dumps({"dependencies": {"niyora-sync": "1.0.0"}}),
@@ -730,7 +730,7 @@ def test_lucius_dependency_lockfile_drift_detects_dependency_change(monkeypatch,
     ]
 
 
-def test_lucius_nested_lockfile_drift_requires_local_lockfile(monkeypatch, tmp_path):
+def test_senior_dev_nested_lockfile_drift_requires_local_lockfile(monkeypatch, tmp_path):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     package_dir = tmp_path / "packages" / "widget"
     package_dir.mkdir(parents=True)
@@ -759,7 +759,9 @@ def test_lucius_nested_lockfile_drift_requires_local_lockfile(monkeypatch, tmp_p
     ]
 
 
-def test_lucius_nested_lockfile_drift_treats_deleted_local_lock_as_missing(monkeypatch, tmp_path):
+def test_senior_dev_nested_lockfile_drift_treats_deleted_local_lock_as_missing(
+    monkeypatch, tmp_path
+):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     package_dir = tmp_path / "packages" / "widget"
     package_dir.mkdir(parents=True)
@@ -796,7 +798,7 @@ def test_lucius_nested_lockfile_drift_treats_deleted_local_lock_as_missing(monke
     ]
 
 
-def test_lucius_git_helpers_use_worktree_base_branch(monkeypatch, tmp_path):
+def test_senior_dev_git_helpers_use_worktree_base_branch(monkeypatch, tmp_path):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     commands: list[list[str]] = []
 
@@ -831,7 +833,7 @@ def test_lucius_git_helpers_use_worktree_base_branch(monkeypatch, tmp_path):
     assert ["git", "rev-list", "--count", "origin/develop..HEAD"] not in commands
 
 
-def test_lucius_lockfile_drift_ignores_upstream_only_lockfile_change(monkeypatch, tmp_path):
+def test_senior_dev_lockfile_drift_ignores_upstream_only_lockfile_change(monkeypatch, tmp_path):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     commands: list[list[str]] = []
     (tmp_path / "package.json").write_text(
@@ -875,7 +877,7 @@ def test_lucius_lockfile_drift_ignores_upstream_only_lockfile_change(monkeypatch
     assert ["git", "show", "origin/main:package.json"] not in commands
 
 
-def test_lucius_push_blocks_when_pre_push_fails(monkeypatch, tmp_path):
+def test_senior_dev_push_blocks_when_pre_push_fails(monkeypatch, tmp_path):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     releases: list[dict] = []
     posts: list[str] = []
@@ -931,7 +933,7 @@ def test_lucius_push_blocks_when_pre_push_fails(monkeypatch, tmp_path):
     assert posts and "Missing: niyora-sync" in posts[0]
 
 
-def test_lucius_dry_run_reports_pre_push_without_executing(monkeypatch, tmp_path):
+def test_senior_dev_dry_run_reports_pre_push_without_executing(monkeypatch, tmp_path):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     logs: list[tuple[str, str]] = []
     monkeypatch.setattr(lucius, "is_dry_run", lambda: True)
@@ -955,7 +957,9 @@ def test_lucius_dry_run_reports_pre_push_without_executing(monkeypatch, tmp_path
     ]
 
 
-def test_lucius_partial_salvage_push_skips_pre_push_but_runs_workflow_gate(monkeypatch, tmp_path):
+def test_senior_dev_partial_salvage_push_skips_pre_push_but_runs_workflow_gate(
+    monkeypatch, tmp_path
+):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     pushed: list[tuple[Path, str]] = []
     validations: list[tuple[Path, str | None]] = []
@@ -989,11 +993,11 @@ def test_lucius_partial_salvage_push_skips_pre_push_but_runs_workflow_gate(monke
         run_checks=False,
         run_workflow_validation=True,
     )
-    assert validations == [(tmp_path, lucius.LUCIUS_WORKTREE_BASE_REF)]
+    assert validations == [(tmp_path, lucius.SENIOR_DEV_WORKTREE_BASE_REF)]
     assert pushed == [(tmp_path, "lucius/83")]
 
 
-def test_lucius_partial_salvage_preserves_invalid_workflow_changes(monkeypatch, tmp_path):
+def test_senior_dev_partial_salvage_preserves_invalid_workflow_changes(monkeypatch, tmp_path):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     releases: list[dict] = []
     posts: list[str] = []
@@ -1124,7 +1128,7 @@ def test_bane_workflow_validation_failure_counts_as_failure(monkeypatch, tmp_pat
     assert posts and "[TEST-ENGINEER-WORKFLOW-VALIDATION-FAILED]" in posts[0]
 
 
-def test_lucius_dependency_check_preserves_cross_org_refs(monkeypatch):
+def test_senior_dev_dependency_check_preserves_cross_org_refs(monkeypatch):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     monkeypatch.setattr(lucius, "GH_ORG", "acme")
     calls: list[list[str]] = []
@@ -1146,7 +1150,7 @@ def test_lucius_dependency_check_preserves_cross_org_refs(monkeypatch):
     assert repos == ["acme/api", "acme/backend", "other-org/shared"]
 
 
-def test_lucius_dependency_lookup_failure_warns_once_and_blocks(monkeypatch, tmp_path):
+def test_senior_dev_dependency_lookup_failure_warns_once_and_blocks(monkeypatch, tmp_path):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     monkeypatch.setattr(lucius, "GH_ORG", "acme")
     monkeypatch.setattr(
@@ -1179,7 +1183,7 @@ def test_lucius_dependency_lookup_failure_warns_once_and_blocks(monkeypatch, tmp
     ]
 
 
-def test_lucius_dependency_lookup_failure_suppresses_when_ledger_write_fails(monkeypatch):
+def test_senior_dev_dependency_lookup_failure_suppresses_when_ledger_write_fails(monkeypatch):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
 
     class FailingLedger:
@@ -1196,7 +1200,7 @@ def test_lucius_dependency_lookup_failure_suppresses_when_ledger_write_fails(mon
     assert lucius._should_warn_dependency_lookup_failure("backend#42->backend#6", now=1.0) is False
 
 
-def test_lucius_dependency_lookup_failure_treats_non_object_ledger_as_corrupt(
+def test_senior_dev_dependency_lookup_failure_treats_non_object_ledger_as_corrupt(
     monkeypatch, tmp_path
 ):
     lucius = load_bin_module("senior-dev.py", monkeypatch)

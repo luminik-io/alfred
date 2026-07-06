@@ -52,7 +52,7 @@ export type AttentionItem = {
   href?: string;
   targetTab?: TabKey;
   icon: "plan" | "run" | "memory" | "setup";
-  // Set for a single genuine Batman go/no-go plan awaiting a sign-off, so the
+  // Set for a single genuine architect go/no-go plan awaiting a sign-off, so the
   // Needs-you card can offer in-place Approve / Decline. Absent for grouped
   // counts, memory, and inspection items (those route to a surface instead).
   planId?: string;

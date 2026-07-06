@@ -44,7 +44,7 @@ alfred run <codename> --force  # ignore the pause marker for this kick
 The two recipes you will use most:
 
 - **"Did anything ship today?"** `alfred shipped` and (if you want more detail) `alfred shipped --period weekly`.
-- **"Why is Lucius quiet?"** `alfred status` first. If it shows Lucius as paused, `alfred resume lucius`. If it shows a lock, `alfred agents` tells you whether the unit is loaded. If both look fine, the agent had no `agent:implement` issue to claim and exited silently.
+- **"Why is senior-dev quiet?"** `alfred status` first. If it shows senior-dev as paused, `alfred resume senior-dev`. If it shows a lock, `alfred agents` tells you whether the unit is loaded. If both look fine, the agent had no `agent:implement` issue to claim and exited silently.
 
 ## Logs
 
@@ -53,7 +53,7 @@ Three places to look.
 **Per-agent host-scheduler logs.** Every scheduled firing's stdout and stderr land at `/tmp/alfred.<codename>.stdout` and `/tmp/alfred.<codename>.stderr`. macOS clears `/tmp` on reboot; copy anything you need to keep. To watch a firing live:
 
 ```sh
-tail -f /tmp/alfred.lucius.stdout /tmp/alfred.lucius.stderr
+tail -f /tmp/alfred.senior-dev.stdout /tmp/alfred.senior-dev.stderr
 ```
 
 **Per-firing transcripts.** Under `$ALFRED_HOME/state/transcripts/<codename>/<YYYY-MM>/<firing-id>.jsonl` when transcripts are enabled, and `$ALFRED_HOME/state/codex/<codename>/<YYYY-MM>/<firing-id>.{last.md,stdout.txt,stderr.txt}` for Codex firings. The Codex artifacts are the most useful when a `[BLOCKED]` post does not explain itself; `last.md` is the engine's own final message.
@@ -69,7 +69,7 @@ Every firing prints exactly one sentinel string on its way out. The scheduler lo
 | Sentinel | Meaning | What to do |
 |---|---|---|
 | `[OK] commit <sha>` | The firing committed and opened a PR. | Nothing. The PR is in the queue. |
-| `[ALREADY-IMPLEMENTED]` | Work was already in the codebase. Issue closed. | Nothing. Often a sign Drake filed something Lucius had already solved. |
+| `[ALREADY-IMPLEMENTED]` | Work was already in the codebase. Issue closed. | Nothing. Often a sign Drake filed something senior-dev had already solved. |
 | `[PARTIAL]` | Hit `error_max_turns` mid-work. Worktree left for the next firing. | Nothing. The next firing retries. If you see two in a row on the same issue, the issue may be too large; consider splitting it. |
 | `[BLOCKED]` | Engine could not resolve an error. Slack posts the reason at `warn`. | Read the Slack post. Common causes: missing dep, failing test the agent could not fix, repo convention the agent does not know. |
 | `[<AGENT>-LOCKED]` | A previous firing of this codename is still running. | Nothing, unless you see it for hours; then run `alfred clear-lock <codename> --check`. Cleanup preserves dirty or ahead worktrees and creates local `recovery/*` refs when commits need a handle. |

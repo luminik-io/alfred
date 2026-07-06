@@ -19,7 +19,7 @@ def test_rasalghul_codex_fallback_stays_read_only() -> None:
     assert "codex_bypass_approvals_and_sandbox=True" not in source
 
 
-def test_lucius_grants_codex_source_gitdir_for_worktree_commits() -> None:
+def test_senior_dev_grants_codex_source_gitdir_for_worktree_commits() -> None:
     """Lucius hands Codex the source repo's .git dir so it can commit from a
     worktree. The slug-to-local mapping (``local_repo_dir``) is consulted so
     multi-repo fleets with slug-vs-dir-name mismatches resolve correctly."""

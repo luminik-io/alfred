@@ -123,42 +123,42 @@ def test_claude_invoke_forwards_explicit_max_turns_unchanged() -> None:
 def test_optional_env_int_returns_none_when_unset(monkeypatch) -> None:
     """The default-no-cap path: env var unset → None → claude_invoke
     layer maps to _CLAUDE_UNLIMITED_TURNS."""
-    monkeypatch.delenv("ALFRED_LUCIUS_MAX_TURNS", raising=False)
-    assert agent_runner.optional_env_int("ALFRED_LUCIUS_MAX_TURNS", minimum=40) is None
+    monkeypatch.delenv("ALFRED_SENIOR_DEV_MAX_TURNS", raising=False)
+    assert agent_runner.optional_env_int("ALFRED_SENIOR_DEV_MAX_TURNS", minimum=40) is None
 
 
 def test_optional_env_int_clamps_to_floor(monkeypatch) -> None:
     """The optional knob clamps to the documented floor when set, so a
     typo can't drive the cap below an agent's sensible floor."""
-    monkeypatch.setenv("ALFRED_LUCIUS_MAX_TURNS", "5")
-    assert agent_runner.optional_env_int("ALFRED_LUCIUS_MAX_TURNS", minimum=40) == 40
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_MAX_TURNS", "5")
+    assert agent_runner.optional_env_int("ALFRED_SENIOR_DEV_MAX_TURNS", minimum=40) == 40
 
 
 def test_optional_env_int_returns_none_on_garbage(monkeypatch) -> None:
     """Unparseable values fall back to None, just like unset."""
-    monkeypatch.setenv("ALFRED_LUCIUS_MAX_TURNS", "not-an-int")
-    assert agent_runner.optional_env_int("ALFRED_LUCIUS_MAX_TURNS", minimum=40) is None
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_MAX_TURNS", "not-an-int")
+    assert agent_runner.optional_env_int("ALFRED_SENIOR_DEV_MAX_TURNS", minimum=40) is None
 
 
 def test_env_int_uses_default_when_unset(monkeypatch) -> None:
     """``env_int`` is the variant with a finite default; missing or bad
     values fall back to ``default`` and are still range-clamped."""
-    monkeypatch.delenv("ALFRED_LUCIUS_TURN_CAP", raising=False)
-    assert agent_runner.env_int("ALFRED_LUCIUS_TURN_CAP", default=5000, minimum=100) == 5000
+    monkeypatch.delenv("ALFRED_SENIOR_DEV_TURN_CAP", raising=False)
+    assert agent_runner.env_int("ALFRED_SENIOR_DEV_TURN_CAP", default=5000, minimum=100) == 5000
 
 
 def test_env_int_clamps_in_range(monkeypatch) -> None:
     """Range clamping protects against typos pushing the value out of
     a documented sensible range."""
-    monkeypatch.setenv("ALFRED_LUCIUS_TURN_CAP", "9999")
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_TURN_CAP", "9999")
     assert (
-        agent_runner.env_int("ALFRED_LUCIUS_TURN_CAP", default=5000, minimum=100, maximum=8000)
+        agent_runner.env_int("ALFRED_SENIOR_DEV_TURN_CAP", default=5000, minimum=100, maximum=8000)
         == 8000
     )
 
-    monkeypatch.setenv("ALFRED_LUCIUS_TURN_CAP", "1")
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_TURN_CAP", "1")
     assert (
-        agent_runner.env_int("ALFRED_LUCIUS_TURN_CAP", default=5000, minimum=100, maximum=8000)
+        agent_runner.env_int("ALFRED_SENIOR_DEV_TURN_CAP", default=5000, minimum=100, maximum=8000)
         == 100
     )
 
@@ -169,20 +169,21 @@ def test_env_int_clamps_out_of_range_default(monkeypatch) -> None:
     unparseable paths previously returned ``default`` as-is, defeating
     the clamp the docstring promises.
     """
-    monkeypatch.delenv("ALFRED_LUCIUS_TURN_CAP", raising=False)
+    monkeypatch.delenv("ALFRED_SENIOR_DEV_TURN_CAP", raising=False)
     # Default above maximum: must be clamped to maximum.
     assert (
-        agent_runner.env_int("ALFRED_LUCIUS_TURN_CAP", default=99999, minimum=100, maximum=8000)
+        agent_runner.env_int("ALFRED_SENIOR_DEV_TURN_CAP", default=99999, minimum=100, maximum=8000)
         == 8000
     )
     # Default below minimum: must be clamped to minimum.
     assert (
-        agent_runner.env_int("ALFRED_LUCIUS_TURN_CAP", default=1, minimum=100, maximum=8000) == 100
+        agent_runner.env_int("ALFRED_SENIOR_DEV_TURN_CAP", default=1, minimum=100, maximum=8000)
+        == 100
     )
 
     # Same protection on the unparseable path.
-    monkeypatch.setenv("ALFRED_LUCIUS_TURN_CAP", "garbage")
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_TURN_CAP", "garbage")
     assert (
-        agent_runner.env_int("ALFRED_LUCIUS_TURN_CAP", default=99999, minimum=100, maximum=8000)
+        agent_runner.env_int("ALFRED_SENIOR_DEV_TURN_CAP", default=99999, minimum=100, maximum=8000)
         == 8000
     )

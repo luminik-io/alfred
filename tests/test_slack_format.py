@@ -40,7 +40,7 @@ def test_firing_thread_root_returns_none_without_bot_token(monkeypatch):
 
     monkeypatch.setattr(sf, "_resolve_bot_token", lambda: None)
     handle = sf.firing_thread_root(
-        codename="lucius",
+        codename="senior-dev",
         firing_id="2026-05-09-1432-aa",
         summary_one_liner="firing started",
     )
@@ -50,7 +50,7 @@ def test_firing_thread_root_returns_none_without_bot_token(monkeypatch):
 def test_firing_thread_root_posts_block_kit_with_role_when_set(monkeypatch):
     import slack_format as sf
 
-    monkeypatch.setenv("ALFRED_LUCIUS_ROLE", "Single-repo feature engineer")
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_ROLE", "Single-repo feature engineer")
     monkeypatch.setattr(sf, "_resolve_bot_token", lambda: "xoxb-fake")
     monkeypatch.setattr(sf, "_get_permalink", lambda *a, **kw: None)
 
@@ -63,7 +63,7 @@ def test_firing_thread_root_posts_block_kit_with_role_when_set(monkeypatch):
 
     monkeypatch.setattr(sf, "_api_post", fake_api_post)
     handle = sf.firing_thread_root(
-        codename="lucius",
+        codename="senior-dev",
         firing_id="2026-05-09-1432-aa",
         summary_one_liner="firing started",
     )
@@ -71,10 +71,10 @@ def test_firing_thread_root_posts_block_kit_with_role_when_set(monkeypatch):
     assert handle.channel == "C0123"
     assert handle.ts == "1700000000.000100"
 
-    # Header carries the role-suffixed codename.
+    # Header carries the default themed name and role for the runtime codename.
     blocks = captured["payload"]["attachments"][0]["blocks"]
     header_text = blocks[0]["text"]["text"]
-    assert "lucius (Single-repo feature engineer)" in header_text
+    assert "Lucius (Senior developer)" in header_text
     assert "firing started" in header_text
 
 
@@ -92,7 +92,7 @@ def test_firing_thread_root_severity_drives_colour(monkeypatch):
 
     monkeypatch.setattr(sf, "_api_post", fake_api_post)
     sf.firing_thread_root(
-        codename="lucius",
+        codename="senior-dev",
         firing_id="x",
         summary_one_liner="oops",
         severity="alert",
@@ -117,13 +117,13 @@ def test_firing_thread_root_no_duplicate_text_in_attachment(monkeypatch):
 
     monkeypatch.setattr(sf, "_api_post", fake_api_post)
     sf.firing_thread_root(
-        codename="lucius",
+        codename="senior-dev",
         firing_id="x",
         summary_one_liner="post body",
     )
     payload = captured["payload"]
     # Top-level text is the generic preview, not the post body.
-    assert payload["text"] == "Alfred · lucius firing"
+    assert payload["text"] == "Alfred · senior-dev firing"
     # Attachment carries the body inside blocks, NOT in a top-level
     # attachment[].text field.
     assert "text" not in payload["attachments"][0]
@@ -171,13 +171,13 @@ def test_firing_thread_close_summarises_outcome_duration_firing_id(monkeypatch):
     handle = sf.ThreadHandle(channel="C0", ts="1700.0001")
     sf.firing_thread_close(
         handle,
-        codename="lucius",
+        codename="senior-dev",
         firing_id="2026-05-09-aa",
         outcome="pr-opened",
         duration_seconds=125.4,
     )
     body = captured["payload"]["attachments"][0]["blocks"][0]["text"]["text"]
-    assert "lucius" in body
+    assert "Lucius (Senior developer)" in body
     assert "pr-opened" in body
     assert "2m 5s" in body
     assert "2026-05-09-aa" in body
@@ -187,24 +187,11 @@ def test_home_channel_resolution(monkeypatch):
     import slack_format as sf
 
     monkeypatch.delenv("SLACK_HOME_CHANNEL", raising=False)
-    monkeypatch.delenv("BATMAN_APPROVAL_CHANNEL", raising=False)
     assert sf._home_channel() == "alfred"
     monkeypatch.setenv("SLACK_HOME_CHANNEL", "#fleet-ops")
     assert sf._home_channel() == "fleet-ops"
     # Caller-supplied wins.
     assert sf._home_channel("custom") == "custom"
-
-
-def test_home_channel_batman_approval_alias_wins_over_slack_home(monkeypatch):
-    """BATMAN_APPROVAL_CHANNEL is the historical alias from the alfred
-    Batman approval flow. It must continue to route firing threads so
-    a fleet that wired plan posts to a non-default channel keeps that
-    routing."""
-    import slack_format as sf
-
-    monkeypatch.setenv("SLACK_HOME_CHANNEL", "fleet-ops")
-    monkeypatch.setenv("BATMAN_APPROVAL_CHANNEL", "#fleet-approvals")
-    assert sf._home_channel() == "fleet-approvals"
 
 
 def test_truncate_aggressive_with_marker():
@@ -243,20 +230,19 @@ def _persist_theme(tmp_path, **payload):
     RosterThemeStore.from_state_root(STATE_ROOT).save(**payload)
 
 
-def test_themed_label_default_matches_codename_with_role(monkeypatch):
+def test_themed_label_default_uses_batman_theme(monkeypatch):
     import slack_format as sf
-    from agent_runner.metadata import codename_with_role
 
-    monkeypatch.setenv("ALFRED_LUCIUS_ROLE", "Single-repo feature engineer")
-    # No theme persisted: behavior is identical to the shipped helper.
-    assert sf._themed_codename_label("lucius") == codename_with_role("lucius")
-    assert sf._themed_codename_label("lucius") == "lucius (Single-repo feature engineer)"
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_ROLE", "Single-repo feature engineer")
+    # No theme persisted: Slack renders the default theme rather than raw
+    # runtime slugs or launchd role strings.
+    assert sf._themed_codename_label("senior-dev") == "Lucius (Senior developer)"
 
 
 def test_themed_label_preset_renders_preset_identity(tmp_path, monkeypatch):
     import slack_format as sf
 
-    monkeypatch.setenv("ALFRED_LUCIUS_ROLE", "Fleet lead")
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_ROLE", "Fleet lead")
     # A saved preset must render the preset's themed name on Slack the same way
     # the desktop does, not fall back to the bare codename or the env role. The
     # role label is the Batman-base label the preset shares.
@@ -285,7 +271,7 @@ def test_themed_label_preset_unknown_codename_falls_back(tmp_path, monkeypatch):
 def test_themed_label_custom_name_and_role_applied(tmp_path, monkeypatch):
     import slack_format as sf
 
-    monkeypatch.setenv("ALFRED_BATMAN_ROLE", "Fleet lead")
+    monkeypatch.setenv("ALFRED_ARCHITECT_ROLE", "Fleet lead")
     _persist_theme(
         tmp_path,
         theme="custom",
@@ -298,9 +284,9 @@ def test_themed_label_custom_name_and_role_applied(tmp_path, monkeypatch):
 def test_themed_label_custom_name_falls_back_to_batman_base_role(tmp_path, monkeypatch):
     import slack_format as sf
 
-    monkeypatch.setenv("ALFRED_BATMAN_ROLE", "Fleet lead")
-    # Custom name set, but no custom role: the desktop shows the Batman-base role
-    # label (``Architect``), NOT the ``ALFRED_BATMAN_ROLE`` env label, so the
+    monkeypatch.setenv("ALFRED_ARCHITECT_ROLE", "Fleet lead")
+    # Custom name set, but no custom role: the desktop shows the base-theme role
+    # label (``Architect``), NOT the ``ALFRED_ARCHITECT_ROLE`` env label, so the
     # Slack path must match it rather than diverging to ``Fleet lead``.
     _persist_theme(tmp_path, theme="custom", custom_names={"architect": "Sherlock"})
     assert sf._themed_codename_label("architect") == "Sherlock (Architect)"

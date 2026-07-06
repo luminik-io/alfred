@@ -108,7 +108,7 @@ class AgentSummary:
 
 @dataclass(frozen=True)
 class PlanDraft:
-    """One locally saved Batman plan."""
+    """One locally saved architect plan."""
 
     plan_id: str
     title: str
@@ -492,7 +492,7 @@ class FilesystemReader:
         return True, since
 
     def _plan_root(self) -> Path:
-        """Resolve the Batman plan directory next to ``state/``."""
+        """Resolve the architect plan directory next to ``state/``."""
         return self.state_root.parent / "architect-plans"
 
     def _planning_draft_root(self) -> Path:
@@ -521,10 +521,10 @@ class FilesystemReader:
         return self._with_decision_status(plan)
 
     def _with_decision_status(self, plan: PlanDraft) -> PlanDraft:
-        """Overlay a recorded go/no-go decision onto a Batman plan.
+        """Overlay a recorded go/no-go decision onto a architect plan.
 
-        A genuine Batman plan is decided out-of-band when the operator (Slack
-        reaction, or in-app approve/decline) writes the marker file Batman's
+        A genuine architect plan is decided out-of-band when the operator (Slack
+        reaction, or in-app approve/decline) writes the marker file architect's
         file poll watches. The plan markdown itself still says "Draft", so we
         read the marker here and reflect ``approved``/``declined`` so a decided
         plan reports its real state and drops out of the Needs-you queue.
@@ -625,7 +625,7 @@ def _plan_from_markdown(
     content: str,
     source: str = "architect",
 ) -> PlanDraft:
-    title = "Slack follow-up" if source == "followup" else "Batman plan"
+    title = "Slack follow-up" if source == "followup" else "architect plan"
     status = "needs follow-up" if source == "followup" else "draft"
     parent = None
     affected_repos = None
@@ -635,7 +635,7 @@ def _plan_from_markdown(
         if not line:
             continue
         if line.startswith("#") and (
-            title == "Batman plan" or (source == "followup" and title == "Slack follow-up")
+            title == "architect plan" or (source == "followup" and title == "Slack follow-up")
         ):
             title = line.lstrip("#").strip() or title
             continue

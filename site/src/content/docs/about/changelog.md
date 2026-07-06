@@ -54,7 +54,7 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 - **`agent_runner` package decomposition**: the single-file monolith becomes a 10-file package (preflight, lock, spend, engines, gh, slack, event-log, commit-trailer, transcripts, dedup). Public import surface preserved.
 - **`alfred metrics` + `alfred logs` CLIs**: weekly per-agent rollups (firings, cost, turns, tool-use), per-firing stream-JSON transcript inspection.
 - **State machine + multi-repo**: atomic `LabelClient` for the issue-claim state machine, `cross_repo_pr` coordinator for stacked PRs across repos, managed `multi_worktree` pool, `alfred label-state` CLI.
-- **Damian + Batman planning/execution**: Damian files `agent:bundle:<slug>` siblings across affected repos; Batman executes the approved plan flow by applying the gate, preserving scope, and filing child issues.
+- **Spec-planner + architect planning/execution**: spec-planner files `agent:bundle:<slug>` siblings across affected repos; architect executes the approved plan flow by applying the gate, preserving scope, and filing child issues.
 - **`slack_approval`**: reaction-based approval gate as a `typing.Protocol` so the call site can swap Slack for any other channel.
 - **FleetBrain local ledger**: review candidates, failure history, worker heartbeats, GitHub cache, and local reliability tooling. Redis Agent Memory is the default recalled-lesson store; FleetBrain remains the local evidence and review layer. See [Memory providers](https://github.com/luminik-io/alfred/blob/main/docs/MEMORY_PROVIDERS.md).
 - **`Connector` Protocol + Linear + Sentry**: pull-mode adapters into the `agent:implement` queue, env-only credentials, one bad connector cannot break the sync.

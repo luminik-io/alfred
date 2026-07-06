@@ -1,4 +1,4 @@
-"""Dry-run Batman lifecycle path checks for ``doctor.sh --lifecycle``."""
+"""Dry-run architect lifecycle path checks for ``doctor.sh --lifecycle``."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Protocol, TextIO, cast
 
 import labels as label_constants
-from batman import parse_parent_issue
+from architect_lifecycle import parse_parent_issue
 from slack_approval import default_slack_client
 
 from .paths import CLAUDE_BIN, decode_env_value
@@ -102,7 +102,7 @@ def check_parent_parser(
                 "parent-issue parser",
                 False,
                 (f"parse_parent_issue raised {type(exc).__name__}: {exc}",),
-                "See docs/BATMAN.md for the validated parent issue shape.",
+                "See docs/ARCHITECT.md for the validated parent issue shape.",
             ),
             None,
         )
@@ -119,7 +119,7 @@ def check_parent_parser(
         and len(plan.affected_repos) == 3
         and len(plan.children) == 3
     )
-    hint = "" if ok else "See docs/BATMAN.md for the validated parent issue shape."
+    hint = "" if ok else "See docs/ARCHITECT.md for the validated parent issue shape."
     return CheckResult("parent-issue parser", ok, lines, hint), plan
 
 
@@ -152,12 +152,9 @@ def check_bundle_label(plan: Any | None) -> CheckResult:
 
 
 def _slack_channel(env: Mapping[str, str]) -> str:
-    return (
-        env.get("BATMAN_SLACK_CHANNEL")
-        or env.get("BATMAN_APPROVAL_CHANNEL")
-        or env.get("SLACK_HOME_CHANNEL")
-        or "alfred"
-    ).lstrip("#")
+    return (env.get("ARCHITECT_SLACK_CHANNEL") or env.get("SLACK_HOME_CHANNEL") or "alfred").lstrip(
+        "#"
+    )
 
 
 def check_slack_probe(
@@ -370,7 +367,7 @@ def run_lifecycle_doctor(
     effective_env = dict(os.environ if env is None else env)
     out = stream or sys.stdout
     body = _load_body(fixture)
-    bundle_slug_prefix = (effective_env.get("BATMAN_BUNDLE_SLUG_PREFIX") or "").strip()
+    bundle_slug_prefix = (effective_env.get("ARCHITECT_BUNDLE_SLUG_PREFIX") or "").strip()
     parser_result, plan = check_parent_parser(body, bundle_slug_prefix=bundle_slug_prefix)
     results = (
         parser_result,
@@ -470,7 +467,7 @@ def run_deep_auth_probe(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Validate the Batman lifecycle path.")
+    parser = argparse.ArgumentParser(description="Validate the architect lifecycle path.")
     parser.add_argument("--fixture", type=Path, default=None)
     parser.add_argument(
         "--deep",

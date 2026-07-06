@@ -3027,8 +3027,8 @@ def test_conversation_thread_unsupported_assignment_reply_asks_for_lane(
     )
 
     assert reply.action == "intent_clarify"
-    assert "Batman" in poster.messages[-1]["text"]
-    assert "Lucius" in poster.messages[-1]["text"]
+    assert "Architect" in poster.messages[-1]["text"]
+    assert "Senior developer" in poster.messages[-1]["text"]
 
     lane_reply = listener.handle_payload(
         {
@@ -3101,8 +3101,8 @@ def test_conversation_thread_root_unsupported_assignment_lane_survives_repo_repl
     )
 
     assert reply.action == "intent_clarify"
-    assert "Batman" in poster.messages[-1]["text"]
-    assert "Lucius" in poster.messages[-1]["text"]
+    assert "Architect" in poster.messages[-1]["text"]
+    assert "Senior developer" in poster.messages[-1]["text"]
 
 
 def test_conversation_thread_root_unsupported_assignment_lane_survives_partial_replies(
@@ -3171,8 +3171,8 @@ def test_conversation_thread_root_unsupported_assignment_lane_survives_partial_r
     )
 
     assert issue_reply.action == "intent_clarify"
-    assert "Batman" in poster.messages[-1]["text"]
-    assert "Lucius" in poster.messages[-1]["text"]
+    assert "Architect" in poster.messages[-1]["text"]
+    assert "Senior developer" in poster.messages[-1]["text"]
 
 
 def test_conversation_thread_reply_can_complete_agent_clarification(tmp_path: Path) -> None:

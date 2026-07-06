@@ -12,7 +12,7 @@ import type { FiringRecord, Snapshot } from "../types";
 function firing(overrides: Partial<FiringRecord> = {}): FiringRecord {
   return {
     firing_id: "f-1",
-    codename: "lucius",
+    codename: "senior-dev",
     started_at: "2026-05-30T10:00:00Z",
     ended_at: "2026-05-30T10:05:00Z",
     status: "ok",
@@ -139,7 +139,7 @@ describe("buildFeed", () => {
     expect(feed.find((item) => item.kind === "needs-you")?.target).toEqual({ type: "memory" });
     expect(feed.find((item) => item.kind === "firing")?.target).toEqual({
       type: "agent",
-      codename: "lucius",
+      codename: "senior-dev",
     });
   });
 

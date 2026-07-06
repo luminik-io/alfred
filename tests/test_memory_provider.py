@@ -414,7 +414,7 @@ def test_redis_provider_recall_posts_search_payload() -> None:
                 {
                     "memory": {
                         "id": "redis-1",
-                        "text": "Use owner/repo in Batman plans.",
+                        "text": "Use owner/repo in Architect plans.",
                         "topics": ["codename:batman", "repo:acme/app", "plans"],
                         "metadata": {
                             "codename": "batman",
@@ -436,7 +436,7 @@ def test_redis_provider_recall_posts_search_payload() -> None:
 
     lessons = provider.recall(query="plans", codename="batman", repo="acme/app", limit=2)
 
-    assert lessons[0].body == "Use owner/repo in Batman plans."
+    assert lessons[0].body == "Use owner/repo in Architect plans."
     assert lessons[0].tags == ["plans"]
     assert calls[0]["method"] == "POST"
     assert calls[0]["url"] == "http://memory.local/v1/long-term-memory/search"
@@ -468,7 +468,7 @@ def test_redis_provider_recall_filters_returned_memories_by_scope() -> None:
                 {
                     "memory": {
                         "id": "right-repo",
-                        "text": "Use owner/repo in Batman plans.",
+                        "text": "Use owner/repo in Architect plans.",
                         "topics": ["codename:batman", "repo:acme/app"],
                     }
                 },
@@ -511,7 +511,7 @@ def test_redis_provider_recall_filters_returned_namespace_and_user() -> None:
                 {
                     "memory": {
                         "id": "right-scope",
-                        "text": "Use owner/repo in Batman plans.",
+                        "text": "Use owner/repo in Architect plans.",
                         "namespace": "alfred",
                         "metadata": {"user_id": "operator"},
                         "topics": ["codename:batman", "repo:acme/app"],

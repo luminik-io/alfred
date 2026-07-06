@@ -1318,7 +1318,7 @@ describe("OnboardingView conversational setup actions", () => {
     vi.spyOn(api, "loadSchedule").mockResolvedValue({
       runs: [
         {
-          codename: "batman",
+          codename: "architect",
           role: "architect",
           kind: "cron-daily",
           cadence: "daily at 09:00",
@@ -1326,7 +1326,7 @@ describe("OnboardingView conversational setup actions", () => {
           raw_schedule: "cron:9:0",
         },
         {
-          codename: "lucius",
+          codename: "senior-dev",
           role: "ops",
           kind: "interval",
           cadence: "every 20m",
@@ -1361,13 +1361,13 @@ describe("OnboardingView conversational setup actions", () => {
     // through the SAME native primitive the Fleet view uses.
     expect(onRunLocalAction).toHaveBeenCalledWith({
       action: "schedule",
-      target: "batman",
+      target: "architect",
       cadence: "daily@09:00",
       refreshAfter: false,
     });
     expect(onRunLocalAction).toHaveBeenCalledWith({
       action: "schedule",
-      target: "lucius",
+      target: "senior-dev",
       cadence: "daily@09:00",
       refreshAfter: false,
     });

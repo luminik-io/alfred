@@ -2,7 +2,7 @@
 // entirely separate from its canonical WorkflowRole (see agentRoster.ts). A
 // theme maps each canonical role to a plain role label, and maps each known
 // fleet codename to a themed persona name. The default theme reproduces the
-// shipped Batman roster exactly (no visible change unless the operator picks
+// shipped default roster exactly (no visible change unless the operator picks
 // another theme); presets re-skin the SAME fleet with matched display names while the
 // roles stay identical.
 //
@@ -44,7 +44,7 @@ export type RosterTheme = {
 
 // Canonical role per known fleet codename, used to map an operator's per-agent
 // custom role label back onto the canonical role the theme keys on.
-const BATMAN_ROLE_BY_CODENAME: Record<string, WorkflowRole> = Object.fromEntries(
+const ROLE_BY_CODENAME: Record<string, WorkflowRole> = Object.fromEntries(
   ROSTER_MANIFEST.agents.map((agent) => [agent.codename, agent.role]),
 );
 
@@ -84,7 +84,7 @@ function buildPresetTheme(themeId: PresetRosterThemeId): RosterTheme {
   };
 }
 
-const BATMAN_THEME: RosterTheme = buildPresetTheme("batman");
+const BASE_THEME: RosterTheme = buildPresetTheme("batman");
 
 // The preset themes only (the `custom` theme is built at runtime from the
 // operator's persisted names, so it has no static entry here).
@@ -106,7 +106,7 @@ export const DEFAULT_ROSTER_THEME: RosterThemeId = ROSTER_MANIFEST.default_theme
 
 // The operator's authored maps for the `custom` theme: codename -> display
 // name and codename -> role label. Anything the operator has not named falls
-// back to the Batman base, so a half-filled custom theme is never blank.
+// back to the base theme, so a half-filled custom theme is never blank.
 export type CustomRosterNames = {
   names: Record<string, string>;
   roles: Record<string, string>;
@@ -120,20 +120,20 @@ const CUSTOM_THEME_META = {
 } as const;
 
 // Build the `custom` theme by overlaying the operator's names/roles on the
-// Batman base so every agent has a name even when only a few are edited. Role
+// base theme so every agent has a name even when only a few are edited. Role
 // labels are keyed by canonical role; an operator role label is applied to the
 // role of any codename it names.
 function buildCustomTheme(custom: CustomRosterNames): RosterTheme {
-  const nameByCodename: Record<string, string> = { ...BATMAN_THEME.nameByCodename };
+  const nameByCodename: Record<string, string> = { ...BASE_THEME.nameByCodename };
   for (const [codename, name] of Object.entries(custom.names)) {
     const clean = name.trim();
     if (clean) nameByCodename[normalizeCodename(codename)] = clean;
   }
   // A custom role label is authored PER AGENT, so it is stored against that one
   // codename and never folded into the role-wide labels. The canonical
-  // roleLabels stay at the Batman defaults; resolution overlays the per-codename
-  // override on top so naming Batman "Lead detective" relabels only Batman, not
-  // every other architect-role agent (which is exactly what Slack does).
+  // roleLabels stay at the default theme; resolution overlays the per-codename
+  // override on top so naming one architect "Lead detective" relabels only that
+  // agent, not every other architect-role agent (which is exactly what Slack does).
   const roleLabelByCodename: Record<string, string> = {};
   for (const [codename, label] of Object.entries(custom.roles)) {
     const clean = label.trim();
@@ -156,7 +156,7 @@ export function rosterThemeFor(
   custom: CustomRosterNames = EMPTY_CUSTOM_NAMES,
 ): RosterTheme {
   if (themeId === "custom") return buildCustomTheme(custom);
-  return PRESET_ROSTER_THEMES[themeId] ?? BATMAN_THEME;
+  return PRESET_ROSTER_THEMES[themeId] ?? BASE_THEME;
 }
 
 export function isRosterThemeId(value: string | null): value is RosterThemeId {
@@ -167,12 +167,12 @@ export function isRosterThemeId(value: string | null): value is RosterThemeId {
 // entry; custom from its meta), so the picker never has to special-case custom.
 export function rosterThemeLabel(themeId: RosterThemeId): string {
   if (themeId === "custom") return CUSTOM_THEME_META.label;
-  return PRESET_ROSTER_THEMES[themeId]?.label ?? BATMAN_THEME.label;
+  return PRESET_ROSTER_THEMES[themeId]?.label ?? BASE_THEME.label;
 }
 
 export function rosterThemeBlurb(themeId: RosterThemeId): string {
   if (themeId === "custom") return CUSTOM_THEME_META.blurb;
-  return PRESET_ROSTER_THEMES[themeId]?.blurb ?? BATMAN_THEME.blurb;
+  return PRESET_ROSTER_THEMES[themeId]?.blurb ?? BASE_THEME.blurb;
 }
 
 export function normalizeCodename(codename: string): string {
@@ -220,14 +220,14 @@ export function resolveThemedIdentity(
   const short = normalizeCodename(source.codename);
   const name = theme.nameByCodename[short] || titleizeCodename(source.codename);
   // A per-codename custom role label wins over the role-wide label, so an
-  // operator's "Batman = Lead detective" does not relabel every architect.
+  // operator's "architect = Lead detective" does not relabel every architect.
   const roleLabel = theme.roleLabelByCodename?.[short] ?? theme.roleLabels[role];
   return { role, name, roleLabel };
 }
 
 // The known fleet codenames the custom-theme editor lets the operator rename,
-// each with its canonical role and the shipped Batman name as the placeholder.
-// Drawn from the Batman base so the editor always covers the full default roster.
+// each with its canonical role and the base-theme name as the placeholder.
+// Drawn from the base theme so the editor always covers the full default roster.
 export type EditableAgent = {
   codename: string;
   role: WorkflowRole;
@@ -241,11 +241,11 @@ export type EditableAgentSource = RoleSource & {
 };
 
 function baseEditableAgent(codename: string): EditableAgent {
-  const role = BATMAN_ROLE_BY_CODENAME[codename] ?? "ops";
+  const role = ROLE_BY_CODENAME[codename] ?? "ops";
   return {
     codename,
     role,
-    defaultName: BATMAN_THEME.nameByCodename[codename] ?? titleizeCodename(codename),
+    defaultName: BASE_THEME.nameByCodename[codename] ?? titleizeCodename(codename),
     defaultRoleLabel: ROLE_LABELS_DEFAULT[role],
   };
 }
@@ -257,7 +257,7 @@ function cleanLabel(value: string | null | undefined): string | null {
 
 export function editableAgents(sources: readonly EditableAgentSource[] = []): EditableAgent[] {
   const agents = new Map<string, EditableAgent>();
-  for (const codename of Object.keys(BATMAN_THEME.nameByCodename)) {
+  for (const codename of Object.keys(BASE_THEME.nameByCodename)) {
     agents.set(codename, baseEditableAgent(codename));
   }
 

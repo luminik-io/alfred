@@ -4,19 +4,18 @@ import Hero from "../components/marketing/Hero.astro";
 import SectionHeader from "../components/marketing/SectionHeader.astro";
 import CodeBlock from "../components/marketing/CodeBlock.astro";
 import MetricRow from "../components/marketing/MetricRow.astro";
-import SlackProof from "../components/marketing/SlackProof.astro";
-import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
+import ArchitectFanOut from "../components/marketing/ArchitectFanOut.astro";
 ---
 
 <MarketingLayout
   title="Planning across repos | Alfred"
-  description="Batman is the OSS architect for approved multi-repo work: it drafts one plan, files scoped child tasks in each repo, and hands them to the normal PR fleet."
+  description="The architect role handles approved multi-repo work: it drafts one plan, files scoped child tasks in each repo, and hands them to the normal PR fleet."
   path="/multi-repo/"
 >
   <Hero
     eyebrow="PLANNING ACROSS REPOS"
     headline="Plan once. Build across every repo."
-    sub="Batman drafts one approved plan across the repos you choose, files scoped tasks in each repo, and hands those tasks to Lucius, Bane, Nightwing, reviewers, and your merge gate."
+    sub="The architect drafts one approved plan across the repos you choose, files scoped tasks in each repo, and hands those tasks to senior-dev, test-engineer, fixer, reviewers, and your merge gate."
     headlineSize="lg"
     primaryCta={{ label: "Read the worked example", href: "/guides/multi-repo-worked-example/" }}
     secondaryCta={{ label: "Install", href: "/getting-started/install/" }}
@@ -39,29 +38,22 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
       <SectionHeader
         eyebrow="HOW THE WORK SPLITS UP"
         title="One request becomes one pull request per repo."
-        lede="The diagram below shows Batman's handoff boundary. Each repo gets its own task, Lucius picks it up on the next run, and each pull request passes its own review, test, and merge gate."
+        lede="The diagram below shows the architect handoff boundary. Each repo gets its own task, senior-dev picks it up on the next run, and each pull request passes its own review, test, and merge gate."
       />
-      <BatmanFanOut />
-      <SlackProof
-        src="/proof/slack-batman-plan.png"
-        alt="Slack message from the Alfred bot. Batman drafted a plan for issue #504 across the backend, web, and mobile repos, with the order to roll them out and a preview of the plan. The status badge is green. The plan is a draft waiting for approval."
-        tag="batman plan"
-        meta="2026-05-12 11:44 UTC"
-        caption="A real Batman plan posted to Slack on 2026-05-12. It was approved a few minutes later. Lucius started on the backend task first; the web and mobile tasks followed on the next two runs."
-      />
+      <ArchitectFanOut />
     </div>
   </section>
 
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
-        eyebrow="WHAT BATMAN FILES"
+        eyebrow="WHAT THE ARCHITECT FILES"
         title="A plan, then a task per repo, then the work."
-        lede="Batman reads one parent-plan issue, drafts the rollout, and posts it to Slack or the local client for approval. After approval, Batman files scoped tasks in the right repos. Lucius and the rest of the fleet claim those tasks through the normal queue, with the same worktree, spend, review, and merge gates as any other run."
+        lede="The architect reads one parent-plan issue, drafts the rollout, and posts it to Slack or the local client for approval. After approval, the architect files scoped tasks in the right repos. Senior-dev and the rest of the fleet claim those tasks through the normal queue, with the same worktree, spend, review, and merge gates as any other run."
       />
       <div class="example-grid">
         <div>
-          <h3 class="m-h3" style="margin-bottom:12px;">The plan Batman drafts</h3>
+          <h3 class="m-h3" style="margin-bottom:12px;">The plan the architect drafts</h3>
           <CodeBlock
             title="your-platform#812 (agent:large-feature)"
             lines={[
@@ -120,15 +112,15 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
       <div class="states">
         <div class="m-card states__row">
           <code class="m-mono states__tag">agent:large-feature</code>
-          <p>You add this to a feature request. Batman picks it up, drafts a plan, and posts it to Slack for approval.</p>
+          <p>You add this to a feature request. The architect picks it up, drafts a plan, and posts it to Slack for approval.</p>
         </div>
         <div class="m-card states__row">
           <code class="m-mono states__tag">agent:bundle:&lt;slug&gt;</code>
-          <p>Added to every task Batman files, so each one points back to the plan it belongs to.</p>
+          <p>Added to every task the architect files, so each one points back to the plan it belongs to.</p>
         </div>
         <div class="m-card states__row">
           <code class="m-mono states__tag">agent:implement</code>
-          <p>Each task starts with this label. Lucius can claim repo-sized tasks independently, each in its own worktree.</p>
+          <p>Each task starts with this label. Senior-dev can claim repo-sized tasks independently, each in its own worktree.</p>
         </div>
         <div class="m-card states__row">
           <code class="m-mono states__tag">agent:done</code>
@@ -143,13 +135,13 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
 	      <SectionHeader
 	        eyebrow="CHECK THE PLAN FIRST"
 		        title="Test the architect before you spend anything."
-	        lede="Batman never files tasks without your approval. A dry run checks the local wiring without touching GitHub, Slack, an LLM, or your repos."
+	        lede="The architect never files tasks without your approval. A dry run checks the local wiring without touching GitHub, Slack, an LLM, or your repos."
 	      />
 	      <CodeBlock
 	        title="terminal"
 	        lines={[
-	          "$ alfred dry-run batman",
-	          "alfred dry-run: batman",
+	          "$ alfred dry-run architect",
+	          "alfred dry-run: architect",
 	          "  role: cross-repo architect",
 	          "  mode: safe simulation",
 	          "  would: resolve config, acquire the agent lock, run preflight, and enter the runner",

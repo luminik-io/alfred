@@ -18,11 +18,11 @@ When it appears: Lucius claimed an `agent:implement` issue, the engine wrote a
 commit, the pre-push command passed, and the PR was opened.
 
 ```
-lucius · PR opened · green
+senior-dev · PR opened · green
 
 Issue:    your-backend#251
 PR:       your-backend#412
-Branch:   agent/lucius/251-add-org-slug-column-and-resolver
+Branch:   agent/senior-dev/251-add-org-slug-column-and-resolver
 Engine:   hybrid (claude)
 Turns:    38
 Cost:     $0.41
@@ -36,10 +36,10 @@ Either Claude printed `[BLOCKED]` itself, or the runner detected a missing
 artifact. The issue is released back to `agent:implement`.
 
 ```
-lucius · BLOCKED · warn
+senior-dev · BLOCKED · warn
 
 Issue:    your-frontend#188
-Branch:   agent/lucius/188-use-org-slug-in-account-urls
+Branch:   agent/senior-dev/188-use-org-slug-in-account-urls
 Engine:   hybrid (claude)
 Turns:    22
 Cost:     $0.27
@@ -49,7 +49,7 @@ Reason:   [BLOCKED] cannot resolve type error in src/lib/routes.ts:42.
           a contract update; out of scope per acceptance criteria.
 
 Worktree retained for inspection:
-  ~/.alfred/worktrees/eng-lucius-your-frontend-188-20260601-194414/
+  ~/.alfred/worktrees/eng-senior-dev-your-frontend-188-20260601-194414/
 ```
 
 ## Slack: shipped summary (daily, post-merge)
@@ -77,10 +77,10 @@ Total: $0.90 / 87 turns / 3 PRs
 ## Slack: Batman parent-plan post
 
 When it appears: Batman found an `agent:large-feature` issue in
-`BATMAN_PARENT_REPO`, drafted the rollout, and posted the approval request.
+`ARCHITECT_PARENT_REPO`, drafted the rollout, and posted the approval request.
 
 ```
-batman · plan drafted
+architect · plan drafted
 
 Parent:       your-specs#247: Add org_slug to account-scoped URLs
 Bundle:       add-org-slug
@@ -89,7 +89,7 @@ Rollout:      your-backend → your-frontend → your-mobile
 Engine:       hybrid
 
 Next:         approve, decline, or steer this plan in-thread.
-Execution:    after approval, Batman files scoped child issues for Lucius.
+Execution:    after approval, Architect files scoped child issues for senior-dev.
 ```
 
 ## alfred doctor: clean run
@@ -118,9 +118,9 @@ $ alfred doctor
 
 [doctor] agents (doctor-mode firings) ............ ok
 [doctor]   drake     [DRAKE-DOCTOR-OK]
-[doctor]   lucius    [LUCIUS-DOCTOR-OK]
+[doctor]   senior-dev    [SENIOR-DEV-DOCTOR-OK]
 [doctor]   rasalghul [RASALGHUL-DOCTOR-OK]
-[doctor]   batman    [BATMAN-DOCTOR-OK]
+[doctor]   architect    [ARCHITECT-DOCTOR-OK]
 [doctor]   agent-cleanup [AGENT-CLEANUP-DOCTOR-OK]
 
 [doctor] all green; fleet ready to run.
@@ -155,9 +155,9 @@ $ alfred doctor
 
 [doctor] agents (doctor-mode firings) ............ partial
 [doctor]   drake     [DRAKE-DOCTOR-OK]
-[doctor]   lucius    [LUCIUS-PREFLIGHT-FAILED] missing checkout: your-mobile
+[doctor]   senior-dev    [SENIOR-DEV-PREFLIGHT-FAILED] missing checkout: your-mobile
 [doctor]   rasalghul [RASALGHUL-DOCTOR-OK]
-[doctor]   batman    [BATMAN-DOCTOR-OK]
+[doctor]   architect    [ARCHITECT-DOCTOR-OK]
 
 [doctor] 1 failure. Fix the workspace, re-run doctor, then deploy.
 exit 1
@@ -275,7 +275,7 @@ When it appears: every firing reads and writes per-agent state under
 
 ```json
 {
-  "codename": "lucius",
+  "codename": "senior-dev",
   "date": "2026-06-01",
   "firings_today": 14,
   "successes_today": 9,
@@ -301,6 +301,6 @@ limit signal, and `claims/<repo>-<issue>.json` for issue claim records.
 - [Worked example: Batman across three repos](/guides/multi-repo-worked-example/):
   every sample above traced into a single end-to-end story.
 - [Issue claim state machine](/concepts/state-machine/): the issue-claim shape
-  behind Lucius's `release_issue` log lines.
+  behind senior-dev's `release_issue` log lines.
 - [Glossary](/reference/glossary/): one-line definitions for every codename,
   label, and sentinel that appears here.

@@ -58,7 +58,7 @@ def test_custom_agent_store_rejects_builtin_and_bad_schedule(tmp_path: Path) -> 
     }
 
     with pytest.raises(CustomAgentError):
-        store.upsert({"codename": "lucius", **base})
+        store.upsert({"codename": "senior-dev", **base})
     with pytest.raises(CustomAgentError):
         store.upsert({"codename": "new-builder", "schedule": "tomorrow", **base})
 
@@ -97,7 +97,7 @@ def test_custom_agent_store_rejects_scheduler_config_codename_suffix(tmp_path: P
     conf = home / "launchd" / "agents.conf"
     conf.parent.mkdir(parents=True)
     conf.write_text(
-        "my.fleet.marshall\tlucius.py\tinterval:600\tno\tmy.fleet.marshall\tOps lead\n",
+        "my.fleet.marshall\tsenior-dev.py\tinterval:600\tno\tmy.fleet.marshall\tOps lead\n",
         encoding="utf-8",
     )
     store = CustomAgentStore.from_state_root(home / "state")
@@ -179,7 +179,7 @@ def test_custom_agent_store_rejects_disabled_scheduler_config_codename_suffix(
     conf = home / "launchd" / "agents.conf"
     conf.parent.mkdir(parents=True)
     conf.write_text(
-        "#my.fleet.marshall\tlucius.py\tinterval:600\tno\tmy.fleet.marshall\tOps lead\n",
+        "#my.fleet.marshall\tsenior-dev.py\tinterval:600\tno\tmy.fleet.marshall\tOps lead\n",
         encoding="utf-8",
     )
     store = CustomAgentStore.from_state_root(home / "state")
@@ -251,8 +251,8 @@ def test_custom_agent_store_load_drops_existing_reserved_names(tmp_path: Path) -
                 "version": 1,
                 "agents": [
                     {
-                        "codename": "lucius",
-                        "display_name": "Legacy Lucius",
+                        "codename": "senior-dev",
+                        "display_name": "Legacy senior-dev",
                         "role_title": "Legacy custom role",
                         "purpose": "Existing custom role before a reserved-name update.",
                         "prompt": "Summarize the current repository state for the operator.",

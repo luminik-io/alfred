@@ -60,7 +60,7 @@ def test_json_api_status_firings_and_plans(tmp_path: Path) -> None:
     )
     plans.mkdir()
     (plans / "61-plan.md").write_text(
-        "# Batman Plan for Issue #61\n\n"
+        "# Architect Plan for Issue #61\n\n"
         "**Status:** Draft (awaiting approval)\n\n"
         "**Issue URL:** https://github.com/example-org/alfred/issues/61\n\n"
         "**Affected Repos:** backend, frontend\n",
@@ -70,10 +70,10 @@ def test_json_api_status_firings_and_plans(tmp_path: Path) -> None:
 
     status = client.get("/api/status")
     assert status.status_code == 200
-    batman = status.json()["agents"][0]
-    assert batman["codename"] == "architect"
-    assert batman["display_name"] == "Batman"
-    assert batman["role_title"] == "Architect"
+    architect = status.json()["agents"][0]
+    assert architect["codename"] == "architect"
+    assert architect["display_name"] == "Batman"
+    assert architect["role_title"] == "Architect"
 
     firings = client.get("/api/firings", params={"codename": "architect"})
     assert firings.status_code == 200
@@ -85,7 +85,7 @@ def test_json_api_status_firings_and_plans(tmp_path: Path) -> None:
 
     plan = client.get("/api/plans/61-plan")
     assert plan.status_code == 200
-    assert plan.json()["title"] == "Batman Plan for Issue #61"
+    assert plan.json()["title"] == "Architect Plan for Issue #61"
 
 
 def test_api_firings_surface_distilled_timeline(tmp_path: Path) -> None:
@@ -165,7 +165,7 @@ def test_api_status_reports_paused_state_from_marker(tmp_path: Path) -> None:
     state = tmp_path / "state"
     # An agent with state but no pause marker is loaded + not paused.
     _write_jsonl(
-        state / "lucius" / "events" / "2026-05-30-1000-aa.jsonl",
+        state / "senior-dev" / "events" / "2026-05-30-1000-aa.jsonl",
         [
             {"ts": "2026-05-30T10:00:00Z", "event": "firing_started"},
             {"ts": "2026-05-30T10:02:00Z", "event": "firing_complete"},
@@ -189,9 +189,9 @@ def test_api_status_reports_paused_state_from_marker(tmp_path: Path) -> None:
     payload = client.get("/api/status").json()
     by_codename = {agent["codename"]: agent for agent in payload["agents"]}
 
-    assert by_codename["lucius"]["paused"] is False
-    assert by_codename["lucius"]["loaded"] is True
-    assert by_codename["lucius"]["paused_since"] is None
+    assert by_codename["senior-dev"]["paused"] is False
+    assert by_codename["senior-dev"]["loaded"] is True
+    assert by_codename["senior-dev"]["paused_since"] is None
 
     assert by_codename["bane"]["paused"] is True
     # A paused agent is unloaded from the scheduler by ``alfred pause``.
@@ -234,8 +234,8 @@ def test_api_status_includes_scheduled_agents_before_first_firing(tmp_path: Path
     conf.parent.mkdir(parents=True)
     conf.write_text(
         "# label\tscript\tschedule\tneeds_java\tlog_stem\trole\n"
-        "alfred.senior-dev\tlucius.py\tinterval:1200\tno\talfred.senior-dev\tfeature dev\n"
-        "alfred.architect\tbatman.py\tinterval:3600\tno\talfred.architect\tcross-repo architect\n"
+        "alfred.senior-dev\tsenior-dev.py\tinterval:1200\tno\talfred.senior-dev\tfeature dev\n"
+        "alfred.architect\tarchitect.py\tinterval:3600\tno\talfred.architect\tcross-repo architect\n"
         "alfred.agent-cleanup\tagent-cleanup.py\tcron:3:00\tno\t"
         "alfred.agent-cleanup\thygiene\n"
         "alfred.memory-auto-promote\tmemory-auto-promote.py\tcron:8:20\tno\t"
@@ -293,7 +293,7 @@ def test_api_memory_candidates_promote_and_reject(
                 {
                     "id": "01JYS9RY6W0M3T5J6QAF8D4P8B",
                     "source": "slack",
-                    "agent": "lucius",
+                    "agent": "senior-dev",
                     "repo": "example-org/alfred",
                     "topic": "planning",
                     "body": "Keep Slack memories reviewable.",
@@ -313,7 +313,7 @@ def test_api_memory_candidates_promote_and_reject(
             self.calls.append(("promote", (candidate_id, reviewer, review_note)))
             return Lesson(
                 id=f"lesson:memory_candidate:{candidate_id}",
-                codename="lucius",
+                codename="senior-dev",
                 repo="example-org/alfred",
                 body="Keep Slack memories reviewable.",
                 tags=[],
@@ -331,7 +331,7 @@ def test_api_memory_candidates_promote_and_reject(
             self.calls.append(("reject", (candidate_id, reviewer, review_note)))
             return {
                 "id": candidate_id,
-                "agent": "lucius",
+                "agent": "senior-dev",
                 "repo": "example-org/alfred",
                 "status": "rejected",
                 "review_note": review_note,
@@ -347,7 +347,7 @@ def test_api_memory_candidates_promote_and_reject(
             self.calls.append(("retire", (candidate_id, reviewer, note)))
             return {
                 "id": candidate_id,
-                "agent": "lucius",
+                "agent": "senior-dev",
                 "repo": "example-org/alfred",
                 "status": "retired",
                 "review_note": note,
@@ -362,7 +362,7 @@ def test_api_memory_candidates_promote_and_reject(
     rows = candidates.json()["rows"]
     candidate_id = "01JYS9RY6W0M3T5J6QAF8D4P8B"
     assert rows[0]["id"] == candidate_id
-    assert rows[0]["codename"] == "lucius"
+    assert rows[0]["codename"] == "senior-dev"
     assert rows[0]["status"] == "candidate"
     assert rows[0]["tags"] == []
     assert rows[0]["severity"] == "info"
@@ -384,7 +384,7 @@ def test_api_memory_candidates_promote_and_reject(
     assert promoted.status_code == 200
     assert promoted.json()["lesson_id"] == f"lesson:memory_candidate:{candidate_id}"
     assert promoted.json()["status"] == "validated"
-    assert promoted.json()["codename"] == "lucius"
+    assert promoted.json()["codename"] == "senior-dev"
 
     rejected = client.post(
         f"/api/memory/candidates/{candidate_id}/reject",
@@ -467,7 +467,7 @@ def test_api_memory_lessons_lists_active_lessons(
         [
             Lesson(
                 id="lesson:memory_candidate:1",
-                codename="lucius",
+                codename="senior-dev",
                 repo="example-org/alfred",
                 body="GraphQL schema lives in src/schema.graphql.",
                 tags=["graphql"],
@@ -485,7 +485,7 @@ def test_api_memory_lessons_lists_active_lessons(
     rows = resp.json()["rows"]
     assert len(rows) == 1
     assert rows[0]["id"] == "lesson:memory_candidate:1"
-    assert rows[0]["codename"] == "lucius"
+    assert rows[0]["codename"] == "senior-dev"
     assert rows[0]["body"].startswith("GraphQL")
     assert rows[0]["tags"] == ["graphql"]
     assert rows[0]["severity"] == "info"
@@ -511,7 +511,7 @@ def test_api_memory_lessons_collapses_duplicate_bodies(
         minute: int,
         *,
         repo: str = "example-org/api",
-        codename: str = "lucius",
+        codename: str = "senior-dev",
     ) -> Lesson:
         return Lesson(
             id=lesson_id,
@@ -549,11 +549,11 @@ def test_api_memory_lessons_collapses_duplicate_bodies(
 
     rows = client.get("/api/memory/lessons").json()["rows"]
 
-    # Four survivors: the collapsed org/api+lucius row, the distinct org/web row,
+    # Four survivors: the collapsed org/api+senior-dev row, the distinct org/web row,
     # the distinct bane row, and the unrelated HTTP-client lesson.
     ids = [row["id"] for row in rows]
     assert ids == [
-        "lesson:memory_candidate:1",  # first of the org/api + lucius dupes wins
+        "lesson:memory_candidate:1",  # first of the org/api + senior-dev dupes wins
         "lesson:memory_candidate:5",  # different repo -> kept
         "lesson:memory_candidate:6",  # different agent -> kept
         "lesson:memory_candidate:4",  # different body -> kept
@@ -573,7 +573,7 @@ def test_api_memory_lessons_limit_counts_unique_rows(
     def _lesson(lesson_id: str, body: str, minute: int) -> Lesson:
         return Lesson(
             id=lesson_id,
-            codename="lucius",
+            codename="senior-dev",
             repo="example-org/api",
             body=body,
             tags=["fixtures"],
@@ -750,7 +750,7 @@ def test_api_memory_candidate_recall_id_is_normalized_before_validation(
             seen.append(candidate_id)
             return Lesson(
                 id=f"lesson:memory_candidate:{candidate_id}",
-                codename="lucius",
+                codename="senior-dev",
                 repo="example-org/alfred",
                 body="body",
                 tags=[],
@@ -1594,7 +1594,7 @@ def test_planning_save_spec_applies_pending_chat_message(tmp_path: Path) -> None
     draft = IssueDraft(
         title="Add Slack plan revision flow",
         problem="Operators need to discuss a plan before implementation.",
-        desired_behavior="Batman keeps implementation paused for revision.",
+        desired_behavior="architect keeps implementation paused for revision.",
         repos=["example-org/alfred", "example-org/web"],
         acceptance_criteria=["Slack plan messages tell the operator how to reply."],
     )
@@ -2069,7 +2069,7 @@ def test_conversation_control_handles_local_command(
             return SimpleNamespace(
                 handled=True,
                 action="run",
-                text="*Triggered one run* `batman`.",
+                text="*Triggered one run* `architect`.",
                 detail="",
             )
 
@@ -2078,7 +2078,7 @@ def test_conversation_control_handles_local_command(
 
     response = client.post(
         "/api/conversation/control",
-        json={"text": "run batman"},
+        json={"text": "run architect"},
         headers=_auth_headers(state),
     )
 
@@ -2759,8 +2759,8 @@ def test_api_queue_allows_assign_action(tmp_path: Path, monkeypatch: pytest.Monk
         calls.append((repo, number, target_agent))
         return SimpleNamespace(
             ok=True,
-            decision=SimpleNamespace(agent="lucius"),
-            detail=f"{repo}#{number} assigned to Lucius",
+            decision=SimpleNamespace(agent="senior-dev"),
+            detail=f"{repo}#{number} assigned to senior-dev",
             error="",
         )
 
@@ -2775,8 +2775,8 @@ def test_api_queue_allows_assign_action(tmp_path: Path, monkeypatch: pytest.Monk
 
     assert response.status_code == 200
     assert response.json()["action"] == "assign"
-    assert response.json()["target_agent"] == "lucius"
-    assert response.json()["detail"] == "org/repo#7 assigned to Lucius"
+    assert response.json()["target_agent"] == "senior-dev"
+    assert response.json()["detail"] == "org/repo#7 assigned to senior-dev"
     assert calls == [("org/repo", 7, "")]
 
 
@@ -2793,8 +2793,8 @@ def test_api_queue_assign_accepts_target_agent(
         calls.append((repo, number, target_agent))
         return SimpleNamespace(
             ok=True,
-            decision=SimpleNamespace(agent="batman"),
-            detail=f"{repo}#{number} assigned to Batman",
+            decision=SimpleNamespace(agent="architect"),
+            detail=f"{repo}#{number} assigned to architect",
             error="",
         )
 
@@ -2807,15 +2807,15 @@ def test_api_queue_assign_accepts_target_agent(
             "repo": "org/repo",
             "number": 7,
             "action": "assign",
-            "target_agent": "batman",
+            "target_agent": "architect",
         },
         headers=_auth_headers(state),
     )
 
     assert response.status_code == 200
-    assert response.json()["target_agent"] == "batman"
-    assert response.json()["detail"] == "org/repo#7 assigned to Batman"
-    assert calls == [("org/repo", 7, "batman")]
+    assert response.json()["target_agent"] == "architect"
+    assert response.json()["detail"] == "org/repo#7 assigned to architect"
+    assert calls == [("org/repo", 7, "architect")]
 
 
 def test_api_queue_allows_done_action(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3042,7 +3042,7 @@ def test_api_status_rolls_up_todays_cost(tmp_path: Path) -> None:
     # Two agents fired today; one yesterday's ledger must be excluded.
     _write_spend(
         state,
-        "lucius",
+        "senior-dev",
         today,
         firings_today=3,
         successes_today=2,
@@ -3060,7 +3060,7 @@ def test_api_status_rolls_up_todays_cost(tmp_path: Path) -> None:
     )
     _write_spend(
         state,
-        "lucius",
+        "senior-dev",
         "2020-01-01",
         firings_today=99,
         cost_usd_today=99.0,
@@ -3115,8 +3115,8 @@ def test_api_schedule_returns_cron_and_interval_runs(
     conf.parent.mkdir(parents=True)
     conf.write_text(
         "# Per-agent launchd config.\n"
-        "alfred.lucius\tlucius.py\tinterval:600\tyes\t\topus\tSingle-repo engineer\n"
-        "alfred.batman\tbatman.py\tinterval:3600\tno\talfred.batman\tcross-repo architect\n"
+        "alfred.senior-dev\tsenior-dev.py\tinterval:600\tyes\t\topus\tSingle-repo engineer\n"
+        "alfred.architect\tarchitect.py\tinterval:3600\tno\talfred.architect\tcross-repo architect\n"
         "alfred.bane\tbane.py\tcron:2:00\tyes\t\topus\tDaily test author\n"
         "alfred.cold-backup\talfred-cold-backup.py\tcron:0:2:00\tno\t\t\tWeekly cold backup\n"
         "# alfred.huntress\thuntress.py\tinterval:5400\tyes\t\topus\tDisabled\n",
@@ -3129,14 +3129,14 @@ def test_api_schedule_returns_cron_and_interval_runs(
     by_codename = {run["codename"]: run for run in runs}
 
     # The commented-out Huntress row is not surfaced.
-    assert set(by_codename) == {"lucius", "batman", "bane", "cold-backup"}
+    assert set(by_codename) == {"senior-dev", "architect", "bane", "cold-backup"}
 
     # interval rows carry a cadence string but no guessed next-fire timestamp.
-    assert by_codename["lucius"]["kind"] == "interval"
-    assert by_codename["lucius"]["cadence"] == "every 10m"
-    assert by_codename["lucius"]["next_fire_at"] is None
-    assert by_codename["lucius"]["role"] == "Single-repo engineer"
-    assert by_codename["batman"]["role"] == "cross-repo architect"
+    assert by_codename["senior-dev"]["kind"] == "interval"
+    assert by_codename["senior-dev"]["cadence"] == "every 10m"
+    assert by_codename["senior-dev"]["next_fire_at"] is None
+    assert by_codename["senior-dev"]["role"] == "Single-repo engineer"
+    assert by_codename["architect"]["role"] == "cross-repo architect"
 
     # cron rows compute a concrete next-fire.
     assert by_codename["bane"]["kind"] == "cron-daily"
@@ -3160,7 +3160,7 @@ def test_server_agents_conf_path_prefers_checkout_before_default_home(
     checkout_conf = checkout / "launchd" / "agents.conf"
     checkout_conf.parent.mkdir()
     checkout_conf.write_text(
-        "alfred.batman\tbatman.py\tinterval:3600\tno\talfred.batman\tarchitect\n",
+        "alfred.architect\tarchitect.py\tinterval:3600\tno\talfred.architect\tarchitect\n",
         encoding="utf-8",
     )
 
@@ -3168,7 +3168,7 @@ def test_server_agents_conf_path_prefers_checkout_before_default_home(
     home_conf = home / ".alfred" / "launchd" / "agents.conf"
     home_conf.parent.mkdir(parents=True)
     home_conf.write_text(
-        "alfred.lucius\tlucius.py\tinterval:1200\tno\talfred.lucius\tengineer\n",
+        "alfred.senior-dev\tsenior-dev.py\tinterval:1200\tno\talfred.senior-dev\tengineer\n",
         encoding="utf-8",
     )
 
@@ -3190,7 +3190,7 @@ def test_server_agents_conf_path_uses_default_home_when_no_checkout(
     home_conf = home / ".alfred" / "launchd" / "agents.conf"
     home_conf.parent.mkdir(parents=True)
     home_conf.write_text(
-        "alfred.lucius\tlucius.py\tinterval:1200\tno\talfred.lucius\tengineer\n",
+        "alfred.senior-dev\tsenior-dev.py\tinterval:1200\tno\talfred.senior-dev\tengineer\n",
         encoding="utf-8",
     )
 
@@ -3214,7 +3214,7 @@ def test_server_agents_conf_path_finds_renamed_workspace_slug(
     ws_conf = workspace / "alfred" / "launchd" / "agents.conf"
     ws_conf.parent.mkdir(parents=True)
     ws_conf.write_text(
-        "alfred.batman\tbatman.py\tinterval:3600\tno\talfred.batman\tarchitect\n",
+        "alfred.architect\tarchitect.py\tinterval:3600\tno\talfred.architect\tarchitect\n",
         encoding="utf-8",
     )
 
@@ -3270,7 +3270,7 @@ def test_api_schedule_reads_deployed_runtime_conf(
     conf = home / "launchd" / "agents.conf"
     conf.parent.mkdir(parents=True)
     conf.write_text(
-        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\topus\tSingle-repo engineer\n",
+        "alfred.senior-dev\tsenior-dev.py\tinterval:1200\tyes\t\topus\tSingle-repo engineer\n",
         encoding="utf-8",
     )
     monkeypatch.delenv("ALFRED_REPO", raising=False)
@@ -3280,7 +3280,7 @@ def test_api_schedule_reads_deployed_runtime_conf(
     client = TestClient(create_app(FilesystemReader(state_root=state)))
     runs = client.get("/api/schedule").json()["runs"]
 
-    assert [run["codename"] for run in runs] == ["lucius"]
+    assert [run["codename"] for run in runs] == ["senior-dev"]
     assert runs[0]["cadence"] == "every 20m"
 
 
@@ -3293,7 +3293,7 @@ def test_api_schedule_accepts_existing_dot_suffixed_labels(
     conf = repo / "launchd" / "agents.conf"
     conf.parent.mkdir(parents=True)
     conf.write_text(
-        "my.fleet.lucius\tlucius.py\tinterval:600\tyes\t\topus\tSingle-repo engineer\n",
+        "my.fleet.senior-dev\tsenior-dev.py\tinterval:600\tyes\t\topus\tSingle-repo engineer\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("ALFRED_REPO", str(repo))
@@ -3301,7 +3301,7 @@ def test_api_schedule_accepts_existing_dot_suffixed_labels(
     client = TestClient(create_app(FilesystemReader(state_root=state)))
     runs = client.get("/api/schedule").json()["runs"]
 
-    assert [run["codename"] for run in runs] == ["lucius"]
+    assert [run["codename"] for run in runs] == ["senior-dev"]
     assert runs[0]["cadence"] == "every 10m"
 
 
@@ -3360,7 +3360,7 @@ def test_custom_agent_schedule_rows_skip_base_conf_codename_collisions(
     conf = home / "launchd" / "agents.conf"
     conf.parent.mkdir(parents=True)
     conf.write_text(
-        "my.fleet.release-captain\tlucius.py\tinterval:600\tno\t\tFeature dev\n",
+        "my.fleet.release-captain\tsenior-dev.py\tinterval:600\tno\t\tFeature dev\n",
         encoding="utf-8",
     )
     manifest = state / "custom-agents" / "custom-agents.json"
@@ -3409,12 +3409,12 @@ def test_draft_from_payload_filters_invalid_repo_slugs() -> None:
 
 # ---------------------------------------------------------------------------
 # Plan go/no-go decisions: the in-app approve/decline writes the same marker
-# Batman's file-poll fallback watches, and a decided plan reflects its state.
+# the architect's file-poll fallback watches, and a decided plan reflects its state.
 # ---------------------------------------------------------------------------
 
 
-def _write_batman_plan(tmp_path: Path, issue_num: int, *, title: str) -> Path:
-    """Save a Batman plan exactly where ``draft_plan`` writes one.
+def _write_architect_plan(tmp_path: Path, issue_num: int, *, title: str) -> Path:
+    """Save a architect plan exactly where ``draft_plan`` writes one.
 
     ``architect-plans`` is the sibling of the reader's ``state`` root, so it
     lands at ``tmp_path/architect-plans/{issue_num}-plan.md`` (state_root.parent).
@@ -3423,7 +3423,7 @@ def _write_batman_plan(tmp_path: Path, issue_num: int, *, title: str) -> Path:
     plans.mkdir(parents=True, exist_ok=True)
     path = plans / f"{issue_num}-plan.md"
     path.write_text(
-        f"# Batman Plan for Issue #{issue_num}\n\n"
+        f"# Architect Plan for Issue #{issue_num}\n\n"
         f"**Title:** {title}\n\n"
         "**Status:** Draft (awaiting approval)\n\n"
         f"**Issue URL:** https://github.com/example-org/alfred/issues/{issue_num}\n\n"
@@ -3433,10 +3433,10 @@ def _write_batman_plan(tmp_path: Path, issue_num: int, *, title: str) -> Path:
     return path
 
 
-def test_plan_decision_approve_writes_batman_marker(tmp_path: Path) -> None:
+def test_plan_decision_approve_writes_architect_marker(tmp_path: Path) -> None:
     state = tmp_path / "state"
     state.mkdir(parents=True)
-    _write_batman_plan(tmp_path, 13, title="Add CSV export")
+    _write_architect_plan(tmp_path, 13, title="Add CSV export")
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     response = client.post(
@@ -3450,7 +3450,7 @@ def test_plan_decision_approve_writes_batman_marker(tmp_path: Path) -> None:
     assert body["decision"] == "approve"
     assert body["issue_number"] == 13
     assert body["status"] == "approved"
-    # The marker lands exactly where Batman's file poll watches it:
+    # The marker lands exactly where the architect's file poll watches it:
     # $ALFRED_HOME/architect/approvals/{issue_num}.approved (state_root.parent).
     approved = tmp_path / "architect" / "approvals" / "13.approved"
     rejected = tmp_path / "architect" / "approvals" / "13.rejected"
@@ -3466,7 +3466,7 @@ def test_plan_decision_decline_writes_rejected_marker_with_reason(
 ) -> None:
     state = tmp_path / "state"
     state.mkdir(parents=True)
-    _write_batman_plan(tmp_path, 21, title="Risky migration")
+    _write_architect_plan(tmp_path, 21, title="Risky migration")
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     response = client.post(
@@ -3479,7 +3479,7 @@ def test_plan_decision_decline_writes_rejected_marker_with_reason(
     assert response.json()["status"] == "declined"
     rejected = tmp_path / "architect" / "approvals" / "21.rejected"
     assert rejected.exists()
-    # Batman reads the reject body as a short detail string; ours carries the
+    # Architect reads the reject body as a short detail string; ours carries the
     # source and the operator reason.
     contents = rejected.read_text(encoding="utf-8")
     assert "declined via Alfred client" in contents
@@ -3489,7 +3489,7 @@ def test_plan_decision_decline_writes_rejected_marker_with_reason(
 def test_plan_decision_flip_clears_contradicting_marker(tmp_path: Path) -> None:
     state = tmp_path / "state"
     state.mkdir(parents=True)
-    _write_batman_plan(tmp_path, 7, title="Flip me")
+    _write_architect_plan(tmp_path, 7, title="Flip me")
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     client.post(
@@ -3511,7 +3511,7 @@ def test_plan_decision_flip_clears_contradicting_marker(tmp_path: Path) -> None:
 def test_plan_decision_requires_token(tmp_path: Path) -> None:
     state = tmp_path / "state"
     state.mkdir(parents=True)
-    _write_batman_plan(tmp_path, 13, title="Add CSV export")
+    _write_architect_plan(tmp_path, 13, title="Add CSV export")
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     # Same-origin but no token: the synchronizer-token gate must reject it.
@@ -3523,13 +3523,13 @@ def test_plan_decision_requires_token(tmp_path: Path) -> None:
 
     assert response.status_code == 403
     assert response.json()["error"] == "forbidden"
-    assert not (tmp_path / "batman" / "approvals" / "13.approved").exists()
+    assert not (tmp_path / "architect" / "approvals" / "13.approved").exists()
 
 
 def test_plan_decision_rejects_cross_origin_posts(tmp_path: Path) -> None:
     state = tmp_path / "state"
     state.mkdir(parents=True)
-    _write_batman_plan(tmp_path, 13, title="Add CSV export")
+    _write_architect_plan(tmp_path, 13, title="Add CSV export")
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     response = client.post(
@@ -3539,13 +3539,13 @@ def test_plan_decision_rejects_cross_origin_posts(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 403
-    assert not (tmp_path / "batman" / "approvals" / "13.approved").exists()
+    assert not (tmp_path / "architect" / "approvals" / "13.approved").exists()
 
 
 def test_plan_decision_rejects_invalid_decision(tmp_path: Path) -> None:
     state = tmp_path / "state"
     state.mkdir(parents=True)
-    _write_batman_plan(tmp_path, 13, title="Add CSV export")
+    _write_architect_plan(tmp_path, 13, title="Add CSV export")
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     response = client.post(
@@ -3555,11 +3555,11 @@ def test_plan_decision_rejects_invalid_decision(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 400
-    assert not (tmp_path / "batman" / "approvals").exists()
+    assert not (tmp_path / "architect" / "approvals").exists()
 
 
 def test_plan_decision_refuses_non_batman_plan(tmp_path: Path) -> None:
-    # A Slack follow-up is not a go/no-go plan: it has no issue marker Batman
+    # A Slack follow-up is not a go/no-go plan: it has no issue marker architect
     # would ever poll, so the decision endpoint must refuse it.
     state = tmp_path / "state"
     followups = state / "followups"
@@ -3581,12 +3581,12 @@ def test_plan_decision_refuses_non_batman_plan(tmp_path: Path) -> None:
 
 
 def test_decided_batman_plan_reflects_status_and_leaves_queue(tmp_path: Path) -> None:
-    # A genuine Batman go/no-go plan reads as "draft" until decided. Once the
+    # A genuine architect go/no-go plan reads as "draft" until decided. Once the
     # marker exists, the reader reflects approved/declined so the client's
     # Needs-you filter (source==architect + waiting status) drops it.
     state = tmp_path / "state"
     state.mkdir(parents=True)
-    _write_batman_plan(tmp_path, 13, title="Add CSV export")
+    _write_architect_plan(tmp_path, 13, title="Add CSV export")
     reader = FilesystemReader(state_root=state)
 
     before = reader.get_plan("13-plan")
@@ -3615,7 +3615,7 @@ def test_decided_batman_plan_stays_decided_after_marker_is_consumed(
 ) -> None:
     state = tmp_path / "state"
     state.mkdir(parents=True)
-    _write_batman_plan(tmp_path, 13, title="Add CSV export")
+    _write_architect_plan(tmp_path, 13, title="Add CSV export")
     reader = FilesystemReader(state_root=state)
     client = TestClient(create_app(reader))
 
@@ -3906,20 +3906,20 @@ def test_roster_theme_set_custom_names_and_roles_persist(tmp_path: Path) -> None
         headers=_auth_headers(state),
         json={
             "theme": "custom",
-            "custom_names": {"batman": "Sherlock", "fleet-doctor": "Watson"},
-            "custom_roles": {"batman": "Lead detective"},
+            "custom_names": {"architect": "Sherlock", "fleet-doctor": "Watson"},
+            "custom_roles": {"architect": "Lead detective"},
         },
     )
     assert resp.status_code == 200
     body = resp.json()
     assert body["theme"] == "custom"
-    assert body["custom_names"] == {"batman": "Sherlock", "fleet-doctor": "Watson"}
-    assert body["custom_roles"] == {"batman": "Lead detective"}
+    assert body["custom_names"] == {"architect": "Sherlock", "fleet-doctor": "Watson"}
+    assert body["custom_roles"] == {"architect": "Lead detective"}
 
     # The file under the state root is the single source of truth across surfaces.
     stored = json.loads((state / "roster-theme" / "roster-theme.json").read_text(encoding="utf-8"))
     assert stored["theme"] == "custom"
-    assert stored["custom_names"]["batman"] == "Sherlock"
+    assert stored["custom_names"]["architect"] == "Sherlock"
 
 
 def test_roster_theme_switch_to_preset_retains_custom_roster(tmp_path: Path) -> None:
@@ -3929,7 +3929,7 @@ def test_roster_theme_switch_to_preset_retains_custom_roster(tmp_path: Path) -> 
     client.post(
         "/api/roster-theme",
         headers=_auth_headers(state),
-        json={"theme": "custom", "custom_names": {"batman": "Sherlock"}},
+        json={"theme": "custom", "custom_names": {"architect": "Sherlock"}},
     )
     resp = client.post(
         "/api/roster-theme",
@@ -3941,7 +3941,7 @@ def test_roster_theme_switch_to_preset_retains_custom_roster(tmp_path: Path) -> 
     assert body["theme"] == "transformers"
     # Switching to a preset does NOT delete the authored roster: it is retained so
     # a later switch back to custom (or a restart) restores it.
-    assert body["custom_names"] == {"batman": "Sherlock"}
+    assert body["custom_names"] == {"architect": "Sherlock"}
 
     # Switching back to custom with no payload restores the authored names.
     back = client.post(
@@ -3949,7 +3949,7 @@ def test_roster_theme_switch_to_preset_retains_custom_roster(tmp_path: Path) -> 
         headers=_auth_headers(state),
         json={"theme": "custom"},
     )
-    assert back.json()["custom_names"] == {"batman": "Sherlock"}
+    assert back.json()["custom_names"] == {"architect": "Sherlock"}
 
 
 def test_roster_theme_rejects_unknown_theme(tmp_path: Path) -> None:
@@ -3985,7 +3985,7 @@ def test_roster_theme_rejects_bad_custom_name_payload(tmp_path: Path) -> None:
     resp = client.post(
         "/api/roster-theme",
         headers=_auth_headers(state),
-        json={"theme": "custom", "custom_names": {"batman": "   "}},
+        json={"theme": "custom", "custom_names": {"architect": "   "}},
     )
     assert resp.status_code == 400
 
@@ -4084,8 +4084,8 @@ def test_custom_agents_api_requires_token_and_valid_payload(tmp_path: Path) -> N
         "/api/custom-agents",
         headers=_auth_headers(state),
         json={
-            "codename": "lucius",
-            "display_name": "Lucius",
+            "codename": "senior-dev",
+            "display_name": "senior-dev",
             "role_title": "Builder",
             "prompt": "Review release readiness and summarize blockers for the operator.",
         },

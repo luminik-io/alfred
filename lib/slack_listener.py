@@ -1044,7 +1044,7 @@ class SlackPlanningListener:
 
     def _handle_direct_intake(self, event: SlackInputEvent) -> ListenerResult:
         # Conversation is the primary Slack surface. Try the natural-language
-        # router first, even for old command-shaped messages like "run batman".
+        # router first, even for old command-shaped messages like "run architect".
         # Literal commands remain as a backcompat fallback when the router is
         # disabled or decides the text is not a known intent.
         routed = self._maybe_route_intent(event)
@@ -2775,7 +2775,7 @@ def _assignment_agent_display(agent: str) -> str:
     """Render the assignment-lane label ``<themed name> · <role>`` for Slack mrkdwn.
 
     The two assignable lanes are the ``architect`` and ``senior-dev`` slugs. The
-    display name AND the role label come from the active roster theme (Batman-cast
+    display name AND the role label come from the active roster theme (architect-cast
     by default, ``Optimus Prime`` under Transformers, the operator's custom name
     and custom role under a custom theme) so the Slack confirmation matches what
     the desktop shows. Both are operator-authored under a custom theme, so both
@@ -2784,9 +2784,16 @@ def _assignment_agent_display(agent: str) -> str:
     """
     normalized = agent.strip().lower()
     slug = ""
-    if normalized in {"architect", "batman", "bruce"}:
+    if normalized in {"architect", "batman", "bruce", "bruce wayne"}:
         slug = "architect"
-    elif normalized in {"senior-dev", "developer", "lucius", "senior dev", "senior developer"}:
+    elif normalized in {
+        "developer",
+        "lucius",
+        "lucius fox",
+        "senior-dev",
+        "senior dev",
+        "senior developer",
+    }:
         slug = "senior-dev"
     if not slug:
         return escape_mrkdwn(agent)
@@ -3344,7 +3351,7 @@ def _looks_like_acceptance(text: str) -> bool:
 
 
 # Read-only / status-question cues. A ship-it draft must not be seeded from a
-# status turn ("what's the fleet doing?", "why did lucius fail on #1038?") that
+# status turn ("what's the fleet doing?", "why did senior-dev fail on #1038?") that
 # happened to come before the real build request in the same thread. These are
 # substrings matched against the normalized turn; each is distinctive enough to
 # a read-only question that it never appears in a genuine build request.
@@ -3385,7 +3392,7 @@ def _looks_like_status_or_answer(text: str) -> bool:
 
     Covers both a leading-verb read-only control command ("status", "runs",
     "plans") and a natural-language status / diagnostic question ("what's the
-    fleet doing?", "why did lucius fail?"). Used to keep such a turn from being
+    fleet doing?", "why did senior-dev fail?"). Used to keep such a turn from being
     picked as the build request a ship-it draft is seeded from.
     """
     cleaned = _strip_mentions(text).strip()

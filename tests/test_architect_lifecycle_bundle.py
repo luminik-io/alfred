@@ -1,4 +1,4 @@
-"""Tests for ``lib/batman.py``, bundle primitives + plan parsing.
+"""Tests for ``lib/architect_lifecycle.py``, bundle primitives + plan parsing.
 
 The pure-data helpers (Bundle, PlanShape, parse_plan_from_issue,
 parse_plan_from_bundle) are deterministic and tested directly. The
@@ -21,7 +21,7 @@ def _isolated_alfred_home(tmp_path, monkeypatch):
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspace"))
     monkeypatch.setenv("GH_ORG", "myorg")
     for mod in list(sys.modules):
-        if mod.startswith("agent_runner") or mod == "batman":
+        if mod.startswith("agent_runner") or mod in {"architect_lifecycle", "architect"}:
             del sys.modules[mod]
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
     yield
@@ -44,7 +44,7 @@ def _issue(num, repo="backend", body="", title="t", created="2026-05-09T10:00:00
 
 
 def test_bundle_primary_issue_is_oldest_by_created_at():
-    import batman as bm
+    import architect_lifecycle as bm
 
     b = bm.Bundle(
         issues=[
@@ -58,7 +58,7 @@ def test_bundle_primary_issue_is_oldest_by_created_at():
 
 
 def test_bundle_slug_uses_label_when_present():
-    import batman as bm
+    import architect_lifecycle as bm
 
     b = bm.Bundle(
         issues=[_issue(1)],
@@ -68,7 +68,7 @@ def test_bundle_slug_uses_label_when_present():
 
 
 def test_bundle_slug_falls_back_to_repo_number_for_solo_bundle():
-    import batman as bm
+    import architect_lifecycle as bm
 
     b = bm.Bundle(issues=[_issue(275, "backend")], bundle_label=None)
     assert b.slug == "backend-275"
@@ -80,14 +80,14 @@ def test_bundle_slug_falls_back_to_repo_number_for_solo_bundle():
 
 
 def test_parse_plan_inline_repos_line():
-    import batman as bm
+    import architect_lifecycle as bm
 
     plan = bm.parse_plan_from_issue("Repos: backend, frontend\nBlah blah")
     assert plan.affected_repos == ["backend", "frontend"]
 
 
 def test_parse_plan_h2_block_with_bullets():
-    import batman as bm
+    import architect_lifecycle as bm
 
     body = "## Affected Repos\n- backend\n- frontend\n\n## Other\nstuff"
     plan = bm.parse_plan_from_issue(body)
@@ -95,7 +95,7 @@ def test_parse_plan_h2_block_with_bullets():
 
 
 def test_parse_plan_preserves_duplicate_explicit_repo_tails():
-    import batman as bm
+    import architect_lifecycle as bm
 
     body = "## Affected Repos\n- acme/backend\n- beta/backend\n"
     plan = bm.parse_plan_from_issue(body)
@@ -108,7 +108,7 @@ def test_parse_plan_preserves_duplicate_explicit_repo_tails():
 
 
 def test_parse_plan_preserves_explicit_slug_with_repo_mapping(monkeypatch):
-    import batman as bm
+    import architect_lifecycle as bm
 
     monkeypatch.setattr(bm, "GH_REPO_TO_LOCAL", {"other/service": "service"})
 
@@ -120,7 +120,7 @@ def test_parse_plan_preserves_explicit_slug_with_repo_mapping(monkeypatch):
 
 
 def test_parse_plan_bare_rollout_uses_explicit_affected_slug():
-    import batman as bm
+    import architect_lifecycle as bm
 
     body = "## Affected Repos\n- acme/backend\n\n## Rollout order\n- backend\n"
     plan = bm.parse_plan_from_issue(body)
@@ -130,7 +130,7 @@ def test_parse_plan_bare_rollout_uses_explicit_affected_slug():
 
 
 def test_parse_plan_bare_rollout_uses_mapped_explicit_affected_slug(monkeypatch):
-    import batman as bm
+    import architect_lifecycle as bm
 
     monkeypatch.setattr(bm, "GH_REPO_TO_LOCAL", {"acme/acme-backend": "backend"})
 
@@ -142,7 +142,7 @@ def test_parse_plan_bare_rollout_uses_mapped_explicit_affected_slug(monkeypatch)
 
 
 def test_parse_plan_explicit_rollout_does_not_promote_bare_affected_repo():
-    import batman as bm
+    import architect_lifecycle as bm
 
     body = "## Affected Repos\n- backend\n\n## Rollout order\n- acme/backend\n"
     plan = bm.parse_plan_from_issue(body)
@@ -151,7 +151,7 @@ def test_parse_plan_explicit_rollout_does_not_promote_bare_affected_repo():
 
 
 def test_parse_plan_default_rollout_orders_explicit_affected_slugs(monkeypatch):
-    import batman as bm
+    import architect_lifecycle as bm
 
     monkeypatch.setattr(bm, "DEFAULT_ROLLOUT_ORDER", ["backend", "frontend", "mobile"])
 
@@ -168,7 +168,7 @@ def test_parse_plan_default_rollout_orders_explicit_affected_slugs(monkeypatch):
 def test_parse_plan_h2_block_with_comma_separated_payload():
     """PR #121 fix: bare comma-separated payload after the H2 header
     must parse, not silently fall back to the default rollout."""
-    import batman as bm
+    import architect_lifecycle as bm
 
     body = "## Affected Repos\nbackend, frontend\n"
     plan = bm.parse_plan_from_issue(body)
@@ -178,7 +178,7 @@ def test_parse_plan_h2_block_with_comma_separated_payload():
 
 
 def test_parse_plan_h2_rollout_order_block():
-    import batman as bm
+    import architect_lifecycle as bm
 
     body = "## Affected Repos\n- backend\n- frontend\n## Rollout Order\n- frontend\n- backend\n"
     plan = bm.parse_plan_from_issue(body)
@@ -189,7 +189,7 @@ def test_parse_plan_rollout_does_not_split_hyphenated_names():
     """Repo names like ``data-acquisition`` contain hyphens; the
     splitter must not treat ``-`` as a separator, otherwise the name
     silently disappears."""
-    import batman as bm
+    import architect_lifecycle as bm
 
     body = "Rollout order: backend > data-acquisition > frontend"
     plan = bm.parse_plan_from_issue(body)
@@ -197,7 +197,7 @@ def test_parse_plan_rollout_does_not_split_hyphenated_names():
 
 
 def test_parse_plan_acceptance_criteria_per_repo():
-    import batman as bm
+    import architect_lifecycle as bm
 
     body = (
         "## Affected Repos\n- backend\n- frontend\n"
@@ -214,7 +214,7 @@ def test_parse_plan_explicit_list_wins_over_stray_h3():
     """PR #121 scope-widening guard: when an explicit Affected Repos
     list is present, a stray H3 in the criteria block must NOT be
     appended to the affected set."""
-    import batman as bm
+    import architect_lifecycle as bm
 
     body = (
         "## Affected Repos\n- backend\n"
@@ -230,7 +230,7 @@ def test_parse_plan_explicit_list_wins_over_stray_h3():
 
 
 def test_parse_plan_backfills_affected_when_only_h3_present():
-    import batman as bm
+    import architect_lifecycle as bm
 
     body = "## Acceptance Criteria\n### backend\nDo backend\n### frontend\nDo frontend\n"
     plan = bm.parse_plan_from_issue(body)
@@ -239,7 +239,7 @@ def test_parse_plan_backfills_affected_when_only_h3_present():
 
 
 def test_parse_plan_falls_back_to_default_rollout_on_empty_body():
-    import batman as bm
+    import architect_lifecycle as bm
 
     plan = bm.parse_plan_from_issue("")
     # Empty body → first three from default rollout order.
@@ -254,7 +254,7 @@ def test_parse_plan_falls_back_to_default_rollout_on_empty_body():
 
 
 def test_parse_plan_from_bundle_solo_delegates_to_issue_parser():
-    import batman as bm
+    import architect_lifecycle as bm
 
     body = "## Affected Repos\n- backend\n- frontend\n"
     bundle = bm.Bundle(issues=[_issue(10, body=body)], bundle_label=None)
@@ -264,7 +264,7 @@ def test_parse_plan_from_bundle_solo_delegates_to_issue_parser():
 
 def test_parse_plan_from_bundle_multi_uses_per_issue_repo_with_default_rollout():
     """Multi-issue bundle: each issue's repo IS its affected repo."""
-    import batman as bm
+    import architect_lifecycle as bm
 
     bundle = bm.Bundle(
         issues=[
@@ -281,7 +281,7 @@ def test_parse_plan_from_bundle_multi_uses_per_issue_repo_with_default_rollout()
 
 
 def test_parse_plan_from_bundle_preserves_dependency_sorted_issue_order():
-    import batman as bm
+    import architect_lifecycle as bm
 
     bundle = bm.Bundle(
         issues=[
@@ -305,7 +305,7 @@ def test_parse_plan_from_bundle_preserves_dependency_sorted_issue_order():
 
 
 def test_list_issues_by_bundle_label_filters_to_allowed_repos(monkeypatch):
-    import batman as bm
+    import architect_lifecycle as bm
 
     def fake_gh_json(_cmd, *, default):
         return [
@@ -324,7 +324,7 @@ def test_list_issues_by_bundle_label_filters_to_allowed_repos(monkeypatch):
 
 
 def test_list_issues_by_bundle_label_accepts_local_repo_allowlist(monkeypatch):
-    import batman as bm
+    import architect_lifecycle as bm
 
     bm.GH_REPO_TO_LOCAL.update({"myorg-backend": "backend"})
 
@@ -348,7 +348,7 @@ def test_list_issues_by_bundle_label_accepts_local_repo_allowlist(monkeypatch):
 
 def test_claim_bundle_all_or_nothing_releases_on_failure(monkeypatch):
     import agent_runner as ar
-    import batman as bm
+    import architect_lifecycle as bm
 
     issues = [
         _issue(1, "backend"),
@@ -371,12 +371,12 @@ def test_claim_bundle_all_or_nothing_releases_on_failure(monkeypatch):
 
     monkeypatch.setattr(ar, "claim_issue", fake_claim)
     monkeypatch.setattr(ar, "release_issue", fake_release)
-    # batman.py imported its own references at import time, patch them
+    # architect.py imported its own references at import time, patch them
     # too so the monkeypatch takes effect inside claim_bundle.
     monkeypatch.setattr(bm, "claim_issue", fake_claim)
     monkeypatch.setattr(bm, "release_issue", fake_release)
 
-    ok = bm.claim_bundle(bundle, codename="batman", firing_id="f-1")
+    ok = bm.claim_bundle(bundle, codename="architect", firing_id="f-1")
     assert ok is False
     # Tried to claim all three.
     assert {(r, n) for r, n in claim_calls} == {("backend", 1), ("frontend", 2), ("mobile", 3)}
@@ -388,7 +388,7 @@ def test_claim_bundle_all_or_nothing_releases_on_failure(monkeypatch):
 
 
 def test_claim_bundle_succeeds_when_all_claims_succeed(monkeypatch):
-    import batman as bm
+    import architect_lifecycle as bm
 
     bundle = bm.Bundle(
         issues=[_issue(1, "backend"), _issue(2, "frontend")],
@@ -399,14 +399,14 @@ def test_claim_bundle_succeeds_when_all_claims_succeed(monkeypatch):
     released: list = []
     monkeypatch.setattr(bm, "release_issue", lambda *a, **kw: released.append((a, kw)) or True)
 
-    ok = bm.claim_bundle(bundle, codename="batman", firing_id="f-1")
+    ok = bm.claim_bundle(bundle, codename="architect", firing_id="f-1")
     assert ok is True
     # No release_issue calls when every claim succeeded.
     assert released == []
 
 
 def test_release_bundle_continues_past_per_issue_failures(monkeypatch):
-    import batman as bm
+    import architect_lifecycle as bm
 
     bundle = bm.Bundle(
         issues=[
@@ -428,15 +428,15 @@ def test_release_bundle_continues_past_per_issue_failures(monkeypatch):
     monkeypatch.setattr(bm, "release_issue", flaky_release)
 
     # Must not raise; must hit all three issues despite the flake.
-    bm.release_bundle(bundle, codename="batman", firing_id="f-1", outcome="ok")
+    bm.release_bundle(bundle, codename="architect", firing_id="f-1", outcome="ok")
     assert {(r, n) for r, n in calls} == {("backend", 1), ("frontend", 2), ("mobile", 3)}
 
 
 def test_gh_repo_from_url_filters_cross_org():
-    import batman as bm
+    import architect_lifecycle as bm
 
     assert bm._gh_repo_from_url("https://github.com/myorg/backend/issues/1") == "backend"
-    # Cross-org URL → None (Batman never claims issues outside the configured org).
+    # Cross-org URL → None (Architect never claims issues outside the configured org).
     assert bm._gh_repo_from_url("https://github.com/otherorg/backend/issues/1") is None
     assert bm._gh_repo_from_url("") is None
     assert bm._gh_repo_from_url("not a url") is None
@@ -448,9 +448,9 @@ def test_gh_repo_from_url_filters_cross_org():
 
 
 def _parse_parent(body: str, title: str = "Bundle: billing-v2 rollout"):
-    import batman
+    import architect_lifecycle
 
-    return batman.parse_parent_issue(
+    return architect_lifecycle.parse_parent_issue(
         body=body,
         title=title,
         parent_repo="myorg/backend",
@@ -466,7 +466,7 @@ def test_parse_parent_issue_warns_when_no_shape_matches(caplog):
     instead of after wasted cycles."""
     import logging
 
-    with caplog.at_level(logging.WARNING, logger="alfred.batman.lifecycle"):
+    with caplog.at_level(logging.WARNING, logger="alfred.architect.lifecycle"):
         plan = _parse_parent("This is just a free-form description, no markers.")
     assert plan.children == ()
     assert plan.affected_repos == ()
@@ -507,7 +507,7 @@ We want a billing-v2 rollout.
 ### mobile
 - Subscription paywall reads from the v2 schema.
 """
-    with caplog.at_level(logging.WARNING, logger="alfred.batman.lifecycle"):
+    with caplog.at_level(logging.WARNING, logger="alfred.architect.lifecycle"):
         plan = _parse_parent(body)
     assert len(plan.children) == 3, [c.repo for c in plan.children]
     child_repos = {c.repo for c in plan.children}
@@ -567,7 +567,7 @@ We want a cross-org billing worker rollout.
 def test_parse_parent_issue_loose_shape_orders_explicit_slugs_by_default_rollout(
     monkeypatch,
 ):
-    import batman as bm
+    import architect_lifecycle as bm
 
     monkeypatch.setattr(bm, "DEFAULT_ROLLOUT_ORDER", ["backend", "frontend", "mobile"])
 
@@ -596,7 +596,7 @@ We want a cross-org app rollout.
 def test_parse_parent_issue_loose_shape_preserves_mapped_slug_with_bare_rollout(
     monkeypatch,
 ):
-    import batman as bm
+    import architect_lifecycle as bm
 
     monkeypatch.setattr(bm, "GH_REPO_TO_LOCAL", {"acme/acme-backend": "backend"})
 
@@ -626,7 +626,7 @@ We want a cross-org billing worker rollout.
 def test_parse_parent_issue_loose_shape_qualifies_bare_mapped_slug(
     monkeypatch,
 ):
-    import batman as bm
+    import architect_lifecycle as bm
 
     monkeypatch.setattr(bm, "GH_REPO_TO_LOCAL", {"acme-backend": "backend"})
 
@@ -651,7 +651,7 @@ We want a mapped backend rollout.
 def test_parse_parent_issue_loose_shape_uses_gh_org_for_bare_mapped_slug(
     monkeypatch,
 ):
-    import batman as bm
+    import architect_lifecycle as bm
 
     monkeypatch.setattr(bm, "GH_ORG", "acme")
     monkeypatch.setattr(bm, "GH_REPO_TO_LOCAL", {"acme-backend": "backend"})
@@ -682,7 +682,7 @@ We want a mapped backend rollout from a planning repo.
 def test_parse_parent_issue_loose_shape_blocks_bare_mapped_slug_without_gh_org(
     monkeypatch,
 ):
-    import batman as bm
+    import architect_lifecycle as bm
 
     monkeypatch.setattr(bm, "GH_ORG", "")
     monkeypatch.setattr(bm, "GH_REPO_TO_LOCAL", {"acme-backend": "backend"})
@@ -853,7 +853,7 @@ We want something better.
 
 - Improve the overall experience.
 """
-    with caplog.at_level(logging.WARNING, logger="alfred.batman.lifecycle"):
+    with caplog.at_level(logging.WARNING, logger="alfred.architect.lifecycle"):
         plan = _parse_parent(body)
     assert plan.children == ()
     assert plan.affected_repos == ()
@@ -884,7 +884,7 @@ Children:
 Done when:
 - All children merged to main
 """
-    with caplog.at_level(logging.WARNING, logger="alfred.batman.lifecycle"):
+    with caplog.at_level(logging.WARNING, logger="alfred.architect.lifecycle"):
         plan = _parse_parent(body)
     assert len(plan.children) == 2
     assert all("parse_parent_issue" not in r.getMessage() for r in caplog.records), [
@@ -893,7 +893,7 @@ Done when:
 
 
 def test_parse_parent_issue_canonical_bare_repos_use_parent_owner():
-    import batman as bm
+    import architect_lifecycle as bm
 
     body = """
 Bundle: billing-v2 rollout
@@ -919,7 +919,7 @@ Done when:
 
 
 def test_parse_parent_issue_does_not_suffix_match_child_repo_key():
-    import batman as bm
+    import architect_lifecycle as bm
 
     body = """
 Bundle: core backend rollout
@@ -951,7 +951,7 @@ Done when:
 
 def test_parse_repo_lines_keeps_owner_repo_slugs():
     """Canonical shape: full ``owner/repo`` slugs round-trip unchanged."""
-    import batman as bm
+    import architect_lifecycle as bm
 
     out = bm._parse_repo_lines("- acme/backend\n- acme/frontend\n")
     assert out == ["acme/backend", "acme/frontend"]
@@ -962,14 +962,14 @@ def test_parse_repo_lines_qualifies_bare_names_with_gh_org(monkeypatch, capsys):
     instead of being silently dropped. Operator's natural shorthand
     (`palette`, `palette-web`) just works for single-org fleets."""
     monkeypatch.setenv("GH_ORG", "acme")
-    import batman as bm
+    import architect_lifecycle as bm
 
     # Re-import to pick up the new GH_ORG since the fixture clears
     # sys.modules per-test.
     out = bm._parse_repo_lines("- palette\n- palette-web\n")
     assert out == ["acme/palette", "acme/palette-web"]
     captured = capsys.readouterr()
-    assert "BATMAN-PARSE-INFO" in captured.err
+    assert "ARCHITECT-PARSE-INFO" in captured.err
     assert "qualified bare repo name" in captured.err
 
 
@@ -978,14 +978,14 @@ def test_parse_repo_lines_warns_when_bare_and_no_gh_org(monkeypatch, capsys):
     construct a usable slug - warn loudly so the operator sees the
     cause on the first firing instead of after a wasted approval cycle."""
     monkeypatch.delenv("GH_ORG", raising=False)
-    import batman as bm
+    import architect_lifecycle as bm
 
     out = bm._parse_repo_lines("- palette\n- backend\n")
     assert out == []
     captured = capsys.readouterr()
-    assert "BATMAN-PARSE-WARN" in captured.err
+    assert "ARCHITECT-PARSE-WARN" in captured.err
     # Both lines should warn so the operator can fix all of them in one pass.
-    assert captured.err.count("BATMAN-PARSE-WARN") == 2
+    assert captured.err.count("ARCHITECT-PARSE-WARN") == 2
 
 
 def test_parse_repo_lines_mixes_slugs_and_bare_names(monkeypatch):
@@ -993,14 +993,14 @@ def test_parse_repo_lines_mixes_slugs_and_bare_names(monkeypatch):
     they paste a list of repos with one cross-org reference. Each line
     is handled on its own merits."""
     monkeypatch.setenv("GH_ORG", "acme")
-    import batman as bm
+    import architect_lifecycle as bm
 
     out = bm._parse_repo_lines("- acme/backend\n- mobile\n- other-org/lib\n")
     assert out == ["acme/backend", "acme/mobile", "other-org/lib"]
 
 
 # ---------------------------------------------------------------------------
-# Issue #117: Batman execute fails to file children when bundle label
+# Issue #117: architect execute fails to file children when bundle label
 # doesn't exist on target repos.
 # ---------------------------------------------------------------------------
 
@@ -1011,7 +1011,7 @@ def test_create_issue_pre_creates_bundle_label(monkeypatch):
     ``gh issue create``, mirroring the ``gh_pr_create`` pattern. Without
     this, the first cross-repo execute fails with ``could not add label``
     and operator is left with an approved plan and zero filed children."""
-    import batman as bm
+    import architect_lifecycle as bm
 
     calls: list[list[str]] = []
 
@@ -1058,7 +1058,7 @@ def test_create_issue_continues_when_label_create_fails(monkeypatch):
     """Label creation is best-effort: if `gh label create` blows up
     (rate limit, transient network), the issue creation must still try
     and likely succeed - gh will accept --label for existing labels."""
-    import batman as bm
+    import architect_lifecycle as bm
 
     def fake_run(cmd, **_kw):
         if cmd[1] == "label":
@@ -1085,9 +1085,9 @@ def test_create_issue_continues_when_label_create_fails(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Hybrid Batman: cross-repo contract block in child issues.
+# Hybrid architect: cross-repo contract block in child issues.
 #
-# Batman stays the planner and does not open PRs; it centralizes a
+# architect stays the planner and does not open PRs; it centralizes a
 # machine-readable contract into every child issue so per-repo implementers
 # are not blind to sibling repos, shared interfaces, and landing order.
 # ---------------------------------------------------------------------------
@@ -1203,7 +1203,7 @@ Done when:
 def test_build_cross_repo_contract_is_pure_and_bounded():
     """The block builder is a pure function of its inputs and stays bounded
     even with an oversized contract."""
-    import batman as bm
+    import architect_lifecycle as bm
 
     children = (
         bm.ChildIssue(repo="acme/a", title="do A", body="", labels=()),
@@ -1235,7 +1235,7 @@ def test_contract_sibling_list_is_bounded_with_more_indicator():
     """With many children and very long scopes, the sibling list in the
     contract block must be bounded in both entry count and per-line length,
     and must show a "+N more" indicator when siblings are dropped."""
-    import batman as bm
+    import architect_lifecycle as bm
 
     long_scope = "x" * 1000
     children = tuple(
@@ -1272,7 +1272,7 @@ def test_contract_sibling_list_is_bounded_with_more_indicator():
 def test_contract_reattached_once_after_operator_feedback():
     """Operator feedback that adds a repo must give the new child a contract
     and must not double-append the block on existing children."""
-    import batman as bm
+    import architect_lifecycle as bm
 
     plan = _parse_parent(_canonical_body_with_contract())
     amended = bm._apply_operator_feedback_to_plan(plan, ["add repo: myorg/nango"])

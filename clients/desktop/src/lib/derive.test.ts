@@ -24,7 +24,7 @@ import type {
 
 function agent(overrides: Partial<AgentSummary> = {}): AgentSummary {
   return {
-    codename: "lucius",
+    codename: "senior-dev",
     last_firing_id: null,
     last_run_at: null,
     status: "idle",
@@ -61,7 +61,7 @@ function emptySnapshot(overrides: Partial<Snapshot> = {}): Snapshot {
 function firing(overrides: Partial<FiringRecord> = {}): FiringRecord {
   return {
     firing_id: "f1",
-    codename: "lucius",
+    codename: "senior-dev",
     started_at: "2026-05-30T11:00:00Z",
     ended_at: "2026-05-30T11:05:00Z",
     status: "ok",
@@ -78,7 +78,7 @@ function shippedCard(overrides: Partial<ShippedCard> = {}): ShippedCard {
     number: 12,
     title: "Add CSV export",
     url: "https://example.com/12",
-    author: "lucius",
+    author: "senior-dev",
     kind: "pr",
     timestamp: "2026-05-30T11:00:00Z",
     age_days: 0,
@@ -170,7 +170,7 @@ describe("buildNeedsYou (calm client-owned decisions)", () => {
         rows: [
           {
             id: "mem:1",
-            codename: "lucius",
+            codename: "senior-dev",
             repo: "your-org/api",
             body: "Use request fixtures.",
             tags: ["tests"],
@@ -202,7 +202,7 @@ describe("buildNeedsYou (calm client-owned decisions)", () => {
       actions: {
         status: "ok",
         actions: [{ title: "Stale worker", message: "x" }],
-        failure_patterns: [{ agent: "lucius", subtype: "diff-too-large", count: 3 }],
+        failure_patterns: [{ agent: "senior-dev", subtype: "diff-too-large", count: 3 }],
         stale_workers: [],
         promotion_suggestions: [],
       },
@@ -246,14 +246,14 @@ describe("planNeedsAttention", () => {
 });
 
 describe("shippedAgentCodename", () => {
-  it("attributes the old Batman-cast tokens to the canonical role slug", () => {
-    expect(shippedAgentCodename(shippedCard({ author: "batman" }))).toBe("architect");
-    expect(shippedAgentCodename(shippedCard({ author: "lucius" }))).toBe("senior-dev");
-    expect(shippedAgentCodename(shippedCard({ author: "nightwing-bot" }))).toBe("fixer");
-    expect(shippedAgentCodename(shippedCard({ author: "damian" }))).toBe("spec-planner");
-    expect(shippedAgentCodename(shippedCard({ author: "bane" }))).toBe("test-engineer");
+  it("attributes canonical role-slug tokens to the role slug", () => {
+    expect(shippedAgentCodename(shippedCard({ author: "architect" }))).toBe("architect");
+    expect(shippedAgentCodename(shippedCard({ author: "senior-dev" }))).toBe("senior-dev");
+    expect(shippedAgentCodename(shippedCard({ author: "fixer-bot" }))).toBe("fixer");
+    expect(shippedAgentCodename(shippedCard({ author: "spec-planner" }))).toBe("spec-planner");
+    expect(shippedAgentCodename(shippedCard({ author: "test-engineer" }))).toBe("test-engineer");
     expect(
-      shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["rasalghul"] })),
+      shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["reviewer"] })),
     ).toBe("reviewer");
   });
 
@@ -383,7 +383,7 @@ describe("buildRunning", () => {
       firings: [firing({ status: "running" })],
       schedule: [
         {
-          codename: "bane",
+          codename: "test-engineer",
           role: "Daily test author",
           kind: "cron-daily",
           cadence: "daily 02:00",
@@ -391,7 +391,7 @@ describe("buildRunning", () => {
           raw_schedule: "cron:2:00",
         },
         {
-          codename: "lucius",
+          codename: "senior-dev",
           role: "Single-repo engineer",
           kind: "interval",
           cadence: "every 10m",
@@ -402,7 +402,7 @@ describe("buildRunning", () => {
     });
     const running = buildRunning(snap);
     expect(running.hasUpcoming).toBe(true);
-    expect(running.upcoming.map((run) => run.codename)).toEqual(["bane", "lucius"]);
+    expect(running.upcoming.map((run) => run.codename)).toEqual(["test-engineer", "senior-dev"]);
   });
 });
 
@@ -478,7 +478,7 @@ describe("buildCostHealth", () => {
       status: {
         agents: [
           {
-            codename: "lucius",
+            codename: "senior-dev",
             last_firing_id: "f1",
             last_run_at: "2026-06-01T10:00:00Z",
             status: "error",
@@ -552,7 +552,7 @@ describe("buildFleetActivity", () => {
     const activity = buildFleetActivity(
       emptySnapshot({
         status: {
-          agents: [agent({ paused: true }), agent({ codename: "batman", paused: true })],
+          agents: [agent({ paused: true }), agent({ codename: "architect", paused: true })],
           total_today: 0,
           reliability: {},
         },
@@ -614,7 +614,7 @@ describe("fleetPauseSummary", () => {
     const activity = buildFleetActivity(
       emptySnapshot({
         status: {
-          agents: [agent({ paused: true }), agent({ codename: "batman", paused: true })],
+          agents: [agent({ paused: true }), agent({ codename: "architect", paused: true })],
           total_today: 0,
           reliability: {},
         },

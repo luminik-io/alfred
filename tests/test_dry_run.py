@@ -31,6 +31,8 @@ def _isolated_alfred_home(tmp_path, monkeypatch):
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspace"))
     monkeypatch.delenv("ALFRED_DRY_RUN", raising=False)
+    monkeypatch.delenv("GH_ORG", raising=False)
+    monkeypatch.delenv("OPERATOR_NAME", raising=False)
     for mod in list(sys.modules):
         if mod == "agent_runner" or mod.startswith("agent_runner."):
             del sys.modules[mod]
@@ -342,7 +344,7 @@ def test_echo_example_dry_run_completes_full_lifecycle_exit_0(tmp_path):
     assert "would post to Slack" in out
 
 
-def test_lucius_runner_dry_run_completes_full_lifecycle_exit_0(tmp_path):
+def test_senior_dev_runner_dry_run_completes_full_lifecycle_exit_0(tmp_path):
     """Lucius runs pick -> claim -> worktree -> invoke -> push/PR -> release
     with zero host config and exits 0 on the happy path."""
     proc = _run_example(

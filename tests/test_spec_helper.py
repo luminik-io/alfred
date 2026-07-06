@@ -118,7 +118,7 @@ def test_issue_readiness_renders_github_ready_issue() -> None:
         IssueDraft(
             title="Add Slack plan revision flow",
             problem=(
-                "Operators and teammates need to discuss a Batman plan before implementation "
+                "Operators and teammates need to discuss a architect plan before implementation "
                 "so Alfred does not ship the wrong workflow."
             ),
             user="Repo owner or teammate",
@@ -132,7 +132,7 @@ def test_issue_readiness_renders_github_ready_issue() -> None:
                 "A plan with unresolved questions is marked needs-scope.",
                 "Slack plan messages tell the operator how to reply with changes.",
             ],
-            test_plan="Run Batman plan unit tests and manually inspect the Slack payload.",
+            test_plan="Run architect plan unit tests and manually inspect the Slack payload.",
             out_of_scope="No automatic GitHub issue creation from the planning UI.",
         )
     )
@@ -150,7 +150,7 @@ def test_issue_readiness_does_not_add_todo_for_optional_blanks() -> None:
         IssueDraft(
             title="Add Slack plan revision flow",
             problem=(
-                "Operators and teammates need to discuss a Batman plan before implementation "
+                "Operators and teammates need to discuss a architect plan before implementation "
                 "so Alfred does not ship the wrong workflow."
             ),
             desired_behavior=(
@@ -162,7 +162,7 @@ def test_issue_readiness_does_not_add_todo_for_optional_blanks() -> None:
                 "A plan with unresolved questions is marked needs-scope.",
                 "Slack plan messages tell the operator how to reply with changes.",
             ],
-            test_plan="Run Batman plan unit tests and manually inspect the Slack payload.",
+            test_plan="Run architect plan unit tests and manually inspect the Slack payload.",
         )
     )
 

@@ -65,7 +65,7 @@ Batman is the default-theme name for the `architect` role. The role leads a whol
 
 This is what makes Alfred different from single-repo coding agents. A backend service change that needs a frontend page, a mobile screen, and a data-infra job becomes one architect plan with four children, instead of four manual context-rebuilds in a chat window.
 
-The architect role is part of the public fleet and runs on the same local schedule model as the other agents, but execution is deliberately gated. A fresh full install configures it and keeps it behind `alfred enable architect`. `BATMAN_PARENT_REPO` selects the repo where the role reads `agent:large-feature` parent issues; the default `BATMAN_AUTO_EXECUTE=0` halts after the plan. Set `BATMAN_AUTO_EXECUTE=approval-gate` when you want the architect to file child issues only after Slack or Alfred client approval, or `1` only for fleets that intentionally skip the gate.
+The architect role is part of the public fleet and runs on the same local schedule model as the other agents, but execution is deliberately gated. A fresh full install configures it and keeps it behind `alfred enable architect`. `ARCHITECT_PARENT_REPO` selects the repo where the role reads `agent:large-feature` parent issues; the default `ARCHITECT_AUTO_EXECUTE=0` halts after the plan. Set `ARCHITECT_AUTO_EXECUTE=approval-gate` when you want the architect to file child issues only after Slack or Alfred client approval, or `1` only for fleets that intentionally skip the gate.
 
 See [Worked example: Batman across three repos](/guides/multi-repo-worked-example/) for an end-to-end walkthrough from large-feature issue to merged children.
 
@@ -82,14 +82,14 @@ small lab roster.
 
 High-impact agents are visible without being accidentally armed. The architect stays
 behind the runner gate until `alfred enable architect` and then still obeys
-`BATMAN_AUTO_EXECUTE`. The E2E and ops-watch roles load with the fleet and self-idle
+`ARCHITECT_AUTO_EXECUTE`. The E2E and ops-watch roles load with the fleet and self-idle
 until their staging target URL or ECS cluster exists.
 
 ### Specialist agents
 
 | Role slug | Name in default theme | Default schedule | What it does |
 |---|---|---|---|
-| `architect` | Batman | every 1 h, approval-gated | Leads multi-repo features. Drafts the rollout, waits for Slack or Alfred client approval, files child `agent:implement` issues, and reports status so implementation can move in parallel. See [docs/BATMAN.md](https://github.com/luminik-io/alfred/blob/main/docs/BATMAN.md). |
+| `architect` | Batman | every 1 h, approval-gated | Leads multi-repo features. Drafts the rollout, waits for Slack or Alfred client approval, files child `agent:implement` issues, and reports status so implementation can move in parallel. See [docs/ARCHITECT.md](https://github.com/luminik-io/alfred/blob/main/docs/ARCHITECT.md). |
 | `senior-dev` | Lucius | every 20 min | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs the configured engine with the issue body + repo context, pushes a PR labelled `agent:authored`. |
 | `planner` | Drake | every 2 h | Reads specs, roadmap, cross-repo open-issue list, and a code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in a rolling 24 h. |
 | `spec-planner` | Damian | daily 09:00, opt-in | Walks `ALFRED_SPEC_PLANNER_SPEC_DIR`, identifies multi-repo features, and files `agent:bundle:<slug>` siblings across the affected repos. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to the planner. |

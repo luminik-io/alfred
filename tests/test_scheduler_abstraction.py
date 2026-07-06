@@ -39,14 +39,14 @@ def test_supported_matches_scheduler_value():
 def test_unit_file_extension_matches_scheduler():
     if scheduler.SCHEDULER == "launchd":
         assert scheduler.UNIT_EXT == "plist"
-        path = scheduler.unit_file("my.fleet.lucius")
-        assert path is not None and path.name == "my.fleet.lucius.plist"
+        path = scheduler.unit_file("my.fleet.senior-dev")
+        assert path is not None and path.name == "my.fleet.senior-dev.plist"
     elif scheduler.SCHEDULER == "systemd":
         assert scheduler.UNIT_EXT == "timer"
-        path = scheduler.unit_file("my.fleet.lucius")
-        assert path is not None and path.name == "my.fleet.lucius.timer"
+        path = scheduler.unit_file("my.fleet.senior-dev")
+        assert path is not None and path.name == "my.fleet.senior-dev.timer"
     else:
-        assert scheduler.unit_file("my.fleet.lucius") is None
+        assert scheduler.unit_file("my.fleet.senior-dev") is None
 
 
 def test_unit_dir_honors_env_override(monkeypatch, tmp_path):
@@ -90,12 +90,14 @@ def test_alfred_pause_writes_marker(tmp_path):
     alfred_home = tmp_path / "alfred"
     home.mkdir()
     alfred_home.mkdir()
-    _seed_conf(alfred_home, "my.fleet.lucius\tlucius.py\tinterval:600\tno\t\tFeature engineer\n")
+    _seed_conf(
+        alfred_home, "my.fleet.senior-dev\tsenior-dev.py\tinterval:600\tno\t\tFeature engineer\n"
+    )
 
-    res = _run_alfred(["pause", "lucius"], home=home, alfred_home=alfred_home)
+    res = _run_alfred(["pause", "senior-dev"], home=home, alfred_home=alfred_home)
     assert res.returncode == 0, res.stdout + res.stderr
-    assert "paused lucius" in res.stdout
-    marker = alfred_home / "state" / "_paused" / "lucius"
+    assert "paused senior-dev" in res.stdout
+    marker = alfred_home / "state" / "_paused" / "senior-dev"
     assert marker.exists()
     # The marker carries an ISO timestamp so deploy.sh / status can show it.
     assert marker.read_text().strip().endswith("Z")
@@ -106,7 +108,7 @@ def test_alfred_pause_unknown_agent_fails(tmp_path):
     alfred_home = tmp_path / "alfred"
     home.mkdir()
     alfred_home.mkdir()
-    _seed_conf(alfred_home, "my.fleet.lucius\tlucius.py\tinterval:600\tno\n")
+    _seed_conf(alfred_home, "my.fleet.senior-dev\tsenior-dev.py\tinterval:600\tno\n")
 
     res = _run_alfred(["pause", "ghost"], home=home, alfred_home=alfred_home)
     assert res.returncode == 1
@@ -118,7 +120,7 @@ def test_alfred_run_all_is_refused(tmp_path):
     alfred_home = tmp_path / "alfred"
     home.mkdir()
     alfred_home.mkdir()
-    _seed_conf(alfred_home, "my.fleet.lucius\tlucius.py\tinterval:600\tno\n")
+    _seed_conf(alfred_home, "my.fleet.senior-dev\tsenior-dev.py\tinterval:600\tno\n")
 
     res = _run_alfred(["run", "all"], home=home, alfred_home=alfred_home)
     assert res.returncode == 2
@@ -153,8 +155,24 @@ def test_alfred_dry_run_json_reports_resolved_script(tmp_path):
     assert '"mode": "simulated"' in res.stdout
 
 
+def test_alfred_dry_run_uses_checkout_conf_when_runtime_conf_is_missing(tmp_path):
+    home = tmp_path / "home"
+    alfred_home = tmp_path / "empty-runtime"
+    home.mkdir()
+    alfred_home.mkdir()
+
+    res = _run_alfred(
+        ["dry-run", "architect", "--simulate", "--json"], home=home, alfred_home=alfred_home
+    )
+
+    assert res.returncode == 0, res.stdout + res.stderr
+    payload = json.loads(res.stdout)
+    assert payload["codename"] == "architect"
+    assert payload["script"].endswith("bin/architect.py")
+
+
 def test_alfred_dry_run_resolves_spec_planner_on_fresh_install(tmp_path):
-    # spec-planner (renamed from damian) is a canonical fleet runner. With NO
+    # spec-planner is a canonical fleet runner. With NO
     # agents.conf it must still resolve through the CLI DEFAULT_AGENT_CATALOG,
     # otherwise a fresh install cannot schedule or dry-run it (the orphan bug).
     home = tmp_path / "home"
@@ -171,9 +189,9 @@ def test_alfred_dry_run_resolves_spec_planner_on_fresh_install(tmp_path):
     assert payload["script"].endswith("bin/spec-planner.py")
     assert payload["schedule"] == "cron:9:00"
 
-    # The Batman-cast alias still resolves to the same slug runner.
+    # The default roster theme still resolves its displayed name to the role slug.
     res_alias = _run_alfred(
-        ["dry-run", "damian", "--simulate", "--json"], home=home, alfred_home=alfred_home
+        ["dry-run", "spec-planner", "--simulate", "--json"], home=home, alfred_home=alfred_home
     )
     assert res_alias.returncode == 0, res_alias.stdout + res_alias.stderr
     assert json.loads(res_alias.stdout)["script"].endswith("bin/spec-planner.py")
@@ -184,7 +202,7 @@ def test_alfred_dry_run_all_uses_agents_conf_as_complete_roster(tmp_path):
     alfred_home = tmp_path / "alfred"
     home.mkdir()
     alfred_home.mkdir()
-    _seed_conf(alfred_home, "my.fleet.lucius\tlucius.py\tinterval:600\tno\t\tFeature dev\n")
+    _seed_conf(alfred_home, "my.fleet.senior-dev\tsenior-dev.py\tinterval:600\tno\t\tFeature dev\n")
 
     res = _run_alfred(
         ["dry-run", "all", "--simulate", "--json"], home=home, alfred_home=alfred_home
@@ -192,7 +210,7 @@ def test_alfred_dry_run_all_uses_agents_conf_as_complete_roster(tmp_path):
 
     assert res.returncode == 0, res.stdout + res.stderr
     payload = json.loads(res.stdout)
-    assert [item["codename"] for item in payload] == ["lucius"]
+    assert [item["codename"] for item in payload] == ["senior-dev"]
     assert "drake" not in res.stdout
     assert "cleanup" not in res.stdout
     assert "code-memory-refresh" not in res.stdout
@@ -227,7 +245,7 @@ def test_alfred_dry_run_all_omits_telemetry_support_row(tmp_path):
         alfred_home,
         "my.fleet.proof-telemetry\tproof-telemetry.py\tinterval:3600\tno\t"
         "my.fleet.proof-telemetry\tAnonymous usage totals\n"
-        "my.fleet.lucius\tlucius.py\tinterval:600\tno\t\tFeature dev\n",
+        "my.fleet.senior-dev\tsenior-dev.py\tinterval:600\tno\t\tFeature dev\n",
     )
 
     res = _run_alfred(
@@ -236,7 +254,7 @@ def test_alfred_dry_run_all_omits_telemetry_support_row(tmp_path):
 
     assert res.returncode == 0, res.stdout + res.stderr
     payload = json.loads(res.stdout)
-    assert [item["codename"] for item in payload] == ["lucius"]
+    assert [item["codename"] for item in payload] == ["senior-dev"]
     assert "proof-telemetry" not in res.stdout
 
 
@@ -261,12 +279,12 @@ def test_alfred_run_honors_pause_marker(tmp_path):
     alfred_home = tmp_path / "alfred"
     home.mkdir()
     alfred_home.mkdir()
-    _seed_conf(alfred_home, "my.fleet.lucius\tlucius.py\tinterval:600\tno\n")
+    _seed_conf(alfred_home, "my.fleet.senior-dev\tsenior-dev.py\tinterval:600\tno\n")
     pause_dir = alfred_home / "state" / "_paused"
     pause_dir.mkdir(parents=True)
-    (pause_dir / "lucius").write_text("2026-01-01T00:00:00Z\n")
+    (pause_dir / "senior-dev").write_text("2026-01-01T00:00:00Z\n")
 
-    res = _run_alfred(["run", "lucius"], home=home, alfred_home=alfred_home)
+    res = _run_alfred(["run", "senior-dev"], home=home, alfred_home=alfred_home)
     # Paused and no --force: refused before any scheduler call.
     assert res.returncode == 1
     assert "paused" in res.stderr
@@ -279,8 +297,8 @@ def test_alfred_agents_shows_loaded_column(tmp_path):
     alfred_home.mkdir()
     _seed_conf(
         alfred_home,
-        "my.fleet.lucius\tlucius.py\tinterval:600\tno\t\tFeature engineer\n"
-        "#my.fleet.batman\tbatman.py\tinterval:5400\tyes\t\tBig features\n",
+        "my.fleet.senior-dev\tsenior-dev.py\tinterval:600\tno\t\tFeature engineer\n"
+        "#my.fleet.architect\tarchitect.py\tinterval:5400\tyes\t\tBig features\n",
     )
     res = _run_alfred(["agents"], home=home, alfred_home=alfred_home)
     assert res.returncode == 0, res.stdout + res.stderr
@@ -288,5 +306,5 @@ def test_alfred_agents_shows_loaded_column(tmp_path):
     # configured/on-off column.
     assert "configured" in res.stdout
     assert "loaded" in res.stdout
-    # The commented-out batman row renders as configured=off.
-    assert "batman" in res.stdout
+    # The commented-out architect row renders as configured=off.
+    assert "architect" in res.stdout

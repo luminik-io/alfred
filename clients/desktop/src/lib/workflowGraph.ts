@@ -216,8 +216,8 @@ export function buildWorkflowGraph(
   // wired into the pipeline (not just the first), so a multi-agent lane never
   // leaves its secondary agents orphaned on the canvas. To avoid a dense
   // all-pairs mesh we connect each source agent to the target lane's single
-  // representative (its first agent), which matches the old explicit edge list
-  // (e.g. lucius/bane/nightwing all handed off to rasalghul). Only edges whose
+  // representative (its first agent), which matches the previous explicit edge
+  // list shape. Only edges whose
   // both lanes are present survive.
   const firstInRole = (role: WorkflowRole): string | null =>
     byRole.get(role)?.[0]?.codename ?? null;

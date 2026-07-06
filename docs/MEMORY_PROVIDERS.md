@@ -216,7 +216,7 @@ Mirror reviewed local lessons into Redis explicitly:
 
 ```sh
 alfred brain redis-sync --dry-run
-alfred brain redis-sync --codename lucius --repo your-org/api
+alfred brain redis-sync --codename senior-dev --repo your-org/api
 ```
 
 The sync path only reads trusted lessons from the fleet-brain. It does not
@@ -238,7 +238,7 @@ upload raw transcripts, event logs, or unreviewed memory candidates.
 Worked trace for `ALFRED_MEMORY_PROVIDERS=redis,fleet,gbrain`:
 
 ```
-firing "lucius" starts, asks memory.recall(codename="lucius", repo="acme-org/api"):
+firing "senior-dev" starts, asks memory.recall(codename="senior-dev", repo="acme-org/api"):
   -> redis.recall(...) returns [Lesson("GraphQL schema lives in src/schema.graphql")]
   -> fleet.recall(...) returns [Lesson("Keep schema PRs small")]
   -> gbrain.recall(...) returns [Lesson("older notes about acme-org/api auth")]

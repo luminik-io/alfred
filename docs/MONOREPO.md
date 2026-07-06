@@ -85,7 +85,7 @@ my-rust/
 ```
 
 `Cargo.toml` declares `members = ["crates/*", "xtask"]`. Alfred still sees one
-repo. The pre-push hook in `$ALFRED_HOME/agents/lucius.toml` should use crate-aware
+repo. The pre-push hook in `$ALFRED_HOME/agents/senior-dev.toml` should use crate-aware
 commands:
 
 ```toml
@@ -97,7 +97,7 @@ For tighter feedback loops on a touched crate, see "Per-package tests" below.
 
 ## Per-package scoping
 
-The unit Lucius claims is always a GitHub issue. The unit Lucius writes
+The unit senior-dev claims is always a GitHub issue. The unit Lucius writes
 against is whatever paths the issue body names. Drake's job in a monorepo is
 to write `agent:implement` issues that name a specific package and the
 specific files inside it.
@@ -135,7 +135,7 @@ the tree. If Drake writes a vague body, Lucius will spread edits across
 packages and Ra's al Ghul will reject the PR.
 
 If you want to enforce this at the prompt level, add to
-`~/.alfred/prompts/lucius.md`:
+`~/.alfred/prompts/senior-dev.md`:
 
 ```md
 When working in a monorepo, do not edit files outside the package(s) named in
@@ -151,7 +151,7 @@ For a monorepo, you usually want the pre-push to be the workspace-wide test
 command (it's the safest default for an agent that does not know which
 package it touched). Bane and Lucius read the same config.
 
-Workspace-wide default in `$ALFRED_HOME/agents/lucius.toml`:
+Workspace-wide default in `$ALFRED_HOME/agents/senior-dev.toml`:
 
 ```toml
 [pre_push]
@@ -165,7 +165,7 @@ every PR is slow, narrow the pre-push by package. The simplest way is a small
 shell script the agent calls instead of a one-liner:
 
 ```sh
-# ~/.alfred/hooks/lucius-pre-push.sh
+# ~/.alfred/hooks/senior-dev-pre-push.sh
 #!/usr/bin/env bash
 set -euo pipefail
 changed=$(git diff --name-only origin/main...HEAD | awk -F/ '{print $1"/"$2}' | sort -u)
@@ -181,7 +181,7 @@ Then in the YAML:
 
 ```toml
 [pre_push]
-my-monorepo = "bash ~/.alfred/hooks/lucius-pre-push.sh"
+my-monorepo = "bash ~/.alfred/hooks/senior-dev-pre-push.sh"
 ```
 
 For Bane (test-coverage agent), the same pattern applies. Bane writes only
@@ -192,7 +192,7 @@ not the whole workspace.
 
 Every Lucius firing creates a fresh git worktree of the full monorepo, not a
 sparse checkout of one package. The directory is
-`$ALFRED_HOME/worktrees/eng-lucius-<repo>-<issue>-<ts>/`, branched from a fresh
+`$ALFRED_HOME/worktrees/eng-senior-dev-<repo>-<issue>-<ts>/`, branched from a fresh
 `origin/main`.
 
 Why the whole repo and not a sparse checkout:
@@ -256,8 +256,8 @@ Honest tradeoffs, written by someone who has run Alfred against both shapes:
   filter, or to accept slower PR feedback.
 - **Per-package access control.** Alfred's IAM-per-agent model assumes one
   GitHub repo grants one set of permissions. If you need different agents to
-  see different parts of the tree (for example, `lucius` for OSS packages
-  and a separate `lucius-internal` for proprietary ones), a monorepo
+  see different parts of the tree (for example, `senior-dev` for OSS packages
+  and a separate `senior-dev-internal` for proprietary ones), a monorepo
   flattens that. Two repos with two agent identities is simpler.
 
 If none of those bite, a monorepo is a fine fit. The first solo-builder
@@ -267,7 +267,7 @@ default flow held up.
 ## See also
 
 - [`WORKSPACE_PATTERNS.md`](WORKSPACE_PATTERNS.md): one-repo, multi-repo,
-  specs-led, and Batman planning layouts.
+  specs-led, and architect planning layouts.
 - [`SPECS_DRIVEN_DEVELOPMENT.md`](SPECS_DRIVEN_DEVELOPMENT.md): turning specs
   into the kind of scoped issue Drake should file for monorepo work.
 - [`MULTI_REPO_WORKED_EXAMPLE.md`](MULTI_REPO_WORKED_EXAMPLE.md): the

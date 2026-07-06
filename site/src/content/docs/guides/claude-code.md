@@ -47,9 +47,9 @@ Claude account routing and engine routing are different:
 
 ```sh
 alfred engine status
-alfred engine status lucius
+alfred engine status senior-dev
 alfred engine set rasalghul codex
-alfred engine set lucius hybrid
+alfred engine set senior-dev hybrid
 alfred codex status
 alfred codex probe
 alfred auth status

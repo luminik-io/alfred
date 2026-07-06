@@ -111,7 +111,7 @@ def test_telemetry_on_writes_env_block_before_init_block_and_schedules_row(tmp_p
     env_file.write_text(
         "GH_ORG=acme\n\n"
         "# alfred-init, generated below this line. Safe to re-run.\n"
-        "ALFRED_LUCIUS_REPOS=api\n",
+        "ALFRED_SENIOR_DEV_REPOS=api\n",
         encoding="utf-8",
     )
     agents_conf = tmp_path / "agents.conf"

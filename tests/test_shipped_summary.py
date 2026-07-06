@@ -64,7 +64,7 @@ def test_collect_filters_prs_issues_and_detects_model_changes(monkeypatch, tmp_p
     mod = load_module(monkeypatch, tmp_path)
     conf = tmp_path / "agents.conf"
     conf.write_text(
-        "my.fleet.lucius\tlucius.py\tinterval:600\tyes\t\tclaude-sonnet-4-5\tFeature dev\n",
+        "my.fleet.senior-dev\tsenior-dev.py\tinterval:600\tyes\t\tclaude-sonnet-4-5\tFeature dev\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("ALFRED_AGENTS_CONF", str(conf))
@@ -80,7 +80,7 @@ def test_collect_filters_prs_issues_and_detects_model_changes(monkeypatch, tmp_p
             return [
                 {
                     "number": 10,
-                    "title": "fix(models): tune Lucius default",
+                    "title": "fix(models): tune senior-dev default",
                     "url": "https://github.com/myorg/alfred/pull/10",
                     "mergedAt": "2026-05-09T12:00:00Z",
                     "additions": 12,
@@ -145,7 +145,7 @@ def test_collect_filters_prs_issues_and_detects_model_changes(monkeypatch, tmp_p
     assert [issue["number"] for issue in data["issues_opened"]] == [20]
     assert [issue["number"] for issue in data["issues_closed"]] == [7]
     assert data["model_related_prs"][0]["model_paths"] == ["launchd/agents.conf"]
-    assert data["model_defaults"] == ["lucius=claude-sonnet-4-5"]
+    assert data["model_defaults"] == ["senior-dev=claude-sonnet-4-5"]
     assert data["query_warnings"] == []
 
 
@@ -244,7 +244,7 @@ def test_render_slack_includes_shipping_totals_and_model_section(monkeypatch, tm
             {
                 "repo": "alfred",
                 "number": 10,
-                "title": "fix(models): tune Lucius default",
+                "title": "fix(models): tune senior-dev default",
                 "url": "https://github.com/myorg/alfred/pull/10",
                 "additions": 12,
                 "deletions": 3,
@@ -259,11 +259,11 @@ def test_render_slack_includes_shipping_totals_and_model_section(monkeypatch, tm
             {
                 "repo": "alfred",
                 "number": 10,
-                "title": "fix(models): tune Lucius default",
+                "title": "fix(models): tune senior-dev default",
                 "model_paths": ["launchd/agents.conf"],
             }
         ],
-        "model_defaults": ["lucius=claude-sonnet-4-5"],
+        "model_defaults": ["senior-dev=claude-sonnet-4-5"],
         "engine_overrides": ["rasalghul=codex"],
     }
 
@@ -273,9 +273,9 @@ def test_render_slack_includes_shipping_totals_and_model_section(monkeypatch, tm
     assert "1 PRs merged | 1 issues opened | 1 issues closed | +12/-3 LOC | 2 files" in text
     assert "*Query warnings*" in text
     assert "alfred: merged PR query hit limit 2" in text
-    assert "`alfred#10` fix(models): tune Lucius default" in text
+    assert "`alfred#10` fix(models): tune senior-dev default" in text
     assert "*Model/config changes*" in text
-    assert "`lucius=claude-sonnet-4-5`" in text
+    assert "`senior-dev=claude-sonnet-4-5`" in text
     assert "`rasalghul=codex`" in text
 
 

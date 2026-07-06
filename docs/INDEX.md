@@ -10,10 +10,10 @@ Current map of the public docs. Trust code first, then this index.
 - [`AI_ASSISTED_INSTALL.md`](AI_ASSISTED_INSTALL.md): copy-paste prompt and guardrails for Claude Code, Codex, or another local coding assistant to install Alfred.
 - [`ONBOARDING.md`](ONBOARDING.md): the two setup paths (chat with Alfred, or step through the form), the onboarding action allowlist, the human-approval gate on side-effectful actions, and the conversational theme builder for naming your team.
 - [`INSTALL_TIERS.md`](INSTALL_TIERS.md): the three install tiers (`core`, `client`, `slack`) and how the CLI and fleet run fully standalone.
-- [`WORKSPACE_PATTERNS.md`](WORKSPACE_PATTERNS.md): one-repo, multi-repo, specs-led, and Batman planning layouts.
+- [`WORKSPACE_PATTERNS.md`](WORKSPACE_PATTERNS.md): one-repo, multi-repo, specs-led, and architect planning layouts.
 - [`MONOREPO.md`](MONOREPO.md): running Alfred against a pnpm, Turborepo, or Cargo workspace.
 - [`MULTI_REPO_WORKED_EXAMPLE.md`](MULTI_REPO_WORKED_EXAMPLE.md): one feature shipped across three repos using the full fleet, including Batman.
-- [`SPECS_DRIVEN_DEVELOPMENT.md`](SPECS_DRIVEN_DEVELOPMENT.md): turning specs into issue queues, Batman plans, and reviewable PRs.
+- [`SPECS_DRIVEN_DEVELOPMENT.md`](SPECS_DRIVEN_DEVELOPMENT.md): turning specs into issue queues, architect plans, and reviewable PRs.
 - [`SPEC_DRIVEN_FOR_EVERYONE.md`](SPEC_DRIVEN_FOR_EVERYONE.md): the plain-language version of spec-driven work for a non-technical reader. Describe an outcome, answer a question or two, approve a preview.
 - [`INSTALL_TIME.md`](INSTALL_TIME.md): honest read on existing-setup (30 min) and fresh-machine (60 to 120 min) install duration.
 - [`../BOOTSTRAP.md`](../BOOTSTRAP.md): full operations setup for a first fleet.
@@ -26,7 +26,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md): the diagram companion. Mermaid diagrams for the agent lifecycle, model dispatch and tiers, distributed locking, the Slack conversational flow, the desktop app, the disk guardian, and the layered install and distribution.
 - [`IDENTITY_AND_THEMES.md`](IDENTITY_AND_THEMES.md): the canonical identity model. Role-slugs are the identity; themes (the default `batman` roster plus presets and custom names) supply display names; how names resolve across Slack, the desktop app, and the CLI; and how to pick or build a theme.
 - [`AGENTS.md`](AGENTS.md): the default engineering roles, the stable runtime identity, and the display-name themes layered on top.
-- [`BATMAN.md`](BATMAN.md): the `architect` role (Batman in the default theme) for features spanning more than one repo. It reads a parent issue, drafts the rollout for operator approval, and files scoped child issues across the named repos.
+- [`ARCHITECT.md`](ARCHITECT.md): the `architect` role (Batman in the default theme) for features spanning more than one repo. It reads a parent issue, drafts the rollout for operator approval, and files scoped child issues across the named repos.
 - [`STATE_MACHINE.md`](STATE_MACHINE.md): issue claim lifecycle and stale-claim recovery.
 - [`VERIFICATION.md`](VERIFICATION.md): the `## Verification evidence` block on every agent PR. Test-check summary, diff summary, engine self-assessment against the issue's acceptance criteria, and optional opt-in before/after screenshots, with an honest "not captured" for anything that could not run.
 - [`STATE_AND_MEMORY.md`](STATE_AND_MEMORY.md): what Alfred remembers between firings, where every state file lives, and the local fleet-brain memory layer.
@@ -63,12 +63,12 @@ Current map of the public docs. Trust code first, then this index.
 
 - [`OUTPUT_SAMPLES.md`](OUTPUT_SAMPLES.md): every shape of Slack post, doctor run, issue body, PR, and state JSON in one place.
 - [`GLOSSARY.md`](GLOSSARY.md): one-sentence definitions for every role, themed name, label, sentinel, and runtime concept.
-- [`BATMAN_PARENT_ISSUE_TEMPLATE.md`](BATMAN_PARENT_ISSUE_TEMPLATE.md): the exact parent-issue body shape Batman's lifecycle parser expects, the gotchas it does not surface, and a copy-paste template.
+- [`ARCHITECT_PARENT_ISSUE_TEMPLATE.md`](ARCHITECT_PARENT_ISSUE_TEMPLATE.md): the exact parent-issue body shape the architect lifecycle parser expects, the gotchas it does not surface, and a copy-paste template.
 - [`SHIPPED_EMITTER.md`](SHIPPED_EMITTER.md): the `alfred-shipped-public` emitter that scrubs local state through a field allowlist and redaction table to publish a weekly shipped-work feed for your own repos.
 - [`SLOP_DETECTOR.md`](SLOP_DETECTOR.md): the read-only, stdlib-only `alfred slop-detect` scanner that flags LLM-cliche vocabulary and phrasing in prose and exits non-zero in CI.
 - [`../lib/agent_runner/`](../lib/agent_runner/__init__.py): shared runtime library (package; public API in `__init__.py`).
 - [`../lib/slack_format.py`](../lib/slack_format.py): Slack Block Kit formatting helpers.
-- [`../lib/batman.py`](../lib/batman.py): multi-repo bundle primitives.
+- [`../lib/architect_lifecycle.py`](../lib/architect_lifecycle.py): multi-repo bundle primitives.
 - [`../bin/`](../bin/): Alfred CLI, init wizard, doctor, deploy helpers, and reference agent runners.
 - [`../launchd/`](../launchd/): plist template, renderer, and `agents.conf.example`.
 - [`../examples/`](../examples/): minimal example agents, label-state CLI, and pre-push hook.

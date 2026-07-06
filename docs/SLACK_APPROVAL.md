@@ -23,7 +23,7 @@ Reactions beat reply-text on two axes that matter for autonomous fleets:
   type "approved" every time adds friction.
 
 If you need richer feedback than approve/reject, use the plan thread as
-the planning surface. Alfred now does this for Batman plans: the reaction
+the planning surface. Alfred now does this for Architect plans: the reaction
 remains the hard gate, while trusted thread replies are acknowledged live
 with a revised execution preview and then carried into child issues on
 approval. Batman understands common planning commands in those replies:

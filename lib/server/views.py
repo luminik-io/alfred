@@ -5,8 +5,8 @@ Three views:
 * ``GET /``                  Fleet status (HTMX auto-refresh every 10s).
 * ``GET /firings``           Recent firings (optionally filtered by codename).
 * ``GET /firings/{id}``      Single firing detail.
-* ``GET /plans``             Saved Batman plans.
-* ``GET /plans/{id}``        Single saved Batman plan.
+* ``GET /plans``             Saved Architect plans.
+* ``GET /plans/{id}``        Single saved architect plan.
 * ``GET/POST /planning``     Local issue/spec readiness helper.
 
 Two HTMX partials live behind the same URLs via the ``HX-Request`` header,
@@ -403,7 +403,7 @@ def register_routes(app: FastAPI) -> None:
         """Operator queue control: assign, arm, hold, or close an issue.
 
         Body: ``{"repo": "owner/repo", "number": 12, "action": "assign"|"queue"|"hold"|"done"}``.
-        ``assign`` chooses Batman or Lucius and labels the issue for that lane;
+        ``assign`` chooses architect or Lucius and labels the issue for that lane;
         callers may pass ``target_agent`` / ``agent`` as ``batman`` or ``lucius``
         to override the heuristic without bypassing safety gates;
         ``queue`` labels the issue ``agent:implement``; ``hold`` labels it
@@ -1079,11 +1079,11 @@ def register_routes(app: FastAPI) -> None:
 
     @app.post("/api/plans/{plan_id}/decision", response_class=JSONResponse)
     async def api_plan_decision(request: Request, plan_id: str) -> JSONResponse:
-        """Record an in-app go/no-go on a genuine Batman plan.
+        """Record an in-app go/no-go on a genuine architect plan.
 
         Writes the same ``{issue_num}.approved`` / ``.rejected`` marker
-        Batman's approval gate watches (see ``lib.batman``), so the operator
-        can approve or decline without a Slack round-trip and Batman consumes
+        the architect's approval gate watches (see ``lib.architect_lifecycle``), so the operator
+        can approve or decline without a Slack round-trip and architect consumes
         it through the real go/no-go path. Token-gated via
         ``_authorized_mutation`` and same-origin so a
         drive-by localhost page cannot arm or stop work on the operator's
@@ -1105,7 +1105,7 @@ def register_routes(app: FastAPI) -> None:
             return JSONResponse({"error": "plan not found"}, status_code=404)
         if plan.source != "architect":
             return JSONResponse(
-                {"error": "only Batman go/no-go plans can be decided here"},
+                {"error": "only architect go/no-go plans can be decided here"},
                 status_code=400,
             )
         issue_num = issue_num_from_plan_id(plan.plan_id)

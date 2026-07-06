@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lucius - feature dev agent. Picks an issue and delegates to the configured engine."""
+"""Senior-dev agent. Picks an issue and delegates to the configured engine."""
 
 from __future__ import annotations
 
@@ -94,7 +94,7 @@ if "--dry-run" in sys.argv:
 # runtime without touching the source. Slack messages use AGENT.title() so a
 # renamed agent renders cleanly.
 AGENT = os.environ.get("AGENT_CODENAME", "senior-dev")
-LUCIUS_ENGINE = agent_engine(AGENT, default="hybrid")
+SENIOR_DEV_ENGINE = agent_engine(AGENT, default="hybrid")
 DEPENDENCY_WARNING_LEDGER = ALFRED_HOME / "state" / AGENT / "dependency-lookup-warnings.json"
 DEPENDENCY_WARNING_TTL_SECONDS = int(os.environ.get("ALFRED_DEPENDENCY_WARNING_TTL_S", "21600"))
 PROMPT_PATH = ALFRED_HOME / "prompts" / f"{AGENT}.md"
@@ -110,26 +110,25 @@ LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 # fleet without editing source. Empty list = idle exit. In dry-run with nothing
 # configured, fall back to a clearly-fake repo so the narrated lifecycle has a
 # target to work against.
-# Keyed off the RESOLVED codename so an operator who renames this agent via
-# AGENT_CODENAME reads the same ALFRED_<CHOSEN>_REPOS key that alfred-init wrote.
-# The default-slug key stays as a legacy fallback for configs written earlier.
-LUCIUS_REPOS = agent_repos(AGENT, default_env="ALFRED_SENIOR_DEV_REPOS")
-if not LUCIUS_REPOS and is_dry_run():
-    LUCIUS_REPOS = ["dry-run-repo"]
+# Keyed off the runtime role slug. Themes and custom visible names do not change
+# the machine identity or env-var contract.
+SENIOR_DEV_REPOS = agent_repos(AGENT)
+if not SENIOR_DEV_REPOS and is_dry_run():
+    SENIOR_DEV_REPOS = ["dry-run-repo"]
 
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
-    bins=[*engine_preflight_bins(LUCIUS_ENGINE), "gh", "git"],
+    bins=[*engine_preflight_bins(SENIOR_DEV_ENGINE), "gh", "git"],
     require_gh_auth=True,
     # Repo dirs are resolved by name under WORKSPACE; absent dirs fail preflight.
-    require_workspace_repos=LUCIUS_REPOS,
+    require_workspace_repos=SENIOR_DEV_REPOS,
 )
 
 # Daily turn cap before auto-pausing the launchd agent. Override via env var.
 DAILY_TURN_CAP = int(os.environ.get("ALFRED_SENIOR_DEV_TURN_CAP", "5000"))
 PRE_PUSH_TIMEOUT_SECONDS = int(os.environ.get("ALFRED_PRE_PUSH_TIMEOUT_S", "900"))
-LUCIUS_WORKTREE_BASE_REF = "origin/main"
-LUCIUS_PR_BASE_BRANCH = "main"
+SENIOR_DEV_WORKTREE_BASE_REF = "origin/main"
+SENIOR_DEV_PR_BASE_BRANCH = "main"
 NODE_LOCKFILES = (
     "package-lock.json",
     "npm-shrinkwrap.json",
@@ -220,7 +219,7 @@ def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
             user_cfg = {}
 
     out: dict[str, str] = {}
-    for repo in LUCIUS_REPOS:
+    for repo in SENIOR_DEV_REPOS:
         if repo in user_cfg:
             out[repo] = user_cfg[repo]
             continue
@@ -333,7 +332,7 @@ def _load_preview_config(agent_codename: str) -> dict[str, PreviewConfig]:
         except (OSError, tomllib.TOMLDecodeError):
             raw = {}
     out: dict[str, PreviewConfig] = {}
-    for repo in LUCIUS_REPOS:
+    for repo in SENIOR_DEV_REPOS:
         out[repo] = load_preview_config(raw.get(repo))
     return out
 
@@ -443,7 +442,7 @@ def _build_self_assessment(
     try:
         result, _engine = invoke_agent_engine(
             prompt,
-            engine=LUCIUS_ENGINE,
+            engine=SENIOR_DEV_ENGINE,
             claude_fn=claude_invoke_streaming,
             codex_fn=codex_invoke,
             workdir=wt,
@@ -650,7 +649,7 @@ def _is_unmodified_auto_seed(path: Path) -> bool:
 
 
 def _operator_prompt_guidance(repo: str, issue: dict, wt: Path, branch: str) -> str:
-    """Load operator-supplied Lucius guidance seeded by alfred-init, if present.
+    """Load operator-supplied senior-dev guidance seeded by alfred-init, if present.
 
     Skips an unmodified auto-seeded template (deferring to in-code guidance);
     only an operator-edited prompt is injected.
@@ -664,7 +663,7 @@ def _operator_prompt_guidance(repo: str, issue: dict, wt: Path, branch: str) -> 
             "GH_ORG": GH_ORG,
             "ALFRED_HOME": str(ALFRED_HOME),
             "WORKSPACE_ROOT": str(WORKSPACE.parent),
-            "FEATURE_DEV_REPOS": ",".join(LUCIUS_REPOS),
+            "FEATURE_DEV_REPOS": ",".join(SENIOR_DEV_REPOS),
             "REPO_SLUG": repo,
             "ISSUE_NUMBER": str(issue["number"]),
             "WORKTREE": str(wt),
@@ -823,10 +822,10 @@ def pick_issue() -> tuple[str, dict] | tuple[None, None]:
     stubbed side effects.
     """
     if is_dry_run():
-        repo = LUCIUS_REPOS[0]
+        repo = SENIOR_DEV_REPOS[0]
         dry_run_log(
             "pick",
-            f"would `gh issue list --label agent:implement` across {LUCIUS_REPOS}; "
+            f"would `gh issue list --label agent:implement` across {SENIOR_DEV_REPOS}; "
             f"using a synthetic issue in {repo} instead",
         )
         issue = {
@@ -845,7 +844,7 @@ def pick_issue() -> tuple[str, dict] | tuple[None, None]:
         }
         return repo, issue
 
-    for repo in LUCIUS_REPOS:
+    for repo in SENIOR_DEV_REPOS:
         if is_repo_paused(repo):
             continue
         issues = gh_json(
@@ -996,7 +995,7 @@ def release_wip_salvage(repo: str, issue_num: int, firing_id: str, pr_url: str |
     )
 
 
-def _commits_ahead_count(wt: Path, *, base_ref: str = LUCIUS_WORKTREE_BASE_REF) -> int:
+def _commits_ahead_count(wt: Path, *, base_ref: str = SENIOR_DEV_WORKTREE_BASE_REF) -> int:
     res = run(
         ["git", "rev-list", "--count", f"{base_ref}..HEAD"],
         cwd=str(wt),
@@ -1022,7 +1021,7 @@ def _remote_default_ref(wt: Path) -> str:
     return "origin/main"
 
 
-def _merge_base_ref(wt: Path, *, base_ref: str = LUCIUS_WORKTREE_BASE_REF) -> str:
+def _merge_base_ref(wt: Path, *, base_ref: str = SENIOR_DEV_WORKTREE_BASE_REF) -> str:
     res = run(["git", "merge-base", base_ref, "HEAD"], cwd=str(wt), timeout=10)
     merge_base = (res.stdout or "").strip()
     if res.returncode == 0 and merge_base:
@@ -1288,7 +1287,7 @@ def _push_or_preserve(
             return False
 
     if run_workflow_validation:
-        workflow_validation = validate_changed_workflows(wt, base=LUCIUS_WORKTREE_BASE_REF)
+        workflow_validation = validate_changed_workflows(wt, base=SENIOR_DEV_WORKTREE_BASE_REF)
         if not workflow_validation.ok:
             recovery_ref = create_recovery_ref(wt, branch=branch)
             if release_on_failure:
@@ -1393,7 +1392,7 @@ def main() -> int:
             f"{AGENT} dry-run firing, no LLM, no spend, no gh/slack/git side effects",
         )
 
-    if not LUCIUS_REPOS and not doctor_requested():
+    if not SENIOR_DEV_REPOS and not doctor_requested():
         print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_SENIOR_DEV_REPOS)")
         return 0
 
@@ -1545,7 +1544,7 @@ def main() -> int:
 
     # Per-firing turn cap intentionally unset by default. The previous
     # hard ceiling on ``max_turns`` could produce no-output runs on
-    # cross-file work where Lucius needs to read context, edit, and run
+    # cross-file work where senior-dev needs to read context, edit, and run
     # pre-push checks. The wall-clock ``timeout`` below is the only real
     # ceiling now; ``claude_invoke_streaming`` translates a ``None`` cap to
     # ``--max-turns _CLAUDE_UNLIMITED_TURNS`` so the CLI's hidden 40-
@@ -1562,7 +1561,7 @@ def main() -> int:
 
     result, engine_used = invoke_agent_engine(
         prompt,
-        engine=LUCIUS_ENGINE,
+        engine=SENIOR_DEV_ENGINE,
         claude_fn=claude_invoke_streaming,
         codex_fn=codex_invoke,
         workdir=wt,
@@ -1602,7 +1601,7 @@ def main() -> int:
 
     # Branch on result
     if result.subtype == "success":
-        base_ref = LUCIUS_WORKTREE_BASE_REF
+        base_ref = SENIOR_DEV_WORKTREE_BASE_REF
         # Did the engine commit?
         new_commits = run(
             ["git", "rev-list", f"{base_ref}..HEAD"], cwd=str(wt), timeout=10
@@ -1725,7 +1724,7 @@ Generated by Alfred
                     title=f"DRAFT: WIP partial implementation of #{issue_num}",
                     body_file=body_file,
                     head=branch,
-                    base=LUCIUS_PR_BASE_BRANCH,
+                    base=SENIOR_DEV_PR_BASE_BRANCH,
                     labels=["agent:authored", "do-not-review"],
                     draft=True,
                 )
@@ -1821,7 +1820,7 @@ Generated by Alfred
             title=commit_subject,
             body_file=body_file,
             head=branch,
-            base=LUCIUS_PR_BASE_BRANCH,
+            base=SENIOR_DEV_PR_BASE_BRANCH,
             labels=["agent:authored"],
         )
         remove_worktree(local_repo_dir(repo), wt)

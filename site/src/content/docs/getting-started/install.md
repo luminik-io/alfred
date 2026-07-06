@@ -99,8 +99,8 @@ writes `launchd/agents.conf`, writes the shared scheduler manifest, updates
 
 The `architect` role is included in the full fleet and shows as Batman in the
 default theme. It only acts on approved `agent:large-feature` parent issues after
-`alfred batman setup` writes the parent planning repo, approval channel, trusted
-operator settings, and `BATMAN_AUTO_EXECUTE=approval-gate`; then explicitly arm
+`alfred architect setup` writes the parent planning repo, approval channel, trusted
+operator settings, and `ARCHITECT_AUTO_EXECUTE=approval-gate`; then explicitly arm
 the runner with `alfred enable architect`.
 
 For a framework-only install with no agents configured, run `bash deploy.sh &&

@@ -79,7 +79,7 @@ function snapshot(overrides: Partial<Snapshot> = {}): Snapshot {
 
 function agent(overrides: Partial<AgentSummary> = {}): AgentSummary {
   return {
-    codename: "lucius",
+    codename: "senior-dev",
     last_firing_id: null,
     last_run_at: null,
     status: "idle",
@@ -95,7 +95,7 @@ function agent(overrides: Partial<AgentSummary> = {}): AgentSummary {
 function firing(overrides: Partial<FiringRecord> = {}): FiringRecord {
   return {
     firing_id: "f1",
-    codename: "lucius",
+    codename: "senior-dev",
     started_at: "2026-06-02T11:00:00Z",
     ended_at: null,
     status: "running",
@@ -210,7 +210,7 @@ describe("ReviewView", () => {
             raw_schedule: "cron:2:00",
           },
           {
-            codename: "lucius",
+            codename: "senior-dev",
             role: "Single-repo engineer",
             kind: "interval",
             cadence: "every 10m",
@@ -249,7 +249,7 @@ describe("ReviewView", () => {
               number: 7,
               title: "feat: add CSV export",
               url: "https://github.com/your-org/api/pull/7",
-              author: "lucius",
+              author: "senior-dev",
               kind: "pr",
               timestamp: "2026-06-02T11:00:00Z",
               age_days: 0,
@@ -301,7 +301,7 @@ describe("ReviewView", () => {
               number: 7,
               title: "feat: add CSV export",
               url: "https://github.com/your-org/api/pull/7",
-              author: "lucius",
+              author: "senior-dev",
               kind: "pr",
               timestamp: "2026-06-02T11:00:00Z",
               age_days: 0,
@@ -321,16 +321,16 @@ describe("ReviewView", () => {
   });
 
   it("keeps the runtime field for the un-overridden part of a partial custom theme", () => {
-    // Operator customizes only Lucius's role, not the name. The name must keep
+    // Operator customizes only senior-dev's role, not the name. The name must keep
     // the runtime/server value ("Lux Fox"); only the role takes the custom label.
     const { container } = renderReview({
       rosterTheme: "custom",
-      customNames: { names: {}, roles: { lucius: "Build lead" } },
+      customNames: { names: {}, roles: { "senior-dev": "Build lead" } },
       snapshot: snapshot({
         status: {
           agents: [
             agent({
-              codename: "lucius",
+              codename: "senior-dev",
               display_name: "Lux Fox",
               role_title: "Senior Developer",
               purpose: "Ships scoped implementation issues as pull requests.",
@@ -355,12 +355,12 @@ describe("ReviewView", () => {
     // runtime/server value instead of being overwritten.
     const { container } = renderReview({
       rosterTheme: "custom",
-      customNames: { names: { lucius: "Lux Fox" }, roles: {} },
+      customNames: { names: { "senior-dev": "Lux Fox" }, roles: {} },
       snapshot: snapshot({
         status: {
           agents: [
             agent({
-              codename: "lucius",
+              codename: "senior-dev",
               display_name: "Lucius",
               role_title: "Senior Developer",
               purpose: "Ships scoped implementation issues as pull requests.",
@@ -476,7 +476,7 @@ describe("ReviewView", () => {
               number: 12,
               title: "Add billing report",
               url: "https://github.com/your-org/api/issues/12",
-              author: "batman",
+              author: "architect",
               kind: "issue",
               timestamp: "2026-06-02T11:45:00Z",
               age_days: 0,
@@ -491,7 +491,7 @@ describe("ReviewView", () => {
               number: 7,
               title: "feat: add CSV export",
               url: "https://github.com/your-org/api/pull/7",
-              author: "lucius",
+              author: "senior-dev",
               kind: "pr",
               timestamp: "2026-06-02T11:00:00Z",
               age_days: 0,
@@ -522,7 +522,7 @@ describe("ReviewView", () => {
               number: 12,
               title: "Add billing report",
               url: "https://github.com/your-org/api/issues/12",
-              author: "batman",
+              author: "architect",
               kind: "issue",
               timestamp: "2026-06-02T11:45:00Z",
               age_days: 0,
@@ -548,7 +548,7 @@ describe("ReviewView", () => {
       number: index + 1,
       title: `Queued request ${index + 1}`,
       url: `https://github.com/your-org/api/issues/${index + 1}`,
-      author: "batman",
+      author: "architect",
       kind: "issue",
       timestamp: "2026-06-02T11:45:00Z",
       age_days: 0,
@@ -579,7 +579,7 @@ describe("ReviewView", () => {
       number: index + 1,
       title: `Queued request ${index + 1}`,
       url: `https://github.com/your-org/api/issues/${index + 1}`,
-      author: "batman",
+      author: "architect",
       kind: "issue",
       timestamp: "2026-06-02T11:45:00Z",
       age_days: 0,
@@ -590,8 +590,8 @@ describe("ReviewView", () => {
       snapshot: snapshot({
         status: {
           agents: [
-            agent({ codename: "batman", paused: true, paused_since: "2026-06-01T00:00:00Z" }),
-            agent({ codename: "lucius", paused: true, paused_since: "2026-06-01T00:00:00Z" }),
+            agent({ codename: "architect", paused: true, paused_since: "2026-06-01T00:00:00Z" }),
+            agent({ codename: "senior-dev", paused: true, paused_since: "2026-06-01T00:00:00Z" }),
             agent({ codename: "drake", paused: true, paused_since: "2026-06-01T00:00:00Z" }),
           ],
           total_today: 0,
@@ -621,8 +621,8 @@ describe("ReviewView", () => {
       snapshot: snapshot({
         status: {
           agents: [
-            agent({ codename: "batman", paused: true }),
-            agent({ codename: "lucius", paused: true }),
+            agent({ codename: "architect", paused: true }),
+            agent({ codename: "senior-dev", paused: true }),
           ],
           total_today: 0,
           reliability: { status: "ok" },
@@ -637,7 +637,7 @@ describe("ReviewView", () => {
               number: 5,
               title: "Stale in-flight PR",
               url: "https://github.com/your-org/api/pull/5",
-              author: "lucius",
+              author: "senior-dev",
               kind: "pr",
               timestamp: "2026-06-01T10:00:00Z",
               age_days: 1,
@@ -662,8 +662,8 @@ describe("ReviewView", () => {
       snapshot: snapshot({
         status: {
           agents: [
-            agent({ codename: "batman", paused: false }),
-            agent({ codename: "lucius", paused: false }),
+            agent({ codename: "architect", paused: false }),
+            agent({ codename: "senior-dev", paused: false }),
             agent({ codename: "drake", paused: true }),
           ],
           total_today: 0,
@@ -678,7 +678,7 @@ describe("ReviewView", () => {
               number: 12,
               title: "Add billing report",
               url: "https://github.com/your-org/api/issues/12",
-              author: "batman",
+              author: "architect",
               kind: "issue",
               timestamp: "2026-06-02T11:45:00Z",
               age_days: 0,

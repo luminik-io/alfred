@@ -26,7 +26,7 @@ Design notes:
   is hidden in module state.
 - **DRY**: bundle-label constants come from ``lib.labels`` when available
   (the label-state port will introduce it); falls back to the existing
-  constants in ``lib.batman`` so the module is usable today.
+  constants in ``lib.architect_lifecycle`` so the module is usable today.
 
 The planner does not call gh, claude, or codex itself. It produces a
 ``Plan`` - a list of ``SpecBundle`` candidates - that ``bin/spec-planner.py``
@@ -44,17 +44,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-# Pull bundle-label constants from the canonical source. ``lib.labels`` is
-# the target site once the label-state port lands; until then ``lib.batman``
-# already owns the same constants and ships with this repo.
 try:  # pragma: no cover - import wiring only
-    # labels.py canonicalises this as ``LARGE_FEATURE``; batman.py kept the
-    # earlier ``LARGE_FEATURE_LABEL`` name and is the fallback path below.
-    # Aliasing keeps the rest of this module readable under either import.
     from labels import BUNDLE_LABEL_PREFIX
     from labels import LARGE_FEATURE as LARGE_FEATURE_LABEL
-except ImportError:  # pragma: no cover - fallback path
-    from batman import BUNDLE_LABEL_PREFIX, LARGE_FEATURE_LABEL
+except ImportError:  # pragma: no cover - source-layout import fallback
+    from architect_lifecycle import BUNDLE_LABEL_PREFIX, LARGE_FEATURE_LABEL
 
 log = logging.getLogger(__name__)
 
@@ -66,25 +60,23 @@ log = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class PlannerConfig:
-    """Operator-supplied configuration for one damian firing.
+    """Operator-supplied configuration for one spec-planner firing.
 
     All knobs are env-driven so a launchd / systemd unit can configure
     the planner without a config file. The canonical keys are slug-based
     (``ALFRED_SPEC_PLANNER_*``, matching what ``alfred-init`` writes for the
-    ``spec-planner`` role); the Batman-cast ``DAMIAN_*`` keys stay as legacy
-    fallbacks so a config written before the rename keeps working:
+    ``spec-planner`` role):
 
-    - ``ALFRED_SPEC_PLANNER_REPOS`` (legacy ``DAMIAN_SCAN_REPOS``):
+    - ``ALFRED_SPEC_PLANNER_REPOS``:
       comma-separated repo slugs the planner is allowed to file bundles
-      into. Empty means the planner exits as a no-op (no implicit fallback
+      into. Empty means the planner exits as a no-op (no implicit default
       to a hardcoded list).
-    - ``ALFRED_SPEC_PLANNER_SPEC_DIR`` (legacy ``DAMIAN_SPEC_DIR``):
+    - ``ALFRED_SPEC_PLANNER_SPEC_DIR``:
       directory the default markdown parser walks to discover specs.
       Resolved relative to ``WORKSPACE_ROOT`` when relative, used as-is
       when absolute.
-    - ``ALFRED_SPEC_PLANNER_DAILY_BUNDLE_CAP`` (legacy
-      ``DAMIAN_DAILY_BUNDLE_CAP``): max bundles the planner may emit per
-      firing. Read by the runner; surfaced here so dry-runs match the
+    - ``ALFRED_SPEC_PLANNER_DAILY_BUNDLE_CAP``: max bundles the planner may
+      emit per firing. Read by the runner; surfaced here so dry-runs match the
       runtime ceiling.
     """
 
@@ -96,22 +88,13 @@ class PlannerConfig:
     def from_env(cls, env: dict[str, str] | None = None) -> PlannerConfig:
         environ = env if env is not None else os.environ
 
-        def _first(*names: str) -> str:
-            # Prefer the canonical slug key; fall back to the legacy DAMIAN_ key
-            # so pre-rename configs keep scoping the agent.
-            for name in names:
-                value = (environ.get(name) or "").strip()
-                if value:
-                    return value
-            return ""
-
-        raw_repos = _first("ALFRED_SPEC_PLANNER_REPOS", "DAMIAN_SCAN_REPOS")
+        raw_repos = (environ.get("ALFRED_SPEC_PLANNER_REPOS") or "").strip()
         repos = tuple(token.strip() for token in raw_repos.split(",") if token.strip())
 
-        raw_spec = _first("ALFRED_SPEC_PLANNER_SPEC_DIR", "DAMIAN_SPEC_DIR")
+        raw_spec = (environ.get("ALFRED_SPEC_PLANNER_SPEC_DIR") or "").strip()
         spec_dir: Path | None = Path(raw_spec).expanduser() if raw_spec else None
 
-        cap_raw = _first("ALFRED_SPEC_PLANNER_DAILY_BUNDLE_CAP", "DAMIAN_DAILY_BUNDLE_CAP")
+        cap_raw = (environ.get("ALFRED_SPEC_PLANNER_DAILY_BUNDLE_CAP") or "").strip()
         try:
             cap = int(cap_raw) if cap_raw else 3
         except ValueError:
@@ -176,7 +159,7 @@ class Plan:
     ``bundles`` are the candidates that survived the multi-repo gate and
     the daily cap. ``rejected_single_repo`` is the count of specs that
     parsed cleanly but only touched one in-scope repo - those belong to
-    drake, not damian, and the runner logs the count so the operator
+    drake, not spec-planner, and the runner logs the count so the operator
     can see whether the planner saw any spec material at all.
     """
 
@@ -274,7 +257,7 @@ class MarkdownSpecParser:
         try:
             text = spec_path.read_text(encoding="utf-8")
         except OSError as exc:
-            log.warning("damian: failed to read %s: %s", spec_path, exc)
+            log.warning("spec-planner: failed to read %s: %s", spec_path, exc)
             return None
 
         title = self._extract_title(text) or spec_path.stem
@@ -434,10 +417,10 @@ class SpecBundlePlanner:
         """
         plan = Plan()
         if spec_dir is None:
-            log.info("damian: no spec dir configured; emitting empty plan")
+            log.info("spec-planner: no spec dir configured; emitting empty plan")
             return plan
         if not self.scan_repos:
-            log.info("damian: DAMIAN_SCAN_REPOS empty; emitting empty plan")
+            log.info("spec-planner: ALFRED_SPEC_PLANNER_REPOS empty; emitting empty plan")
             return plan
 
         open_slugs = self._fetch_open_bundle_slugs()
@@ -455,7 +438,7 @@ class SpecBundlePlanner:
                 continue
             bundle.children = in_scope
             if bundle.slug in open_slugs:
-                # Already filed; the runner-level dedup gate keeps damian
+                # Already filed; the runner-level dedup gate keeps spec-planner
                 # idempotent across firings.
                 continue
             candidates.append(bundle)
@@ -497,7 +480,7 @@ class SpecBundlePlanner:
                     ],
                 )
             except Exception as exc:
-                log.warning("damian: gh open-bundle scan failed for %s: %s", full, exc)
+                log.warning("spec-planner: gh open-bundle scan failed for %s: %s", full, exc)
                 continue
             for row in rows or []:
                 for label in row.get("labels") or []:

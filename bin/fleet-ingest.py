@@ -19,11 +19,11 @@ advances after a record is persisted.
 
 Outbox record shape (JSON per line)::
 
-    {"event": "reflect", "codename": "lucius", "repo": "your-org/api",
+    {"event": "reflect", "codename": "senior-dev", "repo": "your-org/api",
      "body": "...", "tags": ["graphql"], "firing_id": "01HZ...",
      "severity": "info", "ts": "2026-05-23T12:00:00Z"}
 
-    {"event": "firing_log", "firing_id": "01HZ...", "codename": "lucius",
+    {"event": "firing_log", "firing_id": "01HZ...", "codename": "senior-dev",
      "repo": "your-org/api", "status": "ok", "summary": "...",
      "started_at": "...", "finished_at": "...", "cost_cents": 12,
      "pr_url": "...", "sentinel": null}
@@ -31,13 +31,13 @@ Outbox record shape (JSON per line)::
     {"event": "note_repo", "repo": "your-org/api", "body": "..."}
 
     {"event": "file_touch", "repo": "your-org/api", "path": "src/api.py",
-     "codename": "lucius", "firing_id": "01HZ...", "pr_url": "...",
+     "codename": "senior-dev", "firing_id": "01HZ...", "pr_url": "...",
      "change_type": "modified", "ts": "2026-05-23T12:00:00Z"}
 
-    {"event": "memory_candidate", "codename": "lucius", "repo": "your-org/api",
+    {"event": "memory_candidate", "codename": "senior-dev", "repo": "your-org/api",
      "body": "...", "tags": ["tests"], "source": "import", "confidence": 0.8}
 
-    {"event": "failure_event", "codename": "huntress", "repo": "your-org/web",
+    {"event": "failure_event", "codename": "e2e-runner", "repo": "your-org/web",
      "firing_id": "01HZ...", "subtype": "error_timeout", "summary": "...",
      "engine": "claude", "severity": "warning"}
 

@@ -19,12 +19,12 @@ function input(codename: string, role: WorkflowRole): WorkflowNodeInput {
 }
 
 const ROSTER: WorkflowNodeInput[] = [
-  input("robin", "triage"),
-  input("batman", "architect"),
-  input("lucius", "senior-dev"),
-  input("rasalghul", "reviewer"),
+  input("triage", "triage"),
+  input("architect", "architect"),
+  input("senior-dev", "senior-dev"),
+  input("reviewer", "reviewer"),
   input("automerge", "ship"),
-  input("gordon", "ops"),
+  input("ops-watch", "ops"),
 ];
 
 describe("WorkflowGraph", () => {

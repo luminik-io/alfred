@@ -25,7 +25,7 @@ Design contract (mirrors ``issue_summary`` and ``planning_assistant``)
   testable without the network.
 - **Prompt-injection resistant.** The untrusted Slack text is wrapped in a
   hashed sentinel boundary (mirrors ``compose_converse.format_untrusted_
-  transcript`` and Lucius's ``format_untrusted_issue_payload``) so a message
+  transcript`` and the senior-dev ``format_untrusted_issue_payload``) so a message
   cannot forge the boundary and override the router's rules.
 - **On by default.** Slack is Alfred's default interface, so
   ``default_intent_engine_invoke`` resolves an engine-backed invoker unless the
@@ -561,43 +561,58 @@ _CURATED_SYNONYMS: dict[str, tuple[str, ...]] = {
 
 _CODENAME_RE = re.compile(r"^(?!-)[A-Za-z0-9._-]{1,64}$")
 
-# Keyed by the canonical role slug (the runnable codename). The Batman-cast
-# names ("lucius", "batman", "ra's al ghul", ...) are kept as aliases so
-# operator prose like "run lucius" or "why did batman fail" still resolves to
-# the slug that names the runner.
+# Keyed by the canonical role slug (the runnable codename). Default-theme
+# display names are accepted as human-facing aliases, but the resolved command
+# always remains the role slug.
 _AGENT_ALIASES: dict[str, tuple[str, ...]] = {
     "agent-cleanup": ("agent-cleanup",),
     "alfred-nightly": ("alfred-nightly", "nightly"),
-    "architect": ("architect", "batman", "bruce"),
+    "architect": (
+        "architect",
+        "batman",
+        "bruce",
+        "bruce wayne",
+        "large-feature architect",
+        "multi-repo architect",
+    ),
     "automerge": ("automerge", "auto merge"),
     "brand-mention-scanner": ("brand-mention-scanner", "brand mention scanner"),
     "cleanup": ("cleanup", "janitor"),
     "code-map-refresh": ("code-map-refresh", "code map refresh"),
     "cold-backup": ("cold-backup", "cold backup"),
     "content-drift": ("content-drift", "content drift"),
-    "e2e-runner": ("e2e-runner", "huntress", "e2e", "smoke runner"),
-    "fixer": ("fixer", "nightwing", "dick"),
+    "e2e-runner": ("e2e-runner", "e2e", "smoke runner"),
+    "fixer": ("fixer", "nightwing", "review fixer", "review feedback"),
     "fleet-doctor": ("fleet-doctor", "fleet doctor", "doctor"),
     "fleet-recap-evening": ("fleet-recap-evening", "evening recap"),
     "fleet-recap-morning": ("fleet-recap-morning", "morning recap"),
     "memory-harvest": ("memory-harvest", "memory harvest"),
     "morning-brief": ("morning-brief", "morning brief"),
-    "ops-watch": ("ops-watch", "gordon"),
-    "planner": ("planner", "drake"),
+    "ops-watch": ("gordon", "ops-watch", "ops watch"),
+    "planner": ("drake", "issue planner", "planner", "tim drake"),
     "reviewer": (
         "reviewer",
-        "rasalghul",
+        "review agent",
+        "code reviewer",
         "ras al ghul",
+        "ras-al-ghul",
+        "rasalghul",
         "ra's al ghul",
-        "ra's",
-        "ras",
     ),
-    "senior-dev": ("senior-dev", "lucius", "lucius fox", "senior dev"),
+    "senior-dev": (
+        "feature dev",
+        "implementation agent",
+        "lucius",
+        "lucius fox",
+        "senior-dev",
+        "senior dev",
+        "senior developer",
+    ),
     "shipped-summary-daily": ("shipped-summary-daily", "daily shipped summary"),
     "shipped-summary-weekly": ("shipped-summary-weekly", "weekly shipped summary"),
-    "spec-planner": ("spec-planner", "damian", "damian wayne"),
-    "test-engineer": ("test-engineer", "bane"),
-    "triage": ("triage", "robin"),
+    "spec-planner": ("damian", "damian wayne", "spec-planner", "spec planner"),
+    "test-engineer": ("bane", "test-engineer", "test engineer", "test agent"),
+    "triage": ("issue triage", "robin", "triage"),
 }
 
 _KNOWN_AGENT_CODENAMES = frozenset(_AGENT_ALIASES)
@@ -659,13 +674,14 @@ def resolve_agent_codename(
 
 def resolve_assignment_agent(text: str, *, model_agent: str = "") -> tuple[str, str]:
     """Resolve the requested issue-assignment lane, if the operator named one."""
-    # Keyed by the canonical assignment-lane slug; Batman-cast names stay as
-    # aliases so "assign to Batman" / "give it to Lucius" still resolves.
+    # Keyed by the canonical assignment-lane slug. Themed display names are
+    # accepted as input aliases, never as stored assignment targets.
     aliases = {
         "architect": (
             "architect",
             "batman",
             "bruce",
+            "bruce wayne",
             "large feature",
             "large-feature",
             "multi repo",
@@ -969,8 +985,8 @@ def classify_intent(
         clarification = clarify_for_mutating(action, repo, issue, candidates)
         if action == ACTION_ASSIGN and not clarification and unsupported_assignment_agent:
             clarification = (
-                "I can route GitHub issues to Batman · Architect or "
-                "Lucius · Senior Developer. Which lane should handle "
+                "I can route GitHub issues to `architect` or "
+                "`senior-dev`. Which lane should handle "
                 f"`{repo}#{issue}`?"
             )
         return Intent(
@@ -1051,8 +1067,8 @@ def clarify_for_agent_action(action: str, agent: str, schedule: str = "") -> str
             "`daily@09:00`, or `weekly@mon:09:00`."
         )
     return (
-        f"Which agent should I {verb}? You can say Batman, Lucius, Nightwing, "
-        "Bane, or another agent codename."
+        f"Which agent should I {verb}? You can say `architect`, `senior-dev`, "
+        "`fixer`, `test-engineer`, or another role slug."
     )
 
 
@@ -1084,7 +1100,7 @@ def build_intent_prompt(text: str, catalog: RepoCatalog) -> str:
         '"confidence": <0.0 to 1.0>}\n\n'
         "Action meanings:\n"
         "- queue_issue: arm an existing issue so the fleet may pick it up.\n"
-        "- assign_issue: choose Batman or Lucius for an existing issue, then "
+        "- assign_issue: choose architect or senior-dev for an existing issue, then "
         "label it for that lane.\n"
         "- hold_issue: take an existing issue out of the fleet's reach.\n"
         "- status_query: ask about fleet health / what is running. Read only.\n"
@@ -1107,7 +1123,7 @@ def build_intent_prompt(text: str, catalog: RepoCatalog) -> str:
         '"take this issue", "route this issue", or "give this to Alfred". '
         "Choose queue_issue only for explicit queue/arm wording. Choose "
         "run_agent only when the operator clearly asks to "
-        "start a named agent, such as Batman or Lucius. For schedule_agent, "
+        "start a named agent, such as architect or senior-dev. For schedule_agent, "
         "put a compact cadence in `schedule` such as `10m`, `2h`, "
         "`daily@09:00`, or `weekly@mon:09:00`; leave it empty if unclear. "
         "Never invent an issue number, repository, agent, or cadence. " + repo_hint + "\n\n"

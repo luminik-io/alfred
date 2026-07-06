@@ -69,10 +69,10 @@ def _render(tmp_path: Path, conf_text: str, env: dict[str, str] | None = None) -
 
 
 def test_render_emits_service_and_timer_pair(tmp_path):
-    conf = "my.fleet.lucius\tlucius.py\tinterval:600\tno\t\tSingle-repo feature engineer\n"
+    conf = "my.fleet.senior-dev\tsenior-dev.py\tinterval:600\tno\t\tSingle-repo feature engineer\n"
     out_dir = _render(tmp_path, conf)
-    assert (out_dir / "my.fleet.lucius.service").exists()
-    assert (out_dir / "my.fleet.lucius.timer").exists()
+    assert (out_dir / "my.fleet.senior-dev.service").exists()
+    assert (out_dir / "my.fleet.senior-dev.timer").exists()
 
 
 def test_render_interval_maps_to_onunitactivesec(tmp_path):
@@ -100,11 +100,11 @@ def test_render_weekly_cron_maps_to_oncalendar_with_weekday(tmp_path):
 
 
 def test_render_emits_alfred_role_env_when_role_column_set(tmp_path):
-    conf = "my.fleet.lucius\tlucius.py\tinterval:600\tno\t\tSingle-repo feature engineer\n"
+    conf = "my.fleet.senior-dev\tsenior-dev.py\tinterval:600\tno\t\tSingle-repo feature engineer\n"
     out_dir = _render(tmp_path, conf)
-    service = (out_dir / "my.fleet.lucius.service").read_text()
+    service = (out_dir / "my.fleet.senior-dev.service").read_text()
     # systemd Environment= line; the value is quoted because it has spaces.
-    assert 'Environment=ALFRED_LUCIUS_ROLE="Single-repo feature engineer"' in service
+    assert 'Environment=ALFRED_SENIOR_DEV_ROLE="Single-repo feature engineer"' in service
 
 
 def test_render_omits_role_block_when_column_empty(tmp_path):
@@ -123,10 +123,10 @@ def test_render_translates_dash_in_compound_codename(tmp_path):
 
 
 def test_render_invokes_agent_launch_and_sets_codename_env(tmp_path):
-    conf = "my.fleet.marshall\tlucius.py\tinterval:600\tno\t\tFeature dev\n"
+    conf = "my.fleet.marshall\tsenior-dev.py\tinterval:600\tno\t\tFeature dev\n"
     out_dir = _render(tmp_path, conf)
     service = (out_dir / "my.fleet.marshall.service").read_text()
-    assert "/agent-launch lucius.py" in service
+    assert "/agent-launch senior-dev.py" in service
     assert "Environment=AGENT_CODENAME=marshall" in service
     assert "Environment=LAUNCHD_LABEL=my.fleet.marshall" in service
 
@@ -159,7 +159,7 @@ def test_render_appends_enabled_custom_agents_from_manifest(tmp_path):
         ),
         encoding="utf-8",
     )
-    conf = "my.fleet.lucius\tlucius.py\tinterval:600\tno\t\tFeature dev\n"
+    conf = "my.fleet.senior-dev\tsenior-dev.py\tinterval:600\tno\t\tFeature dev\n"
 
     out_dir = _render(tmp_path, conf, env={"ALFRED_HOME": str(runtime)})
 
@@ -197,12 +197,12 @@ def test_render_skips_custom_agent_rows_that_collide_with_base_conf(tmp_path):
         ),
         encoding="utf-8",
     )
-    conf = "alfred.release-captain\tlucius.py\tinterval:600\tno\t\tFeature dev\n"
+    conf = "alfred.release-captain\tsenior-dev.py\tinterval:600\tno\t\tFeature dev\n"
 
     out_dir = _render(tmp_path, conf, env={"ALFRED_HOME": str(runtime)})
 
     service = (out_dir / "alfred.release-captain.service").read_text()
-    assert "/agent-launch lucius.py" in service
+    assert "/agent-launch senior-dev.py" in service
     assert "custom-agent.py" not in service
     assert len(list(out_dir.glob("alfred.release-captain.service"))) == 1
 
@@ -273,7 +273,7 @@ def test_render_fails_when_custom_agent_manifest_is_malformed(tmp_path):
     shutil.copy(SERVICE_TEMPLATE, work / "_template.service")
     shutil.copy(TIMER_TEMPLATE, work / "_template.timer")
     (launchd_dir / "agents.conf").write_text(
-        "my.fleet.lucius\tlucius.py\tinterval:600\tno\t\tFeature dev\n",
+        "my.fleet.senior-dev\tsenior-dev.py\tinterval:600\tno\t\tFeature dev\n",
         encoding="utf-8",
     )
     out_dir = tmp_path / "out"
@@ -370,9 +370,9 @@ def test_render_omits_java_home_when_needs_java_no(tmp_path):
 
 
 def test_render_substitutes_home_with_systemd_specifier(tmp_path):
-    conf = "my.fleet.lucius\tlucius.py\tinterval:600\tno\n"
+    conf = "my.fleet.senior-dev\tsenior-dev.py\tinterval:600\tno\n"
     out_dir = _render(tmp_path, conf)
-    service = (out_dir / "my.fleet.lucius.service").read_text()
+    service = (out_dir / "my.fleet.senior-dev.service").read_text()
     # The render host's literal $HOME is replaced with systemd's %h so the
     # units are operator-agnostic. The fake HOME must not leak into the unit.
     assert str(tmp_path / "fakehome") not in service

@@ -97,7 +97,7 @@ Subcommands today:
 The runner-level fleet gate file lives at
 ``$ALFRED_HOME/state/fleet/enabled.txt``. Listed codenames are enabled.
 Missing codenames fall back to each runner's default: stable agents are
-default-enabled, while opt-in agents such as Batman default to disabled
+default-enabled, while opt-in agents such as the architect default to disabled
 until explicitly enabled.
 
 Pure stdlib. The operator reads this file when something breaks; keep
@@ -329,11 +329,16 @@ def _agents_conf_path() -> Path:
     Prefers ``$ALFRED_HOME/launchd/agents.conf`` (deployed location);
     falls back to ``<repo>/launchd/agents.conf`` for in-checkout use.
     """
-    candidates = [
-        Path(os.environ.get("ALFRED_HOME", "")) / "launchd" / "agents.conf",
-        _HERE.parent / "launchd" / "agents.conf",
-        _HERE.parent / "launchd" / "agents.conf.example",
-    ]
+    configured_home = os.environ.get("ALFRED_HOME", "").strip()
+    candidates: list[Path] = []
+    if configured_home:
+        candidates.append(Path(configured_home) / "launchd" / "agents.conf")
+    candidates.extend(
+        [
+            _HERE.parent / "launchd" / "agents.conf",
+            _HERE.parent / "launchd" / "agents.conf.example",
+        ]
+    )
     for p in candidates:
         if p and p.exists():
             return p
@@ -346,7 +351,7 @@ def _parse_agents_conf(path: Path) -> list[dict[str, str]]:
     Each record is a dict with keys ``label, script, schedule, needs_java,
     log_stem, role, disabled``. Custom-agent manifest rows also include
     ``engine``. ``disabled`` is True when the conf line is commented out
-    (``#my.fleet.batman ...``).
+    (``#my.fleet.architect ...``).
     """
     out: list[dict[str, str]] = []
     lines = path.read_text().splitlines() if path.exists() else []
@@ -1176,7 +1181,7 @@ def cmd_telemetry_off(args: argparse.Namespace) -> int:
 
 # ----- scheduler-backed pause / resume / run -----
 #
-# alfred-os labels are operator-defined (``my.fleet.lucius``,
+# alfred-os labels are operator-defined (``my.fleet.senior-dev``,
 # ``alfred.cleanup``, ...); there is no fixed prefix to bolt a codename
 # onto. So pause/resume/run accept a codename and resolve it to the full
 # label via agents.conf. The scheduler module handles the launchd/systemd
@@ -1235,21 +1240,13 @@ def _record_map() -> dict[str, dict[str, str]]:
 
 
 def _resolve_label(name: str) -> str | None:
-    """Accept a codename, a Batman-cast alias, or a full label; return the label.
-
-    Canonical identities are role slugs, but the Batman-cast codenames survive as
-    aliases (see ``_normalize_agent_name``). Operator commands like ``alfred run
-    lucius`` must still resolve, so an alias is normalized to its slug before the
-    lookup. The raw name is tried first so a literal slug or full label keeps
-    working even if it is not in the alias table.
-    """
+    """Accept a role slug, active-theme display name, or full label."""
     mapping = _label_map()
     if name in mapping:
         return mapping[name]
     # Already a full label present in agents.conf?
     if name in mapping.values():
         return name
-    # Fall back to the Batman-cast alias -> slug map ("lucius" -> "senior-dev").
     normalized = _normalize_agent_name(name)
     if normalized != name and normalized in mapping:
         return mapping[normalized]
@@ -1485,32 +1482,38 @@ def cmd_dry_run(
         os.environ.update(previous_env)
 
 
+def _agent_name_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
+
+
+def _active_theme_agent_aliases() -> dict[str, str]:
+    try:
+        from roster_theme_store import BASE_THEME_NAMES, RosterThemeStore
+    except Exception:
+        return {}
+    try:
+        alfred_home = os.environ.get("ALFRED_HOME", "").strip()
+        state_root = (
+            Path(alfred_home).expanduser() / "state" if alfred_home else agent_runner.STATE_ROOT
+        )
+        state = RosterThemeStore.from_state_root(state_root).load()
+    except Exception:
+        return {}
+    out: dict[str, str] = {}
+    for codename in BASE_THEME_NAMES:
+        themed_name = state.themed_name_for(codename)
+        if themed_name:
+            out[_agent_name_key(themed_name)] = codename
+    return out
+
+
 def _normalize_agent_name(agent: str) -> str:
-    raw = agent.strip().lower()
-    # Canonical identities are role slugs. The Batman-cast codenames stay as
-    # aliases so operator muscle-memory ("run lucius", "dry-run batman") keeps
-    # resolving to the slug that names the runner module.
-    aliases = {
-        "review": "reviewer",
-        "reviewer": "reviewer",
-        "ras": "reviewer",
-        "ras-al-ghul": "reviewer",
-        "rasalghul": "reviewer",
-        "tim": "planner",
-        "tim-drake": "planner",
-        "drake": "planner",
-        "night-wing": "fixer",
-        "nightwing": "fixer",
-        "lucius": "senior-dev",
-        "batman": "architect",
-        "bruce": "architect",
-        "bane": "test-engineer",
-        "robin": "triage",
-        "huntress": "e2e-runner",
-        "gordon": "ops-watch",
-        "damian": "spec-planner",
-    }
-    return aliases.get(raw, raw)
+    raw = agent.strip()
+    slug = raw.lower()
+    if slug in DEFAULT_AGENT_CATALOG:
+        return slug
+    themed = _active_theme_agent_aliases().get(_agent_name_key(raw))
+    return themed or slug
 
 
 def _engine_state_file(agent: str) -> Path:
@@ -2056,7 +2059,7 @@ def _full_repo_arg(repo: str) -> str:
 
 def _fleet_repos_from_env() -> list[str]:
     """Collect repos from the fleet's comma-separated repo env vars."""
-    keys = sorted(k for k in os.environ if k.startswith("ALFRED_") and k.endswith("_REPOS"))
+    keys = [k for k in os.environ if k.startswith("ALFRED_") and k.endswith("_REPOS")]
     keys.extend(["LABEL_STATE_SWEEP_REPOS", "ALFRED_CLAIM_SWEEP_REPOS"])
     seen: set[str] = set()
     repos: list[str] = []
@@ -2596,9 +2599,9 @@ def cmd_setup_token(args: argparse.Namespace) -> int:
     return subprocess.run(cmd, check=False).returncode
 
 
-def cmd_batman_setup(args: argparse.Namespace) -> int:
-    """Forward to ``bin/alfred-batman-setup.py``."""
-    script = _HERE / "alfred-batman-setup.py"
+def cmd_architect_setup(args: argparse.Namespace) -> int:
+    """Forward to ``bin/alfred-architect-setup.py``."""
+    script = _HERE / "alfred-architect-setup.py"
     cmd = [sys.executable, str(script)]
     for attr, flag in (
         ("check_only", "--check-only"),
@@ -2832,7 +2835,7 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_doctor.add_argument(
         "--lifecycle",
         action="store_true",
-        help="run only the Batman lifecycle-path doctor",
+        help="run only the architect lifecycle-path doctor",
     )
     p_doctor.add_argument(
         "--deep",
@@ -2921,7 +2924,7 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     )
     p_setup_token.set_defaults(func=cmd_setup_token)
 
-    def add_batman_setup_args(parser: argparse.ArgumentParser) -> None:
+    def add_architect_setup_args(parser: argparse.ArgumentParser) -> None:
         parser.add_argument(
             "--check-only", action="store_true", help="report setup state without writing"
         )
@@ -2945,13 +2948,16 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
             "--operator-user-id", default="", help="Slack member id whose reactions count"
         )
         parser.add_argument(
-            "--slack-channel", default="", help="Slack channel name or id for Batman posts"
+            "--slack-channel", default="", help="Slack channel name or id for architect posts"
         )
         parser.add_argument(
-            "--parent-repo", default="", help="owner/repo that holds Batman parent issues"
+            "--parent-repo", default="", help="owner/repo that holds architect parent issues"
         )
         parser.add_argument(
-            "--mode", choices=["0", "approval-gate", "1"], default="", help="Batman execution mode"
+            "--mode",
+            choices=["0", "approval-gate", "1"],
+            default="",
+            help="architect execution mode",
         )
         parser.add_argument(
             "--approval-mode",
@@ -2965,21 +2971,21 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
         parser.add_argument("--bundle-slug-prefix", default="", help="optional bundle slug prefix")
         parser.add_argument("--approval-timeout-s", type=int, help="approval wait timeout seconds")
 
-    p_setup_batman = sub.add_parser(
-        "setup-batman",
-        help="configure Batman parent-repo and approval-gate settings",
+    p_setup_architect = sub.add_parser(
+        "setup-architect",
+        help="configure architect parent-repo and approval-gate settings",
     )
-    add_batman_setup_args(p_setup_batman)
-    p_setup_batman.set_defaults(func=cmd_batman_setup)
+    add_architect_setup_args(p_setup_architect)
+    p_setup_architect.set_defaults(func=cmd_architect_setup)
 
-    p_batman = sub.add_parser("batman", help="manage Batman cross-repo coordination")
-    batman_sub = p_batman.add_subparsers(dest="batman_command", required=True)
-    p_batman_setup = batman_sub.add_parser(
+    p_architect = sub.add_parser("architect", help="manage architect cross-repo coordination")
+    architect_sub = p_architect.add_subparsers(dest="architect_command", required=True)
+    p_architect_setup = architect_sub.add_parser(
         "setup",
-        help="configure Batman parent-repo and approval-gate settings",
+        help="configure architect parent-repo and approval-gate settings",
     )
-    add_batman_setup_args(p_batman_setup)
-    p_batman_setup.set_defaults(func=cmd_batman_setup)
+    add_architect_setup_args(p_architect_setup)
+    p_architect_setup.set_defaults(func=cmd_architect_setup)
 
     p_auth = sub.add_parser("auth", help="inspect Claude Code and Codex auth surfaces")
     p_auth.add_argument(

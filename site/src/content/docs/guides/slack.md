@@ -115,7 +115,7 @@ See [Slack setup → Optional: Slack planning listener](https://github.com/lumin
 
 ## Optional: plan-mode approval gate
 
-If you want every Batman plan approved in Slack (instead of
+If you want every architect plan approved in Slack (instead of
 the file-polling fallback), wire up `lib/slack_approval.py`. It reuses the
 bot token resolved above, posts the plan, and polls reactions on that one
 message until the configured approver reacts with `:white_check_mark:` (or

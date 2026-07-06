@@ -18,8 +18,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from roster_theme_store import (
-    BATMAN_BASE_NAMES,
-    BATMAN_BASE_ROLES,
+    BASE_THEME_NAMES,
+    BASE_THEME_ROLES,
     DEFAULT_THEME_ID,
     PRESET_DISPLAY_NAMES,
     RosterThemeError,
@@ -57,34 +57,34 @@ def test_save_custom_names_and_roles_persist_and_resolve(tmp_path: Path) -> None
     store = _store(tmp_path)
     store.save(
         theme="custom",
-        custom_names={"batman": "Sherlock", "fleet-doctor": "Watson"},
-        custom_roles={"batman": "Lead detective"},
+        custom_names={"architect": "Sherlock", "fleet-doctor": "Watson"},
+        custom_roles={"architect": "Lead detective"},
     )
     loaded = _store(tmp_path).load()
     assert loaded.theme == "custom"
-    assert loaded.display_name_for("batman") == "Sherlock"
+    assert loaded.display_name_for("architect") == "Sherlock"
     assert loaded.display_name_for("fleet-doctor") == "Watson"
-    assert loaded.role_label_for("batman") == "Lead detective"
+    assert loaded.role_label_for("architect") == "Lead detective"
     # A codename without a custom role resolves to None.
     assert loaded.role_label_for("fleet-doctor") is None
 
 
 def test_dotted_codename_normalizes_to_bare_slug(tmp_path: Path) -> None:
     store = _store(tmp_path)
-    store.save(theme="custom", custom_names={"alfred.batman": "Sherlock"})
+    store.save(theme="custom", custom_names={"alfred.architect": "Sherlock"})
     loaded = _store(tmp_path).load()
-    assert loaded.display_name_for("batman") == "Sherlock"
+    assert loaded.display_name_for("architect") == "Sherlock"
 
 
 def test_preset_theme_does_not_expose_custom_names(tmp_path: Path) -> None:
     store = _store(tmp_path)
     # Under a preset, the authored roster is never exposed (display_name_for is
     # None), even though the names are retained on disk for a later switch back.
-    store.save(theme="custom", custom_names={"batman": "Sherlock"})
+    store.save(theme="custom", custom_names={"architect": "Sherlock"})
     store.save(theme="batman")
     loaded = _store(tmp_path).load()
     assert loaded.theme == "batman"
-    assert loaded.display_name_for("batman") is None
+    assert loaded.display_name_for("architect") is None
 
 
 def test_preset_switch_retains_custom_roster_for_later_restore(tmp_path: Path) -> None:
@@ -92,8 +92,8 @@ def test_preset_switch_retains_custom_roster_for_later_restore(tmp_path: Path) -
     # Author a custom roster, then temporarily switch to a preset with no payload.
     store.save(
         theme="custom",
-        custom_names={"batman": "Sherlock"},
-        custom_roles={"batman": "Lead detective"},
+        custom_names={"architect": "Sherlock"},
+        custom_roles={"architect": "Lead detective"},
     )
     store.save(theme="justice-league")
 
@@ -101,21 +101,21 @@ def test_preset_switch_retains_custom_roster_for_later_restore(tmp_path: Path) -
     # disk so a restart (fresh load) does not lose it.
     reloaded = _store(tmp_path).load()
     assert reloaded.theme == "justice-league"
-    assert reloaded.display_name_for("batman") is None
-    assert dict(reloaded.custom_names) == {"batman": "Sherlock"}
-    assert dict(reloaded.custom_roles) == {"batman": "Lead detective"}
+    assert reloaded.display_name_for("architect") is None
+    assert dict(reloaded.custom_names) == {"architect": "Sherlock"}
+    assert dict(reloaded.custom_roles) == {"architect": "Lead detective"}
 
     # Switching back to custom (no payload) restores the authored roster intact.
     store.save(theme="custom")
     restored = _store(tmp_path).load()
     assert restored.theme == "custom"
-    assert restored.display_name_for("batman") == "Sherlock"
-    assert restored.role_label_for("batman") == "Lead detective"
+    assert restored.display_name_for("architect") == "Sherlock"
+    assert restored.role_label_for("architect") == "Lead detective"
 
 
 def test_explicit_custom_payload_replaces_retained_roster(tmp_path: Path) -> None:
     store = _store(tmp_path)
-    store.save(theme="custom", custom_names={"batman": "Sherlock"})
+    store.save(theme="custom", custom_names={"architect": "Sherlock"})
     # An explicit (even empty) custom payload on a preset write clears the roster,
     # so the operator can deliberately discard it rather than have it linger.
     store.save(theme="batman", custom_names={}, custom_roles={})
@@ -130,7 +130,7 @@ def test_custom_display_name_falls_back_to_batman_base(tmp_path: Path) -> None:
     loaded = _store(tmp_path).load()
     # The renamed agent (keyed by its role slug) uses the operator name.
     assert loaded.custom_display_name_for("architect") == "Sherlock"
-    # An un-renamed known agent uses its Batman-theme display name, not the bare
+    # An un-renamed known agent uses its base-theme display name, not the bare
     # slug, so the Slack path matches the desktop (which overlays on the same base).
     assert loaded.custom_display_name_for("senior-dev") == "Lucius"
     # An unknown slug has no base persona, so it returns None.
@@ -141,7 +141,7 @@ def test_custom_display_name_is_none_for_preset(tmp_path: Path) -> None:
     store = _store(tmp_path)
     store.save(theme="justice-league")
     loaded = _store(tmp_path).load()
-    assert loaded.custom_display_name_for("lucius") is None
+    assert loaded.custom_display_name_for("senior-dev") is None
 
 
 def test_custom_role_label_falls_back_to_batman_base(tmp_path: Path) -> None:
@@ -154,7 +154,7 @@ def test_custom_role_label_falls_back_to_batman_base(tmp_path: Path) -> None:
     loaded = _store(tmp_path).load()
     # The operator role wins when set.
     assert loaded.custom_role_label_for("architect") == "Lead detective"
-    # A known agent with no custom role uses the Batman-base role label, matching
+    # A known agent with no custom role uses the base-theme role label, matching
     # the desktop, not the env role or None.
     assert loaded.custom_role_label_for("senior-dev") == "Senior developer"
     # An unknown slug has no base role, so it returns None and the caller
@@ -166,7 +166,7 @@ def test_custom_role_label_is_none_for_preset(tmp_path: Path) -> None:
     store = _store(tmp_path)
     store.save(theme="transformers")
     loaded = _store(tmp_path).load()
-    assert loaded.custom_role_label_for("batman") is None
+    assert loaded.custom_role_label_for("architect") is None
 
 
 def test_save_rejects_unknown_theme(tmp_path: Path) -> None:
@@ -181,7 +181,7 @@ def test_save_rejects_non_codename_key(tmp_path: Path) -> None:
 
 def test_save_rejects_empty_label(tmp_path: Path) -> None:
     with pytest.raises(RosterThemeError):
-        _store(tmp_path).save(theme="custom", custom_names={"batman": "   "})
+        _store(tmp_path).save(theme="custom", custom_names={"architect": "   "})
 
 
 def test_save_rejects_non_mapping_custom_names(tmp_path: Path) -> None:
@@ -197,9 +197,9 @@ def test_save_rejects_too_many_entries(tmp_path: Path) -> None:
 
 def test_label_strips_control_chars_and_bounds_length(tmp_path: Path) -> None:
     store = _store(tmp_path)
-    store.save(theme="custom", custom_names={"batman": "Sher\nlock" + "x" * 200})
+    store.save(theme="custom", custom_names={"architect": "Sher\nlock" + "x" * 200})
     loaded = _store(tmp_path).load()
-    name = loaded.display_name_for("batman")
+    name = loaded.display_name_for("architect")
     assert name is not None
     assert "\n" not in name
     assert len(name) <= 64
@@ -213,15 +213,15 @@ def test_load_drops_malformed_entries_without_raising(tmp_path: Path) -> None:
         json.dumps(
             {
                 "theme": "custom",
-                "custom_names": {"batman": "Sherlock", "Not A Codename!": "x", "ok": ""},
+                "custom_names": {"architect": "Sherlock", "Not A Codename!": "x", "ok": ""},
             }
         ),
         encoding="utf-8",
     )
     loaded = RosterThemeStore.from_state_root(tmp_path / "state").load()
-    assert loaded.display_name_for("batman") == "Sherlock"
+    assert loaded.display_name_for("architect") == "Sherlock"
     # The malformed key and the empty label are silently dropped.
-    assert dict(loaded.custom_names) == {"batman": "Sherlock"}
+    assert dict(loaded.custom_names) == {"architect": "Sherlock"}
 
 
 def test_load_unknown_theme_falls_back_to_default(tmp_path: Path) -> None:
@@ -232,22 +232,22 @@ def test_load_unknown_theme_falls_back_to_default(tmp_path: Path) -> None:
 
 
 def test_preset_maps_cover_the_same_roster_as_batman_base() -> None:
-    # Every preset re-skins the SAME fleet as the Batman base. If a new agent is
-    # added to BATMAN_BASE_NAMES without a matching entry in each preset, Slack
+    # Every preset re-skins the SAME fleet as the base theme. If a new agent is
+    # added to BASE_THEME_NAMES without a matching entry in each preset, Slack
     # would render that agent's bare codename under a preset while the desktop
     # shows a themed name. Hold the codename sets identical so that cannot ship.
-    base = set(BATMAN_BASE_NAMES)
+    base = set(BASE_THEME_NAMES)
     for theme, names in PRESET_DISPLAY_NAMES.items():
-        assert set(names) == base, f"{theme} preset roster drifted from the Batman base"
+        assert set(names) == base, f"{theme} preset roster drifted from the base theme"
 
 
 def test_batman_base_uses_canonical_scheduled_codenames() -> None:
-    assert "cleanup" not in BATMAN_BASE_NAMES
-    assert "cleanup" not in BATMAN_BASE_ROLES
-    assert "agent-cleanup" in BATMAN_BASE_NAMES
-    assert "memory-auto-promote" in BATMAN_BASE_NAMES
-    assert "agent-morning-brief" in BATMAN_BASE_NAMES
-    assert "shipped-summary-weekly" in BATMAN_BASE_NAMES
+    assert "cleanup" not in BASE_THEME_NAMES
+    assert "cleanup" not in BASE_THEME_ROLES
+    assert "agent-cleanup" in BASE_THEME_NAMES
+    assert "memory-auto-promote" in BASE_THEME_NAMES
+    assert "agent-morning-brief" in BASE_THEME_NAMES
+    assert "shipped-summary-weekly" in BASE_THEME_NAMES
 
 
 def test_themed_display_name_resolves_preset_identity() -> None:
@@ -255,15 +255,15 @@ def test_themed_display_name_resolves_preset_identity() -> None:
     # The role slug is the identity key; the preset supplies the display name.
     assert state.themed_display_name_for("senior-dev") == "Ironhide"
     assert state.themed_display_name_for("architect") == "Optimus Prime"
-    # Role label comes from the Batman base the presets share.
-    assert state.themed_role_label_for("senior-dev") == BATMAN_BASE_ROLES["senior-dev"]
+    # Role label comes from the base theme the presets share.
+    assert state.themed_role_label_for("senior-dev") == BASE_THEME_ROLES["senior-dev"]
 
 
-def test_themed_display_name_batman_theme_keeps_shipped_behavior() -> None:
+def test_themed_display_name_default_theme_keeps_shipped_behavior() -> None:
     state = RosterThemeState(theme="batman", custom_names={}, custom_roles={})
-    # Batman theme returns None so the caller keeps codename_with_role.
-    assert state.themed_display_name_for("lucius") is None
-    assert state.themed_role_label_for("lucius") is None
+    # The default theme returns None so the caller keeps codename_with_role.
+    assert state.themed_display_name_for("senior-dev") is None
+    assert state.themed_role_label_for("senior-dev") is None
 
 
 def test_themed_display_name_custom_theme_uses_custom_overlay() -> None:
@@ -274,17 +274,17 @@ def test_themed_display_name_custom_theme_uses_custom_overlay() -> None:
     )
     assert state.themed_display_name_for("architect") == "Sherlock"
     assert state.themed_role_label_for("architect") == "Lead detective"
-    # An unnamed agent still resolves to its Batman-base name under custom.
-    assert state.themed_display_name_for("senior-dev") == BATMAN_BASE_NAMES["senior-dev"]
+    # An unnamed agent still resolves to its base-theme name under custom.
+    assert state.themed_display_name_for("senior-dev") == BASE_THEME_NAMES["senior-dev"]
 
 
 def test_themed_name_for_resolves_under_every_theme() -> None:
     # Unlike ``themed_display_name_for``, ``themed_name_for`` always returns a real
-    # display name for a known slug, INCLUDING the default Batman theme (so a
+    # display name for a known slug, INCLUDING the default theme (so a
     # bare-name surface never shows the raw slug after the rename).
-    batman = RosterThemeState(theme="batman", custom_names={}, custom_roles={})
-    assert batman.themed_name_for("senior-dev") == "Lucius"
-    assert batman.themed_name_for("architect") == "Batman"
+    default_state = RosterThemeState(theme="batman", custom_names={}, custom_roles={})
+    assert default_state.themed_name_for("senior-dev") == "Lucius"
+    assert default_state.themed_name_for("architect") == "Batman"
 
     preset = RosterThemeState(theme="transformers", custom_names={}, custom_roles={})
     assert preset.themed_name_for("senior-dev") == "Ironhide"
@@ -293,7 +293,7 @@ def test_themed_name_for_resolves_under_every_theme() -> None:
         theme="custom", custom_names={"architect": "Sherlock"}, custom_roles={}
     )
     assert custom.themed_name_for("architect") == "Sherlock"
-    assert custom.themed_name_for("senior-dev") == BATMAN_BASE_NAMES["senior-dev"]
+    assert custom.themed_name_for("senior-dev") == BASE_THEME_NAMES["senior-dev"]
 
 
 def test_themed_name_for_unknown_codename_is_none() -> None:

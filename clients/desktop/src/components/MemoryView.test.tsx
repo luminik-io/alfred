@@ -17,7 +17,7 @@ vi.mock("../api", () => ({
 function candidate(overrides: Partial<MemoryCandidate> = {}): MemoryCandidate {
   return {
     id: "mem:1",
-    codename: "lucius",
+    codename: "senior-dev",
     repo: "your-org/api",
     body: "Use request fixtures for attendee imports.",
     tags: ["tests"],
@@ -35,7 +35,7 @@ function candidate(overrides: Partial<MemoryCandidate> = {}): MemoryCandidate {
 function lesson(overrides: Partial<MemoryLesson> = {}): MemoryLesson {
   return {
     id: "lesson:memory_candidate:1",
-    codename: "lucius",
+    codename: "senior-dev",
     repo: "your-org/api",
     body: "GraphQL schema lives in src/schema.graphql.",
     tags: ["graphql"],

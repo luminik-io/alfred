@@ -32,9 +32,9 @@ Engine modes:
 
 ```sh
 alfred engine status
-alfred engine status lucius
+alfred engine status senior-dev
 alfred engine set rasalghul codex
-alfred engine set lucius hybrid
+alfred engine set senior-dev hybrid
 alfred codex status
 alfred codex probe
 alfred auth status
@@ -192,7 +192,7 @@ affected timer or service after switching:
 
 ```sh
 alfred claude secondary
-systemctl --user restart alfred.lucius.timer
+systemctl --user restart alfred.senior-dev.timer
 ```
 
 To populate the secondary config, log in once with `CLAUDE_CONFIG_DIR` pointed

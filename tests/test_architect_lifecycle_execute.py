@@ -1,4 +1,4 @@
-"""Tests for Batman's plan-approve-execute-report lifecycle.
+"""Tests for the architect plan-approve-execute-report lifecycle.
 
 Heavyweight wiring (Slack reactions, gh CLI, network) is replaced with
 in-memory fakes so the tests stay offline and deterministic.
@@ -39,17 +39,17 @@ def _isolated_sys_path(tmp_path, monkeypatch):
     monkeypatch.setenv("GH_ORG", "your-org")
     # Strip env vars the lifecycle reads so cases can opt-in explicitly.
     for k in (
-        "BATMAN_AUTO_EXECUTE",
-        "BATMAN_PARENT_REPO",
-        "BATMAN_PICKER",
-        "BATMAN_BUNDLE_SLUG_PREFIX",
-        "BATMAN_APPROVAL_TIMEOUT_S",
-        "BATMAN_APPROVAL_MODE",
-        "BATMAN_SLACK_CHANNEL",
+        "ARCHITECT_AUTO_EXECUTE",
+        "ARCHITECT_PARENT_REPO",
+        "ARCHITECT_PICKER",
+        "ARCHITECT_BUNDLE_SLUG_PREFIX",
+        "ARCHITECT_APPROVAL_TIMEOUT_S",
+        "ARCHITECT_APPROVAL_MODE",
+        "ARCHITECT_SLACK_CHANNEL",
     ):
         monkeypatch.delenv(k, raising=False)
     for mod in list(sys.modules):
-        if mod in ("batman", "labels", "slack_approval", "slack_format"):
+        if mod in ("architect_lifecycle", "batman", "labels", "slack_approval", "slack_format"):
             del sys.modules[mod]
     libdir = str(REPO / "lib")
     if libdir not in sys.path:
@@ -154,7 +154,7 @@ class FakeReporter:
 
     The channel_id is what Slack's chat.postMessage echoes back after
     resolving the channel name; a real bot post returns the ID even when
-    the caller passed a name. Tests pin this so the BatmanLifecycle
+    the caller passed a name. Tests pin this so the ArchitectLifecycle
     contract for ``ApprovalEnvelope.channel`` (must be an ID, not a
     name) stays asserted.
     """
@@ -213,11 +213,11 @@ def test_request_approval_stores_channel_id_from_postmessage_not_config_name():
     return the resolved id ``C0LIVECH1``; the envelope must surface
     the id, not the config name.
     """
-    from batman import BatmanLifecycle, BatmanLifecycleConfig
+    from architect_lifecycle import ArchitectLifecycle, ArchitectLifecycleConfig
 
     reporter = FakeReporter(channel_id="C0LIVECH1")
-    lifecycle = BatmanLifecycle(
-        config=BatmanLifecycleConfig(slack_channel="alfred-fleet"),
+    lifecycle = ArchitectLifecycle(
+        config=ArchitectLifecycleConfig(slack_channel="alfred-fleet"),
         reporter=reporter,
     )
     plan = lifecycle.plan(
@@ -240,12 +240,12 @@ def test_request_approval_stores_channel_id_from_postmessage_not_config_name():
 def test_request_approval_returns_none_when_reporter_returns_none():
     """When the reporter cannot resolve a channel + ts (no bot token,
     transport down), ``request_approval`` returns ``None`` so the
-    caller falls back to the BATMAN_AUTO_EXECUTE policy."""
-    from batman import BatmanLifecycle, BatmanLifecycleConfig
+    caller falls back to the ARCHITECT_AUTO_EXECUTE policy."""
+    from architect_lifecycle import ArchitectLifecycle, ArchitectLifecycleConfig
 
     reporter = FakeReporter(ts=None)
-    lifecycle = BatmanLifecycle(
-        config=BatmanLifecycleConfig(slack_channel="alfred-fleet"),
+    lifecycle = ArchitectLifecycle(
+        config=ArchitectLifecycleConfig(slack_channel="alfred-fleet"),
         reporter=reporter,
     )
     plan = lifecycle.plan(
@@ -262,9 +262,9 @@ def test_request_approval_returns_none_when_reporter_returns_none():
 
 
 def test_plan_parses_well_formed_parent_into_four_children():
-    from batman import BatmanLifecycle, BatmanLifecycleConfig
+    from architect_lifecycle import ArchitectLifecycle, ArchitectLifecycleConfig
 
-    lifecycle = BatmanLifecycle(config=BatmanLifecycleConfig())
+    lifecycle = ArchitectLifecycle(config=ArchitectLifecycleConfig())
     plan = lifecycle.plan(
         body=SAMPLE_BODY,
         title=SAMPLE_TITLE,
@@ -306,10 +306,10 @@ def test_plan_parses_well_formed_parent_into_four_children():
 
 
 def test_approval_timeout_returns_no_execute():
-    from batman import (
+    from architect_lifecycle import (
         EXEC_APPROVAL_TIMEOUT,
-        BatmanLifecycle,
-        BatmanLifecycleConfig,
+        ArchitectLifecycle,
+        ArchitectLifecycleConfig,
     )
     from slack_approval import APPROVAL_TIMEOUT
 
@@ -317,8 +317,8 @@ def test_approval_timeout_returns_no_execute():
     reporter = FakeReporter()
     gate = FakeGate(FakeApprovalResult(approved=False, verdict=APPROVAL_TIMEOUT))
 
-    lifecycle = BatmanLifecycle(
-        config=BatmanLifecycleConfig(
+    lifecycle = ArchitectLifecycle(
+        config=ArchitectLifecycleConfig(
             auto_execute="approval-gate",
             parent_repo="your-org/your-product",
             slack_channel="alfred-fleet",
@@ -344,15 +344,15 @@ def test_approval_timeout_returns_no_execute():
 
 
 def test_in_app_approval_marker_grants_without_slack_poll(tmp_path: Path):
-    from batman import EXEC_OK, BatmanLifecycle, BatmanLifecycleConfig
+    from architect_lifecycle import EXEC_OK, ArchitectLifecycle, ArchitectLifecycleConfig
     from slack_approval import APPROVAL_TIMEOUT
 
     gh = FakeGitHubClient()
     reporter = FakeReporter()
     gate = FakeGate(FakeApprovalResult(approved=False, verdict=APPROVAL_TIMEOUT))
 
-    lifecycle = BatmanLifecycle(
-        config=BatmanLifecycleConfig(
+    lifecycle = ArchitectLifecycle(
+        config=ArchitectLifecycleConfig(
             auto_execute="approval-gate",
             parent_repo="your-org/your-product",
             slack_channel="alfred-fleet",
@@ -385,7 +385,7 @@ def test_in_app_approval_marker_grants_without_slack_poll(tmp_path: Path):
 
 
 def test_in_app_approval_marker_interrupts_active_slack_wait(tmp_path: Path):
-    from batman import EXEC_OK, BatmanLifecycle, BatmanLifecycleConfig
+    from architect_lifecycle import EXEC_OK, ArchitectLifecycle, ArchitectLifecycleConfig
 
     gh = FakeGitHubClient()
     reporter = FakeReporter()
@@ -408,8 +408,8 @@ def test_in_app_approval_marker_interrupts_active_slack_wait(tmp_path: Path):
             )
 
     gate = MarkerGate()
-    lifecycle = BatmanLifecycle(
-        config=BatmanLifecycleConfig(
+    lifecycle = ArchitectLifecycle(
+        config=ArchitectLifecycleConfig(
             auto_execute="approval-gate",
             parent_repo="your-org/your-product",
             slack_channel="alfred-fleet",
@@ -437,10 +437,10 @@ def test_in_app_approval_marker_interrupts_active_slack_wait(tmp_path: Path):
 
 
 def test_file_approval_mode_consumes_rejection_marker_without_slack(tmp_path: Path):
-    from batman import EXEC_REJECTED, BatmanLifecycle, BatmanLifecycleConfig
+    from architect_lifecycle import EXEC_REJECTED, ArchitectLifecycle, ArchitectLifecycleConfig
 
-    lifecycle = BatmanLifecycle(
-        config=BatmanLifecycleConfig(
+    lifecycle = ArchitectLifecycle(
+        config=ArchitectLifecycleConfig(
             auto_execute="approval-gate",
             parent_repo="your-org/your-product",
             approval_mode="file",
@@ -478,15 +478,15 @@ def test_file_approval_mode_consumes_rejection_marker_without_slack(tmp_path: Pa
 
 
 def test_operator_rejection_returns_rejected_by_operator():
-    from batman import EXEC_REJECTED, BatmanLifecycle, BatmanLifecycleConfig
+    from architect_lifecycle import EXEC_REJECTED, ArchitectLifecycle, ArchitectLifecycleConfig
     from slack_approval import APPROVAL_REJECTED
 
     gh = FakeGitHubClient()
     reporter = FakeReporter()
     gate = FakeGate(FakeApprovalResult(approved=False, verdict=APPROVAL_REJECTED))
 
-    lifecycle = BatmanLifecycle(
-        config=BatmanLifecycleConfig(
+    lifecycle = ArchitectLifecycle(
+        config=ArchitectLifecycleConfig(
             auto_execute="approval-gate",
             parent_repo="your-org/your-product",
             slack_channel="alfred-fleet",
@@ -512,15 +512,15 @@ def test_operator_rejection_returns_rejected_by_operator():
 
 
 def test_approval_granted_then_happy_path_files_all_children():
-    from batman import EXEC_OK, BatmanLifecycle, BatmanLifecycleConfig
+    from architect_lifecycle import EXEC_OK, ArchitectLifecycle, ArchitectLifecycleConfig
     from slack_approval import APPROVAL_GRANTED
 
     gh = FakeGitHubClient()
     reporter = FakeReporter()
     gate = FakeGate(FakeApprovalResult(approved=True, verdict=APPROVAL_GRANTED))
 
-    lifecycle = BatmanLifecycle(
-        config=BatmanLifecycleConfig(
+    lifecycle = ArchitectLifecycle(
+        config=ArchitectLifecycleConfig(
             auto_execute="approval-gate",
             parent_repo="your-org/your-product",
             slack_channel="alfred-fleet",
@@ -565,7 +565,7 @@ def test_approval_granted_then_happy_path_files_all_children():
 
 
 def test_approval_thread_feedback_is_appended_to_child_issues():
-    from batman import EXEC_OK, BatmanLifecycle, BatmanLifecycleConfig
+    from architect_lifecycle import EXEC_OK, ArchitectLifecycle, ArchitectLifecycleConfig
     from slack_approval import APPROVAL_GRANTED
 
     gh = FakeGitHubClient()
@@ -578,8 +578,8 @@ def test_approval_thread_feedback_is_appended_to_child_issues():
     )
 
     reporter = FakeReporter()
-    lifecycle = BatmanLifecycle(
-        config=BatmanLifecycleConfig(
+    lifecycle = ArchitectLifecycle(
+        config=ArchitectLifecycleConfig(
             auto_execute="approval-gate",
             parent_repo="your-org/your-product",
             slack_channel="alfred-fleet",
@@ -623,7 +623,7 @@ def test_approval_thread_feedback_is_appended_to_child_issues():
 
 
 def test_approval_repo_feedback_changes_child_issue_scope():
-    from batman import EXEC_OK, BatmanLifecycle, BatmanLifecycleConfig
+    from architect_lifecycle import EXEC_OK, ArchitectLifecycle, ArchitectLifecycleConfig
     from slack_approval import APPROVAL_GRANTED
 
     gh = FakeGitHubClient()
@@ -638,8 +638,8 @@ def test_approval_repo_feedback_changes_child_issue_scope():
             ),
         )
     )
-    lifecycle = BatmanLifecycle(
-        config=BatmanLifecycleConfig(
+    lifecycle = ArchitectLifecycle(
+        config=ArchitectLifecycleConfig(
             auto_execute="approval-gate",
             parent_repo="your-org/your-product",
             slack_channel="alfred-fleet",
@@ -686,11 +686,16 @@ def test_approval_repo_feedback_changes_child_issue_scope():
 
 
 def test_execute_uses_approved_execution_plan_without_reapplying_scope_feedback():
-    from batman import EXEC_OK, BatmanLifecycle, BatmanLifecycleConfig, ChildIssue
+    from architect_lifecycle import (
+        EXEC_OK,
+        ArchitectLifecycle,
+        ArchitectLifecycleConfig,
+        ChildIssue,
+    )
 
     gh = FakeGitHubClient()
-    lifecycle = BatmanLifecycle(
-        config=BatmanLifecycleConfig(
+    lifecycle = ArchitectLifecycle(
+        config=ArchitectLifecycleConfig(
             auto_execute="approval-gate",
             parent_repo="your-org/your-product",
             slack_channel="alfred-fleet",
@@ -732,7 +737,7 @@ def test_execute_uses_approved_execution_plan_without_reapplying_scope_feedback(
 
 
 def test_approval_feedback_with_open_question_blocks_execution():
-    from batman import EXEC_NEEDS_SCOPE, BatmanLifecycle, BatmanLifecycleConfig
+    from architect_lifecycle import EXEC_NEEDS_SCOPE, ArchitectLifecycle, ArchitectLifecycleConfig
     from slack_approval import APPROVAL_GRANTED
 
     gh = FakeGitHubClient()
@@ -743,8 +748,8 @@ def test_approval_feedback_with_open_question_blocks_execution():
             feedback=({"text": "question: Should this include mobile?"},),
         )
     )
-    lifecycle = BatmanLifecycle(
-        config=BatmanLifecycleConfig(
+    lifecycle = ArchitectLifecycle(
+        config=ArchitectLifecycleConfig(
             auto_execute="approval-gate",
             parent_repo="your-org/your-product",
             slack_channel="alfred-fleet",
@@ -774,7 +779,7 @@ def test_approval_feedback_with_open_question_blocks_execution():
 
 def test_partial_execute_failure_reports_landed_children():
     """3 of 5 succeed -> reason=partial, created lists the survivors."""
-    from batman import EXEC_PARTIAL, BatmanLifecycle, BatmanLifecycleConfig
+    from architect_lifecycle import EXEC_PARTIAL, ArchitectLifecycle, ArchitectLifecycleConfig
 
     body = """Bundle: five-repo-fanout
 
@@ -799,8 +804,8 @@ Done when:
     gh = FakeGitHubClient(fail_repos={"your-org/repo-b", "your-org/repo-d"})
     reporter = FakeReporter()
 
-    lifecycle = BatmanLifecycle(
-        config=BatmanLifecycleConfig(
+    lifecycle = ArchitectLifecycle(
+        config=ArchitectLifecycleConfig(
             auto_execute="1",
             parent_repo="your-org/your-product",
         ),
@@ -823,7 +828,7 @@ Done when:
 
 
 def test_slack_reporter_captures_trusted_report_followup(tmp_path):
-    from batman import ReportEnvelope, SlackReporter
+    from architect_lifecycle import ReportEnvelope, SlackReporter
 
     root_calls = []
     replies = []
@@ -880,7 +885,7 @@ def test_slack_reporter_captures_trusted_report_followup(tmp_path):
 
 
 def test_slack_reporter_default_followups_are_visible_to_plans(tmp_path, monkeypatch):
-    from batman import ReportEnvelope, SlackReporter
+    from architect_lifecycle import ReportEnvelope, SlackReporter
 
     home = tmp_path / "alfred"
     monkeypatch.setenv("ALFRED_HOME", str(home))
@@ -915,7 +920,7 @@ def test_slack_reporter_default_followups_are_visible_to_plans(tmp_path, monkeyp
 
 
 def test_slack_reporter_registers_plan_thread(tmp_path, monkeypatch):
-    from batman import SlackReporter, parse_parent_issue
+    from architect_lifecycle import SlackReporter, parse_parent_issue
     from slack_thread_registry import SlackThreadRegistry
 
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
@@ -950,7 +955,7 @@ def test_slack_reporter_registers_plan_thread(tmp_path, monkeypatch):
 
 
 def test_slack_reporter_writes_local_plan_copy_when_slack_post_fails(tmp_path, monkeypatch):
-    from batman import SlackReporter, parse_parent_issue
+    from architect_lifecycle import SlackReporter, parse_parent_issue
 
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
     fallback_posts = []
@@ -979,7 +984,7 @@ def test_slack_reporter_writes_local_plan_copy_when_slack_post_fails(tmp_path, m
 
 
 def test_no_children_yields_no_children_exec_reason():
-    from batman import EXEC_NO_CHILDREN, BatmanLifecycle, BatmanLifecycleConfig
+    from architect_lifecycle import EXEC_NO_CHILDREN, ArchitectLifecycle, ArchitectLifecycleConfig
 
     body = """Bundle: empty-test
 
@@ -989,8 +994,8 @@ Repos:
 Done when:
 - I get bored
 """
-    lifecycle = BatmanLifecycle(
-        config=BatmanLifecycleConfig(auto_execute="1"),
+    lifecycle = ArchitectLifecycle(
+        config=ArchitectLifecycleConfig(auto_execute="1"),
         gh_client=FakeGitHubClient(),
     )
     plan = lifecycle.plan(
@@ -1006,7 +1011,7 @@ Done when:
 
 
 def test_unknown_short_repo_in_children_is_skipped():
-    from batman import BatmanLifecycle, BatmanLifecycleConfig
+    from architect_lifecycle import ArchitectLifecycle, ArchitectLifecycleConfig
 
     body = """Bundle: typo-test
 
@@ -1017,7 +1022,7 @@ Children:
 - your-backend: real one
 - frontent: typo, should be skipped
 """
-    lifecycle = BatmanLifecycle(config=BatmanLifecycleConfig())
+    lifecycle = ArchitectLifecycle(config=ArchitectLifecycleConfig())
     plan = lifecycle.plan(
         body=body,
         title="Bundle: typo-test",
@@ -1030,7 +1035,7 @@ Children:
 
 
 def test_vague_child_scope_blocks_execution_before_filing():
-    from batman import EXEC_NEEDS_SCOPE, BatmanLifecycle, BatmanLifecycleConfig
+    from architect_lifecycle import EXEC_NEEDS_SCOPE, ArchitectLifecycle, ArchitectLifecycleConfig
 
     body = """Bundle: vague-plan
 
@@ -1044,8 +1049,8 @@ Done when:
 - Tests pass
 """
     gh = FakeGitHubClient()
-    lifecycle = BatmanLifecycle(
-        config=BatmanLifecycleConfig(auto_execute="1"),
+    lifecycle = ArchitectLifecycle(
+        config=ArchitectLifecycleConfig(auto_execute="1"),
         gh_client=gh,
     )
 
@@ -1064,37 +1069,37 @@ Done when:
 
 
 def test_config_from_env_validates_auto_execute(monkeypatch):
-    from batman import (
+    from architect_lifecycle import (
         APPROVAL_MODE_FILE,
         APPROVAL_MODE_SLACK_OR_FILE,
         AUTO_EXECUTE_FORCE,
         AUTO_EXECUTE_GATE,
         AUTO_EXECUTE_OFF,
-        BatmanLifecycleConfig,
+        ArchitectLifecycleConfig,
     )
 
-    monkeypatch.setenv("BATMAN_AUTO_EXECUTE", "approval-gate")
-    cfg = BatmanLifecycleConfig.from_env()
+    monkeypatch.setenv("ARCHITECT_AUTO_EXECUTE", "approval-gate")
+    cfg = ArchitectLifecycleConfig.from_env()
     assert cfg.auto_execute == AUTO_EXECUTE_GATE
     assert cfg.gate_enabled is True
     assert cfg.execute_enabled is True
 
-    monkeypatch.setenv("BATMAN_AUTO_EXECUTE", "1")
-    cfg = BatmanLifecycleConfig.from_env()
+    monkeypatch.setenv("ARCHITECT_AUTO_EXECUTE", "1")
+    cfg = ArchitectLifecycleConfig.from_env()
     assert cfg.auto_execute == AUTO_EXECUTE_FORCE
     assert cfg.gate_enabled is False
     assert cfg.execute_enabled is True
 
-    monkeypatch.setenv("BATMAN_AUTO_EXECUTE", "junk")
-    cfg = BatmanLifecycleConfig.from_env()
+    monkeypatch.setenv("ARCHITECT_AUTO_EXECUTE", "junk")
+    cfg = ArchitectLifecycleConfig.from_env()
     assert cfg.auto_execute == AUTO_EXECUTE_OFF
     assert cfg.execute_enabled is False
 
-    monkeypatch.setenv("BATMAN_AUTO_EXECUTE", "approval-gate")
-    monkeypatch.setenv("BATMAN_APPROVAL_MODE", "file")
-    cfg = BatmanLifecycleConfig.from_env()
+    monkeypatch.setenv("ARCHITECT_AUTO_EXECUTE", "approval-gate")
+    monkeypatch.setenv("ARCHITECT_APPROVAL_MODE", "file")
+    cfg = ArchitectLifecycleConfig.from_env()
     assert cfg.approval_mode == APPROVAL_MODE_FILE
 
-    monkeypatch.setenv("BATMAN_APPROVAL_MODE", "nonsense")
-    cfg = BatmanLifecycleConfig.from_env()
+    monkeypatch.setenv("ARCHITECT_APPROVAL_MODE", "nonsense")
+    cfg = ArchitectLifecycleConfig.from_env()
     assert cfg.approval_mode == APPROVAL_MODE_SLACK_OR_FILE

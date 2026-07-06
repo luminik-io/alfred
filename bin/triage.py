@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Robin - bug triage agent. Labels open issues by severity, asks for repro info, hands off to Lucius."""
+"""Triage agent. Labels open issues by severity, asks for repro info, hands off to senior-dev."""
 
 from __future__ import annotations
 
@@ -55,9 +55,9 @@ PREFLIGHT = PreflightSpec(
     require_gh_auth=True,
 )
 
-# Keyed off the RESOLVED codename (AGENT), with the default-slug key as a legacy
-# fallback, so an operator-renamed triage agent reads its ALFRED_<CHOSEN>_REPOS key.
-TRIAGE_REPOS = agent_repos(AGENT, default_env="ALFRED_TRIAGE_REPOS")
+# Keyed off the runtime role slug. Themes and custom visible names do not change
+# the machine identity or env-var contract.
+TRIAGE_REPOS = agent_repos(AGENT)
 
 # Persistent dedup ledger. The same issue can survive a label-add failure
 # (gh returns success but the label is missing on next read, eventual

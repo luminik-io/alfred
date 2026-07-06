@@ -48,7 +48,7 @@ const SERVICE = parseFleetServiceState(
 
 const SCHEDULE: ScheduledRun[] = [
   {
-    codename: "lucius",
+    codename: "senior-dev",
     role: "Engineer",
     kind: "interval",
     cadence: "every 10m",
