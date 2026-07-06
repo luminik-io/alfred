@@ -603,6 +603,29 @@ def test_cli_status_json_keeps_raw_slug_and_adds_themed_name(tmp_path):
     assert architect["display_name"] == "Batman"
 
 
+def test_status_falls_back_to_checkout_agents_conf_when_runtime_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    runtime = tmp_path / "fresh-runtime"
+    checkout = tmp_path / "checkout"
+    (checkout / "bin").mkdir(parents=True)
+    (checkout / "launchd").mkdir()
+    checkout_conf = checkout / "launchd" / "agents.conf"
+    checkout_conf.write_text(
+        "my.fleet.checkout-only\tarchitect.py\tinterval:5400\tno\t\tCheckout marker\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+
+    status = _load_status_module()
+    monkeypatch.setattr(status, "_HERE", checkout / "bin")
+
+    records = status.configured_agents()
+
+    assert [record.label for record in records] == ["my.fleet.checkout-only"]
+    assert records[0].role == "Checkout marker"
+
+
 def _status_snapshot(status_mod, **overrides):
     """Build an AgentSnapshot with sane defaults; override only what a test needs."""
     fields = {

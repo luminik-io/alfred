@@ -190,12 +190,11 @@ def _codename_from_label(label: str) -> str:
 
 def _agents_conf_candidates() -> list[Path]:
     runtime = ALFRED_HOME / "launchd" / "agents.conf"
+    checkout = _HERE.parent / "launchd" / "agents.conf"
     example = _HERE.parent / "launchd" / "agents.conf.example"
-    if os.environ.get("ALFRED_HOME", "").strip():
-        return [runtime, example]
     return [
         runtime,
-        _HERE.parent / "launchd" / "agents.conf",
+        checkout,
         example,
     ]
 
