@@ -785,7 +785,10 @@ class SlackPlanningListener:
         if turn.repo and turn.issue is not None:
             if turn.action != ACTION_ASSIGN or turn.agent:
                 return None
-            agent, unsupported_assignment_agent = resolve_assignment_agent(event.text)
+            agent, unsupported_assignment_agent = resolve_assignment_agent(
+                event.text,
+                state_root=self.state_root,
+            )
             if not agent and not unsupported_assignment_agent:
                 return None
             repo = turn.repo
@@ -807,9 +810,15 @@ class SlackPlanningListener:
             agent = turn.agent
             unsupported_assignment_agent = ""
             if turn.action == ACTION_ASSIGN and not agent:
-                agent, unsupported_assignment_agent = resolve_assignment_agent(event.text)
+                agent, unsupported_assignment_agent = resolve_assignment_agent(
+                    event.text,
+                    state_root=self.state_root,
+                )
                 if not agent and not unsupported_assignment_agent:
-                    agent, unsupported_assignment_agent = resolve_assignment_agent(turn.text)
+                    agent, unsupported_assignment_agent = resolve_assignment_agent(
+                        turn.text,
+                        state_root=self.state_root,
+                    )
 
         params = {
             "raw_text": event.text.strip(),
@@ -861,7 +870,11 @@ class SlackPlanningListener:
             ACTION_PAUSE_AGENT,
             ACTION_RESUME_AGENT,
         }
-        agent = turn.agent or resolve_agent_codename(event.text, allow_all=allow_all)
+        agent = turn.agent or resolve_agent_codename(
+            event.text,
+            allow_all=allow_all,
+            state_root=self.state_root,
+        )
         schedule = turn.schedule
         if turn.action == ACTION_SCHEDULE_AGENT and not schedule:
             if turn.agent:
@@ -1370,6 +1383,7 @@ class SlackPlanningListener:
             event.text,
             engine_invoke=self._intent_engine,
             catalog=self._repo_catalog,
+            state_root=self.state_root,
         )
         intent = self._augment_intent_from_context(event, intent)
 
@@ -1483,7 +1497,11 @@ class SlackPlanningListener:
                 "ignored",
                 "bot-mention message is handled as app_mention, not ambient",
             )
-        if not ambient_engages(event.text, bot_user_id=self.bot_user_id):
+        if not ambient_engages(
+            event.text,
+            bot_user_id=self.bot_user_id,
+            state_root=self.state_root,
+        ):
             return ListenerResult(False, "ignored", "ambient message is ordinary chatter")
 
         routed = self._maybe_route_intent(event)
@@ -2784,16 +2802,9 @@ def _assignment_agent_display(agent: str) -> str:
     """
     normalized = agent.strip().lower()
     slug = ""
-    if normalized in {"architect", "batman", "bruce", "bruce wayne"}:
+    if normalized == "architect":
         slug = "architect"
-    elif normalized in {
-        "developer",
-        "lucius",
-        "lucius fox",
-        "senior-dev",
-        "senior dev",
-        "senior developer",
-    }:
+    elif normalized == "senior-dev":
         slug = "senior-dev"
     if not slug:
         return escape_mrkdwn(agent)

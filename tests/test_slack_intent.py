@@ -23,6 +23,7 @@ if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
 import slack_intent as si  # noqa: E402
+from roster_theme_store import RosterThemeStore  # noqa: E402
 from slack_intent import (  # noqa: E402
     ACTION_ASSIGN,
     ACTION_DRY_RUN_AGENT,
@@ -61,6 +62,20 @@ def _engine_returning(payload: dict) -> si.EngineInvoke:
         return json.dumps(payload)
 
     return _invoke
+
+
+def _save_roster_theme(
+    monkeypatch,
+    tmp_path: Path,
+    *,
+    theme: str,
+    custom_names: dict[str, str] | None = None,
+) -> None:
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    RosterThemeStore.from_state_root(tmp_path / "state").save(
+        theme=theme,
+        custom_names=custom_names,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +156,11 @@ def test_assign_issue_text_lane_beats_conflicting_model_lane() -> None:
     assert intent.needs_clarification is False
 
 
-def test_assignment_lane_reply_tolerates_sentence_punctuation() -> None:
+def test_assignment_lane_reply_tolerates_sentence_punctuation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _save_roster_theme(monkeypatch, tmp_path, theme="batman")
     assert resolve_assignment_agent("Batman.") == ("architect", "")
     assert resolve_assignment_agent("the architect.") == ("architect", "")
     assert resolve_assignment_agent("Lucius.") == ("senior-dev", "")
@@ -168,7 +187,8 @@ def test_assign_issue_ignores_model_lane_without_explicit_text() -> None:
     assert intent.needs_clarification is False
 
 
-def test_assign_issue_explicit_unsupported_lane_asks() -> None:
+def test_assign_issue_explicit_unsupported_lane_asks(monkeypatch, tmp_path: Path) -> None:
+    _save_roster_theme(monkeypatch, tmp_path, theme="batman")
     intent = classify_intent(
         "assign acme-io/acme-backend#12 to Drake",
         engine_invoke=_engine_returning(
@@ -253,7 +273,8 @@ def test_pause_and_resume_allow_fleet_wide_target() -> None:
     assert resume.agent == "all"
 
 
-def test_dry_run_agent_is_read_only() -> None:
+def test_dry_run_agent_is_read_only(monkeypatch, tmp_path: Path) -> None:
+    _save_roster_theme(monkeypatch, tmp_path, theme="batman")
     intent = classify_intent(
         "dry run Lucius please",
         engine_invoke=_engine_returning(
@@ -268,7 +289,8 @@ def test_dry_run_agent_is_read_only() -> None:
     assert intent.needs_clarification is False
 
 
-def test_schedule_agent_is_confirmable_mutation() -> None:
+def test_schedule_agent_is_confirmable_mutation(monkeypatch, tmp_path: Path) -> None:
+    _save_roster_theme(monkeypatch, tmp_path, theme="batman")
     intent = classify_intent(
         "change Lucius to every 20 minutes",
         engine_invoke=_engine_returning(
@@ -289,7 +311,11 @@ def test_schedule_agent_is_confirmable_mutation() -> None:
     assert intent.needs_clarification is False
 
 
-def test_schedule_agent_missing_cadence_asks_for_clarification() -> None:
+def test_schedule_agent_missing_cadence_asks_for_clarification(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _save_roster_theme(monkeypatch, tmp_path, theme="batman")
     intent = classify_intent(
         "change Lucius schedule",
         engine_invoke=_engine_returning(
@@ -317,18 +343,54 @@ def test_run_agent_missing_name_asks_for_clarification() -> None:
     assert "which agent" in intent.clarification.lower()
 
 
-def test_resolve_agent_codename_handles_aliases() -> None:
+def test_resolve_agent_codename_handles_role_and_active_theme_aliases(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _save_roster_theme(monkeypatch, tmp_path, theme="batman")
     assert resolve_agent_codename("kick off Ra's al Ghul") == "reviewer"
-    assert resolve_agent_codename("trigger Bruce") == "architect"
+    assert resolve_agent_codename("trigger Batman") == "architect"
     assert resolve_agent_codename("run Huntress") == "e2e-runner"
+    assert resolve_agent_codename("trigger Bruce") == ""
     assert resolve_agent_codename("dry run the fleet", allow_all=True) == "all"
     assert resolve_agent_codename("run all") == ""
 
 
+def test_resolve_agent_codename_uses_current_theme_names(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _save_roster_theme(monkeypatch, tmp_path, theme="transformers")
+    assert resolve_agent_codename("run Optimus Prime") == "architect"
+    assert resolve_agent_codename("pause Ironhide") == "senior-dev"
+    assert resolve_agent_codename("dry-run Arcee") == "e2e-runner"
+    assert resolve_agent_codename("run Batman") == ""
+    assert resolve_agent_codename("pause Lucius") == ""
+    assert resolve_agent_codename("dry-run Huntress") == ""
+    assert resolve_agent_codename("dry-run Lucius", model_agent="lucius") == ""
+
+
+def test_resolve_agent_codename_uses_custom_theme_names(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _save_roster_theme(
+        monkeypatch,
+        tmp_path,
+        theme="custom",
+        custom_names={"architect": "Sherlock", "senior-dev": "Watson"},
+    )
+    assert resolve_agent_codename("run Sherlock") == "architect"
+    assert resolve_agent_codename("pause Watson") == "senior-dev"
+    # Custom themes inherit base names for agents the operator did not rename.
+    assert resolve_agent_codename("dry-run Huntress") == "e2e-runner"
+    assert resolve_agent_codename("run Batman") == ""
+
+
 def test_exact_agent_codenames_win_over_aliases() -> None:
     assert resolve_agent_codename("dry-run cleanup") == "cleanup"
-    assert resolve_agent_codename("pause Robin") == "triage"
-    assert resolve_agent_codename("run Damian Wayne") == "spec-planner"
+    assert resolve_agent_codename("pause triage") == "triage"
+    assert resolve_agent_codename("run spec-planner") == "spec-planner"
     assert resolve_agent_codename("run agent-cleanup") == "agent-cleanup"
 
 

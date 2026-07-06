@@ -216,7 +216,12 @@ _AMBIENT_ACTION_CUES: tuple[str, ...] = (
 )
 
 
-def ambient_engages(text: str, *, bot_user_id: str = "") -> bool:
+def ambient_engages(
+    text: str,
+    *,
+    bot_user_id: str = "",
+    state_root: Path | None = None,
+) -> bool:
     """Return True iff a plain channel message is worth routing.
 
     Engagement triggers (any one is enough):
@@ -246,7 +251,7 @@ def ambient_engages(text: str, *, bot_user_id: str = "") -> bool:
         return True
 
     return any(cue in normalized for cue in _AMBIENT_ACTION_CUES) or (
-        _has_agent_action_cue(normalized)
+        _has_agent_action_cue(normalized, state_root=state_root)
     )
 
 
@@ -561,17 +566,14 @@ _CURATED_SYNONYMS: dict[str, tuple[str, ...]] = {
 
 _CODENAME_RE = re.compile(r"^(?!-)[A-Za-z0-9._-]{1,64}$")
 
-# Keyed by the canonical role slug (the runnable codename). Default-theme
-# display names are accepted as human-facing aliases, but the resolved command
-# always remains the role slug.
+# Keyed by the canonical role slug (the runnable codename). Keep this table to
+# role/function phrases only. Display names come from the active roster theme at
+# resolution time so retired theme names do not survive as runtime aliases.
 _AGENT_ALIASES: dict[str, tuple[str, ...]] = {
     "agent-cleanup": ("agent-cleanup",),
     "alfred-nightly": ("alfred-nightly", "nightly"),
     "architect": (
         "architect",
-        "batman",
-        "bruce",
-        "bruce wayne",
         "large-feature architect",
         "multi-repo architect",
     ),
@@ -581,38 +583,32 @@ _AGENT_ALIASES: dict[str, tuple[str, ...]] = {
     "code-map-refresh": ("code-map-refresh", "code map refresh"),
     "cold-backup": ("cold-backup", "cold backup"),
     "content-drift": ("content-drift", "content drift"),
-    "e2e-runner": ("e2e-runner", "e2e", "huntress", "smoke runner"),
-    "fixer": ("fixer", "nightwing", "review fixer", "review feedback"),
+    "e2e-runner": ("e2e-runner", "e2e", "smoke runner"),
+    "fixer": ("fixer", "review fixer", "review feedback"),
     "fleet-doctor": ("fleet-doctor", "fleet doctor", "doctor"),
     "fleet-recap-evening": ("fleet-recap-evening", "evening recap"),
     "fleet-recap-morning": ("fleet-recap-morning", "morning recap"),
     "memory-harvest": ("memory-harvest", "memory harvest"),
     "morning-brief": ("morning-brief", "morning brief"),
-    "ops-watch": ("gordon", "ops-watch", "ops watch"),
-    "planner": ("drake", "issue planner", "planner", "tim drake"),
+    "ops-watch": ("ops-watch", "ops watch"),
+    "planner": ("issue planner", "planner"),
     "reviewer": (
         "reviewer",
         "review agent",
         "code reviewer",
-        "ras al ghul",
-        "ras-al-ghul",
-        "rasalghul",
-        "ra's al ghul",
     ),
     "senior-dev": (
         "feature dev",
         "implementation agent",
-        "lucius",
-        "lucius fox",
         "senior-dev",
         "senior dev",
         "senior developer",
     ),
     "shipped-summary-daily": ("shipped-summary-daily", "daily shipped summary"),
     "shipped-summary-weekly": ("shipped-summary-weekly", "weekly shipped summary"),
-    "spec-planner": ("damian", "damian wayne", "spec-planner", "spec planner"),
-    "test-engineer": ("bane", "test-engineer", "test engineer", "test agent"),
-    "triage": ("issue triage", "robin", "triage"),
+    "spec-planner": ("spec-planner", "spec planner"),
+    "test-engineer": ("test-engineer", "test engineer", "test agent"),
+    "triage": ("issue triage", "triage"),
 }
 
 _KNOWN_AGENT_CODENAMES = frozenset(_AGENT_ALIASES)
@@ -644,6 +640,7 @@ def resolve_agent_codename(
     *,
     model_agent: str = "",
     allow_all: bool = False,
+    state_root: Path | None = None,
 ) -> str:
     """Resolve an agent codename from model output plus operator prose.
 
@@ -656,6 +653,7 @@ def resolve_agent_codename(
             model_agent,
             allow_all=allow_all,
             allow_custom=True,
+            state_root=state_root,
         )
         if candidate:
             return candidate
@@ -666,22 +664,24 @@ def resolve_agent_codename(
     for codename in sorted(_KNOWN_AGENT_CODENAMES, key=len, reverse=True):
         if _contains_token(normalized, codename):
             return codename
-    for codename, aliases in _AGENT_ALIASES.items():
+    for codename, aliases in _agent_aliases_by_codename(state_root=state_root).items():
         if any(_contains_token(normalized, alias) for alias in aliases):
             return codename
     return ""
 
 
-def resolve_assignment_agent(text: str, *, model_agent: str = "") -> tuple[str, str]:
+def resolve_assignment_agent(
+    text: str,
+    *,
+    model_agent: str = "",
+    state_root: Path | None = None,
+) -> tuple[str, str]:
     """Resolve the requested issue-assignment lane, if the operator named one."""
-    # Keyed by the canonical assignment-lane slug. Themed display names are
-    # accepted as input aliases, never as stored assignment targets.
+    # Keyed by the canonical assignment-lane slug. Active themed display names
+    # are accepted as input aliases, never as stored assignment targets.
     aliases = {
         "architect": (
             "architect",
-            "batman",
-            "bruce",
-            "bruce wayne",
             "large feature",
             "large-feature",
             "multi repo",
@@ -692,15 +692,18 @@ def resolve_assignment_agent(text: str, *, model_agent: str = "") -> tuple[str, 
             "developer",
             "implementation",
             "implementation agent",
-            "lucius",
-            "lucius fox",
             "senior dev",
             "senior developer",
             "single repo",
             "single-repo",
         ),
     }
-    explicit = _assignment_agent_from_text(text, aliases)
+    active_aliases = _active_theme_agent_aliases_by_codename(state_root=state_root)
+    aliases = {
+        codename: tuple(dict.fromkeys((*names, *active_aliases.get(codename, ()))))
+        for codename, names in aliases.items()
+    }
+    explicit = _assignment_agent_from_text(text, aliases, state_root=state_root)
     if not explicit:
         return "", ""
     if explicit == "alfred":
@@ -713,6 +716,8 @@ def resolve_assignment_agent(text: str, *, model_agent: str = "") -> tuple[str, 
 def _assignment_agent_from_text(
     text: str,
     aliases: dict[str, tuple[str, ...]],
+    *,
+    state_root: Path | None = None,
 ) -> str:
     normalized = _normalize(text)
     if not normalized:
@@ -722,9 +727,13 @@ def _assignment_agent_from_text(
         for name in (agent, *names):
             if any(_contains_token(normalized, f"{prefix} {name}") for prefix in prefixes):
                 return agent
-    exact = _known_assignment_agent(text, aliases)
+    exact = _known_assignment_agent(text, aliases, state_root=state_root)
     if not exact:
-        exact = _known_assignment_agent(_strip_leading_articles(normalized), aliases)
+        exact = _known_assignment_agent(
+            _strip_leading_articles(normalized),
+            aliases,
+            state_root=state_root,
+        )
     if exact:
         return exact
     match = re.search(
@@ -732,7 +741,7 @@ def _assignment_agent_from_text(
         normalized,
     )
     if match:
-        return _known_assignment_agent(match.group(1), aliases)
+        return _known_assignment_agent(match.group(1), aliases, state_root=state_root)
     return ""
 
 
@@ -743,6 +752,8 @@ def _strip_leading_articles(text: str) -> str:
 def _known_assignment_agent(
     value: str,
     aliases: dict[str, tuple[str, ...]],
+    *,
+    state_root: Path | None = None,
 ) -> str:
     normalized = _normalize(value)
     if not normalized:
@@ -756,7 +767,7 @@ def _known_assignment_agent(
             re.sub(r"[^a-z0-9]+", "", _normalize(name)) for name in names
         }:
             return agent
-    for agent, names in _AGENT_ALIASES.items():
+    for agent, names in _agent_aliases_by_codename(state_root=state_root).items():
         if normalized == agent or collapsed == agent:
             return agent
         if normalized in names or compact in {
@@ -766,7 +777,13 @@ def _known_assignment_agent(
     return ""
 
 
-def _agent_candidate(raw: str, *, allow_all: bool, allow_custom: bool) -> str:
+def _agent_candidate(
+    raw: str,
+    *,
+    allow_all: bool,
+    allow_custom: bool,
+    state_root: Path | None = None,
+) -> str:
     value = (raw or "").strip()
     if not value:
         return ""
@@ -778,11 +795,14 @@ def _agent_candidate(raw: str, *, allow_all: bool, allow_custom: bool) -> str:
         return normalized
     if collapsed in _KNOWN_AGENT_CODENAMES:
         return collapsed
-    for codename, aliases in _AGENT_ALIASES.items():
+    for codename, aliases in _agent_aliases_by_codename(state_root=state_root).items():
         if normalized == codename or normalized in aliases:
             return codename
     if allow_all and collapsed == "all":
         return "all"
+    builtin_theme_aliases = _builtin_theme_alias_tokens()
+    if normalized in builtin_theme_aliases or collapsed in builtin_theme_aliases:
+        return ""
     # Keep Alfred extensible: a future codename that is not in our curated
     # alias set can still flow through as long as it is argv-safe. Only the
     # model's explicit agent field gets this treatment; whole operator
@@ -792,15 +812,86 @@ def _agent_candidate(raw: str, *, allow_all: bool, allow_custom: bool) -> str:
     return ""
 
 
-def _has_agent_action_cue(normalized: str) -> bool:
+def _has_agent_action_cue(normalized: str, *, state_root: Path | None = None) -> bool:
     if not normalized:
         return False
     for verb in _AGENT_ACTION_VERBS:
-        for aliases in _AGENT_ALIASES.values():
+        for aliases in _agent_aliases_by_codename(state_root=state_root).values():
             for alias in aliases:
                 if _contains_token(normalized, f"{verb} {alias}"):
                     return True
     return False
+
+
+def _active_theme_agent_aliases_by_codename(
+    *,
+    state_root: Path | None = None,
+) -> dict[str, tuple[str, ...]]:
+    try:
+        from roster_theme_store import BASE_THEME_NAMES, RosterThemeStore
+    except Exception:
+        return {}
+    try:
+        raw_home = os.environ.get("ALFRED_HOME", "").strip()
+        root = (
+            state_root
+            if state_root is not None
+            else Path(raw_home).expanduser() / "state"
+            if raw_home
+            else Path.home() / ".alfred" / "state"
+        )
+        state = RosterThemeStore.from_state_root(root).load()
+    except Exception:
+        return {}
+
+    out: dict[str, tuple[str, ...]] = {}
+    for codename in BASE_THEME_NAMES:
+        themed_name = state.themed_name_for(codename)
+        aliases = _display_name_alias_variants(themed_name or "")
+        if aliases:
+            out[codename] = aliases
+    return out
+
+
+def _agent_aliases_by_codename(
+    *,
+    state_root: Path | None = None,
+) -> dict[str, tuple[str, ...]]:
+    active = _active_theme_agent_aliases_by_codename(state_root=state_root)
+    return {
+        codename: tuple(dict.fromkeys((*aliases, *active.get(codename, ()))))
+        for codename, aliases in _AGENT_ALIASES.items()
+    }
+
+
+def _display_name_alias_variants(value: str) -> tuple[str, ...]:
+    normalized = _normalize(value)
+    if not normalized:
+        return ()
+    no_apostrophe = re.sub(r"['\u2019]", "", normalized)
+    spaced = re.sub(r"[^a-z0-9]+", " ", no_apostrophe).strip()
+    slug = re.sub(r"[^a-z0-9]+", "-", no_apostrophe).strip("-")
+    compact = re.sub(r"[^a-z0-9]+", "", no_apostrophe)
+    return tuple(
+        dict.fromkeys(
+            variant for variant in (normalized, no_apostrophe, spaced, slug, compact) if variant
+        )
+    )
+
+
+def _builtin_theme_alias_tokens() -> frozenset[str]:
+    try:
+        from roster_theme_store import BASE_THEME_NAMES, PRESET_DISPLAY_NAMES
+    except Exception:
+        return frozenset()
+
+    tokens: set[str] = set()
+    for name in BASE_THEME_NAMES.values():
+        tokens.update(_display_name_alias_variants(name))
+    for preset in PRESET_DISPLAY_NAMES.values():
+        for name in preset.values():
+            tokens.update(_display_name_alias_variants(name))
+    return frozenset(tokens)
 
 
 def _explicit_slug(text: str, known: set[str]) -> str:
@@ -865,6 +956,7 @@ def classify_intent(
     engine_invoke: EngineInvoke | None,
     catalog: RepoCatalog | None = None,
     min_confidence: float | None = None,
+    state_root: Path | None = None,
 ) -> Intent:
     """Classify free-text Slack prose into a typed :class:`Intent`.
 
@@ -952,6 +1044,7 @@ def classify_intent(
             text,
             model_agent=model_agent,
             allow_all=allow_all,
+            state_root=state_root,
         )
         return Intent(
             action=action,
@@ -977,6 +1070,7 @@ def classify_intent(
             agent, unsupported_assignment_agent = resolve_assignment_agent(
                 text,
                 model_agent=model_agent,
+                state_root=state_root,
             )
             if agent:
                 params["assignment_agent"] = agent

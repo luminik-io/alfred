@@ -2727,8 +2727,8 @@ def test_assignment_agent_display_default_theme_is_batman_cast(monkeypatch, tmp_
     monkeypatch.setattr(paths, "STATE_ROOT", tmp_path / "empty-state")
     assert _assignment_agent_display("architect") == "Batman · Architect"
     assert _assignment_agent_display("senior-dev") == "Lucius · Senior developer"
-    # Batman-cast aliases still resolve to the same themed lane label.
-    assert _assignment_agent_display("lucius") == "Lucius · Senior developer"
+    # Display input is canonical; old names are no longer accepted directly.
+    assert _assignment_agent_display("lucius") == "lucius"
 
 
 def test_assignment_agent_display_follows_preset_theme(monkeypatch, tmp_path) -> None:

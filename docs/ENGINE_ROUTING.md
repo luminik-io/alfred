@@ -31,7 +31,7 @@ Alfred CLI:
 alfred engine status                 # one line per codename, resolved mode
 alfred engine status senior-dev          # one codename, plus where the value came from
 alfred engine set senior-dev hybrid      # persist to $ALFRED_HOME/state/engines/senior-dev
-alfred engine set rasalghul codex
+alfred engine set reviewer codex
 alfred codex status                  # check the Codex CLI is reachable
 alfred codex probe                   # run one tiny non-interactive request
 alfred auth status                   # auth-surface check across both engines
@@ -87,13 +87,13 @@ The shipped fleet has the following defaults. Override per codename when your ac
 |---|---|---|
 | **architect** | `hybrid` | Architect for cross-repo execution. Long-context planning prefers Claude; Codex fallback gives the architect lane a second model when Claude produced no useful plan. |
 | **senior-dev** | `hybrid` | Builder. Wants Claude for first-class code generation, with Codex available only for capability gaps. |
-| **drake** | `claude` | Planner. Cross-repo grep plus issue-filing benefits from Claude's longer effective context and tool integration. |
-| **bane** | `hybrid` | Test-coverage builder. Same posture as Lucius; tests are valuable enough to fall back rather than skip. |
-| **rasalghul** | `codex` | Reviewer. An independent reviewer on a different model surfaces blind spots the builder model shares. Also preserves Claude quota for builders. |
-| **nightwing** | `hybrid` | Review-fix builder. Needs Claude for the same reasons as Lucius. |
-| **robin** | `hybrid` | Bug triage. Light-touch; either engine works. |
-| **huntress** | `claude` | Post-deploy smoke. Lower volume; Claude is fine. |
-| **gordon** | `claude` | Deploy-health. Read-only; quiet on healthy days. |
+| **planner** | `claude` | Planner. Cross-repo grep plus issue-filing benefits from Claude's longer effective context and tool integration. |
+| **test-engineer** | `hybrid` | Test-coverage builder. Same posture as senior-dev; tests are valuable enough to fall back rather than skip. |
+| **reviewer** | `codex` | Reviewer. An independent reviewer on a different model surfaces blind spots the builder model shares. Also preserves Claude quota for builders. |
+| **fixer** | `hybrid` | Review-fix builder. Needs Claude for the same reasons as senior-dev. |
+| **triage** | `hybrid` | Bug triage. Light-touch; either engine works. |
+| **e2e-runner** | `claude` | Post-deploy smoke. Lower volume; Claude is fine. |
+| **ops-watch** | `claude` | Deploy-health. Read-only; quiet on healthy days. |
 | **automerge** | n/a | No engine call. |
 | **agent-cleanup** | n/a | No engine call. |
 

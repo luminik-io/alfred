@@ -23,8 +23,8 @@ read-only sandbox and writes artifacts to `/tmp/alfred-codex-probe-*`.
 
 ```sh
 alfred engine status
-alfred engine status rasalghul
-alfred engine set rasalghul codex
+alfred engine status reviewer
+alfred engine set reviewer codex
 alfred engine set senior-dev hybrid
 alfred engine set senior-dev claude
 ```

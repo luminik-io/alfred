@@ -33,7 +33,7 @@ Engine modes:
 ```sh
 alfred engine status
 alfred engine status senior-dev
-alfred engine set rasalghul codex
+alfred engine set reviewer codex
 alfred engine set senior-dev hybrid
 alfred codex status
 alfred codex probe
