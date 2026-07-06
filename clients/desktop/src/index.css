@@ -2948,6 +2948,14 @@ body {
   color: var(--secondary-foreground);
 }
 
+.readiness-repair-button {
+  margin-top: 0.5rem;
+  min-height: 2rem;
+  width: fit-content;
+  padding-inline: 0.625rem;
+  font-size: 0.75rem;
+}
+
 .ghost-icon,
 .command-result__dismiss {
   width: 2.25rem;

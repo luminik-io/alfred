@@ -1764,6 +1764,18 @@ fn build_alfred_action(
             "alfred".to_string(),
             vec!["code-memory".to_string(), "doctor".to_string()],
         )),
+        "code_memory_index" => Ok((
+            "alfred".to_string(),
+            vec!["code-memory".to_string(), "index".to_string()],
+        )),
+        "skills_install_starter" => Ok((
+            "alfred".to_string(),
+            vec![
+                "skills".to_string(),
+                "install".to_string(),
+                "--starter".to_string(),
+            ],
+        )),
         "redis_status" => Ok((
             "alfred".to_string(),
             vec![
@@ -2921,6 +2933,24 @@ done"#;
         assert_eq!(
             code_memory_args,
             vec!["code-memory".to_string(), "doctor".to_string(),]
+        );
+
+        let (_, code_memory_index_args) = build_alfred_action("code_memory_index", None, None)
+            .expect("code-memory index has no target");
+        assert_eq!(
+            code_memory_index_args,
+            vec!["code-memory".to_string(), "index".to_string(),]
+        );
+
+        let (_, skills_args) = build_alfred_action("skills_install_starter", None, None)
+            .expect("starter skills install has no target");
+        assert_eq!(
+            skills_args,
+            vec![
+                "skills".to_string(),
+                "install".to_string(),
+                "--starter".to_string(),
+            ]
         );
 
         let (_, redis_args) = build_alfred_action("redis_sync_preview", None, None)

@@ -43,6 +43,8 @@ def _isolate_launcher_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MAP_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_WORKSPACE_SUBDIR", raising=False)
+    monkeypatch.delenv("BATMAN_AUTO_EXECUTE", raising=False)
+    monkeypatch.delenv("BATMAN_PARENT_REPO", raising=False)
     monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
 
 
@@ -850,7 +852,9 @@ def test_bootstrap_status_respects_code_memory_disable(
         lambda _env: pytest.fail("disabled code memory must not crawl workspace repos"),
     )
 
-    code_memory = setup_mod.bootstrap_status()["code_memory"]
+    payload = setup_mod.bootstrap_status()
+    code_memory = payload["code_memory"]
+    first_run_by_key = {check["key"]: check for check in payload["first_run"]["checks"]}
 
     assert code_memory["enabled"] is False
     assert code_memory["autofetch"] is False
@@ -864,6 +868,10 @@ def test_bootstrap_status_respects_code_memory_disable(
         "limit": 25,
     }
     assert code_memory["detail"] == "Code memory is disabled with ALFRED_CODE_MEMORY_MCP."
+    assert first_run_by_key["code_graph"]["detected"] == {
+        "capability_state": "disabled",
+        "enabled": False,
+    }
 
 
 def test_capability_plane_reports_missing_optional_layers(
@@ -928,6 +936,39 @@ def test_capability_plane_reports_external_layers_without_headroom_runner_wiring
     assert by_key["engineering_skills"]["detected"]["paths"] == [
         str(codex_home / "skills" / "gstack")
     ]
+
+
+def test_capability_plane_detects_first_party_starter_skills(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    claude_home = tmp_path / "claude"
+    (claude_home / "skills" / "spec-to-issues").mkdir(parents=True)
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    monkeypatch.setenv("CLAUDE_HOME", str(claude_home))
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+
+    payload = setup_mod.capability_status()
+    skills = {item["key"]: item for item in payload["capabilities"]}["engineering_skills"]
+
+    assert skills["state"] == "ready"
+    assert skills["detected"]["paths"] == [str(claude_home / "skills" / "spec-to-issues")]
+
+
+def test_capability_plane_uses_configured_skills_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    skills_dir = tmp_path / "custom-skills"
+    (skills_dir / "write-tests").mkdir(parents=True)
+    monkeypatch.setenv("ALFRED_SKILLS_DIR", str(skills_dir))
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    monkeypatch.setenv("CLAUDE_HOME", str(tmp_path / "claude"))
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+
+    payload = setup_mod.capability_status()
+    skills = {item["key"]: item for item in payload["capabilities"]}["engineering_skills"]
+
+    assert skills["state"] == "ready"
+    assert skills["detected"]["paths"] == [str(skills_dir / "write-tests")]
 
 
 def test_capability_plane_requires_context_compression_opt_in(
