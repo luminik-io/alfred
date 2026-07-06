@@ -21,7 +21,7 @@
   "dependencies": {
     "@astrojs/check": "^0.9.9",
     "@astrojs/sitemap": "^3.7.3",
-    "@astrojs/starlight": "^0.41.1",
+    "@astrojs/starlight": "^0.41.3",
     "@fontsource-variable/instrument-sans": "^5.2.8",
     "@fontsource-variable/quicksand": "^5.2.10",
     "@fontsource/fragment-mono": "^5.2.8",
