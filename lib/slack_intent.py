@@ -1419,7 +1419,7 @@ def _starts_with_token(normalized_text: str, token: str) -> bool:
     if not token:
         return False
     pattern = (
-        r"^" + re.escape(token) + r"(?:$|[.!?,;:]|\s+(?:please|pls|now|today|tomorrow|asap)\b)"
+        r"^" + re.escape(token) + r"(?:$|[.!?,;:]|\s+(?:please|pls|now|today|tomorrow|asap|for)\b)"
     )
     return re.search(pattern, normalized_text) is not None
 

@@ -345,6 +345,19 @@ def test_resolve_assignment_agent_accepts_article_prefixed_lane_reply() -> None:
     assert resolve_assignment_agent("the senior developer") == ("senior-dev", "")
 
 
+def test_resolve_assignment_agent_accepts_named_lane_before_purpose() -> None:
+    assert resolve_assignment_agent(
+        "assign acme-io/acme-backend#12 to senior-dev for implementation"
+    ) == (
+        "senior-dev",
+        "",
+    )
+    assert resolve_assignment_agent("assign acme-io/acme-backend#12 to architect for planning") == (
+        "architect",
+        "",
+    )
+
+
 def test_run_agent_classifies_as_confirmable_mutation() -> None:
     intent = classify_intent(
         "can you run Batman now?",
