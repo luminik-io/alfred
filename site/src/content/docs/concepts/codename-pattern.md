@@ -91,7 +91,7 @@ Each role has:
 - **A bin script**: `bin/<role>.py`. Imports from `agent_runner`. ~150-300 lines.
 - **A scheduler entry**: one line in `launchd/agents.conf` (label, script, schedule, Java flag, log stem, role).
 - **Or a custom-agent manifest row**: `alfred agent add` writes `$ALFRED_HOME/state/custom-agents/custom-agents.json`, and deploy renders it through `bin/custom-agent.py`.
-- **(Optional) A prompt file**: `prompts/<role-slug>.md` in this repo or `$ALFRED_HOME/prompts/<role-slug>.md` in your fleet. Long-form context the runner inlines into `claude -p`.
+- **(Optional) A prompt file**: built-in roles seed from repo templates such as `prompts/feature-dev.md`, then read runtime overrides from `$ALFRED_HOME/prompts/<role-slug>.md` in your fleet. For example, the `senior-dev` role seeds from `prompts/feature-dev.md` but loads `$ALFRED_HOME/prompts/senior-dev.md` after install.
 - **(Optional) An IAM identity**: if it touches AWS. See [AWS setup](/guides/aws/).
 - **A row in your repo guidance file** (`AGENTS.md` or `CLAUDE.md`) documenting role + trigger + scope.
 
