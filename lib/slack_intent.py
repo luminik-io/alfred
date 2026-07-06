@@ -744,16 +744,17 @@ def _assignment_agent_from_text(
         matched = _known_assignment_agent(match.group(1), aliases, state_root=state_root)
         if matched:
             return matched
-    phrase = re.search(
-        r"\b(?:to|with)(?:\s+the)?\s+(.+)$",
+    for phrase in re.finditer(
+        r"\b(?:to|with)(?:\s+the)?\s+(.+?)(?=\b(?:to|with)(?:\s+the)?\s+|$)",
         normalized,
-    )
-    if phrase:
-        return _known_assignment_agent_in_phrase(
+    ):
+        matched = _known_assignment_agent_in_phrase(
             phrase.group(1),
             aliases,
             state_root=state_root,
         )
+        if matched:
+            return matched
     return ""
 
 

@@ -236,6 +236,30 @@ def test_assign_issue_explicit_multi_word_unsupported_theme_lane_asks(
     assert "`senior-dev`" in intent.clarification
 
 
+def test_assign_issue_later_explicit_unsupported_lane_after_context_asks(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _save_roster_theme(monkeypatch, tmp_path, theme="justice-league")
+    intent = classify_intent(
+        "assign acme-io/acme-backend#12 with context to Wonder Woman",
+        engine_invoke=_engine_returning(
+            {
+                "action": "assign_issue",
+                "repo": "acme-io/acme-backend",
+                "issue": 12,
+                "confidence": 0.91,
+            }
+        ),
+        catalog=CATALOG,
+    )
+
+    assert intent.action == ACTION_ASSIGN
+    assert intent.agent == ""
+    assert intent.needs_clarification is True
+    assert intent.params["unsupported_assignment_agent"] == "reviewer"
+
+
 def test_assign_issue_to_fix_phrase_does_not_become_lane(monkeypatch, tmp_path: Path) -> None:
     _save_roster_theme(monkeypatch, tmp_path, theme="batman")
     intent = classify_intent(
