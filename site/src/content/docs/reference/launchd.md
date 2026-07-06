@@ -97,19 +97,19 @@ Pause persists across `deploy.sh` invocations via marker files at `$ALFRED_HOME/
 
 ```sh
 # Manual pause:
-launchctl bootout "gui/$(id -u)/alfred.lucius"
+launchctl bootout "gui/$(id -u)/alfred.senior-dev"
 mkdir -p $ALFRED_HOME/state/_paused
-date -u +"%Y-%m-%dT%H:%M:%SZ" > $ALFRED_HOME/state/_paused/lucius
+date -u +"%Y-%m-%dT%H:%M:%SZ" > $ALFRED_HOME/state/_paused/senior-dev
 
 # Resume:
-rm $ALFRED_HOME/state/_paused/lucius
+rm $ALFRED_HOME/state/_paused/senior-dev
 launchctl bootstrap "gui/$(id -u)" \
-  ~/Library/LaunchAgents/alfred.lucius.plist
+  ~/Library/LaunchAgents/alfred.senior-dev.plist
 ```
 
 ## stdout / stderr
 
-Each plist writes to `/tmp/<log_stem>.stdout` and `/tmp/<log_stem>.stderr`. Use `tail -f /tmp/alfred.lucius.std{out,err}` to watch a firing live.
+Each plist writes to `/tmp/<log_stem>.stdout` and `/tmp/<log_stem>.stderr`. Use `tail -f /tmp/alfred.senior-dev.std{out,err}` to watch a firing live.
 
 `/tmp/` is wiped on macOS reboot. Durable runtime state lives under
 `$ALFRED_HOME/state/`; Codex artifacts are written under
