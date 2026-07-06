@@ -15,6 +15,38 @@ Effort sizing is uniform across tiers: **S** is roughly a week of focused work, 
 
 What is in the OSS tree today.
 
+### Main after v0.5.3: batteries-included setup and role themes
+
+This is merged on `main` and will be part of the next release.
+
+- Role-slug identity is now canonical. Runtime files, scheduler labels, GitHub
+  labels, worktrees, and engine overrides use stable roles such as `architect`,
+  `senior-dev`, `reviewer`, and `test-engineer`; Batman, Lucius, Ra's al Ghul,
+  and Bane are default-theme display names layered on top.
+- Multiple roster themes and custom names ship in the desktop app. Operators can
+  pick a preset or build a full team theme by chatting with Alfred; the saved
+  names resolve across Desktop, Slack, onboarding, and runtime status surfaces
+  without changing the underlying role contracts.
+- Conversational onboarding is in the native client. Alfred can ask setup
+  questions, propose fixed allowlisted actions, preview team names, and route
+  writes through the same approval gates as the stepped setup form.
+- Native first-run repair is real. Desktop Setup can install/repair bundled
+  core resources, start the runtime, inspect an existing install, check
+  code-memory readiness, index the code graph, install starter skills, and run
+  safe status/dry-run actions through a native allowlist.
+- The starter skill plane is in tree: first-party skills, vendored review/QA/UI
+  skills, a runner injector, and `alfred skills evolve` for lesson-driven skill
+  proposals.
+- Implementation runs can opt into a self-grading rubric gate before PR creation,
+  with bounded retry, explicit failure classes, and tests for malformed grader
+  output.
+- The memory and reliability wave tightened recall quality, duplicate collapse,
+  issue-relevant lessons, prompt budget caps, retry/provider classification, and
+  the optional code-memory MCP readiness path.
+- Repo strategy has moved to OSS-first. `luminik-io/alfred` is the public
+  product repo; the private sibling is a thin overlay for operator-specific
+  operations, launch planning, and private context only.
+
 ### v0.5.3: 2026-06-24
 
 The signed macOS desktop app and Linux packages published with a working
@@ -189,10 +221,29 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full ledger.
 
 Items with active work and a committed IC.
 
-- **Plan-review gate as a runtime feature.** Promote `plan() -> review_plan() -> execute() -> review_diff()` from an architecture note to the default lifecycle for codenames that opt in. Today the review step exists in prose; the runtime makes it enforceable. IC: core. Effort: M. Issue: TBD.
-- **Public unattended-SLA emit format.** Extend `alfred-shipped-public` with a 30-day window covering firings, success rate, and unattended hours. People who want a public usage page can render this on their own site. IC: core. Effort: S. Issue: TBD.
-- **Alfred Desktop v2.** Keep Slack as the collaboration surface and build on the packaged Tauri shell with guided setup repair, release/update status, lock recovery, safer command previews, and a first-class Goals inbox with evidence. No extra gateway, no local mirror, no second source of truth. Keep `alfred serve` JSON APIs stable so the Tauri shell stays thin. IC: core. Effort: M. Issue: TBD.
-- **Memory quality loop v2.** Improve duplicate collapse, evidence ranking, stale lesson retirement, and approved follow-up execution before a lesson can shape future runs. IC: core. Effort: M. Issue: TBD.
+- **Batteries-included context plane.** Make context graph, output compaction,
+  and session continuity first-class local capabilities. Keep permissive tools
+  optional or pinned (`codebase-memory-mcp`, code-review-graph-style AST
+  indexes, Headroom-style reversible compression, RTK/token-savior-style command
+  compactors), and reimplement non-permissive or invasive hook ideas natively.
+  IC: core. Effort: M. Issue: alfred-internal#430 / #423.
+- **True scratch-home onboarding E2E.** Add an automated test that creates a
+  temporary `ALFRED_HOME`, seeds the full fleet, starts `alfred serve`, drives
+  setup APIs/native-ready payloads, verifies starter skills/code-memory
+  readiness, and tears every artifact down. This is the missing proof before a
+  serious Show HN launch. IC: core. Effort: S. Issue: alfred-internal#426.
+- **Role-neutral architect config.** Remove remaining Batman-specific runtime
+  names from code and docs where they are not theme names. No backward
+  compatibility requirement: prefer `ARCHITECT_*`, role slugs, and clean config
+  over permanent legacy aliases. IC: core. Effort: S. Issue: alfred-internal#428.
+- **Public launch proof.** Refresh README/site around the real product promise:
+  native full install, full fleet by default, multi-repo architect loop, memory
+  and code graph, skills, screenshots/GIF/video, and honest public evidence.
+  IC: core. Effort: S. Issue: alfred-internal#427 / #434.
+- **Goals inbox and evidence ledger.** Promote the durable goal contract into the
+  native client and Slack flow so long-running work has visible outcome,
+  verification, constraints, evidence, and blocked-state history. IC: core.
+  Effort: M. Issue: TBD.
 
 ## Next (next quarter)
 
@@ -219,7 +270,10 @@ Candidly speculative. No IC, no quarter, no committed effort estimate.
 
 Decisions considered and left out. Listed so contributors do not re-pitch them.
 
-- **Plugin or skill marketplace bundled into Alfred.** Considered and decided against. Skills are operator-installed Claude Code skills; a bundled marketplace would push maintenance onto the framework. The convention-only resolver stays.
+- **Hosted skill marketplace bundled into Alfred.** Not committed. Alfred now
+  ships curated first-party and vendored skill packs plus optional pinned
+  reference installs, but it is not becoming a hosted marketplace. New batteries
+  must stay local, inspectable, reversible, and license-clean.
 - **Hosted Alfred SaaS.** Not on the roadmap. Alfred is self-hosted by design; multi-tenant is a different product.
 - **First-class GitHub App** instead of the operator's `gh` PAT. Larger onboarding surface; deferred until there is demonstrated demand.
 - **Pluggable spend backends** (filesystem, SQLite, Redis). Single-host is the design, so this stays speculative.

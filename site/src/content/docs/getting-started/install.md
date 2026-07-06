@@ -5,35 +5,6 @@ description: Fast setup for an existing dev machine, with a longer guided path f
 
 This page condenses [`INSTALL.md`](https://github.com/luminik-io/alfred/blob/main/INSTALL.md). Budget about 30 minutes on an already-provisioned dev machine, or 60 to 120 minutes for a fresh laptop, server, or dedicated agent box. For the full doc with every troubleshooting case, read it on GitHub.
 
-## TL;DR
-
-Source checkout path:
-
-```sh
-git clone https://github.com/luminik-io/alfred.git ~/code/alfred
-cd ~/code/alfred
-bash install.sh
-gh auth login                     # GitHub
-claude auth login                 # Claude Code auth
-./bin/alfred-init.py              # choose agents, repos, codenames, Slack
-```
-
-macOS Homebrew path, if you prefer package-manager installs:
-
-```sh
-brew tap luminik-io/alfred https://github.com/luminik-io/alfred
-brew install alfred-os
-alfred-install
-gh auth login                     # GitHub
-claude auth login                 # Claude Code auth
-alfred-init                       # choose agents, repos, codenames, Slack
-```
-
-The Homebrew formula installs the latest tagged release and puts the Alfred
-commands on your PATH: `alfred`, `alfred-init`, `alfred-install`,
-`alfred-deploy`, and `alfred doctor`. Use the source checkout path when you
-want `main`, framework edits, or Linux.
-
 ## Recommended: Install Alfred Desktop
 
 Alfred Desktop is the native Mac/Linux starting point for most local installs.
@@ -66,6 +37,38 @@ The desktop app reads the same `$ALFRED_HOME` state and GitHub records as the
 CLI. You can still run Alfred entirely from the terminal when you are setting up
 a server, CI-like host, or headless agent box.
 
+## CLI-only install
+
+Use this path when you deliberately want no GUI, are setting up a headless host,
+or are developing Alfred itself.
+
+Source checkout path:
+
+```sh
+git clone https://github.com/luminik-io/alfred.git ~/code/alfred
+cd ~/code/alfred
+bash install.sh
+gh auth login                     # GitHub
+claude auth login                 # Claude Code auth
+./bin/alfred-init.py              # choose repos, team names, schedule, Slack
+```
+
+macOS Homebrew path, if you prefer package-manager installs:
+
+```sh
+brew tap luminik-io/alfred https://github.com/luminik-io/alfred
+brew install alfred-os
+alfred-install
+gh auth login                     # GitHub
+claude auth login                 # Claude Code auth
+alfred-init                       # choose repos, team names, schedule, Slack
+```
+
+The Homebrew formula installs the latest tagged release and puts the Alfred
+commands on your PATH: `alfred`, `alfred-init`, `alfred-install`,
+`alfred-deploy`, and `alfred doctor`. Use the source checkout path when you
+want `main`, framework edits, or Linux.
+
 Full fleet for one repo or an explicit comma-separated repo list:
 
 ```sh
@@ -81,8 +84,9 @@ one or more explicit repos. It assumes `GH_ORG` is set, `gh auth login` has
 completed, and `claude` has completed first-run auth. The repo owner must match
 `GH_ORG`; the runtime agents store the bare repo name in `$ALFRED_HOME/.env` and build
 `GH_ORG/repo` at firing time. The command enables the full engineering fleet
-using exact installer selectors: `drake`, `batman`, `lucius`, `rasalghul`,
-`bane`, `nightwing`, `robin`, `huntress`, `gordon`, `automerge`,
+using exact installer selectors: `planner`, `architect`, `senior-dev`,
+`reviewer`, `test-engineer`, `fixer`, `triage`, `e2e-runner`, `ops-watch`,
+`automerge`,
 `agent-cleanup`, `memory-harvest`, `memory-auto-promote`, `code-map-refresh`,
 `agent-morning-brief`, `fleet-doctor`, `fleet-recap-morning`,
 `fleet-recap-evening`, `shipped-summary-daily`, and `shipped-summary-weekly`.
@@ -93,11 +97,11 @@ Slack safely, seeds prompt templates into
 writes `launchd/agents.conf`, writes the shared scheduler manifest, updates
 `$ALFRED_HOME/.env`, runs deploy, and runs doctor.
 
-Batman is included in the full fleet. It only acts on approved
-`agent:large-feature` parent issues after `alfred batman setup` writes the
-parent planning repo, approval channel, trusted operator settings, and
-`BATMAN_AUTO_EXECUTE=approval-gate`; then explicitly arm the runner with
-`alfred enable batman`.
+The `architect` role is included in the full fleet and shows as Batman in the
+default theme. It only acts on approved `agent:large-feature` parent issues after
+`alfred batman setup` writes the parent planning repo, approval channel, trusted
+operator settings, and `BATMAN_AUTO_EXECUTE=approval-gate`; then explicitly arm
+the runner with `alfred enable architect`.
 
 For a framework-only install with no agents configured, run `bash deploy.sh &&
 ./bin/alfred doctor`; doctor should report `0 passed, 0 failed`.

@@ -84,13 +84,14 @@ flowchart LR
   against the CLIs you already authenticated. Alfred does not send code to
   Alfred or Luminik servers. Task context goes only to the model provider you
   chose, GitHub, and Slack when you configured Slack.
-- **Alfred proves itself on its own repo.** A measurable, re-quotable stat:
-  <!-- SELF_PROOF -->No merged PRs in Alfred's own repo in the last 30 days yet<!-- /SELF_PROOF -->.
+- **Public proof is generated, not hand-typed.** Alfred's own repo proof line is
+  refreshed from strict GitHub attribution:
+  <!-- SELF_PROOF -->No public agent-attributed PRs in Alfred's own repo in the last 30 days yet<!-- /SELF_PROOF -->.
   The line between the markers is generated from live GitHub data by
   `npm run proof:update` from [`site/`](site/) (the same command that refreshes
-  the Impact page JSON), never hand-typed; the seed above reads as no-data until
-  a refresh runs, and an empty window says so instead of quoting a fabricated
-  share. See [Anonymous usage totals](#anonymous-usage-totals).
+  the Impact page JSON), never hand-typed. If the public repo has activity but
+  no PRs carrying Alfred provenance labels yet, it says that instead of
+  inventing a traction number. See [Anonymous usage totals](#anonymous-usage-totals).
 
 Docs site: https://alfred.luminik.io
 
@@ -311,7 +312,7 @@ brew install alfred-os
 alfred-install
 gh auth login                     # GitHub
 claude auth login                 # Claude Code auth
-alfred-init                       # choose agents, repos, codenames, Slack
+alfred-init                       # choose repos, team names, schedule, Slack
 ```
 
 Source checkout path, for working from `main` or running the Linux installer:
@@ -322,7 +323,7 @@ cd ~/code/alfred
 bash install.sh
 gh auth login                     # GitHub
 claude auth login                 # Claude Code auth
-./bin/alfred-init.py              # choose agents, repos, codenames, Slack
+./bin/alfred-init.py              # choose repos, team names, schedule, Slack
 ```
 
 The Homebrew formula installs the latest tagged release and exposes
@@ -340,20 +341,23 @@ prompts or labels, pass one repo or an explicit comma-separated repo list:
   --slack-webhook skip
 ```
 
-The full fleet includes Drake, Batman, Lucius, Ra's al Ghul, Bane, Nightwing,
-Robin, Huntress, Gordon, automerge, `agent-cleanup`, memory harvest, memory
-auto-promotion, `code-map-refresh`, morning briefs, recaps, shipped summaries,
-and fleet doctor. Slack is optional. The `--repos` owner must match `GH_ORG`;
+The full fleet includes `planner` (Drake), `architect` (Batman), `senior-dev`
+(Lucius), `reviewer` (Ra's al Ghul), `test-engineer` (Bane), `fixer`
+(Nightwing), `triage` (Robin), `e2e-runner` (Huntress), `ops-watch` (Gordon),
+automerge, `agent-cleanup`, memory harvest, memory auto-promotion,
+`code-map-refresh`, morning briefs, recaps, shipped summaries, and fleet doctor.
+Slack is optional. The `--repos` owner must match `GH_ORG`;
 the runtime agents store the bare repo name in `$ALFRED_HOME/.env` and build
 `GH_ORG/repo` at firing time. `alfred-init.py` seeds prompt templates, creates
 the standard GitHub labels on selected repos, writes the scheduler manifest
 (`launchd/agents.conf`), updates `$ALFRED_HOME/.env`, then runs deploy and doctor.
 
 The full fleet is installed and visible from the start. High-impact lanes still
-have explicit gates: Batman is configured but waits behind the runner gate until
-`alfred enable batman`, and it still needs its approval mode before filing child
-issues. Huntress and Gordon also load from day one; without a target URL or ECS
-cluster they self-idle instead of failing doctor.
+have explicit gates: Batman is the default-theme name for `architect`, and that
+role waits behind the runner gate until `alfred enable architect`. It still needs
+its approval mode before filing child issues. Huntress and Gordon are the
+default-theme names for `e2e-runner` and `ops-watch`; those roles also load from
+day one and self-idle until their target URL or ECS cluster exists.
 
 You can add a local role without writing a new runner:
 
@@ -626,10 +630,11 @@ Alfred has a deliberate shape. The boundaries below are intentional.
 - **Local CLI auth.** Alfred shells out to `claude` and optional `codex` on your own subscription-backed CLI auth. There is no hosted inference service or provider API key setup.
 - **Explicit goals and bounded autonomy.** Larger work should have a clear contract: outcome, verification, constraints, human gates, and blocked condition.
 - **Lean on the platform.** When Anthropic ships a capability natively (Agent Teams, the Memory Tool), Alfred adopts it rather than re-implementing it.
-- **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script; the core stays lean.
+- **Browser automation is per-role.** If a role needs a browser, it installs Playwright in its own bin script; the core stays lean.
 
-The engineering fleet, local memory, reliability governor, `alfred serve`, and
-the signed macOS desktop app plus Linux desktop packages all ship today. Content, sales, and ops
+The engineering fleet, local memory, code-memory readiness, first-party skills,
+conversational onboarding, roster themes, `alfred serve`, and the signed macOS
+desktop app plus Linux desktop packages all ship today. Content, sales, and ops
 departments are the next larger surface area: [`ROADMAP.md`](ROADMAP.md).
 
 ## Status
@@ -638,13 +643,17 @@ departments are the next larger surface area: [`ROADMAP.md`](ROADMAP.md).
 builders. What is in the box today:
 
 - Install, full-fleet setup, prompt seeding, GitHub label setup, specs-assisted
-  workspace patterns, doctor, and dry-run.
+  workspace patterns, doctor, dry-run, code-memory readiness, and starter
+  skills.
 - macOS launchd or Linux systemd scheduling, Claude/Codex engine routing, Slack
   reporting, and isolated worktree execution.
 - A signed macOS desktop app and Linux desktop packages (Tauri), with live Claude
-  and Codex subscription usage.
-- A single-repo approval gate, a disk guardian that pauses agents cleanly when the
-  disk is nearly full, Redis-backed memory, and FleetBrain reliability tooling.
+  and Codex subscription usage, AI-native setup chat, team-theme chat, and repair
+  buttons for missing local capabilities.
+- A single-repo approval gate, multi-repo architect planning through
+  `agent:large-feature`, a disk guardian that pauses agents cleanly when the disk
+  is nearly full, Redis-backed memory, FleetBrain reliability tooling, and a
+  self-grading rubric gate before implementation PRs.
 - A Slack planning path that turns an approved draft into a labeled GitHub issue,
   one-command setup-token bootstrap, a public download page, and SEO plus
   consent-gated analytics on the site.

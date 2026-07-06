@@ -132,6 +132,16 @@ test("empty window yields null share, not a real 0%", () => {
   assert.match(proof.sentence, /No merged PRs/);
 });
 
+test("nonempty window with no attributed agent PRs avoids headline 0% copy", () => {
+  const proof = buildSelfProof(0, 12, 30);
+  assert.equal(proof.share_pct, 0);
+  assert.equal(proof.merged_total, 12);
+  assert.match(proof.headline, /No public agent-attributed PRs among 12 merged PRs/);
+  assert.doesNotMatch(proof.headline, /0%/);
+  assert.match(readmeSelfProofText(proof), /No public agent-attributed PRs/);
+  assert.doesNotMatch(readmeSelfProofText(proof), /0%/);
+});
+
 test("noDataSelfProof is a null-share seed, publishable without a refresh", () => {
   const seed = noDataSelfProof(30);
   assert.equal(seed.share_pct, null);

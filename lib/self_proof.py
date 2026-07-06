@@ -546,6 +546,12 @@ def _headline(aggregate: dict[str, Any], days: int) -> str:
     share = aggregate["share_pct"]
     if merged <= 0 or share is None:
         return f"No merged PRs in the configured repos in the last {days} days yet."
+    if agent <= 0:
+        return (
+            f"No public agent-attributed PRs among {merged} merged PRs "
+            f"across {repos_counted} {_repo_word(repos_counted)} "
+            f"in the last {days} days yet."
+        )
     return (
         f"Alfred agents shipped {agent} of {merged} merged PRs "
         f"({share:g}%) across {repos_counted} {_repo_word(repos_counted)} "
@@ -560,6 +566,12 @@ def _sentence(aggregate: dict[str, Any], days: int) -> str:
     share = aggregate["share_pct"]
     if merged <= 0 or share is None:
         return f"No merged PRs to measure in the last {days} days yet."
+    if int(aggregate["agent_shipped"]) <= 0:
+        return (
+            f"No public agent-attributed PRs among {merged} merged PRs "
+            f"across {repos_counted} {_repo_word(repos_counted)} "
+            f"in the last {days} days yet."
+        )
     return (
         f"{share:g}% of merged PRs across {repos_counted} "
         f"{_repo_word(repos_counted)} were shipped by Alfred agents "

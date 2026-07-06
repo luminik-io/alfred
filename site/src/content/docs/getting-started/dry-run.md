@@ -25,15 +25,15 @@ cd ~/code/alfred
 PYTHONPATH=lib python3 examples/bin/echo_summarise.py --dry-run
 ```
 
-You get a step-numbered trace of the full lifecycle and an exit code of 0. The same works for `examples/bin/hello.py` (the minimal agent) and `bin/lucius.py` (the feature-dev agent).
+You get a step-numbered trace of the full lifecycle and an exit code of 0. The same works for `examples/bin/hello.py` (the minimal agent) and `bin/senior-dev.py` (the senior developer role, shown as Lucius in the default theme).
 
 After install, use the Alfred CLI:
 
 ```sh
-alfred dry-run lucius
-alfred dry-run drake
+alfred dry-run senior-dev
+alfred dry-run planner
 alfred dry-run all
-alfred dry-run lucius --native
+alfred dry-run senior-dev --native
 ```
 
 Every configured codename resolves through this command. By default Alfred
@@ -47,7 +47,7 @@ stubbed.
 Two equivalent switches:
 
 - The `ALFRED_DRY_RUN` environment variable, set to any truthy value (`1`, `true`, `yes`, `on`).
-- The `--dry-run` CLI flag, accepted by the example runners and `bin/lucius.py`.
+- The `--dry-run` CLI flag, accepted by the example runners and `bin/senior-dev.py`.
 
 A runner that sees `--dry-run` calls `agent_runner.set_dry_run()`, which writes `ALFRED_DRY_RUN=1` back into the process environment so every downstream code path, and any subprocess-spawned child, agrees on the mode.
 

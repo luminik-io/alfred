@@ -44,14 +44,16 @@ Rules:
 - Keep Slack skipped unless I paste a webhook.
 - Keep AWS optional; do not create IAM users or profiles during this install.
 - Keep ANTHROPIC_API_KEY and OPENAI_API_KEY unset unless I explicitly ask for API billing.
-- Use the full engineering fleet: Drake, Batman, Lucius, Ra's al Ghul, Bane,
-  Nightwing, Robin, Huntress, Gordon, automerge, agent-cleanup,
-  memory-harvest, memory-auto-promote, code-map-refresh,
+- Use the full engineering fleet: `planner` (Drake), `architect` (Batman),
+  `senior-dev` (Lucius), `reviewer` (Ra's al Ghul), `test-engineer` (Bane),
+  `fixer` (Nightwing), `triage` (Robin), `e2e-runner` (Huntress),
+  `ops-watch` (Gordon), automerge, agent-cleanup, memory-harvest,
+  memory-auto-promote, code-map-refresh,
   agent-morning-brief, fleet recaps, shipped summaries, and fleet doctor where
   available.
-- Keep Batman configured even for a one-repo install. It will only act when
-  cross-repo or parent-plan work exists and remains runner-gated until
-  `alfred enable batman`.
+- Keep the `architect` role configured even for a one-repo install. It shows as
+  Batman in the default theme, only acts when cross-repo or parent-plan work
+  exists, and remains runner-gated until `alfred enable architect`.
 - If SPECS_REPO is set, clone it under the workspace for context, but do not assign Lucius/Nightwing write loops to it unless I explicitly ask.
 - Before running any command that loads scheduled agents, show me the command and ask for confirmation.
 - If an interactive browser auth step is needed, stop and tell me exactly what to run.

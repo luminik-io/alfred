@@ -68,6 +68,7 @@ const fmt = (n: number) => n.toLocaleString("en-US");
 const selfProof = proof.self_proof;
 const hasSelfProof =
   !!selfProof &&
+  selfProof.agent_shipped > 0 &&
   selfProof.merged_total > 0 &&
   selfProof.share_pct !== null &&
   selfProof.share_pct !== undefined;

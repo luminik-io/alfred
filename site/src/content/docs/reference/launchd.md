@@ -51,9 +51,9 @@ Each non-comment, non-blank line is a record with up to six tab-separated fields
 Example:
 
 ```
-alfred.lucius	lucius.py	interval:1200	yes			Feature developer
-alfred.bane	bane.py	cron:2:00	yes			Test coverage
-alfred.gordon	gordon.py	cron:8:00	no			Deploy health
+alfred.senior-dev	senior-dev.py	interval:1200	yes			Senior developer
+alfred.test-engineer	test-engineer.py	cron:2:00	yes			Test engineer
+alfred.ops-watch	ops-watch.py	cron:8:00	no			Deploy health
 alfred.agent-cleanup	agent-cleanup.py	cron:3:00	no	alfred.agent-cleanup	Daily cleanup
 ```
 
@@ -86,7 +86,7 @@ agent script from `$ALFRED_HOME/bin`.
 ## Adding an agent
 
 1. For prompted custom roles, run `alfred agent add ...`.
-2. For bespoke deterministic scripts, drop `bin/<your-codename>.py` into your
+2. For bespoke deterministic scripts, drop `bin/<your-role>.py` into your
    fleet repo and append a row to `launchd/agents.conf`.
 3. Run `bash deploy.sh`: renders + bootstraps.
 4. Verify with `alfred status` and `./bin/alfred doctor`.

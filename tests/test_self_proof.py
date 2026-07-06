@@ -198,6 +198,24 @@ def test_branch_only_prs_stay_in_denominator_not_numerator():
     assert row["share_pct"] == pytest.approx(33.3, abs=0.05)
 
 
+def test_zero_agent_prs_avoid_headline_zero_percent():
+    gh = _gh_for(
+        {
+            "acme/api": [
+                _pr(1, merged_day=28, branch="feature/human"),
+                _pr(2, merged_day=28, branch="fix/human"),
+            ]
+        }
+    )
+    result = sp.compute_self_proof(["acme/api"], days=7, now=NOW, gh_json=gh)
+    assert result["aggregate"]["merged_total"] == 2
+    assert result["aggregate"]["agent_shipped"] == 0
+    assert result["aggregate"]["share_pct"] == 0
+    assert "No public agent-attributed PRs among 2 merged PRs" in result["headline"]
+    assert "0%" not in result["headline"]
+    assert "0%" not in result["sentence"]
+
+
 def test_prs_outside_window_are_excluded():
     # A PR merged 20 days ago is outside a 7-day window and must not count.
     gh = _gh_for(

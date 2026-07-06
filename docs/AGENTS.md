@@ -193,7 +193,7 @@ slack, claim/release, engine invocation, and event logs. Read
 [`docs/STATE_MACHINE.md`](STATE_MACHINE.md) and [`docs/TUTORIAL.md`](TUTORIAL.md)
 before writing the script.
 
-## Roadmap categories (post-v0.2)
+## Roadmap categories
 
 The default install is engineering-only. Future categories tracked in [`ROADMAP.md`](../ROADMAP.md):
 
@@ -203,7 +203,7 @@ The default install is engineering-only. Future categories tracked in [`ROADMAP.
 - **Finance-ops agents**: invoice generation, bank reconciliation, subscription audit. Generates drafts; never moves money.
 - **Product-ops / SRE agents**: uptime monitoring, release notes, customer-health signals.
 
-These categories require their own integration surface (Apollo, Reddit, Gmail, Wise, Sentry, etc.) and are out of scope for the v0.2 engineering release. PRs that propose individual agents in these categories are welcome; see [`CONTRIBUTING.md`](../CONTRIBUTING.md).
+These categories require their own integration surface (Apollo, Reddit, Gmail, Wise, Sentry, etc.) and are outside the default engineering fleet. PRs that propose individual agents in these categories are welcome when they keep the core runtime optional and single-person; see [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
 ## Inspect and gate
 
