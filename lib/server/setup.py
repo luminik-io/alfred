@@ -39,6 +39,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import skill_packs
+
 logger = logging.getLogger(__name__)
 
 # The watched-repo allowlists the rest of the fleet reads. Board and queue
@@ -98,6 +100,15 @@ _CODE_MEMORY_DISCOVERY_IGNORES = {
     "venv",
 }
 _CODE_MEMORY_GRAPH_SUFFIXES = {".db", ".sqlite", ".sqlite3"}
+_LEGACY_ENGINEERING_SKILL_PATTERNS = (
+    "gstack",
+    "gstack-*",
+    "agent-skills",
+    "vercel-*",
+    "react-best-practices",
+    "web-design-guidelines",
+    "frontend-ui-engineering",
+)
 
 _DEMO_FILENAME = "setup-demo-cards.json"
 # A made-up slug the demo cards live under. It is never a real ``owner/repo``,
@@ -847,19 +858,23 @@ def _env_flag(env: Mapping[str, str], key: str, *, default: bool) -> bool:
 
 def _installed_skill_paths(env: Mapping[str, str]) -> list[Path]:
     roots = _skill_roots(env)
-    patterns = (
-        "gstack",
-        "gstack-*",
-        "agent-skills",
-        "vercel-*",
-        "react-best-practices",
-        "web-design-guidelines",
-        "frontend-ui-engineering",
-    )
+    try:
+        packs = skill_packs.load_manifest()
+    except (FileNotFoundError, ValueError) as exc:
+        logger.debug("could not load skill pack manifest for setup readiness: %s", exc)
+        packs = []
     out: list[Path] = []
     seen: set[Path] = set()
     for root in roots:
-        for pattern in patterns:
+        installed_pack_names = (
+            sorted(skill_packs.installed_packs(packs, skills_dir=root)) if packs else ()
+        )
+        for name in installed_pack_names:
+            path = root / name
+            if path not in seen:
+                seen.add(path)
+                out.append(path)
+        for pattern in _LEGACY_ENGINEERING_SKILL_PATTERNS:
             for path in root.glob(pattern):
                 if path.is_dir() and path not in seen:
                     seen.add(path)
@@ -870,6 +885,11 @@ def _installed_skill_paths(env: Mapping[str, str]) -> list[Path]:
 def _skill_roots(env: Mapping[str, str]) -> list[Path]:
     home = _safe_home(env)
     roots: list[Path] = []
+    configured_skills_dir = env.get(skill_packs.DEFAULT_SKILLS_DIR_ENV, "").strip()
+    if configured_skills_dir:
+        path = _safe_expand_path(configured_skills_dir)
+        if path:
+            roots.append(path)
     codex_home = env.get("CODEX_HOME", "").strip()
     claude_home = env.get("CLAUDE_HOME", "").strip()
     if codex_home:
