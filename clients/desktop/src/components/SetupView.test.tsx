@@ -361,4 +361,54 @@ describe("SetupView", () => {
     expect(await screen.findByText("Code graph memory")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Index code memory" })).not.toBeInTheDocument();
   });
+
+  it("runs the code-memory install repair before indexing on fresh machines", async () => {
+    vi.spyOn(api, "supportsNativeActions").mockReturnValue(true);
+    const user = userEvent.setup();
+    const onRunLocalAction = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      setupStatus("/tmp/alfred-home", {
+        first_run: {
+          version: 1,
+          ready: false,
+          status: "needs_action",
+          headline: "Recommended setup can be improved.",
+          summary: {
+            required_ready: 7,
+            required_total: 7,
+            recommended_ready: 0,
+            recommended_total: 3,
+            optional_ready: 0,
+            optional_total: 2,
+            blockers: [],
+          },
+          checks: [
+            {
+              key: "code_graph",
+              title: "Code graph memory",
+              category: "memory",
+              tier: "recommended",
+              required: false,
+              ready: false,
+              state: "actionable",
+              detail:
+                "Code-memory binary is not installed yet; Alfred can fetch the pinned release on first explicit use.",
+              action: "Run `alfred code-memory doctor`, then `alfred code-memory index`.",
+              path: "/tmp/alfred-home/state/code-memory",
+              detected: { capability_state: "installable", enabled: true },
+            },
+          ],
+        },
+      }),
+    );
+
+    render(renderSetup("http://127.0.0.1:7010", { onRunLocalAction }));
+
+    await user.click(await screen.findByRole("button", { name: "Install code memory" }));
+    expect(onRunLocalAction).toHaveBeenCalledWith({
+      action: "code_memory_status",
+      refreshAfter: true,
+    });
+    expect(screen.queryByRole("button", { name: "Index code memory" })).not.toBeInTheDocument();
+  });
 });

@@ -209,15 +209,23 @@ function readinessRepairFor(check: SetupFirstRunCheck): ReadinessRepair | null {
   }
   if (check.key === "code_graph") {
     const state = codeGraphCapabilityState(check);
-    if (state !== "installable" && state !== "needs_index") {
-      return null;
+    if (state === "installable") {
+      return {
+        request: { action: "code_memory_status", refreshAfter: true },
+        label: "Install code memory",
+        busyLabel: "Installing code memory",
+        busyKey: "code_memory_status:fleet",
+      };
     }
-    return {
-      request: { action: "code_memory_index", refreshAfter: true },
-      label: "Index code memory",
-      busyLabel: "Indexing code memory",
-      busyKey: "code_memory_index:fleet",
-    };
+    if (state === "needs_index") {
+      return {
+        request: { action: "code_memory_index", refreshAfter: true },
+        label: "Index code memory",
+        busyLabel: "Indexing code memory",
+        busyKey: "code_memory_index:fleet",
+      };
+    }
+    return null;
   }
   if (check.key === "engineering_skills") {
     return {
