@@ -86,16 +86,16 @@ Constraints for visible names:
 
 ## The wiring
 
-Each codename has:
+Each role has:
 
 - **A bin script**: `bin/<role>.py`. Imports from `agent_runner`. ~150-300 lines.
 - **A scheduler entry**: one line in `launchd/agents.conf` (label, script, schedule, Java flag, log stem, role).
 - **Or a custom-agent manifest row**: `alfred agent add` writes `$ALFRED_HOME/state/custom-agents/custom-agents.json`, and deploy renders it through `bin/custom-agent.py`.
-- **(Optional) A prompt file**: `prompts/<role>.md` in this repo or `$ALFRED_HOME/prompts/<codename>.md` in your fleet. Long-form context the runner inlines into `claude -p`.
+- **(Optional) A prompt file**: `prompts/<role-slug>.md` in this repo or `$ALFRED_HOME/prompts/<role-slug>.md` in your fleet. Long-form context the runner inlines into `claude -p`.
 - **(Optional) An IAM identity**: if it touches AWS. See [AWS setup](/guides/aws/).
 - **A row in your repo guidance file** (`AGENTS.md` or `CLAUDE.md`) documenting role + trigger + scope.
 
-The role implementation lives in `bin/<role>.py` (the filename never changes). The chosen codename flows in at runtime through the rendered scheduler unit:
+The role implementation lives in `bin/<role-slug>.py` (the filename never changes). The role slug flows in at runtime through the rendered scheduler unit:
 
 ```mermaid
 flowchart TB
@@ -126,8 +126,8 @@ dedicated runner for deterministic PR-writing roles.
 
 ## Anti-patterns
 
-- **Generic codenames**: "agent-1", "feature-bot", "the planner". The cast disappears as a forcing function; prompts bloat.
-- **Code-named-after-tools**: "lucius-grpc", "bane-pytest". Couples the codename to the implementation; can't refactor the tool without renaming the role.
+- **Generic visible names**: "agent-1", "feature-bot", "the planner". The cast disappears as a forcing function; prompts bloat.
+- **Names coupled to tools**: "lucius-grpc", "bane-pytest". Couples the visible name to the implementation; you cannot refactor the tool without renaming the role.
 - **Cross-cast mixing**: Lucius (Batman) + Athena (Greek) + Bunk (The Wire). Chaotic in Slack.
-- **One codename per repo** instead of per role: "backend-bot", "frontend-bot". Loses the role-as-narrow-specialist forcing function.
-- **Codename as adjective**: "smart-lucius", "fast-lucius". The codename is the specialist; modifiers don't add anything.
+- **One role per repo** instead of one narrow job: "backend-bot", "frontend-bot". Loses the role-as-narrow-specialist forcing function.
+- **Display name as adjective**: "smart-lucius", "fast-lucius". The visible name is the specialist; modifiers do not add anything.
