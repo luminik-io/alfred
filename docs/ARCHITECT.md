@@ -23,6 +23,10 @@ or migrate those labels before deploying this build against those repos:
 - Use `architect:fanout-complete` for completed architect parent issues.
 - Remove stale `agent:large-feature` from parent issues that should never be
   picked up again.
+- Remove or migrate `$ALFRED_HOME/state/batman/` before the first run with this
+  build. Pending approvals and fanout markers now live under
+  `$ALFRED_HOME/state/architect/`; Alfred will not read the old Batman state
+  directory as a compatibility shim.
 - Prefer role slugs (`architect`, `senior-dev`, `planner`, `reviewer`) in
   scripts and config. Display names such as Batman or Lucius come from the
   active roster theme and are not cross-theme compatibility aliases.
