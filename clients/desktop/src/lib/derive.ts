@@ -1,5 +1,6 @@
 import { friendlyTime, plural, titleCase } from "../format";
 import { parseIssueRef } from "./links";
+import { detectShippedAgentCodename } from "./shippedAgentAttribution";
 import type {
   FiringRecord,
   PlanDraft,
@@ -263,48 +264,7 @@ function repoShortName(repo: string): string {
 // the active roster theme the same way the Work board and Roster page do. Kept
 // in lockstep with chips.agentForShipped.
 export function shippedAgentCodename(card: ShippedCard): string | null {
-  const tokens = [
-    card.author || "",
-    ...(card.labels || []),
-    ...(card.agent_evidence || []),
-  ].map((token) => token.toLowerCase());
-
-  if (
-    tokens.some(
-      (token) =>
-        token.includes("architect") ||
-        token.includes("agent:large-feature"),
-    )
-  ) {
-    return "architect";
-  }
-  if (
-    tokens.some(
-      (token) =>
-        token.includes("senior-dev") ||
-        token.includes("agent:implement"),
-    )
-  ) {
-    return "senior-dev";
-  }
-  if (tokens.some((token) => token.includes("fixer"))) {
-    return "fixer";
-  }
-  if (tokens.some((token) => token.includes("spec-planner"))) {
-    return "spec-planner";
-  }
-  if (tokens.some((token) => token.includes("test-engineer"))) {
-    return "test-engineer";
-  }
-  if (
-    tokens.some(
-      (token) =>
-        token.includes("reviewer"),
-    )
-  ) {
-    return "reviewer";
-  }
-  return null;
+  return detectShippedAgentCodename(card);
 }
 
 // ---------------------------------------------------------------------------

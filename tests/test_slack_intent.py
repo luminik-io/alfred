@@ -320,6 +320,7 @@ def test_run_agent_missing_name_asks_for_clarification() -> None:
 def test_resolve_agent_codename_handles_aliases() -> None:
     assert resolve_agent_codename("kick off Ra's al Ghul") == "reviewer"
     assert resolve_agent_codename("trigger Bruce") == "architect"
+    assert resolve_agent_codename("run Huntress") == "e2e-runner"
     assert resolve_agent_codename("dry run the fleet", allow_all=True) == "all"
     assert resolve_agent_codename("run all") == ""
 

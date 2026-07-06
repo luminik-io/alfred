@@ -10,6 +10,7 @@
 
 import type { FiringRecord, PlanDraft, ShippedCard } from "../types";
 import { isErrorStatus, planNeedsAttention } from "./derive";
+import { detectShippedAgentCodename } from "./shippedAgentAttribution";
 
 export type ChipTone = "ok" | "working" | "attention" | "error" | "idle";
 
@@ -101,36 +102,7 @@ export function chipToneClass(tone: ChipTone): string {
 // roster theme (resolveThemedIdentity) exactly like the Roster page. Unknown
 // cards return null.
 export function agentForShipped(card: ShippedCard): string | null {
-  const tokens = [
-    card.author || "",
-    ...(card.labels || []),
-    ...(card.agent_evidence || []),
-  ].map((token) => token.toLowerCase());
-  if (
-    tokens.some(
-      (t) => t.includes("architect") || t.includes("agent:large-feature"),
-    )
-  ) {
-    return "architect";
-  }
-  if (
-    tokens.some(
-      (t) => t.includes("senior-dev") || t.includes("agent:implement"),
-    )
-  ) {
-    return "senior-dev";
-  }
-  if (tokens.some((t) => t.includes("fixer"))) return "fixer";
-  if (tokens.some((t) => t.includes("spec-planner"))) return "spec-planner";
-  if (tokens.some((t) => t.includes("test-engineer"))) return "test-engineer";
-  if (
-    tokens.some(
-      (t) => t.includes("reviewer"),
-    )
-  ) {
-    return "reviewer";
-  }
-  return null;
+  return detectShippedAgentCodename(card);
 }
 
 // Short repo name (last path segment): `repo`, not `acme-org/repo`.

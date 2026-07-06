@@ -38,6 +38,7 @@ describe("agentForShipped", () => {
     expect(agentForShipped(card({ author: "fixer-bot" }))).toBe("fixer");
     expect(agentForShipped(card({ author: "spec-planner" }))).toBe("spec-planner");
     expect(agentForShipped(card({ author: "test-engineer" }))).toBe("test-engineer");
+    expect(agentForShipped(card({ author: "e2e-runner" }))).toBe("e2e-runner");
     expect(
       agentForShipped(card({ author: "", agent_evidence: ["reviewer"] })),
     ).toBe("reviewer");
@@ -60,6 +61,31 @@ describe("agentForShipped", () => {
     expect(agentForShipped(card({ author: "fixer" }))).toBe("fixer");
     expect(agentForShipped(card({ author: "spec-planner" }))).toBe("spec-planner");
     expect(agentForShipped(card({ author: "test-engineer" }))).toBe("test-engineer");
+    expect(agentForShipped(card({ author: "e2e-runner" }))).toBe("e2e-runner");
+  });
+
+  it("attributes pre-cutover theme evidence without restoring runtime aliases", () => {
+    expect(
+      agentForShipped(card({ author: "", agent_evidence: ["branch:batman/42"] })),
+    ).toBe("architect");
+    expect(
+      agentForShipped(card({ author: "", agent_evidence: ["branch:lucius/42"] })),
+    ).toBe("senior-dev");
+    expect(
+      agentForShipped(card({ author: "", agent_evidence: ["branch:nightwing/42"] })),
+    ).toBe("fixer");
+    expect(
+      agentForShipped(card({ author: "", agent_evidence: ["branch:damian/42"] })),
+    ).toBe("spec-planner");
+    expect(
+      agentForShipped(card({ author: "", agent_evidence: ["branch:bane/42"] })),
+    ).toBe("test-engineer");
+    expect(
+      agentForShipped(card({ author: "", agent_evidence: ["branch:huntress/42"] })),
+    ).toBe("e2e-runner");
+    expect(
+      agentForShipped(card({ author: "", agent_evidence: ["branch:rasalghul/42"] })),
+    ).toBe("reviewer");
   });
 
   it("returns null when no known codename is present", () => {

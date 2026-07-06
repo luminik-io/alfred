@@ -581,7 +581,7 @@ _AGENT_ALIASES: dict[str, tuple[str, ...]] = {
     "code-map-refresh": ("code-map-refresh", "code map refresh"),
     "cold-backup": ("cold-backup", "cold backup"),
     "content-drift": ("content-drift", "content drift"),
-    "e2e-runner": ("e2e-runner", "e2e", "smoke runner"),
+    "e2e-runner": ("e2e-runner", "e2e", "huntress", "smoke runner"),
     "fixer": ("fixer", "nightwing", "review fixer", "review feedback"),
     "fleet-doctor": ("fleet-doctor", "fleet doctor", "doctor"),
     "fleet-recap-evening": ("fleet-recap-evening", "evening recap"),

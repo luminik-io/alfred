@@ -252,6 +252,7 @@ describe("shippedAgentCodename", () => {
     expect(shippedAgentCodename(shippedCard({ author: "fixer-bot" }))).toBe("fixer");
     expect(shippedAgentCodename(shippedCard({ author: "spec-planner" }))).toBe("spec-planner");
     expect(shippedAgentCodename(shippedCard({ author: "test-engineer" }))).toBe("test-engineer");
+    expect(shippedAgentCodename(shippedCard({ author: "e2e-runner" }))).toBe("e2e-runner");
     expect(
       shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["reviewer"] })),
     ).toBe("reviewer");
@@ -271,6 +272,31 @@ describe("shippedAgentCodename", () => {
     expect(shippedAgentCodename(shippedCard({ author: "fixer" }))).toBe("fixer");
     expect(shippedAgentCodename(shippedCard({ author: "spec-planner" }))).toBe("spec-planner");
     expect(shippedAgentCodename(shippedCard({ author: "test-engineer" }))).toBe("test-engineer");
+    expect(shippedAgentCodename(shippedCard({ author: "e2e-runner" }))).toBe("e2e-runner");
+  });
+
+  it("attributes pre-cutover theme evidence without restoring runtime aliases", () => {
+    expect(
+      shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["branch:batman/42"] })),
+    ).toBe("architect");
+    expect(
+      shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["branch:lucius/42"] })),
+    ).toBe("senior-dev");
+    expect(
+      shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["branch:nightwing/42"] })),
+    ).toBe("fixer");
+    expect(
+      shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["branch:damian/42"] })),
+    ).toBe("spec-planner");
+    expect(
+      shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["branch:bane/42"] })),
+    ).toBe("test-engineer");
+    expect(
+      shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["branch:huntress/42"] })),
+    ).toBe("e2e-runner");
+    expect(
+      shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["branch:rasalghul/42"] })),
+    ).toBe("reviewer");
   });
 
   it("stays in lockstep with chips.agentForShipped and returns null for unknowns", () => {
