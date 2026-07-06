@@ -1,9 +1,11 @@
 ---
 title: The agent fleet
-description: The default engineering roster, what each codename does, and how work flows between them.
+description: The default engineering roster, what each role does, how theme names work, and how work flows between them.
 ---
 
-The default Alfred install ships an engineering-focused fleet. Each agent is a narrow specialist with its own schedule, turn budget, and tool list. Nothing chats with anything else: the agents coordinate through GitHub issues and PRs, and report to one Slack channel.
+The default Alfred install ships an engineering-focused fleet. Each agent is a narrow specialist with its own schedule, turn budget, and tool list. The **role slug** is the machine identity (`architect`, `senior-dev`, `reviewer`); the visible name comes from the active roster theme. In the default `batman` theme, those roles show as Batman, Lucius, Ra's al Ghul, and the rest of the Gotham cast.
+
+Nothing chats with anything else behind your back: the agents coordinate through GitHub issues and PRs, and report to one Slack channel.
 
 Full role map at [`docs/AGENTS.md`](https://github.com/luminik-io/alfred/blob/main/docs/AGENTS.md).
 
@@ -23,79 +25,80 @@ flowchart LR
         prs["PRs<br/>(agent:authored)"]
     end
 
-    batman["batman<br/><i>architect · approval-gated</i>"]
-    lucius["lucius<br/><i>feature-dev · every 20m</i>"]
-    drake["drake<br/><i>planner · every 2h</i>"]
-    damian["damian<br/><i>spec-bundle-planner · opt-in</i>"]
-    bane["bane<br/><i>test-coverage · every 4h</i>"]
-    rasalghul["rasalghul<br/><i>code-review · every 30m</i>"]
-    nightwing["nightwing<br/><i>review-fix · every 45m</i>"]
-    robin["robin<br/><i>bug-triage · every 3h</i>"]
-    huntress["huntress<br/><i>post-deploy-smoke · every 30m</i>"]
-    gordon["gordon<br/><i>deploy-health · daily 08:00</i>"]
+    architect["architect<br/><i>Batman · approval-gated</i>"]
+    seniorDev["senior-dev<br/><i>Lucius · every 20m</i>"]
+    planner["planner<br/><i>Drake · every 2h</i>"]
+    specPlanner["spec-planner<br/><i>Damian · opt-in</i>"]
+    testEngineer["test-engineer<br/><i>Bane · every 4h</i>"]
+    reviewer["reviewer<br/><i>Ra's al Ghul · every 30m</i>"]
+    fixer["fixer<br/><i>Nightwing · every 45m</i>"]
+    triage["triage<br/><i>Robin · every 3h</i>"]
+    e2eRunner["e2e-runner<br/><i>Huntress · every 30m</i>"]
+    opsWatch["ops-watch<br/><i>Gordon · daily 08:00</i>"]
     automerge["automerge<br/><i>squash-merge · every 15m</i>"]
 
-    batman -- "architects rollouts" --> issues
-    drake -- "files scoped work" --> issues
-    damian -- "files spec bundles" --> issues
-    robin -- "triages" --> issues
-    issues -- "claim_issue" --> lucius
-    lucius -- "transition_to=pr-open" --> prs
-    bane -- "opens test PRs" --> prs
-    prs --> rasalghul
-    rasalghul -- "review comments" --> prs
-    prs --> nightwing
-    nightwing -- "fix commits" --> prs
+    architect -- "architects rollouts" --> issues
+    planner -- "files scoped work" --> issues
+    specPlanner -- "files spec bundles" --> issues
+    triage -- "triages" --> issues
+    issues -- "claim_issue" --> seniorDev
+    seniorDev -- "transition_to=pr-open" --> prs
+    testEngineer -- "opens test PRs" --> prs
+    prs --> reviewer
+    reviewer -- "review comments" --> prs
+    prs --> fixer
+    fixer -- "fix commits" --> prs
     prs --> automerge
     automerge -- "transition_to=done" --> issues
-    huntress -- "smoke-test fails" --> robin
-    gordon -- "drift / Sentry" --> slack
+    e2eRunner -- "smoke-test fails" --> triage
+    opsWatch -- "drift / Sentry" --> slack
 
-    batman & lucius & drake & bane & rasalghul & nightwing & robin & huntress & gordon & damian & automerge -. "status" .-> slack
+    architect & seniorDev & planner & testEngineer & reviewer & fixer & triage & e2eRunner & opsWatch & specPlanner & automerge -. "status" .-> slack
     ops_cli -. "enable / disable / claim helpers" .-> issues
 ```
 
-The loop closes on itself: Batman leads multi-repo rollouts, Drake files smaller scoped work, Lucius and Bane implement it, Ra's al Ghul reviews, Nightwing applies review feedback, automerge ships, and the merge transitions the issue to `agent:done`. Robin and Huntress feed the loop with triaged bug reports. Your first required action is usually labelling issues `agent:implement` and reviewing PRs before merge.
+The loop closes on itself: the architect role (Batman in the default theme) leads multi-repo rollouts, the planner role scopes smaller work, the senior developer and test engineer implement it, the reviewer checks it, the fixer clears review feedback, automerge ships, and the merge transitions the issue to `agent:done`. Triage and E2E smoke feed the loop with bug reports. Your first required action is usually labelling issues `agent:implement` and reviewing PRs before merge.
 
-## Batman: the architect agent
+## Batman: the architect role's default name
 
-Batman is the architect agent that leads a whole feature across repos. Where Lucius implements one scoped issue at a time inside one repo, Batman's parent-plan path reads one `agent:large-feature` issue, walks the affected repos, drafts the rollout plan, waits for approval, and only then files scoped `agent:implement` child issues across every repo Lucius needs to work in.
+Batman is the default-theme name for the `architect` role. The role leads a whole feature across repos. Where the `senior-dev` role implements one scoped issue at a time inside one repo, the architect parent-plan path reads one `agent:large-feature` issue, walks the affected repos, drafts the rollout plan, waits for approval, and only then files scoped `agent:implement` child issues across every repo that needs work.
 
-This is what makes Alfred different from single-repo coding agents. A backend service change that needs a frontend page and a mobile screen and a data-infra job becomes one Batman plan with four children, instead of four manual context-rebuilds in a chat window.
+This is what makes Alfred different from single-repo coding agents. A backend service change that needs a frontend page, a mobile screen, and a data-infra job becomes one architect plan with four children, instead of four manual context-rebuilds in a chat window.
 
-Batman is part of the public fleet and runs on the same local schedule model as the other agents, but execution is deliberately gated. A fresh full install configures Batman and keeps it behind `alfred enable batman`. `BATMAN_PARENT_REPO` selects the repo where Batman reads `agent:large-feature` parent issues; the default `BATMAN_AUTO_EXECUTE=0` halts after the plan. Set `BATMAN_AUTO_EXECUTE=approval-gate` when you want Batman to file child issues only after Slack approval, or `1` only for fleets that intentionally skip the gate.
+The architect role is part of the public fleet and runs on the same local schedule model as the other agents, but execution is deliberately gated. A fresh full install configures it and keeps it behind `alfred enable architect`. `BATMAN_PARENT_REPO` selects the repo where the role reads `agent:large-feature` parent issues; the default `BATMAN_AUTO_EXECUTE=0` halts after the plan. Set `BATMAN_AUTO_EXECUTE=approval-gate` when you want the architect to file child issues only after Slack or Alfred client approval, or `1` only for fleets that intentionally skip the gate.
 
-See [Multi-repo planning](/multi-repo/) for the marketing-side overview, and [Worked example: Batman across three repos](/guides/multi-repo-worked-example/) for an end-to-end walkthrough from large-feature issue to merged children.
+See [Worked example: Batman across three repos](/guides/multi-repo-worked-example/) for an end-to-end walkthrough from large-feature issue to merged children.
 
 ## The default roster
 
 Schedules are sensible defaults; override per-agent in `agents.conf`.
 
-The engineering hierarchy starts with Batman, Lucius, and Drake: Batman is the
-architect for cross-repo features, Lucius ships repo-local implementation PRs,
-and Drake scopes smaller single-repo requests. A fresh install configures the
+The engineering hierarchy starts with `architect`, `senior-dev`, and `planner`:
+Batman, Lucius, and Drake in the default theme. The architect plans cross-repo
+features, the senior developer ships repo-local implementation PRs,
+and the planner scopes smaller single-repo requests. A fresh install configures the
 full roster by default. Use `--agents starter` only when you deliberately want a
 small lab roster.
 
-High-impact agents are visible without being accidentally armed. Batman stays
-behind the runner gate until `alfred enable batman` and then still obeys
-`BATMAN_AUTO_EXECUTE`. Huntress and Gordon load with the fleet and self-idle
+High-impact agents are visible without being accidentally armed. The architect stays
+behind the runner gate until `alfred enable architect` and then still obeys
+`BATMAN_AUTO_EXECUTE`. The E2E and ops-watch roles load with the fleet and self-idle
 until their staging target URL or ECS cluster exists.
 
 ### Specialist agents
 
-| Codename | Role | Default schedule | What it does |
+| Role slug | Name in default theme | Default schedule | What it does |
 |---|---|---|---|
-| **batman** | architect | every 1 h, approval-gated | Leads multi-repo features. Batman drafts the rollout, waits for Slack or Alfred client approval, files child `agent:implement` issues, and reports status so implementation can move in parallel. See [docs/BATMAN.md](https://github.com/luminik-io/alfred/blob/main/docs/BATMAN.md). |
-| **lucius** | feature-dev | every 20 min | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs the configured engine with the issue body + repo context, pushes a PR labelled `agent:authored`. |
-| **drake** | planner | every 2 h | Reads specs, roadmap, cross-repo open-issue list, and a code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in a rolling 24 h. |
-| **damian** | spec-bundle-planner | daily 09:00, opt-in | Walks `DAMIAN_SPEC_DIR`, identifies multi-repo features, and files `agent:bundle:<slug>` siblings across the affected repos. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to drake. |
-| **bane** | test-coverage | every 4 h | Picks the lowest-coverage actively-changed file, writes tests, opens a PR. Never touches non-test files. |
-| **rasalghul** | code-review | every 30 min | Multi-axis review (correctness, security, performance, maintainability) on every fresh PR. Posts as a comment. |
-| **nightwing** | review-fix | every 45 min | Lands fixes for P0/P1 reviewer comments (CodeRabbit, Codex, rasalghul) on `agent:authored` PRs. |
-| **robin** | bug-triage | every 3 h | Classifies new bug-report issues, adds severity labels, asks for repro info, hands off to lucius via `agent:implement`. Keeps a local touched-issues ledger so it doesn't re-triage. |
-| **huntress** | post-deploy-smoke | every 30 min | Runs Playwright smoke tests against `ALFRED_HUNTRESS_TARGET_URL`. Reports failures with screenshots. |
-| **gordon** | deploy-health | daily 08:00 | Diffs the ECS staging task-def image SHA against repo `main` HEAD, pulls the top-5 unresolved Sentry issues from the last 24 h. Quiet on healthy days. Read-only. |
+| `architect` | Batman | every 1 h, approval-gated | Leads multi-repo features. Drafts the rollout, waits for Slack or Alfred client approval, files child `agent:implement` issues, and reports status so implementation can move in parallel. See [docs/BATMAN.md](https://github.com/luminik-io/alfred/blob/main/docs/BATMAN.md). |
+| `senior-dev` | Lucius | every 20 min | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs the configured engine with the issue body + repo context, pushes a PR labelled `agent:authored`. |
+| `planner` | Drake | every 2 h | Reads specs, roadmap, cross-repo open-issue list, and a code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in a rolling 24 h. |
+| `spec-planner` | Damian | daily 09:00, opt-in | Walks `ALFRED_SPEC_PLANNER_SPEC_DIR`, identifies multi-repo features, and files `agent:bundle:<slug>` siblings across the affected repos. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to the planner. |
+| `test-engineer` | Bane | every 4 h | Picks the lowest-coverage actively-changed file, writes tests, opens a PR. Never touches non-test files. |
+| `reviewer` | Ra's al Ghul | every 30 min | Multi-axis review (correctness, security, performance, maintainability) on every fresh PR. Posts as a comment. |
+| `fixer` | Nightwing | every 45 min | Lands fixes for P0/P1 reviewer comments (CodeRabbit, Codex, the reviewer role) on `agent:authored` PRs. |
+| `triage` | Robin | every 3 h | Classifies new bug-report issues, adds severity labels, asks for repro info, hands off to the senior developer via `agent:implement`. Keeps a local touched-issues ledger so it doesn't re-triage. |
+| `e2e-runner` | Huntress | every 30 min | Runs Playwright smoke tests against `ALFRED_E2E_RUNNER_TARGET_URL`. Reports failures with screenshots. |
+| `ops-watch` | Gordon | daily 08:00 | Diffs the ECS staging task-def image SHA against repo `main` HEAD, pulls the top-5 unresolved Sentry issues from the last 24 h. Quiet on healthy days. Read-only. |
 
 ### Utility agents
 
@@ -133,8 +136,8 @@ locks, preflight, event logs, spend, runtime memory, and engine routing. The
 generic runner is read-only by default.
 
 For deterministic roles that need dedicated code or PR creation, write
-`bin/arsenal.py`
-following the pattern in `bin/lucius.py`, append a row to `launchd/agents.conf`,
+`bin/release-captain.py`
+following the pattern in `bin/senior-dev.py`, append a row to `launchd/agents.conf`,
 and run `bash deploy.sh`. The primitives in the `agent_runner` package cover the
 common patterns: lock, preflight, spend, gh, slack, claim/release, engine
 invocation, and event logs. Read the [state machine](/concepts/state-machine/)

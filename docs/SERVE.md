@@ -1,11 +1,12 @@
 # `alfred serve`
 
-A localhost-only server over `$ALFRED_HOME/state`, saved Batman plans, the local
-fleet brain, and local planning drafts. It does two jobs: it exposes a JSON
-`/api/*` surface, and it serves the built desktop app as the browser UI. Runtime
-state is read-only; the server can write issue/spec drafts under
-`$ALFRED_HOME/planning-drafts`. It is the operator's pane of glass for "what is
-the fleet doing right now".
+A localhost-only server over `$ALFRED_HOME/state`, saved architect plans, the
+local fleet brain, and local planning drafts. It does two jobs: it exposes a
+JSON `/api/*` surface, and it serves the built desktop app as the browser UI.
+Read endpoints inspect runtime state; state-mutating endpoints are token-gated
+and limited to explicit local control actions such as setup, queue decisions,
+planning drafts, memory review, and Slack trust settings. It is the operator's
+pane of glass for "what is the fleet doing right now".
 
 One UI, two shells. The desktop client under `clients/desktop` is a React app
 that talks to the same `/api/*` surface over plain HTTP. `alfred serve` serves

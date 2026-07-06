@@ -51,9 +51,9 @@ Each non-comment, non-blank line is a record with up to six tab-separated fields
 Example:
 
 ```
-alfred.lucius	lucius.py	interval:1200	yes			Feature developer
-alfred.bane	bane.py	cron:2:00	yes			Test coverage
-alfred.gordon	gordon.py	cron:8:00	no			Deploy health
+alfred.senior-dev	senior-dev.py	interval:1200	yes			Senior developer
+alfred.test-engineer	test-engineer.py	cron:2:00	yes			Test engineer
+alfred.ops-watch	ops-watch.py	cron:8:00	no			Deploy health
 alfred.agent-cleanup	agent-cleanup.py	cron:3:00	no	alfred.agent-cleanup	Daily cleanup
 ```
 
@@ -86,7 +86,7 @@ agent script from `$ALFRED_HOME/bin`.
 ## Adding an agent
 
 1. For prompted custom roles, run `alfred agent add ...`.
-2. For bespoke deterministic scripts, drop `bin/<your-codename>.py` into your
+2. For bespoke deterministic scripts, drop `bin/<your-role>.py` into your
    fleet repo and append a row to `launchd/agents.conf`.
 3. Run `bash deploy.sh`: renders + bootstraps.
 4. Verify with `alfred status` and `./bin/alfred doctor`.
@@ -97,19 +97,19 @@ Pause persists across `deploy.sh` invocations via marker files at `$ALFRED_HOME/
 
 ```sh
 # Manual pause:
-launchctl bootout "gui/$(id -u)/alfred.lucius"
+launchctl bootout "gui/$(id -u)/alfred.senior-dev"
 mkdir -p $ALFRED_HOME/state/_paused
-date -u +"%Y-%m-%dT%H:%M:%SZ" > $ALFRED_HOME/state/_paused/lucius
+date -u +"%Y-%m-%dT%H:%M:%SZ" > $ALFRED_HOME/state/_paused/senior-dev
 
 # Resume:
-rm $ALFRED_HOME/state/_paused/lucius
+rm $ALFRED_HOME/state/_paused/senior-dev
 launchctl bootstrap "gui/$(id -u)" \
-  ~/Library/LaunchAgents/alfred.lucius.plist
+  ~/Library/LaunchAgents/alfred.senior-dev.plist
 ```
 
 ## stdout / stderr
 
-Each plist writes to `/tmp/<log_stem>.stdout` and `/tmp/<log_stem>.stderr`. Use `tail -f /tmp/alfred.lucius.std{out,err}` to watch a firing live.
+Each plist writes to `/tmp/<log_stem>.stdout` and `/tmp/<log_stem>.stderr`. Use `tail -f /tmp/alfred.senior-dev.std{out,err}` to watch a firing live.
 
 `/tmp/` is wiped on macOS reboot. Durable runtime state lives under
 `$ALFRED_HOME/state/`; Codex artifacts are written under

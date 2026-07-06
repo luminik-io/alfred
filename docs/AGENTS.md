@@ -16,35 +16,35 @@ flowchart LR
         prs["PRs<br/>(agent:authored)"]
     end
 
-    batman["batman<br/><i>architect</i><br/>approval-gated"]
-    lucius["lucius<br/><i>feature-dev</i><br/>every 20m"]
-    drake["drake<br/><i>planner</i><br/>every 2h"]
-    damian["damian<br/><i>spec-bundle-planner</i><br/>opt-in"]
-    bane["bane<br/><i>test-coverage</i><br/>every 4h"]
-    rasalghul["rasalghul<br/><i>code-review</i><br/>every 30m"]
-    nightwing["nightwing<br/><i>review-fix</i><br/>every 45m"]
-    robin["robin<br/><i>bug-triage</i><br/>every 3h"]
-    huntress["huntress<br/><i>post-deploy-smoke</i><br/>every 30m"]
-    gordon["gordon<br/><i>deploy-health</i><br/>daily 08:00"]
+    architect["architect<br/><i>Batman in default theme</i><br/>approval-gated"]
+    senior_dev["senior-dev<br/><i>Lucius in default theme</i><br/>every 20m"]
+    planner["planner<br/><i>Drake in default theme</i><br/>every 2h"]
+    spec_planner["spec-planner<br/><i>Damian in default theme</i><br/>opt-in"]
+    test_engineer["test-engineer<br/><i>Bane in default theme</i><br/>every 4h"]
+    reviewer["reviewer<br/><i>Ra's al Ghul in default theme</i><br/>every 30m"]
+    fixer["fixer<br/><i>Nightwing in default theme</i><br/>every 45m"]
+    triage["triage<br/><i>Robin in default theme</i><br/>every 3h"]
+    e2e_runner["e2e-runner<br/><i>Huntress in default theme</i><br/>every 30m"]
+    ops_watch["ops-watch<br/><i>Gordon in default theme</i><br/>daily 08:00"]
     automerge["automerge<br/><i>squash-merge</i><br/>every 15m"]
 
-    batman -- "plans approved rollouts" --> issues
-    drake -- "files scoped work" --> issues
-    damian -- "files spec bundles" --> issues
-    robin -- "triages" --> issues
-    issues -- "claim_issue" --> lucius
-    lucius -- "transition_to=pr-open" --> prs
-    bane -- "opens test PRs" --> prs
-    prs --> rasalghul
-    rasalghul -- "review comments" --> prs
-    prs --> nightwing
-    nightwing -- "fix commits" --> prs
+    architect -- "plans approved rollouts" --> issues
+    planner -- "files scoped work" --> issues
+    spec_planner -- "files spec bundles" --> issues
+    triage -- "triages" --> issues
+    issues -- "claim_issue" --> senior_dev
+    senior_dev -- "transition_to=pr-open" --> prs
+    test_engineer -- "opens test PRs" --> prs
+    prs --> reviewer
+    reviewer -- "review comments" --> prs
+    prs --> fixer
+    fixer -- "fix commits" --> prs
     prs --> automerge
     automerge -- "transition_to=done" --> issues
-    huntress -- "smoke-test fails" --> robin
-    gordon -- "drift / Sentry" --> slack
+    e2e_runner -- "smoke-test fails" --> triage
+    ops_watch -- "drift / Sentry" --> slack
 
-    batman & lucius & drake & bane & rasalghul & nightwing & robin & huntress & gordon & damian & automerge -. "status" .-> slack
+    architect & senior_dev & planner & test_engineer & reviewer & fixer & triage & e2e_runner & ops_watch & spec_planner & automerge -. "status" .-> slack
     ops_cli -. "enable / disable / claim helpers" .-> issues
 ```
 
@@ -96,14 +96,14 @@ put.
 
 ## Roster customization
 
-The role (and its stable runtime codename) is the machine identity. It appears in PR titles, commit-trailer metadata, log filenames, worktree paths, and the host scheduler label or unit. The visible roster name is the human identity, supplied by the active theme. Alfred Desktop can apply preset themes or custom names and role labels across the desktop and Slack while the role and runtime codename stay stable. The full identity model is in [Identity and themes](IDENTITY_AND_THEMES.md).
+The role-slug is the machine identity. It appears in PR titles, commit-trailer metadata, log filenames, worktree paths, and the host scheduler label or unit. The visible roster name is the human identity, supplied by the active theme. Alfred Desktop can apply preset themes or custom names and role labels across the desktop and Slack while the role stays stable. The full identity model is in [Identity and themes](IDENTITY_AND_THEMES.md).
 
 ### Why the defaults are Batman
 
 Two reasons:
 
 1. **Operational legibility.** A coherent fictional cast makes scanning the Slack channel faster than `agent-1 / agent-2 / agent-3` or `feature-dev / test-coverage / review`. Once you've worked with Lucius for a week, "Lucius failed on #303" is instantly readable.
-2. **Design forcing function.** "What does *Bane* do?" is a sharper question than "what does the test agent do?". Naming the role after a *character* (who has a personality, a domain, a relationship to other characters) forces narrow scope per codename.
+2. **Design forcing function.** "What does *Bane* do?" is a sharper question than "what does the test agent do?". Naming the role after a *character* (who has a personality, a domain, a relationship to other characters) forces narrow scope per role.
 
 ### Picking your own visible roster
 
@@ -193,7 +193,7 @@ slack, claim/release, engine invocation, and event logs. Read
 [`docs/STATE_MACHINE.md`](STATE_MACHINE.md) and [`docs/TUTORIAL.md`](TUTORIAL.md)
 before writing the script.
 
-## Roadmap categories (post-v0.2)
+## Roadmap categories
 
 The default install is engineering-only. Future categories tracked in [`ROADMAP.md`](../ROADMAP.md):
 
@@ -203,16 +203,16 @@ The default install is engineering-only. Future categories tracked in [`ROADMAP.
 - **Finance-ops agents**: invoice generation, bank reconciliation, subscription audit. Generates drafts; never moves money.
 - **Product-ops / SRE agents**: uptime monitoring, release notes, customer-health signals.
 
-These categories require their own integration surface (Apollo, Reddit, Gmail, Wise, Sentry, etc.) and are out of scope for the v0.2 engineering release. PRs that propose individual agents in these categories are welcome; see [`CONTRIBUTING.md`](../CONTRIBUTING.md).
+These categories require their own integration surface (Apollo, Reddit, Gmail, Wise, Sentry, etc.) and are outside the default engineering fleet. PRs that propose individual agents in these categories are welcome when they keep the core runtime optional and single-person; see [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
 ## Inspect and gate
 
 ```sh
 alfred agents                 # configured agents, schedule, enable state, role
 alfred status                 # local fleet health, locks, pauses, approval waits
-alfred clear-lock <codename>  # clear a stale /tmp lock after safety checks
-alfred enable <codename>      # add codename to the runner gate
-alfred disable <codename>     # remove codename from the runner gate
+alfred clear-lock <role-slug> # clear a stale /tmp lock after safety checks
+alfred enable <role-slug>     # add role to the runner gate
+alfred disable <role-slug>    # remove role from the runner gate
 alfred enabled-agents         # print the current runner-gate list
 alfred agent list             # list operator-defined runtime agents
 alfred agent add ...          # create or update a custom runtime agent

@@ -84,13 +84,14 @@ flowchart LR
   against the CLIs you already authenticated. Alfred does not send code to
   Alfred or Luminik servers. Task context goes only to the model provider you
   chose, GitHub, and Slack when you configured Slack.
-- **Alfred proves itself on its own repo.** A measurable, re-quotable stat:
-  <!-- SELF_PROOF -->No merged PRs in Alfred's own repo in the last 30 days yet<!-- /SELF_PROOF -->.
+- **Public proof is generated, not hand-typed.** Alfred's own repo proof line is
+  refreshed from strict GitHub attribution:
+  <!-- SELF_PROOF -->No public agent-attributed PRs in Alfred's own repo in the last 30 days yet<!-- /SELF_PROOF -->.
   The line between the markers is generated from live GitHub data by
   `npm run proof:update` from [`site/`](site/) (the same command that refreshes
-  the Impact page JSON), never hand-typed; the seed above reads as no-data until
-  a refresh runs, and an empty window says so instead of quoting a fabricated
-  share. See [Anonymous usage totals](#anonymous-usage-totals).
+  the Impact page JSON), never hand-typed. If the public repo has activity but
+  no PRs carrying Alfred provenance labels yet, it says that instead of
+  inventing a traction number. See [Anonymous usage totals](#anonymous-usage-totals).
 
 Docs site: https://alfred.luminik.io
 
@@ -311,7 +312,7 @@ brew install alfred-os
 alfred-install
 gh auth login                     # GitHub
 claude auth login                 # Claude Code auth
-alfred-init                       # choose agents, repos, codenames, Slack
+alfred-init                       # choose repos, team names, schedule, Slack
 ```
 
 Source checkout path, for working from `main` or running the Linux installer:
@@ -322,7 +323,7 @@ cd ~/code/alfred
 bash install.sh
 gh auth login                     # GitHub
 claude auth login                 # Claude Code auth
-./bin/alfred-init.py              # choose agents, repos, codenames, Slack
+./bin/alfred-init.py              # choose repos, team names, schedule, Slack
 ```
 
 The Homebrew formula installs the latest tagged release and exposes
@@ -340,20 +341,23 @@ prompts or labels, pass one repo or an explicit comma-separated repo list:
   --slack-webhook skip
 ```
 
-The full fleet includes Drake, Batman, Lucius, Ra's al Ghul, Bane, Nightwing,
-Robin, Huntress, Gordon, automerge, `agent-cleanup`, memory harvest, memory
-auto-promotion, `code-map-refresh`, morning briefs, recaps, shipped summaries,
-and fleet doctor. Slack is optional. The `--repos` owner must match `GH_ORG`;
+The full fleet includes `planner` (Drake), `architect` (Batman), `senior-dev`
+(Lucius), `reviewer` (Ra's al Ghul), `test-engineer` (Bane), `fixer`
+(Nightwing), `triage` (Robin), `e2e-runner` (Huntress), `ops-watch` (Gordon),
+automerge, `agent-cleanup`, memory harvest, memory auto-promotion,
+`code-map-refresh`, morning briefs, recaps, shipped summaries, and fleet doctor.
+Slack is optional. The `--repos` owner must match `GH_ORG`;
 the runtime agents store the bare repo name in `$ALFRED_HOME/.env` and build
 `GH_ORG/repo` at firing time. `alfred-init.py` seeds prompt templates, creates
 the standard GitHub labels on selected repos, writes the scheduler manifest
 (`launchd/agents.conf`), updates `$ALFRED_HOME/.env`, then runs deploy and doctor.
 
 The full fleet is installed and visible from the start. High-impact lanes still
-have explicit gates: Batman is configured but waits behind the runner gate until
-`alfred enable batman`, and it still needs its approval mode before filing child
-issues. Huntress and Gordon also load from day one; without a target URL or ECS
-cluster they self-idle instead of failing doctor.
+have explicit gates: Batman is the default-theme name for `architect`, and that
+role waits behind the runner gate until `alfred enable architect`. It still needs
+its approval mode before filing child issues. Huntress and Gordon are the
+default-theme names for `e2e-runner` and `ops-watch`; those roles also load from
+day one and self-idle until their target URL or ECS cluster exists.
 
 You can add a local role without writing a new runner:
 
@@ -515,7 +519,7 @@ the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
 | [`lib/batman.py`](lib/batman.py) | Batman lifecycle primitives for parent-plan parsing, approval, child issue filing, reporting, and bundle labels. |
 | [`lib/planning_assistant.py`](lib/planning_assistant.py) | Shared issue/spec refinement helpers for `alfred serve`, `alfred spec refine`, and Slack plan amendments. |
 | [`lib/scheduler.py`](lib/scheduler.py) | Host-scheduler abstraction: `launchd` on macOS, `systemd --user` on Linux, behind one interface. |
-| [`bin/alfred`](bin/alfred) | Alfred CLI: `alfred agents`, `alfred status`, `alfred doctor`, `alfred enable <codename>`, `alfred disable <codename>`, `alfred pause` / `resume` / `run`, `alfred clear-lock`, `alfred telemetry status/on/off`, `alfred brain ...`, `alfred code-map export/summary/impact`, `alfred mcp serve`, `alfred spec ...`, `alfred labels bootstrap/check`, `alfred engine status/set`, `alfred claude status/primary/secondary/swap/probe`, `alfred codex status/probe`, `alfred auth status/probe`. |
+| [`bin/alfred`](bin/alfred) | Alfred CLI: `alfred agents`, `alfred status`, `alfred doctor`, `alfred enable <role-slug>`, `alfred disable <role-slug>`, `alfred pause` / `resume` / `run`, `alfred clear-lock`, `alfred telemetry status/on/off`, `alfred brain ...`, `alfred code-map export/summary/impact`, `alfred mcp serve`, `alfred spec ...`, `alfred labels bootstrap/check`, `alfred engine status/set`, `alfred claude status/primary/secondary/swap/probe`, `alfred codex status/probe`, `alfred auth status/probe`. |
 | [`bin/custom-agent.py`](bin/custom-agent.py), [`lib/custom_agents.py`](lib/custom_agents.py) | Operator-defined runtime agents from `$ALFRED_HOME/state/custom-agents/custom-agents.json`. `alfred agent add` writes the manifest; deploy renders enabled rows into launchd/systemd; the read-only default runner uses normal Alfred locks, preflight, events, spend, memory, and engine routing. |
 | [`bin/alfred-usage.py`](bin/alfred-usage.py) | Live Claude + Codex subscription usage for the rolling 5-hour and weekly limit windows, read from the engines' own local CLI state (no billing API). The same data is served over the live `GET /api/usage` endpoint; this is its `alfred usage` CLI front end. |
 | [`bin/alfred-shipped-summary.py`](bin/alfred-shipped-summary.py) | Daily/weekly shipped-work report across configured repos: merged PRs, issues, LOC, and model/config changes. Also available as `alfred shipped`. |
@@ -530,7 +534,7 @@ the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
 | [`systemd/`](systemd/) | `_template.service` + `_template.timer` + `render.sh` (TSV → `systemd --user` units) for the Linux path. |
 | [`deploy.sh`](deploy.sh) | Sync `lib/` + `bin/` into `${ALFRED_HOME}`. If `launchd/agents.conf` exists, render units and bootstrap the host scheduler; otherwise do a framework-only deploy. |
 | [`install.sh`](install.sh) | Fresh-machine bootstrap: Homebrew (macOS) or apt (Debian/Ubuntu) + npm + dirs + shell rc. Idempotent. |
-| [`examples/bin/hello.py`](examples/bin/hello.py) | Smallest possible codename agent: preflight + Slack post. |
+| [`examples/bin/hello.py`](examples/bin/hello.py) | Smallest possible custom role agent: preflight + Slack post. |
 | [`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py) | Full lifecycle reference: pick / claim / claude / act / release / report. |
 | [`examples/bin/label_state.py`](examples/bin/label_state.py) | Alfred CLI helper for the issue claim state machine. |
 | [`examples/git-hooks/pre-push`](examples/git-hooks/pre-push) | Refuses push if a referenced issue is in-flight. Symmetric guard. |
@@ -602,16 +606,16 @@ The role is the canonical identity: PR titles, commit-trailer metadata,
 scheduler labels, GitHub labels, and worktree paths all key off it. A theme only
 supplies the display names, so a coherent roster makes the fleet's Slack channel
 scannable while the machinery stays stable. Narrow scopes force design quality:
-"what does the test-engineer do?" is a sharper question than "what does the test
-agent do?".
+"what does Bane do for tests?" is a sharper question than "what does the test
+agent do?", while the machine still keys off `test-engineer`.
 
 Pick whatever roster fits. The desktop app ships the Batman, Transformers, and
 Justice League presets, and you can author custom names by hand or by chatting
 with the theme builder. Roster themes and custom names are display identity
 only: they change the names and role labels shown in Agents, onboarding, and
-Slack, while roles, runtime codenames, scheduler labels, GitHub labels,
-worktrees, and merge gates stay unchanged. If you add a new agent script later,
-the custom roster editor can name that live agent too.
+Slack, while roles, scheduler labels, GitHub labels, worktrees, and merge gates
+stay unchanged. If you add a new agent script later, the custom roster editor
+can name that live agent too.
 
 See [Identity and themes](docs/IDENTITY_AND_THEMES.md) for the full model and
 [Architecture → Codename pattern](https://alfred.luminik.io/concepts/codename-pattern/)
@@ -626,10 +630,11 @@ Alfred has a deliberate shape. The boundaries below are intentional.
 - **Local CLI auth.** Alfred shells out to `claude` and optional `codex` on your own subscription-backed CLI auth. There is no hosted inference service or provider API key setup.
 - **Explicit goals and bounded autonomy.** Larger work should have a clear contract: outcome, verification, constraints, human gates, and blocked condition.
 - **Lean on the platform.** When Anthropic ships a capability natively (Agent Teams, the Memory Tool), Alfred adopts it rather than re-implementing it.
-- **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script; the core stays lean.
+- **Browser automation is per-role.** If a role needs a browser, it installs Playwright in its own bin script; the core stays lean.
 
-The engineering fleet, local memory, reliability governor, `alfred serve`, and
-the signed macOS desktop app plus Linux desktop packages all ship today. Content, sales, and ops
+The engineering fleet, local memory, code-memory readiness, first-party skills,
+conversational onboarding, roster themes, `alfred serve`, and the signed macOS
+desktop app plus Linux desktop packages all ship today. Content, sales, and ops
 departments are the next larger surface area: [`ROADMAP.md`](ROADMAP.md).
 
 ## Status
@@ -638,13 +643,17 @@ departments are the next larger surface area: [`ROADMAP.md`](ROADMAP.md).
 builders. What is in the box today:
 
 - Install, full-fleet setup, prompt seeding, GitHub label setup, specs-assisted
-  workspace patterns, doctor, and dry-run.
+  workspace patterns, doctor, dry-run, code-memory readiness, and starter
+  skills.
 - macOS launchd or Linux systemd scheduling, Claude/Codex engine routing, Slack
   reporting, and isolated worktree execution.
 - A signed macOS desktop app and Linux desktop packages (Tauri), with live Claude
-  and Codex subscription usage.
-- A single-repo approval gate, a disk guardian that pauses agents cleanly when the
-  disk is nearly full, Redis-backed memory, and FleetBrain reliability tooling.
+  and Codex subscription usage, AI-native setup chat, team-theme chat, and repair
+  buttons for missing local capabilities.
+- A single-repo approval gate, multi-repo architect planning through
+  `agent:large-feature`, a disk guardian that pauses agents cleanly when the disk
+  is nearly full, Redis-backed memory, FleetBrain reliability tooling, and a
+  self-grading rubric gate before implementation PRs.
 - A Slack planning path that turns an approved draft into a labeled GitHub issue,
   one-command setup-token bootstrap, a public download page, and SEO plus
   consent-gated analytics on the site.
@@ -661,7 +670,7 @@ you approve it. Slack remains the primary collaboration surface.
 
 The design boundary is stable: one person, one local Mac or Linux box, local
 CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when
-they strengthen that shape: reliability, setup, docs, tests, new codenames with
+they strengthen that shape: reliability, setup, docs, tests, new roles with
 clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a
 new department or runtime change, should start as a discussion.
 

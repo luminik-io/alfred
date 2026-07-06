@@ -62,18 +62,34 @@ interface Props {
 const { proof } = Astro.props;
 const fmt = (n: number) => n.toLocaleString("en-US");
 
-// Self-proof: the share of merged PRs shipped by Alfred agents. Rendered only
-// when the emitter supplied the block AND there is real merged-PR data, so an
-// empty window shows "no data yet" copy rather than a fabricated 0%.
+// Self-proof: the share of merged PRs shipped by Alfred agents. Rendered when
+// the emitter supplied real merged-PR data. A zero-attribution window should be
+// visible with honest copy, not hidden behind a missing percentage.
 const selfProof = proof.self_proof;
 const hasSelfProof =
   !!selfProof &&
-  selfProof.merged_total > 0 &&
-  selfProof.share_pct !== null &&
-  selfProof.share_pct !== undefined;
-const selfProofShare = hasSelfProof
+  selfProof.merged_total > 0;
+const hasSelfProofShare =
+  hasSelfProof &&
+  selfProof!.agent_shipped > 0 &&
+  selfProof!.share_pct !== null &&
+  selfProof!.share_pct !== undefined;
+const selfProofValue = hasSelfProofShare
   ? `${Number.isInteger(selfProof!.share_pct) ? selfProof!.share_pct : (selfProof!.share_pct as number).toFixed(1)}%`
   : null;
+const selfProofDisplayValue = hasSelfProofShare
+  ? selfProofValue
+  : selfProof
+    ? fmt(selfProof.agent_shipped)
+    : null;
+const selfProofLabel = hasSelfProofShare
+  ? "of merged PRs shipped by Alfred agents"
+  : selfProof?.headline || "No public agent-attributed PRs yet";
+const selfProofDetail = hasSelfProofShare
+  ? `${fmt(selfProof!.agent_shipped)} of ${fmt(selfProof!.merged_total)} merged PRs, last ${selfProof!.window_days} days`
+  : selfProof
+    ? selfProof.sentence || `No public agent-attributed PRs among ${fmt(selfProof.merged_total)} merged PRs in the last ${selfProof.window_days} days.`
+    : "";
 const maxTrend = Math.max(...proof.trend.map((item) => item.prs_merged), 1);
 const windowLabel = `Last ${proof.window.days} days`;
 const hasAlfredRows =
@@ -138,12 +154,12 @@ const metrics = [
   </div>
 
   {hasSelfProof ? (
-    <div class="proof-selfproof" aria-label="Share of merged PRs shipped by Alfred agents">
-      <span class="proof-selfproof__value">{selfProofShare}</span>
+    <div class="proof-selfproof" aria-label="Public Alfred attribution proof">
+      <span class="proof-selfproof__value">{selfProofDisplayValue}</span>
       <div class="proof-selfproof__body">
-        <span class="proof-selfproof__label">of merged PRs shipped by Alfred agents</span>
+        <span class="proof-selfproof__label">{selfProofLabel}</span>
         <span class="proof-selfproof__detail m-mono">
-          {fmt(selfProof!.agent_shipped)} of {fmt(selfProof!.merged_total)} merged PRs, last {selfProof!.window_days} days
+          {selfProofDetail}
         </span>
       </div>
     </div>

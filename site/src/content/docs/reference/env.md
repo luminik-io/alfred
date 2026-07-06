@@ -64,9 +64,9 @@ status/set` persists per-agent engine choices under
 
 | Var | Used by | Default |
 |---|---|---|
-| `BATMAN_PARENT_REPO` | `bin/batman.py` parent issue queue | (none, no-op) |
+| `BATMAN_PARENT_REPO` | `bin/architect.py` parent issue queue | (none, no-op) |
 | `BATMAN_ROLLOUT_ORDER` | `alfred-init.py` and plan parsing defaults | `backend,frontend,mobile,agents,data-acquisition` |
-| `AGENT_CODENAME_CROSS_REPO_COORDINATOR` | `alfred-init.py` codename mapping | `batman` |
+| `AGENT_CODENAME_CROSS_REPO_COORDINATOR` | `alfred-init.py` legacy alias for the architect role | `architect` |
 | `BATMAN_AUTO_EXECUTE` | `lib/batman.py` plan execution mode | `0` |
 | `BATMAN_PICKER` | `lib/batman.py` parent issue selection | `oldest` |
 | `BATMAN_BUNDLE_SLUG_PREFIX` | `lib/batman.py` bundle slug rendering | (blank) |

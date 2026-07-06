@@ -175,7 +175,7 @@ The full-fleet setup configures it from the start:
 For parent-plan execution, set the runner gate explicitly and redeploy:
 
 ```sh
-alfred enable batman
+alfred enable architect
 # Add or verify BATMAN_PARENT_REPO=my-org/specs in $ALFRED_HOME/.env.
 # Set BATMAN_AUTO_EXECUTE=approval-gate when you want approved child filing.
 alfred labels bootstrap my-org/specs

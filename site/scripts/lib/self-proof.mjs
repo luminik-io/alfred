@@ -109,16 +109,20 @@ export function formatShare(value) {
 export function buildSelfProof(agentMerged, totalMerged, days) {
   const sharePct =
     totalMerged > 0 ? Math.round((1000 * agentMerged) / totalMerged) / 10 : null;
-  const sentence =
-    sharePct === null
-      ? `No merged PRs to measure in the last ${days} days yet.`
-      : `${formatShare(sharePct)}% of merged PRs in the last ${days} days were shipped by Alfred agents.`;
-  const headline =
-    sharePct === null
-      ? `No merged PRs in the last ${days} days yet.`
-      : `Alfred agents shipped ${agentMerged} of ${totalMerged} merged PRs (${formatShare(
-          sharePct,
-        )}%) in the last ${days} days.`;
+  let sentence;
+  let headline;
+  if (sharePct === null) {
+    sentence = `No merged PRs to measure in the last ${days} days yet.`;
+    headline = `No merged PRs in the last ${days} days yet.`;
+  } else if (agentMerged <= 0) {
+    sentence = `No public agent-attributed PRs among ${totalMerged} merged PRs in the last ${days} days yet.`;
+    headline = `No public agent-attributed PRs among ${totalMerged} merged PRs in the last ${days} days yet.`;
+  } else {
+    sentence = `${formatShare(sharePct)}% of merged PRs in the last ${days} days were shipped by Alfred agents.`;
+    headline = `Alfred agents shipped ${agentMerged} of ${totalMerged} merged PRs (${formatShare(
+      sharePct,
+    )}%) in the last ${days} days.`;
+  }
   return {
     window_days: days,
     agent_shipped: agentMerged,
@@ -165,6 +169,9 @@ export function readmeSelfProofText(selfProof) {
   const days = selfProof.window_days;
   if (selfProof.share_pct === null || selfProof.merged_total <= 0) {
     return `No merged PRs in Alfred's own repo in the last ${days} days yet`;
+  }
+  if (selfProof.agent_shipped <= 0) {
+    return `No public agent-attributed PRs in Alfred's own repo in the last ${days} days yet`;
   }
   return (
     `${formatShare(selfProof.share_pct)}% of Alfred's own merged PRs in the ` +

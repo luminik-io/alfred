@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-22T02:36:52.381Z",
+  "generated_at": "2026-07-06T18:47:14.762Z",
   "source": {
     "repo": "luminik-io/alfred",
     "url": "https://github.com/luminik-io/alfred",
@@ -7,8 +7,8 @@
   },
   "window": {
     "days": 30,
-    "from": "2026-05-23T02:36:52.381Z",
-    "to": "2026-06-22T02:36:52.381Z"
+    "from": "2026-06-06T18:47:14.762Z",
+    "to": "2026-07-06T18:47:14.762Z"
   },
   "summary": {
     "prs_merged": 0,
@@ -19,23 +19,23 @@
     "lines_removed": 0,
     "files_changed": 0,
     "repo_activity": {
-      "prs_merged": 132,
-      "issues_opened": 32,
-      "issues_closed": 32,
-      "lines_added": 196761,
-      "lines_removed": 39143,
-      "files_changed": 2092
+      "prs_merged": 212,
+      "issues_opened": 9,
+      "issues_closed": 16,
+      "lines_added": 211948,
+      "lines_removed": 48270,
+      "files_changed": 3019
     }
   },
   "self_proof": {
     "window_days": 30,
     "agent_shipped": 0,
-    "merged_total": 0,
-    "share_pct": null,
-    "repos_counted": 0,
+    "merged_total": 212,
+    "share_pct": 0,
+    "repos_counted": 1,
     "repo_word": "repo",
-    "headline": "No merged PRs in the last 30 days yet.",
-    "sentence": "No merged PRs to measure in the last 30 days yet."
+    "headline": "No public agent-attributed PRs among 212 merged PRs in the last 30 days yet.",
+    "sentence": "No public agent-attributed PRs among 212 merged PRs in the last 30 days yet."
   },
   "trend": [],
   "prs": [],

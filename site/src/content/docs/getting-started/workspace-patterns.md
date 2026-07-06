@@ -98,4 +98,4 @@ Configure it with the rest of the fleet:
 Then set `BATMAN_PARENT_REPO`, choose `BATMAN_AUTO_EXECUTE=approval-gate` when
 you want approved child filing, run `alfred labels bootstrap my-org/specs` for
 the parent repo if it sits outside `--repos`, and arm the runner gate with
-`alfred enable batman` when parent-plan work is ready.
+`alfred enable architect` when parent-plan work is ready.

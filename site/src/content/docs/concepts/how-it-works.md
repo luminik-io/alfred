@@ -5,21 +5,24 @@ description: One agent firing traced end to end, from the scheduler trigger to t
 
 This page traces a single agent firing in detail. If [Architecture](/concepts/architecture/) is the why, this is the what-happens-in-order.
 
-The example is Lucius, the feature-dev agent, because it exercises every primitive. Simpler agents (Echo in the [tutorial](/getting-started/tutorial/), Gordon's read-only health check) are subsets of this trace.
+The example is the `senior-dev` role, shown as Lucius in the default theme,
+because it exercises every primitive. Simpler agents (Echo in the
+[tutorial](/getting-started/tutorial/), or the `ops-watch` role's read-only
+health check) are subsets of this trace.
 
 ## Stage 1: the trigger
 
 The host scheduler owns the schedule. On macOS that is launchd; on Linux it is
-`systemd --user`. A Lucius interval of 1200 seconds fires every 20 minutes and
+`systemd --user`. A `senior-dev` interval of 1200 seconds fires every 20 minutes and
 execs:
 
 ```
-$ALFRED_HOME/bin/agent-launch lucius.py
+$ALFRED_HOME/bin/agent-launch senior-dev.py
 ```
 
 `agent-launch` is a thin shell wrapper. Host schedulers do not source shell rc
 files, so the wrapper loads `$ALFRED_HOME/.env` with Alfred's dotenv parser at
-firing time, then execs `$ALFRED_HOME/bin/lucius.py`. The rendered scheduler unit has already set
+firing time, then execs `$ALFRED_HOME/bin/senior-dev.py`. The rendered scheduler unit has already set
 `AGENT_CODENAME`, `LAUNCHD_LABEL`, `ALFRED_HOME`, `WORKSPACE_ROOT`, and `PATH`.
 
 There is no daemon. The process exists only for the duration of this one firing.
@@ -30,7 +33,7 @@ The runner walks a fixed sequence of cheap checks before it will spend a Claude 
 
 ```mermaid
 flowchart TB
-    start["lucius.py starts"]
+    start["senior-dev.py starts"]
     lock{"with_lock(AGENT)<br/>acquired?"}
     locked["print [LUCIUS-LOCKED]<br/>exit 0"]
     pre{"preflight(spec)<br/>passes?"}
@@ -74,7 +77,7 @@ Then `claim_issue(repo, num, codename=AGENT, firing_id=...)` runs the [state mac
 
 ```mermaid
 sequenceDiagram
-    participant runner as lucius.py
+    participant runner as senior-dev.py
     participant git as git
     participant engine as configured engine
     participant fs as worktree dir
@@ -89,7 +92,7 @@ sequenceDiagram
     git-->>runner: commit count
 ```
 
-`make_worktree` creates a throwaway git worktree under `$ALFRED_HOME/worktrees/eng-lucius-<repo>-<issue>-<ts>/`, branched from a fresh `origin/main`. The `claude -p` subprocess runs with its `cwd` pinned to that worktree, so it physically cannot touch your canonical checkout or another firing's branch.
+`make_worktree` creates a throwaway git worktree under `$ALFRED_HOME/worktrees/eng-senior-dev-<repo>-<issue>-<ts>/`, branched from a fresh `origin/main`. The engine subprocess runs with its `cwd` pinned to that worktree, so it physically cannot touch your canonical checkout or another firing's branch.
 
 The runner builds the prompt from the issue body plus repo context such as the
 repo's `CLAUDE.md`, inlines it, and calls the configured engine with a hard

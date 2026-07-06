@@ -10,8 +10,9 @@ Alfred is the open-source runtime for a fleet of autonomous engineering agents
 on Claude Code and Codex. The OS scheduler (launchd on macOS, systemd on Linux)
 fires each agent; `lib/agent_runner/` wraps every firing in a lock,
 preflight, spend cap, and an isolated git worktree. Agents are one Python file
-per role under `bin/`, named after a coherent fictional cast (the codename
-pattern). `examples/` holds the reference agents the tutorial builds.
+per role under `bin/`, named by role slug. Themes supply the human display
+names, with the default Batman theme showing the Gotham cast in the UI and
+Slack. `examples/` holds the reference agents the tutorial builds.
 
 Users inspect and steer the fleet through the Alfred CLI (`bin/alfred`),
 the optional `alfred serve` JSON API, the optional Tauri desktop client under
@@ -42,7 +43,8 @@ open a discussion before writing code. See [`ROADMAP.md`](ROADMAP.md).
   parentheses.
 - **No `Co-Authored-By` or AI-attribution trailers** on commits. Conventional
   commit messages (`feat:`, `fix:`, `docs:`, `chore:`).
-- One codename per PR, with prompt + tests + docs. Keep PRs scoped.
+- One role or runtime surface per PR, with prompt + tests + docs where
+  applicable. Keep PRs scoped.
 - This is a public repo: no host paths, no cloud account IDs, no secrets, no
   personal handles. `bin/scrub-check.sh` enforces this.
 

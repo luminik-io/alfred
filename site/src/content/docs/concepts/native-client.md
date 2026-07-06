@@ -29,7 +29,7 @@ The client is for trust and operations:
 1. Install Alfred Desktop from the signed macOS DMG or Linux package on
    [Download](/download/).
 2. Open Alfred Desktop. Setup detects an existing Alfred core install when one
-   is present, or installs/repairs bundled Alfred core on this Mac.
+   is present, or installs/repairs bundled Alfred core on this machine.
 3. Connect GitHub and Claude or Codex, choose repos, configure the full fleet,
    check the local capability plane (code graph memory, context compression,
    and engineering skills), pick a roster theme or custom display names, and
@@ -89,7 +89,7 @@ does not want to tail logs.
 
 1. Stabilize JSON APIs in `alfred serve`. Done.
 2. Ship a Tauri shell for Mac/Linux with safe local follow-up actions, runtime launch, a curated command console, status/auth/agent checks, memory checks, Redis checks, and dry-run launch. Done.
-3. Add AI-native guided install, dependency installation, broader write actions, and command previews. In progress: native core install/repair now bootstraps bundled resources before starting the runtime.
+3. Add AI-native guided install, dependency installation, broader write actions, and command previews. Done for the default onboarding path: native core install/repair bootstraps bundled resources, deploys the full built-in fleet, starts the runtime, and exposes guarded repair actions before scheduled work runs.
 4. Package signed macOS builds and Linux artifacts. Done.
 
 The client builds native installers locally: `npm run tauri -- build` produces `.app`/`.dmg` on macOS 11+ Apple silicon and `.AppImage`/`.deb` on Linux from the Tauri bundle config. CI builds with `--no-bundle` to prove the binary compiles without code signing. Public releases start as draft GitHub Releases; signed macOS assets and Linux packages are attached before publish. See [Alfred Desktop](/concepts/desktop-client/) for the tab-by-tab control surface and build steps.
