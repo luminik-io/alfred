@@ -1764,6 +1764,10 @@ fn build_alfred_action(
             "alfred".to_string(),
             vec!["code-memory".to_string(), "doctor".to_string()],
         )),
+        "code_memory_index" => Ok((
+            "alfred".to_string(),
+            vec!["code-memory".to_string(), "index".to_string()],
+        )),
         "skills_install_starter" => Ok((
             "alfred".to_string(),
             vec![
@@ -2929,6 +2933,13 @@ done"#;
         assert_eq!(
             code_memory_args,
             vec!["code-memory".to_string(), "doctor".to_string(),]
+        );
+
+        let (_, code_memory_index_args) = build_alfred_action("code_memory_index", None, None)
+            .expect("code-memory index has no target");
+        assert_eq!(
+            code_memory_index_args,
+            vec!["code-memory".to_string(), "index".to_string(),]
         );
 
         let (_, skills_args) = build_alfred_action("skills_install_starter", None, None)

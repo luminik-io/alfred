@@ -209,10 +209,10 @@ function readinessRepairFor(check: SetupFirstRunCheck): ReadinessRepair | null {
   }
   if (check.key === "code_graph") {
     return {
-      request: { action: "code_memory_status", refreshAfter: true },
-      label: "Run code-memory check",
-      busyLabel: "Checking code memory",
-      busyKey: "code_memory_status:fleet",
+      request: { action: "code_memory_index", refreshAfter: true },
+      label: "Index code memory",
+      busyLabel: "Indexing code memory",
+      busyKey: "code_memory_index:fleet",
     };
   }
   if (check.key === "engineering_skills") {

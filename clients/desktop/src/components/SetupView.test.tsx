@@ -259,9 +259,9 @@ describe("SetupView", () => {
     expect(screen.getByText("Engineering skills")).toBeInTheDocument();
     expect(screen.getByText(/0 of 3 recommended ready/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Run code-memory check" }));
+    await user.click(screen.getByRole("button", { name: "Index code memory" }));
     expect(onRunLocalAction).toHaveBeenCalledWith({
-      action: "code_memory_status",
+      action: "code_memory_index",
       refreshAfter: true,
     });
 

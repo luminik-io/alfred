@@ -433,6 +433,7 @@ export function SetupView({
                 <code>alfred agents</code>
                 <code>alfred brain doctor --json</code>
                 <code>alfred code-memory doctor</code>
+                <code>alfred code-memory index</code>
                 <code>alfred skills install --starter</code>
                 <code>alfred brain redis-status --json</code>
                 <code>alfred dry-run &lt;codename&gt;</code>
