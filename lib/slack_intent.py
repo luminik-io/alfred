@@ -734,12 +734,14 @@ def _assignment_agent_from_text(
     normalized_lines = [_normalize(line) for line in re.split(r"[\r\n]+", text)]
     for line in (line for line in normalized_lines if line):
         for phrase in re.finditer(
-            r"\b(?:to|with)(?:\s+the)?\s+(.+?)(?=\b(?:to|with)(?:\s+the)?\s+|$)",
+            r"\b(?P<preposition>to|with)(?:\s+the)?\s+"
+            r"(?P<target>.+?)(?=\b(?:to|with)(?:\s+the)?\s+|$)",
             line,
         ):
             matched = _known_assignment_agent_in_phrase(
-                phrase.group(1),
+                phrase.group("target"),
                 aliases,
+                allow_for_tail=phrase.group("preposition") == "to",
                 state_root=state_root,
             )
             if matched:
@@ -783,6 +785,7 @@ def _known_assignment_agent_in_phrase(
     value: str,
     aliases: dict[str, tuple[str, ...]],
     *,
+    allow_for_tail: bool = False,
     state_root: Path | None = None,
 ) -> str:
     normalized = _normalize(value)
@@ -798,7 +801,7 @@ def _known_assignment_agent_in_phrase(
             if normalized_name:
                 candidates.append((normalized_name, agent))
     for name, agent in sorted(candidates, key=lambda item: len(item[0]), reverse=True):
-        if _starts_with_token(normalized, name):
+        if _starts_with_token(normalized, name, allow_for_tail=allow_for_tail):
             return agent
     return ""
 
@@ -1413,14 +1416,20 @@ def _contains_token(normalized_text: str, token: str) -> bool:
     return re.search(pattern, normalized_text) is not None
 
 
-def _starts_with_token(normalized_text: str, token: str) -> bool:
+def _starts_with_token(
+    normalized_text: str,
+    token: str,
+    *,
+    allow_for_tail: bool = False,
+) -> bool:
     """True iff ``normalized_text`` starts with ``token`` as an assignment target."""
     token = (token or "").strip().lower()
     if not token:
         return False
-    pattern = (
-        r"^" + re.escape(token) + r"(?:$|[.!?,;:]|\s+(?:please|pls|now|today|tomorrow|asap|for)\b)"
-    )
+    tail_words = "please|pls|now|today|tomorrow|asap"
+    if allow_for_tail:
+        tail_words += "|for"
+    pattern = r"^" + re.escape(token) + r"(?:$|[.!?,;:]|\s+(?:" + tail_words + r")\b)"
     return re.search(pattern, normalized_text) is not None
 
 

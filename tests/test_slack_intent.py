@@ -319,6 +319,30 @@ def test_assign_issue_supported_theme_context_does_not_become_lane(
     assert intent.needs_clarification is False
 
 
+def test_assign_issue_supported_theme_for_context_does_not_become_lane(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _save_roster_theme(monkeypatch, tmp_path, theme="batman")
+    intent = classify_intent(
+        "assign acme-io/acme-backend#12 to fix the bug with Batman for notes",
+        engine_invoke=_engine_returning(
+            {
+                "action": "assign_issue",
+                "repo": "acme-io/acme-backend",
+                "issue": 12,
+                "agent": "lucius",
+                "confidence": 0.91,
+            }
+        ),
+        catalog=CATALOG,
+    )
+
+    assert intent.action == ACTION_ASSIGN
+    assert intent.agent == ""
+    assert intent.needs_clarification is False
+
+
 def test_assign_issue_to_fix_phrase_does_not_become_lane(monkeypatch, tmp_path: Path) -> None:
     _save_roster_theme(monkeypatch, tmp_path, theme="batman")
     intent = classify_intent(
