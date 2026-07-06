@@ -208,6 +208,10 @@ function readinessRepairFor(check: SetupFirstRunCheck): ReadinessRepair | null {
     return null;
   }
   if (check.key === "code_graph") {
+    const state = codeGraphCapabilityState(check);
+    if (state !== "installable" && state !== "needs_index") {
+      return null;
+    }
     return {
       request: { action: "code_memory_index", refreshAfter: true },
       label: "Index code memory",
@@ -224,4 +228,15 @@ function readinessRepairFor(check: SetupFirstRunCheck): ReadinessRepair | null {
     };
   }
   return null;
+}
+
+function codeGraphCapabilityState(check: SetupFirstRunCheck): string {
+  const detected = check.detected;
+  if (detected && typeof detected === "object" && !Array.isArray(detected)) {
+    const state = (detected as Record<string, unknown>).capability_state;
+    if (typeof state === "string") {
+      return state;
+    }
+  }
+  return check.state;
 }

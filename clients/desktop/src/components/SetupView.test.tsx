@@ -231,6 +231,7 @@ describe("SetupView", () => {
               detail: "Code-memory binary is present; run an index before relying on graph queries.",
               action: "Run `alfred code-memory doctor`, then `alfred code-memory index`.",
               path: "/tmp/alfred-home/state/code-memory",
+              detected: { capability_state: "needs_index", enabled: true },
             },
             {
               key: "engineering_skills",
@@ -316,5 +317,48 @@ describe("SetupView", () => {
 
     const busyButton = await screen.findByRole("button", { name: "Installing skills" });
     expect(busyButton).toBeDisabled();
+  });
+
+  it("does not offer code-memory indexing when code memory is disabled", async () => {
+    vi.spyOn(api, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      setupStatus("/tmp/alfred-home", {
+        first_run: {
+          version: 1,
+          ready: false,
+          status: "needs_action",
+          headline: "Recommended setup can be improved.",
+          summary: {
+            required_ready: 7,
+            required_total: 7,
+            recommended_ready: 0,
+            recommended_total: 3,
+            optional_ready: 0,
+            optional_total: 2,
+            blockers: [],
+          },
+          checks: [
+            {
+              key: "code_graph",
+              title: "Code graph memory",
+              category: "memory",
+              tier: "recommended",
+              required: false,
+              ready: false,
+              state: "actionable",
+              detail: "Code memory is disabled with ALFRED_CODE_MEMORY_MCP.",
+              action: "Enable code memory before indexing.",
+              path: "/tmp/alfred-home/state/code-memory",
+              detected: { capability_state: "disabled", enabled: false },
+            },
+          ],
+        },
+      }),
+    );
+
+    render(renderSetup("http://127.0.0.1:7010"));
+
+    expect(await screen.findByText("Code graph memory")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Index code memory" })).not.toBeInTheDocument();
   });
 });

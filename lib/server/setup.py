@@ -1612,7 +1612,12 @@ def _code_graph_readiness_check(
         detail=str(capability.get("detail") or code_memory.get("detail") or ""),
         action=str(capability.get("install_hint") or "Run `alfred code-memory doctor`."),
         path=str(code_memory.get("graph_dir") or code_memory.get("index_dir") or "") or None,
-    )
+    ) | {
+        "detected": {
+            "capability_state": capability.get("state"),
+            "enabled": bool(capability.get("enabled")),
+        },
+    }
 
 
 def _context_compression_readiness_check(capability_plane: dict[str, Any]) -> dict[str, Any]:

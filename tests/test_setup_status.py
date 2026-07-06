@@ -852,7 +852,9 @@ def test_bootstrap_status_respects_code_memory_disable(
         lambda _env: pytest.fail("disabled code memory must not crawl workspace repos"),
     )
 
-    code_memory = setup_mod.bootstrap_status()["code_memory"]
+    payload = setup_mod.bootstrap_status()
+    code_memory = payload["code_memory"]
+    first_run_by_key = {check["key"]: check for check in payload["first_run"]["checks"]}
 
     assert code_memory["enabled"] is False
     assert code_memory["autofetch"] is False
@@ -866,6 +868,10 @@ def test_bootstrap_status_respects_code_memory_disable(
         "limit": 25,
     }
     assert code_memory["detail"] == "Code memory is disabled with ALFRED_CODE_MEMORY_MCP."
+    assert first_run_by_key["code_graph"]["detected"] == {
+        "capability_state": "disabled",
+        "enabled": False,
+    }
 
 
 def test_capability_plane_reports_missing_optional_layers(
