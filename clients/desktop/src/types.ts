@@ -958,6 +958,7 @@ export type NativeAction =
   | "github_auth_login"
   | "brain_doctor"
   | "code_memory_status"
+  | "skills_install_starter"
   | "redis_status"
   | "redis_sync_preview"
   | "memory_harvest"

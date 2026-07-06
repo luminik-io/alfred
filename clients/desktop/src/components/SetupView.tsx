@@ -47,7 +47,7 @@ export function SetupView({
   nativeBusy: string | null;
   onAddTrustedUser: (userId: string) => void;
   onRemoveTrustedUser: (userId: string) => void;
-  onRunLocalAction: (request: NativeActionRequest) => void;
+  onRunLocalAction: (request: NativeActionRequest) => void | Promise<unknown>;
   onInstallCore: () => void;
   onStartRuntime: () => void;
   onConnectServer: (url: string) => void;
@@ -137,6 +137,18 @@ export function SetupView({
     };
   }, [refreshSetupStatus]);
 
+  const runReadinessRepair = useCallback(
+    (request: NativeActionRequest) => {
+      const result = onRunLocalAction({ ...request, refreshAfter: true });
+      if (result) {
+        void Promise.resolve(result).finally(refreshSetupStatus);
+        return;
+      }
+      refreshSetupStatus();
+    },
+    [onRunLocalAction, refreshSetupStatus],
+  );
+
   const tabs: TabItem<SetupSubtab>[] = [
     { key: "connection", label: "Connection" },
     { key: "collaborators", label: "Collaborators", badge: trustedUsers.length || null },
@@ -161,7 +173,13 @@ export function SetupView({
               Slack stays the collaboration UI, and the CLI remains the inspectable headless path
               underneath.
             </p>
-            <FirstRunReadinessPanel readiness={setupStatus?.first_run} compact />
+            <FirstRunReadinessPanel
+              readiness={setupStatus?.first_run}
+              compact
+              canRunActions={canRun}
+              nativeBusy={nativeBusy}
+              onRunRepair={runReadinessRepair}
+            />
             <InstallInventoryPanel
               inventory={setupStatus?.install ?? null}
               queue={setupStatus?.queue ?? null}
@@ -415,6 +433,7 @@ export function SetupView({
                 <code>alfred agents</code>
                 <code>alfred brain doctor --json</code>
                 <code>alfred code-memory doctor</code>
+                <code>alfred skills install --starter</code>
                 <code>alfred brain redis-status --json</code>
                 <code>alfred dry-run &lt;codename&gt;</code>
                 <code>alfred pause &lt;codename&gt;</code>
