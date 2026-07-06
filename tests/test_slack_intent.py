@@ -210,6 +210,32 @@ def test_assign_issue_explicit_unsupported_lane_asks(monkeypatch, tmp_path: Path
     assert "`senior-dev`" in intent.clarification
 
 
+def test_assign_issue_explicit_multi_word_unsupported_theme_lane_asks(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _save_roster_theme(monkeypatch, tmp_path, theme="justice-league")
+    intent = classify_intent(
+        "assign acme-io/acme-backend#12 to Wonder Woman",
+        engine_invoke=_engine_returning(
+            {
+                "action": "assign_issue",
+                "repo": "acme-io/acme-backend",
+                "issue": 12,
+                "confidence": 0.91,
+            }
+        ),
+        catalog=CATALOG,
+    )
+
+    assert intent.action == ACTION_ASSIGN
+    assert intent.agent == ""
+    assert intent.needs_clarification is True
+    assert intent.params["unsupported_assignment_agent"] == "reviewer"
+    assert "`architect`" in intent.clarification
+    assert "`senior-dev`" in intent.clarification
+
+
 def test_assign_issue_to_fix_phrase_does_not_become_lane() -> None:
     intent = classify_intent(
         "assign acme-io/acme-backend#12 to fix the login bug",
@@ -368,6 +394,17 @@ def test_resolve_agent_codename_uses_current_theme_names(
     assert resolve_agent_codename("pause Lucius") == ""
     assert resolve_agent_codename("dry-run Huntress") == ""
     assert resolve_agent_codename("dry-run Lucius", model_agent="lucius") == ""
+
+
+def test_resolve_agent_codename_uses_manifest_only_theme_names(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _save_roster_theme(monkeypatch, tmp_path, theme="transformers")
+    assert resolve_agent_codename("dry-run Blaster") == "proof-telemetry"
+    assert resolve_agent_codename("pause Chromia") == "memory-auto-promote"
+    assert resolve_agent_codename("run Prowl") == "agent-morning-brief"
+    assert resolve_agent_codename("dry-run proof-telemetry") == "proof-telemetry"
 
 
 def test_resolve_agent_codename_uses_custom_theme_names(

@@ -661,7 +661,7 @@ def resolve_agent_codename(
     normalized = _normalize(text)
     if allow_all and any(_contains_token(normalized, cue) for cue in _ALL_AGENT_CUES):
         return "all"
-    for codename in sorted(_KNOWN_AGENT_CODENAMES, key=len, reverse=True):
+    for codename in sorted(_known_agent_codenames(state_root=state_root), key=len, reverse=True):
         if _contains_token(normalized, codename):
             return codename
     for codename, aliases in _agent_aliases_by_codename(state_root=state_root).items():
@@ -741,7 +741,19 @@ def _assignment_agent_from_text(
         normalized,
     )
     if match:
-        return _known_assignment_agent(match.group(1), aliases, state_root=state_root)
+        matched = _known_assignment_agent(match.group(1), aliases, state_root=state_root)
+        if matched:
+            return matched
+    phrase = re.search(
+        r"\b(?:to|with)(?:\s+the)?\s+(.+)$",
+        normalized,
+    )
+    if phrase:
+        return _known_assignment_agent_in_phrase(
+            phrase.group(1),
+            aliases,
+            state_root=state_root,
+        )
     return ""
 
 
@@ -777,6 +789,30 @@ def _known_assignment_agent(
     return ""
 
 
+def _known_assignment_agent_in_phrase(
+    value: str,
+    aliases: dict[str, tuple[str, ...]],
+    *,
+    state_root: Path | None = None,
+) -> str:
+    normalized = _normalize(value)
+    if not normalized:
+        return ""
+    candidates: list[tuple[str, str]] = []
+    all_aliases = dict(_agent_aliases_by_codename(state_root=state_root))
+    for agent, names in aliases.items():
+        all_aliases[agent] = tuple(dict.fromkeys((*all_aliases.get(agent, ()), *names)))
+    for agent, names in all_aliases.items():
+        for name in (agent, *names):
+            normalized_name = _normalize(name)
+            if normalized_name:
+                candidates.append((normalized_name, agent))
+    for name, agent in sorted(candidates, key=lambda item: len(item[0]), reverse=True):
+        if _contains_token(normalized, name):
+            return agent
+    return ""
+
+
 def _agent_candidate(
     raw: str,
     *,
@@ -791,9 +827,10 @@ def _agent_candidate(
     if allow_all and normalized in _ALL_AGENT_CUES:
         return "all"
     collapsed = re.sub(r"[^a-z0-9._-]+", "", normalized)
-    if normalized in _KNOWN_AGENT_CODENAMES:
+    known_codenames = _known_agent_codenames(state_root=state_root)
+    if normalized in known_codenames:
         return normalized
-    if collapsed in _KNOWN_AGENT_CODENAMES:
+    if collapsed in known_codenames:
         return collapsed
     for codename, aliases in _agent_aliases_by_codename(state_root=state_root).items():
         if normalized == codename or normalized in aliases:
@@ -858,10 +895,20 @@ def _agent_aliases_by_codename(
     state_root: Path | None = None,
 ) -> dict[str, tuple[str, ...]]:
     active = _active_theme_agent_aliases_by_codename(state_root=state_root)
+    codenames = set(_AGENT_ALIASES) | set(active)
     return {
-        codename: tuple(dict.fromkeys((*aliases, *active.get(codename, ()))))
-        for codename, aliases in _AGENT_ALIASES.items()
+        codename: tuple(
+            dict.fromkeys((*_AGENT_ALIASES.get(codename, ()), *active.get(codename, ())))
+        )
+        for codename in sorted(codenames)
     }
+
+
+def _known_agent_codenames(*, state_root: Path | None = None) -> frozenset[str]:
+    return frozenset(
+        set(_KNOWN_AGENT_CODENAMES)
+        | set(_active_theme_agent_aliases_by_codename(state_root=state_root))
+    )
 
 
 def _display_name_alias_variants(value: str) -> tuple[str, ...]:
