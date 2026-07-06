@@ -808,7 +808,7 @@ def _known_assignment_agent_in_phrase(
             if normalized_name:
                 candidates.append((normalized_name, agent))
     for name, agent in sorted(candidates, key=lambda item: len(item[0]), reverse=True):
-        if _contains_token(normalized, name):
+        if _starts_with_token(normalized, name):
             return agent
     return ""
 
@@ -1420,6 +1420,15 @@ def _contains_token(normalized_text: str, token: str) -> bool:
     if not token:
         return False
     pattern = r"(?<![A-Za-z0-9])" + re.escape(token) + r"(?![A-Za-z0-9])"
+    return re.search(pattern, normalized_text) is not None
+
+
+def _starts_with_token(normalized_text: str, token: str) -> bool:
+    """True iff ``normalized_text`` starts with ``token`` as a whole phrase."""
+    token = (token or "").strip().lower()
+    if not token:
+        return False
+    pattern = r"^" + re.escape(token) + r"(?![A-Za-z0-9])"
     return re.search(pattern, normalized_text) is not None
 
 
