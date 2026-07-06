@@ -722,11 +722,6 @@ def _assignment_agent_from_text(
     normalized = _normalize(text)
     if not normalized:
         return ""
-    prefixes = ("to", "to the", "with", "with the")
-    for agent, names in aliases.items():
-        for name in (agent, *names):
-            if any(_contains_token(normalized, f"{prefix} {name}") for prefix in prefixes):
-                return agent
     exact = _known_assignment_agent(text, aliases, state_root=state_root)
     if not exact:
         exact = _known_assignment_agent(
@@ -736,25 +731,19 @@ def _assignment_agent_from_text(
         )
     if exact:
         return exact
-    match = re.search(
-        r"\b(?:to|with)(?:\s+the)?\s+([a-z][a-z0-9._-]*)\b",
-        normalized,
-    )
-    if match:
-        matched = _known_assignment_agent(match.group(1), aliases, state_root=state_root)
-        if matched:
-            return matched
-    for phrase in re.finditer(
-        r"\b(?:to|with)(?:\s+the)?\s+(.+?)(?=\b(?:to|with)(?:\s+the)?\s+|$)",
-        normalized,
-    ):
-        matched = _known_assignment_agent_in_phrase(
-            phrase.group(1),
-            aliases,
-            state_root=state_root,
-        )
-        if matched:
-            return matched
+    normalized_lines = [_normalize(line) for line in re.split(r"[\r\n]+", text)]
+    for line in (line for line in normalized_lines if line):
+        for phrase in re.finditer(
+            r"\b(?:to|with)(?:\s+the)?\s+(.+?)(?=\b(?:to|with)(?:\s+the)?\s+|$)",
+            line,
+        ):
+            matched = _known_assignment_agent_in_phrase(
+                phrase.group(1),
+                aliases,
+                state_root=state_root,
+            )
+            if matched:
+                return matched
     return ""
 
 
@@ -1425,11 +1414,13 @@ def _contains_token(normalized_text: str, token: str) -> bool:
 
 
 def _starts_with_token(normalized_text: str, token: str) -> bool:
-    """True iff ``normalized_text`` starts with ``token`` as a whole phrase."""
+    """True iff ``normalized_text`` starts with ``token`` as an assignment target."""
     token = (token or "").strip().lower()
     if not token:
         return False
-    pattern = r"^" + re.escape(token) + r"(?![A-Za-z0-9])"
+    pattern = (
+        r"^" + re.escape(token) + r"(?:$|[.!?,;:]|\s+(?:please|pls|now|today|tomorrow|asap)\b)"
+    )
     return re.search(pattern, normalized_text) is not None
 
 
