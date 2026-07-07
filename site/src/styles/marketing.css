@@ -60,7 +60,7 @@
   --aurora-1: rgba(0, 229, 199, 0.26);
   --aurora-2: rgba(87, 137, 255, 0.22);
   --aurora-3: rgba(0, 229, 199, 0.10);
-  --field-line: rgba(96, 130, 190, 0.13);  /* soft status-lane motif */
+  --field-sheen: rgba(96, 130, 190, 0.13); /* soft directional proof-field glow */
 }
 
 [data-theme="light"] {
@@ -95,7 +95,7 @@
   --aurora-1: rgba(15, 138, 120, 0.16);
   --aurora-2: rgba(46, 93, 219, 0.13);
   --aurora-3: rgba(15, 138, 120, 0.07);
-  --field-line: rgba(120, 100, 60, 0.13);
+  --field-sheen: rgba(120, 100, 60, 0.13);
 }
 
 /* Static design tokens (typography, spacing) live on :root and are
@@ -183,7 +183,7 @@
 }
 
 /* ── Aurora field ──────────────────────────────────────────────────
-   Two brand-color blooms + a quiet status-lane texture, sitting behind hero
+   Two brand-color blooms + a quiet directional sheen, sitting behind hero
    and soft sections. Pure CSS, decorative, reduced-motion safe. The
    .m-aurora element is absolutely positioned; the parent must be
    position: relative and overflow: hidden. */
@@ -211,10 +211,10 @@
   position: absolute;
   inset: 0;
   background:
-    repeating-linear-gradient(90deg, transparent 0 148px, var(--field-line) 148px 149px, transparent 149px 296px),
-    linear-gradient(116deg, transparent 0%, rgba(0, 229, 199, 0.06) 34%, transparent 66%),
-    linear-gradient(64deg, transparent 0%, rgba(87, 137, 255, 0.05) 48%, transparent 78%);
-  opacity: 0.75;
+    linear-gradient(116deg, transparent 0%, rgba(0, 229, 199, 0.075) 34%, transparent 66%),
+    linear-gradient(64deg, transparent 0%, rgba(87, 137, 255, 0.06) 48%, transparent 78%),
+    radial-gradient(ellipse 62% 42% at 58% 4%, var(--field-sheen), transparent 64%);
+  opacity: 0.66;
   mask-image: radial-gradient(120% 100% at 50% 0%, #000 0%, transparent 72%);
   -webkit-mask-image: radial-gradient(120% 100% at 50% 0%, #000 0%, transparent 72%);
 }
@@ -356,7 +356,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
     radial-gradient(ellipse 600px 420px at 88% 110%, var(--aurora-2), transparent 65%),
     linear-gradient(180deg, var(--alfred-black) 0%, var(--alfred-surface) 50%, var(--alfred-black) 100%);
 }
-/* Faint status lanes over soft sections tie them to the hero field without
+/* A faint directional sheen ties soft sections to the hero field without
    turning the page into a square-pattern wallpaper. */
 .m-section--soft::before {
   content: "";
@@ -365,9 +365,9 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   z-index: 0;
   pointer-events: none;
   background:
-    repeating-linear-gradient(0deg, transparent 0 44px, var(--field-line) 44px 45px, transparent 45px 88px),
-    linear-gradient(112deg, transparent 0%, rgba(0, 229, 199, 0.045) 46%, transparent 74%);
-  opacity: 0.55;
+    linear-gradient(112deg, transparent 0%, rgba(0, 229, 199, 0.055) 46%, transparent 74%),
+    radial-gradient(ellipse 52% 20% at 48% 0%, var(--field-sheen), transparent 70%);
+  opacity: 0.46;
   mask-image: radial-gradient(90% 70% at 50% 30%, #000 0%, transparent 78%);
   -webkit-mask-image: radial-gradient(90% 70% at 50% 30%, #000 0%, transparent 78%);
 }
@@ -788,68 +788,6 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
 }
 @media (max-width: 720px) {
   .m-stats { grid-template-columns: 1fr; }
-}
-
-/* Operations-room ambient: a faint moving gridline backdrop on hero
-   sections. Pure CSS, very subtle, no JS, no big perf cost.
-   The CSS variable --m-parallax is updated by a tiny scroll listener in
-   MarketingLayout.astro so the grid drifts up as the user scrolls,
-   giving a subtle parallax depth without a heavy framework. */
-.m-ambient {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
-  z-index: 0;
-  opacity: 0.55;
-  transform: translate3d(0, var(--m-parallax, 0px), 0);
-  will-change: transform;
-  transition: opacity 0.4s ease;
-}
-.m-ambient::before,
-.m-ambient::after {
-  content: "";
-  position: absolute;
-  inset: -10%;
-  background-image:
-    linear-gradient(rgba(0, 229, 199, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 229, 199, 0.06) 1px, transparent 1px);
-  background-size: 64px 64px;
-  mask-image: radial-gradient(circle at 30% 20%, black 0%, transparent 60%);
-  -webkit-mask-image: radial-gradient(circle at 30% 20%, black 0%, transparent 60%);
-  animation: m-drift 28s linear infinite;
-}
-.m-ambient::after {
-  background-size: 256px 256px;
-  background-image:
-    linear-gradient(rgba(123, 154, 224, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(123, 154, 224, 0.04) 1px, transparent 1px);
-  mask-image: radial-gradient(circle at 80% 70%, black 0%, transparent 65%);
-  -webkit-mask-image: radial-gradient(circle at 80% 70%, black 0%, transparent 65%);
-  animation: m-drift 60s linear infinite reverse;
-}
-
-[data-theme="light"] .m-ambient {
-  opacity: 0.35;
-}
-
-[data-theme="light"] .m-ambient::before {
-  background-image:
-    linear-gradient(rgba(15, 138, 120, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(15, 138, 120, 0.07) 1px, transparent 1px);
-}
-
-[data-theme="light"] .m-ambient::after {
-  background-image:
-    linear-gradient(rgba(46, 93, 219, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(46, 93, 219, 0.05) 1px, transparent 1px);
-}
-@keyframes m-drift {
-  from { transform: translate3d(0, 0, 0); }
-  to   { transform: translate3d(-64px, -64px, 0); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .m-ambient::before, .m-ambient::after { animation: none; }
 }
 
 .m-nav {

@@ -40,7 +40,7 @@ const hasPanel = Astro.slots.has("panel");
 ---
 
 <section class={`hero ${hasPanel ? "hero--split" : "hero--solo"} ${headlineWrap === "compact" ? "hero--compact-headline" : ""}`}>
-  {/* Aurora field: two drifting brand blooms + a soft status-lane texture.
+  {/* Aurora field: two drifting brand blooms + a soft directional sheen.
       This is the Glass x Systematic backdrop the whole hero floats on. */}
   <div class="m-aurora" aria-hidden="true"></div>
   {/* Cinematic fleet layer: a calm horizon sweep. Pure CSS, no JS,
@@ -210,7 +210,7 @@ const hasPanel = Astro.slots.has("panel");
   }
 
   /* ───────────────────────────────────────────────────────────────
-     Cinematic fleet layer. Sits above .m-ambient (the drifting grid)
+     Cinematic fleet layer. Sits above the aurora field
      and below the hero copy. A faint horizon sweep crosses the hero on
      a long loop. It is decorative, low-opacity, and no-ops under
      prefers-reduced-motion.

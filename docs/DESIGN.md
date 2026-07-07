@@ -128,18 +128,19 @@ How they are used in practice:
 - Fragment Mono is for code, log lines, agent codenames, timestamps, and small
   uppercase labels where a fixed width and a technical feel help.
 The marketing display sizes are tokenized and scale down on narrow screens:
-`--text-display-xl` is 72px on desktop and steps to 44px then 34px at the small
-breakpoints, so headlines never overflow.
+`--text-display-xl` is 64px on desktop and steps to 42px then 31px at the small
+breakpoints, so headlines never overflow. Root-page hero copy should usually
+fit in two or three desktop lines.
 
 ## Glass and surfaces
 
 Alfred leans on layered, slightly translucent panels over a soft gradient
 backdrop, not flat cards on a flat page.
 
-- The page background is built from stacked gradients plus a faint 88px grid
-  (desktop app) or 84px grid (site), so the canvas has texture without noise. In
-  dark mode the gradients are deeper navy with blue, cyan, and violet glows in
-  the corners.
+- The marketing page background is built from stacked gradients plus a soft
+  directional sheen. Do not use square grids, graph-paper patterns, bokeh orbs,
+  or repeating line wallpaper. The operations-room signal comes from proof
+  panels, logs, counters, and fleet status, not from a decorative grid.
 - Panels use the `.alfred-glass` treatment: a translucent `--card` fill, a hair
   border, an inset top highlight (`inset 0 1px 0 rgba(255,255,255,...)`), a soft
   drop shadow, and `backdrop-filter: blur(24px) saturate(145%)`. The blur and

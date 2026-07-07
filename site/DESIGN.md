@@ -93,11 +93,12 @@ Inline `●` glyph carries semantic state. Always paired with adjacent label.
 .status--error { color: var(--alfred-error); }
 ```
 
-### 2. Status-lane texture
+### 2. Aurora proof field
 
-Hero and soft-section backdrops may use subtle one-axis status lanes, never
-a square grid. The texture should feel like a calm operations surface behind
-real proof, not a generic developer-site wallpaper.
+Hero and soft-section backdrops use layered brand-color light, glass, and a
+soft directional sheen. Do not use square grids, graph-paper patterns, bokeh
+orbs, or repeating line wallpaper. The proof panel, logs, counters, and fleet
+roster should carry the operations-room signal.
 
 ### 3. Log strip
 
