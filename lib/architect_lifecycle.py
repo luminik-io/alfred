@@ -62,6 +62,18 @@ DEFAULT_ROLLOUT_ORDER = [
 _ISSUE_URL_RE = re.compile(
     r"https?://github\.com/(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+)/issues/\d+",
 )
+_REPO_IDENTITY_RE = re.compile(r"^[\w.-]+$")
+
+
+def _github_repo_identity_map() -> dict[str, str]:
+    """Return GH_REPO_TO_LOCAL entries that are repo identities, not paths."""
+    out: dict[str, str] = {}
+    for github_repo, local_repo in GH_REPO_TO_LOCAL.items():
+        github = str(github_repo).strip().lower()
+        local = str(local_repo).strip().lower()
+        if github and local and _REPO_IDENTITY_RE.fullmatch(local):
+            out[github] = local
+    return out
 
 
 def _gh_repo_from_url(url: str) -> str | None:
@@ -91,15 +103,18 @@ def _allowed_repo_slugs(tokens: Iterable[str] | None) -> set[str]:
         if "/" in token:
             allowed.add(token.lower())
             continue
+        identity_map = _github_repo_identity_map()
         repo_slug = next(
             (
                 github_repo
-                for github_repo, local_repo in GH_REPO_TO_LOCAL.items()
+                for github_repo, local_repo in identity_map.items()
                 if token in {github_repo, local_repo}
             ),
             token,
         )
-        if GH_ORG:
+        if "/" in repo_slug:
+            allowed.add(repo_slug.lower())
+        elif GH_ORG:
             allowed.add(f"{GH_ORG}/{repo_slug}".lower())
     return allowed
 
@@ -295,11 +310,12 @@ def _normalize_repo_token(token: str) -> str | None:
     token = token.strip().strip(",").lower()
     if "/" in token:
         token = token.split("/", 1)[1]
-    if token in GH_REPO_TO_LOCAL:
-        return GH_REPO_TO_LOCAL[token]
-    if token in GH_REPO_TO_LOCAL.values():
+    identity_map = _github_repo_identity_map()
+    if token in identity_map:
+        return identity_map[token]
+    if token in identity_map.values():
         return token
-    if not GH_REPO_TO_LOCAL and re.fullmatch(r"[\w.-]+", token):
+    if not identity_map and re.fullmatch(r"[\w.-]+", token):
         # No mapping configured: trust the author's spelling.
         return token
     return None
@@ -312,10 +328,9 @@ def _normalize_repo_mention(token: str) -> tuple[str | None, str | None]:
         owner, repo = raw.split("/", 1)
         if owner and repo and re.fullmatch(r"[\w.-]+", repo):
             explicit_slug = f"{owner.lower()}/{repo.lower()}"
+            identity_map = _github_repo_identity_map()
             local = (
-                GH_REPO_TO_LOCAL.get(explicit_slug)
-                or GH_REPO_TO_LOCAL.get(repo.lower())
-                or repo.lower()
+                identity_map.get(explicit_slug) or identity_map.get(repo.lower()) or repo.lower()
             )
             return local, explicit_slug
     fallback_local = _normalize_repo_token(raw)
@@ -342,13 +357,14 @@ def _append_repo_mention(
 def _repo_aliases(repo_key: str, explicit_repo_slugs: dict[str, str]) -> set[str]:
     aliases = {repo_key}
     explicit_slug = explicit_repo_slugs.get(repo_key) or (repo_key if "/" in repo_key else "")
+    identity_map = _github_repo_identity_map()
     if explicit_slug:
         repo_tail = explicit_slug.rsplit("/", 1)[-1]
         aliases.add(repo_tail)
-        mapped = GH_REPO_TO_LOCAL.get(explicit_slug) or GH_REPO_TO_LOCAL.get(repo_tail)
+        mapped = identity_map.get(explicit_slug) or identity_map.get(repo_tail)
         if mapped:
             aliases.add(mapped)
-    mapped = GH_REPO_TO_LOCAL.get(repo_key)
+    mapped = identity_map.get(repo_key)
     if mapped:
         aliases.add(mapped)
     return {alias.lower() for alias in aliases if alias}
@@ -599,7 +615,8 @@ def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
         gh_repo = _gh_repo_from_url(issue.get("url", ""))
         # Map gh repo slug → local repo name. When GH_REPO_TO_LOCAL is
         # empty, treat the gh slug as the local name (fresh installs).
-        local = GH_REPO_TO_LOCAL.get(gh_repo or "") or gh_repo
+        identity_map = _github_repo_identity_map()
+        local = identity_map.get(gh_repo or "") or gh_repo
         if not local:
             continue
         if local not in affected:
@@ -1570,7 +1587,7 @@ def parse_parent_issue(
         elif loose.affected_repos:
             # Map local repo names from the loose parser back to
             # `owner/repo` slugs using GH_REPO_TO_LOCAL.
-            local_to_gh = {v: k for k, v in GH_REPO_TO_LOCAL.items()}
+            local_to_gh = {v: k for k, v in _github_repo_identity_map().items()}
             loose_repos: list[tuple[str, str]] = []
             for repo_key in loose.affected_repos:
                 # Prefer an explicit GH_REPO_TO_LOCAL mapping, then fall

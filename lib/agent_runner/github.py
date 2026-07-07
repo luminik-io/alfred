@@ -27,9 +27,11 @@ What this module does NOT own:
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -64,6 +66,53 @@ Empty by default; consumers populate it for their fleet::
         "myorg-frontend": "frontend",
     })
 """
+
+
+def _repo_local_map_from_env() -> dict[str, str]:
+    """Parse ALFRED_REPO_LOCAL_MAP into the runtime slug map.
+
+    The setup UI and ``alfred-init`` persist checkout overrides in
+    ``$ALFRED_HOME/.env``. Scheduled agents load that file before importing
+    ``agent_runner``, so the runner should honor the same map without requiring
+    a Python fleet overlay. A full ``owner/repo`` key also seeds its bare
+    ``repo`` alias because shipped ``ALFRED_<ROLE>_REPOS`` values are local
+    repo tokens.
+    """
+
+    out: dict[str, str] = {}
+    raw = os.environ.get("ALFRED_REPO_LOCAL_MAP", "")
+    for piece in _repo_local_map_entries(raw):
+        if "=" not in piece:
+            continue
+        key, value = piece.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key or not value:
+            continue
+        out[key] = value
+        if "/" in key:
+            out.setdefault(key.rsplit("/", 1)[-1], value)
+    return out
+
+
+def _repo_local_map_entries(raw: str) -> list[str]:
+    value = raw.strip()
+    if not value:
+        return []
+    try:
+        tokens = shlex.split(value)
+    except ValueError:
+        tokens = []
+    if tokens:
+        legacy_comma_value = (
+            len(tokens) == 1 and "," in tokens[0] and tokens[0].count("=") > 1
+        ) or any(token.endswith(",") for token in tokens)
+        if not legacy_comma_value:
+            return tokens
+    return [piece.strip() for piece in value.split(",") if piece.strip()]
+
+
+GH_REPO_TO_LOCAL.update(_repo_local_map_from_env())
 
 # Per-process cache for ``ensure_labels``: ``{repo_slug: {label_name, ...}}``.
 # Keyed on repo *and* the set of labels already created on it: the previous
@@ -228,6 +277,41 @@ def ensure_labels(repo_slug: str, labels: list[tuple[str, str, str]] | None = No
 # --------------------------------------------------------------------------
 
 
+_WORKTREE_NAME_SAFE_RE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _safe_worktree_name_fragment(value: str, *, fallback: str) -> str:
+    safe = _WORKTREE_NAME_SAFE_RE.sub("-", str(value)).strip(".-")
+    return (safe or fallback)[:96]
+
+
+def _worktree_repo_fragment_source(local_repo: str) -> str:
+    raw = str(local_repo)
+    if Path(raw).is_absolute() or "/" in raw or "\\" in raw:
+        name = Path(raw).name or "repo"
+        digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:10]
+        return f"{name}-{digest}"
+    return raw
+
+
+def _worktree_name_base(prefix: str, agent: str, local_repo: str, target: str) -> str:
+    repo_fragment_source = _worktree_repo_fragment_source(local_repo)
+    return (
+        f"{prefix}-"
+        f"{_safe_worktree_name_fragment(agent, fallback='agent')}-"
+        f"{_safe_worktree_name_fragment(repo_fragment_source, fallback='repo')}-"
+        f"{_safe_worktree_name_fragment(target, fallback='target')}"
+    )
+
+
+def _worktree_name(prefix: str, agent: str, local_repo: str, target: str, ts: int) -> str:
+    return f"{_worktree_name_base(prefix, agent, local_repo, target)}-{ts}"
+
+
+def _dry_run_temp_prefix(agent: str, local_repo: str, target: str) -> str:
+    return _worktree_name("alfred-dry-run", agent, local_repo, target, int(time.time())) + "-"
+
+
 def _make_dry_run_worktree(agent: str, local_repo: str, target: str, branch: str) -> Path:
     """Build a self-contained throwaway git repo for a dry-run firing.
 
@@ -236,7 +320,7 @@ def _make_dry_run_worktree(agent: str, local_repo: str, target: str, branch: str
     out, one synthetic commit ahead of ``main``. Falls back to a bare
     temp dir if git is unavailable.
     """
-    wt = Path(tempfile.mkdtemp(prefix=f"alfred-dry-run-{agent}-{local_repo}-{target}-"))
+    wt = Path(tempfile.mkdtemp(prefix=_dry_run_temp_prefix(agent, local_repo, target)))
     git_env = {
         "GIT_AUTHOR_NAME": "Alfred Dry Run",
         "GIT_AUTHOR_EMAIL": "dry-run@alfred-os.invalid",
@@ -310,7 +394,7 @@ def make_worktree(
     repo_path = WORKSPACE / local_repo
     ts = int(time.time())
     branch = f"{agent}/{target}-{ts}"
-    wt = WORKTREE_ROOT / f"eng-{agent}-{local_repo}-{target}-{ts}"
+    wt = WORKTREE_ROOT / _worktree_name("eng", agent, local_repo, target, ts)
 
     if is_dry_run():
         wt = _make_dry_run_worktree(agent, local_repo, target, branch)
@@ -337,10 +421,10 @@ def make_worktree_from_branch(local_repo: str, agent: str, head_ref: str, target
     """Create a worktree pointing at an existing remote branch (read-only review)."""
     repo_path = WORKSPACE / local_repo
     ts = int(time.time())
-    wt = WORKTREE_ROOT / f"eng-{agent}-{local_repo}-{target}-{ts}"
+    wt = WORKTREE_ROOT / _worktree_name("eng", agent, local_repo, target, ts)
 
     if is_dry_run():
-        wt = Path(tempfile.mkdtemp(prefix=f"alfred-dry-run-{agent}-{local_repo}-{target}-"))
+        wt = Path(tempfile.mkdtemp(prefix=_dry_run_temp_prefix(agent, local_repo, target)))
         dry_run_log(
             "git",
             f"would `git worktree add {wt} origin/{head_ref}` in {repo_path}; "
@@ -533,7 +617,7 @@ def find_existing_worktree(local_repo: str, agent: str, target: str) -> Path | N
     """
     if not WORKTREE_ROOT.exists():
         return None
-    pattern = f"eng-{agent}-{local_repo}-{target}-*"
+    pattern = f"{_worktree_name_base('eng', agent, local_repo, target)}-*"
     matches = sorted(
         (p for p in WORKTREE_ROOT.glob(pattern) if p.is_dir()),
         key=lambda p: p.stat().st_mtime,

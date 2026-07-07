@@ -302,6 +302,39 @@ def test_make_worktree_dry_run_uses_throwaway_repo(monkeypatch):
     assert not wt.exists()
 
 
+def test_make_worktree_dry_run_accepts_absolute_repo_map_path(monkeypatch, tmp_path):
+    import agent_runner as ar
+
+    absolute_repo = str(tmp_path / "tools" / "alfred-os")
+    monkeypatch.setenv("ALFRED_DRY_RUN", "1")
+
+    wt, branch = ar.make_worktree(absolute_repo, "senior-dev", "275")
+
+    assert wt.exists()
+    assert "/" not in wt.name
+    assert "alfred-os" in wt.name
+    assert branch.startswith("senior-dev/275-")
+
+    ar.remove_worktree(absolute_repo, wt)
+    assert not wt.exists()
+
+
+def test_review_worktree_dry_run_accepts_absolute_repo_map_path(monkeypatch, tmp_path):
+    import agent_runner as ar
+
+    absolute_repo = str(tmp_path / "tools" / "alfred-os")
+    monkeypatch.setenv("ALFRED_DRY_RUN", "1")
+
+    wt = ar.make_worktree_from_branch(absolute_repo, "reviewer", "feature/runtime-map", "436")
+
+    assert wt.exists()
+    assert "/" not in wt.name
+    assert "alfred-os" in wt.name
+
+    ar.remove_worktree(absolute_repo, wt)
+    assert not wt.exists()
+
+
 # ---------- end-to-end: example runners complete exit-0 with zero config ----------
 
 

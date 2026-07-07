@@ -147,6 +147,56 @@ def test_find_existing_worktree_ignores_other_targets(tmp_path):
     assert found.name == "eng-lucius-backend-275-1"
 
 
+def test_find_existing_worktree_uses_sanitized_mapped_repo_names(tmp_path):
+    import agent_runner as ar
+    import agent_runner.github as gh
+
+    ar.WORKTREE_ROOT.mkdir(parents=True, exist_ok=True)
+    existing = ar.WORKTREE_ROOT / gh._worktree_name(
+        "eng",
+        "senior-dev",
+        "../marketing/site",
+        "275",
+        1,
+    )
+    existing.mkdir()
+
+    found = ar.find_existing_worktree("../marketing/site", "senior-dev", "275")
+
+    assert found == existing
+
+
+def test_find_existing_worktree_uses_absolute_path_basename(tmp_path):
+    import agent_runner as ar
+    import agent_runner.github as gh
+
+    ar.WORKTREE_ROOT.mkdir(parents=True, exist_ok=True)
+    local_repo = str(tmp_path / "tools" / "alfred-os")
+    existing = ar.WORKTREE_ROOT / gh._worktree_name(
+        "eng",
+        "senior-dev",
+        local_repo,
+        "275",
+        1,
+    )
+    existing.mkdir()
+
+    found = ar.find_existing_worktree(local_repo, "senior-dev", "275")
+
+    assert found == existing
+
+
+def test_absolute_path_worktree_names_include_path_hash(tmp_path):
+    import agent_runner.github as gh
+
+    left = gh._worktree_name("eng", "senior-dev", "/work/org-a/app", "275", 1)
+    right = gh._worktree_name("eng", "senior-dev", "/work/org-b/app", "275", 1)
+
+    assert left != right
+    assert "app-" in left
+    assert "app-" in right
+
+
 def test_reuse_or_make_worktree_falls_back_to_make_when_no_existing(monkeypatch, tmp_path):
     import agent_runner as ar
 

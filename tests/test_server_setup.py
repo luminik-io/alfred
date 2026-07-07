@@ -775,6 +775,115 @@ def test_selected_repos_skips_matching_launcher_queue_only_scope(
     assert setup_mod.selected_repos() == []
 
 
+def test_selected_repos_prefers_generated_runtime_scope_over_stale_process_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "old/api,old/web")
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "old/api,old/web")
+    monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "old/api,old/web")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "old-api,old-web")
+    home.mkdir(parents=True)
+    (home / ".env").write_text(
+        "\n".join(
+            [
+                "# alfred-init, generated below this line. Safe to re-run.",
+                "GH_ORG=acme",
+                "ALFRED_QUEUE_REPOS=acme/alfred",
+                "ALFRED_SHIPPED_REPOS=acme/alfred",
+                "ALFRED_BRIDGE_REPOS=acme/alfred",
+                "ALFRED_CODE_MEMORY_REPOS=alfred",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    status = setup_mod.bootstrap_status()
+
+    assert setup_mod.selected_repos() == ["acme/alfred"]
+    assert status["repos"]["selected"] == ["acme/alfred"]
+    assert status["code_memory"]["repos"]["configured"] == ["alfred"]
+    assert status["install"]["selected_repos_env_present"] is True
+
+
+def test_selected_repos_scrubs_generated_stale_process_scope_when_runtime_omits_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "old/api")
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "old/api")
+    monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "old/api")
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_REPOS", "old-api")
+    monkeypatch.setenv("ALFRED_SPEC_PLANNER_REPOS", "old-spec")
+    monkeypatch.setenv("ARCHITECT_PARENT_REPO", "old/plans")
+    home.mkdir(parents=True)
+    (home / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\nGH_ORG=acme\n",
+        encoding="utf-8",
+    )
+
+    status = setup_mod.bootstrap_status()
+
+    assert setup_mod.selected_repos() == []
+    assert status["repos"]["selected"] == []
+    assert status["install"]["selected_repos_env_present"] is False
+    runtime_env = setup_mod._runtime_config_env()
+    assert "ALFRED_SPEC_PLANNER_REPOS" not in runtime_env
+    assert "ARCHITECT_PARENT_REPO" not in runtime_env
+
+
+def test_generated_runtime_scope_preserves_process_only_custom_repo_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv("ALFRED_EXPERIMENTAL_REPOS", "external/only")
+    home.mkdir(parents=True)
+    (home / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\nGH_ORG=acme\n",
+        encoding="utf-8",
+    )
+
+    env = setup_mod._runtime_config_env()
+
+    assert env["ALFRED_EXPERIMENTAL_REPOS"] == "external/only"
+
+
+def test_generated_runtime_scope_scrubs_custom_codename_repo_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv("ALFRED_SHERLOCK_REPOS", "old/repo")
+    home.mkdir(parents=True)
+    (home / ".env").write_text(
+        "\n".join(
+            [
+                "# alfred-init, generated below this line. Safe to re-run.",
+                "GH_ORG=acme",
+                "AGENT_CODENAME_FEATURE_DEV=sherlock",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    env = setup_mod._runtime_config_env()
+
+    assert "ALFRED_SHERLOCK_REPOS" not in env
+
+
 def test_selected_repos_honors_empty_runtime_board_scope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

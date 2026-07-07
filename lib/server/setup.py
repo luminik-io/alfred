@@ -31,11 +31,13 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import subprocess
 from collections.abc import Mapping
 from contextlib import suppress
 from datetime import UTC, datetime
+from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any
 
@@ -54,10 +56,13 @@ GH_ORG_ENV = "GH_ORG"
 _REPO_ENV_KEYS = (QUEUE_REPOS_ENV, SHIPPED_REPOS_ENV, BRIDGE_REPOS_ENV)
 _BOARD_REPO_ENV_KEYS = (SHIPPED_REPOS_ENV, BRIDGE_REPOS_ENV)
 CODE_MEMORY_REPOS_ENV = "ALFRED_CODE_MEMORY_REPOS"
+REPO_LOCAL_MAP_ENV = "ALFRED_REPO_LOCAL_MAP"
 RUNTIME_REPO_SCOPE_ENV_KEYS = (
     "ARCHITECT_ROLLOUT_ORDER",
+    "ARCHITECT_PARENT_REPO",
     "ALFRED_SENIOR_DEV_REPOS",
     "ALFRED_PLANNER_REPOS",
+    "ALFRED_SPEC_PLANNER_REPOS",
     "ALFRED_TEST_ENGINEER_REPOS",
     "ALFRED_REVIEWER_REPOS",
     "ALFRED_FIXER_REPOS",
@@ -70,9 +75,20 @@ RUNTIME_REPO_SCOPE_ENV_KEYS = (
     "ALFRED_SHIPPED_SUMMARY_DAILY_REPOS",
     "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS",
 )
+_ALFRED_INIT_MANAGED_SCOPE_PATTERNS = frozenset(
+    (
+        *_REPO_ENV_KEYS,
+        *RUNTIME_REPO_SCOPE_ENV_KEYS,
+        REPO_LOCAL_MAP_ENV,
+        "ARCHITECT_ROLLOUT_ORDER",
+        "AGENT_CODENAME_*",
+        "ALFRED_MORNING_BRIEF_AGENTS",
+    )
+)
 
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+_CODENAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 
 # Engine CLIs Alfred rides. Detected by presence on PATH only (no version
 # spawn): the golden path needs at least one of these signed-in subscription
@@ -178,17 +194,79 @@ def _setup_config_value(key: str, default: str = "") -> str:
 
 def _runtime_config_env() -> dict[str, str]:
     env = dict(os.environ)
-    protected = {key for key, value in os.environ.items() if value.strip()}
-    protected.update(key for key in _REPO_ENV_KEYS if key in os.environ)
-    protected.update(key for key in RUNTIME_REPO_SCOPE_ENV_KEYS if key in os.environ)
     raw_home = env.get("ALFRED_HOME", "").strip()
     if raw_home:
         runtime_home = _safe_expand_path(raw_home) or Path(raw_home)
     else:
         runtime_home = _default_alfred_home(env)
         env["ALFRED_HOME"] = str(runtime_home)
-    _load_launcher_env_file(runtime_home / ".env", env, protected_keys=protected)
+    runtime_env_path = runtime_home / ".env"
+    managed_scope_patterns = _alfred_init_managed_scope_patterns(runtime_env_path)
+    if managed_scope_patterns:
+        env = {
+            key: value
+            for key, value in env.items()
+            if not _env_key_matches(key, managed_scope_patterns)
+        }
+    protected = {
+        key
+        for key, value in os.environ.items()
+        if value.strip() and not _env_key_matches(key, managed_scope_patterns)
+    }
+    if not managed_scope_patterns:
+        protected.update(key for key in _REPO_ENV_KEYS if key in os.environ)
+        protected.update(key for key in RUNTIME_REPO_SCOPE_ENV_KEYS if key in os.environ)
+    _load_launcher_env_file(runtime_env_path, env, protected_keys=protected)
     return env
+
+
+def _alfred_init_managed_scope_patterns(path: Path) -> frozenset[str]:
+    """Return setup-owned env keys from the generated alfred-init block."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return frozenset()
+
+    in_managed_block = False
+    patterns = set(_ALFRED_INIT_MANAGED_SCOPE_PATTERNS)
+    for raw_line in lines:
+        line = raw_line.strip()
+        if line.startswith("# alfred-init") and "generated below this line" in line:
+            in_managed_block = True
+            continue
+        if not in_managed_block:
+            continue
+        if not line or line.startswith("#"):
+            break
+        if line.startswith("export "):
+            line = line.removeprefix("export ").strip()
+        if "=" not in line:
+            break
+        key, _, raw_value = line.partition("=")
+        key = key.strip()
+        if not _ENV_KEY_RE.match(key):
+            break
+        if key.startswith("AGENT_CODENAME_"):
+            codename = decode_env_value(_strip_inline_comment(raw_value).strip()).strip()
+            if _CODENAME_RE.match(codename):
+                slug = codename.upper().replace("-", "_")
+                patterns.add(f"ALFRED_{slug}_REPOS")
+                patterns.add(f"ALFRED_{slug}_AWS_PROFILE")
+    return frozenset(patterns) if in_managed_block else frozenset()
+
+
+def _has_alfred_init_managed_block(path: Path) -> bool:
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("# alfred-init") and "generated below this line" in line:
+                return True
+    except OSError:
+        return False
+    return False
+
+
+def _env_key_matches(key: str, patterns: frozenset[str] | set[str] | tuple[str, ...]) -> bool:
+    return any(fnmatchcase(key, pattern) for pattern in patterns)
 
 
 _SLACK_CONFIG_KEYS = (
@@ -1162,10 +1240,10 @@ def _existing_code_memory_configured_repos(env: dict[str, str], configured: list
     ]
 
 
-def _code_memory_repo_map(env: dict[str, str]) -> dict[str, str]:
+def _code_memory_repo_map(env: dict[str, str], *, include_aliases: bool = True) -> dict[str, str]:
     raw = _code_memory_config(env, "ALFRED_REPO_LOCAL_MAP")
     out: dict[str, str] = {}
-    for piece in raw.split(","):
+    for piece in _repo_local_map_entries(raw):
         if "=" not in piece:
             continue
         key, value = piece.split("=", 1)
@@ -1173,7 +1251,26 @@ def _code_memory_repo_map(env: dict[str, str]) -> dict[str, str]:
         value = value.strip()
         if key and value:
             out[key] = value
+            if include_aliases and "/" in key:
+                out.setdefault(key.rsplit("/", 1)[-1], value)
     return out
+
+
+def _repo_local_map_entries(raw: str) -> list[str]:
+    value = raw.strip()
+    if not value:
+        return []
+    try:
+        tokens = shlex.split(value)
+    except ValueError:
+        tokens = []
+    if tokens:
+        legacy_comma_value = (
+            len(tokens) == 1 and "," in tokens[0] and tokens[0].count("=") > 1
+        ) or any(token.endswith(",") for token in tokens)
+        if not legacy_comma_value:
+            return tokens
+    return [piece.strip() for piece in value.split(",") if piece.strip()]
 
 
 def _code_memory_configured_repo_path(
@@ -1990,7 +2087,7 @@ def _custom_agents_detail(payload: dict[str, Any]) -> str:
 
 
 def _install_repo_local_map(env: dict[str, str]) -> dict[str, Any]:
-    repo_map = _code_memory_repo_map(env)
+    repo_map = _code_memory_repo_map(env, include_aliases=False)
     entries = [{"repo": key, "path": value} for key, value in sorted(repo_map.items())]
     return {
         "present": bool(entries),

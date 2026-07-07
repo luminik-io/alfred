@@ -63,8 +63,15 @@ WORKSPACE_SUBDIR=""
 ```
 
 For per-repo overrides (one repo somewhere unusual while the rest follow
-the default), use `GH_REPO_TO_LOCAL` in a fleet overlay; see
-`docs/CONNECTORS.md` for the overlay pattern.
+the default), use `ALFRED_REPO_LOCAL_MAP` in `$ALFRED_HOME/.env`:
+
+```sh
+ALFRED_REPO_LOCAL_MAP='acme-api=api acme-site=../marketing/site'
+```
+
+Relative paths resolve under the configured workspace subdir. Absolute paths
+work too, which is useful for source checkouts such as `tools/alfred-os` whose
+GitHub slug is simply `alfred`.
 
 ## One Repo
 

@@ -47,6 +47,23 @@ def test_overlay_absent_is_silent(overlay_root):
     assert agent_runner.GH_REPO_TO_LOCAL == {}
 
 
+def test_repo_local_map_env_loads_without_overlay(overlay_root, monkeypatch):
+    """A deployed OSS runtime should not need a Python overlay just to map
+    a GitHub slug to a local checkout path."""
+    monkeypatch.setenv(
+        "ALFRED_REPO_LOCAL_MAP",
+        "test-org/alfred=/tmp/alfred-os,test-org-api=services/api",
+    )
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    assert agent_runner.GH_REPO_TO_LOCAL["test-org/alfred"] == "/tmp/alfred-os"
+    assert agent_runner.GH_REPO_TO_LOCAL["alfred"] == "/tmp/alfred-os"
+    assert agent_runner.local_repo_dir("test-org/alfred") == "/tmp/alfred-os"
+    assert agent_runner.local_repo_dir("test-org-api") == "services/api"
+
+
 def test_overlay_named_via_env_loads_and_mutates(overlay_root, monkeypatch):
     """A custom overlay module pointed at by ``ALFRED_FLEET_OVERLAY``
     runs its module-level side effects during ``agent_runner`` init."""
