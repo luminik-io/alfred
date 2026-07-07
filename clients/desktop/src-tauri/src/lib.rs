@@ -829,6 +829,7 @@ const CODE_MEMORY_DOCTOR_TIMEOUT_MARGIN_S: u64 = 30;
 const CORE_INSTALL_TIMEOUT_S: u64 = 1_800;
 const CORE_SEED_TIMEOUT_S: u64 = 120;
 const CORE_DEPLOY_TIMEOUT_S: u64 = 300;
+const CORE_SKILLS_TIMEOUT_S: u64 = 120;
 const REQUIRED_CLI_INSTALL_TOOLS: [&str; 3] = ["alfred-install", "alfred-init", "alfred-deploy"];
 
 struct CoreInstallPlan {
@@ -839,6 +840,10 @@ struct CoreInstallPlan {
     seed_args: Vec<String>,
     deploy_program: String,
     deploy_args: Vec<String>,
+    skills_program: String,
+    skills_args: Vec<String>,
+    code_memory_program: String,
+    code_memory_args: Vec<String>,
     source_label: String,
 }
 
@@ -912,15 +917,53 @@ fn install_alfred_core_blocking(app: &AppHandle) -> Result<NativeCommandResult, 
         ));
     }
 
+    let skills = run_core_install_step(
+        &plan.skills_program,
+        &plan.skills_args,
+        plan.core_dir.as_deref(),
+        Duration::from_secs(CORE_SKILLS_TIMEOUT_S),
+    )?;
+    append_step_output(&mut stdout, &mut stderr, "starter-skills", &skills);
+    if !skills.success {
+        return Ok(core_install_result(
+            preview,
+            stdout,
+            stderr,
+            skills.status,
+            false,
+            format!(
+                "Alfred core installed and deployed, but starter skill installation failed from {}.",
+                plan.source_label
+            ),
+        ));
+    }
+
+    let code_memory = run_core_install_step(
+        &plan.code_memory_program,
+        &plan.code_memory_args,
+        plan.core_dir.as_deref(),
+        code_memory_doctor_timeout(),
+    )?;
+    append_step_output(&mut stdout, &mut stderr, "code-memory-doctor", &code_memory);
+    let code_memory_message = if code_memory.success {
+        "Code-memory doctor completed."
+    } else {
+        "Code-memory doctor needs attention; open Setup after install to retry."
+    };
+
     Ok(core_install_result(
         preview,
         stdout,
         stderr,
-        deploy.status,
+        if code_memory.success {
+            code_memory.status
+        } else {
+            deploy.status
+        },
         true,
         format!(
-            "Alfred core installed, fleet seeded, and deployed from {}.",
-            plan.source_label
+            "Alfred core installed, fleet seeded, deployed, and starter skills installed from {}. {}",
+            plan.source_label, code_memory_message
         ),
     ))
 }
@@ -1042,11 +1085,13 @@ fn terminal_core_install_command(plan: &CoreInstallPlan) -> String {
     }
     parts.push("export ALFRED_NONINTERACTIVE=1 ALFRED_DESKTOP_INSTALL=1".to_string());
     parts.push(format!(
-        "{} && {} && {} && {}",
+        "{} && {} && {} && {} && {} && {}",
         shell_command(&plan.install_program, &plan.install_args),
         terminal_path_refresh_command(),
         shell_command(&plan.seed_program, &plan.seed_args),
-        shell_command(&plan.deploy_program, &plan.deploy_args)
+        shell_command(&plan.deploy_program, &plan.deploy_args),
+        shell_command(&plan.skills_program, &plan.skills_args),
+        optional_shell_command(&plan.code_memory_program, &plan.code_memory_args)
     ));
     parts.push(
         "printf '\\nAlfred Desktop install command finished. Return to Alfred Desktop and click Install or repair again if needed.\\n'"
@@ -1065,6 +1110,10 @@ fn shell_command(program: &str, args: &[String]) -> String {
     let mut command = vec![shell_quote(program)];
     command.extend(args.iter().map(|arg| shell_quote(arg)));
     command.join(" ")
+}
+
+fn optional_shell_command(program: &str, args: &[String]) -> String {
+    format!("({} || true)", shell_command(program, args))
 }
 
 fn shell_quote(value: &str) -> String {
@@ -1131,6 +1180,14 @@ fn core_install_plan(app: &AppHandle) -> Result<CoreInstallPlan, String> {
             ],
             deploy_program: "/bin/bash".to_string(),
             deploy_args: vec![core_dir.join("deploy.sh").to_string_lossy().into_owned()],
+            skills_program: "alfred".to_string(),
+            skills_args: vec![
+                "skills".to_string(),
+                "install".to_string(),
+                "--starter".to_string(),
+            ],
+            code_memory_program: "alfred".to_string(),
+            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
             source_label: "the bundled desktop runtime".to_string(),
             core_dir: Some(core_dir),
         });
@@ -1156,6 +1213,14 @@ fn core_install_plan(app: &AppHandle) -> Result<CoreInstallPlan, String> {
             ],
             deploy_program: "/bin/bash".to_string(),
             deploy_args: vec![core_dir.join("deploy.sh").to_string_lossy().into_owned()],
+            skills_program: "alfred".to_string(),
+            skills_args: vec![
+                "skills".to_string(),
+                "install".to_string(),
+                "--starter".to_string(),
+            ],
+            code_memory_program: "alfred".to_string(),
+            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
             source_label: core_dir.to_string_lossy().into_owned(),
             core_dir: Some(core_dir),
         });
@@ -1176,6 +1241,14 @@ fn core_install_plan(app: &AppHandle) -> Result<CoreInstallPlan, String> {
             ],
             deploy_program: "alfred-deploy".to_string(),
             deploy_args: Vec::new(),
+            skills_program: "alfred".to_string(),
+            skills_args: vec![
+                "skills".to_string(),
+                "install".to_string(),
+                "--starter".to_string(),
+            ],
+            code_memory_program: "alfred".to_string(),
+            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
             source_label: "the installed Alfred CLI package".to_string(),
             core_dir: None,
         });
@@ -2224,6 +2297,14 @@ mod tests {
             ],
             deploy_program: "/bin/bash".to_string(),
             deploy_args: vec!["deploy.sh".to_string()],
+            skills_program: "alfred".to_string(),
+            skills_args: vec![
+                "skills".to_string(),
+                "install".to_string(),
+                "--starter".to_string(),
+            ],
+            code_memory_program: "alfred".to_string(),
+            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
             source_label: "bundled runtime".to_string(),
         };
 
@@ -2283,6 +2364,14 @@ mod tests {
             ],
             deploy_program: "/bin/bash".to_string(),
             deploy_args: vec!["/tmp/alfred core/deploy.sh".to_string()],
+            skills_program: "alfred".to_string(),
+            skills_args: vec![
+                "skills".to_string(),
+                "install".to_string(),
+                "--starter".to_string(),
+            ],
+            code_memory_program: "alfred".to_string(),
+            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
             source_label: "bundled runtime".to_string(),
         };
 
@@ -2296,6 +2385,8 @@ mod tests {
             "python3 '/tmp/alfred core/bin/alfred-init.py' --seed-runtime-roster --agents all"
         ));
         assert!(command.contains("'/tmp/alfred core/deploy.sh'"));
+        assert!(command.contains("alfred skills install --starter"));
+        assert!(command.contains("alfred code-memory doctor"));
         assert!(
             command
                 .find("'/tmp/alfred core/install.sh'")
@@ -2319,6 +2410,22 @@ mod tests {
                 < command
                     .find("'/tmp/alfred core/deploy.sh'")
                     .expect("deploy command should exist")
+        );
+        assert!(
+            command
+                .find("'/tmp/alfred core/deploy.sh'")
+                .expect("deploy command should exist")
+                < command
+                    .find("alfred skills install --starter")
+                    .expect("skills command should exist")
+        );
+        assert!(
+            command
+                .find("alfred skills install --starter")
+                .expect("skills command should exist")
+                < command
+                    .find("alfred code-memory doctor")
+                    .expect("code-memory command should exist")
         );
     }
 

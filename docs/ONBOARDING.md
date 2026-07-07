@@ -94,9 +94,11 @@ display names), see [`IDENTITY_AND_THEMES.md`](IDENTITY_AND_THEMES.md).
 ## The stepped path
 
 If you prefer the form, the Setup screen walks the same steps in order: find any
-existing install, install or repair Alfred core, check the engine CLIs, sign in
-to GitHub, scope repositories, name the team, set a schedule, and finish. Each
-step calls the same handler the conversational path proposes. See
+existing install, install or repair the full local runtime, seed and deploy the
+fleet, install starter engineering skills, check code-memory readiness, check
+the engine CLIs, sign in to GitHub, scope repositories, name the team, set a
+schedule, and finish. Each step calls the same handler the conversational path
+proposes. See
 [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) for the full tab-by-tab tour.
 
 ## See also

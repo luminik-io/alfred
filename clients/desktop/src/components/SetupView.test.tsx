@@ -122,6 +122,26 @@ afterEach(() => {
 });
 
 describe("SetupView", () => {
+  it("defaults diagnostics dry-run to the canonical senior-dev role", async () => {
+    const user = userEvent.setup();
+    const onRunLocalAction = vi.fn();
+    vi.spyOn(api, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(setupStatus("/tmp/alfred-home"));
+
+    render(renderSetup("http://127.0.0.1:7010", { onRunLocalAction }));
+
+    await user.click(screen.getByRole("tab", { name: "Diagnostics" }));
+    const input = await screen.findByLabelText("Dry-run agent");
+    expect(input).toHaveValue("senior-dev");
+
+    await user.click(screen.getByRole("button", { name: "Run dry-run" }));
+    expect(onRunLocalAction).toHaveBeenCalledWith({
+      action: "dry_run",
+      target: "senior-dev",
+      refreshAfter: true,
+    });
+  });
+
   it("clears displayed setup inventory while a new server URL is loading", async () => {
     const newRequest = deferred<SetupStatus>();
     vi.spyOn(api, "supportsNativeActions").mockReturnValue(true);

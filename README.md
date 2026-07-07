@@ -270,10 +270,11 @@ take real time.
 
 The desktop app is the front door. On first launch its **Install or repair**
 action installs Alfred core, seeds the full built-in fleet, deploys the local
-CLI/agents into `~/.alfred`, and starts `alfred serve`. The guided setup then
+CLI/agents into `~/.alfred`, installs the starter engineering skills, attempts
+the pinned code-memory doctor, and starts `alfred serve`. The guided setup then
 walks through GitHub, engine, repo scope, roster naming, and optional Slack.
-Advanced checks such as doctor, dry-run, memory, and code graph status are
-available in Setup.
+Advanced checks such as doctor, dry-run, memory, skills, and code graph status
+are available in Setup.
 
 ```sh
 brew tap luminik-io/alfred https://github.com/luminik-io/alfred
