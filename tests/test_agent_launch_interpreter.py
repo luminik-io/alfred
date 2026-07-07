@@ -48,10 +48,16 @@ def _run_env(
         "ALFRED_AUTO_PROMOTE",
         "ALFRED_AUTO_PROMOTE_KILL",
         "ALFRED_AUTO_PROMOTE_LLM_JUDGE",
+        "ALFRED_TELEMETRY_ENABLED",
+        "ALFRED_TELEMETRY_URL",
         "ALFRED_QUEUE_REPOS",
         "ALFRED_SHIPPED_REPOS",
         "ALFRED_BRIDGE_REPOS",
         "ALFRED_CODE_MEMORY_REPOS",
+        "ARCHITECT_PARENT_REPO",
+        "ALFRED_E2E_RUNNER_TARGET_URL",
+        "ALFRED_OPS_WATCH_ECS_CLUSTER",
+        "ALFRED_OPS_WATCH_SENTRY_ORG",
         "WORKSPACE_ROOT",
     ):
         env.pop(key, None)
@@ -222,7 +228,268 @@ def test_env_file_setup_managed_repo_scope_overrides_stale_process_env(
     )
 
     assert proc.returncode == 0, proc.stderr
-    assert "REPOS=org/process" in proc.stdout
+    assert "REPOS=org/new" in proc.stdout
+
+
+def test_agent_launch_scrubs_setup_managed_scope_when_runtime_env_omits_it(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text("GH_ORG=acme\n", encoding="utf-8")
+    target = tmp_path / "echo-repos.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "CODE_MAP=${ALFRED_CODE_MAP_REPOS:-unset}"\n'
+        'echo "MEMORY=${ALFRED_CODE_MEMORY_REPOS:-unset}"\n'
+        'echo "SENIOR=${ALFRED_SENIOR_DEV_REPOS:-unset}"\n'
+        'echo "SPEC=${ALFRED_SPEC_PLANNER_REPOS:-unset}"\n'
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={
+            "ALFRED_CODE_MAP_REPOS": "org/stale",
+            "ALFRED_CODE_MEMORY_REPOS": "org/stale",
+            "ALFRED_SENIOR_DEV_REPOS": "org/stale",
+            "ALFRED_SPEC_PLANNER_REPOS": "org/stale",
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "CODE_MAP=unset" in proc.stdout
+    assert "MEMORY=unset" in proc.stdout
+    assert "SENIOR=unset" in proc.stdout
+    assert "SPEC=unset" in proc.stdout
+
+
+def test_agent_launch_scrubs_custom_codename_scope_from_managed_block(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "AGENT_CODENAME_FEATURE_DEV=oracle\n"
+        "ALFRED_ORACLE_REPOS=org/runtime\n"
+        "ALFRED_ORACLE_AWS_PROFILE=runtime-profile\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-custom-repos.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "CODENAME=${AGENT_CODENAME_FEATURE_DEV:-unset}"\n'
+        'echo "REPOS=${ALFRED_ORACLE_REPOS:-unset}"\n'
+        'echo "AWS=${ALFRED_ORACLE_AWS_PROFILE:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={
+            "AGENT_CODENAME_FEATURE_DEV": "old-oracle",
+            "ALFRED_ORACLE_REPOS": "org/stale",
+            "ALFRED_ORACLE_AWS_PROFILE": "stale-profile",
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "CODENAME=oracle" in proc.stdout
+    assert "REPOS=org/runtime" in proc.stdout
+    assert "AWS=runtime-profile" in proc.stdout
+
+
+def test_agent_launch_scrubs_special_prompt_envs_from_managed_block(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "ARCHITECT_PARENT_REPO=org/plans\n"
+        "ALFRED_E2E_RUNNER_TARGET_URL=https://new.example.test\n"
+        "ALFRED_OPS_WATCH_ECS_CLUSTER=new-cluster\n"
+        "ALFRED_OPS_WATCH_SENTRY_ORG=new-org\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-special-prompts.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "ARCHITECT=${ARCHITECT_PARENT_REPO:-unset}"\n'
+        'echo "E2E=${ALFRED_E2E_RUNNER_TARGET_URL:-unset}"\n'
+        'echo "ECS=${ALFRED_OPS_WATCH_ECS_CLUSTER:-unset}"\n'
+        'echo "SENTRY=${ALFRED_OPS_WATCH_SENTRY_ORG:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={
+            "ARCHITECT_PARENT_REPO": "org/stale-plans",
+            "ALFRED_E2E_RUNNER_TARGET_URL": "https://old.example.test",
+            "ALFRED_OPS_WATCH_ECS_CLUSTER": "old-cluster",
+            "ALFRED_OPS_WATCH_SENTRY_ORG": "old-org",
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "ARCHITECT=org/plans" in proc.stdout
+    assert "E2E=https://new.example.test" in proc.stdout
+    assert "ECS=new-cluster" in proc.stdout
+    assert "SENTRY=new-org" in proc.stdout
+
+
+def test_agent_launch_preserves_process_owned_aws_profile(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text("GH_ORG=acme\n", encoding="utf-8")
+    target = tmp_path / "echo-backup-profile.sh"
+    target.write_text(
+        '#!/usr/bin/env bash\necho "PROFILE=${ALFRED_BACKUP_AWS_PROFILE:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={"ALFRED_BACKUP_AWS_PROFILE": "backup-profile"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "PROFILE=backup-profile" in proc.stdout
+
+
+def test_agent_launch_does_not_scrub_appended_token_after_managed_block(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "AGENT_CODENAME_FEATURE_DEV=oracle\n"
+        "ALFRED_ORACLE_REPOS=org/runtime\n"
+        "CLAUDE_CODE_OAUTH_TOKEN=file-token\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-custom-repos-token.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "REPOS=${ALFRED_ORACLE_REPOS:-unset}"\n'
+        'echo "TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={
+            "ALFRED_ORACLE_REPOS": "org/stale",
+            "CLAUDE_CODE_OAUTH_TOKEN": "process-token",
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "REPOS=org/runtime" in proc.stdout
+    assert "TOKEN=process-token" in proc.stdout
+
+
+def test_agent_launch_expands_alfred_home_before_scanning_managed_block(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    runtime = home / "runtime"
+    runtime.mkdir(parents=True)
+    (runtime / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "AGENT_CODENAME_FEATURE_DEV=oracle\n"
+        "ALFRED_ORACLE_REPOS=org/runtime\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-managed-block.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "HOME_VAR=${ALFRED_HOME:-unset}"\n'
+        'echo "CODENAME=${AGENT_CODENAME_FEATURE_DEV:-unset}"\n'
+        'echo "REPOS=${ALFRED_ORACLE_REPOS:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        home=home,
+        extra_env={
+            "ALFRED_HOME": "~/runtime",
+            "AGENT_CODENAME_FEATURE_DEV": "old-oracle",
+            "ALFRED_ORACLE_REPOS": "org/stale",
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert f"HOME_VAR={runtime}" in proc.stdout
+    assert "CODENAME=oracle" in proc.stdout
+    assert "REPOS=org/runtime" in proc.stdout
+
+
+def test_agent_launch_preserves_code_memory_process_controls(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text("GH_ORG=acme\n", encoding="utf-8")
+    target = tmp_path / "echo-code-memory-controls.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "MCP=${ALFRED_CODE_MEMORY_MCP:-unset}"\n'
+        'echo "BIN=${ALFRED_CODE_MEMORY_BIN:-unset}"\n'
+        'echo "AUTOFETCH=${ALFRED_CODE_MEMORY_AUTOFETCH:-unset}"\n'
+        'echo "TIMEOUT=${ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S:-unset}"\n'
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={
+            "ALFRED_CODE_MEMORY_MCP": "0",
+            "ALFRED_CODE_MEMORY_BIN": "/tmp/codebase-memory-mcp",
+            "ALFRED_CODE_MEMORY_AUTOFETCH": "0",
+            "ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S": "7",
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "MCP=0" in proc.stdout
+    assert "BIN=/tmp/codebase-memory-mcp" in proc.stdout
+    assert "AUTOFETCH=0" in proc.stdout
+    assert "TIMEOUT=7" in proc.stdout
+
+
+def test_agent_launch_preserves_code_map_process_controls(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text("GH_ORG=acme\n", encoding="utf-8")
+    target = tmp_path / "echo-code-map-controls.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "CLIENTS=${ALFRED_CODE_MAP_CLIENT_REPOS:-unset}"\n'
+        'echo "BACKEND=${ALFRED_CODE_MAP_BACKEND_REPO:-unset}"\n'
+        'echo "MAX=${ALFRED_CODE_MAP_MAX_FILES:-unset}"\n'
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={
+            "ALFRED_CODE_MAP_CLIENT_REPOS": "frontend,mobile",
+            "ALFRED_CODE_MAP_BACKEND_REPO": "backend",
+            "ALFRED_CODE_MAP_MAX_FILES": "77",
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "CLIENTS=frontend,mobile" in proc.stdout
+    assert "BACKEND=backend" in proc.stdout
+    assert "MAX=77" in proc.stdout
 
 
 def test_env_file_code_memory_settings_load_when_process_absent(
@@ -270,6 +537,54 @@ def test_env_file_stop_controls_override_stale_process_env(
     assert "AUTO=0" in proc.stdout
     assert "KILL=1" in proc.stdout
     assert "JUDGE=treu" in proc.stdout
+
+
+def test_agent_launch_preserves_process_telemetry_opt_out(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text(
+        "ALFRED_TELEMETRY_ENABLED=1\nALFRED_TELEMETRY_URL=https://telemetry.example.com/ingest\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-telemetry.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "ENABLED=${ALFRED_TELEMETRY_ENABLED:-unset}"\n'
+        'echo "URL=${ALFRED_TELEMETRY_URL:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={"ALFRED_TELEMETRY_ENABLED": "0"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "ENABLED=0" in proc.stdout
+    assert "URL=https://telemetry.example.com/ingest" in proc.stdout
+
+
+def test_env_file_telemetry_opt_out_overrides_stale_process_enable(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text("ALFRED_TELEMETRY_ENABLED=0\n", encoding="utf-8")
+    target = tmp_path / "echo-telemetry-disabled.sh"
+    target.write_text(
+        '#!/usr/bin/env bash\necho "ENABLED=${ALFRED_TELEMETRY_ENABLED:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={"ALFRED_TELEMETRY_ENABLED": "1"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "ENABLED=0" in proc.stdout
 
 
 def test_agent_launch_expands_process_alfred_home_before_env_file(tmp_path: Path) -> None:

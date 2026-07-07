@@ -132,14 +132,28 @@ def test_agent_launch_expands_double_quoted_home_path_values_from_runtime_env(tm
 
 def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
     home = tmp_path / "home"
-    alfred = tmp_path / "alfred"
+    alfred = home / "alfred"
     bin_dir = alfred / "bin"
     launchd_dir = alfred / "launchd"
     home.mkdir()
     bin_dir.mkdir(parents=True)
     launchd_dir.mkdir(parents=True)
     capture = tmp_path / "doctor-env.json"
-    (alfred / ".env").write_text("CUSTOM_FROM_ENV=loaded\n")
+    (alfred / ".env").write_text(
+        "CUSTOM_FROM_ENV=loaded\n"
+        "ALFRED_AUTO_PROMOTE=0\n"
+        "ALFRED_AUTO_PROMOTE_KILL=1\n"
+        "ALFRED_AUTO_PROMOTE_LLM_JUDGE=treu\n"
+        "ALFRED_TELEMETRY_ENABLED=1\n\n"
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "AGENT_CODENAME_FEATURE_DEV=oracle\n"
+        "ARCHITECT_PARENT_REPO=org/plans\n"
+        "ALFRED_E2E_RUNNER_TARGET_URL=https://new.example.test\n"
+        "ALFRED_OPS_WATCH_ECS_CLUSTER=new-cluster\n"
+        "ALFRED_OPS_WATCH_SENTRY_ORG=new-org\n"
+        "ALFRED_ORACLE_REPOS=org/runtime\n"
+        "CLAUDE_CODE_OAUTH_TOKEN=file-token\n"
+    )
     (launchd_dir / "agents.conf").write_text(
         "alfred.helper\tprobe.py\tinterval:60\tno\talfred.helper\tHelper\n"
     )
@@ -152,6 +166,23 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "  'codename': os.environ.get('AGENT_CODENAME'),\n"
         "  'label': os.environ.get('LAUNCHD_LABEL'),\n"
         "  'custom': os.environ.get('CUSTOM_FROM_ENV'),\n"
+        "  'code_map': os.environ.get('ALFRED_CODE_MAP_REPOS'),\n"
+        "  'code_map_max': os.environ.get('ALFRED_CODE_MAP_MAX_FILES'),\n"
+        "  'memory_mcp': os.environ.get('ALFRED_CODE_MEMORY_MCP'),\n"
+        "  'senior_repos': os.environ.get('ALFRED_SENIOR_DEV_REPOS'),\n"
+        "  'spec_repos': os.environ.get('ALFRED_SPEC_PLANNER_REPOS'),\n"
+        "  'auto_promote': os.environ.get('ALFRED_AUTO_PROMOTE'),\n"
+        "  'auto_promote_kill': os.environ.get('ALFRED_AUTO_PROMOTE_KILL'),\n"
+        "  'auto_promote_judge': os.environ.get('ALFRED_AUTO_PROMOTE_LLM_JUDGE'),\n"
+        "  'telemetry_enabled': os.environ.get('ALFRED_TELEMETRY_ENABLED'),\n"
+        "  'token': os.environ.get('CLAUDE_CODE_OAUTH_TOKEN'),\n"
+        "  'backup_profile': os.environ.get('ALFRED_BACKUP_AWS_PROFILE'),\n"
+        "  'feature_codename': os.environ.get('AGENT_CODENAME_FEATURE_DEV'),\n"
+        "  'architect_parent': os.environ.get('ARCHITECT_PARENT_REPO'),\n"
+        "  'e2e_target': os.environ.get('ALFRED_E2E_RUNNER_TARGET_URL'),\n"
+        "  'ops_cluster': os.environ.get('ALFRED_OPS_WATCH_ECS_CLUSTER'),\n"
+        "  'ops_sentry_org': os.environ.get('ALFRED_OPS_WATCH_SENTRY_ORG'),\n"
+        "  'oracle_repos': os.environ.get('ALFRED_ORACLE_REPOS'),\n"
         "}))\n"
         "print('[PROBE-DOCTOR-OK]')\n"
     )
@@ -162,8 +193,25 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         env={
             **os.environ,
             "HOME": str(home),
-            "ALFRED_HOME": str(alfred),
+            "ALFRED_HOME": "~/alfred",
             "WORKSPACE_ROOT": str(tmp_path / "code"),
+            "ALFRED_CODE_MAP_REPOS": "org/stale",
+            "ALFRED_CODE_MAP_MAX_FILES": "77",
+            "ALFRED_CODE_MEMORY_MCP": "0",
+            "ALFRED_SENIOR_DEV_REPOS": "org/stale",
+            "ALFRED_SPEC_PLANNER_REPOS": "org/stale",
+            "ALFRED_AUTO_PROMOTE": "1",
+            "ALFRED_AUTO_PROMOTE_KILL": "0",
+            "ALFRED_AUTO_PROMOTE_LLM_JUDGE": "1",
+            "ALFRED_TELEMETRY_ENABLED": "0",
+            "CLAUDE_CODE_OAUTH_TOKEN": "process-token",
+            "ALFRED_BACKUP_AWS_PROFILE": "backup-profile",
+            "AGENT_CODENAME_FEATURE_DEV": "old-oracle",
+            "ARCHITECT_PARENT_REPO": "org/stale-plans",
+            "ALFRED_E2E_RUNNER_TARGET_URL": "https://old.example.test",
+            "ALFRED_OPS_WATCH_ECS_CLUSTER": "old-cluster",
+            "ALFRED_OPS_WATCH_SENTRY_ORG": "old-org",
+            "ALFRED_ORACLE_REPOS": "org/stale",
         },
         capture_output=True,
         text=True,
@@ -177,6 +225,23 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "codename": "helper",
         "label": "alfred.helper",
         "custom": "loaded",
+        "code_map": None,
+        "code_map_max": "77",
+        "memory_mcp": "0",
+        "senior_repos": None,
+        "spec_repos": None,
+        "auto_promote": "0",
+        "auto_promote_kill": "1",
+        "auto_promote_judge": "treu",
+        "telemetry_enabled": "0",
+        "token": "process-token",
+        "backup_profile": "backup-profile",
+        "feature_codename": "oracle",
+        "architect_parent": "org/plans",
+        "e2e_target": "https://new.example.test",
+        "ops_cluster": "new-cluster",
+        "ops_sentry_org": "new-org",
+        "oracle_repos": "org/runtime",
     }
 
 

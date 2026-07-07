@@ -37,12 +37,16 @@ def cli_module(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
 
 
 def test_label_catalogue_includes_lifecycle_architect_and_operator_labels(cli_module) -> None:
-    names = {name for name, _, _ in cli_module._label_bootstrap_catalog()}
+    labels = cli_module._label_bootstrap_catalog()
+    names = {name for name, _, _ in labels}
     assert "agent:implement" in names
     assert "agent:large-feature" in names
     assert "agent:authored" in names
     assert "agent:plan-pending-approval" in names
     assert "do-not-merge" in names
+    descriptions = {name: description for name, _, description in labels}
+    assert descriptions["agent:plan-pending-approval"].startswith("The architect role")
+    assert "Batman" not in descriptions["agent:plan-pending-approval"]
 
 
 def test_resolve_label_uses_active_roster_theme_names(

@@ -52,8 +52,145 @@ done
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+strip_inline_comment() {
+  local value="$1" ch quote="" escaped=0 i previous=""
+  for ((i = 0; i < ${#value}; i++)); do
+    ch="${value:i:1}"
+    if [ "$escaped" -eq 1 ]; then
+      escaped=0
+      previous="$ch"
+      continue
+    fi
+    if [ "$ch" = "\\" ] && [ "$quote" != "'" ]; then
+      escaped=1
+      previous="$ch"
+      continue
+    fi
+    if [ -n "$quote" ]; then
+      if [ "$ch" = "$quote" ]; then
+        quote=""
+      fi
+      previous="$ch"
+      continue
+    fi
+    if [ "$ch" = "'" ] || [ "$ch" = '"' ]; then
+      quote="$ch"
+      previous="$ch"
+      continue
+    fi
+    if [ "$ch" = "#" ] && [ -n "$previous" ] && [[ "$previous" =~ [[:space:]] ]]; then
+      printf '%s' "${value:0:i}"
+      return
+    fi
+    previous="$ch"
+  done
+  printf '%s' "$value"
+}
+
+trim_env_value() {
+  printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
+decode_env_value() {
+  local value="$1" sq="'" dq='"' splice
+  splice="${sq}${dq}${sq}${dq}${sq}"
+  case "$value" in
+    \'*\')
+      value="${value#\'}"
+      value="${value%\'}"
+      value="${value//$splice/$sq}"
+      ;;
+    \"*\")
+      value="${value#\"}"
+      value="${value%\"}"
+      ;;
+  esac
+  printf '%s' "$value"
+}
+
+memory_auto_promote_value_is_enabled() {
+  case "$1" in
+    1|true|yes|on|enabled) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+memory_auto_promote_value_is_disabled() {
+  case "$1" in
+    0|false|no|off|disabled) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+memory_auto_promote_stop_control_active() {
+  local key="$1" token
+  token="$(trim_env_value "$(strip_inline_comment "$2")" | tr '[:upper:]' '[:lower:]')"
+  [ -n "$token" ] || return 1
+  case "$key" in
+    ALFRED_AUTO_PROMOTE|ALFRED_AUTO_PROMOTE_LLM_JUDGE)
+      memory_auto_promote_value_is_enabled "$token" && return 1
+      return 0
+      ;;
+    ALFRED_AUTO_PROMOTE_KILL)
+      memory_auto_promote_value_is_disabled "$token" && return 1
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+telemetry_stop_control_active() {
+  local key="$1" token
+  token="$(trim_env_value "$(strip_inline_comment "$2")" | tr '[:upper:]' '[:lower:]')"
+  [ "$key" = "ALFRED_TELEMETRY_ENABLED" ] || return 1
+  [ -n "$token" ] || return 1
+  case "$token" in
+    1|true|yes|on|enabled) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+runtime_stop_control_active() {
+  memory_auto_promote_stop_control_active "$1" "$2" ||
+    telemetry_stop_control_active "$1" "$2"
+}
+
+expand_user_path() {
+  local path="$1" expanded=""
+  case "$path" in
+    "~") printf '%s' "$HOME" ;;
+    "~"/*) printf '%s/%s' "$HOME" "${path#\~/}" ;;
+    "~"*)
+      expanded="$(python3 - "$path" <<'PY' 2>/dev/null || true
+import os
+import sys
+
+print(os.path.expanduser(sys.argv[1]))
+PY
+)"
+      if [ -n "$expanded" ]; then
+        printf '%s' "$expanded"
+      else
+        printf '%s' "$path"
+      fi
+      ;;
+    *) printf '%s' "$path" ;;
+  esac
+}
+
+setup_runtime_static_config_key() {
+  case "$1" in
+    AGENT_CODENAME_*|ARCHITECT_ROLLOUT_ORDER|ARCHITECT_PARENT_REPO|ALFRED_QUEUE_REPOS|ALFRED_SHIPPED_REPOS|ALFRED_BRIDGE_REPOS|ALFRED_SENIOR_DEV_REPOS|ALFRED_PLANNER_REPOS|ALFRED_SPEC_PLANNER_REPOS|ALFRED_TEST_ENGINEER_REPOS|ALFRED_REVIEWER_REPOS|ALFRED_FIXER_REPOS|ALFRED_TRIAGE_REPOS|ALFRED_CLAIM_SWEEP_REPOS|ALFRED_AUTOMERGE_REPOS|ALFRED_CODE_MAP_REPOS|ALFRED_CODE_MEMORY_REPOS|ALFRED_MORNING_BRIEF_REPOS|ALFRED_SHIPPED_SUMMARY_DAILY_REPOS|ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS|ALFRED_MORNING_BRIEF_AGENTS|ALFRED_E2E_RUNNER_TARGET_URL|ALFRED_OPS_WATCH_ECS_CLUSTER|ALFRED_OPS_WATCH_SENTRY_ORG|ALFRED_TELEMETRY_*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 load_env_file() {
-  local file="$1" line key value quote_style
+  local file="$1" line key value quote_style existing_value
   [ -f "$file" ] || return 0
   env_value_quote_style() {
     case "$1" in
@@ -61,25 +198,6 @@ load_env_file() {
       \"*\") printf '%s' double ;;
       *) printf '%s' none ;;
     esac
-  }
-  # Keep in lockstep with `decode_env_value` in lib/agent_runner/paths.py,
-  # which the Python .env readers share. Changing the unquoting rules here
-  # means changing them there too, or the two will disagree on a token value.
-  decode_env_value() {
-    local value="$1" sq="'" dq='"' splice
-    splice="${sq}${dq}${sq}${dq}${sq}"
-    case "$value" in
-      \'*\')
-        value="${value#\'}"
-        value="${value%\'}"
-        value="${value//$splice/$sq}"
-        ;;
-      \"*\")
-        value="${value#\"}"
-        value="${value%\"}"
-        ;;
-    esac
-    printf '%s' "$value"
   }
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
@@ -101,11 +219,96 @@ load_env_file() {
       value="${value//\$\{HOME\}/$HOME}"
       value="${value//\$HOME/$HOME}"
     fi
+    if [ -n "${!key+x}" ]; then
+      existing_value="${!key}"
+      if runtime_stop_control_active "$key" "$existing_value" &&
+        ! runtime_stop_control_active "$key" "$value"; then
+        continue
+      fi
+      if ! setup_runtime_config_key "$key" &&
+        ! runtime_stop_control_active "$key" "$value"; then
+        continue
+      fi
+    fi
     export "$key=$value"
   done < "$file"
 }
 
+setup_managed_env_keys_from_file() {
+  local runtime_home="${ALFRED_HOME:-$HOME/.alfred}" file line key value slug in_managed_block=0
+  runtime_home="$(expand_user_path "$runtime_home")"
+  file="$runtime_home/.env"
+  [ -f "$file" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      "# alfred-init"*"generated below this line"*)
+        in_managed_block=1
+        continue
+        ;;
+    esac
+    [ "$in_managed_block" -eq 1 ] || continue
+    case "$line" in
+      ''|\#*) break ;;
+    esac
+    case "$line" in
+      export\ *) line="${line#export }" ;;
+    esac
+    key="${line%%=*}"
+    value="${line#*=}"
+    key="$(trim_env_value "$key")"
+    case "$key" in
+      ''|[0-9]*|*[!A-Za-z0-9_]*)
+        break
+        ;;
+    esac
+    if setup_runtime_static_config_key "$key"; then
+      printf '%s\n' "$key"
+    fi
+    case "$key" in
+      AGENT_CODENAME_*)
+        value="$(trim_env_value "$(strip_inline_comment "$value")")"
+        value="$(decode_env_value "$value")"
+        if [[ "$value" =~ ^[a-z][a-z0-9-]*$ ]]; then
+          slug="$(printf '%s' "$value" | tr '[:lower:]' '[:upper:]' | tr '-' '_')"
+          printf 'ALFRED_%s_REPOS\n' "$slug"
+          printf 'ALFRED_%s_AWS_PROFILE\n' "$slug"
+        fi
+        ;;
+    esac
+  done < "$file"
+}
+
+SETUP_MANAGED_ENV_KEYS=":$(setup_managed_env_keys_from_file | tr '\n' ':')"
+
+setup_managed_env_file_key() {
+  case "$SETUP_MANAGED_ENV_KEYS" in
+    *:"$1":*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+setup_runtime_config_key() {
+  setup_managed_env_file_key "$1" && return 0
+  setup_runtime_static_config_key "$1"
+}
+
+scrub_setup_runtime_env() {
+  local key
+  while IFS= read -r key; do
+    if setup_runtime_config_key "$key"; then
+      if runtime_stop_control_active "$key" "${!key:-}"; then
+        continue
+      fi
+      unset "$key"
+    fi
+  done <<EOF
+$(env | sed 's/=.*//')
+EOF
+}
+
 : "${ALFRED_HOME:=$HOME/.alfred}"
+ALFRED_HOME="$(expand_user_path "$ALFRED_HOME")"
+scrub_setup_runtime_env
 load_env_file "$ALFRED_HOME/.env"
 : "${WORKSPACE_ROOT:=$HOME/code}"
 export ALFRED_HOME WORKSPACE_ROOT ALFRED_DOCTOR=1

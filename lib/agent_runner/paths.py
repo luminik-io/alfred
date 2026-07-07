@@ -28,6 +28,7 @@ from __future__ import annotations
 import os
 import re
 from datetime import UTC, datetime
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 # --------------------------------------------------------------------------
@@ -35,16 +36,42 @@ from pathlib import Path
 # --------------------------------------------------------------------------
 HOME: Path = Path(os.path.expanduser("~"))
 _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+_CODENAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 _REPO_SCOPE_ENV_KEYS = {
+    "ARCHITECT_ROLLOUT_ORDER",
+    "ARCHITECT_PARENT_REPO",
     "ALFRED_QUEUE_REPOS",
     "ALFRED_SHIPPED_REPOS",
     "ALFRED_BRIDGE_REPOS",
-}
-_CODE_MEMORY_ENV_KEYS = {
-    "ALFRED_CODE_MEMORY_*",
+    "ALFRED_SENIOR_DEV_REPOS",
+    "ALFRED_PLANNER_REPOS",
+    "ALFRED_SPEC_PLANNER_REPOS",
+    "ALFRED_TEST_ENGINEER_REPOS",
+    "ALFRED_REVIEWER_REPOS",
+    "ALFRED_FIXER_REPOS",
+    "ALFRED_TRIAGE_REPOS",
+    "ALFRED_CLAIM_SWEEP_REPOS",
+    "ALFRED_AUTOMERGE_REPOS",
     "ALFRED_CODE_MAP_REPOS",
+    "ALFRED_CODE_MEMORY_REPOS",
+    "ALFRED_MORNING_BRIEF_REPOS",
+    "ALFRED_SHIPPED_SUMMARY_DAILY_REPOS",
+    "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS",
 }
-_SETUP_MANAGED_RUNTIME_ENV_KEYS = _REPO_SCOPE_ENV_KEYS | _CODE_MEMORY_ENV_KEYS
+_SETUP_SPECIAL_PROMPT_ENV_KEYS = {
+    "ALFRED_E2E_RUNNER_TARGET_URL",
+    "ALFRED_OPS_WATCH_ECS_CLUSTER",
+    "ALFRED_OPS_WATCH_SENTRY_ORG",
+}
+_SETUP_MANAGED_RUNTIME_ENV_KEYS = (
+    _REPO_SCOPE_ENV_KEYS
+    | {
+        "AGENT_CODENAME_*",
+        "ALFRED_MORNING_BRIEF_AGENTS",
+        "ALFRED_TELEMETRY_*",
+    }
+    | _SETUP_SPECIAL_PROMPT_ENV_KEYS
+)
 
 ALFRED_HOME: Path = Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred"))
 """Public runtime root. State, worktrees, transcripts, lib, bin live here."""
@@ -261,37 +288,98 @@ def config_value(key: str, default: str = "") -> str:
 def launcher_env() -> dict[str, str]:
     """Return the env shape scheduler-spawned agents see through ``agent-launch``.
 
-    The shell launcher resolves ``ALFRED_HOME`` from process env/defaults, then
-    loads ``$ALFRED_HOME/.env`` in no-clobber mode. Keep this helper in
-    lockstep with that order so server-side setup/status surfaces report the
-    same config the scheduled fleet will enforce after a restart.
+    The shell launcher resolves ``ALFRED_HOME`` from process env/defaults,
+    clears setup-managed runtime keys, then loads ``$ALFRED_HOME/.env`` in
+    no-clobber mode for everything else. Keep this helper in lockstep with
+    that order so server-side setup/status surfaces report the same config the
+    scheduled fleet will enforce after a restart.
     """
 
     env = dict(os.environ)
     env.pop("ALFREDRC", None)
     if not env.get("ALFRED_HOME", "").strip():
         env.pop("ALFRED_HOME", None)
-    inherited_keys = set(env)
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
     else:
         env["ALFRED_HOME"] = str(Path(env["ALFRED_HOME"]).expanduser())
+    runtime_env_path = Path(env["ALFRED_HOME"]) / ".env"
+    setup_managed_keys = setup_managed_runtime_env_keys(runtime_env_path)
+    env = {
+        key: value
+        for key, value in env.items()
+        if not _env_key_matches(key, setup_managed_keys) or _runtime_stop_control_active(key, value)
+    }
+    preserve_keys = {key for key, value in env.items() if _runtime_stop_control_active(key, value)}
     load_env_file(
-        Path(env["ALFRED_HOME"]) / ".env",
+        runtime_env_path,
         env,
         no_clobber=True,
-        clobber_keys=_SETUP_MANAGED_RUNTIME_ENV_KEYS,
-        preserve_keys=inherited_keys,
+        clobber_keys=setup_managed_keys,
+        preserve_keys=preserve_keys,
     )
     if not env.get("WORKSPACE_ROOT", "").strip():
         env["WORKSPACE_ROOT"] = os.path.expanduser("~/code")
     return env
 
 
+def setup_managed_runtime_env_keys(runtime_env_path: Path) -> set[str]:
+    """Static setup-owned keys plus custom codename keys from the managed block."""
+
+    return _SETUP_MANAGED_RUNTIME_ENV_KEYS | _managed_runtime_env_keys(runtime_env_path)
+
+
+def _managed_runtime_env_keys(path: Path) -> set[str]:
+    keys: set[str] = set()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return keys
+
+    in_managed_block = False
+    for raw_line in lines:
+        line = raw_line.strip()
+        if line.startswith("# alfred-init") and "generated below this line" in line:
+            in_managed_block = True
+            continue
+        if not in_managed_block:
+            continue
+        if not line or line.startswith("#"):
+            break
+        if line.startswith("export "):
+            line = line.removeprefix("export ").strip()
+        if "=" not in line:
+            break
+        key, _, raw_value = line.partition("=")
+        key = key.strip()
+        if not _ENV_KEY_RE.match(key):
+            break
+        if _env_key_matches(key, _SETUP_MANAGED_RUNTIME_ENV_KEYS):
+            keys.add(key)
+        if key.startswith("AGENT_CODENAME_"):
+            value = decode_env_value(_strip_inline_comment(raw_value).strip()).strip()
+            if _CODENAME_RE.match(value):
+                slug = value.upper().replace("-", "_")
+                keys.add(f"ALFRED_{slug}_REPOS")
+                keys.add(f"ALFRED_{slug}_AWS_PROFILE")
+    return keys
+
+
 def _env_key_matches(key: str, patterns: set[str]) -> bool:
-    if key in patterns:
-        return True
-    return "ALFRED_CODE_MEMORY_*" in patterns and key.startswith("ALFRED_CODE_MEMORY_")
+    return any(fnmatchcase(key, pattern) for pattern in patterns)
+
+
+def _runtime_stop_control_active(key: str, value: str) -> bool:
+    token = _strip_inline_comment(value).strip().lower()
+    if not token:
+        return False
+    if key in {"ALFRED_AUTO_PROMOTE", "ALFRED_AUTO_PROMOTE_LLM_JUDGE"}:
+        return token not in {"1", "true", "yes", "on", "enabled"}
+    if key == "ALFRED_AUTO_PROMOTE_KILL":
+        return token not in {"0", "false", "no", "off", "disabled"}
+    if key == "ALFRED_TELEMETRY_ENABLED":
+        return token not in {"1", "true", "yes", "on", "enabled"}
+    return False
 
 
 def load_env_file(
@@ -324,18 +412,23 @@ def load_env_file(
             continue
         if skip_keys is not None and _env_key_matches(key, skip_keys):
             continue
-        can_clobber = file_overrides_existing or (
-            clobber_keys is not None and _env_key_matches(key, clobber_keys)
-        )
-        protected = preserve_keys is not None and key in preserve_keys
-        if no_clobber and key in env and (not can_clobber or protected):
-            continue
         value = _strip_inline_comment(raw_value).strip()
         single_quoted = len(value) >= 2 and value[0] == "'" and value[-1] == "'"
         decoded = decode_env_value(value)
         if not single_quoted:
             home = str(Path(os.path.expanduser("~")))
             decoded = decoded.replace("${HOME}", home).replace("$HOME", home)
+        if key in env and _runtime_stop_control_active(key, env[key]):
+            continue
+        if _runtime_stop_control_active(key, decoded):
+            env[key] = decoded
+            continue
+        can_clobber = file_overrides_existing or (
+            clobber_keys is not None and _env_key_matches(key, clobber_keys)
+        )
+        protected = preserve_keys is not None and key in preserve_keys
+        if no_clobber and key in env and (not can_clobber or protected):
+            continue
         env[key] = decoded
 
 

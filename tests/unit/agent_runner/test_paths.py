@@ -171,7 +171,7 @@ def test_launcher_env_strips_inline_comments_and_quotes(fresh_agent_runner, monk
     assert env["ALFRED_CODE_MEMORY_REPOS"] == "org/memory"
 
 
-def test_launcher_env_preserves_real_env_repo_scope_over_env_file(
+def test_launcher_env_prefers_runtime_setup_scope_over_process_env(
     fresh_agent_runner, monkeypatch, tmp_path
 ):
     import agent_runner.paths as paths_mod
@@ -185,7 +185,235 @@ def test_launcher_env_preserves_real_env_repo_scope_over_env_file(
 
     env = paths_mod.launcher_env()
 
-    assert env["ALFRED_SHIPPED_REPOS"] == "org/process"
+    assert env["ALFRED_SHIPPED_REPOS"] == "org/env"
+
+
+def test_launcher_env_scrubs_setup_managed_scope_when_runtime_env_omits_it(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text("GH_ORG=acme\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_CODE_MAP_REPOS", "org/stale")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "org/stale")
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_REPOS", "org/stale")
+    monkeypatch.setenv("ALFRED_SPEC_PLANNER_REPOS", "org/stale")
+
+    env = paths_mod.launcher_env()
+
+    assert "ALFRED_CODE_MAP_REPOS" not in env
+    assert "ALFRED_CODE_MEMORY_REPOS" not in env
+    assert "ALFRED_SENIOR_DEV_REPOS" not in env
+    assert "ALFRED_SPEC_PLANNER_REPOS" not in env
+
+
+def test_launcher_env_scrubs_custom_codename_repo_scope_from_managed_block(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "AGENT_CODENAME_FEATURE_DEV=oracle\n"
+        "ALFRED_ORACLE_REPOS=org/runtime\n"
+        "ALFRED_ORACLE_AWS_PROFILE=runtime-profile\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("AGENT_CODENAME_FEATURE_DEV", "old-oracle")
+    monkeypatch.setenv("ALFRED_ORACLE_REPOS", "org/stale")
+    monkeypatch.setenv("ALFRED_ORACLE_AWS_PROFILE", "stale-profile")
+
+    env = paths_mod.launcher_env()
+
+    assert env["AGENT_CODENAME_FEATURE_DEV"] == "oracle"
+    assert env["ALFRED_ORACLE_REPOS"] == "org/runtime"
+    assert env["ALFRED_ORACLE_AWS_PROFILE"] == "runtime-profile"
+
+
+def test_launcher_env_scrubs_special_prompt_envs_from_managed_block(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "ARCHITECT_PARENT_REPO=org/plans\n"
+        "ALFRED_E2E_RUNNER_TARGET_URL=https://new.example.test\n"
+        "ALFRED_OPS_WATCH_ECS_CLUSTER=new-cluster\n"
+        "ALFRED_OPS_WATCH_SENTRY_ORG=new-org\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ARCHITECT_PARENT_REPO", "org/stale-plans")
+    monkeypatch.setenv("ALFRED_E2E_RUNNER_TARGET_URL", "https://old.example.test")
+    monkeypatch.setenv("ALFRED_OPS_WATCH_ECS_CLUSTER", "old-cluster")
+    monkeypatch.setenv("ALFRED_OPS_WATCH_SENTRY_ORG", "old-org")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ARCHITECT_PARENT_REPO"] == "org/plans"
+    assert env["ALFRED_E2E_RUNNER_TARGET_URL"] == "https://new.example.test"
+    assert env["ALFRED_OPS_WATCH_ECS_CLUSTER"] == "new-cluster"
+    assert env["ALFRED_OPS_WATCH_SENTRY_ORG"] == "new-org"
+
+
+def test_launcher_env_preserves_process_owned_aws_profile(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text("GH_ORG=acme\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_BACKUP_AWS_PROFILE", "backup-profile")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_BACKUP_AWS_PROFILE"] == "backup-profile"
+
+
+def test_launcher_env_does_not_scrub_appended_token_after_managed_block(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "AGENT_CODENAME_FEATURE_DEV=oracle\n"
+        "ALFRED_ORACLE_REPOS=org/runtime\n"
+        "CLAUDE_CODE_OAUTH_TOKEN=file-token\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_ORACLE_REPOS", "org/stale")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "process-token")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_ORACLE_REPOS"] == "org/runtime"
+    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "process-token"
+
+
+def test_launcher_env_preserves_code_memory_process_controls(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text("GH_ORG=acme\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_MCP", "0")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_BIN", "/tmp/codebase-memory-mcp")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_AUTOFETCH", "0")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S", "7")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_CODE_MEMORY_MCP"] == "0"
+    assert env["ALFRED_CODE_MEMORY_BIN"] == "/tmp/codebase-memory-mcp"
+    assert env["ALFRED_CODE_MEMORY_AUTOFETCH"] == "0"
+    assert env["ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S"] == "7"
+
+
+def test_launcher_env_preserves_code_map_process_controls(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text("GH_ORG=acme\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_CODE_MAP_CLIENT_REPOS", "frontend,mobile")
+    monkeypatch.setenv("ALFRED_CODE_MAP_BACKEND_REPO", "backend")
+    monkeypatch.setenv("ALFRED_CODE_MAP_MAX_FILES", "77")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_CODE_MAP_CLIENT_REPOS"] == "frontend,mobile"
+    assert env["ALFRED_CODE_MAP_BACKEND_REPO"] == "backend"
+    assert env["ALFRED_CODE_MAP_MAX_FILES"] == "77"
+
+
+def test_launcher_env_preserves_process_telemetry_opt_out(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text(
+        "ALFRED_TELEMETRY_ENABLED=1\nALFRED_TELEMETRY_URL=https://telemetry.example.com/ingest\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_TELEMETRY_ENABLED", "0")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_TELEMETRY_ENABLED"] == "0"
+    assert env["ALFRED_TELEMETRY_URL"] == "https://telemetry.example.com/ingest"
+
+
+def test_launcher_env_file_telemetry_opt_out_overrides_process_enable(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text("ALFRED_TELEMETRY_ENABLED=0\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_TELEMETRY_ENABLED", "1")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_TELEMETRY_ENABLED"] == "0"
+
+
+def test_launcher_env_file_memory_stop_controls_override_process_enable(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text(
+        "ALFRED_AUTO_PROMOTE=0\nALFRED_AUTO_PROMOTE_KILL=1\nALFRED_AUTO_PROMOTE_LLM_JUDGE=treu\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_AUTO_PROMOTE", "1")
+    monkeypatch.setenv("ALFRED_AUTO_PROMOTE_KILL", "0")
+    monkeypatch.setenv("ALFRED_AUTO_PROMOTE_LLM_JUDGE", "1")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_AUTO_PROMOTE"] == "0"
+    assert env["ALFRED_AUTO_PROMOTE_KILL"] == "1"
+    assert env["ALFRED_AUTO_PROMOTE_LLM_JUDGE"] == "treu"
 
 
 def test_launcher_env_loads_code_memory_settings_when_process_absent(

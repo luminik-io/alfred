@@ -180,10 +180,16 @@ install_darwin_packages() {
   ok "brew $(brew --version | head -1)"
 
   step "Installing CLI dependencies"
-  if ! brew tap | grep -qx "redis-stack/redis-stack"; then
+  if ! brew tap | awk '$0 == "redis-stack/redis-stack" { found = 1 } END { exit found ? 0 : 1 }'; then
     note "brew tap redis-stack/redis-stack"
     brew tap redis-stack/redis-stack >/dev/null
   fi
+  brew_package_installed() {
+    # Avoid `brew list | grep -q`: under `set -o pipefail`, grep's early exit
+    # can SIGPIPE brew and make installed packages look missing. Redis Stack is
+    # distributed as a cask, while the rest of this list is formula-backed.
+    brew list --formula "$1" >/dev/null 2>&1 || brew list --cask "$1" >/dev/null 2>&1
+  }
   local pkg
   declare -a packages=(
     git
@@ -197,7 +203,7 @@ install_darwin_packages() {
     ollama
   )
   for pkg in "${packages[@]}"; do
-    if brew list --formula | grep -q "^${pkg%@*}\$"; then
+    if brew_package_installed "$pkg"; then
       ok "$pkg already installed"
     else
       note "brew install $pkg"

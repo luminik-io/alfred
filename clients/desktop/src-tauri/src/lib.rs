@@ -438,7 +438,12 @@ fn config_value(key: &str) -> Option<String> {
 fn merged_alfred_env() -> HashMap<String, String> {
     let mut env: HashMap<String, String> = std::env::vars().collect();
     env.remove("ALFREDRC");
-    let process_env_keys: HashSet<String> = env.keys().cloned().collect();
+    if env
+        .get("ALFRED_HOME")
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        env.remove("ALFRED_HOME");
+    }
     let home = home_dir();
 
     let runtime_home = env
@@ -449,6 +454,12 @@ fn merged_alfred_env() -> HashMap<String, String> {
     if let Some(runtime_home) = runtime_home.as_deref() {
         env.entry("ALFRED_HOME".to_string())
             .or_insert_with(|| runtime_home.to_string_lossy().into_owned());
+        let setup_managed_keys = setup_managed_runtime_env_keys(&runtime_home.join(".env"));
+        env.retain(|key, value| {
+            !setup_managed_runtime_env_key(key, &setup_managed_keys)
+                || preserves_stop_control(key, value)
+        });
+        let process_env_keys: HashSet<String> = env.keys().cloned().collect();
         load_config_file(
             &mut env,
             &runtime_home.join(".env"),
@@ -464,6 +475,123 @@ fn merged_alfred_env() -> HashMap<String, String> {
             .or_insert_with(|| home.join("code").to_string_lossy().into_owned());
     }
     env
+}
+
+fn setup_managed_runtime_env_keys(runtime_env_path: &Path) -> HashSet<String> {
+    let mut keys = managed_runtime_env_keys(runtime_env_path);
+    keys.extend([
+        "ARCHITECT_ROLLOUT_ORDER".to_string(),
+        "ARCHITECT_PARENT_REPO".to_string(),
+        "ALFRED_QUEUE_REPOS".to_string(),
+        "ALFRED_SHIPPED_REPOS".to_string(),
+        "ALFRED_BRIDGE_REPOS".to_string(),
+        "ALFRED_SENIOR_DEV_REPOS".to_string(),
+        "ALFRED_PLANNER_REPOS".to_string(),
+        "ALFRED_SPEC_PLANNER_REPOS".to_string(),
+        "ALFRED_TEST_ENGINEER_REPOS".to_string(),
+        "ALFRED_REVIEWER_REPOS".to_string(),
+        "ALFRED_FIXER_REPOS".to_string(),
+        "ALFRED_TRIAGE_REPOS".to_string(),
+        "ALFRED_CLAIM_SWEEP_REPOS".to_string(),
+        "ALFRED_AUTOMERGE_REPOS".to_string(),
+        "ALFRED_CODE_MAP_REPOS".to_string(),
+        "ALFRED_CODE_MEMORY_REPOS".to_string(),
+        "ALFRED_MORNING_BRIEF_REPOS".to_string(),
+        "ALFRED_SHIPPED_SUMMARY_DAILY_REPOS".to_string(),
+        "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS".to_string(),
+        "ALFRED_E2E_RUNNER_TARGET_URL".to_string(),
+        "ALFRED_OPS_WATCH_ECS_CLUSTER".to_string(),
+        "ALFRED_OPS_WATCH_SENTRY_ORG".to_string(),
+    ]);
+    keys
+}
+
+fn managed_runtime_env_keys(path: &Path) -> HashSet<String> {
+    let mut keys = HashSet::new();
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return keys;
+    };
+    let mut in_managed_block = false;
+    for raw_line in raw.lines() {
+        let mut line = raw_line.trim();
+        if line.starts_with("# alfred-init") && line.contains("generated below this line") {
+            in_managed_block = true;
+            continue;
+        }
+        if !in_managed_block {
+            continue;
+        }
+        if line.is_empty() || line.starts_with('#') {
+            break;
+        }
+        if let Some(rest) = line.strip_prefix("export ") {
+            line = rest.trim();
+        }
+        let Some((name, value)) = line.split_once('=') else {
+            break;
+        };
+        let key = name.trim();
+        if !is_valid_env_key(key) {
+            break;
+        }
+        if setup_managed_runtime_static_key(key) {
+            keys.insert(key.to_string());
+        }
+        if key.starts_with("AGENT_CODENAME_") {
+            let codename = decode_config_value(strip_inline_comment(value).trim(), None)
+                .trim()
+                .to_string();
+            if valid_runtime_codename(&codename) {
+                let slug = codename.to_ascii_uppercase().replace('-', "_");
+                keys.insert(format!("ALFRED_{slug}_REPOS"));
+                keys.insert(format!("ALFRED_{slug}_AWS_PROFILE"));
+            }
+        }
+    }
+    keys
+}
+
+fn setup_managed_runtime_env_key(key: &str, setup_managed_keys: &HashSet<String>) -> bool {
+    setup_managed_keys.contains(key) || setup_managed_runtime_static_key(key)
+}
+
+fn setup_managed_runtime_static_key(key: &str) -> bool {
+    matches!(
+        key,
+        "ARCHITECT_ROLLOUT_ORDER"
+            | "ARCHITECT_PARENT_REPO"
+            | "ALFRED_QUEUE_REPOS"
+            | "ALFRED_SHIPPED_REPOS"
+            | "ALFRED_BRIDGE_REPOS"
+            | "ALFRED_SENIOR_DEV_REPOS"
+            | "ALFRED_PLANNER_REPOS"
+            | "ALFRED_SPEC_PLANNER_REPOS"
+            | "ALFRED_TEST_ENGINEER_REPOS"
+            | "ALFRED_REVIEWER_REPOS"
+            | "ALFRED_FIXER_REPOS"
+            | "ALFRED_TRIAGE_REPOS"
+            | "ALFRED_CLAIM_SWEEP_REPOS"
+            | "ALFRED_AUTOMERGE_REPOS"
+            | "ALFRED_CODE_MAP_REPOS"
+            | "ALFRED_CODE_MEMORY_REPOS"
+            | "ALFRED_MORNING_BRIEF_REPOS"
+            | "ALFRED_SHIPPED_SUMMARY_DAILY_REPOS"
+            | "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS"
+            | "ALFRED_MORNING_BRIEF_AGENTS"
+            | "ALFRED_E2E_RUNNER_TARGET_URL"
+            | "ALFRED_OPS_WATCH_ECS_CLUSTER"
+            | "ALFRED_OPS_WATCH_SENTRY_ORG"
+    ) || key.starts_with("AGENT_CODENAME_")
+        || key.starts_with("ALFRED_TELEMETRY_")
+}
+
+fn valid_runtime_codename(value: &str) -> bool {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    first.is_ascii_lowercase()
+        && chars.all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
 }
 
 fn load_config_file(
@@ -575,6 +703,9 @@ fn preserves_stop_control(key: &str, value: &str) -> bool {
         }
         "ALFRED_AUTO_PROMOTE_KILL" => {
             !matches!(token.as_str(), "0" | "false" | "no" | "off" | "disabled")
+        }
+        "ALFRED_TELEMETRY_ENABLED" => {
+            !matches!(token.as_str(), "1" | "true" | "yes" | "on" | "enabled")
         }
         _ => false,
     }
@@ -829,6 +960,7 @@ const CODE_MEMORY_DOCTOR_TIMEOUT_MARGIN_S: u64 = 30;
 const CORE_INSTALL_TIMEOUT_S: u64 = 1_800;
 const CORE_SEED_TIMEOUT_S: u64 = 120;
 const CORE_DEPLOY_TIMEOUT_S: u64 = 300;
+const CORE_SKILLS_TIMEOUT_S: u64 = 120;
 const REQUIRED_CLI_INSTALL_TOOLS: [&str; 3] = ["alfred-install", "alfred-init", "alfred-deploy"];
 
 struct CoreInstallPlan {
@@ -839,6 +971,10 @@ struct CoreInstallPlan {
     seed_args: Vec<String>,
     deploy_program: String,
     deploy_args: Vec<String>,
+    skills_program: String,
+    skills_args: Vec<String>,
+    code_memory_program: String,
+    code_memory_args: Vec<String>,
     source_label: String,
 }
 
@@ -912,15 +1048,53 @@ fn install_alfred_core_blocking(app: &AppHandle) -> Result<NativeCommandResult, 
         ));
     }
 
+    let skills = run_core_install_step(
+        &plan.skills_program,
+        &plan.skills_args,
+        plan.core_dir.as_deref(),
+        Duration::from_secs(CORE_SKILLS_TIMEOUT_S),
+    )?;
+    append_step_output(&mut stdout, &mut stderr, "starter-skills", &skills);
+    if !skills.success {
+        return Ok(core_install_result(
+            preview,
+            stdout,
+            stderr,
+            skills.status,
+            false,
+            format!(
+                "Alfred core installed and deployed, but starter skill installation failed from {}.",
+                plan.source_label
+            ),
+        ));
+    }
+
+    let code_memory = run_core_install_step(
+        &plan.code_memory_program,
+        &plan.code_memory_args,
+        plan.core_dir.as_deref(),
+        code_memory_doctor_timeout(),
+    )?;
+    append_step_output(&mut stdout, &mut stderr, "code-memory-doctor", &code_memory);
+    let code_memory_message = if code_memory.success {
+        "Code-memory doctor completed."
+    } else {
+        "Code-memory doctor needs attention; open Setup after install to retry."
+    };
+
     Ok(core_install_result(
         preview,
         stdout,
         stderr,
-        deploy.status,
+        if code_memory.success {
+            code_memory.status
+        } else {
+            deploy.status
+        },
         true,
         format!(
-            "Alfred core installed, fleet seeded, and deployed from {}.",
-            plan.source_label
+            "Alfred core installed, fleet seeded, deployed, and starter skills installed from {}. {}",
+            plan.source_label, code_memory_message
         ),
     ))
 }
@@ -1042,11 +1216,13 @@ fn terminal_core_install_command(plan: &CoreInstallPlan) -> String {
     }
     parts.push("export ALFRED_NONINTERACTIVE=1 ALFRED_DESKTOP_INSTALL=1".to_string());
     parts.push(format!(
-        "{} && {} && {} && {}",
+        "{} && {} && {} && {} && {} && {}",
+        terminal_path_refresh_command(std::env::var_os("PATH").as_deref()),
         shell_command(&plan.install_program, &plan.install_args),
-        terminal_path_refresh_command(),
         shell_command(&plan.seed_program, &plan.seed_args),
-        shell_command(&plan.deploy_program, &plan.deploy_args)
+        shell_command(&plan.deploy_program, &plan.deploy_args),
+        shell_command(&plan.skills_program, &plan.skills_args),
+        optional_shell_command(&plan.code_memory_program, &plan.code_memory_args)
     ));
     parts.push(
         "printf '\\nAlfred Desktop install command finished. Return to Alfred Desktop and click Install or repair again if needed.\\n'"
@@ -1055,16 +1231,39 @@ fn terminal_core_install_command(plan: &CoreInstallPlan) -> String {
     parts.join(" && ")
 }
 
-fn terminal_path_refresh_command() -> &'static str {
-    "if command -v brew >/dev/null 2>&1; then eval \"$(brew shellenv)\"; \
-     elif [ -x /opt/homebrew/bin/brew ]; then eval \"$(/opt/homebrew/bin/brew shellenv)\"; \
-     elif [ -x /usr/local/bin/brew ]; then eval \"$(/usr/local/bin/brew shellenv)\"; fi"
+fn terminal_path_refresh_command(parent_path: Option<&std::ffi::OsStr>) -> String {
+    let mut path_entries = vec![
+        "$HOME/.local/bin".to_string(),
+        "$HOME/.alfred/bin".to_string(),
+        "/opt/homebrew/bin".to_string(),
+        "/opt/homebrew/sbin".to_string(),
+        "/usr/local/bin".to_string(),
+        "/usr/local/sbin".to_string(),
+    ];
+    if let Some(parent_path) = parent_path {
+        let parent_path = parent_path.to_string_lossy();
+        if !parent_path.is_empty() {
+            path_entries.push(shell_quote(parent_path.as_ref()));
+        }
+    }
+    path_entries.push("$PATH".to_string());
+    format!(
+        "{{ export PATH={}; \
+         if command -v brew >/dev/null 2>&1; then eval \"$(brew shellenv)\"; \
+         elif [ -x /opt/homebrew/bin/brew ]; then eval \"$(/opt/homebrew/bin/brew shellenv)\"; \
+         elif [ -x /usr/local/bin/brew ]; then eval \"$(/usr/local/bin/brew shellenv)\"; fi; }}",
+        path_entries.join(":")
+    )
 }
 
 fn shell_command(program: &str, args: &[String]) -> String {
     let mut command = vec![shell_quote(program)];
     command.extend(args.iter().map(|arg| shell_quote(arg)));
     command.join(" ")
+}
+
+fn optional_shell_command(program: &str, args: &[String]) -> String {
+    format!("({} || true)", shell_command(program, args))
 }
 
 fn shell_quote(value: &str) -> String {
@@ -1131,6 +1330,14 @@ fn core_install_plan(app: &AppHandle) -> Result<CoreInstallPlan, String> {
             ],
             deploy_program: "/bin/bash".to_string(),
             deploy_args: vec![core_dir.join("deploy.sh").to_string_lossy().into_owned()],
+            skills_program: "alfred".to_string(),
+            skills_args: vec![
+                "skills".to_string(),
+                "install".to_string(),
+                "--starter".to_string(),
+            ],
+            code_memory_program: "alfred".to_string(),
+            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
             source_label: "the bundled desktop runtime".to_string(),
             core_dir: Some(core_dir),
         });
@@ -1156,6 +1363,14 @@ fn core_install_plan(app: &AppHandle) -> Result<CoreInstallPlan, String> {
             ],
             deploy_program: "/bin/bash".to_string(),
             deploy_args: vec![core_dir.join("deploy.sh").to_string_lossy().into_owned()],
+            skills_program: "alfred".to_string(),
+            skills_args: vec![
+                "skills".to_string(),
+                "install".to_string(),
+                "--starter".to_string(),
+            ],
+            code_memory_program: "alfred".to_string(),
+            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
             source_label: core_dir.to_string_lossy().into_owned(),
             core_dir: Some(core_dir),
         });
@@ -1176,6 +1391,14 @@ fn core_install_plan(app: &AppHandle) -> Result<CoreInstallPlan, String> {
             ],
             deploy_program: "alfred-deploy".to_string(),
             deploy_args: Vec::new(),
+            skills_program: "alfred".to_string(),
+            skills_args: vec![
+                "skills".to_string(),
+                "install".to_string(),
+                "--starter".to_string(),
+            ],
+            code_memory_program: "alfred".to_string(),
+            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
             source_label: "the installed Alfred CLI package".to_string(),
             core_dir: None,
         });
@@ -2224,6 +2447,14 @@ mod tests {
             ],
             deploy_program: "/bin/bash".to_string(),
             deploy_args: vec!["deploy.sh".to_string()],
+            skills_program: "alfred".to_string(),
+            skills_args: vec![
+                "skills".to_string(),
+                "install".to_string(),
+                "--starter".to_string(),
+            ],
+            code_memory_program: "alfred".to_string(),
+            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
             source_label: "bundled runtime".to_string(),
         };
 
@@ -2283,6 +2514,14 @@ mod tests {
             ],
             deploy_program: "/bin/bash".to_string(),
             deploy_args: vec!["/tmp/alfred core/deploy.sh".to_string()],
+            skills_program: "alfred".to_string(),
+            skills_args: vec![
+                "skills".to_string(),
+                "install".to_string(),
+                "--starter".to_string(),
+            ],
+            code_memory_program: "alfred".to_string(),
+            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
             source_label: "bundled runtime".to_string(),
         };
 
@@ -2291,15 +2530,30 @@ mod tests {
         assert!(command.contains("cd '/tmp/alfred core'"));
         assert!(command.contains("ALFRED_DESKTOP_INSTALL=1"));
         assert!(command.contains("'/tmp/alfred core/install.sh'"));
+        assert!(command.contains(
+            "export PATH=$HOME/.local/bin:$HOME/.alfred/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:"
+        ));
+        assert!(command.contains(":$PATH"));
         assert!(command.contains("brew shellenv"));
+        assert!(command.contains("/usr/local/bin"));
         assert!(command.contains(
             "python3 '/tmp/alfred core/bin/alfred-init.py' --seed-runtime-roster --agents all"
         ));
         assert!(command.contains("'/tmp/alfred core/deploy.sh'"));
+        assert!(command.contains("alfred skills install --starter"));
+        assert!(command.contains("alfred code-memory doctor"));
         assert!(
             command
-                .find("'/tmp/alfred core/install.sh'")
-                .expect("install command should exist")
+                .find("$HOME/.local/bin")
+                .expect("terminal cli path export should exist")
+                < command
+                    .find("'/tmp/alfred core/install.sh'")
+                    .expect("install command should exist")
+        );
+        assert!(
+            command
+                .find("$HOME/.local/bin")
+                .expect("terminal cli path export should exist")
                 < command
                     .find("brew shellenv")
                     .expect("path refresh should exist")
@@ -2308,6 +2562,14 @@ mod tests {
             command
                 .find("brew shellenv")
                 .expect("path refresh should exist")
+                < command
+                    .find("'/tmp/alfred core/install.sh'")
+                    .expect("install command should exist")
+        );
+        assert!(
+            command
+                .find("'/tmp/alfred core/install.sh'")
+                .expect("install command should exist")
                 < command
                     .find("--seed-runtime-roster")
                     .expect("seed command should exist")
@@ -2319,6 +2581,130 @@ mod tests {
                 < command
                     .find("'/tmp/alfred core/deploy.sh'")
                     .expect("deploy command should exist")
+        );
+        assert!(
+            command
+                .find("'/tmp/alfred core/deploy.sh'")
+                .expect("deploy command should exist")
+                < command
+                    .find("alfred skills install --starter")
+                    .expect("skills command should exist")
+        );
+        assert!(
+            command
+                .find("alfred skills install --starter")
+                .expect("skills command should exist")
+                < command
+                    .find("alfred code-memory doctor")
+                    .expect("code-memory command should exist")
+        );
+    }
+
+    #[test]
+    fn terminal_core_install_command_preserves_desktop_process_cli_path() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_path = std::env::var("PATH").ok();
+        let custom_bin = temp_root("custom-cli-path").join("bin dir");
+        let desktop_path = format!("{}:/usr/bin:/bin", custom_bin.to_string_lossy());
+        std::env::set_var("PATH", &desktop_path);
+
+        let plan = CoreInstallPlan {
+            core_dir: None,
+            install_program: "alfred-install".to_string(),
+            install_args: vec!["--non-interactive".to_string()],
+            seed_program: "alfred-init".to_string(),
+            seed_args: vec![
+                "--seed-runtime-roster".to_string(),
+                "--agents".to_string(),
+                "all".to_string(),
+            ],
+            deploy_program: "alfred-deploy".to_string(),
+            deploy_args: Vec::new(),
+            skills_program: "alfred".to_string(),
+            skills_args: vec![
+                "skills".to_string(),
+                "install".to_string(),
+                "--starter".to_string(),
+            ],
+            code_memory_program: "alfred".to_string(),
+            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
+            source_label: "installed CLI".to_string(),
+        };
+
+        let command = terminal_core_install_command(&plan);
+        let quoted_desktop_path = shell_quote(&desktop_path);
+
+        assert!(command.contains(&quoted_desktop_path));
+        assert!(
+            command
+                .find(&quoted_desktop_path)
+                .expect("desktop process path should be exported")
+                < command
+                    .find("alfred-install --non-interactive")
+                    .expect("install command should exist")
+        );
+
+        restore_var("PATH", prev_path);
+    }
+
+    #[test]
+    fn terminal_core_install_command_refreshes_path_before_installed_cli_bootstrap() {
+        let plan = CoreInstallPlan {
+            core_dir: None,
+            install_program: "alfred-install".to_string(),
+            install_args: vec!["--non-interactive".to_string()],
+            seed_program: "alfred-init".to_string(),
+            seed_args: vec![
+                "--seed-runtime-roster".to_string(),
+                "--agents".to_string(),
+                "all".to_string(),
+            ],
+            deploy_program: "alfred-deploy".to_string(),
+            deploy_args: Vec::new(),
+            skills_program: "alfred".to_string(),
+            skills_args: vec![
+                "skills".to_string(),
+                "install".to_string(),
+                "--starter".to_string(),
+            ],
+            code_memory_program: "alfred".to_string(),
+            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
+            source_label: "installed CLI".to_string(),
+        };
+
+        let command = terminal_core_install_command(&plan);
+
+        assert!(
+            command
+                .find("$HOME/.local/bin")
+                .expect("terminal cli path export should exist")
+                < command
+                    .find("alfred-install --non-interactive")
+                    .expect("install command should exist")
+        );
+        assert!(
+            command
+                .find("/usr/local/bin")
+                .expect("local prefix should be included")
+                < command
+                    .find("alfred-install --non-interactive")
+                    .expect("install command should exist")
+        );
+        assert!(
+            command
+                .find("brew shellenv")
+                .expect("path refresh should exist")
+                < command
+                    .find("alfred-install --non-interactive")
+                    .expect("install command should exist")
+        );
+        assert!(
+            command
+                .find("alfred-install --non-interactive")
+                .expect("install command should exist")
+                < command
+                    .find("alfred-init --seed-runtime-roster --agents all")
+                    .expect("seed command should exist")
         );
     }
 
@@ -3227,6 +3613,395 @@ done"#;
         restore_var("ALFRED_AUTO_PROMOTE", prev_auto_promote);
         restore_var("ALFRED_AUTO_PROMOTE_KILL", prev_auto_promote_kill);
         restore_var("WORKSPACE_ROOT", prev_workspace);
+    }
+
+    #[test]
+    fn native_subprocess_env_scrubs_setup_managed_scope_before_runtime_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_code_map = std::env::var("ALFRED_CODE_MAP_REPOS").ok();
+        let prev_code_memory = std::env::var("ALFRED_CODE_MEMORY_REPOS").ok();
+        let prev_senior = std::env::var("ALFRED_SENIOR_DEV_REPOS").ok();
+        let prev_spec = std::env::var("ALFRED_SPEC_PLANNER_REPOS").ok();
+
+        let root = temp_root("alfred-runtime-env-scrub");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(
+            runtime.join(".env"),
+            "GH_ORG=acme\nALFRED_CODE_MAP_REPOS=org/runtime-map\n",
+        )
+        .expect("write runtime env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::set_var("ALFRED_CODE_MAP_REPOS", "org/stale-map");
+        std::env::set_var("ALFRED_CODE_MEMORY_REPOS", "org/stale-memory");
+        std::env::set_var("ALFRED_SENIOR_DEV_REPOS", "org/stale-senior");
+        std::env::set_var("ALFRED_SPEC_PLANNER_REPOS", "org/stale-spec");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("ALFRED_CODE_MAP_REPOS"),
+            Some(&"org/runtime-map".to_string())
+        );
+        assert!(!env.contains_key("ALFRED_CODE_MEMORY_REPOS"));
+        assert!(!env.contains_key("ALFRED_SENIOR_DEV_REPOS"));
+        assert!(!env.contains_key("ALFRED_SPEC_PLANNER_REPOS"));
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_CODE_MAP_REPOS", prev_code_map);
+        restore_var("ALFRED_CODE_MEMORY_REPOS", prev_code_memory);
+        restore_var("ALFRED_SENIOR_DEV_REPOS", prev_senior);
+        restore_var("ALFRED_SPEC_PLANNER_REPOS", prev_spec);
+    }
+
+    #[test]
+    fn native_subprocess_env_scrubs_special_prompt_envs_from_runtime_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_architect_parent = std::env::var("ARCHITECT_PARENT_REPO").ok();
+        let prev_e2e_target = std::env::var("ALFRED_E2E_RUNNER_TARGET_URL").ok();
+        let prev_ops_cluster = std::env::var("ALFRED_OPS_WATCH_ECS_CLUSTER").ok();
+        let prev_ops_sentry = std::env::var("ALFRED_OPS_WATCH_SENTRY_ORG").ok();
+
+        let root = temp_root("alfred-runtime-env-special-prompts");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(
+            runtime.join(".env"),
+            "# alfred-init, generated below this line. Safe to re-run.\n\
+             ARCHITECT_PARENT_REPO=org/plans\n\
+             ALFRED_E2E_RUNNER_TARGET_URL=https://new.example.test\n\
+             ALFRED_OPS_WATCH_ECS_CLUSTER=new-cluster\n\
+             ALFRED_OPS_WATCH_SENTRY_ORG=new-org\n",
+        )
+        .expect("write runtime env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::set_var("ARCHITECT_PARENT_REPO", "org/stale-plans");
+        std::env::set_var("ALFRED_E2E_RUNNER_TARGET_URL", "https://old.example.test");
+        std::env::set_var("ALFRED_OPS_WATCH_ECS_CLUSTER", "old-cluster");
+        std::env::set_var("ALFRED_OPS_WATCH_SENTRY_ORG", "old-org");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("ARCHITECT_PARENT_REPO"),
+            Some(&"org/plans".to_string())
+        );
+        assert_eq!(
+            env.get("ALFRED_E2E_RUNNER_TARGET_URL"),
+            Some(&"https://new.example.test".to_string())
+        );
+        assert_eq!(
+            env.get("ALFRED_OPS_WATCH_ECS_CLUSTER"),
+            Some(&"new-cluster".to_string())
+        );
+        assert_eq!(
+            env.get("ALFRED_OPS_WATCH_SENTRY_ORG"),
+            Some(&"new-org".to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ARCHITECT_PARENT_REPO", prev_architect_parent);
+        restore_var("ALFRED_E2E_RUNNER_TARGET_URL", prev_e2e_target);
+        restore_var("ALFRED_OPS_WATCH_ECS_CLUSTER", prev_ops_cluster);
+        restore_var("ALFRED_OPS_WATCH_SENTRY_ORG", prev_ops_sentry);
+    }
+
+    #[test]
+    fn native_subprocess_env_scrubs_custom_codename_scope_from_managed_block() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_codename = std::env::var("AGENT_CODENAME_FEATURE_DEV").ok();
+        let prev_oracle = std::env::var("ALFRED_ORACLE_REPOS").ok();
+        let prev_oracle_aws = std::env::var("ALFRED_ORACLE_AWS_PROFILE").ok();
+
+        let root = temp_root("alfred-custom-runtime-env-scrub");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(
+            runtime.join(".env"),
+            "# alfred-init, generated below this line. Safe to re-run.\n\
+             AGENT_CODENAME_FEATURE_DEV=oracle\n\
+             ALFRED_ORACLE_REPOS=org/runtime\n\
+             ALFRED_ORACLE_AWS_PROFILE=runtime-profile\n",
+        )
+        .expect("write runtime env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::set_var("AGENT_CODENAME_FEATURE_DEV", "old-oracle");
+        std::env::set_var("ALFRED_ORACLE_REPOS", "org/stale");
+        std::env::set_var("ALFRED_ORACLE_AWS_PROFILE", "stale-profile");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("AGENT_CODENAME_FEATURE_DEV"),
+            Some(&"oracle".to_string())
+        );
+        assert_eq!(
+            env.get("ALFRED_ORACLE_REPOS"),
+            Some(&"org/runtime".to_string())
+        );
+        assert_eq!(
+            env.get("ALFRED_ORACLE_AWS_PROFILE"),
+            Some(&"runtime-profile".to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("AGENT_CODENAME_FEATURE_DEV", prev_codename);
+        restore_var("ALFRED_ORACLE_REPOS", prev_oracle);
+        restore_var("ALFRED_ORACLE_AWS_PROFILE", prev_oracle_aws);
+    }
+
+    #[test]
+    fn native_subprocess_env_preserves_process_owned_aws_profile() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_backup = std::env::var("ALFRED_BACKUP_AWS_PROFILE").ok();
+
+        let root = temp_root("alfred-process-owned-aws-profile");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(runtime.join(".env"), "GH_ORG=acme\n").expect("write runtime env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::set_var("ALFRED_BACKUP_AWS_PROFILE", "backup-profile");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("ALFRED_BACKUP_AWS_PROFILE"),
+            Some(&"backup-profile".to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_BACKUP_AWS_PROFILE", prev_backup);
+    }
+
+    #[test]
+    fn native_subprocess_env_does_not_scrub_appended_token_after_managed_block() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_oracle = std::env::var("ALFRED_ORACLE_REPOS").ok();
+        let prev_token = std::env::var("CLAUDE_CODE_OAUTH_TOKEN").ok();
+
+        let root = temp_root("alfred-managed-block-token");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(
+            runtime.join(".env"),
+            "# alfred-init, generated below this line. Safe to re-run.\n\
+             AGENT_CODENAME_FEATURE_DEV=oracle\n\
+             ALFRED_ORACLE_REPOS=org/runtime\n\
+             CLAUDE_CODE_OAUTH_TOKEN=file-token\n",
+        )
+        .expect("write runtime env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::set_var("ALFRED_ORACLE_REPOS", "org/stale");
+        std::env::set_var("CLAUDE_CODE_OAUTH_TOKEN", "process-token");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("ALFRED_ORACLE_REPOS"),
+            Some(&"org/runtime".to_string())
+        );
+        assert_eq!(
+            env.get("CLAUDE_CODE_OAUTH_TOKEN"),
+            Some(&"process-token".to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_ORACLE_REPOS", prev_oracle);
+        restore_var("CLAUDE_CODE_OAUTH_TOKEN", prev_token);
+    }
+
+    #[test]
+    fn native_subprocess_env_preserves_code_memory_process_controls() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_mcp = std::env::var("ALFRED_CODE_MEMORY_MCP").ok();
+        let prev_bin = std::env::var("ALFRED_CODE_MEMORY_BIN").ok();
+        let prev_autofetch = std::env::var("ALFRED_CODE_MEMORY_AUTOFETCH").ok();
+        let prev_timeout = std::env::var("ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S").ok();
+
+        let root = temp_root("alfred-code-memory-controls");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(runtime.join(".env"), "GH_ORG=acme\n").expect("write runtime env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::set_var("ALFRED_CODE_MEMORY_MCP", "0");
+        std::env::set_var("ALFRED_CODE_MEMORY_BIN", "/tmp/codebase-memory-mcp");
+        std::env::set_var("ALFRED_CODE_MEMORY_AUTOFETCH", "0");
+        std::env::set_var("ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S", "7");
+
+        let env = merged_alfred_env();
+        assert_eq!(env.get("ALFRED_CODE_MEMORY_MCP"), Some(&"0".to_string()));
+        assert_eq!(
+            env.get("ALFRED_CODE_MEMORY_BIN"),
+            Some(&"/tmp/codebase-memory-mcp".to_string())
+        );
+        assert_eq!(
+            env.get("ALFRED_CODE_MEMORY_AUTOFETCH"),
+            Some(&"0".to_string())
+        );
+        assert_eq!(
+            env.get("ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S"),
+            Some(&"7".to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_CODE_MEMORY_MCP", prev_mcp);
+        restore_var("ALFRED_CODE_MEMORY_BIN", prev_bin);
+        restore_var("ALFRED_CODE_MEMORY_AUTOFETCH", prev_autofetch);
+        restore_var("ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S", prev_timeout);
+    }
+
+    #[test]
+    fn native_subprocess_env_preserves_code_map_process_controls() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_clients = std::env::var("ALFRED_CODE_MAP_CLIENT_REPOS").ok();
+        let prev_backend = std::env::var("ALFRED_CODE_MAP_BACKEND_REPO").ok();
+        let prev_max = std::env::var("ALFRED_CODE_MAP_MAX_FILES").ok();
+
+        let root = temp_root("alfred-code-map-controls");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(runtime.join(".env"), "GH_ORG=acme\n").expect("write runtime env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::set_var("ALFRED_CODE_MAP_CLIENT_REPOS", "frontend,mobile");
+        std::env::set_var("ALFRED_CODE_MAP_BACKEND_REPO", "backend");
+        std::env::set_var("ALFRED_CODE_MAP_MAX_FILES", "77");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("ALFRED_CODE_MAP_CLIENT_REPOS"),
+            Some(&"frontend,mobile".to_string())
+        );
+        assert_eq!(
+            env.get("ALFRED_CODE_MAP_BACKEND_REPO"),
+            Some(&"backend".to_string())
+        );
+        assert_eq!(
+            env.get("ALFRED_CODE_MAP_MAX_FILES"),
+            Some(&"77".to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_CODE_MAP_CLIENT_REPOS", prev_clients);
+        restore_var("ALFRED_CODE_MAP_BACKEND_REPO", prev_backend);
+        restore_var("ALFRED_CODE_MAP_MAX_FILES", prev_max);
+    }
+
+    #[test]
+    fn native_subprocess_env_preserves_process_telemetry_opt_out() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_telemetry_enabled = std::env::var("ALFRED_TELEMETRY_ENABLED").ok();
+        let prev_telemetry_url = std::env::var("ALFRED_TELEMETRY_URL").ok();
+
+        let root = temp_root("alfred-telemetry-opt-out");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create temp runtime");
+        std::fs::write(
+            runtime.join(".env"),
+            "ALFRED_TELEMETRY_ENABLED=1\n\
+             ALFRED_TELEMETRY_URL=https://telemetry.example.com/ingest\n",
+        )
+        .expect("write temp env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::set_var("ALFRED_TELEMETRY_ENABLED", "0");
+        std::env::remove_var("ALFRED_TELEMETRY_URL");
+
+        let env = merged_alfred_env();
+        assert_eq!(env.get("ALFRED_TELEMETRY_ENABLED"), Some(&"0".to_string()));
+        assert_eq!(
+            env.get("ALFRED_TELEMETRY_URL"),
+            Some(&"https://telemetry.example.com/ingest".to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_TELEMETRY_ENABLED", prev_telemetry_enabled);
+        restore_var("ALFRED_TELEMETRY_URL", prev_telemetry_url);
+    }
+
+    #[test]
+    fn native_subprocess_env_file_telemetry_opt_out_overrides_process_enable() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_telemetry_enabled = std::env::var("ALFRED_TELEMETRY_ENABLED").ok();
+
+        let root = temp_root("alfred-file-telemetry-opt-out");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create temp runtime");
+        std::fs::write(runtime.join(".env"), "ALFRED_TELEMETRY_ENABLED=0\n")
+            .expect("write temp env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::set_var("ALFRED_TELEMETRY_ENABLED", "1");
+
+        let env = merged_alfred_env();
+        assert_eq!(env.get("ALFRED_TELEMETRY_ENABLED"), Some(&"0".to_string()));
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_TELEMETRY_ENABLED", prev_telemetry_enabled);
     }
 
     #[test]

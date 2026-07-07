@@ -53,7 +53,7 @@ export function SetupView({
   onConnectServer: (url: string) => void;
 }) {
   const canRun = supportsNativeActions();
-  const [consoleAgent, setConsoleAgent] = useState("lucius");
+  const [consoleAgent, setConsoleAgent] = useState("senior-dev");
   const [serverUrl, setServerUrl] = useState(baseUrl);
   const [trustedUserId, setTrustedUserId] = useState("");
   const [subtab, setSubtab] = useState<SetupSubtab>("connection");
