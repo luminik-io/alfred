@@ -32,7 +32,7 @@ First-run trust polish and the public download path for the signed native client
 
 ### v0.5.0 (2026-06-15)
 
-The native desktop app and the trust features around it: a signed Mac/Linux app over `alfred serve` (Inbox, Ask, Work, Agents, Setup), live Claude and Codex subscription usage, a single-repo approval gate, a disk guardian, an approved-Slack-plan-to-issue bridge, and judge-gated fleet memory with an optional Redis Agent Memory Server.
+The native desktop app and the trust features around it: a signed Mac/Linux app over `alfred serve` (Inbox, Ask, Work, Agents, Setup), live Claude and Codex subscription usage, a single-repo approval gate, a disk guardian, an approved-Slack-plan-to-issue bridge, and review-first fleet memory with an optional Redis Agent Memory Server.
 
 ### v0.4.0 (2026-05-23)
 
