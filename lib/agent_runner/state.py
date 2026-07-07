@@ -168,6 +168,14 @@ def record_engine_quota_exhausted(
     happy-path messaging renders.
     """
     until = (resume_at or "").strip()
+    if until:
+        try:
+            parsed_until = datetime.strptime(until, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+        except ValueError:
+            until = ""
+        else:
+            if parsed_until <= datetime.now(UTC):
+                until = ""
     if not until:
         default_hours = 5
         raw = os.environ.get("ALFRED_ENGINE_QUOTA_DEFAULT_HOURS", "").strip()

@@ -1103,14 +1103,16 @@ def codex_invoke(
         if looks_quota_exhausted(classifier_text):
             resume_at = parse_quota_resume_at(classifier_text)
             raw["quota_resume_at"] = resume_at
-            with contextlib.suppress(Exception):
+            try:
                 from .state import record_engine_quota_exhausted
 
-                record_engine_quota_exhausted(
+                raw["quota_resume_at"] = record_engine_quota_exhausted(
                     "codex",
                     resume_at=resume_at,
                     reason=tail[-200:] or "codex usage limit reached",
                 )
+            except Exception:
+                pass
             return ClaudeResult(
                 success=False,
                 subtype="error_quota_exhausted",

@@ -72,6 +72,25 @@ def test_codex_invoke_plain_rate_limit_still_transient(fresh_agent_runner, monke
     assert ar.is_engine_quota_exhausted("codex") is False
 
 
+def test_engine_quota_backoff_uses_default_when_resume_hint_is_expired(
+    fresh_agent_runner, monkeypatch
+):
+    ar = fresh_agent_runner
+    monkeypatch.setenv("ALFRED_ENGINE_QUOTA_DEFAULT_HOURS", "2")
+
+    until = ar.record_engine_quota_exhausted(
+        "codex",
+        resume_at="2000-01-01T00:00:00Z",
+        reason="stale resume hint",
+    )
+
+    assert until != "2000-01-01T00:00:00Z"
+    assert ar.is_engine_quota_exhausted("codex") is True
+    record = ar.engine_quota_backoff("codex")
+    assert record is not None
+    assert record["until"] == until
+
+
 def test_invoke_agent_engine_skips_quota_parked_engine(fresh_agent_runner, tmp_path):
     ar = fresh_agent_runner
 
