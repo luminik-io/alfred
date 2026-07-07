@@ -429,8 +429,11 @@ def register_routes(app: FastAPI) -> None:
         repo = str(body.get("repo") or "").strip()
         action = str(body.get("action") or "").strip().lower()
         target_agent = str(body.get("target_agent") or body.get("agent") or "").strip()
+        number_raw = body.get("number")
+        if not isinstance(number_raw, (str, int)):
+            return JSONResponse({"error": "number must be an integer"}, status_code=400)
         try:
-            number = int(body.get("number"))
+            number = int(number_raw)
         except (TypeError, ValueError):
             return JSONResponse({"error": "number must be an integer"}, status_code=400)
         allowed_actions = set(QUEUE_ACTIONS) | {"assign"}
@@ -1198,7 +1201,7 @@ def register_routes(app: FastAPI) -> None:
         # sends the selected repo in draft.repos with EVERY fallback turn (and
         # the setup-scope injection below adds one server-side), so counting
         # repos would suppress the conversation path for any configured setup.
-        content_draft = replace(base_draft, repos=()) if base_draft.repos else base_draft
+        content_draft = replace(base_draft, repos=[]) if base_draft.repos else base_draft
         if (
             text
             and prior_payload is None
@@ -1392,7 +1395,11 @@ def _jsonable(value: Any) -> Any:
 
 
 def _candidate_to_api(candidate: Any) -> dict[str, Any]:
-    payload = _jsonable(asdict(candidate) if is_dataclass(candidate) else candidate)
+    payload = _jsonable(
+        asdict(candidate)
+        if is_dataclass(candidate) and not isinstance(candidate, type)
+        else candidate
+    )
     if isinstance(payload, dict):
         if payload.get("agent") and not payload.get("codename"):
             payload["codename"] = payload["agent"]
@@ -1420,7 +1427,9 @@ def _candidate_to_api(candidate: Any) -> dict[str, Any]:
 def _lesson_to_api(lesson: Any) -> dict[str, Any]:
     """Serialize a recall Lesson for the client. Simpler than a candidate:
     no review fields, just the fact Alfred is using."""
-    payload = _jsonable(asdict(lesson) if is_dataclass(lesson) else lesson)
+    payload = _jsonable(
+        asdict(lesson) if is_dataclass(lesson) and not isinstance(lesson, type) else lesson
+    )
     if isinstance(payload, dict):
         if payload.get("id") is not None:
             payload["id"] = str(payload["id"])
@@ -1486,7 +1495,9 @@ def _memory_status_filter(status: str) -> str | None:
 
 
 def _lesson_field(lesson: Any, key: str) -> Any:
-    payload = _jsonable(asdict(lesson) if is_dataclass(lesson) else lesson)
+    payload = _jsonable(
+        asdict(lesson) if is_dataclass(lesson) and not isinstance(lesson, type) else lesson
+    )
     if isinstance(payload, dict):
         return payload.get(key)
     return None
@@ -2195,7 +2206,7 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
             },
             status_code=503,
         )
-    content_draft = replace(turn.draft, repos=()) if turn.draft.repos else turn.draft
+    content_draft = replace(turn.draft, repos=[]) if turn.draft.repos else turn.draft
     if (
         getattr(turn, "intent", "build") == cc.INTENT_CONVERSATION
         and prior_payload is None
@@ -2222,9 +2233,10 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
     ``ConverseResponse`` payload. The only difference is the transport, the turn
     runs on a worker thread while the assistant text it tees to its transcript is
     streamed as ``token`` SSE events, and the reconciled response arrives as a
-    ``result`` event. Setup-stage failures return a normal JSON 4xx/503 (no
-    stream opened); engine failures after the stream opens arrive as an
-    ``error`` event so the client falls back to non-streaming converse.
+    ``result`` event. Request/auth/setup validation failures return normal JSON
+    4xx/503 responses (no stream opened); "no live engine" opens a short stream
+    and emits an ``error`` event so the client can fall back without a browser
+    console resource error.
     """
     import compose_converse as cc
 
@@ -2245,17 +2257,13 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
 
     engine = cc.converse_engine_from_env()
     if not engine:
-        return JSONResponse(
-            {
-                "error": "live_session_unavailable",
-                "detail": (
-                    "No conversational engine is configured for Compose. Set "
-                    "ALFRED_COMPOSE_CONVERSE_ENGINE (or the planning-assistant "
-                    "engine) to enable the chat, or use the one-shot plan form."
-                ),
-            },
-            status_code=503,
-            headers=cors,
+        return _compose_stream_unavailable(
+            request,
+            message=(
+                "No conversational engine is configured for Compose. Set "
+                "ALFRED_COMPOSE_CONVERSE_ENGINE (or the planning-assistant "
+                "engine) to enable the chat, or use the one-shot plan form."
+            ),
         )
 
     draft_id = _safe_compose_draft_id(body.get("draft_id"))
@@ -2333,7 +2341,7 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
         )
 
     def _reconcile(turn: Any) -> dict[str, Any]:
-        content_draft = replace(turn.draft, repos=()) if turn.draft.repos else turn.draft
+        content_draft = replace(turn.draft, repos=[]) if turn.draft.repos else turn.draft
         if (
             getattr(turn, "intent", "build") == cc.INTENT_CONVERSATION
             and prior_payload is None
@@ -2369,9 +2377,35 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
     )
 
 
-def _converse_turn_payload(
-    turn: Any, *, draft_id: str, saved_path: Path | None
-) -> dict[str, Any]:
+def _compose_stream_unavailable(request: Request, *, message: str) -> StreamingResponse:
+    """Emit the stream-route no-engine signal without a failing HTTP status.
+
+    The Ask client treats ``detail: live_session_unavailable`` exactly like the
+    buffered route's 503 and falls back to the one-shot draft endpoint. Keeping
+    the streaming HTTP status 200 avoids a red browser resource error in the
+    hosted desktop UI, while the non-streaming ``/api/compose/converse`` route
+    still returns a plain 503 for API callers.
+    """
+    from server import streaming
+
+    frames = (
+        streaming._sse("open", {}),
+        streaming._sse("error", {"detail": "live_session_unavailable", "message": message}),
+    )
+    return StreamingResponse(
+        iter(frames),
+        media_type="text/event-stream",
+        headers=_streaming_cors_headers(
+            request,
+            {
+                "Cache-Control": "no-cache, no-transform",
+                "X-Accel-Buffering": "no",
+            },
+        ),
+    )
+
+
+def _converse_turn_payload(turn: Any, *, draft_id: str, saved_path: Path | None) -> dict[str, Any]:
     """The ``ConverseResponse`` dict both converse routes return.
 
     Kept identical to the non-streaming route's JSON body so the client's

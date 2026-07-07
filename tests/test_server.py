@@ -2632,6 +2632,29 @@ def test_compose_converse_degrades_when_no_engine_configured(
     assert response.json()["error"] == "live_session_unavailable"
 
 
+def test_compose_converse_stream_degrades_with_sse_error_when_no_engine_configured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The buffered endpoint returns 503 for API callers, but the browser-hosted
+    # Ask stream should not create a red resource error before falling back.
+    monkeypatch.delenv("ALFRED_COMPOSE_CONVERSE_ENGINE", raising=False)
+    monkeypatch.delenv("ALFRED_PLANNING_ASSISTANT_ENGINE", raising=False)
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/compose/converse/stream",
+        json={"messages": [{"role": "user", "content": "Build something"}]},
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert "event: error" in response.text
+    assert "live_session_unavailable" in response.text
+
+
 def test_compose_converse_degrades_when_engine_returns_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
