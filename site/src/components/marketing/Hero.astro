@@ -72,7 +72,7 @@ const hasPanel = Astro.slots.has("panel");
 
 <style>
   .hero {
-    padding: 66px 0 48px;
+    padding: 54px 0 42px;
     position: relative;
     overflow: hidden;
   }
@@ -81,20 +81,20 @@ const hasPanel = Astro.slots.has("panel");
     position: relative;
     z-index: 1;
     display: grid;
-    gap: 56px;
+    gap: 48px;
     align-items: start;
   }
 
   .hero--split .hero__inner {
-    grid-template-columns: minmax(0, 0.92fr) minmax(380px, 0.68fr);
+    grid-template-columns: minmax(0, 0.96fr) minmax(360px, 0.64fr);
   }
 
   .hero__copy h1 {
-    margin-top: 18px;
+    margin-top: 16px;
     color: var(--alfred-text-bright);
   }
 
-  .hero--compact-headline .hero__copy h1 { max-width: 17ch; }
+  .hero--compact-headline .hero__copy h1 { max-width: 16ch; }
 
   .hero__field::before { opacity: 0.34; filter: blur(18px) saturate(0.78); }
   .hero__field::after { opacity: 0.2; }
@@ -126,7 +126,7 @@ const hasPanel = Astro.slots.has("panel");
     backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
     border: 1px solid var(--glass-edge);
     border-radius: 0;
-    padding: 20px;
+    padding: 18px;
     box-shadow: 0 32px 90px -38px rgba(0, 0, 0, 0.9), var(--glass-glow);
   }
 
@@ -151,7 +151,7 @@ const hasPanel = Astro.slots.has("panel");
   .hero__panel > :global(*) { position: relative; z-index: 1; }
 
   @media (max-width: 980px) {
-    .hero { padding: 46px 0 26px; }
+    .hero { padding: 40px 0 24px; }
     .hero__inner { gap: 28px; }
     .hero--split .hero__inner {
       grid-template-columns: 1fr;
@@ -159,7 +159,7 @@ const hasPanel = Astro.slots.has("panel");
   }
 
   @media (max-width: 520px) {
-    .hero { padding: 44px 0 23px; }
+    .hero { padding: 38px 0 18px; }
     .hero__inner { gap: 22px; }
     .hero__inner,
     .hero__copy,
@@ -195,7 +195,7 @@ const hasPanel = Astro.slots.has("panel");
   }
 
   @media (max-width: 360px) {
-    .hero { padding-bottom: 6px; }
+    .hero { padding-bottom: 10px; }
     .hero__inner { gap: 16px; }
     .hero__ctas { margin-top: 18px; }
     .hero__panel { padding: 14px; }
