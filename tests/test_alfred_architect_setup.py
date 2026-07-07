@@ -27,6 +27,7 @@ def _load_module(monkeypatch: pytest.MonkeyPatch | None = None, tmp_path: Path |
         monkeypatch.delenv("ARCHITECT_PARENT_REPO", raising=False)
         monkeypatch.delenv("ARCHITECT_AUTO_EXECUTE", raising=False)
         monkeypatch.delenv("ARCHITECT_APPROVAL_MODE", raising=False)
+        monkeypatch.delenv("ARCHITECT_ROLLOUT_ORDER", raising=False)
     spec = importlib.util.spec_from_file_location(
         "alfred_architect_setup", REPO / "bin" / "alfred-architect-setup.py"
     )
@@ -171,6 +172,8 @@ def test_non_interactive_writes_supplied_values_without_live_calls(tmp_path, mon
             "acme/specs",
             "--picker",
             "newest",
+            "--rollout-order",
+            "api, web",
             "--approval-timeout-s",
             "120",
         ]
@@ -185,6 +188,7 @@ def test_non_interactive_writes_supplied_values_without_live_calls(tmp_path, mon
     assert "ARCHITECT_SLACK_CHANNEL=alfred" in text
     assert "ARCHITECT_PARENT_REPO=acme/specs" in text
     assert "ARCHITECT_PICKER=newest" in text
+    assert "ARCHITECT_ROLLOUT_ORDER=api,web" in text
     assert "ARCHITECT_APPROVAL_TIMEOUT_S=120" in text
     assert "export ARCHITECT_AUTO_EXECUTE" not in text
     assert "Skipping lifecycle doctor" in capsys.readouterr().err
@@ -214,6 +218,7 @@ def test_non_interactive_file_approval_mode_skips_slack_values(tmp_path, monkeyp
     text = env_file.read_text()
     assert "ARCHITECT_AUTO_EXECUTE=approval-gate" in text
     assert "ARCHITECT_APPROVAL_MODE=file" in text
+    assert "ARCHITECT_ROLLOUT_ORDER=backend,frontend,mobile,agents,data-acquisition" in text
     assert "SLACK_BOT_TOKEN" not in text
     assert "ALFRED_OPERATOR_SLACK_USER_ID" not in text
     captured = capsys.readouterr()

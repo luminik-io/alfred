@@ -1137,6 +1137,8 @@ def test_config_from_env_ignores_legacy_keys_after_architect_keys_are_set():
             "ARCHITECT_PARENT_REPO": "acme/specs",
             "BATMAN_AUTO_EXECUTE": "1",
             "ARCHITECT_AUTO_EXECUTE": "approval-gate",
+            "BATMAN_ROLLOUT_ORDER": "frontend,backend",
+            "ARCHITECT_ROLLOUT_ORDER": "backend,frontend",
         }
     )
 

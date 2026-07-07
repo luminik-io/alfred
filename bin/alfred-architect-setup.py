@@ -36,6 +36,8 @@ ARCHITECT_APPROVAL_MODE_ENV = "ARCHITECT_APPROVAL_MODE"
 ARCHITECT_PICKER_ENV = "ARCHITECT_PICKER"
 ARCHITECT_BUNDLE_PREFIX_ENV = "ARCHITECT_BUNDLE_SLUG_PREFIX"
 ARCHITECT_TIMEOUT_ENV = "ARCHITECT_APPROVAL_TIMEOUT_S"
+ARCHITECT_ROLLOUT_ORDER_ENV = "ARCHITECT_ROLLOUT_ORDER"
+DEFAULT_ROLLOUT_ORDER = "backend,frontend,mobile,agents,data-acquisition"
 
 MODE_HALT = "0"
 MODE_APPROVAL_GATE = "approval-gate"
@@ -296,6 +298,7 @@ def render_check_only(state: ArchitectSetupState) -> int:
         ARCHITECT_AUTO_EXECUTE_ENV,
         ARCHITECT_APPROVAL_MODE_ENV,
         ARCHITECT_PICKER_ENV,
+        ARCHITECT_ROLLOUT_ORDER_ENV,
         ARCHITECT_TIMEOUT_ENV,
     ):
         value = values.get(key, "")
@@ -332,6 +335,9 @@ def collect_values(state: ArchitectSetupState) -> dict[str, str]:
         ARCHITECT_PICKER_ENV: picker if picker in VALID_PICKERS else "oldest",
         ARCHITECT_BUNDLE_PREFIX_ENV: state.value(ARCHITECT_BUNDLE_PREFIX_ENV),
         ARCHITECT_TIMEOUT_ENV: state.value(ARCHITECT_TIMEOUT_ENV, "900") or "900",
+        ARCHITECT_ROLLOUT_ORDER_ENV: (
+            state.value(ARCHITECT_ROLLOUT_ORDER_ENV, DEFAULT_ROLLOUT_ORDER) or DEFAULT_ROLLOUT_ORDER
+        ),
     }
 
 
@@ -592,6 +598,16 @@ def step_optional_knobs(
         raise SystemExit(1)
     state.updates[ARCHITECT_PICKER_ENV] = picker
     state.updates[ARCHITECT_TIMEOUT_ENV] = timeout
+    rollout_order = (
+        args.rollout_order
+        if args.rollout_order is not None
+        else values[ARCHITECT_ROLLOUT_ORDER_ENV]
+    )
+    rollout_order = ",".join(token.strip() for token in rollout_order.split(",") if token.strip())
+    if not rollout_order:
+        fail(f"{ARCHITECT_ROLLOUT_ORDER_ENV}: expected at least one repo key")
+        raise SystemExit(1)
+    state.updates[ARCHITECT_ROLLOUT_ORDER_ENV] = rollout_order
     prefix = (
         args.bundle_slug_prefix
         if args.bundle_slug_prefix is not None
@@ -659,6 +675,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="approval surface for approval-gate mode",
     )
     parser.add_argument("--picker", choices=VALID_PICKERS, default="", help="parent issue picker")
+    parser.add_argument(
+        "--rollout-order",
+        default=None,
+        help="comma-separated repo keys for architect rollout order",
+    )
     parser.add_argument("--bundle-slug-prefix", default=None, help="optional bundle slug prefix")
     parser.add_argument(
         "--approval-timeout-s", type=int, default=None, help="approval wait timeout seconds"
