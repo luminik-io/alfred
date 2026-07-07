@@ -1113,6 +1113,7 @@ def test_config_from_env_flags_legacy_batman_keys_without_fallback():
             "BATMAN_PARENT_REPO": "acme/specs",
             "BATMAN_AUTO_EXECUTE": "1",
             "BATMAN_APPROVAL_CHANNEL": "alfred",
+            "BATMAN_ROLLOUT_ORDER": "frontend,backend",
         }
     )
 
@@ -1123,6 +1124,7 @@ def test_config_from_env_flags_legacy_batman_keys_without_fallback():
         "BATMAN_AUTO_EXECUTE",
         "BATMAN_PARENT_REPO",
         "BATMAN_APPROVAL_CHANNEL",
+        "BATMAN_ROLLOUT_ORDER",
     )
 
 
@@ -1141,3 +1143,17 @@ def test_config_from_env_ignores_legacy_keys_after_architect_keys_are_set():
     assert cfg.parent_repo == "acme/specs"
     assert cfg.auto_execute == "approval-gate"
     assert cfg.stale_legacy_env_keys == ()
+
+
+def test_config_from_env_flags_legacy_rollout_order_without_fallback():
+    from architect_lifecycle import ArchitectLifecycleConfig
+
+    cfg = ArchitectLifecycleConfig.from_env(
+        {
+            "ARCHITECT_PARENT_REPO": "acme/specs",
+            "BATMAN_ROLLOUT_ORDER": "frontend,backend",
+        }
+    )
+
+    assert cfg.parent_repo == "acme/specs"
+    assert cfg.stale_legacy_env_keys == ("BATMAN_ROLLOUT_ORDER",)
