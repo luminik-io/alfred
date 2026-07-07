@@ -90,6 +90,47 @@ def _full_firing_events() -> list[dict]:
     ]
 
 
+def _claude_auth_error_events() -> list[dict]:
+    return [
+        {"type": "system", "subtype": "init"},
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Failed to authenticate. API Error: 401 Invalid authentication credentials",
+                    }
+                ]
+            },
+        },
+        {
+            "type": "result",
+            "subtype": "success",
+            "is_error": True,
+            "api_error_status": 401,
+            "duration_ms": 2457,
+            "num_turns": 1,
+            "result": "Failed to authenticate. API Error: 401 Invalid authentication credentials",
+            "stop_reason": "stop_sequence",
+            "session_id": "auth-failed",
+            "total_cost_usd": 0,
+        },
+    ]
+
+
+def _result_only_event(**overrides) -> list[dict]:
+    result = {
+        "type": "result",
+        "subtype": "success",
+        "num_turns": 1,
+        "total_cost_usd": 0,
+        "stop_reason": "end_turn",
+    }
+    result.update(overrides)
+    return [result]
+
+
 @pytest.fixture()
 def state_dir(tmp_path: Path) -> Path:
     return tmp_path
@@ -113,6 +154,341 @@ def test_transcript_summary_full_shape(state_dir: Path) -> None:
     assert s.result.subtype == "success"
     assert s.result.num_turns == 2
     assert s.result.total_cost_usd == 0.12
+    assert s.result.raw_subtype == "success"
+    assert not s.result.is_error
+
+
+def test_transcript_summary_classifies_provider_error_envelope(state_dir: Path) -> None:
+    path = _write_firing(state_dir, "drake", "D401", _claude_auth_error_events())
+    s = transcripts.transcript_summary(path)
+    assert s.result is not None
+    assert s.result.subtype == "error_authentication"
+    assert s.result.raw_subtype == "success"
+    assert s.result.is_error
+    assert s.result.api_error_status == 401
+    assert s.result.result_text == (
+        "Failed to authenticate. API Error: 401 Invalid authentication credentials"
+    )
+
+
+def test_transcript_summary_preserves_non_provider_aborted_result(state_dir: Path) -> None:
+    path = _write_firing(
+        state_dir,
+        "drake",
+        "DABORT",
+        _result_only_event(
+            stop_reason="aborted",
+            result="Cancelled while editing rate-limit handling.",
+        ),
+    )
+    s = transcripts.transcript_summary(path)
+    assert s.result is not None
+    assert s.result.subtype == "success"
+    assert s.result.raw_subtype == "success"
+    assert not s.result.is_error
+
+
+def test_transcript_summary_preserves_aborted_error_envelope_without_status(
+    state_dir: Path,
+) -> None:
+    path = _write_firing(
+        state_dir,
+        "drake",
+        "DABORTERR",
+        _result_only_event(
+            is_error=True,
+            result="Failed to authenticate while editing rate-limit handling.",
+            stop_reason="aborted",
+        ),
+    )
+    s = transcripts.transcript_summary(path)
+    assert s.result is not None
+    assert s.result.subtype == "success"
+    assert s.result.raw_subtype == "success"
+    assert s.result.is_error
+
+
+def test_transcript_summary_preserves_aborted_error_envelope_with_status(
+    state_dir: Path,
+) -> None:
+    path = _write_firing(
+        state_dir,
+        "drake",
+        "DABORT401",
+        _result_only_event(
+            is_error=True,
+            api_error_status=401,
+            result="Failed to authenticate.",
+            stop_reason="aborted",
+        ),
+    )
+    s = transcripts.transcript_summary(path)
+    assert s.result is not None
+    assert s.result.subtype == "success"
+    assert s.result.raw_subtype == "success"
+    assert s.result.api_error_status == 401
+
+
+def test_transcript_summary_ignores_blank_api_status(state_dir: Path) -> None:
+    path = _write_firing(
+        state_dir,
+        "drake",
+        "DBLANK",
+        _result_only_event(api_error_status="", result="Completed."),
+    )
+    s = transcripts.transcript_summary(path)
+    assert s.result is not None
+    assert s.result.subtype == "success"
+
+
+def test_transcript_summary_ignores_generic_rate_limit_prose(state_dir: Path) -> None:
+    path = _write_firing(
+        state_dir,
+        "drake",
+        "DAPI",
+        _result_only_event(
+            is_error=True,
+            result="Implemented rate-limit handling and stopped.",
+            stop_reason="stop_sequence",
+        ),
+    )
+    s = transcripts.transcript_summary(path)
+    assert s.result is not None
+    assert s.result.subtype == "error_api"
+
+
+def test_transcript_summary_classifies_auth_marker_without_is_error(
+    state_dir: Path,
+) -> None:
+    path = _write_firing(
+        state_dir,
+        "drake",
+        "D401NOFLAG",
+        _result_only_event(
+            result="Failed to authenticate. API Error: 401 Invalid authentication credentials",
+            stop_reason="stop_sequence",
+        ),
+    )
+    s = transcripts.transcript_summary(path)
+    assert s.result is not None
+    assert s.result.subtype == "error_authentication"
+    assert not s.result.is_error
+
+
+def test_transcript_summary_classifies_budget_marker_without_is_error(
+    state_dir: Path,
+) -> None:
+    path = _write_firing(
+        state_dir,
+        "drake",
+        "DBUDGETNOFLAG",
+        _result_only_event(
+            result="You've hit your usage limit.",
+            stop_reason="stop_sequence",
+        ),
+    )
+    s = transcripts.transcript_summary(path)
+    assert s.result is not None
+    assert s.result.subtype == "error_budget"
+    assert not s.result.is_error
+
+
+def test_transcript_summary_classifies_strict_rate_limit_without_is_error(
+    state_dir: Path,
+) -> None:
+    path = _write_firing(
+        state_dir,
+        "drake",
+        "DRATELIMITNOFLAG",
+        _result_only_event(
+            error_message="quota exceeded",
+            result="Stopped before completing.",
+            stop_reason="stop_sequence",
+        ),
+    )
+    s = transcripts.transcript_summary(path)
+    assert s.result is not None
+    assert s.result.subtype == "error_rate_limit"
+    assert not s.result.is_error
+
+
+def test_transcript_summary_ignores_result_rate_limit_prose_without_is_error(
+    state_dir: Path,
+) -> None:
+    path = _write_firing(
+        state_dir,
+        "drake",
+        "DRATELIMITPROSE",
+        _result_only_event(
+            result="Implemented quota exceeded handling and stopped.",
+            stop_reason="stop_sequence",
+        ),
+    )
+    s = transcripts.transcript_summary(path)
+    assert s.result is not None
+    assert s.result.subtype == "success"
+
+
+def test_transcript_summary_classifies_subscription_cap_as_rate_limit(
+    state_dir: Path,
+) -> None:
+    path = _write_firing(
+        state_dir,
+        "drake",
+        "DSUBCAP",
+        _result_only_event(
+            is_error=True,
+            result=(
+                "Your organization has disabled Claude subscription access for "
+                "Claude Code. Use an Anthropic API key instead."
+            ),
+            stop_reason="stop_sequence",
+        ),
+    )
+    s = transcripts.transcript_summary(path)
+    assert s.result is not None
+    assert s.result.subtype == "error_rate_limit"
+
+
+def test_transcript_summary_classifies_quota_exceeded_as_rate_limit(
+    state_dir: Path,
+) -> None:
+    path = _write_firing(
+        state_dir,
+        "drake",
+        "DQUOTA",
+        _result_only_event(
+            is_error=True,
+            result="quota exceeded",
+            stop_reason="stop_sequence",
+        ),
+    )
+    s = transcripts.transcript_summary(path)
+    assert s.result is not None
+    assert s.result.subtype == "error_rate_limit"
+
+
+def test_transcript_summary_classifies_hyphenated_provider_rate_limit(
+    state_dir: Path,
+) -> None:
+    path = _write_firing(
+        state_dir,
+        "drake",
+        "DRATELIMIT",
+        _result_only_event(
+            is_error=True,
+            result="API Error: rate-limit exceeded",
+            stop_reason="stop_sequence",
+        ),
+    )
+    s = transcripts.transcript_summary(path)
+    assert s.result is not None
+    assert s.result.subtype == "error_rate_limit"
+
+
+def test_transcript_summary_budget_wins_over_limit_wording(state_dir: Path) -> None:
+    path = _write_firing(
+        state_dir,
+        "drake",
+        "DBUDGET",
+        _result_only_event(
+            is_error=True,
+            api_error_status=429,
+            result="You've hit your usage limit.",
+            stop_reason="stop_sequence",
+        ),
+    )
+    s = transcripts.transcript_summary(path)
+    assert s.result is not None
+    assert s.result.subtype == "error_budget"
+
+
+def test_transcript_summary_budget_handles_curly_apostrophe(state_dir: Path) -> None:
+    path = _write_firing(
+        state_dir,
+        "drake",
+        "DBUDGETCURLY",
+        _result_only_event(
+            is_error=True,
+            api_error_status=429,
+            result="You\u2019ve hit your usage limit.",
+            stop_reason="stop_sequence",
+        ),
+    )
+    s = transcripts.transcript_summary(path)
+    assert s.result is not None
+    assert s.result.subtype == "error_budget"
+
+
+def test_transcript_summary_overload_wins_over_too_many_requests(state_dir: Path) -> None:
+    path = _write_firing(
+        state_dir,
+        "drake",
+        "D529",
+        _result_only_event(
+            is_error=True,
+            api_error_status=529,
+            result="HTTP 529 too many requests",
+            stop_reason="stop_sequence",
+        ),
+    )
+    s = transcripts.transcript_summary(path)
+    assert s.result is not None
+    assert s.result.subtype == "error_overloaded"
+
+
+def test_transcript_summary_bedrock_throttle_is_overload(state_dir: Path) -> None:
+    path = _write_firing(
+        state_dir,
+        "drake",
+        "DBEDROCK",
+        _result_only_event(
+            is_error=True,
+            result=(
+                '{"type":"error","error":{"type":"throttling_error",'
+                '"message":"Bedrock: too many requests, throttled"}}'
+            ),
+            stop_reason="stop_sequence",
+        ),
+    )
+    s = transcripts.transcript_summary(path)
+    assert s.result is not None
+    assert s.result.subtype == "error_overloaded"
+
+
+def test_transcript_summary_strict_overload_envelope_without_is_error(
+    state_dir: Path,
+) -> None:
+    path = _write_firing(
+        state_dir,
+        "drake",
+        "DOVERLOADRAW",
+        _result_only_event(
+            result='{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}',
+            stop_reason="stop_sequence",
+        ),
+    )
+    s = transcripts.transcript_summary(path)
+    assert s.result is not None
+    assert s.result.subtype == "error_overloaded"
+    assert not s.result.is_error
+
+
+def test_transcript_summary_ignores_success_prose_about_overloaded_worker(
+    state_dir: Path,
+) -> None:
+    path = _write_firing(
+        state_dir,
+        "drake",
+        "DOVERLOADPROSE",
+        _result_only_event(
+            result="Fixed an overloaded worker and added regression tests.",
+            stop_reason="stop_sequence",
+        ),
+    )
+    s = transcripts.transcript_summary(path)
+    assert s.result is not None
+    assert s.result.subtype == "success"
 
 
 def test_transcript_summary_missing_file(state_dir: Path) -> None:
@@ -262,3 +638,13 @@ def test_render_firing_jsonl(state_dir: Path) -> None:
     assert "[tool_use Bash] $ ls -la /repo" in joined
     assert "[tool_use Skill] /review" in joined
     assert "[result] subtype=success turns=2" in joined
+
+
+def test_render_firing_jsonl_shows_effective_provider_error(state_dir: Path) -> None:
+    path = _write_firing(state_dir, "drake", "D401", _claude_auth_error_events())
+    lines = transcripts.render_firing_jsonl(path)
+    joined = "\n".join(lines)
+    assert "[result] subtype=error_authentication" in joined
+    assert "raw_subtype=success" in joined
+    assert "is_error=true" in joined
+    assert "api_error_status=401" in joined

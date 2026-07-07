@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -46,6 +48,32 @@ def _events_with_tools(
     ]
 
 
+def _auth_error_events() -> list[dict]:
+    return [
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Failed to authenticate. API Error: 401 Invalid authentication credentials",
+                    }
+                ]
+            },
+        },
+        {
+            "type": "result",
+            "subtype": "success",
+            "is_error": True,
+            "api_error_status": 401,
+            "num_turns": 1,
+            "result": "Failed to authenticate. API Error: 401 Invalid authentication credentials",
+            "stop_reason": "stop_sequence",
+            "total_cost_usd": 0,
+        },
+    ]
+
+
 def _write_firing(state_dir: Path, codename: str, firing_id: str, events: list[dict]) -> Path:
     month = datetime.now(UTC).strftime("%Y-%m")
     path = state_dir / "transcripts" / codename / month / f"{firing_id}.jsonl"
@@ -82,6 +110,66 @@ def test_logs_summary_json(tmp_path: Path, capsys):
     assert payload["firings"][0]["tool_calls_total"] == 2
 
 
+def test_logs_summary_reports_effective_provider_error(tmp_path: Path, capsys):
+    _write_firing(tmp_path, "drake", "D401", _auth_error_events())
+    cli = _load_alfred_logs()
+    rc = cli.main(["drake", "--state-dir", str(tmp_path)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "D401" in out
+    assert "error_authentication" in out
+
+
+def test_logs_summary_json_reports_safe_provider_result(tmp_path: Path, capsys):
+    _write_firing(tmp_path, "drake", "D401", _auth_error_events())
+    cli = _load_alfred_logs()
+    rc = cli.main(["drake", "--state-dir", str(tmp_path), "--json"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    result = payload["firings"][0]["result"]
+    assert result["subtype"] == "error_authentication"
+    assert result["raw_subtype"] == "success"
+    assert result["is_error"] is True
+    assert result["api_error_status"] == 401
+    assert "result_text" not in result
+    assert "error_message" not in result
+    assert "session_id" not in result
+
+
+def test_logs_script_prefers_checkout_lib_over_alfred_home(tmp_path: Path):
+    stale_home = tmp_path / "alfred-home"
+    stale_lib = stale_home / "lib"
+    stale_lib.mkdir(parents=True)
+    stale_lib.joinpath("transcripts.py").write_text(
+        "raise RuntimeError('stale installed transcripts imported')\n",
+        encoding="utf-8",
+    )
+    state_dir = tmp_path / "state"
+    _write_firing(state_dir, "drake", "D401", _auth_error_events())
+
+    env = os.environ.copy()
+    env["ALFRED_HOME"] = str(stale_home)
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "bin" / "alfred-logs.py"),
+            "drake",
+            "--state-dir",
+            str(state_dir),
+            "--json",
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["firings"][0]["result"]["subtype"] == "error_authentication"
+
+
 def test_logs_summary_no_transcripts(tmp_path: Path, capsys):
     # Put a different codename so list_codenames is non-empty and the
     # validation gate doesn't trip.
@@ -110,6 +198,17 @@ def test_logs_firing_pretty_dump(tmp_path: Path, capsys):
     assert "[tool_use Bash]" in out
     assert "[tool_use Skill] /qa" in out
     assert "[result] subtype=success" in out
+
+
+def test_logs_firing_pretty_dump_reports_provider_error(tmp_path: Path, capsys):
+    _write_firing(tmp_path, "drake", "D401", _auth_error_events())
+    cli = _load_alfred_logs()
+    rc = cli.main(["drake", "--state-dir", str(tmp_path), "--firing-id", "D401"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "[result] subtype=error_authentication" in out
+    assert "raw_subtype=success" in out
+    assert "api_error_status=401" in out
 
 
 def test_logs_firing_tool_calls(tmp_path: Path, capsys):

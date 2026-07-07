@@ -74,10 +74,32 @@ class FiringResult:
     """The trailing ``result`` event from a stream-JSON transcript."""
 
     subtype: str | None = None
+    raw_subtype: str | None = None
     num_turns: int | None = None
     total_cost_usd: float | None = None
     session_id: str | None = None
     stop_reason: str | None = None
+    is_error: bool = False
+    api_error_status: int | str | None = None
+    result_text: str | None = None
+    error_message: str | None = None
+
+    def to_summary_dict(self) -> dict[str, Any]:
+        """Return the safe, machine-readable result summary.
+
+        The raw transcript remains available through explicit JSONL passthrough
+        commands. Summary views intentionally avoid provider payload text and
+        session identifiers because those are easy to archive accidentally.
+        """
+        return {
+            "subtype": self.subtype,
+            "raw_subtype": self.raw_subtype,
+            "num_turns": self.num_turns,
+            "total_cost_usd": self.total_cost_usd,
+            "stop_reason": self.stop_reason,
+            "is_error": self.is_error,
+            "api_error_status": self.api_error_status,
+        }
 
 
 @dataclass
@@ -96,8 +118,7 @@ class TranscriptSummary:
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
-        if self.result is None:
-            data["result"] = None
+        data["result"] = self.result.to_summary_dict() if self.result else None
         return data
 
 
@@ -196,13 +217,7 @@ def transcript_summary(path: Path) -> TranscriptSummary:
             continue
 
         if obj.get("type") == "result" or ("subtype" in obj and "num_turns" in obj):
-            summary.result = FiringResult(
-                subtype=obj.get("subtype"),
-                num_turns=obj.get("num_turns"),
-                total_cost_usd=obj.get("total_cost_usd"),
-                session_id=obj.get("session_id"),
-                stop_reason=obj.get("stop_reason"),
-            )
+            summary.result = _result_from_event(obj)
             continue
 
         message = obj.get("message")
@@ -262,6 +277,142 @@ _CODEX_RATE_LIMIT_RE = re.compile(
     r"rate.?limit|usage.?limit|quota|\b429\b|too.?many.?requests",
     re.IGNORECASE,
 )
+_RESULT_RATE_LIMIT_RE = re.compile(
+    r"\b(?:HTTP\s*)?429\b|\btoo many requests\b|\bquota exceeded\b"
+    r"|\brate limit(?:ed| exceeded| reached)?\b"
+    r"|\brate_limit(?:ed|_error|_exceeded)?\b"
+    r"|\brate-limit(?:ed| exceeded| reached| error| hit)\b"
+    r"|API Error[^\n]{0,120}\brate-limit\b"
+    r"|\bdisabled Claude subscription access\b"
+    r"|\bClaude subscription access for Claude Code\b"
+    r"|\bsubscription access.{0,40}Claude Code\b",
+    re.IGNORECASE,
+)
+
+_RESULT_AUTH_RE = re.compile(
+    r"authentication_(?:error|failed)|failed to authenticate|invalid authentication credentials"
+    r"|\bAPI Error:\s*401\b|\b401\b[^\n]{0,120}authentication"
+    r"|not logged in|please run /login",
+    re.IGNORECASE,
+)
+_RESULT_BUDGET_RE = re.compile(
+    r"\b(?:you(?:'re| are) out of extra usage|you(?:'ve| have) hit your usage limit)\b"
+    r"|\bout of extra usage\b",
+    re.IGNORECASE,
+)
+_RESULT_OVERLOAD_RE = re.compile(
+    r'"type"\s*:\s*"error"[^\n]{0,400}?"type"\s*:\s*"overloaded_error"'
+    r"|(?m:^API Error[^\n]{0,400}overloaded_error)"
+    r"|\bHTTP\s*529\b"
+    r"|\b529\b\s*[:.\-]\s*(?:overloaded|too\s+many\s+requests)"
+    r'|"type"\s*:\s*"error"[^\n]{0,400}?[Bb]edrock[^\n]{0,400}?throttl(?:ing|ed)'
+    r'|"type"\s*:\s*"error"[^\n]{0,400}?throttl(?:ing|ed)[^\n]{0,400}?[Bb]edrock',
+    re.IGNORECASE,
+)
+
+
+def _result_from_event(obj: dict[str, Any]) -> FiringResult:
+    raw_subtype = obj.get("subtype")
+    result_text = str(obj.get("result") or "")
+    error_message = _first_text(obj, "error_message", "errorMessage", "error")
+    api_error_status = obj.get("api_error_status")
+    return FiringResult(
+        subtype=_effective_result_subtype(obj),
+        raw_subtype=raw_subtype,
+        num_turns=obj.get("num_turns"),
+        total_cost_usd=obj.get("total_cost_usd"),
+        session_id=obj.get("session_id"),
+        stop_reason=obj.get("stop_reason"),
+        is_error=_truthy(obj.get("is_error")),
+        api_error_status=api_error_status,
+        result_text=result_text or None,
+        error_message=error_message,
+    )
+
+
+def _effective_result_subtype(obj: dict[str, Any]) -> str | None:
+    raw = obj.get("subtype")
+    raw_str = str(raw or "")
+    is_error = _truthy(obj.get("is_error"))
+    api_error_status = obj.get("api_error_status")
+    has_api_error_status = api_error_status is not None and str(api_error_status).strip() != ""
+    stop_reason = str(obj.get("stop_reason") or "")
+    text = _result_error_text(obj)
+    strict_text = _result_strict_error_text(obj)
+    rate_limit_text = text if is_error else strict_text
+    has_provider_marker = bool(
+        has_api_error_status
+        or _RESULT_BUDGET_RE.search(text)
+        or _RESULT_AUTH_RE.search(text)
+        or _RESULT_OVERLOAD_RE.search(text)
+        or _RESULT_RATE_LIMIT_RE.search(rate_limit_text)
+    )
+
+    if raw_str.startswith("error_"):
+        return raw_str
+    if stop_reason in {"aborted", "error"}:
+        return raw
+    if not is_error and not has_provider_marker:
+        return raw
+    if _RESULT_BUDGET_RE.search(text):
+        return "error_budget"
+    if _status_is(obj.get("api_error_status"), 401) or _RESULT_AUTH_RE.search(text):
+        return "error_authentication"
+    if _status_is(obj.get("api_error_status"), 529) or _RESULT_OVERLOAD_RE.search(text):
+        return "error_overloaded"
+    if _status_is(obj.get("api_error_status"), 429) or _RESULT_RATE_LIMIT_RE.search(
+        rate_limit_text
+    ):
+        return "error_rate_limit"
+    return "error_api"
+
+
+def _result_error_text(obj: dict[str, Any]) -> str:
+    text = "\n".join(
+        part
+        for part in (
+            str(obj.get("result") or ""),
+            _first_text(obj, "error_message", "errorMessage", "error") or "",
+            str(obj.get("api_error_status") or ""),
+        )
+        if part
+    )
+    return text.replace("\u2018", "'").replace("\u2019", "'")
+
+
+def _result_strict_error_text(obj: dict[str, Any]) -> str:
+    text = "\n".join(
+        part
+        for part in (
+            _first_text(obj, "error_message", "errorMessage", "error") or "",
+            str(obj.get("api_error_status") or ""),
+        )
+        if part
+    )
+    return text.replace("\u2018", "'").replace("\u2019", "'")
+
+
+def _first_text(obj: dict[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        value = obj.get(key)
+        if value:
+            return str(value)
+    return None
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _status_is(value: Any, code: int) -> bool:
+    try:
+        return int(str(value).strip()) == code
+    except (TypeError, ValueError):
+        return False
 
 
 def extract_codex_tokens(text: str) -> int:
@@ -337,14 +488,22 @@ def _render_event(obj: dict[str, Any]) -> str | None:
     if t == "assistant":
         return _render_assistant(obj)
     if t == "result" or ("subtype" in obj and "num_turns" in obj):
+        result = _result_from_event(obj)
         cost = obj.get("total_cost_usd") or 0
         try:
             cost_str = f"${float(cost):.4f}"
         except (TypeError, ValueError):
             cost_str = "$?"
+        detail = ""
+        if result.raw_subtype and result.raw_subtype != result.subtype:
+            detail += f" raw_subtype={result.raw_subtype}"
+        if result.is_error:
+            detail += " is_error=true"
+        if result.api_error_status is not None:
+            detail += f" api_error_status={result.api_error_status}"
         return (
-            f"[result] subtype={obj.get('subtype')} turns={obj.get('num_turns')} "
-            f"cost={cost_str} stop_reason={obj.get('stop_reason')}"
+            f"[result] subtype={result.subtype} turns={obj.get('num_turns')} "
+            f"cost={cost_str} stop_reason={obj.get('stop_reason')}{detail}"
         )
     return None
 
