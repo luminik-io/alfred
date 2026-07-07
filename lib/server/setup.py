@@ -816,7 +816,7 @@ def _context_compression_capability(env: Mapping[str, str]) -> dict[str, Any]:
         category="tokens",
         recommended=True,
         state=state,
-        installed=True,
+        installed=built_in_enabled,
         enabled=built_in_enabled,
         detail=detail,
         detected={
@@ -1613,19 +1613,26 @@ def _code_graph_readiness_check(
     capability_plane: dict[str, Any], code_memory: dict[str, Any]
 ) -> dict[str, Any]:
     capability = _capability_by_key(capability_plane, "code_graph")
-    ready = capability.get("state") == "ready"
-    return _readiness_check(
+    capability_state = str(capability.get("state") or "")
+    ready = capability_state == "ready"
+    disabled = capability_state == "disabled"
+    row = _readiness_check(
         "code_graph",
         "Code graph memory",
         category="memory",
-        tier="recommended",
+        tier="optional" if disabled else "recommended",
         ready=ready,
         detail=str(capability.get("detail") or code_memory.get("detail") or ""),
-        action=str(capability.get("install_hint") or "Run `alfred code-memory doctor`."),
+        action=""
+        if disabled
+        else str(capability.get("install_hint") or "Run `alfred code-memory doctor`."),
         path=str(code_memory.get("graph_dir") or code_memory.get("index_dir") or "") or None,
-    ) | {
+    )
+    if disabled:
+        row["state"] = "disabled"
+    return row | {
         "detected": {
-            "capability_state": capability.get("state"),
+            "capability_state": capability_state,
             "enabled": bool(capability.get("enabled")),
         },
     }
@@ -1635,16 +1642,19 @@ def _context_compression_readiness_check(capability_plane: dict[str, Any]) -> di
     capability = _capability_by_key(capability_plane, "context_compression")
     capability_state = str(capability.get("state") or "")
     ready = capability_state == "ready"
+    disabled = capability_state == "disabled"
     row = _readiness_check(
         "context_compression",
         "Context governor",
         category="tokens",
-        tier="recommended",
+        tier="optional" if disabled else "recommended",
         ready=ready,
         detail=str(capability.get("detail") or ""),
-        action=str(capability.get("install_hint") or "Re-enable Alfred's context governor."),
+        action=""
+        if disabled
+        else str(capability.get("install_hint") or "Re-enable Alfred's context governor."),
     )
-    if capability_state == "disabled":
+    if disabled:
         row["state"] = "disabled"
     return row
 

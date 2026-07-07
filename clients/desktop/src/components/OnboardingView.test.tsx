@@ -572,6 +572,7 @@ describe("OnboardingView seven-step takeover", () => {
     expect(await screen.findByText(/local capabilities/i)).toBeInTheDocument();
     expect(screen.getByText(/0 of 1 ready/i)).toBeInTheDocument();
     expect(screen.getByText(/^optional$/i)).toBeInTheDocument();
+    expect(screen.getByText(/set ALFRED_CONTEXT_GOVERNOR=1/i)).toBeInTheDocument();
     expect(screen.queryByText(/^ready$/i)).not.toBeInTheDocument();
   });
 

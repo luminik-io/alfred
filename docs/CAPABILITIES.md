@@ -33,6 +33,7 @@ The JSON shape is versioned:
 
 Each row has a stable `key`, `state`, `detail`, `detected` object, and
 `install_hint`. A future repair action can install or configure a missing row,
-but the doctor itself stays read-only. The desktop intentionally displays the
-hint and source attribution rather than hiding a missing capability behind a
-generic setup warning.
+but the doctor itself stays read-only. Rows explicitly disabled by environment
+configuration stay visible as `state: "disabled"` and are not counted as
+actionable setup work. The desktop still displays their re-enable hint and
+source attribution rather than hiding the choice behind a generic setup warning.

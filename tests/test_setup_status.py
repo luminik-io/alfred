@@ -129,8 +129,13 @@ def test_bootstrap_status_preserves_disabled_context_governor_state(
     capability_by_key = {item["key"]: item for item in payload["capability_plane"]["capabilities"]}
 
     assert capability_by_key["context_compression"]["state"] == "disabled"
+    assert capability_by_key["context_compression"]["installed"] is False
+    assert capability_by_key["context_compression"]["enabled"] is False
+    assert first_run_by_key["context_compression"]["tier"] == "optional"
     assert first_run_by_key["context_compression"]["state"] == "disabled"
     assert first_run_by_key["context_compression"]["ready"] is False
+    assert first_run_by_key["context_compression"]["action"] == ""
+    assert payload["first_run"]["summary"]["recommended_total"] == 2
 
 
 def test_bootstrap_status_first_run_blocks_missing_queue_and_local_paths(
@@ -886,6 +891,9 @@ def test_bootstrap_status_respects_code_memory_disable(
         "limit": 25,
     }
     assert code_memory["detail"] == "Code memory is disabled with ALFRED_CODE_MEMORY_MCP."
+    assert first_run_by_key["code_graph"]["tier"] == "optional"
+    assert first_run_by_key["code_graph"]["state"] == "disabled"
+    assert first_run_by_key["code_graph"]["action"] == ""
     assert first_run_by_key["code_graph"]["detected"] == {
         "capability_state": "disabled",
         "enabled": False,
@@ -1061,7 +1069,7 @@ def test_capability_plane_reports_disabled_context_governor(
     context = {item["key"]: item for item in payload["capabilities"]}["context_compression"]
 
     assert context["state"] == "disabled"
-    assert context["installed"] is True
+    assert context["installed"] is False
     assert context["enabled"] is False
     assert "ALFRED_CONTEXT_GOVERNOR" in context["detail"]
 

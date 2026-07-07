@@ -137,7 +137,8 @@ export function EngineStep({
             <ul className="grid gap-2" aria-label="Local Alfred capabilities">
               {capabilityPlane.capabilities.map((capability) => {
                 const ready = capability.state === "ready";
-                const actionable = !ready && capability.state !== "disabled";
+                const disabled = capability.state === "disabled";
+                const showHint = (!ready && !disabled) || (disabled && Boolean(capability.install_hint));
                 return (
                   <li
                     key={capability.key}
@@ -169,7 +170,7 @@ export function EngineStep({
                         <span className="block text-xs text-muted-foreground">
                           {capability.detail}
                         </span>
-                        {actionable ? (
+                        {showHint ? (
                           <code className="mt-1 block break-words text-[11px] text-muted-foreground">
                             {capability.install_hint}
                           </code>

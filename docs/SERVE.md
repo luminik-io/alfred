@@ -231,6 +231,8 @@ contract:
 Required rows decide whether the first real run is safe to start. Recommended
 rows are visible but do not block: code graph, Alfred's context governor, and
 engineering skill packs can be finished without hiding the core install state.
+If an operator explicitly disables one of those local capabilities, first-run
+readiness reports it as disabled instead of presenting it as unfinished setup.
 
 `GET /api/usage` is served by `alfred serve` today and backs Alfred Desktop's
 capacity rail. It reports your real Claude subscription headroom for
