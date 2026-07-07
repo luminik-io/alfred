@@ -132,7 +132,7 @@ def test_agent_launch_expands_double_quoted_home_path_values_from_runtime_env(tm
 
 def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
     home = tmp_path / "home"
-    alfred = tmp_path / "alfred"
+    alfred = home / "alfred"
     bin_dir = alfred / "bin"
     launchd_dir = alfred / "launchd"
     home.mkdir()
@@ -176,7 +176,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         env={
             **os.environ,
             "HOME": str(home),
-            "ALFRED_HOME": str(alfred),
+            "ALFRED_HOME": "~/alfred",
             "WORKSPACE_ROOT": str(tmp_path / "code"),
             "ALFRED_CODE_MAP_REPOS": "org/stale",
             "ALFRED_CODE_MAP_MAX_FILES": "77",

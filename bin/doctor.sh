@@ -123,6 +123,29 @@ runtime_stop_control_active() {
   telemetry_stop_control_active "$1" "$2"
 }
 
+expand_user_path() {
+  local path="$1" expanded=""
+  case "$path" in
+    "~") printf '%s' "$HOME" ;;
+    "~"/*) printf '%s/%s' "$HOME" "${path#\~/}" ;;
+    "~"*)
+      expanded="$(python3 - "$path" <<'PY' 2>/dev/null || true
+import os
+import sys
+
+print(os.path.expanduser(sys.argv[1]))
+PY
+)"
+      if [ -n "$expanded" ]; then
+        printf '%s' "$expanded"
+      else
+        printf '%s' "$path"
+      fi
+      ;;
+    *) printf '%s' "$path" ;;
+  esac
+}
+
 load_env_file() {
   local file="$1" line key value quote_style existing_value
   [ -f "$file" ] || return 0
@@ -165,7 +188,9 @@ load_env_file() {
 }
 
 setup_managed_env_keys_from_file() {
-  local file="${ALFRED_HOME:-$HOME/.alfred}/.env" line key value slug in_managed_block=0
+  local runtime_home="${ALFRED_HOME:-$HOME/.alfred}" file line key value slug in_managed_block=0
+  runtime_home="$(expand_user_path "$runtime_home")"
+  file="$runtime_home/.env"
   [ -f "$file" ] || return 0
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
@@ -240,6 +265,7 @@ EOF
 }
 
 : "${ALFRED_HOME:=$HOME/.alfred}"
+ALFRED_HOME="$(expand_user_path "$ALFRED_HOME")"
 scrub_setup_runtime_env
 load_env_file "$ALFRED_HOME/.env"
 : "${WORKSPACE_ROOT:=$HOME/code}"

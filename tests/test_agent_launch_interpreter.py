@@ -290,6 +290,44 @@ def test_agent_launch_scrubs_custom_codename_scope_from_managed_block(
     assert "REPOS=org/runtime" in proc.stdout
 
 
+def test_agent_launch_expands_alfred_home_before_scanning_managed_block(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    runtime = home / "runtime"
+    runtime.mkdir(parents=True)
+    (runtime / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "AGENT_CODENAME_FEATURE_DEV=oracle\n"
+        "ALFRED_ORACLE_REPOS=org/runtime\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-managed-block.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "HOME_VAR=${ALFRED_HOME:-unset}"\n'
+        'echo "CODENAME=${AGENT_CODENAME_FEATURE_DEV:-unset}"\n'
+        'echo "REPOS=${ALFRED_ORACLE_REPOS:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        home=home,
+        extra_env={
+            "ALFRED_HOME": "~/runtime",
+            "AGENT_CODENAME_FEATURE_DEV": "old-oracle",
+            "ALFRED_ORACLE_REPOS": "org/stale",
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert f"HOME_VAR={runtime}" in proc.stdout
+    assert "CODENAME=oracle" in proc.stdout
+    assert "REPOS=org/runtime" in proc.stdout
+
+
 def test_agent_launch_preserves_code_memory_process_controls(
     tmp_path: Path, alfred_home: Path
 ) -> None:
