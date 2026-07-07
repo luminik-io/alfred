@@ -961,6 +961,7 @@ const CORE_INSTALL_TIMEOUT_S: u64 = 1_800;
 const CORE_SEED_TIMEOUT_S: u64 = 120;
 const CORE_DEPLOY_TIMEOUT_S: u64 = 300;
 const CORE_SKILLS_TIMEOUT_S: u64 = 120;
+const DEFAULT_RUNTIME_PORT: u16 = 7010;
 const REQUIRED_CLI_INSTALL_TOOLS: [&str; 3] = ["alfred-install", "alfred-init", "alfred-deploy"];
 
 struct CoreInstallPlan {
@@ -1117,7 +1118,7 @@ fn desktop_privileged_bootstrap_handoff(
                     reason.to_string(),
                     None,
                     false,
-                    "Alfred opened Terminal to finish the privileged install. Return to Alfred Desktop after the terminal command completes.".to_string(),
+                    "Alfred opened Terminal to finish the privileged install and start the local runtime. Return to Alfred Desktop after the terminal command completes.".to_string(),
                 ));
             }
             Err(err) => {
@@ -1127,7 +1128,7 @@ fn desktop_privileged_bootstrap_handoff(
                     format!("{reason}\nCould not open Terminal automatically: {err}"),
                     Some(126),
                     false,
-                    "Alfred needs a Terminal session to finish the privileged install. Run the command shown in stdout, then return to Alfred Desktop.".to_string(),
+                    "Alfred needs a Terminal session to finish the privileged install and start the local runtime. Run the command shown in stdout, then return to Alfred Desktop.".to_string(),
                 ));
             }
         }
@@ -1141,7 +1142,7 @@ fn desktop_privileged_bootstrap_handoff(
             reason.to_string(),
             Some(126),
             false,
-            "Alfred needs a Terminal session to finish the privileged install. Run the command shown in stdout, then return to Alfred Desktop.".to_string(),
+            "Alfred needs a Terminal session to finish the privileged install and start the local runtime. Run the command shown in stdout, then return to Alfred Desktop.".to_string(),
         ))
     }
 }
@@ -1224,11 +1225,69 @@ fn terminal_core_install_command(plan: &CoreInstallPlan) -> String {
         shell_command(&plan.skills_program, &plan.skills_args),
         optional_shell_command(&plan.code_memory_program, &plan.code_memory_args)
     ));
-    parts.push(
-        "printf '\\nAlfred Desktop install command finished. Return to Alfred Desktop and click Install or repair again if needed.\\n'"
-            .to_string(),
-    );
+    parts.push(terminal_runtime_start_command(DEFAULT_RUNTIME_PORT));
+    parts.push(format!(
+        "printf '\\nAlfred Desktop install command finished. The local runtime is healthy on port {}. Return to Alfred Desktop.\\n'",
+        DEFAULT_RUNTIME_PORT
+    ));
     parts.join(" && ")
+}
+
+fn terminal_runtime_start_command(port: u16) -> String {
+    let serve = shell_command("alfred", &alfred_serve_args(port));
+    let health_url = format!("http://127.0.0.1:{port}/api/status");
+    let health_probe = r#"import os
+import json
+import sys
+import time
+import urllib.request
+
+url = sys.argv[1]
+pid = int(os.environ["ALFRED_RUNTIME_PID"])
+for _ in range(40):
+    try:
+        with urllib.request.urlopen(url, timeout=0.5) as response:
+            if 200 <= response.status < 500:
+                payload = json.loads(response.read().decode("utf-8"))
+                if (
+                    isinstance(payload, dict)
+                    and isinstance(payload.get("agents"), list)
+                    and isinstance(payload.get("reliability"), dict)
+                    and isinstance(payload.get("metrics"), dict)
+                    and "setup_repos" in payload
+                ):
+                    sys.exit(0)
+    except Exception:
+        pass
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        print(
+            "Alfred runtime exited before it became healthy. See ~/.alfred/logs/desktop-runtime.log.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    except PermissionError:
+        pass
+    time.sleep(0.5)
+print(
+    f"Alfred runtime did not become healthy on port {url.rsplit(':', 1)[-1].split('/', 1)[0]}. See ~/.alfred/logs/desktop-runtime.log.",
+    file=sys.stderr,
+)
+    sys.exit(1)"#;
+    format!(
+        "mkdir -p \"$HOME/.alfred/logs\" && \
+         {{ command -v alfred >/dev/null 2>&1 || \
+         {{ printf '%s\\n' 'Alfred CLI was not found after install. Return to Alfred Desktop and run Install or repair again, or inspect the Terminal output above.' >&2; exit 1; }}; }} && \
+         {{ command -v python3 >/dev/null 2>&1 || \
+         {{ printf '%s\\n' 'python3 is required to verify Alfred runtime health after install. Install python3, then rerun Install or repair from Alfred Desktop.' >&2; exit 1; }}; }} && \
+         (nohup {} > \"$HOME/.alfred/logs/desktop-runtime.log\" 2>&1 < /dev/null & \
+         runtime_pid=$!; \
+         ALFRED_RUNTIME_PID=\"$runtime_pid\" python3 -c {} {})",
+        serve,
+        shell_quote(health_probe),
+        shell_quote(&health_url)
+    )
 }
 
 fn terminal_path_refresh_command(parent_path: Option<&std::ffi::OsStr>) -> String {
@@ -2542,6 +2601,17 @@ mod tests {
         assert!(command.contains("'/tmp/alfred core/deploy.sh'"));
         assert!(command.contains("alfred skills install --starter"));
         assert!(command.contains("alfred code-memory doctor"));
+        assert!(command.contains("nohup alfred serve --port 7010 --no-browser"));
+        assert!(command.contains("Alfred CLI was not found after install"));
+        assert!(command.contains("command -v python3"));
+        assert!(command.contains("python3 is required to verify Alfred runtime health"));
+        assert!(command.contains("json.loads"));
+        assert!(command.contains("urllib.request.urlopen"));
+        assert!(command.contains("setup_repos"));
+        assert!(command.contains("http://127.0.0.1:7010/api/status"));
+        assert!(command.contains("Alfred runtime did not become healthy on port"));
+        assert!(command.contains("The local runtime is healthy on port 7010"));
+        assert!(command.contains("$HOME/.alfred/logs/desktop-runtime.log"));
         assert!(
             command
                 .find("$HOME/.local/bin")
@@ -2597,6 +2667,22 @@ mod tests {
                 < command
                     .find("alfred code-memory doctor")
                     .expect("code-memory command should exist")
+        );
+        assert!(
+            command
+                .find("alfred code-memory doctor")
+                .expect("code-memory command should exist")
+                < command
+                    .find("nohup alfred serve --port 7010 --no-browser")
+                    .expect("runtime start command should exist")
+        );
+        assert!(
+            command
+                .find("nohup alfred serve --port 7010 --no-browser")
+                .expect("runtime start command should exist")
+                < command
+                    .find("python3 -c")
+                    .expect("runtime health check should exist")
         );
     }
 
