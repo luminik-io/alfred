@@ -772,6 +772,88 @@ We want Alfred to run a repo-local map smoke.
     assert str(checkout) not in rendered
 
 
+def test_parse_parent_issue_repo_local_path_map_preserves_slug_across_parent_org(
+    monkeypatch,
+    tmp_path,
+):
+    import architect_lifecycle as bm
+
+    checkout = tmp_path / "workspace" / "tools" / "alfred-os"
+    monkeypatch.setattr(
+        bm,
+        "GH_REPO_TO_LOCAL",
+        {
+            "luminik-io/alfred": str(checkout),
+            "alfred": str(checkout),
+        },
+    )
+
+    body = """
+We want Alfred to run a repo-local map smoke.
+
+## Affected Repos
+- alfred
+
+## Acceptance Criteria
+
+### alfred
+- Add a focused smoke test.
+"""
+
+    plan = bm.parse_parent_issue(
+        body=body,
+        title="Bundle: repo-local smoke",
+        parent_repo="platform/plans",
+        parent_issue_number=42,
+    )
+
+    rendered = "\n".join(
+        [*(child.title for child in plan.children), *(child.body for child in plan.children)]
+    )
+    assert [child.repo for child in plan.children] == ["luminik-io/alfred"]
+    assert str(checkout) not in rendered
+
+
+def test_parse_parent_issue_repo_local_bare_path_map_preserves_repo_key(
+    monkeypatch,
+):
+    import architect_lifecycle as bm
+
+    monkeypatch.setattr(
+        bm,
+        "GH_REPO_TO_LOCAL",
+        {
+            "backend": "backend",
+            "acme-site": "../marketing/site",
+        },
+    )
+
+    body = """
+We want the site smoke wired through architect.
+
+## Affected Repos
+- acme-site
+
+## Acceptance Criteria
+
+### acme-site
+- Add a focused smoke test.
+"""
+
+    plan = bm.parse_parent_issue(
+        body=body,
+        title="Bundle: site smoke",
+        parent_repo="myorg/backend",
+        parent_issue_number=42,
+    )
+
+    rendered = "\n".join(
+        [*(child.title for child in plan.children), *(child.body for child in plan.children)]
+    )
+    assert [child.repo for child in plan.children] == ["myorg/acme-site"]
+    assert "../marketing/site" not in rendered
+
+
 def test_parse_parent_issue_loose_shape_preserves_duplicate_cross_org_tails():
     body = """
 We want the same worker in two orgs.

@@ -67,7 +67,6 @@ _SETUP_MANAGED_RUNTIME_ENV_KEYS = (
     _REPO_SCOPE_ENV_KEYS
     | {
         "AGENT_CODENAME_*",
-        "ALFRED_REPO_LOCAL_MAP",
         "ALFRED_MORNING_BRIEF_AGENTS",
         "ALFRED_TELEMETRY_*",
     }
@@ -355,6 +354,8 @@ def _managed_runtime_env_keys(path: Path) -> set[str]:
         key = key.strip()
         if not _ENV_KEY_RE.match(key):
             break
+        if key in {"ALFRED_REPO_LOCAL_MAP", "GH_ORG"}:
+            keys.add(key)
         if _env_key_matches(key, _SETUP_MANAGED_RUNTIME_ENV_KEYS):
             keys.add(key)
         if key.startswith("AGENT_CODENAME_"):

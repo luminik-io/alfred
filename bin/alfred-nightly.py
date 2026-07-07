@@ -59,6 +59,8 @@ from agent_runner import (  # noqa: E402
     gh_pr_create,
     make_worktree,
     preflight,
+    push_current_branch,
+    push_remote_and_pr_head,
     remove_worktree,
     run,
     short,
@@ -300,7 +302,8 @@ def update_npm_repo(local: str, slug: str, pre_push: str | None) -> dict[str, An
             status["error"] = f"commit failed: {short(commit.stderr, 240)}"
             return status
 
-        push = run(["git", "push", "-u", "origin", branch], cwd=str(wt), timeout=120)
+        push_remote, pr_head = push_remote_and_pr_head(wt, slug, branch)
+        push = push_current_branch(wt, branch, remote=push_remote, timeout=120)
         if push.returncode != 0:
             status["outcome"] = "error"
             status["error"] = f"push failed: {short(push.stderr, 240)}"
@@ -313,7 +316,7 @@ def update_npm_repo(local: str, slug: str, pre_push: str | None) -> dict[str, An
             slug,
             title=f"chore(deps): weekly safe-band updates ({len(safe)} packages)",
             body_file=pr_body_file,
-            head=branch,
+            head=pr_head,
             labels=["agent:authored", "dependencies"],
         )
         if pr_url:

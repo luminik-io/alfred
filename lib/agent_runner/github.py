@@ -37,6 +37,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -51,6 +52,11 @@ from .paths import (
     now_iso,
 )
 from .process import gh_json, run, short
+
+_REPO_LOCAL_MAP_KEY_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=")
+_REPO_LOCAL_MAP_COMMA_BOUNDARY_RE = re.compile(
+    r",\s*(?=[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=(?:/|~|\.{1,2}/))"
+)
 
 # --------------------------------------------------------------------------
 # Repo slug map + helper
@@ -86,12 +92,15 @@ def _repo_local_map_from_env() -> dict[str, str]:
             continue
         key, value = piece.split("=", 1)
         key = key.strip()
-        value = value.strip()
+        value = _decode_repo_local_map_value(value.strip())
         if not key or not value:
             continue
         out[key] = value
+        out.setdefault(key.lower(), value)
         if "/" in key:
-            out.setdefault(key.rsplit("/", 1)[-1], value)
+            bare = key.rsplit("/", 1)[-1]
+            out.setdefault(bare, value)
+            out.setdefault(bare.lower(), value)
     return out
 
 
@@ -104,12 +113,46 @@ def _repo_local_map_entries(raw: str) -> list[str]:
     except ValueError:
         tokens = []
     if tokens:
-        legacy_comma_value = (
-            len(tokens) == 1 and "," in tokens[0] and tokens[0].count("=") > 1
-        ) or any(token.endswith(",") for token in tokens)
-        if not legacy_comma_value:
-            return tokens
-    return [piece.strip() for piece in value.split(",") if piece.strip()]
+        return _repo_local_map_entries_from_tokens(_repo_local_map_expand_tokens(tokens))
+    return [value]
+
+
+def _repo_local_map_expand_tokens(tokens: list[str]) -> list[str]:
+    expanded: list[str] = []
+    for token in tokens:
+        expanded.extend(part for part in _REPO_LOCAL_MAP_COMMA_BOUNDARY_RE.split(token) if part)
+    return expanded
+
+
+def _repo_local_map_is_path_boundary_token(token: str) -> bool:
+    if not _REPO_LOCAL_MAP_KEY_RE.match(token):
+        return False
+    value = token.split("=", 1)[1]
+    return value.startswith(("/", "~", "./", "../"))
+
+
+def _repo_local_map_entries_from_tokens(tokens: list[str]) -> list[str]:
+    entries: list[str] = []
+    current = ""
+    for token in tokens:
+        if _REPO_LOCAL_MAP_KEY_RE.match(token):
+            if current:
+                if current.endswith(",") and _repo_local_map_is_path_boundary_token(token):
+                    entries.append(current[:-1])
+                else:
+                    entries.append(current)
+            current = token
+        elif current:
+            current = f"{current} {token}"
+    if current:
+        entries.append(current)
+    return entries
+
+
+def _decode_repo_local_map_value(value: str) -> str:
+    if value.startswith("url:"):
+        return urllib.parse.unquote(value.removeprefix("url:"))
+    return value
 
 
 GH_REPO_TO_LOCAL.update(_repo_local_map_from_env())
@@ -162,6 +205,71 @@ def _full_repo(slug: str) -> str:
         "to <org>/<repo>. Set GH_ORG in your launchd plist or pass full "
         "slug like 'myorg/myrepo'."
     )
+
+
+def _github_slug_from_remote_url(raw: str) -> str:
+    url = raw.strip()
+    if not url:
+        return ""
+    if url.startswith("git@github.com:"):
+        path = url.split(":", 1)[1]
+    else:
+        try:
+            parsed = urllib.parse.urlsplit(url)
+        except ValueError:
+            return ""
+        if parsed.hostname != "github.com":
+            return ""
+        path = parsed.path.lstrip("/")
+    path = path.removesuffix(".git").strip("/")
+    parts = [part for part in path.split("/") if part]
+    if len(parts) < 2:
+        return ""
+    return f"{parts[-2]}/{parts[-1]}"
+
+
+def _github_remote_url_for_slug(origin_url: str, slug: str) -> str:
+    if origin_url.startswith("git@github.com:"):
+        return f"git@github.com:{slug}.git"
+    try:
+        parsed = urllib.parse.urlsplit(origin_url.strip())
+    except ValueError:
+        return f"https://github.com/{slug}.git"
+    if parsed.hostname != "github.com":
+        return f"https://github.com/{slug}.git"
+    if parsed.scheme == "ssh":
+        return f"ssh://git@github.com/{slug}.git"
+    if parsed.scheme in {"http", "https"}:
+        return f"{parsed.scheme}://github.com/{slug}.git"
+    return f"https://github.com/{slug}.git"
+
+
+def _worktree_origin_remote(wt: Path) -> str:
+    res = run(["git", "remote", "get-url", "origin"], cwd=str(wt), timeout=10)
+    if res.returncode != 0:
+        return ""
+    return (res.stdout or "").strip()
+
+
+def push_remote_and_pr_head(wt: Path, repo_slug: str, branch: str) -> tuple[str, str]:
+    """Return the git push remote and gh ``--head`` value for ``repo_slug``.
+
+    A source checkout may be cloned from an upstream repo while setup targets a
+    fork via ``GH_ORG``. In that case pushing to ``origin`` would put the branch
+    on the upstream owner while ``gh pr create -R <fork> --head <branch>`` looks
+    for it on the fork. Push directly to the selected repo URL, then pass the
+    plain branch name to gh so org-owned repositories avoid unsupported
+    ``owner:branch`` head syntax.
+    """
+
+    if is_dry_run():
+        return "origin", branch
+    full_repo = _full_repo(repo_slug)
+    origin_url = _worktree_origin_remote(wt)
+    origin_slug = _github_slug_from_remote_url(origin_url)
+    if not origin_slug or origin_slug.lower() == full_repo.lower():
+        return "origin", branch
+    return _github_remote_url_for_slug(origin_url, full_repo), branch
 
 
 # --------------------------------------------------------------------------
@@ -278,28 +386,38 @@ def ensure_labels(repo_slug: str, labels: list[tuple[str, str, str]] | None = No
 
 
 _WORKTREE_NAME_SAFE_RE = re.compile(r"[^A-Za-z0-9._-]+")
+_WORKTREE_NAME_FRAGMENT_MAX = 96
 
 
-def _safe_worktree_name_fragment(value: str, *, fallback: str) -> str:
+def _safe_worktree_name_fragment(value: str, *, fallback: str, suffix: str = "") -> str:
     safe = _WORKTREE_NAME_SAFE_RE.sub("-", str(value)).strip(".-")
-    return (safe or fallback)[:96]
+    base = safe or fallback
+    if not suffix:
+        return base[:_WORKTREE_NAME_FRAGMENT_MAX]
+    safe_suffix = _WORKTREE_NAME_SAFE_RE.sub("-", suffix).strip(".-")
+    if not safe_suffix:
+        return base[:_WORKTREE_NAME_FRAGMENT_MAX]
+    base_limit = _WORKTREE_NAME_FRAGMENT_MAX - len(safe_suffix) - 1
+    if base_limit <= 0:
+        return safe_suffix[-_WORKTREE_NAME_FRAGMENT_MAX:]
+    base = base[:base_limit].rstrip(".-") or fallback[:base_limit].rstrip(".-") or "repo"
+    return f"{base}-{safe_suffix}"
 
 
-def _worktree_repo_fragment_source(local_repo: str) -> str:
+def _worktree_repo_fragment(local_repo: str) -> str:
     raw = str(local_repo)
     if Path(raw).is_absolute() or "/" in raw or "\\" in raw:
         name = Path(raw).name or "repo"
         digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:10]
-        return f"{name}-{digest}"
-    return raw
+        return _safe_worktree_name_fragment(name, fallback="repo", suffix=digest)
+    return _safe_worktree_name_fragment(raw, fallback="repo")
 
 
 def _worktree_name_base(prefix: str, agent: str, local_repo: str, target: str) -> str:
-    repo_fragment_source = _worktree_repo_fragment_source(local_repo)
     return (
         f"{prefix}-"
         f"{_safe_worktree_name_fragment(agent, fallback='agent')}-"
-        f"{_safe_worktree_name_fragment(repo_fragment_source, fallback='repo')}-"
+        f"{_worktree_repo_fragment(local_repo)}-"
         f"{_safe_worktree_name_fragment(target, fallback='target')}"
     )
 

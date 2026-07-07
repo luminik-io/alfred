@@ -294,6 +294,10 @@ SPECIAL_PROMPTS = {
 }
 
 CODENAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+REPO_LOCAL_MAP_KEY_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=")
+REPO_LOCAL_MAP_COMMA_BOUNDARY_RE = re.compile(
+    r",\s*(?=[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=(?:/|~|\.{1,2}/))"
+)
 SLACK_WEBHOOK_RE = re.compile(r"^https://hooks\.slack\.com/services/")
 
 ALFRED_ENV_BANNER = "# alfred-init, generated below this line. Safe to re-run."
@@ -890,7 +894,7 @@ def parse_repo_local_map(raw: str) -> dict[str, str]:
             continue
         key, value = piece.split("=", 1)
         key = key.strip()
-        value = value.strip()
+        value = decode_repo_local_map_value(value.strip())
         if key and value:
             out[key] = value
     return out
@@ -898,6 +902,12 @@ def parse_repo_local_map(raw: str) -> dict[str, str]:
 
 def apply_repo_local_map_layer(out: dict[str, str], layer: dict[str, str]) -> None:
     """Apply one repo-local map layer, including its bare runtime aliases."""
+    for key, value in layer.items():
+        if "/" in key:
+            continue
+        for existing in list(out):
+            if "/" in existing and existing.rsplit("/", 1)[-1] == key and existing not in layer:
+                out[existing] = value
     for key, value in layer.items():
         out[key] = value
     for key, value in layer.items():
@@ -918,17 +928,61 @@ def repo_local_map_entries(raw: str) -> list[str]:
     except ValueError:
         tokens = []
     if tokens:
-        legacy_comma_value = (
-            len(tokens) == 1 and "," in tokens[0] and tokens[0].count("=") > 1
-        ) or any(token.endswith(",") for token in tokens)
-        if not legacy_comma_value:
-            return tokens
-    return [piece.strip() for piece in value.split(",") if piece.strip()]
+        return repo_local_map_entries_from_tokens(repo_local_map_expand_tokens(tokens))
+    return [value]
+
+
+def repo_local_map_expand_tokens(tokens: list[str]) -> list[str]:
+    expanded: list[str] = []
+    for token in tokens:
+        expanded.extend(part for part in REPO_LOCAL_MAP_COMMA_BOUNDARY_RE.split(token) if part)
+    return expanded
+
+
+def repo_local_map_is_path_boundary_token(token: str) -> bool:
+    if not REPO_LOCAL_MAP_KEY_RE.match(token):
+        return False
+    value = token.split("=", 1)[1]
+    return value.startswith(("/", "~", "./", "../"))
+
+
+def repo_local_map_entries_from_tokens(tokens: list[str]) -> list[str]:
+    """Rejoin decoded shell tokens into ``key=value`` map entries."""
+    entries: list[str] = []
+    current = ""
+    for token in tokens:
+        if REPO_LOCAL_MAP_KEY_RE.match(token):
+            if current:
+                if current.endswith(",") and repo_local_map_is_path_boundary_token(token):
+                    entries.append(current[:-1])
+                else:
+                    entries.append(current)
+            current = token
+        elif current:
+            current = f"{current} {token}"
+    if current:
+        entries.append(current)
+    return entries
 
 
 def format_repo_local_map(mapping: dict[str, str]) -> str:
     """Serialize ``ALFRED_REPO_LOCAL_MAP`` with stable, path-safe ordering."""
-    return shlex.join(f"{key}={mapping[key]}" for key in sorted(mapping))
+    return shlex.join(
+        f"{key}={encode_repo_local_map_value(mapping[key])}" for key in sorted(mapping)
+    )
+
+
+def encode_repo_local_map_value(value: str) -> str:
+    """Encode path values that cannot survive decoded env-token splitting."""
+    if any(char.isspace() or char in ",%" for char in value):
+        return "url:" + urllib.parse.quote(value, safe="/._-~")
+    return value
+
+
+def decode_repo_local_map_value(value: str) -> str:
+    if value.startswith("url:"):
+        return urllib.parse.unquote(value.removeprefix("url:"))
+    return value
 
 
 def selected_source_checkout_slugs(
@@ -939,6 +993,7 @@ def selected_source_checkout_slugs(
     """Selected repo slugs that exactly identify the source checkout."""
     source_lower = source_slug.lower()
     owner = gh_org.strip().lower()
+    source_repo = source_lower.rsplit("/", 1)[-1]
     out: list[str] = []
     for repo in selected:
         raw = repo.strip()
@@ -946,10 +1001,15 @@ def selected_source_checkout_slugs(
             continue
         repo_lower = raw.lower()
         if repo_lower == source_lower:
-            out.append(source_slug)
+            out.append(raw)
             continue
-        if "/" not in raw and owner and f"{owner}/{repo_lower}" == source_lower:
-            out.append(source_slug)
+        if "/" in repo_lower:
+            repo_owner, repo_name = repo_lower.split("/", 1)
+            if owner and repo_owner == owner and repo_name == source_repo:
+                out.append(raw)
+            continue
+        if owner and repo_lower == source_repo:
+            out.append(f"{gh_org.strip()}/{raw}")
     return out
 
 
@@ -1167,14 +1227,21 @@ def render_agents_conf(state: WizardState) -> str:
 def env_assignments_for(state: WizardState) -> dict[str, str]:
     """Per-role env-var map written into $ALFRED_HOME/.env."""
     out: dict[str, str] = {}
-    existing_env = read_env_file(state.env_file)
+    existing_env = read_unmanaged_env_file(state.env_file)
+    existing_effective_env = read_env_file(state.env_file)
     if state.gh_org:
         out["GH_ORG"] = state.gh_org
     selected_repos = selected_repo_union(state)
     board_repos = repo_board_values(selected_repos, state.gh_org)
     if board_repos:
         board_scope = ",".join(board_repos)
-        out["ALFRED_QUEUE_REPOS"] = existing_env.get("ALFRED_QUEUE_REPOS", board_scope)
+        if "ALFRED_QUEUE_REPOS" in existing_env:
+            queue_scope = existing_env["ALFRED_QUEUE_REPOS"]
+        elif "ALFRED_QUEUE_REPOS" in existing_effective_env:
+            queue_scope = existing_effective_env["ALFRED_QUEUE_REPOS"]
+        else:
+            queue_scope = board_scope
+        out["ALFRED_QUEUE_REPOS"] = queue_scope
         out["ALFRED_SHIPPED_REPOS"] = board_scope
         out["ALFRED_BRIDGE_REPOS"] = board_scope
     repo_map: dict[str, str] = {}

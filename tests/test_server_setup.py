@@ -26,7 +26,7 @@ def restore_repo_env_keys() -> None:
         setup_mod.QUEUE_REPOS_ENV,
         setup_mod.SHIPPED_REPOS_ENV,
         setup_mod.BRIDGE_REPOS_ENV,
-        *setup_mod.RUNTIME_REPO_SCOPE_ENV_KEYS,
+        *setup_mod.RUNTIME_SETUP_MANAGED_ENV_KEYS,
     )
     saved = {key: os.environ.get(key) for key in keys}
     for key in keys:
@@ -786,6 +786,7 @@ def test_selected_repos_prefers_generated_runtime_scope_over_stale_process_scope
     monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "old/api,old/web")
     monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "old/api,old/web")
     monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "old-api,old-web")
+    monkeypatch.setenv("GH_ORG", "old")
     home.mkdir(parents=True)
     (home / ".env").write_text(
         "\n".join(
@@ -807,7 +808,139 @@ def test_selected_repos_prefers_generated_runtime_scope_over_stale_process_scope
     assert setup_mod.selected_repos() == ["acme/alfred"]
     assert status["repos"]["selected"] == ["acme/alfred"]
     assert status["code_memory"]["repos"]["configured"] == ["alfred"]
+    assert setup_mod._runtime_config_env()["GH_ORG"] == "acme"
     assert status["install"]["selected_repos_env_present"] is True
+
+
+def test_generated_runtime_scope_preserves_process_only_repo_local_map(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    mapped = tmp_path / "mapped-web"
+    (mapped / ".git").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", f"web={mapped}")
+    home.mkdir(parents=True)
+    (home / ".env").write_text(
+        "\n".join(
+            [
+                "# alfred-init, generated below this line. Safe to re-run.",
+                "GH_ORG=acme",
+                "ALFRED_CODE_MEMORY_REPOS=web",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    runtime_env = setup_mod._runtime_config_env()
+    status = setup_mod.bootstrap_status()
+
+    assert runtime_env["ALFRED_REPO_LOCAL_MAP"] == f"web={mapped}"
+    assert status["code_memory"]["repos"]["configured_existing"] == ["web"]
+
+
+def test_generated_runtime_scope_preserves_process_only_gh_org(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv("GH_ORG", "process-org")
+    home.mkdir(parents=True)
+    (home / ".env").write_text(
+        "\n".join(
+            [
+                "# alfred-init, generated below this line. Safe to re-run.",
+                "ALFRED_CODE_MEMORY_REPOS=api",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    runtime_env = setup_mod._runtime_config_env()
+    status = setup_mod.bootstrap_status()
+
+    assert runtime_env["GH_ORG"] == "process-org"
+    assert status["code_memory"]["repos"]["configured"] == ["api"]
+
+
+def test_code_memory_repo_map_preserves_single_trailing_comma_path() -> None:
+    repo_map = setup_mod._code_memory_repo_map(
+        {"ALFRED_REPO_LOCAL_MAP": "web=/work/archive,"},
+        include_aliases=False,
+    )
+
+    assert repo_map == {"web": "/work/archive,"}
+
+
+def test_code_memory_repo_map_preserves_multi_entry_trailing_comma_path() -> None:
+    repo_map = setup_mod._code_memory_repo_map(
+        {"ALFRED_REPO_LOCAL_MAP": "api=/work/api web=/work/archive,"},
+        include_aliases=False,
+    )
+
+    assert repo_map == {"api": "/work/api", "web": "/work/archive,"}
+
+
+def test_code_memory_repo_map_recovers_comma_delimited_path_entries() -> None:
+    repo_map = setup_mod._code_memory_repo_map(
+        {"ALFRED_REPO_LOCAL_MAP": "api=/work/api, web=/work/web"},
+        include_aliases=False,
+    )
+
+    assert repo_map == {"api": "/work/api", "web": "/work/web"}
+
+
+def test_code_memory_repo_map_recovers_compact_comma_delimited_path_entries() -> None:
+    repo_map = setup_mod._code_memory_repo_map(
+        {"ALFRED_REPO_LOCAL_MAP": "api=/work/api,web=/work/web"},
+        include_aliases=False,
+    )
+
+    assert repo_map == {"api": "/work/api", "web": "/work/web"}
+
+
+def test_code_memory_repo_map_preserves_comma_and_equals_in_path() -> None:
+    repo_map = setup_mod._code_memory_repo_map(
+        {"ALFRED_REPO_LOCAL_MAP": "api=/work/archive,build=2/api"},
+        include_aliases=False,
+    )
+
+    assert repo_map == {"api": "/work/archive,build=2/api"}
+
+
+def test_code_memory_repo_map_decodes_canonical_encoded_paths() -> None:
+    repo_map = setup_mod._code_memory_repo_map(
+        {"ALFRED_REPO_LOCAL_MAP": "api=url:/work/archive%2C web=/work/web"},
+        include_aliases=False,
+    )
+
+    assert repo_map == {"api": "/work/archive,", "web": "/work/web"}
+
+
+def test_code_memory_repo_map_adds_case_insensitive_aliases() -> None:
+    repo_map = setup_mod._code_memory_repo_map(
+        {"ALFRED_REPO_LOCAL_MAP": "Acme/MyApp=/work/MyApp"},
+    )
+
+    assert repo_map["Acme/MyApp"] == "/work/MyApp"
+    assert repo_map["acme/myapp"] == "/work/MyApp"
+    assert repo_map["MyApp"] == "/work/MyApp"
+    assert repo_map["myapp"] == "/work/MyApp"
+
+
+def test_code_memory_repo_map_preserves_decoded_paths_with_spaces() -> None:
+    repo_map = setup_mod._code_memory_repo_map(
+        {"ALFRED_REPO_LOCAL_MAP": "api=/Users/me/My Repos/api web=/tmp/web"},
+        include_aliases=False,
+    )
+
+    assert repo_map == {"api": "/Users/me/My Repos/api", "web": "/tmp/web"}
 
 
 def test_selected_repos_scrubs_generated_stale_process_scope_when_runtime_omits_scope(
@@ -950,6 +1083,8 @@ def test_persist_selected_repos_seeds_queue_for_new_install(
     assert "ALFRED_SHIPPED_SUMMARY_DAILY_REPOS=Web" in env_text
     assert "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS=Web" in env_text
     assert "ARCHITECT_ROLLOUT_ORDER=Web" in env_text
+    assert "ARCHITECT_PARENT_REPO" not in env_text
+    assert "ARCHITECT_PARENT_REPO" not in os.environ
 
 
 def test_persist_selected_repos_preserves_existing_runtime_agent_scopes(

@@ -68,11 +68,21 @@ _REPO_IDENTITY_RE = re.compile(r"^[\w.-]+$")
 def _github_repo_identity_map() -> dict[str, str]:
     """Return GH_REPO_TO_LOCAL entries that are repo identities, not paths."""
     out: dict[str, str] = {}
+    path_aliases: dict[str, list[str]] = {}
     for github_repo, local_repo in GH_REPO_TO_LOCAL.items():
         github = str(github_repo).strip().lower()
         local = str(local_repo).strip().lower()
         if github and local and _REPO_IDENTITY_RE.fullmatch(local):
             out[github] = local
+        elif github and "/" in github:
+            tail = github.rsplit("/", 1)[-1]
+            if _REPO_IDENTITY_RE.fullmatch(tail):
+                path_aliases.setdefault(tail, []).append(github)
+        elif github and _REPO_IDENTITY_RE.fullmatch(github):
+            out.setdefault(github, github)
+    for tail, github_repos in path_aliases.items():
+        if len(github_repos) == 1:
+            out.setdefault(github_repos[0], tail)
     return out
 
 

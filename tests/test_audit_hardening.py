@@ -980,7 +980,10 @@ def test_senior_dev_partial_salvage_push_skips_pre_push_but_runs_workflow_gate(
     monkeypatch.setattr(
         lucius,
         "push_current_branch",
-        lambda wt, branch: pushed.append((wt, branch)) or SimpleNamespace(returncode=0),
+        lambda wt, branch, **_kw: pushed.append((wt, branch)) or SimpleNamespace(returncode=0),
+    )
+    monkeypatch.setattr(
+        lucius, "push_remote_and_pr_head", lambda wt, repo, branch: ("origin", branch)
     )
 
     assert lucius._push_or_preserve(

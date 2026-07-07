@@ -34,6 +34,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import urllib.parse
 from collections.abc import Mapping
 from contextlib import suppress
 from datetime import UTC, datetime
@@ -59,7 +60,6 @@ CODE_MEMORY_REPOS_ENV = "ALFRED_CODE_MEMORY_REPOS"
 REPO_LOCAL_MAP_ENV = "ALFRED_REPO_LOCAL_MAP"
 RUNTIME_REPO_SCOPE_ENV_KEYS = (
     "ARCHITECT_ROLLOUT_ORDER",
-    "ARCHITECT_PARENT_REPO",
     "ALFRED_SENIOR_DEV_REPOS",
     "ALFRED_PLANNER_REPOS",
     "ALFRED_SPEC_PLANNER_REPOS",
@@ -75,11 +75,14 @@ RUNTIME_REPO_SCOPE_ENV_KEYS = (
     "ALFRED_SHIPPED_SUMMARY_DAILY_REPOS",
     "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS",
 )
+RUNTIME_SETUP_MANAGED_ENV_KEYS = (
+    *RUNTIME_REPO_SCOPE_ENV_KEYS,
+    "ARCHITECT_PARENT_REPO",
+)
 _ALFRED_INIT_MANAGED_SCOPE_PATTERNS = frozenset(
     (
         *_REPO_ENV_KEYS,
-        *RUNTIME_REPO_SCOPE_ENV_KEYS,
-        REPO_LOCAL_MAP_ENV,
+        *RUNTIME_SETUP_MANAGED_ENV_KEYS,
         "ARCHITECT_ROLLOUT_ORDER",
         "AGENT_CODENAME_*",
         "ALFRED_MORNING_BRIEF_AGENTS",
@@ -89,6 +92,10 @@ _ALFRED_INIT_MANAGED_SCOPE_PATTERNS = frozenset(
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _CODENAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+_REPO_LOCAL_MAP_KEY_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=")
+_REPO_LOCAL_MAP_COMMA_BOUNDARY_RE = re.compile(
+    r",\s*(?=[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=(?:/|~|\.{1,2}/))"
+)
 
 # Engine CLIs Alfred rides. Detected by presence on PATH only (no version
 # spawn): the golden path needs at least one of these signed-in subscription
@@ -215,7 +222,7 @@ def _runtime_config_env() -> dict[str, str]:
     }
     if not managed_scope_patterns:
         protected.update(key for key in _REPO_ENV_KEYS if key in os.environ)
-        protected.update(key for key in RUNTIME_REPO_SCOPE_ENV_KEYS if key in os.environ)
+        protected.update(key for key in RUNTIME_SETUP_MANAGED_ENV_KEYS if key in os.environ)
     _load_launcher_env_file(runtime_env_path, env, protected_keys=protected)
     return env
 
@@ -246,6 +253,8 @@ def _alfred_init_managed_scope_patterns(path: Path) -> frozenset[str]:
         key = key.strip()
         if not _ENV_KEY_RE.match(key):
             break
+        if key in {GH_ORG_ENV, REPO_LOCAL_MAP_ENV}:
+            patterns.add(key)
         if key.startswith("AGENT_CODENAME_"):
             codename = decode_env_value(_strip_inline_comment(raw_value).strip()).strip()
             if _CODENAME_RE.match(codename):
@@ -1248,11 +1257,15 @@ def _code_memory_repo_map(env: dict[str, str], *, include_aliases: bool = True) 
             continue
         key, value = piece.split("=", 1)
         key = key.strip()
-        value = value.strip()
+        value = _decode_repo_local_map_value(value.strip())
         if key and value:
             out[key] = value
-            if include_aliases and "/" in key:
-                out.setdefault(key.rsplit("/", 1)[-1], value)
+            if include_aliases:
+                out.setdefault(key.lower(), value)
+                if "/" in key:
+                    bare = key.rsplit("/", 1)[-1]
+                    out.setdefault(bare, value)
+                    out.setdefault(bare.lower(), value)
     return out
 
 
@@ -1265,12 +1278,46 @@ def _repo_local_map_entries(raw: str) -> list[str]:
     except ValueError:
         tokens = []
     if tokens:
-        legacy_comma_value = (
-            len(tokens) == 1 and "," in tokens[0] and tokens[0].count("=") > 1
-        ) or any(token.endswith(",") for token in tokens)
-        if not legacy_comma_value:
-            return tokens
-    return [piece.strip() for piece in value.split(",") if piece.strip()]
+        return _repo_local_map_entries_from_tokens(_repo_local_map_expand_tokens(tokens))
+    return [value]
+
+
+def _repo_local_map_expand_tokens(tokens: list[str]) -> list[str]:
+    expanded: list[str] = []
+    for token in tokens:
+        expanded.extend(part for part in _REPO_LOCAL_MAP_COMMA_BOUNDARY_RE.split(token) if part)
+    return expanded
+
+
+def _repo_local_map_is_path_boundary_token(token: str) -> bool:
+    if not _REPO_LOCAL_MAP_KEY_RE.match(token):
+        return False
+    value = token.split("=", 1)[1]
+    return value.startswith(("/", "~", "./", "../"))
+
+
+def _repo_local_map_entries_from_tokens(tokens: list[str]) -> list[str]:
+    entries: list[str] = []
+    current = ""
+    for token in tokens:
+        if _REPO_LOCAL_MAP_KEY_RE.match(token):
+            if current:
+                if current.endswith(",") and _repo_local_map_is_path_boundary_token(token):
+                    entries.append(current[:-1])
+                else:
+                    entries.append(current)
+            current = token
+        elif current:
+            current = f"{current} {token}"
+    if current:
+        entries.append(current)
+    return entries
+
+
+def _decode_repo_local_map_value(value: str) -> str:
+    if value.startswith("url:"):
+        return urllib.parse.unquote(value.removeprefix("url:"))
+    return value
 
 
 def _code_memory_configured_repo_path(
