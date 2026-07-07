@@ -199,12 +199,37 @@ def test_launcher_env_scrubs_setup_managed_scope_when_runtime_env_omits_it(
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("ALFRED_HOME", str(runtime))
     monkeypatch.setenv("ALFRED_CODE_MAP_REPOS", "org/stale")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "org/stale")
     monkeypatch.setenv("ALFRED_SENIOR_DEV_REPOS", "org/stale")
 
     env = paths_mod.launcher_env()
 
     assert "ALFRED_CODE_MAP_REPOS" not in env
+    assert "ALFRED_CODE_MEMORY_REPOS" not in env
     assert "ALFRED_SENIOR_DEV_REPOS" not in env
+
+
+def test_launcher_env_preserves_code_memory_process_controls(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text("GH_ORG=acme\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_MCP", "0")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_BIN", "/tmp/codebase-memory-mcp")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_AUTOFETCH", "0")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S", "7")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_CODE_MEMORY_MCP"] == "0"
+    assert env["ALFRED_CODE_MEMORY_BIN"] == "/tmp/codebase-memory-mcp"
+    assert env["ALFRED_CODE_MEMORY_AUTOFETCH"] == "0"
+    assert env["ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S"] == "7"
 
 
 def test_launcher_env_loads_code_memory_settings_when_process_absent(

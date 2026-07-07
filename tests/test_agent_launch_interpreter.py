@@ -233,6 +233,7 @@ def test_agent_launch_scrubs_setup_managed_scope_when_runtime_env_omits_it(
     target.write_text(
         "#!/usr/bin/env bash\n"
         'echo "CODE_MAP=${ALFRED_CODE_MAP_REPOS:-unset}"\n'
+        'echo "MEMORY=${ALFRED_CODE_MEMORY_REPOS:-unset}"\n'
         'echo "SENIOR=${ALFRED_SENIOR_DEV_REPOS:-unset}"\n'
     )
     _make_executable(target)
@@ -242,13 +243,47 @@ def test_agent_launch_scrubs_setup_managed_scope_when_runtime_env_omits_it(
         alfred_home=alfred_home,
         extra_env={
             "ALFRED_CODE_MAP_REPOS": "org/stale",
+            "ALFRED_CODE_MEMORY_REPOS": "org/stale",
             "ALFRED_SENIOR_DEV_REPOS": "org/stale",
         },
     )
 
     assert proc.returncode == 0, proc.stderr
     assert "CODE_MAP=unset" in proc.stdout
+    assert "MEMORY=unset" in proc.stdout
     assert "SENIOR=unset" in proc.stdout
+
+
+def test_agent_launch_preserves_code_memory_process_controls(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text("GH_ORG=acme\n", encoding="utf-8")
+    target = tmp_path / "echo-code-memory-controls.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "MCP=${ALFRED_CODE_MEMORY_MCP:-unset}"\n'
+        'echo "BIN=${ALFRED_CODE_MEMORY_BIN:-unset}"\n'
+        'echo "AUTOFETCH=${ALFRED_CODE_MEMORY_AUTOFETCH:-unset}"\n'
+        'echo "TIMEOUT=${ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S:-unset}"\n'
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={
+            "ALFRED_CODE_MEMORY_MCP": "0",
+            "ALFRED_CODE_MEMORY_BIN": "/tmp/codebase-memory-mcp",
+            "ALFRED_CODE_MEMORY_AUTOFETCH": "0",
+            "ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S": "7",
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "MCP=0" in proc.stdout
+    assert "BIN=/tmp/codebase-memory-mcp" in proc.stdout
+    assert "AUTOFETCH=0" in proc.stdout
+    assert "TIMEOUT=7" in proc.stdout
 
 
 def test_env_file_code_memory_settings_load_when_process_absent(
