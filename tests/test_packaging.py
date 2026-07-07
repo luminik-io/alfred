@@ -82,6 +82,41 @@ def test_operator_cli_owns_claude_probe():
     assert not Path("bin", removed_helper).exists()
 
 
+def test_deploy_help_is_read_only(tmp_path):
+    alfred_home = tmp_path / "alfred-runtime"
+    result = subprocess.run(
+        ["bash", "deploy.sh", "--help"],
+        env={"HOME": str(tmp_path), "ALFRED_HOME": str(alfred_home), "PATH": "/usr/bin:/bin"},
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "Usage: ./deploy.sh" in result.stdout
+    assert "Deploy Alfred runtime files" in result.stdout
+    assert result.stderr == ""
+    assert not alfred_home.exists()
+
+
+def test_deploy_rejects_unknown_arguments_before_side_effects(tmp_path):
+    for args in (["--bogus"], ["", "--bogus"]):
+        alfred_home = tmp_path / ("runtime-" + str(len(args)))
+        result = subprocess.run(
+            ["bash", "deploy.sh", *args],
+            env={
+                "HOME": str(tmp_path),
+                "ALFRED_HOME": str(alfred_home),
+                "PATH": "/usr/bin:/bin",
+            },
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 2
+        assert "Usage: ./deploy.sh" in result.stderr
+        assert not alfred_home.exists()
+
+
 def test_runtime_dep_probes_match_pyproject_base_deps():
     """install.sh, deploy.sh, and bin/doctor.sh each probe/install the runtime
     deps by name. Those lists must stay in sync with pyproject's base
