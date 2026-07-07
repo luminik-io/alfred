@@ -14,10 +14,11 @@ Attribution is label-authoritative, matching ``shipped_board._pr_is_agent_shippe
 and the shipped-summary path: a merged PR counts as agent-shipped ONLY when it
 carries one of Alfred's provenance labels (``agent:authored`` set on PR open,
 plus ``agent:done`` / ``agent:shipped`` and friends), matched EXACTLY, not by
-substring. An agent branch prefix (``lucius/``, ``batman/``, ...) is recorded as
+substring. A canonical role branch prefix (``senior-dev/``, ``architect/``, ...)
+is recorded as
 corroborating evidence for display but never qualifies a PR on its own, so a
-human PR pushed to a codename-looking branch, a stale ``automerge/`` branch, or
-a near-miss label like ``not-agent:authored`` can never inflate the numerator.
+human PR pushed to a role-looking branch, a stale ``automerge/`` branch, or a
+near-miss label like ``not-agent:authored`` can never inflate the numerator.
 Every merged PR in the window is the denominator; the agent-shipped subset is
 the numerator. Human and bot PRs stay in the denominator so the percentage is
 honest: it is the fleet's real share of the merge stream, not a
@@ -79,18 +80,11 @@ _DEFAULT_AGENT_BRANCH_PREFIXES = (
     "alfred-nightly/",
     "architect/",
     "automerge/",
-    "bane/",
-    "batman/",
-    "damian/",
     "e2e-runner/",
     "fixer/",
-    "lucius/",
-    "nightwing/",
     "ops-watch/",
     "planner/",
-    "rasalghul/",
     "reviewer/",
-    "robin/",
     "senior-dev/",
     "spec-planner/",
     "test-engineer/",

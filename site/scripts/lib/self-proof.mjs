@@ -5,10 +5,10 @@
  * the number this produces is the PUBLICLY DISPLAYED "% of merged PRs shipped
  * by Alfred agents". Attribution is LABEL-AUTHORITATIVE and exact-match. A
  * merged PR counts as agent-shipped ONLY when it carries one of Alfred's
- * provenance labels (agent:authored and friends), matched exactly. An agent
- * branch prefix (lucius/, batman/, automerge/, ...) is display-only
+ * provenance labels (agent:authored and friends), matched exactly. A canonical
+ * role branch prefix (senior-dev/, architect/, automerge/, ...) is display-only
  * corroboration and NEVER qualifies a PR on its own, so a human PR pushed to a
- * codename-looking or stale automerge branch cannot inflate the headline share.
+ * role-looking or stale automerge branch cannot inflate the headline share.
  * Near-miss labels (not-agent:authored, agent:authored-needed) do not match.
  *
  * Keeping the exact-match, label-only rule here means the site and the Python

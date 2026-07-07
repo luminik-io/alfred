@@ -25,14 +25,17 @@ const AGENT_BRANCH_PREFIXES = csvEnv(
   [
     "alfred/",
     "alfred-nightly/",
+    "architect/",
     "automerge/",
-    "bane/",
-    "batman/",
-    "damian/",
-    "lucius/",
-    "nightwing/",
-    "rasalghul/",
-    "robin/",
+    "e2e-runner/",
+    "fixer/",
+    "ops-watch/",
+    "planner/",
+    "reviewer/",
+    "senior-dev/",
+    "spec-planner/",
+    "test-engineer/",
+    "triage/",
   ],
   { lowercase: false },
 );
@@ -321,7 +324,7 @@ function csvEnv(name, fallback, { lowercase = true } = {}) {
 // Attribution is LABEL-ONLY and exact-match, delegated to the shared module so
 // the site and the Python CLI agree on the numerator. A branch prefix never
 // qualifies a PR (see lib/self-proof.mjs); it is recorded as display-only
-// evidence via agentEvidence, so a human PR on a lucius/ or automerge/ branch
+// evidence via agentEvidence, so a human PR on a senior-dev/ or automerge/ branch
 // cannot inflate the publicly displayed share.
 function isAgentMarked(item) {
   return isAgentShipped(item, {

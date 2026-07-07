@@ -103,13 +103,19 @@ def test_agent_shipped_by_provenance_label():
 
 
 def test_branch_prefix_alone_does_not_qualify():
-    # A human PR pushed to a codename-looking or stale automerge branch must
+    # A human PR pushed to a role-looking or stale automerge branch must
     # NOT count: the label is the authoritative provenance signal, matching
     # shipped_board. The branch is recorded as corroborating evidence only.
-    for branch in ("lucius/fix-bug", "batman/rollout", "automerge/dep-bump"):
+    for branch in ("senior-dev/fix-bug", "architect/rollout", "automerge/dep-bump"):
         pr = _pr(3, merged_day=28, branch=branch)
         assert not sp.pr_is_agent_shipped(pr)
         assert f"branch:{branch}" in sp.pr_agent_evidence(pr)
+
+
+def test_theme_display_branch_prefix_is_not_evidence():
+    pr = _pr(3, merged_day=28, branch="lucius/fix-bug")
+    assert not sp.pr_is_agent_shipped(pr)
+    assert sp.pr_agent_evidence(pr) == []
 
 
 def test_near_miss_labels_do_not_qualify():
@@ -119,11 +125,11 @@ def test_near_miss_labels_do_not_qualify():
 
 
 def test_label_plus_branch_yields_both_evidence_kinds():
-    pr = _pr(5, merged_day=28, labels=["agent:authored"], branch="lucius/x")
+    pr = _pr(5, merged_day=28, labels=["agent:authored"], branch="senior-dev/x")
     assert sp.pr_is_agent_shipped(pr)
     evidence = sp.pr_agent_evidence(pr)
     assert "label:agent:authored" in evidence
-    assert "branch:lucius/x" in evidence
+    assert "branch:senior-dev/x" in evidence
 
 
 def test_human_pr_is_not_agent_shipped():
@@ -150,7 +156,7 @@ def test_share_and_aggregate_across_repos():
         {
             "acme/api": [
                 _pr(1, merged_day=28, labels=["agent:authored"]),
-                _pr(2, merged_day=28, labels=["agent:done"], branch="lucius/x"),
+                _pr(2, merged_day=28, labels=["agent:done"], branch="senior-dev/x"),
                 _pr(3, merged_day=28, branch="feature/human", labels=["bug"]),
             ],
             "acme/web": [
@@ -180,13 +186,13 @@ def test_share_and_aggregate_across_repos():
 
 
 def test_branch_only_prs_stay_in_denominator_not_numerator():
-    # The inflation case from review: human PRs on codename branches. They
+    # The inflation case from review: human PRs on role-looking branches. They
     # must count as merged (denominator) but never as agent-shipped.
     gh = _gh_for(
         {
             "acme/api": [
                 _pr(1, merged_day=28, labels=["agent:authored"]),
-                _pr(2, merged_day=28, branch="lucius/human-lookalike"),
+                _pr(2, merged_day=28, branch="senior-dev/human-lookalike"),
                 _pr(3, merged_day=28, branch="automerge/stale"),
             ]
         }

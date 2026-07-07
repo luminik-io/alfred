@@ -739,7 +739,7 @@ def test_github_item_upsert_populates_bundle(brain: FleetBrain) -> None:
         title="feat: add endpoint",
         url="https://github.com/org/api/pull/42",
         labels=["agent:bundle:billing", "agent:authored"],
-        head_ref="lucius/42",
+        head_ref="senior-dev/42",
         base_ref="main",
         changed_files=4,
         additions=12,
@@ -829,7 +829,7 @@ def test_sum_github_changed_lines_uses_authored_filter(brain: FleetBrain) -> Non
         number=2,
         kind="pr",
         state="open",
-        head_ref="lucius/2",
+        head_ref="senior-dev/2",
         changed_files=2,
         additions=5,
         deletions=1,
@@ -938,7 +938,7 @@ def test_count_github_items_authored_only(brain: FleetBrain) -> None:
             number=n,
             kind="pr",
             state="merged",
-            head_ref="lucius/feature",
+            head_ref="senior-dev/feature",
             url=f"u/{n}",
         )
     for n in range(6, 10):
@@ -965,7 +965,7 @@ def test_count_github_items_authored_branch_prefix_is_case_sensitive(
     brain: FleetBrain,
 ) -> None:
     # The branch-prefix authorship match must be case-SENSITIVE so an operator PR
-    # on a differently-cased branch (e.g. "Lucius/fix" with a capital L) is NOT
+    # on a differently-cased branch (e.g. "Senior-Dev/fix") is NOT
     # miscounted as Alfred-authored. SQLite's default LIKE is case-insensitive for
     # ASCII (and COLLATE does not change that), so the SQL predicate uses GLOB to
     # match the case-sensitive Python fallback head_ref.startswith(prefix).
@@ -974,7 +974,7 @@ def test_count_github_items_authored_branch_prefix_is_case_sensitive(
         number=1,
         kind="pr",
         state="merged",
-        head_ref="lucius/fix",
+        head_ref="senior-dev/fix",
         url="u/1",
     )
     brain.upsert_github_item(
@@ -982,12 +982,12 @@ def test_count_github_items_authored_branch_prefix_is_case_sensitive(
         number=2,
         kind="pr",
         state="merged",
-        head_ref="Lucius/fix",
+        head_ref="Senior-Dev/fix",
         url="u/2",
     )
     assert brain.count_github_items(kind="pr") == 2, "both PRs cached"
     assert brain.count_github_items(kind="pr", authored_only=True) == 1, (
-        "lucius/fix IS authored; Lucius/fix (capital L) is NOT"
+        "senior-dev/fix IS authored; Senior-Dev/fix is NOT"
     )
 
 

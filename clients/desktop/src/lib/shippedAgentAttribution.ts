@@ -10,36 +10,36 @@ type AgentHint = {
 const SHIPPED_AGENT_HINTS: AgentHint[] = [
   {
     codename: "architect",
-    hints: ["architect", "agent:large-feature", "batman", "bruce"],
+    hints: ["architect", "agent:large-feature"],
   },
   {
     codename: "senior-dev",
-    hints: ["senior-dev", "agent:implement", "lucius", "lucius fox"],
+    hints: ["senior-dev", "agent:implement"],
   },
   {
     codename: "fixer",
-    hints: ["fixer", "nightwing"],
+    hints: ["fixer"],
   },
   {
     codename: "spec-planner",
-    hints: ["spec-planner", "damian", "damian wayne"],
+    hints: ["spec-planner"],
   },
   {
     codename: "test-engineer",
-    hints: ["test-engineer", "bane"],
+    hints: ["test-engineer"],
   },
   {
     codename: "e2e-runner",
-    hints: ["e2e-runner", "huntress"],
+    hints: ["e2e-runner"],
   },
   {
     codename: "reviewer",
-    hints: ["reviewer", "ras al ghul", "ras-al-ghul", "rasalghul", "ra's al ghul"],
+    hints: ["reviewer"],
   },
 ];
 
-// Read-model attribution only: these hints keep historical proof cards badged
-// after the role-slug cutover. They do not make display names runnable aliases.
+// Read-model attribution only: these hints badge shipped cards by canonical
+// role evidence. Theme display names are deliberately not accepted as aliases.
 export function detectShippedAgentCodename(card: AttributionInput): string | null {
   const tokens = [
     card.author || "",
