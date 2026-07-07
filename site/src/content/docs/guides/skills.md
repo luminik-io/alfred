@@ -13,7 +13,12 @@ are explicit operator installs.
 
 Full guide at [`docs/SKILLS.md`](https://github.com/luminik-io/alfred/blob/main/docs/SKILLS.md). Highlights:
 
-## Where they live
+## Where the default starter set lives
+
+After Alfred Desktop's full local setup, or after `alfred skills install
+--starter` in the CLI-only path, the first-party starter skills land here.
+Optional vendored and fetched packs install beside these only when you run their
+explicit install commands.
 
 ```
 ~/.claude/skills/
@@ -22,19 +27,7 @@ Full guide at [`docs/SKILLS.md`](https://github.com/luminik-io/alfred/blob/main/
 ├── review-security/SKILL.md
 ├── add-observability/SKILL.md
 ├── migrate-dependency/SKILL.md
-├── changelog-and-release-notes/SKILL.md
-├── code-review-and-quality/SKILL.md
-├── debugging-and-error-recovery/SKILL.md
-├── frontend-ui-engineering/SKILL.md
-├── security-and-hardening/SKILL.md
-├── spec-driven-development/SKILL.md
-├── autofix/SKILL.md
-└── gstack/                  # gstack tap installs as a directory of subskills
-    ├── browse/
-    ├── investigate/
-    ├── qa/
-    ├── review/
-    └── ship/
+└── changelog-and-release-notes/SKILL.md
 ```
 
 ## First-party starter set
