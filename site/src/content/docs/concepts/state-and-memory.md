@@ -64,7 +64,7 @@ $ALFRED_HOME/state/
 
 **`codex/<codename>/<YYYY-MM>/<firing-id>.{last.md,stdout.txt,stderr.txt}`** is the per-firing Codex artifact bundle. `last.md` is the final message, `stdout.txt` and `stderr.txt` are the captured streams. See [Codex provider](https://github.com/luminik-io/alfred/blob/main/docs/CODEX_PROVIDER.md).
 
-**`worktrees/eng-<codename>-<repo>-<issue>-<ts>/`** is a throwaway git worktree, created by `make_worktree` and removed at the end of the firing. Surviving worktrees are pruned at the start of the next firing or by `agent-cleanup`.
+**`worktrees/eng-<role-slug>-<repo>-<issue>-<ts>/`** is a throwaway git worktree, created by `make_worktree` and removed at the end of the firing. Surviving worktrees are pruned at the start of the next firing or by `agent-cleanup`.
 
 **`memory-outbox/<codename>.jsonl`** is the append-only outbox the fleet-brain ingest drainer reads. Built-in engine-aware runners now write directly to the configured memory provider, but the outbox remains available for downstream fleets, imports, and tools that want an asynchronous drain path.
 

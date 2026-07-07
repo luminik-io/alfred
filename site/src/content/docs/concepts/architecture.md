@@ -1,6 +1,6 @@
 ---
 title: Architecture
-description: Design rationale for host scheduling, worktrees, IAM-per-agent, codename pattern.
+description: Design rationale for host scheduling, worktrees, IAM-per-role, and the role/theme identity model.
 ---
 
 Full design doc at [`ARCHITECTURE.md`](https://github.com/luminik-io/alfred/blob/main/ARCHITECTURE.md). The diagram companion, with mermaid diagrams for the agent lifecycle, model dispatch and tiers, distributed locking, the Slack-native flow, the [disk guardian](/concepts/disk-guardian/), and the [layered install](/concepts/layered-install/), is [`docs/ARCHITECTURE.md`](https://github.com/luminik-io/alfred/blob/main/docs/ARCHITECTURE.md). This page is the executive summary.
@@ -32,7 +32,8 @@ database, or external agent gateway is required.
 
 ## One firing, end to end
 
-A single Lucius firing is the canonical trace. Every richer codename is a variation on this shape.
+A single `senior-dev` firing, shown as Lucius in the default `batman` theme,
+is the canonical trace. Every other role follows the same shape.
 
 ```mermaid
 sequenceDiagram
@@ -92,7 +93,7 @@ per-submodule responsibilities.
 Every `claude -p` invocation gets its own worktree:
 
 ```
-~/.alfred/worktrees/eng-<codename>-<repo>-<issue>-<ts>/
+~/.alfred/worktrees/eng-<role-slug>-<repo>-<issue>-<ts>/
 ```
 
 The worktree is created via `git worktree add` from a fresh `origin/main` (or whatever the agent designates), and `git worktree remove --force` after. Concurrent firings on different issues do not see each other's edits. A crashed firing can't corrupt your main checkout because they're separate directories pointing at different branches.
@@ -104,7 +105,7 @@ flowchart TB
     subgraph wt["$ALFRED_HOME/worktrees/"]
         w1["eng-senior-dev-backend-303-...<br/>branch: agent/senior-dev/303"]
         w2["eng-senior-dev-backend-318-...<br/>branch: agent/senior-dev/318"]
-        w3["eng-bane-backend-291-...<br/>branch: agent/bane/291"]
+        w3["eng-test-engineer-backend-291-...<br/>branch: agent/test-engineer/291"]
     end
 
     main -. "git worktree add<br/>from origin/main" .-> w1
@@ -163,18 +164,30 @@ flowchart TB
     setblock --> done
 ```
 
-The wall hit by Lucius at 22:46 silences Bane's nightly run, Gordon's morning brief, and Huntress's next smoke until the block expires. Without it, the whole fleet would spend the next hour firing into the rate-limit wall and burning turns to learn the wall is still there.
+The wall hit by `senior-dev` at 22:46 silences `test-engineer`, `ops-watch`,
+and `e2e-runner` until the block expires. Without it, the whole fleet would
+spend the next hour firing into the rate-limit wall and burning turns to learn
+the wall is still there.
 
-### 5. Codename pattern
+### 5. Role slugs plus roster themes
 
-One agent script per narrow specialist. Named after a coherent fictional cast. The shipped examples use Batman side-characters: Batman, Lucius, Drake, Bane, Rasalghul, Robin, Nightwing, Huntress, Gordon.
+One agent script per narrow specialist. The stable machine identity is a role
+slug, such as `architect`, `senior-dev`, `reviewer`, `test-engineer`, or
+`fixer`. The human-facing name comes from the active roster theme. The default
+`batman` theme displays those roles as Batman, Lucius, Ra's al Ghul, Bane, and
+Nightwing, but the scheduler labels, worktree paths, PR metadata, and merge
+gates stay on role slugs.
 
 Two reasons it matters:
 
-1. **Operational legibility.** Codenames appear in PR titles, Slack messages, commit-trailer metadata. A coherent cast makes scanning your `#fleet` channel readable.
-2. **Design forcing function.** "What does Bane do?" is a sharper question than "what does the test agent do?". Narrow scopes per codename force you to decide.
+1. **Operational legibility.** Humans see a coherent cast in Slack, Desktop,
+   and onboarding, while machines see stable role slugs in labels, branch
+   prefixes, commit trailers, and worktree paths.
+2. **Design forcing function.** "What does Bane do?" is a sharper question than
+   "what does the test agent do?", while the actual runtime contract remains
+   `test-engineer`.
 
-See [codename pattern](/concepts/codename-pattern/) for more.
+See [role and theme pattern](/concepts/codename-pattern/) for more.
 
 ## What this rules out
 

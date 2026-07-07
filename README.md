@@ -373,10 +373,12 @@ alfred agent add release-captain \
 bash deploy.sh
 ```
 
-For a framework-only install with no agents configured, use `bash deploy.sh &&
-./bin/alfred doctor`; doctor reports `0 passed, 0 failed`. See
-[`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py) for the
-smallest useful agent (the one [the tutorial](docs/TUTORIAL.md) builds) or
+For a framework-only developer checkout with no scheduled agents configured,
+use `bash deploy.sh && ./bin/alfred doctor`; doctor reports `0 passed, 0
+failed`. This is only for Alfred framework work. Normal users should install
+the full fleet above. To add a bespoke local role later, see
+[`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py), the small
+role built in [the tutorial](docs/TUTORIAL.md), or
 [`examples/bin/hello.py`](examples/bin/hello.py) for the absolute minimum.
 
 Full setup including AWS IAM-per-agent, Slack webhook, and your first scheduled firing: [`BOOTSTRAP.md`](BOOTSTRAP.md). From-zero install with troubleshooting: [`INSTALL.md`](INSTALL.md). On Linux, see [`docs/LINUX.md`](docs/LINUX.md) for the `systemd --user` path.
@@ -618,7 +620,7 @@ stay unchanged. If you add a new agent script later, the custom roster editor
 can name that live agent too.
 
 See [Identity and themes](docs/IDENTITY_AND_THEMES.md) for the full model and
-[Architecture → Codename pattern](https://alfred.luminik.io/concepts/codename-pattern/)
+[Role and theme pattern](https://alfred.luminik.io/concepts/codename-pattern/)
 for more.
 
 ## Design boundaries
