@@ -235,6 +235,7 @@ def test_agent_launch_scrubs_setup_managed_scope_when_runtime_env_omits_it(
         'echo "CODE_MAP=${ALFRED_CODE_MAP_REPOS:-unset}"\n'
         'echo "MEMORY=${ALFRED_CODE_MEMORY_REPOS:-unset}"\n'
         'echo "SENIOR=${ALFRED_SENIOR_DEV_REPOS:-unset}"\n'
+        'echo "SPEC=${ALFRED_SPEC_PLANNER_REPOS:-unset}"\n'
     )
     _make_executable(target)
 
@@ -245,6 +246,7 @@ def test_agent_launch_scrubs_setup_managed_scope_when_runtime_env_omits_it(
             "ALFRED_CODE_MAP_REPOS": "org/stale",
             "ALFRED_CODE_MEMORY_REPOS": "org/stale",
             "ALFRED_SENIOR_DEV_REPOS": "org/stale",
+            "ALFRED_SPEC_PLANNER_REPOS": "org/stale",
         },
     )
 
@@ -252,6 +254,38 @@ def test_agent_launch_scrubs_setup_managed_scope_when_runtime_env_omits_it(
     assert "CODE_MAP=unset" in proc.stdout
     assert "MEMORY=unset" in proc.stdout
     assert "SENIOR=unset" in proc.stdout
+    assert "SPEC=unset" in proc.stdout
+
+
+def test_agent_launch_scrubs_custom_codename_scope_from_managed_block(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "AGENT_CODENAME_FEATURE_DEV=oracle\n"
+        "ALFRED_ORACLE_REPOS=org/runtime\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-custom-repos.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "CODENAME=${AGENT_CODENAME_FEATURE_DEV:-unset}"\n'
+        'echo "REPOS=${ALFRED_ORACLE_REPOS:-unset}"\n'
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={
+            "AGENT_CODENAME_FEATURE_DEV": "old-oracle",
+            "ALFRED_ORACLE_REPOS": "org/stale",
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "CODENAME=oracle" in proc.stdout
+    assert "REPOS=org/runtime" in proc.stdout
 
 
 def test_agent_launch_preserves_code_memory_process_controls(

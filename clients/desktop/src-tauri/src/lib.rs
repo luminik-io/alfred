@@ -438,8 +438,12 @@ fn config_value(key: &str) -> Option<String> {
 fn merged_alfred_env() -> HashMap<String, String> {
     let mut env: HashMap<String, String> = std::env::vars().collect();
     env.remove("ALFREDRC");
-    env.retain(|key, _| !setup_managed_runtime_env_key(key));
-    let process_env_keys: HashSet<String> = env.keys().cloned().collect();
+    if env
+        .get("ALFRED_HOME")
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        env.remove("ALFRED_HOME");
+    }
     let home = home_dir();
 
     let runtime_home = env
@@ -450,6 +454,9 @@ fn merged_alfred_env() -> HashMap<String, String> {
     if let Some(runtime_home) = runtime_home.as_deref() {
         env.entry("ALFRED_HOME".to_string())
             .or_insert_with(|| runtime_home.to_string_lossy().into_owned());
+        let setup_managed_keys = setup_managed_runtime_env_keys(&runtime_home.join(".env"));
+        env.retain(|key, _| !setup_managed_runtime_env_key(key, &setup_managed_keys));
+        let process_env_keys: HashSet<String> = env.keys().cloned().collect();
         load_config_file(
             &mut env,
             &runtime_home.join(".env"),
@@ -467,31 +474,90 @@ fn merged_alfred_env() -> HashMap<String, String> {
     env
 }
 
-fn setup_managed_runtime_env_key(key: &str) -> bool {
-    key.starts_with("AGENT_CODENAME_")
+fn setup_managed_runtime_env_keys(runtime_env_path: &Path) -> HashSet<String> {
+    let mut keys = managed_runtime_env_keys(runtime_env_path);
+    keys.extend([
+        "ARCHITECT_ROLLOUT_ORDER".to_string(),
+        "ALFRED_QUEUE_REPOS".to_string(),
+        "ALFRED_SHIPPED_REPOS".to_string(),
+        "ALFRED_BRIDGE_REPOS".to_string(),
+        "ALFRED_SENIOR_DEV_REPOS".to_string(),
+        "ALFRED_PLANNER_REPOS".to_string(),
+        "ALFRED_SPEC_PLANNER_REPOS".to_string(),
+        "ALFRED_TEST_ENGINEER_REPOS".to_string(),
+        "ALFRED_REVIEWER_REPOS".to_string(),
+        "ALFRED_FIXER_REPOS".to_string(),
+        "ALFRED_TRIAGE_REPOS".to_string(),
+        "ALFRED_CLAIM_SWEEP_REPOS".to_string(),
+        "ALFRED_AUTOMERGE_REPOS".to_string(),
+        "ALFRED_CODE_MAP_REPOS".to_string(),
+        "ALFRED_CODE_MEMORY_REPOS".to_string(),
+        "ALFRED_MORNING_BRIEF_REPOS".to_string(),
+        "ALFRED_SHIPPED_SUMMARY_DAILY_REPOS".to_string(),
+        "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS".to_string(),
+    ]);
+    keys
+}
+
+fn managed_runtime_env_keys(path: &Path) -> HashSet<String> {
+    let mut keys = HashSet::new();
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return keys;
+    };
+    let mut in_managed_block = false;
+    for raw_line in raw.lines() {
+        let mut line = raw_line.trim();
+        if line.starts_with("# alfred-init") && line.contains("generated below this line") {
+            in_managed_block = true;
+            continue;
+        }
+        if !in_managed_block {
+            continue;
+        }
+        if line.is_empty() || line.starts_with('#') {
+            break;
+        }
+        if let Some(rest) = line.strip_prefix("export ") {
+            line = rest.trim();
+        }
+        let Some((name, value)) = line.split_once('=') else {
+            break;
+        };
+        let key = name.trim();
+        if !is_valid_env_key(key) {
+            break;
+        }
+        keys.insert(key.to_string());
+        if key.starts_with("AGENT_CODENAME_") {
+            let codename = decode_config_value(strip_inline_comment(value).trim(), None)
+                .trim()
+                .to_string();
+            if valid_runtime_codename(&codename) {
+                let slug = codename.to_ascii_uppercase().replace('-', "_");
+                keys.insert(format!("ALFRED_{slug}_REPOS"));
+                keys.insert(format!("ALFRED_{slug}_AWS_PROFILE"));
+            }
+        }
+    }
+    keys
+}
+
+fn setup_managed_runtime_env_key(key: &str, setup_managed_keys: &HashSet<String>) -> bool {
+    setup_managed_keys.contains(key)
+        || key.starts_with("AGENT_CODENAME_")
         || key == "ARCHITECT_ROLLOUT_ORDER"
         || key == "ALFRED_MORNING_BRIEF_AGENTS"
         || (key.starts_with("ALFRED_") && key.ends_with("_AWS_PROFILE"))
         || key.starts_with("ALFRED_TELEMETRY_")
-        || matches!(
-            key,
-            "ALFRED_QUEUE_REPOS"
-                | "ALFRED_SHIPPED_REPOS"
-                | "ALFRED_BRIDGE_REPOS"
-                | "ALFRED_SENIOR_DEV_REPOS"
-                | "ALFRED_PLANNER_REPOS"
-                | "ALFRED_TEST_ENGINEER_REPOS"
-                | "ALFRED_REVIEWER_REPOS"
-                | "ALFRED_FIXER_REPOS"
-                | "ALFRED_TRIAGE_REPOS"
-                | "ALFRED_CLAIM_SWEEP_REPOS"
-                | "ALFRED_AUTOMERGE_REPOS"
-                | "ALFRED_CODE_MAP_REPOS"
-                | "ALFRED_CODE_MEMORY_REPOS"
-                | "ALFRED_MORNING_BRIEF_REPOS"
-                | "ALFRED_SHIPPED_SUMMARY_DAILY_REPOS"
-                | "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS"
-        )
+}
+
+fn valid_runtime_codename(value: &str) -> bool {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    first.is_ascii_lowercase()
+        && chars.all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
 }
 
 fn load_config_file(
@@ -3520,6 +3586,7 @@ done"#;
         let prev_code_map = std::env::var("ALFRED_CODE_MAP_REPOS").ok();
         let prev_code_memory = std::env::var("ALFRED_CODE_MEMORY_REPOS").ok();
         let prev_senior = std::env::var("ALFRED_SENIOR_DEV_REPOS").ok();
+        let prev_spec = std::env::var("ALFRED_SPEC_PLANNER_REPOS").ok();
 
         let root = temp_root("alfred-runtime-env-scrub");
         let home = root.join("home");
@@ -3537,6 +3604,7 @@ done"#;
         std::env::set_var("ALFRED_CODE_MAP_REPOS", "org/stale-map");
         std::env::set_var("ALFRED_CODE_MEMORY_REPOS", "org/stale-memory");
         std::env::set_var("ALFRED_SENIOR_DEV_REPOS", "org/stale-senior");
+        std::env::set_var("ALFRED_SPEC_PLANNER_REPOS", "org/stale-spec");
 
         let env = merged_alfred_env();
         assert_eq!(
@@ -3545,6 +3613,7 @@ done"#;
         );
         assert!(!env.contains_key("ALFRED_CODE_MEMORY_REPOS"));
         assert!(!env.contains_key("ALFRED_SENIOR_DEV_REPOS"));
+        assert!(!env.contains_key("ALFRED_SPEC_PLANNER_REPOS"));
 
         let _ = std::fs::remove_dir_all(&root);
         restore_var("HOME", prev_home);
@@ -3552,6 +3621,50 @@ done"#;
         restore_var("ALFRED_CODE_MAP_REPOS", prev_code_map);
         restore_var("ALFRED_CODE_MEMORY_REPOS", prev_code_memory);
         restore_var("ALFRED_SENIOR_DEV_REPOS", prev_senior);
+        restore_var("ALFRED_SPEC_PLANNER_REPOS", prev_spec);
+    }
+
+    #[test]
+    fn native_subprocess_env_scrubs_custom_codename_scope_from_managed_block() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_codename = std::env::var("AGENT_CODENAME_FEATURE_DEV").ok();
+        let prev_oracle = std::env::var("ALFRED_ORACLE_REPOS").ok();
+
+        let root = temp_root("alfred-custom-runtime-env-scrub");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(
+            runtime.join(".env"),
+            "# alfred-init, generated below this line. Safe to re-run.\n\
+             AGENT_CODENAME_FEATURE_DEV=oracle\n\
+             ALFRED_ORACLE_REPOS=org/runtime\n",
+        )
+        .expect("write runtime env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::set_var("AGENT_CODENAME_FEATURE_DEV", "old-oracle");
+        std::env::set_var("ALFRED_ORACLE_REPOS", "org/stale");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("AGENT_CODENAME_FEATURE_DEV"),
+            Some(&"oracle".to_string())
+        );
+        assert_eq!(
+            env.get("ALFRED_ORACLE_REPOS"),
+            Some(&"org/runtime".to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("AGENT_CODENAME_FEATURE_DEV", prev_codename);
+        restore_var("ALFRED_ORACLE_REPOS", prev_oracle);
     }
 
     #[test]

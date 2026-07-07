@@ -36,6 +36,7 @@ from pathlib import Path
 # --------------------------------------------------------------------------
 HOME: Path = Path(os.path.expanduser("~"))
 _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+_CODENAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 _REPO_SCOPE_ENV_KEYS = {
     "ARCHITECT_ROLLOUT_ORDER",
     "ALFRED_QUEUE_REPOS",
@@ -43,6 +44,7 @@ _REPO_SCOPE_ENV_KEYS = {
     "ALFRED_BRIDGE_REPOS",
     "ALFRED_SENIOR_DEV_REPOS",
     "ALFRED_PLANNER_REPOS",
+    "ALFRED_SPEC_PLANNER_REPOS",
     "ALFRED_TEST_ENGINEER_REPOS",
     "ALFRED_REVIEWER_REPOS",
     "ALFRED_FIXER_REPOS",
@@ -284,11 +286,7 @@ def launcher_env() -> dict[str, str]:
     scheduled fleet will enforce after a restart.
     """
 
-    env = {
-        key: value
-        for key, value in os.environ.items()
-        if not _env_key_matches(key, _SETUP_MANAGED_RUNTIME_ENV_KEYS)
-    }
+    env = dict(os.environ)
     env.pop("ALFREDRC", None)
     if not env.get("ALFRED_HOME", "").strip():
         env.pop("ALFRED_HOME", None)
@@ -296,15 +294,61 @@ def launcher_env() -> dict[str, str]:
         env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
     else:
         env["ALFRED_HOME"] = str(Path(env["ALFRED_HOME"]).expanduser())
+    runtime_env_path = Path(env["ALFRED_HOME"]) / ".env"
+    setup_managed_keys = setup_managed_runtime_env_keys(runtime_env_path)
+    env = {
+        key: value for key, value in env.items() if not _env_key_matches(key, setup_managed_keys)
+    }
     load_env_file(
-        Path(env["ALFRED_HOME"]) / ".env",
+        runtime_env_path,
         env,
         no_clobber=True,
-        clobber_keys=_SETUP_MANAGED_RUNTIME_ENV_KEYS,
+        clobber_keys=setup_managed_keys,
     )
     if not env.get("WORKSPACE_ROOT", "").strip():
         env["WORKSPACE_ROOT"] = os.path.expanduser("~/code")
     return env
+
+
+def setup_managed_runtime_env_keys(runtime_env_path: Path) -> set[str]:
+    """Static setup-owned keys plus custom codename keys from the managed block."""
+
+    return _SETUP_MANAGED_RUNTIME_ENV_KEYS | _managed_runtime_env_keys(runtime_env_path)
+
+
+def _managed_runtime_env_keys(path: Path) -> set[str]:
+    keys: set[str] = set()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return keys
+
+    in_managed_block = False
+    for raw_line in lines:
+        line = raw_line.strip()
+        if line.startswith("# alfred-init") and "generated below this line" in line:
+            in_managed_block = True
+            continue
+        if not in_managed_block:
+            continue
+        if not line or line.startswith("#"):
+            break
+        if line.startswith("export "):
+            line = line.removeprefix("export ").strip()
+        if "=" not in line:
+            break
+        key, _, raw_value = line.partition("=")
+        key = key.strip()
+        if not _ENV_KEY_RE.match(key):
+            break
+        keys.add(key)
+        if key.startswith("AGENT_CODENAME_"):
+            value = decode_env_value(_strip_inline_comment(raw_value).strip()).strip()
+            if _CODENAME_RE.match(value):
+                slug = value.upper().replace("-", "_")
+                keys.add(f"ALFRED_{slug}_REPOS")
+                keys.add(f"ALFRED_{slug}_AWS_PROFILE")
+    return keys
 
 
 def _env_key_matches(key: str, patterns: set[str]) -> bool:

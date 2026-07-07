@@ -201,12 +201,38 @@ def test_launcher_env_scrubs_setup_managed_scope_when_runtime_env_omits_it(
     monkeypatch.setenv("ALFRED_CODE_MAP_REPOS", "org/stale")
     monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "org/stale")
     monkeypatch.setenv("ALFRED_SENIOR_DEV_REPOS", "org/stale")
+    monkeypatch.setenv("ALFRED_SPEC_PLANNER_REPOS", "org/stale")
 
     env = paths_mod.launcher_env()
 
     assert "ALFRED_CODE_MAP_REPOS" not in env
     assert "ALFRED_CODE_MEMORY_REPOS" not in env
     assert "ALFRED_SENIOR_DEV_REPOS" not in env
+    assert "ALFRED_SPEC_PLANNER_REPOS" not in env
+
+
+def test_launcher_env_scrubs_custom_codename_repo_scope_from_managed_block(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "AGENT_CODENAME_FEATURE_DEV=oracle\n"
+        "ALFRED_ORACLE_REPOS=org/runtime\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("AGENT_CODENAME_FEATURE_DEV", "old-oracle")
+    monkeypatch.setenv("ALFRED_ORACLE_REPOS", "org/stale")
+
+    env = paths_mod.launcher_env()
+
+    assert env["AGENT_CODENAME_FEATURE_DEV"] == "oracle"
+    assert env["ALFRED_ORACLE_REPOS"] == "org/runtime"
 
 
 def test_launcher_env_preserves_code_memory_process_controls(
