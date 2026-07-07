@@ -23,14 +23,24 @@ interface Props {
   /** Optional third CTA, rendered as a ghost button after the secondary. */
   tertiaryCta?: Cta;
   headlineSize?: "xl" | "lg";
+  headlineWrap?: "default" | "compact";
 }
 
-const { eyebrow, headline, sub, primaryCta, secondaryCta, tertiaryCta, headlineSize = "xl" } = Astro.props;
+const {
+  eyebrow,
+  headline,
+  sub,
+  primaryCta,
+  secondaryCta,
+  tertiaryCta,
+  headlineSize = "xl",
+  headlineWrap = "default",
+} = Astro.props;
 const hasPanel = Astro.slots.has("panel");
 ---
 
-<section class={`hero ${hasPanel ? "hero--split" : "hero--solo"}`}>
-  {/* Aurora field: two drifting brand blooms + a fine engineered grid.
+<section class={`hero ${hasPanel ? "hero--split" : "hero--solo"} ${headlineWrap === "compact" ? "hero--compact-headline" : ""}`}>
+  {/* Aurora field: two drifting brand blooms + a soft status-lane texture.
       This is the Glass x Systematic backdrop the whole hero floats on. */}
   <div class="m-aurora" aria-hidden="true"></div>
   {/* Cinematic fleet layer: a calm horizon sweep. Pure CSS, no JS,
@@ -66,7 +76,7 @@ const hasPanel = Astro.slots.has("panel");
 
 <style>
   .hero {
-    padding: 120px 0 88px;
+    padding: 80px 0 44px;
     position: relative;
     overflow: hidden;
   }
@@ -76,16 +86,20 @@ const hasPanel = Astro.slots.has("panel");
     z-index: 1;
     display: grid;
     gap: 56px;
-    align-items: center;
+    align-items: start;
   }
 
   .hero--split .hero__inner {
-    grid-template-columns: 1.35fr 0.9fr;
+    grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.78fr);
   }
 
   .hero__copy h1 {
     margin-top: 18px;
     color: var(--alfred-text-bright);
+  }
+
+  .hero--compact-headline .hero__copy h1 {
+    max-width: 17ch;
   }
 
   .hero__copy,
@@ -96,8 +110,8 @@ const hasPanel = Astro.slots.has("panel");
   .hero__sub {
     margin-top: 24px;
     color: var(--alfred-text);
-    max-width: 58ch;
-    overflow-wrap: anywhere;
+    max-width: 52ch;
+    overflow-wrap: normal;
   }
 
   .hero__ctas {

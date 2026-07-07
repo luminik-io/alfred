@@ -149,9 +149,10 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
   path="/"
 >
   <Hero
-    eyebrow="AUTONOMOUS CODING AGENTS"
-    headline="An engineering team that remembers, and keeps shipping while you are away."
-    sub="Alfred turns a spec, a Slack message, or a GitHub issue into a reviewed pull request. It plans, writes, opens the PR, reviews it, and remembers every run, on the Claude and Codex subscriptions you already pay for."
+    eyebrow="LOCAL ENGINEERING FLEET"
+    headline="Alfred ships PRs while you sleep."
+    sub="Start with a Slack thread, spec, or issue. Batman plans the rollout, Lucius opens PRs, reviewers check them, and Alfred remembers the work."
+    headlineWrap="compact"
     primaryCta={{ label: "Download", href: "/download/", data: { "data-download-os": "other", "data-download-source": "home-hero", "data-download-kind": "intent" } }}
     secondaryCta={{ label: "Install", href: "/getting-started/install/" }}
     tertiaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred" }}
@@ -169,6 +170,12 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
       <div class="hero-impact__primary">
         <strong>{productProof.summary.agent_prs_merged.toLocaleString("en-US")}</strong>
         <span>PRs merged by Alfred</span>
+      </div>
+
+      <div class="hero-architect">
+        <span class="hero-architect__label m-mono">architect path</span>
+        <strong>Batman plans agent:large-feature.</strong>
+        <p>Default installs stop at a reviewable plan. Turn on auto-execute when approved plans should create repo-level implementation, test, review-fix, and merge-gate work.</p>
       </div>
 
       <div class="hero-impact__stats" role="list">
@@ -191,14 +198,9 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
         </ol>
       </div>
 
-      <div class="hero-agents" aria-label="Primary Alfred agents">
-        <span><strong>Batman</strong> Architect</span>
-        <span><strong>Drake</strong> Planner</span>
-        <span><strong>Lucius</strong> Senior dev</span>
-        <span><strong>Ra's al Ghul</strong> Reviewer</span>
-        <span><strong>Bane</strong> Tests</span>
-        <span><strong>Nightwing</strong> Review fixes</span>
-      </div>
+      <p class="hero-fleet-note">
+        <strong>Also in the fleet:</strong> Drake, Bane, Nightwing, memory, code-map, cleanup, and fleet doctor.
+      </p>
     </div>
   </Hero>
 
@@ -477,6 +479,31 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
     line-height: 1.35;
     font-weight: 600;
   }
+  .hero-architect {
+    display: grid;
+    gap: 6px;
+    padding: 14px 16px;
+    background:
+      linear-gradient(90deg, color-mix(in oklab, var(--alfred-accent) 15%, transparent), transparent 74%),
+      color-mix(in oklab, var(--alfred-surface) 72%, transparent);
+    border: 1px solid color-mix(in oklab, var(--alfred-accent) 32%, var(--alfred-border));
+  }
+  .hero-architect__label {
+    color: var(--alfred-accent);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 11px;
+  }
+  .hero-architect strong {
+    color: var(--alfred-text-bright);
+    font-size: 16px;
+    line-height: 1.3;
+  }
+  .hero-architect p {
+    color: var(--alfred-text);
+    font-size: 13px;
+    line-height: 1.45;
+  }
   .hero-impact__stats {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -554,24 +581,14 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
     border: 2px solid var(--alfred-accent);
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--alfred-accent) 12%, transparent);
   }
-  .hero-agents {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .hero-agents span {
-    display: inline-flex;
-    gap: 6px;
-    align-items: center;
-    min-height: 32px;
-    padding: 6px 10px;
-    border: 1px solid var(--alfred-border);
-    border-radius: 0;
+  .hero-fleet-note {
+    margin: 0;
+    padding-top: 2px;
     color: var(--alfred-text);
-    font-size: 12px;
-    line-height: 1.2;
+    font-size: 13px;
+    line-height: 1.45;
   }
-  .hero-agents strong {
+  .hero-fleet-note strong {
     color: var(--alfred-text-bright);
     font-weight: 700;
   }
