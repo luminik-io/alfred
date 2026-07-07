@@ -16,7 +16,7 @@ Alfred core used by the CLI.
 1. Download the signed Mac package or Linux build from [Download](/download/).
 2. Open Alfred Desktop and choose **Install or repair** in Setup.
 3. Setup bootstraps dependencies, seeds the full built-in fleet, deploys the
-   local CLI/agents into `~/.alfred`, installs starter engineering skills,
+   local CLI/agents into `~/.alfred`, installs first-party starter skills,
    attempts the pinned code-memory doctor, starts `alfred serve`, and continues
    through GitHub, engine, repo scope, roster naming, optional Slack, and
    in-app repair/status checks.
@@ -145,8 +145,10 @@ What the base installer does **not** do (deliberately):
 - Run `deploy.sh`. That side-effects the host scheduler (`launchd` on macOS,
   `systemd --user` on Linux); you should know what's about to load.
 - Install a hosted agent gateway, hosted MCP server, or external dashboard.
-  Alfred Desktop and `alfred-init.py --agents all` install the local full fleet
-  and starter engineering skills. Optional fetched integrations remain explicit
+  Alfred Desktop installs the local full fleet and first-party starter skills.
+  In the CLI-only path, `alfred-init.py --agents all` configures the local full
+  fleet; run `alfred skills install --starter` when you want the first-party
+  starter skills too. Optional vendored and fetched integrations remain explicit
   operator choices. Redis Agent Memory is provisioned locally for recalled
   lessons; `deploy.sh` starts the local service. FleetBrain stays under
   `ALFRED_HOME` for review and reliability state.
