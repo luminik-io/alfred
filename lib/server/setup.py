@@ -864,7 +864,10 @@ def _env_flag(env: Mapping[str, str], key: str, *, default: bool) -> bool:
     raw = env.get(key)
     if raw is None:
         return default
-    return raw.strip().lower() not in _FALSEY
+    normalized = raw.strip().lower()
+    if normalized == "":
+        return default
+    return normalized not in _FALSEY
 
 
 def _installed_skill_paths(env: Mapping[str, str]) -> list[Path]:

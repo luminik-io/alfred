@@ -1074,6 +1074,24 @@ def test_capability_plane_reports_disabled_context_governor(
     assert "ALFRED_CONTEXT_GOVERNOR" in context["detail"]
 
 
+def test_capability_plane_treats_empty_context_governor_env_as_default_enabled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text("ALFRED_CONTEXT_GOVERNOR=\n", encoding="utf-8")
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_CONTEXT_GOVERNOR", raising=False)
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+
+    payload = setup_mod.capability_status()
+    context = {item["key"]: item for item in payload["capabilities"]}["context_compression"]
+
+    assert context["state"] == "ready"
+    assert context["installed"] is True
+    assert context["enabled"] is True
+
+
 def test_capability_plane_ignores_legacy_alfredrc_for_non_code_memory_rows(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
