@@ -139,7 +139,7 @@ const heroImpactStats = [
   },
 ];
 
-const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
+const heroFlow = ["Request", "Plan", "Build", "Review", "Merge"];
 
 ---
 
@@ -151,8 +151,10 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
   <Hero
     eyebrow="LOCAL ENGINEERING FLEET"
     headline="Alfred ships PRs while you sleep."
-    sub="Start with a Slack thread, spec, or issue. Batman plans the rollout, Lucius opens PRs, reviewers check them, and Alfred remembers the work."
+    sub="Slack, specs, or GitHub issues go in. Batman plans, Lucius ships, reviewers check, and Alfred remembers what worked."
+    headlineSize="lg"
     headlineWrap="compact"
+    compactCtas
     primaryCta={{ label: "Download", href: "/download/", data: { "data-download-os": "other", "data-download-source": "home-hero", "data-download-kind": "intent" } }}
     secondaryCta={{ label: "Install", href: "/getting-started/install/" }}
     tertiaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred" }}
@@ -173,9 +175,9 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
       </div>
 
       <div class="hero-architect">
-        <span class="hero-architect__label m-mono">architect path</span>
-        <strong>Batman plans agent:large-feature.</strong>
-        <p>Default installs stop at a reviewable plan. Turn on auto-execute when approved plans should create repo-level implementation, test, review-fix, and merge-gate work.</p>
+        <span class="hero-architect__label m-mono">included at install</span>
+        <strong>Batman is the architect role in the default theme.</strong>
+        <p>Default: stops at a reviewable plan. Enable approval-gate to let approved plans create repo-level work.</p>
       </div>
 
       <div class="hero-impact__stats" role="list">
@@ -199,7 +201,7 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
       </div>
 
       <p class="hero-fleet-note">
-        <strong>Also in the fleet:</strong> Drake, Bane, Nightwing, memory, code-map, cleanup, and fleet doctor.
+        <strong>Full fleet loaded:</strong> Drake, Bane, Nightwing, memory, code-map, cleanup, and fleet doctor.
       </p>
     </div>
   </Hero>
@@ -451,7 +453,7 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
 <style>
   .hero-impact {
     display: grid;
-    gap: 18px;
+    gap: 16px;
   }
   .hero-impact__head {
     display: flex;
@@ -468,7 +470,7 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
   .hero-impact__primary strong {
     display: block;
     color: var(--alfred-accent);
-    font-size: clamp(56px, 8vw, 86px);
+    font-size: clamp(52px, 7vw, 78px);
     line-height: 0.92;
     letter-spacing: 0;
     font-weight: 750;
@@ -503,6 +505,11 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
     color: var(--alfred-text);
     font-size: 13px;
     line-height: 1.45;
+  }
+  .hero-architect code {
+    color: var(--alfred-text-bright);
+    font-family: var(--font-mono);
+    font-size: 0.94em;
   }
   .hero-impact__stats {
     display: grid;
@@ -601,20 +608,55 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
   @media (prefers-reduced-motion: reduce) {
     .hero-flow__pulse { animation: none; opacity: 0; }
   }
-  @media (max-width: 480px) {
-    .hero-impact__head {
-      align-items: flex-start;
-      flex-direction: column;
-      gap: 6px;
+  @media (max-width: 720px) {
+    .hero-impact {
+      gap: 14px;
+    }
+    .hero-impact__primary strong {
+      font-size: 50px;
+    }
+    .hero-impact__primary span {
+      font-size: 16px;
+    }
+    .hero-architect {
+      padding: 12px 14px;
+    }
+    .hero-flow,
+    .hero-fleet-note {
+      display: none;
+    }
+    .hero-architect p {
+      display: block;
+      font-size: 12px;
+      line-height: 1.35;
     }
     .hero-impact__stats {
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
     .hero-impact__stat {
-      border-right: none;
-      border-bottom: 1px solid var(--alfred-border);
+      padding: 10px 8px;
     }
-    .hero-impact__stat:last-child { border-bottom: none; }
+    .hero-impact__stat strong {
+      font-size: clamp(15px, 4.2vw, 18px);
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .hero-impact__stat span {
+      font-size: 11px;
+      overflow-wrap: anywhere;
+    }
+  }
+  @media (max-width: 480px) {
+    .hero-impact__head {
+      align-items: center;
+      flex-direction: row;
+      gap: 12px;
+    }
+    .hero-impact__stat {
+      border-right: 1px solid var(--alfred-border);
+      border-bottom: none;
+    }
+    .hero-impact__stat:last-child { border-right: none; }
     .hero-flow ol {
       grid-template-columns: repeat(5, minmax(42px, 1fr));
       overflow-x: auto;

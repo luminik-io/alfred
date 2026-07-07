@@ -129,7 +129,7 @@ No carousels, no parallax. The only motion permitted: a 0.6s ease-in fade on the
 
 ## Component patterns
 
-- `<Hero>`: eyebrow + display-xl headline + body-lg sub + primary CTA + secondary text-link CTA. Root page hero copy should usually fit in 2-3 desktop lines.
+- `<Hero>`: eyebrow + display-xl or display-lg headline + body-lg sub + primary CTA + secondary text-link CTA. Root page hero copy should usually fit in 2-3 desktop lines, keep the next section visible on mobile, and use real product proof before decorative texture.
 - `<MetricStrip>`: 3-5 mono-aligned metric rows in a single card.
 - `<JobStory>`: card showing one buyer-side outcome ("a Drake firing files four scoped issues") with a tiny log excerpt under it.
 - `<CodeBlock>`: Fragment Mono, scrollable, prompt prefix `$` rendered in `--alfred-accent`.
