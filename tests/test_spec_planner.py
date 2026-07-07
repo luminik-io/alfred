@@ -1,4 +1,4 @@
-"""Tests for ``lib/damian_planner.py`` and the ``bin/spec-planner.py`` runner.
+"""Tests for ``lib/spec_planner.py`` and the ``bin/spec-planner.py`` runner.
 
 The planner is the deterministic, offline core: spec discovery, multi-repo
 detection, candidate-list construction. Tests build a tmp_path spec directory
@@ -23,14 +23,17 @@ def _isolated_alfred_home(tmp_path, monkeypatch):
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspace"))
     monkeypatch.setenv("GH_ORG", "myorg")
-    monkeypatch.delenv("DAMIAN_SCAN_REPOS", raising=False)
-    monkeypatch.delenv("DAMIAN_SPEC_DIR", raising=False)
-    monkeypatch.delenv("DAMIAN_DAILY_BUNDLE_CAP", raising=False)
+    monkeypatch.delenv("ALFRED_SPEC_PLANNER_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SPEC_PLANNER_SPEC_DIR", raising=False)
+    monkeypatch.delenv("ALFRED_SPEC_PLANNER_DAILY_BUNDLE_CAP", raising=False)
+    monkeypatch.delenv("SPEC_PLANNER_SCAN_REPOS", raising=False)
+    monkeypatch.delenv("SPEC_PLANNER_SPEC_DIR", raising=False)
+    monkeypatch.delenv("SPEC_PLANNER_DAILY_BUNDLE_CAP", raising=False)
     for mod in list(sys.modules):
         if mod.startswith("agent_runner") or mod in (
-            "batman",
-            "damian_planner",
-            "damian_runner",
+            "architect",
+            "spec_planner",
+            "spec_planner_runner",
             "labels",
             "slack_format",
         ):
@@ -54,14 +57,14 @@ def _write_spec(spec_dir: Path, name: str, body: str) -> Path:
 def test_planner_config_reads_canonical_slug_keys(monkeypatch):
     # The spec-planner role writes slug-based env keys via alfred-init; the
     # runner must read the same keys so a fresh install actually scopes it.
-    monkeypatch.delenv("DAMIAN_SCAN_REPOS", raising=False)
-    monkeypatch.delenv("DAMIAN_SPEC_DIR", raising=False)
-    monkeypatch.delenv("DAMIAN_DAILY_BUNDLE_CAP", raising=False)
+    monkeypatch.delenv("ALFRED_SPEC_PLANNER_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SPEC_PLANNER_SPEC_DIR", raising=False)
+    monkeypatch.delenv("ALFRED_SPEC_PLANNER_DAILY_BUNDLE_CAP", raising=False)
     monkeypatch.setenv("ALFRED_SPEC_PLANNER_REPOS", "your-org/your-backend, your-org/your-frontend")
     monkeypatch.setenv("ALFRED_SPEC_PLANNER_SPEC_DIR", "/abs/specs")
     monkeypatch.setenv("ALFRED_SPEC_PLANNER_DAILY_BUNDLE_CAP", "5")
 
-    import damian_planner as dp
+    import spec_planner as dp
 
     cfg = dp.PlannerConfig.from_env()
     assert cfg.scan_repos == ("your-org/your-backend", "your-org/your-frontend")
@@ -69,35 +72,33 @@ def test_planner_config_reads_canonical_slug_keys(monkeypatch):
     assert cfg.daily_bundle_cap == 5
 
 
-def test_planner_config_reads_legacy_damian_keys(monkeypatch):
-    # The Batman-cast DAMIAN_ keys stay as a legacy fallback so a config
-    # written before the rename keeps scoping the agent.
+def test_planner_config_ignores_removed_legacy_keys(monkeypatch):
     monkeypatch.delenv("ALFRED_SPEC_PLANNER_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_SPEC_PLANNER_SPEC_DIR", raising=False)
     monkeypatch.delenv("ALFRED_SPEC_PLANNER_DAILY_BUNDLE_CAP", raising=False)
-    monkeypatch.setenv("DAMIAN_SCAN_REPOS", "your-org/your-backend, your-org/your-frontend")
-    monkeypatch.setenv("DAMIAN_SPEC_DIR", "/abs/specs")
-    monkeypatch.setenv("DAMIAN_DAILY_BUNDLE_CAP", "5")
+    monkeypatch.setenv("SPEC_PLANNER_SCAN_REPOS", "your-org/your-backend, your-org/your-frontend")
+    monkeypatch.setenv("SPEC_PLANNER_SPEC_DIR", "/abs/specs")
+    monkeypatch.setenv("SPEC_PLANNER_DAILY_BUNDLE_CAP", "5")
 
-    import damian_planner as dp
+    import spec_planner as dp
 
     cfg = dp.PlannerConfig.from_env()
-    assert cfg.scan_repos == ("your-org/your-backend", "your-org/your-frontend")
-    assert cfg.spec_dir == Path("/abs/specs")
-    assert cfg.daily_bundle_cap == 5
+    assert cfg.scan_repos == ()
+    assert cfg.spec_dir is None
+    assert cfg.daily_bundle_cap == 3
 
 
-def test_planner_config_slug_key_wins_over_legacy(monkeypatch):
+def test_planner_config_reads_only_slug_key(monkeypatch):
     monkeypatch.setenv("ALFRED_SPEC_PLANNER_REPOS", "org/canonical")
-    monkeypatch.setenv("DAMIAN_SCAN_REPOS", "org/stale")
+    monkeypatch.setenv("SPEC_PLANNER_SCAN_REPOS", "org/stale")
 
-    import damian_planner as dp
+    import spec_planner as dp
 
     assert dp.PlannerConfig.from_env().scan_repos == ("org/canonical",)
 
 
 def test_planner_config_defaults_to_empty_scope():
-    import damian_planner as dp
+    import spec_planner as dp
 
     cfg = dp.PlannerConfig.from_env({})
     assert cfg.scan_repos == ()
@@ -106,8 +107,8 @@ def test_planner_config_defaults_to_empty_scope():
 
 
 def test_planner_config_floors_cap_to_one(monkeypatch):
-    monkeypatch.setenv("DAMIAN_DAILY_BUNDLE_CAP", "0")
-    import damian_planner as dp
+    monkeypatch.setenv("ALFRED_SPEC_PLANNER_DAILY_BUNDLE_CAP", "0")
+    import spec_planner as dp
 
     cfg = dp.PlannerConfig.from_env()
     assert cfg.daily_bundle_cap == 1
@@ -119,14 +120,14 @@ def test_planner_config_floors_cap_to_one(monkeypatch):
 
 
 def test_parser_returns_none_for_empty_dir(tmp_path):
-    import damian_planner as dp
+    import spec_planner as dp
 
     parser = dp.MarkdownSpecParser()
     assert parser.discover(tmp_path / "nope") == []
 
 
 def test_parser_extracts_inline_repos_and_title(tmp_path):
-    import damian_planner as dp
+    import spec_planner as dp
 
     spec = _write_spec(
         tmp_path,
@@ -149,7 +150,7 @@ Repos: backend, frontend
 
 
 def test_parser_extracts_per_repo_h3_sections(tmp_path):
-    import damian_planner as dp
+    import spec_planner as dp
 
     spec = _write_spec(
         tmp_path,
@@ -176,14 +177,14 @@ def test_parser_extracts_per_repo_h3_sections(tmp_path):
 
 
 def test_parser_returns_none_for_malformed_spec(tmp_path):
-    import damian_planner as dp
+    import spec_planner as dp
 
     spec = _write_spec(tmp_path, "junk.md", "Just a blob with no headers and no repos.\n")
     assert dp.MarkdownSpecParser().parse(spec) is None
 
 
 def test_parser_picks_up_severity_marker(tmp_path):
-    import damian_planner as dp
+    import spec_planner as dp
 
     spec = _write_spec(
         tmp_path,
@@ -210,7 +211,7 @@ def _fake_gh(_cmd: list[str]) -> list[dict]:
 
 
 def test_build_plan_is_empty_when_no_spec_dir():
-    import damian_planner as dp
+    import spec_planner as dp
 
     planner = dp.SpecBundlePlanner(scan_repos=["backend", "frontend"], gh_client=_fake_gh)
     plan = planner.build_plan(None)
@@ -219,7 +220,7 @@ def test_build_plan_is_empty_when_no_spec_dir():
 
 
 def test_build_plan_is_empty_when_no_scan_repos(tmp_path):
-    import damian_planner as dp
+    import spec_planner as dp
 
     spec = _write_spec(
         tmp_path,
@@ -232,7 +233,7 @@ def test_build_plan_is_empty_when_no_scan_repos(tmp_path):
 
 
 def test_build_plan_skips_single_repo_specs(tmp_path):
-    import damian_planner as dp
+    import spec_planner as dp
 
     _write_spec(
         tmp_path,
@@ -246,7 +247,7 @@ def test_build_plan_skips_single_repo_specs(tmp_path):
 
 
 def test_build_plan_counts_unparseable_specs(tmp_path):
-    import damian_planner as dp
+    import spec_planner as dp
 
     _write_spec(tmp_path, "noise.md", "nothing useful here\n")
     planner = dp.SpecBundlePlanner(scan_repos=["backend", "frontend"], gh_client=_fake_gh)
@@ -256,7 +257,7 @@ def test_build_plan_counts_unparseable_specs(tmp_path):
 
 
 def test_build_plan_returns_multi_repo_bundle(tmp_path):
-    import damian_planner as dp
+    import spec_planner as dp
 
     _write_spec(
         tmp_path,
@@ -285,7 +286,7 @@ Repos: backend, frontend, mobile
 
 
 def test_build_plan_filters_out_repos_outside_scan_list(tmp_path):
-    import damian_planner as dp
+    import spec_planner as dp
 
     _write_spec(
         tmp_path,
@@ -313,7 +314,7 @@ Repos: backend, frontend, mobile, infra
 
 
 def test_build_plan_respects_daily_cap(tmp_path):
-    import damian_planner as dp
+    import spec_planner as dp
 
     for idx in range(5):
         _write_spec(
@@ -329,7 +330,7 @@ def test_build_plan_respects_daily_cap(tmp_path):
 
 
 def test_build_plan_dedups_against_open_bundle_slugs(tmp_path):
-    import damian_planner as dp
+    import spec_planner as dp
 
     _write_spec(
         tmp_path,
@@ -357,14 +358,14 @@ def test_build_plan_dedups_against_open_bundle_slugs(tmp_path):
 
 
 def test_render_plan_returns_none_marker_when_empty():
-    import damian_planner as dp
+    import spec_planner as dp
 
     rendered = dp.render_plan_for_prompt(dp.Plan())
     assert "(none - empty plan)" in rendered
 
 
 def test_render_plan_shows_bundles_and_counters(tmp_path):
-    import damian_planner as dp
+    import spec_planner as dp
 
     bundle = dp.SpecBundle(
         slug="captures",
@@ -391,9 +392,9 @@ def test_render_plan_shows_bundles_and_counters(tmp_path):
 
 
 def _load_runner():
-    spec = importlib.util.spec_from_file_location("damian_runner", RUNNER)
+    spec = importlib.util.spec_from_file_location("spec_planner_runner", RUNNER)
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["damian_runner"] = mod
+    sys.modules["spec_planner_runner"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     return mod
@@ -416,7 +417,6 @@ def test_runner_reports_idle_when_no_scan_repos(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(runner, "is_agent_enabled", lambda *_a, **_k: True)
     monkeypatch.setattr(runner, "preflight", lambda *_a, **_k: None)
     monkeypatch.setattr(runner, "with_lock", lambda *_a, **_k: None)
-    monkeypatch.delenv("DAMIAN_SCAN_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_SPEC_PLANNER_REPOS", raising=False)
 
     rc = runner.main()
@@ -429,8 +429,8 @@ def test_runner_emits_noop_when_no_candidates(monkeypatch, capsys, tmp_path):
     spec_dir = tmp_path / "specs"
     _write_spec(spec_dir, "single.md", "# Feature: Solo\n\nRepos: backend\n")
 
-    monkeypatch.setenv("DAMIAN_SCAN_REPOS", "backend,frontend")
-    monkeypatch.setenv("DAMIAN_SPEC_DIR", str(spec_dir))
+    monkeypatch.setenv("ALFRED_SPEC_PLANNER_REPOS", "backend,frontend")
+    monkeypatch.setenv("ALFRED_SPEC_PLANNER_SPEC_DIR", str(spec_dir))
 
     runner = _load_runner()
     monkeypatch.setattr(runner, "doctor_mode", lambda: False)
@@ -453,8 +453,8 @@ def test_runner_drafts_plan_when_prompt_missing(monkeypatch, capsys, tmp_path):
         "# Feature: Cross\n\nRepos: backend, frontend\n",
     )
 
-    monkeypatch.setenv("DAMIAN_SCAN_REPOS", "backend,frontend")
-    monkeypatch.setenv("DAMIAN_SPEC_DIR", str(spec_dir))
+    monkeypatch.setenv("ALFRED_SPEC_PLANNER_REPOS", "backend,frontend")
+    monkeypatch.setenv("ALFRED_SPEC_PLANNER_SPEC_DIR", str(spec_dir))
 
     runner = _load_runner()
     monkeypatch.setattr(runner, "doctor_mode", lambda: False)

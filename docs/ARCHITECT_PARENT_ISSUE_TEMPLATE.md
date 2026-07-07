@@ -1,6 +1,6 @@
-# Batman Parent Issue Template
+# Architect Parent Issue Template
 
-The body shape Batman's lifecycle parser (`parse_parent_issue` in `lib/batman.py`) expects when you file an `agent:large-feature` issue in `BATMAN_PARENT_REPO`. Mismatching the shape causes the parser to return `children=0 repos=0` silently: Batman drafts a useless plan, posts it to Slack, and the operator spends a polling cycle figuring out what went wrong (see #107 for the silent-zero behaviour).
+The body shape the architect lifecycle parser (`parse_parent_issue` in `lib/architect_lifecycle.py`) expects when you file an `agent:large-feature` issue in `ARCHITECT_PARENT_REPO`. Mismatching the shape causes the parser to return `children=0 repos=0` silently: the architect role drafts a useless plan, posts it to Slack, and the operator spends a polling cycle figuring out what went wrong (see #107 for the silent-zero behaviour). In the default `batman` theme, this role shows as Batman.
 
 This doc gives the validated minimal shape, lists the gotchas the parser doesn't surface, and provides a copy-paste template.
 
@@ -28,7 +28,7 @@ Done when:
 - All N child PRs merged AND <observable cross-repo invariant>.
 ```
 
-File the resulting issue in `BATMAN_PARENT_REPO`, label it `agent:large-feature`, and Batman will pick it up on the next firing.
+File the resulting issue in `ARCHITECT_PARENT_REPO`, label it `agent:large-feature`, and the architect role will pick it up on the next firing.
 
 ## Canonical inline requirements
 
@@ -70,15 +70,15 @@ Two gotchas:
 
 1. **Bundle label must be ~50 chars or less** (GitHub validation HTTP 422). Long bundle slugs combined with the `agent:bundle:` prefix overflow. Keep slugs short: `auth-v2`, not `migrate-authentication-from-jwt-to-oauth-across-all-services`.
 
-2. Batman now auto-creates per-bundle labels on target repos before filing child issues. If a target repo forbids label creation for your token, execution will report that repo as failed instead of silently continuing.
+2. The architect role now auto-creates per-bundle labels on target repos before filing child issues. If a target repo forbids label creation for your token, execution will report that repo as failed instead of silently continuing.
 
 ## Optional sections
 
 You can add markdown anywhere outside the canonical sections (`## Vision`,
-`## Out of scope`, `## References`, etc.). For the inline shape, Batman reads
+`## Out of scope`, `## References`, etc.). For the inline shape, the architect reads
 the sections that start with `Repos:`, `Children:`, `Rollout order:`, and
 `Done when:` (case-insensitive). If the canonical sections are missing but the
-body contains `## Affected Repos` or `## Acceptance Criteria`, Batman may use
+body contains `## Affected Repos` or `## Acceptance Criteria`, the architect may use
 the loose fallback described below.
 
 ```markdown
@@ -109,12 +109,12 @@ What you're explicitly NOT doing.
 
 ## Operator decision needed before plan execution
 
-Anything you want Batman's approval reaction to gate on.
+Anything you want the architect's approval reaction to gate on.
 ```
 
 ## Worked example (validated 2026-05-25)
 
-A real Batman parent issue from a 3-repo product fleet. Posted, parsed, approved end-to-end; Batman drafted children correctly:
+A real architect parent issue from a 3-repo product fleet. Posted, parsed, approved end-to-end; the architect drafted children correctly:
 
 ```markdown
 Bundle: tier-colour-sync
@@ -145,17 +145,17 @@ Bundle slug `tier-colour-sync` → `agent:bundle:tier-colour-sync` (27 chars tot
 
 ## Why two parser shapes exist
 
-The canonical lifecycle parser (`parse_parent_issue` in `lib/batman.py`) expects
+The canonical lifecycle parser (`parse_parent_issue` in `lib/architect_lifecycle.py`) expects
 the inline `Repos:` / `Children:` / `Done when:` blocks documented above.
 
-Batman also accepts a loose Markdown fallback: `## Affected Repos` H2 blocks,
+The architect also accepts a loose Markdown fallback: `## Affected Repos` H2 blocks,
 bare repo names, and `## Acceptance Criteria` H3 sections. That fallback lets
 imperfect parent issues become reviewable plans, but new parent issues should
 use this template. Fully-qualified fallback entries such as `acme/backend` are
 preserved as written; bare fallback entries are interpreted inside the parent
 repo owner unless you have an explicit repo mapping configured.
 
-Follow this doc for `BATMAN_PARENT_REPO` parent issues.
+Follow this doc for `ARCHITECT_PARENT_REPO` parent issues.
 
 ## Validating before you commit
 
@@ -165,7 +165,7 @@ Run the parser against your draft body without filing the issue:
 python3 - <<'PY'
 import sys
 sys.path.insert(0, "/path/to/alfred-os/lib")
-from batman import parse_parent_issue
+from architect_lifecycle import parse_parent_issue
 
 BODY = """
 Bundle: hello
@@ -203,9 +203,9 @@ If `children: 0`, the body shape doesn't match: fix and re-run before filing the
 ## Related
 
 - #107: silent `children=0` when body shape doesn't match (this template is the documented mitigation).
-- #115: Batman re-drafts plans on every firing while approval is pending. Combines with body-shape bugs to produce N broken plan posts in a row.
+- #115: architect re-drafts plans on every firing while approval is pending. Combines with body-shape bugs to produce N broken plan posts in a row.
 - #116: lifecycle parser no longer drops bare repo names silently. This template still tells you to use full slugs.
 - #117: bundle label auto-creation on target repos + ~50-char label-length limit.
 - #118: meta-tracker for the broader lifecycle hardening backlog.
 - #119: `bin/doctor.sh --lifecycle` synthetic-fire validator.
-- #121: `alfred-batman-setup` wizard (would walk operators through this body shape interactively).
+- #121: `alfred-architect-setup` wizard (would walk operators through this body shape interactively).

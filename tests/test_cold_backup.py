@@ -32,7 +32,7 @@ def _load_backup(monkeypatch, tmp_path):
 def test_create_archive_includes_state_cron_and_launch_agents(monkeypatch, tmp_path):
     backup = _load_backup(monkeypatch, tmp_path)
     runtime_home = tmp_path / "alfred"
-    state = runtime_home / "state" / "lucius"
+    state = runtime_home / "state" / "senior-dev"
     state.mkdir(parents=True)
     (state / "spend-2026-05-25.json").write_text("{}")
     cron = runtime_home / "cron"
@@ -41,7 +41,7 @@ def test_create_archive_includes_state_cron_and_launch_agents(monkeypatch, tmp_p
     home = tmp_path / "home"
     launch_agents = home / "Library" / "LaunchAgents"
     launch_agents.mkdir(parents=True)
-    (launch_agents / "alfred.lucius.plist").write_text("<plist />")
+    (launch_agents / "alfred.senior-dev.plist").write_text("<plist />")
     (launch_agents / "com.example.other.plist").write_text("<plist />")
 
     archive, included = backup.create_archive(
@@ -55,13 +55,13 @@ def test_create_archive_includes_state_cron_and_launch_agents(monkeypatch, tmp_p
     assert included == [
         "alfred/state",
         "alfred/cron/jobs.json",
-        "LaunchAgents/alfred.lucius.plist",
+        "LaunchAgents/alfred.senior-dev.plist",
     ]
     with tarfile.open(archive, "r:gz") as tar:
         names = tar.getnames()
-    assert "alfred/state/lucius/spend-2026-05-25.json" in names
+    assert "alfred/state/senior-dev/spend-2026-05-25.json" in names
     assert "alfred/cron/jobs.json" in names
-    assert "LaunchAgents/alfred.lucius.plist" in names
+    assert "LaunchAgents/alfred.senior-dev.plist" in names
     assert "LaunchAgents/com.example.other.plist" not in names
 
 

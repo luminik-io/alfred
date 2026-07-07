@@ -155,7 +155,7 @@ there and allow repo-operating agents to pick issues or PRs from it.
 ## Batman For Multi-Repo Planning
 
 Batman is included in the full fleet and acts as the architect agent for cross-repo
-work. `BATMAN_PARENT_REPO` parent issues run the plan, approval, child-issue
+work. `ARCHITECT_PARENT_REPO` parent issues run the plan, approval, child-issue
 filing, and report loop.
 
 Batman owns the feature shape above the repo-local work. It plans the rollout
@@ -176,8 +176,8 @@ For parent-plan execution, set the runner gate explicitly and redeploy:
 
 ```sh
 alfred enable architect
-# Add or verify BATMAN_PARENT_REPO=my-org/specs in $ALFRED_HOME/.env.
-# Set BATMAN_AUTO_EXECUTE=approval-gate when you want approved child filing.
+# Add or verify ARCHITECT_PARENT_REPO=my-org/specs in $ALFRED_HOME/.env.
+# Set ARCHITECT_AUTO_EXECUTE=approval-gate when you want approved child filing.
 alfred labels bootstrap my-org/specs
 bash deploy.sh
 ./bin/alfred doctor

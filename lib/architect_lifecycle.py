@@ -1,6 +1,6 @@
-"""Batman lifecycle primitives for the multi-repo architect agent.
+"""architect lifecycle primitives for the multi-repo architect agent.
 
-Batman reads ``agent:large-feature`` parent issues, drafts plans,
+The architect reads ``agent:large-feature`` parent issues, drafts plans,
 captures approval, files scoped child issues, and reports status. This
 module keeps the pure-data pieces testable: bundle labels, parent-plan
 parsing, approval envelopes, child issue creation, and report shapes.
@@ -23,7 +23,7 @@ Plan-shape parsing accepts the loose markdown shape Drake produces:
     per-repo criteria
 
 Anything we cannot parse falls back to a sensible default
-(``DEFAULT_ROLLOUT_ORDER``), Batman flags malformed bodies via the
+(``DEFAULT_ROLLOUT_ORDER``), the architect flags malformed bodies via the
 plan post but never fails the firing on a parse error.
 
 Includes the parser scope-widening guard used by the bundle planner.
@@ -43,7 +43,7 @@ BUNDLE_LABEL_PREFIX = "agent:bundle:"
 LARGE_FEATURE_LABEL = "agent:large-feature"
 
 # Default rollout order. Operators with a different stack override via
-# ``BATMAN_ROLLOUT_ORDER`` (comma-separated local-repo names). The list
+# ``ARCHITECT_ROLLOUT_ORDER`` (comma-separated local-repo names). The list
 # below matches a typical "backend → frontend → mobile" multi-repo
 # product layout; alfred-os ships it as a sane default rather than a
 # strict requirement.
@@ -118,7 +118,7 @@ def _issue_in_allowed_repo(issue: dict, allowed_repos: set[str]) -> bool:
 class Bundle:
     """A set of issues sharing the same ``agent:bundle:<slug>`` label,
     or a single issue when no bundle label is present (a "bundle of
-    one"). Every operation Batman performs (claim, release, plan
+    one"). Every operation the architect performs (claim, release, plan
     parsing, execution) treats the bundle as the atomic unit."""
 
     issues: list[dict]
@@ -245,7 +245,7 @@ def release_bundle(
             )
         except Exception as e:
             print(
-                f"[BATMAN-RELEASE-WARN] {repo}#{issue['number']}: {type(e).__name__}: {e}",
+                f"[ARCHITECT-RELEASE-WARN] {repo}#{issue['number']}: {type(e).__name__}: {e}",
                 file=sys.stderr,
             )
 
@@ -272,7 +272,7 @@ class PlanShape:
 
 DEFAULT_ROLLOUT_WARNING = (
     "No affected repositories or per-repo acceptance criteria were parsed. "
-    "Batman would have to guess the first repos in the configured rollout "
+    "The architect would have to guess the first repos in the configured rollout "
     "order, so the plan needs manual scope before execution."
 )
 
@@ -410,12 +410,12 @@ def _expand_rollout_repo_keys(
 def _rollout_order() -> list[str]:
     """Return the configured rollout order.
 
-    Reads ``BATMAN_ROLLOUT_ORDER`` (comma-separated local-repo names)
+    Reads ``ARCHITECT_ROLLOUT_ORDER`` (comma-separated local-repo names)
     and falls back to ``DEFAULT_ROLLOUT_ORDER`` when unset.
     """
     import os
 
-    raw = (os.environ.get("BATMAN_ROLLOUT_ORDER") or "").strip()
+    raw = (os.environ.get("ARCHITECT_ROLLOUT_ORDER") or "").strip()
     if not raw:
         return list(DEFAULT_ROLLOUT_ORDER)
     return [t.strip() for t in raw.split(",") if t.strip()]
@@ -577,7 +577,7 @@ def parse_plan_from_issue(body: str) -> PlanShape:
 def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
     """Build the unified ``PlanShape`` from a bundle.
 
-    Two shapes Batman accepts:
+    Two shapes the architect accepts:
 
     - **Solo bundle** (single issue, body encodes a multi-repo plan):
       delegate to ``parse_plan_from_issue(body)`` so the loose Markdown
@@ -627,15 +627,15 @@ def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
 # ---------------------------------------------------------------------------
 #
 # The block below implements the architect's full plan -> approve -> execute -> report
-# cycle. Wire it up via ``BatmanLifecycle`` in ``bin/architect.py``.
+# cycle. Wire it up via ``ArchitectLifecycle`` in ``bin/architect.py``.
 #
 # Design rules (SOLID, DRY, 12-factor):
 #
-# - Dependency injection: ``BatmanLifecycle`` accepts ``SlackApproval``,
+# - Dependency injection: ``ArchitectLifecycle`` accepts ``SlackApproval``,
 #   ``GitHubChildIssueClient``, and ``Reporter`` via the constructor.
 #   Tests inject fakes; production wires the real Slack + gh CLI clients.
 # - Label strings come from ``labels.py`` ONLY (no string literals here).
-# - Env-driven config via ``BatmanLifecycleConfig.from_env``.
+# - Env-driven config via ``ArchitectLifecycleConfig.from_env``.
 # - Dataclasses for ``BundlePlan``, ``ChildIssue``, ``ApprovalEnvelope``,
 #   ``ExecuteResult``, ``ReportEnvelope`` so every shape is JSON-friendly
 #   and easy to log / diff.
@@ -667,7 +667,7 @@ from server.plan_approvals import (  # noqa: E402
     record_decision as record_plan_decision,
 )
 
-logger = logging.getLogger("alfred.batman.lifecycle")
+logger = logging.getLogger("alfred.architect.lifecycle")
 
 # Outcomes for ExecuteResult.reason. Strings, not enums, so the value
 # survives JSON serialisation cleanly.
@@ -680,15 +680,27 @@ EXEC_PARTIAL = "partial"
 EXEC_GATE_DISABLED = "gate_disabled"
 EXEC_NEEDS_SCOPE = "needs_scope"
 
-# Env contract -- documented in docs/BATMAN.md.
-ENV_AUTO_EXECUTE = "BATMAN_AUTO_EXECUTE"
-ENV_PARENT_REPO = "BATMAN_PARENT_REPO"
-ENV_PICKER = "BATMAN_PICKER"
-ENV_BUNDLE_SLUG_PREFIX = "BATMAN_BUNDLE_SLUG_PREFIX"
-ENV_APPROVAL_TIMEOUT_S = "BATMAN_APPROVAL_TIMEOUT_S"
-ENV_APPROVAL_MODE = "BATMAN_APPROVAL_MODE"
-ENV_SLACK_CHANNEL = "BATMAN_SLACK_CHANNEL"
-ENV_REPORT_FEEDBACK_TIMEOUT_S = "BATMAN_REPORT_FEEDBACK_TIMEOUT_S"
+# Env contract -- documented in docs/ARCHITECT.md.
+ENV_AUTO_EXECUTE = "ARCHITECT_AUTO_EXECUTE"
+ENV_PARENT_REPO = "ARCHITECT_PARENT_REPO"
+ENV_PICKER = "ARCHITECT_PICKER"
+ENV_BUNDLE_SLUG_PREFIX = "ARCHITECT_BUNDLE_SLUG_PREFIX"
+ENV_APPROVAL_TIMEOUT_S = "ARCHITECT_APPROVAL_TIMEOUT_S"
+ENV_APPROVAL_MODE = "ARCHITECT_APPROVAL_MODE"
+ENV_SLACK_CHANNEL = "ARCHITECT_SLACK_CHANNEL"
+ENV_REPORT_FEEDBACK_TIMEOUT_S = "ARCHITECT_REPORT_FEEDBACK_TIMEOUT_S"
+LEGACY_ENV_REPLACEMENTS = {
+    "BATMAN_AUTO_EXECUTE": ENV_AUTO_EXECUTE,
+    "BATMAN_PARENT_REPO": ENV_PARENT_REPO,
+    "BATMAN_PICKER": ENV_PICKER,
+    "BATMAN_BUNDLE_SLUG_PREFIX": ENV_BUNDLE_SLUG_PREFIX,
+    "BATMAN_APPROVAL_TIMEOUT_S": ENV_APPROVAL_TIMEOUT_S,
+    "BATMAN_APPROVAL_MODE": ENV_APPROVAL_MODE,
+    "BATMAN_APPROVAL_CHANNEL": ENV_SLACK_CHANNEL,
+    "BATMAN_SLACK_CHANNEL": ENV_SLACK_CHANNEL,
+    "BATMAN_REPORT_FEEDBACK_TIMEOUT_S": ENV_REPORT_FEEDBACK_TIMEOUT_S,
+    "BATMAN_ROLLOUT_ORDER": "ARCHITECT_ROLLOUT_ORDER",
+}
 
 AUTO_EXECUTE_OFF = "0"
 AUTO_EXECUTE_GATE = "approval-gate"
@@ -778,7 +790,7 @@ class PlanReadinessFinding:
 
 @dataclass(frozen=True)
 class ChildIssue:
-    """One scoped sub-issue Batman intends to file in a downstream repo.
+    """One scoped sub-issue the architect intends to file in a downstream repo.
 
     Args:
         repo: ``owner/repo`` slug the issue belongs in.
@@ -797,13 +809,13 @@ class ChildIssue:
 
 @dataclass(frozen=True)
 class BundlePlan:
-    """The result of ``BatmanLifecycle.plan``. Pure data.
+    """The result of ``ArchitectLifecycle.plan``. Pure data.
 
     Args:
         bundle_slug: short id derived from the parent issue title
             (``billing-v2`` for "Bundle: billing-v2 rollout"). Used as the
             ``agent:bundle:<slug>`` label so every child shares one trail.
-        parent_repo: ``owner/repo`` of the issue Batman is reading.
+        parent_repo: ``owner/repo`` of the issue the architect is reading.
         parent_issue_number: GitHub issue number on ``parent_repo``.
         parent_title: human-readable parent title (for the Slack post).
         affected_repos: ``owner/repo`` list, declaration order preserved.
@@ -824,7 +836,7 @@ class BundlePlan:
     plan_markdown: str
     readiness_findings: tuple[PlanReadinessFinding, ...] = ()
     # Parsed cross-repo contract inputs, carried so the operator-feedback
-    # rebuild can re-derive each child's contract block (hybrid Batman).
+    # rebuild can re-derive each child's contract block (hybrid architect).
     contract_lines: tuple[str, ...] = ()
     sequencing_lines: tuple[str, ...] = ()
 
@@ -852,9 +864,9 @@ class ApprovalEnvelope:
 
 @dataclass(frozen=True)
 class ApprovalResult:
-    """A simplified verdict for ``BatmanLifecycle.await_approval``.
+    """A simplified verdict for ``ArchitectLifecycle.await_approval``.
 
-    Wraps ``slack_approval.ApprovalResult`` into a Batman-shaped tuple so
+    Wraps ``slack_approval.ApprovalResult`` into a architect-shaped tuple so
     callers do not need to import slack_approval directly.
     """
 
@@ -896,18 +908,18 @@ def _record_consumed_file_decision(
             plan.parent_issue_number,
             decision,
             reason=detail,
-            source="Batman file approval",
+            source="Architect file approval",
         )
     except OSError as exc:
         logger.warning(
-            "could not persist consumed Batman approval for issue %s: %s",
+            "could not persist consumed architect approval for issue %s: %s",
             plan.parent_issue_number,
             exc,
         )
 
 
 def _consume_file_approval(plan: BundlePlan) -> ApprovalResult | None:
-    """Consume the in-app approval marker for a Batman plan, if one exists."""
+    """Consume the in-app approval marker for an architect plan, if one exists."""
 
     approved, rejected = _approval_marker_paths(plan.parent_issue_number)
     if approved.exists():
@@ -969,7 +981,7 @@ def wait_for_approval_file(
 
 @dataclass(frozen=True)
 class ExecuteResult:
-    """Outcome of ``BatmanLifecycle.execute``.
+    """Outcome of ``ArchitectLifecycle.execute``.
 
     Args:
         executed: True iff at least one child issue was filed.
@@ -991,7 +1003,7 @@ class ExecuteResult:
 
 @dataclass(frozen=True)
 class ReportEnvelope:
-    """What ``BatmanLifecycle.report`` posts to Slack as a follow-up.
+    """What ``ArchitectLifecycle.report`` posts to Slack as a follow-up.
 
     Kept as a separate dataclass so a fleet that wants a different
     surface (email, PagerDuty, ...) can swap the reporter without
@@ -1006,7 +1018,7 @@ class ReportEnvelope:
 
 
 @dataclass(frozen=True)
-class BatmanLifecycleConfig:
+class ArchitectLifecycleConfig:
     """All env-driven knobs for the plan-approve-execute-report flow.
 
     Build via :meth:`from_env`. Every field is overridable for tests.
@@ -1019,9 +1031,10 @@ class BatmanLifecycleConfig:
     approval_timeout_s: int = 86400
     approval_mode: str = APPROVAL_MODE_SLACK_OR_FILE
     slack_channel: str = ""
+    stale_legacy_env_keys: tuple[str, ...] = ()
 
     @classmethod
-    def from_env(cls, env: dict[str, str] | None = None) -> BatmanLifecycleConfig:
+    def from_env(cls, env: dict[str, str] | None = None) -> ArchitectLifecycleConfig:
         e = env if env is not None else dict(os.environ)
         raw_auto = (e.get(ENV_AUTO_EXECUTE) or "").strip().lower() or AUTO_EXECUTE_OFF
         if raw_auto not in VALID_AUTO_EXECUTE:
@@ -1056,6 +1069,11 @@ class BatmanLifecycleConfig:
             approval_timeout_s=max(0, timeout),
             approval_mode=raw_mode,
             slack_channel=(e.get(ENV_SLACK_CHANNEL) or "").strip(),
+            stale_legacy_env_keys=tuple(
+                old
+                for old, new in LEGACY_ENV_REPLACEMENTS.items()
+                if (e.get(old) or "").strip() and not (e.get(new) or "").strip()
+            ),
         )
 
     @property
@@ -1073,7 +1091,7 @@ class BatmanLifecycleConfig:
 
 
 class GitHubChildIssueClient(Protocol):
-    """Subset of the gh CLI Batman needs to file children.
+    """Subset of the gh CLI the architect needs to file children.
 
     Implementations must never raise; return ``None`` on failure so the
     orchestrator can record a partial result and continue.
@@ -1162,18 +1180,18 @@ class SubprocessGitHubChildIssueClient:
         Idempotent: `gh label create` returns non-zero when the label
         already exists, and we swallow that. The colour and description
         are conservative defaults; per-bundle labels use the same
-        purple family as `batman-pr-open` so they cluster visually in
+        purple family as `architect-pr-open` so they cluster visually in
         the GitHub label picker (issue #117).
         """
         if label.startswith(BUNDLE_LABEL_PREFIX):
-            color = "5319e7"  # matches batman-pr-open
+            color = "5319e7"  # matches architect-pr-open
             desc = (
-                f"Batman bundle: {label[len(BUNDLE_LABEL_PREFIX) :]}. "
+                f"Architect bundle: {label[len(BUNDLE_LABEL_PREFIX) :]}. "
                 "Linked children share this label across repos."
             )
         else:
             color = "ededed"
-            desc = "Auto-created by Batman child-issue filing on first use"
+            desc = "Auto-created by the architect child-issue filing on first use"
         with contextlib.suppress(Exception):
             subprocess.run(
                 [
@@ -1196,7 +1214,7 @@ class SubprocessGitHubChildIssueClient:
 
 
 class ApprovalGate(Protocol):
-    """Minimal interface Batman needs from the approval surface.
+    """Minimal interface the architect needs from the approval surface.
 
     ``slack_approval.SlackApproval`` already implements ``await_approval``
     with the right signature, so it satisfies this protocol directly.
@@ -1263,7 +1281,7 @@ _DONE_BLOCK_RE = re.compile(
     r"^\s*done\s*when\s*:\s*$(.*?)(?=^\s*(?:contract|shared|sequenc\w*|landing\s*order|rollout\s*order)\s*:|^\#|\Z)",
     re.IGNORECASE | re.MULTILINE | re.DOTALL,
 )
-# The cross-repo contract feeds the "hybrid Batman" child-issue contract block:
+# The cross-repo contract feeds the "hybrid architect" child-issue contract block:
 # shared interfaces/types/events every repo in the rollout must agree on. A
 # `Contract:` (or `Shared:`) block, and an optional sequencing block, are parsed
 # from the parent body if present; both degrade to empty and never raise.
@@ -1284,7 +1302,7 @@ def _slugify_bundle_title(title: str, prefix: str = "") -> str:
     Prefers an explicit ``Bundle: <slug>`` lead in the title. Falls back
     to a sanitised slug of the whole title. Lower-snake hyphens, no
     leading/trailing dashes. ``prefix`` is prepended when set (used by
-    ``BATMAN_BUNDLE_SLUG_PREFIX``).
+    ``ARCHITECT_BUNDLE_SLUG_PREFIX``).
     """
     title = (title or "").strip()
     m = _BUNDLE_TITLE_RE.search(title)
@@ -1331,7 +1349,7 @@ def _parse_repo_lines(block: str, *, fallback_org: str = "") -> list[str]:
             qualified = f"{owner}/{token}"
             owner_source = "parent repo owner" if fallback_org else "GH_ORG"
             print(
-                f"[BATMAN-PARSE-INFO] _parse_repo_lines: qualified bare repo "
+                f"[ARCHITECT-PARSE-INFO] _parse_repo_lines: qualified bare repo "
                 f"name {token!r} with {owner_source} ({qualified!r}). For multi-org "
                 f"fleets, write `owner/repo` explicitly.",
                 file=sys.stderr,
@@ -1342,10 +1360,10 @@ def _parse_repo_lines(block: str, *, fallback_org: str = "") -> list[str]:
         # Warn loudly so the operator notices on first firing instead
         # of after a wasted Slack approval cycle.
         print(
-            f"[BATMAN-PARSE-WARN] _parse_repo_lines: skipping bare repo "
+            f"[ARCHITECT-PARSE-WARN] _parse_repo_lines: skipping bare repo "
             f"name {token!r}: no `/`, parent repo owner, or `GH_ORG` is set. Write "
             f"`owner/{token}` or set GH_ORG in `$ALFRED_HOME/.env`. See "
-            f"docs/BATMAN_PARENT_ISSUE_TEMPLATE.md.",
+            f"docs/ARCHITECT_PARENT_ISSUE_TEMPLATE.md.",
             file=sys.stderr,
         )
     return out
@@ -1355,7 +1373,7 @@ def _parse_children_lines(block: str) -> list[tuple[str, str]]:
     """Return ``[(short_repo, title), ...]`` from a ``Children:`` block.
 
     Each line is ``- <short_repo>: <title>``. ``short_repo`` is the local
-    name (``backend``, ``frontend``) that ``BatmanLifecycle.plan`` maps
+    name (``backend``, ``frontend``) that ``ArchitectLifecycle.plan`` maps
     back to a full ``owner/repo`` slug using the affected-repos list.
     """
     out: list[tuple[str, str]] = []
@@ -1471,7 +1489,7 @@ def parse_parent_issue(
 ) -> BundlePlan:
     """Build a ``BundlePlan`` from a well-formed parent-issue body.
 
-    The body shape is documented in ``docs/BATMAN.md``::
+    The body shape is documented in ``docs/ARCHITECT.md``::
 
         Bundle: <human title>
 
@@ -1613,7 +1631,7 @@ def parse_parent_issue(
                 "parse_parent_issue: no `Repos:` / `Children:` blocks; "
                 "auto-fell-back to `## Affected Repos` / `## Acceptance Criteria` "
                 "shape (synthesized %d child(ren) across %d repo(s)). "
-                "See docs/BATMAN.md#parent-issue-body-template for the canonical shape.",
+                "See docs/ARCHITECT.md#parent-issue-body-template for the canonical shape.",
                 len(children_pairs),
                 len(loose.affected_repos),
             )
@@ -1622,7 +1640,7 @@ def parse_parent_issue(
             "parse_parent_issue: no `Repos:` line, no `Children:` block, no "
             "`## Affected Repos` H2, no `## Acceptance Criteria` H3 sections found. "
             "The plan will have children=0 and the bundle will die as "
-            "EXEC_NO_CHILDREN. See docs/BATMAN.md#parent-issue-body-template."
+            "EXEC_NO_CHILDREN. See docs/ARCHITECT.md#parent-issue-body-template."
         )
 
     bundle_label_str = label_constants.bundle_label(slug)
@@ -1729,10 +1747,10 @@ def build_cross_repo_contract(
 ) -> str:
     """Build the machine-readable cross-repo contract for one child issue.
 
-    This is the "hybrid Batman" foundation: per-repo implementers (Lucius,
+    This is the "hybrid architect" foundation: per-repo implementers (Lucius,
     Bane, Nightwing) only see their own repo, so without this block they are
     blind to the sibling repos and the shared interfaces the feature spans.
-    Batman stays the planner - it does not open PRs - but it centralizes the
+    The architect stays the planner - it does not open PRs - but it centralizes the
     contract derived from the approved parent plan into every child issue.
 
     Pure and deterministic. Given the ``target_repo`` and the full list of
@@ -1870,7 +1888,7 @@ def _render_child_body(
         f"- Parent issue: [{parent_repo}#{parent_issue}]({parent_link})\n"
         f"- Parent title: {parent_title}"
         f"{done_block}\n\n"
-        f"---\nFiled by Batman as part of the `{bundle_slug}` bundle.\n"
+        f"---\nFiled by the architect as part of the `{bundle_slug}` bundle.\n"
     )
 
 
@@ -1885,7 +1903,7 @@ def _render_plan_markdown(
     done_when: str,
     readiness_findings: list[PlanReadinessFinding],
 ) -> str:
-    """Render the markdown Batman posts to Slack for approval."""
+    """Render the markdown the architect posts to Slack for approval."""
     blockers = [finding for finding in readiness_findings if finding.severity == "error"]
     warnings = [finding for finding in readiness_findings if finding.severity == "warning"]
     repo_count = len(affected_repos)
@@ -2102,7 +2120,7 @@ def _apply_operator_feedback_to_plan(
 
     # Re-derive the cross-repo contract across the amended child set so every
     # child (kept or newly added) names the current siblings and carries the
-    # block exactly once (hybrid Batman).
+    # block exactly once (hybrid architect).
     children = list(
         _attach_cross_repo_contract(
             children,
@@ -2220,7 +2238,7 @@ class SlackReporter:
         if handle is None:
             if self._fallback_post is not None:
                 self._fallback_post(
-                    f"[BATMAN-PLAN-DRAFTED] {summary}\n{plan.plan_markdown}",
+                    f"[ARCHITECT-PLAN-DRAFTED] {summary}\n{plan.plan_markdown}",
                     severity="info",
                 )
             return None
@@ -2305,7 +2323,7 @@ class SlackReporter:
             self._capture_report_feedback(handle, envelope)
             return True
         if self._fallback_post is not None:
-            self._fallback_post(f"[BATMAN-REPORT] {summary}\n{text}", severity="info")
+            self._fallback_post(f"[ARCHITECT-REPORT] {summary}\n{text}", severity="info")
             return True
         return False
 
@@ -2383,7 +2401,7 @@ class SlackReporter:
             path.write_text(plan.plan_markdown, encoding="utf-8")
             return path
         except OSError as exc:
-            logger.debug("could not write Batman plan copy: %s", exc)
+            logger.debug("could not write architect plan copy: %s", exc)
             return None
 
     def _capture_report_feedback(self, handle: object, envelope: ReportEnvelope) -> None:
@@ -2488,7 +2506,7 @@ class SlackReporter:
             path.write_text("\n".join(header).rstrip() + "\n\n" + block, encoding="utf-8")
             return path
         except OSError as exc:
-            logger.warning("could not write Batman follow-up feedback: %s", exc)
+            logger.warning("could not write architect follow-up feedback: %s", exc)
             return None
 
 
@@ -2498,7 +2516,7 @@ class SlackReporter:
 
 
 @dataclass
-class BatmanLifecycle:
+class ArchitectLifecycle:
     """Orchestrates plan -> approve -> execute -> report for one parent
     issue.
 
@@ -2506,7 +2524,7 @@ class BatmanLifecycle:
     ``reporter`` for tests. ``config`` carries every env-driven knob.
     """
 
-    config: BatmanLifecycleConfig
+    config: ArchitectLifecycleConfig
     gate: ApprovalGate | None = None
     gh_client: GitHubChildIssueClient = field(default_factory=SubprocessGitHubChildIssueClient)
     reporter: Reporter | None = None
@@ -2540,7 +2558,7 @@ class BatmanLifecycle:
         ``message_ts`` (no bot token, channel unset, transport down).
         Callers that hit this path should treat the gate as effectively
         disabled and fall back to the operator's
-        ``BATMAN_AUTO_EXECUTE`` choice.
+        ``ARCHITECT_AUTO_EXECUTE`` choice.
         """
         if self.reporter is None:
             return None
@@ -2783,8 +2801,8 @@ __all__ = [
     "LARGE_FEATURE_LABEL",
     "ApprovalEnvelope",
     "ApprovalResult",
-    "BatmanLifecycle",
-    "BatmanLifecycleConfig",
+    "ArchitectLifecycle",
+    "ArchitectLifecycleConfig",
     "Bundle",
     "BundlePlan",
     "ChildIssue",

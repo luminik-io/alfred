@@ -231,7 +231,7 @@ export function AttentionCard({
 }: {
   item: AttentionItem;
   onNavigate?: (tab: AttentionItem["targetTab"]) => void;
-  /** Record a go/no-go directly on a single waiting Batman plan. */
+  /** Record a go/no-go directly on a single waiting architect plan. */
   onDecide?: (planId: string, decision: PlanDecision) => void;
   busyPlanAction?: string | null;
 }) {
@@ -243,7 +243,7 @@ export function AttentionCard({
         : item.icon === "setup"
           ? Settings
           : ListChecks;
-  // A single Batman plan awaiting a sign-off can be approved or declined right
+  // A single architect plan awaiting a sign-off can be approved or declined right
   // here, before work starts. derive.ts only sets planId on that case.
   const canDecide = Boolean(item.planId) && Boolean(onDecide);
   const actionBusy = (busyPlanAction && item.planId
@@ -258,7 +258,7 @@ export function AttentionCard({
         <p>{item.detail}</p>
         {canDecide ? (
           <p className="attention-card__decision-note" role="note">
-            Approving starts this exact scope on Batman's next run. Declining stops it.
+            Approving starts this exact scope on the architect's next run. Declining stops it.
           </p>
         ) : null}
         {item.command ? <code>{item.command}</code> : null}

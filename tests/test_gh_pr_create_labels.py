@@ -29,9 +29,9 @@ def test_standard_labels_includes_batman_and_large_feature():
     import agent_runner as ar
 
     names = {name for name, _, _ in ar.STANDARD_LABELS}
-    assert "batman-pr-open" in names
+    assert "architect-pr-open" in names
     assert "agent:large-feature" in names
-    assert "batman:fanout-complete" in names
+    assert "architect:fanout-complete" in names
 
 
 def test_gh_pr_create_creates_adhoc_labels_not_in_standard(monkeypatch, tmp_path):
@@ -81,12 +81,12 @@ def test_gh_pr_create_logs_stderr_on_failure(monkeypatch, tmp_path, capsys):
     def fake_run(cmd, **kw):
         if cmd[:3] == ["gh", "pr", "create"]:
             return subprocess.CompletedProcess(
-                cmd, 1, "", "could not add label batman-pr-open: not found in target repo"
+                cmd, 1, "", "could not add label architect-pr-open: not found in target repo"
             )
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(ar, "run", fake_run)
-    url = ar.gh_pr_create("backend", title="t", body_file=body, labels=["batman-pr-open"])
+    url = ar.gh_pr_create("backend", title="t", body_file=body, labels=["architect-pr-open"])
     assert url is None
     err = capsys.readouterr().err
     assert "[gh_pr_create] FAILED" in err
@@ -198,7 +198,7 @@ def test_gh_pr_create_does_not_recreate_standard_labels(monkeypatch, tmp_path):
         "backend",
         title="t",
         body_file=body,
-        labels=["batman-pr-open", "agent:large-feature"],
+        labels=["architect-pr-open", "agent:large-feature"],
     )
     # Both labels are in STANDARD_LABELS; the ad-hoc loop should not have
     # appended any additional gh label create calls beyond ensure_labels.

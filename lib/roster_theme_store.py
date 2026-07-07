@@ -1,7 +1,7 @@
 """Server-side persistence for the active roster theme and custom names.
 
 The roster theme is the named display layer applied to the agent roster: the
-shipped Batman roster by default, plus presets (Transformers, Justice League) and an
+shipped default roster by default, plus presets (Transformers, Justice League) and an
 operator-authored ``custom`` theme. The desktop client picked themes in #303 but
 only persisted the choice to ``localStorage``, so the choice never reached other
 surfaces. This module gives the choice one inspectable home under the runtime
@@ -35,9 +35,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-_BATMAN_BASE_THEME_ID = "batman"
+_BASE_THEME_ID = "batman"
 
-# A fleet codename is a short slug (``batman``, ``fleet-doctor``). We never store
+# A fleet codename is a short slug (``architect``, ``fleet-doctor``). We never store
 # anything that does not look like one, so the map can never be abused to carry
 # free text. Length is bounded to keep a single entry small.
 _CODENAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -66,8 +66,8 @@ def _validate_roster_manifest(payload: Any, path: Path) -> dict[str, Any]:
     ):
         raise _manifest_error(path, "preset_theme_ids must be a non-empty string array")
     preset_ids = tuple(theme_id.strip() for theme_id in preset_ids_raw)
-    if _BATMAN_BASE_THEME_ID not in preset_ids:
-        raise _manifest_error(path, f"preset_theme_ids must include {_BATMAN_BASE_THEME_ID!r}")
+    if _BASE_THEME_ID not in preset_ids:
+        raise _manifest_error(path, f"preset_theme_ids must include {_BASE_THEME_ID!r}")
 
     default_theme = payload.get("default_theme")
     if not isinstance(default_theme, str) or default_theme not in preset_ids:
@@ -150,27 +150,27 @@ _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 # entries so a malformed payload cannot grow the file without bound.
 _MAX_CUSTOM_ENTRIES = 128
 
-# The shipped Batman display name per known fleet codename. The desktop builds a
+# The shipped base-theme display name per known fleet codename. The desktop builds a
 # ``custom`` theme on top of this base, so an agent the operator has NOT renamed
-# still shows its Batman-base name there. Derived from ``roster_manifest.json``
+# still shows its base-theme name there. Derived from ``roster_manifest.json``
 # so Python and the desktop share one roster contract.
-BATMAN_BASE_NAMES: dict[str, str] = {
-    str(agent["codename"]): str(agent["names"][_BATMAN_BASE_THEME_ID]) for agent in _MANIFEST_AGENTS
+BASE_THEME_NAMES: dict[str, str] = {
+    str(agent["codename"]): str(agent["names"][_BASE_THEME_ID]) for agent in _MANIFEST_AGENTS
 }
 
-# The shipped Batman role label per known fleet codename. Derived from the
+# The shipped base-theme role label per known fleet codename. Derived from the
 # manifest's canonical role for the codename plus its role label table.
-BATMAN_BASE_ROLES: dict[str, str] = {
+BASE_THEME_ROLES: dict[str, str] = {
     str(agent["codename"]): _ROLE_LABELS_DEFAULT[str(agent["role"])] for agent in _MANIFEST_AGENTS
 }
 
-# The preset rosters re-skin the SAME fleet as the Batman base; only the display
+# The preset rosters re-skin the SAME fleet as the base theme; only the display
 # name changes. Derived from the manifest so new codenames/themes cannot drift
 # between Python Slack rendering and the desktop.
 PRESET_DISPLAY_NAMES: dict[str, dict[str, str]] = {
     theme_id: {str(agent["codename"]): str(agent["names"][theme_id]) for agent in _MANIFEST_AGENTS}
     for theme_id in PRESET_THEME_IDS
-    if theme_id != _BATMAN_BASE_THEME_ID
+    if theme_id != _BASE_THEME_ID
 }
 
 
@@ -179,7 +179,7 @@ class RosterContractAgent:
     """One fleet agent the theme builder may name.
 
     Keyed by ``codename`` (the stable role-slug identity the store persists under)
-    with its plain ``role_label`` and the shipped Batman ``base_name`` so a prompt
+    with its plain ``role_label`` and the base-theme ``base_name`` so a prompt
     can show the model exactly which agents to name and what they are called today.
     """
 
@@ -206,7 +206,7 @@ def roster_contract_agents() -> tuple[RosterContractAgent, ...]:
                 codename=codename,
                 role=role,
                 role_label=_ROLE_LABELS_DEFAULT.get(role, role),
-                base_name=BATMAN_BASE_NAMES.get(codename, codename),
+                base_name=BASE_THEME_NAMES.get(codename, codename),
             )
         )
     return tuple(out)
@@ -253,27 +253,27 @@ class RosterThemeState:
     def custom_display_name_for(self, codename: str) -> str | None:
         """Resolve the desktop-equivalent display name under the custom theme.
 
-        Under the ``custom`` theme the desktop builds names on the Batman base,
-        so an agent the operator has NOT renamed still shows its Batman-base
-        name (``Lucius``), never the bare codename. This mirrors that: the
-        operator's custom name when set, else the Batman base name for a known
+        Under the ``custom`` theme the desktop builds names on the base theme,
+        so an agent the operator has NOT renamed still shows its base-theme
+        name (``senior-dev``), never the bare codename. This mirrors that: the
+        operator's custom name when set, else the base theme name for a known
         codename. Returns ``None`` for a non-custom theme or an unknown codename
         so the caller keeps the shipped behavior for those.
         """
         if self.theme != CUSTOM_THEME_ID:
             return None
         short = _normalize_codename(codename) or ""
-        return self.custom_names.get(short) or BATMAN_BASE_NAMES.get(short)
+        return self.custom_names.get(short) or BASE_THEME_NAMES.get(short)
 
     def custom_role_label_for(self, codename: str) -> str | None:
         """Resolve the desktop-equivalent role label under the custom theme.
 
         Under the ``custom`` theme the desktop overlays the operator's per-agent
-        role label on the Batman-base role label (agentThemes.ts
+        role label on the base-theme role label (agentThemes.ts
         ``roleLabelByCodename`` over ``ROLE_LABELS_DEFAULT``), NOT on the
         ``ALFRED_<CODENAME>_ROLE`` env label. This mirrors that: the operator's
-        custom role when set, else the Batman base role for a known codename. So
-        a ``batman -> Sherlock`` with no custom role renders ``Sherlock
+        custom role when set, else the base theme role for a known codename. So
+        a custom ``architect -> Sherlock`` with no custom role renders ``Sherlock
         (Architect)`` on both the desktop and Slack. Returns ``None`` for a
         non-custom theme or an unknown codename so the caller keeps the shipped
         env-role behavior for those.
@@ -281,7 +281,7 @@ class RosterThemeState:
         if self.theme != CUSTOM_THEME_ID:
             return None
         short = _normalize_codename(codename) or ""
-        return self.custom_roles.get(short) or BATMAN_BASE_ROLES.get(short)
+        return self.custom_roles.get(short) or BASE_THEME_ROLES.get(short)
 
     def themed_display_name_for(self, codename: str) -> str | None:
         """Display name for a codename under the ACTIVE theme, or ``None``.
@@ -289,7 +289,7 @@ class RosterThemeState:
         This is the theme-aware resolver the Slack path uses so every saved
         theme renders on Slack the way it does on the desktop:
 
-        * ``custom``  -> the operator's name, else the Batman base name.
+        * ``custom``  -> the operator's name, else the base theme name.
         * a preset    -> the preset's themed name (``Optimus Prime``).
         * ``batman``  -> ``None``, so the caller keeps the shipped
           ``codename_with_role`` rendering unchanged.
@@ -307,16 +307,16 @@ class RosterThemeState:
     def themed_role_label_for(self, codename: str) -> str | None:
         """Role label for a codename under the ACTIVE theme, or ``None``.
 
-        The presets share the Batman role labels (agentThemes.ts gives each
+        The presets share the base-theme role labels (agentThemes.ts gives each
         preset ``ROLE_LABELS_DEFAULT`` with no per-codename override), so a
-        preset resolves to the Batman base role for the codename. ``custom``
+        preset resolves to the base theme role for the codename. ``custom``
         keeps its own per-agent overlay; ``batman`` returns ``None`` so the
         caller keeps the shipped env-role behavior.
         """
         if self.theme == CUSTOM_THEME_ID:
             return self.custom_role_label_for(codename)
         if self.theme in PRESET_DISPLAY_NAMES:
-            return BATMAN_BASE_ROLES.get(_normalize_codename(codename) or "")
+            return BASE_THEME_ROLES.get(_normalize_codename(codename) or "")
         return None
 
     def themed_name_for(self, codename: str) -> str | None:
@@ -324,7 +324,7 @@ class RosterThemeState:
 
         Unlike :meth:`themed_display_name_for`, this always resolves a known
         fleet codename to a real display name under EVERY theme, including the
-        default ``batman`` theme (which returns the Batman-cast name, not
+        default ``batman`` theme (which returns the base-theme name, not
         ``None``). It exists for surfaces that render a bare agent name and have
         no ``codename_with_role`` role suffix to fall back on: the CLI status
         table and the Slack assignment lane. After the role-slug rename the
@@ -334,9 +334,9 @@ class RosterThemeState:
 
         Resolution per theme:
 
-        * ``custom``  -> the operator's name, else the Batman base name.
+        * ``custom``  -> the operator's name, else the base theme name.
         * a preset    -> the preset's themed name (``Ironhide``).
-        * ``batman``  -> the Batman-cast base name (``Lucius``).
+        * ``batman``  -> the base-theme name (``Lucius``).
 
         Returns ``None`` only for a codename outside the known fleet, so the
         caller can keep the bare slug for an unknown agent rather than inventing
@@ -348,11 +348,11 @@ class RosterThemeState:
         if preset is not None:
             return preset.get(_normalize_codename(codename) or "")
         # The default ``batman`` theme: the base name IS the themed name.
-        return BATMAN_BASE_NAMES.get(_normalize_codename(codename) or "")
+        return BASE_THEME_NAMES.get(_normalize_codename(codename) or "")
 
 
 def default_theme_state() -> RosterThemeState:
-    """The unchanged default: the Batman roster, no custom names."""
+    """The unchanged default: the default roster, no custom names."""
     return RosterThemeState(theme=DEFAULT_THEME_ID, custom_names={}, custom_roles={})
 
 
@@ -372,7 +372,7 @@ class RosterThemeStore:
         """Return the persisted state, falling back to the default.
 
         Never raises on a missing or malformed file: an unreadable store
-        degrades to the shipped Batman default rather than breaking the surface
+        degrades to the shipped default theme rather than breaking the surface
         that reads it (the Slack path must keep posting even if the file is
         corrupt). Unknown themes and malformed entries are dropped.
         """
@@ -464,7 +464,7 @@ class RosterThemeStore:
 
 def _normalize_codename(value: Any) -> str | None:
     text = str(value or "").strip().lower()
-    # Slack/runtime codenames sometimes arrive dotted (``alfred.batman``); keep
+    # Slack/runtime codenames sometimes arrive dotted (``alfred.architect``); keep
     # the last segment so the map keys on the bare codename the presets use.
     text = (text.split(".")[-1] or "").strip()
     return text if _CODENAME_RE.match(text) else None
@@ -532,7 +532,8 @@ def _utc_now() -> str:
 
 
 __all__ = [
-    "BATMAN_BASE_NAMES",
+    "BASE_THEME_NAMES",
+    "BASE_THEME_ROLES",
     "CUSTOM_THEME_ID",
     "DEFAULT_THEME_ID",
     "PRESET_THEME_IDS",

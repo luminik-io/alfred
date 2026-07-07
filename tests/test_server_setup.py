@@ -81,7 +81,7 @@ def test_install_inventory_reports_existing_config_without_secret_values(
     conf = home / "launchd" / "agents.conf"
     conf.parent.mkdir(parents=True)
     conf.write_text(
-        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\topus\tSingle-repo engineer\n",
+        "alfred.senior-dev\tsenior-dev.py\tinterval:1200\tyes\t\topus\tSingle-repo engineer\n",
         encoding="utf-8",
     )
 
@@ -125,7 +125,7 @@ def test_install_inventory_uses_active_serve_home_for_agents_conf(
     conf = home / "launchd" / "agents.conf"
     conf.parent.mkdir(parents=True)
     conf.write_text(
-        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\topus\tSingle-repo engineer\n",
+        "alfred.senior-dev\tsenior-dev.py\tinterval:1200\tyes\t\topus\tSingle-repo engineer\n",
         encoding="utf-8",
     )
     launcher_conf = launcher_home / "launchd" / "agents.conf"
@@ -220,7 +220,7 @@ def test_install_inventory_does_not_reuse_checkout_agents_conf_for_runtime_home(
     conf = repo / "launchd" / "agents.conf"
     conf.parent.mkdir(parents=True)
     conf.write_text(
-        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\topus\tSingle-repo engineer\n",
+        "alfred.senior-dev\tsenior-dev.py\tinterval:1200\tyes\t\topus\tSingle-repo engineer\n",
         encoding="utf-8",
     )
 
@@ -245,7 +245,7 @@ def test_install_inventory_prefers_runtime_home_agents_conf_over_repo_resolver(
     home_conf = home / "launchd" / "agents.conf"
     home_conf.parent.mkdir(parents=True)
     home_conf.write_text(
-        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\topus\tRuntime engineer\n",
+        "alfred.senior-dev\tsenior-dev.py\tinterval:1200\tyes\t\topus\tRuntime engineer\n",
         encoding="utf-8",
     )
     repo_conf = repo / "launchd" / "agents.conf"
@@ -345,7 +345,7 @@ def test_install_inventory_does_not_mix_launcher_config_into_active_process_home
     launcher_conf = launcher_home / "launchd" / "agents.conf"
     launcher_conf.parent.mkdir(parents=True)
     launcher_conf.write_text(
-        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\topus\tLauncher-only install\n",
+        "alfred.senior-dev\tsenior-dev.py\tinterval:1200\tyes\t\topus\tLauncher-only install\n",
         encoding="utf-8",
     )
 
@@ -704,11 +704,11 @@ def test_persist_selected_repos_board_only_save_does_not_create_queue_scope(
     assert "ALFRED_SENIOR_DEV_REPOS=Web" in env_text
     assert "ALFRED_PLANNER_REPOS=Web" in env_text
     assert "ALFRED_REVIEWER_REPOS=Web" in env_text
-    assert "BATMAN_ROLLOUT_ORDER=Web" in env_text
+    assert "ARCHITECT_ROLLOUT_ORDER=Web" in env_text
     assert "ALFRED_CODE_MEMORY_REPOS=Web" in env_text
     assert os.environ["GH_ORG"] == "acme"
     assert os.environ["ALFRED_SENIOR_DEV_REPOS"] == "Web"
-    assert os.environ["BATMAN_ROLLOUT_ORDER"] == "Web"
+    assert os.environ["ARCHITECT_ROLLOUT_ORDER"] == "Web"
 
 
 def test_persist_selected_repos_does_not_sync_to_rc_that_omits_custom_home(
@@ -840,7 +840,7 @@ def test_persist_selected_repos_seeds_queue_for_new_install(
     assert "ALFRED_MORNING_BRIEF_REPOS=Web" in env_text
     assert "ALFRED_SHIPPED_SUMMARY_DAILY_REPOS=Web" in env_text
     assert "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS=Web" in env_text
-    assert "BATMAN_ROLLOUT_ORDER=Web" in env_text
+    assert "ARCHITECT_ROLLOUT_ORDER=Web" in env_text
 
 
 def test_persist_selected_repos_preserves_existing_runtime_agent_scopes(
@@ -1151,11 +1151,11 @@ def test_persist_selected_repos_refreshes_previous_ui_runtime_agent_scopes(
     assert "ALFRED_BRIDGE_REPOS=acme/api" in env_text
     assert "ALFRED_SENIOR_DEV_REPOS=API" in env_text
     assert "ALFRED_PLANNER_REPOS=API" in env_text
-    assert "BATMAN_ROLLOUT_ORDER=API" in env_text
+    assert "ARCHITECT_ROLLOUT_ORDER=API" in env_text
     assert "ALFRED_CODE_MEMORY_REPOS=API" in env_text
     assert "ALFRED_SENIOR_DEV_REPOS=Web" not in env_text
     assert os.environ["ALFRED_SENIOR_DEV_REPOS"] == "API"
-    assert os.environ["BATMAN_ROLLOUT_ORDER"] == "API"
+    assert os.environ["ARCHITECT_ROLLOUT_ORDER"] == "API"
     assert os.environ["ALFRED_CODE_MEMORY_REPOS"] == "API"
 
 
@@ -1220,11 +1220,11 @@ def test_persist_selected_repos_refreshes_previous_ui_runtime_scopes_after_order
     assert "ALFRED_SHIPPED_REPOS=acme/docs" in env_text
     assert "ALFRED_BRIDGE_REPOS=acme/docs" in env_text
     assert "ALFRED_SENIOR_DEV_REPOS=Docs" in env_text
-    assert "BATMAN_ROLLOUT_ORDER=Docs" in env_text
+    assert "ARCHITECT_ROLLOUT_ORDER=Docs" in env_text
     assert "ALFRED_CODE_MEMORY_REPOS=Docs" in env_text
     assert "ALFRED_SENIOR_DEV_REPOS=Web,API" not in env_text
     assert os.environ["ALFRED_SENIOR_DEV_REPOS"] == "Docs"
-    assert os.environ["BATMAN_ROLLOUT_ORDER"] == "Docs"
+    assert os.environ["ARCHITECT_ROLLOUT_ORDER"] == "Docs"
 
 
 def test_persist_selected_repos_preserves_process_queue_only_scope(

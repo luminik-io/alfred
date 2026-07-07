@@ -1054,7 +1054,7 @@ def test_count_github_items_agent_labeled_only_past_500_cap(brain: FleetBrain) -
         number=n,
         kind="issue",
         state="closed",
-        labels=["agent:large-feature", "batman:fanout-complete"],
+        labels=["agent:large-feature", "architect:fanout-complete"],
         url=f"u/{n}",
     )
 

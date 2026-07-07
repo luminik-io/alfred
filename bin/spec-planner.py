@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""``spec-planner``, spec-level multi-repo bundle planner (was ``damian``).
+"""``spec-planner``, spec-level multi-repo bundle planner.
 
 The spec-bundle planner sits between the planner (single-repo issue filer)
 and the architect (cross-repo plan coordinator). The planner keeps the
@@ -10,11 +10,10 @@ plan.
 Wiring:
 
   - Reads ``GH_ORG`` for repo-qualified ``gh`` calls.
-  - Reads ``ALFRED_SPEC_PLANNER_REPOS`` (legacy ``DAMIAN_SCAN_REPOS``),
-    comma-separated repo slugs, to scope bundle filing. Empty means the
-    planner exits as a no-op - a fresh install is not assumed to know which
-    repos are bundle-eligible.
-  - Reads ``ALFRED_SPEC_PLANNER_SPEC_DIR`` (legacy ``DAMIAN_SPEC_DIR``),
+  - Reads ``ALFRED_SPEC_PLANNER_REPOS``, comma-separated repo slugs, to scope
+    bundle filing. Empty means the planner exits as a no-op - a fresh install is
+    not assumed to know which repos are bundle-eligible.
+  - Reads ``ALFRED_SPEC_PLANNER_SPEC_DIR``,
     an absolute path or a path relative to ``WORKSPACE_ROOT``, for the spec
     markdown the default parser walks.
   - Loads the operator-customizable prompt at
@@ -24,19 +23,19 @@ Wiring:
     architect) so the runner exits early until the operator enables it.
 
 This file is the runner skeleton: preflight, build the candidate plan
-via ``lib/damian_planner.py``, dispatch the LLM to actually file the
+via ``lib/spec_planner.py``, dispatch the LLM to actually file the
 issues (when an engine is wired), and report. The candidate-list logic
 lives in the library so a fleet can dry-run it with no LLM and no gh.
 
 Failure modes (sentinel-driven, parsed from ``result.result_text`` when
 the LLM is wired):
 
-  ``[DAMIAN-OK]``               -> success, bundles created
-  ``[DAMIAN-NOOP]``             -> nothing to file (deduped or shipped)
-  ``[DAMIAN-DAILY-CAP-HIT]``    -> per-firing bundle cap reached
-  ``[DAMIAN-OVER-BUDGET]``      -> LLM tool-call budget exhausted
-  ``[DAMIAN-ESCALATE]``         -> gh auth dead / repo 404 / parse error
-  ``[DAMIAN-BUNDLE-ROLLED-BACK]`` -> partial bundle rolled back
+  ``[SPEC-PLANNER-OK]``               -> success, bundles created
+  ``[SPEC-PLANNER-NOOP]``             -> nothing to file (deduped or shipped)
+  ``[SPEC-PLANNER-DAILY-CAP-HIT]``    -> per-firing bundle cap reached
+  ``[SPEC-PLANNER-OVER-BUDGET]``      -> LLM tool-call budget exhausted
+  ``[SPEC-PLANNER-ESCALATE]``         -> gh auth dead / repo 404 / parse error
+  ``[SPEC-PLANNER-BUNDLE-ROLLED-BACK]`` -> partial bundle rolled back
 """
 
 from __future__ import annotations
@@ -70,14 +69,14 @@ from agent_runner import (  # noqa: E402
     slack_post,
     with_lock,
 )
-from damian_planner import (  # noqa: E402
+from spec_planner import (  # noqa: E402
     PlannerConfig,
     SpecBundlePlanner,
     render_plan_for_prompt,
 )
 
 CODENAME = os.environ.get("AGENT_CODENAME", "spec-planner")
-DAMIAN_ENGINE = agent_engine(CODENAME, default="hybrid")
+SPEC_PLANNER_ENGINE = agent_engine(CODENAME, default="hybrid")
 
 # Prompt path: alfred-init seeds the role file at this location and the
 # operator can rename / customise it. Default seed lives at
@@ -213,10 +212,10 @@ def main() -> int:
     # codex equivalent) without prescribing one engine. The deterministic
     # part - what to file, which repos, which slugs - is what matters
     # for the OSS surface; the LLM call itself is fleet-specific.
-    print(f"[{CODENAME.upper()}-PLAN-DRAFTED] {summary} engine={DAMIAN_ENGINE}")
+    print(f"[{CODENAME.upper()}-PLAN-DRAFTED] {summary} engine={SPEC_PLANNER_ENGINE}")
     print(composed)
     slack_post(
-        f"[{CODENAME.upper()}-PLAN-DRAFTED] {summary} engine={DAMIAN_ENGINE}",
+        f"[{CODENAME.upper()}-PLAN-DRAFTED] {summary} engine={SPEC_PLANNER_ENGINE}",
         severity="info",
     )
     return 0

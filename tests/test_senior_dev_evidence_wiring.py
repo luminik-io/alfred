@@ -1,4 +1,4 @@
-"""Lucius must attach honest verification evidence to the PR body.
+"""Senior-dev must attach honest verification evidence to the PR body.
 
 These tests exercise the runner-side glue (not the pure formatter, which has
 its own suite): pre-push capture -> test evidence, diff stat parsing, the
@@ -257,7 +257,7 @@ def test_load_preview_config_reads_toml(lucius, monkeypatch, tmp_path):
         'route = "/dashboard"\n'
     )
     monkeypatch.setattr(lucius, "ALFRED_HOME", tmp_path)
-    monkeypatch.setattr(lucius, "LUCIUS_REPOS", ["frontend", "backend"])
+    monkeypatch.setattr(lucius, "SENIOR_DEV_REPOS", ["frontend", "backend"])
     cfg = lucius._load_preview_config("lucius")
     assert cfg["frontend"].enabled is True
     assert cfg["frontend"].route == "/dashboard"

@@ -13,7 +13,7 @@ $ALFRED_HOME/agents/<codename>.toml. TOML format:
         coverage_hint: parse coverage/coverage-summary.json
 
 Without that file, the runner falls back to language-suffix defaults (see
-_load_pre_push_config in lucius.py for the same pattern). Coverage hint
+_load_pre_push_config in senior-dev.py for the same pattern). Coverage hint
 defaults to "(operator: configure coverage_hint per repo)".
 """
 
@@ -66,17 +66,17 @@ from agent_runner import (
 from workflow_validation import validate_changed_workflows
 
 AGENT = os.environ.get("AGENT_CODENAME", "test-engineer")
-BANE_ENGINE = agent_engine(AGENT, default="hybrid")
+TEST_ENGINEER_ENGINE = agent_engine(AGENT, default="hybrid")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 LAST_REPO_FILE = STATE_ROOT / AGENT / "last-repo.txt"
 
-# Keyed off the RESOLVED codename (AGENT), with the default-slug key as a legacy
-# fallback, so an operator-renamed test-engineer reads its ALFRED_<CHOSEN>_REPOS key.
-ROTATION = agent_repos(AGENT, default_env="ALFRED_TEST_ENGINEER_REPOS")
+# Keyed off the runtime role slug. Themes and custom visible names do not change
+# the machine identity or env-var contract.
+ROTATION = agent_repos(AGENT)
 
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
-    bins=[*engine_preflight_bins(BANE_ENGINE), "gh", "git"],
+    bins=[*engine_preflight_bins(TEST_ENGINEER_ENGINE), "gh", "git"],
     require_gh_auth=True,
     require_workspace_repos=ROTATION,
 )
@@ -264,7 +264,7 @@ def main() -> int:
 
     result, engine_used = invoke_agent_engine(
         prompt,
-        engine=BANE_ENGINE,
+        engine=TEST_ENGINEER_ENGINE,
         claude_fn=claude_invoke_streaming,
         codex_fn=codex_invoke,
         workdir=wt,

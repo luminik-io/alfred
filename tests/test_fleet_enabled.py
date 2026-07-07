@@ -175,7 +175,16 @@ def _load_status_module():
 
 
 def _run_cli(*argv: str, env_extra: dict[str, str] | None = None) -> subprocess.CompletedProcess:
-    full_env = {**os.environ, **(env_extra or {})}
+    full_env = dict(os.environ)
+    for key in list(full_env):
+        if key.startswith("ALFRED_") or key in {
+            "ALFRED_HOME",
+            "GH_ORG",
+            "OPERATOR_NAME",
+            "WORKSPACE_ROOT",
+        }:
+            full_env.pop(key, None)
+    full_env.update(env_extra or {})
     return subprocess.run(
         [sys.executable, str(CLI), *argv],
         capture_output=True,
@@ -592,6 +601,29 @@ def test_cli_status_json_keeps_raw_slug_and_adds_themed_name(tmp_path):
     # human name separately so downstream consumers are not broken by the rename.
     assert architect["agent"] == "architect"
     assert architect["display_name"] == "Batman"
+
+
+def test_status_falls_back_to_checkout_agents_conf_when_runtime_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    runtime = tmp_path / "fresh-runtime"
+    checkout = tmp_path / "checkout"
+    (checkout / "bin").mkdir(parents=True)
+    (checkout / "launchd").mkdir()
+    checkout_conf = checkout / "launchd" / "agents.conf"
+    checkout_conf.write_text(
+        "my.fleet.checkout-only\tarchitect.py\tinterval:5400\tno\t\tCheckout marker\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+
+    status = _load_status_module()
+    monkeypatch.setattr(status, "_HERE", checkout / "bin")
+
+    records = status.configured_agents()
+
+    assert [record.label for record in records] == ["my.fleet.checkout-only"]
+    assert records[0].role == "Checkout marker"
 
 
 def _status_snapshot(status_mod, **overrides):

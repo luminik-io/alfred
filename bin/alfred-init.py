@@ -15,7 +15,7 @@ Wizard order (each step is idempotent, re-running won't duplicate):
                          (env or AWS Secrets Manager).
     4. AWS (optional):  per-agent IAM profiles for agents that use cloud APIs.
     5. Pick agents:    multi-select discovered from bin/*.py.
-    6. Codenames:      per-role codename (default = canonical Batman name).
+    6. Codenames:      per-role codename (default = default theme display name).
     7. Repos:          per-agent repo selection out of `gh repo list`.
     8. Schedule:       sensible defaults; press 'a' to customize.
     9. Generate config: agents.conf, env, starter prompts, opt-in gate.
@@ -56,7 +56,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Constants, the canonical Batman-codename map.
+# Constants, the canonical role catalog.
 # ---------------------------------------------------------------------------
 
 # role-key -> (default codename, one-line description, operates_on_repos,
@@ -263,8 +263,8 @@ SETUP_LABELS: list[tuple[str, str, str]] = [
     ("agent:done", "0e8a16", "Issue shipped."),
     ("agent:authored", "1d76db", "PR authored by an Alfred agent."),
     ("done-already", "0e8a16", "Issue was already implemented before Alfred picked it up."),
-    ("agent:large-feature", "ff6b00", "Multi-repo feature candidate for Batman."),
-    ("batman-pr-open", "5319e7", "A Batman bundle PR is open in this repo."),
+    ("agent:large-feature", "ff6b00", "Multi-repo feature candidate for the architect."),
+    ("architect-pr-open", "5319e7", "A architect bundle PR is open in this repo."),
     ("do-not-pickup", "5319e7", "Operator override: agents must not claim this issue."),
     ("do-not-review", "cccccc", "Skip automated PR review."),
     ("needs:human-scope", "e99695", "Issue needs manual scoping before autonomous work."),
@@ -282,7 +282,7 @@ SETUP_LABELS: list[tuple[str, str, str]] = [
 SPECIAL_PROMPTS = {
     "architect": [
         (
-            "BATMAN_PARENT_REPO",
+            "ARCHITECT_PARENT_REPO",
             "Parent issue repo the architect should read (owner/repo; blank keeps it idle)",
         )
     ],
@@ -313,7 +313,7 @@ def alfred_init_managed_env_keys() -> frozenset[str]:
         "SLACK_WEBHOOK_URL",
         "SLACK_WEBHOOK_SECRET_ID",
         "SLACK_WEBHOOK_SECRET_REGION",
-        "BATMAN_ROLLOUT_ORDER",
+        "ARCHITECT_ROLLOUT_ORDER",
         "ALFRED_MORNING_BRIEF_AGENTS",
         "ALFRED_TELEMETRY_ENABLED",
         "ALFRED_TELEMETRY_URL",
@@ -704,7 +704,7 @@ def upsert_env_block(
     # Strip any prior generated block for this marker so we re-emit fresh
     # values instead of accumulating a duplicate section. When a key allowlist
     # is provided, remove only this block's managed assignment lines and keep
-    # later .env sections such as scheduler tokens and Batman setup intact.
+    # later .env sections such as scheduler tokens and architect setup intact.
     prior = banner_re.search(existing)
     if prior and managed_keys is not None:
         block_end = _managed_env_block_end(existing, prior, managed_keys)
@@ -871,7 +871,9 @@ def label_setup_repos(state: WizardState) -> list[str]:
     repos = selected_repo_union(state)
     seen = set(repos)
     batman_parent = (
-        state.role_to_extras.get("cross_repo_coordinator", {}).get("BATMAN_PARENT_REPO", "").strip()
+        state.role_to_extras.get("cross_repo_coordinator", {})
+        .get("ARCHITECT_PARENT_REPO", "")
+        .strip()
     )
     if batman_parent and batman_parent not in seen:
         repos.append(batman_parent)
@@ -923,7 +925,7 @@ def seed_prompt_templates(state: WizardState) -> list[Path]:
 def write_opt_in_gate(state: WizardState) -> list[str]:
     """Leave runner-gated agents disabled during fleet generation.
 
-    The full-fleet install should make Batman visible, seed its prompt and
+    The full-fleet install should make architect visible, seed its prompt and
     env, and render its scheduler row, but it must not arm cross-repo execution
     as a side effect of accepting defaults. Operators opt in explicitly with
     ``alfred enable <codename>`` after reviewing the cross-repo gate.
@@ -1006,7 +1008,7 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
         if repos:
             runtime_repos = repo_runtime_values(repos)
             if role == "cross_repo_coordinator":
-                out["BATMAN_ROLLOUT_ORDER"] = ",".join(runtime_repos)
+                out["ARCHITECT_ROLLOUT_ORDER"] = ",".join(runtime_repos)
             elif role in ROLE_REPO_ENV_KEYS:
                 for env_key in ROLE_REPO_ENV_KEYS[role]:
                     out[env_key] = ",".join(runtime_repos)
@@ -1372,7 +1374,7 @@ def step_4_aws(state: WizardState, *, non_interactive: bool) -> None:
     # The IAM-scoped agents are the staging smoke runner and the ops-morning
     # watch. Resolve their codenames from the catalog (via each role's chosen
     # codename) so this list cannot drift from the canonical identity the way a
-    # hard-coded Batman-cast list ("huntress", "gordon") did after the rename.
+    # hard-coded theme-name list ("huntress", "gordon") did after the rename.
     aws_consumer_roles = ("smoke_runner", "ops_morning")
     aws_consumers = [state.codename_for(role) for role in aws_consumer_roles]
     enabled_codenames = {state.codename_for(r) for r in state.enabled_roles}
@@ -1549,7 +1551,7 @@ def step_7_repos(
     managed_defaults = read_managed_env_file(state.env_file)
     for role in state.enabled_roles:
         codename = state.codename_for(role)
-        # Match by canonical Batman name even if operator renamed the codename.
+        # Match by default theme display name even if operator renamed the codename.
         canonical = AGENT_CATALOG[role][0]
         prompts = SPECIAL_PROMPTS.get(canonical, [])
         if not prompts:

@@ -26,13 +26,13 @@ function input(codename: string, role: WorkflowRole): WorkflowNodeInput {
 
 // A small representative roster spanning every lane.
 const ROSTER: WorkflowNodeInput[] = [
-  input("robin", "triage"),
-  input("batman", "architect"),
-  input("lucius", "senior-dev"),
-  input("bane", "senior-dev"),
-  input("rasalghul", "reviewer"),
+  input("triage", "triage"),
+  input("architect", "architect"),
+  input("senior-dev", "senior-dev"),
+  input("build-partner", "senior-dev"),
+  input("reviewer", "reviewer"),
   input("automerge", "ship"),
-  input("gordon", "ops"),
+  input("ops-watch", "ops"),
 ];
 
 describe("buildWorkflowGraph", () => {
@@ -53,23 +53,23 @@ describe("buildWorkflowGraph", () => {
   it("places an unknown-role agent in its given lane and never drops it", () => {
     // An agent the runtime reports with the fallback role still appears.
     const { nodes } = buildWorkflowGraph(
-      [input("batman", "architect"), input("mystery-bot", "ops")],
+      [input("architect", "architect"), input("mystery-bot", "ops")],
       null,
     );
     const agentIds = nodes.filter((n) => n.type === "agent").map((n) => n.id);
-    expect(agentIds.sort()).toEqual(["batman", "mystery-bot"]);
+    expect(agentIds.sort()).toEqual(["architect", "mystery-bot"]);
   });
 
   it("wires handoff edges between present lanes and drops edges to absent lanes", () => {
     // Only architect + senior-dev present: the architect->senior-dev edge
     // survives; edges to missing lanes (e.g. senior-dev->reviewer) do not.
     const { nodes, edges } = buildWorkflowGraph(
-      [input("batman", "architect"), input("lucius", "senior-dev")],
+      [input("architect", "architect"), input("senior-dev", "senior-dev")],
       null,
     );
     const agentIds = nodes.filter((n) => n.type === "agent").map((n) => n.id);
-    expect(agentIds.sort()).toEqual(["batman", "lucius"]);
-    expect(edges.map((e) => e.id)).toContain("batman->lucius");
+    expect(agentIds.sort()).toEqual(["architect", "senior-dev"]);
+    expect(edges.map((e) => e.id)).toContain("architect->senior-dev");
     expect(
       edges.every((e) => agentIds.includes(e.source) && agentIds.includes(e.target)),
     ).toBe(true);
@@ -77,25 +77,25 @@ describe("buildWorkflowGraph", () => {
 
   it("wires every agent in a multi-agent lane into the pipeline, not just the first", () => {
     // senior-dev has three agents; each must hand off into the reviewer lane so
-    // no secondary agent (bane, nightwing) is left without a pipeline edge.
+    // no secondary agent is left without a pipeline edge.
     const { nodes, edges } = buildWorkflowGraph(
       [
-        input("lucius", "senior-dev"),
-        input("bane", "senior-dev"),
-        input("nightwing", "senior-dev"),
-        input("rasalghul", "reviewer"),
+        input("senior-dev", "senior-dev"),
+        input("build-partner", "senior-dev"),
+        input("feature-helper", "senior-dev"),
+        input("reviewer", "reviewer"),
       ],
       null,
     );
     const agentIds = nodes.filter((n) => n.type === "agent").map((n) => n.id);
-    expect(agentIds.sort()).toEqual(["bane", "lucius", "nightwing", "rasalghul"]);
+    expect(agentIds.sort()).toEqual(["build-partner", "feature-helper", "reviewer", "senior-dev"]);
     // Every implement agent connects to the review lane representative.
     const edgeIds = edges.map((e) => e.id);
-    expect(edgeIds).toContain("lucius->rasalghul");
-    expect(edgeIds).toContain("bane->rasalghul");
-    expect(edgeIds).toContain("nightwing->rasalghul");
+    expect(edgeIds).toContain("senior-dev->reviewer");
+    expect(edgeIds).toContain("build-partner->reviewer");
+    expect(edgeIds).toContain("feature-helper->reviewer");
     // No agent in the lane is orphaned: each has at least one incident edge.
-    for (const codename of ["lucius", "bane", "nightwing"]) {
+    for (const codename of ["senior-dev", "build-partner", "feature-helper"]) {
       expect(
         edges.some((e) => e.source === codename || e.target === codename),
       ).toBe(true);
@@ -104,12 +104,12 @@ describe("buildWorkflowGraph", () => {
 
   it("marks the selected node and animates its incident edges", () => {
     const { nodes, edges } = buildWorkflowGraph(
-      [input("lucius", "senior-dev"), input("rasalghul", "reviewer")],
-      "rasalghul",
+      [input("senior-dev", "senior-dev"), input("reviewer", "reviewer")],
+      "reviewer",
     );
-    const selected = nodes.find((n) => n.id === "rasalghul");
+    const selected = nodes.find((n) => n.id === "reviewer");
     expect((selected?.data as { selected: boolean }).selected).toBe(true);
-    expect(edges.find((e) => e.id === "lucius->rasalghul")?.animated).toBe(true);
+    expect(edges.find((e) => e.id === "senior-dev->reviewer")?.animated).toBe(true);
   });
 });
 

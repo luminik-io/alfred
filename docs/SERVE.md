@@ -97,7 +97,7 @@ $ALFRED_HOME/state/firings/<firing_id>.json
 Alfred plan drafts are read from:
 
 ```
-$ALFRED_HOME/batman-plans/*.md
+$ALFRED_HOME/architect-plans/*.md
 ```
 
 Planning drafts are written to:

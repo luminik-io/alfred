@@ -22,7 +22,7 @@ the full walkthrough. Then come back here to point Alfred at your own code.
 
 ## Two ways to install
 
-**Desktop-first path.** Install the signed Alfred app on macOS or Linux, open it, and click **Install or repair** in Setup. The native app bundles Alfred core resources, bootstraps dependencies, seeds the full built-in runtime roster, deploys the local CLI/agents into `~/.alfred`, starts `alfred serve`, detects existing installs, connects GitHub plus Claude or Codex, helps you pick repos, and lets you choose a roster theme or custom display names. Repo-scoped agents stay idle until onboarding saves repositories. Batman is included as the cross-repo architect, but it stays idle until you configure `BATMAN_PARENT_REPO`. The Homebrew cask also depends on the CLI formula, but direct DMG/AppImage/.deb installs no longer need a separate CLI install first.
+**Desktop-first path.** Install the signed Alfred app on macOS or Linux, open it, and click **Install or repair** in Setup. The native app bundles Alfred core resources, bootstraps dependencies, seeds the full built-in runtime roster, deploys the local CLI/agents into `~/.alfred`, starts `alfred serve`, detects existing installs, connects GitHub plus Claude or Codex, helps you pick repos, and lets you choose a roster theme or custom display names. Repo-scoped agents stay idle until onboarding saves repositories. The architect role is included from the start and appears as Batman under the default theme, but it stays idle until you configure `ARCHITECT_PARENT_REPO`. The Homebrew cask also depends on the CLI formula, but direct DMG/AppImage/.deb installs no longer need a separate CLI install first.
 
 **Command line.** Use the steps below when you want a headless Linux host, to work from `main`, to script the install, or because you prefer the terminal without the GUI. On macOS you can install from source or with Homebrew; on Linux use the source checkout. Either way the command line installs the `core` runtime; the desktop app remains the recommended local onboarding and control surface.
 
@@ -185,11 +185,11 @@ Run the wizard to choose agents, repos, codenames, Slack settings, and schedules
 
 Pressing Enter at the agent-selection step chooses the full engineering roster.
 Use `starter` only when you deliberately want a small lab harness, not as the
-normal product path. The full roster includes Batman, Bane, and Nightwing from
-the start; high-impact execution is gated by configuration rather than by
-installing those agents later. If multiple repos are visible, pick the repo
-numbers explicitly; the wizard no longer silently assigns every repo to every
-agent.
+normal product path. The full roster includes the architect, test engineer, and
+fixer roles from the start; high-impact execution is gated by configuration
+rather than by installing those agents later. If multiple repos are visible,
+pick the repo numbers explicitly; the wizard no longer silently assigns every
+repo to every agent.
 
 `alfred-init.py` now does the boring setup work for you:
 
@@ -199,22 +199,23 @@ agent.
   without overwriting your edits.
 - Creates the standard GitHub labels on the selected repos, including
   `agent:implement`, `agent:authored`, lifecycle labels, bug-triage labels, and
-  Batman's `agent:large-feature` label.
+  the architect's `agent:large-feature` label.
 - Runs `bash deploy.sh`, then `alfred doctor`.
 
-Batman is included in the full fleet as the architect for cross-repo work. The
-default mode posts a bundle plan and stops. `BATMAN_AUTO_EXECUTE=approval-gate`
-files child issues only after configured approval; `BATMAN_AUTO_EXECUTE=1` files
-them immediately for teams that want that level of automation.
+The architect role is included in the full fleet for cross-repo work. Under the
+default theme it appears as Batman. The default mode posts a bundle plan and
+stops. `ARCHITECT_AUTO_EXECUTE=approval-gate` files child issues only after
+configured approval; `ARCHITECT_AUTO_EXECUTE=1` files them immediately for
+teams that want that level of automation.
 
-**When do I need Batman?**
+**When do I need the architect?**
 
 | Your fleet has | Do you need the architect role (Batman in the default theme)? |
 | --- | --- |
 | 1 repo | No. The planner, senior-dev, and reviewer roles handle single-repo work fine on their own. |
 | 2 to 3 related repos (frontend + backend, or app + web + mobile) | Yes, highly recommended. The single-issue fans-out-to-N-PRs pattern is the daily payoff. |
 | 5+ repos with mostly-independent work | Yes for cross-repo features. The architect no-ops on runs that find nothing cross-cutting, so the cost is the run itself. |
-| Strict approval gates required before any cross-repo work lands | Yes. The architect's `BATMAN_AUTO_EXECUTE=approval-gate` is the cleanest checkpoint pattern Alfred ships. |
+| Strict approval gates required before any cross-repo work lands | Yes. The architect's `ARCHITECT_AUTO_EXECUTE=approval-gate` is the cleanest checkpoint pattern Alfred ships. |
 
 The architect role is present in the full-fleet config from the start and stays
 protected by the runner gate until you arm it with `alfred enable architect`.
@@ -286,7 +287,7 @@ Everything else lives inside the cloned repo and is removed by `rm -rf ~/code/al
 - [`BOOTSTRAP.md`](BOOTSTRAP.md): AWS IAM-per-agent, Slack, prompt sync, troubleshooting.
 - [`docs/INSTALL_TIERS.md`](docs/INSTALL_TIERS.md): the three install tiers (`core`, recommended `client`, optional `slack`). The CLI and fleet are fully standalone; this walkthrough installs `core`.
 - [`docs/AI_ASSISTED_INSTALL.md`](docs/AI_ASSISTED_INSTALL.md): assistant-driven setup with Claude Code, Codex, or another local coding assistant.
-- [`docs/WORKSPACE_PATTERNS.md`](docs/WORKSPACE_PATTERNS.md): one-repo, multi-repo, specs-led, and Batman planning layouts.
+- [`docs/WORKSPACE_PATTERNS.md`](docs/WORKSPACE_PATTERNS.md): one-repo, multi-repo, specs-led, and architect planning layouts.
 - [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md): Slack app + webhook + (optional) bot token.
 - [`docs/AWS_SETUP.md`](docs/AWS_SETUP.md): IAM users, scoped policies, Secrets Manager layout.
 - [`docs/CLAUDE_CODE.md`](docs/CLAUDE_CODE.md): Pro vs Max, switching accounts, `alfred claude`.

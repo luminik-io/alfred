@@ -47,8 +47,8 @@ never fabricated.
 
 ### Screenshots
 - Route: `/dashboard`
-- Before: [`.alfred/evidence/lucius-20260703-abc/before.png`](.alfred/evidence/lucius-20260703-abc/before.png)
-- After: [`.alfred/evidence/lucius-20260703-abc/after.png`](.alfred/evidence/lucius-20260703-abc/after.png)
+- Before: [`.alfred/evidence/senior-dev-20260703-abc/before.png`](.alfred/evidence/senior-dev-20260703-abc/before.png)
+- After: [`.alfred/evidence/senior-dev-20260703-abc/after.png`](.alfred/evidence/senior-dev-20260703-abc/after.png)
 ```
 
 ## Enabling and disabling

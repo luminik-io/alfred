@@ -17,7 +17,7 @@ Design notes
 ------------
 
 - ``ThreadHandle`` is the persistence anchor. One per firing. Stash it
-  on the per-firing state (Lucius / Batman both keep one) and pass it to
+  on the per-firing state (role-slug runners keep one) and pass it to
   every reply call. ``channel`` + ``ts`` is what Slack's
   ``chat.postMessage`` needs to thread a reply, and what
   ``slack_approval.SlackApproval`` polls for the approval flow,
@@ -86,7 +86,7 @@ def _escape_slack_text(text: str) -> str:
 def _themed_name(codename: str) -> str | None:
     """Resolve a bare agent display name under the active roster theme.
 
-    Returns the theme's display name for a known fleet codename (the Batman-cast
+    Returns the theme's display name for a known fleet codename (the base-theme
     name under the default theme, the preset's name under a preset, the
     operator's name under a custom theme) or ``None`` for a codename outside the
     known fleet. Never raises: a failure reading the store degrades to ``None``
@@ -104,15 +104,15 @@ def _themed_name(codename: str) -> str | None:
 
 
 def _themed_role(codename: str) -> str | None:
-    """Resolve the Batman-base role label for a known codename, or ``None``.
+    """Resolve the base-theme role label for a known codename, or ``None``.
 
     Used to pair a themed name with the role label the desktop shows. Presets
-    and the Batman base share ``ROLE_LABELS_DEFAULT``; a custom theme overlays
+    and the base theme share ``ROLE_LABELS_DEFAULT``; a custom theme overlays
     the operator's per-agent role. Never raises.
     """
     try:
         from agent_runner.paths import STATE_ROOT
-        from roster_theme_store import BATMAN_BASE_ROLES, RosterThemeStore
+        from roster_theme_store import BASE_THEME_ROLES, RosterThemeStore
 
         state = RosterThemeStore.from_state_root(STATE_ROOT).load()
     except Exception:  # rendering must never fail on store reads
@@ -120,16 +120,16 @@ def _themed_role(codename: str) -> str | None:
     themed = state.themed_role_label_for(codename)
     if themed:
         return themed
-    # The default Batman theme's ``themed_role_label_for`` returns ``None`` so
+    # The default theme's ``themed_role_label_for`` returns ``None`` so
     # the shipped env-role path is preserved for unknown codenames; a KNOWN slug
-    # still gets its Batman-base role label so the name reads with its role.
-    return BATMAN_BASE_ROLES.get(codename.split(".")[-1].strip().lower())
+    # still gets its base-theme role label so the name reads with its role.
+    return BASE_THEME_ROLES.get(codename.split(".")[-1].strip().lower())
 
 
 def _themed_codename_label(codename: str) -> str:
     """Format ``"<name> (<role>)"`` honoring the persisted roster theme.
 
-    The default (Batman) theme renders the Batman-cast name for a known role
+    The default theme renders the base-theme name for a known role
     slug (``senior-dev`` -> ``Lucius``), matching the desktop. After the
     role-slug rename the codename is a slug, so a surface that printed the bare
     codename would show ``senior-dev`` instead of ``Lucius``; resolving through
@@ -145,7 +145,7 @@ def _themed_codename_label(codename: str) -> str:
         # A codename outside the known fleet keeps the shipped rendering: the
         # bare codename plus the ``ALFRED_<CODENAME>_ROLE`` env label.
         return codename_with_role(codename)
-    # Match the desktop's role fallback: the Batman-base role label for the slug
+    # Match the desktop's role fallback: the base-theme role label for the slug
     # (not the ``ALFRED_<CODENAME>_ROLE`` env label), else the env role for a
     # codename the base does not know, so the same saved theme renders
     # identically on both surfaces.
@@ -171,7 +171,7 @@ def themed_agent_role(codename: str) -> str | None:
     """Public: the active theme's role label for ``codename``, or ``None``.
 
     Honors a ``custom`` theme's per-agent ``custom_roles`` overlay (via
-    ``themed_role_label_for``), else the Batman-base role label for a known slug.
+    ``themed_role_label_for``), else the base-theme role label for a known slug.
     Returns ``None`` for a codename the roster does not know. Raw (unescaped);
     the Slack caller escapes via ``escape_mrkdwn``. Never raises.
     """
@@ -180,12 +180,8 @@ def themed_agent_role(codename: str) -> str | None:
 
 SLACK_API = "https://slack.com/api"
 
-# Default Slack channel for fleet-wide firing posts. ``SLACK_HOME_CHANNEL``
-# is the canonical name; the ``BATMAN_APPROVAL_CHANNEL`` alias is read by
-# ``slack_approval`` for plan approvals so the two paths land in the same
-# room by default.
+# Default Slack channel for fleet-wide firing posts.
 HOME_CHANNEL_ENV = "SLACK_HOME_CHANNEL"
-BATMAN_APPROVAL_CHANNEL_ENV = "BATMAN_APPROVAL_CHANNEL"
 HOME_CHANNEL_DEFAULT = "alfred"
 
 # Severity → attachment colour. Hex codes match the brief; keeping them
@@ -253,12 +249,7 @@ def _home_channel(channel: str | None = None) -> str:
     env var, falling back to the literal ``alfred``. Strip any leading
     ``#`` so the API accepts it.
     """
-    raw = (
-        channel
-        or os.environ.get(BATMAN_APPROVAL_CHANNEL_ENV)
-        or os.environ.get(HOME_CHANNEL_ENV)
-        or HOME_CHANNEL_DEFAULT
-    ).strip()
+    raw = (channel or os.environ.get(HOME_CHANNEL_ENV) or HOME_CHANNEL_DEFAULT).strip()
     return raw.lstrip("#")
 
 

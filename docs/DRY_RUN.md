@@ -53,10 +53,10 @@ After install, the Alfred CLI resolves any codename without touching the host
 scheduler:
 
 ```sh
-alfred dry-run lucius
+alfred dry-run senior-dev
 alfred dry-run drake
 alfred dry-run all
-alfred dry-run lucius --native
+alfred dry-run senior-dev --native
 ```
 
 By default, Alfred resolves the label, script, schedule, and role, then prints

@@ -111,7 +111,7 @@ deterministic and offline-testable.
    ```
 
    Optionally restrict to the codenames that did the work
-   (`--codename lucius`) and pass the merged-PR count you observed
+   (`--codename senior-dev`) and pass the merged-PR count you observed
    (`--prs-merged N`), since merge state is not in the per-firing log.
 
 3. **Change something** - a prompt, a model, a budget, an engine route.

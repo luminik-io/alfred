@@ -80,8 +80,8 @@ How to revert or disable the change if it breaks.
 1. **Drake reads specs and roadmap context.** It files scoped
    `agent:implement` issues only when the acceptance criteria are concrete and
    testable.
-2. **Batman plans multi-repo work.** Labelled `agent:large-feature` parent
-   issues in `BATMAN_PARENT_REPO` become rollout plans across the configured
+2. **Architect plans multi-repo work.** Labelled `agent:large-feature` parent
+   issues in `ARCHITECT_PARENT_REPO` become rollout plans across the configured
    repos. Approved parent plans can file child `agent:implement` issues. Plans
    are visible in Slack and in `alfred serve` under Plans.
 3. **Lucius implements one repo at a time.** It claims a single
@@ -138,7 +138,7 @@ agent:bundle:<short-slug>   # optional when several issues belong together
 ```
 
 Batman parses `Repos:`, `Children:`, and `Done when:` blocks, posts the plan to
-Slack or local logs, and can file child issues only when `BATMAN_AUTO_EXECUTE`
+Slack or local logs, and can file child issues only when `ARCHITECT_AUTO_EXECUTE`
 allows it. Treat the Slack thread as the place to change the plan before
 approval. Plain-English feedback is enough: "remove mobile", "make this
 read-only", "add an empty state", or "split this into two PRs". Alfred

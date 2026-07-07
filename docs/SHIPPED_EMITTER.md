@@ -86,7 +86,7 @@ The token table lives at the top of `bin/alfred-shipped-public.py` and is extens
 
 Reviewer entries are collapsed:
 
-- A known agent codename passes through (`lucius`, `ras-al-ghul`, `batman`, ...).
+- A known agent codename passes through (`senior-dev`, `reviewer`, `architect`, ...).
 - Anything else (a human GitHub handle, an email, an unknown name) collapses to the literal string `human`.
 
 ### Codename scrub

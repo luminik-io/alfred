@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""``batman``, multi-repo feature architect.
+"""``architect``, multi-repo feature coordinator.
 
 Picks the oldest open ``agent:large-feature`` parent issue from
-``BATMAN_PARENT_REPO``, drafts the rollout, captures approval when
-configured, files scoped child issues, and reports what happened.
-Batman does not directly edit repo files in the OSS reference runner;
-Lucius, Bane, and Nightwing own the worktrees and PRs that flow from
-those child issues.
+``ARCHITECT_PARENT_REPO``, drafts the rollout, captures approval when
+configured, files scoped child issues, and reports what happened. The
+architect does not directly edit repo files in the OSS reference runner.
+Implementer, tester, and fixer roles own the worktrees and PRs that flow
+from those child issues.
 
 Wiring:
 
-  - Reads ``BATMAN_PARENT_REPO`` as the single parent queue repo.
+  - Reads ``ARCHITECT_PARENT_REPO`` as the single parent queue repo.
   - Posts a plan summary via the ``slack_format`` thread root when a
     bot token is configured, falling back to the webhook ``slack_post``
     otherwise.
-  - Honours the fleet enable file: if ``batman`` is not enabled there,
+  - Honours the fleet enable file: if ``architect`` is not enabled there,
     the runner exits early with a one-line stderr note.
 """
 
@@ -59,25 +59,26 @@ from agent_runner import (  # noqa: E402
     slack_post,
     with_lock,
 )
-from batman import (  # noqa: E402
+from architect_lifecycle import (  # noqa: E402
     APPROVAL_MODE_FILE,
     EXEC_GATE_DISABLED,
     EXEC_NO_CHILDREN,
     EXEC_OK,
     LARGE_FEATURE_LABEL,
+    LEGACY_ENV_REPLACEMENTS,
     ApprovalEnvelope,
-    BatmanLifecycle,
-    BatmanLifecycleConfig,
+    ArchitectLifecycle,
+    ArchitectLifecycleConfig,
     SlackReporter,
 )
 from labels import PLAN_PENDING_APPROVAL  # noqa: E402
 
 CODENAME = os.environ.get("AGENT_CODENAME", "architect")
-BATMAN_ENGINE = agent_engine(CODENAME, default="hybrid")
-ENV_EXECUTING_FANOUT_STALE_AFTER_S = "BATMAN_EXECUTING_FANOUT_STALE_AFTER_S"
+ARCHITECT_ENGINE = agent_engine(CODENAME, default="hybrid")
+ENV_EXECUTING_FANOUT_STALE_AFTER_S = "ARCHITECT_EXECUTING_FANOUT_STALE_AFTER_S"
 DEFAULT_EXECUTING_FANOUT_STALE_AFTER_S = 3600
-EXISTING_FANOUT_CHILDREN_KEY = "_batman_existing_fanout_children"
-BATMAN_PICKUP_BLOCKING_LABELS = {
+EXISTING_FANOUT_CHILDREN_KEY = "_architect_existing_fanout_children"
+ARCHITECT_PICKUP_BLOCKING_LABELS = {
     label_constants.IN_FLIGHT,
     label_constants.PR_OPEN,
     label_constants.LEGACY_PR_OPEN,
@@ -89,20 +90,20 @@ BATMAN_PICKUP_BLOCKING_LABELS = {
     label_constants.DONE_ALREADY,
     label_constants.FANOUT_COMPLETE,
 }
-BATMAN_PARENT_FINALIZATION_LABELS = [
+ARCHITECT_PARENT_FINALIZATION_LABELS = [
     (
         label_constants.FANOUT_COMPLETE,
         "5319e7",
-        "Batman filed every child issue for this parent; not shipped-work evidence.",
+        "The architect filed every child issue for this parent; not shipped-work evidence.",
     )
 ]
 
 
-def _has_batman_pickup_blocker(label_names: set[str] | frozenset[str]) -> bool:
-    """Batman owns large-feature and bundle labels; block only hard gates."""
+def _has_architect_pickup_blocker(label_names: set[str] | frozenset[str]) -> bool:
+    """The architect owns large-feature and bundle labels; block only hard gates."""
     labels = set(label_names)
     return bool(
-        (labels & BATMAN_PICKUP_BLOCKING_LABELS) or label_constants.agent_pr_open_labels(labels)
+        (labels & ARCHITECT_PICKUP_BLOCKING_LABELS) or label_constants.agent_pr_open_labels(labels)
     )
 
 
@@ -117,7 +118,7 @@ def _list_parent_repo_large_features(parent_repo: str) -> list[dict]:
     """Return open ``agent:large-feature`` issues in ``parent_repo``.
 
     ``parent_repo`` is an ``owner/repo`` slug. Used by the lifecycle path
-    (``BATMAN_PARENT_REPO``); falls back to ``[]`` on any gh search
+    (``ARCHITECT_PARENT_REPO``); falls back to ``[]`` on any gh search
     failure so the runner skips cleanly rather than crashing.
     """
     if not parent_repo:
@@ -154,9 +155,9 @@ def _list_parent_repo_large_features(parent_repo: str) -> list[dict]:
             )
             if marker_state == "completed" or recovered_completed_fanout:
                 event = (
-                    "BATMAN-PARENT-FINALIZE-RECOVER"
+                    "ARCHITECT-PARENT-FINALIZE-RECOVER"
                     if recovered_completed_fanout
-                    else "BATMAN-PARENT-FINALIZE-RETRY"
+                    else "ARCHITECT-PARENT-FINALIZE-RETRY"
                 )
                 print(f"[{event}] parent={parent_repo}#{issue_number}")
                 if _finalize_parent_after_child_fanout(parent_repo, issue_number):
@@ -174,20 +175,20 @@ def _list_parent_repo_large_features(parent_repo: str) -> list[dict]:
                 if existing_child_keys:
                     r[EXISTING_FANOUT_CHILDREN_KEY] = sorted(existing_child_keys)
                 print(
-                    f"[BATMAN-PARENT-FANOUT-MARKER-STALE] parent={parent_repo}#{issue_number} "
+                    f"[ARCHITECT-PARENT-FANOUT-MARKER-STALE] parent={parent_repo}#{issue_number} "
                     f"state=executing; retrying fanout when selected",
                     file=sys.stderr,
                 )
             elif marker_state == "executing":
                 print(
-                    f"[BATMAN-PARENT-FANOUT-MARKER] parent={parent_repo}#{issue_number} "
+                    f"[ARCHITECT-PARENT-FANOUT-MARKER] parent={parent_repo}#{issue_number} "
                     f"state=executing; skipping re-fanout",
                     file=sys.stderr,
                 )
                 continue
             else:
                 print(
-                    f"[BATMAN-PARENT-FANOUT-MARKER-UNKNOWN] "
+                    f"[ARCHITECT-PARENT-FANOUT-MARKER-UNKNOWN] "
                     f"parent={parent_repo}#{issue_number} state={marker_state!r}; "
                     f"clearing unreadable marker and retrying fanout",
                     file=sys.stderr,
@@ -196,7 +197,7 @@ def _list_parent_repo_large_features(parent_repo: str) -> list[dict]:
                 if _has_completed_fanout_marker(parent_repo, issue_number):
                     continue
         labels = {label.get("name") for label in r.get("labels", []) if isinstance(label, dict)}
-        if _has_batman_pickup_blocker(labels):
+        if _has_architect_pickup_blocker(labels):
             continue
         eligible.append(r)
     return eligible
@@ -205,7 +206,7 @@ def _list_parent_repo_large_features(parent_repo: str) -> list[dict]:
 def _pick_parent_issue(issues: list[dict], *, picker: str = "oldest") -> dict | None:
     """Return the next parent issue to act on, or ``None`` if list empty.
 
-    ``picker`` is read from ``BATMAN_PICKER``. ``oldest`` picks by
+    ``picker`` is read from ``ARCHITECT_PICKER``. ``oldest`` picks by
     ``createdAt`` ascending (the default and the safest pickup order:
     nothing starves while newer work jumps the queue). ``newest`` is
     available for operators who explicitly want last-filed first.
@@ -219,17 +220,17 @@ def _pick_parent_issue(issues: list[dict], *, picker: str = "oldest") -> dict | 
 
 def _run_lifecycle(
     *,
-    config: BatmanLifecycleConfig,
+    config: ArchitectLifecycleConfig,
     parent_issue: dict,
     firing_id: str,
 ) -> int:
     """Run plan -> approve -> execute -> report for one parent issue.
 
     Wires up the real SlackReporter, gh CLI issue client, and (when the
-    operator opts in via ``BATMAN_AUTO_EXECUTE=approval-gate``) the
+    operator opts in via ``ARCHITECT_AUTO_EXECUTE=approval-gate``) the
     ``SlackApproval`` gate. The function is intentionally short: every
     interesting branch lives on the lifecycle dataclasses so the same
-    code paths are exercised by ``tests/test_batman_execute.py`` via
+    code paths are exercised by ``tests/test_architect_lifecycle_execute.py`` via
     injected fakes.
 
     The body is bracketed with the standard ``firing_started`` ...
@@ -257,7 +258,7 @@ def _run_lifecycle(
 
 def _run_lifecycle_body(
     *,
-    config: BatmanLifecycleConfig,
+    config: ArchitectLifecycleConfig,
     parent_issue: dict,
     firing_id: str,
     events: EventLog,
@@ -285,7 +286,7 @@ def _run_lifecycle_body(
             operator = operator_user_id_from_env()
             if not operator:
                 print(
-                    "[BATMAN-GATE-DISABLED] BATMAN_AUTO_EXECUTE=approval-gate "
+                    "[ARCHITECT-GATE-DISABLED] ARCHITECT_AUTO_EXECUTE=approval-gate "
                     "but ALFRED_OPERATOR_SLACK_USER_ID is unset; falling back "
                     "to halt-after-plan",
                     file=sys.stderr,
@@ -294,11 +295,11 @@ def _run_lifecycle_body(
                 gate = SlackApproval(default_slack_client(), operator_user_id=operator)
         except Exception as e:
             print(
-                f"[BATMAN-GATE-INIT-FAIL] {type(e).__name__}: {e}; halting after plan",
+                f"[ARCHITECT-GATE-INIT-FAIL] {type(e).__name__}: {e}; halting after plan",
                 file=sys.stderr,
             )
 
-    lifecycle = BatmanLifecycle(
+    lifecycle = ArchitectLifecycle(
         config=config,
         gate=gate,
         reporter=reporter,
@@ -312,7 +313,7 @@ def _run_lifecycle_body(
     )
 
     print(
-        f"[BATMAN-PLAN-DRAFTED] firing_id={firing_id} bundle={plan.bundle_slug} "
+        f"[ARCHITECT-PLAN-DRAFTED] firing_id={firing_id} bundle={plan.bundle_slug} "
         f"children={len(plan.children)} repos={len(plan.affected_repos)}"
     )
 
@@ -341,13 +342,13 @@ def _run_lifecycle_body(
             "No child issues were parsed from the parent body."
         )
         print(
-            f"[BATMAN-DECOMPOSITION-FAILED] parent={parent_repo}#{parent_issue_number} "
+            f"[ARCHITECT-DECOMPOSITION-FAILED] parent={parent_repo}#{parent_issue_number} "
             f"bundle={plan.bundle_slug} children=0 repos={len(plan.affected_repos)} "
             f"detail={detail!r}",
             flush=True,
         )
         slack_post(
-            f"[BATMAN-DECOMPOSITION-FAILED] parent={parent_repo}#{parent_issue_number}: "
+            f"[ARCHITECT-DECOMPOSITION-FAILED] parent={parent_repo}#{parent_issue_number}: "
             f"{detail} No approval was requested.",
             severity="warn",
         )
@@ -371,7 +372,7 @@ def _run_lifecycle_body(
         existing_envelope = _load_pending_envelope(parent_repo, parent_issue_number, plan=plan)
         if existing_envelope is not None:
             print(
-                f"[BATMAN-APPROVAL-RESUME] parent={parent_repo}#{parent_issue_number} "
+                f"[ARCHITECT-APPROVAL-RESUME] parent={parent_repo}#{parent_issue_number} "
                 f"ts={existing_envelope.message_ts}; not re-posting plan"
             )
         else:
@@ -379,7 +380,7 @@ def _run_lifecycle_body(
             # stale and re-post. Operator can still see the label drop
             # at the end of this firing.
             print(
-                "[BATMAN-APPROVAL-STALE-LABEL] `agent:plan-pending-approval` set "
+                "[ARCHITECT-APPROVAL-STALE-LABEL] `agent:plan-pending-approval` set "
                 "but no recoverable state; re-drafting once.",
                 file=sys.stderr,
             )
@@ -389,7 +390,7 @@ def _run_lifecycle_body(
         envelope = lifecycle.request_approval(plan)
         if envelope is None:
             print(
-                f"[BATMAN-PLAN-POSTED-NO-TS] gate unavailable; respecting {config.auto_execute!r}",
+                f"[ARCHITECT-PLAN-POSTED-NO-TS] gate unavailable; respecting {config.auto_execute!r}",
                 file=sys.stderr,
             )
         else:
@@ -401,7 +402,7 @@ def _run_lifecycle_body(
     #   auto_execute=approval-gate:  poll the configured approval surface.
     #   auto_execute=1 (force):      execute immediately, no gate.
     if not config.execute_enabled:
-        print("[BATMAN-HALT-AFTER-PLAN] BATMAN_AUTO_EXECUTE=0; not filing children")
+        print("[ARCHITECT-HALT-AFTER-PLAN] ARCHITECT_AUTO_EXECUTE=0; not filing children")
         return 0, "halt-after-plan"
 
     if config.gate_enabled:
@@ -414,7 +415,7 @@ def _run_lifecycle_body(
         if envelope is None or (gate is None and not file_only_approval):
             # We could not stand up the gate; do NOT silently execute.
             print(
-                "[BATMAN-HALT-NO-GATE] approval-gate requested but unavailable; "
+                "[ARCHITECT-HALT-NO-GATE] approval-gate requested but unavailable; "
                 "not filing children",
                 file=sys.stderr,
             )
@@ -424,7 +425,7 @@ def _run_lifecycle_body(
             )
             return 0, EXEC_GATE_DISABLED
         print(
-            f"[BATMAN-AWAITING-APPROVAL] parent={parent_repo}#{parent_issue_number} "
+            f"[ARCHITECT-AWAITING-APPROVAL] parent={parent_repo}#{parent_issue_number} "
             f"channel={envelope.channel} message_ts={envelope.message_ts} "
             f"timeout_s={config.approval_timeout_s}",
             flush=True,
@@ -432,7 +433,7 @@ def _run_lifecycle_body(
         verdict = lifecycle.await_approval(envelope)
         if not verdict.approved:
             print(
-                f"[BATMAN-APPROVAL-{verdict.verdict.upper()}] "
+                f"[ARCHITECT-APPROVAL-{verdict.verdict.upper()}] "
                 f"elapsed={verdict.elapsed_s:.0f}s detail={verdict.detail!r}"
             )
             # On rejection or transport-down, clear the pending state so
@@ -445,7 +446,7 @@ def _run_lifecycle_body(
                 _unset_pending_approval_label(parent_repo, parent_issue_number)
             lifecycle.report(plan, _empty_result_reason(reason=verdict.verdict))
             return 0, verdict.verdict
-        print(f"[BATMAN-APPROVED] elapsed={verdict.elapsed_s:.0f}s")
+        print(f"[ARCHITECT-APPROVED] elapsed={verdict.elapsed_s:.0f}s")
         # Approval landed: clear the pending state before execute so the
         # next firing doesn't think we're still waiting.
         _clear_pending_envelope(parent_repo, parent_issue_number)
@@ -475,12 +476,12 @@ def _run_lifecycle_body(
         result = lifecycle.execute(execution_plan)
     except Exception:
         print(
-            f"[BATMAN-FANOUT-CRASH-MARKER-KEPT] parent={parent_repo}#{parent_issue_number}",
+            f"[ARCHITECT-FANOUT-CRASH-MARKER-KEPT] parent={parent_repo}#{parent_issue_number}",
             file=sys.stderr,
         )
         raise
     print(
-        f"[BATMAN-EXECUTE-DONE] reason={result.reason} "
+        f"[ARCHITECT-EXECUTE-DONE] reason={result.reason} "
         f"filed={len(result.created_issue_urls)} failed={len(result.failed_repos)}"
     )
     finalization_outcome = ""
@@ -496,7 +497,7 @@ def _run_lifecycle_body(
         )
         if not completed_marker_saved:
             print(
-                f"[BATMAN-COMPLETED-FANOUT-UPGRADE-WARN] "
+                f"[ARCHITECT-COMPLETED-FANOUT-UPGRADE-WARN] "
                 f"parent={parent_repo}#{parent_issue_number}",
                 file=sys.stderr,
             )
@@ -507,7 +508,7 @@ def _run_lifecycle_body(
     else:
         if result.created_issue_urls or existing_fanout_child_keys:
             print(
-                f"[BATMAN-PARTIAL-FANOUT-MARKER-KEPT] "
+                f"[ARCHITECT-PARTIAL-FANOUT-MARKER-KEPT] "
                 f"parent={parent_repo}#{parent_issue_number} "
                 f"filed={len(result.created_issue_urls)} failed={len(result.failed_repos)} "
                 f"existing={len(existing_fanout_child_keys)}",
@@ -524,10 +525,10 @@ def _run_lifecycle_body(
 # ---------------------------------------------------------------------------
 # Idempotent approval state (issue #115).
 #
-# A parent issue carries `agent:plan-pending-approval` while Batman is
+# A parent issue carries `agent:plan-pending-approval` while the architect is
 # waiting on the operator's Slack reaction. The Slack `(channel_id,
 # message_ts)` we posted lives on disk under
-# `${ALFRED_HOME}/state/batman/pending-approvals/<safe-key>.json` so the
+# `${ALFRED_HOME}/state/architect/pending-approvals/<safe-key>.json` so the
 # NEXT firing can resume polling the same message instead of drafting a
 # duplicate plan post.
 # ---------------------------------------------------------------------------
@@ -694,7 +695,7 @@ def _save_completed_fanout_marker(
     try:
         _COMPLETED_FANOUT_DIR.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        print(f"[BATMAN-COMPLETED-FANOUT-SAVE-WARN] {path}: {exc}", file=sys.stderr)
+        print(f"[ARCHITECT-COMPLETED-FANOUT-SAVE-WARN] {path}: {exc}", file=sys.stderr)
         return False
     payload = {
         "firing_id": firing_id,
@@ -710,7 +711,7 @@ def _save_completed_fanout_marker(
         tmp_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
         tmp_path.replace(path)
     except OSError as exc:
-        print(f"[BATMAN-COMPLETED-FANOUT-SAVE-WARN] {path}: {exc}", file=sys.stderr)
+        print(f"[ARCHITECT-COMPLETED-FANOUT-SAVE-WARN] {path}: {exc}", file=sys.stderr)
         with suppress(OSError):
             tmp_path.unlink(missing_ok=True)
         return False
@@ -730,10 +731,10 @@ def _completed_fanout_marker_payload(
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        print(f"[BATMAN-COMPLETED-FANOUT-READ-WARN] {path}: {exc}", file=sys.stderr)
+        print(f"[ARCHITECT-COMPLETED-FANOUT-READ-WARN] {path}: {exc}", file=sys.stderr)
         return None
     if not isinstance(payload, dict):
-        print(f"[BATMAN-COMPLETED-FANOUT-READ-WARN] {path}: invalid payload", file=sys.stderr)
+        print(f"[ARCHITECT-COMPLETED-FANOUT-READ-WARN] {path}: invalid payload", file=sys.stderr)
         return None
     return payload
 
@@ -748,7 +749,7 @@ def _completed_fanout_marker_state(parent_repo: str, parent_issue_number: int) -
     if state in {"executing", "completed"}:
         return state
     print(
-        f"[BATMAN-COMPLETED-FANOUT-READ-WARN] "
+        f"[ARCHITECT-COMPLETED-FANOUT-READ-WARN] "
         f"{_completed_fanout_path(parent_repo, parent_issue_number)}: unknown state {state!r}",
         file=sys.stderr,
     )
@@ -871,7 +872,7 @@ def _clear_completed_fanout_marker(parent_repo: str, parent_issue_number: int) -
     try:
         path.unlink(missing_ok=True)
     except OSError as exc:
-        print(f"[BATMAN-COMPLETED-FANOUT-CLEAR-WARN] {path}: {exc}", file=sys.stderr)
+        print(f"[ARCHITECT-COMPLETED-FANOUT-CLEAR-WARN] {path}: {exc}", file=sys.stderr)
 
 
 def _has_completed_fanout_marker(parent_repo: str, parent_issue_number: int) -> bool:
@@ -915,7 +916,7 @@ def _save_pending_envelope(
     try:
         path.write_text(json.dumps(payload, sort_keys=True))
     except OSError as exc:
-        print(f"[BATMAN-PENDING-SAVE-WARN] {path}: {exc}", file=sys.stderr)
+        print(f"[ARCHITECT-PENDING-SAVE-WARN] {path}: {exc}", file=sys.stderr)
 
 
 def _load_pending_envelope(
@@ -932,7 +933,7 @@ def _load_pending_envelope(
     try:
         data = json.loads(path.read_text())
     except (OSError, ValueError) as exc:
-        print(f"[BATMAN-PENDING-LOAD-WARN] {path}: {exc}", file=sys.stderr)
+        print(f"[ARCHITECT-PENDING-LOAD-WARN] {path}: {exc}", file=sys.stderr)
         return None
     channel = data.get("channel_id") or ""
     ts = data.get("message_ts") or ""
@@ -940,15 +941,15 @@ def _load_pending_envelope(
         return None
     # Aged state: re-draft so an abandoned plan post doesn't hold a
     # parent issue hostage indefinitely. Default 24h matches the
-    # operator-friendly outer bound for "how long do I expect Batman
+    # operator-friendly outer bound for "how long do I expect the architect
     # to wait before assuming I gave up on this plan?".
-    max_age_hours = int(os.environ.get("ALFRED_BATMAN_APPROVAL_MAX_AGE_HOURS", "24"))
+    max_age_hours = int(os.environ.get("ALFRED_ARCHITECT_APPROVAL_MAX_AGE_HOURS", "24"))
     try:
         posted_at = datetime.fromisoformat(data.get("posted_at") or "")
         age_h = (datetime.now(UTC) - posted_at).total_seconds() / 3600.0
         if age_h > max_age_hours:
             print(
-                f"[BATMAN-PENDING-AGED-OUT] {path}: age={age_h:.1f}h > "
+                f"[ARCHITECT-PENDING-AGED-OUT] {path}: age={age_h:.1f}h > "
                 f"max={max_age_hours}h; re-drafting.",
                 file=sys.stderr,
             )
@@ -965,7 +966,7 @@ def _clear_pending_envelope(parent_repo: str, parent_issue_number: int) -> None:
     try:
         path.unlink(missing_ok=True)
     except OSError as exc:
-        print(f"[BATMAN-PENDING-CLEAR-WARN] {path}: {exc}", file=sys.stderr)
+        print(f"[ARCHITECT-PENDING-CLEAR-WARN] {path}: {exc}", file=sys.stderr)
 
 
 def _set_pending_approval_label(parent_repo: str, parent_issue_number: int) -> None:
@@ -976,7 +977,7 @@ def _set_pending_approval_label(parent_repo: str, parent_issue_number: int) -> N
             add_labels=[PLAN_PENDING_APPROVAL],
         )
     except Exception as exc:
-        print(f"[BATMAN-LABEL-ADD-WARN] {PLAN_PENDING_APPROVAL}: {exc}", file=sys.stderr)
+        print(f"[ARCHITECT-LABEL-ADD-WARN] {PLAN_PENDING_APPROVAL}: {exc}", file=sys.stderr)
 
 
 def _unset_pending_approval_label(parent_repo: str, parent_issue_number: int) -> None:
@@ -987,23 +988,23 @@ def _unset_pending_approval_label(parent_repo: str, parent_issue_number: int) ->
             remove_labels=[PLAN_PENDING_APPROVAL],
         )
     except Exception as exc:
-        print(f"[BATMAN-LABEL-REMOVE-WARN] {PLAN_PENDING_APPROVAL}: {exc}", file=sys.stderr)
+        print(f"[ARCHITECT-LABEL-REMOVE-WARN] {PLAN_PENDING_APPROVAL}: {exc}", file=sys.stderr)
 
 
 def _finalize_parent_after_child_fanout(parent_repo: str, parent_issue_number: int) -> bool:
     """Mark a fully-fanned-out parent as complete and close it best-effort.
 
-    Batman already filed every child issue at this point. Leaving the
+    The architect already filed every child issue at this point. Leaving the
     parent open without a blocker lets the next firing pick the same
     `agent:large-feature` issue again and duplicate the child fan-out.
-    The `batman:fanout-complete` label is the durable pickup blocker;
+    The `architect:fanout-complete` label is the durable pickup blocker;
     GitHub close is a best-effort convenience for the operator.
     """
     if not parent_repo or parent_issue_number <= 0:
         return False
     label_failure = ""
     try:
-        ensure_labels(parent_repo, BATMAN_PARENT_FINALIZATION_LABELS)
+        ensure_labels(parent_repo, ARCHITECT_PARENT_FINALIZATION_LABELS)
         ok = gh_issue_edit(
             parent_repo,
             parent_issue_number,
@@ -1014,11 +1015,11 @@ def _finalize_parent_after_child_fanout(parent_repo: str, parent_issue_number: i
         ok = False
         label_failure = str(exc)
     if ok:
-        print(f"[BATMAN-PARENT-FANOUT-COMPLETE] parent={parent_repo}#{parent_issue_number}")
+        print(f"[ARCHITECT-PARENT-FANOUT-COMPLETE] parent={parent_repo}#{parent_issue_number}")
     else:
         detail = label_failure or f"could not add {label_constants.FANOUT_COMPLETE}"
         print(
-            f"[BATMAN-PARENT-FANOUT-COMPLETE-WARN] "
+            f"[ARCHITECT-PARENT-FANOUT-COMPLETE-WARN] "
             f"parent={parent_repo}#{parent_issue_number}: {detail}",
             file=sys.stderr,
         )
@@ -1026,19 +1027,19 @@ def _finalize_parent_after_child_fanout(parent_repo: str, parent_issue_number: i
 
     close_ok, detail = _close_parent_issue(parent_repo, parent_issue_number)
     if close_ok:
-        print(f"[BATMAN-PARENT-CLOSED] {detail}")
+        print(f"[ARCHITECT-PARENT-CLOSED] {detail}")
         return True
     print(
-        f"[BATMAN-PARENT-CLOSE-WARN] parent={parent_repo}#{parent_issue_number}: {detail}",
+        f"[ARCHITECT-PARENT-CLOSE-WARN] parent={parent_repo}#{parent_issue_number}: {detail}",
         file=sys.stderr,
     )
     return True
 
 
 def _close_parent_issue(parent_repo: str, parent_issue_number: int) -> tuple[bool, str]:
-    """Close Batman's configured parent issue without using queue allowlists."""
+    """Close the architect's configured parent issue without using queue allowlists."""
     if is_dry_run():
-        dry_run_log("gh", f"would close Batman parent {parent_repo}#{parent_issue_number}")
+        dry_run_log("gh", f"would close architect parent {parent_repo}#{parent_issue_number}")
         return True, f"{parent_repo}#{parent_issue_number} close simulated"
     res = run(
         ["gh", "issue", "close", str(parent_issue_number), "-R", parent_repo],
@@ -1051,30 +1052,41 @@ def _close_parent_issue(parent_repo: str, parent_issue_number: int) -> tuple[boo
 
 def _empty_result_reason(*, reason: str):
     """Build a no-op ``ExecuteResult`` for report-only paths."""
-    from batman import ExecuteResult  # local import keeps the runner header clean
+    from architect_lifecycle import ExecuteResult  # local import keeps the runner header clean
 
     return ExecuteResult(executed=False, reason=reason)
 
 
 def main() -> int:
     if doctor_mode():
-        print("[BATMAN-DOCTOR-OK]")
+        print("[ARCHITECT-DOCTOR-OK]")
         return 0
 
     if not is_agent_enabled(CODENAME, default=False):
         print(
-            f"[BATMAN-SKIP] {CODENAME} not enabled in fleet file; "
+            f"[ARCHITECT-SKIP] {CODENAME} not enabled in fleet file; "
             f"run `alfred enable {CODENAME}` to opt in.",
             file=sys.stderr,
         )
         return 0
 
-    # Pick a single parent issue from BATMAN_PARENT_REPO and run
+    # Pick a single parent issue from ARCHITECT_PARENT_REPO and run
     # plan -> approve -> execute -> report. With the scan path removed,
     # a fully-qualified parent repo is enough; GH_ORG is no longer required.
-    lifecycle_config = BatmanLifecycleConfig.from_env()
+    lifecycle_config = ArchitectLifecycleConfig.from_env()
+    if lifecycle_config.stale_legacy_env_keys:
+        replacements = ", ".join(
+            f"{old}->{LEGACY_ENV_REPLACEMENTS[old]}"
+            for old in lifecycle_config.stale_legacy_env_keys
+        )
+        print(
+            "[ARCHITECT-CUTOVER-REQUIRED] legacy BATMAN_* lifecycle config is "
+            "ignored after the architect cutover; run `alfred architect setup` "
+            f"or set the ARCHITECT_* keys explicitly ({replacements})."
+        )
+        return 0
     if not lifecycle_config.parent_repo:
-        print("[BATMAN-NOOP] BATMAN_PARENT_REPO is not configured")
+        print("[ARCHITECT-NOOP] ARCHITECT_PARENT_REPO is not configured")
         return 0
 
     spec = PreflightSpec(
@@ -1086,7 +1098,7 @@ def main() -> int:
     try:
         preflight(spec)
     except Exception as e:
-        print(f"[BATMAN-PREFLIGHT-FAIL] {e}", file=sys.stderr)
+        print(f"[ARCHITECT-PREFLIGHT-FAIL] {e}", file=sys.stderr)
         return 0
 
     with_lock(CODENAME)
@@ -1096,14 +1108,14 @@ def main() -> int:
     if finalization_failures:
         failures = ", ".join(f"{repo}#{number}" for repo, number in finalization_failures)
         print(
-            f"[BATMAN-PARENT-FINALIZE-RETRY-FAILED] pending={failures}",
+            f"[ARCHITECT-PARENT-FINALIZE-RETRY-FAILED] pending={failures}",
             file=sys.stderr,
         )
         return 1
     parent_issue = _pick_parent_issue(parents, picker=lifecycle_config.picker)
     if parent_issue is None:
         print(
-            f"[BATMAN-NOOP] no eligible {LARGE_FEATURE_LABEL} issues in "
+            f"[ARCHITECT-NOOP] no eligible {LARGE_FEATURE_LABEL} issues in "
             f"{lifecycle_config.parent_repo}"
         )
         return 0

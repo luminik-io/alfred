@@ -11,7 +11,7 @@ boundaries. Pick one setup lane first:
 | One repo | You have one app or one library. | `--agents all --repos owner/repo` |
 | Multi-repo product | You have backend/frontend/mobile/packages. | `--agents all --repos owner/api,owner/web,owner/mobile` |
 | Specs-led workspace | You keep specs/roadmap separate from code repos. | Put specs under the workspace for context; assign implementers to code repos. |
-| Batman planning | You want cross-repo bundle plans. | Included in the full fleet; use the same multi-repo `--repos` list. |
+| architect planning | You want cross-repo bundle plans. | Included in the full fleet; use the same multi-repo `--repos` list. |
 
 The safe first path is explicit:
 
@@ -270,7 +270,7 @@ fleet to create labels and potentially operate on specs issues too.
 ## Batman Planning
 
 Batman is the OSS architect agent for cross-repo work. It is included in Alfred
-and uses `BATMAN_PARENT_REPO` parent issues for plan, approval, child-issue
+and uses `ARCHITECT_PARENT_REPO` parent issues for plan, approval, child-issue
 filing, and status reporting.
 
 Batman owns the feature shape above the repo-local work. It plans the rollout
@@ -294,8 +294,8 @@ arm it:
 
 ```sh
 alfred enable architect
-# For executable parent plans, set BATMAN_PARENT_REPO=my-org/specs.
-# Set BATMAN_AUTO_EXECUTE=approval-gate when you want approved child filing.
+# For executable parent plans, set ARCHITECT_PARENT_REPO=my-org/specs.
+# Set ARCHITECT_AUTO_EXECUTE=approval-gate when you want approved child filing.
 alfred labels bootstrap my-org/specs
 bash deploy.sh
 ~/.local/bin/alfred doctor

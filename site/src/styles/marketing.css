@@ -637,7 +637,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
    Shared figure/illustration rhythm.
 
    Every illustration card on the marketing pages (FleetStatus,
-   BatmanFanOut, SpecsDrivenFlow, FiringLifecycle, ShippedTable,
+   ArchitectFanOut, SpecsDrivenFlow, FiringLifecycle, ShippedTable,
    ShippedTrend, ShippedSummary, the m-proof Slack frames, plus
    CodeBlock) wears .m-figure. The class enforces one outer width
    (the m-container width minus its gutters, capped at --container),

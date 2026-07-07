@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Drake (Tim Drake) - autonomous issue-creation agent.
+"""Planner agent.
 
 Reads specs + roadmap + code-reality, identifies the next well-scoped gap, and
-files GitHub issues that the implement agent (default: Lucius) can pick up. The
+files GitHub issues that the senior-dev role can pick up. The
 dedup gate, scope rules, and issue template all live in the prompt at
 ${ALFRED_HOME}/prompts/<codename>.md. `alfred-init` seeds a starter prompt
 there; operators should edit it for their roadmap and stack. This runner is the
@@ -69,13 +69,12 @@ from agent_runner import (
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "planner")
-DRAKE_ENGINE = agent_engine(AGENT, default="hybrid")
+PLANNER_ENGINE = agent_engine(AGENT, default="hybrid")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 
-# Keyed off the RESOLVED codename (AGENT), with the default-slug key as a legacy
-# fallback, so an operator-renamed planner reads the ALFRED_<CHOSEN>_REPOS key
-# that alfred-init wrote rather than idling.
-DRAKE_REPOS = agent_repos(AGENT, default_env="ALFRED_PLANNER_REPOS")
+# Keyed off the runtime role slug. Themes and custom visible names do not change
+# the machine identity or env-var contract.
+PLANNER_REPOS = agent_repos(AGENT)
 
 
 def _build_state_machine_context() -> str:
@@ -90,7 +89,7 @@ def _build_state_machine_context() -> str:
     in_flight: list[str] = []
     pr_open: list[str] = []
     do_not_pickup: list[str] = []
-    for repo in DRAKE_REPOS:
+    for repo in PLANNER_REPOS:
         if is_repo_paused(repo):
             continue
         for label, sink in [
@@ -151,10 +150,10 @@ DAILY_ISSUE_CAP = env_int(
 
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
-    bins=[*engine_preflight_bins(DRAKE_ENGINE), "gh", "git"],
+    bins=[*engine_preflight_bins(PLANNER_ENGINE), "gh", "git"],
     require_gh_auth=True,
     # Drake reads across the entire workspace; missing checkouts are advisory only.
-    require_workspace_repos=DRAKE_REPOS,
+    require_workspace_repos=PLANNER_REPOS,
 )
 
 
@@ -196,7 +195,7 @@ def build_prompt() -> str:
                 ).title(),
                 "GH_ORG": GH_ORG,
                 "ALFRED_HOME": str(ALFRED_HOME),
-                "PLANNER_REPOS": ",".join(DRAKE_REPOS),
+                "PLANNER_REPOS": ",".join(PLANNER_REPOS),
                 "WORKSPACE_ROOT": str(WORKSPACE_ROOT),
             },
         )
@@ -207,7 +206,7 @@ def build_prompt() -> str:
 def main() -> int:
     with_lock(AGENT)
 
-    if not DRAKE_REPOS and not doctor_requested():
+    if not PLANNER_REPOS and not doctor_requested():
         print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_PLANNER_REPOS)")
         return 0
 
@@ -284,7 +283,7 @@ def main() -> int:
 
     result, engine_used = invoke_agent_engine(
         prompt,
-        engine=DRAKE_ENGINE,
+        engine=PLANNER_ENGINE,
         claude_fn=claude_invoke_streaming,
         codex_fn=codex_invoke,
         workdir=WORKSPACE_ROOT,

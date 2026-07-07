@@ -60,24 +60,24 @@ status/set` persists per-agent engine choices under
 | `ALFRED_SHIPPED_SUMMARY_REPOS` | shared fallback watched repo list for manual or legacy config | (none) |
 | `ALFRED_SHIPPED_SUMMARY_QUERY_LIMIT` | per-window GitHub query limit | `1000` |
 
-## Batman planning
+## Architect planning
 
 | Var | Used by | Default |
 |---|---|---|
-| `BATMAN_PARENT_REPO` | `bin/architect.py` parent issue queue | (none, no-op) |
-| `BATMAN_ROLLOUT_ORDER` | `alfred-init.py` and plan parsing defaults | `backend,frontend,mobile,agents,data-acquisition` |
-| `AGENT_CODENAME_CROSS_REPO_COORDINATOR` | `alfred-init.py` legacy alias for the architect role | `architect` |
-| `BATMAN_AUTO_EXECUTE` | `lib/batman.py` plan execution mode | `0` |
-| `BATMAN_PICKER` | `lib/batman.py` parent issue selection | `oldest` |
-| `BATMAN_BUNDLE_SLUG_PREFIX` | `lib/batman.py` bundle slug rendering | (blank) |
-| `BATMAN_APPROVAL_TIMEOUT_S` | `lib/batman.py` Slack approval wait | `86400` |
-| `BATMAN_REPORT_FEEDBACK_TIMEOUT_S` | `lib/batman.py` post-report Slack follow-up capture | `60` |
-| `BATMAN_SLACK_CHANNEL` | `lib/batman.py` plan and report channel | (blank, falls back to Slack home channel) |
+| `ARCHITECT_PARENT_REPO` | `bin/architect.py` parent issue queue | (none, no-op) |
+| `ARCHITECT_ROLLOUT_ORDER` | `alfred-init.py` and plan parsing defaults | `backend,frontend,mobile,agents,data-acquisition` |
+| `ARCHITECT_AUTO_EXECUTE` | `lib/architect_lifecycle.py` plan execution mode | `0` |
+| `ARCHITECT_PICKER` | `lib/architect_lifecycle.py` parent issue selection | `oldest` |
+| `ARCHITECT_BUNDLE_SLUG_PREFIX` | `lib/architect_lifecycle.py` bundle slug rendering | (blank) |
+| `ARCHITECT_APPROVAL_TIMEOUT_S` | `lib/architect_lifecycle.py` Slack approval wait | `86400` |
+| `ARCHITECT_REPORT_FEEDBACK_TIMEOUT_S` | `lib/architect_lifecycle.py` post-report Slack follow-up capture | `60` |
+| `ARCHITECT_SLACK_CHANNEL` | `lib/architect_lifecycle.py` plan and report channel | (blank, falls back to Slack home channel) |
 
-Batman is included in the public fleet, but execution is gated.
-`BATMAN_PARENT_REPO` reads parent issues, waits for approval when required,
-files child `agent:implement` issues, and reports status. With the default
-`BATMAN_AUTO_EXECUTE=0`, parent issues halt after the plan; set
+The `architect` role is included in the public fleet, but execution is gated.
+It shows as Batman in the default theme. `ARCHITECT_PARENT_REPO` reads parent
+issues, waits for approval when required, files child `agent:implement` issues,
+and reports status. With the default
+`ARCHITECT_AUTO_EXECUTE=0`, parent issues halt after the plan; set
 `approval-gate` when you want approved child filing.
 
 ## Claude auth
@@ -103,7 +103,6 @@ files child `agent:implement` issues, and reports status. With the default
 | `ALFRED_TRUSTED_SLACK_USER_IDS` | Extra users allowed to refine plans and drafts | approver only |
 | `ALFRED_SLACK_BOT_USER_ID` | Bot user id; listener ignores its own messages | (none) |
 | `SLACK_HOME_CHANNEL` | default bot channel | `alfred` |
-| `BATMAN_APPROVAL_CHANNEL` | legacy alias for `SLACK_HOME_CHANNEL` | (none) |
 
 Resolution order: env -> 30-day disk cache at `$ALFRED_HOME/state/slack-webhook.cache` -> AWS Secrets Manager. First hit wins.
 

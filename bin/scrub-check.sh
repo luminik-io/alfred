@@ -222,8 +222,8 @@ if [ -n "$dash_matches" ]; then
 fi
 
 # Identity-rename regression guard. Role slugs are the canonical agent identity
-# (senior-dev, architect, reviewer, ...); the Batman-cast codenames survive only
-# as display names and aliases. These greps catch the specific regressions that
+# (senior-dev, architect, reviewer, ...); themed display names never become
+# stored runtime identities. These greps catch the specific regressions that
 # would silently re-couple dispatch to a Batman codename:
 #   - the assignment routing constants pointing back at a raw codename,
 #   - a branch-prefix classifier that DROPS the new slug prefixes,
@@ -233,9 +233,9 @@ identity_fail=0
 # These guards only apply to Alfred's own source tree. When scrub-check runs
 # against an unrelated checkout (e.g. an isolated test fixture) the files are
 # absent, so skip the check rather than fail on a missing path.
-if [ -f lib/issue_assignment.py ] && grep -nE 'ROUTE_(LUCIUS|BATMAN)[[:space:]]*=[[:space:]]*"(lucius|batman)"' \
+if [ -f lib/issue_assignment.py ] && grep -nE 'ROUTE_(SENIOR_DEV|ARCHITECT|LUCIUS|BATMAN)[[:space:]]*=[[:space:]]*"(lucius|batman)"' \
     lib/issue_assignment.py >/dev/null 2>&1; then
-  grep -nE 'ROUTE_(LUCIUS|BATMAN)[[:space:]]*=[[:space:]]*"(lucius|batman)"' \
+  grep -nE 'ROUTE_(SENIOR_DEV|ARCHITECT|LUCIUS|BATMAN)[[:space:]]*=[[:space:]]*"(lucius|batman)"' \
     lib/issue_assignment.py >&2
   echo "::error::assignment route constant re-coupled to a Batman codename; use the role slug" >&2
   identity_fail=1

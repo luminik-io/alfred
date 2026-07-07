@@ -193,7 +193,7 @@ def test_render_agents_conf_custom_codename(init_mod, tmp_path):
 def test_render_agents_conf_schedules_batman_without_parent_repo(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path, roles=("cross_repo_coordinator",))
     text = init_mod.render_agents_conf(state)
-    assert "# gated until configured: batman needs BATMAN_PARENT_REPO" not in text
+    assert "# gated until configured: batman needs ARCHITECT_PARENT_REPO" not in text
     assert (
         "\nalfred.architect\tarchitect.py\tinterval:3600\tno\talfred.architect\tcross-repo architect"
         in text
@@ -235,7 +235,7 @@ def test_render_agents_conf_schedules_batman_with_explicit_parent_repo(
 ):
     monkeypatch.setenv("HOME", str(tmp_path))
     state = _state_with(init_mod, tmp_path, roles=("cross_repo_coordinator",))
-    state.role_to_extras["cross_repo_coordinator"] = {"BATMAN_PARENT_REPO": "acme/specs"}
+    state.role_to_extras["cross_repo_coordinator"] = {"ARCHITECT_PARENT_REPO": "acme/specs"}
 
     text = init_mod.render_agents_conf(state)
 
@@ -499,7 +499,7 @@ def test_env_assignments_repos_key_follows_overridden_codename(init_mod, tmp_pat
     assert "ALFRED_SENIOR_DEV_REPOS" not in out
 
 
-def test_env_assignments_batman_requires_explicit_parent_repo(init_mod, tmp_path):
+def test_env_assignments_architect_requires_explicit_parent_repo(init_mod, tmp_path):
     state = _state_with(
         init_mod,
         tmp_path,
@@ -508,26 +508,23 @@ def test_env_assignments_batman_requires_explicit_parent_repo(init_mod, tmp_path
     )
     out = init_mod.env_assignments_for(state)
     assert out["AGENT_CODENAME_CROSS_REPO_COORDINATOR"] == "architect"
-    assert "BATMAN_PARENT_REPO" not in out
-    assert out["BATMAN_ROLLOUT_ORDER"] == "api,web"
-    removed_scan_key = "BATMAN" + "_SCAN_REPOS"
-    assert removed_scan_key not in out
-    assert "ALFRED_BATMAN_REPOS" not in out
+    assert "ARCHITECT_PARENT_REPO" not in out
+    assert out["ARCHITECT_ROLLOUT_ORDER"] == "api,web"
 
 
-def test_env_assignments_batman_writes_explicit_parent_repo(init_mod, tmp_path):
+def test_env_assignments_architect_writes_explicit_parent_repo(init_mod, tmp_path):
     state = _state_with(
         init_mod,
         tmp_path,
         roles=("cross_repo_coordinator",),
         repos={"cross_repo_coordinator": ["acme/api", "acme/web"]},
     )
-    state.role_to_extras["cross_repo_coordinator"] = {"BATMAN_PARENT_REPO": "acme/specs"}
+    state.role_to_extras["cross_repo_coordinator"] = {"ARCHITECT_PARENT_REPO": "acme/specs"}
 
     out = init_mod.env_assignments_for(state)
 
-    assert out["BATMAN_PARENT_REPO"] == "acme/specs"
-    assert out["BATMAN_ROLLOUT_ORDER"] == "api,web"
+    assert out["ARCHITECT_PARENT_REPO"] == "acme/specs"
+    assert out["ARCHITECT_ROLLOUT_ORDER"] == "api,web"
 
 
 def test_batman_does_not_require_repo_selection(init_mod):
@@ -544,7 +541,7 @@ def test_label_setup_repos_includes_batman_parent_repo(init_mod, tmp_path):
             "cross_repo_coordinator": ["acme/api"],
         },
     )
-    state.role_to_extras["cross_repo_coordinator"] = {"BATMAN_PARENT_REPO": "acme/specs"}
+    state.role_to_extras["cross_repo_coordinator"] = {"ARCHITECT_PARENT_REPO": "acme/specs"}
 
     assert init_mod.label_setup_repos(state) == ["acme/api", "acme/specs"]
 
@@ -559,7 +556,7 @@ def test_step_10_labels_bootstraps_batman_parent_repo(init_mod, tmp_path, monkey
             "cross_repo_coordinator": ["acme/api"],
         },
     )
-    state.role_to_extras["cross_repo_coordinator"] = {"BATMAN_PARENT_REPO": "acme/specs"}
+    state.role_to_extras["cross_repo_coordinator"] = {"ARCHITECT_PARENT_REPO": "acme/specs"}
     label_repos: list[str] = []
 
     def fake_run(cmd, **_kwargs):
@@ -1043,8 +1040,8 @@ def test_upsert_env_file_preserves_later_runtime_blocks(tmp_path, init_mod):
         "GH_ORG=old-org\n"
         "ALFRED_SENIOR_DEV_REPOS=old-org/api\n"
         "CLAUDE_CODE_OAUTH_TOKEN=runtime-token-for-test\n"
-        "# alfred-batman-setup, generated below this line. Safe to re-run.\n"
-        "BATMAN_PARENT_REPO=old-org/specs\n",
+        "# alfred-architect-setup, generated below this line. Safe to re-run.\n"
+        "ARCHITECT_PARENT_REPO=old-org/specs\n",
         encoding="utf-8",
     )
 
@@ -1062,8 +1059,8 @@ def test_upsert_env_file_preserves_later_runtime_blocks(tmp_path, init_mod):
     assert "GH_ORG=new-org" in text
     assert "ALFRED_SENIOR_DEV_REPOS=new-org/api" in text
     assert "CLAUDE_CODE_OAUTH_TOKEN=runtime-token-for-test" in text
-    assert "alfred-batman-setup, generated" in text
-    assert "BATMAN_PARENT_REPO=old-org/specs" in text
+    assert "alfred-architect-setup, generated" in text
+    assert "ARCHITECT_PARENT_REPO=old-org/specs" in text
     assert text.index(init_mod.ALFRED_ENV_BANNER) < text.index("CLAUDE_CODE_OAUTH_TOKEN")
     assert text.count("alfred-init, generated") == 1
 
@@ -1373,7 +1370,7 @@ def test_step_7_repos_allows_batman_parent_repo_only_noninteractive(
     )
     state.enabled_roles = ["cross_repo_coordinator"]
     state.repos = ["acme/api", "acme/web", "acme/mobile"]
-    state.role_to_extras["cross_repo_coordinator"] = {"BATMAN_PARENT_REPO": "acme/specs"}
+    state.role_to_extras["cross_repo_coordinator"] = {"ARCHITECT_PARENT_REPO": "acme/specs"}
 
     init_mod.step_7_repos(state, repos_arg=None, non_interactive=True)
 

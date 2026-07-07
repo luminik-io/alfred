@@ -20,7 +20,7 @@ const runtimeFiles = [
   "src/styles/marketing.css",
   "src/styles/custom.css",
   "scripts/generate-og.mjs",
-  "src/components/marketing/BatmanFanOut.astro",
+  "src/components/marketing/ArchitectFanOut.astro",
   "src/components/marketing/SpecsDrivenFlow.astro",
   "src/components/marketing/FiringLifecycle.astro",
 ];

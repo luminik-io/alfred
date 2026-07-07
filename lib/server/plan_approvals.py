@@ -1,20 +1,20 @@
-"""File-based go/no-go signalling for Batman plans.
+"""File-based go/no-go signalling for architect plans.
 
-Batman's plan-approval poll has a file-aware mode
-(``BATMAN_APPROVAL_MODE=slack-or-file`` by default, or ``file`` for installs
+The architect plan-approval poll has a file-aware mode
+(``ARCHITECT_APPROVAL_MODE=slack-or-file`` by default, or ``file`` for installs
 without Slack): it watches
-``$ALFRED_HOME/batman/approvals/{issue_num}.approved`` and
-``{issue_num}.rejected`` (see ``lib.batman.wait_for_approval_file``). The
+``$ALFRED_HOME/architect/approvals/{issue_num}.approved`` and
+``{issue_num}.rejected`` (see ``lib.architect_lifecycle.wait_for_approval_file``). The
 desktop client's in-app approve/decline writes the exact same files so the
-operator can decide a plan without a Slack round-trip and Batman picks it up
+operator can decide a plan without a Slack round-trip and the architect picks it up
 through the real approval gate.
 
 This module is the single place that knows that contract. ``views.py`` calls
-``write_decision`` from the decision endpoint; ``lib.batman`` records the same
+``write_decision`` from the decision endpoint; ``lib.architect_lifecycle`` records the same
 durable state when it consumes a marker; ``server/reader.py`` calls
 ``decision_for_issue`` so a decided plan reflects its state and leaves the
 Needs-you queue. Keeping the path math here means the write side, read side,
-and Batman's file poll can never drift.
+and the architect's file poll can never drift.
 
 A genuine architect go/no-go plan is saved at ``$ALFRED_HOME/architect-plans/`` as
 ``{issue_num}-plan.md`` (``draft_plan`` in ``bin/architect.py``). The plan id the
@@ -35,23 +35,23 @@ from typing import Any
 DECISION_APPROVE = "approve"
 DECISION_DECLINE = "decline"
 
-# Suffix Batman's file poll watches for each verdict.
+# Suffix the architect's file poll watches for each verdict.
 _SUFFIX_BY_DECISION = {
     DECISION_APPROVE: ".approved",
     DECISION_DECLINE: ".rejected",
 }
 
-# Plan ids Batman writes look like ``{issue_num}-plan`` (``draft_plan``). The
+# Plan ids the architect writes look like ``{issue_num}-plan`` (``draft_plan``). The
 # issue number is the leading run of digits.
 _ISSUE_NUM_RE = re.compile(r"^(\d+)")
 
 
 def approvals_dir(state_root: Path) -> Path:
-    """Directory Batman's file-poll fallback watches.
+    """Directory the architect's file-poll fallback watches.
 
-    Mirrors ``ALFRED_HOME / "architect" / "approvals"`` in ``lib.batman``:
+    Mirrors ``ALFRED_HOME / "architect" / "approvals"`` in ``lib.architect_lifecycle``:
     the reader's ``state_root`` is ``$ALFRED_HOME/state``, so the approvals
-    directory is its sibling ``batman/approvals``.
+    directory is its sibling ``architect/approvals``.
     """
     return Path(state_root).parent / "architect" / "approvals"
 
@@ -59,7 +59,7 @@ def approvals_dir(state_root: Path) -> Path:
 def decision_records_dir(state_root: Path) -> Path:
     """Directory for durable plan decision records.
 
-    Consumable marker files are deleted after Batman observes them. The client
+    Consumable marker files are deleted after the architect observes them. The client
     still needs a stable record so a decided plan never falls back to ``draft``
     after the marker has been consumed.
     """
@@ -67,11 +67,11 @@ def decision_records_dir(state_root: Path) -> Path:
 
 
 def issue_num_from_plan_id(plan_id: str) -> int | None:
-    """Extract the GitHub issue number from a Batman plan id.
+    """Extract the GitHub issue number from an architect plan id.
 
-    Returns ``None`` when the id is not a Batman plan stem (e.g. a Slack
+    Returns ``None`` when the id is not an architect plan stem (e.g. a Slack
     follow-up or a compose draft), so callers can refuse to write a decision
-    file that Batman would never poll for.
+    file that the architect would never poll for.
     """
     match = _ISSUE_NUM_RE.match(str(plan_id or "").strip())
     if not match:
@@ -117,7 +117,7 @@ def decision_for_issue(state_root: Path, issue_num: int) -> str | None:
     """Return the recorded decision for an issue, or ``None`` if undecided.
 
     A live marker wins over the durable record so pending flips are reflected
-    immediately. Approval wins if both markers exist, matching Batman's poll
+    immediately. Approval wins if both markers exist, matching the architect's poll
     order.
     """
     marker = _marker_decision_for_issue(state_root, issue_num)
@@ -134,7 +134,7 @@ def record_decision(
     reason: str = "",
     source: str = "Alfred client",
 ) -> Path:
-    """Persist a non-consumable record of a Batman plan decision."""
+    """Persist a non-consumable record of an architect plan decision."""
     if decision not in _SUFFIX_BY_DECISION:
         raise ValueError(f"unknown decision: {decision!r}")
     path = decision_record_path(state_root, issue_num)
@@ -160,15 +160,15 @@ def write_decision(
     *,
     reason: str = "",
 ) -> Path:
-    """Write the marker file Batman's file poll watches and return its path.
+    """Write the marker file the architect's file poll watches and return its path.
 
     ``approve`` writes ``{issue_num}.approved``; ``decline`` writes
-    ``{issue_num}.rejected``. The reject body is read back by Batman as a short
+    ``{issue_num}.rejected``. The reject body is read back by the architect as a short
     detail string (``wait_for_approval_file`` truncates to 300 chars), so we
     stamp it with the source and an optional operator reason. The write is
-    atomic (temp file then replace) so Batman's poll never sees a half-written
+    atomic (temp file then replace) so the architect's poll never sees a half-written
     marker. The opposite-verdict marker is removed so a flipped decision does
-    not leave a stale contradicting file for Batman to trip over.
+    not leave a stale contradicting file for the architect to trip over.
     """
     if decision not in _SUFFIX_BY_DECISION:
         raise ValueError(f"unknown decision: {decision!r}")

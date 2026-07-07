@@ -7,7 +7,7 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
 const layouts = [
   {
     title: "Nx + pnpm",
-    note: "Each task names one package to change. Lucius runs the tests for just that package with pnpm --filter @org/api test.",
+    note: "Each task names one package to change. Senior-dev runs the tests for just that package with pnpm --filter @org/api test.",
     tree: [
       "monorepo/",
       "├── apps/",
@@ -41,7 +41,7 @@ const layouts = [
   },
   {
     title: "Cargo workspaces",
-    note: "Lucius makes its copy of the repo at the workspace root and tests one crate with cargo test -p service-auth.",
+    note: "senior-dev makes its copy of the repo at the workspace root and tests one crate with cargo test -p service-auth.",
     tree: [
       "workspace/",
       "├── crates/",
@@ -57,13 +57,13 @@ const layouts = [
 
 <MarketingLayout
   title="Monorepo support | Alfred"
-  description="Drake files tasks that each name one package, Lucius works on its own copy of the whole monorepo, and Bane runs the tests for just the package that changed."
+  description="Drake files tasks that each name one package, senior-dev works on its own copy of the whole monorepo, and Bane runs the tests for just the package that changed."
   path="/monorepo/"
 >
   <Hero
     eyebrow="MONOREPO"
     headline="Yes, Alfred works on a monorepo."
-    sub="Drake files tasks that each name one package, Lucius works on its own copy of the whole monorepo, and Bane runs the tests for just the package that changed."
+    sub="Drake files tasks that each name one package, senior-dev works on its own copy of the whole monorepo, and Bane runs the tests for just the package that changed."
     headlineSize="lg"
     primaryCta={{ label: "Read the worked example", href: "/getting-started/workspace-patterns/" }}
 	    secondaryCta={{ label: "Install", href: "/getting-started/install/" }}
@@ -101,7 +101,7 @@ const layouts = [
           <ul class="tradeoffs__list">
             <li>Tasks that name one package and a single goal.</li>
             <li>Bane tests only the package that changed, not everything.</li>
-            <li>Batman plans land in one repo, so there is less to coordinate.</li>
+            <li>Architect plans land in one repo, so there is less to coordinate.</li>
             <li>Costs stay predictable when each task tests just one package.</li>
           </ul>
         </article>
@@ -109,7 +109,7 @@ const layouts = [
           <h3 class="m-h3">Watch out for</h3>
           <ul class="tradeoffs__list">
             <li>Lockfiles that change across packages. Let only two or three tasks run at once.</li>
-            <li>Changes that span packages. Mark them agent:large-feature so Batman plans them, not Lucius.</li>
+            <li>Changes that span packages. Mark them agent:large-feature so Architect plans them, not senior-dev.</li>
             <li>Slow tests at the repo root. Tell each task to test only its own package.</li>
             <li>Edits to a shared design system reach every package. Review those closely.</li>
           </ul>
@@ -130,7 +130,7 @@ const layouts = [
           "Target package: packages/auth",
           "",
           "Goal: rotate the session cookie name to alfred_session.",
-          "Keep backward compatibility for one release.",
+          "No compatibility shim for old cookie names.",
           "",
           "Test gate:",
           "  pnpm --filter @org/auth test",

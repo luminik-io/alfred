@@ -70,7 +70,7 @@ brew install --cask alfred-os               # macOS 11+, signed and notarized
 # https://alfred.luminik.io/download/
 ```
 
-The cask installs alongside the `alfred-os` CLI formula, while direct DMG/AppImage/.deb packages include bundled Alfred core resources. On first launch with no runtime running, the app opens into the guided setup wizard, where **Install or repair** bootstraps core, seeds the full built-in runtime roster, deploys the CLI/agents into `~/.alfred`, starts `alfred serve`, and continues the setup flow. Repo-scoped agents stay idle until the setup flow saves repositories, and Batman stays idle until `BATMAN_PARENT_REPO` is configured.
+The cask installs alongside the `alfred-os` CLI formula, while direct DMG/AppImage/.deb packages include bundled Alfred core resources. On first launch with no runtime running, the app opens into the guided setup wizard, where **Install or repair** bootstraps core, seeds the full built-in runtime roster, deploys the CLI/agents into `~/.alfred`, starts `alfred serve`, and continues the setup flow. Repo-scoped agents stay idle until the setup flow saves repositories, and Batman stays idle until `ARCHITECT_PARENT_REPO` is configured.
 
 Build from source (client development):
 

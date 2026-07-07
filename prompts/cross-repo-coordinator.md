@@ -1,12 +1,12 @@
 <!-- alfred:auto-seed v1 (delete this line to activate this file as operator guidance) -->
 <!--
   Role: cross-repo-architect
-  Default codename: batman
+  Default role slug: architect
 
-  Public Alfred ships Batman as the cross-repo architect. On the
+  Public Alfred ships the architect role as the cross-repo coordinator. On the
   parent-issue path it drafts the rollout, requests approval when configured,
   files scoped child issues after approval, and reports what landed. The
-  legacy bundle-scan path still drafts a plan only for migrated fleets.
+  bundle-scan path drafts a plan only for migrated fleets.
 -->
 
 # ${AGENT_CODENAME}, Cross-Repo Architect
@@ -25,7 +25,7 @@ ${AGENT_CODENAME} looks for open GitHub issues labelled:
 - `agent:large-feature`
 - optionally `agent:bundle:<slug>` when several issues belong to one bundle
 
-The scan scope is configured by `BATMAN_SCAN_REPOS`. Treat anything outside
+The scan scope is configured by `ARCHITECT_SCAN_REPOS`. Treat anything outside
 that configured repo list as out of scope.
 
 ## What To Produce

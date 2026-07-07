@@ -88,8 +88,8 @@ Where the label comes from depends on the path:
 Every `claim_issue` and `release_issue` call posts a structured HTML comment so the audit trail survives even if the lifecycle label is later stripped or replaced manually:
 
 ```
-<!-- agent-claim:codename=lucius firing_id=20260501-194217-643a ts=2026-05-01T19:42:33Z -->
-<!-- agent-release:codename=lucius firing_id=20260501-194217-643a outcome=success pr=https://github.com/foo/bar/pull/42 ts=2026-05-01T20:08:11Z -->
+<!-- agent-claim:codename=senior-dev firing_id=20260501-194217-643a ts=2026-05-01T19:42:33Z -->
+<!-- agent-release:codename=senior-dev firing_id=20260501-194217-643a outcome=success pr=https://github.com/foo/bar/pull/42 ts=2026-05-01T20:08:11Z -->
 ```
 
 The comments are how `find_stale_claims()` decides who currently holds an in-flight claim and how old that claim is, without depending on label-event timestamps (which require an extra API call).

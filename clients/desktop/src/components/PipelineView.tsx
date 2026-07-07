@@ -465,8 +465,8 @@ function QueueComposer({
         aria-label="Assignment target"
       >
         <option value="auto">Smart route</option>
-        <option value="batman">Batman</option>
-        <option value="lucius">Lucius</option>
+        <option value="architect">Architect</option>
+        <option value="senior-dev">Senior-dev</option>
       </select>
       <button className="secondary-button" type="submit" disabled={!parsed || busy}>
         <FilePlus2 size={16} aria-hidden="true" />
@@ -508,7 +508,7 @@ function PipelineColumn({
 }
 
 // A working draft (compose / planning) with no parent issue can be discarded.
-// Genuine Batman go/no-go plans and Slack follow-ups are decisions, not junk
+// Genuine architect go/no-go plans and Slack follow-ups are decisions, not junk
 // drafts, so they never get the quiet discard.
 function planCanDiscard(plan: PlanDraft): boolean {
   const hasParent = Boolean(plan.parent && isSafeExternalUrl(plan.parent));
@@ -602,7 +602,7 @@ function BoardLifecycleCard({
 }) {
   // Resolve the detected codename through the ACTIVE roster theme so the shipped
   // attribution reads the same themed name as the Roster page, not a hardcoded
-  // Batman-cast name.
+  // architect-cast name.
   const codename = agentForShipped(card);
   const agent = codename
     ? resolveThemedIdentity({ codename }, rosterTheme, customNames).name
@@ -766,7 +766,7 @@ function PlanInspector({
       {canDecide ? (
         <div className="plan-decision">
           <p className="plan-decision__note" role="note">
-            Approving lets Batman file this exact scope on its next run. Declining
+            Approving lets architect file this exact scope on its next run. Declining
             stops it. No code or worktrees move until you decide.
           </p>
           <div className="card-actions card-actions--start">

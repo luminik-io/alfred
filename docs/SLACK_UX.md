@@ -77,7 +77,7 @@ Rules:
 - Captured replies do not approve, merge, or change code by themselves.
 - `question:`, `hold:`, `blocker:`, and scope-changing replies require a
   decision before more work starts.
-- Replies in registered Batman plan threads are persisted under
+- Replies in registered architect plan threads are persisted under
   `$ALFRED_HOME/state/plan-revisions/`, update the local thread status to
   `revised` or `needs_resolution`, and acknowledge the repo scope if approved
   now.
@@ -85,7 +85,7 @@ Rules:
   action items, and state the safety boundary clearly.
 - Follow-up context belongs in the next plan, child issue, or PR pass so Slack
   remains the audit trail.
-- Batman waits `BATMAN_REPORT_FEEDBACK_TIMEOUT_S` seconds after a report post
+- Architect waits `ARCHITECT_REPORT_FEEDBACK_TIMEOUT_S` seconds after a report post
   before collecting trusted replies. Captured context is also written to
   `$ALFRED_HOME/state/followups/` and appears in the local Plans inbox as a
   `needs follow-up` item.

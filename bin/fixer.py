@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Nightwing - review-to-fix agent. Lands fixes for unresolved P0/P1 reviewer comments.
+"""Fixer agent. Lands fixes for unresolved P0/P1 reviewer comments.
 
 Per-repo pre-push commands load from $ALFRED_HOME/agents/<codename>.toml
-(same format as lucius). Without that file, language-suffix defaults apply.
+(same format as senior-dev). Without that file, language-suffix defaults apply.
 
 Reviewer comment matching: bot reviewers (CodeRabbit, Codex/ChatGPT, any
-"[bot]" login) are detected by login. The prose-style review agent (default:
-Ras al Ghul) is detected by the body prefix "<reviewer-codename>.title()", set
+"[bot]" login) are detected by login. The prose-style reviewer role is detected
+by the body prefix "<reviewer-codename>.title()", set
 ALFRED_FIXER_REVIEW_AGENT to match the codename your review agent uses.
 """
 
@@ -63,18 +63,18 @@ from agent_runner.transcripts import transcript_path
 from workflow_validation import validate_changed_workflows
 
 AGENT = os.environ.get("AGENT_CODENAME", "fixer")
-NIGHTWING_ENGINE = agent_engine(AGENT, default="hybrid")
+FIXER_ENGINE = agent_engine(AGENT, default="hybrid")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 REVIEW_AGENT_NAME = os.environ.get("ALFRED_FIXER_REVIEW_AGENT", "reviewer").title()
 
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
-    bins=[*engine_preflight_bins(NIGHTWING_ENGINE), "gh", "git"],
+    bins=[*engine_preflight_bins(FIXER_ENGINE), "gh", "git"],
     require_gh_auth=True,
 )
-# Keyed off the RESOLVED codename (AGENT), with the default-slug key as a legacy
-# fallback, so an operator-renamed fixer reads its ALFRED_<CHOSEN>_REPOS key.
-WATCH_REPOS = agent_repos(AGENT, default_env="ALFRED_FIXER_REPOS")
+# Keyed off the runtime role slug. Themes and custom visible names do not change
+# the machine identity or env-var contract.
+WATCH_REPOS = agent_repos(AGENT)
 
 DAILY_TURN_CAP = int(os.environ.get("ALFRED_FIXER_TURN_CAP", "600"))
 
@@ -347,7 +347,7 @@ def preserve_workflow_validation_failure(
 
 
 def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
-    """Same format / defaults as lucius._load_pre_push_config."""
+    """Same format / defaults as senior-dev._load_pre_push_config."""
     cfg_path = ALFRED_HOME / "agents" / f"{agent_codename}.toml"
     user_cfg: dict[str, str] = {}
     if cfg_path.exists():
@@ -693,7 +693,7 @@ def main() -> int:
 
         result, engine_used = invoke_agent_engine(
             prompt,
-            engine=NIGHTWING_ENGINE,
+            engine=FIXER_ENGINE,
             claude_fn=claude_invoke_streaming,
             codex_fn=codex_invoke,
             workdir=wt,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""alfred assign: route a label-free GitHub issue to Batman or Lucius."""
+"""alfred assign: route a label-free GitHub issue to architect or senior-dev."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from issue_queue import parse_issue_ref  # noqa: E402
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="alfred assign",
-        description="Decide whether Batman or Lucius should pick up an issue.",
+        description="Decide whether architect or senior-dev should pick up an issue.",
     )
     parser.add_argument("ref", help="GitHub issue URL or owner/repo#123")
     parser.add_argument("--dry-run", action="store_true", help="Explain without mutating labels")

@@ -20,11 +20,11 @@ The repos referenced below are placeholders. Replace them with your own fleet:
 Fleet configuration for this example:
 
 ```sh
-ALFRED_DRAKE_REPOS=your-backend,your-frontend,your-mobile
-ALFRED_LUCIUS_REPOS=your-backend,your-frontend,your-mobile
-ALFRED_RASALGHUL_REPOS=your-backend,your-frontend,your-mobile
-BATMAN_PARENT_REPO=your-org/your-specs
-BATMAN_AUTO_EXECUTE=approval-gate
+ALFRED_PLANNER_REPOS=your-backend,your-frontend,your-mobile
+ALFRED_SENIOR_DEV_REPOS=your-backend,your-frontend,your-mobile
+ALFRED_REVIEWER_REPOS=your-backend,your-frontend,your-mobile
+ARCHITECT_PARENT_REPO=your-org/your-specs
+ARCHITECT_AUTO_EXECUTE=approval-gate
 ```
 
 Because the parent issue lives in the specs repo while `--repos` usually names
@@ -36,7 +36,7 @@ alfred labels bootstrap your-org/your-specs
 
 ## Step 1: File one `agent:large-feature` issue
 
-Open the issue in `BATMAN_PARENT_REPO`. For a product fleet that usually means
+Open the issue in `ARCHITECT_PARENT_REPO`. For a product fleet that usually means
 the specs or planning repo, not one of the implementation repos. The issue
 carries `agent:large-feature`; Batman derives the bundle label for the child
 issues from the title.
@@ -101,24 +101,24 @@ fall back to id-keyed routes automatically.
 - [ ] Marketing aware before launch
 ```
 
-## Step 2: Batman picks the issue up
+## Step 2: Architect picks the issue up
 
-Batman fires once per hour. On the next firing it reads `BATMAN_PARENT_REPO`,
+Batman fires once per hour. On the next firing it reads `ARCHITECT_PARENT_REPO`,
 finds the `agent:large-feature` issue, parses the `Repos:` and `Children:`
 blocks, and posts a plan summary.
 
 ```
-[15:04:11] batman  preflight ok                        ● green
-[15:04:12] batman  reading your-org/your-specs for agent:large-feature
-[15:04:14] batman  parsed 3 repos, 3 children: add-org-slug
-[15:04:14] batman  plan drafted                        ● green
-[15:04:15] batman  posted plan to #your-fleet-channel
+[15:04:11] architect  preflight ok                        ● green
+[15:04:12] architect  reading your-org/your-specs for agent:large-feature
+[15:04:14] architect  parsed 3 repos, 3 children: add-org-slug
+[15:04:14] architect  plan drafted                        ● green
+[15:04:15] architect  posted plan to #your-fleet-channel
 ```
 
 The post Batman emits in Slack (rendered shape):
 
 ```
-batman · plan drafted
+architect · plan drafted
 
 Issue:        your-specs#247: Bundle: add-org-slug - Add `org_slug` to account-scoped URLs
 Bundle:       add-org-slug
@@ -127,21 +127,21 @@ Rollout:      your-backend → your-frontend → your-mobile
 Engine:       hybrid
 
 To proceed, approve the plan in the configured approval surface.
-After approval, Batman files one scoped child issue per repo and labels each
+After approval, Architect files one scoped child issue per repo and labels each
 issue for the normal fleet pickup path.
 ```
 
 Batman does not bypass approval. It waits for the approval gate, then files
-child issues rather than opening worktrees directly. Lucius claims those issues
+child issues rather than opening worktrees directly. senior-dev claims those issues
 through the same label, lock, spend, review, and merge gates as any other work.
 
-## Step 3: Batman files the child issues after approval
+## Step 3: Architect files the child issues after approval
 
-In the public package, Batman files the three child issues after approval when
-`BATMAN_AUTO_EXECUTE=approval-gate` is configured. Each inherits
+In the public package, Architect files the three child issues after approval when
+`ARCHITECT_AUTO_EXECUTE=approval-gate` is configured. Each inherits
 `agent:bundle:add-org-slug` so the bundle stays trackable, and each is labelled
-`agent:implement` so Lucius can claim it. Operators who prefer a stricter manual
-process can keep `BATMAN_AUTO_EXECUTE=0` and file the same children by hand
+`agent:implement` so senior-dev can claim it. Operators who prefer a stricter manual
+process can keep `ARCHITECT_AUTO_EXECUTE=0` and file the same children by hand
 after reviewing the plan.
 
 ### Child issue 1 (backend)
@@ -237,38 +237,38 @@ Mobile deep-link handler must accept `exampleapp://<slug>/...` in addition to
 your-backend bundle:add-org-slug merged to main and deployed to staging.
 ```
 
-## Step 4: Lucius picks up the backend issue first
+## Step 4: senior-dev picks up the backend issue first
 
 Lucius fires every 20 minutes. The backend issue has no `depends-on` blocker,
 so it is eligible on the first firing after labelling.
 
 ```
-[15:24:11] lucius  preflight ok                        ● green
-[15:24:12] lucius  pick_issue: oldest agent:implement
-[15:24:13] lucius  claimed your-backend#251         ● green
-[15:24:14] lucius  worktree opened
-                   ~/.alfred/worktrees/eng-lucius-your-backend-251-20260601-152414/
-[15:24:15] lucius  branch: agent/lucius/251-add-org-slug-column-and-resolver
-[15:24:16] lucius  invoking hybrid engine, max_turns=140
-[15:27:42] lucius  engine returned success, 38 turns, $0.41
-[15:27:43] lucius  pre-push: ./gradlew check          (running…)
-[15:30:12] lucius  pre-push ok
-[15:30:14] lucius  pushed branch
-[15:30:16] lucius  gh pr create
-[15:30:17] lucius  PR opened: your-backend#412     ● green
-[15:30:17] lucius  [OK] commit 7c4a1f2
-[15:30:18] lucius  release_issue → agent:pr-open
-[15:30:19] lucius  Slack-post info
+[15:24:11] senior-dev  preflight ok                        ● green
+[15:24:12] senior-dev  pick_issue: oldest agent:implement
+[15:24:13] senior-dev  claimed your-backend#251         ● green
+[15:24:14] senior-dev  worktree opened
+                   ~/.alfred/worktrees/eng-senior-dev-your-backend-251-20260601-152414/
+[15:24:15] senior-dev  branch: agent/senior-dev/251-add-org-slug-column-and-resolver
+[15:24:16] senior-dev  invoking hybrid engine, max_turns=140
+[15:27:42] senior-dev  engine returned success, 38 turns, $0.41
+[15:27:43] senior-dev  pre-push: ./gradlew check          (running…)
+[15:30:12] senior-dev  pre-push ok
+[15:30:14] senior-dev  pushed branch
+[15:30:16] senior-dev  gh pr create
+[15:30:17] senior-dev  PR opened: your-backend#412     ● green
+[15:30:17] senior-dev  [OK] commit 7c4a1f2
+[15:30:18] senior-dev  release_issue → agent:pr-open
+[15:30:19] senior-dev  Slack-post info
 ```
 
 The Slack post Lucius emits:
 
 ```
-lucius · PR opened · green
+senior-dev · PR opened · green
 
 Issue:    your-backend#251
 PR:       your-backend#412
-Branch:   agent/lucius/251-add-org-slug-column-and-resolver
+Branch:   agent/senior-dev/251-add-org-slug-column-and-resolver
 Engine:   hybrid (claude)
 Turns:    38
 Cost:     $0.41
@@ -335,7 +335,7 @@ is now the lowest-coverage actively-changed file.
                   agent:authored, tests-only
 ```
 
-Bane's PR is a separate `agent:authored` PR; it does not push to Lucius's
+Bane's PR is a separate `agent:authored` PR; it does not push to senior-dev's
 branch. The squash-merge utility (`automerge`) treats it on its own merits.
 
 ## Step 8: backend merges, the bundle progresses
@@ -354,18 +354,18 @@ claimed and worked. They run on different worktrees, in different repos,
 and never collide.
 
 ```
-[19:04:11] lucius  claimed your-frontend#188        ● green
-[19:04:14] lucius  worktree opened
-                   ~/.alfred/worktrees/eng-lucius-your-frontend-188-20260601-190414/
+[19:04:11] senior-dev  claimed your-frontend#188        ● green
+[19:04:14] senior-dev  worktree opened
+                   ~/.alfred/worktrees/eng-senior-dev-your-frontend-188-20260601-190414/
 ...
-[19:24:11] lucius  claimed your-mobile#92           ● green
-[19:24:14] lucius  worktree opened
-                   ~/.alfred/worktrees/eng-lucius-your-mobile-92-20260601-192414/
+[19:24:11] senior-dev  claimed your-mobile#92           ● green
+[19:24:14] senior-dev  worktree opened
+                   ~/.alfred/worktrees/eng-senior-dev-your-mobile-92-20260601-192414/
 ```
 
 Each gets its own review pass, its own Nightwing fixes if needed, its own
 automerge. After every child issue is filed, Batman removes the parent's
-`agent:large-feature` queue label, adds `batman:fanout-complete`, and closes the
+`agent:large-feature` queue label, adds `architect:fanout-complete`, and closes the
 original parent issue so the same parent cannot be picked up twice without
 counting the planning parent as shipped work. The bundle is tracked by the
 `agent:bundle:add-org-slug` label that every child carries.
@@ -380,7 +380,7 @@ surfaces: GitHub PRs, Slack summaries, shipped reports, and the Work board.
 Example closing rollup post:
 
 ```
-batman · bundle shipped · add-org-slug
+architect · bundle shipped · add-org-slug
 
 Parent:   your-backend#247
 Children:
@@ -398,7 +398,7 @@ Total wall-clock: 6h 26m.
 - You file one `agent:large-feature` issue, not three.
 - Batman posts a plan and waits for approval before child issues are filed.
 - The child `agent:implement` issues each live in the repo that owns the change.
-  Batman files them after approval when the approval-gated execution mode is
+  Architect files them after approval when the approval-gated execution mode is
   enabled, or you can file the same children by hand in a stricter process.
 - Lucius, Ra's al Ghul, Nightwing, and Bane act on whatever is in their
   inbox without knowing they are part of a bundle. The bundle label is for

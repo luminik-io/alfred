@@ -472,7 +472,7 @@ def _count_rows(
 # brain filters in SQL via count_github_items(authored_only=True).
 _AGENT_AUTHORED_LABEL = "agent:authored"
 _AGENT_LABEL_PREFIX = "agent:"
-_NON_WORK_ISSUE_LABELS = frozenset({"batman:fanout-complete"})
+_NON_WORK_ISSUE_LABELS = frozenset({"architect:fanout-complete"})
 _AGENT_BRANCH_PREFIXES = (
     "alfred/",
     "alfred-nightly/",

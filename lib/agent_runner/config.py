@@ -194,36 +194,21 @@ def agent_engine(
 def agent_repos(
     agent: str,
     *,
-    default_env: str | None = None,
     environ: dict[str, str] | None = None,
 ) -> list[str]:
-    """Resolve the repo scope for one agent, keyed off its RESOLVED codename.
+    """Resolve the repo scope for one agent, keyed off its runtime role slug.
 
-    The runner's codename is operator-overridable (``AGENT_CODENAME``), and
-    ``alfred-init`` writes the repo scope to ``ALFRED_<CHOSEN>_REPOS`` derived
-    from that same chosen codename. Reading a hard-coded default-slug key would
-    strand an overridden agent with no repos ([AGENT-IDLE]). So the read is
-    keyed off ``agent`` (the resolved codename) first.
+    ``alfred-init`` writes repo scope to ``ALFRED_<ROLE>_REPOS``. Themes and
+    custom visible names never change this key; the role slug is the machine
+    identity.
 
-    Precedence:
-
-    1. ``ALFRED_<AGENT>_REPOS`` (the chosen-codename key the wizard writes)
-    2. ``default_env`` (a legacy fixed key, when the agent shipped one) so a
-       config written before the rename still scopes the agent
-
-    Returns the parsed, de-blanked repo list (possibly empty).
+    Returns the parsed, de-blanked repo list for ``ALFRED_<AGENT>_REPOS``.
     """
     env = environ if environ is not None else os.environ
     slug = _agent_env_slug(agent)
     primary = f"ALFRED_{slug}_REPOS"
-    for name in (primary, default_env):
-        if not name:
-            continue
-        raw = env.get(name, "")
-        repos = [r.strip() for r in raw.split(",") if r.strip()]
-        if repos:
-            return repos
-    return []
+    raw = env.get(primary, "")
+    return [r.strip() for r in raw.split(",") if r.strip()]
 
 
 def engine_preflight_bins(engine: str, *, hybrid_requires_codex: bool = False) -> list[str]:
@@ -252,15 +237,12 @@ def codex_sandbox_for_agent(
     Precedence:
 
     1. ``ALFRED_<AGENT>_CODEX_SANDBOX``
-    2. ``<AGENT>_CODEX_SANDBOX`` (legacy alias)
-    3. ``ALFRED_<AGENT>_CODEX_WRITE=1`` -> ``workspace-write``
-    4. ``default``
+    2. ``ALFRED_<AGENT>_CODEX_WRITE=1`` -> ``workspace-write``
+    3. ``default``
     """
     env = environ if environ is not None else os.environ
     slug = _agent_env_slug(agent)
-    explicit = (
-        env.get(f"ALFRED_{slug}_CODEX_SANDBOX") or env.get(f"{slug}_CODEX_SANDBOX") or ""
-    ).strip()
+    explicit = (env.get(f"ALFRED_{slug}_CODEX_SANDBOX") or "").strip()
     if explicit:
         return explicit
     if (env.get(f"ALFRED_{slug}_CODEX_WRITE") or "").strip().lower() in {

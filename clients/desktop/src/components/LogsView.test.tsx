@@ -21,20 +21,20 @@ const tailMock = vi.mocked(streamFiringTail);
 
 function runningFiring(overrides: Partial<FiringRecord> = {}): FiringRecord {
   return {
-    firing_id: "lucius-2026-06-03-1200",
-    codename: "lucius",
+    firing_id: "senior-dev-2026-06-03-1200",
+    codename: "senior-dev",
     started_at: "2026-06-03T12:00:00Z",
     ended_at: null,
     status: "running",
     summary: "",
-    transcript_path: "/state/transcripts/lucius/2026-06/lucius-2026-06-03-1200.jsonl",
-    events_path: "/state/lucius/events/lucius-2026-06-03-1200.jsonl",
+    transcript_path: "/state/transcripts/senior-dev/2026-06/senior-dev-2026-06-03-1200.jsonl",
+    events_path: "/state/senior-dev/events/senior-dev-2026-06-03-1200.jsonl",
     raw_events: [],
     ...overrides,
   };
 }
 
-function renderLogs(firings: FiringRecord[], agent: string | null = "lucius") {
+function renderLogs(firings: FiringRecord[], agent: string | null = "senior-dev") {
   return render(
     <LogsView
       baseUrl="http://127.0.0.1:7010"
@@ -69,7 +69,7 @@ describe("LogsView live tail (#41)", () => {
 
     // The tail is opened for the running firing.
     expect(tailMock).toHaveBeenCalledTimes(1);
-    expect(tailMock.mock.calls[0][1]).toBe("lucius-2026-06-03-1200");
+    expect(tailMock.mock.calls[0][1]).toBe("senior-dev-2026-06-03-1200");
 
     // Streamed transcript lines render incrementally in the live region.
     act(() => {
@@ -131,7 +131,7 @@ describe("LogsView live tail (#41)", () => {
   it("collapses idle runs to one line and shouts an honest error for failures", () => {
     renderLogs([
       runningFiring({
-        firing_id: "lucius-2026-06-03-1300",
+        firing_id: "senior-dev-2026-06-03-1300",
         status: "error",
         ended_at: "2026-06-03T13:02:00Z",
         timeline: {
@@ -160,7 +160,7 @@ describe("LogsView live tail (#41)", () => {
 
   it("filters to error runs when 'Errors only' is toggled on", async () => {
     const okRun = runningFiring({
-      firing_id: "lucius-ok",
+      firing_id: "senior-dev-ok",
       status: "ok",
       ended_at: "2026-06-03T12:05:00Z",
       timeline: {
@@ -172,7 +172,7 @@ describe("LogsView live tail (#41)", () => {
       },
     });
     const errRun = runningFiring({
-      firing_id: "lucius-err",
+      firing_id: "senior-dev-err",
       status: "error",
       ended_at: "2026-06-03T12:09:00Z",
       timeline: {
@@ -201,9 +201,9 @@ describe("LogsView live tail (#41)", () => {
   });
 
   it("resets the errors-only filter when switching to another agent", async () => {
-    const luciusErr = runningFiring({
-      firing_id: "lucius-err",
-      codename: "lucius",
+    const seniorDevErr = runningFiring({
+      firing_id: "senior-dev-err",
+      codename: "senior-dev",
       status: "error",
       ended_at: "2026-06-03T12:09:00Z",
       timeline: {
@@ -216,9 +216,9 @@ describe("LogsView live tail (#41)", () => {
     });
     // A second agent whose only run is clean: if the errors-only filter leaked
     // across the switch it would render the misleading "no runs" empty state.
-    const baneOk = runningFiring({
+    const testEngineerOk = runningFiring({
       firing_id: "bane-ok",
-      codename: "bane",
+      codename: "test-engineer",
       status: "ok",
       ended_at: "2026-06-03T12:20:00Z",
       timeline: {
@@ -229,22 +229,22 @@ describe("LogsView live tail (#41)", () => {
         steps: [],
       },
     });
-    renderLogs([luciusErr, baneOk], "lucius");
+    renderLogs([seniorDevErr, testEngineerOk], "senior-dev");
 
-    // Turn the filter on for lucius (which has a failure).
+    // Turn the filter on for senior-dev (which has a failure).
     const toggle = screen.getByRole("switch", { name: /errors only/i });
     await act(async () => {
       toggle.click();
     });
     expect(screen.getByText(/failed · rate limit/i)).toBeInTheDocument();
 
-    // Switch to bane, whose runs are all clean.
-    const baneTab = screen.getByRole("tab", { name: /bane/i });
+    // Switch to test-engineer, whose runs are all clean.
+    const testEngineerTab = screen.getByRole("tab", { name: /test-engineer/i });
     await act(async () => {
-      baneTab.click();
+      testEngineerTab.click();
     });
 
-    // The filter reset, so bane's clean run shows instead of an empty state.
+    // The filter reset, so test-engineer's clean run shows instead of an empty state.
     expect(screen.getByText(/opened pr #2001/i)).toBeInTheDocument();
     expect(screen.queryByText(/no runs need attention/i)).not.toBeInTheDocument();
     expect(screen.getByRole("switch", { name: /errors only/i })).not.toBeChecked();

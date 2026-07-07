@@ -83,9 +83,9 @@ The `alfred` CLI is OS-agnostic; the same verbs work on Linux:
 
 ```sh
 alfred agents              # roster, with a systemd-load column
-alfred pause lucius        # disable the timer, write the pause marker
-alfred resume lucius       # clear the marker, re-enable the timer
-alfred run lucius          # one-shot run now
+alfred pause senior-dev    # disable the timer, write the pause marker
+alfred resume senior-dev   # clear the marker, re-enable the timer
+alfred run senior-dev      # one-shot run now
 alfred status              # health snapshot from the systemd timer roster
 alfred doctor --dev   # preflight; --dev tolerates host-config gaps
 ```
@@ -111,7 +111,7 @@ This is the one piece `deploy.sh` does **not** do for you. It needs `sudo`, so A
 
 ```sh
 alfred claude secondary
-systemctl --user restart alfred.lucius.timer
+systemctl --user restart alfred.senior-dev.timer
 ```
 
 If you prefer static routing, set `CLAUDE_CONFIG_DIR` directly in `$ALFRED_HOME/.env`; it flows into rendered units through `agent-launch`.

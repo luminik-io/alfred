@@ -69,7 +69,7 @@ Empty by default; consumers populate it for their fleet::
 # Keyed on repo *and* the set of labels already created on it: the previous
 # `set[str]` shape cached on repo only, so a first call with ``LIFECYCLE_LABELS``
 # would silently no-op every later call with ``STANDARD_LABELS`` for that repo,
-# leaving (e.g.) ``batman-pr-open`` and ``agent:large-feature`` uncreated. The
+# leaving (e.g.) ``architect-pr-open`` and ``agent:large-feature`` uncreated. The
 # downstream gh label-add would then fail and the caller saw "PR open failed"
 # with no obvious cause.
 _ENSURE_LABELS_DONE: dict[str, set[str]] = {}
@@ -120,7 +120,7 @@ def _full_repo(slug: str) -> str:
 # --------------------------------------------------------------------------
 STANDARD_LABELS: list[tuple[str, str, str]] = [
     (
-        "batman-pr-open",
+        "architect-pr-open",
         "5319e7",
         "A Batman bundle-PR is open in this repo. Set on PR open, cleared on merge.",
     ),
@@ -130,7 +130,7 @@ STANDARD_LABELS: list[tuple[str, str, str]] = [
         "Multi-repo feature; picked up as a bundle by Batman.",
     ),
     (
-        "batman:fanout-complete",
+        "architect:fanout-complete",
         "5319e7",
         "Batman filed every child issue for this parent; not shipped-work evidence.",
     ),

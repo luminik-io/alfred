@@ -9,7 +9,7 @@ function card(overrides: Partial<ShippedCard> = {}): ShippedCard {
     number: 12,
     title: "Ready issue",
     url: "https://example.com/issues/12",
-    author: "lucius",
+    author: "senior-dev",
     kind: "issue",
     timestamp: "2026-06-02T11:00:00Z",
     age_days: 0,
@@ -21,12 +21,11 @@ function card(overrides: Partial<ShippedCard> = {}): ShippedCard {
 
 // agentForShipped must return the canonical CODENAME SLUG (not a themed display
 // name), so the Work board resolves the visible name through the active roster
-// theme the same way the Roster page does. The Batman-cast names still appear in
-// author/evidence tokens, so they are matched but mapped to the canonical slug.
+// theme the same way the Roster page does.
 describe("agentForShipped", () => {
   it("returns the codename slug detected from the author, not a display name", () => {
-    expect(agentForShipped(card({ author: "lucius" }))).toBe("senior-dev");
-    expect(agentForShipped(card({ author: "batman" }))).toBe("architect");
+    expect(agentForShipped(card({ author: "senior-dev" }))).toBe("senior-dev");
+    expect(agentForShipped(card({ author: "architect" }))).toBe("architect");
   });
 
   it("detects each known fleet codename from labels or evidence", () => {
@@ -36,11 +35,12 @@ describe("agentForShipped", () => {
     expect(
       agentForShipped(card({ author: "", labels: ["agent:implement"] })),
     ).toBe("senior-dev");
-    expect(agentForShipped(card({ author: "nightwing-bot" }))).toBe("fixer");
-    expect(agentForShipped(card({ author: "damian" }))).toBe("spec-planner");
-    expect(agentForShipped(card({ author: "bane" }))).toBe("test-engineer");
+    expect(agentForShipped(card({ author: "fixer-bot" }))).toBe("fixer");
+    expect(agentForShipped(card({ author: "spec-planner" }))).toBe("spec-planner");
+    expect(agentForShipped(card({ author: "test-engineer" }))).toBe("test-engineer");
+    expect(agentForShipped(card({ author: "e2e-runner" }))).toBe("e2e-runner");
     expect(
-      agentForShipped(card({ author: "", agent_evidence: ["rasalghul"] })),
+      agentForShipped(card({ author: "", agent_evidence: ["reviewer"] })),
     ).toBe("reviewer");
   });
 
@@ -61,6 +61,31 @@ describe("agentForShipped", () => {
     expect(agentForShipped(card({ author: "fixer" }))).toBe("fixer");
     expect(agentForShipped(card({ author: "spec-planner" }))).toBe("spec-planner");
     expect(agentForShipped(card({ author: "test-engineer" }))).toBe("test-engineer");
+    expect(agentForShipped(card({ author: "e2e-runner" }))).toBe("e2e-runner");
+  });
+
+  it("attributes pre-cutover theme evidence without restoring runtime aliases", () => {
+    expect(
+      agentForShipped(card({ author: "", agent_evidence: ["branch:batman/42"] })),
+    ).toBe("architect");
+    expect(
+      agentForShipped(card({ author: "", agent_evidence: ["branch:lucius/42"] })),
+    ).toBe("senior-dev");
+    expect(
+      agentForShipped(card({ author: "", agent_evidence: ["branch:nightwing/42"] })),
+    ).toBe("fixer");
+    expect(
+      agentForShipped(card({ author: "", agent_evidence: ["branch:damian/42"] })),
+    ).toBe("spec-planner");
+    expect(
+      agentForShipped(card({ author: "", agent_evidence: ["branch:bane/42"] })),
+    ).toBe("test-engineer");
+    expect(
+      agentForShipped(card({ author: "", agent_evidence: ["branch:huntress/42"] })),
+    ).toBe("e2e-runner");
+    expect(
+      agentForShipped(card({ author: "", agent_evidence: ["branch:rasalghul/42"] })),
+    ).toBe("reviewer");
   });
 
   it("returns null when no known codename is present", () => {

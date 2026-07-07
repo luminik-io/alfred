@@ -1,8 +1,8 @@
-"""Lucius must keep operator-approval-gated plans out of its pickup window.
+"""Senior-dev must keep operator-approval-gated plans out of its pickup window.
 
 A gated single-repo plan carries BOTH ``agent:implement`` AND
 ``agent:plan-pending-approval``. The gate label is the pickup blocker, cleared
-on operator approval. Lucius fetches only the first page of open
+on operator approval. Senior-dev fetches only the first page of open
 ``agent:implement`` issues, so if gated issues consumed that window an approved
 issue could be starved out. These tests prove the gate is excluded at the query
 source (so it never consumes the window) and that the in-loop backstop still
@@ -48,7 +48,7 @@ def test_pickup_query_excludes_the_approval_gate_at_the_source(monkeypatch):
     gated issues never consume the ``--limit`` window."""
     monkeypatch.setenv("GH_ORG", "myorg")
     lucius = load_bin_module("senior-dev.py", monkeypatch)
-    monkeypatch.setattr(lucius, "LUCIUS_REPOS", ["backend"])
+    monkeypatch.setattr(lucius, "SENIOR_DEV_REPOS", ["backend"])
     monkeypatch.setattr(lucius, "is_repo_paused", lambda repo: False)
     monkeypatch.setattr(lucius, "is_dry_run", lambda: False)
     monkeypatch.setattr(lucius, "issue_has_open_dependencies", lambda *a, **kw: False)
@@ -80,7 +80,7 @@ def test_pickup_loop_skips_a_gated_issue_that_slips_through(monkeypatch):
     to the next ungated approved issue instead of returning the blocked one."""
     monkeypatch.setenv("GH_ORG", "myorg")
     lucius = load_bin_module("senior-dev.py", monkeypatch)
-    monkeypatch.setattr(lucius, "LUCIUS_REPOS", ["backend"])
+    monkeypatch.setattr(lucius, "SENIOR_DEV_REPOS", ["backend"])
     monkeypatch.setattr(lucius, "is_repo_paused", lambda repo: False)
     monkeypatch.setattr(lucius, "is_dry_run", lambda: False)
     monkeypatch.setattr(lucius, "issue_has_open_dependencies", lambda *a, **kw: False)
@@ -97,6 +97,6 @@ def test_pickup_loop_skips_a_gated_issue_that_slips_through(monkeypatch):
 
     repo, issue = lucius.pick_issue()
 
-    # The older gated issue must be skipped; Lucius reaches the approved one.
+    # The older gated issue must be skipped; senior-dev reaches the approved one.
     assert repo == "backend"
     assert issue is not None and issue["number"] == 2

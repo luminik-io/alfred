@@ -47,15 +47,15 @@ key setup.
 ```mermaid
 flowchart LR
     intake["Slack message<br/>GitHub issue<br/>rough plan"] --> route{"one repo<br/>or many?"}
-    route -->|single repo| drake["Drake<br/>scopes the work"]
-    route -->|multi-repo| batman["Batman<br/>architects rollout"]
-    batman --> children["child issues<br/>agent:implement"]
-    drake --> children
-    children --> lucius["Lucius<br/>writes code, opens PR"]
-    lucius --> ras["Ra's al Ghul<br/>reviews the PR"]
-    ras --> bane["Bane<br/>adds tests"]
-    bane --> nightwing["Nightwing<br/>clears review comments"]
-    nightwing --> gate["human or policy<br/>merge gate"]
+    route -->|single repo| planner["Planner<br/>scopes the work"]
+    route -->|multi-repo| architect["Architect<br/>plans rollout"]
+    architect --> children["child issues<br/>agent:implement"]
+    planner --> children
+    children --> senior_dev["Senior dev<br/>writes code, opens PR"]
+    senior_dev --> reviewer["Reviewer<br/>reviews the PR"]
+    reviewer --> test_engineer["Test engineer<br/>adds tests"]
+    test_engineer --> fixer["Fixer<br/>clears review comments"]
+    fixer --> gate["human or policy<br/>merge gate"]
     gate --> done["merged PRs<br/>across repos"]
 ```
 
@@ -196,7 +196,7 @@ work that should keep moving after you step away, handled by a team that carries
 its lessons forward: planned features, reviewer comments, follow-up tests,
 dependency bumps, docs gaps, and multi-repo rollouts.
 
-- **Narrow, single-purpose roles.** Drake plans, Lucius implements, Ra's al
+- **Narrow, single-purpose roles.** Planner plans, Lucius implements, Ra's al
   Ghul reviews, Bane adds tests, Nightwing clears review comments, and Batman
   turns approved multi-repo rollouts into repo-sized work.
 - **Coordinate through ordinary repo primitives.** Issues, pull requests, labels,
@@ -227,7 +227,7 @@ dependency bumps, docs gaps, and multi-repo rollouts.
   until you approve it.
 
 Default single-repo flow: request, plan, spec, or issue -> Drake files scoped
-`agent:implement` issues -> Lucius claims one and opens a worktree -> Claude Code
+`agent:implement` issues -> senior-dev claims one and opens a worktree -> Claude Code
 or Codex implements -> a PR opens with `agent:authored` -> Ra's al Ghul reviews
 -> Nightwing fixes P0/P1 comments -> Bane adds tests -> Automerge lands the small
 safe PRs you allow -> Slack reports what changed.
@@ -240,19 +240,19 @@ work. Evidence that could not be generated says so rather than being omitted.
 This is on by default (`ALFRED_PR_EVIDENCE=1`); screenshots are opt-in per repo.
 See [`docs/VERIFICATION.md`](docs/VERIFICATION.md).
 
-Multi-repo flow is public OSS code, not an internal-only path. The default
-full fleet includes Batman as the cross-repo architect. Batman owns
-`agent:large-feature`: one parent issue in `BATMAN_PARENT_REPO` can become an
-approved rollout, with scoped child `agent:implement` issues filed across repos
-after the approval gate you choose. Fresh Desktop installs seed Batman with the
-rest of the fleet, but Batman stays idle until you configure the parent repo.
-From there, Lucius implements, Ra's al Ghul reviews, Bane adds focused tests,
-Nightwing handles high-priority review fixes, and your merge policy or a human
-lands each PR. When Batman files every child successfully, it removes the
-parent's `agent:large-feature` queue label, adds `batman:fanout-complete`, and
-closes the parent so the same bundle cannot fan out twice without counting the
-planning parent as shipped work. Per-child PR completion rollups remain the next
-Batman iteration.
+Multi-repo flow is public OSS code, not an internal-only path. The `architect`
+role, shown as Batman in the default theme, owns `agent:large-feature`: one
+parent issue in `ARCHITECT_PARENT_REPO` can become an approved rollout, with
+scoped child `agent:implement` issues filed across repos after the approval gate
+you choose. Fresh Desktop installs the full fleet from the start, but the
+architect role stays idle until you configure the parent repo and arm it with
+`alfred enable architect`. From there, senior-dev implements, reviewer reviews,
+test-engineer adds focused tests, fixer handles high-priority review comments,
+and your merge policy or a human lands each PR. When the architect files every
+child successfully, it removes the parent's `agent:large-feature` queue label,
+adds `architect:fanout-complete`, and closes the parent so the same bundle
+cannot fan out twice without counting the planning parent as shipped work.
+Per-child PR completion rollups remain the next architect iteration.
 
 ## Quick start
 
@@ -397,9 +397,9 @@ alfred doctor
 alfred dry-run senior-dev
 ```
 
-Dry-run is a diagnostic path. It resolves the role-slug (the default-theme names
-like `lucius` still resolve too, as aliases) and prints the run steps without
-touching the scheduler, GitHub, Slack, engines, or local files. See
+Dry-run is a diagnostic path. It resolves the canonical role slug and prints the
+run steps without touching the scheduler, GitHub, Slack, engines, or local
+files. See
 [`docs/DRY_RUN.md`](docs/DRY_RUN.md) for the exact boundary.
 
 ## System shape
@@ -516,7 +516,7 @@ the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
 |---|---|
 | [`lib/agent_runner/`](lib/agent_runner/__init__.py) | Shared library (package; public API re-exported from `__init__.py`). Preflight, lock, spend, claude_invoke, codex_invoke, gh, slack, event-log, commit-trailer, handoff-table, issue claim state machine, runner gate helpers, dedup helpers (`find_open_authored_pr_for_issue`, `reuse_or_make_worktree`), worktree recovery refs, runtime memory, slack severity routing, dry-run seam. |
 | [`lib/slack_format.py`](lib/slack_format.py) | Block Kit + bot-token Slack helpers: per-firing `firing_thread_root` / `firing_thread_reply` / `firing_thread_close`. Severity colour stripes. |
-| [`lib/batman.py`](lib/batman.py) | Batman lifecycle primitives for parent-plan parsing, approval, child issue filing, reporting, and bundle labels. |
+| [`lib/architect_lifecycle.py`](lib/architect_lifecycle.py) | Architect lifecycle primitives for parent-plan parsing, approval, child issue filing, reporting, and bundle labels. |
 | [`lib/planning_assistant.py`](lib/planning_assistant.py) | Shared issue/spec refinement helpers for `alfred serve`, `alfred spec refine`, and Slack plan amendments. |
 | [`lib/scheduler.py`](lib/scheduler.py) | Host-scheduler abstraction: `launchd` on macOS, `systemd --user` on Linux, behind one interface. |
 | [`bin/alfred`](bin/alfred) | Alfred CLI: `alfred agents`, `alfred status`, `alfred doctor`, `alfred enable <role-slug>`, `alfred disable <role-slug>`, `alfred pause` / `resume` / `run`, `alfred clear-lock`, `alfred telemetry status/on/off`, `alfred brain ...`, `alfred code-map export/summary/impact`, `alfred mcp serve`, `alfred spec ...`, `alfred labels bootstrap/check`, `alfred engine status/set`, `alfred claude status/primary/secondary/swap/probe`, `alfred codex status/probe`, `alfred auth status/probe`. |
@@ -524,7 +524,7 @@ the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
 | [`bin/alfred-usage.py`](bin/alfred-usage.py) | Live Claude + Codex subscription usage for the rolling 5-hour and weekly limit windows, read from the engines' own local CLI state (no billing API). The same data is served over the live `GET /api/usage` endpoint; this is its `alfred usage` CLI front end. |
 | [`bin/alfred-shipped-summary.py`](bin/alfred-shipped-summary.py) | Daily/weekly shipped-work report across configured repos: merged PRs, issues, LOC, and model/config changes. Also available as `alfred shipped`. |
 | [`bin/shipped-summary-daily.sh`](bin/shipped-summary-daily.sh), [`bin/shipped-summary-weekly.sh`](bin/shipped-summary-weekly.sh) | Launchd wrappers for scheduled shipped-work Slack reports. |
-| [`bin/architect.py`](bin/architect.py) | The `architect` role's runner (Batman in the default theme) for cross-repo work. It reads `agent:large-feature` parent issues from `BATMAN_PARENT_REPO`, applies approved repo-scope amendments, files scoped child `agent:implement` issues, and carries approved thread notes into those issues when `BATMAN_AUTO_EXECUTE` allows it. |
+| [`bin/architect.py`](bin/architect.py) | The `architect` role's runner (Batman in the default theme) for cross-repo work. It reads `agent:large-feature` parent issues from `ARCHITECT_PARENT_REPO`, applies approved repo-scope amendments, files scoped child `agent:implement` issues, and carries approved thread notes into those issues when `ARCHITECT_AUTO_EXECUTE` allows it. |
 | [`bin/fleet-doctor.py`](bin/fleet-doctor.py) | Daily fleet-health snapshot. Read-only checks (paused repos, global block, stale worktrees, runner gate list) → severity-stripe Slack thread. |
 | [`bin/memory-harvest.py`](bin/memory-harvest.py) | Optional scheduled memory-harvest wrapper. Queues reviewable repeated-failure candidates and nudges Slack when there is something to review. |
 | [`bin/proof-telemetry.py`](bin/proof-telemetry.py) | Anonymous usage-total reporter. Posts aggregate counts to Alfred's hosted collector by default; `ALFRED_TELEMETRY_ENABLED=0` turns it off; fail-soft. |
@@ -552,8 +552,8 @@ the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
 - [AI-assisted install](docs/AI_ASSISTED_INSTALL.md): copy-paste prompt for Claude Code, Codex, or another local coding assistant.
 - [Setting Alfred up](docs/ONBOARDING.md): the two setup paths (chat or stepped form), the onboarding action allowlist, the approval gate, and the theme builder.
 - [Identity and themes](docs/IDENTITY_AND_THEMES.md): roles are the canonical identity; themes supply the display names.
-- [Workspace patterns](docs/WORKSPACE_PATTERNS.md): one-repo, multi-repo, specs-led, and Batman planning layouts.
-- [Specs-driven development](docs/SPECS_DRIVEN_DEVELOPMENT.md): how to turn specs into issue queues, Batman plans, and reviewable PRs.
+- [Workspace patterns](docs/WORKSPACE_PATTERNS.md): one-repo, multi-repo, specs-led, and architect planning layouts.
+- [Specs-driven development](docs/SPECS_DRIVEN_DEVELOPMENT.md): how to turn specs into issue queues, architect plans, and reviewable PRs.
 - [Spec-driven work in plain words](docs/SPEC_DRIVEN_FOR_EVERYONE.md): the non-technical version. Describe an outcome, answer a question or two, approve a preview.
 - [Bootstrap](BOOTSTRAP.md): operations guide (AWS IAM, Slack, troubleshooting).
 - [Tutorial: your first agent](docs/TUTORIAL.md): Echo, end-to-end.

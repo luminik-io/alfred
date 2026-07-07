@@ -189,10 +189,13 @@ def _codename_from_label(label: str) -> str:
 
 
 def _agents_conf_candidates() -> list[Path]:
+    runtime = ALFRED_HOME / "launchd" / "agents.conf"
+    checkout = _HERE.parent / "launchd" / "agents.conf"
+    example = _HERE.parent / "launchd" / "agents.conf.example"
     return [
-        ALFRED_HOME / "launchd" / "agents.conf",
-        _HERE.parent / "launchd" / "agents.conf",
-        _HERE.parent / "launchd" / "agents.conf.example",
+        runtime,
+        checkout,
+        example,
     ]
 
 

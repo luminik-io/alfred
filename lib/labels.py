@@ -64,16 +64,16 @@ STICKY_LABEL_SET: Final[frozenset[str]] = frozenset({DO_NOT_PICKUP, NEEDS_HUMAN_
 # --------------------------------------------------------------------------
 
 LARGE_FEATURE: Final[str] = "agent:large-feature"
-"""Multi-repo feature; picked up as a bundle by Batman."""
+"""Multi-repo feature; picked up as a bundle by the architect role."""
 
 BUNDLE_LABEL_PREFIX: Final[str] = "agent:bundle:"
 """Prefix for per-bundle labels (``agent:bundle:<slug>``)."""
 
 PLAN_PENDING_APPROVAL: Final[str] = "agent:plan-pending-approval"
-"""Set on a bundle parent while Batman waits on operator approval before execute."""
+"""Set on a bundle parent while the architect waits on operator approval."""
 
-FANOUT_COMPLETE: Final[str] = "batman:fanout-complete"
-"""Batman filed every child issue for this parent. Not shipped-work evidence."""
+FANOUT_COMPLETE: Final[str] = "architect:fanout-complete"
+"""The architect filed every child issue for this parent. Not shipped-work evidence."""
 
 NEEDS_HUMAN_REVIEW: Final[str] = "agent:needs-human-review"
 """Human review is required before any autonomous pickup."""
@@ -163,7 +163,7 @@ CLAIM_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(
 
 Unlike pickup scanning, claim-time blocking deliberately ignores
 ``agent:large-feature``, ``agent:plan-pending-approval``, and dynamic
-``agent:bundle:*`` labels. Batman owns those labels and must still be able to
+``agent:bundle:*`` labels. The architect owns those labels and must still be able to
 claim bundle members and approval parents atomically after it has selected
 eligible work.
 """
@@ -179,13 +179,13 @@ FEATURE_DEV_PRODUCT_CLAIM_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(
 FEATURE_DEV_ALWAYS_CLAIM_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(
     {LARGE_FEATURE, PLAN_PENDING_APPROVAL}
 )
-"""Batman-owned labels that always make a feature-dev claim unsafe."""
+"""Architect-owned labels that always make a feature-dev claim unsafe."""
 
 
 def pickup_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
     """Return sorted labels that block autonomous pickup.
 
-    Dynamic ``agent:bundle:<slug>`` labels also block pickup because Batman
+    Dynamic ``agent:bundle:<slug>`` labels also block pickup because the architect
     owns bundle claims as an atomic unit.
     """
     s = set(labels)
@@ -207,7 +207,7 @@ def _is_robin_promoted(labels: set[str]) -> bool:
 def feature_dev_pickup_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
     """Return labels that block the feature-dev agent from picking up work.
 
-    Batman-created child issues keep their ``agent:bundle:<slug>`` provenance
+    Architect-created child issues keep their ``agent:bundle:<slug>`` provenance
     label while also carrying ``agent:implement``. Lucius must still pick those
     up. Static large-feature / approval labels remain blockers. Human/product
     feature labels stay blocked until Robin adds severity and ``agent:implement``.
@@ -300,12 +300,12 @@ LIFECYCLE_LABEL_DEFS: Final[tuple[LabelDef, ...]] = (
     LabelDef(
         LARGE_FEATURE,
         "ff6b00",
-        "Multi-repo feature; picked up as a bundle by Batman.",
+        "Multi-repo feature; picked up as a bundle by the architect role.",
     ),
     LabelDef(
         FANOUT_COMPLETE,
         "5319e7",
-        "Batman filed every child issue for this parent; not shipped-work evidence.",
+        "The architect filed every child issue for this parent; not shipped-work evidence.",
     ),
     LabelDef(
         AUTHORED,

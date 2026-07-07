@@ -102,8 +102,8 @@ flowchart TB
     main[("canonical checkout<br/>~/code/backend<br/><i>you edit here</i>")]
 
     subgraph wt["$ALFRED_HOME/worktrees/"]
-        w1["eng-lucius-backend-303-...<br/>branch: agent/lucius/303"]
-        w2["eng-lucius-backend-318-...<br/>branch: agent/lucius/318"]
+        w1["eng-senior-dev-backend-303-...<br/>branch: agent/senior-dev/303"]
+        w2["eng-senior-dev-backend-318-...<br/>branch: agent/senior-dev/318"]
         w3["eng-bane-backend-291-...<br/>branch: agent/bane/291"]
     end
 

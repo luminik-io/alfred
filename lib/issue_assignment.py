@@ -8,21 +8,22 @@ This module is deliberately side-effect-light at the top level:
 
 The two executable lanes are the existing state machine labels:
 
-* Lucius: ``agent:implement`` for single-repo implementation work.
-* Batman: ``agent:large-feature`` for large / multi-repo planning work.
+* ``senior-dev``: ``agent:implement`` for single-repo implementation work.
+* ``architect``: ``agent:large-feature`` for large / multi-repo planning work.
 
 Vague work is not forced into either lane. It gets ``needs:human-scope`` so a
 human can clarify it before an autonomous agent spends context guessing.
 
-Operator-approval gate. Every Drake plan, including single-repo work, lands in
+Operator-approval gate. Every planner-authored plan, including single-repo work, lands in
 the operator-approval queue before it is assigned to a dev agent. The gate is
-the existing ``agent:plan-pending-approval`` label (the same label Batman holds
-on a bundle parent while it waits on the operator). An issue carrying that label
-is awaiting the operator's go-ahead, so it is never auto-assigned: assignment
-returns ``ROUTE_PENDING_APPROVAL`` and changes nothing. Once the operator
-approves and the gate label is removed (the existing approve path, which also
-adds ``agent:implement``), assignment proceeds to Lucius exactly as before. This
-reuses the existing approval/queue mechanism rather than inventing a new path.
+the existing ``agent:plan-pending-approval`` label (the same label the architect
+holds on a bundle parent while it waits on the operator). An issue carrying that
+label is awaiting the operator's go-ahead, so it is never auto-assigned:
+assignment returns ``ROUTE_PENDING_APPROVAL`` and changes nothing. Once the
+operator approves and the gate label is removed (the existing approve path,
+which also adds ``agent:implement``), assignment proceeds to ``senior-dev``.
+This reuses the existing approval/queue mechanism rather than inventing a new
+path.
 """
 
 from __future__ import annotations
@@ -41,8 +42,8 @@ from shipped_board import _gh_bin, _gh_subprocess_env
 
 logger = logging.getLogger(__name__)
 
-ROUTE_LUCIUS = "senior-dev"
-ROUTE_BATMAN = "architect"
+ROUTE_SENIOR_DEV = "senior-dev"
+ROUTE_ARCHITECT = "architect"
 ROUTE_HUMAN_SCOPE = "human_scope"
 ROUTE_ALREADY_ROUTED = "already_routed"
 ROUTE_BLOCKED = "blocked"
@@ -50,7 +51,7 @@ ROUTE_BLOCKED = "blocked"
 # go-ahead and is never auto-assigned until the gate is released.
 ROUTE_PENDING_APPROVAL = "pending_approval"
 
-SUPPORTED_ASSIGNMENT_AGENTS = frozenset({ROUTE_BATMAN, ROUTE_LUCIUS})
+SUPPORTED_ASSIGNMENT_AGENTS = frozenset({ROUTE_ARCHITECT, ROUTE_SENIOR_DEV})
 
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
@@ -71,7 +72,7 @@ _ACTIONABLE_CUES = (
     "wire",
 )
 
-_BATMAN_SCOPE_CUES = (
+_ARCHITECT_SCOPE_CUES = (
     "across repos",
     "across repositories",
     "all repos",
@@ -251,14 +252,14 @@ def decide_assignment(
             remove_labels=(),
             reason=(
                 "unsupported assignment target; choose "
-                f"{_agent_label(ROUTE_BATMAN)} or {_agent_label(ROUTE_LUCIUS)}"
+                f"{_agent_label(ROUTE_ARCHITECT)} or {_agent_label(ROUTE_SENIOR_DEV)}"
             ),
             confidence=1.0,
         )
 
     # Operator-approval gate. An issue carrying ``agent:plan-pending-approval``
-    # is sitting in the operator's go-ahead queue (Drake files single-repo plans
-    # with this label; Batman holds it on a bundle parent while it waits). It is
+    # is sitting in the operator's go-ahead queue (the planner files single-repo
+    # plans with this label; architect holds it on a bundle parent while it waits). It is
     # never assigned to a dev agent until the operator approves and the gate
     # label is removed, so refuse assignment while it is present. This is checked
     # before the generic blocker scan so the operator sees an "awaiting your
@@ -314,23 +315,23 @@ def decide_assignment(
             )
         return _decision_for_explicit_target(labels, target_agent)
 
-    if existing_agent == ROUTE_BATMAN:
+    if existing_agent == ROUTE_ARCHITECT:
         return AssignmentDecision(
             route=ROUTE_ALREADY_ROUTED,
-            agent=ROUTE_BATMAN,
+            agent=ROUTE_ARCHITECT,
             add_labels=(),
             remove_labels=(),
-            reason=f"already routed to {_agent_label(ROUTE_BATMAN)}",
+            reason=f"already routed to {_agent_label(ROUTE_ARCHITECT)}",
             confidence=1.0,
         )
 
-    if existing_agent == ROUTE_LUCIUS:
+    if existing_agent == ROUTE_SENIOR_DEV:
         return AssignmentDecision(
             route=ROUTE_ALREADY_ROUTED,
-            agent=ROUTE_LUCIUS,
+            agent=ROUTE_SENIOR_DEV,
             add_labels=(),
             remove_labels=(),
-            reason=f"already routed to {_agent_label(ROUTE_LUCIUS)}",
+            reason=f"already routed to {_agent_label(ROUTE_SENIOR_DEV)}",
             confidence=1.0,
         )
 
@@ -344,34 +345,34 @@ def decide_assignment(
             agent="human",
             add_labels=_missing(labels, label_constants.NEEDS_HUMAN_SCOPE),
             remove_labels=(),
-            reason="not enough actionable scope for Batman or Lucius",
+            reason="not enough actionable scope for architect or senior-dev",
             confidence=0.76,
         )
 
-    if _should_route_to_batman(text, surfaces):
+    if _should_route_to_architect(text, surfaces):
         return AssignmentDecision(
-            route=ROUTE_BATMAN,
-            agent=ROUTE_BATMAN,
+            route=ROUTE_ARCHITECT,
+            agent=ROUTE_ARCHITECT,
             add_labels=_missing(labels, label_constants.LARGE_FEATURE),
             remove_labels=remove,
-            reason=_batman_reason(text, surfaces),
+            reason=_architect_reason(text, surfaces),
             confidence=0.84 if len(surfaces) >= 2 else 0.72,
         )
 
-    lucius_blockers = _lucius_assignment_blocking_labels(labels)
-    if lucius_blockers:
+    senior_dev_blockers = _senior_dev_assignment_blocking_labels(labels)
+    if senior_dev_blockers:
         return AssignmentDecision(
             route=ROUTE_BLOCKED,
             agent="none",
             add_labels=(),
             remove_labels=(),
-            reason="Lucius pickup is blocked by label(s): " + ", ".join(lucius_blockers),
+            reason="senior-dev pickup is blocked by label(s): " + ", ".join(senior_dev_blockers),
             confidence=1.0,
         )
 
     return AssignmentDecision(
-        route=ROUTE_LUCIUS,
-        agent=ROUTE_LUCIUS,
+        route=ROUTE_SENIOR_DEV,
+        agent=ROUTE_SENIOR_DEV,
         add_labels=_missing(labels, label_constants.IMPLEMENT),
         remove_labels=remove,
         reason="single-repo implementation work",
@@ -405,7 +406,7 @@ def assign_issue(
     # (ROUTE_PENDING_APPROVAL) is also a non-assigning hold: its decision carries
     # no label changes, so without this branch it would fall through to the
     # "not changed -> ok=True" path below and the native Work "assign" action
-    # would report success while the gate label remains and Lucius still skips
+    # would report success while the gate label remains and senior-dev still skips
     # it. Report it as a failed assignment held for operator approval instead of
     # silently releasing the gate.
     if decision.route in (ROUTE_BLOCKED, ROUTE_PENDING_APPROVAL) and not dry_run:
@@ -470,14 +471,14 @@ def render_assignment_detail(
     """Human-readable, Slack-safe summary of a decision."""
     target = f"{repo}#{number}"
     prefix = "Dry run: would " if dry_run and decision.changed else ""
-    if decision.route == ROUTE_LUCIUS:
+    if decision.route == ROUTE_SENIOR_DEV:
         return (
-            f"{prefix}assign {target} to {_agent_label(ROUTE_LUCIUS)} "
+            f"{prefix}assign {target} to {_agent_label(ROUTE_SENIOR_DEV)} "
             f"by adding `{label_constants.IMPLEMENT}`. Reason: {decision.reason}."
         )
-    if decision.route == ROUTE_BATMAN:
+    if decision.route == ROUTE_ARCHITECT:
         return (
-            f"{prefix}assign {target} to {_agent_label(ROUTE_BATMAN)} "
+            f"{prefix}assign {target} to {_agent_label(ROUTE_ARCHITECT)} "
             f"by adding `{label_constants.LARGE_FEATURE}`. Reason: {decision.reason}."
         )
     if decision.route == ROUTE_HUMAN_SCOPE:
@@ -559,7 +560,7 @@ def _ensure_labels(repo: str, labels: tuple[str, ...], *, runner: GhRunner) -> N
         ),
         label_constants.LARGE_FEATURE: (
             "ff6b00",
-            "Large or multi-repo feature routed to Batman.",
+            "Large or multi-repo feature routed to architect.",
         ),
         label_constants.NEEDS_HUMAN_SCOPE: (
             "e99695",
@@ -586,8 +587,8 @@ def _ensure_labels(repo: str, labels: tuple[str, ...], *, runner: GhRunner) -> N
 
 def _agent_label(agent: str) -> str:
     return {
-        ROUTE_BATMAN: "Batman",
-        ROUTE_LUCIUS: "Lucius",
+        ROUTE_ARCHITECT: "architect",
+        ROUTE_SENIOR_DEV: "senior-dev",
     }.get(agent, agent or "none")
 
 
@@ -596,19 +597,20 @@ def _normalize_assignment_target(raw: str) -> str:
     if not target or target in {"auto", "alfred"}:
         return ""
     aliases = {
-        # ROUTE_BATMAN is the canonical "architect" slug; the Batman-cast name
-        # is kept as an operator alias so "assign to Batman" still resolves.
-        ROUTE_BATMAN: {
+        # The role slug is canonical. Default-theme display names are accepted as
+        # natural-language aliases, but never become the stored route.
+        ROUTE_ARCHITECT: {
             "architect",
             "batman",
             "bruce",
+            "bruce wayne",
             "multi repo",
             "multi-repo",
             "multi repo architect",
             "multi-repo architect",
         },
-        # ROUTE_LUCIUS is the canonical "senior-dev" slug; "Lucius" stays an alias.
-        ROUTE_LUCIUS: {
+        # Default-theme display names are aliases only; ``senior-dev`` is stored.
+        ROUTE_SENIOR_DEV: {
             "developer",
             "implementation",
             "implementation agent",
@@ -633,9 +635,9 @@ def _existing_assignment_agent(labels: set[str]) -> str:
     if label_constants.LARGE_FEATURE in labels or any(
         label_constants.is_bundle_label(label) for label in labels
     ):
-        return ROUTE_BATMAN
+        return ROUTE_ARCHITECT
     if label_constants.IMPLEMENT in labels:
-        return ROUTE_LUCIUS
+        return ROUTE_SENIOR_DEV
     return ""
 
 
@@ -645,13 +647,13 @@ def _decision_for_explicit_target(
 ) -> AssignmentDecision:
     remove = (label_constants.DO_NOT_PICKUP,) if label_constants.DO_NOT_PICKUP in labels else ()
     reason = f"operator requested {_agent_label(target_agent)}"
-    if target_agent == ROUTE_BATMAN:
+    if target_agent == ROUTE_ARCHITECT:
         remove_labels = tuple(
             label for label in (*remove, label_constants.IMPLEMENT) if label in labels
         )
         return AssignmentDecision(
-            route=ROUTE_BATMAN,
-            agent=ROUTE_BATMAN,
+            route=ROUTE_ARCHITECT,
+            agent=ROUTE_ARCHITECT,
             add_labels=_missing(labels, label_constants.LARGE_FEATURE),
             remove_labels=remove_labels,
             reason=reason,
@@ -664,28 +666,28 @@ def _decision_for_explicit_target(
             agent="none",
             add_labels=(),
             remove_labels=(),
-            reason="issue is part of a Batman bundle; remove the bundle label before rerouting",
+            reason="issue is part of an architect bundle; remove the bundle label before rerouting",
             confidence=1.0,
         )
-    lucius_blockers = _lucius_assignment_blocking_labels(
+    senior_dev_blockers = _senior_dev_assignment_blocking_labels(
         labels,
         ignore_large_feature=True,
     )
-    if lucius_blockers:
+    if senior_dev_blockers:
         return AssignmentDecision(
             route=ROUTE_BLOCKED,
             agent="none",
             add_labels=(),
             remove_labels=(),
-            reason="Lucius pickup is blocked by label(s): " + ", ".join(lucius_blockers),
+            reason="senior-dev pickup is blocked by label(s): " + ", ".join(senior_dev_blockers),
             confidence=1.0,
         )
     remove_labels = tuple(
         label for label in (*remove, label_constants.LARGE_FEATURE) if label in labels
     )
     return AssignmentDecision(
-        route=ROUTE_LUCIUS,
-        agent=ROUTE_LUCIUS,
+        route=ROUTE_SENIOR_DEV,
+        agent=ROUTE_SENIOR_DEV,
         add_labels=_missing(labels, label_constants.IMPLEMENT),
         remove_labels=remove_labels,
         reason=reason,
@@ -717,7 +719,7 @@ def _assignment_blocking_labels(labels: set[str]) -> list[str]:
     return sorted(blockers)
 
 
-def _lucius_assignment_blocking_labels(
+def _senior_dev_assignment_blocking_labels(
     labels: set[str],
     *,
     ignore_large_feature: bool = False,
@@ -779,29 +781,29 @@ def _needs_human_scope(issue: IssueSnapshot, text: str) -> bool:
     return len(words) < 4
 
 
-def _should_route_to_batman(text: str, surfaces: frozenset[str]) -> bool:
+def _should_route_to_architect(text: str, surfaces: frozenset[str]) -> bool:
     non_alfred_surfaces = {surface for surface in surfaces if surface != "alfred"}
     if len(non_alfred_surfaces) >= 2:
         return True
-    has_scope_cue = any(_contains_phrase(text, cue) for cue in _BATMAN_SCOPE_CUES)
+    has_scope_cue = any(_contains_phrase(text, cue) for cue in _ARCHITECT_SCOPE_CUES)
     return has_scope_cue and ("repo" in text or "repository" in text)
 
 
-def _batman_reason(text: str, surfaces: frozenset[str]) -> str:
+def _architect_reason(text: str, surfaces: frozenset[str]) -> str:
     non_alfred_surfaces = sorted(surface for surface in surfaces if surface != "alfred")
     if len(non_alfred_surfaces) >= 2:
         return "mentions multiple product surfaces: " + ", ".join(non_alfred_surfaces)
-    cue = next((cue for cue in _BATMAN_SCOPE_CUES if _contains_phrase(text, cue)), "")
+    cue = next((cue for cue in _ARCHITECT_SCOPE_CUES if _contains_phrase(text, cue)), "")
     return f"large-feature cue: {cue}" if cue else "large-feature scope"
 
 
 __all__ = [
     "ROUTE_ALREADY_ROUTED",
-    "ROUTE_BATMAN",
+    "ROUTE_ARCHITECT",
     "ROUTE_BLOCKED",
     "ROUTE_HUMAN_SCOPE",
-    "ROUTE_LUCIUS",
     "ROUTE_PENDING_APPROVAL",
+    "ROUTE_SENIOR_DEV",
     "SUPPORTED_ASSIGNMENT_AGENTS",
     "AssignmentDecision",
     "AssignmentResult",

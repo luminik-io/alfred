@@ -23,7 +23,7 @@ The fleet runs on a single always-on host. A Mac Mini works. An old laptop with 
 | `claude` (Anthropic Claude Code CLI) | The actual code-writing engine | See [Anthropic docs](https://docs.anthropic.com/claude/docs/claude-code) |
 | Anthropic Claude Pro or Max subscription | Pays for agent turns; no API key required | claude.ai/upgrade |
 
-Pro gives a few thousand turns per week against `claude -p`. Max raises the ceiling enough for a continuous Lucius launchd cadence plus the rest of the fleet. If the subscription hits its weekly cap mid-firing the agent surfaces `error_rate_limit` and the global block trips for one hour.
+Pro gives a few thousand turns per week against `claude -p`. Max raises the ceiling enough for a continuous senior-dev launchd cadence plus the rest of the fleet. If the subscription hits its weekly cap mid-firing the agent surfaces `error_rate_limit` and the global block trips for one hour.
 
 ## 1. Clone and pick paths
 
@@ -44,7 +44,7 @@ export WORKSPACE_ROOT="$HOME/code"   # parent dir of your forked product repos
 Alfred core runs standalone. Optional companion features such as skills, MCP,
 external memory, or dashboarding are layered on only if you choose to add them.
 
-`WORKSPACE_ROOT` is the parent directory of your canonical product checkouts. Lucius and Bane look here for repo CLAUDE.md files and grep targets before invoking `claude -p`.
+`WORKSPACE_ROOT` is the parent directory of your canonical product checkouts. Senior-dev and test-engineer look here for repo CLAUDE.md files and grep targets before invoking `claude -p`.
 
 All framework paths are env-driven via `ALFRED_HOME` and `WORKSPACE_ROOT`. No source edits needed.
 
@@ -141,9 +141,10 @@ Slack later by re-running the wizard or setting `SLACK_WEBHOOK_URL` in
 `$ALFRED_HOME/.env`.
 
 The full fleet is installed up front, but high-impact work still has explicit
-gates. Batman is present, visible, and runner-gated until `alfred enable batman`
-and its approval mode are configured. Huntress and Gordon load with the rest of
-the fleet; they self-idle until a staging target URL or ECS cluster is present.
+gates. The architect role is present, visible, and runner-gated until
+`alfred enable architect` and its approval mode are configured. E2e-runner and
+ops-watch load with the rest of the fleet; they self-idle until a staging target
+URL or ECS cluster is present.
 
 The repo owner must match `GH_ORG`; the runtime stores bare repo names and
 builds `GH_ORG/repo` during agent firings.
@@ -161,17 +162,17 @@ Expected output:
 [alfred-os/deploy] copying lib/ (recursive: top-level modules + subpackages)
 [alfred-os/deploy] copying bin/ (every regular file)
 [alfred-os/deploy] rendering launchd plists from ~/.alfred/launchd/agents.conf
-  rendered alfred.lucius.plist
-  rendered alfred.drake.plist
-  rendered alfred.bane.plist
-  rendered alfred.rasalghul.plist
-  rendered alfred.nightwing.plist
-  rendered alfred.robin.plist
-  rendered alfred.batman.plist
+  rendered alfred.senior-dev.plist
+  rendered alfred.planner.plist
+  rendered alfred.test-engineer.plist
+  rendered alfred.reviewer.plist
+  rendered alfred.fixer.plist
+  rendered alfred.triage.plist
+  rendered alfred.architect.plist
 [alfred-os/deploy] installing launchd plists to ~/Library/LaunchAgents
-  - alfred.lucius loaded
-  - alfred.drake loaded
-  - alfred.bane loaded
+  - alfred.senior-dev loaded
+  - alfred.planner loaded
+  - alfred.test-engineer loaded
 ...
 ```
 
@@ -198,8 +199,8 @@ doctor: checking configured agents
         WORKSPACE_ROOT=/Users/<you>/code
 
   drake                          ✅ ok
-  lucius                         ✅ ok
-  rasalghul                      ✅ ok
+  senior-dev                     ✅ ok
+  reviewer                       ✅ ok
 
 doctor: 3 passed, 0 failed
 ```
@@ -219,29 +220,29 @@ This is also the right command after you rotate AWS keys, refresh `aws sso login
 
 The plists ship with `RunAtLoad = false`, so deploying does not immediately fire any agent. To test a single agent without it shipping a PR:
 
-1. Pick an agent and read its top-of-file constants. Lucius, for example, is gated by `agent:implement` issues. If no repo has one open, the firing exits `[SILENT]`.
+1. Pick an agent and read its top-of-file constants. Senior-dev, for example, is gated by `agent:implement` issues. If no repo has one open, the firing exits `[SILENT]`.
 2. Fire it by hand:
    ```sh
-   alfred run lucius --force
+   alfred run senior-dev --force
    ```
 3. Tail the logs:
    ```sh
-   tail -f /tmp/alfred.lucius.stdout /tmp/alfred.lucius.stderr
+   tail -f /tmp/alfred.senior-dev.stdout /tmp/alfred.senior-dev.stderr
    ```
-4. To inspect what `claude -p` actually saw, look in `/tmp/lucius-debug-<issue>-<ts>/`. The runner persists the prompt and raw JSON result there for every Lucius run.
+4. To inspect what `claude -p` actually saw, look in `/tmp/senior-dev-debug-<issue>-<ts>/`. The runner persists the prompt and raw JSON result there for every senior-dev run.
 
-To verify wiring without code landing, point Lucius at a repo with no `agent:implement` issues and confirm it exits `[SILENT]`. Or label one issue with `agent:implement` and `lucius-attempt-3`. Lucius will skip it and re-label `needs:human-scope` instead of running.
+To verify wiring without code landing, point senior-dev at a repo with no `agent:implement` issues and confirm it exits `[SILENT]`. Or label one issue with `agent:implement` and `senior-dev-attempt-3`. Senior-dev will skip it and re-label `needs:human-scope` instead of running.
 
 To pause an agent:
 
 ```sh
-alfred pause lucius
+alfred pause senior-dev
 ```
 
 To resume:
 
 ```sh
-alfred resume lucius
+alfred resume senior-dev
 ```
 
 ## 8. Troubleshooting
@@ -256,19 +257,19 @@ alfred resume lucius
 
 **Plist not loading.** `launchctl bootstrap` is silent on success and noisy on failure. Run it manually with the full path:
 ```sh
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/alfred.lucius.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/alfred.senior-dev.plist
 ```
 Common errors: file not executable (`chmod +x`), wrong shebang (`#!/usr/bin/env python3` requires Python on PATH), socket address conflict (label already loaded; `bootout` first).
 
-**Claude rate limit (`error_rate_limit` or `error_budget`).** The whole fleet is now in a global block for one hour. Inspect `~/.alfred/state/global-blocked-until.json`. Wait, or delete the file to clear the block manually. Then look at why one agent burned the weekly cap. Usually a runaway loop on a too-large issue. Lucius's hard cap is 5000 turns/day; tighten if needed.
+**Claude rate limit (`error_rate_limit` or `error_budget`).** The whole fleet is now in a global block for one hour. Inspect `~/.alfred/state/global-blocked-until.json`. Wait, or delete the file to clear the block manually. Then look at why one agent burned the weekly cap. Usually a runaway loop on a too-large issue. Senior-dev's hard cap is 5000 turns/day; tighten if needed.
 
 **Prompt change did not take effect.** Re-run deploy and confirm the rendered launchd job points at the deployed binary under `$ALFRED_HOME/bin`:
 ```sh
 bash deploy.sh
-launchctl print gui/$(id -u)/alfred.lucius
+launchctl print gui/$(id -u)/alfred.senior-dev
 ```
 
-**Spend caps tripping too early.** Each agent's cap lives in its own bin (e.g. `lucius.py` line ~122). Adjust the constant and re-deploy.
+**Spend caps tripping too early.** Each agent's cap lives in its own bin (e.g. `senior-dev.py` line ~122). Adjust the constant and re-deploy.
 
 ## Where to go next
 

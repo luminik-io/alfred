@@ -26,7 +26,7 @@ import SlackProof from "../components/marketing/SlackProof.astro";
 import FiringLifecycle from "../components/marketing/FiringLifecycle.astro";
 import FleetStatus from "../components/marketing/FleetStatus.astro";
 import SpecsDrivenFlow from "../components/marketing/SpecsDrivenFlow.astro";
-import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
+import ArchitectFanOut from "../components/marketing/ArchitectFanOut.astro";
 import NativeClientShowcase from "../components/marketing/NativeClientShowcase.astro";
 import DownloadTracker from "../components/marketing/DownloadTracker.astro";
 import productProof from "../data/luminik-product-proof.json";
@@ -35,23 +35,23 @@ type JobState = "live" | "warn" | "idle" | "info";
 
 const jobs: { title: string; body: string; log: string[]; state: JobState }[] = [
   {
-    title: "Architect: Batman drives cross-repo features",
+    title: "Architect: plans cross-repo features",
     body: "Included in the OSS fleet. Reads the parent issue or Slack plan, checks the affected repos, gets approval, and files scoped repo-level work for the implementation fleet.",
     log: [
-      "[10:30] batman drafted bundle:billing-v2",
-      "[10:31] batman posted plan to Slack",
+      "[10:30] architect drafted bundle:billing-v2",
+      "[10:31] architect posted plan to Slack",
       "[10:34] scope approved",
-      "[10:35] batman opened backend -> web -> mobile tasks",
+      "[10:35] architect opened backend -> web -> mobile tasks",
     ],
     state: "info",
   },
   {
-    title: "Senior dev: Lucius opens PRs",
+    title: "Senior dev: opens PRs",
     body: "Picks up a scoped task, makes its own copy of the repo, runs Claude Code or Codex with the full project in context, and opens a pull request with tests.",
     log: [
-      "[12:04] lucius claimed your-backend#247",
-      "[12:04] lucius worktree ~/.alfred/wt/12042118/",
-      "[12:18] lucius PR #1247 opened",
+      "[12:04] senior-dev claimed your-backend#247",
+      "[12:04] senior-dev worktree ~/.alfred/wt/12042118/",
+      "[12:18] senior-dev PR #1247 opened",
     ],
     state: "live",
   },
@@ -290,8 +290,8 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
             "ok    stale workers        0",
             "",
             "$ alfred brain promotions",
-            "12    lucius  owner/api  evidence: PR#248",
-            "19    batman  bundle    evidence: issue#504",
+            "12    senior-dev  owner/api  evidence: PR#248",
+            "19    architect   bundle     evidence: issue#504",
             "",
             "$ alfred brain failures --codename huntress",
             "timeout  playwright browser missing  3x",
@@ -317,8 +317,8 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
     <div class="m-container">
       <SectionHeader
         eyebrow="FROM ROUGH REQUEST TO SCOPED WORK"
-        title="Batman architects the rollout. Lucius ships the PRs. Drake keeps smaller work scoped."
-        lede="Start with a Slack thread, a GitHub issue, or a plain-text plan. Batman handles approved multi-repo fan-out, Lucius handles repo-local implementation, and Drake turns smaller requests into clear tasks."
+        title="Architect handles the rollout. Senior-dev ships the PRs. Drake keeps smaller work scoped."
+        lede="Start with a Slack thread, a GitHub issue, or a plain-text plan. The architect handles approved multi-repo fan-out, senior-dev handles repo-local implementation, and Drake turns smaller requests into clear tasks."
       />
       <SpecsDrivenFlow />
       <p style="margin-top:24px;">
@@ -327,15 +327,15 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
     </div>
   </section>
 
-  <section class="m-section m-section--soft" id="batman">
+  <section class="m-section m-section--soft" id="architect">
     <div class="m-container">
       <SectionHeader
         eyebrow="THE ARCHITECT AGENT"
-        title="Batman turns one large feature into repo-level work."
-        lede="Batman is the accountable architect for work that spans repos. In the public OSS runner, it reads the parent issue, checks the affected repos, plans the rollout, gets approval in Slack or the local client, and files scoped child issues. Lucius, Bane, Nightwing, reviewers, and the merge gate then finish each PR."
+        title="Architect turns one large feature into repo-level work."
+        lede="The architect is accountable for work that spans repos. In the public OSS runner, it reads the parent issue, checks the affected repos, plans the rollout, gets approval in Slack or the local client, and files scoped child issues. Senior-dev, test-engineer, fixer, reviewers, and the merge gate then finish each PR."
       />
-      <BatmanFanOut />
-      <div class="batman-cta">
+      <ArchitectFanOut />
+      <div class="architect-cta">
         <a class="m-btn" href="/multi-repo/">See planning across repos</a>
         <a class="m-btn m-btn--ghost" href="/guides/multi-repo-worked-example/">Read the worked example</a>
       </div>
@@ -366,13 +366,6 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
 
       <div class="proof-grid">
         <SlackProof
-          src="/proof/slack-batman-plan.png"
-          alt="Slack message from the Alfred bot showing Batman drafting a plan for issue #504, with affected repos backend, frontend, mobile, and a rollout order. The plan is in draft, awaiting approval."
-          tag="batman plan"
-          meta="2026-05-12 11:44 UTC"
-          caption="Batman reads one big feature request, plans the backend, web, and mobile rollout, gets approval in Slack, then files scoped tasks for the implementation fleet."
-        />
-        <SlackProof
           src="/proof/slack-shipped-summary.png"
           alt="Slack message from the Alfred bot summarising one private Luminik setup: 153 PRs merged, 44 issues opened, 144 issues closed, and 44,351 lines added across six repos."
           tag="daily summary"
@@ -392,7 +385,7 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
       <SectionHeader
         eyebrow="YOUR AGENTS, RIGHT NOW"
         title="What `alfred status` shows."
-        lede="Real output from a local OSS full-fleet install on 2026-06-30: Batman, Lucius, Drake, Bane, Nightwing, Robin, Huntress, Gordon, memory, code-map, cleanup, reports, and fleet doctor are loaded from the start."
+        lede="Real output from a local OSS full-fleet install on 2026-06-30: architect, senior-dev, planner, test-engineer, fixer, triage, ops-watch, e2e-runner, memory, code-map, cleanup, reports, and fleet doctor are loaded from the start."
       />
       <FleetStatus />
     </div>
@@ -415,9 +408,9 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
           "ok    launchd                  21 agents loaded",
           "ok    spend cap                $20/day fleet",
           "",
-          "$ alfred dry-run lucius",
-          "alfred dry-run: lucius",
-          "  role: feature dev",
+          "$ alfred dry-run senior-dev",
+          "alfred dry-run: senior-dev",
+          "  role: senior developer",
           "  mode: safe simulation",
           "  would: resolve config, acquire the agent lock, run preflight, and enter the runner",
           "  would not: mutate GitHub, post Slack, invoke an engine, or edit files",
@@ -732,7 +725,7 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
   }
   @media (max-width: 880px) { .proof-grid { grid-template-columns: 1fr; } }
 
-  .batman-cta {
+  .architect-cta {
     display: flex;
     gap: 14px;
     flex-wrap: wrap;

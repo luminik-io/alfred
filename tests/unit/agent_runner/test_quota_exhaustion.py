@@ -16,6 +16,7 @@ wall):
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 # --------------------------------------------------------------------------
@@ -222,14 +223,18 @@ def test_engine_quota_backoff_expires_and_self_clears(fresh_agent_runner):
     from agent_runner.state import (
         _engine_quota_path,
         engine_quota_backoff,
-        record_engine_quota_exhausted,
     )
 
     past = "2000-01-01T00:00:00Z"
-    record_engine_quota_exhausted("codex", resume_at=past, reason="stale")
+    path = _engine_quota_path("codex")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"engine": "codex", "until": past, "reason": "stale"}),
+        encoding="utf-8",
+    )
     # An expired record reads as None AND is cleaned up on read.
     assert engine_quota_backoff("codex") is None
-    assert not _engine_quota_path("codex").exists()
+    assert not path.exists()
 
 
 def test_record_engine_quota_default_window_when_no_resume(fresh_agent_runner):

@@ -1,5 +1,6 @@
 import { friendlyTime, plural, titleCase } from "../format";
 import { parseIssueRef } from "./links";
+import { detectShippedAgentCodename } from "./shippedAgentAttribution";
 import type {
   FiringRecord,
   PlanDraft,
@@ -208,7 +209,7 @@ export function fleetPauseSummary(
 
 export type ShippedDigestItem = {
   card: ShippedCard;
-  // The canonical agent codename (e.g. "lucius"), or null. The visible name is
+  // The canonical agent codename (e.g. "senior-dev"), or null. The visible name is
   // resolved through the active roster theme by the caller (ReviewView), so the
   // Shipped lane re-skins with the Roster page instead of a hardcoded name.
   agent: string | null;
@@ -260,56 +261,10 @@ function repoShortName(repo: string): string {
 // The canonical CODENAME SLUG behind a shipped card, detected from the author,
 // labels, and agent evidence. Returns the codename slug (e.g. "senior-dev"), NOT
 // a themed display name, so the Shipped lane resolves the visible name through
-// the active roster theme the same way the Work board and Roster page do. The
-// Batman-cast names still appear in author/evidence tokens, so they are matched
-// but mapped to the canonical slug. Kept in lockstep with chips.agentForShipped.
+// the active roster theme the same way the Work board and Roster page do. Kept
+// in lockstep with chips.agentForShipped.
 export function shippedAgentCodename(card: ShippedCard): string | null {
-  const tokens = [
-    card.author || "",
-    ...(card.labels || []),
-    ...(card.agent_evidence || []),
-  ].map((token) => token.toLowerCase());
-
-  if (
-    tokens.some(
-      (token) =>
-        token.includes("batman") ||
-        token.includes("architect") ||
-        token.includes("agent:large-feature"),
-    )
-  ) {
-    return "architect";
-  }
-  if (
-    tokens.some(
-      (token) =>
-        token.includes("lucius") ||
-        token.includes("senior-dev") ||
-        token.includes("agent:implement"),
-    )
-  ) {
-    return "senior-dev";
-  }
-  if (tokens.some((token) => token.includes("nightwing") || token.includes("fixer"))) {
-    return "fixer";
-  }
-  if (tokens.some((token) => token.includes("damian") || token.includes("spec-planner"))) {
-    return "spec-planner";
-  }
-  if (tokens.some((token) => token.includes("bane") || token.includes("test-engineer"))) {
-    return "test-engineer";
-  }
-  if (
-    tokens.some(
-      (token) =>
-        token.includes("rasalghul") ||
-        token.includes("ra's al ghul") ||
-        token.includes("reviewer"),
-    )
-  ) {
-    return "reviewer";
-  }
-  return null;
+  return detectShippedAgentCodename(card);
 }
 
 // ---------------------------------------------------------------------------

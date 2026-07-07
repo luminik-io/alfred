@@ -56,28 +56,28 @@ Homebrew wrapper:
 alfred-init
 ```
 
-`--agents` accepts `all`, `starter`, or comma-separated codenames. `all` is the
-default and configures the full engineering fleet: Drake, Batman, Lucius,
-Ra's al Ghul, Bane, Nightwing, Robin, Huntress, Gordon, automerge, memory,
-code-map, cleanup, reports, and fleet doctor. `starter` is a lab-only shortcut
+`--agents` accepts `all`, `starter`, or comma-separated role slugs. `all` is the
+default and configures the full engineering fleet: planner, architect,
+senior-dev, reviewer, test-engineer, fixer, triage, e2e-runner, ops-watch,
+automerge, memory, code-map, cleanup, reports, and fleet doctor. `starter` is a lab-only shortcut
 for testing the harness with a small roster; it is not the recommended product
 path. `--repos` scopes every enabled repo-operating agent to explicit repos and
 is required for safe non-interactive setup when more than one repo is visible.
 The repo owner must match `GH_ORG`; shipped agents store bare repo names and
 build `GH_ORG/repo` when they fire.
 
-## `bin/alfred-batman-setup.py`
+## `bin/alfred-architect-setup.py`
 
-Guided first setup for Batman's parent-repo and approval-gate path.
+Guided first setup for the architect role's parent-repo and approval-gate path.
 
 ```sh
-python3 bin/alfred-batman-setup.py
-python3 bin/alfred-batman-setup.py --check-only
-python3 bin/alfred-batman-setup.py --non-interactive --skip-token-setup --skip-doctor --mode 0 --parent-repo owner/specs
+python3 bin/alfred-architect-setup.py
+python3 bin/alfred-architect-setup.py --check-only
+python3 bin/alfred-architect-setup.py --non-interactive --skip-token-setup --skip-doctor --mode 0 --parent-repo owner/specs
 ```
 
-The wizard writes one managed block in `$ALFRED_HOME/.env` for `BATMAN_PARENT_REPO`,
-`BATMAN_AUTO_EXECUTE`, Slack approval settings, picker, and approval timeout.
+The wizard writes one managed block in `$ALFRED_HOME/.env` for `ARCHITECT_PARENT_REPO`,
+`ARCHITECT_AUTO_EXECUTE`, Slack approval settings, picker, and approval timeout.
 It can call `alfred setup-token` interactively and runs `alfred doctor
 --lifecycle` at the end unless skipped.
 
@@ -91,7 +91,7 @@ alfred doctor
 alfred doctor --lifecycle
 ```
 
-`--lifecycle` runs only the Batman lifecycle-path doctor: a synthetic
+`--lifecycle` runs only the architect lifecycle-path doctor: a synthetic
 parent-issue parser check, bundle-label validation, Slack `chat.postMessage`
 plus `reactions.get` smoke test with cleanup, and a bounded Claude OAuth probe.
 It does not create GitHub issues.
@@ -150,8 +150,8 @@ alfred telemetry on
 alfred telemetry off
 alfred labels bootstrap <repo>|--all [--check] [--force]
 alfred labels check <repo>|--all
-alfred batman setup [--check-only]
-alfred setup-batman [--check-only]
+alfred architect setup [--check-only]
+alfred setup-architect [--check-only]
 alfred engine status [codename]
 alfred engine set <codename> <claude|codex|hybrid>
 alfred agent list [--json]
@@ -171,14 +171,14 @@ agents to `$ALFRED_HOME/state/custom-agents/custom-agents.json`; run
 `bash deploy.sh` or `alfred-deploy` after add/remove so the host scheduler gets
 the new units. `enable` / `disable` update
 `$ALFRED_HOME/state/fleet/enabled.txt`, which is useful for opt-in runners
-such as Batman. `engine` persists per-agent Claude/Codex mode under
+such as the architect role. `engine` persists per-agent Claude/Codex mode under
 `$ALFRED_HOME/state/engines/<codename>`. `codex` checks the Codex CLI. `auth`
 checks Claude and Codex auth surfaces. `brain` inspects and seeds the local
 fleet-brain memory store. `status` reports local locks, pauses, recent firings,
-and Batman approval waits. `clear-lock` diagnoses stale `/tmp/agent-lock-*`
+and architect approval waits. `clear-lock` diagnoses stale `/tmp/agent-lock-*`
 directories and refuses to clear live holders or matching dirty worktrees
 unless `--force` is passed. `labels` creates or checks the
-canonical GitHub labels needed by the lifecycle state machine, Batman planning,
+canonical GitHub labels needed by the lifecycle state machine, architect planning,
 and issue-claim overrides. `telemetry` controls anonymous usage totals:
 `status` shows local state, `on` writes the hosted endpoint to `$ALFRED_HOME/.env`, and
 `off` clears the previous report and writes the opt-out flag. The scheduler row
@@ -219,14 +219,14 @@ Inspect and seed the local fleet-brain memory layer.
 
 ```sh
 alfred brain status
-alfred brain lessons lucius your-org/api
+alfred brain lessons senior-dev your-org/api
 alfred brain lessons - your-org/api
-alfred brain reflect lucius your-org/api "Use request fixtures for API tests" --tag tests
-alfred brain propose lucius your-org/api "Use request fixtures for API tests" --tag tests
+alfred brain reflect senior-dev your-org/api "Use request fixtures for API tests" --tag tests
+alfred brain propose senior-dev your-org/api "Use request fixtures for API tests" --tag tests
 alfred brain candidates
 alfred brain promote <candidate-id>
 alfred brain reject <candidate-id> --note "too vague"
-alfred brain firings --codename lucius
+alfred brain firings --codename senior-dev
 alfred brain files your-org/api
 alfred brain failures --codename huntress
 alfred brain github --state open
@@ -285,10 +285,10 @@ then applies the same operation to each repo.
 Diagnose and clear local agent locks under `/tmp/agent-lock-<codename>`.
 
 ```sh
-alfred clear-lock lucius --check
-alfred clear-lock lucius
+alfred clear-lock senior-dev --check
+alfred clear-lock senior-dev
 alfred clear-lock --all
-alfred clear-lock lucius --force
+alfred clear-lock senior-dev --force
 ```
 
 Without `--force`, `clear-lock` refuses to delete a lock when the recorded PID
@@ -307,7 +307,7 @@ prints either a table or JSON.
 alfred metrics                          # last 7 days, per-agent
 alfred metrics --since 14d              # last 14 days
 alfred metrics --since 48h              # rounds up to days
-alfred metrics --codename lucius        # one codename only
+alfred metrics --codename senior-dev        # one codename only
 alfred metrics --by-day                 # daily totals instead of per-agent
 alfred metrics --json                   # machine-readable
 ```

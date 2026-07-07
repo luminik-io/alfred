@@ -84,8 +84,8 @@ for the full setup walkthrough.
 Posted alongside every label change so the audit trail survives manual label edits:
 
 ```
-<!-- agent-claim:codename=lucius firing_id=20260501-194217-643a ts=2026-05-01T19:42:33Z -->
-<!-- agent-release:codename=lucius firing_id=20260501-194217-643a outcome=success pr=https://github.com/foo/bar/pull/42 ts=2026-05-01T20:08:11Z -->
+<!-- agent-claim:codename=senior-dev firing_id=20260501-194217-643a ts=2026-05-01T19:42:33Z -->
+<!-- agent-release:codename=senior-dev firing_id=20260501-194217-643a outcome=success pr=https://github.com/foo/bar/pull/42 ts=2026-05-01T20:08:11Z -->
 ```
 
 `find_stale_claims()` reads these to decide who currently holds an in-flight claim and how old that claim is, without depending on label-event timestamps.
@@ -121,7 +121,7 @@ sequenceDiagram
     B->>gh: re-read comments
     Note over B: A's claim at T1 < my T2 -> I lost
     B->>gh: remove my agent:in-flight, restore agent:implement
-    B->>gh: post release: outcome=race-yielded-to=lucius:A
+    B->>gh: post release: outcome=race-yielded-to=senior-dev:A
     Note over B: exit firing, 0 Claude turns spent
 ```
 

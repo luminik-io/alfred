@@ -1,15 +1,15 @@
 <!-- alfred:auto-seed v1 (delete this line to activate this file as operator guidance) -->
 <!--
-  Role: feature-dev
-  Default codename: Lucius
+  Role: senior-dev
+  Default display name: Lucius in the Batman theme
 
   This file is operator-supplied implementation guidance. alfred-init copies it
-  to ${ALFRED_HOME}/prompts/<codename>.md and bin/lucius.py injects it into the
+  to ${ALFRED_HOME}/prompts/<codename>.md and bin/senior-dev.py injects it into the
   coding-engine prompt when present.
 
   Runtime placeholders supported by load_prompt():
 
-    AGENT_CODENAME     display name, e.g. "Lucius"
+    AGENT_CODENAME     runtime role slug, e.g. "senior-dev"
     GH_ORG             GitHub org or user
     ALFRED_HOME        runtime home, usually ~/.alfred
     WORKSPACE_ROOT     parent dir of per-repo checkouts
@@ -59,7 +59,7 @@ drift in the final summary.
 
 ## Output Sentinels
 
-The base Lucius prompt defines the exact sentinel strings Alfred parses:
+The base senior-dev prompt defines the exact sentinel strings Alfred parses:
 
 - `[OK] commit <sha> | files=<N> | <summary>`
 - `[PARTIAL] <progress and what remains>`

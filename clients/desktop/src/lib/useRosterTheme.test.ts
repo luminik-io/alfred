@@ -140,18 +140,18 @@ describe("useRosterTheme", () => {
   it("sends the custom maps when saving the custom roster", async () => {
     loadRosterTheme.mockResolvedValue(serverState());
     saveRosterTheme.mockResolvedValue(
-      serverState({ theme: "custom", custom_names: { batman: "Sherlock" } }),
+      serverState({ theme: "custom", custom_names: { architect: "Sherlock" } }),
     );
 
     const { result } = renderHook(() => useRosterTheme("http://127.0.0.1:7010"));
 
     act(() => {
-      result.current.setCustomNames({ names: { batman: "Sherlock" }, roles: {} });
+      result.current.setCustomNames({ names: { architect: "Sherlock" }, roles: {} });
     });
     await waitFor(() => {
       expect(saveRosterTheme).toHaveBeenCalledWith("http://127.0.0.1:7010", {
         theme: "custom",
-        custom_names: { batman: "Sherlock" },
+        custom_names: { architect: "Sherlock" },
         custom_roles: {},
       });
     });

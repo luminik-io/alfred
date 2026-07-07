@@ -358,8 +358,8 @@ export async function markFollowupHandled(
   return writeAlfredJson(baseUrl, `/api/plans/${planPathSegment(planId)}/mark-handled`);
 }
 
-// Record a real go/no-go on a genuine Batman plan. The server writes the same
-// `{issue_num}.approved` / `.rejected` marker Batman's file-poll fallback
+// Record a real go/no-go on a genuine architect plan. The server writes the same
+// `{issue_num}.approved` / `.rejected` marker the architect's file-poll fallback
 // watches, so an approve here starts that exact scope and a decline stops it,
 // with no Slack round-trip. Token-gated server-side via _authorized_mutation.
 export async function decidePlan(
@@ -846,7 +846,7 @@ export async function removeTrustedSlackUser(
   );
 }
 
-// Assign an issue to Batman/Lucius, arm it directly for Lucius pickup
+// Assign an issue to architect or senior-dev, arm it directly for senior-dev pickup
 // (`queue` -> agent:implement), hold it (`hold` -> do-not-pickup), or close it
 // (`done` -> GitHub's native closed state). Mutating, so it rides the
 // token-bearing POST path.

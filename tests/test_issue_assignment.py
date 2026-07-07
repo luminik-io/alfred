@@ -53,10 +53,10 @@ def _allowlist(monkeypatch, value: str) -> None:
     monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
 
 
-def test_single_repo_work_routes_to_lucius() -> None:
+def test_single_repo_work_routes_to_senior_dev() -> None:
     decision = ia.decide_assignment(_issue())
 
-    assert decision.route == ia.ROUTE_LUCIUS
+    assert decision.route == ia.ROUTE_SENIOR_DEV
     assert decision.agent == "senior-dev"
     assert decision.add_labels == (IMPLEMENT,)
     assert "single-repo" in decision.reason
@@ -65,12 +65,12 @@ def test_single_repo_work_routes_to_lucius() -> None:
 def test_auto_assignment_target_is_same_as_no_target() -> None:
     decision = ia.decide_assignment(_issue(), target_agent="auto")
 
-    assert decision.route == ia.ROUTE_LUCIUS
+    assert decision.route == ia.ROUTE_SENIOR_DEV
     assert decision.agent == "senior-dev"
     assert decision.add_labels == (IMPLEMENT,)
 
 
-def test_multi_surface_work_routes_to_batman() -> None:
+def test_multi_surface_work_routes_to_architect() -> None:
     decision = ia.decide_assignment(
         _issue(
             title="Roll out attendee sync across backend and frontend",
@@ -78,56 +78,56 @@ def test_multi_surface_work_routes_to_batman() -> None:
         )
     )
 
-    assert decision.route == ia.ROUTE_BATMAN
+    assert decision.route == ia.ROUTE_ARCHITECT
     assert decision.agent == "architect"
     assert decision.add_labels == (LARGE_FEATURE,)
     assert "multiple product surfaces" in decision.reason
 
 
-def test_explicit_batman_assignment_overrides_single_repo_default() -> None:
+def test_explicit_architect_assignment_overrides_single_repo_default() -> None:
     decision = ia.decide_assignment(_issue(), target_agent="architect")
 
-    assert decision.route == ia.ROUTE_BATMAN
+    assert decision.route == ia.ROUTE_ARCHITECT
     assert decision.agent == "architect"
     assert decision.add_labels == (LARGE_FEATURE,)
     assert decision.remove_labels == ()
-    assert "Batman" in decision.reason
+    assert "architect" in decision.reason
 
 
-def test_explicit_lucius_assignment_can_reroute_large_feature() -> None:
+def test_explicit_senior_dev_assignment_can_reroute_large_feature() -> None:
     decision = ia.decide_assignment(
         _issue(labels=(LARGE_FEATURE,)),
         target_agent="senior developer",
     )
 
-    assert decision.route == ia.ROUTE_LUCIUS
+    assert decision.route == ia.ROUTE_SENIOR_DEV
     assert decision.agent == "senior-dev"
     assert decision.add_labels == (IMPLEMENT,)
     assert decision.remove_labels == (LARGE_FEATURE,)
-    assert "Lucius" in decision.reason
+    assert "senior-dev" in decision.reason
 
 
-def test_explicit_batman_assignment_can_reroute_lucius_issue() -> None:
+def test_explicit_architect_assignment_can_reroute_senior_dev_issue() -> None:
     decision = ia.decide_assignment(
         _issue(labels=(IMPLEMENT,)),
         target_agent="architect",
     )
 
-    assert decision.route == ia.ROUTE_BATMAN
+    assert decision.route == ia.ROUTE_ARCHITECT
     assert decision.agent == "architect"
     assert decision.add_labels == (LARGE_FEATURE,)
     assert decision.remove_labels == (IMPLEMENT,)
 
 
-def test_explicit_lucius_assignment_is_blocked_for_bundle_issue() -> None:
+def test_explicit_senior_dev_assignment_is_blocked_for_bundle_issue() -> None:
     decision = ia.decide_assignment(
         _issue(labels=(LARGE_FEATURE, bundle_label("checkout-redesign"))),
-        target_agent="lucius",
+        target_agent="senior-dev",
     )
 
     assert decision.route == ia.ROUTE_BLOCKED
     assert not decision.changed
-    assert "Batman" in decision.reason
+    assert "architect" in decision.reason
     assert "bundle" in decision.reason
 
 
@@ -136,8 +136,8 @@ def test_unsupported_assignment_target_is_blocked() -> None:
 
     assert decision.route == ia.ROUTE_BLOCKED
     assert not decision.changed
-    assert "Batman" in decision.reason
-    assert "Lucius" in decision.reason
+    assert "architect" in decision.reason
+    assert "senior-dev" in decision.reason
 
 
 def test_vague_work_routes_to_human_scope() -> None:
@@ -162,7 +162,7 @@ def test_human_blocking_labels_block_assignment() -> None:
         assert label in decision.reason
 
 
-def test_lucius_product_labels_block_assignment_until_triaged() -> None:
+def test_senior_dev_product_labels_block_assignment_until_triaged() -> None:
     decision = ia.decide_assignment(_issue(labels=(FEATURE, ENHANCEMENT)))
 
     assert decision.route == ia.ROUTE_BLOCKED
@@ -174,7 +174,7 @@ def test_lucius_product_labels_block_assignment_until_triaged() -> None:
 def test_do_not_pickup_still_can_be_cleared_by_assignment() -> None:
     decision = ia.decide_assignment(_issue(labels=(DO_NOT_PICKUP,)))
 
-    assert decision.route == ia.ROUTE_LUCIUS
+    assert decision.route == ia.ROUTE_SENIOR_DEV
     assert decision.add_labels == (IMPLEMENT,)
     assert decision.remove_labels == (DO_NOT_PICKUP,)
 
@@ -268,7 +268,7 @@ def test_assign_issue_requires_allowlisted_repo(monkeypatch) -> None:
 
 def test_pending_approval_gate_is_not_assigned() -> None:
     # A gated single-repo plan carries BOTH agent:implement AND the gate label.
-    # The gate must win: the issue is held, not routed to Lucius.
+    # The gate must win: the issue is held, not routed to senior-dev.
     decision = ia.decide_assignment(_issue(labels=(IMPLEMENT, PLAN_PENDING_APPROVAL)))
 
     assert decision.route == ia.ROUTE_PENDING_APPROVAL
@@ -277,7 +277,7 @@ def test_pending_approval_gate_is_not_assigned() -> None:
 
 
 def test_explicit_target_cannot_bypass_approval_gate() -> None:
-    for target in ("lucius", "architect"):
+    for target in ("senior-dev", "architect"):
         decision = ia.decide_assignment(
             _issue(labels=(IMPLEMENT, PLAN_PENDING_APPROVAL)),
             target_agent=target,
@@ -291,7 +291,7 @@ def test_assign_issue_reports_pending_approval_as_blocked(monkeypatch) -> None:
     # The native Work "assign" action must NOT report success for a gated plan:
     # the decision carries no label changes, so without explicit handling it
     # would fall through to the unchanged -> ok=True path and the client would
-    # show "Assigned ... to Alfred" while the gate label remains and Lucius
+    # show "Assigned ... to Alfred" while the gate label remains and senior-dev
     # still skips it.
     _allowlist(monkeypatch, "acme-io/acme-backend")
     calls: list[list[str]] = []
@@ -326,7 +326,7 @@ def test_assign_issue_accepts_explicit_target_agent(monkeypatch) -> None:
     result = ia.assign_issue(
         "acme-io/acme-backend",
         12,
-        target_agent="batman",
+        target_agent="architect",
         fetcher=lambda _repo, _number: _issue(),
         runner=runner,
     )

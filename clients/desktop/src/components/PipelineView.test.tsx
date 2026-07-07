@@ -41,7 +41,7 @@ function card(overrides: Partial<ShippedCard> = {}): ShippedCard {
     number: 12,
     title: "Ready issue",
     url: "https://example.com/issues/12",
-    author: "lucius",
+    author: "senior-dev",
     kind: "issue",
     timestamp: "2026-06-02T11:00:00Z",
     age_days: 0,
@@ -94,7 +94,7 @@ describe("PipelineView", () => {
         columns: {
           queued: [],
           in_progress: [],
-          shipped: [card({ kind: "pr", number: 9, title: "feat: add export", author: "lucius" })],
+          shipped: [card({ kind: "pr", number: 9, title: "feat: add export", author: "senior-dev" })],
         },
         counts: { queued: 0, in_progress: 0, shipped: 1 },
       }),
@@ -109,7 +109,7 @@ describe("PipelineView", () => {
         columns: {
           queued: [],
           in_progress: [],
-          shipped: [card({ kind: "pr", number: 9, title: "feat: add export", author: "lucius" })],
+          shipped: [card({ kind: "pr", number: 9, title: "feat: add export", author: "senior-dev" })],
         },
         counts: { queued: 0, in_progress: 0, shipped: 1 },
       }),
@@ -124,7 +124,7 @@ describe("PipelineView", () => {
         columns: {
           queued: [],
           in_progress: [],
-          shipped: [card({ kind: "pr", number: 9, title: "feat: add export", author: "lucius" })],
+          shipped: [card({ kind: "pr", number: 9, title: "feat: add export", author: "senior-dev" })],
         },
         counts: { queued: 0, in_progress: 0, shipped: 1 },
       }),
@@ -162,7 +162,7 @@ describe("PipelineView", () => {
         columns: {
           queued: [],
           in_progress: [
-            card({ kind: "pr", number: 21, title: "feat: wip export", is_draft: true, author: "lucius" }),
+            card({ kind: "pr", number: 21, title: "feat: wip export", is_draft: true, author: "senior-dev" }),
           ],
           shipped: [],
         },
@@ -178,7 +178,7 @@ describe("PipelineView", () => {
         columns: {
           queued: [],
           in_progress: [
-            card({ kind: "pr", number: 22, title: "feat: ready export", is_draft: false, author: "lucius" }),
+            card({ kind: "pr", number: 22, title: "feat: ready export", is_draft: false, author: "senior-dev" }),
           ],
           shipped: [],
         },
@@ -337,7 +337,7 @@ describe("PipelineView", () => {
     );
   });
 
-  it("approves a waiting Batman plan in-place from its card primary action", async () => {
+  it("approves a waiting architect plan in-place from its card primary action", async () => {
     const onDecision = vi.fn();
     const user = userEvent.setup();
     renderPipeline({
@@ -565,10 +565,10 @@ describe("PipelineView", () => {
     renderPipeline({ onQueueAction });
 
     await user.type(screen.getByPlaceholderText(/owner\/repo#123/i), "your-org/api#42");
-    await user.selectOptions(screen.getByLabelText(/assignment target/i), "batman");
+    await user.selectOptions(screen.getByLabelText(/assignment target/i), "architect");
     await user.click(screen.getByRole("button", { name: /route/i }));
 
-    expect(onQueueAction).toHaveBeenCalledWith("your-org/api", 42, "assign", "batman");
+    expect(onQueueAction).toHaveBeenCalledWith("your-org/api", 42, "assign", "architect");
   });
 
   it("does not offer Hold or Mark done on demo cards", async () => {

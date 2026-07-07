@@ -1,6 +1,6 @@
-"""Tests for the ``bin/batman.py`` runner shell.
+"""Tests for the ``bin/architect.py`` runner shell.
 
-The heavy parser and lifecycle primitives live in ``lib/batman.py``. These
+The heavy parser and lifecycle primitives live in ``lib/architect_lifecycle.py``. These
 tests cover runner-only wiring that should stay offline and deterministic.
 """
 
@@ -24,24 +24,31 @@ def _isolated_alfred_home(tmp_path, monkeypatch):
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspace"))
     monkeypatch.setenv("GH_ORG", "myorg")
     for mod in list(sys.modules):
-        if mod.startswith("agent_runner") or mod in ("batman", "batman_runner", "slack_format"):
+        if mod.startswith("agent_runner") or mod in (
+            "architect_lifecycle",
+            "batman",
+            "architect_runner",
+            "slack_format",
+        ):
             del sys.modules[mod]
     sys.path.insert(0, str(REPO / "lib"))
     yield
 
 
 def _load_runner():
-    spec = importlib.util.spec_from_file_location("batman_runner", RUNNER)
+    spec = importlib.util.spec_from_file_location("architect_runner", RUNNER)
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["batman_runner"] = mod
+    sys.modules["architect_runner"] = mod
     spec.loader.exec_module(mod)
     return mod
 
 
 def test_batman_pickup_blocks_completed_large_features():
     runner = _load_runner()
-    assert runner._has_batman_pickup_blocker({"agent:large-feature", "agent:done"})
-    assert runner._has_batman_pickup_blocker({"agent:large-feature", "batman:fanout-complete"})
+    assert runner._has_architect_pickup_blocker({"agent:large-feature", "agent:done"})
+    assert runner._has_architect_pickup_blocker(
+        {"agent:large-feature", "architect:fanout-complete"}
+    )
 
 
 def test_main_noops_when_parent_repo_unconfigured(monkeypatch, capsys):
@@ -52,18 +59,75 @@ def test_main_noops_when_parent_repo_unconfigured(monkeypatch, capsys):
     monkeypatch.setattr(runner, "preflight", lambda *_a, **_kw: pytest.fail("no preflight"))
     monkeypatch.setattr(runner, "with_lock", lambda *_a, **_kw: pytest.fail("no lock"))
     monkeypatch.setattr(
-        runner.BatmanLifecycleConfig,
+        runner.ArchitectLifecycleConfig,
         "from_env",
-        classmethod(lambda _cls: runner.BatmanLifecycleConfig(parent_repo="")),
+        classmethod(lambda _cls: runner.ArchitectLifecycleConfig(parent_repo="")),
     )
     monkeypatch.setattr(
         runner,
         "_list_parent_repo_large_features",
-        lambda *_a, **_kw: pytest.fail("must not query GitHub without BATMAN_PARENT_REPO"),
+        lambda *_a, **_kw: pytest.fail("must not query GitHub without ARCHITECT_PARENT_REPO"),
     )
 
     assert runner.main() == 0
-    assert "BATMAN_PARENT_REPO is not configured" in capsys.readouterr().out
+    assert "ARCHITECT_PARENT_REPO is not configured" in capsys.readouterr().out
+
+
+def test_main_reports_legacy_batman_env_cutover(monkeypatch, capsys):
+    runner = _load_runner()
+
+    monkeypatch.setattr(runner, "doctor_mode", lambda: False)
+    monkeypatch.setattr(runner, "is_agent_enabled", lambda *_a, **_kw: True)
+    monkeypatch.setattr(runner, "preflight", lambda *_a, **_kw: pytest.fail("no preflight"))
+    monkeypatch.setattr(runner, "with_lock", lambda *_a, **_kw: pytest.fail("no lock"))
+    monkeypatch.setattr(
+        runner.ArchitectLifecycleConfig,
+        "from_env",
+        classmethod(
+            lambda _cls: runner.ArchitectLifecycleConfig(
+                parent_repo="", stale_legacy_env_keys=("BATMAN_PARENT_REPO",)
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_list_parent_repo_large_features",
+        lambda *_a, **_kw: pytest.fail("must not query GitHub with stale legacy config"),
+    )
+
+    assert runner.main() == 0
+    out = capsys.readouterr().out
+    assert "[ARCHITECT-CUTOVER-REQUIRED]" in out
+    assert "BATMAN_PARENT_REPO->ARCHITECT_PARENT_REPO" in out
+    assert "alfred architect setup" in out
+
+
+def test_main_reports_cutover_when_secondary_legacy_keys_remain(monkeypatch, capsys):
+    runner = _load_runner()
+
+    monkeypatch.setattr(runner, "doctor_mode", lambda: False)
+    monkeypatch.setattr(runner, "is_agent_enabled", lambda *_a, **_kw: True)
+    monkeypatch.setattr(runner, "preflight", lambda *_a, **_kw: pytest.fail("no preflight"))
+    monkeypatch.setattr(runner, "with_lock", lambda *_a, **_kw: pytest.fail("no lock"))
+    monkeypatch.setattr(
+        runner.ArchitectLifecycleConfig,
+        "from_env",
+        classmethod(
+            lambda _cls: runner.ArchitectLifecycleConfig(
+                parent_repo="myorg/specs", stale_legacy_env_keys=("BATMAN_AUTO_EXECUTE",)
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_list_parent_repo_large_features",
+        lambda *_a, **_kw: pytest.fail("must not query GitHub with mixed legacy config"),
+    )
+
+    assert runner.main() == 0
+    out = capsys.readouterr().out
+    assert "[ARCHITECT-CUTOVER-REQUIRED]" in out
+    assert "BATMAN_AUTO_EXECUTE->ARCHITECT_AUTO_EXECUTE" in out
 
 
 def test_main_parent_repo_does_not_require_gh_org(monkeypatch, capsys):
@@ -76,9 +140,9 @@ def test_main_parent_repo_does_not_require_gh_org(monkeypatch, capsys):
     monkeypatch.setattr(runner, "preflight", lambda spec: specs.append(spec))
     monkeypatch.setattr(runner, "with_lock", lambda *_a, **_kw: None)
     monkeypatch.setattr(
-        runner.BatmanLifecycleConfig,
+        runner.ArchitectLifecycleConfig,
         "from_env",
-        classmethod(lambda _cls: runner.BatmanLifecycleConfig(parent_repo="myorg/specs")),
+        classmethod(lambda _cls: runner.ArchitectLifecycleConfig(parent_repo="myorg/specs")),
     )
     monkeypatch.setattr(runner, "_list_parent_repo_large_features", lambda _repo: [])
 
@@ -117,7 +181,7 @@ def test_lifecycle_empty_plan_fails_before_approval(monkeypatch, capsys):
         def report(self, _plan, result):
             reports.append(result)
 
-    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "ArchitectLifecycle", FakeLifecycle)
     monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
     monkeypatch.setattr(
         runner, "slack_post", lambda message, **kw: slack_posts.append((message, kw))
@@ -144,14 +208,14 @@ def test_lifecycle_empty_plan_fails_before_approval(monkeypatch, capsys):
     )
 
     out = runner._run_lifecycle(
-        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent"),
+        config=runner.ArchitectLifecycleConfig(parent_repo="myorg/parent"),
         parent_issue={"number": 83, "title": "hollow", "body": ""},
         firing_id="fid-empty",
     )
 
     captured = capsys.readouterr()
     assert out == 0
-    assert "[BATMAN-DECOMPOSITION-FAILED]" in captured.out
+    assert "[ARCHITECT-DECOMPOSITION-FAILED]" in captured.out
     assert "parent=myorg/parent#83" in captured.out
     assert slack_posts and "No approval was requested" in slack_posts[0][0]
     assert reports and reports[0].reason == runner.EXEC_NO_CHILDREN
@@ -208,13 +272,13 @@ def test_lifecycle_prints_awaiting_approval_sentinel(monkeypatch, capsys):
         def report(self, _plan, _result):
             pass
 
-    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "ArchitectLifecycle", FakeLifecycle)
     monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
     monkeypatch.setattr(runner, "_save_pending_envelope", lambda *a, **kw: None)
     monkeypatch.setattr(runner, "_set_pending_approval_label", lambda *a, **kw: None)
 
     out = runner._run_lifecycle(
-        config=runner.BatmanLifecycleConfig(
+        config=runner.ArchitectLifecycleConfig(
             parent_repo="myorg/parent",
             auto_execute="approval-gate",
             approval_timeout_s=60,
@@ -225,7 +289,7 @@ def test_lifecycle_prints_awaiting_approval_sentinel(monkeypatch, capsys):
 
     captured = capsys.readouterr()
     assert out == 0
-    assert "[BATMAN-AWAITING-APPROVAL]" in captured.out
+    assert "[ARCHITECT-AWAITING-APPROVAL]" in captured.out
     assert "parent=myorg/parent#83" in captured.out
     assert "message_ts=1700.0001" in captured.out
     assert "timeout_s=60" in captured.out
@@ -269,7 +333,7 @@ def test_lifecycle_finalizes_parent_after_full_child_fanout(monkeypatch, capsys)
             order.append("report")
             reports.append(reported)
 
-    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "ArchitectLifecycle", FakeLifecycle)
     monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
     monkeypatch.setattr(
         runner,
@@ -294,7 +358,7 @@ def test_lifecycle_finalizes_parent_after_full_child_fanout(monkeypatch, capsys)
     )
 
     out = runner._run_lifecycle(
-        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+        config=runner.ArchitectLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
         parent_issue={"number": 83, "title": "ready", "body": ""},
         firing_id="fid-ready",
     )
@@ -303,21 +367,21 @@ def test_lifecycle_finalizes_parent_after_full_child_fanout(monkeypatch, capsys)
     assert out == 0
     assert order == ["ensure", "label", "close", "report"]
     assert reports == [result]
-    assert ensured == [("myorg/parent", runner.BATMAN_PARENT_FINALIZATION_LABELS)]
+    assert ensured == [("myorg/parent", runner.ARCHITECT_PARENT_FINALIZATION_LABELS)]
     assert edits == [
         (
             "myorg/parent",
             83,
             {
-                "add_labels": ["batman:fanout-complete"],
+                "add_labels": ["architect:fanout-complete"],
                 "remove_labels": ["agent:large-feature"],
             },
         )
     ]
     assert closes == [("myorg/parent", 83)]
     assert not runner._has_completed_fanout_marker("myorg/parent", 83)
-    assert "[BATMAN-PARENT-FANOUT-COMPLETE]" in captured.out
-    assert "[BATMAN-PARENT-CLOSED]" in captured.out
+    assert "[ARCHITECT-PARENT-FANOUT-COMPLETE]" in captured.out
+    assert "[ARCHITECT-PARENT-CLOSED]" in captured.out
 
 
 def test_lifecycle_keeps_completed_marker_when_parent_finalization_fails(monkeypatch, capsys):
@@ -360,7 +424,7 @@ def test_lifecycle_keeps_completed_marker_when_parent_finalization_fails(monkeyp
         edits.append((repo, number, kw))
         raise RuntimeError("github unavailable")
 
-    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "ArchitectLifecycle", FakeLifecycle)
     monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
     monkeypatch.setattr(
         runner,
@@ -375,7 +439,7 @@ def test_lifecycle_keeps_completed_marker_when_parent_finalization_fails(monkeyp
     )
 
     out = runner._run_lifecycle(
-        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+        config=runner.ArchitectLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
         parent_issue={"number": 83, "title": "ready", "body": ""},
         firing_id="fid-finalize-fail",
     )
@@ -383,13 +447,13 @@ def test_lifecycle_keeps_completed_marker_when_parent_finalization_fails(monkeyp
     captured = capsys.readouterr()
     assert out == 1
     assert reports == ["completed"]
-    assert ensured == [("myorg/parent", runner.BATMAN_PARENT_FINALIZATION_LABELS)]
+    assert ensured == [("myorg/parent", runner.ARCHITECT_PARENT_FINALIZATION_LABELS)]
     assert edits == [
         (
             "myorg/parent",
             83,
             {
-                "add_labels": ["batman:fanout-complete"],
+                "add_labels": ["architect:fanout-complete"],
                 "remove_labels": ["agent:large-feature"],
             },
         )
@@ -397,7 +461,7 @@ def test_lifecycle_keeps_completed_marker_when_parent_finalization_fails(monkeyp
     assert closes == []
     assert runner._has_completed_fanout_marker("myorg/parent", 83)
     assert runner._completed_fanout_marker_state("myorg/parent", 83) == "completed"
-    assert "[BATMAN-PARENT-FANOUT-COMPLETE-WARN]" in captured.err
+    assert "[ARCHITECT-PARENT-FANOUT-COMPLETE-WARN]" in captured.err
 
 
 def test_lifecycle_completed_marker_uses_executed_children(monkeypatch):
@@ -448,7 +512,7 @@ def test_lifecycle_completed_marker_uses_executed_children(monkeypatch):
         def report(self, _plan, _reported):
             pass
 
-    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "ArchitectLifecycle", FakeLifecycle)
     monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
     monkeypatch.setattr(runner, "ensure_labels", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
@@ -458,7 +522,7 @@ def test_lifecycle_completed_marker_uses_executed_children(monkeypatch):
     )
 
     out = runner._run_lifecycle(
-        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+        config=runner.ArchitectLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
         parent_issue={"number": 83, "title": "ready", "body": ""},
         firing_id="fid-executed-children",
     )
@@ -510,7 +574,7 @@ def test_completed_fanout_marker_retries_finalize_without_requeue(monkeypatch, c
     assert eligible == []
     assert finalize_calls == [("myorg/parent", 83)]
     assert not runner._has_completed_fanout_marker("myorg/parent", 83)
-    assert "[BATMAN-PARENT-FINALIZE-RETRY]" in captured.out
+    assert "[ARCHITECT-PARENT-FINALIZE-RETRY]" in captured.out
 
 
 def test_main_fails_when_completed_marker_finalization_retry_fails(monkeypatch, capsys):
@@ -540,9 +604,9 @@ def test_main_fails_when_completed_marker_finalization_retry_fails(monkeypatch, 
     monkeypatch.setattr(runner, "preflight", lambda _spec: None)
     monkeypatch.setattr(runner, "with_lock", lambda _codename: None)
     monkeypatch.setattr(
-        runner.BatmanLifecycleConfig,
+        runner.ArchitectLifecycleConfig,
         "from_env",
-        classmethod(lambda _cls: runner.BatmanLifecycleConfig(parent_repo="myorg/parent")),
+        classmethod(lambda _cls: runner.ArchitectLifecycleConfig(parent_repo="myorg/parent")),
     )
     monkeypatch.setattr(runner, "gh_json", lambda *_args, **_kwargs: rows)
     monkeypatch.setattr(
@@ -562,8 +626,8 @@ def test_main_fails_when_completed_marker_finalization_retry_fails(monkeypatch, 
     assert out == 1
     assert finalize_calls == [("myorg/parent", 83)]
     assert runner._completed_fanout_marker_state("myorg/parent", 83) == "completed"
-    assert "[BATMAN-PARENT-FINALIZE-RETRY]" in captured.out
-    assert "[BATMAN-PARENT-FINALIZE-RETRY-FAILED] pending=myorg/parent#83" in captured.err
+    assert "[ARCHITECT-PARENT-FINALIZE-RETRY]" in captured.out
+    assert "[ARCHITECT-PARENT-FINALIZE-RETRY-FAILED] pending=myorg/parent#83" in captured.err
 
 
 def test_executing_fanout_marker_skips_refanout_without_finalize(monkeypatch, capsys):
@@ -654,7 +718,7 @@ def test_stale_executing_fanout_marker_keeps_marker_and_requeues(monkeypatch, ca
     assert eligible == rows
     assert finalize_calls == []
     assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
-    assert "[BATMAN-PARENT-FANOUT-MARKER-STALE]" in captured.err
+    assert "[ARCHITECT-PARENT-FANOUT-MARKER-STALE]" in captured.err
 
 
 def test_stale_executing_fanout_marker_records_existing_children(monkeypatch, capsys):
@@ -720,7 +784,7 @@ def test_stale_executing_fanout_marker_records_existing_children(monkeypatch, ca
         ("myorg/backend", "Implement backend slice")
     ]
     assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
-    assert "[BATMAN-PARENT-FANOUT-MARKER-STALE]" in captured.err
+    assert "[ARCHITECT-PARENT-FANOUT-MARKER-STALE]" in captured.err
 
 
 def test_stale_executing_fanout_marker_survives_when_picker_chooses_other_parent(
@@ -778,7 +842,7 @@ def test_stale_executing_fanout_marker_survives_when_picker_chooses_other_parent
     assert picked is not None
     assert picked["number"] == 82
     assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
-    assert "[BATMAN-PARENT-FANOUT-MARKER-STALE]" in captured.err
+    assert "[ARCHITECT-PARENT-FANOUT-MARKER-STALE]" in captured.err
 
 
 def test_unknown_fanout_marker_clears_and_requeues(monkeypatch, capsys):
@@ -809,7 +873,7 @@ def test_unknown_fanout_marker_clears_and_requeues(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert eligible == rows
     assert not runner._has_completed_fanout_marker("myorg/parent", 83)
-    assert "[BATMAN-PARENT-FANOUT-MARKER-UNKNOWN]" in captured.err
+    assert "[ARCHITECT-PARENT-FANOUT-MARKER-UNKNOWN]" in captured.err
 
 
 def test_executing_fanout_marker_recovers_when_all_children_exist(monkeypatch, capsys):
@@ -873,7 +937,7 @@ def test_executing_fanout_marker_recovers_when_all_children_exist(monkeypatch, c
     assert eligible == []
     assert finalize_calls == [("myorg/parent", 83)]
     assert not runner._has_completed_fanout_marker("myorg/parent", 83)
-    assert "[BATMAN-PARENT-FINALIZE-RECOVER]" in captured.out
+    assert "[ARCHITECT-PARENT-FINALIZE-RECOVER]" in captured.out
 
 
 def test_executing_fanout_marker_does_not_recover_from_old_child(monkeypatch, capsys):
@@ -965,7 +1029,7 @@ def test_child_issue_parent_match_rejects_issue_number_prefixes():
 
 def test_lifecycle_leaves_parent_open_after_partial_child_fanout(monkeypatch, capsys):
     runner = _load_runner()
-    from batman import EXEC_PARTIAL
+    from architect_lifecycle import EXEC_PARTIAL
 
     edits = []
     closes = []
@@ -1010,7 +1074,7 @@ def test_lifecycle_leaves_parent_open_after_partial_child_fanout(monkeypatch, ca
         def report(self, _plan, _reported):
             pass
 
-    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "ArchitectLifecycle", FakeLifecycle)
     monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
     monkeypatch.setattr(
         runner,
@@ -1024,7 +1088,7 @@ def test_lifecycle_leaves_parent_open_after_partial_child_fanout(monkeypatch, ca
     )
 
     out = runner._run_lifecycle(
-        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+        config=runner.ArchitectLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
         parent_issue={"number": 83, "title": "ready", "body": ""},
         firing_id="fid-partial",
     )
@@ -1047,7 +1111,7 @@ def test_lifecycle_leaves_parent_open_after_partial_child_fanout(monkeypatch, ca
             "title": "Implement frontend slice",
         },
     ]
-    assert "[BATMAN-PARTIAL-FANOUT-MARKER-KEPT]" in capsys.readouterr().err
+    assert "[ARCHITECT-PARTIAL-FANOUT-MARKER-KEPT]" in capsys.readouterr().err
 
 
 def test_lifecycle_aborts_before_fanout_when_marker_save_fails(monkeypatch):
@@ -1076,12 +1140,12 @@ def test_lifecycle_aborts_before_fanout_when_marker_save_fails(monkeypatch):
         def report(self, _plan, reported):
             reports.append(reported.reason)
 
-    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "ArchitectLifecycle", FakeLifecycle)
     monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
     monkeypatch.setattr(runner, "_save_completed_fanout_marker", lambda *_args, **_kwargs: False)
 
     out = runner._run_lifecycle(
-        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+        config=runner.ArchitectLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
         parent_issue={"number": 83, "title": "ready", "body": ""},
         firing_id="fid-marker-fails",
     )
@@ -1123,12 +1187,12 @@ def test_lifecycle_preserves_executing_marker_when_fanout_raises(monkeypatch, ca
         def report(self, _plan, reported):
             reports.append(reported)
 
-    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "ArchitectLifecycle", FakeLifecycle)
     monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
 
     with pytest.raises(RuntimeError, match="fanout crashed"):
         runner._run_lifecycle(
-            config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+            config=runner.ArchitectLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
             parent_issue={"number": 83, "title": "ready", "body": ""},
             firing_id="fid-fanout-crash",
         )
@@ -1136,12 +1200,12 @@ def test_lifecycle_preserves_executing_marker_when_fanout_raises(monkeypatch, ca
     assert reports == []
     captured = capsys.readouterr()
     assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
-    assert "[BATMAN-FANOUT-CRASH-MARKER-KEPT]" in captured.err
+    assert "[ARCHITECT-FANOUT-CRASH-MARKER-KEPT]" in captured.err
 
 
 def test_lifecycle_executing_marker_uses_execution_plan(monkeypatch):
     runner = _load_runner()
-    from batman import EXEC_PARTIAL
+    from architect_lifecycle import EXEC_PARTIAL
 
     reports = []
     original_plan = SimpleNamespace(
@@ -1220,11 +1284,11 @@ def test_lifecycle_executing_marker_uses_execution_plan(monkeypatch):
         def report(self, plan, reported):
             reports.append((plan, reported))
 
-    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "ArchitectLifecycle", FakeLifecycle)
     monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
 
     out = runner._run_lifecycle(
-        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+        config=runner.ArchitectLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
         parent_issue={"number": 83, "title": "ready", "body": ""},
         firing_id="fid-execution-plan",
     )
@@ -1294,7 +1358,7 @@ def test_lifecycle_skips_existing_children_from_stale_marker_retry(monkeypatch):
         def report(self, plan, reported):
             reports.append((plan, reported))
 
-    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "ArchitectLifecycle", FakeLifecycle)
     monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
     monkeypatch.setattr(
         runner,
@@ -1303,7 +1367,7 @@ def test_lifecycle_skips_existing_children_from_stale_marker_retry(monkeypatch):
     )
 
     out = runner._run_lifecycle(
-        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+        config=runner.ArchitectLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
         parent_issue={
             "number": 83,
             "title": "ready",
@@ -1324,7 +1388,7 @@ def test_lifecycle_skips_existing_children_from_stale_marker_retry(monkeypatch):
 
 def test_lifecycle_preserves_full_marker_when_stale_retry_files_nothing(monkeypatch, capsys):
     runner = _load_runner()
-    from batman import EXEC_PARTIAL
+    from architect_lifecycle import EXEC_PARTIAL
 
     reports = []
     finalized = []
@@ -1383,7 +1447,7 @@ def test_lifecycle_preserves_full_marker_when_stale_retry_files_nothing(monkeypa
         def report(self, plan, reported):
             reports.append((plan, reported))
 
-    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "ArchitectLifecycle", FakeLifecycle)
     monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
     monkeypatch.setattr(
         runner,
@@ -1392,7 +1456,7 @@ def test_lifecycle_preserves_full_marker_when_stale_retry_files_nothing(monkeypa
     )
 
     out = runner._run_lifecycle(
-        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+        config=runner.ArchitectLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
         parent_issue={
             "number": 83,
             "title": "ready",
@@ -1470,7 +1534,7 @@ def test_lifecycle_warns_when_completed_marker_upgrade_fails(monkeypatch, capsys
             return False
         return real_save(*args, **kwargs)
 
-    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "ArchitectLifecycle", FakeLifecycle)
     monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
     monkeypatch.setattr(runner, "_save_completed_fanout_marker", flaky_save)
     monkeypatch.setattr(runner, "ensure_labels", lambda *_args, **_kwargs: None)
@@ -1481,7 +1545,7 @@ def test_lifecycle_warns_when_completed_marker_upgrade_fails(monkeypatch, capsys
     )
 
     out = runner._run_lifecycle(
-        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+        config=runner.ArchitectLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
         parent_issue={"number": 83, "title": "ready", "body": ""},
         firing_id="fid-upgrade-fails",
     )
@@ -1490,7 +1554,7 @@ def test_lifecycle_warns_when_completed_marker_upgrade_fails(monkeypatch, capsys
     assert out == 1
     assert reports == ["executing"]
     assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
-    assert "[BATMAN-COMPLETED-FANOUT-UPGRADE-WARN]" in captured.err
+    assert "[ARCHITECT-COMPLETED-FANOUT-UPGRADE-WARN]" in captured.err
 
 
 def test_finalize_parent_treats_close_failure_as_best_effort(monkeypatch, capsys):
@@ -1519,14 +1583,14 @@ def test_finalize_parent_treats_close_failure_as_best_effort(monkeypatch, capsys
             "myorg/parent",
             83,
             {
-                "add_labels": ["batman:fanout-complete"],
+                "add_labels": ["architect:fanout-complete"],
                 "remove_labels": ["agent:large-feature"],
             },
         )
     ]
     assert closes == [("myorg/parent", 83)]
-    assert "[BATMAN-PARENT-FANOUT-COMPLETE]" in captured.out
-    assert "[BATMAN-PARENT-CLOSE-WARN]" in captured.err
+    assert "[ARCHITECT-PARENT-FANOUT-COMPLETE]" in captured.out
+    assert "[ARCHITECT-PARENT-CLOSE-WARN]" in captured.err
 
 
 def test_close_parent_issue_uses_configured_parent_repo(monkeypatch):
@@ -1586,11 +1650,11 @@ def test_lifecycle_file_approval_mode_waits_without_slack_gate(monkeypatch, caps
         def report(self, _plan, result):
             reports.append(result)
 
-    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "ArchitectLifecycle", FakeLifecycle)
     monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
 
     out = runner._run_lifecycle(
-        config=runner.BatmanLifecycleConfig(
+        config=runner.ArchitectLifecycleConfig(
             parent_repo="myorg/parent",
             auto_execute="approval-gate",
             approval_mode=runner.APPROVAL_MODE_FILE,
@@ -1605,7 +1669,7 @@ def test_lifecycle_file_approval_mode_waits_without_slack_gate(monkeypatch, caps
     assert len(awaited) == 1
     assert awaited[0].channel == "file"
     assert awaited[0].message_ts == "issue-83"
-    assert "[BATMAN-AWAITING-APPROVAL]" in captured.out
+    assert "[ARCHITECT-AWAITING-APPROVAL]" in captured.out
     assert "channel=file" in captured.out
     assert reports and reports[0].reason == "approval_timeout"
 
@@ -1636,7 +1700,7 @@ def test_has_pending_approval_label_returns_false_when_absent(monkeypatch):
 def test_pending_envelope_roundtrip(monkeypatch, tmp_path):
     """Saving then loading the envelope yields back the same channel+ts."""
     runner = _load_runner()
-    import batman as bm
+    import architect_lifecycle as bm
 
     plan = bm.parse_parent_issue(
         body="Repos:\n- myorg/backend\n\nChildren:\n- backend: scope\n",
@@ -1654,14 +1718,14 @@ def test_pending_envelope_roundtrip(monkeypatch, tmp_path):
 
 
 def test_pending_envelope_aged_out(monkeypatch, tmp_path):
-    """An envelope older than ALFRED_BATMAN_APPROVAL_MAX_AGE_HOURS must
+    """An envelope older than ALFRED_ARCHITECT_APPROVAL_MAX_AGE_HOURS must
     re-draft, not resume - so an abandoned plan post doesn't hold a
     parent issue hostage forever."""
     runner = _load_runner()
     import json
     from datetime import datetime, timedelta
 
-    import batman as bm
+    import architect_lifecycle as bm
 
     plan = bm.parse_parent_issue(
         body="Repos:\n- myorg/backend\n\nChildren:\n- backend: scope\n",
@@ -1685,7 +1749,7 @@ def test_pending_envelope_aged_out(monkeypatch, tmp_path):
             }
         )
     )
-    monkeypatch.setenv("ALFRED_BATMAN_APPROVAL_MAX_AGE_HOURS", "24")
+    monkeypatch.setenv("ALFRED_ARCHITECT_APPROVAL_MAX_AGE_HOURS", "24")
     out = runner._load_pending_envelope("myorg/parent", 99, plan=plan)
     assert out is None
 

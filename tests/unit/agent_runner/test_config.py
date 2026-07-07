@@ -38,8 +38,8 @@ def test_agent_engine_env_precedence(fresh_agent_runner, monkeypatch):
     """ALFRED_<AGENT>_ENGINE wins over fleet-wide ALFRED_ENGINE."""
     ar = fresh_agent_runner
     monkeypatch.setenv("ALFRED_ENGINE", "codex")
-    monkeypatch.setenv("ALFRED_LUCIUS_ENGINE", "claude")
-    assert ar.agent_engine("lucius") == "claude"
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_ENGINE", "claude")
+    assert ar.agent_engine("senior-dev") == "claude"
 
 
 def test_agent_engine_ignores_removed_review_engine_alias(fresh_agent_runner, monkeypatch):
@@ -83,11 +83,11 @@ def test_dry_run_toggle(fresh_agent_runner, monkeypatch):
 
 
 def test_codex_sandbox_for_agent_precedence(fresh_agent_runner, monkeypatch):
-    """ALFRED_<AGENT>_CODEX_SANDBOX > legacy alias > CODEX_WRITE > default."""
+    """ALFRED_<AGENT>_CODEX_SANDBOX > CODEX_WRITE > default."""
     ar = fresh_agent_runner
-    monkeypatch.setenv("ALFRED_LUCIUS_CODEX_WRITE", "1")
-    assert ar.codex_sandbox_for_agent("lucius") == "workspace-write"
-    monkeypatch.setenv("LUCIUS_CODEX_SANDBOX", "danger-full-access")
-    assert ar.codex_sandbox_for_agent("lucius") == "danger-full-access"
-    monkeypatch.setenv("ALFRED_LUCIUS_CODEX_SANDBOX", "read-only")
-    assert ar.codex_sandbox_for_agent("lucius") == "read-only"
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_CODEX_WRITE", "1")
+    assert ar.codex_sandbox_for_agent("senior-dev") == "workspace-write"
+    monkeypatch.setenv("LUCIUS" + "_CODEX_SANDBOX", "danger-full-access")
+    assert ar.codex_sandbox_for_agent("senior-dev") == "workspace-write"
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_CODEX_SANDBOX", "read-only")
+    assert ar.codex_sandbox_for_agent("senior-dev") == "read-only"

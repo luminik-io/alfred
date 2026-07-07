@@ -55,7 +55,7 @@ def test_lifecycle_doctor_happy_path() -> None:
         env={
             "SLACK_BOT_TOKEN": "xoxb-test",
             "CLAUDE_CODE_OAUTH_TOKEN": "oauth-test",
-            "BATMAN_SLACK_CHANNEL": "alfred-test",
+            "ARCHITECT_SLACK_CHANNEL": "alfred-test",
         },
         slack_client=FakeSlack(),
         command_runner=fake_claude_ok,
@@ -78,7 +78,7 @@ def test_lifecycle_doctor_uses_configured_bundle_slug_prefix() -> None:
         env={
             "SLACK_BOT_TOKEN": "xoxb-test",
             "CLAUDE_CODE_OAUTH_TOKEN": "oauth-test",
-            "BATMAN_BUNDLE_SLUG_PREFIX": "prod",
+            "ARCHITECT_BUNDLE_SLUG_PREFIX": "prod",
         },
         slack_client=FakeSlack(),
         command_runner=fake_claude_ok,
@@ -100,7 +100,7 @@ def test_lifecycle_doctor_fails_prefixed_label_that_is_too_long() -> None:
         env={
             "SLACK_BOT_TOKEN": "xoxb-test",
             "CLAUDE_CODE_OAUTH_TOKEN": "oauth-test",
-            "BATMAN_BUNDLE_SLUG_PREFIX": "very-long-production-fleet-prefix",
+            "ARCHITECT_BUNDLE_SLUG_PREFIX": "very-long-production-fleet-prefix",
         },
         slack_client=FakeSlack(),
         command_runner=fake_claude_ok,

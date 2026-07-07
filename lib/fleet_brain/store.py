@@ -501,7 +501,7 @@ AGENT_BRANCH_PREFIXES: Final[tuple[str, ...]] = (
     "test-engineer/",
     "triage/",
 )
-NON_WORK_ISSUE_LABELS: Final[tuple[str, ...]] = ("batman:fanout-complete",)
+NON_WORK_ISSUE_LABELS: Final[tuple[str, ...]] = ("architect:fanout-complete",)
 
 
 def _to_iso(dt: datetime) -> str:

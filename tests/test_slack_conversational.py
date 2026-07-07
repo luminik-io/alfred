@@ -158,7 +158,7 @@ def test_ambient_engages_on_bot_mention_token() -> None:
 def test_ambient_engages_on_fleet_action_cue() -> None:
     assert ambient_engages("assign acme-io/acme-frontend#1") is True
     assert ambient_engages("queue acme-io/acme-frontend#1") is True
-    assert ambient_engages("run Batman now") is True
+    assert ambient_engages("run architect now") is True
     assert ambient_engages("what's blocked right now?") is True
     assert ambient_engages("what is running on the fleet?") is True
 

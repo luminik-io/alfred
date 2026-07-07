@@ -55,7 +55,7 @@ _REPO_ENV_KEYS = (QUEUE_REPOS_ENV, SHIPPED_REPOS_ENV, BRIDGE_REPOS_ENV)
 _BOARD_REPO_ENV_KEYS = (SHIPPED_REPOS_ENV, BRIDGE_REPOS_ENV)
 CODE_MEMORY_REPOS_ENV = "ALFRED_CODE_MEMORY_REPOS"
 RUNTIME_REPO_SCOPE_ENV_KEYS = (
-    "BATMAN_ROLLOUT_ORDER",
+    "ARCHITECT_ROLLOUT_ORDER",
     "ALFRED_SENIOR_DEV_REPOS",
     "ALFRED_PLANNER_REPOS",
     "ALFRED_TEST_ENGINEER_REPOS",
@@ -1375,7 +1375,7 @@ def first_run_readiness_status(
         _code_graph_readiness_check(capability_plane, code_memory),
         _context_compression_readiness_check(capability_plane),
         _engineering_skills_readiness_check(capability_plane),
-        _batman_parent_repo_readiness_check(runtime_env),
+        _architect_parent_repo_readiness_check(runtime_env),
         _slack_readiness_check(install),
     ]
     required = [check for check in checks if check["required"]]
@@ -1648,21 +1648,21 @@ def _engineering_skills_readiness_check(capability_plane: dict[str, Any]) -> dic
     )
 
 
-def _batman_parent_repo_readiness_check(env: dict[str, str]) -> dict[str, Any]:
-    parent_repo = _code_memory_config(env, "BATMAN_PARENT_REPO")
+def _architect_parent_repo_readiness_check(env: dict[str, str]) -> dict[str, Any]:
+    parent_repo = _code_memory_config(env, "ARCHITECT_PARENT_REPO")
     ready = bool(parent_repo)
     return _readiness_check(
-        "batman_parent_repo",
-        "Batman parent repo",
+        "architect_parent_repo",
+        "Architect parent repo",
         category="multi-repo",
         tier="optional",
         ready=ready,
         detail=(
-            f"Batman will read large-feature plans from {parent_repo}."
+            f"The architect will read large-feature plans from {parent_repo}."
             if ready
-            else "Batman is installed but idle until BATMAN_PARENT_REPO is configured."
+            else "The architect is installed but idle until ARCHITECT_PARENT_REPO is configured."
         ),
-        action="Run `alfred batman setup` before using agent:large-feature.",
+        action="Run `alfred architect setup` before using agent:large-feature.",
     )
 
 
