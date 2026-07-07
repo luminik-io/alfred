@@ -1086,8 +1086,8 @@ fn terminal_core_install_command(plan: &CoreInstallPlan) -> String {
     parts.push("export ALFRED_NONINTERACTIVE=1 ALFRED_DESKTOP_INSTALL=1".to_string());
     parts.push(format!(
         "{} && {} && {} && {} && {} && {}",
-        shell_command(&plan.install_program, &plan.install_args),
         terminal_path_refresh_command(),
+        shell_command(&plan.install_program, &plan.install_args),
         shell_command(&plan.seed_program, &plan.seed_args),
         shell_command(&plan.deploy_program, &plan.deploy_args),
         shell_command(&plan.skills_program, &plan.skills_args),
@@ -2391,11 +2391,11 @@ mod tests {
         assert!(command.contains("alfred code-memory doctor"));
         assert!(
             command
-                .find("'/tmp/alfred core/install.sh'")
-                .expect("install command should exist")
+                .find("$HOME/.local/bin")
+                .expect("terminal cli path export should exist")
                 < command
-                    .find("$HOME/.local/bin")
-                    .expect("terminal cli path export should exist")
+                    .find("'/tmp/alfred core/install.sh'")
+                    .expect("install command should exist")
         );
         assert!(
             command
@@ -2409,6 +2409,14 @@ mod tests {
             command
                 .find("brew shellenv")
                 .expect("path refresh should exist")
+                < command
+                    .find("'/tmp/alfred core/install.sh'")
+                    .expect("install command should exist")
+        );
+        assert!(
+            command
+                .find("'/tmp/alfred core/install.sh'")
+                .expect("install command should exist")
                 < command
                     .find("--seed-runtime-roster")
                     .expect("seed command should exist")
@@ -2436,6 +2444,59 @@ mod tests {
                 < command
                     .find("alfred code-memory doctor")
                     .expect("code-memory command should exist")
+        );
+    }
+
+    #[test]
+    fn terminal_core_install_command_refreshes_path_before_installed_cli_bootstrap() {
+        let plan = CoreInstallPlan {
+            core_dir: None,
+            install_program: "alfred-install".to_string(),
+            install_args: vec!["--non-interactive".to_string()],
+            seed_program: "alfred-init".to_string(),
+            seed_args: vec![
+                "--seed-runtime-roster".to_string(),
+                "--agents".to_string(),
+                "all".to_string(),
+            ],
+            deploy_program: "alfred-deploy".to_string(),
+            deploy_args: Vec::new(),
+            skills_program: "alfred".to_string(),
+            skills_args: vec![
+                "skills".to_string(),
+                "install".to_string(),
+                "--starter".to_string(),
+            ],
+            code_memory_program: "alfred".to_string(),
+            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
+            source_label: "installed CLI".to_string(),
+        };
+
+        let command = terminal_core_install_command(&plan);
+
+        assert!(
+            command
+                .find("$HOME/.local/bin")
+                .expect("terminal cli path export should exist")
+                < command
+                    .find("alfred-install --non-interactive")
+                    .expect("install command should exist")
+        );
+        assert!(
+            command
+                .find("brew shellenv")
+                .expect("path refresh should exist")
+                < command
+                    .find("alfred-install --non-interactive")
+                    .expect("install command should exist")
+        );
+        assert!(
+            command
+                .find("alfred-install --non-interactive")
+                .expect("install command should exist")
+                < command
+                    .find("alfred-init --seed-runtime-roster --agents all")
+                    .expect("seed command should exist")
         );
     }
 
