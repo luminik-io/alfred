@@ -148,8 +148,10 @@ const heroRuntimeLines = [
 
 const heroRoster = [
   { name: "Batman", role: "architect" },
+  { name: "Drake", role: "planner" },
   { name: "Lucius", role: "senior-dev" },
-  { name: "Bane", role: "tests" },
+  { name: "Bane", role: "test-engineer" },
+  { name: "Ra's", role: "reviewer" },
   { name: "Nightwing", role: "fixer" },
 ];
 
@@ -200,8 +202,8 @@ const heroRoster = [
         ))}
       </div>
 
-      <div class="hero-proof__roster" aria-label="Default Alfred roster">
-        <span class="m-mono">full fleet at install</span>
+      <div class="hero-proof__roster" aria-label="Representative installed Alfred roles">
+        <span class="m-mono">sample installed roles</span>
         <div>
           {heroRoster.map((agent) => (
             <span><strong>{agent.name}</strong> {agent.role}</span>
@@ -493,6 +495,7 @@ const heroRoster = [
     display: grid;
     gap: 1px;
     border: 1px solid var(--alfred-border);
+    background: var(--alfred-black);
     background: color-mix(in oklab, var(--alfred-black) 58%, transparent);
   }
   .hero-proof__line {
@@ -502,6 +505,7 @@ const heroRoster = [
     gap: 12px;
     min-width: 0;
     padding: 9px 11px;
+    background: var(--alfred-surface);
     background: color-mix(in oklab, var(--alfred-surface) 72%, transparent);
     font-family: var(--font-mono);
     font-size: 12px;
@@ -540,6 +544,7 @@ const heroRoster = [
   .hero-proof__stat {
     min-width: 0;
     padding: 12px 10px;
+    background: var(--alfred-surface);
     background: color-mix(in oklab, var(--alfred-surface) 82%, transparent);
   }
   .hero-proof__stat strong {
@@ -578,6 +583,7 @@ const heroRoster = [
     min-width: 0;
     padding: 6px 8px;
     border: 1px solid var(--alfred-border);
+    background: var(--alfred-black);
     background: color-mix(in oklab, var(--alfred-black) 48%, transparent);
     color: var(--alfred-mute);
     font-size: 12px;
@@ -758,6 +764,7 @@ const heroRoster = [
     font-size: 12px;
     line-height: 1.5;
     color: var(--alfred-mute);
+    background: var(--alfred-black);
     background: color-mix(in oklab, var(--alfred-black) 55%, transparent);
     border: 1px solid var(--glass-edge);
     border-radius: 0;
