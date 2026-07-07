@@ -198,7 +198,7 @@ no token.
 `GET /api/setup/status` includes a `first_run` readiness block for native
 onboarding. It rolls up GitHub auth, engine CLIs, repo scope, queue coverage,
 local checkout mapping, scheduled fleet deployment, Desktop action token,
-recommended code graph memory, context compression, engineering skill packs,
+recommended code graph memory, Alfred context governor, engineering skill packs,
 optional Batman parent-repo setup, and optional Slack collaboration into one
 contract:
 
@@ -229,9 +229,10 @@ contract:
 ```
 
 Required rows decide whether the first real run is safe to start. Recommended
-rows are visible but do not block: code graph, Headroom-style context
-compression, and engineering skill packs can be finished without hiding the core
-install state.
+rows are visible but do not block: code graph, Alfred's context governor, and
+engineering skill packs can be finished without hiding the core install state.
+If an operator explicitly disables one of those local capabilities, first-run
+readiness reports it as disabled instead of presenting it as unfinished setup.
 
 `GET /api/usage` is served by `alfred serve` today and backs Alfred Desktop's
 capacity rail. It reports your real Claude subscription headroom for

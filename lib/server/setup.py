@@ -122,7 +122,7 @@ _CAPABILITY_SOURCES: dict[str, dict[str, str]] = {
         "license": "MIT",
     },
     "context_compression": {
-        "source": "headroomlabs-ai/headroom",
+        "source": "Alfred context governor, headroomlabs-ai/headroom",
         "url": "https://github.com/headroomlabs-ai/headroom",
         "license": "Apache-2.0",
     },
@@ -760,14 +760,19 @@ def _code_graph_capability(code_memory: dict[str, Any]) -> dict[str, Any]:
     indexed = bool(code_memory.get("index_present"))
     if not enabled:
         state = "disabled"
+        install_hint = "Set ALFRED_CODE_MEMORY_MCP=1 to re-enable code graph memory."
     elif installed and indexed:
         state = "ready"
+        install_hint = "Run `alfred code-memory doctor`, then `alfred code-memory index`."
     elif installed:
         state = "needs_index"
+        install_hint = "Run `alfred code-memory doctor`, then `alfred code-memory index`."
     elif code_memory.get("autofetch"):
         state = "installable"
+        install_hint = "Run `alfred code-memory doctor`, then `alfred code-memory index`."
     else:
         state = "missing"
+        install_hint = "Run `alfred code-memory doctor`, then `alfred code-memory index`."
     return _capability_base(
         "code_graph",
         title="Code graph memory",
@@ -784,39 +789,50 @@ def _code_graph_capability(code_memory: dict[str, Any]) -> dict[str, Any]:
             "repos": code_memory.get("repos"),
             "version_pin": code_memory.get("version_pin"),
         },
-        install_hint="Run `alfred code-memory doctor`, then `alfred code-memory index`.",
+        install_hint=install_hint,
     )
 
 
 def _context_compression_capability(env: Mapping[str, str]) -> dict[str, Any]:
     search = _join_search_path(_engine_search_path(env), env.get("PATH", ""))
     binary = shutil.which("headroom", path=search)
-    enabled = _env_flag(env, "ALFRED_CONTEXT_COMPRESSION", default=False)
-    if binary:
-        state = "available"
-        detail = (
-            "Headroom CLI is installed; Alfred will report ready after runner wiring is enabled."
-            if enabled
-            else "Headroom CLI is installed; runner integration is not wired yet."
-        )
+    built_in_enabled = _env_flag(env, "ALFRED_CONTEXT_GOVERNOR", default=True)
+    headroom_enabled = _env_flag(env, "ALFRED_CONTEXT_COMPRESSION", default=False)
+    if built_in_enabled:
+        state = "ready"
+        if binary and headroom_enabled:
+            detail = (
+                "Alfred's built-in context governor is active; Headroom is detected "
+                "as an optional external compression layer."
+            )
+        elif binary:
+            detail = (
+                "Alfred's built-in context governor is active; Headroom is installed "
+                "and remains optional."
+            )
+        else:
+            detail = "Alfred's built-in context governor is active for every agent firing."
     else:
-        state = "missing"
-        detail = (
-            "Headroom is not installed yet; Alfred can use it as a local token-compression layer."
-        )
+        state = "disabled"
+        detail = "Alfred's built-in context governor is disabled with ALFRED_CONTEXT_GOVERNOR."
     return _capability_base(
         "context_compression",
-        title="Context compression",
+        title="Context governor",
         category="tokens",
         recommended=True,
         state=state,
-        installed=bool(binary),
-        enabled=enabled,
+        installed=built_in_enabled,
+        enabled=built_in_enabled,
         detail=detail,
-        detected={"binary": binary, "env_key": "ALFRED_CONTEXT_COMPRESSION"},
+        detected={
+            "built_in": True,
+            "env_key": "ALFRED_CONTEXT_GOVERNOR",
+            "headroom_binary": binary,
+            "headroom_enabled": headroom_enabled,
+            "headroom_env_key": "ALFRED_CONTEXT_COMPRESSION",
+        },
         install_hint=(
-            "Install `headroom-ai[all]` with pip or `headroom-ai` with npm, "
-            "then run `headroom doctor`."
+            "Unset ALFRED_CONTEXT_GOVERNOR or set it to 1 to re-enable. Headroom remains optional."
         ),
     )
 
@@ -853,7 +869,10 @@ def _env_flag(env: Mapping[str, str], key: str, *, default: bool) -> bool:
     raw = env.get(key)
     if raw is None:
         return default
-    return raw.strip().lower() not in _FALSEY
+    normalized = raw.strip().lower()
+    if normalized == "":
+        return default
+    return normalized not in _FALSEY
 
 
 def _installed_skill_paths(env: Mapping[str, str]) -> list[Path]:
@@ -1602,19 +1621,26 @@ def _code_graph_readiness_check(
     capability_plane: dict[str, Any], code_memory: dict[str, Any]
 ) -> dict[str, Any]:
     capability = _capability_by_key(capability_plane, "code_graph")
-    ready = capability.get("state") == "ready"
-    return _readiness_check(
+    capability_state = str(capability.get("state") or "")
+    ready = capability_state == "ready"
+    disabled = capability_state == "disabled"
+    row = _readiness_check(
         "code_graph",
         "Code graph memory",
         category="memory",
-        tier="recommended",
+        tier="optional" if disabled else "recommended",
         ready=ready,
         detail=str(capability.get("detail") or code_memory.get("detail") or ""),
-        action=str(capability.get("install_hint") or "Run `alfred code-memory doctor`."),
+        action=""
+        if disabled
+        else str(capability.get("install_hint") or "Run `alfred code-memory doctor`."),
         path=str(code_memory.get("graph_dir") or code_memory.get("index_dir") or "") or None,
-    ) | {
+    )
+    if disabled:
+        row["state"] = "disabled"
+    return row | {
         "detected": {
-            "capability_state": capability.get("state"),
+            "capability_state": capability_state,
             "enabled": bool(capability.get("enabled")),
         },
     }
@@ -1622,16 +1648,23 @@ def _code_graph_readiness_check(
 
 def _context_compression_readiness_check(capability_plane: dict[str, Any]) -> dict[str, Any]:
     capability = _capability_by_key(capability_plane, "context_compression")
-    ready = capability.get("state") == "ready"
-    return _readiness_check(
+    capability_state = str(capability.get("state") or "")
+    ready = capability_state == "ready"
+    disabled = capability_state == "disabled"
+    row = _readiness_check(
         "context_compression",
-        "Context compression",
+        "Context governor",
         category="tokens",
-        tier="recommended",
+        tier="optional" if disabled else "recommended",
         ready=ready,
         detail=str(capability.get("detail") or ""),
-        action=str(capability.get("install_hint") or "Install and enable Headroom when ready."),
+        action=""
+        if disabled
+        else str(capability.get("install_hint") or "Re-enable Alfred's context governor."),
     )
+    if disabled:
+        row["state"] = "disabled"
+    return row
 
 
 def _engineering_skills_readiness_check(capability_plane: dict[str, Any]) -> dict[str, Any]:

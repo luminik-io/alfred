@@ -31,8 +31,8 @@ The client is for trust and operations:
 2. Open Alfred Desktop. Setup detects an existing Alfred core install when one
    is present, or installs/repairs bundled Alfred core on this machine.
 3. Connect GitHub and Claude or Codex, choose repos, configure the full fleet,
-   check the local capability plane (code graph memory, context compression,
-   and engineering skills), pick a roster theme or custom display names, and
+   check the local capability plane (code graph memory, Alfred's context
+   governor, and engineering skills), pick a roster theme or custom display names, and
    run doctor.
 4. When the runtime is reachable, the app connects to `http://127.0.0.1` or
    `http://localhost` and reads the same local state as the CLI.
