@@ -4,7 +4,7 @@ use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
-use std::{io::Read, process::Child};
+use std::{io::Read, io::Write, process::Child};
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -97,18 +97,19 @@ async fn run_alfred_action(
 }
 
 #[tauri::command]
-async fn install_alfred_core(app: AppHandle) -> Result<NativeCommandResult, String> {
-    tauri::async_runtime::spawn_blocking(move || install_alfred_core_blocking(&app))
+async fn install_alfred_core(
+    app: AppHandle,
+    runtime_port: u16,
+) -> Result<NativeCommandResult, String> {
+    let runtime_port = validate_runtime_port(runtime_port)?;
+    tauri::async_runtime::spawn_blocking(move || install_alfred_core_blocking(&app, runtime_port))
         .await
         .map_err(|err| format!("Alfred core install failed to complete: {err}"))?
 }
 
 #[tauri::command]
-fn start_alfred_runtime(port: Option<u16>) -> Result<NativeCommandResult, String> {
-    let port = port.unwrap_or(7010);
-    if !(1024..=65535).contains(&port) {
-        return Err("runtime port must be between 1024 and 65535".to_string());
-    }
+fn start_alfred_runtime(port: u16) -> Result<NativeCommandResult, String> {
+    let port = validate_runtime_port(port)?;
 
     let args = alfred_serve_args(port);
     let resolved = resolve_program("alfred");
@@ -979,13 +980,26 @@ struct CoreInstallPlan {
     source_label: String,
 }
 
-fn install_alfred_core_blocking(app: &AppHandle) -> Result<NativeCommandResult, String> {
+fn validate_runtime_port(port: u16) -> Result<u16, String> {
+    if (1024..=65535).contains(&port) {
+        Ok(port)
+    } else {
+        Err("runtime port must be between 1024 and 65535".to_string())
+    }
+}
+
+fn install_alfred_core_blocking(
+    app: &AppHandle,
+    runtime_port: u16,
+) -> Result<NativeCommandResult, String> {
     let plan = core_install_plan(app)?;
     let mut stdout = String::new();
     let mut stderr = String::new();
     let preview = core_install_preview(&plan);
 
-    if let Some(handoff) = desktop_privileged_bootstrap_handoff(&plan, preview.clone()) {
+    if let Some(handoff) =
+        desktop_privileged_bootstrap_handoff(&plan, preview.clone(), runtime_port)
+    {
         return Ok(handoff);
     }
 
@@ -1103,9 +1117,10 @@ fn install_alfred_core_blocking(app: &AppHandle) -> Result<NativeCommandResult, 
 fn desktop_privileged_bootstrap_handoff(
     plan: &CoreInstallPlan,
     mut preview: Vec<String>,
+    runtime_port: u16,
 ) -> Option<NativeCommandResult> {
     let reason = current_desktop_bootstrap_handoff_reason()?;
-    let terminal_command = terminal_core_install_command(plan);
+    let terminal_command = terminal_core_install_command(plan, runtime_port);
     preview.push("--terminal-handoff".to_string());
 
     #[cfg(target_os = "macos")]
@@ -1210,7 +1225,7 @@ fn sudo_noninteractive_available() -> bool {
         .unwrap_or(false)
 }
 
-fn terminal_core_install_command(plan: &CoreInstallPlan) -> String {
+fn terminal_core_install_command(plan: &CoreInstallPlan, runtime_port: u16) -> String {
     let mut parts = Vec::new();
     if let Some(core_dir) = plan.core_dir.as_deref() {
         parts.push(format!("cd {}", shell_quote(&core_dir.to_string_lossy())));
@@ -1225,10 +1240,10 @@ fn terminal_core_install_command(plan: &CoreInstallPlan) -> String {
         shell_command(&plan.skills_program, &plan.skills_args),
         optional_shell_command(&plan.code_memory_program, &plan.code_memory_args)
     ));
-    parts.push(terminal_runtime_start_command(DEFAULT_RUNTIME_PORT));
+    parts.push(terminal_runtime_start_command(runtime_port));
     parts.push(format!(
         "printf '\\nAlfred Desktop install command finished. The local runtime is healthy on port {}. Return to Alfred Desktop.\\n'",
-        DEFAULT_RUNTIME_PORT
+        runtime_port
     ));
     parts.join(" && ")
 }
@@ -1236,7 +1251,24 @@ fn terminal_core_install_command(plan: &CoreInstallPlan) -> String {
 fn terminal_runtime_start_command(port: u16) -> String {
     let serve = shell_command("alfred", &alfred_serve_args(port));
     let health_url = format!("http://127.0.0.1:{port}/api/status");
-    let health_probe = r#"import os
+    let health_probe = terminal_runtime_health_probe();
+    format!(
+        "mkdir -p \"$HOME/.alfred/logs\" && \
+         {{ command -v alfred >/dev/null 2>&1 || \
+         {{ printf '%s\\n' 'Alfred CLI was not found after install. Return to Alfred Desktop and run Install or repair again, or inspect the Terminal output above.' >&2; exit 1; }}; }} && \
+         {{ command -v python3 >/dev/null 2>&1 || \
+         {{ printf '%s\\n' 'python3 is required to verify Alfred runtime health after install. Install python3, then rerun Install or repair from Alfred Desktop.' >&2; exit 1; }}; }} && \
+         (nohup {} > \"$HOME/.alfred/logs/desktop-runtime.log\" 2>&1 < /dev/null & \
+         runtime_pid=$!; \
+         ALFRED_RUNTIME_PID=\"$runtime_pid\" python3 -c {} {})",
+        serve,
+        shell_quote(health_probe),
+        shell_quote(&health_url)
+    )
+}
+
+fn terminal_runtime_health_probe() -> &'static str {
+    r#"import os
 import json
 import sys
 import time
@@ -1274,20 +1306,7 @@ print(
     f"Alfred runtime did not become healthy on port {url.rsplit(':', 1)[-1].split('/', 1)[0]}. See ~/.alfred/logs/desktop-runtime.log.",
     file=sys.stderr,
 )
-    sys.exit(1)"#;
-    format!(
-        "mkdir -p \"$HOME/.alfred/logs\" && \
-         {{ command -v alfred >/dev/null 2>&1 || \
-         {{ printf '%s\\n' 'Alfred CLI was not found after install. Return to Alfred Desktop and run Install or repair again, or inspect the Terminal output above.' >&2; exit 1; }}; }} && \
-         {{ command -v python3 >/dev/null 2>&1 || \
-         {{ printf '%s\\n' 'python3 is required to verify Alfred runtime health after install. Install python3, then rerun Install or repair from Alfred Desktop.' >&2; exit 1; }}; }} && \
-         (nohup {} > \"$HOME/.alfred/logs/desktop-runtime.log\" 2>&1 < /dev/null & \
-         runtime_pid=$!; \
-         ALFRED_RUNTIME_PID=\"$runtime_pid\" python3 -c {} {})",
-        serve,
-        shell_quote(health_probe),
-        shell_quote(&health_url)
-    )
+sys.exit(1)"#
 }
 
 fn terminal_path_refresh_command(parent_path: Option<&std::ffi::OsStr>) -> String {
@@ -2584,7 +2603,7 @@ mod tests {
             source_label: "bundled runtime".to_string(),
         };
 
-        let command = terminal_core_install_command(&plan);
+        let command = terminal_core_install_command(&plan, 7123);
 
         assert!(command.contains("cd '/tmp/alfred core'"));
         assert!(command.contains("ALFRED_DESKTOP_INSTALL=1"));
@@ -2601,16 +2620,16 @@ mod tests {
         assert!(command.contains("'/tmp/alfred core/deploy.sh'"));
         assert!(command.contains("alfred skills install --starter"));
         assert!(command.contains("alfred code-memory doctor"));
-        assert!(command.contains("nohup alfred serve --port 7010 --no-browser"));
+        assert!(command.contains("nohup alfred serve --port 7123 --no-browser"));
         assert!(command.contains("Alfred CLI was not found after install"));
         assert!(command.contains("command -v python3"));
         assert!(command.contains("python3 is required to verify Alfred runtime health"));
         assert!(command.contains("json.loads"));
         assert!(command.contains("urllib.request.urlopen"));
         assert!(command.contains("setup_repos"));
-        assert!(command.contains("http://127.0.0.1:7010/api/status"));
+        assert!(command.contains("http://127.0.0.1:7123/api/status"));
         assert!(command.contains("Alfred runtime did not become healthy on port"));
-        assert!(command.contains("The local runtime is healthy on port 7010"));
+        assert!(command.contains("The local runtime is healthy on port 7123"));
         assert!(command.contains("$HOME/.alfred/logs/desktop-runtime.log"));
         assert!(
             command
@@ -2673,16 +2692,45 @@ mod tests {
                 .find("alfred code-memory doctor")
                 .expect("code-memory command should exist")
                 < command
-                    .find("nohup alfred serve --port 7010 --no-browser")
+                    .find("nohup alfred serve --port 7123 --no-browser")
                     .expect("runtime start command should exist")
         );
         assert!(
             command
-                .find("nohup alfred serve --port 7010 --no-browser")
+                .find("nohup alfred serve --port 7123 --no-browser")
                 .expect("runtime start command should exist")
                 < command
                     .find("python3 -c")
                     .expect("runtime health check should exist")
+        );
+    }
+
+    #[test]
+    fn terminal_runtime_health_probe_is_valid_python() {
+        let mut child = Command::new("python3")
+            .args([
+                "-c",
+                "import sys; compile(sys.stdin.read(), '<alfred-runtime-health-probe>', 'exec')",
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("python3 should be available for desktop runtime health checks");
+        child
+            .stdin
+            .take()
+            .expect("python compile process should accept stdin")
+            .write_all(terminal_runtime_health_probe().as_bytes())
+            .expect("health probe should be written to python stdin");
+        let output = child
+            .wait_with_output()
+            .expect("python compile process should finish");
+
+        assert!(
+            output.status.success(),
+            "health probe should compile: {}",
+            String::from_utf8_lossy(&output.stderr)
         );
     }
 
@@ -2717,7 +2765,7 @@ mod tests {
             source_label: "installed CLI".to_string(),
         };
 
-        let command = terminal_core_install_command(&plan);
+        let command = terminal_core_install_command(&plan, DEFAULT_RUNTIME_PORT);
         let quoted_desktop_path = shell_quote(&desktop_path);
 
         assert!(command.contains(&quoted_desktop_path));
@@ -2758,7 +2806,7 @@ mod tests {
             source_label: "installed CLI".to_string(),
         };
 
-        let command = terminal_core_install_command(&plan);
+        let command = terminal_core_install_command(&plan, DEFAULT_RUNTIME_PORT);
 
         assert!(
             command

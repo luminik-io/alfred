@@ -1047,9 +1047,9 @@ describe("native runtime install bridge", () => {
       message: "Alfred core installed and deployed.",
     });
 
-    const result = await installAlfredCore();
+    const result = await installAlfredCore(7123);
 
-    expect(invokeMock).toHaveBeenCalledWith("install_alfred_core");
+    expect(invokeMock).toHaveBeenCalledWith("install_alfred_core", { runtimePort: 7123 });
     expect(result.success).toBe(true);
   });
 
@@ -1071,7 +1071,7 @@ describe("native runtime install bridge", () => {
   });
 
   it("does not expose native install from browser preview", async () => {
-    await expect(installAlfredCore()).rejects.toThrow(/desktop app/i);
+    await expect(installAlfredCore(7010)).rejects.toThrow(/desktop app/i);
     expect(invokeMock).not.toHaveBeenCalled();
   });
 });
