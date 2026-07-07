@@ -122,7 +122,7 @@ _CAPABILITY_SOURCES: dict[str, dict[str, str]] = {
         "license": "MIT",
     },
     "context_compression": {
-        "source": "headroomlabs-ai/headroom",
+        "source": "Alfred context governor, headroomlabs-ai/headroom",
         "url": "https://github.com/headroomlabs-ai/headroom",
         "license": "Apache-2.0",
     },
@@ -791,32 +791,43 @@ def _code_graph_capability(code_memory: dict[str, Any]) -> dict[str, Any]:
 def _context_compression_capability(env: Mapping[str, str]) -> dict[str, Any]:
     search = _join_search_path(_engine_search_path(env), env.get("PATH", ""))
     binary = shutil.which("headroom", path=search)
-    enabled = _env_flag(env, "ALFRED_CONTEXT_COMPRESSION", default=False)
-    if binary:
-        state = "available"
-        detail = (
-            "Headroom CLI is installed; Alfred will report ready after runner wiring is enabled."
-            if enabled
-            else "Headroom CLI is installed; runner integration is not wired yet."
-        )
+    built_in_enabled = _env_flag(env, "ALFRED_CONTEXT_GOVERNOR", default=True)
+    headroom_enabled = _env_flag(env, "ALFRED_CONTEXT_COMPRESSION", default=False)
+    if built_in_enabled:
+        state = "ready"
+        if binary and headroom_enabled:
+            detail = (
+                "Alfred's built-in context governor is active; Headroom is detected "
+                "as an optional external compression layer."
+            )
+        elif binary:
+            detail = (
+                "Alfred's built-in context governor is active; Headroom is installed "
+                "and remains optional."
+            )
+        else:
+            detail = "Alfred's built-in context governor is active for every agent firing."
     else:
-        state = "missing"
-        detail = (
-            "Headroom is not installed yet; Alfred can use it as a local token-compression layer."
-        )
+        state = "disabled"
+        detail = "Alfred's built-in context governor is disabled with ALFRED_CONTEXT_GOVERNOR."
     return _capability_base(
         "context_compression",
-        title="Context compression",
+        title="Context governor",
         category="tokens",
         recommended=True,
         state=state,
-        installed=bool(binary),
-        enabled=enabled,
+        installed=True,
+        enabled=built_in_enabled,
         detail=detail,
-        detected={"binary": binary, "env_key": "ALFRED_CONTEXT_COMPRESSION"},
+        detected={
+            "built_in": True,
+            "env_key": "ALFRED_CONTEXT_GOVERNOR",
+            "headroom_binary": binary,
+            "headroom_enabled": headroom_enabled,
+            "headroom_env_key": "ALFRED_CONTEXT_COMPRESSION",
+        },
         install_hint=(
-            "Install `headroom-ai[all]` with pip or `headroom-ai` with npm, "
-            "then run `headroom doctor`."
+            "Unset ALFRED_CONTEXT_GOVERNOR or set it to 1 to re-enable. Headroom remains optional."
         ),
     )
 
@@ -1622,16 +1633,20 @@ def _code_graph_readiness_check(
 
 def _context_compression_readiness_check(capability_plane: dict[str, Any]) -> dict[str, Any]:
     capability = _capability_by_key(capability_plane, "context_compression")
-    ready = capability.get("state") == "ready"
-    return _readiness_check(
+    capability_state = str(capability.get("state") or "")
+    ready = capability_state == "ready"
+    row = _readiness_check(
         "context_compression",
-        "Context compression",
+        "Context governor",
         category="tokens",
         tier="recommended",
         ready=ready,
         detail=str(capability.get("detail") or ""),
-        action=str(capability.get("install_hint") or "Install and enable Headroom when ready."),
+        action=str(capability.get("install_hint") or "Re-enable Alfred's context governor."),
     )
+    if capability_state == "disabled":
+        row["state"] = "disabled"
+    return row
 
 
 def _engineering_skills_readiness_check(capability_plane: dict[str, Any]) -> dict[str, Any]:

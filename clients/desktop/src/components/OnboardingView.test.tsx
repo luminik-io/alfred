@@ -466,7 +466,7 @@ describe("OnboardingView seven-step takeover", () => {
         },
         capability_plane: {
           version: 1,
-          summary: { ready: 2, actionable: 1, disabled: 0, total: 3 },
+          summary: { ready: 3, actionable: 0, disabled: 0, total: 3 },
           capabilities: [
             {
               key: "code_graph",
@@ -487,17 +487,17 @@ describe("OnboardingView seven-step takeover", () => {
             },
             {
               key: "context_compression",
-              title: "Context compression",
+              title: "Context governor",
               category: "tokens",
               recommended: true,
-              state: "available",
+              state: "ready",
               installed: true,
-              enabled: false,
-              detail: "Headroom CLI is installed; runner integration is not wired yet.",
-              detected: {},
-              install_hint: "Run `headroom doctor`, then enable ALFRED_CONTEXT_COMPRESSION.",
+              enabled: true,
+              detail: "Alfred's built-in context governor is active for every agent firing.",
+              detected: { env_key: "ALFRED_CONTEXT_GOVERNOR" },
+              install_hint: "Unset ALFRED_CONTEXT_GOVERNOR or set it to 1 to re-enable.",
               source: {
-                source: "headroomlabs-ai/headroom",
+                source: "Alfred context governor, headroomlabs-ai/headroom",
                 url: "https://github.com/headroomlabs-ai/headroom",
                 license: "Apache-2.0",
               },
@@ -526,11 +526,11 @@ describe("OnboardingView seven-step takeover", () => {
     expect(await screen.findByText(/^code memory$/i)).toBeInTheDocument();
     expect(screen.getByText(/code-memory binary and index are present/i)).toBeInTheDocument();
     expect(screen.getByText(/local capabilities/i)).toBeInTheDocument();
-    expect(screen.getByText(/2 of 3 ready, 1 to finish/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 of 3 ready/i)).toBeInTheDocument();
     expect(screen.getByText(/code graph index is ready for selected repos/i)).toBeInTheDocument();
-    expect(screen.getByText(/headroom cli is installed/i)).toBeInTheDocument();
-    expect(screen.getByText(/run `headroom doctor`/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /headroomlabs-ai\/headroom/i })).toHaveAttribute(
+    expect(screen.getByText(/built-in context governor is active/i)).toBeInTheDocument();
+    expect(screen.queryByText(/run `headroom doctor`/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Alfred context governor/i })).toHaveAttribute(
       "href",
       "https://github.com/headroomlabs-ai/headroom",
     );
@@ -550,15 +550,15 @@ describe("OnboardingView seven-step takeover", () => {
           capabilities: [
             {
               key: "context_compression",
-              title: "Context compression",
+              title: "Context governor",
               category: "tokens",
               recommended: false,
               state: "disabled",
               installed: false,
               enabled: false,
-              detail: "Context compression is optional for this install.",
+              detail: "Context governor is optional for this install.",
               detected: {},
-              install_hint: "Install Headroom if you want token compression.",
+              install_hint: "Set ALFRED_CONTEXT_GOVERNOR=1 if you want prompt budgeting.",
               source: { source: "headroomlabs-ai/headroom" },
             },
           ],
@@ -653,26 +653,26 @@ describe("OnboardingView seven-step takeover", () => {
               title: "Code graph memory",
               category: "memory",
               recommended: true,
-              state: "ready",
+              state: "needs_index",
               installed: true,
               enabled: true,
-              detail: "Code graph index is ready.",
+              detail: "Code graph binary is present; run an index.",
               detected: {},
               install_hint: "Run `alfred code-memory doctor`.",
               source: { source: "DeusData/codebase-memory-mcp" },
             },
             {
               key: "context_compression",
-              title: "Context compression",
+              title: "Context governor",
               category: "tokens",
               recommended: true,
-              state: "available",
+              state: "ready",
               installed: true,
-              enabled: false,
-              detail: "Headroom CLI is installed; runner integration is not wired yet.",
+              enabled: true,
+              detail: "Alfred's built-in context governor is active for every agent firing.",
               detected: {},
-              install_hint: "Run `headroom doctor`, then enable ALFRED_CONTEXT_COMPRESSION.",
-              source: { source: "headroomlabs-ai/headroom" },
+              install_hint: "Unset ALFRED_CONTEXT_GOVERNOR or set it to 1.",
+              source: { source: "Alfred context governor" },
             },
           ],
         },

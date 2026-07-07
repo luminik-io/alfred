@@ -43,6 +43,7 @@ def _isolate_launcher_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MAP_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_WORKSPACE_SUBDIR", raising=False)
+    monkeypatch.delenv("ALFRED_CONTEXT_GOVERNOR", raising=False)
     monkeypatch.delenv("ARCHITECT_AUTO_EXECUTE", raising=False)
     monkeypatch.delenv("ARCHITECT_PARENT_REPO", raising=False)
     monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
@@ -113,6 +114,23 @@ def test_bootstrap_status_includes_ready_first_run_checklist(
         }
     ]
     assert by_key["architect_parent_repo"]["state"] == "optional"
+
+
+def test_bootstrap_status_preserves_disabled_context_governor_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+    monkeypatch.setenv("ALFRED_CONTEXT_GOVERNOR", "0")
+
+    payload = setup_mod.bootstrap_status()
+    first_run_by_key = {check["key"]: check for check in payload["first_run"]["checks"]}
+    capability_by_key = {item["key"]: item for item in payload["capability_plane"]["capabilities"]}
+
+    assert capability_by_key["context_compression"]["state"] == "disabled"
+    assert first_run_by_key["context_compression"]["state"] == "disabled"
+    assert first_run_by_key["context_compression"]["ready"] is False
 
 
 def test_bootstrap_status_first_run_blocks_missing_queue_and_local_paths(
@@ -882,6 +900,7 @@ def test_capability_plane_reports_missing_optional_layers(
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
     monkeypatch.setenv("CLAUDE_HOME", str(tmp_path / "claude"))
     monkeypatch.delenv("ALFRED_CONTEXT_COMPRESSION", raising=False)
+    monkeypatch.delenv("ALFRED_CONTEXT_GOVERNOR", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_BIN", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_AUTOFETCH", raising=False)
@@ -889,13 +908,15 @@ def test_capability_plane_reports_missing_optional_layers(
     payload = setup_mod.capability_status()
     by_key = {item["key"]: item for item in payload["capabilities"]}
 
-    assert payload["summary"] == {"ready": 0, "actionable": 3, "disabled": 0, "total": 3}
+    assert payload["summary"] == {"ready": 1, "actionable": 2, "disabled": 0, "total": 3}
     assert by_key["code_graph"]["state"] == "installable"
-    assert by_key["context_compression"]["state"] == "missing"
+    assert by_key["context_compression"]["state"] == "ready"
+    assert by_key["context_compression"]["enabled"] is True
+    assert by_key["context_compression"]["detected"]["env_key"] == "ALFRED_CONTEXT_GOVERNOR"
     assert by_key["engineering_skills"]["state"] == "missing"
 
 
-def test_capability_plane_reports_external_layers_without_headroom_runner_wiring(
+def test_capability_plane_reports_builtin_context_governor_with_headroom_detected(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     codex_home = tmp_path / "codex"
@@ -928,10 +949,18 @@ def test_capability_plane_reports_external_layers_without_headroom_runner_wiring
     payload = setup_mod.capability_status(code_memory)
     by_key = {item["key"]: item for item in payload["capabilities"]}
 
-    assert payload["summary"]["ready"] == 2
-    assert payload["summary"]["actionable"] == 1
+    assert payload["summary"]["ready"] == 3
+    assert payload["summary"]["actionable"] == 0
     assert by_key["code_graph"]["state"] == "ready"
-    assert by_key["context_compression"]["state"] == "available"
+    assert by_key["context_compression"]["state"] == "ready"
+    assert by_key["context_compression"]["enabled"] is True
+    assert by_key["context_compression"]["detected"] == {
+        "built_in": True,
+        "env_key": "ALFRED_CONTEXT_GOVERNOR",
+        "headroom_binary": "/opt/homebrew/bin/headroom",
+        "headroom_enabled": True,
+        "headroom_env_key": "ALFRED_CONTEXT_COMPRESSION",
+    }
     assert by_key["engineering_skills"]["state"] == "ready"
     assert by_key["engineering_skills"]["detected"]["paths"] == [
         str(codex_home / "skills" / "gstack")
@@ -971,7 +1000,7 @@ def test_capability_plane_uses_configured_skills_dir(
     assert skills["detected"]["paths"] == [str(skills_dir / "write-tests")]
 
 
-def test_capability_plane_requires_context_compression_opt_in(
+def test_capability_plane_keeps_context_governor_ready_without_headroom_opt_in(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
@@ -988,12 +1017,14 @@ def test_capability_plane_requires_context_compression_opt_in(
     payload = setup_mod.capability_status()
     context = {item["key"]: item for item in payload["capabilities"]}["context_compression"]
 
-    assert context["state"] == "available"
+    assert context["state"] == "ready"
     assert context["installed"] is True
-    assert context["enabled"] is False
+    assert context["enabled"] is True
+    assert context["detected"]["headroom_binary"] == "/opt/homebrew/bin/headroom"
+    assert context["detected"]["headroom_enabled"] is False
 
 
-def test_capability_plane_reads_context_compression_from_runtime_env_file(
+def test_capability_plane_reads_headroom_opt_in_from_runtime_env_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     runtime = tmp_path / "runtime"
@@ -1010,9 +1041,29 @@ def test_capability_plane_reads_context_compression_from_runtime_env_file(
     payload = setup_mod.capability_status()
     context = {item["key"]: item for item in payload["capabilities"]}["context_compression"]
 
-    assert context["state"] == "available"
+    assert context["state"] == "ready"
+    assert context["installed"] is True
+    assert context["enabled"] is True
+    assert context["detected"]["headroom_enabled"] is False
+
+
+def test_capability_plane_reports_disabled_context_governor(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text("ALFRED_CONTEXT_GOVERNOR=0\n", encoding="utf-8")
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_CONTEXT_GOVERNOR", raising=False)
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+
+    payload = setup_mod.capability_status()
+    context = {item["key"]: item for item in payload["capabilities"]}["context_compression"]
+
+    assert context["state"] == "disabled"
     assert context["installed"] is True
     assert context["enabled"] is False
+    assert "ALFRED_CONTEXT_GOVERNOR" in context["detail"]
 
 
 def test_capability_plane_ignores_legacy_alfredrc_for_non_code_memory_rows(
@@ -1051,8 +1102,9 @@ def test_capability_plane_ignores_legacy_alfredrc_for_non_code_memory_rows(
     payload = setup_mod.capability_status(code_memory)
     by_key = {item["key"]: item for item in payload["capabilities"]}
 
-    assert by_key["context_compression"]["state"] == "available"
-    assert by_key["context_compression"]["enabled"] is False
+    assert by_key["context_compression"]["state"] == "ready"
+    assert by_key["context_compression"]["enabled"] is True
+    assert by_key["context_compression"]["detected"]["headroom_enabled"] is False
     assert by_key["engineering_skills"]["state"] == "missing"
     assert by_key["engineering_skills"]["detected"]["paths"] == []
 

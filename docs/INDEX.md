@@ -47,7 +47,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`CLI.md`](CLI.md): the read-only `alfred metrics` and `alfred logs` inspectors over the state tree, plus `alfred slack-listener`, the optional Socket Mode planning-intake listener.
 - [`CONNECTORS.md`](CONNECTORS.md): input connectors that feed the `agent:implement` issue queue from non-GitHub sources such as Linear tickets and Sentry alerts without changing the agents.
 - [`CLAUDE_CODE.md`](CLAUDE_CODE.md): Claude Code and Codex install, account routing, engine routing, and quota behavior.
-- [`CAPABILITIES.md`](CAPABILITIES.md): read-only local inventory for code graph memory, context compression, and engineering skill packs.
+- [`CAPABILITIES.md`](CAPABILITIES.md): read-only local inventory for code graph memory, Alfred's context governor, and engineering skill packs.
 - [`BENCHMARKS.md`](BENCHMARKS.md): reproducible self-benchmark harness. The fixed task suite, the four metric families read from existing telemetry, how to run before/after, and cost framed as a share of subscription quota.
 - [`TELEMETRY.md`](TELEMETRY.md): the opt-out anonymous usage reporter that sends aggregate totals to the public Impact counter, its controls, and how to point it at a self-hosted collector.
 - [`CODEX_PROVIDER.md`](CODEX_PROVIDER.md): Codex engine modes, diagnostics, runtime contract, and billing posture.
