@@ -1114,7 +1114,7 @@ fn terminal_core_install_command(plan: &CoreInstallPlan) -> String {
     parts.push("export ALFRED_NONINTERACTIVE=1 ALFRED_DESKTOP_INSTALL=1".to_string());
     parts.push(format!(
         "{} && {} && {} && {} && {} && {}",
-        terminal_path_refresh_command(),
+        terminal_path_refresh_command(std::env::var_os("PATH").as_deref()),
         shell_command(&plan.install_program, &plan.install_args),
         shell_command(&plan.seed_program, &plan.seed_args),
         shell_command(&plan.deploy_program, &plan.deploy_args),
@@ -1128,11 +1128,29 @@ fn terminal_core_install_command(plan: &CoreInstallPlan) -> String {
     parts.join(" && ")
 }
 
-fn terminal_path_refresh_command() -> &'static str {
-    "{ export PATH=\"$HOME/.local/bin:$HOME/.alfred/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:$PATH\"; \
-     if command -v brew >/dev/null 2>&1; then eval \"$(brew shellenv)\"; \
-     elif [ -x /opt/homebrew/bin/brew ]; then eval \"$(/opt/homebrew/bin/brew shellenv)\"; \
-     elif [ -x /usr/local/bin/brew ]; then eval \"$(/usr/local/bin/brew shellenv)\"; fi; }"
+fn terminal_path_refresh_command(parent_path: Option<&std::ffi::OsStr>) -> String {
+    let mut path_entries = vec![
+        "$HOME/.local/bin".to_string(),
+        "$HOME/.alfred/bin".to_string(),
+        "/opt/homebrew/bin".to_string(),
+        "/opt/homebrew/sbin".to_string(),
+        "/usr/local/bin".to_string(),
+        "/usr/local/sbin".to_string(),
+    ];
+    if let Some(parent_path) = parent_path {
+        let parent_path = parent_path.to_string_lossy();
+        if !parent_path.is_empty() {
+            path_entries.push(shell_quote(parent_path.as_ref()));
+        }
+    }
+    path_entries.push("$PATH".to_string());
+    format!(
+        "{{ export PATH={}; \
+         if command -v brew >/dev/null 2>&1; then eval \"$(brew shellenv)\"; \
+         elif [ -x /opt/homebrew/bin/brew ]; then eval \"$(/opt/homebrew/bin/brew shellenv)\"; \
+         elif [ -x /usr/local/bin/brew ]; then eval \"$(/usr/local/bin/brew shellenv)\"; fi; }}",
+        path_entries.join(":")
+    )
 }
 
 fn shell_command(program: &str, args: &[String]) -> String {
@@ -2410,8 +2428,9 @@ mod tests {
         assert!(command.contains("ALFRED_DESKTOP_INSTALL=1"));
         assert!(command.contains("'/tmp/alfred core/install.sh'"));
         assert!(command.contains(
-            "export PATH=\"$HOME/.local/bin:$HOME/.alfred/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:$PATH\""
+            "export PATH=$HOME/.local/bin:$HOME/.alfred/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:"
         ));
+        assert!(command.contains(":$PATH"));
         assert!(command.contains("brew shellenv"));
         assert!(command.contains("/usr/local/bin"));
         assert!(command.contains(
@@ -2476,6 +2495,53 @@ mod tests {
                     .find("alfred code-memory doctor")
                     .expect("code-memory command should exist")
         );
+    }
+
+    #[test]
+    fn terminal_core_install_command_preserves_desktop_process_cli_path() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_path = std::env::var("PATH").ok();
+        let custom_bin = temp_root("custom-cli-path").join("bin dir");
+        let desktop_path = format!("{}:/usr/bin:/bin", custom_bin.to_string_lossy());
+        std::env::set_var("PATH", &desktop_path);
+
+        let plan = CoreInstallPlan {
+            core_dir: None,
+            install_program: "alfred-install".to_string(),
+            install_args: vec!["--non-interactive".to_string()],
+            seed_program: "alfred-init".to_string(),
+            seed_args: vec![
+                "--seed-runtime-roster".to_string(),
+                "--agents".to_string(),
+                "all".to_string(),
+            ],
+            deploy_program: "alfred-deploy".to_string(),
+            deploy_args: Vec::new(),
+            skills_program: "alfred".to_string(),
+            skills_args: vec![
+                "skills".to_string(),
+                "install".to_string(),
+                "--starter".to_string(),
+            ],
+            code_memory_program: "alfred".to_string(),
+            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
+            source_label: "installed CLI".to_string(),
+        };
+
+        let command = terminal_core_install_command(&plan);
+        let quoted_desktop_path = shell_quote(&desktop_path);
+
+        assert!(command.contains(&quoted_desktop_path));
+        assert!(
+            command
+                .find(&quoted_desktop_path)
+                .expect("desktop process path should be exported")
+                < command
+                    .find("alfred-install --non-interactive")
+                    .expect("install command should exist")
+        );
+
+        restore_var("PATH", prev_path);
     }
 
     #[test]
