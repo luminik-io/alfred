@@ -52,9 +52,9 @@ Scale (display 1.25 step, body 1.125 step):
 
 | Token | Size | Use |
 |---|---|---|
-| `--text-display-xl` | 84px / 1.02 / 700 | Hero H1 only |
-| `--text-display-lg` | 64px / 1.05 / 700 | Page H1 |
-| `--text-display-md` | 44px / 1.1 / 700 | Section H2 |
+| `--text-display-xl` | 64px / 1.02 / 700 | Hero H1 only |
+| `--text-display-lg` | 52px / 1.05 / 700 | Page H1 |
+| `--text-display-md` | 38px / 1.1 / 700 | Section H2 |
 | `--text-h2` | 32px / 1.2 / 600 | Subsection |
 | `--text-h3` | 22px / 1.3 / 600 | Card titles |
 | `--text-body-lg` | 19px / 1.55 / 400 | Lede paragraphs |
@@ -93,7 +93,13 @@ Inline `●` glyph carries semantic state. Always paired with adjacent label.
 .status--error { color: var(--alfred-error); }
 ```
 
-### 2. Log strip
+### 2. Status-lane texture
+
+Hero and soft-section backdrops may use subtle one-axis status lanes, never
+a square grid. The texture should feel like a calm operations surface behind
+real proof, not a generic developer-site wallpaper.
+
+### 3. Log strip
 
 Each page renders a representative-but-static log strip near the footer. Mono font, faded text color, fixed-width characters. Acts as the brand's signature moment.
 
@@ -105,7 +111,7 @@ Each page renders a representative-but-static log strip near the footer. Mono fo
 [12:18:33] ras-al  reviewed PR#1247   2 nits       ● amber
 ```
 
-### 3. Code-style metric rows
+### 4. Code-style metric rows
 
 Vertical alignment, mono, with semantic color on the metric value.
 
@@ -116,13 +122,13 @@ firings    →  18m ago
 errors     ●   0
 ```
 
-### 4. Quiet animation
+### 5. Quiet animation
 
 No carousels, no parallax. The only motion permitted: a 0.6s ease-in fade on the status dot when the page is idle (suggests heartbeat). Respect `prefers-reduced-motion`.
 
 ## Component patterns
 
-- `<Hero>`: eyebrow + display-xl headline + body-lg sub + primary CTA + secondary text-link CTA.
+- `<Hero>`: eyebrow + display-xl headline + body-lg sub + primary CTA + secondary text-link CTA. Root page hero copy should usually fit in 2-3 desktop lines.
 - `<MetricStrip>`: 3-5 mono-aligned metric rows in a single card.
 - `<JobStory>`: card showing one buyer-side outcome ("a Drake firing files four scoped issues") with a tiny log excerpt under it.
 - `<CodeBlock>`: Fragment Mono, scrollable, prompt prefix `$` rendered in `--alfred-accent`.

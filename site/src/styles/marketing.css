@@ -60,7 +60,7 @@
   --aurora-1: rgba(0, 229, 199, 0.26);
   --aurora-2: rgba(87, 137, 255, 0.22);
   --aurora-3: rgba(0, 229, 199, 0.10);
-  --grid-line: rgba(96, 130, 190, 0.14);   /* engineered baseline-grid motif */
+  --field-line: rgba(96, 130, 190, 0.13);  /* soft status-lane motif */
 }
 
 [data-theme="light"] {
@@ -95,7 +95,7 @@
   --aurora-1: rgba(15, 138, 120, 0.16);
   --aurora-2: rgba(46, 93, 219, 0.13);
   --aurora-3: rgba(15, 138, 120, 0.07);
-  --grid-line: rgba(120, 100, 60, 0.14);
+  --field-line: rgba(120, 100, 60, 0.13);
 }
 
 /* Static design tokens (typography, spacing) live on :root and are
@@ -105,9 +105,9 @@
   --font-body: "Quicksand Variable", "Instrument Sans Variable", system-ui, sans-serif;
   --font-mono: "Fragment Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  --text-display-xl: 72px;
-  --text-display-lg: 56px;
-  --text-display-md: 40px;
+  --text-display-xl: 64px;
+  --text-display-lg: 52px;
+  --text-display-md: 38px;
   --text-h2: 32px;
   --text-h3: 22px;
   --text-body-lg: 19px;
@@ -183,7 +183,7 @@
 }
 
 /* ── Aurora field ──────────────────────────────────────────────────
-   Two brand-color blooms + a fine engineered grid, sitting behind hero
+   Two brand-color blooms + a quiet status-lane texture, sitting behind hero
    and soft sections. Pure CSS, decorative, reduced-motion safe. The
    .m-aurora element is absolutely positioned; the parent must be
    position: relative and overflow: hidden. */
@@ -210,10 +210,11 @@
   content: "";
   position: absolute;
   inset: 0;
-  background-image:
-    linear-gradient(var(--grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
-  background-size: 56px 56px;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 148px, var(--field-line) 148px 149px, transparent 149px 296px),
+    linear-gradient(116deg, transparent 0%, rgba(0, 229, 199, 0.06) 34%, transparent 66%),
+    linear-gradient(64deg, transparent 0%, rgba(87, 137, 255, 0.05) 48%, transparent 78%);
+  opacity: 0.75;
   mask-image: radial-gradient(120% 100% at 50% 0%, #000 0%, transparent 72%);
   -webkit-mask-image: radial-gradient(120% 100% at 50% 0%, #000 0%, transparent 72%);
 }
@@ -272,7 +273,7 @@ p { margin: 0; }
 @media (max-width: 720px) {
   .m-container { padding: 0 20px; }
   :root {
-    --text-display-xl: 44px;
+    --text-display-xl: 42px;
     --text-display-lg: 36px;
     --text-display-md: 30px;
     --text-h2: 24px;
@@ -283,7 +284,7 @@ p { margin: 0; }
 
 @media (max-width: 480px) {
   :root {
-    --text-display-xl: 32px;
+    --text-display-xl: 31px;
     --text-display-lg: 28px;
     --text-display-md: 24px;
     --text-h2: 21px;
@@ -355,17 +356,18 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
     radial-gradient(ellipse 600px 420px at 88% 110%, var(--aurora-2), transparent 65%),
     linear-gradient(180deg, var(--alfred-black) 0%, var(--alfred-surface) 50%, var(--alfred-black) 100%);
 }
-/* Faint engineered grid over soft sections ties them to the hero field. */
+/* Faint status lanes over soft sections tie them to the hero field without
+   turning the page into a square-pattern wallpaper. */
 .m-section--soft::before {
   content: "";
   position: absolute;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background-image:
-    linear-gradient(var(--grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
-  background-size: 56px 56px;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 44px, var(--field-line) 44px 45px, transparent 45px 88px),
+    linear-gradient(112deg, transparent 0%, rgba(0, 229, 199, 0.045) 46%, transparent 74%);
+  opacity: 0.55;
   mask-image: radial-gradient(90% 70% at 50% 30%, #000 0%, transparent 78%);
   -webkit-mask-image: radial-gradient(90% 70% at 50% 30%, #000 0%, transparent 78%);
 }
