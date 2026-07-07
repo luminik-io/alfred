@@ -878,6 +878,7 @@ def test_bootstrap_status_respects_code_memory_disable(
     payload = setup_mod.bootstrap_status()
     code_memory = payload["code_memory"]
     first_run_by_key = {check["key"]: check for check in payload["first_run"]["checks"]}
+    capability_by_key = {item["key"]: item for item in payload["capability_plane"]["capabilities"]}
 
     assert code_memory["enabled"] is False
     assert code_memory["autofetch"] is False
@@ -891,6 +892,9 @@ def test_bootstrap_status_respects_code_memory_disable(
         "limit": 25,
     }
     assert code_memory["detail"] == "Code memory is disabled with ALFRED_CODE_MEMORY_MCP."
+    assert capability_by_key["code_graph"]["install_hint"] == (
+        "Set ALFRED_CODE_MEMORY_MCP=1 to re-enable code graph memory."
+    )
     assert first_run_by_key["code_graph"]["tier"] == "optional"
     assert first_run_by_key["code_graph"]["state"] == "disabled"
     assert first_run_by_key["code_graph"]["action"] == ""

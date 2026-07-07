@@ -760,14 +760,19 @@ def _code_graph_capability(code_memory: dict[str, Any]) -> dict[str, Any]:
     indexed = bool(code_memory.get("index_present"))
     if not enabled:
         state = "disabled"
+        install_hint = "Set ALFRED_CODE_MEMORY_MCP=1 to re-enable code graph memory."
     elif installed and indexed:
         state = "ready"
+        install_hint = "Run `alfred code-memory doctor`, then `alfred code-memory index`."
     elif installed:
         state = "needs_index"
+        install_hint = "Run `alfred code-memory doctor`, then `alfred code-memory index`."
     elif code_memory.get("autofetch"):
         state = "installable"
+        install_hint = "Run `alfred code-memory doctor`, then `alfred code-memory index`."
     else:
         state = "missing"
+        install_hint = "Run `alfred code-memory doctor`, then `alfred code-memory index`."
     return _capability_base(
         "code_graph",
         title="Code graph memory",
@@ -784,7 +789,7 @@ def _code_graph_capability(code_memory: dict[str, Any]) -> dict[str, Any]:
             "repos": code_memory.get("repos"),
             "version_pin": code_memory.get("version_pin"),
         },
-        install_hint="Run `alfred code-memory doctor`, then `alfred code-memory index`.",
+        install_hint=install_hint,
     )
 
 
