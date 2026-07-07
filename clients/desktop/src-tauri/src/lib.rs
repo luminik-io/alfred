@@ -1251,6 +1251,8 @@ fn terminal_core_install_command(plan: &CoreInstallPlan, runtime_port: u16) -> S
 fn terminal_runtime_start_command(port: u16) -> String {
     let serve = shell_command("alfred", &alfred_serve_args(port));
     let health_url = format!("http://127.0.0.1:{port}/api/status");
+    let port = port.to_string();
+    let port_preflight = terminal_runtime_port_preflight_probe();
     let health_probe = terminal_runtime_health_probe();
     format!(
         "mkdir -p \"$HOME/.alfred/logs\" && \
@@ -1258,13 +1260,32 @@ fn terminal_runtime_start_command(port: u16) -> String {
          {{ printf '%s\\n' 'Alfred CLI was not found after install. Return to Alfred Desktop and run Install or repair again, or inspect the Terminal output above.' >&2; exit 1; }}; }} && \
          {{ command -v python3 >/dev/null 2>&1 || \
          {{ printf '%s\\n' 'python3 is required to verify Alfred runtime health after install. Install python3, then rerun Install or repair from Alfred Desktop.' >&2; exit 1; }}; }} && \
+         python3 -c {} {} && \
          (nohup {} > \"$HOME/.alfred/logs/desktop-runtime.log\" 2>&1 < /dev/null & \
          runtime_pid=$!; \
          ALFRED_RUNTIME_PID=\"$runtime_pid\" python3 -c {} {})",
+        shell_quote(port_preflight),
+        shell_quote(&port),
         serve,
         shell_quote(health_probe),
         shell_quote(&health_url)
     )
+}
+
+fn terminal_runtime_port_preflight_probe() -> &'static str {
+    r#"import socket
+import sys
+
+port = int(sys.argv[1])
+try:
+    with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+        print(
+            f"Runtime port {port} is already in use. Stop the existing process or choose a different Local server URL in Alfred Desktop, then rerun Install or repair.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+except OSError:
+    sys.exit(0)"#
 }
 
 fn terminal_runtime_health_probe() -> &'static str {
@@ -1276,6 +1297,16 @@ import urllib.request
 
 url = sys.argv[1]
 pid = int(os.environ["ALFRED_RUNTIME_PID"])
+
+def launched_process_alive():
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
 for _ in range(40):
     try:
         with urllib.request.urlopen(url, timeout=0.5) as response:
@@ -1288,19 +1319,22 @@ for _ in range(40):
                     and isinstance(payload.get("metrics"), dict)
                     and "setup_repos" in payload
                 ):
-                    sys.exit(0)
+                    time.sleep(0.2)
+                    if launched_process_alive():
+                        sys.exit(0)
+                    print(
+                        "Alfred runtime exited before it became healthy. See ~/.alfred/logs/desktop-runtime.log.",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
     except Exception:
         pass
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+    if not launched_process_alive():
         print(
             "Alfred runtime exited before it became healthy. See ~/.alfred/logs/desktop-runtime.log.",
             file=sys.stderr,
         )
         sys.exit(1)
-    except PermissionError:
-        pass
     time.sleep(0.5)
 print(
     f"Alfred runtime did not become healthy on port {url.rsplit(':', 1)[-1].split('/', 1)[0]}. See ~/.alfred/logs/desktop-runtime.log.",
@@ -2624,8 +2658,11 @@ mod tests {
         assert!(command.contains("Alfred CLI was not found after install"));
         assert!(command.contains("command -v python3"));
         assert!(command.contains("python3 is required to verify Alfred runtime health"));
+        assert!(command.contains("socket.create_connection"));
+        assert!(command.contains("Runtime port {port} is already in use"));
         assert!(command.contains("json.loads"));
         assert!(command.contains("urllib.request.urlopen"));
+        assert!(command.contains("launched_process_alive"));
         assert!(command.contains("setup_repos"));
         assert!(command.contains("http://127.0.0.1:7123/api/status"));
         assert!(command.contains("Alfred runtime did not become healthy on port"));
@@ -2692,6 +2729,14 @@ mod tests {
                 .find("alfred code-memory doctor")
                 .expect("code-memory command should exist")
                 < command
+                    .find("socket.create_connection")
+                    .expect("runtime preflight command should exist")
+        );
+        assert!(
+            command
+                .find("socket.create_connection")
+                .expect("runtime preflight command should exist")
+                < command
                     .find("nohup alfred serve --port 7123 --no-browser")
                     .expect("runtime start command should exist")
         );
@@ -2700,36 +2745,46 @@ mod tests {
                 .find("nohup alfred serve --port 7123 --no-browser")
                 .expect("runtime start command should exist")
                 < command
-                    .find("python3 -c")
+                    .find("ALFRED_RUNTIME_PID")
                     .expect("runtime health check should exist")
         );
     }
 
     #[test]
-    fn terminal_runtime_health_probe_is_valid_python() {
+    fn terminal_runtime_python_probes_are_valid() {
+        assert_python_compiles(
+            terminal_runtime_port_preflight_probe(),
+            "<alfred-runtime-port-preflight>",
+        );
+        assert_python_compiles(
+            terminal_runtime_health_probe(),
+            "<alfred-runtime-health-probe>",
+        );
+    }
+
+    fn assert_python_compiles(source: &str, filename: &str) {
+        let compile_command =
+            format!("import sys; compile(sys.stdin.read(), {filename:?}, 'exec')");
         let mut child = Command::new("python3")
-            .args([
-                "-c",
-                "import sys; compile(sys.stdin.read(), '<alfred-runtime-health-probe>', 'exec')",
-            ])
+            .args(["-c", &compile_command])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .expect("python3 should be available for desktop runtime health checks");
+            .expect("python3 should be available for desktop runtime health probes");
         child
             .stdin
             .take()
             .expect("python compile process should accept stdin")
-            .write_all(terminal_runtime_health_probe().as_bytes())
-            .expect("health probe should be written to python stdin");
+            .write_all(source.as_bytes())
+            .expect("probe should be written to python stdin");
         let output = child
             .wait_with_output()
             .expect("python compile process should finish");
 
         assert!(
             output.status.success(),
-            "health probe should compile: {}",
+            "{filename} should compile: {}",
             String::from_utf8_lossy(&output.stderr)
         );
     }
