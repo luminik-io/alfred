@@ -390,6 +390,33 @@ def test_blast_radius_aggregates_changed_paths() -> None:
     ]
 
 
+def test_blast_radius_counts_exact_and_suffix_alias_once() -> None:
+    code_map = _sample_code_map()
+    code_map["contract_drift"] = []
+
+    blast = blast_radius_for_paths(
+        code_map,
+        repo="web",
+        paths=["src/api.ts", "api.ts"],
+    )
+
+    assert blast["level"] == "medium"
+    assert blast["counts"]["changed_paths"] == 2
+    assert blast["counts"]["matched_paths"] == 1
+    assert blast["counts"]["contract_surfaces"] == 1
+    assert blast["counts"]["contract_drift"] == 0
+    assert blast["contract_surfaces"] == [
+        {
+            "changed_path": "src/api.ts",
+            "kind": "api_call",
+            "method": "GET",
+            "path": "/api/v1/things",
+            "file": "src/api.ts:9",
+        }
+    ]
+    assert "1 API/route surface(s)" in blast["reasons"]
+
+
 def test_blast_radius_counts_shared_dependents_once() -> None:
     code_map = {
         "generated_at": "2026-06-30T20:00:00Z",

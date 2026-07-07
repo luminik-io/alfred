@@ -338,11 +338,12 @@ def blast_radius_for_paths(
         )
         for path in requested_paths
     ]
-    matched_paths = [
+    matched_paths = _unique_strings(
         str(brief["matched_file"])
         for brief in briefs
         if brief.get("match_status") in {"exact", "suffix"} and brief.get("matched_file")
-    ]
+    )
+    counted_briefs = _unique_briefs_by_matched_file(briefs)
     changed_set = set(matched_paths)
     unmapped = [brief for brief in briefs if brief.get("match_status") == "not_found"]
     ambiguous = [brief for brief in briefs if brief.get("match_status") == "ambiguous"]
@@ -415,8 +416,8 @@ def blast_radius_for_paths(
     graph_counts = _aggregate_graph_counts(payload, repo=repo, matched_paths=matched_paths)
     dependent_count = graph_counts["direct_dependents"]
     dependency_count = graph_counts["direct_dependencies"]
-    contract_count = sum(_brief_count(brief, "contract_surfaces") for brief in briefs)
-    drift_count = sum(_brief_count(brief, "contract_drift") for brief in briefs)
+    contract_count = sum(_brief_count(brief, "contract_surfaces") for brief in counted_briefs)
+    drift_count = sum(_brief_count(brief, "contract_drift") for brief in counted_briefs)
     nearby_count = len(nearby)
     level, reasons = _blast_radius_level(
         changed_count=len(requested_paths),
@@ -794,6 +795,23 @@ def _count_from(counts: dict[str, Any], key: str, *, fallback: int) -> int:
 def _brief_count(brief: dict[str, Any], key: str) -> int:
     counts = _dict_value(brief.get("counts"))
     return _count_from(counts, key, fallback=len(_list_of_dicts(brief.get(key))))
+
+
+def _unique_briefs_by_matched_file(briefs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    unique: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for brief in briefs:
+        if brief.get("match_status") not in {"exact", "suffix"}:
+            continue
+        matched_file = _str_or_none(brief.get("matched_file"))
+        if matched_file is None:
+            continue
+        key = _normalize_file_path(matched_file)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(brief)
+    return unique
 
 
 def _aggregate_graph_counts(
