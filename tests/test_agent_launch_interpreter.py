@@ -265,7 +265,8 @@ def test_agent_launch_scrubs_custom_codename_scope_from_managed_block(
     (alfred_home / ".env").write_text(
         "# alfred-init, generated below this line. Safe to re-run.\n"
         "AGENT_CODENAME_FEATURE_DEV=oracle\n"
-        "ALFRED_ORACLE_REPOS=org/runtime\n",
+        "ALFRED_ORACLE_REPOS=org/runtime\n"
+        "ALFRED_ORACLE_AWS_PROFILE=runtime-profile\n",
         encoding="utf-8",
     )
     target = tmp_path / "echo-custom-repos.sh"
@@ -273,6 +274,8 @@ def test_agent_launch_scrubs_custom_codename_scope_from_managed_block(
         "#!/usr/bin/env bash\n"
         'echo "CODENAME=${AGENT_CODENAME_FEATURE_DEV:-unset}"\n'
         'echo "REPOS=${ALFRED_ORACLE_REPOS:-unset}"\n'
+        'echo "AWS=${ALFRED_ORACLE_AWS_PROFILE:-unset}"\n',
+        encoding="utf-8",
     )
     _make_executable(target)
 
@@ -282,12 +285,35 @@ def test_agent_launch_scrubs_custom_codename_scope_from_managed_block(
         extra_env={
             "AGENT_CODENAME_FEATURE_DEV": "old-oracle",
             "ALFRED_ORACLE_REPOS": "org/stale",
+            "ALFRED_ORACLE_AWS_PROFILE": "stale-profile",
         },
     )
 
     assert proc.returncode == 0, proc.stderr
     assert "CODENAME=oracle" in proc.stdout
     assert "REPOS=org/runtime" in proc.stdout
+    assert "AWS=runtime-profile" in proc.stdout
+
+
+def test_agent_launch_preserves_process_owned_aws_profile(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text("GH_ORG=acme\n", encoding="utf-8")
+    target = tmp_path / "echo-backup-profile.sh"
+    target.write_text(
+        '#!/usr/bin/env bash\necho "PROFILE=${ALFRED_BACKUP_AWS_PROFILE:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={"ALFRED_BACKUP_AWS_PROFILE": "backup-profile"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "PROFILE=backup-profile" in proc.stdout
 
 
 def test_agent_launch_does_not_scrub_appended_token_after_managed_block(

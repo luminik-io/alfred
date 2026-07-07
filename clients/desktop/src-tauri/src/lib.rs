@@ -574,7 +574,6 @@ fn setup_managed_runtime_static_key(key: &str) -> bool {
             | "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS"
             | "ALFRED_MORNING_BRIEF_AGENTS"
     ) || key.starts_with("AGENT_CODENAME_")
-        || (key.starts_with("ALFRED_") && key.ends_with("_AWS_PROFILE"))
         || key.starts_with("ALFRED_TELEMETRY_")
 }
 
@@ -3661,6 +3660,7 @@ done"#;
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
         let prev_codename = std::env::var("AGENT_CODENAME_FEATURE_DEV").ok();
         let prev_oracle = std::env::var("ALFRED_ORACLE_REPOS").ok();
+        let prev_oracle_aws = std::env::var("ALFRED_ORACLE_AWS_PROFILE").ok();
 
         let root = temp_root("alfred-custom-runtime-env-scrub");
         let home = root.join("home");
@@ -3671,7 +3671,8 @@ done"#;
             runtime.join(".env"),
             "# alfred-init, generated below this line. Safe to re-run.\n\
              AGENT_CODENAME_FEATURE_DEV=oracle\n\
-             ALFRED_ORACLE_REPOS=org/runtime\n",
+             ALFRED_ORACLE_REPOS=org/runtime\n\
+             ALFRED_ORACLE_AWS_PROFILE=runtime-profile\n",
         )
         .expect("write runtime env");
 
@@ -3679,6 +3680,7 @@ done"#;
         std::env::set_var("ALFRED_HOME", &runtime);
         std::env::set_var("AGENT_CODENAME_FEATURE_DEV", "old-oracle");
         std::env::set_var("ALFRED_ORACLE_REPOS", "org/stale");
+        std::env::set_var("ALFRED_ORACLE_AWS_PROFILE", "stale-profile");
 
         let env = merged_alfred_env();
         assert_eq!(
@@ -3689,12 +3691,47 @@ done"#;
             env.get("ALFRED_ORACLE_REPOS"),
             Some(&"org/runtime".to_string())
         );
+        assert_eq!(
+            env.get("ALFRED_ORACLE_AWS_PROFILE"),
+            Some(&"runtime-profile".to_string())
+        );
 
         let _ = std::fs::remove_dir_all(&root);
         restore_var("HOME", prev_home);
         restore_var("ALFRED_HOME", prev_alfred);
         restore_var("AGENT_CODENAME_FEATURE_DEV", prev_codename);
         restore_var("ALFRED_ORACLE_REPOS", prev_oracle);
+        restore_var("ALFRED_ORACLE_AWS_PROFILE", prev_oracle_aws);
+    }
+
+    #[test]
+    fn native_subprocess_env_preserves_process_owned_aws_profile() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_backup = std::env::var("ALFRED_BACKUP_AWS_PROFILE").ok();
+
+        let root = temp_root("alfred-process-owned-aws-profile");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(runtime.join(".env"), "GH_ORG=acme\n").expect("write runtime env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::set_var("ALFRED_BACKUP_AWS_PROFILE", "backup-profile");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("ALFRED_BACKUP_AWS_PROFILE"),
+            Some(&"backup-profile".to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_BACKUP_AWS_PROFILE", prev_backup);
     }
 
     #[test]

@@ -166,6 +166,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "  'spec_repos': os.environ.get('ALFRED_SPEC_PLANNER_REPOS'),\n"
         "  'telemetry_enabled': os.environ.get('ALFRED_TELEMETRY_ENABLED'),\n"
         "  'token': os.environ.get('CLAUDE_CODE_OAUTH_TOKEN'),\n"
+        "  'backup_profile': os.environ.get('ALFRED_BACKUP_AWS_PROFILE'),\n"
         "  'feature_codename': os.environ.get('AGENT_CODENAME_FEATURE_DEV'),\n"
         "  'oracle_repos': os.environ.get('ALFRED_ORACLE_REPOS'),\n"
         "}))\n"
@@ -187,6 +188,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
             "ALFRED_SPEC_PLANNER_REPOS": "org/stale",
             "ALFRED_TELEMETRY_ENABLED": "0",
             "CLAUDE_CODE_OAUTH_TOKEN": "process-token",
+            "ALFRED_BACKUP_AWS_PROFILE": "backup-profile",
             "AGENT_CODENAME_FEATURE_DEV": "old-oracle",
             "ALFRED_ORACLE_REPOS": "org/stale",
         },
@@ -209,6 +211,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "spec_repos": None,
         "telemetry_enabled": "0",
         "token": "process-token",
+        "backup_profile": "backup-profile",
         "feature_codename": "oracle",
         "oracle_repos": "org/runtime",
     }

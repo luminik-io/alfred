@@ -221,18 +221,38 @@ def test_launcher_env_scrubs_custom_codename_repo_scope_from_managed_block(
     (runtime / ".env").write_text(
         "# alfred-init, generated below this line. Safe to re-run.\n"
         "AGENT_CODENAME_FEATURE_DEV=oracle\n"
-        "ALFRED_ORACLE_REPOS=org/runtime\n",
+        "ALFRED_ORACLE_REPOS=org/runtime\n"
+        "ALFRED_ORACLE_AWS_PROFILE=runtime-profile\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("ALFRED_HOME", str(runtime))
     monkeypatch.setenv("AGENT_CODENAME_FEATURE_DEV", "old-oracle")
     monkeypatch.setenv("ALFRED_ORACLE_REPOS", "org/stale")
+    monkeypatch.setenv("ALFRED_ORACLE_AWS_PROFILE", "stale-profile")
 
     env = paths_mod.launcher_env()
 
     assert env["AGENT_CODENAME_FEATURE_DEV"] == "oracle"
     assert env["ALFRED_ORACLE_REPOS"] == "org/runtime"
+    assert env["ALFRED_ORACLE_AWS_PROFILE"] == "runtime-profile"
+
+
+def test_launcher_env_preserves_process_owned_aws_profile(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text("GH_ORG=acme\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_BACKUP_AWS_PROFILE", "backup-profile")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_BACKUP_AWS_PROFILE"] == "backup-profile"
 
 
 def test_launcher_env_does_not_scrub_appended_token_after_managed_block(
