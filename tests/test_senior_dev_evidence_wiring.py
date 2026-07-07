@@ -305,7 +305,10 @@ def test_screenshot_evidence_prepares_and_cleans_base_worktree(lucius, monkeypat
     monkeypatch.setattr(lucius, "run", fake_run)
     monkeypatch.setattr(lucius, "capture_screenshots", fake_capture)
     monkeypatch.setattr(
-        lucius, "push_current_branch", lambda wt, branch: subprocess.CompletedProcess([], 0)
+        lucius, "push_current_branch", lambda wt, branch, **_kw: subprocess.CompletedProcess([], 0)
+    )
+    monkeypatch.setattr(
+        lucius, "push_remote_and_pr_head", lambda wt, repo, branch: ("origin", branch)
     )
 
     result = lucius._capture_screenshot_evidence(
@@ -352,7 +355,10 @@ def test_before_add_failure_drops_reference_not_link(lucius, monkeypatch):
     monkeypatch.setattr(lucius, "run", fake_run)
     monkeypatch.setattr(lucius, "capture_screenshots", fake_capture)
     monkeypatch.setattr(
-        lucius, "push_current_branch", lambda wt, branch: subprocess.CompletedProcess([], 0)
+        lucius, "push_current_branch", lambda wt, branch, **_kw: subprocess.CompletedProcess([], 0)
+    )
+    monkeypatch.setattr(
+        lucius, "push_remote_and_pr_head", lambda wt, repo, branch: ("origin", branch)
     )
 
     result = lucius._capture_screenshot_evidence(
@@ -394,7 +400,10 @@ def test_before_add_success_keeps_reference(lucius, monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        lucius, "push_current_branch", lambda wt, branch: subprocess.CompletedProcess([], 0)
+        lucius, "push_current_branch", lambda wt, branch, **_kw: subprocess.CompletedProcess([], 0)
+    )
+    monkeypatch.setattr(
+        lucius, "push_remote_and_pr_head", lambda wt, repo, branch: ("origin", branch)
     )
     result = lucius._capture_screenshot_evidence(
         "frontend", Path("/wt"), "br", "fid", "origin/main"

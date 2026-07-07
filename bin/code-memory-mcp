@@ -366,9 +366,155 @@ scope_raw_has_entries() {
 # In-scope repos for indexing: ALFRED_CODE_MEMORY_REPOS (comma-separated local
 # dir names under WORKSPACE), falling back to ALFRED_CODE_MAP_REPOS so a single
 # scope list drives both the planning code map and the code-memory index.
+repo_local_map_entries() {
+  local raw tokens_text token segment
+  local -a tokens expanded
+  raw="$(trim_env_value "$1")"
+  [ -n "$raw" ] || return 0
+  tokens_text="$(repo_local_map_shell_tokens "$raw" || true)"
+  tokens=()
+  while IFS= read -r token; do
+    [ -n "$token" ] || continue
+    tokens+=("$token")
+  done <<< "$tokens_text"
+  if [ "${#tokens[@]}" -gt 0 ]; then
+    expanded=()
+    for token in "${tokens[@]}"; do
+      while IFS= read -r segment; do
+        [ -n "$segment" ] || continue
+        expanded+=("$segment")
+      done < <(repo_local_map_token_segments "$token")
+    done
+    repo_local_map_entries_from_tokens "${expanded[@]}"
+    return 0
+  fi
+  printf '%s\n' "$raw"
+}
+
+repo_local_map_assignment_token() {
+  local token="$1" key
+  case "$token" in
+    *=*) key="${token%%=*}" ;;
+    *) return 1 ;;
+  esac
+  [[ "$key" =~ ^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?$ ]]
+}
+
+repo_local_map_boundary_token() {
+  local token="$1" value
+  repo_local_map_assignment_token "$token" || return 1
+  value="${token#*=}"
+  case "$value" in
+    /*|~*|./*|../*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+repo_local_map_token_segments() {
+  local rest="$1" acc="" before after trimmed
+  while [[ "$rest" == *,* ]]; do
+    before="${rest%%,*}"
+    after="${rest#*,}"
+    trimmed="$(trim_env_value "$after")"
+    if repo_local_map_boundary_token "$trimmed"; then
+      printf '%s%s\n' "$acc" "$before"
+      acc=""
+      rest="$trimmed"
+    else
+      acc="${acc}${before},"
+      rest="$after"
+    fi
+  done
+  printf '%s%s\n' "$acc" "$rest"
+}
+
+repo_local_map_entries_from_tokens() {
+  local token current=""
+  for token in "$@"; do
+    if repo_local_map_assignment_token "$token"; then
+      if [ -n "$current" ]; then
+        if [[ "$current" == *, ]] && repo_local_map_boundary_token "$token"; then
+          printf '%s\n' "${current%,}"
+        else
+          printf '%s\n' "$current"
+        fi
+      fi
+      current="$token"
+    elif [ -n "$current" ]; then
+      current="${current} ${token}"
+    fi
+  done
+  [ -n "$current" ] && printf '%s\n' "$current"
+}
+
+repo_local_map_decode_value() {
+  local value="$1" encoded out="" ch hex decoded i
+  case "$value" in
+    url:*) encoded="${value#url:}" ;;
+    *) printf '%s' "$value"; return 0 ;;
+  esac
+  for ((i = 0; i < ${#encoded}; i++)); do
+    ch="${encoded:i:1}"
+    if [ "$ch" = "%" ] && [ $((i + 2)) -lt "${#encoded}" ]; then
+      hex="${encoded:i+1:2}"
+      if [[ "$hex" =~ ^[0-9A-Fa-f]{2}$ ]]; then
+        printf -v decoded '%b' "\\x$hex"
+        out="${out}${decoded}"
+        i=$((i + 2))
+        continue
+      fi
+    fi
+    out="${out}${ch}"
+  done
+  printf '%s' "$out"
+}
+
+repo_local_map_shell_tokens() {
+  local raw="$1" ch quote="" token="" escaped=0 i
+  for ((i = 0; i < ${#raw}; i++)); do
+    ch="${raw:i:1}"
+    if [ "$escaped" -eq 1 ]; then
+      token="${token}${ch}"
+      escaped=0
+      continue
+    fi
+    if [ "$ch" = "\\" ] && [ "$quote" != "'" ]; then
+      escaped=1
+      continue
+    fi
+    if [ -n "$quote" ]; then
+      if [ "$ch" = "$quote" ]; then
+        quote=""
+      else
+        token="${token}${ch}"
+      fi
+      continue
+    fi
+    if [ "$ch" = "'" ] || [ "$ch" = '"' ]; then
+      quote="$ch"
+      continue
+    fi
+    if [[ "$ch" =~ [[:space:]] ]]; then
+      if [ -n "$token" ]; then
+        printf '%s\n' "$token"
+        token=""
+      fi
+      continue
+    fi
+    token="${token}${ch}"
+  done
+  [ -z "$quote" ] || return 1
+  if [ "$escaped" -eq 1 ]; then
+    token="${token}\\"
+  fi
+  [ -n "$token" ] && printf '%s\n' "$token"
+}
+
 repo_map_lookup() {
-  local lookup="$1" raw="${ALFRED_REPO_LOCAL_MAP:-}" entry key value
+  local lookup="$1" raw="${ALFRED_REPO_LOCAL_MAP:-}" entry key value alias_value="" bare
+  local lookup_lower key_lower bare_lower
   [ -n "$raw" ] || return 1
+  lookup_lower="$(printf '%s' "$lookup" | tr '[:upper:]' '[:lower:]')"
   while IFS= read -r entry; do
     entry="$(trim_env_value "$entry")"
     [ -n "$entry" ] || continue
@@ -379,11 +525,28 @@ repo_map_lookup() {
     fi
     key="$(trim_env_value "$key")"
     value="$(trim_env_value "$value")"
-    if [ "$key" = "$lookup" ] && [ -n "$value" ]; then
+    value="$(repo_local_map_decode_value "$value")"
+    key_lower="$(printf '%s' "$key" | tr '[:upper:]' '[:lower:]')"
+    if { [ "$key" = "$lookup" ] || [ "$key_lower" = "$lookup_lower" ]; } && [ -n "$value" ]; then
       printf '%s' "$value"
       return 0
     fi
-  done < <(printf '%s\n' "$raw" | tr ',' '\n')
+    case "$key" in
+      */*)
+        bare="${key##*/}"
+        bare_lower="$(printf '%s' "$bare" | tr '[:upper:]' '[:lower:]')"
+        if { [ "$bare" = "$lookup" ] || [ "$bare_lower" = "$lookup_lower" ]; } \
+          && [ -z "$alias_value" ] \
+          && [ -n "$value" ]; then
+          alias_value="$value"
+        fi
+        ;;
+    esac
+  done < <(repo_local_map_entries "$raw")
+  if [ -n "$alias_value" ]; then
+    printf '%s' "$alias_value"
+    return 0
+  fi
   return 1
 }
 

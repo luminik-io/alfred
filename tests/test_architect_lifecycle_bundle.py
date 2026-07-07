@@ -341,6 +341,26 @@ def test_list_issues_by_bundle_label_accepts_local_repo_allowlist(monkeypatch):
     assert [row["number"] for row in rows] == [1]
 
 
+def test_list_issues_by_bundle_label_accepts_local_allowlist_for_full_slug_map(
+    monkeypatch,
+):
+    import architect_lifecycle as bm
+
+    bm.GH_REPO_TO_LOCAL.update({"myorg/backend": "backend"})
+
+    def fake_gh_json(_cmd, *, default):
+        return [
+            _issue(1, "backend"),
+            _issue(2, "frontend"),
+        ]
+
+    monkeypatch.setattr(bm, "gh_json", fake_gh_json)
+
+    rows = bm.list_issues_by_bundle_label("agent:bundle:checkout", allowed_repos=["backend"])
+
+    assert [row["number"] for row in rows] == [1]
+
+
 # ---------------------------------------------------------------------------
 # claim_bundle / release_bundle (monkeypatched, no network)
 # ---------------------------------------------------------------------------
@@ -708,6 +728,130 @@ We want a mapped backend rollout from a planning repo.
 
     assert plan.children == ()
     assert any(f.code == "ambiguous_repo_mapping" for f in plan.readiness_findings)
+
+
+def test_parse_parent_issue_repo_local_path_map_does_not_leak_checkout_path(
+    monkeypatch,
+    tmp_path,
+):
+    import architect_lifecycle as bm
+
+    checkout = tmp_path / "workspace" / "tools" / "alfred-os"
+    monkeypatch.setattr(
+        bm,
+        "GH_REPO_TO_LOCAL",
+        {
+            "luminik-io/alfred": str(checkout),
+            "alfred": str(checkout),
+        },
+    )
+
+    body = """
+We want Alfred to run a repo-local map smoke.
+
+## Affected Repos
+- alfred
+
+## Acceptance Criteria
+
+### alfred
+- Add a focused smoke test.
+"""
+
+    plan = bm.parse_parent_issue(
+        body=body,
+        title="Bundle: repo-local smoke",
+        parent_repo="luminik-io/plans",
+        parent_issue_number=42,
+    )
+
+    rendered = "\n".join(
+        [*(child.title for child in plan.children), *(child.body for child in plan.children)]
+    )
+    assert [child.repo for child in plan.children] == ["luminik-io/alfred"]
+    assert str(checkout) not in rendered
+
+
+def test_parse_parent_issue_repo_local_path_map_preserves_slug_across_parent_org(
+    monkeypatch,
+    tmp_path,
+):
+    import architect_lifecycle as bm
+
+    checkout = tmp_path / "workspace" / "tools" / "alfred-os"
+    monkeypatch.setattr(
+        bm,
+        "GH_REPO_TO_LOCAL",
+        {
+            "luminik-io/alfred": str(checkout),
+            "alfred": str(checkout),
+        },
+    )
+
+    body = """
+We want Alfred to run a repo-local map smoke.
+
+## Affected Repos
+- alfred
+
+## Acceptance Criteria
+
+### alfred
+- Add a focused smoke test.
+"""
+
+    plan = bm.parse_parent_issue(
+        body=body,
+        title="Bundle: repo-local smoke",
+        parent_repo="platform/plans",
+        parent_issue_number=42,
+    )
+
+    rendered = "\n".join(
+        [*(child.title for child in plan.children), *(child.body for child in plan.children)]
+    )
+    assert [child.repo for child in plan.children] == ["luminik-io/alfred"]
+    assert str(checkout) not in rendered
+
+
+def test_parse_parent_issue_repo_local_bare_path_map_preserves_repo_key(
+    monkeypatch,
+):
+    import architect_lifecycle as bm
+
+    monkeypatch.setattr(
+        bm,
+        "GH_REPO_TO_LOCAL",
+        {
+            "backend": "backend",
+            "acme-site": "../marketing/site",
+        },
+    )
+
+    body = """
+We want the site smoke wired through architect.
+
+## Affected Repos
+- acme-site
+
+## Acceptance Criteria
+
+### acme-site
+- Add a focused smoke test.
+"""
+
+    plan = bm.parse_parent_issue(
+        body=body,
+        title="Bundle: site smoke",
+        parent_repo="myorg/backend",
+        parent_issue_number=42,
+    )
+
+    rendered = "\n".join(
+        [*(child.title for child in plan.children), *(child.body for child in plan.children)]
+    )
+    assert [child.repo for child in plan.children] == ["myorg/acme-site"]
+    assert "../marketing/site" not in rendered
 
 
 def test_parse_parent_issue_loose_shape_preserves_duplicate_cross_org_tails():

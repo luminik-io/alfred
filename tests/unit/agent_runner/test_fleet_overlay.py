@@ -32,7 +32,10 @@ def overlay_root(tmp_path, monkeypatch):
     """Tmp dir on sys.path where the test can drop a fake overlay module."""
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.delenv("ALFRED_REPO_LOCAL_MAP", raising=False)
     monkeypatch.delenv("ALFRED_FLEET_OVERLAY", raising=False)
+    monkeypatch.delenv("ALFREDRC", raising=False)
+    monkeypatch.delenv("GH_ORG", raising=False)
     sys.path.insert(0, str(tmp_path))
     sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
     _wipe_agent_runner_modules()
@@ -45,6 +48,119 @@ def test_overlay_absent_is_silent(overlay_root):
     import agent_runner
 
     assert agent_runner.GH_REPO_TO_LOCAL == {}
+
+
+def test_repo_local_map_env_loads_without_overlay(overlay_root, monkeypatch):
+    """A deployed OSS runtime should not need a Python overlay just to map
+    a GitHub slug to a local checkout path."""
+    monkeypatch.setenv(
+        "ALFRED_REPO_LOCAL_MAP",
+        "test-org/alfred=/tmp/alfred-os test-org-api=services/api",
+    )
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    assert agent_runner.GH_REPO_TO_LOCAL["test-org/alfred"] == "/tmp/alfred-os"
+    assert agent_runner.GH_REPO_TO_LOCAL["alfred"] == "/tmp/alfred-os"
+    assert agent_runner.local_repo_dir("test-org/alfred") == "/tmp/alfred-os"
+    assert agent_runner.local_repo_dir("test-org-api") == "services/api"
+
+
+def test_repo_local_map_env_preserves_trailing_comma_paths(overlay_root, monkeypatch):
+    monkeypatch.setenv(
+        "ALFRED_REPO_LOCAL_MAP",
+        "test-org/api=/tmp/api test-org/web=/tmp/archive,",
+    )
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    assert agent_runner.GH_REPO_TO_LOCAL["test-org/api"] == "/tmp/api"
+    assert agent_runner.GH_REPO_TO_LOCAL["test-org/web"] == "/tmp/archive,"
+    assert agent_runner.local_repo_dir("web") == "/tmp/archive,"
+
+
+def test_repo_local_map_env_recovers_comma_delimited_path_entries(overlay_root, monkeypatch):
+    monkeypatch.setenv(
+        "ALFRED_REPO_LOCAL_MAP",
+        "test-org/api=/tmp/api, test-org/web=/tmp/web",
+    )
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    assert agent_runner.local_repo_dir("api") == "/tmp/api"
+    assert agent_runner.local_repo_dir("web") == "/tmp/web"
+
+
+def test_repo_local_map_env_recovers_compact_comma_delimited_path_entries(
+    overlay_root, monkeypatch
+):
+    monkeypatch.setenv(
+        "ALFRED_REPO_LOCAL_MAP",
+        "test-org/api=/tmp/api,test-org/web=/tmp/web",
+    )
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    assert agent_runner.local_repo_dir("api") == "/tmp/api"
+    assert agent_runner.local_repo_dir("web") == "/tmp/web"
+
+
+def test_repo_local_map_env_preserves_comma_and_equals_paths(overlay_root, monkeypatch):
+    monkeypatch.setenv(
+        "ALFRED_REPO_LOCAL_MAP",
+        "test-org/api=/tmp/archive,build=2/api",
+    )
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    assert agent_runner.local_repo_dir("api") == "/tmp/archive,build=2/api"
+
+
+def test_repo_local_map_env_decodes_canonical_paths(overlay_root, monkeypatch):
+    monkeypatch.setenv(
+        "ALFRED_REPO_LOCAL_MAP",
+        "test-org/api=url:/tmp/archive%2C test-org/web=/tmp/web",
+    )
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    assert agent_runner.local_repo_dir("api") == "/tmp/archive,"
+    assert agent_runner.local_repo_dir("web") == "/tmp/web"
+
+
+def test_repo_local_map_env_adds_case_insensitive_aliases(overlay_root, monkeypatch):
+    monkeypatch.setenv(
+        "ALFRED_REPO_LOCAL_MAP",
+        "Test-Org/MyApp=/tmp/MyApp",
+    )
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    assert agent_runner.local_repo_dir("Test-Org/MyApp") == "/tmp/MyApp"
+    assert agent_runner.local_repo_dir("test-org/myapp") == "/tmp/MyApp"
+    assert agent_runner.local_repo_dir("MyApp") == "/tmp/MyApp"
+    assert agent_runner.local_repo_dir("myapp") == "/tmp/MyApp"
+
+
+def test_repo_local_map_env_preserves_decoded_space_paths(overlay_root, monkeypatch):
+    monkeypatch.setenv(
+        "ALFRED_REPO_LOCAL_MAP",
+        "test-org/api=/Users/me/My Repos/api test-org/web=/tmp/web",
+    )
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    assert agent_runner.GH_REPO_TO_LOCAL["test-org/api"] == "/Users/me/My Repos/api"
+    assert agent_runner.local_repo_dir("api") == "/Users/me/My Repos/api"
+    assert agent_runner.local_repo_dir("test-org/web") == "/tmp/web"
 
 
 def test_overlay_named_via_env_loads_and_mutates(overlay_root, monkeypatch):

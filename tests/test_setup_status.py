@@ -624,7 +624,7 @@ def test_install_inventory_reports_roster_theme_and_repo_local_map(
     )
     monkeypatch.setenv(
         "ALFRED_REPO_LOCAL_MAP",
-        "acme/site=../marketing/site,acme/api=/Users/example/api",
+        "acme/site='../marketing/site' acme/api=/Users/example/api",
     )
 
     inventory = setup_mod.bootstrap_status()["install"]
@@ -1469,7 +1469,7 @@ def test_bootstrap_status_uses_repo_local_map_for_configured_code_memory_repos(
     monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
     monkeypatch.setenv(
         "ALFRED_REPO_LOCAL_MAP",
-        f"acme-backend=backend,acme-site={marketing / 'site'}",
+        f"acme-backend=backend acme-site={marketing / 'site'}",
     )
     monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "acme-site,acme-backend")
 
@@ -1484,6 +1484,48 @@ def test_bootstrap_status_uses_repo_local_map_for_configured_code_memory_repos(
         "count": 2,
         "limit": 25,
     }
+
+
+def test_bootstrap_status_uses_full_slug_repo_local_map_for_bare_code_memory_repo(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    workspace = tmp_path / "workspace"
+    mapped = tmp_path / "mapped-backend"
+    mapped.joinpath(".git").mkdir(parents=True)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", f"acme/backend={mapped}")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "backend")
+
+    code_memory = setup_mod.bootstrap_status()["code_memory"]
+
+    assert code_memory["repos"] == {
+        "configured": ["backend"],
+        "configured_existing": ["backend"],
+        "discovered": [],
+        "selected": ["backend"],
+        "source": "configured",
+        "count": 1,
+        "limit": 25,
+    }
+
+
+def test_bootstrap_status_parses_repo_local_map_paths_with_commas(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    workspace = tmp_path / "workspace"
+    repo = tmp_path / "marketing,site" / "repo"
+    repo.joinpath(".git").mkdir(parents=True)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", f"acme-site={repo}")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "acme-site")
+
+    code_memory = setup_mod.bootstrap_status()["code_memory"]
+
+    assert code_memory["repos"]["configured_existing"] == ["acme-site"]
 
 
 def test_bootstrap_status_does_not_auto_discover_when_configured_code_memory_repos_are_stale(

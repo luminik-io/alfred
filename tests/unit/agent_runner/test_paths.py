@@ -188,6 +188,69 @@ def test_launcher_env_prefers_runtime_setup_scope_over_process_env(
     assert env["ALFRED_SHIPPED_REPOS"] == "org/env"
 
 
+def test_launcher_env_prefers_runtime_repo_local_map_over_process_env(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "ALFRED_REPO_LOCAL_MAP=org/app=/runtime\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "org/app=/process")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_REPO_LOCAL_MAP"] == "org/app=/runtime"
+
+
+def test_launcher_env_preserves_process_repo_local_map_when_runtime_env_omits_it(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "GH_ORG=acme\n"
+        "ALFRED_CODE_MEMORY_REPOS=app\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "org/app=/process")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_REPO_LOCAL_MAP"] == "org/app=/process"
+
+
+def test_launcher_env_prefers_managed_runtime_gh_org_over_process_env(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\nGH_ORG=acme\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("GH_ORG", "stale")
+
+    env = paths_mod.launcher_env()
+
+    assert env["GH_ORG"] == "acme"
+
+
 def test_launcher_env_scrubs_setup_managed_scope_when_runtime_env_omits_it(
     fresh_agent_runner, monkeypatch, tmp_path
 ):

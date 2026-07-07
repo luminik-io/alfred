@@ -210,9 +210,10 @@ setup_managed_env_keys_from_file() {
         break
         ;;
     esac
-    if setup_runtime_static_config_key "$key"; then
-      printf '%s\n' "$key"
-    fi
+    case "$key" in
+      GH_ORG|ALFRED_REPO_LOCAL_MAP) printf '%s\n' "$key" ;;
+      *) setup_runtime_static_config_key "$key" && printf '%s\n' "$key" ;;
+    esac
     case "$key" in
       AGENT_CODENAME_*)
         value="$(trim_env_value "$(strip_inline_comment "$value")")"

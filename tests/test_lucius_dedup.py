@@ -7,6 +7,7 @@ guard, gh-failure fallback) and ``find_existing_worktree`` /
 
 from __future__ import annotations
 
+import hashlib
 import re
 import subprocess
 import sys
@@ -145,6 +146,74 @@ def test_find_existing_worktree_ignores_other_targets(tmp_path):
     found = ar.find_existing_worktree("backend", "lucius", "275")
     assert found is not None
     assert found.name == "eng-lucius-backend-275-1"
+
+
+def test_find_existing_worktree_uses_sanitized_mapped_repo_names(tmp_path):
+    import agent_runner as ar
+    import agent_runner.github as gh
+
+    ar.WORKTREE_ROOT.mkdir(parents=True, exist_ok=True)
+    existing = ar.WORKTREE_ROOT / gh._worktree_name(
+        "eng",
+        "senior-dev",
+        "../marketing/site",
+        "275",
+        1,
+    )
+    existing.mkdir()
+
+    found = ar.find_existing_worktree("../marketing/site", "senior-dev", "275")
+
+    assert found == existing
+
+
+def test_find_existing_worktree_uses_absolute_path_basename(tmp_path):
+    import agent_runner as ar
+    import agent_runner.github as gh
+
+    ar.WORKTREE_ROOT.mkdir(parents=True, exist_ok=True)
+    local_repo = str(tmp_path / "tools" / "alfred-os")
+    existing = ar.WORKTREE_ROOT / gh._worktree_name(
+        "eng",
+        "senior-dev",
+        local_repo,
+        "275",
+        1,
+    )
+    existing.mkdir()
+
+    found = ar.find_existing_worktree(local_repo, "senior-dev", "275")
+
+    assert found == existing
+
+
+def test_absolute_path_worktree_names_include_path_hash(tmp_path):
+    import agent_runner.github as gh
+
+    left = gh._worktree_name("eng", "senior-dev", "/work/org-a/app", "275", 1)
+    right = gh._worktree_name("eng", "senior-dev", "/work/org-b/app", "275", 1)
+
+    assert left != right
+    assert "app-" in left
+    assert "app-" in right
+
+
+def test_absolute_path_worktree_names_preserve_hash_for_long_basenames(tmp_path):
+    import agent_runner.github as gh
+
+    basename = "a" * 120
+    left_path = f"/work/org-a/{basename}"
+    right_path = f"/work/org-b/{basename}"
+
+    left = gh._worktree_name("eng", "senior-dev", left_path, "275", 1)
+    right = gh._worktree_name("eng", "senior-dev", right_path, "275", 1)
+
+    left_digest = hashlib.sha1(left_path.encode("utf-8")).hexdigest()[:10]
+    right_digest = hashlib.sha1(right_path.encode("utf-8")).hexdigest()[:10]
+
+    assert left != right
+    assert left_digest in left
+    assert right_digest in right
 
 
 def test_reuse_or_make_worktree_falls_back_to_make_when_no_existing(monkeypatch, tmp_path):
@@ -371,3 +440,62 @@ def test_push_current_branch_pushes_head_to_named_branch(monkeypatch, tmp_path):
 
     assert res.returncode == 0
     assert calls == [(["git", "push", "-u", "origin", "HEAD:lucius/42"], str(tmp_path))]
+
+
+def test_push_remote_and_pr_head_uses_origin_when_selected_repo_matches(monkeypatch, tmp_path):
+    import agent_runner as ar
+    import agent_runner.github as gh
+
+    def fake_run(cmd, **kwargs):
+        assert cmd == ["git", "remote", "get-url", "origin"]
+        assert kwargs["cwd"] == str(tmp_path)
+        return subprocess.CompletedProcess(
+            cmd, 0, stdout="https://github.com/acme/alfred.git\n", stderr=""
+        )
+
+    monkeypatch.setattr(gh, "run", fake_run)
+
+    assert ar.push_remote_and_pr_head(tmp_path, "acme/alfred", "senior-dev/42") == (
+        "origin",
+        "senior-dev/42",
+    )
+
+
+def test_push_remote_and_pr_head_targets_selected_fork_for_upstream_checkout(monkeypatch, tmp_path):
+    import agent_runner as ar
+    import agent_runner.github as gh
+
+    def fake_run(cmd, **kwargs):
+        assert cmd == ["git", "remote", "get-url", "origin"]
+        assert kwargs["cwd"] == str(tmp_path)
+        return subprocess.CompletedProcess(
+            cmd, 0, stdout="https://github.com/luminik-io/alfred.git\n", stderr=""
+        )
+
+    monkeypatch.setattr(gh, "run", fake_run)
+
+    assert ar.push_remote_and_pr_head(
+        tmp_path,
+        "acme-fork/alfred",
+        "senior-dev/42",
+    ) == ("https://github.com/acme-fork/alfred.git", "senior-dev/42")
+
+
+def test_push_remote_and_pr_head_preserves_ssh_origin_style(monkeypatch, tmp_path):
+    import agent_runner as ar
+    import agent_runner.github as gh
+
+    def fake_run(cmd, **kwargs):
+        assert cmd == ["git", "remote", "get-url", "origin"]
+        assert kwargs["cwd"] == str(tmp_path)
+        return subprocess.CompletedProcess(
+            cmd, 0, stdout="git@github.com:luminik-io/alfred.git\n", stderr=""
+        )
+
+    monkeypatch.setattr(gh, "run", fake_run)
+
+    assert ar.push_remote_and_pr_head(
+        tmp_path,
+        "acme-fork/alfred",
+        "senior-dev/42",
+    ) == ("git@github.com:acme-fork/alfred.git", "senior-dev/42")

@@ -473,8 +473,455 @@ def test_env_assignments_includes_codenames_and_repos(init_mod, tmp_path):
     )
     out = init_mod.env_assignments_for(state)
     assert out["GH_ORG"] == "acme"
+    assert out["ALFRED_QUEUE_REPOS"] == "acme/foo,acme/bar"
+    assert out["ALFRED_SHIPPED_REPOS"] == "acme/foo,acme/bar"
+    assert out["ALFRED_BRIDGE_REPOS"] == "acme/foo,acme/bar"
     assert out["AGENT_CODENAME_FEATURE_DEV"] == "senior-dev"
     assert out["ALFRED_SENIOR_DEV_REPOS"] == "foo,bar"
+
+
+def test_env_assignments_normalizes_bare_repos_for_board_scope(init_mod, tmp_path):
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("feature_dev",),
+        gh_org="Acme",
+        repos={"feature_dev": ["Foo", "Acme/Bar"]},
+    )
+
+    out = init_mod.env_assignments_for(state)
+
+    assert out["ALFRED_QUEUE_REPOS"] == "acme/foo,acme/bar"
+    assert out["ALFRED_SHIPPED_REPOS"] == "acme/foo,acme/bar"
+    assert out["ALFRED_BRIDGE_REPOS"] == "acme/foo,acme/bar"
+    assert out["ALFRED_SENIOR_DEV_REPOS"] == "Foo,Bar"
+
+
+def test_env_assignments_preserves_existing_queue_scope(init_mod, tmp_path):
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("feature_dev",),
+        gh_org="acme",
+        repos={"feature_dev": ["acme/api", "acme/web"]},
+    )
+    state.env_file.write_text("ALFRED_QUEUE_REPOS=acme/api\n", encoding="utf-8")
+
+    out = init_mod.env_assignments_for(state)
+
+    assert out["ALFRED_QUEUE_REPOS"] == "acme/api"
+    assert out["ALFRED_SHIPPED_REPOS"] == "acme/api,acme/web"
+    assert out["ALFRED_BRIDGE_REPOS"] == "acme/api,acme/web"
+
+
+def test_env_assignments_preserves_existing_queue_scope_below_managed_banner(init_mod, tmp_path):
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("feature_dev",),
+        gh_org="acme",
+        repos={"feature_dev": ["acme/api", "acme/web"]},
+    )
+    state.env_file.write_text(
+        "\n".join(
+            [
+                "OPERATOR_NAME=Prasad",
+                init_mod.ALFRED_ENV_BANNER,
+                "GH_ORG=acme",
+                "ALFRED_SENIOR_DEV_REPOS=api,web",
+                "ALFRED_QUEUE_REPOS=acme/api",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    out = init_mod.env_assignments_for(state)
+
+    assert "ALFRED_QUEUE_REPOS" not in init_mod.read_unmanaged_env_file(state.env_file)
+    assert out["ALFRED_QUEUE_REPOS"] == "acme/api"
+    assert out["ALFRED_SHIPPED_REPOS"] == "acme/api,acme/web"
+    assert out["ALFRED_BRIDGE_REPOS"] == "acme/api,acme/web"
+
+
+def test_env_assignments_infers_source_checkout_repo_local_map(init_mod, tmp_path, monkeypatch):
+    checkout = tmp_path / "workspace" / "tools" / "alfred-os"
+    checkout.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://github.com/luminik-io/alfred.git"],
+        cwd=checkout,
+        check=True,
+    )
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("feature_dev",),
+        gh_org="luminik-io",
+        repos={"feature_dev": ["luminik-io/alfred"]},
+    )
+    state.repo_root = checkout
+    state.env_file.write_text(f"WORKSPACE_ROOT={tmp_path / 'workspace'}\n")
+    monkeypatch.delenv("WORKSPACE_ROOT", raising=False)
+    monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
+
+    out = init_mod.env_assignments_for(state)
+
+    repo_map = init_mod.parse_repo_local_map(out["ALFRED_REPO_LOCAL_MAP"])
+    assert repo_map["luminik-io/alfred"] == str(checkout.resolve())
+    assert repo_map["alfred"] == str(checkout.resolve())
+
+
+def test_env_assignments_preserves_explicit_repo_map_over_source_inference(
+    init_mod, tmp_path, monkeypatch
+):
+    checkout = tmp_path / "workspace" / "tools" / "alfred-os"
+    configured = tmp_path / "workspace" / "product" / "custom-alfred"
+    checkout.mkdir(parents=True)
+    configured.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://github.com/luminik-io/alfred.git"],
+        cwd=checkout,
+        check=True,
+    )
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("feature_dev",),
+        gh_org="luminik-io",
+        repos={"feature_dev": ["luminik-io/alfred"]},
+    )
+    state.repo_root = checkout
+    state.env_file.write_text(
+        "\n".join(
+            [
+                f"WORKSPACE_ROOT={tmp_path / 'workspace'}",
+                f"ALFRED_REPO_LOCAL_MAP=luminik-io/alfred={configured}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("WORKSPACE_ROOT", raising=False)
+    monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
+
+    out = init_mod.env_assignments_for(state)
+
+    repo_map = init_mod.parse_repo_local_map(out["ALFRED_REPO_LOCAL_MAP"])
+    assert repo_map["luminik-io/alfred"] == str(configured)
+    assert repo_map["alfred"] == str(configured)
+
+
+def test_env_assignments_bare_repo_map_overrides_inferred_full_slug(
+    init_mod, tmp_path, monkeypatch
+):
+    checkout = tmp_path / "workspace" / "tools" / "alfred-os"
+    configured = tmp_path / "workspace" / "product" / "custom-alfred"
+    checkout.mkdir(parents=True)
+    configured.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://github.com/luminik-io/alfred.git"],
+        cwd=checkout,
+        check=True,
+    )
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("feature_dev",),
+        gh_org="luminik-io",
+        repos={"feature_dev": ["luminik-io/alfred"]},
+    )
+    state.repo_root = checkout
+    state.env_file.write_text(
+        "\n".join(
+            [
+                f"WORKSPACE_ROOT={tmp_path / 'workspace'}",
+                f"ALFRED_REPO_LOCAL_MAP=alfred={configured}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("WORKSPACE_ROOT", raising=False)
+    monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
+
+    out = init_mod.env_assignments_for(state)
+
+    repo_map = init_mod.parse_repo_local_map(out["ALFRED_REPO_LOCAL_MAP"])
+    assert repo_map["luminik-io/alfred"] == str(configured)
+    assert repo_map["alfred"] == str(configured)
+
+
+def test_env_assignments_infers_source_checkout_from_bare_repo_when_org_matches(
+    init_mod, tmp_path, monkeypatch
+):
+    checkout = tmp_path / "workspace" / "tools" / "alfred-os"
+    checkout.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://github.com/luminik-io/alfred.git"],
+        cwd=checkout,
+        check=True,
+    )
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("feature_dev",),
+        gh_org="luminik-io",
+        repos={"feature_dev": ["alfred"]},
+    )
+    state.repo_root = checkout
+    state.env_file.write_text(f"WORKSPACE_ROOT={tmp_path / 'workspace'}\n")
+    monkeypatch.delenv("WORKSPACE_ROOT", raising=False)
+    monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
+
+    out = init_mod.env_assignments_for(state)
+
+    repo_map = init_mod.parse_repo_local_map(out["ALFRED_REPO_LOCAL_MAP"])
+    assert repo_map["luminik-io/alfred"] == str(checkout.resolve())
+    assert repo_map["alfred"] == str(checkout.resolve())
+
+
+def test_env_assignments_drops_stale_generated_source_checkout_map(init_mod, tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    checkout = workspace / "product" / "alfred"
+    stale = workspace / "tools" / "alfred-os"
+    checkout.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://github.com/luminik-io/alfred.git"],
+        cwd=checkout,
+        check=True,
+    )
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("feature_dev",),
+        gh_org="luminik-io",
+        repos={"feature_dev": ["luminik-io/alfred"]},
+    )
+    state.repo_root = checkout
+    state.env_file.write_text(
+        "\n".join(
+            [
+                f"WORKSPACE_ROOT={workspace}",
+                init_mod.ALFRED_ENV_BANNER,
+                f"ALFRED_REPO_LOCAL_MAP=luminik-io/alfred={stale} alfred={stale}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("WORKSPACE_ROOT", raising=False)
+    monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
+
+    out = init_mod.env_assignments_for(state)
+
+    assert "ALFRED_REPO_LOCAL_MAP" not in out
+
+
+def test_env_assignments_infers_source_checkout_from_bare_fork_selection(
+    init_mod, tmp_path, monkeypatch
+):
+    checkout = tmp_path / "workspace" / "tools" / "alfred-os"
+    checkout.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://github.com/luminik-io/alfred.git"],
+        cwd=checkout,
+        check=True,
+    )
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("feature_dev",),
+        gh_org="acme-fork",
+        repos={"feature_dev": ["alfred"]},
+    )
+    state.repo_root = checkout
+    state.env_file.write_text(f"WORKSPACE_ROOT={tmp_path / 'workspace'}\n")
+    monkeypatch.delenv("WORKSPACE_ROOT", raising=False)
+    monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
+
+    out = init_mod.env_assignments_for(state)
+
+    repo_map = init_mod.parse_repo_local_map(out["ALFRED_REPO_LOCAL_MAP"])
+    assert repo_map["acme-fork/alfred"] == str(checkout.resolve())
+    assert repo_map["alfred"] == str(checkout.resolve())
+
+
+def test_env_assignments_preserves_inferred_source_checkout_repo_case(
+    init_mod, tmp_path, monkeypatch
+):
+    checkout = tmp_path / "workspace" / "tools" / "myapp"
+    checkout.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://github.com/Acme/MyApp.git"],
+        cwd=checkout,
+        check=True,
+    )
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("feature_dev",),
+        gh_org="Acme",
+        repos={"feature_dev": ["Acme/MyApp"]},
+    )
+    state.repo_root = checkout
+    state.env_file.write_text(f"WORKSPACE_ROOT={tmp_path / 'workspace'}\n")
+    monkeypatch.delenv("WORKSPACE_ROOT", raising=False)
+    monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
+
+    out = init_mod.env_assignments_for(state)
+
+    repo_map = init_mod.parse_repo_local_map(out["ALFRED_REPO_LOCAL_MAP"])
+    assert out["ALFRED_SENIOR_DEV_REPOS"] == "MyApp"
+    assert repo_map["Acme/MyApp"] == str(checkout.resolve())
+    assert repo_map["MyApp"] == str(checkout.resolve())
+    assert "acme/myapp" not in repo_map
+    assert "myapp" not in repo_map
+
+
+def test_repo_local_map_round_trips_paths_with_commas(init_mod, tmp_path):
+    mapped = {
+        "acme/api": str(tmp_path / "work,with,commas" / "api"),
+        "acme/site": "../marketing/site",
+    }
+
+    formatted = init_mod.format_repo_local_map(mapped)
+
+    assert "url:" in formatted
+    assert init_mod.parse_repo_local_map(formatted) == mapped
+    assert init_mod.parse_repo_local_map("acme/api=api,acme/site=../marketing/site") == {
+        "acme/api": "api",
+        "acme/site": "../marketing/site",
+    }
+    assert init_mod.parse_repo_local_map("acme/api=/work/api, acme/site=/work/site") == {
+        "acme/api": "/work/api",
+        "acme/site": "/work/site",
+    }
+    assert init_mod.parse_repo_local_map("acme/api=/work/api,acme/site=/work/site") == {
+        "acme/api": "/work/api",
+        "acme/site": "/work/site",
+    }
+    assert init_mod.parse_repo_local_map("api=/work/api,web=/work/web") == {
+        "api": "/work/api",
+        "web": "/work/web",
+    }
+    assert init_mod.parse_repo_local_map("acme/api=/work/archive,build=2/api") == {
+        "acme/api": "/work/archive,build=2/api"
+    }
+    assert init_mod.parse_repo_local_map("acme/api=/work/archive,") == {
+        "acme/api": "/work/archive,"
+    }
+    assert init_mod.parse_repo_local_map("acme/api=/work/api acme/site=/work/archive,") == {
+        "acme/api": "/work/api",
+        "acme/site": "/work/archive,",
+    }
+    assert init_mod.parse_repo_local_map("acme/api=/Users/me/My Repos/api acme/site=/tmp/site") == {
+        "acme/api": "/Users/me/My Repos/api",
+        "acme/site": "/tmp/site",
+    }
+
+
+def test_env_assignments_infers_source_checkout_for_selected_org_fork(
+    init_mod, tmp_path, monkeypatch
+):
+    checkout = tmp_path / "workspace" / "tools" / "alfred-os"
+    checkout.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://github.com/luminik-io/alfred.git"],
+        cwd=checkout,
+        check=True,
+    )
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("feature_dev",),
+        gh_org="acme-fork",
+        repos={"feature_dev": ["acme-fork/alfred"]},
+    )
+    state.repo_root = checkout
+    state.env_file.write_text(f"WORKSPACE_ROOT={tmp_path / 'workspace'}\n")
+    monkeypatch.delenv("WORKSPACE_ROOT", raising=False)
+    monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
+
+    out = init_mod.env_assignments_for(state)
+
+    repo_map = init_mod.parse_repo_local_map(out["ALFRED_REPO_LOCAL_MAP"])
+    assert repo_map["acme-fork/alfred"] == str(checkout.resolve())
+    assert repo_map["alfred"] == str(checkout.resolve())
+
+
+def test_env_assignments_keeps_explicit_repo_map_for_selected_org_fork(
+    init_mod, tmp_path, monkeypatch
+):
+    checkout = tmp_path / "workspace" / "tools" / "alfred-os"
+    checkout.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://github.com/luminik-io/alfred.git"],
+        cwd=checkout,
+        check=True,
+    )
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("feature_dev",),
+        gh_org="acme-fork",
+        repos={"feature_dev": ["acme-fork/alfred"]},
+    )
+    state.repo_root = checkout
+    state.env_file.write_text(
+        "\n".join(
+            [
+                f"WORKSPACE_ROOT={tmp_path / 'workspace'}",
+                f"ALFRED_REPO_LOCAL_MAP=acme-fork/alfred={checkout}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("WORKSPACE_ROOT", raising=False)
+    monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
+
+    out = init_mod.env_assignments_for(state)
+
+    repo_map = init_mod.parse_repo_local_map(out["ALFRED_REPO_LOCAL_MAP"])
+    assert repo_map["acme-fork/alfred"] == str(checkout)
+    assert repo_map["alfred"] == str(checkout)
+
+
+def test_env_assignments_does_not_infer_source_checkout_for_unrelated_same_name_repo(
+    init_mod, tmp_path, monkeypatch
+):
+    checkout = tmp_path / "workspace" / "tools" / "alfred-os"
+    checkout.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://github.com/luminik-io/alfred.git"],
+        cwd=checkout,
+        check=True,
+    )
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("feature_dev",),
+        gh_org="acme-fork",
+        repos={"feature_dev": ["other-org/alfred"]},
+    )
+    state.repo_root = checkout
+    state.env_file.write_text(f"WORKSPACE_ROOT={tmp_path / 'workspace'}\n")
+    monkeypatch.delenv("WORKSPACE_ROOT", raising=False)
+    monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
+
+    out = init_mod.env_assignments_for(state)
+
+    assert "ALFRED_REPO_LOCAL_MAP" not in out
 
 
 def test_env_assignments_repos_key_follows_overridden_codename(init_mod, tmp_path):

@@ -1828,7 +1828,12 @@ def test_compose_draft_returns_readiness_and_saves(tmp_path: Path) -> None:
     assert any(row["plan_id"] == payload["draft_id"] for row in plans)
 
 
-def test_compose_draft_plain_prose_builds_a_useful_starter_spec(tmp_path: Path) -> None:
+def test_compose_draft_plain_prose_builds_a_useful_starter_spec(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import server.setup as setup_mod
+
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
     state = tmp_path / "state"
     state.mkdir()
     client = TestClient(create_app(FilesystemReader(state_root=state)))
@@ -2017,7 +2022,10 @@ def test_file_plan_issue_files_ready_draft_once(
     assert len(calls) == 1
 
 
-def test_compose_draft_requires_intent(tmp_path: Path) -> None:
+def test_compose_draft_requires_intent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import server.setup as setup_mod
+
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
     state = tmp_path / "state"
     state.mkdir()
     client = TestClient(create_app(FilesystemReader(state_root=state)))

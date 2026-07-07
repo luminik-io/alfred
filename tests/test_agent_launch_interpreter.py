@@ -53,6 +53,7 @@ def _run_env(
         "ALFRED_QUEUE_REPOS",
         "ALFRED_SHIPPED_REPOS",
         "ALFRED_BRIDGE_REPOS",
+        "ALFRED_REPO_LOCAL_MAP",
         "ALFRED_CODE_MEMORY_REPOS",
         "ARCHITECT_PARENT_REPO",
         "ALFRED_E2E_RUNNER_TARGET_URL",
@@ -229,6 +230,51 @@ def test_env_file_setup_managed_repo_scope_overrides_stale_process_env(
 
     assert proc.returncode == 0, proc.stderr
     assert "REPOS=org/new" in proc.stdout
+
+
+def test_env_file_repo_local_map_overrides_stale_process_env(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "ALFRED_REPO_LOCAL_MAP=acme/alfred=/runtime\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-repo-map.sh"
+    target.write_text('#!/usr/bin/env bash\necho "MAP=${ALFRED_REPO_LOCAL_MAP:-unset}"\n')
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={"ALFRED_REPO_LOCAL_MAP": "acme/alfred=/stale"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "MAP=acme/alfred=/runtime" in proc.stdout
+
+
+def test_agent_launch_preserves_process_repo_local_map_when_runtime_env_omits_it(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "GH_ORG=acme\n"
+        "ALFRED_CODE_MEMORY_REPOS=alfred\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-process-repo-map.sh"
+    target.write_text('#!/usr/bin/env bash\necho "MAP=${ALFRED_REPO_LOCAL_MAP:-unset}"\n')
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={"ALFRED_REPO_LOCAL_MAP": "acme/alfred=/process"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "MAP=acme/alfred=/process" in proc.stdout
 
 
 def test_agent_launch_scrubs_setup_managed_scope_when_runtime_env_omits_it(

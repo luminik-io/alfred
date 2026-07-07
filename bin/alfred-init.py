@@ -294,6 +294,10 @@ SPECIAL_PROMPTS = {
 }
 
 CODENAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+REPO_LOCAL_MAP_KEY_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=")
+REPO_LOCAL_MAP_COMMA_BOUNDARY_RE = re.compile(
+    r",\s*(?=[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=(?:/|~|\.{1,2}/))"
+)
 SLACK_WEBHOOK_RE = re.compile(r"^https://hooks\.slack\.com/services/")
 
 ALFRED_ENV_BANNER = "# alfred-init, generated below this line. Safe to re-run."
@@ -313,8 +317,12 @@ def alfred_init_managed_env_keys() -> frozenset[str]:
         "SLACK_WEBHOOK_URL",
         "SLACK_WEBHOOK_SECRET_ID",
         "SLACK_WEBHOOK_SECRET_REGION",
+        "ALFRED_QUEUE_REPOS",
+        "ALFRED_SHIPPED_REPOS",
+        "ALFRED_BRIDGE_REPOS",
         "ARCHITECT_ROLLOUT_ORDER",
         "ALFRED_MORNING_BRIEF_AGENTS",
+        "ALFRED_REPO_LOCAL_MAP",
         "ALFRED_TELEMETRY_ENABLED",
         "ALFRED_TELEMETRY_URL",
         "ALFRED_TELEMETRY_TOKEN",
@@ -438,6 +446,7 @@ class WizardState:
     role_to_repos: dict[str, list[str]] = field(default_factory=dict)  # role -> [org/repo]
     role_to_schedule: dict[str, str] = field(default_factory=dict)  # role -> schedule
     role_to_extras: dict[str, dict[str, str]] = field(default_factory=dict)  # role -> {ENV: value}
+    repo_local_map: dict[str, str] = field(default_factory=dict)  # repo slug/name -> local path
     telemetry_enabled: bool = True  # anonymous proof telemetry is opt-out
     telemetry_url: str = field(default_factory=default_telemetry_url)
     telemetry_token: str = ""  # optional shared ingest token (X-Ingest-Token)
@@ -856,6 +865,237 @@ def repo_runtime_values(repos: list[str]) -> list[str]:
     return repo_local_names(repos)
 
 
+def repo_board_values(repos: list[str], gh_org: str) -> list[str]:
+    """Return GitHub ``owner/repo`` slugs for board, queue, and bridge scopes."""
+    out: list[str] = []
+    seen: set[str] = set()
+    owner = gh_org.strip()
+    for raw in repos:
+        repo = raw.strip()
+        if not repo:
+            continue
+        if "/" not in repo:
+            if not owner:
+                continue
+            repo = f"{owner}/{repo}"
+        slug = repo.lower()
+        if slug in seen:
+            continue
+        seen.add(slug)
+        out.append(slug)
+    return out
+
+
+def parse_repo_local_map(raw: str) -> dict[str, str]:
+    """Parse ``ALFRED_REPO_LOCAL_MAP`` into a deterministic mapping."""
+    out: dict[str, str] = {}
+    for piece in repo_local_map_entries(raw):
+        if "=" not in piece:
+            continue
+        key, value = piece.split("=", 1)
+        key = key.strip()
+        value = decode_repo_local_map_value(value.strip())
+        if key and value:
+            out[key] = value
+    return out
+
+
+def apply_repo_local_map_layer(out: dict[str, str], layer: dict[str, str]) -> None:
+    """Apply one repo-local map layer, including its bare runtime aliases."""
+    for key, value in layer.items():
+        if "/" in key:
+            continue
+        for existing in list(out):
+            if "/" in existing and existing.rsplit("/", 1)[-1] == key and existing not in layer:
+                out[existing] = value
+    for key, value in layer.items():
+        out[key] = value
+    for key, value in layer.items():
+        if "/" not in key:
+            continue
+        bare = key.rsplit("/", 1)[-1]
+        if bare not in layer:
+            out[bare] = value
+
+
+def repo_local_map_entries(raw: str) -> list[str]:
+    """Split a repo-local-map env value without treating path commas as delimiters."""
+    value = raw.strip()
+    if not value:
+        return []
+    try:
+        tokens = shlex.split(value)
+    except ValueError:
+        tokens = []
+    if tokens:
+        return repo_local_map_entries_from_tokens(repo_local_map_expand_tokens(tokens))
+    return [value]
+
+
+def repo_local_map_expand_tokens(tokens: list[str]) -> list[str]:
+    expanded: list[str] = []
+    for token in tokens:
+        expanded.extend(part for part in REPO_LOCAL_MAP_COMMA_BOUNDARY_RE.split(token) if part)
+    return expanded
+
+
+def repo_local_map_is_path_boundary_token(token: str) -> bool:
+    if not REPO_LOCAL_MAP_KEY_RE.match(token):
+        return False
+    value = token.split("=", 1)[1]
+    return value.startswith(("/", "~", "./", "../"))
+
+
+def repo_local_map_entries_from_tokens(tokens: list[str]) -> list[str]:
+    """Rejoin decoded shell tokens into ``key=value`` map entries."""
+    entries: list[str] = []
+    current = ""
+    for token in tokens:
+        if REPO_LOCAL_MAP_KEY_RE.match(token):
+            if current:
+                if current.endswith(",") and repo_local_map_is_path_boundary_token(token):
+                    entries.append(current[:-1])
+                else:
+                    entries.append(current)
+            current = token
+        elif current:
+            current = f"{current} {token}"
+    if current:
+        entries.append(current)
+    return entries
+
+
+def format_repo_local_map(mapping: dict[str, str]) -> str:
+    """Serialize ``ALFRED_REPO_LOCAL_MAP`` with stable, path-safe ordering."""
+    return shlex.join(
+        f"{key}={encode_repo_local_map_value(mapping[key])}" for key in sorted(mapping)
+    )
+
+
+def encode_repo_local_map_value(value: str) -> str:
+    """Encode path values that cannot survive decoded env-token splitting."""
+    if any(char.isspace() or char in ",%" for char in value):
+        return "url:" + urllib.parse.quote(value, safe="/._-~")
+    return value
+
+
+def decode_repo_local_map_value(value: str) -> str:
+    if value.startswith("url:"):
+        return urllib.parse.unquote(value.removeprefix("url:"))
+    return value
+
+
+def selected_source_checkout_slugs(
+    selected: list[str],
+    source_slug: str,
+    gh_org: str,
+) -> list[str]:
+    """Selected repo slugs that exactly identify the source checkout."""
+    source_lower = source_slug.lower()
+    owner = gh_org.strip().lower()
+    source_repo = source_lower.rsplit("/", 1)[-1]
+    out: list[str] = []
+    for repo in selected:
+        raw = repo.strip()
+        if not raw:
+            continue
+        repo_lower = raw.lower()
+        if repo_lower == source_lower:
+            out.append(raw)
+            continue
+        if "/" in repo_lower:
+            repo_owner, repo_name = repo_lower.split("/", 1)
+            if owner and repo_owner == owner and repo_name == source_repo:
+                out.append(raw)
+            continue
+        if owner and repo_lower == source_repo:
+            out.append(f"{gh_org.strip()}/{raw}")
+    return out
+
+
+def github_slug_from_remote_url(raw: str) -> str:
+    """Return ``owner/repo`` for a GitHub remote URL, or ``""``."""
+    url = raw.strip()
+    if not url:
+        return ""
+    if url.startswith("git@github.com:"):
+        path = url.split(":", 1)[1]
+    else:
+        try:
+            parsed = urllib.parse.urlsplit(url)
+        except ValueError:
+            return ""
+        if parsed.hostname != "github.com":
+            return ""
+        path = parsed.path.lstrip("/")
+    path = path.removesuffix(".git").strip("/")
+    parts = [part for part in path.split("/") if part]
+    if len(parts) < 2:
+        return ""
+    return f"{parts[-2]}/{parts[-1]}"
+
+
+def source_checkout_github_slug(repo_root: Path) -> str:
+    """Best-effort GitHub slug for the alfred-os source checkout."""
+    try:
+        cp = subprocess.run(
+            ["git", "-C", str(repo_root), "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if cp.returncode != 0:
+        return ""
+    return github_slug_from_remote_url(cp.stdout.strip())
+
+
+def workspace_for_state(state: WizardState) -> Path:
+    """Resolve the workspace path the deployed agents will use."""
+    env = read_env_file(state.env_file)
+    root_raw = os.environ.get("WORKSPACE_ROOT") or env.get("WORKSPACE_ROOT") or "~/code"
+    root = Path(os.path.expanduser(root_raw))
+    if "WORKSPACE_SUBDIR" in os.environ:
+        subdir = os.environ.get("WORKSPACE_SUBDIR", "")
+    elif "WORKSPACE_SUBDIR" in env:
+        subdir = env.get("WORKSPACE_SUBDIR", "")
+    else:
+        subdir = "product"
+    return root / subdir if subdir else root
+
+
+def infer_source_checkout_repo_local_map(state: WizardState) -> dict[str, str]:
+    """Map the selected source checkout when its local path is non-standard.
+
+    Source installs often live at ``tools/alfred-os`` while the public GitHub
+    repo slug is ``alfred``. Without an explicit map, repo-operating agents look
+    for ``$WORKSPACE_ROOT/product/alfred`` and fail doctor even though the
+    selected repo is the checkout the operator just installed from.
+    """
+
+    selected = selected_repo_union(state)
+    if not selected:
+        return {}
+    slug = source_checkout_github_slug(state.repo_root)
+    if not slug:
+        return {}
+    local_name = slug.rsplit("/", 1)[-1]
+    selected_source_slugs = selected_source_checkout_slugs(selected, slug, state.gh_org)
+    if not selected_source_slugs:
+        return {}
+
+    actual = state.repo_root.resolve()
+    expected = (workspace_for_state(state) / local_name).expanduser()
+    if expected.resolve() == actual:
+        return {}
+    actual_str = str(actual)
+    out = {local_name: actual_str}
+    for repo in selected_source_slugs:
+        out[repo] = actual_str
+    return out
+
+
 def selected_repo_union(state: WizardState) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
@@ -987,8 +1227,32 @@ def render_agents_conf(state: WizardState) -> str:
 def env_assignments_for(state: WizardState) -> dict[str, str]:
     """Per-role env-var map written into $ALFRED_HOME/.env."""
     out: dict[str, str] = {}
+    existing_env = read_unmanaged_env_file(state.env_file)
+    existing_effective_env = read_env_file(state.env_file)
     if state.gh_org:
         out["GH_ORG"] = state.gh_org
+    selected_repos = selected_repo_union(state)
+    board_repos = repo_board_values(selected_repos, state.gh_org)
+    if board_repos:
+        board_scope = ",".join(board_repos)
+        if "ALFRED_QUEUE_REPOS" in existing_env:
+            queue_scope = existing_env["ALFRED_QUEUE_REPOS"]
+        elif "ALFRED_QUEUE_REPOS" in existing_effective_env:
+            queue_scope = existing_effective_env["ALFRED_QUEUE_REPOS"]
+        else:
+            queue_scope = board_scope
+        out["ALFRED_QUEUE_REPOS"] = queue_scope
+        out["ALFRED_SHIPPED_REPOS"] = board_scope
+        out["ALFRED_BRIDGE_REPOS"] = board_scope
+    repo_map: dict[str, str] = {}
+    apply_repo_local_map_layer(repo_map, infer_source_checkout_repo_local_map(state))
+    apply_repo_local_map_layer(
+        repo_map,
+        parse_repo_local_map(existing_env.get("ALFRED_REPO_LOCAL_MAP", "")),
+    )
+    apply_repo_local_map_layer(repo_map, state.repo_local_map)
+    if repo_map:
+        out["ALFRED_REPO_LOCAL_MAP"] = format_repo_local_map(repo_map)
     if state.slack_storage == "env" and state.slack_webhook:
         out["SLACK_WEBHOOK_URL"] = state.slack_webhook
     elif state.slack_storage == "aws":

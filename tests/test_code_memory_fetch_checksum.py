@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shlex
 import subprocess
+import urllib.parse
 from pathlib import Path
 
 import pytest
@@ -271,7 +273,7 @@ def test_scope_repos_uses_repo_local_map_for_configured_scope(tmp_path: Path) ->
     env = _launcher_env(
         tmp_path,
         WORKSPACE_ROOT=str(workspace),
-        ALFRED_REPO_LOCAL_MAP=f"acme-backend=backend,acme-site=../../{marketing.name}/site",
+        ALFRED_REPO_LOCAL_MAP=f"acme-backend=backend acme-site=../../{marketing.name}/site",
         ALFRED_CODE_MEMORY_REPOS="acme-site,acme-backend",
         ALFRED_CODE_MAP_REPOS="",
     )
@@ -286,6 +288,336 @@ def test_scope_repos_uses_repo_local_map_for_configured_scope(tmp_path: Path) ->
     assert res.returncode == 0, res.stderr
     repos = [Path(line) for line in res.stdout.splitlines()]
     assert repos == [marketing / "site", workspace / "product" / "backend"]
+
+
+def test_scope_repos_uses_shell_tokenized_repo_local_map_for_configured_scope(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    marketing = tmp_path / "marketing,archive"
+    (workspace / "product" / "backend" / ".git").mkdir(parents=True)
+    (marketing / "site" / ".git").mkdir(parents=True)
+    repo_map = shlex.join(
+        [
+            "acme-backend=backend",
+            f"acme-site=../../{marketing.name}/site",
+        ]
+    )
+    env = _launcher_env(
+        tmp_path,
+        WORKSPACE_ROOT=str(workspace),
+        ALFRED_REPO_LOCAL_MAP=repo_map,
+        ALFRED_CODE_MEMORY_REPOS="acme-site,acme-backend",
+        ALFRED_CODE_MAP_REPOS="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "__scope-repos"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    repos = [Path(line) for line in res.stdout.splitlines()]
+    assert repos == [marketing / "site", workspace / "product" / "backend"]
+
+
+def test_scope_repos_keeps_single_repo_local_map_path_with_comma(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    marketing = tmp_path / "marketing,archive"
+    (marketing / "site" / ".git").mkdir(parents=True)
+    env = _launcher_env(
+        tmp_path,
+        WORKSPACE_ROOT=str(workspace),
+        ALFRED_REPO_LOCAL_MAP=f"acme-site={marketing / 'site'}",
+        ALFRED_CODE_MEMORY_REPOS="acme-site",
+        ALFRED_CODE_MAP_REPOS="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "__scope-repos"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    repos = [Path(line) for line in res.stdout.splitlines()]
+    assert repos == [marketing / "site"]
+
+
+def test_scope_repos_keeps_single_repo_local_map_path_with_trailing_comma(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = tmp_path / "archive,"
+    (checkout / ".git").mkdir(parents=True)
+    env = _launcher_env(
+        tmp_path,
+        WORKSPACE_ROOT=str(workspace),
+        ALFRED_REPO_LOCAL_MAP=f"acme-api={checkout}",
+        ALFRED_CODE_MEMORY_REPOS="acme-api",
+        ALFRED_CODE_MAP_REPOS="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "__scope-repos"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    repos = [Path(line) for line in res.stdout.splitlines()]
+    assert repos == [checkout]
+
+
+def test_scope_repos_keeps_multi_entry_repo_local_map_path_with_trailing_comma(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    api = tmp_path / "api"
+    web = tmp_path / "archive,"
+    (api / ".git").mkdir(parents=True)
+    (web / ".git").mkdir(parents=True)
+    env = _launcher_env(
+        tmp_path,
+        WORKSPACE_ROOT=str(workspace),
+        ALFRED_REPO_LOCAL_MAP=f"acme-api={api} acme-web={web}",
+        ALFRED_CODE_MEMORY_REPOS="acme-api,acme-web",
+        ALFRED_CODE_MAP_REPOS="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "__scope-repos"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    repos = [Path(line) for line in res.stdout.splitlines()]
+    assert repos == [api, web]
+
+
+def test_scope_repos_reads_space_separated_repo_local_map(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    api = tmp_path / "api"
+    web = tmp_path / "web"
+    (api / ".git").mkdir(parents=True)
+    (web / ".git").mkdir(parents=True)
+    env = _launcher_env(
+        tmp_path,
+        WORKSPACE_ROOT=str(workspace),
+        ALFRED_REPO_LOCAL_MAP=f"acme-api={api} acme-web={web}",
+        ALFRED_CODE_MEMORY_REPOS="acme-api,acme-web",
+        ALFRED_CODE_MAP_REPOS="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "__scope-repos"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    repos = [Path(line) for line in res.stdout.splitlines()]
+    assert repos == [api, web]
+
+
+def test_scope_repos_reads_comma_delimited_repo_local_map(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    api = tmp_path / "api"
+    web = tmp_path / "web"
+    (api / ".git").mkdir(parents=True)
+    (web / ".git").mkdir(parents=True)
+    env = _launcher_env(
+        tmp_path,
+        WORKSPACE_ROOT=str(workspace),
+        ALFRED_REPO_LOCAL_MAP=f"acme-api={api},acme-web={web}",
+        ALFRED_CODE_MEMORY_REPOS="acme-api,acme-web",
+        ALFRED_CODE_MAP_REPOS="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "__scope-repos"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    repos = [Path(line) for line in res.stdout.splitlines()]
+    assert repos == [api, web]
+
+
+def test_scope_repos_preserves_comma_and_equals_repo_local_map_path(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    api = tmp_path / "archive,build=2" / "api"
+    (api / ".git").mkdir(parents=True)
+    env = _launcher_env(
+        tmp_path,
+        WORKSPACE_ROOT=str(workspace),
+        ALFRED_REPO_LOCAL_MAP=f"acme-api={api}",
+        ALFRED_CODE_MEMORY_REPOS="acme-api",
+        ALFRED_CODE_MAP_REPOS="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "__scope-repos"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    repos = [Path(line) for line in res.stdout.splitlines()]
+    assert repos == [api]
+
+
+def test_scope_repos_decodes_canonical_repo_local_map_paths(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    api = tmp_path / "archive,"
+    web = tmp_path / "web"
+    (api / ".git").mkdir(parents=True)
+    (web / ".git").mkdir(parents=True)
+    encoded_api = "url:" + urllib.parse.quote(str(api), safe="/._-~")
+    env = _launcher_env(
+        tmp_path,
+        WORKSPACE_ROOT=str(workspace),
+        ALFRED_REPO_LOCAL_MAP=f"acme-api={encoded_api} acme-web={web}",
+        ALFRED_CODE_MEMORY_REPOS="acme-api,acme-web",
+        ALFRED_CODE_MAP_REPOS="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "__scope-repos"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    repos = [Path(line) for line in res.stdout.splitlines()]
+    assert repos == [api, web]
+
+
+def test_scope_repos_uses_case_insensitive_repo_local_map_alias(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    app = tmp_path / "MyApp"
+    (app / ".git").mkdir(parents=True)
+    env = _launcher_env(
+        tmp_path,
+        WORKSPACE_ROOT=str(workspace),
+        ALFRED_REPO_LOCAL_MAP=f"Acme/MyApp={app}",
+        ALFRED_CODE_MEMORY_REPOS="myapp",
+        ALFRED_CODE_MAP_REPOS="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "__scope-repos"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    repos = [Path(line) for line in res.stdout.splitlines()]
+    assert repos == [app]
+
+
+def test_scope_repos_keeps_repo_local_map_path_with_spaces(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    api = tmp_path / "My Repos" / "api"
+    web = tmp_path / "web"
+    (api / ".git").mkdir(parents=True)
+    (web / ".git").mkdir(parents=True)
+    env = _launcher_env(
+        tmp_path,
+        WORKSPACE_ROOT=str(workspace),
+        ALFRED_REPO_LOCAL_MAP=f"acme-api={api} acme-web={web}",
+        ALFRED_CODE_MEMORY_REPOS="acme-api,acme-web",
+        ALFRED_CODE_MAP_REPOS="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "__scope-repos"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    repos = [Path(line) for line in res.stdout.splitlines()]
+    assert repos == [api, web]
+
+
+def test_scope_repos_uses_full_slug_repo_local_map_alias(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    backend = tmp_path / "backend-checkout"
+    (backend / ".git").mkdir(parents=True)
+    env = _launcher_env(
+        tmp_path,
+        WORKSPACE_ROOT=str(workspace),
+        ALFRED_REPO_LOCAL_MAP=f"acme/backend={backend}",
+        ALFRED_CODE_MEMORY_REPOS="backend",
+        ALFRED_CODE_MAP_REPOS="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "__scope-repos"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    repos = [Path(line) for line in res.stdout.splitlines()]
+    assert repos == [backend]
+
+
+def test_scope_repos_prefers_explicit_bare_map_over_full_slug_alias(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    alias_checkout = tmp_path / "alias-backend"
+    explicit_checkout = tmp_path / "explicit-backend"
+    (alias_checkout / ".git").mkdir(parents=True)
+    (explicit_checkout / ".git").mkdir(parents=True)
+    env = _launcher_env(
+        tmp_path,
+        WORKSPACE_ROOT=str(workspace),
+        ALFRED_REPO_LOCAL_MAP=(f"acme/backend={alias_checkout} backend={explicit_checkout}"),
+        ALFRED_CODE_MEMORY_REPOS="backend",
+        ALFRED_CODE_MAP_REPOS="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "__scope-repos"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    repos = [Path(line) for line in res.stdout.splitlines()]
+    assert repos == [explicit_checkout]
 
 
 def test_scope_repos_does_not_auto_discover_when_configured_dirs_are_stale(
