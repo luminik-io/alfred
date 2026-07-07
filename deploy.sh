@@ -17,6 +17,43 @@
 
 set -euo pipefail
 
+usage() {
+  cat <<'EOF'
+Usage: ./deploy.sh [--help]
+
+Deploy Alfred runtime files into ${ALFRED_HOME:-$HOME/.alfred}.
+
+Copies lib/, bin/, skills/, examples/, and prompts/ into the runtime root,
+builds the bundled desktop UI when available, links CLI shims into
+$HOME/.local/bin, and renders/reloads launchd or systemd scheduler units when
+a runtime roster exists.
+
+Environment overrides:
+  ALFRED_HOME     Runtime root for this install (default: $HOME/.alfred)
+  WORKSPACE_ROOT  Workspace root written into rendered scheduler units
+EOF
+}
+
+if [ "$#" -gt 1 ]; then
+  echo "deploy.sh: too many arguments: $*" >&2
+  usage >&2
+  exit 2
+fi
+
+if [ "$#" -eq 1 ]; then
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "deploy.sh: unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+fi
+
 SYSTEMD_LABEL_TMPFILES=()
 
 cleanup_systemd_label_tmpfiles() {
