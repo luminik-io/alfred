@@ -36,16 +36,22 @@ function agent(codename: string, overrides: Partial<AgentSummary> = {}): AgentSu
 const STATUS_JSON = JSON.stringify({
   ts: "2026-05-30T12:00:00Z",
   agents: [
-    { agent: "lucius", loaded: true, paused: false, paused_since: null, today_consecutive_failures: 0 },
     {
-      agent: "bane",
+      agent: "senior-dev",
+      loaded: true,
+      paused: false,
+      paused_since: null,
+      today_consecutive_failures: 0,
+    },
+    {
+      agent: "test-engineer",
       loaded: false,
       paused: true,
       paused_since: "2026-05-30T09:00:00Z",
       today_consecutive_failures: 0,
     },
     {
-      agent: "fleet.local.robin",
+      agent: "fleet.local.triage",
       loaded: false,
       paused: false,
       paused_since: null,
@@ -68,77 +74,85 @@ describe("parseFleetServiceState", () => {
 
   it("keys the agents by codename", () => {
     const map = parseFleetServiceState(nativeResult({ stdout: STATUS_JSON }));
-    expect(Object.keys(map).sort()).toEqual(["bane", "fleet.local.robin", "lucius"]);
-    expect(map.bane.paused).toBe(true);
+    expect(Object.keys(map).sort()).toEqual([
+      "fleet.local.triage",
+      "senior-dev",
+      "test-engineer",
+    ]);
+    expect(map["test-engineer"].paused).toBe(true);
   });
 });
 
 describe("lookupServiceState", () => {
   it("matches a short codename against a fully-qualified label", () => {
     const map = parseFleetServiceState(nativeResult({ stdout: STATUS_JSON }));
-    const found = lookupServiceState(map, "robin");
-    expect(found?.agent).toBe("fleet.local.robin");
+    const found = lookupServiceState(map, "triage");
+    expect(found?.agent).toBe("fleet.local.triage");
   });
 });
 
 describe("buildFleetRows", () => {
   it("joins polled summaries with service state and derives a service label", () => {
     const map = parseFleetServiceState(nativeResult({ stdout: STATUS_JSON }));
-    const rows = buildFleetRows([agent("lucius"), agent("bane")], map);
-    const lucius = rows.find((row) => row.codename === "lucius");
-    const bane = rows.find((row) => row.codename === "bane");
-    expect(lucius?.service).toBe("running");
-    expect(bane?.service).toBe("paused");
-    expect(bane?.pausedSince).toBe("2026-05-30T09:00:00Z");
+    const rows = buildFleetRows([agent("senior-dev"), agent("test-engineer")], map);
+    const seniorDev = rows.find((row) => row.codename === "senior-dev");
+    const testEngineer = rows.find((row) => row.codename === "test-engineer");
+    expect(seniorDev?.service).toBe("running");
+    expect(testEngineer?.service).toBe("paused");
+    expect(testEngineer?.pausedSince).toBe("2026-05-30T09:00:00Z");
   });
 
   it("surfaces service-only agents (resumable even if never polled)", () => {
     const map = parseFleetServiceState(nativeResult({ stdout: STATUS_JSON }));
-    const rows = buildFleetRows([agent("lucius")], map);
-    // robin appears only in the status JSON; it should still get a row.
-    expect(rows.map((row) => row.codename)).toContain("robin");
-    const robin = rows.find((row) => row.codename === "robin");
-    expect(robin?.summary).toBeNull();
-    expect(robin?.consecutiveFailures).toBe(3);
+    const rows = buildFleetRows([agent("senior-dev")], map);
+    // triage appears only in the status JSON; it should still get a row.
+    expect(rows.map((row) => row.codename)).toContain("triage");
+    const triage = rows.find((row) => row.codename === "triage");
+    expect(triage?.summary).toBeNull();
+    expect(triage?.consecutiveFailures).toBe(3);
   });
 
   it("uses Alfred's role order instead of alphabetic codename order", () => {
     const rows = buildFleetRows(
-      [agent("rasalghul"), agent("drake"), agent("lucius"), agent("batman")],
+      [agent("reviewer"), agent("planner"), agent("senior-dev"), agent("architect")],
       {},
     );
 
     expect(rows.map((row) => row.codename)).toEqual([
-      "batman",
-      "lucius",
-      "drake",
-      "rasalghul",
+      "architect",
+      "senior-dev",
+      "planner",
+      "reviewer",
     ]);
   });
 
   it("marks agents with no service state as unknown", () => {
-    const rows = buildFleetRows([agent("lucius")], {});
+    const rows = buildFleetRows([agent("senior-dev")], {});
     expect(rows[0].service).toBe("unknown");
   });
 
   it("derives paused/running from the polled summary without a service map", () => {
     const rows = buildFleetRows(
       [
-        agent("lucius", { paused: false, loaded: true }),
-        agent("bane", { paused: true, loaded: false, paused_since: "2026-05-30T09:00:00Z" }),
+        agent("senior-dev", { paused: false, loaded: true }),
+        agent("test-engineer", {
+          paused: true,
+          loaded: false,
+          paused_since: "2026-05-30T09:00:00Z",
+        }),
       ],
       {},
     );
-    const lucius = rows.find((row) => row.codename === "lucius");
-    const bane = rows.find((row) => row.codename === "bane");
+    const seniorDev = rows.find((row) => row.codename === "senior-dev");
+    const testEngineer = rows.find((row) => row.codename === "test-engineer");
     // No `alfred status --json` map supplied; state comes straight from /api/status.
-    expect(lucius?.service).toBe("running");
-    expect(bane?.service).toBe("paused");
-    expect(bane?.pausedSince).toBe("2026-05-30T09:00:00Z");
+    expect(seniorDev?.service).toBe("running");
+    expect(testEngineer?.service).toBe("paused");
+    expect(testEngineer?.pausedSince).toBe("2026-05-30T09:00:00Z");
   });
 
   it("infers loaded from paused when the summary omits loaded", () => {
-    const rows = buildFleetRows([agent("bane", { paused: true })], {});
+    const rows = buildFleetRows([agent("test-engineer", { paused: true })], {});
     expect(rows[0].service).toBe("paused");
     expect(rows[0].loaded).toBe(false);
   });
@@ -148,12 +162,18 @@ describe("buildFleetRows", () => {
     const map = parseFleetServiceState(
       nativeResult({
         stdout: JSON.stringify({
-          agents: [{ agent: "bane", loaded: true, paused: false, paused_since: null }],
+          agents: [{ agent: "test-engineer", loaded: true, paused: false, paused_since: null }],
         }),
       }),
     );
     const rows = buildFleetRows(
-      [agent("bane", { paused: true, loaded: false, paused_since: "2026-05-30T09:00:00Z" })],
+      [
+        agent("test-engineer", {
+          paused: true,
+          loaded: false,
+          paused_since: "2026-05-30T09:00:00Z",
+        }),
+      ],
       map,
     );
     expect(rows[0].service).toBe("paused");
@@ -168,13 +188,13 @@ describe("deriveFleetHealth", () => {
 
   it("is error when an agent is errored or fail-streaking", () => {
     const map = parseFleetServiceState(nativeResult({ stdout: STATUS_JSON }));
-    // robin has 3 consecutive failures -> error.
-    const rows = buildFleetRows([agent("lucius")], map);
+    // triage has 3 consecutive failures -> error.
+    const rows = buildFleetRows([agent("senior-dev")], map);
     expect(deriveFleetHealth(rows).level).toBe("error");
   });
 
   it("is error when the latest run hit an llm error", () => {
-    const rows = buildFleetRows([agent("lucius", { status: "llm-error" })], {});
+    const rows = buildFleetRows([agent("senior-dev", { status: "llm-error" })], {});
     expect(deriveFleetHealth(rows).level).toBe("error");
   });
 
@@ -183,13 +203,13 @@ describe("deriveFleetHealth", () => {
       nativeResult({
         stdout: JSON.stringify({
           agents: [
-            { agent: "lucius", loaded: true, paused: false, paused_since: null },
-            { agent: "bane", loaded: false, paused: true, paused_since: null },
+            { agent: "senior-dev", loaded: true, paused: false, paused_since: null },
+            { agent: "test-engineer", loaded: false, paused: true, paused_since: null },
           ],
         }),
       }),
     );
-    const rows = buildFleetRows([agent("lucius"), agent("bane")], map);
+    const rows = buildFleetRows([agent("senior-dev"), agent("test-engineer")], map);
     const health = deriveFleetHealth(rows);
     expect(health.level).toBe("warn");
     expect(health.summary).toContain("paused");
@@ -199,11 +219,11 @@ describe("deriveFleetHealth", () => {
     const map = parseFleetServiceState(
       nativeResult({
         stdout: JSON.stringify({
-          agents: [{ agent: "lucius", loaded: true, paused: false, paused_since: null }],
+          agents: [{ agent: "senior-dev", loaded: true, paused: false, paused_since: null }],
         }),
       }),
     );
-    const rows = buildFleetRows([agent("lucius")], map);
+    const rows = buildFleetRows([agent("senior-dev")], map);
     expect(deriveFleetHealth(rows).level).toBe("ok");
   });
 });
