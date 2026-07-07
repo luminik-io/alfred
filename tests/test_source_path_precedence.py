@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = ("bin/alfred", "bin/alfred-serve.py")
+SCRIPTS = ("bin/alfred", "bin/alfred-serve.py", "bin/code-map-refresh.py")
 
 
 def _script_path_order(
@@ -21,6 +21,24 @@ def _script_path_order(
 ) -> list[str]:
     repo_lib = str(script_path.resolve().parents[1] / "lib")
     runtime_lib = str(runtime_home / "lib")
+    if script_path.name == "code-map-refresh.py":
+        fake_runner = Path(runtime_lib) / "agent_runner"
+        fake_runner.mkdir(parents=True, exist_ok=True)
+        (fake_runner / "__init__.py").write_text(
+            "from pathlib import Path\n"
+            "ALFRED_HOME = Path('/tmp/alfred-home')\n"
+            "WORKSPACE = Path('/tmp/workspace')\n"
+            "class PreflightFailed(Exception): pass\n"
+            "class PreflightSpec:\n"
+            "    def __init__(self, *args, **kwargs): pass\n"
+            "def doctor_mode(): return False\n"
+            "def doctor_requested(): return False\n"
+            "def local_repo_dir(repo): return repo\n"
+            "def preflight(_spec): return None\n"
+            "def slack_post(*_args, **_kwargs): return False\n"
+            "def with_lock(_agent): return None\n",
+            encoding="utf-8",
+        )
     env = os.environ.copy()
     if alfred_home:
         env["ALFRED_HOME"] = str(runtime_home)

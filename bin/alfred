@@ -68,8 +68,9 @@ Subcommands today:
                               `resume`, `clear`).
   alfred code-memory ...      Inspect, index, or serve the optional
                               code-structure memory MCP layer.
-  alfred code-map ...         Export/query Alfred's local JSON code graph
-                              using the stable alfred-codegraph@1 contract.
+  alfred code-map ...         Build/export/query Alfred's local JSON code
+                              graph using the stable alfred-codegraph@1
+                              contract.
   alfred capabilities         Inspect local code graph, token, and skill
                               capabilities Alfred can use during setup.
   alfred demo                 Watch the whole loop (plan, approve, build,
@@ -1772,14 +1773,40 @@ def cmd_code_memory(args: argparse.Namespace) -> int:
 def cmd_code_map(args: argparse.Namespace) -> int:
     from code_graph import (
         CODEGRAPH_SCHEMA,
+        MAX_BLAST_RADIUS_PATHS,
+        blast_radius_for_paths,
         export_codegraph,
+        impact_brief_for_path,
         impact_for_path,
         load_code_map,
+        render_blast_radius,
+        render_impact_brief,
         summarize_codegraph,
     )
 
     map_path = Path(args.map_path).expanduser() if getattr(args, "map_path", None) else None
     command = getattr(args, "code_map_command", "export") or "export"
+    if command == "build":
+        script = _HERE / "code-map-refresh.py"
+        output_path = (
+            Path(args.output_path).expanduser() if getattr(args, "output_path", None) else None
+        )
+        forwarded = [sys.executable, str(script), "--repo", args.repo]
+        if getattr(args, "repo_name", None):
+            forwarded.extend(["--name", args.repo_name])
+        if output_path is not None:
+            forwarded.extend(["--output", str(output_path)])
+        if args.json:
+            forwarded.append("--json")
+        env = os.environ.copy()
+        checkout_lib = str(_HERE.parent / "lib")
+        env["PYTHONPATH"] = (
+            checkout_lib
+            if not env.get("PYTHONPATH")
+            else f"{checkout_lib}{os.pathsep}{env['PYTHONPATH']}"
+        )
+        return subprocess.run(forwarded, check=False, env=env).returncode
+
     if command == "export":
         requested = getattr(args, "format", CODEGRAPH_SCHEMA)
         if requested != CODEGRAPH_SCHEMA:
@@ -1818,6 +1845,20 @@ def cmd_code_map(args: argparse.Namespace) -> int:
         return 0
 
     if command == "impact":
+        if getattr(args, "brief", False):
+            payload = impact_brief_for_path(
+                code_map,
+                repo=args.repo,
+                path=args.path,
+                code_map_path=map_path,
+                limit=args.limit,
+            )
+            if args.json:
+                print(json.dumps(payload, indent=2, sort_keys=True))
+                return 0
+            print(render_impact_brief(payload))
+            return 0
+
         payload = impact_for_path(
             code_map,
             repo=args.repo,
@@ -1839,7 +1880,27 @@ def cmd_code_map(args: argparse.Namespace) -> int:
                 print(f"- {row['from']} -> {row['to']}")
         return 0
 
-    print("Usage: alfred code-map {export|summary|impact}", file=sys.stderr)
+    if command == "blast-radius":
+        if len(args.paths) > MAX_BLAST_RADIUS_PATHS:
+            print(
+                f"blast-radius supports at most {MAX_BLAST_RADIUS_PATHS} paths",
+                file=sys.stderr,
+            )
+            return 2
+        payload = blast_radius_for_paths(
+            code_map,
+            repo=args.repo,
+            paths=args.paths,
+            code_map_path=map_path,
+            limit=args.limit,
+        )
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+            return 0
+        print(render_blast_radius(payload))
+        return 0
+
+    print("Usage: alfred code-map {build|export|summary|impact|blast-radius}", file=sys.stderr)
     return 2
 
 
@@ -3057,9 +3118,19 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
 
     p_code_map = sub.add_parser(
         "code-map",
-        help="export or query Alfred's local JSON code graph",
+        help="build, export, or query Alfred's local JSON code graph",
     )
     p_code_map_sub = p_code_map.add_subparsers(dest="code_map_command")
+    p_code_map_build = p_code_map_sub.add_parser(
+        "build",
+        help="scan a local repo path and write a code-map JSON snapshot",
+    )
+    p_code_map_build.add_argument("repo", help="local git checkout path; '.' keeps repo key '.'")
+    p_code_map_build.add_argument("--name", dest="repo_name", help="repo key in the map")
+    p_code_map_build.add_argument("--output", dest="output_path", help="code-map.json output path")
+    p_code_map_build.add_argument("--json", action="store_true")
+    p_code_map_build.set_defaults(func=cmd_code_map)
+
     p_code_map_export = p_code_map_sub.add_parser("export", help="emit alfred-codegraph@1 JSON")
     p_code_map_export.add_argument(
         "--format",
@@ -3088,8 +3159,23 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_code_map_impact.add_argument("path")
     p_code_map_impact.add_argument("--map", dest="map_path", help="code-map.json path")
     p_code_map_impact.add_argument("--limit", type=int, default=50)
+    p_code_map_impact.add_argument(
+        "--brief",
+        action="store_true",
+        help="render a prompt-ready blast-radius briefing for this path",
+    )
     p_code_map_impact.add_argument("--json", action="store_true")
     p_code_map_impact.set_defaults(func=cmd_code_map)
+
+    p_code_map_blast = p_code_map_sub.add_parser(
+        "blast-radius", help="summarize local graph impact for changed paths"
+    )
+    p_code_map_blast.add_argument("repo")
+    p_code_map_blast.add_argument("paths", nargs="+")
+    p_code_map_blast.add_argument("--map", dest="map_path", help="code-map.json path")
+    p_code_map_blast.add_argument("--limit", type=int, default=50)
+    p_code_map_blast.add_argument("--json", action="store_true")
+    p_code_map_blast.set_defaults(func=cmd_code_map)
     p_code_map.set_defaults(func=cmd_code_map, code_map_command="export")
 
     p_capabilities = sub.add_parser(

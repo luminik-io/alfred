@@ -111,6 +111,7 @@ def test_mcp_graph_tools_are_listed(tmp_path: Path) -> None:
         "alfred_prs_touching",
         "alfred_code_graph_summary",
         "alfred_code_impact",
+        "alfred_code_blast_radius",
     } <= names
     for tool in mod.TOOLS:
         if tool["name"] in {
@@ -231,4 +232,110 @@ def test_mcp_code_graph_tools_read_local_code_map(tmp_path: Path, monkeypatch) -
     impact = mod.call_tool("alfred_code_impact", {"repo": "web", "path": "src/Widget.tsx"})
     assert impact["matched_file"] == "src/Widget.tsx"
     assert impact["imported_by"][0]["from"] == "src/App.tsx"
+
+    blast = mod.call_tool(
+        "alfred_code_blast_radius",
+        {"repo": "web", "paths": ["src/Widget.tsx"]},
+    )
+    assert blast["kind"] == "blast-radius"
+    assert blast["direct_dependents"][0]["path"] == "src/App.tsx"
     assert not (tmp_path / "fleet-brain.db").exists()
+
+
+def test_mcp_prefers_checkout_lib_over_stale_installed_lib(tmp_path: Path, monkeypatch) -> None:
+    repo = Path(__file__).resolve().parent.parent
+    stale_lib = tmp_path / "lib"
+    stale_lib.mkdir()
+    (stale_lib / "code_graph.py").write_text(
+        "def summarize_codegraph(*args, **kwargs): return {'stale': True}\n"
+        "def impact_for_path(*args, **kwargs): return {'stale': True}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    monkeypatch.delitem(sys.modules, "code_graph", raising=False)
+    sys.path.insert(0, str(repo / "lib"))
+
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "code-map.json").write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-06-30T20:00:00Z",
+                "repos": {
+                    "web": {
+                        "head_sha": "abc123",
+                        "graph_summary": {"files": 1, "symbols": 1, "imports": 0},
+                        "files": [
+                            {
+                                "path": "src/App.tsx",
+                                "language": "typescript",
+                                "symbols": [{"name": "App", "line": 1}],
+                                "imports": [],
+                            }
+                        ],
+                        "edges": [],
+                    }
+                },
+                "contract_drift": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    mod = _load("alfred_mcp_cli_stale_lib", repo / "bin" / "alfred-mcp.py")
+    blast = mod.call_tool(
+        "alfred_code_blast_radius",
+        {"repo": "web", "paths": ["src/App.tsx"]},
+    )
+
+    assert blast["kind"] == "blast-radius"
+    assert blast["changed_paths"][0]["matched_file"] == "src/App.tsx"
+
+
+def test_mcp_code_blast_radius_requires_repo_and_paths(tmp_path: Path) -> None:
+    repo = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(repo / "lib"))
+    mod = _load("alfred_mcp_cli_blast_scope", repo / "bin" / "alfred-mcp.py")
+    db = tmp_path / "brain.db"
+
+    response = mod.handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {"name": "alfred_code_blast_radius", "arguments": {"repo": "web"}},
+        },
+        db_path=str(db),
+    )
+    assert response["error"]["code"] == -32000
+    assert "repo and at least one path" in response["error"]["message"]
+
+    response = mod.handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "params": {
+                "name": "alfred_code_blast_radius",
+                "arguments": {"repo": "web", "paths": "src/App.tsx"},
+            },
+        },
+        db_path=str(db),
+    )
+    assert response["error"]["code"] == -32000
+    assert "paths as a list of strings" in response["error"]["message"]
+
+    response = mod.handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "tools/call",
+            "params": {
+                "name": "alfred_code_blast_radius",
+                "arguments": {"repo": "web", "paths": ["src/App.tsx"] * 201},
+            },
+        },
+        db_path=str(db),
+    )
+    assert response["error"]["code"] == -32000
+    assert "at most 200 paths" in response["error"]["message"]

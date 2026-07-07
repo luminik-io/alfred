@@ -30,20 +30,29 @@ not a gate.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(
-    0,
-    (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib",
-)
-from agent_runner import (
+_HERE = Path(__file__).resolve().parent
+for candidate in (
+    Path(os.environ.get("ALFRED_HOME", "")) / "lib",
+    # Processed last, so source checkout lib lands at sys.path[0].
+    _HERE.parent / "lib",
+):
+    candidate_path = str(candidate)
+    if candidate.is_dir():
+        while candidate_path in sys.path:
+            sys.path.remove(candidate_path)
+        sys.path.insert(0, candidate_path)
+from agent_runner import (  # noqa: E402
     ALFRED_HOME,
     WORKSPACE,
     PreflightFailed,
@@ -655,8 +664,43 @@ def build_code_map() -> dict[str, Any]:
     return code_map
 
 
-def main() -> int:
-    with_lock(AGENT)
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="build Alfred's local JSON code map")
+    parser.add_argument(
+        "--repo",
+        help="build a single local repo path; use '.' to keep the repo key as '.'",
+    )
+    parser.add_argument("--name", help="repo key to use with --repo")
+    parser.add_argument("--output", help="write the generated code-map JSON to this path")
+    parser.add_argument("--json", action="store_true", help="print the generated code-map JSON")
+    return parser.parse_args([] if argv is None else argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    global BACKEND_REPO, CLIENT_REPOS, CODE_MAP_PATH, PREFLIGHT, REPOS, SIDECAR_REPO, WORKSPACE
+
+    args = _parse_args(argv)
+    direct_repo = False
+    direct_repo_name = ""
+    if args.repo:
+        repo_path = Path(args.repo).expanduser().resolve()
+        direct_repo_name = args.name or ("." if args.repo == "." else repo_path.name)
+        if not (repo_path / ".git").exists():
+            print(f"[{AGENT.upper()}-FAILED] {repo_path} is not a git checkout", file=sys.stderr)
+            return 2
+        direct_repo = True
+        REPOS = ["."]
+        BACKEND_REPO = ""
+        SIDECAR_REPO = ""
+        CLIENT_REPOS = []
+        WORKSPACE = repo_path
+        PREFLIGHT = PreflightSpec(agent=AGENT, bins=["git", "grep"], require_workspace_repos=[])
+
+    if args.output:
+        CODE_MAP_PATH = Path(args.output).expanduser()
+
+    if not direct_repo:
+        with_lock(AGENT)
 
     if not REPOS and not BACKEND_REPO and not SIDECAR_REPO and not doctor_requested():
         print(
@@ -666,16 +710,27 @@ def main() -> int:
         )
         return 0
 
-    try:
-        preflight(PREFLIGHT)
-    except PreflightFailed:
-        return 0
+    if direct_repo:
+        missing_bins = [binary for binary in PREFLIGHT.bins if shutil.which(binary) is None]
+        if missing_bins:
+            print(
+                f"[{AGENT.upper()}-FAILED] missing required binary: {', '.join(missing_bins)}",
+                file=sys.stderr,
+            )
+            return 2
+    else:
+        try:
+            preflight(PREFLIGHT)
+        except PreflightFailed:
+            return 0
 
     if doctor_mode():
         print(f"[{AGENT.upper()}-DOCTOR-OK]")
         return 0
 
     code_map = build_code_map()
+    if direct_repo and direct_repo_name != ".":
+        code_map["repos"] = {direct_repo_name: code_map["repos"].get(".", {})}
 
     CODE_MAP_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = CODE_MAP_PATH.with_suffix(".json.tmp")
@@ -695,7 +750,10 @@ def main() -> int:
         f"[CODE-MAP-OK] backend={n_endpoints} endpoints, sidecar={n_routes} routes, "
         f"clients={n_calls} calls, drift={n_drift}"
     )
-    print(summary)
+    if args.json:
+        print(json.dumps(code_map, indent=2, sort_keys=True))
+    else:
+        print(summary)
 
     if n_drift > 0:
         sample = "\n".join(
@@ -709,4 +767,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

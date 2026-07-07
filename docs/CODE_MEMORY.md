@@ -56,10 +56,11 @@ it at a binary you installed yourself.
   contract. This is the deterministic local fallback for agents, MCP clients,
   and onboarding checks when the external code-memory binary is not installed.
 - **Read-only MCP bridge.** `alfred mcp serve` exposes
-  `alfred_code_graph_summary` and `alfred_code_impact` alongside the existing
-  memory tools. Agents can ask for repo summaries, import impact, matching
-  symbols, API calls, and contract drift without reading raw transcripts or
-  shelling out.
+  `alfred_code_graph_summary`, `alfred_code_impact`, and
+  `alfred_code_blast_radius` alongside the existing memory tools. Agents can
+  ask for repo summaries, single-file import impact, matching symbols, API
+  calls, contract drift, and multi-file blast radius without reading raw
+  transcripts or shelling out.
 
 ## Install and index
 
@@ -73,9 +74,12 @@ bin/code-memory-mcp refresh     # incremental rebuild of the MCP graph
 alfred agents                   # confirm code-map-refresh appears
 
 # Stable local contract for native onboarding and agent fallback context.
+alfred code-map build . --output /tmp/code-map.json --json
 alfred code-map export --summary-only
 alfred code-map summary
 alfred code-map impact frontend src/lib/api.ts --json
+alfred code-map impact frontend src/lib/api.ts --brief
+alfred code-map blast-radius frontend src/lib/api.ts src/App.tsx --json
 ```
 
 If the binary cannot be resolved (no network, autofetch disabled, unsupported
@@ -119,6 +123,14 @@ mapped files and returns incoming imports, outgoing imports, symbols, API
 surfaces in the file, matching drift, nearby files, and a `match_status`
 (`exact`, `suffix`, `ambiguous`, or `not_found`). It is advisory context, not a
 compiler or merge gate.
+
+For prompt-ready planning context, `alfred code-map impact ... --brief` renders
+the same facts as a concise single-file blast-radius note. For branch-sized
+changes, `alfred code-map blast-radius <repo> <path...>` aggregates multiple
+changed paths, dedupes direct dependents, calls out contract surfaces and drift,
+and returns a simple `low` / `medium` / `high` local risk label with next checks.
+It is still advisory: refresh the map or inspect manually when paths are
+unmapped, ambiguous, generated, or hidden behind dynamic imports.
 
 Binary resolution order (first hit wins):
 

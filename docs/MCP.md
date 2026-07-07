@@ -65,7 +65,7 @@ Both gates must pass. Exposure alone does not make a tool callable, so a tool a
 server newly returns is **not** automatically usable by the agent: it stays
 uncallable until its `mcp__<server>__<tool>` name is added to the allowlist
 constant. The two sets are therefore not identical: the `alfred_memory` server
-registers eleven tools, but the allowlist constant names ten of them (see the
+registers twelve tools, but the allowlist constant names eleven of them (see the
 note under the tool table). See [Per-role tool scoping](#per-role-tool-scoping)
 for exactly how the allowlist is assembled.
 
@@ -90,13 +90,14 @@ path, so no per-tool restriction is needed even under `bypassPermissions`.
 | `alfred_prs_touching` | Pull requests that changed a path, from the materialized graph edges | `repo` and `path` (both required) | yes |
 | `alfred_code_graph_summary` | Local code-graph summary per repo, no raw source | none | yes |
 | `alfred_code_impact` | Local import, symbol, route, API-call, and drift hints for a path | `repo` and `path` (both required) | yes |
+| `alfred_code_blast_radius` | Local multi-file blast-radius summary for changed paths | `repo` and `paths` (both required) | yes |
 
-All eleven tools above are registered on the server (the `TOOLS` tuple in
-`bin/alfred-mcp.py`), so attaching the server exposes all eleven to the run.
+All twelve tools above are registered on the server (the `TOOLS` tuple in
+`bin/alfred-mcp.py`), so attaching the server exposes all twelve to the run.
 Being exposed is not the same as being callable by the agent: a firing can only
 call the tools whose names are in the `--allowedTools` allowlist. **One
 registered tool, `alfred_memory_doctor`, is not in that allowlist**: the
-`_MEMORY_RECALL_TOOLS` constant in `process.py` names the other ten, so the
+`_MEMORY_RECALL_TOOLS` constant in `process.py` names the other eleven, so the
 agent cannot call `alfred_memory_doctor` even though the server exposes it.
 `alfred_brain_status` covers the same read-only doctor output and is in the
 allowlist, so an agent does not lose that capability. The exposed-but-not-
@@ -113,7 +114,8 @@ directly, for example through `alfred mcp serve`.
   narrows by `codename` or `repo`. The three path-graph tools
   (`alfred_who_owns`, `alfred_recent_changes_near`, `alfred_prs_touching`) and
   `alfred_code_impact` require *both* a `repo` and a `path` via
-  `_require_repo_path`. This keeps an agent from sweeping the whole brain.
+  `_require_repo_path`; `alfred_code_blast_radius` requires `repo` plus at least
+  one path. This keeps an agent from sweeping the whole brain.
 - **Candidate bodies are gated.** `alfred_memory_candidates` returns a short
   `body_preview` and boolean flags by default. Full candidate bodies, evidence,
   and review notes are only included when `ALFRED_MCP_ALLOW_RAW_MEMORY` is set
@@ -185,8 +187,8 @@ Scoping happens in `lib/agent_runner/process.py`, only on the Claude path
 
 Because exposure and the allowlist are populated independently, the exposed and
 callable sets are not guaranteed identical. In practice the code-memory sets
-match, while `alfred_memory` exposes eleven server tools and `_MEMORY_RECALL_TOOLS`
-allowlists ten (`alfred_memory_doctor` is the one it omits, so the agent cannot
+match, while `alfred_memory` exposes twelve server tools and `_MEMORY_RECALL_TOOLS`
+allowlists eleven (`alfred_memory_doctor` is the one it omits, so the agent cannot
 call it; `alfred_brain_status` gives an agent the same doctor output). The
 allowlist is the tighter, load-bearing gate.
 
