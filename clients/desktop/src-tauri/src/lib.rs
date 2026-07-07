@@ -530,7 +530,9 @@ fn managed_runtime_env_keys(path: &Path) -> HashSet<String> {
         if !is_valid_env_key(key) {
             break;
         }
-        keys.insert(key.to_string());
+        if setup_managed_runtime_static_key(key) {
+            keys.insert(key.to_string());
+        }
         if key.starts_with("AGENT_CODENAME_") {
             let codename = decode_config_value(strip_inline_comment(value).trim(), None)
                 .trim()
@@ -546,10 +548,32 @@ fn managed_runtime_env_keys(path: &Path) -> HashSet<String> {
 }
 
 fn setup_managed_runtime_env_key(key: &str, setup_managed_keys: &HashSet<String>) -> bool {
-    setup_managed_keys.contains(key)
-        || key.starts_with("AGENT_CODENAME_")
-        || key == "ARCHITECT_ROLLOUT_ORDER"
-        || key == "ALFRED_MORNING_BRIEF_AGENTS"
+    setup_managed_keys.contains(key) || setup_managed_runtime_static_key(key)
+}
+
+fn setup_managed_runtime_static_key(key: &str) -> bool {
+    matches!(
+        key,
+        "ARCHITECT_ROLLOUT_ORDER"
+            | "ALFRED_QUEUE_REPOS"
+            | "ALFRED_SHIPPED_REPOS"
+            | "ALFRED_BRIDGE_REPOS"
+            | "ALFRED_SENIOR_DEV_REPOS"
+            | "ALFRED_PLANNER_REPOS"
+            | "ALFRED_SPEC_PLANNER_REPOS"
+            | "ALFRED_TEST_ENGINEER_REPOS"
+            | "ALFRED_REVIEWER_REPOS"
+            | "ALFRED_FIXER_REPOS"
+            | "ALFRED_TRIAGE_REPOS"
+            | "ALFRED_CLAIM_SWEEP_REPOS"
+            | "ALFRED_AUTOMERGE_REPOS"
+            | "ALFRED_CODE_MAP_REPOS"
+            | "ALFRED_CODE_MEMORY_REPOS"
+            | "ALFRED_MORNING_BRIEF_REPOS"
+            | "ALFRED_SHIPPED_SUMMARY_DAILY_REPOS"
+            | "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS"
+            | "ALFRED_MORNING_BRIEF_AGENTS"
+    ) || key.starts_with("AGENT_CODENAME_")
         || (key.starts_with("ALFRED_") && key.ends_with("_AWS_PROFILE"))
         || key.starts_with("ALFRED_TELEMETRY_")
 }
@@ -3671,6 +3695,50 @@ done"#;
         restore_var("ALFRED_HOME", prev_alfred);
         restore_var("AGENT_CODENAME_FEATURE_DEV", prev_codename);
         restore_var("ALFRED_ORACLE_REPOS", prev_oracle);
+    }
+
+    #[test]
+    fn native_subprocess_env_does_not_scrub_appended_token_after_managed_block() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_oracle = std::env::var("ALFRED_ORACLE_REPOS").ok();
+        let prev_token = std::env::var("CLAUDE_CODE_OAUTH_TOKEN").ok();
+
+        let root = temp_root("alfred-managed-block-token");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(
+            runtime.join(".env"),
+            "# alfred-init, generated below this line. Safe to re-run.\n\
+             AGENT_CODENAME_FEATURE_DEV=oracle\n\
+             ALFRED_ORACLE_REPOS=org/runtime\n\
+             CLAUDE_CODE_OAUTH_TOKEN=file-token\n",
+        )
+        .expect("write runtime env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::set_var("ALFRED_ORACLE_REPOS", "org/stale");
+        std::env::set_var("CLAUDE_CODE_OAUTH_TOKEN", "process-token");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("ALFRED_ORACLE_REPOS"),
+            Some(&"org/runtime".to_string())
+        );
+        assert_eq!(
+            env.get("CLAUDE_CODE_OAUTH_TOKEN"),
+            Some(&"process-token".to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_ORACLE_REPOS", prev_oracle);
+        restore_var("CLAUDE_CODE_OAUTH_TOKEN", prev_token);
     }
 
     #[test]

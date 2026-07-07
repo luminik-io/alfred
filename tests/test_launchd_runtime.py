@@ -145,6 +145,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "# alfred-init, generated below this line. Safe to re-run.\n"
         "AGENT_CODENAME_FEATURE_DEV=oracle\n"
         "ALFRED_ORACLE_REPOS=org/runtime\n"
+        "CLAUDE_CODE_OAUTH_TOKEN=file-token\n"
     )
     (launchd_dir / "agents.conf").write_text(
         "alfred.helper\tprobe.py\tinterval:60\tno\talfred.helper\tHelper\n"
@@ -164,6 +165,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "  'senior_repos': os.environ.get('ALFRED_SENIOR_DEV_REPOS'),\n"
         "  'spec_repos': os.environ.get('ALFRED_SPEC_PLANNER_REPOS'),\n"
         "  'telemetry_enabled': os.environ.get('ALFRED_TELEMETRY_ENABLED'),\n"
+        "  'token': os.environ.get('CLAUDE_CODE_OAUTH_TOKEN'),\n"
         "  'feature_codename': os.environ.get('AGENT_CODENAME_FEATURE_DEV'),\n"
         "  'oracle_repos': os.environ.get('ALFRED_ORACLE_REPOS'),\n"
         "}))\n"
@@ -184,6 +186,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
             "ALFRED_SENIOR_DEV_REPOS": "org/stale",
             "ALFRED_SPEC_PLANNER_REPOS": "org/stale",
             "ALFRED_TELEMETRY_ENABLED": "0",
+            "CLAUDE_CODE_OAUTH_TOKEN": "process-token",
             "AGENT_CODENAME_FEATURE_DEV": "old-oracle",
             "ALFRED_ORACLE_REPOS": "org/stale",
         },
@@ -205,6 +208,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "senior_repos": None,
         "spec_repos": None,
         "telemetry_enabled": "0",
+        "token": "process-token",
         "feature_codename": "oracle",
         "oracle_repos": "org/runtime",
     }

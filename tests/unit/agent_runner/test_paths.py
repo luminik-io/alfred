@@ -235,6 +235,31 @@ def test_launcher_env_scrubs_custom_codename_repo_scope_from_managed_block(
     assert env["ALFRED_ORACLE_REPOS"] == "org/runtime"
 
 
+def test_launcher_env_does_not_scrub_appended_token_after_managed_block(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "AGENT_CODENAME_FEATURE_DEV=oracle\n"
+        "ALFRED_ORACLE_REPOS=org/runtime\n"
+        "CLAUDE_CODE_OAUTH_TOKEN=file-token\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_ORACLE_REPOS", "org/stale")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "process-token")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_ORACLE_REPOS"] == "org/runtime"
+    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "process-token"
+
+
 def test_launcher_env_preserves_code_memory_process_controls(
     fresh_agent_runner, monkeypatch, tmp_path
 ):

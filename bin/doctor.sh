@@ -146,6 +146,17 @@ PY
   esac
 }
 
+setup_runtime_static_config_key() {
+  case "$1" in
+    AGENT_CODENAME_*|ARCHITECT_ROLLOUT_ORDER|ALFRED_*_AWS_PROFILE|ALFRED_QUEUE_REPOS|ALFRED_SHIPPED_REPOS|ALFRED_BRIDGE_REPOS|ALFRED_SENIOR_DEV_REPOS|ALFRED_PLANNER_REPOS|ALFRED_SPEC_PLANNER_REPOS|ALFRED_TEST_ENGINEER_REPOS|ALFRED_REVIEWER_REPOS|ALFRED_FIXER_REPOS|ALFRED_TRIAGE_REPOS|ALFRED_CLAIM_SWEEP_REPOS|ALFRED_AUTOMERGE_REPOS|ALFRED_CODE_MAP_REPOS|ALFRED_CODE_MEMORY_REPOS|ALFRED_MORNING_BRIEF_REPOS|ALFRED_SHIPPED_SUMMARY_DAILY_REPOS|ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS|ALFRED_MORNING_BRIEF_AGENTS|ALFRED_TELEMETRY_*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 load_env_file() {
   local file="$1" line key value quote_style existing_value
   [ -f "$file" ] || return 0
@@ -182,6 +193,10 @@ load_env_file() {
         ! runtime_stop_control_active "$key" "$value"; then
         continue
       fi
+      if ! setup_runtime_config_key "$key" &&
+        ! runtime_stop_control_active "$key" "$value"; then
+        continue
+      fi
     fi
     export "$key=$value"
   done < "$file"
@@ -214,7 +229,9 @@ setup_managed_env_keys_from_file() {
         break
         ;;
     esac
-    printf '%s\n' "$key"
+    if setup_runtime_static_config_key "$key"; then
+      printf '%s\n' "$key"
+    fi
     case "$key" in
       AGENT_CODENAME_*)
         value="$(trim_env_value "$(strip_inline_comment "$value")")"
@@ -240,14 +257,7 @@ setup_managed_env_file_key() {
 
 setup_runtime_config_key() {
   setup_managed_env_file_key "$1" && return 0
-  case "$1" in
-    AGENT_CODENAME_*|ARCHITECT_ROLLOUT_ORDER|ALFRED_*_AWS_PROFILE|ALFRED_QUEUE_REPOS|ALFRED_SHIPPED_REPOS|ALFRED_BRIDGE_REPOS|ALFRED_SENIOR_DEV_REPOS|ALFRED_PLANNER_REPOS|ALFRED_SPEC_PLANNER_REPOS|ALFRED_TEST_ENGINEER_REPOS|ALFRED_REVIEWER_REPOS|ALFRED_FIXER_REPOS|ALFRED_TRIAGE_REPOS|ALFRED_CLAIM_SWEEP_REPOS|ALFRED_AUTOMERGE_REPOS|ALFRED_CODE_MAP_REPOS|ALFRED_CODE_MEMORY_REPOS|ALFRED_MORNING_BRIEF_REPOS|ALFRED_SHIPPED_SUMMARY_DAILY_REPOS|ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS|ALFRED_MORNING_BRIEF_AGENTS|ALFRED_TELEMETRY_*)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
+  setup_runtime_static_config_key "$1"
 }
 
 scrub_setup_runtime_env() {

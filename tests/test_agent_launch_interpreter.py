@@ -290,6 +290,39 @@ def test_agent_launch_scrubs_custom_codename_scope_from_managed_block(
     assert "REPOS=org/runtime" in proc.stdout
 
 
+def test_agent_launch_does_not_scrub_appended_token_after_managed_block(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "AGENT_CODENAME_FEATURE_DEV=oracle\n"
+        "ALFRED_ORACLE_REPOS=org/runtime\n"
+        "CLAUDE_CODE_OAUTH_TOKEN=file-token\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-custom-repos-token.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "REPOS=${ALFRED_ORACLE_REPOS:-unset}"\n'
+        'echo "TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={
+            "ALFRED_ORACLE_REPOS": "org/stale",
+            "CLAUDE_CODE_OAUTH_TOKEN": "process-token",
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "REPOS=org/runtime" in proc.stdout
+    assert "TOKEN=process-token" in proc.stdout
+
+
 def test_agent_launch_expands_alfred_home_before_scanning_managed_block(
     tmp_path: Path,
 ) -> None:

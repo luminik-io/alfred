@@ -345,7 +345,8 @@ def _managed_runtime_env_keys(path: Path) -> set[str]:
         key = key.strip()
         if not _ENV_KEY_RE.match(key):
             break
-        keys.add(key)
+        if _env_key_matches(key, _SETUP_MANAGED_RUNTIME_ENV_KEYS):
+            keys.add(key)
         if key.startswith("AGENT_CODENAME_"):
             value = decode_env_value(_strip_inline_comment(raw_value).strip()).strip()
             if _CODENAME_RE.match(value):
