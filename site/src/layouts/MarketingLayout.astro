@@ -439,29 +439,7 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
           document.querySelectorAll(".m-reveal").forEach((el) => io.observe(el));
         }
 
-        // 2. Scroll-tied parallax for .m-ambient elements (hero grid drift).
-        //    Updates a single CSS variable --m-parallax with a vertical
-        //    offset proportional to scrollY. Throttled with rAF. Skipped
-        //    under reduced motion.
-        if (!reduced) {
-          let scheduled = false;
-          const root = document.documentElement;
-          const onScroll = () => {
-            if (scheduled) return;
-            scheduled = true;
-            requestAnimationFrame(() => {
-              const y = window.scrollY || 0;
-              // 12% of scrollY, clamped, in negative px (drift upward).
-              const offset = Math.max(-160, -(y * 0.12));
-              root.style.setProperty("--m-parallax", offset.toFixed(1) + "px");
-              scheduled = false;
-            });
-          };
-          window.addEventListener("scroll", onScroll, { passive: true });
-          onScroll();
-        }
-
-        // 3. Theme toggle. data-theme-set buttons (light / dark / auto) flip
+        // 2. Theme toggle. data-theme-set buttons (light / dark / auto) flip
         //    the persisted choice in localStorage, update html[data-theme],
         //    and update the radio-button aria-pressed state. When auto, we
         //    also re-listen for OS preference changes.
