@@ -916,6 +916,39 @@ def test_compose_draft_question_with_selected_repo_context_stays_conversational(
     assert saved == []
 
 
+def test_compose_draft_read_only_setup_summary_stays_conversational(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A read-only setup summary is an Ask answer, not a plan to file."""
+    monkeypatch.delenv("ALFRED_PLANNING_ASSISTANT_ENGINE", raising=False)
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/plans/draft",
+        headers=_auth_headers(state),
+        json={
+            "text": (
+                "Summarize the current Alfred setup status on this Mac. "
+                "Do not change files or open pull requests."
+            ),
+            "draft": {"repos": ["acme/alfred"]},
+            "context_repos": ["acme/alfred"],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["intent"] == "conversation"
+    assert payload["draft_id"] == ""
+    assert payload["saved_path"] == ""
+    assert "did not start a plan" in payload["summary"]
+    drafts_dir = state / "planning-drafts"
+    saved = list(drafts_dir.glob("compose-*.json")) if drafts_dir.is_dir() else []
+    assert saved == []
+
+
 def test_compose_draft_still_drafts_a_change_request(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

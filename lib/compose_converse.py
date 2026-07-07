@@ -595,7 +595,7 @@ def parse_turn(
     intent = resolve_intent(
         obj.get("intent"),
         last_user_message=last_user_message,
-        draft=draft,
+        draft=base_draft,
         done=done,
     )
     action = parse_action(obj.get("action"))
@@ -639,17 +639,27 @@ def resolve_intent(
     draft: IssueDraft,
     done: bool,
 ) -> str:
-    """Resolve the turn intent: the model's verdict first, a heuristic backstop.
+    """Resolve the turn intent: explicit read-only asks, then model/backstop.
 
     The model is told to label every turn ``conversation`` or ``build``. When it
-    does, that label wins (normalized so any non-``conversation`` value, e.g. a
-    typo or an unexpected synonym, falls back to ``build`` and never suppresses
-    the plan surface for real work). When the field is missing or unusable, a
-    conservative heuristic decides: a turn that already accepted/handed off, or
-    that has carried any structured draft content, is ``build``; an otherwise
-    short, plainly conversational opener is ``conversation``; everything else
-    defaults to ``build`` so genuine work is never misread as chatter.
+    does, that label normally wins (normalized so any non-``conversation`` value,
+    e.g. a typo or an unexpected synonym, falls back to ``build`` and never
+    suppresses the plan surface for real work). The one exception is a fresh,
+    explicit read-only status/setup request ("summarize the setup; do not change
+    files"), which must stay conversational even if the live model tries to
+    draft a plan. When the field is missing or unusable, a conservative
+    heuristic decides: a turn that already accepted/handed off, or that has
+    carried any structured draft content, is ``build``; an otherwise short,
+    plainly conversational opener is ``conversation``; everything else defaults
+    to ``build`` so genuine work is never misread as chatter.
     """
+    if (
+        not done
+        and not _draft_has_content(draft)
+        and looks_like_read_only_info_request(last_user_message)
+    ):
+        return INTENT_CONVERSATION
+
     if isinstance(raw_intent, str):
         normalized = raw_intent.strip().lower()
         if normalized == INTENT_CONVERSATION:
@@ -916,6 +926,84 @@ def _is_build_verb_form(token: str) -> bool:
 # first-person change request ("can we show X in the roster?").
 _INFO_VERBS = ("see", "view", "check", "read", "get", "find")
 
+_READ_ONLY_COMMAND_VERBS = (
+    "summarize",
+    "describe",
+    "explain",
+    "tell",
+    "list",
+    "give",
+    "provide",
+    "report",
+    "check",
+    "inspect",
+    "read",
+    "view",
+    "show",
+    "display",
+)
+
+_READ_ONLY_COMMAND_PREFIXES = ("alfred", "please", "just")
+
+_READ_ONLY_SHOW_VERBS = ("show", "display")
+
+_READ_ONLY_SUBJECT_WORDS = frozenset(
+    {
+        "agent",
+        "agents",
+        "approval",
+        "approvals",
+        "backlog",
+        "config",
+        "configuration",
+        "fleet",
+        "health",
+        "install",
+        "installation",
+        "logs",
+        "mac",
+        "machine",
+        "queue",
+        "repo",
+        "repos",
+        "repositories",
+        "repository",
+        "runtime",
+        "runs",
+        "setup",
+        "state",
+        "status",
+    }
+)
+
+_READ_ONLY_SUBJECT_PHRASES = (
+    "current setup",
+    "setup status",
+    "this mac",
+    "this machine",
+)
+
+_EXPLICIT_READ_ONLY_PHRASES = (
+    "do not change",
+    "don't change",
+    "do not edit",
+    "don't edit",
+    "do not modify",
+    "don't modify",
+    "do not create",
+    "don't create",
+    "do not file",
+    "don't file",
+    "do not open",
+    "don't open",
+    "no changes",
+    "read only",
+    "read-only",
+    "without changing",
+    "without opening",
+    "without filing",
+)
+
 
 def _has_info_verb_in_verb_position(tokens: list[str]) -> bool:
     """True when an information verb (see/get/view/...) is used as a verb.
@@ -954,6 +1042,55 @@ def _has_build_verb_in_verb_position(tokens: list[str]) -> bool:
     return False
 
 
+def looks_like_read_only_info_request(text: str) -> bool:
+    """True when an imperative turn asks Alfred to observe, not make a plan.
+
+    ``looks_like_question`` covers "what is the fleet status?" and modal
+    question shapes. This catches the imperative form we saw in Desktop Ask:
+    "Summarize the current Alfred setup status on this Mac. Do not change files
+    or open pull requests." The signal is intentionally narrow:
+
+    * it must start with an information/reporting verb such as "summarize",
+      "describe", "list", or "show me";
+    * it must mention Alfred's existing state (setup, status, fleet, runtime,
+      repos, etc.) or include an explicit no-action phrase;
+    * a real build verb in verb position still wins, except "show/display me"
+      status commands, so "show paused agents in the roster" remains work while
+      "show me the current fleet status" is a conversation.
+    """
+    cleaned = " ".join(str(text or "").split()).strip()
+    if not cleaned:
+        return False
+    lowered = cleaned.lower()
+    tokens = [token.strip(",.;:!?\"'`()[]") for token in lowered.split()]
+    tokens = [token for token in tokens if token]
+    if not tokens:
+        return False
+
+    command_index = 0
+    while command_index < len(tokens) and tokens[command_index] in _READ_ONLY_COMMAND_PREFIXES:
+        command_index += 1
+    if command_index >= len(tokens):
+        return False
+    command = tokens[command_index]
+    if command not in _READ_ONLY_COMMAND_VERBS:
+        return False
+
+    explicit_read_only = any(phrase in lowered for phrase in _EXPLICIT_READ_ONLY_PHRASES)
+    subject_hint = any(token in _READ_ONLY_SUBJECT_WORDS for token in tokens) or any(
+        phrase in lowered for phrase in _READ_ONLY_SUBJECT_PHRASES
+    )
+    if not (explicit_read_only or subject_hint):
+        return False
+
+    show_me_status = (
+        command in _READ_ONLY_SHOW_VERBS
+        and len(tokens) > command_index + 1
+        and tokens[command_index + 1] in {"me", "us"}
+    )
+    return not (_has_build_verb_in_verb_position(tokens) and not show_me_status)
+
+
 def classify_message_intent(text: str, *, draft: IssueDraft) -> str:
     """Classify one plain message as ``conversation`` or ``build`` with no model.
 
@@ -977,6 +1114,8 @@ def classify_message_intent(text: str, *, draft: IssueDraft) -> str:
     content_draft = replace(draft, repos=[]) if draft.repos else draft
     if _draft_has_content(content_draft):
         return INTENT_BUILD
+    if looks_like_read_only_info_request(text):
+        return INTENT_CONVERSATION
     if looks_like_question(text):
         return INTENT_CONVERSATION
     return resolve_intent(None, last_user_message=text, draft=content_draft, done=False)

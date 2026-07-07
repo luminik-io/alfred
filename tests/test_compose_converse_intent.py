@@ -32,7 +32,7 @@ def _build_draft() -> IssueDraft:
     )
 
 
-# --- resolve_intent: model verdict wins -------------------------------------
+# --- resolve_intent: model verdict wins, except explicit read-only status ----
 
 
 def test_model_conversation_intent_is_honored() -> None:
@@ -76,6 +76,34 @@ def test_unknown_model_intent_does_not_fall_through_to_heuristic() -> None:
         "greeting",
         last_user_message="hi",
         draft=_empty_draft(),
+        done=False,
+    )
+    assert intent == cc.INTENT_BUILD
+
+
+def test_read_only_setup_summary_overrides_model_build_intent() -> None:
+    # Live repro from Desktop Ask: the model labelled this as build, which made
+    # the client show a "Ready to file" card despite an explicit no-action ask.
+    intent = cc.resolve_intent(
+        "build",
+        last_user_message=(
+            "Summarize the current Alfred setup status on this Mac. "
+            "Do not change files or open pull requests."
+        ),
+        draft=_empty_draft(),
+        done=False,
+    )
+    assert intent == cc.INTENT_CONVERSATION
+
+
+def test_read_only_override_does_not_win_mid_build() -> None:
+    intent = cc.resolve_intent(
+        "build",
+        last_user_message=(
+            "Summarize the current Alfred setup status on this Mac. "
+            "Do not change files or open pull requests."
+        ),
+        draft=_build_draft(),
         done=False,
     )
     assert intent == cc.INTENT_BUILD
@@ -241,6 +269,28 @@ def test_parse_turn_build_request_yields_build_intent() -> None:
     assert turn.intent == cc.INTENT_BUILD
 
 
+def test_parse_turn_read_only_setup_summary_ignores_model_created_draft() -> None:
+    raw = json.dumps(
+        {
+            "intent": "build",
+            "reply": "I saved a starter plan that is ready to review.",
+            "draft": {"title": "Summarize Alfred setup status"},
+            "readiness": {"score": 60, "ready": False, "missing": []},
+            "done": False,
+        }
+    )
+    turn = cc.parse_turn(
+        raw,
+        base_draft=_empty_draft(),
+        last_user_message=(
+            "Summarize the current Alfred setup status on this Mac. "
+            "Do not change files or open pull requests."
+        ),
+    )
+    assert turn is not None
+    assert turn.intent == cc.INTENT_CONVERSATION
+
+
 def test_default_converse_turn_intent_is_build() -> None:
     # The dataclass default keeps older call sites planner-first by default.
     turn = cc.ConverseTurn(
@@ -294,12 +344,44 @@ def test_looks_like_question_rejects_empty() -> None:
     assert not cc.looks_like_question("   ")
 
 
+# --- looks_like_read_only_info_request: imperative info/status detector -------
+
+
+def test_read_only_info_request_detects_live_ask_repro() -> None:
+    assert cc.looks_like_read_only_info_request(
+        "Summarize the current Alfred setup status on this Mac. "
+        "Do not change files or open pull requests."
+    )
+
+
+def test_read_only_info_request_rejects_real_build_request_with_no_action_clause() -> None:
+    # "Do not change" is often a constraint inside real work. It only makes a
+    # turn conversational when the command itself is informational.
+    assert not cc.looks_like_read_only_info_request(
+        "Add a setup status panel. Do not change the existing sidebar."
+    )
+
+
+def test_read_only_info_request_keeps_feature_show_requests_as_build() -> None:
+    assert not cc.looks_like_read_only_info_request("Show paused agents in the roster.")
+    assert cc.looks_like_read_only_info_request("Show me the current fleet status.")
+
+
 # --- classify_message_intent: shared no-engine backstop ---------------------
 
 
 def test_classify_message_intent_status_question_is_conversation() -> None:
     intent = cc.classify_message_intent(
         "What is the current state of the fleet, in one short paragraph?",
+        draft=_empty_draft(),
+    )
+    assert intent == cc.INTENT_CONVERSATION
+
+
+def test_classify_message_intent_imperative_setup_summary_is_conversation() -> None:
+    intent = cc.classify_message_intent(
+        "Summarize the current Alfred setup status on this Mac. "
+        "Do not change files or open pull requests.",
         draft=_empty_draft(),
     )
     assert intent == cc.INTENT_CONVERSATION
