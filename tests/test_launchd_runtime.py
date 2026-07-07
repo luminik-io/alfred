@@ -140,7 +140,8 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
     launchd_dir.mkdir(parents=True)
     capture = tmp_path / "doctor-env.json"
     (alfred / ".env").write_text(
-        "CUSTOM_FROM_ENV=loaded\n\n"
+        "CUSTOM_FROM_ENV=loaded\n"
+        "ALFRED_TELEMETRY_ENABLED=1\n\n"
         "# alfred-init, generated below this line. Safe to re-run.\n"
         "AGENT_CODENAME_FEATURE_DEV=oracle\n"
         "ALFRED_ORACLE_REPOS=org/runtime\n"
@@ -162,6 +163,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "  'memory_mcp': os.environ.get('ALFRED_CODE_MEMORY_MCP'),\n"
         "  'senior_repos': os.environ.get('ALFRED_SENIOR_DEV_REPOS'),\n"
         "  'spec_repos': os.environ.get('ALFRED_SPEC_PLANNER_REPOS'),\n"
+        "  'telemetry_enabled': os.environ.get('ALFRED_TELEMETRY_ENABLED'),\n"
         "  'feature_codename': os.environ.get('AGENT_CODENAME_FEATURE_DEV'),\n"
         "  'oracle_repos': os.environ.get('ALFRED_ORACLE_REPOS'),\n"
         "}))\n"
@@ -181,6 +183,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
             "ALFRED_CODE_MEMORY_MCP": "0",
             "ALFRED_SENIOR_DEV_REPOS": "org/stale",
             "ALFRED_SPEC_PLANNER_REPOS": "org/stale",
+            "ALFRED_TELEMETRY_ENABLED": "0",
             "AGENT_CODENAME_FEATURE_DEV": "old-oracle",
             "ALFRED_ORACLE_REPOS": "org/stale",
         },
@@ -201,6 +204,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "memory_mcp": "0",
         "senior_repos": None,
         "spec_repos": None,
+        "telemetry_enabled": "0",
         "feature_codename": "oracle",
         "oracle_repos": "org/runtime",
     }

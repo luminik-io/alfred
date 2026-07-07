@@ -455,7 +455,10 @@ fn merged_alfred_env() -> HashMap<String, String> {
         env.entry("ALFRED_HOME".to_string())
             .or_insert_with(|| runtime_home.to_string_lossy().into_owned());
         let setup_managed_keys = setup_managed_runtime_env_keys(&runtime_home.join(".env"));
-        env.retain(|key, _| !setup_managed_runtime_env_key(key, &setup_managed_keys));
+        env.retain(|key, value| {
+            !setup_managed_runtime_env_key(key, &setup_managed_keys)
+                || preserves_stop_control(key, value)
+        });
         let process_env_keys: HashSet<String> = env.keys().cloned().collect();
         load_config_file(
             &mut env,
@@ -669,6 +672,9 @@ fn preserves_stop_control(key: &str, value: &str) -> bool {
         }
         "ALFRED_AUTO_PROMOTE_KILL" => {
             !matches!(token.as_str(), "0" | "false" | "no" | "off" | "disabled")
+        }
+        "ALFRED_TELEMETRY_ENABLED" => {
+            !matches!(token.as_str(), "1" | "true" | "yes" | "on" | "enabled")
         }
         _ => false,
     }
@@ -3757,6 +3763,73 @@ done"#;
         restore_var("ALFRED_CODE_MAP_CLIENT_REPOS", prev_clients);
         restore_var("ALFRED_CODE_MAP_BACKEND_REPO", prev_backend);
         restore_var("ALFRED_CODE_MAP_MAX_FILES", prev_max);
+    }
+
+    #[test]
+    fn native_subprocess_env_preserves_process_telemetry_opt_out() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_telemetry_enabled = std::env::var("ALFRED_TELEMETRY_ENABLED").ok();
+        let prev_telemetry_url = std::env::var("ALFRED_TELEMETRY_URL").ok();
+
+        let root = temp_root("alfred-telemetry-opt-out");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create temp runtime");
+        std::fs::write(
+            runtime.join(".env"),
+            "ALFRED_TELEMETRY_ENABLED=1\n\
+             ALFRED_TELEMETRY_URL=https://telemetry.example.com/ingest\n",
+        )
+        .expect("write temp env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::set_var("ALFRED_TELEMETRY_ENABLED", "0");
+        std::env::remove_var("ALFRED_TELEMETRY_URL");
+
+        let env = merged_alfred_env();
+        assert_eq!(env.get("ALFRED_TELEMETRY_ENABLED"), Some(&"0".to_string()));
+        assert_eq!(
+            env.get("ALFRED_TELEMETRY_URL"),
+            Some(&"https://telemetry.example.com/ingest".to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_TELEMETRY_ENABLED", prev_telemetry_enabled);
+        restore_var("ALFRED_TELEMETRY_URL", prev_telemetry_url);
+    }
+
+    #[test]
+    fn native_subprocess_env_file_telemetry_opt_out_overrides_process_enable() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_telemetry_enabled = std::env::var("ALFRED_TELEMETRY_ENABLED").ok();
+
+        let root = temp_root("alfred-file-telemetry-opt-out");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create temp runtime");
+        std::fs::write(runtime.join(".env"), "ALFRED_TELEMETRY_ENABLED=0\n")
+            .expect("write temp env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::set_var("ALFRED_TELEMETRY_ENABLED", "1");
+
+        let env = merged_alfred_env();
+        assert_eq!(env.get("ALFRED_TELEMETRY_ENABLED"), Some(&"0".to_string()));
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_TELEMETRY_ENABLED", prev_telemetry_enabled);
     }
 
     #[test]

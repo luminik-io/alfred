@@ -279,6 +279,44 @@ def test_launcher_env_preserves_code_map_process_controls(
     assert env["ALFRED_CODE_MAP_MAX_FILES"] == "77"
 
 
+def test_launcher_env_preserves_process_telemetry_opt_out(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text(
+        "ALFRED_TELEMETRY_ENABLED=1\nALFRED_TELEMETRY_URL=https://telemetry.example.com/ingest\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_TELEMETRY_ENABLED", "0")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_TELEMETRY_ENABLED"] == "0"
+    assert env["ALFRED_TELEMETRY_URL"] == "https://telemetry.example.com/ingest"
+
+
+def test_launcher_env_file_telemetry_opt_out_overrides_process_enable(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text("ALFRED_TELEMETRY_ENABLED=0\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_TELEMETRY_ENABLED", "1")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_TELEMETRY_ENABLED"] == "0"
+
+
 def test_launcher_env_loads_code_memory_settings_when_process_absent(
     fresh_agent_runner, monkeypatch, tmp_path
 ):

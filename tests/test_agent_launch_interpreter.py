@@ -48,6 +48,8 @@ def _run_env(
         "ALFRED_AUTO_PROMOTE",
         "ALFRED_AUTO_PROMOTE_KILL",
         "ALFRED_AUTO_PROMOTE_LLM_JUDGE",
+        "ALFRED_TELEMETRY_ENABLED",
+        "ALFRED_TELEMETRY_URL",
         "ALFRED_QUEUE_REPOS",
         "ALFRED_SHIPPED_REPOS",
         "ALFRED_BRIDGE_REPOS",
@@ -394,6 +396,54 @@ def test_env_file_stop_controls_override_stale_process_env(
     assert "AUTO=0" in proc.stdout
     assert "KILL=1" in proc.stdout
     assert "JUDGE=treu" in proc.stdout
+
+
+def test_agent_launch_preserves_process_telemetry_opt_out(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text(
+        "ALFRED_TELEMETRY_ENABLED=1\nALFRED_TELEMETRY_URL=https://telemetry.example.com/ingest\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-telemetry.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "ENABLED=${ALFRED_TELEMETRY_ENABLED:-unset}"\n'
+        'echo "URL=${ALFRED_TELEMETRY_URL:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={"ALFRED_TELEMETRY_ENABLED": "0"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "ENABLED=0" in proc.stdout
+    assert "URL=https://telemetry.example.com/ingest" in proc.stdout
+
+
+def test_env_file_telemetry_opt_out_overrides_stale_process_enable(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text("ALFRED_TELEMETRY_ENABLED=0\n", encoding="utf-8")
+    target = tmp_path / "echo-telemetry-disabled.sh"
+    target.write_text(
+        '#!/usr/bin/env bash\necho "ENABLED=${ALFRED_TELEMETRY_ENABLED:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={"ALFRED_TELEMETRY_ENABLED": "1"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "ENABLED=0" in proc.stdout
 
 
 def test_agent_launch_expands_process_alfred_home_before_env_file(tmp_path: Path) -> None:

@@ -108,8 +108,23 @@ decode_env_value() {
   printf '%s' "$value"
 }
 
+telemetry_stop_control_active() {
+  local key="$1" token
+  token="$(trim_env_value "$(strip_inline_comment "$2")" | tr '[:upper:]' '[:lower:]')"
+  [ "$key" = "ALFRED_TELEMETRY_ENABLED" ] || return 1
+  [ -n "$token" ] || return 1
+  case "$token" in
+    1|true|yes|on|enabled) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+runtime_stop_control_active() {
+  telemetry_stop_control_active "$1" "$2"
+}
+
 load_env_file() {
-  local file="$1" line key value quote_style
+  local file="$1" line key value quote_style existing_value
   [ -f "$file" ] || return 0
   env_value_quote_style() {
     case "$1" in
@@ -137,6 +152,13 @@ load_env_file() {
     if [ "$quote_style" != "single" ]; then
       value="${value//\$\{HOME\}/$HOME}"
       value="${value//\$HOME/$HOME}"
+    fi
+    if [ -n "${!key+x}" ]; then
+      existing_value="${!key}"
+      if runtime_stop_control_active "$key" "$existing_value" &&
+        ! runtime_stop_control_active "$key" "$value"; then
+        continue
+      fi
     fi
     export "$key=$value"
   done < "$file"
@@ -207,6 +229,9 @@ scrub_setup_runtime_env() {
   local key
   while IFS= read -r key; do
     if setup_runtime_config_key "$key"; then
+      if runtime_stop_control_active "$key" "${!key:-}"; then
+        continue
+      fi
       unset "$key"
     fi
   done <<EOF

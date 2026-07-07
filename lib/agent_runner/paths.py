@@ -297,13 +297,17 @@ def launcher_env() -> dict[str, str]:
     runtime_env_path = Path(env["ALFRED_HOME"]) / ".env"
     setup_managed_keys = setup_managed_runtime_env_keys(runtime_env_path)
     env = {
-        key: value for key, value in env.items() if not _env_key_matches(key, setup_managed_keys)
+        key: value
+        for key, value in env.items()
+        if not _env_key_matches(key, setup_managed_keys) or _runtime_stop_control_active(key, value)
     }
+    preserve_keys = {key for key, value in env.items() if _runtime_stop_control_active(key, value)}
     load_env_file(
         runtime_env_path,
         env,
         no_clobber=True,
         clobber_keys=setup_managed_keys,
+        preserve_keys=preserve_keys,
     )
     if not env.get("WORKSPACE_ROOT", "").strip():
         env["WORKSPACE_ROOT"] = os.path.expanduser("~/code")
@@ -353,6 +357,15 @@ def _managed_runtime_env_keys(path: Path) -> set[str]:
 
 def _env_key_matches(key: str, patterns: set[str]) -> bool:
     return any(fnmatchcase(key, pattern) for pattern in patterns)
+
+
+def _runtime_stop_control_active(key: str, value: str) -> bool:
+    token = _strip_inline_comment(value).strip().lower()
+    if not token:
+        return False
+    if key == "ALFRED_TELEMETRY_ENABLED":
+        return token not in {"1", "true", "yes", "on", "enabled"}
+    return False
 
 
 def load_env_file(
