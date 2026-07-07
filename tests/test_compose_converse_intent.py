@@ -289,6 +289,8 @@ def test_parse_turn_read_only_setup_summary_ignores_model_created_draft() -> Non
     )
     assert turn is not None
     assert turn.intent == cc.INTENT_CONVERSATION
+    assert turn.draft.title == ""
+    assert turn.readiness.score == 0
 
 
 def test_default_converse_turn_intent_is_build() -> None:
@@ -364,6 +366,8 @@ def test_read_only_info_request_rejects_real_build_request_with_no_action_clause
 
 def test_read_only_info_request_keeps_feature_show_requests_as_build() -> None:
     assert not cc.looks_like_read_only_info_request("Show paused agents in the roster.")
+    assert not cc.looks_like_read_only_info_request("Show me paused agents in the roster.")
+    assert not cc.looks_like_read_only_info_request("Show me the selected repo in the header.")
     assert cc.looks_like_read_only_info_request("Show me the current fleet status.")
 
 
@@ -401,6 +405,15 @@ def test_classify_message_intent_build_verb_question_is_build() -> None:
         draft=_empty_draft(),
     )
     assert intent == cc.INTENT_BUILD
+
+
+def test_classify_message_intent_show_me_ui_requests_are_build() -> None:
+    for message in (
+        "Show me paused agents in the roster.",
+        "Show me the selected repo in the header.",
+    ):
+        intent = cc.classify_message_intent(message, draft=_empty_draft())
+        assert intent == cc.INTENT_BUILD
 
 
 def test_classify_message_intent_keeps_build_when_draft_has_content() -> None:

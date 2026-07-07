@@ -2195,6 +2195,13 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
             },
             status_code=503,
         )
+    content_draft = replace(turn.draft, repos=()) if turn.draft.repos else turn.draft
+    if (
+        getattr(turn, "intent", "build") == cc.INTENT_CONVERSATION
+        and prior_payload is None
+        and not _draft_has_signal(content_draft)
+    ):
+        return JSONResponse(_converse_turn_payload(turn, draft_id="", saved_path=None))
 
     saved_path, saved_id = _save_converse_draft(
         request,
@@ -2326,6 +2333,13 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
         )
 
     def _reconcile(turn: Any) -> dict[str, Any]:
+        content_draft = replace(turn.draft, repos=()) if turn.draft.repos else turn.draft
+        if (
+            getattr(turn, "intent", "build") == cc.INTENT_CONVERSATION
+            and prior_payload is None
+            and not _draft_has_signal(content_draft)
+        ):
+            return _converse_turn_payload(turn, draft_id="", saved_path=None)
         saved_path, saved_id = _save_converse_draft(
             request,
             turn=turn,
@@ -2355,7 +2369,9 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
     )
 
 
-def _converse_turn_payload(turn: Any, *, draft_id: str, saved_path: Path) -> dict[str, Any]:
+def _converse_turn_payload(
+    turn: Any, *, draft_id: str, saved_path: Path | None
+) -> dict[str, Any]:
     """The ``ConverseResponse`` dict both converse routes return.
 
     Kept identical to the non-streaming route's JSON body so the client's
@@ -2363,7 +2379,7 @@ def _converse_turn_payload(turn: Any, *, draft_id: str, saved_path: Path) -> dic
     """
     return {
         "draft_id": draft_id,
-        "saved_path": str(saved_path),
+        "saved_path": str(saved_path) if saved_path is not None else "",
         "reply": turn.reply,
         # The turn kind: "conversation" (a plain answer) or "build" (a planning
         # turn). The client renders the inline plan card only for "build" turns,

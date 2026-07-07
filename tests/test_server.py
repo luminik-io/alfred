@@ -2422,6 +2422,11 @@ def test_compose_converse_conversation_intent_flows_to_payload(
     payload = response.json()
     assert payload["intent"] == "conversation"
     assert payload["reply"].startswith("I'm Alfred")
+    assert payload["draft_id"] == ""
+    assert payload["saved_path"] == ""
+    drafts_dir = state / "planning-drafts"
+    saved = list(drafts_dir.glob("compose-*.json")) if drafts_dir.is_dir() else []
+    assert saved == []
 
 
 def test_compose_converse_defaults_single_setup_repo_as_scope(

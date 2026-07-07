@@ -592,12 +592,23 @@ def parse_turn(
     if not reply and not done:
         # A turn with no reply and not done is useless; treat as a parse miss.
         return None
+    read_only_override = (
+        not _draft_has_content(base_draft)
+        and looks_like_read_only_info_request(last_user_message)
+    )
     intent = resolve_intent(
         obj.get("intent"),
         last_user_message=last_user_message,
         draft=base_draft,
         done=done,
     )
+    if read_only_override and intent == INTENT_CONVERSATION:
+        # The model may still invent a draft/title while labelling the turn as a
+        # build. For an explicit no-action status ask, the plan must disappear
+        # completely, not merely hide behind a conversational intent.
+        draft = base_draft
+        readiness = ConverseReadiness(score=0, ready=False)
+        done = False
     action = parse_action(obj.get("action"))
     return ConverseTurn(
         reply=reply,
@@ -947,6 +958,50 @@ _READ_ONLY_COMMAND_PREFIXES = ("alfred", "please", "just")
 
 _READ_ONLY_SHOW_VERBS = ("show", "display")
 
+_READ_ONLY_TARGET_SURFACE_WORDS = frozenset(
+    {
+        "app",
+        "button",
+        "card",
+        "client",
+        "dashboard",
+        "drawer",
+        "header",
+        "interface",
+        "menu",
+        "page",
+        "panel",
+        "roster",
+        "screen",
+        "sidebar",
+        "tab",
+        "table",
+        "ui",
+        "view",
+        "widget",
+    }
+)
+
+_READ_ONLY_STATUS_WORDS = frozenset(
+    {
+        "approval",
+        "approvals",
+        "backlog",
+        "config",
+        "configuration",
+        "health",
+        "install",
+        "installation",
+        "logs",
+        "queue",
+        "runtime",
+        "runs",
+        "setup",
+        "state",
+        "status",
+    }
+)
+
 _READ_ONLY_SUBJECT_WORDS = frozenset(
     {
         "agent",
@@ -1083,10 +1138,14 @@ def looks_like_read_only_info_request(text: str) -> bool:
     if not (explicit_read_only or subject_hint):
         return False
 
+    target_surface = any(token in _READ_ONLY_TARGET_SURFACE_WORDS for token in tokens)
+    status_shape = explicit_read_only or any(token in _READ_ONLY_STATUS_WORDS for token in tokens)
     show_me_status = (
         command in _READ_ONLY_SHOW_VERBS
         and len(tokens) > command_index + 1
         and tokens[command_index + 1] in {"me", "us"}
+        and status_shape
+        and not target_surface
     )
     return not (_has_build_verb_in_verb_position(tokens) and not show_me_status)
 
