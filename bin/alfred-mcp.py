@@ -19,13 +19,17 @@ from typing import Any
 
 _HERE = Path(__file__).resolve().parent
 for candidate in (
-    _HERE.parent / "lib",
     Path(os.environ.get("ALFRED_HOME", "")) / "lib",
+    # Processed last, so source checkout lib lands at sys.path[0].
+    _HERE.parent / "lib",
 ):
-    if candidate.exists() and str(candidate) not in sys.path:
-        sys.path.insert(0, str(candidate))
+    if candidate.exists():
+        candidate_path = str(candidate)
+        while candidate_path in sys.path:
+            sys.path.remove(candidate_path)
+        sys.path.insert(0, candidate_path)
 
-from code_graph import impact_for_path, summarize_codegraph  # noqa: E402
+from code_graph import blast_radius_for_paths, impact_for_path, summarize_codegraph  # noqa: E402
 from fleet_brain import FleetBrain, default_db_path  # noqa: E402
 from fleet_brain.doctor import run_memory_doctor  # noqa: E402
 
@@ -162,6 +166,25 @@ TOOLS: tuple[dict[str, Any], ...] = (
         },
     },
     {
+        "name": "alfred_code_blast_radius",
+        "description": "Aggregate local graph impact for changed repo paths.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string"},
+                "paths": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 1,
+                    "maxItems": 200,
+                },
+                "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+            },
+            "required": ["repo", "paths"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "alfred_memory_doctor",
         "description": "Run read-only health checks over fleet-brain memory.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -194,6 +217,14 @@ def call_tool(
             None,
             repo=repo,
             path=path,
+            limit=_int_limit(args.get("limit"), default=50, max_value=200),
+        )
+    if name == "alfred_code_blast_radius":
+        repo, paths = _require_repo_paths(args)
+        return blast_radius_for_paths(
+            None,
+            repo=repo,
+            paths=paths,
             limit=_int_limit(args.get("limit"), default=50, max_value=200),
         )
     brain = _brain(db_path)
@@ -338,6 +369,28 @@ def _require_repo_path(args: dict[str, Any]) -> tuple[str, str]:
     if not repo or not path:
         raise ValueError("graph tools require both a repo and a path")
     return repo, path
+
+
+def _require_repo_paths(args: dict[str, Any]) -> tuple[str, list[str]]:
+    """Require ``repo`` plus at least one path for multi-path graph tools."""
+    repo = _str_or_none(args.get("repo"))
+    raw_paths = args.get("paths")
+    if raw_paths is None:
+        raise ValueError("graph tools require a repo and at least one path")
+    if not isinstance(raw_paths, list):
+        raise ValueError("graph tools require paths as a list of strings")
+    paths = []
+    for item in raw_paths:
+        if not isinstance(item, str):
+            raise ValueError("graph tools require paths as a list of strings")
+        text = item.strip()
+        if text:
+            paths.append(text)
+    if len(paths) > 200:
+        raise ValueError("graph tools accept at most 200 paths")
+    if not repo or not paths:
+        raise ValueError("graph tools require a repo and at least one path")
+    return repo, paths
 
 
 def _int_limit(value: Any, *, default: int, max_value: int) -> int:

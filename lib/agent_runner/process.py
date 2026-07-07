@@ -203,6 +203,7 @@ _MEMORY_RECALL_TOOLS = (
     "alfred_prs_touching",
     "alfred_code_graph_summary",
     "alfred_code_impact",
+    "alfred_code_blast_radius",
 )
 
 

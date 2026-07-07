@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import subprocess
+from datetime import UTC, datetime
 
 
 def _fake_codex_exhausted_proc(*_a, **_kw):
@@ -38,9 +39,11 @@ def test_codex_invoke_classifies_quota_exhausted(fresh_agent_runner, monkeypatch
 
     assert out.success is False
     assert out.subtype == "error_quota_exhausted"
-    assert out.raw.get("quota_resume_at", "").startswith("2026-07-07") or out.raw.get(
-        "quota_resume_at", ""
-    ).endswith("07-07T00:00:00Z")
+    resume_at = out.raw.get("quota_resume_at", "")
+    assert resume_at
+    resume = datetime.fromisoformat(resume_at.replace("Z", "+00:00"))
+    assert resume.tzinfo is not None
+    assert resume > datetime.now(UTC)
     # And it persisted a backoff so the next firing skips codex.
     assert ar.is_engine_quota_exhausted("codex") is True
 

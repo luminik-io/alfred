@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 CODEGRAPH_SCHEMA = "alfred-codegraph@1"
+MAX_BLAST_RADIUS_PATHS = 200
 
 
 def default_code_map_path() -> Path:
@@ -157,12 +158,15 @@ def impact_for_path(
         for d in _list_of_dicts(payload.get("contract_drift"))
         if d.get("caller") == repo and _file_matches(str(d.get("file") or ""), matched_path)
     ]
-    nearby = [
+    nearby_all = [
         _normalize_file_path(str(file_info.get("path") or ""))
         for file_info in files
         if _same_directory(str(file_info.get("path") or ""), matched_path)
         and _normalize_file_path(str(file_info.get("path") or "")) != matched_path
-    ][:max_items]
+    ]
+    symbols = _list_of_dicts(matched_file.get("symbols")) if matched_file else []
+    imports = list(matched_file.get("imports") or []) if matched_file else []
+    resolved_outgoing_count = len([row for row in outgoing if row.get("resolved_to")])
 
     return {
         "schema": CODEGRAPH_SCHEMA,
@@ -173,15 +177,396 @@ def impact_for_path(
         "candidate_matches": candidate_matches[:max_items],
         "head_sha": _str_or_none(repo_data.get("head_sha")),
         "language": _str_or_none(matched_file.get("language")) if matched_file else None,
-        "symbols": _list_of_dicts(matched_file.get("symbols"))[:max_items] if matched_file else [],
-        "imports": list(matched_file.get("imports") or [])[:max_items] if matched_file else [],
+        "counts": {
+            "candidate_matches": len(candidate_matches),
+            "symbols": len(symbols),
+            "imports": len(imports),
+            "imported_by": len(incoming),
+            "imports_resolved": resolved_outgoing_count,
+            "contract_surfaces": _contract_surface_count(contracts),
+            "contract_drift": len(drift),
+            "nearby_files": len(nearby_all),
+        },
+        "symbols": symbols[:max_items],
+        "imports": imports[:max_items],
         "imported_by": incoming[:max_items],
         "imports_resolved": outgoing[:max_items],
         "contracts": contracts,
         "contract_drift": drift[:max_items],
-        "nearby_files": nearby,
+        "nearby_files": nearby_all[:max_items],
         "graph_summary": _clean_summary(repo_data.get("graph_summary")),
     }
+
+
+def impact_brief_for_path(
+    code_map: dict[str, Any] | None,
+    *,
+    repo: str,
+    path: str,
+    code_map_path: Path | str | None = None,
+    limit: int = 25,
+) -> dict[str, Any]:
+    """Return a prompt-ready blast-radius briefing for a repo path.
+
+    The brief is deterministic and entirely local: it summarizes the same graph
+    facts as :func:`impact_for_path` without asking a model to infer risk from
+    raw source. Agents can paste this into a plan, PR body, or review prompt as
+    scoped context.
+    """
+
+    max_items = _clamped_int(limit, default=25, max_value=200)
+    collection_limit = 200
+    impact = impact_for_path(
+        code_map,
+        repo=repo,
+        path=path,
+        code_map_path=code_map_path,
+        limit=collection_limit,
+    )
+    dependents = [
+        {
+            "path": row["from"],
+            "via": row["to"],
+            "kind": row["kind"],
+        }
+        for row in impact["imported_by"][:max_items]
+    ]
+    dependencies = [
+        {
+            "path": row["resolved_to"],
+            "via": row["to"],
+            "kind": row["kind"],
+        }
+        for row in impact["imports_resolved"]
+        if row.get("resolved_to")
+    ][:max_items]
+    contract_surfaces = _brief_contract_surfaces(impact["contracts"], max_items=max_items)
+    drift = [
+        {
+            "method": _str_or_none(row.get("method")),
+            "path": _str_or_none(row.get("path")),
+            "normalized": _str_or_none(row.get("normalized")),
+            "file": _str_or_none(row.get("file")),
+        }
+        for row in impact["contract_drift"][:max_items]
+    ]
+    impact_counts = _dict_value(impact.get("counts"))
+    dependent_count = _count_from(impact_counts, "imported_by", fallback=len(impact["imported_by"]))
+    dependency_count = _count_from(
+        impact_counts,
+        "imports_resolved",
+        fallback=len(dependencies),
+    )
+    contract_count = _count_from(
+        impact_counts,
+        "contract_surfaces",
+        fallback=len(contract_surfaces),
+    )
+    drift_count = _count_from(impact_counts, "contract_drift", fallback=len(drift))
+    nearby_count = _count_from(impact_counts, "nearby_files", fallback=len(impact["nearby_files"]))
+    level, reasons = _impact_level(
+        match_status=str(impact["match_status"]),
+        dependent_count=dependent_count,
+        dependency_count=dependency_count,
+        contract_count=contract_count,
+        drift_count=drift_count,
+    )
+    next_checks = _impact_next_checks(
+        match_status=str(impact["match_status"]),
+        dependent_count=dependent_count,
+        contract_count=contract_count,
+        drift_count=drift_count,
+    )
+    summary = _impact_summary(
+        repo=repo,
+        path=str(impact["matched_file"] or impact["path"]),
+        level=level,
+        reasons=reasons,
+    )
+    return {
+        "schema": CODEGRAPH_SCHEMA,
+        "kind": "impact-brief",
+        "repo": repo,
+        "path": impact["path"],
+        "matched_file": impact["matched_file"],
+        "match_status": impact["match_status"],
+        "head_sha": impact["head_sha"],
+        "language": impact["language"],
+        "level": level,
+        "reasons": reasons,
+        "summary": summary,
+        "counts": {
+            "symbols": _count_from(impact_counts, "symbols", fallback=len(impact["symbols"])),
+            "direct_dependents": dependent_count,
+            "direct_dependencies": dependency_count,
+            "contract_surfaces": contract_count,
+            "contract_drift": drift_count,
+            "nearby_files": nearby_count,
+        },
+        "symbols": impact["symbols"][:max_items],
+        "direct_dependents": dependents,
+        "direct_dependencies": dependencies,
+        "contract_surfaces": contract_surfaces,
+        "contract_drift": drift,
+        "nearby_files": impact["nearby_files"][:max_items],
+        "candidate_matches": impact["candidate_matches"][:max_items],
+        "next_checks": next_checks,
+    }
+
+
+def blast_radius_for_paths(
+    code_map: dict[str, Any] | None,
+    *,
+    repo: str,
+    paths: list[str],
+    code_map_path: Path | str | None = None,
+    limit: int = 50,
+) -> dict[str, Any]:
+    """Aggregate deterministic impact briefs for a set of changed paths."""
+
+    max_items = _clamped_int(limit, default=50, max_value=200)
+    requested_paths = _unique_strings(_normalize_file_path(path) for path in paths)
+    if len(requested_paths) > MAX_BLAST_RADIUS_PATHS:
+        raise ValueError(f"blast-radius supports at most {MAX_BLAST_RADIUS_PATHS} paths")
+    payload = code_map if code_map is not None else load_code_map(code_map_path)
+    briefs = [
+        impact_brief_for_path(
+            payload,
+            repo=repo,
+            path=path,
+            limit=200,
+        )
+        for path in requested_paths
+    ]
+    matched_paths = [
+        str(brief["matched_file"])
+        for brief in briefs
+        if brief.get("match_status") in {"exact", "suffix"} and brief.get("matched_file")
+    ]
+    changed_set = set(matched_paths)
+    unmapped = [brief for brief in briefs if brief.get("match_status") == "not_found"]
+    ambiguous = [brief for brief in briefs if brief.get("match_status") == "ambiguous"]
+    dependents_all = _dedupe_rows(
+        (
+            {
+                "changed_path": brief.get("matched_file") or brief.get("path"),
+                "path": row.get("path"),
+                "via": row.get("via"),
+                "kind": row.get("kind"),
+                "also_changed": row.get("path") in changed_set,
+            }
+            for brief in briefs
+            for row in _list_of_dicts(brief.get("direct_dependents"))
+        ),
+        keys=("changed_path", "path", "via", "kind"),
+        limit=200,
+    )
+    dependencies_all = _dedupe_rows(
+        (
+            {
+                "changed_path": brief.get("matched_file") or brief.get("path"),
+                "path": row.get("path"),
+                "via": row.get("via"),
+                "kind": row.get("kind"),
+                "also_changed": row.get("path") in changed_set,
+            }
+            for brief in briefs
+            for row in _list_of_dicts(brief.get("direct_dependencies"))
+        ),
+        keys=("changed_path", "path", "via", "kind"),
+        limit=200,
+    )
+    contract_surfaces_all = _dedupe_rows(
+        (
+            {
+                "changed_path": brief.get("matched_file") or brief.get("path"),
+                "kind": row.get("kind"),
+                "method": row.get("method"),
+                "path": row.get("path"),
+                "file": row.get("file"),
+            }
+            for brief in briefs
+            for row in _list_of_dicts(brief.get("contract_surfaces"))
+        ),
+        keys=("kind", "method", "path", "file"),
+        limit=200,
+    )
+    drift_all = _dedupe_rows(
+        (
+            {
+                "changed_path": brief.get("matched_file") or brief.get("path"),
+                "method": row.get("method"),
+                "path": row.get("path"),
+                "normalized": row.get("normalized"),
+                "file": row.get("file"),
+            }
+            for brief in briefs
+            for row in _list_of_dicts(brief.get("contract_drift"))
+        ),
+        keys=("method", "path", "normalized", "file"),
+        limit=200,
+    )
+    nearby = _unique_strings(
+        str(row)
+        for brief in briefs
+        for row in brief.get("nearby_files", [])
+        if str(row) not in changed_set
+    )[:max_items]
+    graph_counts = _aggregate_graph_counts(payload, repo=repo, matched_paths=matched_paths)
+    dependent_count = graph_counts["direct_dependents"]
+    dependency_count = graph_counts["direct_dependencies"]
+    contract_count = sum(_brief_count(brief, "contract_surfaces") for brief in briefs)
+    drift_count = sum(_brief_count(brief, "contract_drift") for brief in briefs)
+    nearby_count = len(nearby)
+    level, reasons = _blast_radius_level(
+        changed_count=len(requested_paths),
+        unmapped_count=len(unmapped),
+        ambiguous_count=len(ambiguous),
+        dependent_count=dependent_count,
+        contract_count=contract_count,
+        drift_count=drift_count,
+    )
+    return {
+        "schema": CODEGRAPH_SCHEMA,
+        "kind": "blast-radius",
+        "repo": repo,
+        "level": level,
+        "summary": _blast_radius_summary(repo=repo, level=level, reasons=reasons),
+        "reasons": reasons,
+        "counts": {
+            "changed_paths": len(requested_paths),
+            "matched_paths": len(matched_paths),
+            "unmapped_paths": len(unmapped),
+            "ambiguous_paths": len(ambiguous),
+            "direct_dependents": dependent_count,
+            "direct_dependencies": dependency_count,
+            "contract_surfaces": contract_count,
+            "contract_drift": drift_count,
+            "nearby_files": nearby_count,
+        },
+        "changed_paths": [
+            {
+                "path": brief.get("path"),
+                "matched_file": brief.get("matched_file"),
+                "match_status": brief.get("match_status"),
+                "level": brief.get("level"),
+                "summary": brief.get("summary"),
+                "candidate_matches": brief.get("candidate_matches") or [],
+            }
+            for brief in briefs
+        ],
+        "direct_dependents": dependents_all[:max_items],
+        "direct_dependencies": dependencies_all[:max_items],
+        "contract_surfaces": contract_surfaces_all[:max_items],
+        "contract_drift": drift_all[:max_items],
+        "nearby_files": nearby,
+        "next_checks": _blast_radius_next_checks(
+            unmapped_count=len(unmapped),
+            ambiguous_count=len(ambiguous),
+            dependent_count=dependent_count,
+            contract_count=contract_count,
+            drift_count=drift_count,
+        ),
+    }
+
+
+def render_blast_radius(blast_radius: dict[str, Any]) -> str:
+    """Render a ``blast_radius_for_paths`` payload as concise prompt text."""
+
+    repo = str(blast_radius.get("repo") or "")
+    lines = [
+        f"Blast radius: {repo}",
+        f"Level: {blast_radius.get('level') or 'unknown'}",
+        f"Summary: {blast_radius.get('summary') or 'No summary available.'}",
+    ]
+    reasons = [str(item) for item in blast_radius.get("reasons") or [] if str(item).strip()]
+    if reasons:
+        lines.append("Signals: " + "; ".join(reasons))
+    changed = _list_of_dicts(blast_radius.get("changed_paths"))
+    if changed:
+        lines.append("Changed paths:")
+        for row in changed:
+            status = row.get("match_status")
+            matched = row.get("matched_file") or row.get("path")
+            lines.append(f"- {matched} ({status})")
+    _append_brief_rows(
+        lines,
+        "Direct dependents",
+        blast_radius.get("direct_dependents"),
+        lambda row: f"{row.get('path')} depends on {row.get('changed_path')} via {row.get('via')}",
+    )
+    _append_brief_rows(
+        lines,
+        "Contract surfaces",
+        blast_radius.get("contract_surfaces"),
+        lambda row: " ".join(
+            str(part)
+            for part in (
+                row.get("changed_path"),
+                row.get("kind"),
+                row.get("method"),
+                row.get("path"),
+            )
+            if part
+        ),
+    )
+    checks = [str(item) for item in blast_radius.get("next_checks") or [] if str(item).strip()]
+    if checks:
+        lines.append("Next checks:")
+        lines.extend(f"- {item}" for item in checks)
+    return "\n".join(lines)
+
+
+def render_impact_brief(brief: dict[str, Any]) -> str:
+    """Render an ``impact_brief_for_path`` payload as concise prompt text."""
+
+    repo = str(brief.get("repo") or "")
+    path = str(brief.get("matched_file") or brief.get("path") or "")
+    lines = [
+        f"Blast radius: {repo}:{path}",
+        f"Level: {brief.get('level') or 'unknown'}",
+        f"Summary: {brief.get('summary') or 'No summary available.'}",
+    ]
+    if brief.get("match_status") != "exact":
+        lines.append(f"Match: {brief.get('match_status')}")
+    reasons = [str(item) for item in brief.get("reasons") or [] if str(item).strip()]
+    if reasons:
+        lines.append("Signals: " + "; ".join(reasons))
+    _append_brief_rows(
+        lines,
+        "Direct dependents",
+        brief.get("direct_dependents"),
+        lambda row: f"{row.get('path')} imports {row.get('via')}",
+    )
+    _append_brief_rows(
+        lines,
+        "Direct dependencies",
+        brief.get("direct_dependencies"),
+        lambda row: f"{row.get('path')} via {row.get('via')}",
+    )
+    _append_brief_rows(
+        lines,
+        "Contract surfaces",
+        brief.get("contract_surfaces"),
+        lambda row: " ".join(
+            str(part)
+            for part in (row.get("kind"), row.get("method"), row.get("path"), row.get("file"))
+            if part
+        ),
+    )
+    _append_brief_rows(
+        lines,
+        "Contract drift",
+        brief.get("contract_drift"),
+        lambda row: " ".join(
+            str(part) for part in (row.get("method"), row.get("path"), row.get("file")) if part
+        ),
+    )
+    checks = [str(item) for item in brief.get("next_checks") or [] if str(item).strip()]
+    if checks:
+        lines.append("Next checks:")
+        lines.extend(f"- {item}" for item in checks)
+    return "\n".join(lines)
 
 
 def _export_repo(name: str, data: dict[str, Any], *, include_files: bool) -> dict[str, Any]:
@@ -374,3 +759,239 @@ def _relative_import_path(source: str, target: str) -> str:
             base = base.parent
         return posixpath.normpath((base / module).as_posix())
     return posixpath.normpath((base / target).as_posix())
+
+
+def _brief_contract_surfaces(
+    contracts: dict[str, list[dict[str, Any]]], *, max_items: int
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for kind in ("endpoints", "routes", "api_calls"):
+        for row in contracts.get(kind, [])[:max_items]:
+            rows.append(
+                {
+                    "kind": kind.removesuffix("s"),
+                    "method": _str_or_none(row.get("method")),
+                    "path": _str_or_none(row.get("path")),
+                    "file": _str_or_none(row.get("file")),
+                }
+            )
+            if len(rows) >= max_items:
+                return rows
+    return rows
+
+
+def _contract_surface_count(contracts: dict[str, list[dict[str, Any]]]) -> int:
+    return sum(len(contracts.get(kind, [])) for kind in ("endpoints", "routes", "api_calls"))
+
+
+def _count_from(counts: dict[str, Any], key: str, *, fallback: int) -> int:
+    value = counts.get(key)
+    if isinstance(value, int) and value >= 0:
+        return value
+    return fallback
+
+
+def _brief_count(brief: dict[str, Any], key: str) -> int:
+    counts = _dict_value(brief.get("counts"))
+    return _count_from(counts, key, fallback=len(_list_of_dicts(brief.get(key))))
+
+
+def _aggregate_graph_counts(
+    code_map: dict[str, Any],
+    *,
+    repo: str,
+    matched_paths: list[str],
+) -> dict[str, int]:
+    matched_set = {_normalize_file_path(path) for path in matched_paths if path}
+    if not matched_set:
+        return {"direct_dependents": 0, "direct_dependencies": 0}
+    repos = _dict_value(code_map.get("repos"))
+    repo_data = _dict_value(repos.get(repo))
+    files = _list_of_dicts(repo_data.get("files"))
+    candidate_paths = {
+        _normalize_file_path(str(file_info.get("path") or "")) for file_info in files
+    }
+    dependent_paths: set[str] = set()
+    dependency_paths: set[str] = set()
+    for edge in _list_of_dicts(repo_data.get("edges")):
+        source = _normalize_file_path(str(edge.get("from") or ""))
+        target = str(edge.get("to") or "").strip()
+        if not source or not target:
+            continue
+        resolved = _resolve_import(source, target, candidate_paths)
+        if source in matched_set and resolved:
+            dependency_paths.add(resolved)
+        if resolved in matched_set or _normalize_file_path(target) in matched_set:
+            dependent_paths.add(source)
+    return {
+        "direct_dependents": len(dependent_paths),
+        "direct_dependencies": len(dependency_paths),
+    }
+
+
+def _impact_level(
+    *,
+    match_status: str,
+    dependent_count: int,
+    dependency_count: int,
+    contract_count: int,
+    drift_count: int,
+) -> tuple[str, list[str]]:
+    reasons: list[str] = []
+    if match_status not in {"exact", "suffix"}:
+        reasons.append(f"path match is {match_status}")
+        return "unknown", reasons
+    if match_status == "suffix":
+        reasons.append("path matched by suffix")
+    if drift_count:
+        reasons.append(f"{drift_count} contract drift item(s)")
+    if contract_count:
+        reasons.append(f"{contract_count} API/route surface(s)")
+    if dependent_count:
+        reasons.append(f"{dependent_count} direct dependent file(s)")
+    if dependency_count:
+        reasons.append(f"{dependency_count} direct dependency file(s)")
+    if drift_count or (contract_count and dependent_count):
+        return "high", reasons
+    if contract_count or dependent_count >= 3:
+        return "medium", reasons
+    if dependent_count or dependency_count:
+        return "low", reasons
+    reasons.append("no direct dependents or contract surfaces in the local graph")
+    return "low", reasons
+
+
+def _impact_next_checks(
+    *,
+    match_status: str,
+    dependent_count: int,
+    contract_count: int,
+    drift_count: int,
+) -> list[str]:
+    if match_status == "not_found":
+        return [
+            "Refresh the code map, then verify the path is tracked before relying on this brief."
+        ]
+    if match_status == "ambiguous":
+        return [
+            "Use one exact path from candidate_matches before planning or reviewing the change."
+        ]
+    checks = ["Run the narrow test or typecheck command for the touched package."]
+    if match_status == "suffix":
+        checks.append("Prefer the exact matched path in follow-up commands and PR notes.")
+    if dependent_count:
+        checks.append("Inspect direct dependents before changing public behavior.")
+    if contract_count:
+        checks.append("Check API or route contract tests and generated clients.")
+    if drift_count:
+        checks.append("Resolve contract drift or document why the unmatched call is intentional.")
+    return checks
+
+
+def _impact_summary(*, repo: str, path: str, level: str, reasons: list[str]) -> str:
+    if reasons:
+        return f"{repo}:{path} has {level} local blast radius: " + "; ".join(reasons) + "."
+    return f"{repo}:{path} has {level} local blast radius from the current code map."
+
+
+def _blast_radius_level(
+    *,
+    changed_count: int,
+    unmapped_count: int,
+    ambiguous_count: int,
+    dependent_count: int,
+    contract_count: int,
+    drift_count: int,
+) -> tuple[str, list[str]]:
+    reasons: list[str] = []
+    if changed_count:
+        reasons.append(f"{changed_count} changed path(s)")
+    if unmapped_count:
+        reasons.append(f"{unmapped_count} unmapped path(s)")
+    if ambiguous_count:
+        reasons.append(f"{ambiguous_count} ambiguous path match(es)")
+    if drift_count:
+        reasons.append(f"{drift_count} contract drift item(s)")
+    if contract_count:
+        reasons.append(f"{contract_count} API/route surface(s)")
+    if dependent_count:
+        reasons.append(f"{dependent_count} direct dependent file(s)")
+    if ambiguous_count or drift_count or contract_count >= 2:
+        return "high", reasons
+    if unmapped_count or contract_count or dependent_count >= 3 or changed_count >= 5:
+        return "medium", reasons
+    return "low", reasons or ["no direct dependents or contract surfaces in the local graph"]
+
+
+def _blast_radius_summary(*, repo: str, level: str, reasons: list[str]) -> str:
+    if reasons:
+        return f"{repo} has {level} local blast radius: " + "; ".join(reasons) + "."
+    return f"{repo} has {level} local blast radius from the current code map."
+
+
+def _blast_radius_next_checks(
+    *,
+    unmapped_count: int,
+    ambiguous_count: int,
+    dependent_count: int,
+    contract_count: int,
+    drift_count: int,
+) -> list[str]:
+    checks = ["Run the narrow test or typecheck command for each touched package."]
+    if unmapped_count:
+        checks.append("Refresh the code map or inspect unmapped paths manually.")
+    if ambiguous_count:
+        checks.append("Replace ambiguous paths with exact paths before relying on the graph.")
+    if dependent_count:
+        checks.append("Review direct dependents for behavior changes.")
+    if contract_count:
+        checks.append("Run API or route contract checks for changed public surfaces.")
+    if drift_count:
+        checks.append("Resolve contract drift or document why the unmatched call is intentional.")
+    return checks
+
+
+def _unique_strings(values: Any) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        result.append(text)
+    return result
+
+
+def _dedupe_rows(
+    values: Any,
+    *,
+    keys: tuple[str, ...],
+    limit: int,
+) -> list[dict[str, Any]]:
+    seen: set[tuple[Any, ...]] = set()
+    result: list[dict[str, Any]] = []
+    for value in values:
+        if not isinstance(value, dict):
+            continue
+        marker = tuple(value.get(key) for key in keys)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        result.append(value)
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _append_brief_rows(
+    lines: list[str],
+    title: str,
+    rows: Any,
+    render_row: Any,
+) -> None:
+    cleaned = [row for row in rows or [] if isinstance(row, dict)]
+    if not cleaned:
+        return
+    lines.append(f"{title}:")
+    lines.extend(f"- {render_row(row)}" for row in cleaned)

@@ -112,6 +112,7 @@ def test_memory_mcp_tool_names_include_code_graph_tools() -> None:
     names = _proc._memory_tool_names()
     assert "mcp__alfred_memory__alfred_code_graph_summary" in names
     assert "mcp__alfred_memory__alfred_code_impact" in names
+    assert "mcp__alfred_memory__alfred_code_blast_radius" in names
     assert "mcp__alfred_memory__alfred_who_owns" in names
 
 
