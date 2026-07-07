@@ -146,7 +146,7 @@ function deferred<T>() {
 
 function nativeResult(): NativeCommandResult {
   return {
-    command: ["alfred", "pause", "lucius"],
+    command: ["alfred", "pause", "senior-dev"],
     stdout: "",
     stderr: "",
     status: 0,
@@ -188,14 +188,14 @@ afterEach(() => {
 
 describe("useAlfred refresh race", () => {
   it("ignores a stale in-flight refresh that resolves after a newer one", async () => {
-    // First (slow) refresh shows lucius running; second (fast) refresh shows
-    // lucius paused. The slow one resolves LAST and must not clobber the fast
+    // First (slow) refresh shows senior-dev running; second (fast) refresh shows
+    // senior-dev paused. The slow one resolves LAST and must not clobber the fast
     // result. This is the post-pause clobber the request-id guard prevents.
     const slow = deferred<Snapshot>();
     const fast = deferred<Snapshot>();
 
     // Mount fires an initial refresh; satisfy it immediately, then drive the race.
-    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("lucius", { status: "live" })]));
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("senior-dev", { status: "live" })]));
 
     const { result } = renderHook(() => useAlfred());
     await waitFor(() => expect(result.current.snapshot).not.toBeNull());
@@ -213,16 +213,16 @@ describe("useAlfred refresh race", () => {
 
     // Resolve the fast (newer) call first, then the slow (older) call.
     await act(async () => {
-      fast.resolve(snapshot([agent("lucius", { status: "live", paused: true })]));
+      fast.resolve(snapshot([agent("senior-dev", { status: "live", paused: true })]));
       await callB;
-      slow.resolve(snapshot([agent("lucius", { status: "running", paused: false })]));
+      slow.resolve(snapshot([agent("senior-dev", { status: "running", paused: false })]));
       await callA;
     });
 
-    // The newer (fast) refresh wins: lucius is paused, not running.
-    const lucius = result.current.snapshot?.status.agents[0];
-    expect(lucius?.paused).toBe(true);
-    expect(lucius?.status).toBe("live");
+    // The newer (fast) refresh wins: senior-dev is paused, not running.
+    const seniorDev = result.current.snapshot?.status.agents[0];
+    expect(seniorDev?.paused).toBe(true);
+    expect(seniorDev?.status).toBe("live");
   });
 });
 
@@ -241,14 +241,14 @@ describe("useAlfred base URL handling", () => {
 
   it("uses an explicit custom local endpoint as-is", async () => {
     const customUrl = "http://127.0.0.1:7123";
-    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("bane")]));
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("test-engineer")]));
 
     const { result } = renderHook(() => useAlfred());
     await waitFor(() => expect(result.current.snapshot).not.toBeNull());
 
     loadSnapshotMock.mockClear();
     rememberBaseUrlMock.mockClear();
-    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("lucius")]));
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("senior-dev")]));
 
     await act(async () => {
       await result.current.refresh(customUrl);
@@ -262,7 +262,7 @@ describe("useAlfred base URL handling", () => {
 
   it("does not retry a stale saved localhost port on the default port", async () => {
     const staleUrl = "http://127.0.0.1:7011";
-    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("bane")]));
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("test-engineer")]));
 
     const { result } = renderHook(() => useAlfred());
     await waitFor(() => expect(result.current.snapshot).not.toBeNull());
@@ -271,7 +271,7 @@ describe("useAlfred base URL handling", () => {
       if (baseUrl === staleUrl) {
         throw new Error("connection refused");
       }
-      return snapshot([agent("lucius")]);
+      return snapshot([agent("senior-dev")]);
     });
 
     await act(async () => {
@@ -287,7 +287,7 @@ describe("useAlfred base URL handling", () => {
 
   it("surfaces board and usage errors for a stale saved localhost port", async () => {
     const staleUrl = "http://127.0.0.1:7011";
-    loadSnapshotMock.mockResolvedValue(snapshot([agent("bane")]));
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("test-engineer")]));
     loadShippedMock.mockImplementation(async (baseUrl: string) => {
       if (baseUrl === staleUrl) throw new Error("board timed out");
       return shippedBoard();
@@ -317,7 +317,7 @@ describe("useAlfred base URL handling", () => {
 
 describe("useAlfred post-action refresh ordering", () => {
   it("installs Alfred core and starts the local runtime from one desktop action", async () => {
-    loadSnapshotMock.mockResolvedValue(snapshot([agent("lucius")]));
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("senior-dev")]));
 
     const { result } = renderHook(() => useAlfred());
     await waitFor(() => expect(result.current.snapshot).not.toBeNull());
@@ -335,7 +335,7 @@ describe("useAlfred post-action refresh ordering", () => {
 
   it("refreshes the current custom endpoint after desktop install", async () => {
     const customUrl = "http://127.0.0.1:7123";
-    loadSnapshotMock.mockResolvedValue(snapshot([agent("lucius")]));
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("senior-dev")]));
 
     const { result } = renderHook(() => useAlfred());
     await waitFor(() => expect(result.current.snapshot).not.toBeNull());
@@ -364,8 +364,8 @@ describe("useAlfred post-action refresh ordering", () => {
   });
 
   it("refreshes after a pause and reflects the post-action snapshot", async () => {
-    // Mount snapshot: lucius running. After pause, refresh returns paused.
-    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("lucius", { paused: false })]));
+    // Mount snapshot: senior-dev running. After pause, refresh returns paused.
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("senior-dev", { paused: false })]));
     runNativeActionMock.mockResolvedValue(nativeResult());
 
     const { result } = renderHook(() => useAlfred());
@@ -374,12 +374,12 @@ describe("useAlfred post-action refresh ordering", () => {
 
     // The post-pause refresh (refreshAfter) and the fleet-service re-read both
     // resolve to the paused state.
-    loadSnapshotMock.mockResolvedValue(snapshot([agent("lucius", { paused: true })]));
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("senior-dev", { paused: true })]));
 
     await act(async () => {
       await result.current.runLocalAction({
         action: "pause",
-        target: "lucius",
+        target: "senior-dev",
         refreshAfter: true,
       });
     });
@@ -391,8 +391,30 @@ describe("useAlfred post-action refresh ordering", () => {
 });
 
 describe("useAlfred board assignment notices", () => {
+  it("names canonical role-slug assignment responses", async () => {
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("senior-dev")]));
+    setQueuePickupMock.mockResolvedValue({
+      ok: true,
+      repo: "org/repo",
+      number: 7,
+      action: "assign",
+      target_agent: "architect",
+    });
+
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    await act(async () => {
+      await result.current.runQueueAction("org/repo", 7, "assign", "architect");
+    });
+
+    expect(result.current.noticeFor("board")?.message).toBe(
+      "Assigned org/repo#7 to architect.",
+    );
+  });
+
   it("preserves a human-scope assignment response instead of falling back to Alfred", async () => {
-    loadSnapshotMock.mockResolvedValue(snapshot([agent("lucius")]));
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("senior-dev")]));
     setQueuePickupMock.mockResolvedValue({
       ok: true,
       repo: "org/repo",
@@ -442,13 +464,13 @@ describe("useAlfred plan go/no-go", () => {
   }
 
   it("writes a decision and refreshes so the decided plan leaves the queue", async () => {
-    loadSnapshotMock.mockResolvedValue(snapshot([agent("batman")]));
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("architect")]));
     hooks.decidePlanMock.mockResolvedValue({
       plan_id: "13-plan",
       issue_number: 13,
       decision: "approve",
       status: "approved",
-      marker_path: "/tmp/state/../batman/approvals/13.approved",
+      marker_path: "/tmp/state/../architect/approvals/13.approved",
     });
 
     const { result } = renderHook(() => useAlfred());
@@ -476,7 +498,7 @@ describe("useAlfred plan go/no-go", () => {
   });
 
   it("surfaces a decision failure as an error notice", async () => {
-    loadSnapshotMock.mockResolvedValue(snapshot([agent("batman")]));
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("architect")]));
     hooks.decidePlanMock.mockRejectedValueOnce(new Error("forbidden"));
 
     const { result } = renderHook(() => useAlfred());
@@ -493,7 +515,7 @@ describe("useAlfred plan go/no-go", () => {
   });
 
   it("files a ready planning draft and refreshes the plans plus board", async () => {
-    loadSnapshotMock.mockResolvedValue(snapshot([agent("batman")]));
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("architect")]));
     hooks.filePlanIssueMock.mockResolvedValue({
       ok: true,
       status: "filed",
@@ -537,7 +559,7 @@ describe("useAlfred plan go/no-go", () => {
   });
 
   it("discards a local planning draft and refreshes the plans", async () => {
-    loadSnapshotMock.mockResolvedValue(snapshot([agent("batman")]));
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("architect")]));
     hooks.discardPlanMock.mockResolvedValue({
       ok: true,
       status: "discarded",
@@ -577,7 +599,7 @@ describe("useAlfred plan go/no-go", () => {
   });
 
   it("mentions matching drafts when a grouped planning draft is discarded", async () => {
-    loadSnapshotMock.mockResolvedValue(snapshot([agent("batman")]));
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("architect")]));
     hooks.discardPlanMock.mockResolvedValue({
       ok: true,
       status: "discarded",

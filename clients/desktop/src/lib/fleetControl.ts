@@ -24,16 +24,16 @@ export type FleetControlRow = {
 export type FleetServiceState = Record<string, AlfredStatusAgent>;
 
 const AGENT_ORDER: Record<string, number> = {
-  batman: 10,
-  lucius: 20,
-  drake: 30,
-  rasalghul: 40,
-  bane: 50,
-  nightwing: 60,
-  robin: 70,
-  damian: 80,
-  huntress: 90,
-  gordon: 100,
+  architect: 10,
+  "senior-dev": 20,
+  planner: 30,
+  reviewer: 40,
+  "test-engineer": 50,
+  fixer: 60,
+  triage: 70,
+  "spec-planner": 80,
+  "e2e-runner": 90,
+  "ops-watch": 100,
   automerge: 110,
   "agent-cleanup": 120,
   "memory-harvest": 130,
@@ -77,9 +77,9 @@ export function parseFleetServiceState(result: NativeCommandResult | null): Flee
 
 /**
  * Look up an agent's service entry tolerating the CLI's fully-qualified labels.
- * The /api/status feed reports short codenames (e.g. "lucius") while the status
- * JSON may report "fleet.local.lucius"; match on either the exact key or the
- * trailing segment.
+ * The /api/status feed reports role slugs (e.g. "senior-dev") while the status
+ * JSON may report "fleet.local.senior-dev"; match on either the exact key or
+ * the trailing segment.
  */
 export function lookupServiceState(
   service: FleetServiceState,

@@ -64,8 +64,8 @@ type ShippedRefreshOptions = { demo?: boolean };
 export type UseAlfred = ReturnType<typeof useAlfred>;
 
 function assignmentLabel(target: AssignmentTargetAgent | string): string {
-  if (target === "batman") return "architect";
-  if (target === "lucius") return "Lucius";
+  if (target === "architect") return "architect";
+  if (target === "senior-dev") return "senior-dev";
   return "Alfred";
 }
 
@@ -77,7 +77,7 @@ function assignmentNoticeMessage(
 ): string {
   const routedTarget =
     result.target_agent || (requestedTarget !== "auto" ? requestedTarget : "");
-  if (routedTarget === "batman" || routedTarget === "lucius") {
+  if (routedTarget === "architect" || routedTarget === "senior-dev") {
     return `Assigned ${repo}#${issueNumber} to ${assignmentLabel(routedTarget)}.`;
   }
   const detail = result.detail?.trim();
