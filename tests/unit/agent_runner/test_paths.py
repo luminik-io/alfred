@@ -238,6 +238,36 @@ def test_launcher_env_scrubs_custom_codename_repo_scope_from_managed_block(
     assert env["ALFRED_ORACLE_AWS_PROFILE"] == "runtime-profile"
 
 
+def test_launcher_env_scrubs_special_prompt_envs_from_managed_block(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "ARCHITECT_PARENT_REPO=org/plans\n"
+        "ALFRED_E2E_RUNNER_TARGET_URL=https://new.example.test\n"
+        "ALFRED_OPS_WATCH_ECS_CLUSTER=new-cluster\n"
+        "ALFRED_OPS_WATCH_SENTRY_ORG=new-org\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ARCHITECT_PARENT_REPO", "org/stale-plans")
+    monkeypatch.setenv("ALFRED_E2E_RUNNER_TARGET_URL", "https://old.example.test")
+    monkeypatch.setenv("ALFRED_OPS_WATCH_ECS_CLUSTER", "old-cluster")
+    monkeypatch.setenv("ALFRED_OPS_WATCH_SENTRY_ORG", "old-org")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ARCHITECT_PARENT_REPO"] == "org/plans"
+    assert env["ALFRED_E2E_RUNNER_TARGET_URL"] == "https://new.example.test"
+    assert env["ALFRED_OPS_WATCH_ECS_CLUSTER"] == "new-cluster"
+    assert env["ALFRED_OPS_WATCH_SENTRY_ORG"] == "new-org"
+
+
 def test_launcher_env_preserves_process_owned_aws_profile(
     fresh_agent_runner, monkeypatch, tmp_path
 ):
@@ -360,6 +390,30 @@ def test_launcher_env_file_telemetry_opt_out_overrides_process_enable(
     env = paths_mod.launcher_env()
 
     assert env["ALFRED_TELEMETRY_ENABLED"] == "0"
+
+
+def test_launcher_env_file_memory_stop_controls_override_process_enable(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text(
+        "ALFRED_AUTO_PROMOTE=0\nALFRED_AUTO_PROMOTE_KILL=1\nALFRED_AUTO_PROMOTE_LLM_JUDGE=treu\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_AUTO_PROMOTE", "1")
+    monkeypatch.setenv("ALFRED_AUTO_PROMOTE_KILL", "0")
+    monkeypatch.setenv("ALFRED_AUTO_PROMOTE_LLM_JUDGE", "1")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_AUTO_PROMOTE"] == "0"
+    assert env["ALFRED_AUTO_PROMOTE_KILL"] == "1"
+    assert env["ALFRED_AUTO_PROMOTE_LLM_JUDGE"] == "treu"
 
 
 def test_launcher_env_loads_code_memory_settings_when_process_absent(

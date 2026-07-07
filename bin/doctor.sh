@@ -108,6 +108,37 @@ decode_env_value() {
   printf '%s' "$value"
 }
 
+memory_auto_promote_value_is_enabled() {
+  case "$1" in
+    1|true|yes|on|enabled) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+memory_auto_promote_value_is_disabled() {
+  case "$1" in
+    0|false|no|off|disabled) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+memory_auto_promote_stop_control_active() {
+  local key="$1" token
+  token="$(trim_env_value "$(strip_inline_comment "$2")" | tr '[:upper:]' '[:lower:]')"
+  [ -n "$token" ] || return 1
+  case "$key" in
+    ALFRED_AUTO_PROMOTE|ALFRED_AUTO_PROMOTE_LLM_JUDGE)
+      memory_auto_promote_value_is_enabled "$token" && return 1
+      return 0
+      ;;
+    ALFRED_AUTO_PROMOTE_KILL)
+      memory_auto_promote_value_is_disabled "$token" && return 1
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 telemetry_stop_control_active() {
   local key="$1" token
   token="$(trim_env_value "$(strip_inline_comment "$2")" | tr '[:upper:]' '[:lower:]')"
@@ -120,7 +151,8 @@ telemetry_stop_control_active() {
 }
 
 runtime_stop_control_active() {
-  telemetry_stop_control_active "$1" "$2"
+  memory_auto_promote_stop_control_active "$1" "$2" ||
+    telemetry_stop_control_active "$1" "$2"
 }
 
 expand_user_path() {
@@ -148,7 +180,7 @@ PY
 
 setup_runtime_static_config_key() {
   case "$1" in
-    AGENT_CODENAME_*|ARCHITECT_ROLLOUT_ORDER|ALFRED_QUEUE_REPOS|ALFRED_SHIPPED_REPOS|ALFRED_BRIDGE_REPOS|ALFRED_SENIOR_DEV_REPOS|ALFRED_PLANNER_REPOS|ALFRED_SPEC_PLANNER_REPOS|ALFRED_TEST_ENGINEER_REPOS|ALFRED_REVIEWER_REPOS|ALFRED_FIXER_REPOS|ALFRED_TRIAGE_REPOS|ALFRED_CLAIM_SWEEP_REPOS|ALFRED_AUTOMERGE_REPOS|ALFRED_CODE_MAP_REPOS|ALFRED_CODE_MEMORY_REPOS|ALFRED_MORNING_BRIEF_REPOS|ALFRED_SHIPPED_SUMMARY_DAILY_REPOS|ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS|ALFRED_MORNING_BRIEF_AGENTS|ALFRED_TELEMETRY_*)
+    AGENT_CODENAME_*|ARCHITECT_ROLLOUT_ORDER|ARCHITECT_PARENT_REPO|ALFRED_QUEUE_REPOS|ALFRED_SHIPPED_REPOS|ALFRED_BRIDGE_REPOS|ALFRED_SENIOR_DEV_REPOS|ALFRED_PLANNER_REPOS|ALFRED_SPEC_PLANNER_REPOS|ALFRED_TEST_ENGINEER_REPOS|ALFRED_REVIEWER_REPOS|ALFRED_FIXER_REPOS|ALFRED_TRIAGE_REPOS|ALFRED_CLAIM_SWEEP_REPOS|ALFRED_AUTOMERGE_REPOS|ALFRED_CODE_MAP_REPOS|ALFRED_CODE_MEMORY_REPOS|ALFRED_MORNING_BRIEF_REPOS|ALFRED_SHIPPED_SUMMARY_DAILY_REPOS|ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS|ALFRED_MORNING_BRIEF_AGENTS|ALFRED_E2E_RUNNER_TARGET_URL|ALFRED_OPS_WATCH_ECS_CLUSTER|ALFRED_OPS_WATCH_SENTRY_ORG|ALFRED_TELEMETRY_*)
       return 0
       ;;
     *)

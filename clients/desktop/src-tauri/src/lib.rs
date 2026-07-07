@@ -481,6 +481,7 @@ fn setup_managed_runtime_env_keys(runtime_env_path: &Path) -> HashSet<String> {
     let mut keys = managed_runtime_env_keys(runtime_env_path);
     keys.extend([
         "ARCHITECT_ROLLOUT_ORDER".to_string(),
+        "ARCHITECT_PARENT_REPO".to_string(),
         "ALFRED_QUEUE_REPOS".to_string(),
         "ALFRED_SHIPPED_REPOS".to_string(),
         "ALFRED_BRIDGE_REPOS".to_string(),
@@ -498,6 +499,9 @@ fn setup_managed_runtime_env_keys(runtime_env_path: &Path) -> HashSet<String> {
         "ALFRED_MORNING_BRIEF_REPOS".to_string(),
         "ALFRED_SHIPPED_SUMMARY_DAILY_REPOS".to_string(),
         "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS".to_string(),
+        "ALFRED_E2E_RUNNER_TARGET_URL".to_string(),
+        "ALFRED_OPS_WATCH_ECS_CLUSTER".to_string(),
+        "ALFRED_OPS_WATCH_SENTRY_ORG".to_string(),
     ]);
     keys
 }
@@ -555,6 +559,7 @@ fn setup_managed_runtime_static_key(key: &str) -> bool {
     matches!(
         key,
         "ARCHITECT_ROLLOUT_ORDER"
+            | "ARCHITECT_PARENT_REPO"
             | "ALFRED_QUEUE_REPOS"
             | "ALFRED_SHIPPED_REPOS"
             | "ALFRED_BRIDGE_REPOS"
@@ -573,6 +578,9 @@ fn setup_managed_runtime_static_key(key: &str) -> bool {
             | "ALFRED_SHIPPED_SUMMARY_DAILY_REPOS"
             | "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS"
             | "ALFRED_MORNING_BRIEF_AGENTS"
+            | "ALFRED_E2E_RUNNER_TARGET_URL"
+            | "ALFRED_OPS_WATCH_ECS_CLUSTER"
+            | "ALFRED_OPS_WATCH_SENTRY_ORG"
     ) || key.starts_with("AGENT_CODENAME_")
         || key.starts_with("ALFRED_TELEMETRY_")
 }
@@ -3651,6 +3659,65 @@ done"#;
         restore_var("ALFRED_CODE_MEMORY_REPOS", prev_code_memory);
         restore_var("ALFRED_SENIOR_DEV_REPOS", prev_senior);
         restore_var("ALFRED_SPEC_PLANNER_REPOS", prev_spec);
+    }
+
+    #[test]
+    fn native_subprocess_env_scrubs_special_prompt_envs_from_runtime_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_architect_parent = std::env::var("ARCHITECT_PARENT_REPO").ok();
+        let prev_e2e_target = std::env::var("ALFRED_E2E_RUNNER_TARGET_URL").ok();
+        let prev_ops_cluster = std::env::var("ALFRED_OPS_WATCH_ECS_CLUSTER").ok();
+        let prev_ops_sentry = std::env::var("ALFRED_OPS_WATCH_SENTRY_ORG").ok();
+
+        let root = temp_root("alfred-runtime-env-special-prompts");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(
+            runtime.join(".env"),
+            "# alfred-init, generated below this line. Safe to re-run.\n\
+             ARCHITECT_PARENT_REPO=org/plans\n\
+             ALFRED_E2E_RUNNER_TARGET_URL=https://new.example.test\n\
+             ALFRED_OPS_WATCH_ECS_CLUSTER=new-cluster\n\
+             ALFRED_OPS_WATCH_SENTRY_ORG=new-org\n",
+        )
+        .expect("write runtime env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::set_var("ARCHITECT_PARENT_REPO", "org/stale-plans");
+        std::env::set_var("ALFRED_E2E_RUNNER_TARGET_URL", "https://old.example.test");
+        std::env::set_var("ALFRED_OPS_WATCH_ECS_CLUSTER", "old-cluster");
+        std::env::set_var("ALFRED_OPS_WATCH_SENTRY_ORG", "old-org");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("ARCHITECT_PARENT_REPO"),
+            Some(&"org/plans".to_string())
+        );
+        assert_eq!(
+            env.get("ALFRED_E2E_RUNNER_TARGET_URL"),
+            Some(&"https://new.example.test".to_string())
+        );
+        assert_eq!(
+            env.get("ALFRED_OPS_WATCH_ECS_CLUSTER"),
+            Some(&"new-cluster".to_string())
+        );
+        assert_eq!(
+            env.get("ALFRED_OPS_WATCH_SENTRY_ORG"),
+            Some(&"new-org".to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ARCHITECT_PARENT_REPO", prev_architect_parent);
+        restore_var("ALFRED_E2E_RUNNER_TARGET_URL", prev_e2e_target);
+        restore_var("ALFRED_OPS_WATCH_ECS_CLUSTER", prev_ops_cluster);
+        restore_var("ALFRED_OPS_WATCH_SENTRY_ORG", prev_ops_sentry);
     }
 
     #[test]

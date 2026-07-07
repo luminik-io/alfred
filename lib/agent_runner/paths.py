@@ -39,6 +39,7 @@ _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _CODENAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 _REPO_SCOPE_ENV_KEYS = {
     "ARCHITECT_ROLLOUT_ORDER",
+    "ARCHITECT_PARENT_REPO",
     "ALFRED_QUEUE_REPOS",
     "ALFRED_SHIPPED_REPOS",
     "ALFRED_BRIDGE_REPOS",
@@ -57,11 +58,20 @@ _REPO_SCOPE_ENV_KEYS = {
     "ALFRED_SHIPPED_SUMMARY_DAILY_REPOS",
     "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS",
 }
-_SETUP_MANAGED_RUNTIME_ENV_KEYS = _REPO_SCOPE_ENV_KEYS | {
-    "AGENT_CODENAME_*",
-    "ALFRED_MORNING_BRIEF_AGENTS",
-    "ALFRED_TELEMETRY_*",
+_SETUP_SPECIAL_PROMPT_ENV_KEYS = {
+    "ALFRED_E2E_RUNNER_TARGET_URL",
+    "ALFRED_OPS_WATCH_ECS_CLUSTER",
+    "ALFRED_OPS_WATCH_SENTRY_ORG",
 }
+_SETUP_MANAGED_RUNTIME_ENV_KEYS = (
+    _REPO_SCOPE_ENV_KEYS
+    | {
+        "AGENT_CODENAME_*",
+        "ALFRED_MORNING_BRIEF_AGENTS",
+        "ALFRED_TELEMETRY_*",
+    }
+    | _SETUP_SPECIAL_PROMPT_ENV_KEYS
+)
 
 ALFRED_HOME: Path = Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred"))
 """Public runtime root. State, worktrees, transcripts, lib, bin live here."""
@@ -363,6 +373,10 @@ def _runtime_stop_control_active(key: str, value: str) -> bool:
     token = _strip_inline_comment(value).strip().lower()
     if not token:
         return False
+    if key in {"ALFRED_AUTO_PROMOTE", "ALFRED_AUTO_PROMOTE_LLM_JUDGE"}:
+        return token not in {"1", "true", "yes", "on", "enabled"}
+    if key == "ALFRED_AUTO_PROMOTE_KILL":
+        return token not in {"0", "false", "no", "off", "disabled"}
     if key == "ALFRED_TELEMETRY_ENABLED":
         return token not in {"1", "true", "yes", "on", "enabled"}
     return False
@@ -398,18 +412,23 @@ def load_env_file(
             continue
         if skip_keys is not None and _env_key_matches(key, skip_keys):
             continue
-        can_clobber = file_overrides_existing or (
-            clobber_keys is not None and _env_key_matches(key, clobber_keys)
-        )
-        protected = preserve_keys is not None and key in preserve_keys
-        if no_clobber and key in env and (not can_clobber or protected):
-            continue
         value = _strip_inline_comment(raw_value).strip()
         single_quoted = len(value) >= 2 and value[0] == "'" and value[-1] == "'"
         decoded = decode_env_value(value)
         if not single_quoted:
             home = str(Path(os.path.expanduser("~")))
             decoded = decoded.replace("${HOME}", home).replace("$HOME", home)
+        if key in env and _runtime_stop_control_active(key, env[key]):
+            continue
+        if _runtime_stop_control_active(key, decoded):
+            env[key] = decoded
+            continue
+        can_clobber = file_overrides_existing or (
+            clobber_keys is not None and _env_key_matches(key, clobber_keys)
+        )
+        protected = preserve_keys is not None and key in preserve_keys
+        if no_clobber and key in env and (not can_clobber or protected):
+            continue
         env[key] = decoded
 
 

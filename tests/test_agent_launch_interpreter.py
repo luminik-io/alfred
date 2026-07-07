@@ -54,6 +54,10 @@ def _run_env(
         "ALFRED_SHIPPED_REPOS",
         "ALFRED_BRIDGE_REPOS",
         "ALFRED_CODE_MEMORY_REPOS",
+        "ARCHITECT_PARENT_REPO",
+        "ALFRED_E2E_RUNNER_TARGET_URL",
+        "ALFRED_OPS_WATCH_ECS_CLUSTER",
+        "ALFRED_OPS_WATCH_SENTRY_ORG",
         "WORKSPACE_ROOT",
     ):
         env.pop(key, None)
@@ -293,6 +297,46 @@ def test_agent_launch_scrubs_custom_codename_scope_from_managed_block(
     assert "CODENAME=oracle" in proc.stdout
     assert "REPOS=org/runtime" in proc.stdout
     assert "AWS=runtime-profile" in proc.stdout
+
+
+def test_agent_launch_scrubs_special_prompt_envs_from_managed_block(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "ARCHITECT_PARENT_REPO=org/plans\n"
+        "ALFRED_E2E_RUNNER_TARGET_URL=https://new.example.test\n"
+        "ALFRED_OPS_WATCH_ECS_CLUSTER=new-cluster\n"
+        "ALFRED_OPS_WATCH_SENTRY_ORG=new-org\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-special-prompts.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "ARCHITECT=${ARCHITECT_PARENT_REPO:-unset}"\n'
+        'echo "E2E=${ALFRED_E2E_RUNNER_TARGET_URL:-unset}"\n'
+        'echo "ECS=${ALFRED_OPS_WATCH_ECS_CLUSTER:-unset}"\n'
+        'echo "SENTRY=${ALFRED_OPS_WATCH_SENTRY_ORG:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={
+            "ARCHITECT_PARENT_REPO": "org/stale-plans",
+            "ALFRED_E2E_RUNNER_TARGET_URL": "https://old.example.test",
+            "ALFRED_OPS_WATCH_ECS_CLUSTER": "old-cluster",
+            "ALFRED_OPS_WATCH_SENTRY_ORG": "old-org",
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "ARCHITECT=org/plans" in proc.stdout
+    assert "E2E=https://new.example.test" in proc.stdout
+    assert "ECS=new-cluster" in proc.stdout
+    assert "SENTRY=new-org" in proc.stdout
 
 
 def test_agent_launch_preserves_process_owned_aws_profile(
