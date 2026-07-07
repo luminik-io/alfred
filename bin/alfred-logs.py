@@ -32,12 +32,15 @@ import sys
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
-for candidate in (
+_LIBRARY_PATHS = (
     _HERE.parent / "lib",
     Path(os.environ.get("ALFRED_HOME", "")) / "lib",
-):
-    if candidate.exists() and str(candidate) not in sys.path:
-        sys.path.insert(0, str(candidate))
+)
+for candidate in reversed(_LIBRARY_PATHS):
+    candidate_str = str(candidate)
+    if candidate.exists():
+        sys.path = [entry for entry in sys.path if entry != candidate_str]
+        sys.path.insert(0, candidate_str)
 
 from transcripts import (  # noqa: E402
     FiringRef,
@@ -52,6 +55,8 @@ from transcripts import (  # noqa: E402
 )
 
 logger = logging.getLogger("alfred-logs")
+
+SUBTYPE_WIDTH = 20
 
 
 # --------------------------------------------------------------------------
@@ -77,12 +82,7 @@ def _summary_row(ref: FiringRef) -> dict[str, object]:
     return {
         "firing_id": ref.firing_id,
         "ts": _fmt_ts(ref),
-        "result": {
-            "subtype": result.subtype if result else None,
-            "num_turns": result.num_turns if result else None,
-            "total_cost_usd": result.total_cost_usd if result else None,
-            "stop_reason": result.stop_reason if result else None,
-        },
+        "result": result.to_summary_dict() if result else None,
         "tool_calls_total": s.tool_calls_total,
         "tool_top": tool_top_str,
         "skills_invoked": s.skills_invoked,
@@ -111,7 +111,7 @@ def cmd_summary(state_dir: Path, codename: str, last: int, json_out: bool) -> in
     print(f"transcripts: {transcripts_root(state_dir)}/{codename}/")
     print()
     header = (
-        f"{'firing_id':<22} {'when':<22} {'subtype':<14} {'turns':<6} {'cost':<7} "
+        f"{'firing_id':<22} {'when':<22} {'subtype':<{SUBTYPE_WIDTH}} {'turns':<6} {'cost':<7} "
         f"{'tools':<6} {'edits':<6} {'top tools'}"
     )
     print(header)
@@ -122,7 +122,7 @@ def cmd_summary(state_dir: Path, codename: str, last: int, json_out: bool) -> in
         skills_note = f" [skills: {','.join(r['skills_invoked'])}]" if r["skills_invoked"] else ""
         print(
             f"{r['firing_id']:<22} {r['ts']:<22} "
-            f"{(result.get('subtype') or '?'):<14} "
+            f"{(result.get('subtype') or '?'):<{SUBTYPE_WIDTH}} "
             f"{(result.get('num_turns') or 0):<6} "
             f"${cost:<6.2f} "
             f"{r['tool_calls_total']:<6} "
