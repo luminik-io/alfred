@@ -35,8 +35,8 @@ type JobState = "live" | "warn" | "idle" | "info";
 
 const jobs: { title: string; body: string; log: string[]; state: JobState }[] = [
   {
-    title: "Architect: plans cross-repo features",
-    body: "Included in the OSS fleet. Reads the parent issue or Slack plan, checks the affected repos, gets approval, and files scoped repo-level work for the implementation fleet.",
+    title: "Batman: architect for cross-repo features",
+    body: "The public OSS architect role. Reads the parent issue or Slack plan, checks the affected repos, gets approval, and files scoped repo-level work for the implementation fleet.",
     log: [
       "[10:30] architect drafted bundle:billing-v2",
       "[10:31] architect posted plan to Slack",
@@ -46,7 +46,7 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
     state: "info",
   },
   {
-    title: "Senior dev: opens PRs",
+    title: "Lucius: senior-dev opens PRs",
     body: "Picks up a scoped task, makes its own copy of the repo, runs Claude Code or Codex with the full project in context, and opens a pull request with tests.",
     log: [
       "[12:04] senior-dev claimed your-backend#247",
@@ -56,7 +56,7 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
     state: "live",
   },
   {
-    title: "Planner: Drake shapes single-repo work",
+    title: "Drake: planner shapes single-repo work",
     body: "Reads a Slack request, GitHub issue, or plain-text plan, asks for missing details, then files small tasks a coding agent can pick up on its own.",
     log: [
       "[09:02] drake refined settings plan",
@@ -66,7 +66,7 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
     state: "live",
   },
   {
-    title: "Reviewer: Ra's al Ghul checks PRs",
+    title: "Ra's al Ghul: reviewer checks PRs",
     body: "Reads the changes, runs your test suite in its own copy of the repo, leaves comments on the lines that need work, and marks the pull request ready or needs changes.",
     log: [
       "[12:18] ras-al reviewed PR#1247",
@@ -256,14 +256,14 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
       <SectionHeader
         eyebrow="LOCAL MEMORY"
         title="Your agents keep a record of each run."
-        lede="Alfred keeps notes on your own machine: durable lessons, file touches, failure patterns, what went wrong before, and what is in progress right now. Memory promotion is designed to run without a human babysitting every candidate, with structural gates, an LLM judge, and operator inspection when you want it."
+        lede="Alfred keeps notes on your own machine: durable lessons, file touches, failure patterns, what went wrong before, and what is in progress right now. Memory promotion is designed to run without a human babysitting every candidate: structural gates and an LLM judge decide what becomes durable context, while you can still inspect or override it."
       />
       <div class="memory-grid">
         <div class="memory-copy">
           <div class="memory-point">
             <span class="memory-point__kicker m-mono">01</span>
-            <h3 class="m-h3">Lessons wait for your approval.</h3>
-            <p>Agents and trusted teammates can suggest a lesson worth keeping. Alfred filters candidates through structural checks and a judge before promotion, so memory keeps improving without turning every operator into a queue janitor.</p>
+            <h3 class="m-h3">Lessons earn promotion automatically.</h3>
+            <p>Agents and trusted teammates can suggest a lesson worth keeping. Alfred filters candidates through structural checks and an LLM judge before durable promotion, so memory keeps improving without turning every operator into a queue janitor.</p>
           </div>
           <div class="memory-point">
             <span class="memory-point__kicker m-mono">02</span>
@@ -272,8 +272,8 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
           </div>
           <div class="memory-point">
             <span class="memory-point__kicker m-mono">03</span>
-            <h3 class="m-h3">Redis memory runs locally.</h3>
-            <p>Alfred starts a local Redis Agent Memory Server for recalled lessons, then keeps FleetBrain as the review queue and reliability ledger. The memory loop stays on your machine.</p>
+            <h3 class="m-h3">The memory loop stays local.</h3>
+            <p>Alfred starts local memory providers for recalled lessons, then keeps FleetBrain as the reliability ledger and inspection surface. Repo context, lessons, and run history stay on your machine.</p>
           </div>
           <p class="memory-link">
             <a class="m-link" href="/concepts/fleet-brain/">How local memory works</a>
@@ -317,8 +317,8 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
     <div class="m-container">
       <SectionHeader
         eyebrow="FROM ROUGH REQUEST TO SCOPED WORK"
-        title="Architect handles the rollout. Senior-dev ships the PRs. Drake keeps smaller work scoped."
-        lede="Start with a Slack thread, a GitHub issue, or a plain-text plan. The architect handles approved multi-repo fan-out, senior-dev handles repo-local implementation, and Drake turns smaller requests into clear tasks."
+        title="Batman handles the rollout. Lucius ships the PRs. Drake keeps smaller work scoped."
+        lede="Start with a Slack thread, a GitHub issue, or a plain-text plan. Batman is the default-theme name for the public architect role: it handles approved multi-repo fan-out, Lucius handles repo-local implementation as senior-dev, and Drake turns smaller requests into clear tasks."
       />
       <SpecsDrivenFlow />
       <p style="margin-top:24px;">
@@ -331,8 +331,8 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
     <div class="m-container">
       <SectionHeader
         eyebrow="THE ARCHITECT AGENT"
-        title="Architect turns one large feature into repo-level work."
-        lede="The architect is accountable for work that spans repos. In the public OSS runner, it reads the parent issue, checks the affected repos, plans the rollout, gets approval in Slack or the local client, and files scoped child issues. Senior-dev, test-engineer, fixer, reviewers, and the merge gate then finish each PR."
+        title="Batman turns one large feature into repo-level work."
+        lede="Batman is the default-theme name for the architect role, and that role is public OSS code. It reads the parent issue, checks the affected repos, plans the rollout, gets approval in Slack or the local client, and files scoped child issues. Senior-dev, test-engineer, fixer, reviewers, and the merge gate then finish each PR."
       />
       <ArchitectFanOut />
       <div class="architect-cta">
