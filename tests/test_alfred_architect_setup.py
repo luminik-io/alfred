@@ -7,6 +7,8 @@ check-only reporting, and lifecycle-doctor invocation.
 
 from __future__ import annotations
 
+import argparse
+import importlib.machinery
 import importlib.util
 import stat
 import subprocess
@@ -34,6 +36,15 @@ def _load_module(monkeypatch: pytest.MonkeyPatch | None = None, tmp_path: Path |
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
     sys.modules["alfred_architect_setup"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _load_alfred_cli():
+    loader = importlib.machinery.SourceFileLoader("alfred_cli_for_test", str(REPO / "bin/alfred"))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
 
@@ -192,6 +203,42 @@ def test_non_interactive_writes_supplied_values_without_live_calls(tmp_path, mon
     assert "ARCHITECT_APPROVAL_TIMEOUT_S=120" in text
     assert "export ARCHITECT_AUTO_EXECUTE" not in text
     assert "Skipping lifecycle doctor" in capsys.readouterr().err
+
+
+def test_alfred_wrapper_forwards_rollout_order(monkeypatch):
+    cli = _load_alfred_cli()
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, *, check=False):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    out = cli.cmd_architect_setup(
+        argparse.Namespace(
+            check_only=False,
+            force=False,
+            non_interactive=True,
+            skip_token_setup=True,
+            skip_doctor=True,
+            run_slack_tests=False,
+            slack_bot_token="",
+            operator_user_id="",
+            slack_channel="",
+            parent_repo="acme/specs",
+            mode="0",
+            approval_mode="",
+            picker="oldest",
+            rollout_order="api,web",
+            bundle_slug_prefix="",
+            approval_timeout_s=None,
+        )
+    )
+
+    assert out == 0
+    assert calls
+    assert "--rollout-order" in calls[0]
+    assert calls[0][calls[0].index("--rollout-order") + 1] == "api,web"
 
 
 def test_non_interactive_file_approval_mode_skips_slack_values(tmp_path, monkeypatch, capsys):

@@ -2621,6 +2621,7 @@ def cmd_architect_setup(args: argparse.Namespace) -> int:
         ("mode", "--mode"),
         ("approval_mode", "--approval-mode"),
         ("picker", "--picker"),
+        ("rollout_order", "--rollout-order"),
         ("bundle_slug_prefix", "--bundle-slug-prefix"),
     ):
         value = getattr(args, attr, None)
@@ -2967,6 +2968,11 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
         )
         parser.add_argument(
             "--picker", choices=["oldest", "newest"], default="", help="parent issue picker"
+        )
+        parser.add_argument(
+            "--rollout-order",
+            default="",
+            help="comma-separated repo keys for architect rollout order",
         )
         parser.add_argument("--bundle-slug-prefix", default="", help="optional bundle slug prefix")
         parser.add_argument("--approval-timeout-s", type=int, help="approval wait timeout seconds")
