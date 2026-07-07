@@ -192,7 +192,7 @@ and
 
 ## See also
 
-- [Codename pattern](/concepts/codename-pattern/): why narrow specialists named after a fictional cast.
+- [Role and theme pattern](/concepts/codename-pattern/): why narrow specialists use stable role slugs with human-friendly roster names.
 - [Architecture](/concepts/architecture/): the runtime boundary and the five non-negotiables.
 - [Issue claim state machine](/concepts/state-machine/): the coordination primitive every agent shares.
 - [How it works](/concepts/how-it-works/): one firing traced end to end.
