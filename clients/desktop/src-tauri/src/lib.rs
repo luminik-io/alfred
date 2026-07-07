@@ -1260,12 +1260,21 @@ fn terminal_runtime_start_command(port: u16) -> String {
          {{ printf '%s\\n' 'Alfred CLI was not found after install. Return to Alfred Desktop and run Install or repair again, or inspect the Terminal output above.' >&2; exit 1; }}; }} && \
          {{ command -v python3 >/dev/null 2>&1 || \
          {{ printf '%s\\n' 'python3 is required to verify Alfred runtime health after install. Install python3, then rerun Install or repair from Alfred Desktop.' >&2; exit 1; }}; }} && \
-         python3 -c {} {} && \
+         {{ python3 -c {} {} {}; \
+         preflight_status=$?; \
+         if [ \"$preflight_status\" -eq 10 ]; then \
+         printf '%s\\n' {}; \
+         elif [ \"$preflight_status\" -eq 0 ]; then \
          (nohup {} > \"$HOME/.alfred/logs/desktop-runtime.log\" 2>&1 < /dev/null & \
          runtime_pid=$!; \
-         ALFRED_RUNTIME_PID=\"$runtime_pid\" python3 -c {} {})",
+         ALFRED_RUNTIME_PID=\"$runtime_pid\" python3 -c {} {}); \
+         else exit \"$preflight_status\"; fi; }}",
         shell_quote(port_preflight),
         shell_quote(&port),
+        shell_quote(&health_url),
+        shell_quote(&format!(
+            "Existing Alfred runtime is already healthy on port {port}; reusing it."
+        )),
         serve,
         shell_quote(health_probe),
         shell_quote(&health_url)
@@ -1273,19 +1282,43 @@ fn terminal_runtime_start_command(port: u16) -> String {
 }
 
 fn terminal_runtime_port_preflight_probe() -> &'static str {
-    r#"import socket
+    r#"import json
+import socket
 import sys
+import urllib.request
 
 port = int(sys.argv[1])
+url = sys.argv[2]
+
+def is_alfred_status(payload):
+    return (
+        isinstance(payload, dict)
+        and isinstance(payload.get("agents"), list)
+        and isinstance(payload.get("reliability"), dict)
+        and isinstance(payload.get("metrics"), dict)
+        and "setup_repos" in payload
+    )
+
 try:
     with socket.create_connection(("127.0.0.1", port), timeout=0.2):
-        print(
-            f"Runtime port {port} is already in use. Stop the existing process or choose a different Local server URL in Alfred Desktop, then rerun Install or repair.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        pass
 except OSError:
-    sys.exit(0)"#
+    sys.exit(0)
+
+try:
+    with urllib.request.urlopen(url, timeout=0.5) as response:
+        if 200 <= response.status < 500:
+            payload = json.loads(response.read().decode("utf-8"))
+            if is_alfred_status(payload):
+                sys.exit(10)
+except Exception:
+    pass
+
+print(
+    f"Runtime port {port} is already in use by a non-Alfred or unhealthy process. Stop it or choose a different Local server URL in Alfred Desktop, then rerun Install or repair.",
+    file=sys.stderr,
+)
+sys.exit(1)"#
 }
 
 fn terminal_runtime_health_probe() -> &'static str {
@@ -2659,7 +2692,12 @@ mod tests {
         assert!(command.contains("command -v python3"));
         assert!(command.contains("python3 is required to verify Alfred runtime health"));
         assert!(command.contains("socket.create_connection"));
-        assert!(command.contains("Runtime port {port} is already in use"));
+        assert!(command.contains("is_alfred_status"));
+        assert!(command.contains("preflight_status=$?"));
+        assert!(command.contains("Existing Alfred runtime is already healthy on port 7123"));
+        assert!(command.contains(
+            "Runtime port {port} is already in use by a non-Alfred or unhealthy process"
+        ));
         assert!(command.contains("json.loads"));
         assert!(command.contains("urllib.request.urlopen"));
         assert!(command.contains("launched_process_alive"));
