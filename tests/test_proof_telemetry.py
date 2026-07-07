@@ -1187,7 +1187,9 @@ def test_row_is_agent_authored_by_label_and_branch():
         pt._row_is_agent_authored(FakePR("merged", labels=[], head_ref="feature/by-a-human"))
         is False
     )
-    assert pt._row_is_agent_authored(FakePR("merged", labels=["bug"], head_ref="architect/x")) is True
+    assert (
+        pt._row_is_agent_authored(FakePR("merged", labels=["bug"], head_ref="architect/x")) is True
+    )
 
 
 def test_derive_counts_counts_only_authored_prs_real_brain():
