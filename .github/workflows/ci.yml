@@ -54,6 +54,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Remove flaky runner apt sources
+        run: |
+          sudo find /etc/apt/sources.list.d -maxdepth 1 -type f \
+            \( -iname "*microsoft*" -o -iname "*azure-cli*" \) \
+            -print -delete || true
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Find shell scripts
@@ -141,6 +146,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: clients/desktop/src-tauri
+
+      - name: Remove flaky runner apt sources
+        run: |
+          sudo find /etc/apt/sources.list.d -maxdepth 1 -type f \
+            \( -iname "*microsoft*" -o -iname "*azure-cli*" \) \
+            -print -delete || true
 
       - name: Install Tauri Linux dependencies
         run: |

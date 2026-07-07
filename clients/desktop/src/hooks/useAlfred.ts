@@ -591,13 +591,14 @@ export function useAlfred() {
     setNativeErrorRaw(null);
     setNativeResult(null);
     try {
-      const result = await installAlfredCore();
+      const runtimePort = runtimePortFromBaseUrl(baseUrl);
+      const result = await installAlfredCore(runtimePort);
       setNativeResult(result);
       if (!result.success) {
         return;
       }
       setNativeBusy("runtime:start");
-      const runtime = await startLocalRuntime(runtimePortFromBaseUrl(baseUrl));
+      const runtime = await startLocalRuntime(runtimePort);
       setNativeResult({
         ...runtime,
         message: runtime.success
