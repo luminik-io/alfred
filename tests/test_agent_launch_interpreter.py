@@ -286,6 +286,35 @@ def test_agent_launch_preserves_code_memory_process_controls(
     assert "TIMEOUT=7" in proc.stdout
 
 
+def test_agent_launch_preserves_code_map_process_controls(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text("GH_ORG=acme\n", encoding="utf-8")
+    target = tmp_path / "echo-code-map-controls.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "CLIENTS=${ALFRED_CODE_MAP_CLIENT_REPOS:-unset}"\n'
+        'echo "BACKEND=${ALFRED_CODE_MAP_BACKEND_REPO:-unset}"\n'
+        'echo "MAX=${ALFRED_CODE_MAP_MAX_FILES:-unset}"\n'
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={
+            "ALFRED_CODE_MAP_CLIENT_REPOS": "frontend,mobile",
+            "ALFRED_CODE_MAP_BACKEND_REPO": "backend",
+            "ALFRED_CODE_MAP_MAX_FILES": "77",
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "CLIENTS=frontend,mobile" in proc.stdout
+    assert "BACKEND=backend" in proc.stdout
+    assert "MAX=77" in proc.stdout
+
+
 def test_env_file_code_memory_settings_load_when_process_absent(
     tmp_path: Path, alfred_home: Path
 ) -> None:

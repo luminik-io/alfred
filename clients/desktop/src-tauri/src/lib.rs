@@ -472,9 +472,26 @@ fn setup_managed_runtime_env_key(key: &str) -> bool {
         || key == "ARCHITECT_ROLLOUT_ORDER"
         || key == "ALFRED_MORNING_BRIEF_AGENTS"
         || (key.starts_with("ALFRED_") && key.ends_with("_AWS_PROFILE"))
-        || (key.starts_with("ALFRED_") && key.ends_with("_REPOS"))
-        || key.starts_with("ALFRED_CODE_MAP_")
         || key.starts_with("ALFRED_TELEMETRY_")
+        || matches!(
+            key,
+            "ALFRED_QUEUE_REPOS"
+                | "ALFRED_SHIPPED_REPOS"
+                | "ALFRED_BRIDGE_REPOS"
+                | "ALFRED_SENIOR_DEV_REPOS"
+                | "ALFRED_PLANNER_REPOS"
+                | "ALFRED_TEST_ENGINEER_REPOS"
+                | "ALFRED_REVIEWER_REPOS"
+                | "ALFRED_FIXER_REPOS"
+                | "ALFRED_TRIAGE_REPOS"
+                | "ALFRED_CLAIM_SWEEP_REPOS"
+                | "ALFRED_AUTOMERGE_REPOS"
+                | "ALFRED_CODE_MAP_REPOS"
+                | "ALFRED_CODE_MEMORY_REPOS"
+                | "ALFRED_MORNING_BRIEF_REPOS"
+                | "ALFRED_SHIPPED_SUMMARY_DAILY_REPOS"
+                | "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS"
+        )
 }
 
 fn load_config_file(
@@ -3517,6 +3534,50 @@ done"#;
         restore_var("ALFRED_CODE_MEMORY_BIN", prev_bin);
         restore_var("ALFRED_CODE_MEMORY_AUTOFETCH", prev_autofetch);
         restore_var("ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S", prev_timeout);
+    }
+
+    #[test]
+    fn native_subprocess_env_preserves_code_map_process_controls() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_clients = std::env::var("ALFRED_CODE_MAP_CLIENT_REPOS").ok();
+        let prev_backend = std::env::var("ALFRED_CODE_MAP_BACKEND_REPO").ok();
+        let prev_max = std::env::var("ALFRED_CODE_MAP_MAX_FILES").ok();
+
+        let root = temp_root("alfred-code-map-controls");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(runtime.join(".env"), "GH_ORG=acme\n").expect("write runtime env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::set_var("ALFRED_CODE_MAP_CLIENT_REPOS", "frontend,mobile");
+        std::env::set_var("ALFRED_CODE_MAP_BACKEND_REPO", "backend");
+        std::env::set_var("ALFRED_CODE_MAP_MAX_FILES", "77");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("ALFRED_CODE_MAP_CLIENT_REPOS"),
+            Some(&"frontend,mobile".to_string())
+        );
+        assert_eq!(
+            env.get("ALFRED_CODE_MAP_BACKEND_REPO"),
+            Some(&"backend".to_string())
+        );
+        assert_eq!(
+            env.get("ALFRED_CODE_MAP_MAX_FILES"),
+            Some(&"77".to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_CODE_MAP_CLIENT_REPOS", prev_clients);
+        restore_var("ALFRED_CODE_MAP_BACKEND_REPO", prev_backend);
+        restore_var("ALFRED_CODE_MAP_MAX_FILES", prev_max);
     }
 
     #[test]

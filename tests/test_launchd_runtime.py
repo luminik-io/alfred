@@ -153,6 +153,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "  'label': os.environ.get('LAUNCHD_LABEL'),\n"
         "  'custom': os.environ.get('CUSTOM_FROM_ENV'),\n"
         "  'code_map': os.environ.get('ALFRED_CODE_MAP_REPOS'),\n"
+        "  'code_map_max': os.environ.get('ALFRED_CODE_MAP_MAX_FILES'),\n"
         "  'memory_mcp': os.environ.get('ALFRED_CODE_MEMORY_MCP'),\n"
         "  'senior_repos': os.environ.get('ALFRED_SENIOR_DEV_REPOS'),\n"
         "}))\n"
@@ -168,6 +169,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
             "ALFRED_HOME": str(alfred),
             "WORKSPACE_ROOT": str(tmp_path / "code"),
             "ALFRED_CODE_MAP_REPOS": "org/stale",
+            "ALFRED_CODE_MAP_MAX_FILES": "77",
             "ALFRED_CODE_MEMORY_MCP": "0",
             "ALFRED_SENIOR_DEV_REPOS": "org/stale",
         },
@@ -184,6 +186,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "label": "alfred.helper",
         "custom": "loaded",
         "code_map": None,
+        "code_map_max": "77",
         "memory_mcp": "0",
         "senior_repos": None,
     }
