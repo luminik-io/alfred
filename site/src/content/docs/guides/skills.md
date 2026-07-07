@@ -3,7 +3,11 @@ title: Claude Code skills
 description: Recommended skill set for an autonomous engineering fleet, install commands, per-agent matrix.
 ---
 
-Skills are small bundles (markdown + optional scripts) that extend Claude Code's tool surface. Alfred doesn't ship skills itself; consumer agents pick what they need.
+Skills are small bundles (markdown + optional scripts) that extend Claude Code's
+tool surface. Alfred ships a curated, license-audited starter set and a registry
+for optional packs. The default desktop setup installs the starter set locally
+so the fleet has review, security, frontend, debugging, and test-writing help
+from the first run.
 
 Full guide at [`docs/SKILLS.md`](https://github.com/luminik-io/alfred/blob/main/docs/SKILLS.md). Highlights:
 
@@ -26,34 +30,34 @@ Full guide at [`docs/SKILLS.md`](https://github.com/luminik-io/alfred/blob/main/
     └── ship/
 ```
 
-## Recommended set for an autonomous engineering fleet
+## Starter set for an autonomous engineering fleet
 
 | Skill | Source | Used by | Why |
 |---|---|---|---|
-| `spec-driven-development` | Anthropic | feature-dev | Grounds the model in a written spec |
-| `code-review-and-quality` | Anthropic | feature-dev (self-check), reviewer | Multi-axis review |
-| `security-and-hardening` | Anthropic | feature-dev (auth), reviewer | Security-specific lens |
-| `debugging-and-error-recovery` | Anthropic | bug-triage, monitoring | Systematic root-cause path |
-| `frontend-ui-engineering` | Anthropic | feature-dev (frontend) | Component patterns |
-| `code-review` | CodeRabbit | reviewer | Backbone for structured review |
-| `autofix` | CodeRabbit | review-fix | Apply CodeRabbit P0/P1 fixes with per-change approval |
-| `/review`, `/ship`, `/qa`, `/browse`, `/investigate` | gstack | various | gstack's CLI-first review/ship/QA flow |
+| `code-review-and-quality` | addyosmani/agent-skills | feature-dev, reviewer, fixer | Multi-axis review |
+| `security-and-hardening` | addyosmani/agent-skills | feature-dev, reviewer | Security-specific lens |
+| `frontend-ui-engineering` | addyosmani/agent-skills | feature-dev | Production UI patterns |
+| `debugging-and-error-recovery` | addyosmani/agent-skills | bug-triage, ops-watch | Systematic root-cause path |
+| `vercel-react-best-practices` | vercel-labs/agent-skills | feature-dev | React and Next.js performance guardrails |
+| `spec-to-issues` | Alfred first-party | planner | Converts specs into issue queues |
+| `write-tests` | Alfred first-party | test-engineer, feature-dev | Focused coverage additions |
+| `review-security` | Alfred first-party | reviewer, feature-dev | Review checklist for risky code |
+| `add-observability` | Alfred first-party | feature-dev, ops-watch | Logging and metrics prompts |
+| `migrate-dependency` | Alfred first-party | feature-dev | Dependency upgrade workflow |
+| `changelog-and-release-notes` | Alfred first-party | feature-dev, ops-watch | Release notes and changelog drafts |
+| `gstack` | garrytan/gstack | optional: reviewer, triage, e2e-runner | CLI-first review, QA, and ship flow |
+| `headroom` | headroomlabs-ai/headroom | optional | Token and context inspection |
 
 ## Install
 
 ```sh
-# Anthropic official
-git clone --depth 1 https://github.com/anthropics/claude-code.git /tmp/cc
-cp -R /tmp/cc/skills/* ~/.claude/skills/
-rm -rf /tmp/cc
+alfred skills list
+alfred skills install --starter
 
-# gstack
-git clone https://github.com/garrytan/gstack.git ~/.claude/skills/gstack
-(cd ~/.claude/skills/gstack && ./setup)
-
-# CodeRabbit
-npx -y skills add coderabbitai/skills --global --yes \
-    --agent claude-code --skill '*'
+# Optional fetched packs. These require explicit confirmation because they
+# pull from third-party sources at install time.
+alfred skills install gstack --yes
+alfred skills install headroom --yes
 ```
 
 For a single fresh-install script, see [`docs/SKILLS.md#skill-install-automation`](https://github.com/luminik-io/alfred/blob/main/docs/SKILLS.md#skill-install-automation).
@@ -77,4 +81,8 @@ The fleet's IAM-per-agent + per-firing-worktree-isolation patterns limit blast r
 
 ## Where skills live in the framework's mental model
 
-Skills are user-installed, not framework-bundled. Alfred ships zero skills by default. Consumer fleets pick. Keeps the framework pluralist (different fleets, different stacks) and small (no skill maintenance burden on us).
+Skills are local operator assets, not a hosted service. Alfred ships a curated
+starter set for the default engineering fleet, plus optional fetched packs for
+teams that want heavier tools. The registry records source, license, install
+method, and default roles so a fleet can stay batteries-included without hiding
+third-party code from the operator.

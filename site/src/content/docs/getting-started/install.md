@@ -137,17 +137,19 @@ Idempotent (safe to re-run). It detects the host OS and picks a lane: Homebrew o
 7. Leaves shell rc files alone. The scheduler, CLI, and native app load `$ALFRED_HOME/.env` directly.
 8. Reports auth status for `gh`, `aws`, `claude`.
 
-What it does **not** do (deliberately):
+What the base installer does **not** do (deliberately):
 
 - Authenticate `gh` / `aws` / `claude`. Interactive flows you should see.
 - Create AWS IAM users, secrets, or Slack webhooks. One-time human decisions.
 - Choose which agents should run. Use `./bin/alfred-init.py` for that.
 - Run `deploy.sh`. That side-effects the host scheduler (`launchd` on macOS,
   `systemd --user` on Linux); you should know what's about to load.
-- Install a hosted agent gateway, hosted MCP server, dashboard, or skill bundle.
-  Redis Agent Memory is provisioned locally for recalled lessons; `deploy.sh`
-  starts the local service. FleetBrain stays under `ALFRED_HOME` for review and
-  reliability state.
+- Install a hosted agent gateway, hosted MCP server, or external dashboard.
+  Alfred Desktop and `alfred-init.py --agents all` install the local full fleet
+  and starter engineering skills. Optional fetched integrations remain explicit
+  operator choices. Redis Agent Memory is provisioned locally for recalled
+  lessons; `deploy.sh` starts the local service. FleetBrain stays under
+  `ALFRED_HOME` for review and reliability state.
 
 ## Non-interactive
 
@@ -176,9 +178,9 @@ Point Alfred at your fleet's Slack channel and (optionally) AWS:
 - [AWS setup](/guides/aws/): IAM-per-agent, Secrets Manager.
 - [Claude Code and Codex](/guides/claude-code/): Pro vs Max sizing, account routing, engine routing.
 
-Then write your first codename agent:
+Then try the fleet safely:
 
-- [Tutorial: your first agent in 30 minutes](/getting-started/tutorial/): builds Echo end-to-end.
+- [Tutorial: custom agent in 30 minutes](/getting-started/tutorial/): builds Echo end-to-end after the default fleet is already installed.
 
 ## Troubleshooting
 

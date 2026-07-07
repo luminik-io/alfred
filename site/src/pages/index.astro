@@ -140,19 +140,10 @@ const heroImpactStats = [
 ];
 
 const heroRuntimeLines = [
-  { agent: "slack", event: "request captured", state: "live" },
-  { agent: "Batman", event: "rollout plan ready", state: "review" },
-  { agent: "Lucius", event: "implementation PR open", state: "live" },
-  { agent: "Ra's", event: "review gate enforced", state: "gate" },
-];
-
-const heroRoster = [
-  { name: "Batman", role: "architect" },
-  { name: "Drake", role: "planner" },
-  { name: "Lucius", role: "senior-dev" },
-  { name: "Bane", role: "test-engineer" },
-  { name: "Ra's", role: "reviewer" },
-  { name: "Nightwing", role: "fixer" },
+  { agent: "Slack", event: "request accepted", state: "live" },
+  { agent: "Batman", event: "plan approved", state: "review" },
+  { agent: "Lucius", event: "PR opened", state: "live" },
+  { agent: "Ra's", event: "review gate active", state: "gate" },
 ];
 
 ---
@@ -184,12 +175,12 @@ const heroRoster = [
         <span>Alfred-merged PRs in the last {productProof.window.days} days</span>
       </div>
 
-      <div class="hero-proof__run" aria-label="Representative Alfred run path">
+      <div class="hero-proof__pipeline" aria-label="Representative Alfred run path">
         {heroRuntimeLines.map((line) => (
-          <div class={`hero-proof__line hero-proof__line--${line.state}`}>
-            <span>{line.agent}</span>
+          <span class={`hero-proof__step hero-proof__step--${line.state}`}>
+            <em>{line.agent}</em>
             <strong>{line.event}</strong>
-          </div>
+          </span>
         ))}
       </div>
 
@@ -202,14 +193,10 @@ const heroRoster = [
         ))}
       </div>
 
-      <div class="hero-proof__roster" aria-label="Representative installed Alfred roles">
-        <span class="m-mono">sample installed roles</span>
-        <div>
-          {heroRoster.map((agent) => (
-            <span><strong>{agent.name}</strong> {agent.role}</span>
-          ))}
-        </div>
-      </div>
+      <p class="hero-proof__fleet">
+        <strong>Full fleet included.</strong>
+        Batman architects, Drake scopes, Lucius builds, Ra's reviews, Bane tests, and Nightwing fixes comments.
+      </p>
     </div>
   </Hero>
 
@@ -460,26 +447,26 @@ const heroRoster = [
 <style>
   .hero-proof {
     display: grid;
-    gap: 15px;
+    gap: 12px;
   }
   .hero-proof__head {
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 16px;
-    padding-bottom: 12px;
+    padding-bottom: 10px;
     border-bottom: 1px solid var(--alfred-border);
   }
   .hero-proof__metric {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
-    gap: 16px;
+    gap: 14px;
     align-items: end;
   }
   .hero-proof__metric strong {
     display: block;
     color: var(--alfred-accent);
-    font-size: clamp(50px, 6vw, 72px);
+    font-size: 58px;
     line-height: 0.9;
     letter-spacing: 0;
     font-weight: 750;
@@ -491,50 +478,42 @@ const heroRoster = [
     font-weight: 600;
     max-width: 16ch;
   }
-  .hero-proof__run {
+  .hero-proof__pipeline {
     display: grid;
-    gap: 1px;
-    border: 1px solid var(--alfred-border);
-    background: var(--alfred-black);
-    background: color-mix(in oklab, var(--alfred-black) 58%, transparent);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
-  .hero-proof__line {
+  .hero-proof__step {
     display: grid;
-    grid-template-columns: 84px minmax(0, 1fr);
-    align-items: center;
-    gap: 12px;
+    gap: 2px;
     min-width: 0;
-    padding: 9px 11px;
+    padding: 9px 10px;
+    border: 1px solid var(--alfred-border);
     background: var(--alfred-surface);
     background: color-mix(in oklab, var(--alfred-surface) 72%, transparent);
     font-family: var(--font-mono);
-    font-size: 12px;
     line-height: 1.35;
   }
-  .hero-proof__line span {
+  .hero-proof__step em {
     color: var(--alfred-text);
+    font-size: 11px;
+    font-style: normal;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .hero-proof__line strong {
+  .hero-proof__step strong {
     color: var(--alfred-text-bright);
+    font-size: 12px;
     font-weight: 500;
     min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .hero-proof__line::before {
-    content: "●";
-    color: var(--alfred-accent);
-    grid-column: 1;
-    margin-right: 6px;
-  }
-  .hero-proof__line {
-    grid-template-columns: 12px 78px minmax(0, 1fr);
-  }
-  .hero-proof__line span { grid-column: 2; }
-  .hero-proof__line strong { grid-column: 3; }
-  .hero-proof__line--review::before { color: var(--alfred-warn); }
-  .hero-proof__line--gate::before { color: var(--alfred-blue); }
+  .hero-proof__step { box-shadow: inset 2px 0 0 var(--alfred-accent); }
+  .hero-proof__step--review { box-shadow: inset 2px 0 0 var(--alfred-warn); }
+  .hero-proof__step--gate { box-shadow: inset 2px 0 0 var(--alfred-blue); }
   .hero-proof__stats {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -543,7 +522,7 @@ const heroRoster = [
   }
   .hero-proof__stat {
     min-width: 0;
-    padding: 12px 10px;
+    padding: 10px 10px;
     background: var(--alfred-surface);
     background: color-mix(in oklab, var(--alfred-surface) 82%, transparent);
   }
@@ -563,33 +542,20 @@ const heroRoster = [
     line-height: 1.35;
     text-transform: lowercase;
   }
-  .hero-proof__roster {
-    display: grid;
-    gap: 10px;
-    padding-top: 2px;
-  }
-  .hero-proof__roster > span {
-    color: var(--alfred-accent);
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    font-size: 11px;
-  }
-  .hero-proof__roster div {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .hero-proof__roster div span {
-    min-width: 0;
-    padding: 6px 8px;
+  .hero-proof__fleet {
+    margin: 0;
+    padding: 10px 11px;
     border: 1px solid var(--alfred-border);
     background: var(--alfred-black);
     background: color-mix(in oklab, var(--alfred-black) 48%, transparent);
-    color: var(--alfred-mute);
-    font-size: 12px;
-    line-height: 1.2;
+    color: var(--alfred-text);
+    font-size: 13px;
+    line-height: 1.45;
   }
-  .hero-proof__roster strong { color: var(--alfred-text-bright); }
+  .hero-proof__fleet strong {
+    color: var(--alfred-text-bright);
+    font-weight: 700;
+  }
   @media (max-width: 980px) and (min-width: 721px) {
     .hero-proof {
       grid-template-columns: minmax(0, 0.72fr) minmax(0, 1fr);
@@ -604,11 +570,9 @@ const heroRoster = [
     .hero-proof__stats {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
-    .hero-proof__run {
-      display: none;
-    }
     .hero-proof__head,
-    .hero-proof__roster {
+    .hero-proof__pipeline,
+    .hero-proof__fleet {
       grid-column: 1 / -1;
     }
   }
@@ -627,8 +591,11 @@ const heroRoster = [
       font-size: 16px;
       max-width: 100%;
     }
-    .hero-proof__line {
-      grid-template-columns: 12px 74px minmax(0, 1fr);
+    .hero-proof__pipeline {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 7px;
+    }
+    .hero-proof__step {
       padding: 8px 9px;
     }
     .hero-proof__stats {
@@ -638,7 +605,7 @@ const heroRoster = [
       padding: 10px 8px;
     }
     .hero-proof__stat strong {
-      font-size: clamp(15px, 4.2vw, 18px);
+      font-size: 16px;
       white-space: normal;
       overflow-wrap: anywhere;
     }
@@ -653,16 +620,8 @@ const heroRoster = [
       flex-direction: row;
       gap: 12px;
     }
-    .hero-proof__line {
-      grid-template-columns: 12px minmax(0, 1fr);
-      row-gap: 2px;
-    }
-    .hero-proof__line span,
-    .hero-proof__line strong {
-      grid-column: 2;
-    }
-    .hero-proof__run { display: none; }
-    .hero-proof__roster { display: none; }
+    .hero-proof__pipeline { display: none; }
+    .hero-proof__fleet { display: none; }
   }
 
   .job-grid {
