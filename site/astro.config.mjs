@@ -483,7 +483,7 @@ export default defineConfig({
             { label: "Architecture", slug: "concepts/architecture" },
             { label: "How it works", slug: "concepts/how-it-works" },
             { label: "The agent fleet", slug: "concepts/fleet" },
-            { label: "Codename pattern", slug: "concepts/codename-pattern" },
+            { label: "Role and theme pattern", slug: "concepts/codename-pattern" },
             { label: "Issue claim state machine", slug: "concepts/state-machine" },
             { label: "State and memory", slug: "concepts/state-and-memory" },
             { label: "Fleet brain", slug: "concepts/fleet-brain" },

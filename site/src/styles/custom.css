@@ -485,7 +485,7 @@ mobile-starlight-toc nav {
 }
 
 /* ------------------------------------------------------------------ */
-/* Codename pattern callout                                            */
+/* Role and theme pattern callout                                      */
 /* ------------------------------------------------------------------ */
 .codename-callout {
   border-left: 3px solid var(--sl-color-accent);
