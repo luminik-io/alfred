@@ -9,25 +9,6 @@ const OUT = resolve(
   "../src/data/luminik-product-proof.json",
 );
 const REPOS = csvEnv("ALFRED_PRODUCT_PROOF_REPOS", []);
-const AGENT_BRANCH_PREFIXES = csvEnv(
-  "ALFRED_PRODUCT_PROOF_AGENT_BRANCH_PREFIXES",
-  [
-    "alfred/",
-    "alfred-nightly/",
-    "architect/",
-    "automerge/",
-    "e2e-runner/",
-    "fixer/",
-    "ops-watch/",
-    "planner/",
-    "reviewer/",
-    "senior-dev/",
-    "spec-planner/",
-    "test-engineer/",
-    "triage/",
-  ],
-  { lowercase: false },
-);
 const AGENT_LABELS = csvEnv("ALFRED_PRODUCT_PROOF_AGENT_LABELS", [
   "agent:authored",
   "agent:done",
@@ -168,7 +149,6 @@ async function searchGitHub(query) {
               author { login }
               changedFiles
               deletions
-              headRefName
               mergedAt
               labels(first: 50) { nodes { name } }
             }
@@ -231,12 +211,8 @@ function isAgentPr(pr) {
   if (EXCLUDED_AUTHORS.has(String(pr.author?.login || "").trim().toLowerCase())) {
     return false;
   }
-  const branch = String(pr.headRefName || "");
   const labels = labelNames(pr);
-  return (
-    AGENT_BRANCH_PREFIXES.some((prefix) => branch.startsWith(prefix)) ||
-    labels.some((label) => label.startsWith("agent:") || AGENT_LABELS.includes(label))
-  );
+  return labels.some((label) => AGENT_LABELS.includes(label));
 }
 
 function isAgentIssue(issue) {
