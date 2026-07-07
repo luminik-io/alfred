@@ -35,9 +35,9 @@ const AGENT_LABELS = [
 const BRANCH_PREFIXES = [
   "alfred/",
   "automerge/",
-  "batman/",
-  "lucius/",
-  "robin/",
+  "architect/",
+  "senior-dev/",
+  "triage/",
 ];
 const EXCLUDED = new Set(["app/dependabot", "dependabot", "dependabot[bot]"]);
 
@@ -58,15 +58,23 @@ test("provenance label qualifies a PR", () => {
 });
 
 test("branch prefix alone does NOT qualify (the gameable case)", () => {
-  // This is the defect the fix closes: a human PR on a codename-looking or
+  // This is the defect the fix closes: a human PR on a role-looking or
   // stale automerge branch, with no provenance label, must not count.
-  for (const branch of ["lucius/fix", "batman/rollout", "automerge/dep-bump"]) {
+  for (const branch of ["senior-dev/fix", "architect/rollout", "automerge/dep-bump"]) {
     assert.equal(
       isAgentShipped(pr({ branch }), opts),
       false,
       `branch ${branch} must not qualify without a label`,
     );
   }
+});
+
+test("theme display branch prefix is not evidence", () => {
+  const evidence = agentEvidence(pr({ branch: "lucius/fix" }), {
+    agentLabels: AGENT_LABELS,
+    agentBranchPrefixes: BRANCH_PREFIXES,
+  });
+  assert.deepEqual(evidence, []);
 });
 
 test("near-miss labels do not match (exact-match only)", () => {
@@ -90,13 +98,13 @@ test("excluded author never counts even with a provenance label", () => {
 });
 
 test("branch is display-only evidence, never a qualifier", () => {
-  const node = pr({ labels: ["agent:authored"], branch: "lucius/x" });
+  const node = pr({ labels: ["agent:authored"], branch: "senior-dev/x" });
   const evidence = agentEvidence(node, {
     agentLabels: AGENT_LABELS,
     agentBranchPrefixes: BRANCH_PREFIXES,
   });
   assert.ok(evidence.includes("label:agent:authored"));
-  assert.ok(evidence.includes("branch:lucius/x"));
+  assert.ok(evidence.includes("branch:senior-dev/x"));
 
   // Branch-only PR: evidence records the branch, but isAgentShipped is false.
   const branchOnly = pr({ branch: "automerge/dep" });
@@ -155,7 +163,7 @@ test("the JS numerator matches the Python rule on a mixed population", () => {
   // Only the labelled one is agent-shipped; all three are merged.
   const population = [
     pr({ labels: ["agent:authored"] }),
-    pr({ branch: "lucius/human-lookalike" }),
+    pr({ branch: "senior-dev/human-lookalike" }),
     pr({ branch: "feature/plain" }),
   ];
   const agent = population.filter((p) => isAgentShipped(p, opts)).length;

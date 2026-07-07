@@ -472,9 +472,10 @@ class Store(Protocol):
 # alone is sufficient; both are written by the poller into columns that already
 # exist (labels_json, head_ref), so no schema or poller change is needed and the
 # count stays an exact COUNT(*) (never bounded by the list 500-row cap).
-# Older rows that predate the agent:authored label are still matched by the
-# branch-prefix signal; a row with neither is counted as NOT agent-authored
-# (conservative: we never claim a PR Alfred did not open).
+# Branch evidence is role-slug only. Display names from roster themes are never
+# compatibility aliases here; a row with neither label nor canonical branch
+# evidence is counted as NOT agent-authored (conservative: we never claim a PR
+# Alfred did not open).
 AGENT_AUTHORED_LABEL: Final[str] = "agent:authored"
 
 # Branch-name prefixes the fleet's agents push PR head refs from. Kept in sync
@@ -484,18 +485,11 @@ AGENT_BRANCH_PREFIXES: Final[tuple[str, ...]] = (
     "alfred-nightly/",
     "architect/",
     "automerge/",
-    "bane/",
-    "batman/",
-    "damian/",
     "e2e-runner/",
     "fixer/",
-    "lucius/",
-    "nightwing/",
     "ops-watch/",
     "planner/",
-    "rasalghul/",
     "reviewer/",
-    "robin/",
     "senior-dev/",
     "spec-planner/",
     "test-engineer/",
@@ -1710,9 +1704,9 @@ def _authored_predicate() -> tuple[str, list[object]]:
     change that (``LIKE`` ignores collation for case folding; only ``GLOB`` or the
     connection-wide ``PRAGMA case_sensitive_like`` is case-sensitive). ``GLOB`` is
     natively case-SENSITIVE and locally scoped to this fragment. Without it an
-    operator branch like ``Lucius/fix`` (capital L) would satisfy a ``lucius/``
-    prefix and that PR would be miscounted as Alfred-authored, inflating the
-    authored count. Case-sensitivity mirrors the list-fallback predicate
+    operator branch like ``Senior-Dev/fix`` (capitalized) would satisfy a
+    ``senior-dev/`` prefix and that PR would be miscounted as Alfred-authored,
+    inflating the authored count. Case-sensitivity mirrors the list-fallback predicate
     ``proof_telemetry._row_is_agent_authored`` (exact ``label in labels`` and
     case-sensitive ``head_ref.startswith(prefix)``) so the SQL and Python paths
     agree.

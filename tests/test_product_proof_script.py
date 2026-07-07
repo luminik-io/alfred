@@ -29,6 +29,15 @@ def test_product_proof_filters_rows_to_exact_timestamp_window() -> None:
     assert "timestamp <= now.getTime()" in script
 
 
+def test_product_proof_pr_count_is_label_authoritative() -> None:
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert "AGENT_BRANCH_PREFIXES" not in script
+    assert "headRefName" not in script
+    assert "branch.startsWith" not in script
+    assert "AGENT_LABELS.includes(label)" in script
+
+
 def test_dependabot_does_not_use_agent_authored_label() -> None:
     config = DEPENDABOT.read_text(encoding="utf-8")
 

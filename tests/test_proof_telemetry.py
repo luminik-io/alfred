@@ -1179,13 +1179,17 @@ def test_row_is_agent_authored_by_label_and_branch():
     assert pt._row_is_agent_authored(FakePR("open")) is True  # default: authored label
     assert pt._row_is_agent_authored(FakePR("open", authored=False)) is False
     assert (
-        pt._row_is_agent_authored(FakePR("merged", labels=[], head_ref="lucius/fix-thing")) is True
+        pt._row_is_agent_authored(FakePR("merged", labels=[], head_ref="senior-dev/fix-thing"))
+        is True
     )
+    assert pt._row_is_agent_authored(FakePR("merged", labels=[], head_ref="lucius/x")) is False
     assert (
         pt._row_is_agent_authored(FakePR("merged", labels=[], head_ref="feature/by-a-human"))
         is False
     )
-    assert pt._row_is_agent_authored(FakePR("merged", labels=["bug"], head_ref="batman/x")) is True
+    assert (
+        pt._row_is_agent_authored(FakePR("merged", labels=["bug"], head_ref="architect/x")) is True
+    )
 
 
 def test_derive_counts_counts_only_authored_prs_real_brain():
@@ -1212,9 +1216,9 @@ def test_derive_counts_counts_only_authored_prs_branch_signal():
     # Authorship via the agent BRANCH PREFIX alone (no label), against the real
     # brain. Rows on a human branch with no agent label must not be counted.
     prs = [
-        FakePR("merged", labels=[], head_ref="lucius/a"),
-        FakePR("merged", labels=[], head_ref="robin/b"),
-        FakePR("open", labels=[], head_ref="rasalghul/c"),
+        FakePR("merged", labels=[], head_ref="senior-dev/a"),
+        FakePR("merged", labels=[], head_ref="triage/b"),
+        FakePR("open", labels=[], head_ref="reviewer/c"),
         FakePR("merged", labels=[], head_ref="feature/human-1"),  # not authored
         FakePR("open", labels=[], head_ref=None),  # not authored
     ]

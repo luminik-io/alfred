@@ -275,28 +275,28 @@ describe("shippedAgentCodename", () => {
     expect(shippedAgentCodename(shippedCard({ author: "e2e-runner" }))).toBe("e2e-runner");
   });
 
-  it("attributes pre-cutover theme evidence without restoring runtime aliases", () => {
+  it("does not attribute theme display names as runtime evidence aliases", () => {
     expect(
       shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["branch:batman/42"] })),
-    ).toBe("architect");
+    ).toBeNull();
     expect(
       shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["branch:lucius/42"] })),
-    ).toBe("senior-dev");
+    ).toBeNull();
     expect(
       shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["branch:nightwing/42"] })),
-    ).toBe("fixer");
+    ).toBeNull();
     expect(
       shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["branch:damian/42"] })),
-    ).toBe("spec-planner");
+    ).toBeNull();
     expect(
       shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["branch:bane/42"] })),
-    ).toBe("test-engineer");
+    ).toBeNull();
     expect(
       shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["branch:huntress/42"] })),
-    ).toBe("e2e-runner");
+    ).toBeNull();
     expect(
       shippedAgentCodename(shippedCard({ author: "", agent_evidence: ["branch:rasalghul/42"] })),
-    ).toBe("reviewer");
+    ).toBeNull();
   });
 
   it("stays in lockstep with chips.agentForShipped and returns null for unknowns", () => {

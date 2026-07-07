@@ -50,7 +50,7 @@ _DEMO_FILENAME = "setup-demo-cards.json"
 # work: they are already represented by an open PR, or parked for human /
 # no-pickup handling, so counting them as "queued" double-counts with the
 # in_progress column. Substring + case-insensitive, so it covers agent:pr-open,
-# lucius-pr-open, do-not-pickup, needs:human-scope, blocked, etc. Override with
+# senior-dev-pr-open, do-not-pickup, needs:human-scope, blocked, etc. Override with
 # ALFRED_SHIPPED_QUEUE_EXCLUDE_LABELS (comma-separated).
 #
 # ``plan-pending-approval`` is the operator-approval gate: a gated single-repo
@@ -93,18 +93,11 @@ _DEFAULT_AGENT_BRANCH_PREFIXES = (
     "alfred-nightly/",
     "architect/",
     "automerge/",
-    "bane/",
-    "batman/",
-    "damian/",
     "e2e-runner/",
     "fixer/",
-    "lucius/",
-    "nightwing/",
     "ops-watch/",
     "planner/",
-    "rasalghul/",
     "reviewer/",
-    "robin/",
     "senior-dev/",
     "spec-planner/",
     "test-engineer/",

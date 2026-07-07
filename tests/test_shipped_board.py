@@ -62,7 +62,7 @@ def test_board_splits_into_three_columns(monkeypatch):
             "mergedAt": None,
             "isDraft": False,
             "labels": [{"name": "agent:authored"}],
-            "headRefName": "lucius/1-1780550000",
+            "headRefName": "senior-dev/1-1780550000",
         },
         {
             "number": 2,
@@ -126,7 +126,7 @@ def test_cards_have_human_context(monkeypatch):
             "mergedAt": None,
             "isDraft": True,
             "labels": [{"name": "agent:authored"}],
-            "headRefName": "lucius/ship-it",
+            "headRefName": "senior-dev/ship-it",
         }
     ]
     monkeypatch.setattr(sb, "_gh_json", _fake_gh(prs, []))
@@ -568,7 +568,7 @@ def test_in_progress_requires_an_agent_label(monkeypatch):
             "headRefName": "human-named-branch",
         },
         {
-            # A codename-style branch with no agent label must NOT count: it is
+            # A role-looking branch with no agent label must NOT count: it is
             # the over-matching that miscounted human PRs as agent-shipped.
             "number": 2,
             "title": "lookalike branch, no label",
@@ -579,7 +579,7 @@ def test_in_progress_requires_an_agent_label(monkeypatch):
             "mergedAt": None,
             "isDraft": False,
             "labels": [],
-            "headRefName": "batman/plan-approval-fix",
+            "headRefName": "architect/plan-approval-fix",
         },
     ]
     monkeypatch.setattr(sb, "_gh_json", _fake_gh(prs, []))
@@ -665,7 +665,7 @@ def test_shipped_excludes_branch_evidence_without_a_label(monkeypatch):
             "mergedAt": _iso(2),
             "isDraft": False,
             "labels": [],
-            "headRefName": "batman/plan-approval-fix",
+            "headRefName": "architect/plan-approval-fix",
         }
     ]
     monkeypatch.setattr(sb, "_gh_json", _fake_gh(prs, []))
