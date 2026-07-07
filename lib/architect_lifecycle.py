@@ -689,6 +689,17 @@ ENV_APPROVAL_TIMEOUT_S = "ARCHITECT_APPROVAL_TIMEOUT_S"
 ENV_APPROVAL_MODE = "ARCHITECT_APPROVAL_MODE"
 ENV_SLACK_CHANNEL = "ARCHITECT_SLACK_CHANNEL"
 ENV_REPORT_FEEDBACK_TIMEOUT_S = "ARCHITECT_REPORT_FEEDBACK_TIMEOUT_S"
+LEGACY_ENV_REPLACEMENTS = {
+    "BATMAN_AUTO_EXECUTE": ENV_AUTO_EXECUTE,
+    "BATMAN_PARENT_REPO": ENV_PARENT_REPO,
+    "BATMAN_PICKER": ENV_PICKER,
+    "BATMAN_BUNDLE_SLUG_PREFIX": ENV_BUNDLE_SLUG_PREFIX,
+    "BATMAN_APPROVAL_TIMEOUT_S": ENV_APPROVAL_TIMEOUT_S,
+    "BATMAN_APPROVAL_MODE": ENV_APPROVAL_MODE,
+    "BATMAN_APPROVAL_CHANNEL": ENV_SLACK_CHANNEL,
+    "BATMAN_SLACK_CHANNEL": ENV_SLACK_CHANNEL,
+    "BATMAN_REPORT_FEEDBACK_TIMEOUT_S": ENV_REPORT_FEEDBACK_TIMEOUT_S,
+}
 
 AUTO_EXECUTE_OFF = "0"
 AUTO_EXECUTE_GATE = "approval-gate"
@@ -1019,6 +1030,7 @@ class ArchitectLifecycleConfig:
     approval_timeout_s: int = 86400
     approval_mode: str = APPROVAL_MODE_SLACK_OR_FILE
     slack_channel: str = ""
+    stale_legacy_env_keys: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> ArchitectLifecycleConfig:
@@ -1056,6 +1068,11 @@ class ArchitectLifecycleConfig:
             approval_timeout_s=max(0, timeout),
             approval_mode=raw_mode,
             slack_channel=(e.get(ENV_SLACK_CHANNEL) or "").strip(),
+            stale_legacy_env_keys=tuple(
+                old
+                for old, new in LEGACY_ENV_REPLACEMENTS.items()
+                if (e.get(old) or "").strip() and not (e.get(new) or "").strip()
+            ),
         )
 
     @property

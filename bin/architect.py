@@ -65,6 +65,7 @@ from architect_lifecycle import (  # noqa: E402
     EXEC_NO_CHILDREN,
     EXEC_OK,
     LARGE_FEATURE_LABEL,
+    LEGACY_ENV_REPLACEMENTS,
     ApprovalEnvelope,
     ArchitectLifecycle,
     ArchitectLifecycleConfig,
@@ -1074,6 +1075,17 @@ def main() -> int:
     # a fully-qualified parent repo is enough; GH_ORG is no longer required.
     lifecycle_config = ArchitectLifecycleConfig.from_env()
     if not lifecycle_config.parent_repo:
+        if lifecycle_config.stale_legacy_env_keys:
+            replacements = ", ".join(
+                f"{old}->{LEGACY_ENV_REPLACEMENTS[old]}"
+                for old in lifecycle_config.stale_legacy_env_keys
+            )
+            print(
+                "[ARCHITECT-CUTOVER-REQUIRED] legacy BATMAN_* lifecycle config is "
+                "ignored after the architect cutover; run `alfred architect setup` "
+                f"or set the ARCHITECT_* keys explicitly ({replacements})."
+            )
+            return 0
         print("[ARCHITECT-NOOP] ARCHITECT_PARENT_REPO is not configured")
         return 0
 
