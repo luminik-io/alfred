@@ -17,7 +17,12 @@ Full guide at [`docs/SKILLS.md`](https://github.com/luminik-io/alfred/blob/main/
 
 ```
 ~/.claude/skills/
-├── code-review/SKILL.md
+├── spec-to-issues/SKILL.md
+├── write-tests/SKILL.md
+├── review-security/SKILL.md
+├── add-observability/SKILL.md
+├── migrate-dependency/SKILL.md
+├── changelog-and-release-notes/SKILL.md
 ├── code-review-and-quality/SKILL.md
 ├── debugging-and-error-recovery/SKILL.md
 ├── frontend-ui-engineering/SKILL.md
