@@ -1101,9 +1101,10 @@ fn terminal_core_install_command(plan: &CoreInstallPlan) -> String {
 }
 
 fn terminal_path_refresh_command() -> &'static str {
-    "if command -v brew >/dev/null 2>&1; then eval \"$(brew shellenv)\"; \
+    "{ export PATH=\"$HOME/.local/bin:$HOME/.alfred/bin:$PATH\"; \
+     if command -v brew >/dev/null 2>&1; then eval \"$(brew shellenv)\"; \
      elif [ -x /opt/homebrew/bin/brew ]; then eval \"$(/opt/homebrew/bin/brew shellenv)\"; \
-     elif [ -x /usr/local/bin/brew ]; then eval \"$(/usr/local/bin/brew shellenv)\"; fi"
+     elif [ -x /usr/local/bin/brew ]; then eval \"$(/usr/local/bin/brew shellenv)\"; fi; }"
 }
 
 fn shell_command(program: &str, args: &[String]) -> String {
@@ -2380,6 +2381,7 @@ mod tests {
         assert!(command.contains("cd '/tmp/alfred core'"));
         assert!(command.contains("ALFRED_DESKTOP_INSTALL=1"));
         assert!(command.contains("'/tmp/alfred core/install.sh'"));
+        assert!(command.contains("export PATH=\"$HOME/.local/bin:$HOME/.alfred/bin:$PATH\""));
         assert!(command.contains("brew shellenv"));
         assert!(command.contains(
             "python3 '/tmp/alfred core/bin/alfred-init.py' --seed-runtime-roster --agents all"
@@ -2391,6 +2393,14 @@ mod tests {
             command
                 .find("'/tmp/alfred core/install.sh'")
                 .expect("install command should exist")
+                < command
+                    .find("$HOME/.local/bin")
+                    .expect("terminal cli path export should exist")
+        );
+        assert!(
+            command
+                .find("$HOME/.local/bin")
+                .expect("terminal cli path export should exist")
                 < command
                     .find("brew shellenv")
                     .expect("path refresh should exist")
