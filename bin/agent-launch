@@ -14,9 +14,9 @@
 # truth: a token written by `alfred setup-token` reaches every scheduled
 # firing instead of silently 401ing.
 #
-# Already-exported variables (real environment, or set by an earlier file) are
-# not clobbered, so a value from the scheduler/process environment still wins
-# over the same key in .env. Memory auto-promote stop controls are the
+# Setup-managed runtime variables are cleared before .env is loaded so stale
+# shell exports cannot override the configured fleet. Other already-exported
+# variables still win over .env. Memory auto-promote stop controls are the
 # exception: an emergency opt-out or kill switch in .env must override stale
 # enables.
 
@@ -109,8 +109,6 @@ memory_auto_promote_stop_control_active() {
   return 1
 }
 
-ORIGINAL_ENV_KEYS=":$(env | sed 's/=.*//' | tr '\n' ':')"
-
 original_env_has_key() {
   case "$ORIGINAL_ENV_KEYS" in
     *:"$1":*) return 0 ;;
@@ -120,7 +118,7 @@ original_env_has_key() {
 
 setup_runtime_config_key() {
   case "$1" in
-    ALFRED_QUEUE_REPOS|ALFRED_SHIPPED_REPOS|ALFRED_BRIDGE_REPOS|ALFRED_CODE_MEMORY_*|ALFRED_CODE_MAP_REPOS)
+    AGENT_CODENAME_*|ARCHITECT_ROLLOUT_ORDER|ALFRED_*_AWS_PROFILE|ALFRED_*_REPOS|ALFRED_CODE_MAP_*|ALFRED_CODE_MEMORY_*|ALFRED_MORNING_BRIEF_AGENTS|ALFRED_TELEMETRY_*)
       return 0
       ;;
     *)
@@ -128,6 +126,20 @@ setup_runtime_config_key() {
       ;;
   esac
 }
+
+scrub_setup_runtime_env() {
+  local key
+  while IFS= read -r key; do
+    if setup_runtime_config_key "$key"; then
+      unset "$key"
+    fi
+  done <<EOF
+$(env | sed 's/=.*//')
+EOF
+}
+
+scrub_setup_runtime_env
+ORIGINAL_ENV_KEYS=":$(env | sed 's/=.*//' | tr '\n' ':')"
 
 expand_user_path() {
   local path="$1" expanded=""

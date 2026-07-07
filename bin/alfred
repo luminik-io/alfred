@@ -466,7 +466,7 @@ def cmd_agents(_args: argparse.Namespace) -> int:
         print(
             f"\nFleet gate file missing ({agent_runner.FLEET_ENABLED_FILE}); "
             "default-enabled agents are shown as enabled, while opt-in agents "
-            "such as Batman stay disabled until `alfred enable <codename>`."
+            "such as `architect` stay disabled until `alfred enable <role-slug>`."
         )
     return 0
 
@@ -2021,7 +2021,7 @@ _EXTRA_BOOTSTRAP_LABELS: tuple[tuple[str, str, str], ...] = (
     (
         "agent:plan-pending-approval",
         "fbca04",
-        "Batman drafted a plan and is waiting for operator approval.",
+        "The architect role drafted a plan and is waiting for operator approval.",
     ),
     ("do-not-review", "cccccc", "Operator override: automated reviewers must skip this PR."),
     ("do-not-merge", "b60205", "Operator override: automerge must skip this PR."),

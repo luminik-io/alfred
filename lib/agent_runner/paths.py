@@ -28,6 +28,7 @@ from __future__ import annotations
 import os
 import re
 from datetime import UTC, datetime
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 # --------------------------------------------------------------------------
@@ -36,15 +37,23 @@ from pathlib import Path
 HOME: Path = Path(os.path.expanduser("~"))
 _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _REPO_SCOPE_ENV_KEYS = {
-    "ALFRED_QUEUE_REPOS",
-    "ALFRED_SHIPPED_REPOS",
-    "ALFRED_BRIDGE_REPOS",
+    "ALFRED_*_REPOS",
+    "ARCHITECT_ROLLOUT_ORDER",
 }
 _CODE_MEMORY_ENV_KEYS = {
     "ALFRED_CODE_MEMORY_*",
-    "ALFRED_CODE_MAP_REPOS",
+    "ALFRED_CODE_MAP_*",
 }
-_SETUP_MANAGED_RUNTIME_ENV_KEYS = _REPO_SCOPE_ENV_KEYS | _CODE_MEMORY_ENV_KEYS
+_SETUP_MANAGED_RUNTIME_ENV_KEYS = (
+    _REPO_SCOPE_ENV_KEYS
+    | _CODE_MEMORY_ENV_KEYS
+    | {
+        "AGENT_CODENAME_*",
+        "ALFRED_*_AWS_PROFILE",
+        "ALFRED_MORNING_BRIEF_AGENTS",
+        "ALFRED_TELEMETRY_*",
+    }
+)
 
 ALFRED_HOME: Path = Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred"))
 """Public runtime root. State, worktrees, transcripts, lib, bin live here."""
@@ -261,17 +270,21 @@ def config_value(key: str, default: str = "") -> str:
 def launcher_env() -> dict[str, str]:
     """Return the env shape scheduler-spawned agents see through ``agent-launch``.
 
-    The shell launcher resolves ``ALFRED_HOME`` from process env/defaults, then
-    loads ``$ALFRED_HOME/.env`` in no-clobber mode. Keep this helper in
-    lockstep with that order so server-side setup/status surfaces report the
-    same config the scheduled fleet will enforce after a restart.
+    The shell launcher resolves ``ALFRED_HOME`` from process env/defaults,
+    clears setup-managed runtime keys, then loads ``$ALFRED_HOME/.env`` in
+    no-clobber mode for everything else. Keep this helper in lockstep with
+    that order so server-side setup/status surfaces report the same config the
+    scheduled fleet will enforce after a restart.
     """
 
-    env = dict(os.environ)
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not _env_key_matches(key, _SETUP_MANAGED_RUNTIME_ENV_KEYS)
+    }
     env.pop("ALFREDRC", None)
     if not env.get("ALFRED_HOME", "").strip():
         env.pop("ALFRED_HOME", None)
-    inherited_keys = set(env)
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
     else:
@@ -281,7 +294,6 @@ def launcher_env() -> dict[str, str]:
         env,
         no_clobber=True,
         clobber_keys=_SETUP_MANAGED_RUNTIME_ENV_KEYS,
-        preserve_keys=inherited_keys,
     )
     if not env.get("WORKSPACE_ROOT", "").strip():
         env["WORKSPACE_ROOT"] = os.path.expanduser("~/code")
@@ -289,9 +301,7 @@ def launcher_env() -> dict[str, str]:
 
 
 def _env_key_matches(key: str, patterns: set[str]) -> bool:
-    if key in patterns:
-        return True
-    return "ALFRED_CODE_MEMORY_*" in patterns and key.startswith("ALFRED_CODE_MEMORY_")
+    return any(fnmatchcase(key, pattern) for pattern in patterns)
 
 
 def load_env_file(

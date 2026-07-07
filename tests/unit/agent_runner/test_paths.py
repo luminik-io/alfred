@@ -171,7 +171,7 @@ def test_launcher_env_strips_inline_comments_and_quotes(fresh_agent_runner, monk
     assert env["ALFRED_CODE_MEMORY_REPOS"] == "org/memory"
 
 
-def test_launcher_env_preserves_real_env_repo_scope_over_env_file(
+def test_launcher_env_prefers_runtime_setup_scope_over_process_env(
     fresh_agent_runner, monkeypatch, tmp_path
 ):
     import agent_runner.paths as paths_mod
@@ -185,7 +185,26 @@ def test_launcher_env_preserves_real_env_repo_scope_over_env_file(
 
     env = paths_mod.launcher_env()
 
-    assert env["ALFRED_SHIPPED_REPOS"] == "org/process"
+    assert env["ALFRED_SHIPPED_REPOS"] == "org/env"
+
+
+def test_launcher_env_scrubs_setup_managed_scope_when_runtime_env_omits_it(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text("GH_ORG=acme\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_CODE_MAP_REPOS", "org/stale")
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_REPOS", "org/stale")
+
+    env = paths_mod.launcher_env()
+
+    assert "ALFRED_CODE_MAP_REPOS" not in env
+    assert "ALFRED_SENIOR_DEV_REPOS" not in env
 
 
 def test_launcher_env_loads_code_memory_settings_when_process_absent(

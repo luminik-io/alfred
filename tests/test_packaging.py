@@ -124,3 +124,13 @@ def test_runtime_dep_probes_match_pyproject_base_deps():
             f"{script} installs {sorted(installed)} but pyproject base deps are "
             f"{sorted(expected)}; keep them in sync"
         )
+
+
+def test_install_script_uses_exact_homebrew_formula_probe():
+    text = Path("install.sh").read_text(encoding="utf-8")
+
+    assert 'brew list --formula "$1" >/dev/null 2>&1' in text
+    assert 'brew list --cask "$1" >/dev/null 2>&1' in text
+    assert "brew tap --list" not in text
+    assert "brew list --formula | grep -q" not in text
+    assert "${pkg%@*}" not in text

@@ -105,7 +105,30 @@ load_env_file() {
   done < "$file"
 }
 
+setup_runtime_config_key() {
+  case "$1" in
+    AGENT_CODENAME_*|ARCHITECT_ROLLOUT_ORDER|ALFRED_*_AWS_PROFILE|ALFRED_*_REPOS|ALFRED_CODE_MAP_*|ALFRED_CODE_MEMORY_*|ALFRED_MORNING_BRIEF_AGENTS|ALFRED_TELEMETRY_*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+scrub_setup_runtime_env() {
+  local key
+  while IFS= read -r key; do
+    if setup_runtime_config_key "$key"; then
+      unset "$key"
+    fi
+  done <<EOF
+$(env | sed 's/=.*//')
+EOF
+}
+
 : "${ALFRED_HOME:=$HOME/.alfred}"
+scrub_setup_runtime_env
 load_env_file "$ALFRED_HOME/.env"
 : "${WORKSPACE_ROOT:=$HOME/code}"
 export ALFRED_HOME WORKSPACE_ROOT ALFRED_DOCTOR=1
