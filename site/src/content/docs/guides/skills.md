@@ -82,7 +82,7 @@ alfred skills install gstack --yes
 alfred skills install headroom --yes
 ```
 
-For a single fresh-install script, see [`docs/SKILLS.md#skill-install-automation`](https://github.com/luminik-io/alfred/blob/main/docs/SKILLS.md#skill-install-automation).
+For the full CLI reference, see [`docs/SKILLS.md#the-alfred-skills-command`](https://github.com/luminik-io/alfred/blob/main/docs/SKILLS.md#the-alfred-skills-command).
 
 ## Security note
 
