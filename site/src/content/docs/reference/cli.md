@@ -139,6 +139,7 @@ alfred github-poll --repo <owner/repo>
 alfred brain status
 alfred brain lessons <codename> <repo>
 alfred brain reflect <codename> <repo> <body>
+alfred memory doctor [--json]
 alfred claude status
 alfred claude swap
 alfred claude probe
@@ -174,7 +175,9 @@ the new units. `enable` / `disable` update
 such as the architect role. `engine` persists per-agent Claude/Codex mode under
 `$ALFRED_HOME/state/engines/<codename>`. `codex` checks the Codex CLI. `auth`
 checks Claude and Codex auth surfaces. `brain` inspects and seeds the local
-fleet-brain memory store. `status` reports local locks, pauses, recent firings,
+fleet-brain memory store. `memory doctor` checks the full memory plane:
+provider chain, Redis Agent Memory, FleetBrain, code-memory, code-map, and
+read-only MCP tools. `status` reports local locks, pauses, recent firings,
 and architect approval waits. `clear-lock` diagnoses stale `/tmp/agent-lock-*`
 directories and refuses to clear live holders or matching dirty worktrees
 unless `--force` is passed. `labels` creates or checks the
@@ -249,6 +252,21 @@ reliability state. Set `ALFRED_MEMORY_PROVIDERS=null` to disable prompt recall
 and reflection. Engine-written lessons enter the review queue by default; set
 `ALFRED_MEMORY_REFLECTION_MODE=direct` only when direct lesson writes are
 intentional.
+
+## `alfred memory`
+
+Inspect the unified memory plane Alfred uses before and during agent firings.
+
+```sh
+alfred memory doctor
+alfred memory doctor --json
+```
+
+`doctor` is read-only. It reports provider-chain config, Redis Agent Memory
+health, FleetBrain database health, code-memory binary and index readiness,
+code-map freshness, and the read-only MCP tool allowlist attached to engine
+calls. It exits non-zero only on `fail`; missing optional readiness such as a
+stale code-map or missing code-memory index is reported as `warn`.
 
 ## `alfred serve`
 

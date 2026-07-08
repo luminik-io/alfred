@@ -207,10 +207,17 @@ stored:
 Check the local server:
 
 ```sh
+alfred memory doctor
+alfred memory doctor --json
 alfred brain ams-status
 alfred brain redis-status
 alfred brain ams-status --json
 ```
+
+Use `alfred memory doctor` first when debugging setup. It checks the provider
+chain, Redis Agent Memory, FleetBrain, code-memory, code-map freshness, and the
+read-only MCP tools in one report. The `alfred brain ...` commands are narrower
+provider-specific probes.
 
 Mirror reviewed local lessons into Redis explicitly:
 
