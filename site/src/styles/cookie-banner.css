@@ -12,19 +12,15 @@
 /* ------------------------------------------------------------------ */
 .alfred-cookie-banner {
   position: fixed;
-  /* Center horizontally without the left/right + max-width + margin auto
-     combo, which clipped the action buttons off-screen on the live site. */
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(1rem + env(safe-area-inset-bottom));
-  width: min(720px, calc(100vw - 2rem));
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  width: min(520px, calc(100vw - 2rem));
   box-sizing: border-box;
-  padding: 0.85rem 1rem;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem 1rem;
+  padding: 0.9rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.85rem;
   z-index: 2147483000; /* above Starlight's sidebars + the mermaid overlay */
   background: var(--sl-color-bg-nav, var(--alfred-surface-2, #161d2a));
   color: var(--sl-color-text, var(--alfred-text, #c5d0e0));
@@ -37,13 +33,15 @@
   line-height: 1.4;
 }
 
-/* Narrow viewports: stack the message above the actions so neither
-   clips off the screen. Matches mobile cookie-banner UX conventions. */
+/* Narrow viewports: stack the message above the actions so neither clips
+   off the screen. */
 @media (max-width: 520px) {
   .alfred-cookie-banner {
-    flex-direction: column;
-    align-items: stretch;
-    width: min(420px, calc(100vw - 1rem));
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: calc(0.5rem + env(safe-area-inset-bottom));
+    width: auto;
+    grid-template-columns: 1fr;
     padding: 0.9rem;
   }
   .alfred-cookie-banner .alfred-cookie-text {
@@ -58,7 +56,6 @@
 }
 
 .alfred-cookie-text {
-  flex: 1 1 260px;
   margin: 0;
   line-height: 1.4;
   color: var(--sl-color-gray-1, var(--alfred-text, #c5d0e0));
@@ -72,7 +69,6 @@
   display: flex;
   flex-wrap: nowrap;
   gap: 0.5rem;
-  flex: 0 0 auto;
 }
 
 .alfred-cookie-btn {
