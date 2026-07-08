@@ -80,12 +80,13 @@ Full fleet for one repo or an explicit comma-separated repo list:
   --slack-webhook skip
 ```
 
-This is the zero-guess path for a solo builder or an AI coding tool setting up
-one or more explicit repos. It assumes `GH_ORG` is set, `gh auth login` has
-completed, and `claude` has completed first-run auth. The repo owner must match
-`GH_ORG`; the runtime agents store the bare repo name in `$ALFRED_HOME/.env` and build
-`GH_ORG/repo` at firing time. The command enables the full engineering fleet
-using exact installer selectors: `planner`, `architect`, `senior-dev`,
+This is the zero-guess path for a single operator, a small team, or an AI
+coding tool setting up one or more explicit repos. It assumes `GH_ORG` is set,
+`gh auth login` has completed, and `claude` has completed first-run auth. The
+repo owner must match `GH_ORG`; the runtime agents store the bare repo name in
+`$ALFRED_HOME/.env` and build `GH_ORG/repo` at firing time. The command enables
+the full engineering fleet using exact installer selectors: `planner`,
+`architect`, `senior-dev`,
 `reviewer`, `test-engineer`, `fixer`, `triage`, `e2e-runner`, `ops-watch`,
 `automerge`,
 `agent-cleanup`, `memory-harvest`, `memory-auto-promote`, `code-map-refresh`,
