@@ -148,6 +148,16 @@ def test_read_only_override_wins_over_done_model_intent() -> None:
     assert intent == cc.INTENT_CONVERSATION
 
 
+def test_read_only_override_does_not_win_for_unknown_surface_placement() -> None:
+    intent = cc.resolve_intent(
+        "build",
+        last_user_message="Show me the current fleet status in the accordion.",
+        draft=_empty_draft(),
+        done=False,
+    )
+    assert intent == cc.INTENT_BUILD
+
+
 # --- resolve_intent: heuristic backstop when the model omits intent ----------
 
 
@@ -563,6 +573,9 @@ def test_read_only_info_request_detects_live_ask_repro() -> None:
     assert cc.looks_like_read_only_info_request("Show me the current repos.")
     assert cc.looks_like_read_only_info_request("Show me the configured repositories.")
     assert cc.looks_like_read_only_info_request(
+        "Show me the current fleet status in one short paragraph."
+    )
+    assert cc.looks_like_read_only_info_request(
         "Summarize the current dashboard status. Do not change files or open pull requests."
     )
     assert cc.looks_like_read_only_info_request(
@@ -598,6 +611,9 @@ def test_read_only_info_request_keeps_feature_show_requests_as_build() -> None:
     )
     assert not cc.looks_like_read_only_info_request(
         "Show me the current fleet status in the tooltip."
+    )
+    assert not cc.looks_like_read_only_info_request(
+        "Show me the current fleet status in the accordion."
     )
     assert not cc.looks_like_read_only_info_request("Show the current fleet status in the CLI.")
     assert not cc.looks_like_read_only_info_request("Show the current fleet status in Slack.")
@@ -720,6 +736,7 @@ def test_classify_message_intent_show_me_ui_requests_are_build() -> None:
     for message in (
         "Show me paused agents in the roster.",
         "Show me the selected repo in the header.",
+        "Show me the current fleet status in the accordion.",
         "List paused agents in the roster.",
         "Report failing runs in the dashboard.",
     ):

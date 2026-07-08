@@ -1107,6 +1107,21 @@ _READ_ONLY_STATUS_WORDS = frozenset(
     }
 )
 
+_READ_ONLY_PLACEMENT_PREPOSITIONS = frozenset(
+    {
+        "above",
+        "below",
+        "in",
+        "inside",
+        "into",
+        "on",
+        "onto",
+        "to",
+        "under",
+        "within",
+    }
+)
+
 _READ_ONLY_SUBJECT_WORDS = frozenset(
     {
         "agent",
@@ -1141,6 +1156,33 @@ _READ_ONLY_SUBJECT_PHRASES = (
     "setup status",
     "this mac",
     "this machine",
+)
+
+_READ_ONLY_PLACEMENT_BENIGN_WORDS = (
+    frozenset(
+        {
+            "a",
+            "an",
+            "brief",
+            "current",
+            "line",
+            "lines",
+            "mac",
+            "machine",
+            "one",
+            "overview",
+            "paragraph",
+            "selected",
+            "sentence",
+            "short",
+            "summary",
+            "that",
+            "the",
+            "this",
+        }
+    )
+    | _READ_ONLY_STATUS_WORDS
+    | _READ_ONLY_SUBJECT_WORDS
 )
 
 _EXPLICIT_READ_ONLY_PHRASES = (
@@ -1243,6 +1285,25 @@ def _separator_aware_build_tokens(text: str) -> list[str]:
     return [token for token in tokens if token]
 
 
+def _has_unknown_surface_placement(tokens: list[str]) -> bool:
+    """True when an info-shaped request names an unrecognized target container.
+
+    ``show me the current fleet status in one short paragraph`` is a read-only
+    formatting ask. ``show me the current fleet status in the accordion`` is a
+    UI placement request, even if "accordion" is not in the known surface-word
+    set. This keeps the classifier from needing an exhaustive widget dictionary.
+    """
+    for index, token in enumerate(tokens[:-1]):
+        if token not in _READ_ONLY_PLACEMENT_PREPOSITIONS:
+            continue
+        tail = [item for item in tokens[index + 1 :] if item not in {"me", "you", "please"}]
+        if not tail:
+            continue
+        if any(item not in _READ_ONLY_PLACEMENT_BENIGN_WORDS for item in tail):
+            return True
+    return False
+
+
 def _reply_claims_plan_or_action(reply: str) -> bool:
     """True when a read-only reply claims Alfred created/planned work."""
     lowered = " ".join(str(reply or "").lower().split())
@@ -1303,6 +1364,13 @@ def looks_like_read_only_info_request(text: str) -> bool:
     target_surface = any(token in _READ_ONLY_TARGET_SURFACE_WORDS for token in target_tokens)
     has_status_word = any(token in _READ_ONLY_STATUS_WORDS for token in tokens)
     if target_surface and not (explicit_read_only and has_status_word):
+        return False
+    if (
+        command in _READ_ONLY_SHOW_VERBS
+        and has_status_word
+        and not explicit_read_only
+        and _has_unknown_surface_placement(target_tokens)
+    ):
         return False
     status_shape = explicit_read_only or has_status_word
     if command in _READ_ONLY_SHOW_VERBS and not status_shape:
