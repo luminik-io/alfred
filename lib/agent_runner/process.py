@@ -1494,6 +1494,7 @@ def invoke_agent_engine(
         repo=memory_repo,
         query=memory_query,
         limit=memory_limit,
+        firing_id=firing_id,
     )
     prompt_with_context = _with_skills_block(prompt_with_context, role, agent)
     prompt_for_engine, context_governance = govern_prompt_context(prompt_with_context)

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from . import memory_ranking
 from .result import ClaudeResult
 
 _LOG = logging.getLogger(__name__)
@@ -194,7 +195,7 @@ def _recall_scored_lessons(
     return merged
 
 
-def _gated_lessons(
+def _gated_pairs(
     provider,
     *,
     codename: str,
@@ -202,13 +203,14 @@ def _gated_lessons(
     query: str | None,
     limit: int,
     threshold: float,
-) -> list[object]:
+) -> list[tuple[object, float | None]]:
     """Recall lessons, gate by relevance threshold, and dedupe by body.
 
-    Prefers the scored recall path so the threshold can act on real AMS
-    similarity. Falls back to plain ``recall`` (threshold inapplicable, dedup
-    still applied) for providers without scores so existing behavior is never
-    weakened.
+    Returns ``(lesson, score)`` pairs, keeping each lesson's relevance score so
+    the downstream ranking pass can fuse it with recency, ROI, and reuse. Prefers
+    the scored recall path so the threshold can act on real AMS similarity. Falls
+    back to plain ``recall`` (threshold inapplicable, dedup still applied) for
+    providers without scores so existing behavior is never weakened.
     """
     scored = _recall_scored_lessons(
         provider, codename=codename, repo=repo, query=query, limit=limit
@@ -218,7 +220,7 @@ def _gated_lessons(
         pairs: list[tuple[object, float | None]] = [(lesson, None) for lesson in lessons]
     else:
         pairs = scored
-    out: list[object] = []
+    out: list[tuple[object, float | None]] = []
     seen_bodies: set[str] = set()
     for lesson, score in pairs:
         # A reported score below threshold is dropped; an absent score (None)
@@ -229,7 +231,7 @@ def _gated_lessons(
         if not key or key in seen_bodies:
             continue
         seen_bodies.add(key)
-        out.append(lesson)
+        out.append((lesson, score))
     return out
 
 
@@ -240,6 +242,7 @@ def format_memory_context(
     repo: str,
     query: str | None = None,
     limit: int = 3,
+    firing_id: str | None = None,
 ) -> str:
     """Return prompt-ready memory context, or an empty string.
 
@@ -248,22 +251,32 @@ def format_memory_context(
     near-duplicate bodies are collapsed so the same lesson is never injected
     twice. This reuses the provider's own scoring rather than always injecting.
 
+    Gated lessons then pass through the injection-quality pipeline
+    (see :mod:`agent_runner.memory_ranking`), all OFF by default:
+
+    * **Delta** (``ALFRED_MEMORY_DELTA``): with a ``firing_id``, a lesson already
+      injected earlier in the same firing is dropped so the budget goes to fresh
+      material on later turns.
+    * **Rank** (``ALFRED_MEMORY_RANK``): the remaining lessons are ordered by a
+      deterministic weighted score fusing relevance, severity/ROI, age-decayed
+      recency, and reinforce-on-reuse, so the budget keeps the best lessons.
+
     The final formatted block is then bounded to a hard character budget
     (``ALFRED_MEMORY_INJECT_MAX_CHARS``, default ``8000``): the two header
     lines are always kept, and whole lessons are appended from the top
-    (highest relevance/recency first) only while they fit. Tail lessons that
-    would blow the budget are dropped; if even the first lesson overflows on
-    its own it is still injected but hard-truncated with a clear marker. If the
-    cap is set below the header length itself, no block is injected at all (the
-    empty string is returned) rather than emitting a header that exceeds the
-    cap. Under budget the output is byte-for-byte identical to the pre-cap
+    (highest ranked first) only while they fit. Tail lessons that would blow the
+    budget are dropped; if even the first lesson overflows on its own it is still
+    injected but hard-truncated with a clear marker. If the cap is set below the
+    header length itself, no block is injected at all (the empty string is
+    returned) rather than emitting a header that exceeds the cap. With every knob
+    at its default the output is byte-for-byte identical to the pre-ranking
     behavior.
     """
     if provider is None or getattr(provider, "name", "") == "null":
         return ""
     threshold = _recall_relevance_threshold()
     try:
-        lessons = _gated_lessons(
+        pairs = _gated_pairs(
             provider,
             codename=codename,
             repo=repo,
@@ -274,22 +287,41 @@ def format_memory_context(
     except Exception:
         _LOG.exception("memory runtime: recall failed")
         return ""
-    if not lessons:
+    if not pairs:
+        return ""
+    # Delta first so freed budget goes to fresh material, then rank so the
+    # budget below keeps the best of what remains. Both are no-ops by default.
+    pairs = memory_ranking.apply_delta(pairs, firing_id)
+    pairs = memory_ranking.rank_pairs(pairs)
+    if not pairs:
         return ""
     header = [
         "Alfred memory for this codename and repo:",
         "Use these as hints only. Trust the repository code and current issue first.",
     ]
     lesson_lines: list[str] = []
-    for idx, lesson in enumerate(lessons[:limit], start=1):
+    line_lessons: list[object] = []
+    for idx, (lesson, _score) in enumerate(pairs[:limit], start=1):
         severity = "" if getattr(lesson, "severity", "info") == "info" else "!"
         tags = getattr(lesson, "tags", []) or []
         tag_text = f" [{', '.join(tags)}]" if tags else ""
         body = str(getattr(lesson, "body", "")).strip()
         if body:
             lesson_lines.append(f"{idx}. {severity}{tag_text} {body}".strip())
+            line_lessons.append(lesson)
     budget = _inject_max_chars()
     lines = _apply_inject_budget(header, lesson_lines, budget)
+    kept_lesson_count = max(0, len(lines) - len(header)) if lines else 0
+    injected = line_lessons[:kept_lesson_count]
+    if injected:
+        # Reinforce the lessons that actually made it into the prompt and, for
+        # delta, remember them against this firing so a later turn does not
+        # re-inject them. Both are gated so the default path accumulates no
+        # state at all (byte-identical, side-effect-free legacy behavior).
+        if memory_ranking.rank_enabled():
+            memory_ranking.record_reuse(injected)
+        if firing_id and memory_ranking.delta_enabled():
+            memory_ranking.record_injected(firing_id, injected)
     return "\n".join(lines).strip()
 
 
@@ -367,8 +399,14 @@ def with_memory_prompt(
     repo: str | None,
     query: str | None = None,
     limit: int = 3,
+    firing_id: str | None = None,
 ) -> str:
-    """Prepend recall context and append reflection instructions when enabled."""
+    """Prepend recall context and append reflection instructions when enabled.
+
+    ``firing_id`` is optional and only used by the delta-injection pipeline
+    (``ALFRED_MEMORY_DELTA``): passing it lets a later turn of the same firing
+    skip lessons already injected on an earlier turn.
+    """
     if provider is None or not repo or getattr(provider, "name", "") == "null":
         return prompt
     context = format_memory_context(
@@ -377,6 +415,7 @@ def with_memory_prompt(
         repo=repo,
         query=query,
         limit=limit,
+        firing_id=firing_id,
     )
     chunks = []
     if context:

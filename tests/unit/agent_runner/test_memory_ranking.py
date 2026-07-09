@@ -1,0 +1,413 @@
+"""Unit tests for the memory injection-quality battery: ranking, decay,
+reinforce-on-reuse, and per-firing delta injection.
+
+These cover the pure scoring math in :mod:`agent_runner.memory_ranking` plus its
+integration through :func:`agent_runner.memory_runtime.format_memory_context`.
+"""
+
+from __future__ import annotations
+
+import sys
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "lib"))
+
+
+class _LessonStub:
+    def __init__(self, body, *, severity="info", tags=None, created_at=None, id=None) -> None:
+        self.body = body
+        self.severity = severity
+        self.tags = tags or []
+        self.created_at = created_at
+        self.id = id
+
+
+class _Scored:
+    """Scored-capable provider stub returning fixed (lesson, score) pairs."""
+
+    name = "redis"
+
+    def __init__(self, pairs) -> None:
+        self._pairs = pairs
+
+    def recall_scored(self, *, codename, repo, query=None, limit=5):
+        return list(self._pairs)
+
+    def recall(self, *, codename, repo, query=None, limit=5):
+        return [lesson for lesson, _ in self._pairs]
+
+
+@pytest.fixture(autouse=True)
+def _clean_ranking_state():
+    """Every test starts with empty reuse/delta tables and default env."""
+    from agent_runner import memory_ranking
+
+    memory_ranking.reset_reuse_state()
+    memory_ranking.reset_delta_state()
+    yield
+    memory_ranking.reset_reuse_state()
+    memory_ranking.reset_delta_state()
+
+
+# --------------------------------------------------------------------------
+# Signal math
+# --------------------------------------------------------------------------
+
+
+def test_relevance_weight_clamps_and_defaults() -> None:
+    from agent_runner import memory_ranking as mr
+
+    assert mr.relevance_weight(0.5) == 0.5
+    assert mr.relevance_weight(-1.0) == 0.0
+    assert mr.relevance_weight(2.0) == 1.0
+    # None (unscored) maps to the neutral midpoint, not zero.
+    assert mr.relevance_weight(None) == pytest.approx(0.5)
+
+
+def test_severity_roi_ordering() -> None:
+    from agent_runner import memory_ranking as mr
+
+    assert mr.severity_roi("blocker") > mr.severity_roi("warning") > mr.severity_roi("info")
+    # Unknown severity falls back to the info weight.
+    assert mr.severity_roi("nonsense") == mr.severity_roi("info")
+
+
+def test_recency_weight_decays_by_half_life() -> None:
+    from agent_runner import memory_ranking as mr
+
+    # Fresh lesson keeps full weight; one half-life old halves it.
+    assert mr.recency_weight(0.0, 30.0) == pytest.approx(1.0)
+    assert mr.recency_weight(30.0, 30.0) == pytest.approx(0.5)
+    assert mr.recency_weight(60.0, 30.0) == pytest.approx(0.25)
+    # Negative age (clock skew) is treated as fresh, never > 1.
+    assert mr.recency_weight(-5.0, 30.0) == pytest.approx(1.0)
+
+
+def test_reuse_weight_saturates() -> None:
+    from agent_runner import memory_ranking as mr
+
+    assert mr.reuse_weight(0) == pytest.approx(0.0)
+    assert mr.reuse_weight(1) == pytest.approx(0.5)
+    assert mr.reuse_weight(2) == pytest.approx(0.75)
+    # Monotonic and bounded below 1.
+    assert mr.reuse_weight(10) < 1.0
+    assert mr.reuse_weight(3) > mr.reuse_weight(2)
+
+
+# --------------------------------------------------------------------------
+# Config knobs
+# --------------------------------------------------------------------------
+
+
+def test_flags_default_off(monkeypatch) -> None:
+    from agent_runner import memory_ranking as mr
+
+    monkeypatch.delenv("ALFRED_MEMORY_RANK", raising=False)
+    monkeypatch.delenv("ALFRED_MEMORY_DELTA", raising=False)
+    assert mr.rank_enabled() is False
+    assert mr.delta_enabled() is False
+    assert mr.rank_enabled({"ALFRED_MEMORY_RANK": "1"}) is True
+    assert mr.delta_enabled({"ALFRED_MEMORY_DELTA": "true"}) is True
+
+
+def test_half_life_and_weights_env_parsing() -> None:
+    from agent_runner import memory_ranking as mr
+
+    assert mr.decay_half_life_days({}) == mr._DEFAULT_HALFLIFE_DAYS
+    assert mr.decay_half_life_days({"ALFRED_MEMORY_DECAY_HALFLIFE_DAYS": "7"}) == 7.0
+    # Non-positive / unparseable falls back to the default (decay never off).
+    assert mr.decay_half_life_days({"ALFRED_MEMORY_DECAY_HALFLIFE_DAYS": "0"}) == (
+        mr._DEFAULT_HALFLIFE_DAYS
+    )
+    assert mr.decay_half_life_days({"ALFRED_MEMORY_DECAY_HALFLIFE_DAYS": "nope"}) == (
+        mr._DEFAULT_HALFLIFE_DAYS
+    )
+
+    weights = mr.rank_weights(
+        {"ALFRED_MEMORY_RANK_W_RELEVANCE": "2", "ALFRED_MEMORY_RANK_W_ROI": "0"}
+    )
+    assert weights.relevance == 2.0
+    assert weights.roi == 0.0
+    # A negative weight is rejected in favor of the default.
+    assert mr.rank_weights({"ALFRED_MEMORY_RANK_W_REUSE": "-3"}).reuse == mr._DEFAULT_W_REUSE
+
+
+# --------------------------------------------------------------------------
+# rank_pairs ordering
+# --------------------------------------------------------------------------
+
+
+def test_rank_pairs_is_noop_when_disabled(monkeypatch) -> None:
+    from agent_runner import memory_ranking as mr
+
+    monkeypatch.delenv("ALFRED_MEMORY_RANK", raising=False)
+    a, b = _LessonStub("A"), _LessonStub("B")
+    pairs = [(a, 0.1), (b, 0.9)]
+    # Disabled: incoming (recall) order is preserved exactly.
+    assert mr.rank_pairs(pairs) == pairs
+
+
+def test_rank_pairs_orders_by_relevance_when_enabled(monkeypatch) -> None:
+    from agent_runner import memory_ranking as mr
+
+    monkeypatch.setenv("ALFRED_MEMORY_RANK", "1")
+    low, high = _LessonStub("low"), _LessonStub("high")
+    ranked = mr.rank_pairs([(low, 0.1), (high, 0.9)])
+    assert [lesson.body for lesson, _ in ranked] == ["high", "low"]
+
+
+def test_rank_pairs_decay_demotes_old_lesson(monkeypatch) -> None:
+    from agent_runner import memory_ranking as mr
+
+    monkeypatch.setenv("ALFRED_MEMORY_RANK", "1")
+    monkeypatch.setenv("ALFRED_MEMORY_DECAY_HALFLIFE_DAYS", "10")
+    now = datetime(2026, 1, 31, tzinfo=UTC)
+    fresh = _LessonStub("fresh", created_at=now)
+    old = _LessonStub("old", created_at=now - timedelta(days=120))
+    # Equal relevance and severity: the age-decayed one sorts lower.
+    ranked = mr.rank_pairs([(old, 0.8), (fresh, 0.8)], now=now)
+    assert [lesson.body for lesson, _ in ranked] == ["fresh", "old"]
+
+
+def test_rank_pairs_severity_breaks_relevance_tie(monkeypatch) -> None:
+    from agent_runner import memory_ranking as mr
+
+    monkeypatch.setenv("ALFRED_MEMORY_RANK", "1")
+    info = _LessonStub("info", severity="info")
+    blocker = _LessonStub("blocker", severity="blocker")
+    ranked = mr.rank_pairs([(info, 0.7), (blocker, 0.7)])
+    assert [lesson.body for lesson, _ in ranked] == ["blocker", "info"]
+
+
+def test_rank_pairs_is_stable_on_ties(monkeypatch) -> None:
+    from agent_runner import memory_ranking as mr
+
+    monkeypatch.setenv("ALFRED_MEMORY_RANK", "1")
+    one, two, three = _LessonStub("one"), _LessonStub("two"), _LessonStub("three")
+    # Identical signals -> identical scores -> original order preserved.
+    ranked = mr.rank_pairs([(one, 0.9), (two, 0.9), (three, 0.9)])
+    assert [lesson.body for lesson, _ in ranked] == ["one", "two", "three"]
+
+
+# --------------------------------------------------------------------------
+# Reinforce-on-reuse
+# --------------------------------------------------------------------------
+
+
+def test_reuse_reinforces_score(monkeypatch) -> None:
+    from agent_runner import memory_ranking as mr
+
+    monkeypatch.setenv("ALFRED_MEMORY_RANK", "1")
+    reused = _LessonStub("reused", id="L1")
+    fresh = _LessonStub("fresh", id="L2")
+    # With no history and equal relevance, order is stable (reused first here).
+    baseline = mr.rank_pairs([(fresh, 0.6), (reused, 0.6)])
+    assert [lesson.body for lesson, _ in baseline] == ["fresh", "reused"]
+    # Reinforce the "reused" lesson a few times, then it outranks the fresh one.
+    mr.record_reuse([reused, reused, reused])
+    assert mr.reuse_count(reused) == 3
+    ranked = mr.rank_pairs([(fresh, 0.6), (reused, 0.6)])
+    assert [lesson.body for lesson, _ in ranked] == ["reused", "fresh"]
+
+
+def test_reuse_table_is_bounded(monkeypatch) -> None:
+    from agent_runner import memory_ranking as mr
+
+    monkeypatch.setattr(mr, "_REUSE_TABLE_MAX", 10)
+    for i in range(50):
+        mr.record_reuse([_LessonStub(f"L{i}", id=f"id-{i}")])
+    assert len(mr._REUSE_COUNTS) <= 10
+
+
+# --------------------------------------------------------------------------
+# Delta injection
+# --------------------------------------------------------------------------
+
+
+def test_apply_delta_noop_without_firing_or_flag(monkeypatch) -> None:
+    from agent_runner import memory_ranking as mr
+
+    monkeypatch.delenv("ALFRED_MEMORY_DELTA", raising=False)
+    a = _LessonStub("A", id="a")
+    pairs = [(a, 0.9)]
+    mr.record_injected("fid", [a])
+    # Flag off: nothing is filtered even though it was recorded.
+    assert mr.apply_delta(pairs, "fid") == pairs
+    # No firing id: also a no-op.
+    monkeypatch.setenv("ALFRED_MEMORY_DELTA", "1")
+    assert mr.apply_delta(pairs, None) == pairs
+
+
+def test_apply_delta_drops_already_injected(monkeypatch) -> None:
+    from agent_runner import memory_ranking as mr
+
+    monkeypatch.setenv("ALFRED_MEMORY_DELTA", "1")
+    a = _LessonStub("A", id="a")
+    b = _LessonStub("B", id="b")
+    mr.record_injected("fid", [a])
+    filtered = mr.apply_delta([(a, 0.9), (b, 0.8)], "fid")
+    assert [lesson.body for lesson, _ in filtered] == ["B"]
+    # A different firing is unaffected.
+    assert len(mr.apply_delta([(a, 0.9), (b, 0.8)], "other")) == 2
+
+
+def test_clear_firing_resets_delta(monkeypatch) -> None:
+    from agent_runner import memory_ranking as mr
+
+    monkeypatch.setenv("ALFRED_MEMORY_DELTA", "1")
+    a = _LessonStub("A", id="a")
+    mr.record_injected("fid", [a])
+    assert mr.already_injected("fid", a)
+    mr.clear_firing("fid")
+    assert not mr.already_injected("fid", a)
+
+
+# --------------------------------------------------------------------------
+# Integration through format_memory_context
+# --------------------------------------------------------------------------
+
+
+def test_format_context_ranks_before_budget(monkeypatch) -> None:
+    """With ranking on, a tiny budget keeps the highest-ranked lesson, not the
+    first one recall happened to return."""
+    from agent_runner import memory_runtime as runtime
+
+    body = "x" * 300
+    provider = _Scored(
+        [
+            (_LessonStub(f"Weak {body}"), 0.10),
+            (_LessonStub(f"Strong {body}"), 0.95),
+        ]
+    )
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+    monkeypatch.setenv("ALFRED_MEMORY_RANK", "1")
+    # Budget fits the header plus roughly one lesson line.
+    monkeypatch.setenv("ALFRED_MEMORY_INJECT_MAX_CHARS", "500")
+    out = runtime.format_memory_context(provider, codename="lucius", repo="org/api", limit=5)
+    assert "Strong" in out
+    assert "Weak" not in out
+
+
+def test_format_context_default_preserves_recall_order(monkeypatch) -> None:
+    """Ranking off (default): output is byte-identical to legacy recall order."""
+    from agent_runner import memory_runtime as runtime
+
+    provider = _Scored(
+        [
+            (_LessonStub("Alpha."), 0.1),
+            (_LessonStub("Beta."), 0.99),
+        ]
+    )
+    monkeypatch.delenv("ALFRED_MEMORY_RANK", raising=False)
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+    monkeypatch.delenv("ALFRED_MEMORY_INJECT_MAX_CHARS", raising=False)
+    out = runtime.format_memory_context(provider, codename="lucius", repo="org/api", limit=5)
+    assert out == (
+        "Alfred memory for this codename and repo:\n"
+        "Use these as hints only. Trust the repository code and current issue first.\n"
+        "1.  Alpha.\n"
+        "2.  Beta."
+    )
+
+
+def test_format_context_delta_skips_second_turn(monkeypatch) -> None:
+    """Within one firing, a lesson injected on turn 1 is not injected on turn 2;
+    the freed budget surfaces the next lesson instead."""
+    from agent_runner import memory_runtime as runtime
+
+    provider = _Scored(
+        [
+            (_LessonStub("First lesson.", id="l1"), 0.9),
+            (_LessonStub("Second lesson.", id="l2"), 0.8),
+        ]
+    )
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+    monkeypatch.delenv("ALFRED_MEMORY_INJECT_MAX_CHARS", raising=False)
+    monkeypatch.setenv("ALFRED_MEMORY_DELTA", "1")
+
+    turn1 = runtime.format_memory_context(
+        provider, codename="lucius", repo="org/api", limit=1, firing_id="fid-1"
+    )
+    assert "First lesson." in turn1
+
+    turn2 = runtime.format_memory_context(
+        provider, codename="lucius", repo="org/api", limit=1, firing_id="fid-1"
+    )
+    # The already-injected first lesson is gone; the second one takes its place.
+    assert "First lesson." not in turn2
+    assert "Second lesson." in turn2
+
+
+def test_format_context_delta_off_reinjects(monkeypatch) -> None:
+    """With delta off (default), the same lesson is injected on every turn."""
+    from agent_runner import memory_runtime as runtime
+
+    provider = _Scored([(_LessonStub("Sticky lesson.", id="l1"), 0.9)])
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+    monkeypatch.delenv("ALFRED_MEMORY_DELTA", raising=False)
+
+    a = runtime.format_memory_context(
+        provider, codename="lucius", repo="org/api", limit=1, firing_id="fid-1"
+    )
+    b = runtime.format_memory_context(
+        provider, codename="lucius", repo="org/api", limit=1, firing_id="fid-1"
+    )
+    assert "Sticky lesson." in a
+    assert "Sticky lesson." in b
+
+
+def test_format_context_delta_across_turns_is_per_firing(monkeypatch) -> None:
+    """A second firing sees the lesson even after a first firing consumed it."""
+    from agent_runner import memory_runtime as runtime
+
+    provider = _Scored([(_LessonStub("Shared lesson.", id="l1"), 0.9)])
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+    monkeypatch.setenv("ALFRED_MEMORY_DELTA", "1")
+
+    runtime.format_memory_context(
+        provider, codename="lucius", repo="org/api", limit=1, firing_id="fid-A"
+    )
+    # New firing id -> the lesson is fresh again.
+    out = runtime.format_memory_context(
+        provider, codename="lucius", repo="org/api", limit=1, firing_id="fid-B"
+    )
+    assert "Shared lesson." in out
+
+
+def test_format_context_reinforces_injected_lessons(monkeypatch) -> None:
+    """Injecting a lesson (rank on) increments its reuse counter."""
+    from agent_runner import memory_ranking as mr
+    from agent_runner import memory_runtime as runtime
+
+    lesson = _LessonStub("Reinforced lesson.", id="l1")
+    provider = _Scored([(lesson, 0.9)])
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+    monkeypatch.setenv("ALFRED_MEMORY_RANK", "1")
+
+    assert mr.reuse_count(lesson) == 0
+    runtime.format_memory_context(provider, codename="lucius", repo="org/api", limit=1)
+    assert mr.reuse_count(lesson) == 1
+    runtime.format_memory_context(provider, codename="lucius", repo="org/api", limit=1)
+    assert mr.reuse_count(lesson) == 2
+
+
+def test_format_context_default_path_accumulates_no_state(monkeypatch) -> None:
+    """With every knob off, no reuse/delta state is recorded at all."""
+    from agent_runner import memory_ranking as mr
+    from agent_runner import memory_runtime as runtime
+
+    lesson = _LessonStub("Quiet lesson.", id="l1")
+    provider = _Scored([(lesson, 0.9)])
+    monkeypatch.delenv("ALFRED_MEMORY_RANK", raising=False)
+    monkeypatch.delenv("ALFRED_MEMORY_DELTA", raising=False)
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+
+    runtime.format_memory_context(
+        provider, codename="lucius", repo="org/api", limit=1, firing_id="fid-1"
+    )
+    assert mr.reuse_count(lesson) == 0
+    assert len(mr._INJECTED_BY_FIRING) == 0
