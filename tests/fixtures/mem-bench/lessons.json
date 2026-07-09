@@ -1,0 +1,44 @@
+[
+  {
+    "lesson_id": "L-tz",
+    "body": "Use timezone-aware datetimes like datetime.now(UTC); a naive timezone comparison caused a flaky test here before.",
+    "tags": ["datetime", "repo-convention"],
+    "severity": "warning"
+  },
+  {
+    "lesson_id": "L-exc",
+    "body": "Never swallow an exception with a bare except that only passes; log and re-raise instead. A silent failure hid a bug for days.",
+    "tags": ["error-handling"],
+    "severity": "blocker"
+  },
+  {
+    "lesson_id": "L-default",
+    "body": "Do not use a mutable default argument such as def f(x=[]); use None and create inside the function. Shared mutable state bit us before.",
+    "tags": ["python-gotcha"],
+    "severity": "warning"
+  },
+  {
+    "lesson_id": "L-nplus1",
+    "body": "Batch database lookups: the reporting endpoint had an N+1 query that timed out. Use a single IN query instead.",
+    "tags": ["performance", "database"],
+    "severity": "warning"
+  },
+  {
+    "lesson_id": "D-fstring",
+    "body": "Prefer f-strings over percent formatting in log messages for readability.",
+    "tags": ["style"],
+    "severity": "info"
+  },
+  {
+    "lesson_id": "D-imports",
+    "body": "Keep import blocks sorted; isort runs in CI and will fail an unsorted file.",
+    "tags": ["style"],
+    "severity": "info"
+  },
+  {
+    "lesson_id": "D-testname",
+    "body": "Name test modules test_<module>.py so pytest discovers them automatically.",
+    "tags": ["testing"],
+    "severity": "info"
+  }
+]

@@ -22,6 +22,10 @@ Subcommands:
   report        Read telemetry and print the benchmark (default).
   show-suite    Print the fixed task suite (text or --json).
   write-suite   Write the default suite to a file (for editing/seeding).
+  memory        Run the memory A/B: does memory stop the fleet repeating a
+                known mistake? Headline metric is the repeated-mistake-rate.
+                ``--stub`` runs it offline (no model); ``--engine <name>`` runs
+                a real memory-ON vs memory-OFF A/B. See docs/BENCHMARKS.md.
 
 Exit codes:
   0 success
@@ -59,6 +63,15 @@ from benchmark import (  # noqa: E402
     load_suite,
     quota_cost_for_report,
     run_report,
+)
+from memory_benchmark import (  # noqa: E402
+    MemoryABReport,
+    MemoryArmMetrics,
+    default_fixture_dir,
+    load_fixture,
+    make_cli_engine_solver,
+    make_stub_solver,
+    run_memory_ab,
 )
 from transcripts import default_state_dir  # noqa: E402
 
@@ -175,6 +188,101 @@ def render_suite_json(suite: tuple[BenchmarkTask, ...]) -> str:
 
 
 # --------------------------------------------------------------------------
+# Memory A/B renderers
+# --------------------------------------------------------------------------
+
+
+def _fmt_rate(value: float | None) -> str:
+    return "-" if value is None else _fmt_pct(value)
+
+
+def _render_arm(arm: MemoryArmMetrics) -> list[str]:
+    lines: list[str] = []
+    lines.append(f"  repeated-mistake-rate .... {_fmt_rate(arm.repeated_mistake_rate)}")
+    lines.append(
+        f"    (mistakes repeated ..... {arm.mistakes_repeated} / {arm.mistake_eligible} eligible)"
+    )
+    lines.append(
+        f"  task success rate ........ {_fmt_rate(arm.task_success_rate)} ({arm.succeeded}/{arm.tasks})"
+    )
+    r = arm.retrieval
+    lines.append(f"  retrieval precision/recall {_fmt_rate(r.precision)}/{_fmt_rate(r.recall)}")
+    lines.append(
+        f"    (right lesson recalled . {r.recalled_relevant} / {r.relevant_total} relevant)"
+    )
+    lines.append(f"  tokens in / turns ........ {arm.tokens_in:,} / {arm.turns:,}")
+    lines.append(f"  turns per task ........... {_fmt_num(arm.turns_per_task)}")
+    return lines
+
+
+def render_memory_report_table(report: MemoryABReport) -> str:
+    ts = report.generated_at.strftime("%Y-%m-%d %H:%M UTC")
+    n = report.memory_off.mistake_eligible
+    lines: list[str] = []
+    lines.append(f"alfred benchmark memory - label={report.label!r} @ {ts}")
+    lines.append(
+        f"suite: {len(report.suite)} tasks   seed repo: {report.repo}   solver: {report.solver_kind}"
+    )
+    lines.append("")
+    lines.append(
+        f"HEADLINE  repeated-mistake-rate over N={n} tasks that re-tempt a learned mistake:"
+    )
+    lines.append(
+        f"  memory OFF ............... {_fmt_rate(report.memory_off.repeated_mistake_rate)}"
+    )
+    lines.append(
+        f"  memory ON ................ {_fmt_rate(report.memory_on.repeated_mistake_rate)}"
+    )
+    delta = report.repeated_mistake_rate_delta
+    lines.append(
+        "  delta (off - on) ......... "
+        + ("-" if delta is None else f"{delta * 100:+.1f} pts (memory prevented repeats)")
+    )
+    lines.append("")
+    lines.append("memory OFF")
+    lines.extend(_render_arm(report.memory_off))
+    lines.append("")
+    lines.append("memory ON")
+    lines.extend(_render_arm(report.memory_on))
+    lines.append("")
+    lines.append("per-task (mistake repeated?  arm=off / arm=on):")
+    on_by_task = {a.task_id: a for a in report.attempts if a.arm == "memory_on"}
+    off_by_task = {a.task_id: a for a in report.attempts if a.arm == "memory_off"}
+    for task in report.suite:
+        off = off_by_task.get(task.task_id)
+        on = on_by_task.get(task.task_id)
+        tag = "known-mistake" if task.repeats_known_mistake else "control"
+        off_m = "yes" if (off and off.made_mistake) else "no"
+        on_m = "yes" if (on and on.made_mistake) else "no"
+        lines.append(f"  {task.task_id:<22} {tag:<14} off={off_m:<4} on={on_m}")
+    lines.append("")
+    if report.solver_kind == "stub":
+        lines.append("note: STUB solver - no model ran, no quota burned. These numbers are")
+        lines.append("ILLUSTRATIVE of the harness, not a real result. Run with --engine to")
+        lines.append("produce a real memory-ON vs memory-OFF A/B.")
+    else:
+        lines.append("note: real-engine A/B. Same suite, seed repo and recall for both arms;")
+        lines.append("the only variable is memory. Report N and per-task rows, never a solo %.")
+    return "\n".join(lines)
+
+
+def render_memory_report_json(report: MemoryABReport) -> str:
+    return json.dumps(report.to_dict(), indent=2, default=str)
+
+
+def render_memory_suite(report_tasks: tuple, as_json: bool) -> str:
+    if as_json:
+        return json.dumps([t.to_dict() for t in report_tasks], indent=2)
+    lines = [f"mem-bench paired suite ({len(report_tasks)} tasks)", ""]
+    lines.append(f"{'task_id':<24} {'kind':<10} {'known-mistake?':<15} title")
+    lines.append("-" * 72)
+    for t in report_tasks:
+        km = "yes" if t.repeats_known_mistake else "no (control)"
+        lines.append(f"{t.task_id:<24} {t.kind:<10} {km:<15} {t.title}")
+    return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
 
@@ -207,6 +315,43 @@ def build_parser() -> argparse.ArgumentParser:
     write = sub.add_parser("write-suite", help="write the default suite to a file for editing")
     write.add_argument("path", type=Path, help="destination JSON file")
     write.add_argument("--force", action="store_true", help="overwrite an existing file")
+
+    mem = sub.add_parser(
+        "memory",
+        help="memory A/B: does memory stop the fleet repeating a known mistake?",
+    )
+    mem.add_argument(
+        "--fixture",
+        type=Path,
+        default=None,
+        help="mem-bench fixture dir (default: built-in tests/fixtures/mem-bench)",
+    )
+    mem.add_argument("--label", default="run", help="tag for this run, e.g. before/after")
+    mem.add_argument(
+        "--show-suite",
+        action="store_true",
+        help="print the paired task suite and exit (no run)",
+    )
+    mem.add_argument(
+        "--stub",
+        action="store_true",
+        help="run offline with the deterministic stub solver (no model, no quota)",
+    )
+    mem.add_argument(
+        "--engine",
+        default=None,
+        help="run a REAL A/B firing this engine (e.g. claude); burns real quota",
+    )
+    mem.add_argument("--model", default=None, help="engine model override for --engine")
+    mem.add_argument(
+        "--repo-path",
+        type=Path,
+        default=None,
+        help="working dir the engine runs in (default: the fixture's repo/ dir)",
+    )
+    mem.add_argument("--limit", type=int, default=3, help="lessons recalled per task")
+    mem.add_argument("--json", action="store_true", dest="json_out", help="machine-readable JSON")
+    mem.add_argument("--verbose", "-v", action="store_true", help="debug logging")
 
     # Top-level mirrors so `alfred-benchmark --json` (no subcommand) works as report.
     p.add_argument("--label", default="run", help=argparse.SUPPRESS)
@@ -263,6 +408,57 @@ def _cmd_write_suite(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_memory(args: argparse.Namespace) -> int:
+    fixture_dir = args.fixture or default_fixture_dir()
+    try:
+        fixture = load_fixture(fixture_dir)
+    except FileNotFoundError as exc:
+        print(f"alfred-benchmark: {exc}", file=sys.stderr)
+        return 2
+    if not fixture.tasks:
+        print(f"alfred-benchmark: no tasks in fixture {fixture_dir}", file=sys.stderr)
+        return 2
+
+    if args.show_suite:
+        print(render_memory_suite(fixture.tasks, args.json_out))
+        return 0
+
+    if args.stub and args.engine:
+        print(
+            "alfred-benchmark: choose one of --stub or --engine, not both.",
+            file=sys.stderr,
+        )
+        return 1
+    if not args.stub and not args.engine:
+        print(
+            "alfred-benchmark: pick a solver: --stub (offline, illustrative) or "
+            "--engine <name> (real A/B, burns quota).",
+            file=sys.stderr,
+        )
+        return 1
+
+    if args.engine:
+        repo_path = args.repo_path or (fixture_dir / "repo")
+        solver = make_cli_engine_solver(engine=args.engine, model=args.model, cwd=repo_path)
+        solver_kind = f"engine:{args.engine}"
+    else:
+        solver = make_stub_solver()
+        solver_kind = "stub"
+
+    report = run_memory_ab(
+        fixture,
+        solver=solver,
+        label=args.label,
+        limit=args.limit,
+        solver_kind=solver_kind,
+    )
+    if args.json_out:
+        print(render_memory_report_json(report))
+    else:
+        print(render_memory_report_table(report))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(
@@ -274,6 +470,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_show_suite(args)
     if command == "write-suite":
         return _cmd_write_suite(args)
+    if command == "memory":
+        return _cmd_memory(args)
     return _cmd_report(args)
 
 
