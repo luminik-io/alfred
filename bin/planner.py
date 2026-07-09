@@ -59,9 +59,9 @@ from agent_runner import (
     is_repo_paused,
     list_paused_repos,
     load_prompt,
+    maybe_halt_on_fail_streak,
     optional_env_int,
     preflight,
-    run,
     set_global_block,
     short,
     slack_post,
@@ -232,20 +232,7 @@ def main() -> int:
     if rate_blocked:
         print(f"[{AGENT.upper()}-RATE-LIMITED] {rate_blocked}. Skipping firing.")
         return 0
-    if spend.state.get("consecutive_failures", 0) >= 5:
-        msg = (
-            f"[{AGENT.upper()}-FAIL-STREAK] {spend.state['consecutive_failures']} consecutive "
-            "failures, 0 successes. Pausing for human review."
-        )
-        print(msg)
-        slack_post(msg, severity="alert")
-        events.emit(
-            "agent_paused",
-            reason="fail_streak",
-            consecutive_failures=spend.state["consecutive_failures"],
-        )
-        events.emit("firing_complete", outcome="paused_fail_streak")
-        run(["launchctl", "bootout", f"gui/{os.getuid()}/{LAUNCHD_LABEL}"], timeout=10)
+    if maybe_halt_on_fail_streak(AGENT, spend, events, LAUNCHD_LABEL):
         return 0
 
     # Pre-flight daily cap check at the runner level. Skips the firing entirely

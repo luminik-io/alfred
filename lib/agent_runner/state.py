@@ -46,12 +46,14 @@ from .agent_events import (  # noqa: F401  (re-exported for callers)
     UnknownEventType,
 )
 from .config import PROVIDER_LIMIT_SUBTYPES, dry_run_log, is_dry_run
+from .notify import slack_post
 from .paths import (
     FLEET_ENABLED_FILE,
     GLOBAL_BLOCKED_FILE,
     STATE_ROOT,
     today_str,
 )
+from .process import run
 
 
 def _resolve_pid_start_key(pid: int) -> str:
@@ -617,6 +619,53 @@ def reset_consecutive_failures(codename: str) -> None:
     spend = SpendState(codename)
     if spend.state.get("consecutive_failures", 0):
         spend.set(consecutive_failures=0)
+
+
+# --------------------------------------------------------------------------
+# Consecutive-failure self-halt (wedged-runner circuit breaker)
+#
+# Every engineering runner tracks ``consecutive_failures`` in its per-day
+# spend ledger: bumped on a failed firing, reset to 0 on a success. When the
+# streak reaches ``FAIL_STREAK_THRESHOLD`` the runner is wedged (that many
+# firings in a row, zero successes) so it boots itself out of launchd and asks
+# for human review instead of firing -- and burning spend -- forever. The
+# threshold lives here as a single shared default (overridable via
+# ``ALFRED_FAIL_STREAK_THRESHOLD``) so every runner halts on the same rule
+# rather than per-file literals that drift apart.
+# --------------------------------------------------------------------------
+
+FAIL_STREAK_THRESHOLD = int(os.environ.get("ALFRED_FAIL_STREAK_THRESHOLD", "5"))
+
+
+def maybe_halt_on_fail_streak(
+    agent: str,
+    spend: SpendState,
+    events: Any,
+    launchd_label: str,
+    *,
+    threshold: int = FAIL_STREAK_THRESHOLD,
+) -> bool:
+    """Auto-pause ``agent``'s launchd job after a run of failed firings.
+
+    Returns ``True`` when the streak gate tripped and the runner should stop
+    (the caller returns 0); ``False`` when it is clear to proceed. Mirrors the
+    daily-cap bootout mechanism exactly: a Slack alert, an ``agent_paused`` /
+    ``firing_complete`` event pair, then a ``launchctl bootout`` of the agent's
+    own job.
+    """
+    count = int(spend.state.get("consecutive_failures", 0))
+    if count < threshold:
+        return False
+    msg = (
+        f"[{agent.upper()}-FAIL-STREAK] {count} consecutive failures, "
+        "0 successes. Pausing for human review."
+    )
+    print(msg)
+    slack_post(msg, severity="alert")
+    events.emit("agent_paused", reason="fail_streak", consecutive_failures=count)
+    events.emit("firing_complete", outcome="paused_fail_streak")
+    run(["launchctl", "bootout", f"gui/{os.getuid()}/{launchd_label}"], timeout=10)
+    return True
 
 
 # --------------------------------------------------------------------------

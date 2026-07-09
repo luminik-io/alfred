@@ -1075,10 +1075,13 @@ def test_bane_workflow_validation_failure_counts_as_failure(monkeypatch, tmp_pat
 
     class FakeSpend:
         def __init__(self, *a, **kw):
-            pass
+            self.state: dict = {}
 
         def increment(self, **kw):
             increments.append(kw)
+
+        def set(self, **kw):
+            self.state.update(kw)
 
     monkeypatch.setattr(bane, "with_lock", lambda agent: None)
     monkeypatch.setattr(bane, "preflight", lambda spec: None)

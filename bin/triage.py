@@ -37,6 +37,7 @@ from agent_runner import (
     invoke_agent_engine,
     is_globally_blocked,
     is_repo_paused,
+    maybe_halt_on_fail_streak,
     maybe_set_global_block_for_result,
     optional_env_int,
     preflight,
@@ -341,6 +342,9 @@ def main() -> int:
         print(msg)
         slack_post(msg)
         events.emit("firing_complete", outcome="turn-cap")
+        return 0
+
+    if maybe_halt_on_fail_streak(AGENT, spend, events, LAUNCHD_LABEL):
         return 0
 
     candidates = list_untriaged()

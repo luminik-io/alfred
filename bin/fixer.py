@@ -16,7 +16,6 @@ import contextlib
 import os
 import re
 import sys
-import tomllib
 from pathlib import Path
 
 sys.path.insert(
@@ -48,8 +47,10 @@ from agent_runner import (
     is_globally_blocked,
     is_repo_paused,
     issue_memory_query,
+    load_pre_push_config,
     local_repo_dir,
     make_worktree_from_branch,
+    maybe_halt_on_fail_streak,
     maybe_set_global_block_for_result,
     optional_env_int,
     preflight,
@@ -346,31 +347,37 @@ def preserve_workflow_validation_failure(
     return reason, recovery_ref
 
 
-def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
-    """Same format / defaults as senior-dev._load_pre_push_config."""
-    cfg_path = ALFRED_HOME / "agents" / f"{agent_codename}.toml"
-    user_cfg: dict[str, str] = {}
-    if cfg_path.exists():
-        try:
-            data = tomllib.loads(cfg_path.read_text())
-            user_cfg = dict(data.get("pre_push", {}) or {})
-        except (OSError, tomllib.TOMLDecodeError):
-            user_cfg = {}
+# Node repos, for fixer, are matched by name suffix (no package.json probe).
+_NODE_PRE_PUSH_SUFFIXES = ("-frontend", "-mobile", "-web", "-nango")
 
-    out: dict[str, str] = {}
-    for repo in WATCH_REPOS:
-        if repo in user_cfg:
-            out[repo] = user_cfg[repo]
-            continue
-        if repo.endswith("-backend") or repo.endswith("-api"):
-            out[repo] = "./gradlew check"
-        elif repo.endswith(("-frontend", "-mobile", "-web", "-nango")):
-            out[repo] = "npm run lint && npx tsc --noEmit"
-        elif (WORKSPACE / local_repo_dir(repo) / "pyproject.toml").exists():
-            out[repo] = "uv run ruff check . && uv run mypy . && uv run pytest"
-        else:
-            out[repo] = ""
-    return out
+
+def _fixer_node_default(repo: str, _local_dir: Path) -> str:
+    """Fixer's Node pre-push default: a static lint + typecheck by repo suffix.
+
+    NOTE: this is deliberately simpler than senior-dev's package.json-aware
+    resolver (``_default_node_pre_push_command``). The divergence predates the
+    shared-loader extraction and is preserved here rather than silently
+    unified onto senior-dev's richer command.
+    """
+    if repo.endswith(_NODE_PRE_PUSH_SUFFIXES):
+        return "npm run lint && npx tsc --noEmit"
+    return ""
+
+
+def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
+    """Load per-repo pre-push commands via ``load_pre_push_config``.
+
+    Shares the TOML load + gradle/python/else defaults with senior-dev; only
+    the Node default differs (see :func:`_fixer_node_default`).
+    """
+    return load_pre_push_config(
+        agent_codename=agent_codename,
+        repos=WATCH_REPOS,
+        alfred_home=ALFRED_HOME,
+        workspace=WORKSPACE,
+        local_repo_dir=local_repo_dir,
+        node_default=_fixer_node_default,
+    )
 
 
 PRE_PUSH = _load_pre_push_config(AGENT)
@@ -579,6 +586,9 @@ def main() -> int:
         slack_post(msg)
         run(["launchctl", "bootout", f"gui/{os.getuid()}/{LAUNCHD_LABEL}"], timeout=10)
         events.emit("firing_complete", outcome="daily-cap")
+        return 0
+
+    if maybe_halt_on_fail_streak(AGENT, spend, events, LAUNCHD_LABEL):
         return 0
 
     fixed_ids = load_fixed_ids()
@@ -846,6 +856,11 @@ def main() -> int:
         return 0
 
     remove_worktree(repo, wt)
+    # Reaching here means the firing completed without a preserved failure, so
+    # it counts as a success (with or without landed fixes). Clear the streak
+    # so a prior run of failures doesn't carry into a healthy firing and trip
+    # the self-halt gate.
+    spend.set(consecutive_failures=0)
 
     if fixes_landed == 0:
         # No fixes landed but the firing completed cleanly. Count as no-op

@@ -263,6 +263,15 @@ from .paths import (
 )
 
 # --------------------------------------------------------------------------
+# Pre-push command resolution (shared by senior-dev + fixer)
+# --------------------------------------------------------------------------
+from .pre_push import (
+    BACKEND_PRE_PUSH_DEFAULT,
+    PYTHON_PRE_PUSH_DEFAULT,
+    load_pre_push_config,
+)
+
+# --------------------------------------------------------------------------
 # Process + invocation
 # --------------------------------------------------------------------------
 from .process import (
@@ -330,6 +339,7 @@ from .rubric import (
 )
 from .state import (
     _LOCK_GRACE_SECONDS,
+    FAIL_STREAK_THRESHOLD,
     PAUSE_MARKER_DIR,
     AgentLock,
     EventLog,
@@ -350,6 +360,7 @@ from .state import (
     list_enabled_agents,
     lock_pid_identity_matches,
     lock_pid_identity_status,
+    maybe_halt_on_fail_streak,
     maybe_set_global_block_for_result,
     record_engine_quota_exhausted,
     reset_consecutive_failures,
@@ -448,6 +459,10 @@ __all__ = [
     "resolve_grader_engine",
     "run",
     "short",
+    # pre-push command resolution
+    "BACKEND_PRE_PUSH_DEFAULT",
+    "PYTHON_PRE_PUSH_DEFAULT",
+    "load_pre_push_config",
     # rubric self-grading gate
     "CriterionEval",
     "GraderVerdict",
@@ -501,6 +516,8 @@ __all__ = [
     "list_enabled_agents",
     "lock_pid_identity_matches",
     "lock_pid_identity_status",
+    "FAIL_STREAK_THRESHOLD",
+    "maybe_halt_on_fail_streak",
     "maybe_set_global_block_for_result",
     "record_engine_quota_exhausted",
     "reset_consecutive_failures",
