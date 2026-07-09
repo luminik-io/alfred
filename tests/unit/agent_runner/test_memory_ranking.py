@@ -266,6 +266,88 @@ def test_clear_firing_resets_delta(monkeypatch) -> None:
     assert not mr.already_injected("fid", a)
 
 
+def test_clear_firing_makes_state_gone_and_lesson_unseen(monkeypatch) -> None:
+    """After a firing is cleared, its entry is gone from the table and a later
+    use of the same lesson under that firing id is not treated as already-seen."""
+    from agent_runner import memory_ranking as mr
+
+    monkeypatch.setenv("ALFRED_MEMORY_DELTA", "1")
+    lesson = _LessonStub("shared", id="L1")
+    mr.record_injected("fid", [lesson], codename="lucius", repo="org/api")
+    # The lesson would be deltaed out while the firing is live.
+    assert mr.apply_delta([(lesson, 0.9)], "fid", codename="lucius", repo="org/api") == []
+
+    mr.clear_firing("fid")
+
+    # State is gone entirely...
+    assert "fid" not in mr._INJECTED_BY_FIRING
+    # ...and a later use of the same lesson is no longer treated as seen.
+    later = mr.apply_delta([(lesson, 0.9)], "fid", codename="lucius", repo="org/api")
+    assert len(later) == 1
+
+
+def test_clear_firing_keeps_reuse_counters(monkeypatch) -> None:
+    """Clearing a firing releases delta state but NOT the cross-firing reuse
+    signal."""
+    from agent_runner import memory_ranking as mr
+
+    monkeypatch.setenv("ALFRED_MEMORY_DELTA", "1")
+    lesson = _LessonStub("shared", id="L1")
+    mr.record_reuse([lesson], codename="lucius", repo="org/api")
+    mr.record_injected("fid", [lesson], codename="lucius", repo="org/api")
+    mr.clear_firing("fid")
+    assert "fid" not in mr._INJECTED_BY_FIRING
+    # Reinforcement persists across the firing boundary.
+    assert mr.reuse_count(lesson, codename="lucius", repo="org/api") == 1
+
+
+def test_invoke_agent_engine_clears_delta_on_completion(monkeypatch) -> None:
+    """The runner lifecycle clears a firing's delta state when the firing
+    completes, so a finished firing does not linger in the process-global table."""
+    import agent_runner.process as proc
+    from agent_runner import memory_ranking as mr
+
+    class Provider:
+        name = "fleet"
+
+        def recall(self, **kwargs):
+            return [_LessonStub("Injected lesson body.", id="L1")]
+
+    monkeypatch.setattr(proc, "load_runtime_memory", lambda: Provider())
+    monkeypatch.setenv("ALFRED_MEMORY_DELTA", "1")
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+
+    def fake_claude(prompt, **kwargs):
+        # The lesson was injected, so its firing is tracked mid-run.
+        assert "fid-clear" in mr._INJECTED_BY_FIRING
+        return proc.ClaudeResult(
+            success=True,
+            subtype="success",
+            num_turns=1,
+            cost_usd=0.0,
+            session_id="s",
+            result_text="done",
+            raw={},
+            stop_reason="end_turn",
+            error_message=None,
+        )
+
+    proc.invoke_agent_engine(
+        "Implement the issue.",
+        engine="claude",
+        agent="lucius",
+        firing_id="fid-clear",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        claude_fn=fake_claude,
+        memory_repo="org/api",
+    )
+
+    # On completion the firing's delta state is cleared immediately.
+    assert "fid-clear" not in mr._INJECTED_BY_FIRING
+
+
 def test_delta_table_is_bounded_and_evicts_old_firings(monkeypatch) -> None:
     """A long-lived process never accumulates delta state without limit: when
     more than the cap of distinct firings are tracked, the oldest are evicted."""

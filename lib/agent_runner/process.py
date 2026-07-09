@@ -37,6 +37,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from . import memory_ranking
 from .config import (
     _truthy_env,
     dry_run_log,
@@ -1685,5 +1686,13 @@ def invoke_agent_engine(
             )
             with contextlib.suppress(Exception):
                 _apply_rubric_gate(result, rubric=active_rubric, grader_fn=grader_fn)
+
+    # The firing is complete: drop its per-firing delta state immediately so a
+    # finished firing's injected-lesson set does not linger in the process-global
+    # table (the table cap is only a backstop for a crash before this point).
+    # Reuse counters are intentionally NOT cleared here: reinforce-on-reuse is a
+    # cross-firing signal by design.
+    if firing_id:
+        memory_ranking.clear_firing(firing_id)
 
     return result, engine_used

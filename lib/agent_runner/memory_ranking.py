@@ -363,7 +363,18 @@ def record_injected(
 
 
 def clear_firing(firing_id: str) -> None:
-    """Drop a finished firing's delta set (call when a firing completes)."""
+    """Drop a finished firing's delta set.
+
+    Called from the runner lifecycle when a firing completes, so a finished
+    firing's injected-lesson set is released immediately rather than lingering in
+    the process-global table until the size cap evicts it. Capping bounds growth;
+    this clears state the moment it is no longer needed. Idempotent, and a no-op
+    for an unknown ``firing_id``.
+
+    Only the delta set is cleared. Reuse counters are deliberately left intact:
+    reinforce-on-reuse is a cross-firing signal (a lesson that keeps proving
+    useful across firings should keep its accumulated weight).
+    """
     _INJECTED_BY_FIRING.pop(firing_id, None)
 
 
