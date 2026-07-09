@@ -14,6 +14,7 @@ from agent_runner.read_ledger import (  # noqa: E402
     ReadLedger,
     delta_max_ratio,
     ledger_root_for,
+    read_delta_available,
     read_delta_enabled,
 )
 
@@ -127,3 +128,26 @@ def test_ledger_root_override_and_isolation(tmp_path: Path) -> None:
     # Two worktrees under one firing never share a ledger directory.
     assert root_a != root_b
     assert root_a.parent == tmp_path / "state" / "read-ledger"
+
+
+def test_read_delta_available_requires_firing_scope() -> None:
+    # No firing id and no explicit ledger dir: not scoped, so unavailable.
+    assert read_delta_available({}) is False
+    # A firing id scopes the ledger.
+    assert read_delta_available({"ALFRED_FIRING_ID": "f1"}) is True
+    # An explicit ledger dir is a deliberate opt-in scope.
+    assert read_delta_available({"ALFRED_READ_LEDGER_DIR": "/tmp/x"}) is True
+    # Blank values do not count as a scope.
+    assert read_delta_available({"ALFRED_FIRING_ID": "  "}) is False
+
+
+def test_ledger_root_falls_back_to_pid_without_firing() -> None:
+    import os
+
+    root = ledger_root_for(None, env={}, state_root="/tmp/state")
+    assert root.name != ""
+    # Distinct firings still map to distinct directories.
+    other = ledger_root_for(None, env={"ALFRED_FIRING_ID": "f9"}, state_root="/tmp/state")
+    assert root != other
+    # The no-firing digest is process-scoped, not an empty shared key.
+    assert f"pid-{os.getpid()}" not in str(root)  # hashed, not literal

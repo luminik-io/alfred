@@ -36,6 +36,7 @@ from agent_runner.read_ledger import (  # noqa: E402
     delta_max_chars,
     delta_max_ratio,
     ledger_root_for,
+    read_delta_available,
     read_delta_enabled,
 )
 from code_graph import (  # noqa: E402
@@ -277,6 +278,7 @@ def call_tool(
         )
     if name == "alfred_code_skeleton":
         repo, path = _require_repo_path(args)
+        _reject_unsafe_relpath(path)
         return skeleton_for_path(
             None,
             repo=repo,
@@ -286,6 +288,7 @@ def call_tool(
         )
     if name == "alfred_read_delta":
         repo, path = _require_repo_path(args)
+        _reject_unsafe_relpath(path)
         return _read_delta(repo, path)
     brain = _brain(db_path)
     if name == "alfred_memory_recall":
@@ -458,6 +461,41 @@ def _repo_root(repo: str) -> Path:
     return WORKSPACE / local_repo_dir(repo)
 
 
+def _reject_unsafe_relpath(path: str) -> None:
+    """Reject an untrusted repo path that is absolute or traverses upward.
+
+    A cheap boundary check for both source-reading tools: it refuses an absolute
+    component or any ``..`` segment before the path is joined to a repo root.
+    The realpath containment in :func:`_safe_source_path` and
+    ``code_graph.skeleton_for_path`` is the authoritative guard (it also catches
+    symlink escapes); this just returns a clearer, earlier error.
+    """
+    if os.path.isabs(path) or Path(path).is_absolute():
+        raise ValueError("path must be relative to the repo root")
+    parts = Path(path.replace("\\", "/")).parts
+    if ".." in parts:
+        raise ValueError("path must not traverse outside the repo root")
+
+
+def _safe_source_path(root: Path, path: str) -> Path:
+    """Resolve ``path`` under ``root``, rejecting any escape from the checkout.
+
+    The MCP ``repo``/``path`` arguments are untrusted. A ``..`` segment, an
+    absolute component, or a symlink pointing outside the checkout would let a
+    caller read arbitrary host files. Resolve both the root and the candidate to
+    real paths and require the candidate to stay inside the root; raise
+    ``ValueError`` otherwise so the tool returns an error instead of leaking a
+    file.
+    """
+    if os.path.isabs(path) or Path(path).is_absolute():
+        raise ValueError("path must be relative to the repo root")
+    root_real = Path(os.path.realpath(root))
+    candidate = Path(os.path.realpath(root / path))
+    if candidate != root_real and root_real not in candidate.parents:
+        raise ValueError("path escapes the repo root")
+    return candidate
+
+
 def _read_delta(repo: str, path: str) -> dict[str, Any]:
     """Read ``repo``/``path`` through the per-worktree delta ledger.
 
@@ -467,13 +505,16 @@ def _read_delta(repo: str, path: str) -> dict[str, Any]:
     is off, always returns full content.
     """
     root = _repo_root(repo)
-    source_path = root / path
+    source_path = _safe_source_path(root, path)
     try:
         content = source_path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
         return {"repo": repo, "path": path, "mode": "error", "reason": str(exc)}
 
-    if not read_delta_enabled():
+    if not read_delta_enabled() or not read_delta_available():
+        # Delta disabled, or the ledger cannot be scoped to a single firing
+        # (no ALFRED_FIRING_ID and no explicit ledger dir). Full reads avoid any
+        # cross-firing diff corruption.
         return {"repo": repo, "path": path, "mode": "full", "content": content}
 
     ledger = ReadLedger(ledger_root_for(root))

@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 
 def _load(name: str, path: Path) -> ModuleType:
     spec = importlib.util.spec_from_file_location(name, path)
@@ -433,3 +435,68 @@ def test_mcp_read_delta_full_then_delta(tmp_path: Path, monkeypatch) -> None:
     second = mod.call_tool("alfred_read_delta", {"repo": "svc", "path": "app/service.py"})
     assert second["mode"] == "delta"
     assert "row 15 CHANGED" in second["diff"]
+
+
+def _setup_svc_checkout(tmp_path: Path, monkeypatch, mod) -> Path:
+    """Create a svc checkout with one source file and point WORKSPACE at it."""
+    workspace = tmp_path / "ws"
+    target_dir = workspace / "svc" / "app"
+    target_dir.mkdir(parents=True)
+    (target_dir / "service.py").write_text("value = 1\n", encoding="utf-8")
+    monkeypatch.setattr(mod, "WORKSPACE", workspace)
+    return workspace
+
+
+def test_mcp_source_tools_reject_path_traversal(tmp_path: Path, monkeypatch) -> None:
+    repo = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(repo / "lib"))
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_READ_LEDGER_DIR", str(tmp_path / "ledger"))
+    _write_skeleton_code_map(tmp_path)
+
+    # A secret file outside the repo checkout.
+    secret = tmp_path / "secret.txt"
+    secret.write_text("TOP SECRET\n", encoding="utf-8")
+
+    mod = _load("alfred_mcp_cli_traversal", repo / "bin" / "alfred-mcp.py")
+    workspace = _setup_svc_checkout(tmp_path, monkeypatch, mod)
+
+    for tool in ("alfred_read_delta", "alfred_code_skeleton"):
+        # ``..`` traversal is rejected.
+        with pytest.raises(ValueError):
+            mod.call_tool(tool, {"repo": "svc", "path": "../../secret.txt"})
+        # Absolute path is rejected.
+        with pytest.raises(ValueError):
+            mod.call_tool(tool, {"repo": "svc", "path": str(secret)})
+
+    # A symlink inside the checkout that points outside is rejected on read.
+    link = workspace / "svc" / "escape.txt"
+    link.symlink_to(secret)
+    with pytest.raises(ValueError):
+        mod.call_tool("alfred_read_delta", {"repo": "svc", "path": "escape.txt"})
+
+
+def test_mcp_read_delta_full_without_firing_scope(tmp_path: Path, monkeypatch) -> None:
+    repo = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(repo / "lib"))
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    # No ALFRED_FIRING_ID and no ledger-dir override: the ledger cannot be
+    # scoped to one firing, so every read must be full (never a shared delta).
+    monkeypatch.delenv("ALFRED_FIRING_ID", raising=False)
+    monkeypatch.delenv("ALFRED_READ_LEDGER_DIR", raising=False)
+
+    mod = _load("alfred_mcp_cli_no_scope", repo / "bin" / "alfred-mcp.py")
+    workspace = _setup_svc_checkout(tmp_path, monkeypatch, mod)
+    target = workspace / "svc" / "app" / "service.py"
+    target.write_text("\n".join(f"row {i}" for i in range(1, 120)) + "\n", encoding="utf-8")
+
+    first = mod.call_tool("alfred_read_delta", {"repo": "svc", "path": "app/service.py"})
+    assert first["mode"] == "full"
+
+    target.write_text(
+        "\n".join(f"row {i}" for i in range(1, 120)).replace("row 15", "row 15 CHANGED") + "\n",
+        encoding="utf-8",
+    )
+    second = mod.call_tool("alfred_read_delta", {"repo": "svc", "path": "app/service.py"})
+    # Without a firing scope a re-read stays full rather than diffing.
+    assert second["mode"] == "full"

@@ -1190,6 +1190,21 @@ def project_skeleton(
     return "\n".join(out)
 
 
+def _contained_source_path(repo_root: Path, rel_path: str) -> Path | None:
+    """Resolve ``rel_path`` under ``repo_root`` or ``None`` if it escapes.
+
+    Even though ``rel_path`` comes from the code map, the file on disk could be
+    a symlink pointing outside the checkout. Resolve both sides to real paths
+    and require containment so a skeleton never reads a host file outside the
+    repo root.
+    """
+    root_real = Path(os.path.realpath(repo_root))
+    candidate = Path(os.path.realpath(repo_root / rel_path))
+    if candidate != root_real and root_real not in candidate.parents:
+        return None
+    return candidate
+
+
 def skeleton_for_path(
     code_map: dict[str, Any] | None,
     *,
@@ -1244,8 +1259,18 @@ def skeleton_for_path(
     symbols = _list_of_dicts(matched_file.get("symbols"))
     if symbol is not None:
         symbols = [s for s in symbols if str(s.get("name") or "") == symbol]
+        if not symbols:
+            # A named symbol was requested but the index has no such symbol in
+            # the file. Signal not-found explicitly; never fall through to the
+            # head-slice fallback, which would return the whole file's source.
+            base["reason"] = "symbol_not_found"
+            return base
 
-    source_path = Path(repo_root) / matched_path
+    source_path = _contained_source_path(Path(repo_root), matched_path)
+    if source_path is None:
+        # The indexed path resolves outside the repo root (e.g. via a symlink).
+        base["reason"] = "unsafe_path"
+        return base
     try:
         source = source_path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:

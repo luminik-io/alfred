@@ -192,3 +192,43 @@ def test_skeleton_for_path_source_unavailable(tmp_path: Path) -> None:
     assert result["match_status"] == "exact"
     assert result["skeleton"] == ""
     assert result["reason"] == "source_unavailable"
+
+
+def test_skeleton_for_path_missing_symbol_is_not_found(tmp_path: Path) -> None:
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "widget.py").write_text(_PY_SOURCE, encoding="utf-8")
+
+    result = skeleton_for_path(
+        _code_map(tmp_path),
+        repo="svc",
+        path="app/widget.py",
+        repo_root=tmp_path,
+        symbol="does_not_exist",
+    )
+
+    # A requested-but-absent symbol must never fall through to the full-file
+    # head slice; it signals not-found with an empty skeleton.
+    assert result["reason"] == "symbol_not_found"
+    assert result["skeleton"] == ""
+    assert result["symbol_count"] == 0
+    assert "class Widget" not in result["skeleton"]
+
+
+def test_skeleton_for_path_rejects_symlink_escape(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    (repo_root / "app").mkdir(parents=True)
+    secret = tmp_path / "secret.py"
+    secret.write_text("SECRET = 'do not leak'\n", encoding="utf-8")
+    # An indexed file that is a symlink pointing outside the repo root.
+    (repo_root / "app" / "widget.py").symlink_to(secret)
+
+    result = skeleton_for_path(
+        _code_map(repo_root),
+        repo="svc",
+        path="app/widget.py",
+        repo_root=repo_root,
+    )
+
+    assert result["reason"] == "unsafe_path"
+    assert result["skeleton"] == ""
+    assert "SECRET" not in result["skeleton"]

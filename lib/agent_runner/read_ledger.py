@@ -42,6 +42,7 @@ __all__ = [
     "delta_max_chars",
     "delta_max_ratio",
     "ledger_root_for",
+    "read_delta_available",
     "read_delta_enabled",
 ]
 
@@ -73,6 +74,22 @@ def read_delta_enabled(env: Mapping[str, str] | None = None) -> bool:
     if raw is None:
         return True
     return raw.strip().lower() not in _FALSEY
+
+
+def read_delta_available(env: Mapping[str, str] | None = None) -> bool:
+    """True only when the ledger can be scoped to a single firing.
+
+    Without a firing scope the ledger would be shared across every firing that
+    reuses the MCP process, so a re-read could diff against another firing's
+    content and leak or corrupt it. The ledger is firing-scoped when
+    ``ALFRED_FIRING_ID`` is set, or when ``ALFRED_READ_LEDGER_DIR`` explicitly
+    pins a directory (a deliberate opt-in used by deployments and tests).
+    Otherwise callers must fall back to full reads.
+    """
+    resolved = os.environ if env is None else env
+    if (resolved.get("ALFRED_READ_LEDGER_DIR") or "").strip():
+        return True
+    return bool((resolved.get("ALFRED_FIRING_ID") or "").strip())
 
 
 def _env_float(env: Mapping[str, str], key: str, default: float) -> float:
@@ -124,8 +141,11 @@ def ledger_root_for(
     ``ALFRED_READ_LEDGER_DIR`` overrides everything (tests and explicit
     deployments use it). Otherwise the ledger lives under
     ``<state_root>/read-ledger/<digest>`` where the digest is derived from the
-    firing id (when known) plus the worktree path, so two firings in two
-    worktrees never share a cache.
+    firing id plus the worktree path, so two firings in two worktrees never
+    share a cache. When no firing id is present the digest falls back to the
+    current process id so distinct processes still get distinct ledgers rather
+    than colliding on one empty-keyed directory (callers should also consult
+    :func:`read_delta_available` and prefer full reads in that case).
     """
     resolved = os.environ if env is None else env
     override = resolved.get("ALFRED_READ_LEDGER_DIR")
@@ -133,7 +153,7 @@ def ledger_root_for(
         return Path(override).expanduser()
 
     base = Path(state_root) if state_root is not None else _default_state_root(resolved)
-    firing = (resolved.get("ALFRED_FIRING_ID") or "").strip()
+    firing = (resolved.get("ALFRED_FIRING_ID") or "").strip() or f"pid-{os.getpid()}"
     workdir_token = str(Path(workdir).resolve()) if workdir else ""
     digest = hashlib.sha256(f"{firing}\n{workdir_token}".encode()).hexdigest()[:16]
     return base / "read-ledger" / digest
