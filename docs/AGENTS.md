@@ -222,7 +222,7 @@ alfred labels bootstrap --all # create missing lifecycle/approval labels
 alfred shipped --period weekly # summarize merged PRs, issues, LOC, config changes
 bash deploy.sh                 # sync bin/lib; render + bootstrap if agents.conf exists
 ./bin/alfred doctor            # preflight configured Python agents
-./bin/alfred doctor --lifecycle # validate Batman parser, Slack approval, Claude OAuth
+./bin/alfred doctor --lifecycle # validate architect parser, Slack approval, Claude OAuth
 ```
 
 Use `alfred-label-state` for issue-claim overrides. Use

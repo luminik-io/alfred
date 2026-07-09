@@ -148,7 +148,7 @@ Available skills (invoke by name when the trigger matches; read the SKILL.md ...
 Role filtering uses the manifest `roles`: a firing only sees skills recommended
 for its role. The role is derived automatically from the agent codename via the
 canonical roster map (`lib/agent_roster.py`, e.g. `senior-dev` -> `feature-dev`,
-`rasalghul` -> `pr-review`), so injection is active for every existing caller
+`reviewer` -> `pr-review`), so injection is active for every existing caller
 with no code change; a caller may still pass an explicit `role=` to override.
 Operational codenames with no skill role (automerge, memory-harvest, ...) inject
 nothing. It is on by default and gated by `ALFRED_SKILLS_INJECT` (set to

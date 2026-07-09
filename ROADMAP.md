@@ -226,20 +226,20 @@ Items with active work and a committed IC.
   optional or pinned (`codebase-memory-mcp`, code-review-graph-style AST
   indexes, Headroom-style reversible compression, RTK/token-savior-style command
   compactors), and reimplement non-permissive or invasive hook ideas natively.
-  IC: core. Effort: M. Issue: alfred-internal#430 / #423.
+  IC: core. Effort: M. Issue: TBD.
 - **True scratch-home onboarding E2E.** Add an automated test that creates a
   temporary `ALFRED_HOME`, seeds the full fleet, starts `alfred serve`, drives
   setup APIs/native-ready payloads, verifies starter skills/code-memory
   readiness, and tears every artifact down. This is the missing proof before a
-  serious Show HN launch. IC: core. Effort: S. Issue: alfred-internal#426.
+  serious Show HN launch. IC: core. Effort: S. Issue: TBD.
 - **Role-neutral architect config.** Remove remaining Batman-specific runtime
   names from code and docs where they are not theme names. No backward
   compatibility requirement: prefer `ARCHITECT_*`, role slugs, and clean config
-  over permanent legacy aliases. IC: core. Effort: S. Issue: alfred-internal#428.
+  over permanent legacy aliases. IC: core. Effort: S. Issue: TBD.
 - **Public launch proof.** Refresh README/site around the real product promise:
   native full install, full fleet by default, multi-repo architect loop, memory
   and code graph, skills, screenshots/GIF/video, and honest public evidence.
-  IC: core. Effort: S. Issue: alfred-internal#427 / #434.
+  IC: core. Effort: S. Issue: TBD.
 - **Goals inbox and evidence ledger.** Promote the durable goal contract into the
   native client and Slack flow so long-running work has visible outcome,
   verification, constraints, evidence, and blocked-state history. IC: core.

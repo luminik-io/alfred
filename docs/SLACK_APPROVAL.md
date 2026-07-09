@@ -240,9 +240,9 @@ firing fails loud instead of polling forever.
 ## Plan-mode label transition
 
 Agents that integrate the gate flip the issue label to
-[`agent:plan-pending-approval`](../docs/STATE_MACHINE.md) before posting
+[`agent:plan-pending-approval`](STATE_MACHINE.md) before posting
 the plan and clear it after the verdict resolves. See the
-[issue claim state machine](../site/src/content/docs/concepts/state-machine.md)
+[issue claim state machine](STATE_MACHINE.md)
 for how this label fits the rest of the lifecycle.
 
 ## Configured-approver check semantics

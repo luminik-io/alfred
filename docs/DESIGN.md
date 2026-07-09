@@ -127,6 +127,7 @@ How they are used in practice:
   friendly base that keeps the dense dashboards readable.
 - Fragment Mono is for code, log lines, agent codenames, timestamps, and small
   uppercase labels where a fixed width and a technical feel help.
+
 The marketing display sizes are tokenized and scale down on narrow screens:
 `--text-display-xl` is 64px on desktop and steps to 42px then 31px at the small
 breakpoints, so headlines never overflow. Root-page hero copy should usually

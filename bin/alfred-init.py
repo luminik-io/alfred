@@ -2245,7 +2245,7 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
       (``"interval:1200"``, ``"cron:7:30"``, ``"cron:1:7:30"``).
     - ``role_extras`` (dict[str, dict[str, str]]): per-agent env values
       normally collected by interactive prompts, such as
-      ``ALFRED_HUNTRESS_TARGET_URL`` or ``ALFRED_GORDON_ECS_CLUSTER``.
+      ``ALFRED_E2E_RUNNER_TARGET_URL`` or ``ALFRED_OPS_WATCH_ECS_CLUSTER``.
     - ``telemetry_enabled`` (bool), ``telemetry_url`` (str): configure
       anonymous proof-telemetry non-interactively. Reporting is opt-out and
       uses Alfred's hosted collector by default. ``telemetry_url`` overrides it

@@ -148,7 +148,7 @@ First setup:
   --slack-webhook skip
 ```
 
-Then edit `~/.alfred/prompts/drake.md` to explain where specs live and which
+Then edit `~/.alfred/prompts/planner.md` to explain where specs live and which
 spec documents should be treated as source of intent. Drake should copy the
 relevant spec links and acceptance criteria into the GitHub issue body. Lucius
 receives spec context through that issue body when it claims the work.

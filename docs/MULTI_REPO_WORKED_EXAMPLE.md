@@ -276,14 +276,14 @@ Ra's al Ghul fires every 30 minutes. It picks the fresh `agent:authored`
 PR.
 
 ```
-[15:48:11] rasalghul  reviewing your-backend#412
-[15:51:33] rasalghul  posted review comment, 2 nits, 0 P0/P1
+[15:48:11] reviewer  reviewing your-backend#412
+[15:51:33] reviewer  posted review comment, 2 nits, 0 P0/P1
 ```
 
 The review comment (rendered shape):
 
 ```
-rasalghul · review
+reviewer · review
 
 Correctness: ok (migration is idempotent, resolver handles missing slug)
 Security:    ok (no input echo, no SQL string concat)
@@ -307,12 +307,12 @@ also asked Nightwing to address P2 nits on this PR by labelling it
 `nightwing:p2`. On the next firing:
 
 ```
-[16:33:11] nightwing  picking review threads on your-backend#412
-[16:33:14] nightwing  2 unresolved threads (P2 by label override)
-[16:33:15] nightwing  worktree opened
-[16:35:42] nightwing  engine returned success, 7 turns, $0.09
-[16:35:43] nightwing  pushed fix commit 9a2cdde
-[16:35:44] nightwing  resolved 2 threads on your-backend#412
+[16:33:11] fixer  picking review threads on your-backend#412
+[16:33:14] fixer  2 unresolved threads (P2 by label override)
+[16:33:15] fixer  worktree opened
+[16:35:42] fixer  engine returned success, 7 turns, $0.09
+[16:35:43] fixer  pushed fix commit 9a2cdde
+[16:35:44] fixer  resolved 2 threads on your-backend#412
 ```
 
 ## Step 7: Bane adds tests on the side
@@ -322,12 +322,12 @@ recently-changed files in `your-backend` and notices `AccountService.kt`
 is now the lowest-coverage actively-changed file.
 
 ```
-[18:04:11] bane   lowest-coverage actively-changed file
-                  your-backend/src/.../AccountService.kt (62%)
-[18:04:12] bane   worktree opened
-[18:07:38] bane   engine returned success, 22 turns, $0.18
-[18:07:39] bane   PR opened: your-backend#414      ● green
-                  agent:authored, tests-only
+[18:04:11] test-engineer  lowest-coverage actively-changed file
+                          your-backend/src/.../AccountService.kt (62%)
+[18:04:12] test-engineer  worktree opened
+[18:07:38] test-engineer  engine returned success, 22 turns, $0.18
+[18:07:39] test-engineer  PR opened: your-backend#414      ● green
+                          agent:authored, tests-only
 ```
 
 Bane's PR is a separate `agent:authored` PR; it does not push to senior-dev's

@@ -54,7 +54,7 @@ scheduler:
 
 ```sh
 alfred dry-run senior-dev
-alfred dry-run drake
+alfred dry-run planner
 alfred dry-run all
 alfred dry-run senior-dev --native
 ```

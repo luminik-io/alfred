@@ -167,7 +167,7 @@ If the spec section the candidate references is itself vague (no concrete shapes
 ## Rate limits, hard caps
 
 - **Max 5 new issues per run.** Even if you find 20 candidates, pick the top 5 by priority (P0 > P1 > P2) and tie-break by spec number (lower first).
-- **Daily cap is runner-enforced.** The Python runner checks `ALFRED_DRAKE_DAILY_ISSUE_CAP` before invoking you. If you discover during the run that the cap has already been reached, exit with `[DRAKE-DAILY-CAP-HIT]` and do not create issues.
+- **Daily cap is runner-enforced.** The Python runner checks `ALFRED_PLANNER_DAILY_ISSUE_CAP` before invoking you. If you discover during the run that the cap has already been reached, exit with `[DRAKE-DAILY-CAP-HIT]` and do not create issues.
 
 ## Issue template, exact format
 
@@ -296,7 +296,7 @@ Even if the scope looks small, flag as needs-review rather than implement:
 - Never create issues outside the in-scope repo list.
 - Never assign issues, labels only.
 - Never touch existing issues (open OR closed). You only create new ones.
-- Never create more than 5 issues per run. The rolling daily cap is set by `ALFRED_DRAKE_DAILY_ISSUE_CAP` and enforced by the runner.
+- Never create more than 5 issues per run. The rolling daily cap is set by `ALFRED_PLANNER_DAILY_ISSUE_CAP` and enforced by the runner.
 - Never create `agent:implement` on anything matching the hard-guardrail list (security, IAM, user-data migrations, prod-only, billing, multi-tenant boundaries, new top-level deps).
 - Never file a bare single-repo `agent:implement` issue without the `agent:plan-pending-approval` gate label. The gate is what holds the issue for operator go-ahead; without it the issue is picked up immediately and the approval step is bypassed. Cross-repo bundle siblings are exempt; the architect gates those via its Slack approval reaction.
 - Never fabricate acceptance criteria. If the spec doesn't specify a criterion, write one that's clearly conservative and note in the body: `> Acceptance criterion inferred from spec context; confirm with operator before merging.`
