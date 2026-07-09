@@ -159,8 +159,8 @@ function html({ fontCss, logoData }) {
     }
     h1 {
       margin: 0;
-      font-size: 76px;
-      line-height: 1.04;
+      font-size: 68px;
+      line-height: 1.06;
       font-weight: 700;
       letter-spacing: -2px;
       color: #FFFFFF;
@@ -216,8 +216,8 @@ function html({ fontCss, logoData }) {
       </div>
       <div class="hero">
         <div class="eyebrow">specs in, PRs out</div>
-        <h1>Autonomous coding agents<br />for lean engineering teams.</h1>
-        <p class="sub">Alfred plans across your repos or monorepo packages, implements with the Claude Code and Codex subscriptions you already pay for, and reports to Slack while you focus on something else.</p>
+        <h1>An autonomous engineering<br />team that ships<br /><span class="away">while you're away.</span></h1>
+        <p class="sub">Alfred turns Claude Code and Codex into a spec-driven engineering team. Named agents plan the work, write the code, review each other, and open pull requests, on your machine, behind an approval gate.</p>
         <div class="stripe">
           <span><span class="dot">●</span> self-hosted</span>
           <span class="sep">·</span>
