@@ -91,6 +91,8 @@ path, so no per-tool restriction is needed even under `bypassPermissions`.
 | `alfred_code_graph_summary` | Local code-graph summary per repo, no raw source | none | yes |
 | `alfred_code_impact` | Local import, symbol, route, API-call, and drift hints for a path | `repo` and `path` (both required) | yes |
 | `alfred_code_blast_radius` | Local multi-file blast-radius summary for changed paths | `repo` and `paths` (both required) | yes |
+| `alfred_code_skeleton` | Structure-only file skeleton (signatures, docstring, elided bodies) from the code map | `repo` and `path` (both required) | yes |
+| `alfred_read_delta` | Delta-aware file read: full on first read, unified diff on re-read this firing | `repo` and `path` (both required) | yes |
 
 All twelve tools above are registered on the server (the `TOOLS` tuple in
 `bin/alfred-mcp.py`), so attaching the server exposes all twelve to the run.
@@ -113,9 +115,11 @@ directly, for example through `alfred mcp serve`.
   `alfred_recent_file_touches`, and `alfred_failure_patterns` unless the caller
   narrows by `codename` or `repo`. The three path-graph tools
   (`alfred_who_owns`, `alfred_recent_changes_near`, `alfred_prs_touching`) and
-  `alfred_code_impact` require *both* a `repo` and a `path` via
-  `_require_repo_path`; `alfred_code_blast_radius` requires `repo` plus at least
-  one path. This keeps an agent from sweeping the whole brain.
+  `alfred_code_impact`, `alfred_code_skeleton`, and `alfred_read_delta` require
+  *both* a `repo` and a `path` via `_require_repo_path`;
+  `alfred_code_blast_radius` requires `repo` plus at least one path. This keeps
+  an agent from sweeping the whole brain. See
+  [SKELETON_READS.md](SKELETON_READS.md) for the skeleton and delta tools.
 - **Candidate bodies are gated.** `alfred_memory_candidates` returns a short
   `body_preview` and boolean flags by default. Full candidate bodies, evidence,
   and review notes are only included when `ALFRED_MCP_ALLOW_RAW_MEMORY` is set

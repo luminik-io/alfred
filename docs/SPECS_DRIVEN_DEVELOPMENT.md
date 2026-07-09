@@ -149,7 +149,7 @@ Install the full fleet against that repo:
   --slack-webhook skip
 ```
 
-Point `~/.alfred/prompts/drake.md` at `docs/specs/` so Drake can create issues
+Point `~/.alfred/prompts/planner.md` at `docs/specs/` so Drake can create issues
 from the approved specs.
 
 ## Multi-Repo

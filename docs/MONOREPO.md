@@ -177,7 +177,7 @@ for pkg in $changed; do
 done
 ```
 
-Then in the YAML:
+Then in the TOML:
 
 ```toml
 [pre_push]

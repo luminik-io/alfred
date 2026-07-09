@@ -245,7 +245,7 @@ To resume:
 alfred resume senior-dev
 ```
 
-## 8. Troubleshooting
+## 7. Troubleshooting
 
 **`claude: command not found` in the scheduler log.** The rendered unit's `PATH` does not include the fnm-managed Node bin (or wherever your `claude` lives). Set `CLAUDE_BIN=<absolute-path>` in `$ALFRED_HOME/.env`, or expose the binary through a stable directory already rendered into scheduler PATH, such as `~/.local/bin`. `which claude` shows the path.
 

@@ -132,7 +132,7 @@ Steps:
 6. After GitHub and Claude Code auth are working, configure the full fleet:
    ./bin/alfred-init.py --non-interactive --agents all --repos "$REPOS" --slack-webhook "$SLACK_WEBHOOK"
 
-7. If SPECS_REPO is set, show me the specs checkout path and remind me to add it to `~/.alfred/prompts/drake.md` as planning context. Do not add it to `--repos` unless I ask.
+7. If SPECS_REPO is set, show me the specs checkout path and remind me to add it to `~/.alfred/prompts/planner.md` as planning context. Do not add it to `--repos` unless I ask.
 
 8. Verify:
    ~/.local/bin/alfred agents
@@ -263,7 +263,7 @@ keep the first scheduled write loop focused on code repos:
 ```
 
 Use `--repos my-org/api,my-org/web,my-org/mobile` for the full fleet. Then
-edit prompts in `~/.alfred/prompts/` to point Drake and reviewers at the specs
+edit prompts in `~/.alfred/prompts/` to point the planner (Drake) and reviewers at the specs
 checkout for context. Only add the specs repo to `--repos` if you want the
 fleet to create labels and potentially operate on specs issues too.
 

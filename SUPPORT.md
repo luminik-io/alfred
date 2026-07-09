@@ -5,7 +5,7 @@
 | You want | Channel |
 |---|---|
 | **Help getting started** | Read [`INSTALL.md`](INSTALL.md) → [`docs/TUTORIAL.md`](docs/TUTORIAL.md) → [`BOOTSTRAP.md`](BOOTSTRAP.md). Most setup questions are answered there. |
-| **Bug report** | [Open an issue](https://github.com/luminik-io/alfred/issues/new?template=bug.yml) using the bug template. Include: Alfred version, macOS version, the exact command, full output. |
+| **Bug report** | [Open an issue](https://github.com/luminik-io/alfred/issues/new?template=bug.yml) using the bug template. Include: Alfred version, host OS (macOS or Linux) and version, the exact command, full output. |
 | **Feature request** | [Open an issue](https://github.com/luminik-io/alfred/issues/new?template=feature.yml) using the feature template. Be specific about the use case before the proposed solution. |
 | **Question / discussion** | [Open an issue](https://github.com/luminik-io/alfred/issues/new?template=question.yml) with the `question` label, OR use [GitHub Discussions](https://github.com/luminik-io/alfred/discussions) when enabled. |
 | **Security vulnerability** | Do **not** open a public issue. See [`SECURITY.md`](SECURITY.md) for the private-disclosure process. |

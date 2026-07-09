@@ -205,6 +205,8 @@ _MEMORY_RECALL_TOOLS = (
     "alfred_code_graph_summary",
     "alfred_code_impact",
     "alfred_code_blast_radius",
+    "alfred_code_skeleton",
+    "alfred_read_delta",
 )
 
 
@@ -1214,6 +1216,33 @@ def _with_skills_block(prompt: str, role: str | None, agent: str = "") -> str:
     return f"{prompt}\n\n{block}"
 
 
+def _with_skeleton_priming_block(
+    prompt: str,
+    *,
+    repo: str | None,
+    orientation_paths: list[str] | None,
+    workdir: Path,
+) -> str:
+    """Append orientation skeletons for ``orientation_paths`` when armed.
+
+    Gated OFF by default (``ALFRED_SKELETON_PRIMING``) and a full no-op unless a
+    caller supplies orientation paths, so every production caller is unchanged.
+    Orientation paths are structure-only outlines that reuse the code-map index;
+    the firing's edit-target is never passed here and every elided body remains
+    one full read away. Behavior-preserving on any error or empty selection.
+    """
+    if not repo or not orientation_paths:
+        return prompt
+    block = ""
+    with contextlib.suppress(Exception):
+        from .skeleton_priming import skeleton_priming_block
+
+        block = skeleton_priming_block(repo, orientation_paths, workdir=workdir)
+    if not block:
+        return prompt
+    return f"{prompt}\n\n{block}"
+
+
 # --------------------------------------------------------------------------
 # Self-grading rubric gate (opt-in)
 #
@@ -1451,6 +1480,7 @@ def invoke_agent_engine(
     memory_repo: str | None = None,
     memory_query: str | None = None,
     memory_limit: int = 3,
+    orientation_paths: list[str] | None = None,
     rubric: str | None = None,
     rubric_grader_engine: str | None = None,
     rubric_grader_fn: Callable[[str], str] | None = None,
@@ -1483,6 +1513,13 @@ def invoke_agent_engine(
     grader engine (defaults to ``ALFRED_RUBRIC_GRADER_ENGINE`` or Codex, the
     cheapest here); ``rubric_grader_fn`` injects a grader directly (tests use
     this so no real LLM runs).
+
+    ``orientation_paths`` opts IN to skeleton priming: when set AND
+    ``ALFRED_SKELETON_PRIMING`` is armed, a compact structure-only outline of
+    those files (bodies elided, reusing the code-map index) is appended to the
+    prompt. These must be orientation files only, never the firing's
+    edit-target. Off by default and a no-op when unset, so existing callers are
+    byte-identical.
     """
     mode = normalize_engine(engine)
     claude_call = claude_fn or claude_invoke_streaming
@@ -1508,6 +1545,12 @@ def invoke_agent_engine(
             firing_id=firing_id,
         )
         prompt_with_context = _with_skills_block(prompt_with_context, role, agent)
+        prompt_with_context = _with_skeleton_priming_block(
+            prompt_with_context,
+            repo=memory_repo,
+            orientation_paths=orientation_paths,
+            workdir=workdir,
+        )
         prompt_for_engine, context_governance = govern_prompt_context(prompt_with_context)
 
         def _stamp_context_governance(result: ClaudeResult) -> ClaudeResult:

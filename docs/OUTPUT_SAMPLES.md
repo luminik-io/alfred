@@ -112,10 +112,10 @@ $ alfred doctor
 [doctor]   ~/code/your-mobile ......... ok (origin: your-org/your-mobile)
 
 [doctor] agents (doctor-mode firings) ............ ok
-[doctor]   drake     [DRAKE-DOCTOR-OK]
+[doctor]   planner       [PLANNER-DOCTOR-OK]
 [doctor]   senior-dev    [SENIOR-DEV-DOCTOR-OK]
-[doctor]   rasalghul [RASALGHUL-DOCTOR-OK]
-[doctor]   architect    [ARCHITECT-DOCTOR-OK]
+[doctor]   reviewer      [REVIEWER-DOCTOR-OK]
+[doctor]   architect     [ARCHITECT-DOCTOR-OK]
 [doctor]   agent-cleanup [AGENT-CLEANUP-DOCTOR-OK]
 
 [doctor] all green; fleet ready to run.
@@ -149,10 +149,10 @@ $ alfred doctor
 [doctor]     hint: git clone https://github.com/your-org/your-mobile
 
 [doctor] agents (doctor-mode firings) ............ partial
-[doctor]   drake     [DRAKE-DOCTOR-OK]
+[doctor]   planner       [PLANNER-DOCTOR-OK]
 [doctor]   senior-dev    [SENIOR-DEV-PREFLIGHT-FAILED] missing checkout: your-mobile
-[doctor]   rasalghul [RASALGHUL-DOCTOR-OK]
-[doctor]   architect    [ARCHITECT-DOCTOR-OK]
+[doctor]   reviewer      [REVIEWER-DOCTOR-OK]
+[doctor]   architect     [ARCHITECT-DOCTOR-OK]
 
 [doctor] 1 failure. Fix the workspace, re-run doctor, then deploy.
 exit 1

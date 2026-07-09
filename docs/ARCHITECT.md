@@ -48,7 +48,7 @@ repo, the right shape is the `planner` role scoping the issue and the
   a consumer service, and a data pipeline.
 
 The common shape: one parent issue, multiple downstream
-repos, child scopes that can be worked in parallel once approved. the architect owns
+repos, child scopes that can be worked in parallel once approved. The architect owns
 that plan and fan-out boundary; senior-dev, test-engineer, fixer, reviewers, and the
 merge gate own the resulting PRs.
 

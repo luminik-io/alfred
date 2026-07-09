@@ -6,23 +6,22 @@ first; this file is the short version those agents need.
 
 ## What this repo is
 
-Alfred is the open-source runtime for a fleet of autonomous engineering agents
+Alfred is the open-source runtime for a team of autonomous engineering agents
 on Claude Code and Codex. The OS scheduler (launchd on macOS, systemd on Linux)
-fires each agent; `lib/agent_runner/` wraps every firing in a lock,
-preflight, spend cap, and an isolated git worktree. Agents are one Python file
-per role under `bin/`, named by role slug. Themes supply the human display
-names, with the default Batman theme showing the Gotham cast in the UI and
-Slack. `examples/` holds the reference agents the tutorial builds.
+runs each agent; `lib/agent_runner/` wraps every run in a lock, preflight, spend
+cap, and an isolated git worktree. Agents are one Python file per role under
+`bin/`, named by role slug. Themes supply the human display names, with the
+default Batman theme showing the Gotham cast in the UI and Slack. `examples/`
+holds the reference agents the tutorial builds.
 
-Users inspect and steer the fleet through the Alfred CLI (`bin/alfred`),
-the optional `alfred serve` JSON API, the optional Tauri desktop client under
-`clients/desktop`, and Slack. The desktop client has a Claude + Codex
-subscription-headroom rail (backed by the live `GET /api/usage` endpoint, read
-from local CLI state with no billing API; the same data is available from
-`alfred usage`) and a cinematic agent roster. Any issue carrying the
-approval gate label (`agent:plan-pending-approval`) is held from
-autonomous pickup until the configured approver clears it; firings
-emit step-level run events so the run
+Users inspect and steer the team through the Alfred CLI (`bin/alfred`), the
+optional `alfred serve` JSON API, the optional Tauri desktop client under
+`clients/desktop`, and Slack. The desktop client carries a Claude and Codex
+subscription usage rail (backed by the live `GET /api/usage` endpoint, read from
+local CLI state with no billing API; the same data is available from
+`alfred usage`) and a cinematic agent roster. Any issue carrying the approval
+gate label (`agent:plan-pending-approval`) is held from autonomous pickup until
+the configured approver clears it; runs emit step-level events so the run
 timeline shows real progress.
 
 ## Design boundaries (do not cross without a discussion)

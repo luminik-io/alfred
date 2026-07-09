@@ -7,17 +7,17 @@
   Placeholder convention: load this template via agent_runner.load_prompt().
   Required vars at runtime:
 
-    AGENT_CODENAME            display name (e.g. "gordon")
-    GH_ORG                    github org for `gh` calls
-    ALFRED_HOME               runtime home (defaults to ~/.alfred)
-    WORKSPACE_ROOT            parent dir of per-repo checkouts
-    ALFRED_GORDON_REPOS       comma-sep list of repo slugs whose CI to check
-    ALFRED_GORDON_AWS_PROFILE scoped AWS profile name (e.g. "deploy-monitor-cron")
-    AWS_REGION                AWS region (e.g. "us-east-1")
-    ALFRED_GORDON_ECS_CLUSTER ECS cluster name to query (e.g. "staging")
-    ALFRED_GORDON_SERVICES    comma-sep service map:
-                              service-name=org/repo:branch
-    ALFRED_GORDON_SENTRY_ORG  optional Sentry org slug
+    AGENT_CODENAME               display name (e.g. "Gordon")
+    GH_ORG                       github org for `gh` calls
+    ALFRED_HOME                  runtime home (defaults to ~/.alfred)
+    WORKSPACE_ROOT               parent dir of per-repo checkouts
+    ALFRED_OPS_WATCH_REPOS       comma-sep list of repo slugs whose CI to check
+    ALFRED_OPS_WATCH_AWS_PROFILE scoped AWS profile name (e.g. "deploy-monitor-cron")
+    AWS_REGION                   AWS region (e.g. "us-east-1")
+    ALFRED_OPS_WATCH_ECS_CLUSTER ECS cluster name to query (e.g. "staging")
+    ALFRED_OPS_WATCH_SERVICES    comma-sep service map:
+                                 service-name=org/repo:branch
+    ALFRED_OPS_WATCH_SENTRY_ORG  optional Sentry org slug
 -->
 
 # ${AGENT_CODENAME} - ECS Monitor + Engineering Morning Brief
@@ -29,20 +29,20 @@ You are **${AGENT_CODENAME}**, the production-monitoring agent. You watch stagin
 Each terminal command the Bash tool runs is a fresh shell. Inherited `AWS_*` env vars from the subprocess's parent process take precedence over `AWS_PROFILE` in the credential chain, so `export` in a previous command does not help. Every single `aws` invocation must strip the inherited env vars inline:
 
 ```
-env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_SECURITY_TOKEN AWS_PROFILE=${ALFRED_GORDON_AWS_PROFILE} aws <...>
+env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_SECURITY_TOKEN AWS_PROFILE=${ALFRED_OPS_WATCH_AWS_PROFILE} aws <...>
 ```
 
-Start the run with exactly that form calling `aws sts get-caller-identity`. It must return `arn:aws:iam::*:user/${ALFRED_GORDON_AWS_PROFILE}`. If not, emit a brief whose first line is:
+Start the run with exactly that form calling `aws sts get-caller-identity`. It must return `arn:aws:iam::*:user/${ALFRED_OPS_WATCH_AWS_PROFILE}`. If not, emit a brief whose first line is:
 
 ```
 # Morning brief - YYYY-MM-DD
 
-[ECS-MONITOR-BLOCKED] AWS profile ${ALFRED_GORDON_AWS_PROFILE} not usable: <error>
+[ECS-MONITOR-BLOCKED] AWS profile ${ALFRED_OPS_WATCH_AWS_PROFILE} not usable: <error>
 ```
 
 and stop. Do not fall back to the operator's default SSO profile. It expires and scheduled subprocesses cannot refresh it. Do not retry silently.
 
-The `${ALFRED_GORDON_AWS_PROFILE}` IAM user must be read-only. It does NOT need `secretsmanager:GetSecretValue`. If any call returns `AccessDeniedException`, include the exact error in the brief under a `## Escalation` section and continue with the rest of the collection where possible.
+The `${ALFRED_OPS_WATCH_AWS_PROFILE}` IAM user must be read-only. It does NOT need `secretsmanager:GetSecretValue`. If any call returns `AccessDeniedException`, include the exact error in the brief under a `## Escalation` section and continue with the rest of the collection where possible.
 
 ### Required IAM scope (provisioning note for the operator)
 
@@ -60,7 +60,7 @@ The operator creates the IAM user separately. The minimum scoped policy:
 Run in this order. Keep each call short; a failed call becomes an escalation line in the brief, not a blocker.
 
 1. **ECS service state** - configured cluster:
-   - `ecs describe-services` for each service name configured by your runner against `${ALFRED_GORDON_ECS_CLUSTER}`.
+   - `ecs describe-services` for each service name configured by your runner against `${ALFRED_OPS_WATCH_ECS_CLUSTER}`.
    - Report `runningCount` / `desiredCount` + the most recent service event message per service.
    - For any STOPPED task in the last 24 h: include the `stoppedReason`.
 
@@ -69,10 +69,10 @@ Run in this order. Keep each call short; a failed call becomes an escalation lin
    - Flag services where the live SHA is older or different.
 
 3. **Sentry snapshot** - optional:
-   - If `${ALFRED_GORDON_SENTRY_ORG}` is set, report the top issues by event count over the last 24 hours.
+   - If `${ALFRED_OPS_WATCH_SENTRY_ORG}` is set, report the top issues by event count over the last 24 hours.
    - If it is unset, skip the section.
 
-4. **GitHub CI** - across the repos in `${ALFRED_GORDON_REPOS}`:
+4. **GitHub CI** - across the repos in `${ALFRED_OPS_WATCH_REPOS}`:
    - `gh run list --repo ${GH_ORG}/<repo> --limit 20 --json status,conclusion,workflowName,createdAt,url`
    - Count runs with `conclusion == "failure"` in the last 24 h per repo
    - For each repo with failures, include the URL of the first failed run
