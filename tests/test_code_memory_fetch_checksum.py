@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shlex
 import subprocess
 import urllib.parse
@@ -25,6 +26,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "bin" / "code-memory-mcp"
+ENV_EXAMPLE = ROOT / ".env.example"
 
 # Pinned digest the script ships for darwin-arm64, copied from upstream
 # checksums.txt for the pinned version. The test recreates a file with exactly
@@ -56,6 +58,21 @@ def _launcher_env(tmp_path: Path, **updates: str) -> dict[str, str]:
     }
     env.update(updates)
     return env
+
+
+def test_env_example_code_memory_pin_matches_launcher_default() -> None:
+    script = SCRIPT.read_text(encoding="utf-8")
+    env_example = ENV_EXAMPLE.read_text(encoding="utf-8")
+
+    launcher_match = re.search(
+        r'CODE_MEMORY_VERSION="\$\{ALFRED_CODE_MEMORY_VERSION:-(v[^}]+)\}"',
+        script,
+    )
+    example_match = re.search(r"^# ALFRED_CODE_MEMORY_VERSION=(v\S+)$", env_example, re.M)
+
+    assert launcher_match is not None
+    assert example_match is not None
+    assert example_match.group(1) == launcher_match.group(1)
 
 
 def test_verify_passes_on_matching_digest(tmp_path: Path) -> None:
