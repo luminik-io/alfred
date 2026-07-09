@@ -25,6 +25,7 @@ from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING
 
 from .gbrain_stub import GBrainProvider
+from .pgvector_provider import PgvectorProvider
 from .providers import (
     ChainedMemoryProvider,
     FleetBrainProvider,
@@ -63,7 +64,7 @@ DEFAULT_PROVIDER_NAMES = ["sqlite", "fleet"]
 # write path. ``fleet``/``gbrain``/``null`` are NOT: fleet is the candidate
 # ledger, gbrain is a read-only shim, null is a no-op. Order-independent set;
 # ``load_lesson_writer`` picks the first such name in the configured chain.
-LESSON_STORE_NAMES = frozenset({"sqlite", "sqlite_hybrid", "redis"})
+LESSON_STORE_NAMES = frozenset({"sqlite", "sqlite_hybrid", "redis", "pgvector"})
 
 # Registry: each entry is a small factory that constructs the provider
 # from the process environment. Keep the factories trivial; the
@@ -74,6 +75,7 @@ PROVIDER_REGISTRY: dict[str, ProviderFactory] = {
     "redis": lambda env: RedisAgentMemoryProvider.from_env(env=env),
     "sqlite": lambda env: SqliteHybridProvider.from_env(env=env),
     "sqlite_hybrid": lambda env: SqliteHybridProvider.from_env(env=env),
+    "pgvector": lambda env: PgvectorProvider.from_env(env=env),
     "null": lambda _env: NullMemoryProvider(),
 }
 

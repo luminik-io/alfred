@@ -62,6 +62,84 @@ change breaks, who owns a file) see [CODE_MEMORY.md](CODE_MEMORY.md). It is a
 separate read-only MCP layer (codebase-memory-mcp) that complements the
 semantic lessons and the operational graph rather than replacing them.
 
+## The scale tier: Postgres + pgvector
+
+The SQLite hybrid store is one file with a single writer. That is exactly right
+for one busy host, and it is the default. When a team outgrows it, the
+`pgvector` provider (`lib/memory/pgvector_provider.py`) is the documented
+scale-out, behind the **same provider seam**. Opt in with
+`ALFRED_MEMORY_PROVIDERS=pgvector,fleet`; the default is unchanged and nothing
+else in the runner changes.
+
+It implements the same contract as the SQLite hybrid store, so recall,
+promotion, and Phase 3 consolidation all work through it unchanged:
+
+- **Schema parity.** A `lessons` table with the Phase 2 `kind` / `anchors` /
+  `valid_until` / `superseded_by` / `provenance` columns and the Phase 3
+  `lesson_reuse` counters, a `tsvector` full-text column with a GIN index, and a
+  pgvector `vector` column with an HNSW index (IVFFlat optional). Schema creation
+  and migration are idempotent (`CREATE ... IF NOT EXISTS`, `ADD COLUMN IF NOT
+  EXISTS`, additive).
+- **Retrieval parity.** Postgres full-text (`to_tsvector` / `ts_rank`, ILIKE
+  fallback) plus pgvector cosine KNN (`<=>`), fused with the **same** Reciprocal
+  Rank Fusion (`k=60`) the SQLite store uses. Scope (`codename` / `repo`) and
+  validity are filtered **in the query**, in the same `WHERE` that feeds the
+  vector order, so an in-scope lesson can never be truncated away by closer
+  out-of-scope vectors. (This is a strict improvement over the `sqlite-vec` KNN,
+  which is a global top-k that cannot see the scope columns.)
+- **Consolidation parity.** `reflect` / `sync_lesson` / `forget_lesson` /
+  `merge_lesson` (provenance + anchor + reuse UNION, invalidate-not-delete) /
+  `union_reuse_counts` / `list_lessons` / `health`, so promotion and the Phase 3
+  consolidation pass behave exactly as they do on SQLite.
+
+**It is opt-in only and never a hard dependency.** `psycopg` (v3) and the
+server-side pgvector `vector` extension are optional, exactly like `sqlite-vec`
+is for the SQLite dense arm. If `psycopg` is not installed or no DSN is
+configured, the provider is simply unavailable and the configured chain falls
+through to the next backend. A local or self-hosted Postgres works; nothing here
+assumes a cloud-hosted database.
+
+### When to move from SQLite to pgvector
+
+Reach for the scale tier when the single-writer SQLite file is the bottleneck,
+not before. Concretely, any one of:
+
+- **Write contention.** Many agents on many hosts write lessons concurrently and
+  you see `database is locked` retries or reflection latency during promotion.
+  Postgres MVCC removes the single-writer lock.
+- **Lesson count.** The recall corpus grows past roughly 10^5 lessons, where a
+  brute-force `sqlite-vec` scan starts to cost real recall latency; a pgvector
+  HNSW index keeps nearest-neighbour lookups sub-linear.
+- **Recall latency.** p95 recall creeps above your firing's inline budget (recall
+  runs before each firing), and a server-side index plus in-query scope filtering
+  is the fix.
+
+Until one of those is true, stay on the SQLite default. It is faster to operate
+(no daemon) and semantically identical.
+
+### pgvector knobs
+
+```sh
+# libpq connection string. Required to arm the provider; a local Postgres works.
+ALFRED_MEMORY_PG_DSN=postgresql://alfred:alfred@127.0.0.1:5432/alfred
+# Optional table-name prefix so several installs can share one database.
+ALFRED_MEMORY_PG_TABLE_PREFIX=
+# Vector index kind: hnsw (default) or ivfflat.
+ALFRED_MEMORY_PG_INDEX=hnsw
+# RRF constant k (default 60) and per-arm candidate pool before fusion.
+ALFRED_MEMORY_PG_RRF_K=60
+ALFRED_MEMORY_PG_POOL=50
+# Dense arm on by default when armed; embeddings reuse the AMS embedding config
+# (ALFRED_AMS_EMBEDDING_MODEL / ALFRED_AMS_EMBEDDING_DIM / ALFRED_AMS_OLLAMA_BASE_URL).
+# Set to 0 for lexical-only (full-text) recall.
+ALFRED_MEMORY_PG_DENSE=1
+```
+
+Install the optional client with `pip install "alfred-os[pgvector]"` and enable
+the `vector` extension in the target database (`CREATE EXTENSION vector;`, which
+the provider also attempts on first connect when the role is allowed). Without
+the extension the provider still runs, lexical-only.
+
 ## Recall gating
 
 Recalled lessons are gated before they are injected into a firing's prompt.
@@ -238,6 +316,7 @@ chain wrapper catches it and tries the next writer.
 | Name | File | Writable? | Notes |
 |---|---|---|---|
 | `sqlite` (alias `sqlite_hybrid`) | `lib/memory/sqlite_hybrid.py` | yes | **Default** zero-daemon recall store. FTS5 lexical + optional `sqlite-vec` dense, fused with RRF. Single SQLite file, no service. |
+| `pgvector` | `lib/memory/pgvector_provider.py` | yes | Opt-in **scale tier**. Postgres + pgvector with an HNSW vector index and `tsvector` full-text, fused with RRF. Same contract as `sqlite`. Needs `psycopg` + a Postgres DSN. Use with `ALFRED_MEMORY_PROVIDERS=pgvector,fleet`. |
 | `redis` | `lib/memory/redis_agent_memory.py` | yes | Opt-in semantic memory client backed by Redis Agent Memory Server (needs the daemon + Ollama). Use with `ALFRED_MEMORY_PROVIDERS=redis,fleet`. |
 | `fleet` | `lib/memory/providers.py` | yes | Local operational ledger and review queue. SQLite under `$ALFRED_HOME`. |
 | `gbrain` | `lib/memory/gbrain_stub.py` | no | Optional subprocess shim into a personal knowledge base CLI. Not bundled functionality. |
@@ -249,9 +328,10 @@ The promote path always writes to a store the **active recall chain actually
 reads**, resolved by `memory.config.load_lesson_writer`, so a promotion is never
 written somewhere recall never looks:
 
-- A dedicated recall store is named (`sqlite` or `redis`): write to the first
-  one. Default `sqlite,fleet` writes to the embedded SQLite store; `redis,fleet`
-  writes to Redis, exactly as before.
+- A dedicated recall store is named (`sqlite`, `pgvector`, or `redis`): write to
+  the first one. Default `sqlite,fleet` writes to the embedded SQLite store;
+  `pgvector,fleet` writes to Postgres; `redis,fleet` writes to Redis, exactly as
+  before.
 - No dedicated recall store, but `fleet` is in the chain (e.g. `fleet` only):
   write to FleetBrain's own lessons table, which fleet recall reads. Promotions
   are never routed to a disconnected SQLite file that fleet recall would ignore.
