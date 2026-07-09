@@ -155,6 +155,51 @@ def test_sync_lesson_round_trips(provider: SqliteHybridProvider) -> None:
     assert [L.id for L in other.list_lessons(limit=10)] == [lesson.id]
 
 
+def test_sync_lesson_roundtrip_with_string_created_at(provider: SqliteHybridProvider) -> None:
+    # A lesson mirrored from the AMS write contract carries ``created_at`` as a
+    # serialized ISO string, not a datetime. sync_lesson must persist it (not
+    # silently swallow an AttributeError from _iso and return False) so the
+    # lesson is recallable. This is the exact E2E path that regressed.
+    lesson = Lesson(
+        id="lesson:memory_candidate:strfix",
+        codename="lucius",
+        repo="acme/api",
+        body="gateway rate limiting lives in the edge module",
+        tags=["gateway"],
+        created_at="2026-07-09T00:00:00Z",  # ISO string, not a datetime
+        firing_id="firing-123",
+        severity="info",
+    )
+    assert provider.sync_lesson(lesson) is True
+    assert provider.health()["lessons"] == 1
+    out = provider.recall(query="gateway rate limiting", codename="lucius", repo="acme/api")
+    assert [L.id for L in out] == [lesson.id]
+    # created_at is normalized back to a UTC datetime on the recalled lesson.
+    assert isinstance(out[0].created_at, datetime)
+
+
+def test_reflect_accepts_string_datetime_and_none_created_at(
+    provider: SqliteHybridProvider,
+) -> None:
+    # reflect's created_at is (datetime | str | None); all three persist and the
+    # returned lesson always carries a well-typed datetime.
+    as_str = provider.reflect(
+        codename="c", repo="r", body="string created_at", created_at="2026-01-02T03:04:05Z"
+    )
+    as_dt = provider.reflect(
+        codename="c",
+        repo="r",
+        body="datetime created_at",
+        created_at=datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC),
+    )
+    as_none = provider.reflect(codename="c", repo="r", body="default created_at")
+    for lesson in (as_str, as_dt, as_none):
+        assert isinstance(lesson.created_at, datetime)
+    assert as_str.created_at == datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
+    assert as_dt.created_at == datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
+    assert len(provider.list_lessons(limit=10)) == 3
+
+
 # ---------------------------------------------------------------------------
 # RRF fusion (pure function)
 # ---------------------------------------------------------------------------
