@@ -29,7 +29,22 @@ for candidate in (
             sys.path.remove(candidate_path)
         sys.path.insert(0, candidate_path)
 
-from code_graph import blast_radius_for_paths, impact_for_path, summarize_codegraph  # noqa: E402
+from agent_runner import WORKSPACE, local_repo_dir  # noqa: E402
+from agent_runner.read_ledger import (  # noqa: E402
+    ReadLedger,
+    delta_context_lines,
+    delta_max_chars,
+    delta_max_ratio,
+    ledger_root_for,
+    read_delta_available,
+    read_delta_enabled,
+)
+from code_graph import (  # noqa: E402
+    blast_radius_for_paths,
+    impact_for_path,
+    skeleton_for_path,
+    summarize_codegraph,
+)
 from fleet_brain import FleetBrain, default_db_path  # noqa: E402
 from fleet_brain.doctor import run_memory_doctor  # noqa: E402
 
@@ -185,6 +200,40 @@ TOOLS: tuple[dict[str, Any], ...] = (
         },
     },
     {
+        "name": "alfred_code_skeleton",
+        "description": (
+            "Return a structure-only skeleton (signatures, first docstring line, "
+            "elided bodies) of a repo file from the local code graph. Orientation "
+            "only: read the real file for any body you need or intend to edit."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string"},
+                "path": {"type": "string"},
+                "symbol": {"type": "string"},
+            },
+            "required": ["repo", "path"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "alfred_read_delta",
+        "description": (
+            "Read a repo file, returning only a unified diff versus what was last "
+            "surfaced to this firing (full content on first read or large change)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string"},
+                "path": {"type": "string"},
+            },
+            "required": ["repo", "path"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "alfred_memory_doctor",
         "description": "Run read-only health checks over fleet-brain memory.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -227,6 +276,20 @@ def call_tool(
             paths=paths,
             limit=_int_limit(args.get("limit"), default=50, max_value=200),
         )
+    if name == "alfred_code_skeleton":
+        repo, path = _require_repo_path(args)
+        _reject_unsafe_relpath(path)
+        return skeleton_for_path(
+            None,
+            repo=repo,
+            path=path,
+            repo_root=_repo_root(repo),
+            symbol=_str_or_none(args.get("symbol")),
+        )
+    if name == "alfred_read_delta":
+        repo, path = _require_repo_path(args)
+        _reject_unsafe_relpath(path)
+        return _read_delta(repo, path)
     brain = _brain(db_path)
     if name == "alfred_memory_recall":
         _require_scope(args)
@@ -391,6 +454,96 @@ def _require_repo_paths(args: dict[str, Any]) -> tuple[str, list[str]]:
     if not repo or not paths:
         raise ValueError("graph tools require a repo and at least one path")
     return repo, paths
+
+
+def _repo_root(repo: str) -> Path:
+    """Resolve a repo slug to its on-disk checkout, rejecting workspace escapes.
+
+    The ``repo`` slug is untrusted input just like ``path``: a slug of ``..``,
+    ``../../x``, or an absolute component would resolve outside the workspace
+    root via :func:`local_repo_dir`. Reject upward/absolute slugs and require the
+    resolved checkout to stay within the realpath of ``WORKSPACE``.
+    """
+    _reject_unsafe_relpath(repo)
+    root = WORKSPACE / local_repo_dir(repo)
+    workspace_real = Path(os.path.realpath(WORKSPACE))
+    root_real = Path(os.path.realpath(root))
+    if root_real != workspace_real and workspace_real not in root_real.parents:
+        raise ValueError("repo slug escapes the workspace root")
+    return root
+
+
+def _reject_unsafe_relpath(path: str) -> None:
+    """Reject an untrusted repo path that is absolute or traverses upward.
+
+    A cheap boundary check for both source-reading tools: it refuses an absolute
+    component or any ``..`` segment before the path is joined to a repo root.
+    The realpath containment in :func:`_safe_source_path` and
+    ``code_graph.skeleton_for_path`` is the authoritative guard (it also catches
+    symlink escapes); this just returns a clearer, earlier error.
+    """
+    if os.path.isabs(path) or Path(path).is_absolute():
+        raise ValueError("path must be relative to the repo root")
+    parts = Path(path.replace("\\", "/")).parts
+    if ".." in parts:
+        raise ValueError("path must not traverse outside the repo root")
+
+
+def _safe_source_path(root: Path, path: str) -> Path:
+    """Resolve ``path`` under ``root``, rejecting any escape from the checkout.
+
+    The MCP ``repo``/``path`` arguments are untrusted. A ``..`` segment, an
+    absolute component, or a symlink pointing outside the checkout would let a
+    caller read arbitrary host files. Resolve both the root and the candidate to
+    real paths and require the candidate to stay inside the root; raise
+    ``ValueError`` otherwise so the tool returns an error instead of leaking a
+    file.
+    """
+    if os.path.isabs(path) or Path(path).is_absolute():
+        raise ValueError("path must be relative to the repo root")
+    root_real = Path(os.path.realpath(root))
+    candidate = Path(os.path.realpath(root / path))
+    if candidate != root_real and root_real not in candidate.parents:
+        raise ValueError("path escapes the repo root")
+    return candidate
+
+
+def _read_delta(repo: str, path: str) -> dict[str, Any]:
+    """Read ``repo``/``path`` through the per-worktree delta ledger.
+
+    First read returns full content; a re-read within the same firing returns a
+    unified diff against the previously surfaced copy, falling back to full
+    content when the change is too large to diff usefully. When the delta gate
+    is off, always returns full content.
+    """
+    root = _repo_root(repo)
+    source_path = _safe_source_path(root, path)
+    try:
+        content = source_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return {"repo": repo, "path": path, "mode": "error", "reason": str(exc)}
+
+    if not read_delta_enabled() or not read_delta_available():
+        # Delta disabled, or the ledger cannot be scoped to a single firing
+        # (no ALFRED_FIRING_ID and no explicit ledger dir). Full reads avoid any
+        # cross-firing diff corruption.
+        return {"repo": repo, "path": path, "mode": "full", "content": content}
+
+    ledger = ReadLedger(ledger_root_for(root))
+    result = ledger.surface(
+        f"{repo}:{path}",
+        content,
+        max_ratio=delta_max_ratio(),
+        context_lines=delta_context_lines(),
+        max_diff_chars=delta_max_chars(),
+    )
+    payload: dict[str, Any] = {"repo": repo, **result.as_raw()}
+    payload["path"] = path
+    if result.mode == "delta":
+        payload["diff"] = result.diff
+    elif result.mode == "full":
+        payload["content"] = result.content
+    return payload
 
 
 def _int_limit(value: Any, *, default: int, max_value: int) -> int:
