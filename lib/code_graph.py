@@ -10,12 +10,42 @@ from __future__ import annotations
 import json
 import os
 import posixpath
+import re
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 CODEGRAPH_SCHEMA = "alfred-codegraph@1"
 MAX_BLAST_RADIUS_PATHS = 200
+
+# ---------------------------------------------------------------------------
+# Skeleton projection tunables (consumed by ``project_skeleton`` below). These
+# are the conservative defaults; callers and the run-priming wiring pass their
+# own values from config so nothing here is hardcoded at the call site.
+# ---------------------------------------------------------------------------
+DEFAULT_MAX_SIGNATURE_LINES = 6
+DEFAULT_MAX_DOCSTRING_CHARS = 160
+DEFAULT_SKELETON_HEAD_LINES = 40
+
+# Suffix -> language, mirroring bin/code-map-refresh.py's LANG_BY_SUFFIX so a
+# skeleton labels code the same way the index does when the map omits the
+# language for a file.
+_LANG_BY_SUFFIX: dict[str, str] = {
+    ".go": "go",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".kt": "kotlin",
+    ".kts": "kotlin",
+    ".py": "python",
+    ".rs": "rust",
+    ".swift": "swift",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+}
+
+# Optional string/byte/raw/format prefixes on a Python docstring opener.
+_DOCSTRING_OPENER_RE = re.compile(r'^[rRbBuUfF]{0,2}("""|\'\'\')')
 
 
 def default_code_map_path() -> Path:
@@ -1013,3 +1043,228 @@ def _append_brief_rows(
         return
     lines.append(f"{title}:")
     lines.extend(f"- {render_row(row)}" for row in cleaned)
+
+
+# ---------------------------------------------------------------------------
+# Skeleton projection
+#
+# A skeleton is a compact structural view of one source file: its class/def
+# signatures, the first line of each Python docstring, and an explicit
+# ``[body: N line(s) elided]`` marker in place of every implementation body. It
+# reuses the SAME symbol anchors the code-map index already extracted
+# (``{"name", "line"}`` per file); no new parser, embedding store, or index is
+# introduced. The projection is deterministic: identical (source, symbols)
+# inputs always render the same text.
+#
+# Skeletons are ORIENTATION, never an edit surface. Every elided body is one
+# ``Read`` of the real file away, and the markers say so. Callers must never
+# treat a skeleton as the file's content when the agent has to change it.
+# ---------------------------------------------------------------------------
+
+
+def _language_from_suffix(path: str) -> str:
+    return _LANG_BY_SUFFIX.get(Path(path).suffix, "unknown")
+
+
+def _leading_indent(line: str) -> str:
+    return line[: len(line) - len(line.lstrip())]
+
+
+def _signature_end(lines: list[str], start: int, language: str, max_lines: int) -> int:
+    """Return the 0-based index of the last line of a symbol's signature.
+
+    Deterministic and language-aware but heuristic (matching the code map's own
+    regex-not-tree-sitter posture): scan at most ``max_lines`` lines from the
+    declaration for a natural terminator, else keep only the declaration line.
+    """
+    last = min(start + max(1, max_lines) - 1, len(lines) - 1)
+    if language == "python":
+        for i in range(start, last + 1):
+            code = lines[i].split("#", 1)[0].rstrip()
+            if code.endswith(":"):
+                return i
+        return start
+    if language in {"go", "javascript", "kotlin", "rust", "swift", "typescript"}:
+        for i in range(start, last + 1):
+            if "{" in lines[i]:
+                return i
+            if lines[i].split("//", 1)[0].rstrip().endswith(";"):
+                return i
+        return start
+    return start
+
+
+def _first_docstring_line(region: list[str], max_chars: int) -> tuple[str | None, int]:
+    """Return the first Python docstring line in ``region`` and lines consumed.
+
+    ``region`` is the block of source between a signature and the next symbol.
+    Returns ``(None, 0)`` when the first non-blank line is not a triple-quoted
+    docstring opener, so the caller counts that line as an elided body line.
+    """
+    for offset, raw in enumerate(region):
+        if not raw.strip():
+            continue
+        if _DOCSTRING_OPENER_RE.match(raw.lstrip()):
+            text = raw.rstrip("\n")
+            if len(text) > max_chars:
+                text = text[: max_chars - 1].rstrip() + "…"
+            return text, offset + 1
+        return None, 0
+    return None, 0
+
+
+def project_skeleton(
+    path: str,
+    source: str,
+    *,
+    symbols: Sequence[dict[str, Any]] | None = None,
+    language: str | None = None,
+    max_signature_lines: int = DEFAULT_MAX_SIGNATURE_LINES,
+    max_docstring_chars: int = DEFAULT_MAX_DOCSTRING_CHARS,
+    head_lines: int = DEFAULT_SKELETON_HEAD_LINES,
+) -> str:
+    """Render a deterministic structural skeleton of one source file.
+
+    ``symbols`` are the code-map index anchors for the file (each a mapping with
+    at least a 1-based ``line``; ``name`` is used only for stable ordering). The
+    skeleton keeps each symbol's signature block and, for Python, the first line
+    of its docstring, replacing every body with a ``[body: N line(s) elided]``
+    marker. When the file has no indexed symbols, a bounded head slice is shown
+    instead so config or data files still yield a useful orientation view.
+
+    The output is orientation-only. Elided bodies are recoverable by reading the
+    real file; the markers exist precisely so a model never mistakes the
+    skeleton for the full source it must edit.
+    """
+    language = language or _language_from_suffix(path)
+    lines = source.splitlines()
+    total = len(lines)
+
+    anchors: list[tuple[int, str]] = []
+    seen_lines: set[int] = set()
+    for symbol in symbols or []:
+        raw_line = symbol.get("line")
+        if not isinstance(raw_line, int) or isinstance(raw_line, bool):
+            continue
+        line = raw_line
+        if line < 1 or line > total or line in seen_lines:
+            continue
+        seen_lines.add(line)
+        anchors.append((line, str(symbol.get("name") or "")))
+    anchors.sort(key=lambda item: (item[0], item[1]))
+
+    header = f"skeleton: {path} ({language}) - {len(anchors)} symbol(s), bodies elided"
+    out: list[str] = [header, ""]
+
+    if not anchors:
+        head = lines[: max(0, head_lines)]
+        out.extend(head)
+        remaining = total - len(head)
+        if remaining > 0:
+            out.append(f"[... {remaining} more line(s) elided]")
+        return "\n".join(out)
+
+    first_line = anchors[0][0]
+    preamble = sum(1 for line in lines[: first_line - 1] if line.strip())
+    if preamble > 0:
+        out.append(f"[preamble: {preamble} line(s) elided]")
+
+    for idx, (line, _name) in enumerate(anchors):
+        start = line - 1
+        sig_end = _signature_end(lines, start, language, max_signature_lines)
+        out.extend(lines[start : sig_end + 1])
+        body_indent = _leading_indent(lines[start]) + "    "
+
+        region_end = anchors[idx + 1][0] - 1 if idx + 1 < len(anchors) else total
+        region = lines[sig_end + 1 : region_end]
+
+        consumed = 0
+        if language == "python":
+            doc, consumed = _first_docstring_line(region, max_docstring_chars)
+            if doc is not None:
+                out.append(doc)
+        body_count = sum(1 for line in region[consumed:] if line.strip())
+        if body_count > 0:
+            out.append(f"{body_indent}[body: {body_count} line(s) elided]")
+
+    return "\n".join(out)
+
+
+def skeleton_for_path(
+    code_map: dict[str, Any] | None,
+    *,
+    repo: str,
+    path: str,
+    repo_root: Path | str,
+    code_map_path: Path | str | None = None,
+    symbol: str | None = None,
+    max_signature_lines: int = DEFAULT_MAX_SIGNATURE_LINES,
+    max_docstring_chars: int = DEFAULT_MAX_DOCSTRING_CHARS,
+    head_lines: int = DEFAULT_SKELETON_HEAD_LINES,
+) -> dict[str, Any]:
+    """Resolve a repo path against the code map and project its skeleton.
+
+    Reuses the index to locate the file and its symbol anchors, then reads the
+    on-disk source under ``repo_root`` to render the projection. The map itself
+    is never modified. Returns a payload with an empty ``skeleton`` and a
+    ``reason`` when the path is unmatched, ambiguous, or the source cannot be
+    read, so callers can degrade to a normal full read.
+    """
+    payload = code_map if code_map is not None else load_code_map(code_map_path)
+    repos = _dict_value(payload.get("repos"))
+    repo_data = repos.get(repo)
+    if not isinstance(repo_data, dict):
+        raise ValueError(f"repo not found in code map: {repo}")
+
+    target_path = _normalize_file_path(path)
+    files = _list_of_dicts(repo_data.get("files"))
+    file_by_path = {_normalize_file_path(str(f.get("path") or "")): f for f in files}
+    matched_path, match_status, candidate_matches = _match_path(target_path, file_by_path)
+
+    base: dict[str, Any] = {
+        "schema": CODEGRAPH_SCHEMA,
+        "kind": "skeleton",
+        "repo": repo,
+        "path": target_path,
+        "matched_file": matched_path,
+        "match_status": match_status,
+        "symbol": symbol,
+        "language": None,
+        "symbol_count": 0,
+        "source_lines": 0,
+        "skeleton": "",
+        "candidate_matches": candidate_matches[:MAX_BLAST_RADIUS_PATHS],
+    }
+    if matched_path is None:
+        base["reason"] = match_status
+        return base
+
+    matched_file = file_by_path[matched_path]
+    language = _str_or_none(matched_file.get("language"))
+    symbols = _list_of_dicts(matched_file.get("symbols"))
+    if symbol is not None:
+        symbols = [s for s in symbols if str(s.get("name") or "") == symbol]
+
+    source_path = Path(repo_root) / matched_path
+    try:
+        source = source_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        base["reason"] = "source_unavailable"
+        base["error"] = str(exc)
+        return base
+
+    skeleton = project_skeleton(
+        matched_path,
+        source,
+        symbols=symbols,
+        language=language,
+        max_signature_lines=max_signature_lines,
+        max_docstring_chars=max_docstring_chars,
+        head_lines=head_lines,
+    )
+    base["language"] = language or _language_from_suffix(matched_path)
+    base["symbol_count"] = len(symbols)
+    base["source_lines"] = len(source.splitlines())
+    base["skeleton"] = skeleton
+    base["skeleton_lines"] = len(skeleton.splitlines())
+    return base

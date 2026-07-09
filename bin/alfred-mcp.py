@@ -29,7 +29,21 @@ for candidate in (
             sys.path.remove(candidate_path)
         sys.path.insert(0, candidate_path)
 
-from code_graph import blast_radius_for_paths, impact_for_path, summarize_codegraph  # noqa: E402
+from agent_runner import WORKSPACE, local_repo_dir  # noqa: E402
+from agent_runner.read_ledger import (  # noqa: E402
+    ReadLedger,
+    delta_context_lines,
+    delta_max_chars,
+    delta_max_ratio,
+    ledger_root_for,
+    read_delta_enabled,
+)
+from code_graph import (  # noqa: E402
+    blast_radius_for_paths,
+    impact_for_path,
+    skeleton_for_path,
+    summarize_codegraph,
+)
 from fleet_brain import FleetBrain, default_db_path  # noqa: E402
 from fleet_brain.doctor import run_memory_doctor  # noqa: E402
 
@@ -185,6 +199,40 @@ TOOLS: tuple[dict[str, Any], ...] = (
         },
     },
     {
+        "name": "alfred_code_skeleton",
+        "description": (
+            "Return a structure-only skeleton (signatures, first docstring line, "
+            "elided bodies) of a repo file from the local code graph. Orientation "
+            "only: read the real file for any body you need or intend to edit."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string"},
+                "path": {"type": "string"},
+                "symbol": {"type": "string"},
+            },
+            "required": ["repo", "path"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "alfred_read_delta",
+        "description": (
+            "Read a repo file, returning only a unified diff versus what was last "
+            "surfaced to this firing (full content on first read or large change)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string"},
+                "path": {"type": "string"},
+            },
+            "required": ["repo", "path"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "alfred_memory_doctor",
         "description": "Run read-only health checks over fleet-brain memory.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -227,6 +275,18 @@ def call_tool(
             paths=paths,
             limit=_int_limit(args.get("limit"), default=50, max_value=200),
         )
+    if name == "alfred_code_skeleton":
+        repo, path = _require_repo_path(args)
+        return skeleton_for_path(
+            None,
+            repo=repo,
+            path=path,
+            repo_root=_repo_root(repo),
+            symbol=_str_or_none(args.get("symbol")),
+        )
+    if name == "alfred_read_delta":
+        repo, path = _require_repo_path(args)
+        return _read_delta(repo, path)
     brain = _brain(db_path)
     if name == "alfred_memory_recall":
         _require_scope(args)
@@ -391,6 +451,46 @@ def _require_repo_paths(args: dict[str, Any]) -> tuple[str, list[str]]:
     if not repo or not paths:
         raise ValueError("graph tools require a repo and at least one path")
     return repo, paths
+
+
+def _repo_root(repo: str) -> Path:
+    """Resolve a repo slug to its on-disk checkout for source-reading tools."""
+    return WORKSPACE / local_repo_dir(repo)
+
+
+def _read_delta(repo: str, path: str) -> dict[str, Any]:
+    """Read ``repo``/``path`` through the per-worktree delta ledger.
+
+    First read returns full content; a re-read within the same firing returns a
+    unified diff against the previously surfaced copy, falling back to full
+    content when the change is too large to diff usefully. When the delta gate
+    is off, always returns full content.
+    """
+    root = _repo_root(repo)
+    source_path = root / path
+    try:
+        content = source_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return {"repo": repo, "path": path, "mode": "error", "reason": str(exc)}
+
+    if not read_delta_enabled():
+        return {"repo": repo, "path": path, "mode": "full", "content": content}
+
+    ledger = ReadLedger(ledger_root_for(root))
+    result = ledger.surface(
+        f"{repo}:{path}",
+        content,
+        max_ratio=delta_max_ratio(),
+        context_lines=delta_context_lines(),
+        max_diff_chars=delta_max_chars(),
+    )
+    payload: dict[str, Any] = {"repo": repo, **result.as_raw()}
+    payload["path"] = path
+    if result.mode == "delta":
+        payload["diff"] = result.diff
+    elif result.mode == "full":
+        payload["content"] = result.content
+    return payload
 
 
 def _int_limit(value: Any, *, default: int, max_value: int) -> int:

@@ -339,3 +339,97 @@ def test_mcp_code_blast_radius_requires_repo_and_paths(tmp_path: Path) -> None:
     )
     assert response["error"]["code"] == -32000
     assert "at most 200 paths" in response["error"]["message"]
+
+
+_SKELETON_SOURCE = '''"""Service module."""
+
+
+def handle(request):
+    """Handle a request."""
+    return request.ok
+'''
+
+
+def _write_skeleton_code_map(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir(exist_ok=True)
+    (state / "code-map.json").write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-07-09T00:00:00Z",
+                "repos": {
+                    "svc": {
+                        "head_sha": "abc123",
+                        "files": [
+                            {
+                                "path": "app/service.py",
+                                "language": "python",
+                                "symbols": [{"name": "handle", "line": 4}],
+                                "imports": [],
+                            }
+                        ],
+                        "edges": [],
+                    }
+                },
+                "contract_drift": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_mcp_skeleton_and_delta_tools_are_listed(tmp_path: Path) -> None:
+    repo = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(repo / "lib"))
+    mod = _load("alfred_mcp_cli_skel_list", repo / "bin" / "alfred-mcp.py")
+    names = {tool["name"] for tool in mod.TOOLS}
+    assert {"alfred_code_skeleton", "alfred_read_delta"} <= names
+    for tool in mod.TOOLS:
+        if tool["name"] in {"alfred_code_skeleton", "alfred_read_delta"}:
+            assert tool["inputSchema"]["required"] == ["repo", "path"]
+
+
+def test_mcp_code_skeleton_reads_local_source(tmp_path: Path, monkeypatch) -> None:
+    repo = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(repo / "lib"))
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    _write_skeleton_code_map(tmp_path)
+
+    workspace = tmp_path / "ws"
+    (workspace / "svc" / "app").mkdir(parents=True)
+    (workspace / "svc" / "app" / "service.py").write_text(_SKELETON_SOURCE, encoding="utf-8")
+
+    mod = _load("alfred_mcp_cli_skeleton", repo / "bin" / "alfred-mcp.py")
+    monkeypatch.setattr(mod, "WORKSPACE", workspace)
+
+    result = mod.call_tool("alfred_code_skeleton", {"repo": "svc", "path": "app/service.py"})
+    assert result["kind"] == "skeleton"
+    assert result["match_status"] == "exact"
+    assert "def handle(request):" in result["skeleton"]
+    assert "return request.ok" not in result["skeleton"]
+
+
+def test_mcp_read_delta_full_then_delta(tmp_path: Path, monkeypatch) -> None:
+    repo = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(repo / "lib"))
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_READ_LEDGER_DIR", str(tmp_path / "ledger"))
+
+    workspace = tmp_path / "ws"
+    target_dir = workspace / "svc" / "app"
+    target_dir.mkdir(parents=True)
+    target = target_dir / "service.py"
+    original = "\n".join(f"row {i}" for i in range(1, 120)) + "\n"
+    target.write_text(original, encoding="utf-8")
+
+    mod = _load("alfred_mcp_cli_delta", repo / "bin" / "alfred-mcp.py")
+    monkeypatch.setattr(mod, "WORKSPACE", workspace)
+
+    first = mod.call_tool("alfred_read_delta", {"repo": "svc", "path": "app/service.py"})
+    assert first["mode"] == "full"
+    assert first["content"] == original
+
+    target.write_text(original.replace("row 15", "row 15 CHANGED"), encoding="utf-8")
+    second = mod.call_tool("alfred_read_delta", {"repo": "svc", "path": "app/service.py"})
+    assert second["mode"] == "delta"
+    assert "row 15 CHANGED" in second["diff"]
