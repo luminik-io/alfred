@@ -362,6 +362,26 @@ def _contained_repo_dir(workspace_root: Path, name: str) -> Path | None:
     return Path(resolved)
 
 
+def _configured_checkout(repo_to_local: dict[str, str], keys: tuple[str, ...]) -> str | None:
+    """Select an operator-configured checkout path from the GH_REPO_TO_LOCAL map.
+
+    ``repo_to_local`` is the operator's ``GH_REPO_TO_LOCAL`` allowlist; its values
+    are the only checkout paths this function can return. The request-derived
+    ``keys`` (the ``owner/repo`` slug and its bare name) merely SELECT which
+    configured entry to use - they cannot inject a new path. We iterate the
+    config's own items and return the first value whose key matches, in ``keys``
+    order (full slug before bare name). Because the returned path flows from the
+    config values rather than from an untrusted key lookup, it carries operator
+    provenance: a configured absolute checkout outside ``workspace_root`` stays
+    usable while no request text can reach a filesystem read.
+    """
+    for key in keys:
+        for cfg_key, cfg_path in repo_to_local.items():
+            if cfg_key == key and cfg_path:
+                return cfg_path
+    return None
+
+
 def build_repo_grounding(
     repos: Iterable[str],
     *,
@@ -398,7 +418,7 @@ def build_repo_grounding(
         # production-shaped slug like ``acme-io/acme-frontend`` would miss its
         # ``frontend`` mapping and silently drop the repo's real CLAUDE.md.
         bare = repo.split("/", 1)[-1]
-        mapped = repo_to_local.get(repo) or repo_to_local.get(bare)
+        mapped = _configured_checkout(repo_to_local, (repo, bare))
         header = f"### `{repo}`"
         if mapped:
             # TRUSTED operator config. The configured checkout may legitimately
