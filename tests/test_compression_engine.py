@@ -165,6 +165,28 @@ def test_headroom_no_gain_falls_back_to_builtin(monkeypatch: pytest.MonkeyPatch)
     assert result.reason == "compacted"
 
 
+def test_headroom_over_budget_falls_back_to_builtin(monkeypatch: pytest.MonkeyPatch) -> None:
+    # headroom shrinks the output but leaves it STILL over the byte budget: the
+    # budget must be honored regardless of engine, so the built-in compactor
+    # head+tail trims it under budget (Codex P2).
+    monkeypatch.setattr(ce.headroom_engine, "headroom_available", lambda env=None: True)
+    # "compress" to a third of the input - smaller than original, but far larger
+    # than the 1500-byte budget below.
+    monkeypatch.setattr(ce.headroom_engine, "compress", lambda text, **k: text[: len(text) // 3])
+    raw = _big_log(1000)
+    env = {
+        "ALFRED_COMPRESSION_ENGINE": "headroom",
+        "ALFRED_OUTPUT_COMPACTOR_MAX_BYTES": "1500",
+        "ALFRED_OUTPUT_COMPACTOR_HEAD_LINES": "60",
+        "ALFRED_OUTPUT_COMPACTOR_TAIL_LINES": "60",
+    }
+    result = ce.compact_output_via_engine(raw, tool_name="Bash", exit_code=0, env=env)
+    assert result.applied
+    # Fell back to builtin (NOT the headroom reason) and honored the budget.
+    assert result.reason == "compacted"
+    assert result.final_bytes <= 1500
+
+
 # --------------------------------------------------------------------------
 # CRITICAL: the safety valve is preserved through the headroom path
 # --------------------------------------------------------------------------

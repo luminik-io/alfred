@@ -121,9 +121,12 @@ def compact_output_via_engine(
         return _builtin(text, tool_name, exit_code, resolved)
 
     final_bytes = len(compressed.encode("utf-8"))
-    if final_bytes >= original_bytes:
-        # headroom produced no saving on this payload; the deterministic
-        # built-in compactor may still shrink it (ANSI, dupes, head+tail).
+    if final_bytes >= original_bytes or final_bytes > max_bytes:
+        # Fall back to the built-in compactor when headroom either produced no
+        # saving (>= original) OR shrank the output but left it STILL over the
+        # byte budget (> max_bytes). The byte budget must be honored regardless
+        # of engine, and the built-in compactor head+tail trims to it. The valve
+        # already passed (confirmed success), so built-in re-compaction is safe.
         return _builtin(text, tool_name, exit_code, resolved)
 
     omitted = max(0, len(text.split("\n")) - len(compressed.split("\n")))
