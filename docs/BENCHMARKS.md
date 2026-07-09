@@ -356,6 +356,59 @@ Memory A/B run                     (ILLUSTRATIVE until a real --engine run fills
 Keep the OFF/ON pair together so the delta is legible, always next to N and the
 per-task rows.
 
+### Offline-fixture result (stub solver, no engine)
+
+The numbers below are the **actual output of `alfred benchmark memory --stub`**
+against this repo's built-in fixture (`tests/fixtures/mem-bench/`). They are a
+real result **of the harness**, not of any engine: the stub solver runs no
+model, makes no network call, and burns no quota. Read them as "the harness,
+recall, injection and scoring all work end to end, and the fixture is
+well-formed", not as evidence about `claude` or `codex`. For a real engine
+result, run `--engine <name>` and fill the template above; those numbers replace
+these as the headline.
+
+```
+Memory A/B run                     (OFFLINE FIXTURE result: stub solver, no engine)
+  seed repo:      acme-org/widgets   (tests/fixtures/mem-bench)
+  memory backend: fleet-local (in-memory SQLite FleetBrain, recency + literal recall)
+  solver:         stub (deterministic; reacts only to whether the lesson text
+                  reached the injected prompt)
+  N (tasks that re-tempt a learned mistake): 4   (+1 control task)
+
+  repeated-mistake-rate     memory OFF: 100%   memory ON: 0%    delta: +100 pts
+  task success rate         memory OFF: 20%    memory ON: 100%
+  retrieval precision/recall (ON only):  33.3% / 100%
+  tokens in / turns         memory OFF: 5,000/25   memory ON: 5,000/25
+
+  per-task (mistake repeated?  off / on):
+    tz-naive-datetime       off=yes  on=no
+    swallow-exceptions      off=yes  on=no
+    mutable-default-arg     off=yes  on=no
+    n-plus-one-query        off=yes  on=no
+    add-docstring (control) off=no   on=no
+```
+
+How to read it honestly:
+
+- The **+100 pt** delta is the ceiling the stub is built to show: the fixture
+  lesson signal always reaches the prompt on the ON arm and never on the OFF
+  arm, so the ON arm follows every lesson and the OFF arm repeats every mistake.
+  A real engine will not be this clean; the value of the stub run is that the
+  harness, recall, injection and marker scoring are all exercised for real.
+- **Retrieval precision is 33.3%, not 100%**, because the fixture seeds
+  distractor lessons and the local FleetBrain fallback recalls by recency once
+  the literal match is exhausted, so the top-K carries irrelevant lessons
+  alongside the right one. Recall of the right lesson is 100% (it is always in
+  the top-K). This is the recency-retrieval caveat above, visible in a number.
+- **Cost is arm-equal** (5,000 tokens / 25 turns both sides) because the stub
+  assigns a fixed synthetic cost; only a real engine measures true token/turn
+  cost, and only there is a cost delta meaningful.
+- **N = 4 is tiny by design.** Do not extrapolate a 4-task fixture delta into a
+  population claim. Report N.
+
+Reproduce exactly with `uv run python bin/alfred-benchmark.py memory --stub`
+(or `--json` for the machine-readable record these numbers were read from).
+
 ## Feeding a future desktop Metrics view
 
 `alfred benchmark report --json` already emits the exact shape a desktop

@@ -288,3 +288,78 @@ All off by default; set in `$ALFRED_HOME/.env`.
 Typed lessons, anchors, and validity are always **stored** (they are schema, not
 behaviour); only their recall-shaping effects are gated. A/B against the Phase 1
 numbers with `alfred benchmark` by toggling the flags above.
+
+## Phase 3: consolidation policy + persisted reuse
+
+Phase 1 gave the store, Phase 2 gave lessons structure and validity. Phase 3 is
+the **consolidation intelligence** that keeps the store from bloating and closes
+the reinforce-on-reuse loop so a proven lesson keeps its weight across restarts.
+Everything here is additive, gated, and backward-compatible: with the switches
+off the store behaves exactly as Phase 2.
+
+### 1. Semantic near-duplicate merge at consolidation
+
+The consolidation pass (`alfred brain consolidate`, gated by
+`ALFRED_MEMORY_CONSOLIDATE`) already collapsed lessons whose bodies are
+**lexically** identical. Phase 3 adds an **optional semantic** pass on top: when
+`ALFRED_MEMORY_CONSOLIDATE_SEMANTIC` is armed **and** an embedder is available,
+lessons in the same `(repo, codename)` scope whose bodies are near-duplicates
+(cosine ≥ `ALFRED_MEMORY_CONSOLIDATE_SIM_THRESHOLD`, default `0.92`) also merge,
+keeping the oldest. It reuses the **same** embedding path the SQLite hybrid dense
+arm speaks (`mxbai-embed-large` over local Ollama), and **degrades to
+lexical-only** whenever the embedder is absent or unreachable, so an armed switch
+with no embedding server is never a hard failure. This extends the existing
+`consolidate_lessons` / `_auto_dedup_key` path; it does not add a parallel
+system, and it never touches the capture → judge → promote pipeline.
+
+### 2. Provenance-union merge (never lose history)
+
+When a merge collapses a duplicate and the recall store supports it (the SQLite
+hybrid's `merge_lesson`), the survivor is not just kept and the loser forgotten.
+Instead the loser's **provenance** (the firing/PR links from Phase 2) and its
+**anchors** are **unioned onto the survivor**, and the loser is **invalidated,
+not deleted** (`superseded_by` the survivor, with a `supersedes` anchor), exactly
+like the Phase 2 supersede primitive. So the surviving lesson carries the full
+history of every copy, and the merged-away row stays for audit and is reversible.
+A store without `merge_lesson` (Redis AMS) falls back to the pre-Phase-3 forget,
+so the change is backward-compatible.
+
+### 3. Pressure/budget eviction by value
+
+When `ALFRED_MEMORY_MAX_LESSONS` is set and the recall store grows past it, the
+consolidation pass **evicts the lowest-value lessons down to the cap**. Value is
+the same `#452` score used for ranking (`agent_runner.memory_ranking.score_lesson`:
+relevance / ROI-by-severity / age-decayed recency / reinforce-on-reuse), scored
+with a neutral relevance since there is no query at GC time, so severity, recency
+and durable reuse decide what stays. Eviction is **invalidate-not-delete**
+(`valid_until` = now, no `superseded_by`), so it is reversible by clearing
+`valid_until`, and the row survives. A store without the capability is skipped.
+
+### 4. Durable reinforce-on-reuse
+
+The `#452` ranking layer reinforced a lesson each time it was injected, but that
+counter lived **only in-process** and was lost on restart. Phase 3 persists it: a
+`lesson_reuse` table (in **both** the FleetBrain store and the SQLite hybrid
+store, added by the same idempotent additive migration the rest of the schema
+uses) records the injection count per `(codename, repo, lesson-identity)` scope
+key. `memory_ranking` reads and write-throughs this durable count when the
+runtime wires a store from the configured provider (`set_reuse_store` /
+`reuse_store_for`), keeping the in-process table as a cache. Absent the table or a
+store, ranking behaves exactly as before (an absent row reads back as zero
+reuse), so it is fully backward-compatible.
+
+### Phase 3 configuration
+
+All off / unbounded by default; set in `$ALFRED_HOME/.env`. The parent
+`ALFRED_MEMORY_CONSOLIDATE` switch must be armed for the merge/evict passes to
+run at all.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `ALFRED_MEMORY_CONSOLIDATE_SEMANTIC` | `0` (off) | Arm the semantic near-duplicate merge on top of the lexical pass. No-op without an embedder (degrades to lexical-only). |
+| `ALFRED_MEMORY_CONSOLIDATE_SIM_THRESHOLD` | `0.92` | Cosine floor for two lessons to count as near-duplicates. Clamped to `(0, 1]`. |
+| `ALFRED_MEMORY_MAX_LESSONS` | `0` (disabled) | Cap on live recall-able lessons; the pass evicts the lowest-value lessons down to it (invalidate-not-delete). |
+
+Durable reuse has no switch of its own: it persists whenever ranking
+(`ALFRED_MEMORY_RANK`) is armed and the configured provider exposes a reuse
+store, and is otherwise a no-op.

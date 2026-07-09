@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
-import inspect
 import json
 import math
 import os
@@ -23,7 +22,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Iterable
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -53,6 +52,7 @@ from slack_converse import (
     gather_thread_context,
     run_slack_converse,
 )
+from slack_converse_offers import CONVERSE_OFFER_SIGNATURE_KEY, SlackConverseOfferStore
 from slack_format import (
     escape_mrkdwn,
     github_issue_link,
@@ -85,6 +85,13 @@ from slack_intent import (
     resolve_issue,
 )
 from slack_issue_bridge import SlackIssueBridge, build_issue_body
+from slack_memory_candidates import (
+    SlackMemoryCandidateProposer,
+    _append_memory_candidate_ids,
+)
+from slack_memory_candidates import (
+    _short_plain as _short_plain,
+)
 from slack_thread_registry import SlackThreadRecord, SlackThreadRegistry
 from slack_thread_status import SlackThreadStatusTracker
 from slack_trust import SlackTrustStore, normalize_slack_user_id
@@ -394,6 +401,13 @@ class SlackPlanningListener:
         self.seen = seen_store or SeenEventStore(self.state_root / "slack-listener" / "seen")
         self.refiner = refiner
         self.memory_provider = memory_provider
+        # Reviewable memory-candidate proposal is a cohesive collaborator. It
+        # shares the listener's per-path draft-revision lock so it serializes
+        # against draft writes exactly as before.
+        self._memory_candidates = SlackMemoryCandidateProposer(
+            memory_provider,
+            draft_lock=_draft_revision_lock,
+        )
         self._plan_answerer = (
             plan_answerer if plan_answerer is not None else _default_plan_thread_answerer()
         )
@@ -433,6 +447,9 @@ class SlackPlanningListener:
             converse_config if converse_config is not None else SlackConverseConfig.from_env()
         )
         self._converse_runner = converse_runner or run_slack_converse
+        # Persistence of the converse file-affordance offer fingerprint on the
+        # thread registry record is its own small collaborator.
+        self._converse_offers = SlackConverseOfferStore(self.registry)
 
     def handle_payload(self, payload: dict[str, Any]) -> ListenerResult:
         event = parse_slack_payload(payload)
@@ -593,7 +610,7 @@ class SlackPlanningListener:
         # carrying it here the first offer's signature is lost and the next reply
         # re-shows the identical "reply `ship it`" offer.
         if result.converse_offer_signature:
-            metadata[self._CONVERSE_OFFER_SIGNATURE_KEY] = result.converse_offer_signature
+            metadata[CONVERSE_OFFER_SIGNATURE_KEY] = result.converse_offer_signature
         self.registry.register(
             SlackThreadRecord(
                 kind="conversation",
@@ -1150,7 +1167,7 @@ class SlackPlanningListener:
                 readiness=refined.readiness,
                 memory=refined.memory,
             )
-            memory_candidate_ids = self._propose_planning_memory_candidates(
+            memory_candidate_ids = self._memory_candidates.propose(
                 event,
                 refined,
                 draft_path,
@@ -1245,7 +1262,7 @@ class SlackPlanningListener:
         # block when nothing about the affordance changed, so a build thread does
         # not repeat the same boilerplate on every turn. Best-effort: absent when
         # the thread has not been registered yet.
-        prior_offer_signature = self._converse_offer_signature(event.channel, event.root_ts)
+        prior_offer_signature = self._converse_offers.read(event.channel, event.root_ts)
         try:
             outcome = self._converse_runner(
                 client=self.poster,
@@ -1302,58 +1319,13 @@ class SlackPlanningListener:
         #     first offer's signature would be dropped and the next reply would
         #     re-show the identical offer.
         offer_signature = getattr(outcome, "offer_signature", "")
-        self._store_converse_offer_signature(event.channel, event.root_ts, offer_signature)
+        self._converse_offers.store(event.channel, event.root_ts, offer_signature)
         return ListenerResult(
             True,
             action,
             detail=detail,
             converse_offer_signature=offer_signature,
         )
-
-    _CONVERSE_OFFER_SIGNATURE_KEY = "converse_offer_signature"
-
-    def _converse_offer_signature(self, channel: str, thread_ts: str) -> str:
-        """Read the file-affordance fingerprint this thread last showed.
-
-        Best-effort: an unregistered thread, a missing key, or any read error
-        returns an empty string, which makes the runner treat the affordance as
-        new and show the offer once (the safe default). It never raises.
-        """
-        try:
-            record = self.registry.lookup(channel, thread_ts)
-        except Exception:
-            return ""
-        if record is None:
-            return ""
-        value = record.metadata.get(self._CONVERSE_OFFER_SIGNATURE_KEY)
-        return value if isinstance(value, str) else ""
-
-    def _store_converse_offer_signature(self, channel: str, thread_ts: str, signature: str) -> None:
-        """Persist the affordance fingerprint onto an EXISTING thread record.
-
-        Merged into the record's metadata so no other thread state is lost. When
-        the thread has no record yet (a brand-new top-level mention), this is a
-        no-op: the record is created later in ``_remember_conversation_root``,
-        which seeds the signature from
-        :attr:`ListenerResult.converse_offer_signature`. Best-effort: any read or
-        write failure is swallowed; the only cost is the next turn may re-show the
-        offer once.
-        """
-        try:
-            record = self.registry.lookup(channel, thread_ts)
-        except Exception:
-            return
-        if record is None:
-            return
-        current = record.metadata.get(self._CONVERSE_OFFER_SIGNATURE_KEY)
-        if isinstance(current, str) and current == signature:
-            return
-        metadata = dict(record.metadata)
-        metadata[self._CONVERSE_OFFER_SIGNATURE_KEY] = signature
-        try:
-            self.registry.register(replace(record, metadata=metadata))
-        except Exception:
-            return
 
     # ------------------------------------------------------------------
     # Conversational intent router (additive fallback)
@@ -1968,7 +1940,7 @@ class SlackPlanningListener:
                 payload_path,
                 revision_count=revision_count,
             )
-        memory_candidate_ids = self._propose_planning_memory_candidates(
+        memory_candidate_ids = self._memory_candidates.propose(
             event,
             refined,
             payload_path,
@@ -2317,90 +2289,6 @@ class SlackPlanningListener:
             )
         )
 
-    def _propose_planning_memory_candidates(
-        self,
-        event: SlackInputEvent,
-        result: Any,
-        draft_path: Path,
-        *,
-        source: str,
-    ) -> tuple[str, ...]:
-        """Queue reviewable memory candidates from scoped Slack planning work."""
-        if _env_disabled("ALFRED_SLACK_MEMORY_CANDIDATES"):
-            return ()
-        readiness = getattr(result, "readiness", None)
-        if readiness is None or not getattr(readiness, "ok", False):
-            return ()
-        writer = _memory_candidate_writer(self.memory_provider)
-        if writer is None or not hasattr(writer, "propose_memory"):
-            return ()
-        draft = getattr(result, "draft", None)
-        if not isinstance(draft, IssueDraft):
-            return ()
-        body = _slack_memory_candidate_body(draft)
-        if not body:
-            return ()
-        evidence = {
-            "kind": "slack_planning",
-            "source": source,
-            "draft_path": str(draft_path),
-            "event_id": event.event_id,
-            "channel": event.channel,
-            "thread_ts": event.root_ts,
-            "readiness_score": getattr(readiness, "score", None),
-            "amendments": list(getattr(result, "amendments", ()) or ()),
-        }
-        ids: list[str] = []
-        proposed_keys: list[str] = []
-        propose_memory = writer.propose_memory
-        use_modern_signature = _propose_memory_supports_modern_signature(propose_memory)
-        with _draft_revision_lock(draft_path):
-            existing_keys = _draft_memory_candidate_keys(draft_path)
-            for repo in draft.repos or ["planning"]:
-                candidate_key = _slack_memory_candidate_key(repo)
-                if candidate_key in existing_keys:
-                    continue
-                repo_evidence = {
-                    **evidence,
-                    "repo": repo,
-                    "candidate_key": candidate_key,
-                }
-                if use_modern_signature:
-                    kwargs = {
-                        "codename": "planning",
-                        "repo": repo,
-                        "body": body,
-                        "tags": ["slack", "planning"],
-                        "severity": "info",
-                        "source": source,
-                        "evidence": json.dumps(repo_evidence, sort_keys=True),
-                        "confidence": 0.68,
-                    }
-                else:
-                    kwargs = {
-                        "agent": "planning",
-                        "repo": repo,
-                        "topic": "slack-planning",
-                        "body": body,
-                        "source": source,
-                        "evidence": [repo_evidence],
-                    }
-                try:
-                    candidate = propose_memory(**kwargs)
-                except Exception as exc:
-                    print(
-                        f"[SLACK-LISTENER-WARN] could not queue {source} memory "
-                        f"candidate for {repo}: {exc}",
-                        file=sys.stderr,
-                    )
-                    continue
-                candidate_id = getattr(candidate, "id", candidate)
-                ids.append(str(candidate_id))
-                proposed_keys.append(candidate_key)
-            if proposed_keys:
-                _append_memory_candidate_keys(draft_path, proposed_keys)
-        return tuple(ids)
-
     def _save_draft(
         self,
         event: SlackInputEvent,
@@ -2449,123 +2337,6 @@ class SlackPlanningListener:
                 state_root=self.state_root,
             )
         )
-
-
-def _memory_candidate_writer(provider: Any | None) -> Any | None:
-    if provider is None:
-        return None
-    if hasattr(provider, "propose_memory"):
-        return provider
-    brain = getattr(provider, "brain", None)
-    if brain is not None and hasattr(brain, "propose_memory"):
-        return brain
-    providers = getattr(provider, "providers", None)
-    if isinstance(providers, (list, tuple)):
-        for child in providers:
-            writer = _memory_candidate_writer(child)
-            if writer is not None:
-                return writer
-    return None
-
-
-def _env_disabled(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in {
-        "0",
-        "false",
-        "no",
-        "off",
-        "disabled",
-    }
-
-
-def _propose_memory_supports_modern_signature(method: Any) -> bool:
-    try:
-        signature = inspect.signature(method)
-    except (TypeError, ValueError):
-        return True
-    parameters = signature.parameters.values()
-    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in parameters):
-        return True
-    return {"codename", "tags", "severity", "confidence"}.issubset(signature.parameters)
-
-
-def _append_memory_candidate_ids(path: Path, candidate_ids: Iterable[str]) -> None:
-    _append_draft_list_values(path, "memory_candidate_ids", candidate_ids)
-
-
-def _append_memory_candidate_keys(path: Path, candidate_keys: Iterable[str]) -> None:
-    _append_draft_list_values(path, "memory_candidate_keys", candidate_keys)
-
-
-def _draft_memory_candidate_keys(path: Path) -> set[str]:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return set()
-    if not isinstance(payload, dict):
-        return set()
-    existing = payload.get("memory_candidate_keys")
-    if isinstance(existing, list):
-        return {str(item) for item in existing if str(item)}
-    return set()
-
-
-def _append_draft_list_values(path: Path, field: str, values: Iterable[str]) -> None:
-    clean_values = [str(value) for value in values if str(value)]
-    if not clean_values:
-        return
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return
-    if not isinstance(payload, dict):
-        return
-    existing = payload.get(field)
-    merged = [str(item) for item in existing] if isinstance(existing, list) else []
-    for value in clean_values:
-        if value not in merged:
-            merged.append(value)
-    payload[field] = merged
-    tmp = path.with_name(f"{path.name}.tmp")
-    try:
-        tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        tmp.replace(path)
-    except OSError:
-        return
-
-
-def _slack_memory_candidate_key(repo: str) -> str:
-    return f"slack-planning:{repo.strip() or 'planning'}"
-
-
-def _slack_memory_candidate_body(draft: IssueDraft) -> str:
-    parts = [
-        f"Slack planning lesson for {draft.title.strip() or 'untitled work'}.",
-        f"Problem: {_short_plain(draft.problem, 220)}" if draft.problem else "",
-        (
-            f"Desired behavior: {_short_plain(draft.desired_behavior, 220)}"
-            if draft.desired_behavior
-            else ""
-        ),
-    ]
-    if draft.acceptance_criteria:
-        parts.append(
-            "Acceptance: "
-            + "; ".join(_short_plain(item, 140) for item in draft.acceptance_criteria[:3])
-        )
-    if draft.test_plan:
-        parts.append(f"Verification: {_short_plain(draft.test_plan, 180)}")
-    body = " ".join(part for part in parts if part).strip()
-    return body[:900]
-
-
-def _short_plain(value: str, limit: int) -> str:
-    cleaned = re.sub(r"\s+", " ", value).strip()
-    if len(cleaned) <= limit:
-        return cleaned
-    if limit <= 3:
-        return cleaned[: max(0, limit)]
-    return cleaned[: limit - 3].rstrip() + "..."
 
 
 def parse_slack_payload(payload: dict[str, Any]) -> SlackInputEvent | None:

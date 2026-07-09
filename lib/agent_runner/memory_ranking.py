@@ -19,21 +19,26 @@ Every knob is config-driven and OFF by default, so the historical
 "inject in recall order" behavior is preserved byte-for-byte unless an operator
 opts in. See ``docs/MEMORY_PROVIDERS.md`` for the operator-facing description.
 
-The reinforce and delta counters live in-process only. The Redis AMS store has
-no reuse/last-injected field and this battery deliberately does not
-schema-migrate it (see the "Follow-ups" note in the docs); persisting reuse
-across restarts is a clean future extension.
+The delta (last-injected) counter lives in-process only: it is a within-firing
+signal that has no meaning across processes. The reinforce (reuse) counter, by
+contrast, is now DURABLE (Phase 3): when a persisted :class:`ReuseStore` is wired
+via :func:`set_reuse_store` (the runtime derives one from the configured
+provider), reuse survives across firings and process restarts, with the
+in-process table kept as a write-through cache. Absent a store (the default in
+tests and any store that lacks the reuse table) the counter degrades to the
+original in-process-only behaviour, byte-identical to before.
 """
 
 from __future__ import annotations
 
+import contextlib
 import math
 import os
 from collections import OrderedDict
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 # --------------------------------------------------------------------------
 # Config knobs (env-driven, conservative defaults)
@@ -266,10 +271,70 @@ def score_lesson(
 
 
 # --------------------------------------------------------------------------
-# In-process reinforce (reuse) state
+# Reinforce (reuse) state: durable store + in-process write-through cache
 # --------------------------------------------------------------------------
 
 _REUSE_COUNTS: OrderedDict[str, int] = OrderedDict()
+
+
+@runtime_checkable
+class ReuseStore(Protocol):
+    """The durable backend for reinforce-on-reuse counts.
+
+    Both the FleetBrain SQLite store and the SQLite hybrid recall store satisfy
+    it. Declared structurally so this policy module never imports a concrete
+    store package. ``scope_key`` is the exact key :func:`lesson_key` builds.
+    """
+
+    def get_reuse_count(self, scope_key: str) -> int: ...
+
+    def bump_reuse_counts(self, scope_keys: Sequence[str]) -> None: ...
+
+
+# The process-wide durable reuse backend, or ``None`` for in-process-only
+# behaviour (the default). The runtime binds one via ``set_reuse_store`` when the
+# configured provider exposes a persisted reuse store; tests leave it unset so
+# the legacy in-process path is exercised unchanged.
+_REUSE_STORE: ReuseStore | None = None
+
+
+def set_reuse_store(store: ReuseStore | None) -> None:
+    """Bind (or clear) the durable reuse backend the reinforce path writes to."""
+    global _REUSE_STORE
+    _REUSE_STORE = store
+
+
+def reuse_store_for(provider: Any) -> ReuseStore | None:
+    """Find a persisted :class:`ReuseStore` reachable from a memory provider.
+
+    The recall provider may itself be a reuse store (the SQLite hybrid), wrap a
+    :class:`FleetBrain` that is one (``FleetBrainProvider.brain``), or be a chain
+    of providers. Returns the first durable store found, or ``None`` when no
+    member persists reuse (e.g. a pure Redis chain), in which case reinforce
+    stays in-process. Never raises."""
+    seen: set[int] = set()
+
+    def _probe(obj: Any) -> ReuseStore | None:
+        if obj is None or id(obj) in seen:
+            return None
+        seen.add(id(obj))
+        if isinstance(obj, ReuseStore):
+            return obj
+        # A provider that wraps a FleetBrain (which is a ReuseStore).
+        brain = getattr(obj, "brain", None)
+        if isinstance(brain, ReuseStore):
+            return brain
+        # A chain: probe each member in order.
+        for member in getattr(obj, "providers", None) or []:
+            found = _probe(member)
+            if found is not None:
+                return found
+        return None
+
+    try:
+        return _probe(provider)
+    except Exception:
+        return None
 
 
 # Field separator for composite keys. A control char that cannot appear in a
@@ -296,35 +361,72 @@ def lesson_key(lesson: Any, *, codename: str | None = None, repo: str | None = N
     scope_repo = str(repo if repo is not None else getattr(lesson, "repo", "") or "")
     lesson_id = getattr(lesson, "id", None)
     if lesson_id:
-        ident = f"id:{lesson_id}"
-    else:
-        body = " ".join(str(getattr(lesson, "body", "") or "").split()).strip().casefold()
-        ident = f"body:{body}"
-    return f"{scope_codename}{_KEY_SEP}{scope_repo}{_KEY_SEP}{ident}"
+        return scope_key(lesson_id=str(lesson_id), codename=scope_codename, repo=scope_repo)
+    body = " ".join(str(getattr(lesson, "body", "") or "").split()).strip().casefold()
+    return f"{scope_codename}{_KEY_SEP}{scope_repo}{_KEY_SEP}body:{body}"
+
+
+def scope_key(*, lesson_id: str, codename: str | None, repo: str | None) -> str:
+    """The reuse scope key for a lesson known by id + its ``codename``/``repo``.
+
+    The by-id branch of :func:`lesson_key`, exposed so a store that only holds the
+    lesson id (the consolidation merge, eviction) builds the EXACT same key the
+    reinforce path wrote, guaranteeing a merged/evicted lesson's persisted reuse
+    is addressed by the identical key."""
+    return f"{codename or '':s}{_KEY_SEP}{repo or '':s}{_KEY_SEP}id:{lesson_id}"
 
 
 def reuse_count(lesson: Any, *, codename: str | None = None, repo: str | None = None) -> int:
-    """Times this lesson has been injected so far this process (0 if never).
+    """Times this lesson has been injected (0 if never), scoped by codename/repo.
 
-    Scoped by ``codename``/``repo`` so counts do not bleed across repos.
+    Reads the durable :class:`ReuseStore` when one is bound (so reuse accumulated
+    by earlier firings/processes counts), falling back to the in-process cache
+    otherwise. A store read failure degrades to the cache rather than raising, so
+    a flaky store never breaks ranking.
     """
-    return _REUSE_COUNTS.get(lesson_key(lesson, codename=codename, repo=repo), 0)
+    key = lesson_key(lesson, codename=codename, repo=repo)
+    store = _REUSE_STORE
+    if store is not None:
+        try:
+            return int(store.get_reuse_count(key))
+        except Exception:
+            pass
+    return _REUSE_COUNTS.get(key, 0)
 
 
 def record_reuse(
     lessons: Iterable[Any], *, codename: str | None = None, repo: str | None = None
 ) -> None:
-    """Reinforce: increment the (scoped) reuse counter for each injected lesson."""
+    """Reinforce: increment the (scoped) reuse counter for each injected lesson.
+
+    Bumps the durable :class:`ReuseStore` when one is bound (write-through), and
+    always updates the in-process cache so a subsequent same-process read is fast
+    and a store outage still reinforces for this run. A store write failure is
+    swallowed after the cache is updated, so reinforce never breaks a firing.
+    """
+    keys: list[str] = []
     for lesson in lessons:
         key = lesson_key(lesson, codename=codename, repo=repo)
+        keys.append(key)
         _REUSE_COUNTS[key] = _REUSE_COUNTS.get(key, 0) + 1
         _REUSE_COUNTS.move_to_end(key)
     _evict_if_needed(_REUSE_COUNTS, _REUSE_TABLE_MAX)
+    store = _REUSE_STORE
+    if store is not None and keys:
+        # A store write failure must not break a firing; the in-process cache
+        # above already reinforced for this run.
+        with contextlib.suppress(Exception):
+            store.bump_reuse_counts(keys)
 
 
 def reset_reuse_state() -> None:
-    """Clear all reuse counters (test hook)."""
+    """Clear the in-process reuse cache and unbind the durable store (test hook).
+
+    Unbinding the store keeps test isolation clean: a test that wired a persisted
+    store cannot leak it into a later in-process-only test.
+    """
     _REUSE_COUNTS.clear()
+    set_reuse_store(None)
 
 
 # --------------------------------------------------------------------------
