@@ -28,9 +28,25 @@ Design rules:
   - Conservative matchers: the normal agent flow (``git push -u origin
     feat/...``, ``rm -rf node_modules``, reading ``.env.example``) is allowed.
 
+This handler also carries the tool-output *compactor* battery (see
+``lib/tool_compactor.py``), which extends the same hook seam without changing its
+philosophy:
+
+  - ``posttooluse``: verbose, low-signal Bash output is compacted before it
+    enters the model's context (emitted as ``hookSpecificOutput.updatedToolOutput``).
+    Compaction happens ONLY on a confirmed-success exit code of ``0``; a non-zero
+    exit or an unknown status (a plain-string response with no exit code) passes
+    the full output through untouched, so an error is never hidden.
+
+A PreToolUse *command normalizer* (rewriting verbose commands to quiet
+equivalents) was intentionally dropped: no ``git`` command rewrite proved
+reliably output-equivalent, so the battery keeps only the safe half, compacting
+output that has already been produced.
+
 Wired in via ``agent_runner._agent_settings_args()`` which emits a ``--settings``
-payload pointing PreToolUse at ``python3 <lib>/alfred_hooks.py pretooluse``.
-Disable for a manual debugging run with ``ALFRED_AGENT_HOOKS=0``.
+payload pointing PreToolUse at ``python3 <lib>/alfred_hooks.py pretooluse`` and
+PostToolUse at ``python3 <lib>/alfred_hooks.py posttooluse``. Disable the whole
+seam for a manual debugging run with ``ALFRED_AGENT_HOOKS=0``.
 """
 
 from __future__ import annotations
@@ -41,6 +57,14 @@ import re
 import shlex
 import subprocess
 import sys
+
+# tool_compactor is a stdlib-only sibling shipped alongside this file, so it is
+# importable on the same hook-path sys.path (lib/) with no venv. Keep the import
+# guarded so a partial deploy of this file alone cannot wedge the guardrail hook.
+try:
+    import tool_compactor as _compactor
+except Exception:  # pragma: no cover - defensive; module ships with this one
+    _compactor = None  # type: ignore[assignment]
 
 # Branches the fleet must never push to directly (locked guardrail).
 PROTECTED_BRANCHES = {"main", "master", "production", "release", "prod"}
@@ -491,6 +515,75 @@ def _emit(decision: str, reason: str) -> int:
     return 0
 
 
+def _extract_tool_text(response: object) -> str:
+    """Best-effort plain text of a Bash tool_response (str or structured)."""
+    if isinstance(response, str):
+        return response
+    if isinstance(response, dict):
+        parts: list[str] = []
+        for key in ("stdout", "stderr", "output", "content", "result"):
+            value = response.get(key)
+            if isinstance(value, str) and value:
+                parts.append(value)
+        return "\n".join(parts)
+    return ""
+
+
+def _extract_exit_code(response: object) -> int | None:
+    """Read the structured exit status of a tool_response.
+
+    Returns the real exit code when the structured response carries one, ``1``
+    when a structured failure flag (``interrupted`` / ``is_error``) is set, and
+    ``None`` when the status is genuinely unknown (a plain-string response, or a
+    structured response with no exit code and no failure flag). The compactor
+    treats that ``None`` as "not proven successful" and passes the output
+    through, so success is never inferred from the mere shape of the response.
+
+    We prefer this structured signal over any scan of the output text: an
+    unrecognized error format would defeat text scanning, but a structured exit
+    code (or the absence of one) is authoritative.
+    """
+    if not isinstance(response, dict):
+        return None
+    for key in ("exit_code", "exitCode", "returncode", "returnCode", "code", "status"):
+        value = response.get(key)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, int):
+            return value
+    # No numeric exit code. Honor structured failure flags (tee), but never infer
+    # SUCCESS without a real exit code - compaction requires proof of success.
+    if response.get("is_error") or response.get("isError") or response.get("interrupted"):
+        return 1
+    return None
+
+
+def _handle_posttooluse(payload: dict) -> int:
+    """Compact verbose tool output, but only on a confirmed-success exit (exit 0)."""
+    if _compactor is None:
+        return 0
+    tool_name = payload.get("tool_name", "")
+    response = payload.get("tool_response")
+    text = _extract_tool_text(response)
+    if not text:
+        return 0  # nothing textual to compact
+    result = _compactor.compact_output(
+        text,
+        tool_name=tool_name,
+        exit_code=_extract_exit_code(response),
+    )
+    if not result.applied:
+        return 0  # disabled, unknown status, teed on failure, or no gain: leave raw
+    out = {
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "updatedToolOutput": result.text,
+        }
+    }
+    print(json.dumps(out))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     event = argv[0] if argv else "pretooluse"
@@ -499,8 +592,14 @@ def main(argv: list[str] | None = None) -> int:
     except Exception:
         return 0  # fail open: never block on a malformed event
 
+    if event == "posttooluse":
+        try:
+            return _handle_posttooluse(payload)
+        except Exception:
+            return 0  # fail open: never wedge a firing on a compaction bug
+
     if event != "pretooluse":
-        return 0  # only PreToolUse is enforced today
+        return 0  # only PreToolUse / PostToolUse are handled today
 
     try:
         tool_name = payload.get("tool_name", "")

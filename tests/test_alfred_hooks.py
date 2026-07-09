@@ -300,7 +300,84 @@ def test_main_fails_open_on_garbage(monkeypatch):
 def test_main_ignores_non_pretooluse(monkeypatch):
     event = {"tool_name": "Bash", "tool_input": {"command": "rm -rf /"}}
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
-    assert ah.main(["stop"]) == 0  # only PreToolUse is enforced today
+    assert ah.main(["stop"]) == 0  # only PreToolUse / PostToolUse are handled
+
+
+# ---------------- PostToolUse output compaction ----------------
+
+
+def _big_bash_log(n: int = 600) -> str:
+    return "\n".join(f"step {i} complete" for i in range(n)) + "\n"
+
+
+def test_main_posttooluse_compacts_verbose_output(monkeypatch, capsys):
+    raw = _big_bash_log()
+    event = {
+        "tool_name": "Bash",
+        "tool_input": {"command": "make build"},
+        "tool_response": {"stdout": raw, "stderr": "", "exit_code": 0},
+    }
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    rc = ah.main(["posttooluse"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    hso = payload["hookSpecificOutput"]
+    assert hso["hookEventName"] == "PostToolUse"
+    compacted = hso["updatedToolOutput"]
+    assert len(compacted) < len(raw)
+    assert "ALFRED_OUTPUT_COMPACTOR" in compacted
+
+
+def test_main_posttooluse_tees_full_output_on_failure(monkeypatch, capsys):
+    raw = _big_bash_log() + "make: *** [build] Error 1\n"
+    event = {
+        "tool_name": "Bash",
+        "tool_input": {"command": "make build"},
+        "tool_response": {"stdout": raw, "exit_code": 2},
+    }
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    rc = ah.main(["posttooluse"])
+    assert rc == 0
+    # Nothing emitted: the model keeps the raw, full output (error preserved).
+    assert capsys.readouterr().out == ""
+
+
+def test_main_posttooluse_string_response_unknown_status_passes_through(monkeypatch, capsys):
+    # A plain-STRING tool_response has no exit code, so success is not proven.
+    # The inverted valve passes it through untouched (no updatedToolOutput).
+    raw = _big_bash_log()
+    event = {"tool_name": "Bash", "tool_input": {"command": "make"}, "tool_response": raw}
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    assert ah.main(["posttooluse"]) == 0
+    assert capsys.readouterr().out == ""  # unknown status: nothing emitted
+
+
+def test_main_posttooluse_make_error_string_passes_through(monkeypatch, capsys):
+    # `make: *** No rule...` is an error format the compactor never enumerated.
+    # With no exit code, unknown status means it is passed through, not hidden.
+    raw = _big_bash_log() + "make: *** No rule to make target 'all'.  Stop.\n"
+    event = {"tool_name": "Bash", "tool_input": {"command": "make"}, "tool_response": raw}
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    assert ah.main(["posttooluse"]) == 0
+    assert capsys.readouterr().out == ""  # nothing emitted; raw output preserved
+
+
+def test_main_posttooluse_structured_interrupted_is_teed(monkeypatch, capsys):
+    # A structured response with interrupted=True is a confirmed failure.
+    raw = _big_bash_log()
+    event = {
+        "tool_name": "Bash",
+        "tool_input": {"command": "make"},
+        "tool_response": {"stdout": raw, "interrupted": True},
+    }
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    assert ah.main(["posttooluse"]) == 0
+    assert capsys.readouterr().out == ""  # nothing emitted; full output preserved
+
+
+def test_main_posttooluse_fails_open_on_garbage(monkeypatch):
+    monkeypatch.setattr("sys.stdin", io.StringIO("not json"))
+    assert ah.main(["posttooluse"]) == 0
 
 
 if __name__ == "__main__":  # pragma: no cover
