@@ -500,3 +500,20 @@ def test_mcp_read_delta_full_without_firing_scope(tmp_path: Path, monkeypatch) -
     second = mod.call_tool("alfred_read_delta", {"repo": "svc", "path": "app/service.py"})
     # Without a firing scope a re-read stays full rather than diffing.
     assert second["mode"] == "full"
+
+
+def test_mcp_source_tools_reject_malicious_repo_slug(tmp_path: Path, monkeypatch) -> None:
+    repo = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(repo / "lib"))
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_READ_LEDGER_DIR", str(tmp_path / "ledger"))
+
+    mod = _load("alfred_mcp_cli_bad_repo", repo / "bin" / "alfred-mcp.py")
+    _setup_svc_checkout(tmp_path, monkeypatch, mod)
+
+    # The repo slug is untrusted too: traversal or absolute slugs must be
+    # rejected before they resolve outside the workspace via _repo_root.
+    for bad_repo in ("..", "../../etc", "/etc"):
+        for tool in ("alfred_read_delta", "alfred_code_skeleton"):
+            with pytest.raises(ValueError):
+                mod.call_tool(tool, {"repo": bad_repo, "path": "app/service.py"})

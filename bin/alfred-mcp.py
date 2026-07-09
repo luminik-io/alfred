@@ -457,8 +457,20 @@ def _require_repo_paths(args: dict[str, Any]) -> tuple[str, list[str]]:
 
 
 def _repo_root(repo: str) -> Path:
-    """Resolve a repo slug to its on-disk checkout for source-reading tools."""
-    return WORKSPACE / local_repo_dir(repo)
+    """Resolve a repo slug to its on-disk checkout, rejecting workspace escapes.
+
+    The ``repo`` slug is untrusted input just like ``path``: a slug of ``..``,
+    ``../../x``, or an absolute component would resolve outside the workspace
+    root via :func:`local_repo_dir`. Reject upward/absolute slugs and require the
+    resolved checkout to stay within the realpath of ``WORKSPACE``.
+    """
+    _reject_unsafe_relpath(repo)
+    root = WORKSPACE / local_repo_dir(repo)
+    workspace_real = Path(os.path.realpath(WORKSPACE))
+    root_real = Path(os.path.realpath(root))
+    if root_real != workspace_real and workspace_real not in root_real.parents:
+        raise ValueError("repo slug escapes the workspace root")
+    return root
 
 
 def _reject_unsafe_relpath(path: str) -> None:

@@ -138,24 +138,28 @@ def ledger_root_for(
 ) -> Path:
     """Return the per-worktree ledger directory.
 
-    ``ALFRED_READ_LEDGER_DIR`` overrides everything (tests and explicit
-    deployments use it). Otherwise the ledger lives under
-    ``<state_root>/read-ledger/<digest>`` where the digest is derived from the
-    firing id plus the worktree path, so two firings in two worktrees never
-    share a cache. When no firing id is present the digest falls back to the
-    current process id so distinct processes still get distinct ledgers rather
-    than colliding on one empty-keyed directory (callers should also consult
-    :func:`read_delta_available` and prefer full reads in that case).
+    The ledger is always scoped to a single firing: by ``ALFRED_FIRING_ID`` when
+    set, else by the current process id (``pid-<pid>``) so distinct processes
+    never collide on one keyless directory. That scope is applied even when
+    ``ALFRED_READ_LEDGER_DIR`` pins a base directory, so an override shared by
+    two firings still yields two distinct ledgers rather than corrupting each
+    other's diffs. Without an override the ledger lives under
+    ``<state_root>/read-ledger/<digest>`` keyed by the scope plus the worktree
+    path. Callers should also consult :func:`read_delta_available` and prefer
+    full reads when there is no firing id.
     """
     resolved = os.environ if env is None else env
+    firing = (resolved.get("ALFRED_FIRING_ID") or "").strip()
+    scope = firing or f"pid-{os.getpid()}"
+
     override = resolved.get("ALFRED_READ_LEDGER_DIR")
     if override and override.strip():
-        return Path(override).expanduser()
+        scope_digest = hashlib.sha256(scope.encode()).hexdigest()[:16]
+        return Path(override).expanduser() / scope_digest
 
     base = Path(state_root) if state_root is not None else _default_state_root(resolved)
-    firing = (resolved.get("ALFRED_FIRING_ID") or "").strip() or f"pid-{os.getpid()}"
     workdir_token = str(Path(workdir).resolve()) if workdir else ""
-    digest = hashlib.sha256(f"{firing}\n{workdir_token}".encode()).hexdigest()[:16]
+    digest = hashlib.sha256(f"{scope}\n{workdir_token}".encode()).hexdigest()[:16]
     return base / "read-ledger" / digest
 
 

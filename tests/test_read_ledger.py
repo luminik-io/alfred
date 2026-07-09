@@ -113,7 +113,8 @@ def test_delta_max_ratio_env() -> None:
 
 def test_ledger_root_override_and_isolation(tmp_path: Path) -> None:
     override = ledger_root_for(None, env={"ALFRED_READ_LEDGER_DIR": str(tmp_path / "x")})
-    assert override == tmp_path / "x"
+    # The override is a base dir; the ledger is still scoped beneath it.
+    assert override.parent == tmp_path / "x"
 
     root_a = ledger_root_for(
         tmp_path / "wt-a",
@@ -128,6 +129,23 @@ def test_ledger_root_override_and_isolation(tmp_path: Path) -> None:
     # Two worktrees under one firing never share a ledger directory.
     assert root_a != root_b
     assert root_a.parent == tmp_path / "state" / "read-ledger"
+
+
+def test_override_dir_is_scoped_per_firing(tmp_path: Path) -> None:
+    override = str(tmp_path / "shared")
+    # Two firings pointed at the same override dir get distinct ledgers.
+    f1 = ledger_root_for(None, env={"ALFRED_READ_LEDGER_DIR": override, "ALFRED_FIRING_ID": "f1"})
+    f2 = ledger_root_for(None, env={"ALFRED_READ_LEDGER_DIR": override, "ALFRED_FIRING_ID": "f2"})
+    assert f1 != f2
+    assert f1.parent == tmp_path / "shared"
+
+    # Override with no firing id is process-scoped, not one keyless shared dir,
+    # and differs from any firing-scoped dir under the same override.
+    no_firing = ledger_root_for(None, env={"ALFRED_READ_LEDGER_DIR": override})
+    assert no_firing != f1
+    assert no_firing.parent == tmp_path / "shared"
+    # Stable within the same process (one firing) so re-reads still diff.
+    assert no_firing == ledger_root_for(None, env={"ALFRED_READ_LEDGER_DIR": override})
 
 
 def test_read_delta_available_requires_firing_scope() -> None:
