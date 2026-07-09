@@ -133,7 +133,15 @@ def _clean_tags(tags: Iterable[str] | None) -> list[str]:
     return sorted({str(t).strip() for t in (tags or []) if str(t).strip()})
 
 
-def _iso(dt: datetime) -> str:
+def _iso(value: datetime | str) -> str:
+    """Normalize a timestamp to a UTC ISO-8601 string.
+
+    Accepts either a ``datetime`` or an already-serialized ISO string. A stored
+    lesson round-tripped through the AMS write contract carries ``created_at`` as
+    a string, so ``sync_lesson`` legitimately hands one straight through; treating
+    it as a datetime (``.tzinfo``) would raise and silently drop the lesson.
+    """
+    dt = _from_iso(value) if isinstance(value, str) else value
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
     return dt.astimezone(UTC).isoformat()
@@ -427,7 +435,7 @@ class SqliteHybridProvider:
         tags: Iterable[str] | None = None,
         severity: Severity = "info",
         firing_id: str | None = None,
-        created_at: datetime | None = None,
+        created_at: datetime | str | None = None,
         memory_id: str | None = None,
         kind: str | None = None,
         provenance: str | None = None,
@@ -439,12 +447,20 @@ class SqliteHybridProvider:
         upserts the same row (and the revert/retire levers can forget exactly the
         lesson they wrote). Matches the Redis AMS ``reflect`` write contract.
 
+        ``created_at`` accepts a ``datetime``, an ISO-8601 string, or ``None``.
+        ``sync_lesson`` mirrors an already-stored lesson whose ``created_at`` is a
+        serialized string, so a string is a first-class input here; it is parsed
+        back to a ``datetime`` so the returned :class:`Lesson` stays well-typed.
+
         Phase 2 optional args, all backward-compatible: ``kind`` types the lesson
         (unknown folds to ``note``); ``provenance`` records the firing/PR that
         created it (defaults to ``firing_id``); ``anchors`` is an iterable of
         ``(anchor_type, anchor_ref)`` pairs linking the lesson to code entities.
         """
-        created = created_at or datetime.now(UTC)
+        if isinstance(created_at, str):
+            created = _from_iso(created_at)
+        else:
+            created = created_at or datetime.now(UTC)
         lesson = Lesson(
             id=memory_id or new_id(),
             codename=codename.strip(),
