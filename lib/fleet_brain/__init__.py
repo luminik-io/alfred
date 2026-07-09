@@ -43,6 +43,7 @@ telemetry.
 
 from __future__ import annotations
 
+import inspect
 import logging
 import os
 import re
@@ -75,6 +76,7 @@ from .store import (
     GitHubItemState,
     GraphEdgeRow,
     Lesson,
+    LessonAnchor,
     MemoryCandidate,
     MemoryCandidateStatus,
     RepoNote,
@@ -86,8 +88,21 @@ from .store import (
     default_db_path,
     new_id,
 )
+from .taxonomy import (
+    ANCHOR_RELATIONS,
+    ANCHOR_TYPES,
+    DEFAULT_LESSON_KIND,
+    LESSON_KINDS,
+    normalize_anchor_relation,
+    normalize_anchor_type,
+    normalize_kind,
+)
 
 __all__ = [
+    "ANCHOR_RELATIONS",
+    "ANCHOR_TYPES",
+    "DEFAULT_LESSON_KIND",
+    "LESSON_KINDS",
     "BundleItem",
     "CodeOwnerRow",
     "CodeOwnerRule",
@@ -103,6 +118,7 @@ __all__ = [
     "GraphEdge",
     "GraphEdgeRow",
     "Lesson",
+    "LessonAnchor",
     "MemoryCandidate",
     "MemoryCandidateStatus",
     "MemoryPromotionError",
@@ -119,6 +135,9 @@ __all__ = [
     "direct_auto_promote_env",
     "edges_for_file_touch",
     "new_id",
+    "normalize_anchor_relation",
+    "normalize_anchor_type",
+    "normalize_kind",
     "owners_for_path",
     "parse_codeowners",
 ]
@@ -197,6 +216,32 @@ _LESSON_MEMORY_ID_PREFIX = "lesson:memory_candidate:"
 def _lesson_memory_id(candidate_id: str) -> str:
     """Deterministic AMS memory id for a promoted candidate."""
     return f"{_LESSON_MEMORY_ID_PREFIX}{candidate_id}"
+
+
+_PHASE2_REFLECT_KWARGS = ("kind", "provenance")
+
+
+def _reflect_accepts_phase2_kwargs(lesson_writer: Any) -> bool:
+    """Whether ``lesson_writer.reflect`` declares the Phase 2 ``kind``/``provenance``.
+
+    Used so ``promote_memory_candidate`` passes the typed/provenance kwargs only
+    to a writer that accepts them, rather than passing them unconditionally and
+    retrying on a ``TypeError`` (which would mask a real ``TypeError`` raised
+    inside a writer that DOES accept the kwargs). A writer whose ``reflect``
+    accepts ``**kwargs`` is treated as accepting them. On any introspection
+    failure we conservatively return ``False`` (call the Phase 1 contract), which
+    never loses a promotion, only the typed metadata.
+    """
+    reflect = getattr(lesson_writer, "reflect", None)
+    if reflect is None:
+        return False
+    try:
+        params = inspect.signature(reflect).parameters
+    except (TypeError, ValueError):
+        return False
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return True
+    return all(name in params for name in _PHASE2_REFLECT_KWARGS)
 
 
 def candidate_id_from_lesson_id(lesson_id: str) -> str:
@@ -500,6 +545,8 @@ class FleetBrain:
         severity: Severity = "info",
         lesson_id: str | None = None,
         created_at: datetime | None = None,
+        kind: str | None = None,
+        provenance: str | None = None,
     ) -> Lesson:
         """File a lesson the firing learned. Returns the persisted row.
 
@@ -507,6 +554,11 @@ class FleetBrain:
         severity routing: ``info`` (recall-only context), ``warning``
         (worth bubbling into a future prompt), ``blocker`` (the next
         firing must read this before doing anything).
+
+        ``kind`` types the lesson (convention/fix/failure/decision/
+        review-pattern; unknown folds to ``note``). ``provenance`` records the
+        firing/PR that created a promoted lesson. Both are optional and
+        backward-compatible.
         """
         if not codename or not repo or not body:
             raise ValueError("reflect: codename, repo, and body are required")
@@ -521,9 +573,76 @@ class FleetBrain:
             created_at=created_at or datetime.now(UTC),
             firing_id=firing_id,
             severity=severity,
+            kind=normalize_kind(kind),
+            provenance=(provenance or firing_id or None),
         )
-        _LOG.debug("reflect: codename=%s repo=%s tags=%s", codename, repo, lesson.tags)
+        _LOG.debug(
+            "reflect: codename=%s repo=%s kind=%s tags=%s",
+            codename,
+            repo,
+            lesson.kind,
+            lesson.tags,
+        )
         return self.store.insert_lesson(lesson)
+
+    # ----- code-grounding + validity (Phase 2) --------------------------
+
+    def anchor_lesson(
+        self,
+        *,
+        lesson_id: str,
+        anchor_ref: str,
+        anchor_type: str = "file",
+        relation: str = "about",
+        repo: str | None = None,
+        created_at: datetime | None = None,
+    ) -> LessonAnchor:
+        """Link a lesson to a code entity (a file/symbol/node) or another lesson.
+
+        This is the code-grounding write: after it, ``lessons_for_anchor`` can
+        surface "editing ``auth.py`` -> the convention + the fix that worked".
+        Idempotent on ``(lesson_id, anchor_type, anchor_ref, relation)``.
+        """
+        if not lesson_id or not anchor_ref:
+            raise ValueError("anchor_lesson: lesson_id and anchor_ref are required")
+        anchor = LessonAnchor(
+            id=new_id(),
+            lesson_id=lesson_id.strip(),
+            anchor_type=normalize_anchor_type(anchor_type),
+            anchor_ref=anchor_ref.strip(),
+            relation=normalize_anchor_relation(relation),
+            repo=(repo or None),
+            created_at=created_at or datetime.now(UTC),
+        )
+        return self.store.add_lesson_anchor(anchor)
+
+    def lesson_anchors(self, lesson_id: str, *, limit: int = 100) -> list[LessonAnchor]:
+        """Return the anchors linked to ``lesson_id``, most recent first."""
+        return self.store.list_lesson_anchors(lesson_id, limit=limit)
+
+    def lessons_for_anchor(
+        self,
+        *,
+        anchor_ref: str,
+        anchor_type: str | None = None,
+        repo: str | None = None,
+        limit: int = 50,
+    ) -> list[Lesson]:
+        """Return the still-valid lessons anchored to ``anchor_ref`` (e.g. a file)."""
+        return self.store.lessons_for_anchor(
+            anchor_ref=anchor_ref,
+            anchor_type=anchor_type,
+            repo=repo,
+            limit=limit,
+        )
+
+    def supersede_lesson(self, *, old_id: str, new_id: str, at: datetime | None = None) -> bool:
+        """Invalidate ``old_id`` in favour of ``new_id`` (invalidate, not delete).
+
+        Recall stops surfacing the old lesson; the audit row is kept. Returns
+        ``False`` for a blank/unknown old id so callers can gate on it.
+        """
+        return self.store.supersede_lesson(old_id, new_id, at=at)
 
     def firing_log(
         self,
@@ -788,6 +907,7 @@ class FleetBrain:
         confidence: float = 0.5,
         candidate_id: str | None = None,
         created_at: datetime | None = None,
+        kind: str | None = None,
     ) -> MemoryCandidate:
         """Stage a lesson candidate without adding it to prompt recall.
 
@@ -816,6 +936,7 @@ class FleetBrain:
             confidence=float(confidence),
             status="candidate",
             created_at=created_at or datetime.now(UTC),
+            kind=normalize_kind(kind),
         )
         return self.store.insert_memory_candidate(candidate)
 
@@ -883,15 +1004,25 @@ class FleetBrain:
                     "promote_memory_candidate: runtime memory is disabled "
                     "(no lesson writer configured); nothing was written."
                 )
-            lesson = lesson_writer.reflect(
-                codename=candidate.codename,
-                repo=candidate.repo,
-                body=candidate.body,
-                tags=candidate.tags,
-                firing_id=candidate.source_firing_id,
-                severity=candidate.severity,
-                memory_id=_lesson_memory_id(candidate.id),
-            )
+            reflect_kwargs: dict[str, Any] = {
+                "codename": candidate.codename,
+                "repo": candidate.repo,
+                "body": candidate.body,
+                "tags": candidate.tags,
+                "firing_id": candidate.source_firing_id,
+                "severity": candidate.severity,
+                "memory_id": _lesson_memory_id(candidate.id),
+            }
+            # Phase 2: pass the typed ``kind`` and ``provenance`` ONLY when the
+            # writer's reflect actually declares them. We inspect the signature
+            # up front rather than catching a TypeError from the call: a writer
+            # that DOES accept the kwargs but raises TypeError internally (a real
+            # bug) must surface as a MemoryPromotionError, not be silently
+            # retried without the Phase 2 kwargs and mask the fault.
+            if _reflect_accepts_phase2_kwargs(lesson_writer):
+                reflect_kwargs["kind"] = candidate.kind
+                reflect_kwargs["provenance"] = candidate.source_firing_id
+            lesson = lesson_writer.reflect(**reflect_kwargs)
         except MemoryPromotionError:
             # Already the retryable, candidate-stays-pending signal; do not
             # re-wrap it (that would bury the disabled-memory message).
@@ -2393,6 +2524,7 @@ class FleetBrain:
               "schema_version": 3,
               "exported_at": "2026-05-23T...Z",
               "lessons": [{...}, ...],
+              "lesson_anchors": [{...}, ...],
               "repo_notes": [{...}, ...],
               "firings": [{...}, ...],
               "file_touches": [{...}, ...],
@@ -2400,9 +2532,14 @@ class FleetBrain:
               "failure_events": [{...}, ...]
             }
 
-        ``alfred brain export`` writes this to disk. Restoring is
-        currently manual: re-run reflect/firing_log/note_repo on the
-        target host.
+        ``alfred brain export`` writes this to disk; :meth:`import_snapshot`
+        restores the durable memory + ledger (lessons, their Phase 2 anchors,
+        repo notes, candidates, firings, file touches, failures) on the target
+        host so a backup round-trips, including the ``lesson_anchors`` that
+        ground lessons to code (an earlier export dropped them and lost the
+        links on restore). Regenerable caches (GitHub items, bundle items,
+        worker heartbeats) are exported for inspection but not re-imported: the
+        pollers rebuild them.
         """
         from .schema import SCHEMA_VERSION
 
@@ -2410,6 +2547,7 @@ class FleetBrain:
             "schema_version": SCHEMA_VERSION,
             "exported_at": datetime.now(UTC).isoformat(),
             "lessons": [_serialize(asdict(L)) for L in self.list_lessons()],
+            "lesson_anchors": [_serialize(asdict(a)) for a in self.store.list_all_lesson_anchors()],
             "repo_notes": [_serialize(asdict(n)) for n in self._all_repo_notes()],
             "firings": [_serialize(asdict(F)) for F in self.list_firings(limit=10_000)],
             "file_touches": [_serialize(asdict(T)) for T in self.list_file_touches(limit=10_000)],
@@ -2424,6 +2562,143 @@ class FleetBrain:
                 _serialize(asdict(H)) for H in self.list_worker_heartbeats(limit=10_000)
             ],
         }
+
+    def import_snapshot(self, snapshot: Mapping[str, Any]) -> dict[str, int]:
+        """Restore a brain from an :meth:`export` snapshot. Returns per-type counts.
+
+        Restores the durable memory + ledger, in FK-safe order (lessons before
+        their anchors): repo notes, lessons (with Phase 2 kind/validity/
+        provenance), ``lesson_anchors``, memory candidates, firings, file
+        touches, and failure events. Regenerable GitHub/bundle/worker caches are
+        skipped (the pollers rebuild them). Best-effort and idempotent-ish: a row
+        that fails to insert (e.g. a duplicate id on a non-empty target) is
+        skipped and not counted, so re-importing into a fresh brain restores the
+        anchors that a pre-fix export would have lost.
+        """
+        counts: dict[str, int] = {}
+
+        def _restore(key: str, builder: Any, insert: Any) -> None:
+            done = 0
+            for raw in snapshot.get(key) or []:
+                if not isinstance(raw, Mapping):
+                    continue
+                try:
+                    insert(builder(dict(raw)))
+                except Exception:
+                    _LOG.debug("import_snapshot: skipped a %s row", key, exc_info=True)
+                    continue
+                done += 1
+            counts[key] = done
+
+        _restore(
+            "repo_notes",
+            lambda r: RepoNote(
+                repo=str(r["repo"]),
+                body=str(r.get("body", "")),
+                updated_at=_snap_dt(r.get("updated_at")),
+            ),
+            self.store.upsert_repo_note,
+        )
+        _restore(
+            "lessons",
+            lambda r: Lesson(
+                id=str(r["id"]),
+                codename=str(r["codename"]),
+                repo=str(r["repo"]),
+                body=str(r.get("body", "")),
+                tags=list(r.get("tags") or []),
+                created_at=_snap_dt(r.get("created_at")),
+                firing_id=r.get("firing_id"),
+                severity=r.get("severity", "info"),
+                kind=normalize_kind(r.get("kind")),
+                valid_until=_snap_dt(r["valid_until"]) if r.get("valid_until") else None,
+                superseded_by=r.get("superseded_by"),
+                provenance=r.get("provenance"),
+            ),
+            self.store.insert_lesson,
+        )
+        _restore(
+            "lesson_anchors",
+            lambda r: LessonAnchor(
+                id=str(r["id"]),
+                lesson_id=str(r["lesson_id"]),
+                anchor_type=normalize_anchor_type(r.get("anchor_type")),
+                anchor_ref=str(r["anchor_ref"]),
+                relation=normalize_anchor_relation(r.get("relation")),
+                repo=r.get("repo"),
+                created_at=_snap_dt(r.get("created_at")),
+            ),
+            self.store.add_lesson_anchor,
+        )
+        _restore(
+            "memory_candidates",
+            lambda r: MemoryCandidate(
+                id=str(r["id"]),
+                codename=str(r["codename"]),
+                repo=str(r["repo"]),
+                body=str(r.get("body", "")),
+                tags=list(r.get("tags") or []),
+                severity=r.get("severity", "info"),
+                source=str(r.get("source", "manual")),
+                source_firing_id=r.get("source_firing_id"),
+                evidence=str(r.get("evidence", "")),
+                confidence=float(r.get("confidence", 0.5)),
+                status=r.get("status", "candidate"),
+                created_at=_snap_dt(r.get("created_at")),
+                reviewed_at=_snap_dt(r["reviewed_at"]) if r.get("reviewed_at") else None,
+                reviewed_by=r.get("reviewed_by"),
+                review_note=r.get("review_note"),
+                promoted_lesson_id=r.get("promoted_lesson_id"),
+                kind=normalize_kind(r.get("kind")),
+            ),
+            self.store.insert_memory_candidate,
+        )
+        _restore(
+            "firings",
+            lambda r: FiringLog(
+                firing_id=str(r["firing_id"]),
+                codename=str(r["codename"]),
+                repo=r.get("repo"),
+                status=r.get("status", "ok"),
+                summary=str(r.get("summary", "")),
+                started_at=_snap_dt(r.get("started_at")),
+                finished_at=_snap_dt(r.get("finished_at")),
+                cost_cents=int(r.get("cost_cents", 0)),
+                pr_url=r.get("pr_url"),
+                sentinel=r.get("sentinel"),
+            ),
+            self.store.insert_firing_log,
+        )
+        _restore(
+            "file_touches",
+            lambda r: FileTouch(
+                id=str(r["id"]),
+                repo=str(r["repo"]),
+                path=str(r["path"]),
+                codename=str(r["codename"]),
+                touched_at=_snap_dt(r.get("touched_at")),
+                firing_id=r.get("firing_id"),
+                pr_url=r.get("pr_url"),
+                change_type=r.get("change_type", "modified"),
+            ),
+            self.store.insert_file_touch,
+        )
+        _restore(
+            "failure_events",
+            lambda r: FailureEvent(
+                id=str(r["id"]),
+                codename=str(r["codename"]),
+                subtype=str(r.get("subtype", "")),
+                summary=str(r.get("summary", "")),
+                severity=r.get("severity", "warning"),
+                created_at=_snap_dt(r.get("created_at")),
+                repo=r.get("repo"),
+                firing_id=r.get("firing_id"),
+                engine=r.get("engine"),
+            ),
+            self.store.insert_failure_event,
+        )
+        return counts
 
     def _all_repo_notes(self) -> list[RepoNote]:
         """Pull every repo note via a list_lessons-style sweep.
@@ -2443,6 +2718,26 @@ class FleetBrain:
             if note is not None:
                 out.append(note)
         return out
+
+
+def _snap_dt(value: Any) -> datetime:
+    """Parse an exported ISO timestamp back to a UTC-aware datetime.
+
+    Total: a missing, blank, or unparseable value falls back to ``now`` so an
+    :meth:`FleetBrain.import_snapshot` row is never dropped for a bad timestamp.
+    """
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
+    text = str(value or "").strip()
+    if not text:
+        return datetime.now(UTC)
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return datetime.now(UTC)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 def _serialize(d: dict[str, Any]) -> dict[str, Any]:

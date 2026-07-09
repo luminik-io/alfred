@@ -104,7 +104,10 @@ class GBrainProvider:
         codename: str | None = None,
         repo: str | None = None,
         limit: int = 5,
+        anchor_refs: Iterable[str] | None = None,
     ) -> list[Lesson]:
+        # ``anchor_refs`` is accepted for provider-chain compatibility; the
+        # gbrain shim has no anchor index, so it is ignored.
         binary = self._resolved_binary()
         if binary is None:
             _LOG.debug("memory.gbrain: binary not configured; returning empty")

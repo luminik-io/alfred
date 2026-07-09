@@ -41,6 +41,7 @@ from typing import Any
 
 _RANK_ENABLED_ENV = "ALFRED_MEMORY_RANK"
 _DELTA_ENABLED_ENV = "ALFRED_MEMORY_DELTA"
+_TYPED_RECALL_ENV = "ALFRED_MEMORY_TYPED_RECALL"
 _HALFLIFE_ENV = "ALFRED_MEMORY_DECAY_HALFLIFE_DAYS"
 _W_RELEVANCE_ENV = "ALFRED_MEMORY_RANK_W_RELEVANCE"
 _W_ROI_ENV = "ALFRED_MEMORY_RANK_W_ROI"
@@ -454,3 +455,37 @@ def rank_pairs(
 
     # Stable descending sort: ties preserve recall order (deterministic).
     return sorted(pairs, key=total, reverse=True)
+
+
+def typed_recall_enabled(env: Mapping[str, str] | None = None) -> bool:
+    """Whether type-aware recall preference is active (``ALFRED_MEMORY_TYPED_RECALL``).
+
+    OFF by default: recalled lessons keep their existing order regardless of
+    kind. When armed, :func:`apply_typed_recall` lifts the kinds that matter for
+    editing code (conventions first, then review-patterns and fixes, then the
+    failures to avoid) ahead of passive notes.
+    """
+    return _truthy((env or os.environ).get(_TYPED_RECALL_ENV))
+
+
+def apply_typed_recall(
+    pairs: list[tuple[Any, float | None]],
+    *,
+    env: Mapping[str, str] | None = None,
+) -> list[tuple[Any, float | None]]:
+    """Prefer conventions + fixes by lesson kind. Returns ``pairs`` unchanged when off.
+
+    A stable descending sort on each lesson's kind preference (see
+    :data:`fleet_brain.taxonomy.KIND_RECALL_PREFERENCE`), so ties preserve the
+    incoming order and the result is fully deterministic. Applied AFTER the
+    weighted rank so, when both are armed, the kind preference has the final say
+    on which lessons lead while relevance still orders within a kind bucket.
+    """
+    if not typed_recall_enabled(env) or not pairs:
+        return pairs
+    from fleet_brain.taxonomy import kind_recall_bonus
+
+    def kind_pref(pair: tuple[Any, float | None]) -> float:
+        return kind_recall_bonus(getattr(pair[0], "kind", None))
+
+    return sorted(pairs, key=kind_pref, reverse=True)

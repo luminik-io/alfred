@@ -35,7 +35,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from agent_runner.reliability import compute_backoff_delay
-from fleet_brain import Lesson, Severity, new_id
+from fleet_brain import Lesson, Severity, new_id, normalize_kind
 
 from .ams_server import DEFAULT_HOST, DEFAULT_PORT
 
@@ -274,7 +274,10 @@ class RedisAgentMemoryProvider:
         codename: str | None = None,
         repo: str | None = None,
         limit: int = 5,
+        anchor_refs: Iterable[str] | None = None,
     ) -> list[Lesson]:
+        # ``anchor_refs`` is accepted for provider-chain compatibility; AMS has
+        # no code-anchor index, so it is intentionally ignored here.
         text = (query or " ".join(x for x in (codename, repo) if x) or "alfred").strip()
         payload: dict[str, Any] = {
             "text": text,
@@ -401,15 +404,21 @@ class RedisAgentMemoryProvider:
         firing_id: str | None = None,
         created_at: datetime | None = None,
         memory_id: str | None = None,
+        kind: str | None = None,
+        provenance: str | None = None,
     ) -> Lesson:
         created = created_at or datetime.now(UTC)
         clean_tags = sorted({str(tag).strip() for tag in (tags or []) if str(tag).strip()})
+        lesson_kind = normalize_kind(kind)
+        # AMS has no typed-lesson column; carry the Phase 2 kind as a topic so it
+        # is recoverable and searchable, and stamp it on the returned Lesson.
         topics = sorted(
             {
                 "alfred",
                 f"codename:{codename}",
                 f"repo:{repo}",
                 f"severity:{severity}",
+                f"kind:{lesson_kind}",
                 *clean_tags,
             }
         )
@@ -422,6 +431,8 @@ class RedisAgentMemoryProvider:
             created_at=created,
             firing_id=firing_id,
             severity=severity,
+            kind=lesson_kind,
+            provenance=(provenance or firing_id or None),
         )
         payload: dict[str, Any] = {
             "memories": [

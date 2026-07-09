@@ -57,7 +57,15 @@ from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
-from fleet_brain import Lesson, Severity, new_id
+from fleet_brain import (
+    Lesson,
+    Severity,
+    new_id,
+    normalize_anchor_relation,
+    normalize_anchor_type,
+    normalize_kind,
+)
+from fleet_brain.taxonomy import DEFAULT_LESSON_KIND
 
 __all__ = ["SqliteHybridProvider", "default_hybrid_db_path"]
 
@@ -331,18 +339,46 @@ class SqliteHybridProvider:
     def _ensure_schema(self, conn: sqlite3.Connection) -> None:
         with conn:
             conn.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS lessons (
-                    id         TEXT NOT NULL PRIMARY KEY,
-                    codename   TEXT NOT NULL,
-                    repo       TEXT NOT NULL,
-                    body       TEXT NOT NULL,
-                    tags_json  TEXT NOT NULL DEFAULT '[]',
-                    severity   TEXT NOT NULL DEFAULT 'info',
-                    firing_id  TEXT,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
+                    id            TEXT NOT NULL PRIMARY KEY,
+                    codename      TEXT NOT NULL,
+                    repo          TEXT NOT NULL,
+                    body          TEXT NOT NULL,
+                    tags_json     TEXT NOT NULL DEFAULT '[]',
+                    severity      TEXT NOT NULL DEFAULT 'info',
+                    firing_id     TEXT,
+                    created_at    TEXT NOT NULL,
+                    updated_at    TEXT NOT NULL,
+                    kind          TEXT NOT NULL DEFAULT '{DEFAULT_LESSON_KIND}',
+                    valid_until   TEXT,
+                    superseded_by TEXT,
+                    provenance    TEXT,
                     CHECK (severity IN ('info', 'warning', 'blocker'))
+                )
+                """
+            )
+            # Phase 2 additive migration for a pre-Phase-2 hybrid DB: add the
+            # typed/validity/provenance columns in place. Existing rows read back
+            # as the pre-Phase-2 default (``note`` kind, still-valid, no
+            # provenance), so recall is unchanged until the columns are used.
+            _add_column_if_missing(
+                conn, "lessons", "kind", f"TEXT NOT NULL DEFAULT '{DEFAULT_LESSON_KIND}'"
+            )
+            _add_column_if_missing(conn, "lessons", "valid_until", "TEXT")
+            _add_column_if_missing(conn, "lessons", "superseded_by", "TEXT")
+            _add_column_if_missing(conn, "lessons", "provenance", "TEXT")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS lesson_anchors (
+                    id          TEXT NOT NULL PRIMARY KEY,
+                    lesson_id   TEXT NOT NULL,
+                    anchor_type TEXT NOT NULL,
+                    anchor_ref  TEXT NOT NULL,
+                    relation    TEXT NOT NULL DEFAULT 'about',
+                    repo        TEXT,
+                    created_at  TEXT NOT NULL,
+                    UNIQUE (lesson_id, anchor_type, anchor_ref, relation)
                 )
                 """
             )
@@ -353,6 +389,13 @@ class SqliteHybridProvider:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS lessons_repo_created_idx "
                 "ON lessons (repo, created_at DESC)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS lesson_anchors_ref_idx "
+                "ON lesson_anchors (anchor_type, anchor_ref)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS lesson_anchors_lesson_idx ON lesson_anchors (lesson_id)"
             )
             if self._fts_ok is None:
                 self._fts_ok = self._try_create_fts(conn)
@@ -394,6 +437,9 @@ class SqliteHybridProvider:
         firing_id: str | None = None,
         created_at: datetime | str | None = None,
         memory_id: str | None = None,
+        kind: str | None = None,
+        provenance: str | None = None,
+        anchors: Iterable[tuple[str, str]] | None = None,
     ) -> Lesson:
         """Persist a promoted lesson. Idempotent on ``memory_id``.
 
@@ -405,6 +451,11 @@ class SqliteHybridProvider:
         ``sync_lesson`` mirrors an already-stored lesson whose ``created_at`` is a
         serialized string, so a string is a first-class input here; it is parsed
         back to a ``datetime`` so the returned :class:`Lesson` stays well-typed.
+
+        Phase 2 optional args, all backward-compatible: ``kind`` types the lesson
+        (unknown folds to ``note``); ``provenance`` records the firing/PR that
+        created it (defaults to ``firing_id``); ``anchors`` is an iterable of
+        ``(anchor_type, anchor_ref)`` pairs linking the lesson to code entities.
         """
         if isinstance(created_at, str):
             created = _from_iso(created_at)
@@ -419,9 +470,19 @@ class SqliteHybridProvider:
             created_at=created,
             firing_id=firing_id,
             severity=severity,
+            kind=normalize_kind(kind),
+            provenance=(provenance or firing_id or None),
         )
         with self._connect() as conn, conn:
             self._write_lesson(conn, lesson)
+            for anchor_type, anchor_ref in anchors or []:
+                self._write_anchor(
+                    conn,
+                    lesson_id=lesson.id,
+                    anchor_type=anchor_type,
+                    anchor_ref=anchor_ref,
+                    repo=lesson.repo,
+                )
         return lesson
 
     def sync_lesson(self, lesson: Lesson) -> bool:
@@ -453,6 +514,7 @@ class SqliteHybridProvider:
         with self._connect() as conn, conn:
             cur = conn.execute("DELETE FROM lessons WHERE id = ?", (clean,))
             deleted = cur.rowcount > 0
+            conn.execute("DELETE FROM lesson_anchors WHERE lesson_id = ?", (clean,))
             if self._fts_ok:
                 conn.execute("DELETE FROM lessons_fts WHERE lesson_id = ?", (clean,))
             if self._vec_ok:
@@ -464,13 +526,16 @@ class SqliteHybridProvider:
         now = _iso(datetime.now(UTC))
         conn.execute(
             "INSERT INTO lessons "
-            "(id, codename, repo, body, tags_json, severity, firing_id, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "(id, codename, repo, body, tags_json, severity, firing_id, created_at, "
+            " updated_at, kind, valid_until, superseded_by, provenance) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT (id) DO UPDATE SET "
             "  codename = excluded.codename, repo = excluded.repo, body = excluded.body, "
             "  tags_json = excluded.tags_json, severity = excluded.severity, "
             "  firing_id = excluded.firing_id, created_at = excluded.created_at, "
-            "  updated_at = excluded.updated_at",
+            "  updated_at = excluded.updated_at, kind = excluded.kind, "
+            "  valid_until = excluded.valid_until, superseded_by = excluded.superseded_by, "
+            "  provenance = excluded.provenance",
             (
                 lesson.id,
                 lesson.codename,
@@ -481,6 +546,10 @@ class SqliteHybridProvider:
                 lesson.firing_id,
                 _iso(lesson.created_at),
                 now,
+                normalize_kind(lesson.kind),
+                _iso(lesson.valid_until) if lesson.valid_until else None,
+                lesson.superseded_by,
+                lesson.provenance,
             ),
         )
         if self._fts_ok:
@@ -521,14 +590,22 @@ class SqliteHybridProvider:
         codename: str | None = None,
         repo: str | None = None,
         limit: int = 5,
+        anchor_refs: Iterable[str] | None = None,
     ) -> list[Lesson]:
         """Return up to ``limit`` lessons for the scope, hybrid-ranked.
 
         Matches the Redis AMS recall contract: an empty list is the normal
         "nothing to say" answer the chained provider uses to fall through.
+
+        Phase 2 code-grounding: when ``anchor_refs`` is supplied (e.g. the files
+        being edited), lessons anchored to those refs are surfaced FIRST, so
+        "editing ``auth.py``" pulls up the convention + the fix that worked +
+        the mistake to avoid before the general lexical/dense hits. The default
+        call passes no anchors and behaves exactly as Phase 1.
         """
         cap = max(1, int(limit))
         text = (query or " ".join(x for x in (codename, repo) if x) or "").strip()
+        anchored_ids = self._anchor_ids(anchor_refs, repo=repo, limit=cap)
         with self._connect() as conn:
             lexical = self._lexical_ids(conn, text, codename=codename, repo=repo)
             dense: list[str] = []
@@ -537,11 +614,38 @@ class SqliteHybridProvider:
             if not lexical and not dense:
                 # No query signal (or no lexical/dense hit): fall back to the
                 # recency baseline so a scoped rail is never blank.
-                ordered = self._recency_ids(conn, codename=codename, repo=repo, limit=cap)
+                fused_ids = self._recency_ids(conn, codename=codename, repo=repo, limit=cap)
             else:
                 fused = _reciprocal_rank_fusion(lexical, dense, k=self.rrf_k)
-                ordered = [lid for lid, _ in fused][:cap]
+                fused_ids = [lid for lid, _ in fused]
+            # Anchored lessons lead, then the fused/recency order fills the rest.
+            ordered: list[str] = []
+            seen: set[str] = set()
+            for lesson_id in (*anchored_ids, *fused_ids):
+                if lesson_id in seen:
+                    continue
+                seen.add(lesson_id)
+                ordered.append(lesson_id)
+                if len(ordered) >= cap:
+                    break
             return self._hydrate(conn, ordered)
+
+    def _anchor_ids(
+        self, anchor_refs: Iterable[str] | None, *, repo: str | None, limit: int
+    ) -> list[str]:
+        """Lesson ids anchored to any of ``anchor_refs`` (still-valid), scoped by repo."""
+        refs = [r.strip() for r in (anchor_refs or []) if r and r.strip()]
+        if not refs:
+            return []
+        out: list[str] = []
+        seen: set[str] = set()
+        for ref in refs:
+            for lesson in self.lessons_for_anchor(anchor_ref=ref, repo=repo, limit=limit):
+                if lesson.id in seen:
+                    continue
+                seen.add(lesson.id)
+                out.append(lesson.id)
+        return out
 
     def list_lessons(self, *, limit: int = 100) -> list[Lesson]:
         """Enumerate stored lessons, most-recent first (parity with AMS reset)."""
@@ -625,15 +729,14 @@ class SqliteHybridProvider:
             return []
         serialized = _serialize_vector(vec)
         want = self.pool
-        scoped = bool(codename or repo)
-        if not scoped:
-            return self._knn(conn, serialized, limit=want)
-        # Scoped recall. The vec0 KNN limit is GLOBAL: taking the top `want`
-        # nearest vectors first and filtering by scope afterwards would drop
-        # in-scope vectors whenever enough out-of-scope vectors rank closer. So
-        # grow the KNN window until we have `want` in-scope hits or we have
-        # pulled every stored vector (an upper bound from the lessons count), so
-        # the scope filter can never truncate away a relevant in-scope vector.
+        # The vec0 KNN limit is GLOBAL and cannot filter on scope or validity, so
+        # taking the top `want` nearest vectors first and filtering afterwards
+        # would drop in-scope/valid vectors whenever enough out-of-scope or
+        # invalidated vectors rank closer. Grow the KNN window until we have
+        # `want` surviving hits or we have pulled every stored vector (an upper
+        # bound from the lessons count), so the filter can never truncate away a
+        # relevant vector. This runs even unscoped so an invalidated (superseded/
+        # expired) lesson is never recalled through the dense arm.
         (total,) = conn.execute("SELECT COUNT(*) FROM lessons").fetchone()
         total = max(1, int(total))
         k = min(total, max(want * 4, want))
@@ -696,13 +799,133 @@ class SqliteHybridProvider:
         out: list[Lesson] = []
         for lesson_id in ids:
             row = conn.execute(
-                "SELECT id, codename, repo, body, tags_json, severity, firing_id, created_at "
+                "SELECT id, codename, repo, body, tags_json, severity, firing_id, "
+                "created_at, kind, valid_until, superseded_by, provenance "
                 "FROM lessons WHERE id = ?",
                 (lesson_id,),
             ).fetchone()
             if row is not None:
                 out.append(_row_to_lesson(row))
         return out
+
+    # ----- anchors + validity (Phase 2) ---------------------------------
+
+    def _write_anchor(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        lesson_id: str,
+        anchor_type: str,
+        anchor_ref: str,
+        relation: str = "about",
+        repo: str | None = None,
+    ) -> None:
+        ref = (anchor_ref or "").strip()
+        if not lesson_id or not ref:
+            return
+        conn.execute(
+            "INSERT OR IGNORE INTO lesson_anchors "
+            "(id, lesson_id, anchor_type, anchor_ref, relation, repo, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                new_id(),
+                lesson_id,
+                normalize_anchor_type(anchor_type),
+                ref,
+                normalize_anchor_relation(relation),
+                repo,
+                _iso(datetime.now(UTC)),
+            ),
+        )
+
+    def add_anchor(
+        self,
+        *,
+        lesson_id: str,
+        anchor_ref: str,
+        anchor_type: str = "file",
+        relation: str = "about",
+        repo: str | None = None,
+    ) -> bool:
+        """Link an existing lesson to a code entity or another lesson.
+
+        Idempotent on ``(lesson_id, anchor_type, anchor_ref, relation)``. Returns
+        ``True`` when a link exists after the call (blank input is a no-op
+        ``False``).
+        """
+        if not (lesson_id or "").strip() or not (anchor_ref or "").strip():
+            return False
+        with self._connect() as conn, conn:
+            self._write_anchor(
+                conn,
+                lesson_id=lesson_id.strip(),
+                anchor_type=anchor_type,
+                anchor_ref=anchor_ref,
+                relation=relation,
+                repo=repo,
+            )
+        return True
+
+    def lessons_for_anchor(
+        self,
+        *,
+        anchor_ref: str,
+        anchor_type: str | None = None,
+        repo: str | None = None,
+        limit: int = 50,
+    ) -> list[Lesson]:
+        """Return still-valid lessons anchored to ``anchor_ref`` (e.g. a file).
+
+        The code-grounding read: "what does the fleet know about this file." A
+        superseded or expired lesson is filtered out; most recent first.
+        """
+        ref = (anchor_ref or "").strip()
+        if not ref:
+            return []
+        scope_sql, scope_params = _scope_clause(None, repo, alias="l")
+        wheres = ["a.anchor_ref = ?"]
+        params: list[Any] = [ref]
+        if anchor_type:
+            wheres.append("a.anchor_type = ?")
+            params.append(normalize_anchor_type(anchor_type))
+        sql = (
+            "SELECT DISTINCT l.id FROM lesson_anchors a JOIN lessons l ON l.id = a.lesson_id "
+            f"WHERE {' AND '.join(wheres)} {scope_sql} "
+            "ORDER BY l.created_at DESC LIMIT ?"
+        )
+        params.extend(scope_params)
+        params.append(max(1, int(limit)))
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+            return self._hydrate(conn, [r[0] for r in rows])
+
+    def supersede_lesson(self, old_id: str, new_id_: str, *, at: datetime | None = None) -> bool:
+        """Invalidate ``old_id`` in favour of ``new_id_`` (invalidate, not delete).
+
+        Stamps ``superseded_by``/``valid_until`` on the old row and records a
+        ``supersedes`` lesson-to-lesson anchor. Recall stops surfacing the old
+        lesson; the row survives for audit. No-op ``False`` on blank/missing ids.
+        """
+        old = (old_id or "").strip()
+        new = (new_id_ or "").strip()
+        if not old or not new or old == new:
+            return False
+        ts = _iso(at or datetime.now(UTC))
+        with self._connect() as conn, conn:
+            cur = conn.execute(
+                "UPDATE lessons SET superseded_by = ?, valid_until = ? WHERE id = ?",
+                (new, ts, old),
+            )
+            if cur.rowcount <= 0:
+                return False
+            self._write_anchor(
+                conn,
+                lesson_id=new,
+                anchor_type="lesson",
+                anchor_ref=old,
+                relation="supersedes",
+            )
+        return True
 
 
 def _tokenize(text: str) -> list[str]:
@@ -721,16 +944,25 @@ def _tokenize(text: str) -> list[str]:
 
 
 def _scope_clause(codename: str | None, repo: str | None, *, alias: str) -> tuple[str, list[Any]]:
-    clauses: list[str] = []
-    params: list[Any] = []
+    """Build the shared ``AND ...`` filter every recall arm appends after WHERE.
+
+    Always excludes invalidated lessons (Phase 2 bi-temporal validity): a row
+    with ``superseded_by`` set or ``valid_until`` in the past is never recalled.
+    The validity filter is inert until the supersede path is used, so default
+    recall is unchanged. Scope (codename/repo) clauses follow when supplied.
+    """
+    now_iso = _iso(datetime.now(UTC))
+    clauses: list[str] = [
+        f"{alias}.superseded_by IS NULL",
+        f"({alias}.valid_until IS NULL OR {alias}.valid_until > ?)",
+    ]
+    params: list[Any] = [now_iso]
     if codename:
         clauses.append(f"{alias}.codename = ?")
         params.append(codename)
     if repo:
         clauses.append(f"{alias}.repo = ?")
         params.append(repo)
-    if not clauses:
-        return "", params
     return "AND " + " AND ".join(clauses), params
 
 
@@ -760,7 +992,20 @@ def _reciprocal_rank_fusion(
 
 
 def _row_to_lesson(row: tuple[Any, ...]) -> Lesson:
-    lesson_id, codename, repo, body, tags_json, severity, firing_id, created_at = row
+    (
+        lesson_id,
+        codename,
+        repo,
+        body,
+        tags_json,
+        severity,
+        firing_id,
+        created_at,
+        kind,
+        valid_until,
+        superseded_by,
+        provenance,
+    ) = row
     try:
         tags = [str(t) for t in json.loads(tags_json)] if tags_json else []
     except (TypeError, ValueError):
@@ -775,4 +1020,27 @@ def _row_to_lesson(row: tuple[Any, ...]) -> Lesson:
         created_at=_from_iso(created_at),
         firing_id=firing_id,
         severity=sev,
+        kind=normalize_kind(kind),
+        valid_until=_from_iso(valid_until) if valid_until else None,
+        superseded_by=superseded_by,
+        provenance=provenance,
     )
+
+
+def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+    """Additively migrate an existing table: ``ALTER TABLE ... ADD COLUMN``.
+
+    Idempotent: inspects ``PRAGMA table_info`` and only alters when the column
+    is absent. A concurrent Alfred process adding the same column races to a
+    ``duplicate column name`` error, which is safe to swallow. Mirrors the
+    FleetBrain schema's migration helper so the two stores use one pattern.
+    """
+    cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if column in cols:
+        return
+    try:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+    except sqlite3.OperationalError as exc:
+        if "duplicate column name" in str(exc).lower():
+            return
+        raise

@@ -23,6 +23,13 @@ from pathlib import Path
 from typing import Final, Literal, Protocol
 
 from . import schema as schema_mod
+from .taxonomy import (
+    DEFAULT_ANCHOR_RELATION,
+    DEFAULT_LESSON_KIND,
+    normalize_anchor_relation,
+    normalize_anchor_type,
+    normalize_kind,
+)
 
 # ---------------------------------------------------------------------------
 # Entity dataclasses. Kept here (not in a separate ``models.py``) so the
@@ -47,7 +54,15 @@ _AUTO_HELD_MARKER = "[held-for-review]"
 
 @dataclass(frozen=True)
 class Lesson:
-    """One recall-able fact a firing learned about a codename/repo."""
+    """One recall-able fact a firing learned about a codename/repo.
+
+    Phase 2 adds four optional, back-compatible fields. ``kind`` types the
+    lesson (see :mod:`fleet_brain.taxonomy`); ``valid_until`` and
+    ``superseded_by`` carry bi-temporal validity (a lesson is invalidated, never
+    deleted); ``provenance`` records the firing/PR that created a promoted
+    lesson. Every one defaults to the pre-Phase-2 behaviour (``note`` kind,
+    still-valid, no provenance) so an untyped legacy lesson is unchanged.
+    """
 
     id: str
     codename: str
@@ -57,6 +72,10 @@ class Lesson:
     created_at: datetime
     firing_id: str | None
     severity: Severity = "info"
+    kind: str = DEFAULT_LESSON_KIND
+    valid_until: datetime | None = None
+    superseded_by: str | None = None
+    provenance: str | None = None
 
 
 @dataclass(frozen=True)
@@ -109,6 +128,7 @@ class MemoryCandidate:
     reviewed_by: str | None = None
     review_note: str | None = None
     promoted_lesson_id: str | None = None
+    kind: str = DEFAULT_LESSON_KIND
 
 
 @dataclass(frozen=True)
@@ -228,6 +248,26 @@ class CodeOwnerRow:
     updated_at: datetime
 
 
+@dataclass(frozen=True)
+class LessonAnchor:
+    """One Phase 2 code-grounding link from a lesson to its target.
+
+    ``anchor_type`` names what the target is (a ``file``/``symbol``/``node``
+    code entity, or another ``lesson``); ``relation`` names how they relate
+    (``about`` a code entity, or ``supersedes``/``related``/``contradicts``
+    another lesson). ``anchor_ref`` is the target's identity (a path, symbol,
+    graph node id, or lesson id). See :mod:`fleet_brain.taxonomy`.
+    """
+
+    id: str
+    lesson_id: str
+    anchor_type: str
+    anchor_ref: str
+    created_at: datetime
+    relation: str = DEFAULT_ANCHOR_RELATION
+    repo: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # ID generation. ULID-like: 48 bits of millisecond timestamp + 80 bits of
 # entropy, base32-Crockford encoded. Sortable by creation time,
@@ -307,6 +347,25 @@ class Store(Protocol):
     def delete_lesson(self, lesson_id: str) -> bool: ...
 
     def delete_lessons_before(self, cutoff: datetime) -> int: ...
+
+    def supersede_lesson(
+        self, old_id: str, new_id_: str, *, at: datetime | None = None
+    ) -> bool: ...
+
+    def add_lesson_anchor(self, anchor: LessonAnchor) -> LessonAnchor: ...
+
+    def list_lesson_anchors(self, lesson_id: str, limit: int = 100) -> list[LessonAnchor]: ...
+
+    def list_all_lesson_anchors(self, limit: int = 100_000) -> list[LessonAnchor]: ...
+
+    def lessons_for_anchor(
+        self,
+        *,
+        anchor_ref: str,
+        anchor_type: str | None = None,
+        repo: str | None = None,
+        limit: int = 50,
+    ) -> list[Lesson]: ...
 
     def upsert_repo_note(self, note: RepoNote) -> RepoNote: ...
 
@@ -580,8 +639,9 @@ class SQLiteStore:
         with self._connect() as conn, conn:
             conn.execute(
                 "INSERT INTO lessons "
-                "(id, codename, repo, body, severity, firing_id, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "(id, codename, repo, body, severity, firing_id, created_at, "
+                " kind, valid_until, superseded_by, provenance) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     lesson.id,
                     lesson.codename,
@@ -590,6 +650,10 @@ class SQLiteStore:
                     lesson.severity,
                     lesson.firing_id,
                     _to_iso(lesson.created_at),
+                    normalize_kind(lesson.kind),
+                    _to_iso(lesson.valid_until) if lesson.valid_until else None,
+                    lesson.superseded_by,
+                    lesson.provenance,
                 ),
             )
             if lesson.tags:
@@ -621,25 +685,33 @@ class SQLiteStore:
         when it can but never drops below the recency baseline.
 
         Either ``codename`` or ``repo`` may be ``None`` to widen the scope.
+
+        Invalidated lessons are filtered out (Phase 2 bi-temporal validity): a
+        row with a ``superseded_by`` set or a ``valid_until`` in the past is
+        never recalled. The filter is inert until the supersede path is used, so
+        default recall behaviour is unchanged.
         """
         limit = int(limit)
+        now_iso = _to_iso(datetime.now(UTC))
 
         def _scoped(query_body: str | None) -> str:
-            wheres: list[str] = []
+            wheres: list[str] = [
+                "superseded_by IS NULL",
+                "(valid_until IS NULL OR valid_until > ?)",
+            ]
             if codename:
                 wheres.append("codename = ?")
             if repo:
                 wheres.append("repo = ?")
             if query_body:
                 wheres.append("body LIKE ?")
-            clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+            clause = "WHERE " + " AND ".join(wheres)
             return (
-                "SELECT id, codename, repo, body, severity, firing_id, created_at "
-                f"FROM lessons {clause} ORDER BY created_at DESC LIMIT ?"
+                f"SELECT {_LESSON_COLUMNS} FROM lessons {clause} ORDER BY created_at DESC LIMIT ?"
             )
 
         def _scope_params(query_body: str | None) -> list[object]:
-            params: list[object] = []
+            params: list[object] = [now_iso]
             if codename:
                 params.append(codename)
             if repo:
@@ -670,10 +742,7 @@ class SQLiteStore:
             return lessons[:limit]
 
     def list_lessons(self, limit: int | None = None) -> list[Lesson]:
-        sql = (
-            "SELECT id, codename, repo, body, severity, firing_id, created_at "
-            "FROM lessons ORDER BY created_at DESC"
-        )
+        sql = f"SELECT {_LESSON_COLUMNS} FROM lessons ORDER BY created_at DESC"
         params: list[object] = []
         if limit is not None:
             sql += " LIMIT ?"
@@ -685,8 +754,7 @@ class SQLiteStore:
     def get_lesson(self, lesson_id: str) -> Lesson | None:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT id, codename, repo, body, severity, firing_id, created_at "
-                "FROM lessons WHERE id = ?",
+                f"SELECT {_LESSON_COLUMNS} FROM lessons WHERE id = ?",
                 (lesson_id,),
             ).fetchone()
             if not row:
@@ -709,7 +777,19 @@ class SQLiteStore:
 
     @staticmethod
     def _row_to_lesson(conn: sqlite3.Connection, row: tuple) -> Lesson:
-        lesson_id, codename, repo, body, severity, firing_id, created_at = row
+        (
+            lesson_id,
+            codename,
+            repo,
+            body,
+            severity,
+            firing_id,
+            created_at,
+            kind,
+            valid_until,
+            superseded_by,
+            provenance,
+        ) = row
         tags = [
             t[0]
             for t in conn.execute(
@@ -726,7 +806,123 @@ class SQLiteStore:
             created_at=_from_iso(created_at),
             firing_id=firing_id,
             severity=severity,
+            kind=normalize_kind(kind),
+            valid_until=_from_iso(valid_until) if valid_until else None,
+            superseded_by=superseded_by,
+            provenance=provenance,
         )
+
+    # ----- validity + anchors (Phase 2) ---------------------------------
+
+    def supersede_lesson(self, old_id: str, new_id_: str, *, at: datetime | None = None) -> bool:
+        """Invalidate ``old_id`` in favour of ``new_id_`` (invalidate, not delete).
+
+        Stamps ``superseded_by`` and closes ``valid_until`` on the old row so
+        recall stops surfacing it while the audit row survives. Also records a
+        ``supersedes`` anchor from the new lesson to the old one. A blank id or a
+        missing old row is a no-op ``False`` so a caller that gates on the return
+        is safe. Idempotent: re-superseding the same pair just refreshes the
+        timestamp.
+        """
+        old = (old_id or "").strip()
+        new = (new_id_ or "").strip()
+        if not old or not new or old == new:
+            return False
+        ts = at or datetime.now(UTC)
+        with self._connect() as conn, conn:
+            cur = conn.execute(
+                "UPDATE lessons SET superseded_by = ?, valid_until = ? WHERE id = ?",
+                (new, _to_iso(ts), old),
+            )
+            if cur.rowcount <= 0:
+                return False
+            conn.execute(
+                "INSERT OR IGNORE INTO lesson_anchors "
+                "(id, lesson_id, anchor_type, anchor_ref, relation, repo, created_at) "
+                "VALUES (?, ?, 'lesson', ?, 'supersedes', "
+                "(SELECT repo FROM lessons WHERE id = ?), ?)",
+                (new_id(), new, old, new, _to_iso(ts)),
+            )
+        return True
+
+    def add_lesson_anchor(self, anchor: LessonAnchor) -> LessonAnchor:
+        """Persist one lesson->entity or lesson->lesson link (idempotent)."""
+        with self._connect() as conn, conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO lesson_anchors "
+                "(id, lesson_id, anchor_type, anchor_ref, relation, repo, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    anchor.id,
+                    anchor.lesson_id,
+                    normalize_anchor_type(anchor.anchor_type),
+                    anchor.anchor_ref,
+                    normalize_anchor_relation(anchor.relation),
+                    anchor.repo,
+                    _to_iso(anchor.created_at),
+                ),
+            )
+        return anchor
+
+    def list_lesson_anchors(self, lesson_id: str, limit: int = 100) -> list[LessonAnchor]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, lesson_id, anchor_type, anchor_ref, relation, repo, created_at "
+                "FROM lesson_anchors WHERE lesson_id = ? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (lesson_id, int(limit)),
+            ).fetchall()
+            return [_row_to_lesson_anchor(r) for r in rows]
+
+    def list_all_lesson_anchors(self, limit: int = 100_000) -> list[LessonAnchor]:
+        """Enumerate every anchor across all lessons (for export/backup)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, lesson_id, anchor_type, anchor_ref, relation, repo, created_at "
+                "FROM lesson_anchors ORDER BY created_at ASC LIMIT ?",
+                (int(limit),),
+            ).fetchall()
+            return [_row_to_lesson_anchor(r) for r in rows]
+
+    def lessons_for_anchor(
+        self,
+        *,
+        anchor_ref: str,
+        anchor_type: str | None = None,
+        repo: str | None = None,
+        limit: int = 50,
+    ) -> list[Lesson]:
+        """Return still-valid lessons anchored to ``anchor_ref`` (e.g. a file).
+
+        This is the code-grounding read: "what does the fleet know about this
+        file/symbol/node." Superseded or expired lessons are filtered out, most
+        recent first.
+        """
+        ref = (anchor_ref or "").strip()
+        if not ref:
+            return []
+        now_iso = _to_iso(datetime.now(UTC))
+        wheres = [
+            "a.anchor_ref = ?",
+            "l.superseded_by IS NULL",
+            "(l.valid_until IS NULL OR l.valid_until > ?)",
+        ]
+        params: list[object] = [ref, now_iso]
+        if anchor_type:
+            wheres.append("a.anchor_type = ?")
+            params.append(normalize_anchor_type(anchor_type))
+        if repo:
+            wheres.append("l.repo = ?")
+            params.append(repo)
+        sql = (
+            f"SELECT DISTINCT {_lesson_columns(alias='l')} "
+            "FROM lesson_anchors a JOIN lessons l ON l.id = a.lesson_id "
+            f"WHERE {' AND '.join(wheres)} ORDER BY l.created_at DESC LIMIT ?"
+        )
+        params.append(int(limit))
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+            return [self._row_to_lesson(conn, r) for r in rows]
 
     # ----- repo notes ----------------------------------------------------
 
@@ -920,8 +1116,8 @@ class SQLiteStore:
                 "INSERT INTO memory_candidates "
                 "(id, codename, repo, body, tags_json, severity, source, "
                 " source_firing_id, evidence, confidence, status, created_at, "
-                " reviewed_at, reviewed_by, review_note, promoted_lesson_id) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " reviewed_at, reviewed_by, review_note, promoted_lesson_id, kind) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     candidate.id,
                     candidate.codename,
@@ -939,6 +1135,7 @@ class SQLiteStore:
                     candidate.reviewed_by,
                     candidate.review_note,
                     candidate.promoted_lesson_id,
+                    normalize_kind(candidate.kind),
                 ),
             )
         return candidate
@@ -948,7 +1145,7 @@ class SQLiteStore:
             row = conn.execute(
                 "SELECT id, codename, repo, body, tags_json, severity, source, "
                 "source_firing_id, evidence, confidence, status, created_at, "
-                "reviewed_at, reviewed_by, review_note, promoted_lesson_id "
+                "reviewed_at, reviewed_by, review_note, promoted_lesson_id, kind "
                 "FROM memory_candidates WHERE id = ?",
                 (candidate_id,),
             ).fetchone()
@@ -961,7 +1158,7 @@ class SQLiteStore:
                 "codename = ?, repo = ?, body = ?, tags_json = ?, severity = ?, "
                 "source = ?, source_firing_id = ?, evidence = ?, confidence = ?, "
                 "status = ?, created_at = ?, reviewed_at = ?, reviewed_by = ?, "
-                "review_note = ?, promoted_lesson_id = ? "
+                "review_note = ?, promoted_lesson_id = ?, kind = ? "
                 "WHERE id = ?",
                 (
                     candidate.codename,
@@ -979,6 +1176,7 @@ class SQLiteStore:
                     candidate.reviewed_by,
                     candidate.review_note,
                     candidate.promoted_lesson_id,
+                    normalize_kind(candidate.kind),
                     candidate.id,
                 ),
             )
@@ -1007,7 +1205,7 @@ class SQLiteStore:
         sql = (
             "SELECT id, codename, repo, body, tags_json, severity, source, "
             "source_firing_id, evidence, confidence, status, created_at, "
-            "reviewed_at, reviewed_by, review_note, promoted_lesson_id "
+            "reviewed_at, reviewed_by, review_note, promoted_lesson_id, kind "
             f"FROM memory_candidates {where_clause} "
             "ORDER BY created_at DESC LIMIT ? OFFSET ?"
         )
@@ -1759,6 +1957,43 @@ def _tags_to_json(tags: list[str]) -> str:
     return json.dumps(sorted({t.strip() for t in tags if t.strip()}), separators=(",", ":"))
 
 
+# The ordered lesson column list every lesson SELECT shares, so the row parser
+# unpacks a fixed shape. Kept in one place: adding a lesson column means editing
+# this string and ``_row_to_lesson`` only.
+_LESSON_COLUMN_NAMES: Final[tuple[str, ...]] = (
+    "id",
+    "codename",
+    "repo",
+    "body",
+    "severity",
+    "firing_id",
+    "created_at",
+    "kind",
+    "valid_until",
+    "superseded_by",
+    "provenance",
+)
+_LESSON_COLUMNS: Final[str] = ", ".join(_LESSON_COLUMN_NAMES)
+
+
+def _lesson_columns(*, alias: str) -> str:
+    """The lesson column list qualified by a table ``alias`` (for JOINs)."""
+    return ", ".join(f"{alias}.{name}" for name in _LESSON_COLUMN_NAMES)
+
+
+def _row_to_lesson_anchor(row: tuple) -> LessonAnchor:
+    anchor_id, lesson_id, anchor_type, anchor_ref, relation, repo, created_at = row
+    return LessonAnchor(
+        id=anchor_id,
+        lesson_id=lesson_id,
+        anchor_type=anchor_type,
+        anchor_ref=anchor_ref,
+        relation=relation,
+        repo=repo,
+        created_at=_from_iso(created_at),
+    )
+
+
 def _tags_from_json(raw: str) -> list[str]:
     try:
         value = json.loads(raw)
@@ -1787,6 +2022,7 @@ def _row_to_memory_candidate(row: tuple) -> MemoryCandidate:
         reviewed_by,
         review_note,
         promoted_lesson_id,
+        kind,
     ) = row
     return MemoryCandidate(
         id=candidate_id,
@@ -1805,6 +2041,7 @@ def _row_to_memory_candidate(row: tuple) -> MemoryCandidate:
         reviewed_by=reviewed_by,
         review_note=review_note,
         promoted_lesson_id=promoted_lesson_id,
+        kind=normalize_kind(kind),
     )
 
 

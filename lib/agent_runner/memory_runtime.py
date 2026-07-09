@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import os
@@ -150,6 +151,42 @@ def _iter_chain_members(provider) -> Iterator[Any]:
         yield candidate
 
 
+def _recall_member(
+    candidate,
+    *,
+    codename: str,
+    repo: str,
+    query: str | None,
+    limit: int,
+    anchor_refs: list[str] | None,
+) -> list:
+    """Call a chain member's ``recall``, threading ``anchor_refs`` when it accepts it.
+
+    A member (or a third-party provider) written against the pre-Phase-2 protocol
+    does not declare ``anchor_refs``; passing it would raise, so we only pass it
+    when the member's ``recall`` accepts it. With no anchor refs the call is
+    byte-identical to before.
+    """
+    if anchor_refs and _member_accepts_anchor_refs(candidate):
+        return candidate.recall(
+            codename=codename, repo=repo, query=query, limit=limit, anchor_refs=anchor_refs
+        )
+    return candidate.recall(codename=codename, repo=repo, query=query, limit=limit)
+
+
+def _member_accepts_anchor_refs(candidate) -> bool:
+    recall = getattr(candidate, "recall", None)
+    if recall is None:
+        return False
+    try:
+        params = inspect.signature(recall).parameters
+    except (TypeError, ValueError):
+        return False
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return True
+    return "anchor_refs" in params
+
+
 def _recall_scored_lessons(
     provider,
     *,
@@ -157,6 +194,7 @@ def _recall_scored_lessons(
     repo: str,
     query: str | None,
     limit: int,
+    anchor_refs: list[str] | None = None,
 ) -> list[tuple[object, float | None]] | None:
     """Return merged scored lessons across every chain member, or ``None``.
 
@@ -166,6 +204,11 @@ def _recall_scored_lessons(
     dropped from the prompt. This mirrors :meth:`ChainedMemoryProvider.recall`,
     which merges every backend so freshly reviewed FleetBrain lessons still
     appear before a separate Redis sync has run.
+
+    ``anchor_refs`` (Phase 2 code-grounding) is threaded to the plain-``recall``
+    members that accept it, so an anchoring backend (e.g. FleetBrain) still
+    surfaces file-linked lessons first even inside a Redis-scored chain. The AMS
+    ``recall_scored`` path has no anchor index and is left unchanged.
 
     ``None`` is returned only when no member exposes ``recall_scored`` at all,
     signalling "fall back to the provider's own plain recall".
@@ -185,7 +228,14 @@ def _recall_scored_lessons(
             merged.extend(scored)
         else:
             try:
-                lessons = candidate.recall(codename=codename, repo=repo, query=query, limit=limit)
+                lessons = _recall_member(
+                    candidate,
+                    codename=codename,
+                    repo=repo,
+                    query=query,
+                    limit=limit,
+                    anchor_refs=anchor_refs,
+                )
             except Exception:
                 _LOG.exception("memory runtime: chain-member recall failed")
                 continue
@@ -203,6 +253,8 @@ def _gated_pairs(
     query: str | None,
     limit: int,
     threshold: float,
+    anchor_refs: list[str] | None = None,
+    anchored_ids: set[str] | None = None,
 ) -> list[tuple[object, float | None]]:
     """Recall lessons, gate by relevance threshold, and dedupe by body.
 
@@ -211,28 +263,117 @@ def _gated_pairs(
     the scored recall path so the threshold can act on real AMS similarity. Falls
     back to plain ``recall`` (threshold inapplicable, dedup still applied) for
     providers without scores so existing behavior is never weakened.
+
+    ``anchor_refs`` (Phase 2 code-grounding) is threaded through both paths so
+    lessons anchored to the firing's files surface first.
+
+    ``anchored_ids`` makes the body-dedup ANCHOR-AWARE: when the same lesson body
+    is returned by both a scored provider (not anchored) and the local file store
+    (anchored), a plain first-wins dedup would keep the scored copy and drop the
+    anchored one, and the later id-based hoist could no longer recognize the
+    survivor as anchored. So on a body tie an anchored copy wins over a
+    non-anchored one. With ``anchored_ids`` empty (anchor recall off) this is a
+    no-op and dedup keeps the first as before.
     """
     scored = _recall_scored_lessons(
-        provider, codename=codename, repo=repo, query=query, limit=limit
+        provider, codename=codename, repo=repo, query=query, limit=limit, anchor_refs=anchor_refs
     )
     if scored is None:
-        lessons = provider.recall(codename=codename, repo=repo, query=query, limit=limit)
+        lessons = _recall_member(
+            provider,
+            codename=codename,
+            repo=repo,
+            query=query,
+            limit=limit,
+            anchor_refs=anchor_refs,
+        )
         pairs: list[tuple[object, float | None]] = [(lesson, None) for lesson in lessons]
     else:
         pairs = scored
+    anchored = anchored_ids or set()
     out: list[tuple[object, float | None]] = []
-    seen_bodies: set[str] = set()
+    body_pos: dict[str, int] = {}
     for lesson, score in pairs:
         # A reported score below threshold is dropped; an absent score (None)
         # is always kept (the gate cannot judge it).
         if score is not None and score < threshold:
             continue
         key = _normalized_body(getattr(lesson, "body", ""))
-        if not key or key in seen_bodies:
+        if not key:
             continue
-        seen_bodies.add(key)
+        if key in body_pos:
+            # Duplicate body. Anchor-aware: if this copy is anchored and the one
+            # already kept is not, swap it in so the survivor is the anchored
+            # lesson (which the hoist can then promote). Otherwise keep the first.
+            idx = body_pos[key]
+            kept_id = getattr(out[idx][0], "id", None)
+            this_id = getattr(lesson, "id", None)
+            if this_id in anchored and kept_id not in anchored:
+                out[idx] = (lesson, score)
+            continue
+        body_pos[key] = len(out)
         out.append((lesson, score))
     return out
+
+
+def _anchored_lesson_ids(
+    provider,
+    *,
+    anchor_refs: list[str] | None,
+    repo: str | None,
+) -> set[str]:
+    """Ids of the lessons anchored to any of ``anchor_refs``, across the chain.
+
+    Asks each chain member that can answer anchor lookups (a provider with a
+    ``lessons_for_anchor`` method, or one wrapping a FleetBrain that has it) which
+    lessons are anchored to the requested refs. Used to hoist those lessons to
+    the front of the merged/ranked result regardless of which member returned
+    them or whether that member is scored. Best-effort: any lookup failure is
+    logged and skipped, never raised.
+    """
+    refs = [r.strip() for r in (anchor_refs or []) if r and r.strip()]
+    if not refs:
+        return set()
+    ids: set[str] = set()
+    for member in _iter_chain_members(provider):
+        lookup = getattr(member, "lessons_for_anchor", None)
+        if lookup is None:
+            brain = getattr(member, "brain", None)
+            lookup = getattr(brain, "lessons_for_anchor", None)
+        if lookup is None:
+            continue
+        for ref in refs:
+            try:
+                for lesson in lookup(anchor_ref=ref, repo=repo):
+                    lesson_id = getattr(lesson, "id", None)
+                    if lesson_id:
+                        ids.add(lesson_id)
+            except Exception:
+                _LOG.exception("memory runtime: anchor lookup failed")
+    return ids
+
+
+def _hoist_anchored(
+    pairs: list[tuple[object, float | None]],
+    anchored_ids: set[str],
+) -> list[tuple[object, float | None]]:
+    """Move pairs whose lesson id is in ``anchored_ids`` to the front (stable).
+
+    Preserves the relative order within each group, so the anchored lessons keep
+    their merged/ranked order among themselves and the remainder keeps its own.
+    De-dup is inherent: every pair is placed exactly once. A no-op when nothing
+    matches.
+    """
+    if not anchored_ids:
+        return pairs
+    front: list[tuple[object, float | None]] = []
+    rest: list[tuple[object, float | None]] = []
+    for pair in pairs:
+        if getattr(pair[0], "id", None) in anchored_ids:
+            front.append(pair)
+        else:
+            rest.append(pair)
+    return front + rest
 
 
 def format_memory_context(
@@ -243,8 +384,13 @@ def format_memory_context(
     query: str | None = None,
     limit: int = 3,
     firing_id: str | None = None,
+    anchor_refs: list[str] | None = None,
 ) -> str:
     """Return prompt-ready memory context, or an empty string.
+
+    ``anchor_refs`` (Phase 2 code-grounding) surfaces lessons anchored to the
+    firing's files first. A caller passes the file entities the firing is about
+    (see :func:`with_memory_prompt`); with none it is a no-op.
 
     Recalled lessons are gated before injection: anything below the configured
     relevance threshold (``ALFRED_MEMORY_RECALL_THRESHOLD``) is dropped, and
@@ -275,6 +421,12 @@ def format_memory_context(
     if provider is None or getattr(provider, "name", "") == "null":
         return ""
     threshold = _recall_relevance_threshold()
+    # Compute the anchored-id set ONCE, before dedup, so both the anchor-aware
+    # body-dedup (an anchored copy wins a duplicate-body tie) and the later hoist
+    # use the same set. Empty (and both a no-op) when no anchor_refs were passed.
+    anchored_ids = (
+        _anchored_lesson_ids(provider, anchor_refs=anchor_refs, repo=repo) if anchor_refs else set()
+    )
     try:
         pairs = _gated_pairs(
             provider,
@@ -283,6 +435,8 @@ def format_memory_context(
             query=query,
             limit=limit,
             threshold=threshold,
+            anchor_refs=anchor_refs,
+            anchored_ids=anchored_ids,
         )
     except Exception:
         _LOG.exception("memory runtime: recall failed")
@@ -295,6 +449,20 @@ def format_memory_context(
     # to keep unrelated firings from cross-contaminating each other.
     pairs = memory_ranking.apply_delta(pairs, firing_id, codename=codename, repo=repo)
     pairs = memory_ranking.rank_pairs(pairs, codename=codename, repo=repo)
+    # Type-aware recall LAST (gated, off by default): when armed it lifts the
+    # kinds that matter for editing code (conventions + fixes) ahead of passive
+    # notes, with relevance/recency still ordering within a kind bucket.
+    pairs = memory_ranking.apply_typed_recall(pairs)
+    # Anchor hoist LAST of all (only when anchor_refs were supplied): the whole
+    # point of anchor recall is that file-linked lessons surface FIRST. In a
+    # scored chain (e.g. Redis + FleetBrain) the scored member's generic hits are
+    # merged ahead of the non-scored member's anchored lessons, so without this
+    # step the anchored lessons lose their priority. Reuses the same
+    # ``anchored_ids`` the anchor-aware dedup used, so a survivor swapped in for a
+    # duplicate body is recognized here too. Works for any chain shape and is a
+    # no-op when no anchor_refs were passed.
+    if anchored_ids:
+        pairs = _hoist_anchored(pairs, anchored_ids)
     if not pairs:
         return ""
     header = [
@@ -393,6 +561,54 @@ def memory_reflection_instructions() -> str:
 Only include durable lessons. Do not include secrets, tokens, customer data, stack traces with private values, or facts that are already obvious from nearby code."""
 
 
+_ANCHOR_RECALL_ENV = "ALFRED_MEMORY_ANCHOR_RECALL"
+
+
+def anchor_recall_enabled(env: Mapping[str, str] | None = None) -> bool:
+    """Whether runtime anchor-grounded recall is armed (``ALFRED_MEMORY_ANCHOR_RECALL``).
+
+    OFF by default, consistent with the rest of Phase 2: unless armed, the
+    runtime never derives ``anchor_refs`` and recall is byte-identical to Phase
+    1. When armed, the firing's available file context (its orientation paths)
+    is passed to recall so lessons anchored to those files surface first.
+    """
+    raw = str((env or os.environ).get(_ANCHOR_RECALL_ENV, "")).strip().lower()
+    return raw in {"1", "true", "yes", "on", "enabled"}
+
+
+def derive_anchor_refs(
+    orientation_paths: Iterable[str] | None,
+    *,
+    repo: str | None,
+) -> list[str]:
+    """Build recall ``anchor_refs`` from a firing's file context. Deterministic.
+
+    Recall runs BEFORE the agent edits anything, so the exact files-to-be-edited
+    are not known yet. This uses the best signal available at prompt-build time:
+    the firing's ``orientation_paths`` (the files it was told to look at). For
+    each path it emits both the bare repo-relative path and the ``<repo>/<path>``
+    form, so it matches lessons anchored under either convention. Returns an empty
+    list when there is no file signal, in which case anchor recall is a no-op and
+    the caller falls back to ordinary recall. It never invents a path.
+    """
+    refs: list[str] = []
+    seen: set[str] = set()
+    repo_slug = (repo or "").strip().strip("/")
+    for raw in orientation_paths or []:
+        path = str(raw or "").strip().lstrip("/")
+        if not path:
+            continue
+        variants = [path]
+        if repo_slug and not path.startswith(f"{repo_slug}/"):
+            variants.append(f"{repo_slug}/{path}")
+        for ref in variants:
+            if ref in seen:
+                continue
+            seen.add(ref)
+            refs.append(ref)
+    return refs
+
+
 def with_memory_prompt(
     prompt: str,
     provider,
@@ -402,15 +618,39 @@ def with_memory_prompt(
     query: str | None = None,
     limit: int = 3,
     firing_id: str | None = None,
+    repo_root: str | None = None,
+    orientation_paths: Iterable[str] | None = None,
 ) -> str:
     """Prepend recall context and append reflection instructions when enabled.
 
     ``firing_id`` is optional and only used by the delta-injection pipeline
     (``ALFRED_MEMORY_DELTA``): passing it lets a later turn of the same firing
     skip lessons already injected on an earlier turn.
+
+    ``repo_root`` is optional and only used by the repo-profile injector
+    (``ALFRED_REPO_PROFILE``, off by default): when armed, a deterministic
+    profile of the repo (manifest, package manager, verify commands, structure)
+    is prepended as a convention-memory block so a headless firing does not have
+    to rediscover the project's shape. It is independent of the recall provider,
+    so it can orient a firing even when memory recall is empty.
+
+    ``orientation_paths`` activates Phase 2 anchor-grounded recall
+    (``ALFRED_MEMORY_ANCHOR_RECALL``, off by default). Recall happens before any
+    edit, so the exact edit targets are unknown; the firing's orientation paths
+    are the file signal available at prompt-build time. When the flag is armed
+    and orientation paths are present, lessons anchored to those files surface
+    first. With no orientation paths (or the flag off) this is a no-op, and the
+    general path stays an explicit caller passing ``anchor_refs`` to
+    :func:`format_memory_context` / a provider's ``recall``.
     """
+    profile = _repo_profile_block(repo_root)
     if provider is None or not repo or getattr(provider, "name", "") == "null":
+        if profile:
+            return "\n\n".join([profile, prompt])
         return prompt
+    anchor_refs = (
+        derive_anchor_refs(orientation_paths, repo=repo) if anchor_recall_enabled() else None
+    )
     context = format_memory_context(
         provider,
         codename=codename,
@@ -418,13 +658,29 @@ def with_memory_prompt(
         query=query,
         limit=limit,
         firing_id=firing_id,
+        anchor_refs=anchor_refs or None,
     )
     chunks = []
+    if profile:
+        chunks.append(profile)
     if context:
         chunks.append(context)
     chunks.append(prompt)
     chunks.append(memory_reflection_instructions())
     return "\n\n".join(chunks)
+
+
+def _repo_profile_block(repo_root: str | None) -> str:
+    """Best-effort deterministic repo-profile block (empty unless armed)."""
+    if not repo_root:
+        return ""
+    try:
+        from .repo_profile import repo_profile_block
+
+        return repo_profile_block(repo_root)
+    except Exception:
+        _LOG.exception("memory runtime: repo profile build failed")
+        return ""
 
 
 def parse_memory_reflections(text: str) -> list[MemoryReflection]:
