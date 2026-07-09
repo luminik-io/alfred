@@ -15,9 +15,10 @@ and no summarization that invents facts.
 
 ## The seam
 
-**PostToolUse output compactor.** After a Bash command runs, its output is
-ANSI-stripped, de-duplicated (runs of identical lines collapse to `line (xN)`),
-progress spinners are flattened, and the result is bounded to a byte budget as a
+**PostToolUse output compactor.** After a Bash command runs and its exit code
+confirms success (see the safety valve below), its output is ANSI-stripped,
+de-duplicated (runs of identical lines collapse to `line (xN)`), progress
+spinners are flattened, and the result is bounded to a byte budget as a
 head-plus-tail excerpt with an explicit `[ALFRED_OUTPUT_COMPACTOR omitted_lines=N]`
 marker. An all-green test run is reduced to its counts line. The compact form is
 returned to Claude Code as `hookSpecificOutput.updatedToolOutput`, so the model
@@ -37,24 +38,31 @@ new-branch, tag, and ref-update summaries that Git normally prints. Each is the
 same class of problem: the "quiet" form silently omits output the agent may need.
 Rather than chase edge cases with ever-cleverer detection, the battery keeps only
 the safe half. Compacting output that has *already been produced* is safe because
-the tee-on-failure valve below guarantees an error is never hidden; rewriting a
-command up front to suppress output it has not produced yet is not.
+the safety valve below only compacts on a confirmed success; rewriting a command
+up front to suppress output it has not produced yet is not.
 
-## Safety valve: tee the full output on failure
+## Safety valve: compact only on confirmed success
 
-Compaction must never hide an error. If a command **failed**, the full output is
-passed through untouched:
+Compaction must never hide an error, so it is gated on **proof of success**, not
+on the absence of a known error signature. The compactor reads the structured
+exit status of the tool response and applies one rule:
 
-- A non-zero exit code always tees the full output.
-- When the exit code is unknown (a plain-string tool response carries no exit
-  code), an error signature (a Python traceback, `fatal:`, `npm ERR!`, a segfault,
-  a bare `Error` / `FAILED` / `Exception` token) or a failing test tail
-  (`1 failed, ...`) also tees the full output.
+- **Confirmed success** (structured exit code `== 0`): the output is eligible for
+  compaction.
+- **Confirmed failure** (structured exit code `!= 0`, or a structured
+  `interrupted` / `is_error` flag): the full output is teed through untouched.
+- **Unknown status** (a plain-string response with no exit code, or a structured
+  response carrying no exit status at all): the full output passes through
+  untouched. Success is never inferred, so an unrecognized error format cannot be
+  hidden.
 
-So the compactor only ever shrinks the boring, successful logs. A traceback, a
-build error, or a test failure always reaches the model in full. This is the
-tee-full-output-on-failure pattern; see `looks_like_failure` and its tests in
-[`tests/test_tool_compactor.py`](../tests/test_tool_compactor.py).
+This inverts the naive "compact unless it looks like a failure" approach, which
+can never enumerate every error format (a Python traceback, `fatal:`, `npm ERR!`,
+`make: *** No rule to make target...`, and so on). By requiring a positive
+exit-code-0 signal, an error in any format the compactor has never seen still
+reaches the model in full, because it was never proven successful. The trade is
+deliberate: on unknown status the compactor saves no tokens rather than risk
+hiding an error.
 
 The whole path is also **fail-conservative**: on any ambiguity or parse problem
 the original bytes are returned unchanged. The worst case is fewer tokens saved,

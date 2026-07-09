@@ -34,8 +34,9 @@ philosophy:
 
   - ``posttooluse``: verbose, low-signal Bash output is compacted before it
     enters the model's context (emitted as ``hookSpecificOutput.updatedToolOutput``).
-    The compactor tees the full output through untouched whenever a command
-    fails, so an error is never hidden.
+    Compaction happens ONLY on a confirmed-success exit code of ``0``; a non-zero
+    exit or an unknown status (a plain-string response with no exit code) passes
+    the full output through untouched, so an error is never hidden.
 
 A PreToolUse *command normalizer* (rewriting verbose commands to quiet
 equivalents) was intentionally dropped: no ``git`` command rewrite proved
@@ -529,7 +530,19 @@ def _extract_tool_text(response: object) -> str:
 
 
 def _extract_exit_code(response: object) -> int | None:
-    """Pull an exit code out of a structured tool_response when present."""
+    """Read the structured exit status of a tool_response.
+
+    Returns the real exit code when the structured response carries one, ``1``
+    when a structured failure flag (``interrupted`` / ``is_error``) is set, and
+    ``None`` when the status is genuinely unknown (a plain-string response, or a
+    structured response with no exit code and no failure flag). The compactor
+    treats that ``None`` as "not proven successful" and passes the output
+    through, so success is never inferred from the mere shape of the response.
+
+    We prefer this structured signal over any scan of the output text: an
+    unrecognized error format would defeat text scanning, but a structured exit
+    code (or the absence of one) is authoritative.
+    """
     if not isinstance(response, dict):
         return None
     for key in ("exit_code", "exitCode", "returncode", "returnCode", "code", "status"):
@@ -538,13 +551,15 @@ def _extract_exit_code(response: object) -> int | None:
             continue
         if isinstance(value, int):
             return value
+    # No numeric exit code. Honor structured failure flags (tee), but never infer
+    # SUCCESS without a real exit code - compaction requires proof of success.
     if response.get("is_error") or response.get("isError") or response.get("interrupted"):
         return 1
     return None
 
 
 def _handle_posttooluse(payload: dict) -> int:
-    """Compact verbose tool output, teeing full output on failure (exit 0)."""
+    """Compact verbose tool output, but only on a confirmed-success exit (exit 0)."""
     if _compactor is None:
         return 0
     tool_name = payload.get("tool_name", "")
@@ -558,7 +573,7 @@ def _handle_posttooluse(payload: dict) -> int:
         exit_code=_extract_exit_code(response),
     )
     if not result.applied:
-        return 0  # disabled, teed on failure, or nothing to gain: leave raw
+        return 0  # disabled, unknown status, teed on failure, or no gain: leave raw
     out = {
         "hookSpecificOutput": {
             "hookEventName": "PostToolUse",

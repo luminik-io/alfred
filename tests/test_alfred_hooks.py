@@ -342,23 +342,37 @@ def test_main_posttooluse_tees_full_output_on_failure(monkeypatch, capsys):
     assert capsys.readouterr().out == ""
 
 
-def test_main_posttooluse_string_response(monkeypatch, capsys):
+def test_main_posttooluse_string_response_unknown_status_passes_through(monkeypatch, capsys):
+    # A plain-STRING tool_response has no exit code, so success is not proven.
+    # The inverted valve passes it through untouched (no updatedToolOutput).
     raw = _big_bash_log()
     event = {"tool_name": "Bash", "tool_input": {"command": "make"}, "tool_response": raw}
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
     assert ah.main(["posttooluse"]) == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
+    assert capsys.readouterr().out == ""  # unknown status: nothing emitted
 
 
-def test_main_posttooluse_string_error_response_is_teed(monkeypatch, capsys):
-    # A plain-STRING tool_response has no exit code (Greptile P1). An error string
-    # must still be teed in full, never compacted, so the failure is not hidden.
-    raw = _big_bash_log() + "Error: build failed on step 42\n"
+def test_main_posttooluse_make_error_string_passes_through(monkeypatch, capsys):
+    # `make: *** No rule...` is an error format the compactor never enumerated.
+    # With no exit code, unknown status means it is passed through, not hidden.
+    raw = _big_bash_log() + "make: *** No rule to make target 'all'.  Stop.\n"
     event = {"tool_name": "Bash", "tool_input": {"command": "make"}, "tool_response": raw}
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
     assert ah.main(["posttooluse"]) == 0
     assert capsys.readouterr().out == ""  # nothing emitted; raw output preserved
+
+
+def test_main_posttooluse_structured_interrupted_is_teed(monkeypatch, capsys):
+    # A structured response with interrupted=True is a confirmed failure.
+    raw = _big_bash_log()
+    event = {
+        "tool_name": "Bash",
+        "tool_input": {"command": "make"},
+        "tool_response": {"stdout": raw, "interrupted": True},
+    }
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    assert ah.main(["posttooluse"]) == 0
+    assert capsys.readouterr().out == ""  # nothing emitted; full output preserved
 
 
 def test_main_posttooluse_fails_open_on_garbage(monkeypatch):

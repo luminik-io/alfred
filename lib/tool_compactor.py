@@ -18,13 +18,16 @@ for quiet equivalents) was intentionally dropped: no ``git`` command rewrite
 proved reliably output-equivalent (``git status --short`` drops the submodule
 summary; ``git pull``/``git fetch --quiet`` drop the merge and ref-update
 summaries), so the battery keeps only the safe half - compacting output that has
-already been produced, guarded by the tee-on-failure valve below.
+already been produced, guarded by the confirmed-success valve below.
 
-Critical safety valve (borrowed from rtk's tee-full-output-on-failure): if a
-command **failed** (non-zero exit) or its output matches an error signature, the
-compactor passes the full output through untouched. Compaction must never hide a
-traceback, a build error, or a test failure from the model. See
-:func:`looks_like_failure`.
+Critical safety valve (compaction requires PROOF OF SUCCESS): the compactor only
+touches output whose structured exit code is exactly ``0``. A non-zero exit is
+teed through untouched, and - crucially - so is an *unknown* status (a plain
+string response, or a structured response with no exit code). Compaction is
+gated on positive proof of success, not on the absence of a known error
+signature, so an unrecognized error format can never be hidden. This inversion
+replaces the earlier, unwinnable game of enumerating every error signature (a
+traceback, ``fatal:``, ``npm ERR!``, ``make: *** No rule...``, ...).
 
 Design rules (mirroring ``lib/agent_hooks.py`` and
 ``agent_runner/context_governor.py``):
@@ -53,7 +56,6 @@ __all__ = [
     "CompactionResult",
     "compact_output",
     "compact_text",
-    "looks_like_failure",
     "output_compactor_enabled",
     "strip_ansi",
 ]
@@ -76,33 +78,9 @@ _TEST_TAIL_RE = re.compile(
     r"^=+\s*(?P<body>[\d].*?(?:passed|failed|error|skipped|xfailed|xpassed).*?)\s*=+\s*$",
     re.MULTILINE,
 )
-# Failure-count fragment inside a pytest tail ("3 failed", "1 error").
+# Failure-count fragment inside a pytest tail ("3 failed", "1 error"). Used only
+# as a defensive guard when summarizing an already-confirmed-success test run.
 _TEST_FAIL_COUNT_RE = re.compile(r"\b([1-9]\d*)\s+(failed|error)s?\b", re.IGNORECASE)
-
-# Error signatures that force a full-output tee even when no exit code is known.
-# This is the load-bearing backstop for a plain-STRING tool_response, which
-# carries no exit code: without it, an error string could be compacted and the
-# failure hidden. It only ever DISABLES compaction (the safe direction). The
-# word-boundary anchors keep it from firing on incidental healthy text such as
-# "0 errors" or "compiled without failures".
-_ERROR_SIGNATURE_RE = re.compile(
-    r"Traceback \(most recent call last\)"
-    r"|^\s*File \"[^\"]+\", line \d+"
-    r"|\bpanic:"
-    r"|Segmentation fault"
-    r"|\bfatal:"
-    r"|\bnpm ERR!"
-    r"|command not found"
-    r"|No such file or directory"
-    r"|\bunhandled exception\b"
-    r"|\bcore dumped\b"
-    r"|\bError\b"
-    r"|\bFAILED\b"
-    r"|\bexception\b"
-    r"|non-zero exit"
-    r"|exited with code",
-    re.IGNORECASE | re.MULTILINE,
-)
 
 
 # --------------------------------------------------------------------------
@@ -196,32 +174,6 @@ def _dedupe_consecutive(lines: list[str]) -> list[str]:
 
 
 # --------------------------------------------------------------------------
-# Safety valve
-# --------------------------------------------------------------------------
-def _test_run_failed(text: str) -> bool:
-    for match in _TEST_TAIL_RE.finditer(text or ""):
-        if _TEST_FAIL_COUNT_RE.search(match.group("body")):
-            return True
-    return False
-
-
-def looks_like_failure(text: str, *, exit_code: int | None = None) -> bool:
-    """True when the output must NOT be compacted (the tee-on-failure valve).
-
-    A command failed if its exit code is non-zero, or (when the exit code is
-    unknown) its output carries an error signature or a failing test tail. In any
-    of those cases the full output is preserved so a traceback or build error is
-    never hidden from the model.
-    """
-    if exit_code is not None and exit_code != 0:
-        return True
-    body = text or ""
-    if _ERROR_SIGNATURE_RE.search(body):
-        return True
-    return _test_run_failed(body)
-
-
-# --------------------------------------------------------------------------
 # Compaction
 # --------------------------------------------------------------------------
 @dataclass(frozen=True)
@@ -306,16 +258,22 @@ def compact_output(
     exit_code: int | None = None,
     env: Mapping[str, str] | None = None,
 ) -> CompactionResult:
-    """Compact one tool-result body, honoring the tee-on-failure safety valve.
+    """Compact one tool-result body, but ONLY on proof of success.
 
-    Order of checks (each returns the original bytes unchanged when it fires):
+    ``exit_code`` is the structured exit status of the command (``None`` when the
+    tool response carried no exit code, e.g. a plain-string response). The
+    inverted safety valve compacts only when success is positively confirmed:
 
     1. Disabled via ``ALFRED_OUTPUT_COMPACTOR=0``.
     2. Tool not in the compaction allowlist (default: Bash only).
-    3. **Safety valve**: the command failed (non-zero exit or an error
-       signature) so the full output is teed through untouched.
-    4. Output already under ``ALFRED_OUTPUT_COMPACTOR_MIN_BYTES``.
-    5. Cleaning + budgeting produced no byte saving.
+    3. **Unknown status** (``exit_code is None``): pass the full output through.
+       Compaction requires proof of success, and there is none, so an
+       unrecognized error format is never hidden.
+    4. **Confirmed failure** (``exit_code != 0``): tee the full output through.
+    5. Confirmed success (``exit_code == 0``) below: output already under
+       ``ALFRED_OUTPUT_COMPACTOR_MIN_BYTES``, or cleaning + budgeting produced no
+       byte saving, both pass through unchanged; otherwise the compacted form is
+       returned.
     """
     resolved = _resolve(env)
     text = text or ""
@@ -335,8 +293,11 @@ def compact_output(
         return _passthrough("disabled")
     if tool_name not in _compact_tools(resolved):
         return _passthrough("tool_not_targeted")
-    # Safety valve BEFORE any size gate: an error is always preserved in full.
-    if looks_like_failure(text, exit_code=exit_code):
+    # Inverted safety valve BEFORE any size gate: compaction requires PROOF of
+    # success. Unknown status and any non-zero exit both preserve full output.
+    if exit_code is None:
+        return _passthrough("unknown_status")
+    if exit_code != 0:
         return _passthrough("teed_on_failure")
 
     min_bytes, max_bytes, head_lines, tail_lines = _compact_config(resolved)

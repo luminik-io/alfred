@@ -3,8 +3,9 @@
 
 Two concerns are covered explicitly:
   1. Deterministic compaction of noisy, low-signal Bash output.
-  2. The CRITICAL tee-on-failure safety valve: a failed command's full output is
-     never compacted, so an error can never be hidden from the model.
+  2. The CRITICAL confirmed-success safety valve: output is compacted ONLY on a
+     structured exit code of 0. A non-zero exit or an unknown status (no exit
+     code) passes through untouched, so an error can never be hidden.
 """
 
 from __future__ import annotations
@@ -89,8 +90,17 @@ def test_compact_strips_ansi_and_dedupes(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 # --------------------------------------------------------------------------
-# Safety valve: tee full output on failure (never hide an error)
+# Safety valve: compact ONLY on confirmed success (never hide an error)
 # --------------------------------------------------------------------------
+def test_confirmed_success_is_compacted(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ALFRED_OUTPUT_COMPACTOR", raising=False)
+    raw = _big_generic_log()
+    result = tc.compact_output(raw, tool_name="Bash", exit_code=0)
+    assert result.applied
+    assert result.reason == "compacted"
+    assert result.final_bytes < result.original_bytes
+
+
 def test_tee_on_nonzero_exit_preserves_full_output(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ALFRED_OUTPUT_COMPACTOR", raising=False)
     raw = _big_generic_log() + "make: *** [build] Error 1\n"
@@ -100,56 +110,25 @@ def test_tee_on_nonzero_exit_preserves_full_output(monkeypatch: pytest.MonkeyPat
     assert result.text == raw  # byte-for-byte, nothing hidden
 
 
-def test_tee_on_traceback_signature_without_exit_code() -> None:
-    raw = (
-        _big_generic_log()
-        + "Traceback (most recent call last):\n"
-        + '  File "app.py", line 10, in <module>\n'
-        + "ValueError: boom\n"
-    )
+def test_unknown_status_passes_through_make_error() -> None:
+    # A plain-string response carries no exit code. `make: *** No rule...` is an
+    # error format the compactor was never taught to recognize - and with the
+    # inverted valve it does not need to be. Unknown status => never compact.
+    raw = _big_generic_log() + "make: *** No rule to make target 'all'.  Stop.\n"
     result = tc.compact_output(raw, tool_name="Bash", exit_code=None)
     assert not result.applied
-    assert result.reason == "teed_on_failure"
-    assert "Traceback" in result.text
+    assert result.reason == "unknown_status"
+    assert result.text == raw  # full output preserved, error not hidden
+
+
+def test_unknown_status_passes_through_even_clean_success_looking_output() -> None:
+    # Even output that looks perfectly successful is NOT compacted without an
+    # exit code: compaction requires positive proof, not the absence of errors.
+    raw = _big_generic_log()
+    result = tc.compact_output(raw, tool_name="Bash", exit_code=None)
+    assert not result.applied
+    assert result.reason == "unknown_status"
     assert result.text == raw
-
-
-def test_tee_on_failing_test_tail_even_without_exit_code() -> None:
-    passed = "\n".join(f"PASSED tests/test_mod.py::test_{i}" for i in range(400))
-    raw = (
-        f"{passed}\n"
-        "FAILED tests/test_mod.py::test_boom - AssertionError: nope\n"
-        "===== 1 failed, 400 passed in 12.3s =====\n"
-    )
-    result = tc.compact_output(raw, tool_name="Bash", exit_code=None)
-    assert not result.applied
-    assert result.reason == "teed_on_failure"
-    assert "test_boom" in result.text  # the failing node survives in full
-    assert result.text == raw
-
-
-def test_tee_on_error_string_without_exit_code() -> None:
-    # A plain-STRING tool_response carries no exit code. An error string must
-    # still be detected by signature so it is never compacted (Greptile P1).
-    raw = _big_generic_log() + "Error: connection refused while deploying\n"
-    result = tc.compact_output(raw, tool_name="Bash", exit_code=None)
-    assert not result.applied
-    assert result.reason == "teed_on_failure"
-    assert result.text == raw  # full error preserved
-
-
-def test_looks_like_failure_matrix() -> None:
-    assert tc.looks_like_failure("all good", exit_code=2) is True
-    assert tc.looks_like_failure("fatal: not a git repository", exit_code=None) is True
-    assert tc.looks_like_failure("npm ERR! missing script", exit_code=None) is True
-    # Unknown exit code + a bare "Error"/"FAILED"/"Exception" token trips the
-    # conservative string-failure guard.
-    assert tc.looks_like_failure("Error: boom", exit_code=None) is True
-    assert tc.looks_like_failure("FAILED to bind port", exit_code=None) is True
-    assert tc.looks_like_failure("Traceback: uncaught Exception", exit_code=None) is True
-    # An all-green log with the word "errors" incidentally must NOT trip it.
-    assert tc.looks_like_failure("compiled with 0 errors", exit_code=0) is False
-    assert tc.looks_like_failure("everything is fine", exit_code=None) is False
 
 
 # --------------------------------------------------------------------------
