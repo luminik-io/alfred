@@ -573,3 +573,104 @@ def test_fleet_provider_honors_anchor_refs() -> None:
         codename="lucius", repo="acme/api", limit=3, anchor_refs=["acme/api/auth.py"]
     )
     assert recalled[0].id == lesson.id
+
+
+# --------------------------------------------------------------------------
+# P1: runtime recall must actually pass anchor_refs (feature not inert)
+# --------------------------------------------------------------------------
+
+
+def test_derive_anchor_refs_emits_bare_and_repo_qualified_variants() -> None:
+    from agent_runner.memory_runtime import derive_anchor_refs
+
+    refs = derive_anchor_refs(["src/auth.py", "/src/db.py"], repo="acme/api")
+    assert "src/auth.py" in refs
+    assert "acme/api/src/auth.py" in refs  # repo-qualified variant
+    assert "src/db.py" in refs
+    # already-qualified paths are not double-prefixed
+    assert derive_anchor_refs(["acme/api/x.py"], repo="acme/api") == ["acme/api/x.py"]
+    # no file signal -> empty (never fabricates a path)
+    assert derive_anchor_refs([], repo="acme/api") == []
+    assert derive_anchor_refs(None, repo="acme/api") == []
+
+
+def _seed_runtime_provider() -> SqliteHybridProvider:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    provider.reflect(
+        codename="lucius",
+        repo="acme/api",
+        body="auth uses JWT verified in the middleware",
+        kind="convention",
+        anchors=[("file", "acme/api/src/auth.py")],
+    )
+    # A generic lesson that lexically matches the query, so WITHOUT anchoring it
+    # leads the recall order.
+    provider.reflect(
+        codename="lucius", repo="acme/api", body="general readme housekeeping note", kind="note"
+    )
+    return provider
+
+
+def test_runtime_anchor_recall_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_runner.memory_runtime import anchor_recall_enabled, with_memory_prompt
+
+    monkeypatch.delenv("ALFRED_MEMORY_ANCHOR_RECALL", raising=False)
+    assert anchor_recall_enabled() is False
+    provider = _seed_runtime_provider()
+    out = with_memory_prompt(
+        "TASK",
+        provider,
+        codename="lucius",
+        repo="acme/api",
+        query="readme",
+        limit=3,
+        orientation_paths=["src/auth.py"],
+    )
+    # Flag off: no anchor derivation. Only the query-matched note is recalled;
+    # the file-linked convention (which needs its anchor to surface) is absent.
+    assert "general readme housekeeping" in out
+    assert "auth uses JWT" not in out
+
+
+def test_runtime_anchor_recall_surfaces_file_linked_lesson_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agent_runner.memory_runtime import with_memory_prompt
+
+    monkeypatch.setenv("ALFRED_MEMORY_ANCHOR_RECALL", "1")
+    provider = _seed_runtime_provider()
+    out = with_memory_prompt(
+        "TASK",
+        provider,
+        codename="lucius",
+        repo="acme/api",
+        query="readme",
+        limit=3,
+        # The firing's orientation paths carry the file context; the anchored
+        # lesson is linked to acme/api/src/auth.py (repo-qualified variant).
+        orientation_paths=["src/auth.py"],
+    )
+    assert "auth uses JWT" in out
+    # The file-linked convention now leads the generic note.
+    assert out.index("auth uses JWT") < out.index("general readme housekeeping")
+
+
+def test_runtime_anchor_recall_through_chained_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agent_runner.memory_runtime import format_memory_context
+
+    monkeypatch.setenv("ALFRED_MEMORY_ANCHOR_RECALL", "1")
+    sqlite = _seed_runtime_provider()
+    # A no-op member that does NOT accept anchor_refs must not break the chain.
+    chain = ChainedMemoryProvider(providers=[sqlite, NullMemoryProvider()])
+    block = format_memory_context(
+        chain,
+        codename="lucius",
+        repo="acme/api",
+        query="readme",
+        limit=3,
+        anchor_refs=["acme/api/src/auth.py"],
+    )
+    assert "auth uses JWT" in block
+    assert block.index("auth uses JWT") < block.index("general readme housekeeping")

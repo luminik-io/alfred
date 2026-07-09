@@ -204,6 +204,26 @@ lexical/dense hits. `lessons_for_anchor(anchor_ref=...)` is the direct read:
 shape as the fleet graph (`file:<repo>/<path>`), so they compose with the
 `graph_edges` layer without a graph database.
 
+`anchor_refs` is part of the `MemoryProvider.recall` protocol and is threaded
+through `ChainedMemoryProvider` to the members that accept it (the SQLite hybrid
+store and FleetBrain honour it; Redis and the read-only shims accept and ignore
+it), so anchor recall works through the real provider chain, not just the
+concrete SQLite provider.
+
+**Runtime activation.** Recall runs *before* the agent edits anything, so the
+exact files-to-be-edited are not known yet. At prompt-build time the runtime uses
+the best signal it legitimately has: the firing's **orientation paths** (the
+files it was told to look at). When `ALFRED_MEMORY_ANCHOR_RECALL` is armed and a
+firing carries orientation paths, `with_memory_prompt` derives `anchor_refs` from
+them (both the bare repo-relative path and the `<repo>/<path>` form, so either
+anchoring convention matches) and passes them to recall, so file-linked lessons
+surface first in the injected block. It never invents a path: a firing with **no
+file context** is a clean no-op that falls back to ordinary recall. That is the
+documented limit of runtime auto-derivation. The general path stays an explicit
+caller passing `anchor_refs` to a provider's `recall` (or
+`format_memory_context`), for any consumer with a stronger file signal than
+orientation paths.
+
 ### 3. Validity + provenance (invalidate, never delete)
 
 Two columns give a lesson bi-temporal validity: `valid_until` (when it stops
@@ -243,6 +263,7 @@ All off by default; set in `$ALFRED_HOME/.env`.
 | Variable | Default | What it does |
 |---|---|---|
 | `ALFRED_MEMORY_TYPED_RECALL` | `0` (off) | Prefer conventions + fixes by lesson `kind` in recall order. |
+| `ALFRED_MEMORY_ANCHOR_RECALL` | `0` (off) | Derive `anchor_refs` from the firing's orientation paths so file-linked lessons surface first. No-op when the firing carries no file context. |
 | `ALFRED_REPO_PROFILE` | `0` (off) | Inject the deterministic repo-profile block into each firing. |
 | `ALFRED_REPO_PROFILE_MAX_CHARS` | `1200` | Character budget for the injected repo-profile block. |
 

@@ -1562,6 +1562,10 @@ def invoke_agent_engine(
             limit=memory_limit,
             firing_id=firing_id,
             repo_root=str(workdir) if workdir else None,
+            # The firing's orientation paths are the file signal available at
+            # recall time (before any edit). Gated by ALFRED_MEMORY_ANCHOR_RECALL
+            # inside with_memory_prompt, so this is a no-op unless armed.
+            orientation_paths=orientation_paths,
         )
         prompt_with_context = _with_skills_block(prompt_with_context, role, agent)
         prompt_with_context = _with_skeleton_priming_block(

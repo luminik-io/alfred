@@ -167,6 +167,7 @@ The recall-shaping knobs are:
 | Env var | Default | Meaning |
 | --- | --- | --- |
 | `ALFRED_MEMORY_TYPED_RECALL` | `0` (off) | Prefer conventions + fixes by lesson `kind`, applied after ranking. |
+| `ALFRED_MEMORY_ANCHOR_RECALL` | `0` (off) | Derive `anchor_refs` from the firing's orientation paths so file-linked lessons surface first. `anchor_refs` is on the `recall` protocol and threaded through the chain to members that accept it; no-op for a firing with no file context, where the general path is an explicit caller passing `anchor_refs`. |
 | `ALFRED_REPO_PROFILE` | `0` (off) | Inject a deterministic repo-profile block (manifest, package manager, verify commands, structure) into each firing. |
 | `ALFRED_REPO_PROFILE_MAX_CHARS` | `1200` | Character budget for the injected repo-profile block. |
 
