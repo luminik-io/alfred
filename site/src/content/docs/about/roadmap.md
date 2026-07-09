@@ -86,7 +86,7 @@ Decisions considered and left out. Listed so contributors do not re-pitch them.
 
 These are the design, not missing features.
 
-- **Single-person install.** One person, one host, one config. Not multi-tenant, not a hosted SaaS.
+- **Single install.** One operator or small team, one host, one config. Not multi-tenant, not a hosted SaaS.
 - **The OS schedules; Alfred runs.** No long-running orchestration loop.
 - **Local CLIs, not a model gateway.** Alfred shells out to `claude` and `codex` through your local CLI auth. The default path uses subscription-backed CLI accounts and does not require provider API keys.
 - **Lean on the platform.** Adopt Anthropic-native capabilities (Agent Teams, the Memory Tool) rather than re-implement them.

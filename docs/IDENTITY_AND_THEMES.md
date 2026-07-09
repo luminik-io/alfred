@@ -83,6 +83,11 @@ The stable role-slug is always available underneath. Pull request titles,
 worktree paths, and log filenames keep the role, so a themed name never leaks
 into a place the machine depends on.
 
+Example: the role remains `senior-dev` in scheduler labels, GitHub labels,
+worktrees, and PR metadata. The same role can appear as Lucius in the default
+Batman theme, Ironhide in the Transformers preset, or "Maya" in your custom
+theme inside Desktop and Slack.
+
 ## Picking or building a theme
 
 Two ways to set your team's names:

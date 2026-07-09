@@ -73,6 +73,10 @@ underlying role slugs, scheduler labels, or GitHub state machine. If you add
 operator-defined runtime agents with `alfred agent add`, pick names from the
 same coherent theme:
 
+Example: the runtime still claims work as `senior-dev`, writes worktrees under
+that role, and keeps PR metadata role-based. Desktop and Slack can show that
+same role as Lucius, Ironhide, or a custom name such as "Maya".
+
 - **Greek pantheon**: Athena (planner), Hephaestus (feature dev), Iris (notifier), Asclepius (deploy health).
 - **The Wire**: Bunk (review), McNulty (triage), Omar (security audit), Lester (bug investigation).
 - **Tolkien**: Aragorn, Legolas, Gimli, Gandalf. Watch lore consistency (Gandalf shouldn't review Frodo's PR).

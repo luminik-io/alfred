@@ -331,8 +331,9 @@ The Homebrew formula installs the latest tagged release and exposes
 `alfred`, `alfred-init`, `alfred-install`, `alfred-deploy`, and
 `alfred doctor` on your PATH.
 
-For a solo-builder setup that an AI coding tool can run without guessing at
-prompts or labels, pass one repo or an explicit comma-separated repo list:
+For a single-operator or small-team setup that an AI coding tool can run
+without guessing at prompts or labels, pass one repo or an explicit
+comma-separated repo list:
 
 ```sh
 ./bin/alfred-init.py \
@@ -617,8 +618,10 @@ Justice League presets, and you can author custom names by hand or by chatting
 with the theme builder. Roster themes and custom names are display identity
 only: they change the names and role labels shown in Agents, onboarding, and
 Slack, while roles, scheduler labels, GitHub labels, worktrees, and merge gates
-stay unchanged. If you add a new agent script later, the custom roster editor
-can name that live agent too.
+stay unchanged. For example, the runtime still claims and logs work as
+`senior-dev`, but Slack and Desktop can show that role as Lucius, Ironhide, or
+your own custom display name. If you add a new agent script later, the custom
+roster editor can name that live agent too.
 
 See [Identity and themes](docs/IDENTITY_AND_THEMES.md) for the full model and
 [Role and theme pattern](https://alfred.luminik.io/concepts/codename-pattern/)
@@ -628,7 +631,7 @@ for more.
 
 Alfred has a deliberate shape. The boundaries below are intentional.
 
-- **Single install.** One person, one Mac or Linux box, one config. Alfred is software you install and run yourself.
+- **Single install.** One operator or small team, one Mac or Linux box, one config. Alfred is software you install and run yourself.
 - **The OS schedules; Alfred runs.** No long-running orchestration loop. `launchd` / `systemd` own cadence; each firing is a fresh, isolated process. That means better failure isolation, and it survives reboots.
 - **Local CLI auth.** Alfred shells out to `claude` and optional `codex` on your own subscription-backed CLI auth. There is no hosted inference service or provider API key setup.
 - **Explicit goals and bounded autonomy.** Larger work should have a clear contract: outcome, verification, constraints, human gates, and blocked condition.
@@ -642,8 +645,8 @@ departments are the next larger surface area: [`ROADMAP.md`](ROADMAP.md).
 
 ## Status
 
-**Latest release: v0.5.3.** Alfred ships a local coding-agent fleet for solo
-builders. What is in the box today:
+**Latest release: v0.5.3.** Alfred ships a local coding-agent fleet for single
+operators and small teams. What is in the box today:
 
 - Install, full-fleet setup, prompt seeding, GitHub label setup, specs-assisted
   workspace patterns, doctor, dry-run, code-memory readiness, and starter
@@ -671,11 +674,12 @@ step-level events so the timeline shows real progress. Any issue with the approv
 gate label (`agent:plan-pending-approval`) is held from autonomous pickup until
 you approve it. Slack remains the primary collaboration surface.
 
-The design boundary is stable: one person, one local Mac or Linux box, local
-CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when
-they strengthen that shape: reliability, setup, docs, tests, new roles with
-clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a
-new department or runtime change, should start as a discussion.
+The design boundary is stable: one operator or small team, one local Mac or
+Linux box, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs
+are welcome when they strengthen that shape: reliability, setup, docs, tests,
+new roles with clear scope, or optional integrations that fail cleanly. Bigger
+shifts, such as a new department or runtime change, should start as a
+discussion.
 
 ## License
 
