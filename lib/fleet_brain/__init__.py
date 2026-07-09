@@ -727,6 +727,52 @@ class FleetBrain:
         """
         return self.store.supersede_lesson(old_id, new_id, at=at)
 
+    def merge_lesson(self, loser_id: str, survivor_id: str) -> bool:
+        """Merge ``loser_id`` into ``survivor_id`` in FleetBrain's own lessons table.
+
+        The FleetBrain-backed counterpart to the SQLite hybrid's ``merge_lesson``,
+        so a fleet-only recall chain gets the SAME union merge instead of a
+        forget that would orphan the loser's persisted reuse. It UNIONS the
+        loser's provenance, anchors, and durable reuse count onto the survivor,
+        then INVALIDATES the loser (``superseded_by``, via ``supersede_lesson``)
+        and cleans up its now-orphaned ``lesson_reuse`` row. No-op ``False`` on
+        blank/identical ids or a missing survivor/loser lesson."""
+        loser = (loser_id or "").strip()
+        survivor = (survivor_id or "").strip()
+        if not loser or not survivor or loser == survivor:
+            return False
+        loser_lesson = self.store.get_lesson(loser)
+        survivor_lesson = self.store.get_lesson(survivor)
+        if loser_lesson is None or survivor_lesson is None:
+            return False
+        # Union provenance (survivor's history first).
+        merged_provenance = _union_provenance(survivor_lesson.provenance, loser_lesson.provenance)
+        self.store.set_lesson_provenance(survivor, merged_provenance)
+        # Union anchors: copy each of the loser's links onto the survivor.
+        for anchor in self.store.list_lesson_anchors(loser):
+            self.store.add_lesson_anchor(
+                LessonAnchor(
+                    id=new_id(),
+                    lesson_id=survivor,
+                    anchor_type=anchor.anchor_type,
+                    anchor_ref=anchor.anchor_ref,
+                    relation=anchor.relation,
+                    repo=anchor.repo,
+                    created_at=datetime.now(UTC),
+                )
+            )
+        # Union durable reuse, then invalidate the loser (which supersede records).
+        from agent_runner import memory_ranking
+
+        survivor_key = memory_ranking.scope_key(
+            lesson_id=survivor, codename=survivor_lesson.codename, repo=survivor_lesson.repo
+        )
+        loser_key = memory_ranking.scope_key(
+            lesson_id=loser, codename=loser_lesson.codename, repo=loser_lesson.repo
+        )
+        self.store.union_reuse_counts(survivor_key, loser_key)
+        return self.store.supersede_lesson(loser, survivor)
+
     def firing_log(
         self,
         *,
@@ -3069,6 +3115,22 @@ def _failure_action_summary(pattern: dict[str, Any]) -> str:
 
 def _canonical_memory_body(body: str) -> str:
     return " ".join((body or "").strip().lower().split())
+
+
+def _union_provenance(survivor: str | None, loser: str | None) -> str | None:
+    """Comma-join two provenance strings, survivor first, de-duped in order.
+
+    Mirrors the SQLite hybrid store's union so a FleetBrain-backed merge keeps the
+    full firing/PR history of both copies. ``None`` when both are empty."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for source in (survivor, loser):
+        for part in (source or "").split(","):
+            token = part.strip()
+            if token and token not in seen:
+                seen.add(token)
+                out.append(token)
+    return ", ".join(out) if out else None
 
 
 # Embedder contract shared with the SQLite hybrid dense arm: text -> vector, or

@@ -352,6 +352,8 @@ class Store(Protocol):
         self, old_id: str, new_id_: str, *, at: datetime | None = None
     ) -> bool: ...
 
+    def set_lesson_provenance(self, lesson_id: str, provenance: str | None) -> bool: ...
+
     def add_lesson_anchor(self, anchor: LessonAnchor) -> LessonAnchor: ...
 
     def list_lesson_anchors(self, lesson_id: str, limit: int = 100) -> list[LessonAnchor]: ...
@@ -850,6 +852,22 @@ class SQLiteStore:
                 (new_id(), new, old, new, _to_iso(ts)),
             )
         return True
+
+    def set_lesson_provenance(self, lesson_id: str, provenance: str | None) -> bool:
+        """Overwrite one lesson's ``provenance`` column. No-op ``False`` if absent.
+
+        Used by the consolidation merge to write the UNION of a survivor's and a
+        merged-away duplicate's provenance onto the survivor, so no firing/PR link
+        is lost. Blank id is a no-op ``False``.
+        """
+        clean = (lesson_id or "").strip()
+        if not clean:
+            return False
+        with self._connect() as conn, conn:
+            cur = conn.execute(
+                "UPDATE lessons SET provenance = ? WHERE id = ?", (provenance, clean)
+            )
+        return cur.rowcount > 0
 
     def add_lesson_anchor(self, anchor: LessonAnchor) -> LessonAnchor:
         """Persist one lesson->entity or lesson->lesson link (idempotent)."""

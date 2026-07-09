@@ -530,6 +530,48 @@ def test_consolidate_merge_unwraps_chain_to_union_capable_store(
     assert brain.store.get_memory_candidate(dup).status == "retired"  # type: ignore[union-attr]
 
 
+def test_consolidate_fleetbrain_backed_merge_unions_reuse(tmp_path: Path) -> None:
+    """A fleet-only recall store must union-merge (not forget-and-orphan reuse).
+
+    Regression for the FleetBrain-backed orphan: FleetBrainProvider exposes
+    forget_lesson but the walker must now also see its merge_lesson, so the loser
+    is invalidated and its persisted reuse is unioned onto the survivor in
+    FleetBrain's own lessons/lesson_reuse tables, not left dangling."""
+    brain = FleetBrain(db_path=tmp_path / "brain.db")
+    recall_store = FleetBrainProvider(brain=brain)
+    # Fleet-only: the promoted lesson is written to FleetBrain's own lessons table.
+    brain._lesson_provider = lambda env=None: recall_store  # type: ignore[method-assign]
+    older = datetime.now(UTC) - timedelta(days=3)
+    newer = datetime.now(UTC) - timedelta(days=1)
+    keep = _promote_auto(brain, "Same body.", created_at=older)  # lexical dup pair
+    dup = _promote_auto(brain, "same body.", created_at=newer)
+    keep_lid, dup_lid = _lesson_id(keep), _lesson_id(dup)
+    keep_key = memory_ranking.scope_key(lesson_id=keep_lid, codename="lucius", repo="acme/api")
+    dup_key = memory_ranking.scope_key(lesson_id=dup_lid, codename="lucius", repo="acme/api")
+    brain.bump_reuse_counts([keep_key, keep_key])  # survivor reused 2x
+    brain.bump_reuse_counts([dup_key, dup_key, dup_key])  # loser reused 3x
+
+    summary = brain.consolidate_lessons(env=ARM, lesson_forgetter=recall_store)
+
+    assert summary["merged"] == 1
+    assert summary["provenance_unioned"] == 1  # union merge, NOT the orphaning forget
+    # Loser invalidated in FleetBrain's own lessons table, not deleted.
+    loser_row = brain.store.get_lesson(dup_lid)
+    assert loser_row is not None and loser_row.superseded_by == keep_lid
+    # Reuse unioned onto the survivor; the loser's row is gone (no orphan).
+    assert brain.get_reuse_count(keep_key) == 5
+    assert brain.get_reuse_count(dup_key) == 0
+    assert brain.store.get_memory_candidate(dup).status == "retired"  # type: ignore[union-attr]
+
+
+def test_fleetbrain_merge_lesson_noops_on_bad_ids(tmp_path: Path) -> None:
+    brain = FleetBrain(db_path=tmp_path / "brain.db")
+    brain.reflect(codename="c", repo="r", body="only one", lesson_id="solo")
+    assert brain.merge_lesson("", "solo") is False
+    assert brain.merge_lesson("solo", "solo") is False
+    assert brain.merge_lesson("missing", "solo") is False
+
+
 def test_consolidate_eviction_wired_to_provider(tmp_path: Path) -> None:
     provider = SqliteHybridProvider(db_path=Path(":memory:"))
     now = datetime.now(UTC)

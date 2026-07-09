@@ -156,6 +156,17 @@ class FleetBrainProvider:
             return False
         return self.brain.forget(clean)
 
+    def merge_lesson(self, loser_id: str, survivor_id: str) -> bool:
+        """Union-merge two lessons in FleetBrain's own lessons table.
+
+        Exposes :meth:`FleetBrain.merge_lesson` under the same name the
+        consolidation member-walker looks for, so a fleet-only recall chain gets
+        the provenance + anchor + reuse UNION merge (invalidate-not-delete) rather
+        than a forget that would orphan the loser's persisted reuse count. Mirrors
+        the SQLite hybrid provider's ``merge_lesson`` contract.
+        """
+        return self.brain.merge_lesson(loser_id, survivor_id)
+
 
 @dataclass
 class NullMemoryProvider:
