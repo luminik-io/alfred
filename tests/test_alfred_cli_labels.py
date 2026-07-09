@@ -432,6 +432,118 @@ def test_code_memory_command_defaults_to_doctor(
     assert calls == [[str(REPO_ROOT / "bin" / "code-memory-mcp"), "doctor"]]
 
 
+def test_memory_doctor_json_reports_unified_memory_plane(
+    cli_module, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "_memory_provider_chain_status",
+        lambda env: {
+            "status": "ok",
+            "names": ["redis", "fleet"],
+            "enabled_names": ["redis", "fleet"],
+            "detail": "provider chain: redis, fleet",
+        },
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "_memory_redis_status",
+        lambda chain, env: {"status": "ok", "detail": "Redis AMS reachable"},
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "_memory_fleet_brain_status",
+        lambda chain, env: {"status": "ok", "detail": "FleetBrain database: test.db"},
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "_memory_code_memory_status",
+        lambda env: {"status": "warn", "detail": "index missing"},
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "_memory_code_map_status",
+        lambda: {"status": "ok", "detail": "code-map is fresh"},
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "_memory_mcp_tool_status",
+        lambda: {"status": "ok", "detail": "15 read-only MCP tool(s) exposed"},
+    )
+
+    assert cli_module.main(["memory", "doctor", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "warn"
+    assert payload["providers"]["names"] == ["redis", "fleet"]
+    assert payload["redis"]["status"] == "ok"
+    assert payload["code_memory"]["status"] == "warn"
+
+
+def test_memory_doctor_defaults_to_doctor_subcommand(
+    cli_module, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "run_unified_memory_doctor",
+        lambda: {
+            "status": "ok",
+            "providers": {"status": "ok", "names": ["redis"], "detail": "ok"},
+            "redis": {"status": "ok", "detail": "ok"},
+            "fleet_brain": {"status": "ok", "detail": "ok"},
+            "code_memory": {"status": "ok", "detail": "ok"},
+            "code_map": {"status": "ok", "detail": "ok"},
+            "mcp_tools": {"status": "ok", "detail": "ok"},
+        },
+    )
+
+    assert cli_module.main(["memory", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "ok"
+    assert cli_module.main(["memory", "--json", "doctor"]) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "ok"
+
+
+def test_memory_doctor_returns_failure_when_component_fails(
+    cli_module, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "run_unified_memory_doctor",
+        lambda: {
+            "status": "fail",
+            "providers": {"status": "ok", "names": ["redis"], "detail": "ok"},
+            "redis": {"status": "ok", "detail": "ok"},
+            "fleet_brain": {"status": "fail", "detail": "db unreadable"},
+            "code_memory": {"status": "ok", "detail": "ok"},
+            "code_map": {"status": "ok", "detail": "ok"},
+            "mcp_tools": {"status": "ok", "detail": "ok"},
+        },
+    )
+
+    assert cli_module.main(["memory", "doctor"]) == 1
+
+
+def test_memory_provider_chain_treats_null_as_disabled(cli_module) -> None:
+    status = cli_module._memory_provider_chain_status({"ALFRED_MEMORY_PROVIDERS": "null"})
+
+    assert status["status"] == "disabled"
+    assert status["disabled"] is True
+    assert status["enabled_names"] == []
+
+
+def test_memory_code_map_status_warns_when_stale(cli_module, tmp_path: Path) -> None:
+    code_map = tmp_path / "code-map.json"
+    code_map.write_text(
+        json.dumps({"generated_at": "2000-01-01T00:00:00Z", "repos": {}, "contract_drift": []}),
+        encoding="utf-8",
+    )
+
+    status = cli_module._memory_code_map_status(code_map)
+
+    assert status["status"] == "warn"
+    assert status["exists"] is True
+    assert "stale" in status["detail"]
+
+
 def test_doctor_command_forwards_to_doctor_script(
     cli_module, monkeypatch: pytest.MonkeyPatch
 ) -> None:

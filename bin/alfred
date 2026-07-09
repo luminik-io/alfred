@@ -63,6 +63,9 @@ Subcommands today:
                               layer (`status`, `lessons`, `reflect`,
                               `governor`, `failure-patterns`, `firings`,
                               `forget`, `export`).
+  alfred memory doctor        Inspect the unified memory plane: provider chain,
+                              Redis AMS, FleetBrain, code-memory, code-map,
+                              and read-only MCP tool exposure.
   alfred goal ...             Manage the durable goal ledger (`create`,
                               `list`, `status`, `approve`, `pause`,
                               `resume`, `clear`).
@@ -110,8 +113,10 @@ from __future__ import annotations
 import argparse
 import ast
 import contextlib
+import hashlib
 import json
 import os
+import platform
 import re
 import shlex
 import shutil
@@ -120,6 +125,7 @@ import sys
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 # Resolve lib/ relative to the script regardless of how it was invoked.
@@ -1770,6 +1776,404 @@ def cmd_code_memory(args: argparse.Namespace) -> int:
     return subprocess.run([str(script), *forwarded], check=False).returncode
 
 
+_MEMORY_STATUS_SEVERITY = {"ok": 0, "disabled": 1, "warn": 1, "fail": 2}
+_CODE_MEMORY_RELEASE_SHA_RE = re.compile(
+    r'^\s*([a-z]+-[a-z0-9]+)\)\s+printf\s+\'%s\'\s+"([0-9a-f]{64})"\s+;;',
+    re.MULTILINE,
+)
+_CODE_MAP_STALE_MINUTES = 24 * 60
+
+
+def cmd_memory(args: argparse.Namespace) -> int:
+    command = getattr(args, "memory_command", "doctor") or "doctor"
+    if command != "doctor":
+        print("Usage: alfred memory doctor [--json]", file=sys.stderr)
+        return 2
+    report = run_unified_memory_doctor()
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        _print_memory_doctor(report)
+    return 1 if report["status"] == "fail" else 0
+
+
+def run_unified_memory_doctor(env: dict[str, str] | None = None) -> dict[str, Any]:
+    """Read-only readiness report for Alfred's full memory plane."""
+
+    envmap = dict(os.environ if env is None else env)
+    providers = _memory_provider_chain_status(envmap)
+    redis = _memory_redis_status(providers, envmap)
+    fleet = _memory_fleet_brain_status(providers, envmap)
+    code_memory = _memory_code_memory_status(envmap)
+    code_map = _memory_code_map_status()
+    mcp_tools = _memory_mcp_tool_status()
+    status = _memory_worst_status(
+        [
+            providers["status"],
+            redis["status"],
+            fleet["status"],
+            code_memory["status"],
+            code_map["status"],
+            mcp_tools["status"],
+        ]
+    )
+    return {
+        "status": status,
+        "checked_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "providers": providers,
+        "redis": redis,
+        "fleet_brain": fleet,
+        "code_memory": code_memory,
+        "code_map": code_map,
+        "mcp_tools": mcp_tools,
+    }
+
+
+def _memory_worst_status(statuses: list[str]) -> str:
+    severity = max((_MEMORY_STATUS_SEVERITY.get(s, 1) for s in statuses), default=0)
+    if severity >= _MEMORY_STATUS_SEVERITY["fail"]:
+        return "fail"
+    if severity >= _MEMORY_STATUS_SEVERITY["warn"]:
+        return "warn"
+    return "ok"
+
+
+def _memory_provider_chain_status(env: dict[str, str]) -> dict[str, Any]:
+    from memory.config import DEFAULT_PROVIDER_NAMES, PROVIDER_REGISTRY, parse_provider_names
+
+    raw = env.get("ALFRED_MEMORY_PROVIDERS")
+    names = list(DEFAULT_PROVIDER_NAMES) if raw is None else parse_provider_names(raw)
+    known = sorted(PROVIDER_REGISTRY)
+    unknown = [name for name in names if name not in PROVIDER_REGISTRY]
+    enabled_names = [name for name in names if name != "null" and name in PROVIDER_REGISTRY]
+    disabled = raw is not None and not enabled_names
+    if disabled:
+        status = "disabled"
+        detail = "runtime lesson recall is disabled by ALFRED_MEMORY_PROVIDERS"
+    elif unknown:
+        status = "warn"
+        detail = f"unknown provider(s): {', '.join(unknown)}"
+    else:
+        status = "ok"
+        detail = f"provider chain: {', '.join(names)}"
+    return {
+        "status": status,
+        "source": "default" if raw is None else "env",
+        "raw": raw,
+        "names": names,
+        "enabled_names": enabled_names,
+        "default_names": list(DEFAULT_PROVIDER_NAMES),
+        "known": known,
+        "unknown": unknown,
+        "disabled": disabled,
+        "detail": detail,
+    }
+
+
+def _memory_redis_status(chain: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+    names = set(chain.get("enabled_names") or [])
+    if "redis" not in names:
+        return {
+            "status": "disabled",
+            "enabled": False,
+            "health": None,
+            "detail": "redis provider is not in the active memory chain",
+        }
+    try:
+        from memory.redis_agent_memory import RedisAgentMemoryProvider
+
+        provider = RedisAgentMemoryProvider.from_env(env=env)
+        health = provider.health()
+    except Exception as exc:
+        return {
+            "status": "warn",
+            "enabled": True,
+            "health": None,
+            "detail": f"redis health check failed before request: {exc}",
+        }
+    status = "ok" if health.get("ok") else "warn"
+    if status == "ok":
+        detail = f"Redis AMS reachable at {health.get('base_url')}"
+    else:
+        detail = f"Redis AMS unavailable at {health.get('base_url')}: {health.get('error')}"
+    return {
+        "status": status,
+        "enabled": True,
+        "health": health,
+        "detail": detail,
+    }
+
+
+def _memory_fleet_brain_status(chain: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+    names = set(chain.get("enabled_names") or [])
+    if "fleet" not in names:
+        return {
+            "status": "disabled",
+            "enabled": False,
+            "report": None,
+            "detail": "FleetBrain provider is not in the active memory chain",
+        }
+    try:
+        from fleet_brain.doctor import run_memory_doctor
+
+        report = run_memory_doctor(env.get("ALFRED_FLEET_BRAIN_DB"))
+    except Exception as exc:
+        return {
+            "status": "fail",
+            "enabled": True,
+            "report": None,
+            "detail": f"FleetBrain doctor crashed: {exc}",
+        }
+    checks = report.get("checks") or []
+    problem = next(
+        (
+            check
+            for check in checks
+            if check.get("status") in {"fail", "warn"} and check.get("detail")
+        ),
+        None,
+    )
+    detail = f"FleetBrain database: {report.get('db')}"
+    if problem:
+        detail = f"{detail}; {problem.get('name')}: {problem.get('detail')}"
+    return {
+        "status": report.get("status", "warn"),
+        "enabled": True,
+        "report": report,
+        "detail": detail,
+    }
+
+
+def _memory_code_memory_status(env: dict[str, str]) -> dict[str, Any]:
+    try:
+        from server.setup import code_memory_status
+
+        status_payload = code_memory_status(env=dict(env))
+    except Exception as exc:
+        return {
+            "status": "fail",
+            "enabled": False,
+            "detail": f"code-memory status probe crashed: {exc}",
+        }
+
+    binary = status_payload.get("binary") or {}
+    enabled = bool(status_payload.get("enabled"))
+    binary_resolved = bool(binary.get("resolved"))
+    index_present = bool(status_payload.get("index_present"))
+    if not enabled:
+        status = "disabled"
+    elif binary_resolved and index_present:
+        status = "ok"
+    else:
+        status = "warn"
+
+    binary_path = binary.get("path") if isinstance(binary.get("path"), str) else None
+    platform_tag = _code_memory_platform_tag()
+    release_checksum = _code_memory_release_checksum(env, platform_tag)
+    status_payload.update(
+        {
+            "status": status,
+            "binary_version": _probe_binary_version(binary_path),
+            "binary_sha256": _sha256_file(Path(binary_path)) if binary_path else None,
+            "release_archive": {
+                "platform_tag": platform_tag,
+                **release_checksum,
+            },
+        }
+    )
+    return status_payload
+
+
+def _memory_code_map_status(path: Path | None = None) -> dict[str, Any]:
+    try:
+        from code_graph import default_code_map_path, load_code_map, summarize_codegraph
+
+        resolved = path or default_code_map_path()
+        exists = resolved.exists()
+        payload = load_code_map(resolved)
+        summary = summarize_codegraph(payload)
+    except Exception as exc:
+        return {
+            "status": "fail",
+            "path": str(path) if path else None,
+            "exists": False,
+            "detail": f"code-map could not be read: {exc}",
+        }
+
+    generated_at = summary.get("generated_at")
+    age_minutes = _age_minutes(generated_at)
+    if not exists:
+        status = "warn"
+        detail = f"code-map is missing: {resolved}"
+    elif age_minutes is None:
+        status = "warn"
+        detail = "code-map exists but has no generated_at timestamp"
+    elif age_minutes > _CODE_MAP_STALE_MINUTES:
+        status = "warn"
+        detail = f"code-map is stale ({age_minutes}m old)"
+    else:
+        status = "ok"
+        detail = f"code-map is fresh ({age_minutes}m old)"
+    return {
+        "status": status,
+        "path": str(resolved),
+        "exists": exists,
+        "generated_at": generated_at,
+        "age_minutes": age_minutes,
+        "repo_count": summary.get("repo_count", 0),
+        "contract_drift_count": summary.get("contract_drift_count", 0),
+        "detail": detail,
+    }
+
+
+def _memory_mcp_tool_status() -> dict[str, Any]:
+    try:
+        import importlib
+
+        process_mod = importlib.import_module("agent_runner.process")
+        memory_enabled = bool(process_mod._memory_mcp_enabled())
+        memory_script = process_mod._memory_mcp_script()
+        code_enabled = bool(process_mod._code_memory_mcp_enabled())
+        code_launcher = process_mod._code_memory_launcher()
+        memory_attached = memory_enabled and memory_script is not None
+        code_attached = code_enabled and code_launcher is not None
+        memory_tools = process_mod._memory_tool_names() if memory_attached else []
+        code_tools = process_mod._code_memory_tool_names() if code_attached else []
+    except Exception as exc:
+        return {
+            "status": "fail",
+            "detail": f"MCP tool inventory crashed: {exc}",
+        }
+
+    status = _memory_worst_status(
+        [
+            "ok" if memory_attached else "disabled",
+            "ok" if code_attached else "disabled",
+        ]
+    )
+    return {
+        "status": status,
+        "memory": {
+            "server": process_mod.MEMORY_MCP_SERVER,
+            "enabled": memory_enabled,
+            "attached": memory_attached,
+            "script": str(memory_script) if memory_script is not None else None,
+            "tools": memory_tools,
+        },
+        "code_memory": {
+            "server": process_mod.CODE_MEMORY_MCP_SERVER,
+            "enabled": code_enabled,
+            "attached": code_attached,
+            "launcher": str(code_launcher) if code_launcher is not None else None,
+            "tools": code_tools,
+        },
+        "allowlist": [*memory_tools, *code_tools],
+        "detail": f"{len(memory_tools) + len(code_tools)} read-only MCP tool(s) exposed",
+    }
+
+
+def _code_memory_platform_tag() -> str | None:
+    system = platform.system().lower()
+    if system == "darwin":
+        os_name = "darwin"
+    elif system == "linux":
+        os_name = "linux"
+    else:
+        return None
+    machine = platform.machine().lower()
+    arch = {
+        "aarch64": "arm64",
+        "arm64": "arm64",
+        "amd64": "amd64",
+        "x86_64": "amd64",
+    }.get(machine)
+    if arch is None:
+        return None
+    return f"{os_name}-{arch}"
+
+
+def _code_memory_release_checksum(env: dict[str, str], platform_tag: str | None) -> dict[str, Any]:
+    if not platform_tag:
+        return {"sha256": None, "source": None, "detail": "unsupported platform"}
+    override_var = f"ALFRED_CODE_MEMORY_SHA256_{platform_tag.upper().replace('-', '_')}"
+    override = env.get(override_var, "").strip()
+    if override:
+        return {"sha256": override, "source": f"env:{override_var}", "detail": "env override"}
+    checksums = _code_memory_release_checksums()
+    sha = checksums.get(platform_tag)
+    if sha:
+        return {"sha256": sha, "source": "launcher-pin", "detail": "pinned release archive"}
+    return {"sha256": None, "source": "launcher-pin", "detail": "no checksum pinned"}
+
+
+def _code_memory_release_checksums() -> dict[str, str]:
+    try:
+        text = (_HERE / "code-memory-mcp").read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    return {match.group(1): match.group(2) for match in _CODE_MEMORY_RELEASE_SHA_RE.finditer(text)}
+
+
+def _probe_binary_version(path: str | None) -> dict[str, Any] | None:
+    if not path:
+        return None
+    try:
+        res = subprocess.run(
+            [path, "--version"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"ok": False, "value": None, "error": str(exc)}
+    output = (res.stdout or res.stderr or "").strip().splitlines()
+    return {
+        "ok": res.returncode == 0,
+        "value": output[0][:200] if output else None,
+        "returncode": res.returncode,
+    }
+
+
+def _sha256_file(path: Path) -> str | None:
+    try:
+        digest = hashlib.sha256()
+        with path.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError:
+        return None
+
+
+def _age_minutes(raw: object) -> int | None:
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    try:
+        seen = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if seen.tzinfo is None:
+        seen = seen.replace(tzinfo=UTC)
+    return max(0, int((datetime.now(UTC) - seen.astimezone(UTC)).total_seconds() // 60))
+
+
+def _print_memory_doctor(report: dict[str, Any]) -> None:
+    print(f"alfred memory doctor: {report['status']}")
+    providers = report["providers"]
+    provider_names = ", ".join(providers.get("names") or []) or "(disabled)"
+    print(f"  {providers['status']:8} providers: {provider_names}")
+    for key, label in (
+        ("redis", "redis"),
+        ("fleet_brain", "fleet-brain"),
+        ("code_memory", "code-memory"),
+        ("code_map", "code-map"),
+        ("mcp_tools", "mcp-tools"),
+    ):
+        item = report[key]
+        print(f"  {item['status']:8} {label}: {item.get('detail') or '-'}")
+
+
 def cmd_code_map(args: argparse.Namespace) -> int:
     from code_graph import (
         CODEGRAPH_SCHEMA,
@@ -3109,6 +3513,17 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_brain = sub.add_parser("brain", help="inspect and seed local fleet-brain memory")
     p_brain.add_argument("brain_args", nargs=argparse.REMAINDER)
     p_brain.set_defaults(func=cmd_brain)
+
+    p_memory = sub.add_parser("memory", help="inspect Alfred's unified memory plane")
+    p_memory.add_argument("--json", action="store_true")
+    memory_sub = p_memory.add_subparsers(dest="memory_command")
+    p_memory_doctor = memory_sub.add_parser(
+        "doctor",
+        help="check Redis AMS, FleetBrain, code-memory, code-map, and MCP tools",
+    )
+    p_memory_doctor.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    p_memory_doctor.set_defaults(func=cmd_memory)
+    p_memory.set_defaults(func=cmd_memory, memory_command="doctor")
 
     p_code_memory = sub.add_parser(
         "code-memory", help="inspect, index, or serve code-structure memory"
