@@ -300,7 +300,91 @@ def test_main_fails_open_on_garbage(monkeypatch):
 def test_main_ignores_non_pretooluse(monkeypatch):
     event = {"tool_name": "Bash", "tool_input": {"command": "rm -rf /"}}
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
-    assert ah.main(["stop"]) == 0  # only PreToolUse is enforced today
+    assert ah.main(["stop"]) == 0  # only PreToolUse / PostToolUse are handled
+
+
+# ---------------- PreToolUse command normalization ----------------
+
+
+def test_main_pretooluse_rewrites_git_status(monkeypatch, capsys):
+    event = {"tool_name": "Bash", "tool_input": {"command": "git status", "description": "status"}}
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    rc = ah.main(["pretooluse"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    hso = payload["hookSpecificOutput"]
+    assert hso["hookEventName"] == "PreToolUse"
+    assert hso["updatedInput"]["command"] == "git status --short --branch"
+    # Other input fields are preserved, and no forced permission decision.
+    assert hso["updatedInput"]["description"] == "status"
+    assert "permissionDecision" not in hso
+
+
+def test_main_pretooluse_no_rewrite_is_silent(monkeypatch, capsys):
+    event = {"tool_name": "Bash", "tool_input": {"command": "ls -la"}}
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    assert ah.main(["pretooluse"]) == 0
+    assert capsys.readouterr().out == ""  # nothing emitted when no rule matches
+
+
+def test_main_pretooluse_deny_takes_precedence_over_rewrite(monkeypatch, capsys):
+    # A denied command must still deny (exit 2), never get rewritten.
+    event = {"tool_name": "Bash", "tool_input": {"command": "git push origin main"}}
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    assert ah.main(["pretooluse"]) == 2
+
+
+# ---------------- PostToolUse output compaction ----------------
+
+
+def _big_bash_log(n: int = 600) -> str:
+    return "\n".join(f"step {i} complete" for i in range(n)) + "\n"
+
+
+def test_main_posttooluse_compacts_verbose_output(monkeypatch, capsys):
+    raw = _big_bash_log()
+    event = {
+        "tool_name": "Bash",
+        "tool_input": {"command": "make build"},
+        "tool_response": {"stdout": raw, "stderr": "", "exit_code": 0},
+    }
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    rc = ah.main(["posttooluse"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    hso = payload["hookSpecificOutput"]
+    assert hso["hookEventName"] == "PostToolUse"
+    compacted = hso["updatedToolOutput"]
+    assert len(compacted) < len(raw)
+    assert "ALFRED_OUTPUT_COMPACTOR" in compacted
+
+
+def test_main_posttooluse_tees_full_output_on_failure(monkeypatch, capsys):
+    raw = _big_bash_log() + "make: *** [build] Error 1\n"
+    event = {
+        "tool_name": "Bash",
+        "tool_input": {"command": "make build"},
+        "tool_response": {"stdout": raw, "exit_code": 2},
+    }
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    rc = ah.main(["posttooluse"])
+    assert rc == 0
+    # Nothing emitted: the model keeps the raw, full output (error preserved).
+    assert capsys.readouterr().out == ""
+
+
+def test_main_posttooluse_string_response(monkeypatch, capsys):
+    raw = _big_bash_log()
+    event = {"tool_name": "Bash", "tool_input": {"command": "make"}, "tool_response": raw}
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    assert ah.main(["posttooluse"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
+
+
+def test_main_posttooluse_fails_open_on_garbage(monkeypatch):
+    monkeypatch.setattr("sys.stdin", io.StringIO("not json"))
+    assert ah.main(["posttooluse"]) == 0
 
 
 if __name__ == "__main__":  # pragma: no cover

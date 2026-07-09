@@ -28,9 +28,22 @@ Design rules:
   - Conservative matchers: the normal agent flow (``git push -u origin
     feat/...``, ``rm -rf node_modules``, reading ``.env.example``) is allowed.
 
+This handler also carries the tool-output *compactor* battery (see
+``lib/tool_compactor.py``), which extends the same hook seam without changing its
+philosophy:
+
+  - ``pretooluse``: after the deny checks pass, an allowlisted command normalizer
+    rewrites a verbose Bash command into its quiet/porcelain equivalent (emitted
+    as ``hookSpecificOutput.updatedInput``).
+  - ``posttooluse``: verbose, low-signal Bash output is compacted before it
+    enters the model's context (emitted as ``hookSpecificOutput.updatedToolOutput``).
+    The compactor tees the full output through untouched whenever a command
+    fails, so an error is never hidden.
+
 Wired in via ``agent_runner._agent_settings_args()`` which emits a ``--settings``
-payload pointing PreToolUse at ``python3 <lib>/alfred_hooks.py pretooluse``.
-Disable for a manual debugging run with ``ALFRED_AGENT_HOOKS=0``.
+payload pointing PreToolUse at ``python3 <lib>/alfred_hooks.py pretooluse`` and
+PostToolUse at ``python3 <lib>/alfred_hooks.py posttooluse``. Disable the whole
+seam for a manual debugging run with ``ALFRED_AGENT_HOOKS=0``.
 """
 
 from __future__ import annotations
@@ -41,6 +54,14 @@ import re
 import shlex
 import subprocess
 import sys
+
+# tool_compactor is a stdlib-only sibling shipped alongside this file, so it is
+# importable on the same hook-path sys.path (lib/) with no venv. Keep the import
+# guarded so a partial deploy of this file alone cannot wedge the guardrail hook.
+try:
+    import tool_compactor as _compactor
+except Exception:  # pragma: no cover - defensive; module ships with this one
+    _compactor = None  # type: ignore[assignment]
 
 # Branches the fleet must never push to directly (locked guardrail).
 PROTECTED_BRANCHES = {"main", "master", "production", "release", "prod"}
@@ -491,6 +512,78 @@ def _emit(decision: str, reason: str) -> int:
     return 0
 
 
+def _emit_pretooluse_rewrite(updated_input: dict) -> int:
+    """Emit an allow-with-rewrite PreToolUse decision (exit 0 + JSON).
+
+    ``updatedInput`` replaces the tool arguments before the tool runs. We do NOT
+    set ``permissionDecision`` so the rewrite composes with Claude Code's own
+    allow/ask logic instead of forcing an allow.
+    """
+    out = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "updatedInput": updated_input,
+        }
+    }
+    print(json.dumps(out))
+    return 0
+
+
+def _extract_tool_text(response: object) -> str:
+    """Best-effort plain text of a Bash tool_response (str or structured)."""
+    if isinstance(response, str):
+        return response
+    if isinstance(response, dict):
+        parts: list[str] = []
+        for key in ("stdout", "stderr", "output", "content", "result"):
+            value = response.get(key)
+            if isinstance(value, str) and value:
+                parts.append(value)
+        return "\n".join(parts)
+    return ""
+
+
+def _extract_exit_code(response: object) -> int | None:
+    """Pull an exit code out of a structured tool_response when present."""
+    if not isinstance(response, dict):
+        return None
+    for key in ("exit_code", "exitCode", "returncode", "returnCode", "code", "status"):
+        value = response.get(key)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, int):
+            return value
+    if response.get("is_error") or response.get("isError") or response.get("interrupted"):
+        return 1
+    return None
+
+
+def _handle_posttooluse(payload: dict) -> int:
+    """Compact verbose tool output, teeing full output on failure (exit 0)."""
+    if _compactor is None:
+        return 0
+    tool_name = payload.get("tool_name", "")
+    response = payload.get("tool_response")
+    text = _extract_tool_text(response)
+    if not text:
+        return 0  # nothing textual to compact
+    result = _compactor.compact_output(
+        text,
+        tool_name=tool_name,
+        exit_code=_extract_exit_code(response),
+    )
+    if not result.applied:
+        return 0  # disabled, teed on failure, or nothing to gain: leave raw
+    out = {
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "updatedToolOutput": result.text,
+        }
+    }
+    print(json.dumps(out))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     event = argv[0] if argv else "pretooluse"
@@ -499,8 +592,14 @@ def main(argv: list[str] | None = None) -> int:
     except Exception:
         return 0  # fail open: never block on a malformed event
 
+    if event == "posttooluse":
+        try:
+            return _handle_posttooluse(payload)
+        except Exception:
+            return 0  # fail open: never wedge a firing on a compaction bug
+
     if event != "pretooluse":
-        return 0  # only PreToolUse is enforced today
+        return 0  # only PreToolUse / PostToolUse are handled today
 
     try:
         tool_name = payload.get("tool_name", "")
@@ -509,7 +608,21 @@ def main(argv: list[str] | None = None) -> int:
         decision, reason = evaluate_pretooluse(tool_name, tool_input, cwd)
     except Exception:
         return 0  # fail open on any unexpected shape
-    return _emit(decision, reason)
+    if decision == "deny":
+        return _emit(decision, reason)
+
+    # Allowed: offer an allowlisted quiet-command rewrite for Bash calls.
+    if _compactor is not None and tool_name == "Bash":
+        try:
+            command = str(tool_input.get("command", ""))
+            new_command, changed, _note = _compactor.normalize_command(command)
+            if changed:
+                updated = dict(tool_input)
+                updated["command"] = new_command
+                return _emit_pretooluse_rewrite(updated)
+        except Exception:
+            return 0  # fail open: a normalizer bug must never block the call
+    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover

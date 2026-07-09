@@ -149,22 +149,42 @@ def _agent_hooks_enabled() -> bool:
 
 
 def _agent_hook_settings() -> dict:
-    """PreToolUse guardrail hook config, or ``{}`` when disabled/missing."""
+    """PreToolUse guardrail + tool-compactor hook config, or ``{}`` when off.
+
+    The same opt-in ``ALFRED_AGENT_HOOKS`` flag wires two hooks at
+    ``lib/alfred_hooks.py``:
+
+    * ``PreToolUse`` - the deterministic guardrails, plus an allowlisted
+      command normalizer that rewrites verbose Bash commands to quiet
+      equivalents (``ALFRED_CMD_NORMALIZER``).
+    * ``PostToolUse`` - the tool-output compactor that shrinks noisy Bash logs
+      before they enter context, teeing full output through on failure
+      (``ALFRED_OUTPUT_COMPACTOR``).
+    """
     if not _agent_hooks_enabled():
         return {}
     # process.py lives at lib/agent_runner/process.py; the hook is lib/alfred_hooks.py.
     script = Path(__file__).resolve().parent.parent / "alfred_hooks.py"
     if not script.exists():
         return {}
-    command = f'python3 "{script}" pretooluse'
+    pre = f'python3 "{script}" pretooluse'
+    post = f'python3 "{script}" posttooluse'
     return {
         "hooks": {
             "PreToolUse": [
                 {
                     "matcher": "Bash|Read|Write|Edit|MultiEdit|NotebookEdit",
-                    "hooks": [{"type": "command", "command": command}],
+                    "hooks": [{"type": "command", "command": pre}],
                 }
-            ]
+            ],
+            # Only Bash produces the noisy, high-volume output worth compacting;
+            # the compactor itself further filters by ALFRED_OUTPUT_COMPACTOR_TOOLS.
+            "PostToolUse": [
+                {
+                    "matcher": "Bash",
+                    "hooks": [{"type": "command", "command": post}],
+                }
+            ],
         }
     }
 
