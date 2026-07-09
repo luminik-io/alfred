@@ -32,7 +32,7 @@ def _build_draft() -> IssueDraft:
     )
 
 
-# --- resolve_intent: model verdict wins -------------------------------------
+# --- resolve_intent: model verdict wins, except explicit read-only status ----
 
 
 def test_model_conversation_intent_is_honored() -> None:
@@ -75,6 +75,83 @@ def test_unknown_model_intent_does_not_fall_through_to_heuristic() -> None:
     intent = cc.resolve_intent(
         "greeting",
         last_user_message="hi",
+        draft=_empty_draft(),
+        done=False,
+    )
+    assert intent == cc.INTENT_BUILD
+
+
+def test_read_only_setup_summary_overrides_model_build_intent() -> None:
+    # Live repro from Desktop Ask: the model labelled this as build, which made
+    # the client show a "Ready to file" card despite an explicit no-action ask.
+    intent = cc.resolve_intent(
+        "build",
+        last_user_message=(
+            "Summarize the current Alfred setup status on this Mac. "
+            "Do not change files or open pull requests."
+        ),
+        draft=_empty_draft(),
+        done=False,
+    )
+    assert intent == cc.INTENT_CONVERSATION
+
+
+def test_modal_read_only_setup_summary_overrides_model_build_intent() -> None:
+    intent = cc.resolve_intent(
+        "build",
+        last_user_message=(
+            "Can you summarize the current Alfred setup status? "
+            "Do not change files or open pull requests."
+        ),
+        draft=_empty_draft(),
+        done=False,
+    )
+    assert intent == cc.INTENT_CONVERSATION
+
+
+def test_read_only_override_does_not_win_mid_build() -> None:
+    intent = cc.resolve_intent(
+        "build",
+        last_user_message=(
+            "Summarize the current Alfred setup status on this Mac. "
+            "Do not change files or open pull requests."
+        ),
+        draft=_build_draft(),
+        done=False,
+    )
+    assert intent == cc.INTENT_BUILD
+
+
+def test_read_only_override_ignores_repo_only_grounding() -> None:
+    intent = cc.resolve_intent(
+        "build",
+        last_user_message=(
+            "Summarize the current Alfred setup status on this Mac. "
+            "Do not change files or open pull requests."
+        ),
+        draft=IssueDraft(title="", repos=["acme/alfred"]),
+        done=False,
+    )
+    assert intent == cc.INTENT_CONVERSATION
+
+
+def test_read_only_override_wins_over_done_model_intent() -> None:
+    intent = cc.resolve_intent(
+        "build",
+        last_user_message=(
+            "Summarize the current Alfred setup status on this Mac. "
+            "Do not change files or open pull requests."
+        ),
+        draft=_empty_draft(),
+        done=True,
+    )
+    assert intent == cc.INTENT_CONVERSATION
+
+
+def test_read_only_override_does_not_win_for_unknown_surface_placement() -> None:
+    intent = cc.resolve_intent(
+        "build",
+        last_user_message="Show me the current fleet status in the accordion.",
         draft=_empty_draft(),
         done=False,
     )
@@ -241,6 +318,192 @@ def test_parse_turn_build_request_yields_build_intent() -> None:
     assert turn.intent == cc.INTENT_BUILD
 
 
+def test_parse_turn_read_only_setup_summary_keeps_clean_conversation_reply() -> None:
+    reply = "Your local Alfred setup is healthy: three agents are idle and no failures are active."
+    raw = json.dumps(
+        {
+            "intent": "conversation",
+            "reply": reply,
+            "draft": {},
+            "readiness": {"score": 0, "ready": False, "missing": []},
+            "done": False,
+        }
+    )
+    turn = cc.parse_turn(
+        raw,
+        base_draft=_empty_draft(),
+        last_user_message=(
+            "Summarize the current Alfred setup status on this Mac. "
+            "Do not change files or open pull requests."
+        ),
+    )
+    assert turn is not None
+    assert turn.intent == cc.INTENT_CONVERSATION
+    assert turn.reply == reply
+    assert turn.draft.title == ""
+    assert turn.readiness.ready is False
+    assert turn.action is None
+
+
+def test_parse_turn_read_only_setup_summary_keeps_status_reply_while_scrubbing_draft() -> None:
+    reply = (
+        "Your local Alfred setup is healthy: the runtime is installed and no failures are active."
+    )
+    raw = json.dumps(
+        {
+            "intent": "build",
+            "reply": reply,
+            "draft": {"title": "Summarize Alfred setup status"},
+            "readiness": {"score": 60, "ready": False, "missing": []},
+            "done": False,
+        }
+    )
+    turn = cc.parse_turn(
+        raw,
+        base_draft=_empty_draft(),
+        last_user_message=(
+            "Can you summarize the current Alfred setup status? "
+            "Do not change files or open pull requests."
+        ),
+    )
+    assert turn is not None
+    assert turn.intent == cc.INTENT_CONVERSATION
+    assert turn.reply == reply
+    assert turn.draft.title == ""
+    assert turn.readiness.score == 0
+    assert turn.action is None
+
+
+def test_parse_turn_read_only_setup_summary_keeps_negated_action_status_reply() -> None:
+    reply = "No pull requests have been filed today, and no files were changed."
+    raw = json.dumps(
+        {
+            "intent": "build",
+            "reply": reply,
+            "draft": {"title": "Summarize Alfred setup status"},
+            "readiness": {"score": 60, "ready": False, "missing": []},
+            "done": False,
+        }
+    )
+    turn = cc.parse_turn(
+        raw,
+        base_draft=_empty_draft(),
+        last_user_message=(
+            "Review the current Alfred setup status. Do not change files or open pull requests."
+        ),
+    )
+    assert turn is not None
+    assert turn.intent == cc.INTENT_CONVERSATION
+    assert turn.reply == reply
+    assert turn.draft.title == ""
+    assert turn.readiness.score == 0
+
+
+def test_parse_turn_read_only_setup_summary_replaces_first_person_action_claim() -> None:
+    raw = json.dumps(
+        {
+            "intent": "build",
+            "reply": "I filed a pull request with the setup status summary.",
+            "draft": {"title": "Summarize Alfred setup status"},
+            "readiness": {"score": 60, "ready": False, "missing": []},
+            "done": False,
+        }
+    )
+    turn = cc.parse_turn(
+        raw,
+        base_draft=_empty_draft(),
+        last_user_message=(
+            "Review the current Alfred setup status. Do not change files or open pull requests."
+        ),
+    )
+    assert turn is not None
+    assert turn.intent == cc.INTENT_CONVERSATION
+    assert "did not start a plan" in turn.reply
+    assert "filed a pull request" not in turn.reply
+
+
+def test_parse_turn_read_only_setup_summary_ignores_model_created_draft() -> None:
+    raw = json.dumps(
+        {
+            "intent": "build",
+            "reply": "I saved a starter plan that is ready to review.",
+            "draft": {"title": "Summarize Alfred setup status"},
+            "readiness": {"score": 60, "ready": False, "missing": []},
+            "done": False,
+        }
+    )
+    turn = cc.parse_turn(
+        raw,
+        base_draft=_empty_draft(),
+        last_user_message=(
+            "Summarize the current Alfred setup status on this Mac. "
+            "Do not change files or open pull requests."
+        ),
+    )
+    assert turn is not None
+    assert turn.intent == cc.INTENT_CONVERSATION
+    assert turn.draft.title == ""
+    assert turn.draft.repos == []
+    assert turn.readiness.score == 0
+
+
+def test_parse_turn_read_only_setup_summary_ignores_done_model_draft() -> None:
+    raw = json.dumps(
+        {
+            "intent": "build",
+            "reply": "I saved a starter plan that is ready to review.",
+            "draft": {
+                "title": "Summarize Alfred setup status",
+                "desired_behavior": "Open a pull request with a setup report.",
+            },
+            "readiness": {"score": 100, "ready": True, "missing": []},
+            "done": True,
+            "action": {"tool": "file_issue", "args": {"draft_id": "compose-bad"}},
+        }
+    )
+    turn = cc.parse_turn(
+        raw,
+        base_draft=_empty_draft(),
+        last_user_message=(
+            "Summarize the current Alfred setup status on this Mac. "
+            "Do not change files or open pull requests."
+        ),
+    )
+    assert turn is not None
+    assert turn.intent == cc.INTENT_CONVERSATION
+    assert turn.draft.title == ""
+    assert turn.draft.desired_behavior == ""
+    assert turn.done is False
+    assert turn.readiness.ready is False
+    assert turn.action is None
+    assert "did not start a plan" in turn.reply
+    assert "starter plan" not in turn.reply.lower()
+
+
+def test_parse_turn_read_only_setup_summary_ignores_repo_only_grounding() -> None:
+    raw = json.dumps(
+        {
+            "intent": "build",
+            "reply": "I saved a starter plan that is ready to review.",
+            "draft": {"title": "Summarize Alfred setup status"},
+            "readiness": {"score": 60, "ready": False, "missing": []},
+            "done": False,
+        }
+    )
+    turn = cc.parse_turn(
+        raw,
+        base_draft=IssueDraft(title="", repos=["acme/alfred"]),
+        last_user_message=(
+            "Summarize the current Alfred setup status on this Mac. "
+            "Do not change files or open pull requests."
+        ),
+    )
+    assert turn is not None
+    assert turn.intent == cc.INTENT_CONVERSATION
+    assert turn.draft.title == ""
+    assert turn.draft.repos == []
+
+
 def test_default_converse_turn_intent_is_build() -> None:
     # The dataclass default keeps older call sites planner-first by default.
     turn = cc.ConverseTurn(
@@ -294,12 +557,160 @@ def test_looks_like_question_rejects_empty() -> None:
     assert not cc.looks_like_question("   ")
 
 
+# --- looks_like_read_only_info_request: imperative info/status detector -------
+
+
+def test_read_only_info_request_detects_live_ask_repro() -> None:
+    assert cc.looks_like_read_only_info_request(
+        "Summarize the current Alfred setup status on this Mac. "
+        "Do not change files or open pull requests."
+    )
+    assert cc.looks_like_read_only_info_request(
+        "Can you summarize the current Alfred setup status? "
+        "Do not change files or open pull requests."
+    )
+    assert cc.looks_like_read_only_info_request("Can you show me the current fleet status?")
+    assert cc.looks_like_read_only_info_request("Show me the current repos.")
+    assert cc.looks_like_read_only_info_request("Show me the configured repositories.")
+    assert cc.looks_like_read_only_info_request(
+        "Show me the current fleet status in one short paragraph."
+    )
+    assert cc.looks_like_read_only_info_request(
+        "Summarize the current dashboard status. Do not change files or open pull requests."
+    )
+    assert cc.looks_like_read_only_info_request(
+        "Summarize the current API status. Do not change files or open pull requests."
+    )
+    assert cc.looks_like_read_only_info_request(
+        "Review the current Alfred setup status. Do not change files or open pull requests."
+    )
+    assert cc.looks_like_read_only_info_request(
+        "Verify the current Alfred setup status. Do not change files or open pull requests."
+    )
+    assert cc.looks_like_read_only_info_request(
+        "Confirm the current Alfred setup status. Do not change files or open pull requests."
+    )
+
+
+def test_read_only_info_request_rejects_real_build_request_with_no_action_clause() -> None:
+    # "Do not change" is often a constraint inside real work. It only makes a
+    # turn conversational when the command itself is informational.
+    assert not cc.looks_like_read_only_info_request(
+        "Add a setup status panel. Do not change the existing sidebar."
+    )
+
+
+def test_read_only_info_request_keeps_feature_show_requests_as_build() -> None:
+    assert not cc.looks_like_read_only_info_request("Show paused agents in the roster.")
+    assert not cc.looks_like_read_only_info_request("Show me paused agents in the roster.")
+    assert not cc.looks_like_read_only_info_request(
+        "Show me the current fleet status in the dropdown."
+    )
+    assert not cc.looks_like_read_only_info_request(
+        "Show me the current fleet status in the modal."
+    )
+    assert not cc.looks_like_read_only_info_request(
+        "Show me the current fleet status in the tooltip."
+    )
+    assert not cc.looks_like_read_only_info_request(
+        "Show me the current fleet status in the accordion."
+    )
+    assert not cc.looks_like_read_only_info_request("Show the current fleet status in the CLI.")
+    assert not cc.looks_like_read_only_info_request("Show the current fleet status in Slack.")
+    assert not cc.looks_like_read_only_info_request("Show the current fleet status in the API.")
+    assert not cc.looks_like_read_only_info_request("Show the current fleet status in the docs.")
+    assert not cc.looks_like_read_only_info_request("Show me the selected repo in the header.")
+    assert not cc.looks_like_read_only_info_request("List paused agents in the roster.")
+    assert not cc.looks_like_read_only_info_request("Report failing runs in the dashboard.")
+    assert not cc.looks_like_read_only_info_request(
+        "List paused agents in the roster. Do not change the existing sidebar."
+    )
+    assert cc.looks_like_read_only_info_request("Show me the current fleet status.")
+    assert cc.looks_like_read_only_info_request("Show me the current fleet status in one sentence.")
+    assert cc.looks_like_read_only_info_request("View the current fleet status.")
+
+
+def test_read_only_info_request_rejects_status_plus_chained_work() -> None:
+    assert not cc.looks_like_read_only_info_request(
+        "Show me the current fleet status and add a pause button."
+    )
+    assert not cc.looks_like_read_only_info_request(
+        "Show me the fleet status and add a filter for paused agents."
+    )
+    for message in (
+        "Show me the current fleet status; add retry logging.",
+        "Show me the current fleet status ; add retry logging.",
+        "Show me the current fleet status. Add retry logging.",
+        "Show me the current fleet status . Add retry logging.",
+        "Show me the current fleet status? Add retry logging.",
+        "Show me the current fleet status ? Add retry logging.",
+        "Show me the current fleet status! Add retry logging.",
+        "Show me the current fleet status ! Add retry logging.",
+        "Show me the current fleet status: implement retry logging.",
+        "Show me the current fleet status : implement retry logging.",
+        "Show me the current fleet status, add retry logging.",
+        "Show me the current fleet status , add retry logging.",
+        "Show me the current fleet status, then add retry logging.",
+        "Show me the current fleet status , then add retry logging.",
+        "Inspect the repo and file an issue for the bug.",
+        "Review the current Alfred setup status and file an issue for any bug.",
+    ):
+        assert not cc.looks_like_read_only_info_request(message), message
+        assert cc.classify_message_intent(message, draft=_empty_draft()) == cc.INTENT_BUILD
+    assert (
+        cc.classify_message_intent(
+            "Show me the current fleet status and add a pause button.",
+            draft=_empty_draft(),
+        )
+        == cc.INTENT_BUILD
+    )
+
+
+def test_read_only_info_request_ignores_space_padded_prefix_punctuation() -> None:
+    assert cc.looks_like_read_only_info_request("Alfred , show me the current fleet status.")
+
+
+def test_parse_turn_status_plus_chained_work_preserves_model_draft() -> None:
+    raw = json.dumps(
+        {
+            "intent": "build",
+            "reply": "I drafted the retry logging work.",
+            "draft": {
+                "title": "Add retry logging",
+                "acceptance_criteria": ["Retry logging appears in the fleet status run output."],
+            },
+            "readiness": {"score": 60, "ready": False, "missing": []},
+            "done": False,
+        }
+    )
+    turn = cc.parse_turn(
+        raw,
+        base_draft=_empty_draft(),
+        last_user_message="Show me the current fleet status; add retry logging.",
+    )
+    assert turn is not None
+    assert turn.intent == cc.INTENT_BUILD
+    assert turn.draft.title == "Add retry logging"
+    assert turn.draft.acceptance_criteria == [
+        "Retry logging appears in the fleet status run output."
+    ]
+
+
 # --- classify_message_intent: shared no-engine backstop ---------------------
 
 
 def test_classify_message_intent_status_question_is_conversation() -> None:
     intent = cc.classify_message_intent(
         "What is the current state of the fleet, in one short paragraph?",
+        draft=_empty_draft(),
+    )
+    assert intent == cc.INTENT_CONVERSATION
+
+
+def test_classify_message_intent_imperative_setup_summary_is_conversation() -> None:
+    intent = cc.classify_message_intent(
+        "Summarize the current Alfred setup status on this Mac. "
+        "Do not change files or open pull requests.",
         draft=_empty_draft(),
     )
     assert intent == cc.INTENT_CONVERSATION
@@ -319,6 +730,18 @@ def test_classify_message_intent_build_verb_question_is_build() -> None:
         draft=_empty_draft(),
     )
     assert intent == cc.INTENT_BUILD
+
+
+def test_classify_message_intent_show_me_ui_requests_are_build() -> None:
+    for message in (
+        "Show me paused agents in the roster.",
+        "Show me the selected repo in the header.",
+        "Show me the current fleet status in the accordion.",
+        "List paused agents in the roster.",
+        "Report failing runs in the dashboard.",
+    ):
+        intent = cc.classify_message_intent(message, draft=_empty_draft())
+        assert intent == cc.INTENT_BUILD
 
 
 def test_classify_message_intent_keeps_build_when_draft_has_content() -> None:

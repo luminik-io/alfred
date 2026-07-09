@@ -79,6 +79,10 @@ _PROMPT_RELATIVE = Path("prompts") / "spec-interrogator.md"
 # the turn's transcript to ``state/transcripts/<CONVERSE_AGENT>/<YYYY-MM>/<firing_id>.jsonl``,
 # which the token-stream endpoint tails for assistant text deltas (#36).
 CONVERSE_AGENT = "compose-interrogator"
+READ_ONLY_OVERRIDE_REPLY = (
+    "I treated that as a read-only question and did not start a plan. "
+    "I did not change files or open pull requests."
+)
 
 _SCALAR_FIELDS = (
     "title",
@@ -586,19 +590,46 @@ def parse_turn(
     if obj is None:
         return None
     reply = str(obj.get("reply") or "").strip()
+    raw_intent = obj.get("intent")
     draft = _merge_draft(base_draft, obj.get("draft"))
     readiness = _readiness_from_obj(obj.get("readiness"), draft)
     done = bool(obj.get("done")) and readiness.ready
     if not reply and not done:
         # A turn with no reply and not done is useless; treat as a parse miss.
         return None
-    intent = resolve_intent(
-        obj.get("intent"),
-        last_user_message=last_user_message,
-        draft=draft,
-        done=done,
-    )
+    base_content_draft = replace(base_draft, repos=[]) if base_draft.repos else base_draft
+    model_content_draft = replace(draft, repos=[]) if draft.repos else draft
     action = parse_action(obj.get("action"))
+    read_only_override = not _draft_has_content(
+        base_content_draft
+    ) and looks_like_read_only_info_request(last_user_message)
+    model_claimed_build = (
+        isinstance(raw_intent, str)
+        and bool(raw_intent.strip())
+        and raw_intent.strip().lower() != INTENT_CONVERSATION
+    )
+    force_read_only_scrub = read_only_override and (
+        model_claimed_build or _draft_has_content(model_content_draft) or done or action is not None
+    )
+    if force_read_only_scrub:
+        # The model may still invent a draft/title, request an action, or mark
+        # the turn done while answering an explicit no-action status ask. Scrub
+        # those artifacts, but preserve already-clean conversational answers so
+        # status replies stay useful instead of becoming a generic refusal.
+        if not reply or _reply_claims_plan_or_action(reply):
+            reply = READ_ONLY_OVERRIDE_REPLY
+        draft = base_content_draft
+        readiness = ConverseReadiness(score=0, ready=False)
+        done = False
+        intent = INTENT_CONVERSATION
+        action = None
+    else:
+        intent = resolve_intent(
+            raw_intent,
+            last_user_message=last_user_message,
+            draft=base_content_draft,
+            done=done,
+        )
     return ConverseTurn(
         reply=reply,
         draft=draft,
@@ -639,17 +670,26 @@ def resolve_intent(
     draft: IssueDraft,
     done: bool,
 ) -> str:
-    """Resolve the turn intent: the model's verdict first, a heuristic backstop.
+    """Resolve the turn intent: explicit read-only asks, then model/backstop.
 
     The model is told to label every turn ``conversation`` or ``build``. When it
-    does, that label wins (normalized so any non-``conversation`` value, e.g. a
-    typo or an unexpected synonym, falls back to ``build`` and never suppresses
-    the plan surface for real work). When the field is missing or unusable, a
-    conservative heuristic decides: a turn that already accepted/handed off, or
-    that has carried any structured draft content, is ``build``; an otherwise
-    short, plainly conversational opener is ``conversation``; everything else
-    defaults to ``build`` so genuine work is never misread as chatter.
+    does, that label normally wins (normalized so any non-``conversation`` value,
+    e.g. a typo or an unexpected synonym, falls back to ``build`` and never
+    suppresses the plan surface for real work). The one exception is a fresh,
+    explicit read-only status/setup request ("summarize the setup; do not change
+    files"), which must stay conversational even if the live model tries to
+    draft a plan. When the field is missing or unusable, a conservative
+    heuristic decides: a turn that already accepted/handed off, or that has
+    carried any structured draft content, is ``build``; an otherwise short,
+    plainly conversational opener is ``conversation``; everything else defaults
+    to ``build`` so genuine work is never misread as chatter.
     """
+    content_draft = replace(draft, repos=[]) if draft.repos else draft
+    if not _draft_has_content(content_draft) and looks_like_read_only_info_request(
+        last_user_message
+    ):
+        return INTENT_CONVERSATION
+
     if isinstance(raw_intent, str):
         normalized = raw_intent.strip().lower()
         if normalized == INTENT_CONVERSATION:
@@ -663,7 +703,7 @@ def resolve_intent(
             # falls through to the heuristic.
             return INTENT_BUILD
 
-    if done or _draft_has_content(draft):
+    if done or _draft_has_content(content_draft):
         return INTENT_BUILD
 
     message = (last_user_message or "").strip().lower()
@@ -740,10 +780,12 @@ _BUILD_VERB_HINTS = (
     "add",
     "build",
     "create",
+    "file",
     "make",
     "implement",
     "fix",
     "change",
+    "open",
     "update",
     "remove",
     "delete",
@@ -916,6 +958,254 @@ def _is_build_verb_form(token: str) -> bool:
 # first-person change request ("can we show X in the roster?").
 _INFO_VERBS = ("see", "view", "check", "read", "get", "find")
 
+_READ_ONLY_COMMAND_VERBS = (
+    "summarize",
+    "describe",
+    "explain",
+    "tell",
+    "list",
+    "give",
+    "provide",
+    "report",
+    "check",
+    "confirm",
+    "inspect",
+    "read",
+    "review",
+    "verify",
+    "view",
+    "show",
+    "display",
+)
+
+_READ_ONLY_COMMAND_PREFIXES = ("alfred", "please", "just")
+
+_READ_ONLY_SHOW_VERBS = ("show", "display")
+
+_READ_ONLY_MODAL_OPENERS = ("can", "could", "would", "will")
+_READ_ONLY_MODAL_SUBJECTS = ("you", "alfred")
+
+_READ_ONLY_PLAN_CLAIM_PHRASES = (
+    "created a plan",
+    "created an issue",
+    "created a pull request",
+    "i created",
+    "i drafted",
+    "i filed",
+    "i have created",
+    "i have drafted",
+    "i have filed",
+    "i have opened",
+    "i opened",
+    "i saved",
+    "i started",
+    "i've created",
+    "i've drafted",
+    "i've filed",
+    "i've opened",
+    "opened a plan",
+    "opened a pull request",
+    "ready to file",
+    "saved a plan",
+    "saved a starter plan",
+    "started a plan",
+)
+
+_READ_ONLY_TARGET_SURFACE_WORDS = frozenset(
+    {
+        "api",
+        "app",
+        "button",
+        "card",
+        "chart",
+        "charts",
+        "channel",
+        "channels",
+        "cli",
+        "client",
+        "combobox",
+        "comboboxes",
+        "command",
+        "commands",
+        "dashboard",
+        "docs",
+        "documentation",
+        "dialog",
+        "dialogs",
+        "drawer",
+        "dropdown",
+        "dropdowns",
+        "endpoint",
+        "endpoints",
+        "field",
+        "fields",
+        "form",
+        "forms",
+        "graph",
+        "graphs",
+        "grid",
+        "grids",
+        "header",
+        "input",
+        "inputs",
+        "interface",
+        "menu",
+        "modal",
+        "modals",
+        "nav",
+        "navbar",
+        "navigation",
+        "page",
+        "panel",
+        "popover",
+        "popovers",
+        "roster",
+        "screen",
+        "select",
+        "selector",
+        "selectors",
+        "sidebar",
+        "slack",
+        "tab",
+        "table",
+        "terminal",
+        "timeline",
+        "timelines",
+        "toast",
+        "toasts",
+        "toolbar",
+        "toolbars",
+        "tooltip",
+        "tooltips",
+        "ui",
+        "view",
+        "widget",
+    }
+)
+
+_READ_ONLY_STATUS_WORDS = frozenset(
+    {
+        "approval",
+        "approvals",
+        "backlog",
+        "config",
+        "configuration",
+        "health",
+        "install",
+        "installation",
+        "logs",
+        "queue",
+        "repo",
+        "repos",
+        "repositories",
+        "repository",
+        "runtime",
+        "runs",
+        "setup",
+        "state",
+        "status",
+    }
+)
+
+_READ_ONLY_PLACEMENT_PREPOSITIONS = frozenset(
+    {
+        "above",
+        "below",
+        "in",
+        "inside",
+        "into",
+        "on",
+        "onto",
+        "to",
+        "under",
+        "within",
+    }
+)
+
+_READ_ONLY_SUBJECT_WORDS = frozenset(
+    {
+        "agent",
+        "agents",
+        "approval",
+        "approvals",
+        "backlog",
+        "config",
+        "configuration",
+        "fleet",
+        "health",
+        "install",
+        "installation",
+        "logs",
+        "mac",
+        "machine",
+        "queue",
+        "repo",
+        "repos",
+        "repositories",
+        "repository",
+        "runtime",
+        "runs",
+        "setup",
+        "state",
+        "status",
+    }
+)
+
+_READ_ONLY_SUBJECT_PHRASES = (
+    "current setup",
+    "setup status",
+    "this mac",
+    "this machine",
+)
+
+_READ_ONLY_PLACEMENT_BENIGN_WORDS = (
+    frozenset(
+        {
+            "a",
+            "an",
+            "brief",
+            "current",
+            "line",
+            "lines",
+            "mac",
+            "machine",
+            "one",
+            "overview",
+            "paragraph",
+            "selected",
+            "sentence",
+            "short",
+            "summary",
+            "that",
+            "the",
+            "this",
+        }
+    )
+    | _READ_ONLY_STATUS_WORDS
+    | _READ_ONLY_SUBJECT_WORDS
+)
+
+_EXPLICIT_READ_ONLY_PHRASES = (
+    "do not change",
+    "don't change",
+    "do not edit",
+    "don't edit",
+    "do not modify",
+    "don't modify",
+    "do not create",
+    "don't create",
+    "do not file",
+    "don't file",
+    "do not open",
+    "don't open",
+    "no changes",
+    "read only",
+    "read-only",
+    "without changing",
+    "without opening",
+    "without filing",
+)
+
 
 def _has_info_verb_in_verb_position(tokens: list[str]) -> bool:
     """True when an information verb (see/get/view/...) is used as a verb.
@@ -935,7 +1225,7 @@ def _has_info_verb_in_verb_position(tokens: list[str]) -> bool:
     return False
 
 
-def _has_build_verb_in_verb_position(tokens: list[str]) -> bool:
+def _has_build_verb_in_verb_position(tokens: list[str], *, ignore_index: int | None = None) -> bool:
     """True when a build-verb hint is used as a verb, not as a noun.
 
     A hint counts only when it opens the message ("Add a CSV export") or
@@ -945,6 +1235,8 @@ def _has_build_verb_in_verb_position(tokens: list[str]) -> bool:
     available?" leaves "support" in noun position and stays a question.
     """
     for index, token in enumerate(tokens):
+        if index == ignore_index:
+            continue
         if not _is_build_verb_form(token):
             continue
         if index == 0:
@@ -952,6 +1244,143 @@ def _has_build_verb_in_verb_position(tokens: list[str]) -> bool:
         if tokens[index - 1] in _VERB_POSITION_PRECEDERS:
             return True
     return False
+
+
+def _separator_aware_build_tokens(text: str) -> list[str]:
+    """Tokenize text so punctuation-separated clauses keep verb position.
+
+    ``Show me status; add retry logging`` should be read as two clauses: a
+    status ask, then a build request. The normal whitespace tokenizer strips the
+    semicolon and leaves ``add`` after ``status``, where it looks noun-ish. When
+    a separator is immediately followed by a build verb, insert the existing
+    chaining token ``and`` so the shared verb-position detector sees the second
+    clause as work. Address prefixes such as ``Alfred, show ...`` are excluded
+    so their punctuation does not make the leading ``show`` command look like a
+    feature request.
+    """
+    raw_tokens = text.split()
+    tokens: list[str] = []
+    separators = (",", ".", ";", ":", "?", "!")
+    strip_chars = ",.;:!?\"'`()[]"
+    for index, raw in enumerate(raw_tokens):
+        token = raw.strip(strip_chars)
+        is_separator_token = not token and any(char in raw for char in separators)
+        if is_separator_token and tokens and tokens[-1] not in _READ_ONLY_COMMAND_PREFIXES:
+            if index + 1 < len(raw_tokens):
+                next_token = raw_tokens[index + 1].strip(strip_chars)
+                if _is_build_verb_form(next_token):
+                    tokens.append("and")
+            continue
+        if token:
+            tokens.append(token)
+        if not token or token in _READ_ONLY_COMMAND_PREFIXES:
+            continue
+        if not raw.rstrip().endswith(separators):
+            continue
+        if index + 1 >= len(raw_tokens):
+            continue
+        next_token = raw_tokens[index + 1].strip(strip_chars)
+        if _is_build_verb_form(next_token):
+            tokens.append("and")
+    return [token for token in tokens if token]
+
+
+def _has_unknown_surface_placement(tokens: list[str]) -> bool:
+    """True when an info-shaped request names an unrecognized target container.
+
+    ``show me the current fleet status in one short paragraph`` is a read-only
+    formatting ask. ``show me the current fleet status in the accordion`` is a
+    UI placement request, even if "accordion" is not in the known surface-word
+    set. This keeps the classifier from needing an exhaustive widget dictionary.
+    """
+    for index, token in enumerate(tokens[:-1]):
+        if token not in _READ_ONLY_PLACEMENT_PREPOSITIONS:
+            continue
+        tail = [item for item in tokens[index + 1 :] if item not in {"me", "you", "please"}]
+        if not tail:
+            continue
+        if any(item not in _READ_ONLY_PLACEMENT_BENIGN_WORDS for item in tail):
+            return True
+    return False
+
+
+def _reply_claims_plan_or_action(reply: str) -> bool:
+    """True when a read-only reply claims Alfred created/planned work."""
+    lowered = " ".join(str(reply or "").lower().split())
+    return any(phrase in lowered for phrase in _READ_ONLY_PLAN_CLAIM_PHRASES)
+
+
+def looks_like_read_only_info_request(text: str) -> bool:
+    """True when an imperative turn asks Alfred to observe, not make a plan.
+
+    ``looks_like_question`` covers "what is the fleet status?" and modal
+    question shapes. This catches the imperative form we saw in Desktop Ask:
+    "Summarize the current Alfred setup status on this Mac. Do not change files
+    or open pull requests." The signal is intentionally narrow:
+
+    * it must start with an information/reporting verb such as "summarize",
+      "describe", "list", or "show me";
+    * it must mention Alfred's existing state (setup, status, fleet, runtime,
+      repos, etc.) or include an explicit no-action phrase;
+    * a real build verb in verb position still wins, except the leading
+      "show/display" command in pure status requests, so "show paused agents in
+      the roster" and "show status and add X" remain work while "show me the
+      current fleet status" is a conversation.
+    """
+    cleaned = " ".join(str(text or "").split()).strip()
+    if not cleaned:
+        return False
+    lowered = cleaned.lower()
+    tokens = [token.strip(",.;:!?\"'`()[]") for token in lowered.split()]
+    tokens = [token for token in tokens if token]
+    if not tokens:
+        return False
+
+    command_index = 0
+    while command_index < len(tokens) and tokens[command_index] in _READ_ONLY_COMMAND_PREFIXES:
+        command_index += 1
+    if command_index >= len(tokens):
+        return False
+    command = tokens[command_index]
+    if (
+        command in _READ_ONLY_MODAL_OPENERS
+        and command_index + 2 < len(tokens)
+        and tokens[command_index + 1] in _READ_ONLY_MODAL_SUBJECTS
+        and tokens[command_index + 2] in _READ_ONLY_COMMAND_VERBS
+    ):
+        command_index += 2
+        command = tokens[command_index]
+    if command not in _READ_ONLY_COMMAND_VERBS:
+        return False
+
+    explicit_read_only = any(phrase in lowered for phrase in _EXPLICIT_READ_ONLY_PHRASES)
+    subject_hint = any(token in _READ_ONLY_SUBJECT_WORDS for token in tokens) or any(
+        phrase in lowered for phrase in _READ_ONLY_SUBJECT_PHRASES
+    )
+    if not (explicit_read_only or subject_hint):
+        return False
+
+    target_tokens = tokens[:command_index] + tokens[command_index + 1 :]
+    target_surface = any(token in _READ_ONLY_TARGET_SURFACE_WORDS for token in target_tokens)
+    has_status_word = any(token in _READ_ONLY_STATUS_WORDS for token in tokens)
+    if target_surface and not (explicit_read_only and has_status_word):
+        return False
+    if (
+        command in _READ_ONLY_SHOW_VERBS
+        and has_status_word
+        and not explicit_read_only
+        and _has_unknown_surface_placement(target_tokens)
+    ):
+        return False
+    status_shape = explicit_read_only or has_status_word
+    if command in _READ_ONLY_SHOW_VERBS and not status_shape:
+        return False
+    build_tokens = _separator_aware_build_tokens(lowered)
+    ignore_build_verb_index = command_index if command in _READ_ONLY_SHOW_VERBS else None
+    return not _has_build_verb_in_verb_position(
+        build_tokens,
+        ignore_index=ignore_build_verb_index,
+    )
 
 
 def classify_message_intent(text: str, *, draft: IssueDraft) -> str:
@@ -977,6 +1406,8 @@ def classify_message_intent(text: str, *, draft: IssueDraft) -> str:
     content_draft = replace(draft, repos=[]) if draft.repos else draft
     if _draft_has_content(content_draft):
         return INTENT_BUILD
+    if looks_like_read_only_info_request(text):
+        return INTENT_CONVERSATION
     if looks_like_question(text):
         return INTENT_CONVERSATION
     return resolve_intent(None, last_user_message=text, draft=content_draft, done=False)

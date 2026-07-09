@@ -916,6 +916,39 @@ def test_compose_draft_question_with_selected_repo_context_stays_conversational(
     assert saved == []
 
 
+def test_compose_draft_read_only_setup_summary_stays_conversational(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A read-only setup summary is an Ask answer, not a plan to file."""
+    monkeypatch.delenv("ALFRED_PLANNING_ASSISTANT_ENGINE", raising=False)
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/plans/draft",
+        headers=_auth_headers(state),
+        json={
+            "text": (
+                "Summarize the current Alfred setup status on this Mac. "
+                "Do not change files or open pull requests."
+            ),
+            "draft": {"repos": ["acme/alfred"]},
+            "context_repos": ["acme/alfred"],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["intent"] == "conversation"
+    assert payload["draft_id"] == ""
+    assert payload["saved_path"] == ""
+    assert "did not start a plan" in payload["summary"]
+    drafts_dir = state / "planning-drafts"
+    saved = list(drafts_dir.glob("compose-*.json")) if drafts_dir.is_dir() else []
+    assert saved == []
+
+
 def test_compose_draft_still_drafts_a_change_request(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2389,6 +2422,11 @@ def test_compose_converse_conversation_intent_flows_to_payload(
     payload = response.json()
     assert payload["intent"] == "conversation"
     assert payload["reply"].startswith("I'm Alfred")
+    assert payload["draft_id"] == ""
+    assert payload["saved_path"] == ""
+    drafts_dir = state / "planning-drafts"
+    saved = list(drafts_dir.glob("compose-*.json")) if drafts_dir.is_dir() else []
+    assert saved == []
 
 
 def test_compose_converse_defaults_single_setup_repo_as_scope(
@@ -2592,6 +2630,29 @@ def test_compose_converse_degrades_when_no_engine_configured(
     )
     assert response.status_code == 503
     assert response.json()["error"] == "live_session_unavailable"
+
+
+def test_compose_converse_stream_degrades_with_sse_error_when_no_engine_configured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The buffered endpoint returns 503 for API callers, but the browser-hosted
+    # Ask stream should not create a red resource error before falling back.
+    monkeypatch.delenv("ALFRED_COMPOSE_CONVERSE_ENGINE", raising=False)
+    monkeypatch.delenv("ALFRED_PLANNING_ASSISTANT_ENGINE", raising=False)
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/compose/converse/stream",
+        json={"messages": [{"role": "user", "content": "Build something"}]},
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert "event: error" in response.text
+    assert "live_session_unavailable" in response.text
 
 
 def test_compose_converse_degrades_when_engine_returns_nothing(
