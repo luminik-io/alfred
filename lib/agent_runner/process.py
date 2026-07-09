@@ -37,6 +37,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from . import memory_ranking
 from .config import (
     _truthy_env,
     dry_run_log,
@@ -1524,208 +1525,222 @@ def invoke_agent_engine(
     claude_call = claude_fn or claude_invoke_streaming
     codex_call = codex_fn or codex_invoke
     memory_provider = load_runtime_memory() if memory_repo else None
-    prompt_with_context = with_memory_prompt(
-        prompt,
-        memory_provider,
-        codename=agent,
-        repo=memory_repo,
-        query=memory_query,
-        limit=memory_limit,
-    )
-    prompt_with_context = _with_skills_block(prompt_with_context, role, agent)
-    prompt_with_context = _with_skeleton_priming_block(
-        prompt_with_context,
-        repo=memory_repo,
-        orientation_paths=orientation_paths,
-        workdir=workdir,
-    )
-    prompt_for_engine, context_governance = govern_prompt_context(prompt_with_context)
-
-    def _stamp_context_governance(result: ClaudeResult) -> ClaudeResult:
-        if context_governance.applied:
-            result.raw = dict(result.raw or {})
-            result.raw["context_governor"] = context_governance.as_raw()
-        return result
-
-    def _invoke_claude() -> ClaudeResult:
-        return claude_call(
-            prompt_for_engine,
-            workdir=workdir,
-            allowed_tools=claude_allowed_tools,
-            agent=agent,
+    # Arm the cleanup BEFORE the firing's delta state can exist. with_memory_prompt
+    # records injected lessons for this firing, and govern_prompt_context runs
+    # right after, so both live inside the try: if injection recording or prompt
+    # governance raises, the finally's clear_firing still releases the firing's
+    # per-firing delta state. Clearing on completion keeps a finished firing's
+    # injected-lesson set from lingering in the process-global table; the table
+    # cap remains only a backstop for a crash before the finally runs. Reuse
+    # counters are intentionally NOT cleared: reinforce-on-reuse is a cross-firing
+    # signal by design.
+    try:
+        prompt_with_context = with_memory_prompt(
+            prompt,
+            memory_provider,
+            codename=agent,
+            repo=memory_repo,
+            query=memory_query,
+            limit=memory_limit,
             firing_id=firing_id,
-            max_turns=claude_max_turns,
-            timeout=timeout,
-            model=claude_model,
         )
-
-    def _invoke_codex() -> ClaudeResult:
-        return codex_call(
-            prompt_for_engine,
+        prompt_with_context = _with_skills_block(prompt_with_context, role, agent)
+        prompt_with_context = _with_skeleton_priming_block(
+            prompt_with_context,
+            repo=memory_repo,
+            orientation_paths=orientation_paths,
             workdir=workdir,
-            agent=agent,
-            firing_id=firing_id,
-            timeout=codex_timeout or timeout,
-            model=codex_model,
-            sandbox=codex_sandbox,
-            approval_policy=codex_approval_policy,
-            bypass_approvals_and_sandbox=codex_bypass_approvals_and_sandbox,
-            add_dirs=codex_add_dirs,
         )
+        prompt_for_engine, context_governance = govern_prompt_context(prompt_with_context)
 
-    def _resilient_invoke(engine_name: str, invoke: Callable[[], ClaudeResult]) -> ClaudeResult:
-        """Run one engine with a per-engine breaker + same-engine transient retry.
+        def _stamp_context_governance(result: ClaudeResult) -> ClaudeResult:
+            if context_governance.applied:
+                result.raw = dict(result.raw or {})
+                result.raw["context_governor"] = context_governance.as_raw()
+            return result
 
-        TRANSIENT failures are absorbed here (bounded backoff with full
-        jitter honouring any Retry-After) so they never reach the
-        Claude->Codex fallback. The breaker trips after N consecutive
-        transient failures on the engine and pauses it for a cooldown, so
-        parallel workers cannot lockstep-retry into a deeper rate-limit.
+        def _invoke_claude() -> ClaudeResult:
+            return claude_call(
+                prompt_for_engine,
+                workdir=workdir,
+                allowed_tools=claude_allowed_tools,
+                agent=agent,
+                firing_id=firing_id,
+                max_turns=claude_max_turns,
+                timeout=timeout,
+                model=claude_model,
+            )
 
-        A hard quota-exhaustion wall recorded by a previous firing (the
-        codex "hit your usage limit ... try again at <date>" case) short-
-        circuits the invoke entirely: the engine is spent until its named
-        resume instant, so firing into it again only wastes a run. We return
-        an honest ``error_quota_exhausted`` result instead, which lets the
-        hybrid caller keep claude running while codex is parked.
-        """
-        with contextlib.suppress(Exception):
-            from .state import engine_quota_backoff
+        def _invoke_codex() -> ClaudeResult:
+            return codex_call(
+                prompt_for_engine,
+                workdir=workdir,
+                agent=agent,
+                firing_id=firing_id,
+                timeout=codex_timeout or timeout,
+                model=codex_model,
+                sandbox=codex_sandbox,
+                approval_policy=codex_approval_policy,
+                bypass_approvals_and_sandbox=codex_bypass_approvals_and_sandbox,
+                add_dirs=codex_add_dirs,
+            )
 
-            parked = engine_quota_backoff(engine_name)
-            if parked:
-                until = parked.get("until", "")
+        def _resilient_invoke(engine_name: str, invoke: Callable[[], ClaudeResult]) -> ClaudeResult:
+            """Run one engine with a per-engine breaker + same-engine transient retry.
+
+            TRANSIENT failures are absorbed here (bounded backoff with full
+            jitter honouring any Retry-After) so they never reach the
+            Claude->Codex fallback. The breaker trips after N consecutive
+            transient failures on the engine and pauses it for a cooldown, so
+            parallel workers cannot lockstep-retry into a deeper rate-limit.
+
+            A hard quota-exhaustion wall recorded by a previous firing (the
+            codex "hit your usage limit ... try again at <date>" case) short-
+            circuits the invoke entirely: the engine is spent until its named
+            resume instant, so firing into it again only wastes a run. We return
+            an honest ``error_quota_exhausted`` result instead, which lets the
+            hybrid caller keep claude running while codex is parked.
+            """
+            with contextlib.suppress(Exception):
+                from .state import engine_quota_backoff
+
+                parked = engine_quota_backoff(engine_name)
+                if parked:
+                    until = parked.get("until", "")
+                    return ClaudeResult(
+                        success=False,
+                        subtype="error_quota_exhausted",
+                        num_turns=0,
+                        cost_usd=0.0,
+                        session_id=None,
+                        result_text=(
+                            f"{engine_name} usage limit reached; parked until {until}. "
+                            "Skipping this engine until its plan window resets."
+                        ),
+                        raw={
+                            "quota_exhausted": True,
+                            "engine": engine_name,
+                            "quota_resume_at": until,
+                        },
+                        stop_reason="error",
+                        error_message=f"{engine_name} quota exhausted (resumes {until})",
+                    )
+            breaker = CircuitBreaker(engine_name)
+            if breaker.is_open():
+                status = breaker.status()
                 return ClaudeResult(
                     success=False,
-                    subtype="error_quota_exhausted",
+                    subtype="error_rate_limit",
                     num_turns=0,
                     cost_usd=0.0,
                     session_id=None,
                     result_text=(
-                        f"{engine_name} usage limit reached; parked until {until}. "
-                        "Skipping this engine until its plan window resets."
+                        f"{engine_name} circuit breaker open until {status.until}: "
+                        f"pausing calls to protect the shared provider quota"
                     ),
-                    raw={
-                        "quota_exhausted": True,
-                        "engine": engine_name,
-                        "quota_resume_at": until,
-                    },
+                    raw={"breaker_open": True, "engine": engine_name, "until": status.until},
                     stop_reason="error",
-                    error_message=f"{engine_name} quota exhausted (resumes {until})",
+                    error_message=f"{engine_name} breaker open (cooldown until {status.until})",
                 )
-        breaker = CircuitBreaker(engine_name)
-        if breaker.is_open():
-            status = breaker.status()
-            return ClaudeResult(
-                success=False,
-                subtype="error_rate_limit",
-                num_turns=0,
-                cost_usd=0.0,
-                session_id=None,
-                result_text=(
-                    f"{engine_name} circuit breaker open until {status.until}: "
-                    f"pausing calls to protect the shared provider quota"
-                ),
-                raw={"breaker_open": True, "engine": engine_name, "until": status.until},
-                stop_reason="error",
-                error_message=f"{engine_name} breaker open (cooldown until {status.until})",
+
+            def _on_retry(attempt: int, delay: float, outcome: ClaudeResult) -> None:
+                breaker.record_transient_failure(reason=outcome.subtype)
+
+            result = retry_with_backoff(
+                invoke,
+                classify=classify_result,
+                retry_after_of=retry_after_seconds,
+                on_retry=_on_retry,
             )
+            if classify_result(result) is FailureClass.TRANSIENT:
+                # Retries exhausted on a still-transient failure: count it so the
+                # breaker can trip and stop a hot loop on the next firing.
+                breaker.record_transient_failure(reason=result.subtype)
+            elif result.success:
+                breaker.record_success()
+            return result
 
-        def _on_retry(attempt: int, delay: float, outcome: ClaudeResult) -> None:
-            breaker.record_transient_failure(reason=outcome.subtype)
-
-        result = retry_with_backoff(
-            invoke,
-            classify=classify_result,
-            retry_after_of=retry_after_seconds,
-            on_retry=_on_retry,
-        )
-        if classify_result(result) is FailureClass.TRANSIENT:
-            # Retries exhausted on a still-transient failure: count it so the
-            # breaker can trip and stop a hot loop on the next firing.
-            breaker.record_transient_failure(reason=result.subtype)
-        elif result.success:
-            breaker.record_success()
-        return result
-
-    if mode == "codex":
-        result = _resilient_invoke("codex", _invoke_codex)
-        engine_used = "codex"
-    else:
-        result = _resilient_invoke("claude", _invoke_claude)
-        engine_used = "claude"
-        # The fallback fires ONLY on a capability failure: Claude ran and
-        # returned cleanly but produced nothing useful. Transient failures
-        # were already retried on Claude above and never reach here; fatal
-        # failures (auth/budget/schema) are surfaced honestly, never papered
-        # over by burning the second engine.
-        if mode == "hybrid" and classify_result(result) is FailureClass.CAPABILITY:
-            trigger_subtype = result.subtype
-            if on_fallback:
-                on_fallback(result)
+        if mode == "codex":
             result = _resilient_invoke("codex", _invoke_codex)
-            engine_used = "codex-fallback"
-            # Stamp the Codex result with the Claude capability failure that
-            # triggered the fallback so event logs can explain the path.
-            result.fallback_from_subtype = trigger_subtype
+            engine_used = "codex"
+        else:
+            result = _resilient_invoke("claude", _invoke_claude)
+            engine_used = "claude"
+            # The fallback fires ONLY on a capability failure: Claude ran and
+            # returned cleanly but produced nothing useful. Transient failures
+            # were already retried on Claude above and never reach here; fatal
+            # failures (auth/budget/schema) are surfaced honestly, never papered
+            # over by burning the second engine.
+            if mode == "hybrid" and classify_result(result) is FailureClass.CAPABILITY:
+                trigger_subtype = result.subtype
+                if on_fallback:
+                    on_fallback(result)
+                result = _resilient_invoke("codex", _invoke_codex)
+                engine_used = "codex-fallback"
+                # Stamp the Codex result with the Claude capability failure that
+                # triggered the fallback so event logs can explain the path.
+                result.fallback_from_subtype = trigger_subtype
 
-    result = _stamp_context_governance(result)
-    if memory_provider is not None and memory_repo:
-        result_text = result.result_text or ""
-        reflections = parse_memory_reflections(result_text)
-        if BEGIN_MARKER in result_text:
-            result.result_text = strip_memory_reflections(result_text)
-        if reflections:
-            record_reflections(
+        result = _stamp_context_governance(result)
+        if memory_provider is not None and memory_repo:
+            result_text = result.result_text or ""
+            reflections = parse_memory_reflections(result_text)
+            if BEGIN_MARKER in result_text:
+                result.result_text = strip_memory_reflections(result_text)
+            if reflections:
+                record_reflections(
+                    memory_provider,
+                    reflections,
+                    codename=agent,
+                    repo=memory_repo,
+                    firing_id=firing_id,
+                )
+            record_firing(
                 memory_provider,
-                reflections,
                 codename=agent,
                 repo=memory_repo,
                 firing_id=firing_id,
+                result=result,
+                engine_used=engine_used,
             )
-        record_firing(
-            memory_provider,
-            codename=agent,
-            repo=memory_repo,
-            firing_id=firing_id,
-            result=result,
-            engine_used=engine_used,
-        )
 
-    # Opt-in self-grading gate. Only runs when a rubric is configured, so the
-    # default path is untouched. The verdict is stashed on the result's raw
-    # envelope for a caller to act on; PR-open blocking is a follow-up wired in
-    # the runners (owned by a separate change).
-    active_rubric = _resolve_rubric(rubric)
-    if active_rubric is not None and not is_dry_run():
-        if not result.success:
-            # The primary run itself FAILED (Codex quota / rate-limit, Claude
-            # auth error, timeout, ...). Grading a failed run is pointless and
-            # wastes a grader call, so we skip it entirely and leave a clear
-            # note rather than a verdict. This mirrors the runners, which
-            # already gate their PR-open path on ``if not result.success``.
-            result.raw = dict(result.raw or {})
-            result.raw["rubric_verdict"] = {
-                "result": "not_graded",
-                "explanation": (
-                    "primary run did not succeed "
-                    f"(subtype={result.subtype}); rubric grading skipped"
-                ),
-                "terminal_reason": "primary_run_failed",
-                "criteria": [],
-            }
-        else:
-            grader_fn = rubric_grader_fn or _default_rubric_grader(
-                grader_engine=(
-                    rubric_grader_engine
-                    or os.environ.get("ALFRED_RUBRIC_GRADER_ENGINE", "").strip()
-                ),
-                agent=agent,
-                firing_id=firing_id,
-                workdir=workdir,
-                codex_model=codex_model,
-            )
-            with contextlib.suppress(Exception):
-                _apply_rubric_gate(result, rubric=active_rubric, grader_fn=grader_fn)
+        # Opt-in self-grading gate. Only runs when a rubric is configured, so the
+        # default path is untouched. The verdict is stashed on the result's raw
+        # envelope for a caller to act on; PR-open blocking is a follow-up wired
+        # in the runners (owned by a separate change).
+        active_rubric = _resolve_rubric(rubric)
+        if active_rubric is not None and not is_dry_run():
+            if not result.success:
+                # The primary run itself FAILED (Codex quota / rate-limit, Claude
+                # auth error, timeout, ...). Grading a failed run is pointless and
+                # wastes a grader call, so we skip it entirely and leave a clear
+                # note rather than a verdict. This mirrors the runners, which
+                # already gate their PR-open path on ``if not result.success``.
+                result.raw = dict(result.raw or {})
+                result.raw["rubric_verdict"] = {
+                    "result": "not_graded",
+                    "explanation": (
+                        "primary run did not succeed "
+                        f"(subtype={result.subtype}); rubric grading skipped"
+                    ),
+                    "terminal_reason": "primary_run_failed",
+                    "criteria": [],
+                }
+            else:
+                grader_fn = rubric_grader_fn or _default_rubric_grader(
+                    grader_engine=(
+                        rubric_grader_engine
+                        or os.environ.get("ALFRED_RUBRIC_GRADER_ENGINE", "").strip()
+                    ),
+                    agent=agent,
+                    firing_id=firing_id,
+                    workdir=workdir,
+                    codex_model=codex_model,
+                )
+                with contextlib.suppress(Exception):
+                    _apply_rubric_gate(result, rubric=active_rubric, grader_fn=grader_fn)
 
-    return result, engine_used
+        return result, engine_used
+    finally:
+        if firing_id:
+            memory_ranking.clear_firing(firing_id)

@@ -28,6 +28,87 @@ suppress weakly related lessons. Lessons whose backend reports no score are
 never dropped by the threshold (the gate cannot judge them), so providers
 without scores keep their existing behavior.
 
+## Injection quality: ranking, decay, and delta
+
+Gating decides *which* recalled lessons are eligible. A second, optional pass
+decides *which order* they inject in and *whether* to repeat them across the
+turns of one firing. It reuses the same Redis AMS store and the same recall path
+described above; it only improves what reaches the prompt. Every knob is OFF by
+default, so with no configuration the block is byte-for-byte identical to the
+gated-recall behavior. The policy lives in `lib/agent_runner/memory_ranking.py`
+and is deterministic and explainable end to end (a plain weighted sum, no model).
+
+### Ranking
+
+Set `ALFRED_MEMORY_RANK=1` to rank the gated lessons before the inject budget is
+applied, so the budget keeps the best lessons rather than whatever order recall
+returned. Each lesson gets a single score that is a weighted sum of four signals,
+each normalized to `[0, 1]`:
+
+```
+score = w_relevance * relevance   # AMS similarity (unscored -> 0.5 neutral)
+      + w_roi       * roi         # severity: info 0.34, warning 0.67, blocker 1.0
+      + w_recency   * recency     # age decay, see below
+      + w_reuse     * reuse        # reinforce-on-reuse, see below
+```
+
+The weights default to `relevance 1.0`, `roi 0.5`, `recency 0.5`, `reuse 0.25`
+and are each overridable:
+
+| Env var | Default | Meaning |
+| --- | --- | --- |
+| `ALFRED_MEMORY_RANK` | `0` (off) | Master switch for rank + decay + reinforce scoring. |
+| `ALFRED_MEMORY_RANK_W_RELEVANCE` | `1.0` | Weight of the AMS similarity signal. |
+| `ALFRED_MEMORY_RANK_W_ROI` | `0.5` | Weight of the severity/ROI signal. |
+| `ALFRED_MEMORY_RANK_W_RECENCY` | `0.5` | Weight of the age-decay signal. |
+| `ALFRED_MEMORY_RANK_W_REUSE` | `0.25` | Weight of the reinforce-on-reuse signal. |
+
+The sort is stable and descending, so lessons with identical scores keep their
+incoming recall order. Every ordering is explainable from the four component
+numbers.
+
+### Decay
+
+The recency signal is an age-based decay: `recency = 0.5 ** (age_days /
+half_life_days)`. A fresh lesson weighs `1.0`, a lesson one half-life old weighs
+`0.5`, and older lessons fade toward (but never reach) zero. The half-life is
+config-driven:
+
+| Env var | Default | Meaning |
+| --- | --- | --- |
+| `ALFRED_MEMORY_DECAY_HALFLIFE_DAYS` | `30` | Days after which a lesson's recency weight halves. |
+
+A lesson whose backend reports no `created_at` is treated as fresh (recency
+`1.0`), so a store without usable timestamps never has its lessons decayed away.
+
+### Reinforce on reuse
+
+Each time a lesson actually lands in a prompt (when ranking is on), its reuse
+counter increments and its reuse signal rises: `reuse = 1 - 0.5 ** count` (0 uses
+-> `0.0`, 1 -> `0.5`, 2 -> `0.75`, saturating below `1.0`). A lesson that keeps
+proving useful edges out an equally relevant one that has never been surfaced.
+
+The reuse counters live **in-process only**. The Redis AMS store has no
+reuse/last-injected field, and this change deliberately does not schema-migrate
+it. Reinforcement therefore resets when the process restarts. Persisting reuse
+through a new AMS field is a clean follow-up if the in-process signal proves
+worthwhile.
+
+### Delta injection
+
+Set `ALFRED_MEMORY_DELTA=1` so that within a single firing a lesson injected on
+an earlier turn is not injected again. Alfred tracks the lesson ids already shown
+for each `firing_id`; on a later turn those are dropped and the freed budget
+surfaces fresh material instead. Delta is scoped per firing (a different firing
+sees the lesson again) and is independent of ranking.
+
+| Env var | Default | Meaning |
+| --- | --- | --- |
+| `ALFRED_MEMORY_DELTA` | `0` (off) | Skip lessons already injected earlier in the same firing. |
+
+The per-firing tracking is in-process and bounded; a firing's set is cleared when
+the firing completes.
+
 This doc covers the **provider layer** above the brain: how to chain memory
 backends so agents recall semantic lessons from Redis while FleetBrain keeps the
 local queue, ledger, and review state.
@@ -310,9 +391,11 @@ Now `ALFRED_MEMORY_PROVIDERS=redis,fleet,team_wiki` works.
 
 ## Deferred
 
-- **Cross-provider result ranking.** Redis Agent Memory handles semantic recall.
-  A later chain can rank Redis, FleetBrain, and read-only provider results
-  together before prompt injection.
+- **Persisted reuse counts.** Reinforce-on-reuse (see "Injection quality" above)
+  keeps its counters in-process and resets on restart. Persisting them through a
+  new Redis AMS field would let a lesson's proven usefulness survive a reboot,
+  but is deferred until the in-process signal proves its worth (no schema
+  migration in the current change).
 - **Reflect-everywhere.** Today `reflect` writes to the first
   writable provider only. A "broadcast" mode that fans the write
   out to every writer is intentionally out of scope until users prove
