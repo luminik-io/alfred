@@ -195,7 +195,8 @@ separate step, run by a different agent than the one who wrote the code.
   `## Verification evidence` block so a non-author can check the work: the
   pre-push check summary, a diff summary, the acceptance criteria restated
   against the diff, and optional before/after screenshots for UI work. On by
-  default (`ALFRED_PR_EVIDENCE=1`). See [`docs/VERIFICATION.md`](docs/VERIFICATION.md).
+  default; set `ALFRED_PR_EVIDENCE=0` to turn it off. Screenshots are governed
+  separately by per-repo config. See [`docs/VERIFICATION.md`](docs/VERIFICATION.md).
 - **Your own scheduled roles.** `alfred agent add` creates a runtime agent with
   a custom name, prompt, engine, schedule, and repo scope; deploy renders it into
   the same launchd or systemd schedule as the built-in team.
@@ -370,7 +371,7 @@ onboarding, roster themes, `alfred serve`, and the signed macOS desktop app plus
 Linux packages all ship today. Content, sales, and ops departments are the next
 larger surface: [`ROADMAP.md`](ROADMAP.md).
 
-## Privacy
+## Privacy: what Alfred touches, and what it does not
 
 Alfred touches your repos, your git history, and optionally Slack, so what it can
 reach should be obvious. It runs as you, on your machine, against the local CLIs
@@ -400,6 +401,8 @@ you already authenticated, and it is meant to be inspectable before it runs.
   [`docs/MACOS_PERMISSIONS.md`](docs/MACOS_PERMISSIONS.md).
 - It does not merge its own work by default. A human merges. See the
   [threat model](docs/THREAT_MODEL.md).
+
+### Open audit issue
 
 The privacy claim is meant to be tested in the open. Run a network monitor during
 a run and confirm the only outbound destinations are the four above. Spot an
