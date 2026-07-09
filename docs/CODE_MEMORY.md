@@ -224,6 +224,15 @@ caller passing `anchor_refs` to a provider's `recall` (or
 `format_memory_context`), for any consumer with a stronger file signal than
 orientation paths.
 
+The "surface first" guarantee holds for **any chain shape**. In a scored chain
+(e.g. Redis scored hits plus a non-scored FleetBrain member that returns the
+anchored lessons), the scored generic hits would otherwise merge ahead of the
+anchored lessons and defeat the feature. So after merge and rank, a single hoist
+step moves every lesson matching the requested `anchor_refs` to the front
+(deduped, relative order preserved), regardless of which member returned it or
+whether that member is scored. The hoist runs only when `anchor_refs` were
+supplied, so with anchor recall off the ordering is byte-identical.
+
 ### 3. Validity + provenance (invalidate, never delete)
 
 Two columns give a lesson bi-temporal validity: `valid_until` (when it stops

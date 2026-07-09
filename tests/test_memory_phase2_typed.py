@@ -674,3 +674,88 @@ def test_runtime_anchor_recall_through_chained_provider(
     )
     assert "auth uses JWT" in block
     assert block.index("auth uses JWT") < block.index("general readme housekeeping")
+
+
+class _ScoredStub:
+    """A scored chain member (Redis-like): high-scored generic hit, no anchors."""
+
+    name = "scored"
+
+    def __init__(self, lesson: Lesson) -> None:
+        self._lesson = lesson
+
+    def recall(
+        self,
+        *,
+        query: str | None = None,
+        codename: str | None = None,
+        repo: str | None = None,
+        limit: int = 5,
+        anchor_refs=None,
+    ) -> list[Lesson]:
+        return [self._lesson]
+
+    def recall_scored(
+        self,
+        *,
+        query: str | None = None,
+        codename: str | None = None,
+        repo: str | None = None,
+        limit: int = 5,
+    ) -> list[tuple[Lesson, float | None]]:
+        return [(self._lesson, 0.99)]
+
+
+def test_mixed_chain_hoists_anchored_lesson_ahead_of_scored_hits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agent_runner.memory_runtime import format_memory_context
+
+    generic = Lesson(
+        id="scored-generic-1",
+        codename="lucius",
+        repo="acme/api",
+        body="scored generic hit about the flow",
+        tags=[],
+        created_at=datetime.now(UTC),
+        firing_id=None,
+        kind="note",
+    )
+    sqlite = SqliteHybridProvider(db_path=Path(":memory:"))
+    sqlite.reflect(
+        codename="lucius",
+        repo="acme/api",
+        body="auth uses JWT verified in the middleware",
+        kind="convention",
+        anchors=[("file", "acme/api/src/auth.py")],
+    )
+    # Scored member FIRST in the chain, so its high-scored generic hit is merged
+    # ahead of the non-scored member's anchored lesson.
+    chain = ChainedMemoryProvider(providers=[_ScoredStub(generic), sqlite])
+
+    # ON: the anchored lesson must lead despite the scored generic hit.
+    monkeypatch.setenv("ALFRED_MEMORY_ANCHOR_RECALL", "1")
+    on = format_memory_context(
+        chain,
+        codename="lucius",
+        repo="acme/api",
+        query="flow",
+        limit=3,
+        anchor_refs=["acme/api/src/auth.py"],
+    )
+    assert "auth uses JWT" in on
+    assert "scored generic hit" in on
+    assert on.index("auth uses JWT") < on.index("scored generic hit")
+
+    # OFF: no anchor_refs, ordering unchanged (scored generic hit leads).
+    off = format_memory_context(
+        chain,
+        codename="lucius",
+        repo="acme/api",
+        query="flow",
+        limit=3,
+        anchor_refs=None,
+    )
+    assert "scored generic hit" in off
+    if "auth uses JWT" in off:
+        assert off.index("scored generic hit") < off.index("auth uses JWT")

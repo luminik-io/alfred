@@ -296,6 +296,66 @@ def _gated_pairs(
     return out
 
 
+def _anchored_lesson_ids(
+    provider,
+    *,
+    anchor_refs: list[str] | None,
+    repo: str | None,
+) -> set[str]:
+    """Ids of the lessons anchored to any of ``anchor_refs``, across the chain.
+
+    Asks each chain member that can answer anchor lookups (a provider with a
+    ``lessons_for_anchor`` method, or one wrapping a FleetBrain that has it) which
+    lessons are anchored to the requested refs. Used to hoist those lessons to
+    the front of the merged/ranked result regardless of which member returned
+    them or whether that member is scored. Best-effort: any lookup failure is
+    logged and skipped, never raised.
+    """
+    refs = [r.strip() for r in (anchor_refs or []) if r and r.strip()]
+    if not refs:
+        return set()
+    ids: set[str] = set()
+    for member in _iter_chain_members(provider):
+        lookup = getattr(member, "lessons_for_anchor", None)
+        if lookup is None:
+            brain = getattr(member, "brain", None)
+            lookup = getattr(brain, "lessons_for_anchor", None)
+        if lookup is None:
+            continue
+        for ref in refs:
+            try:
+                for lesson in lookup(anchor_ref=ref, repo=repo):
+                    lesson_id = getattr(lesson, "id", None)
+                    if lesson_id:
+                        ids.add(lesson_id)
+            except Exception:
+                _LOG.exception("memory runtime: anchor lookup failed")
+    return ids
+
+
+def _hoist_anchored(
+    pairs: list[tuple[object, float | None]],
+    anchored_ids: set[str],
+) -> list[tuple[object, float | None]]:
+    """Move pairs whose lesson id is in ``anchored_ids`` to the front (stable).
+
+    Preserves the relative order within each group, so the anchored lessons keep
+    their merged/ranked order among themselves and the remainder keeps its own.
+    De-dup is inherent: every pair is placed exactly once. A no-op when nothing
+    matches.
+    """
+    if not anchored_ids:
+        return pairs
+    front: list[tuple[object, float | None]] = []
+    rest: list[tuple[object, float | None]] = []
+    for pair in pairs:
+        if getattr(pair[0], "id", None) in anchored_ids:
+            front.append(pair)
+        else:
+            rest.append(pair)
+    return front + rest
+
+
 def format_memory_context(
     provider,
     *,
@@ -366,6 +426,16 @@ def format_memory_context(
     # kinds that matter for editing code (conventions + fixes) ahead of passive
     # notes, with relevance/recency still ordering within a kind bucket.
     pairs = memory_ranking.apply_typed_recall(pairs)
+    # Anchor hoist LAST of all (only when anchor_refs were supplied): the whole
+    # point of anchor recall is that file-linked lessons surface FIRST. In a
+    # scored chain (e.g. Redis + FleetBrain) the scored member's generic hits are
+    # merged ahead of the non-scored member's anchored lessons, so without this
+    # step the anchored lessons lose their priority. Hoisting once here, after
+    # merge + rank, works for any chain shape (scored-only, non-scored-only, or
+    # mixed) and is a no-op when no anchor_refs were passed.
+    if anchor_refs:
+        anchored_ids = _anchored_lesson_ids(provider, anchor_refs=anchor_refs, repo=repo)
+        pairs = _hoist_anchored(pairs, anchored_ids)
     if not pairs:
         return ""
     header = [
