@@ -109,5 +109,34 @@ def test_report_json_roundtrips(monkeypatch: pytest.MonkeyPatch) -> None:
     assert cb.render_report_json(report).startswith("{")
 
 
+# --------------------------------------------------------------------------
+# Aggregate averages over ALL measured payloads, incl. 0% (Codex P2)
+# --------------------------------------------------------------------------
+def test_aggregate_includes_zero_reduction_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cb.headroom_engine, "headroom_available", lambda env=None: False)
+    big = cb.Payload(
+        name="big.log",
+        kind="log",
+        text="\n".join(f"line {i} repeated content here" for i in range(600)) + "\n",
+    )
+    # Below the compactor's min-bytes floor: builtin leaves it untouched (0%).
+    tiny = cb.Payload(name="tiny.txt", kind="log", text="ok\n")
+    report = cb.run_compression_benchmark([big, tiny])
+
+    tiny_m = next(r.builtin for r in report.results if r.payload == "tiny.txt")
+    big_m = next(r.builtin for r in report.results if r.payload == "big.log")
+    # The tiny payload was measured (ran) but not compacted (applied False) -> 0%.
+    assert tiny_m.ran is True
+    assert tiny_m.applied is False
+    assert tiny_m.token_reduction == 0.0
+    assert big_m.applied is True and big_m.token_reduction > 0.0
+
+    # The mean averages over BOTH payloads, so the 0% miss pulls it down; it is
+    # NOT the big payload's ratio alone.
+    expected = round((big_m.token_reduction + 0.0) / 2, 4)
+    assert report.builtin_mean_token_reduction == expected
+    assert report.builtin_mean_token_reduction < big_m.token_reduction
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))

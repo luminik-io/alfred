@@ -75,13 +75,23 @@ work out of the box, and the headroom knobs are inert unless the engine is set t
 | `ALFRED_COMPRESSION_ENGINE` | `builtin` | Engine selector: `builtin` \| `headroom` \| `off`. |
 | `ALFRED_HEADROOM_BIN` | (unset) | Explicit path to a `headroom` CLI binary. Skips `PATH` lookup. |
 | `ALFRED_HEADROOM_MODEL` | (unset) | Model id passed to `headroom.compress(...)` for its tokenizer. Unset lets headroom pick its own default. |
-| `ALFRED_HEADROOM_COMPRESS_CMD` | (unset) | For a CLI-only install: the command that compresses stdin to stdout (`{bin}` is substituted). Unset means "library path only". |
-| `ALFRED_HEADROOM_AUTOFETCH` | `0` (off) | Opt-in one-time install of headroom-ai on first use. **Off by default for a strict no-network install** - Alfred never installs anything without this flag. |
-| `ALFRED_HEADROOM_AUTOFETCH_CMD` | `pipx install headroom-ai` | The install command autofetch runs when enabled. |
+| `ALFRED_HEADROOM_MESSAGE_ROLE` | `user` | Role for the message carrying the tool output to headroom. headroom auto-detects compressible content, so no marker is required; override to `tool` if you want to signal it explicitly. |
+| `ALFRED_HEADROOM_COMPRESS_CMD` | (unset) | For a CLI-only install: the command that compresses stdin to stdout (`{bin}` is substituted; the template is `shlex`-split so quoted args survive). Unset means "library path only". |
+| `ALFRED_HEADROOM_AUTOFETCH` | `0` (off) | Opt-in install of headroom-ai, run **only out-of-band** (an explicit `alfred` setup step), never inline in the hook path. **Off by default for a strict no-network install** - Alfred never installs anything without this flag. |
+| `ALFRED_HEADROOM_AUTOFETCH_CMD` | `pipx install headroom-ai` | The install command autofetch runs when enabled (`shlex`-split, so quoted args like `"headroom-ai[all]"` survive). |
 
 The built-in compactor's own knobs (`ALFRED_OUTPUT_COMPACTOR*`) still apply as
 the byte-budget and targeting gate for **both** engines - see
 [TOOL_COMPACTOR.md](TOOL_COMPACTOR.md).
+
+### Autofetch is out-of-band, never on the hook path
+
+Installing a package shells out and can block for many seconds. The PostToolUse
+compaction path therefore **never** installs headroom inline - doing so would
+hang the agent's tool call. When headroom is absent the selector falls straight
+back to the built-in compactor. Autofetch (`ALFRED_HEADROOM_AUTOFETCH`) is run
+only out-of-band, from an explicit `alfred` setup/init step, and at most once per
+process.
 
 ### Autofetch and the importable-vs-CLI distinction
 
@@ -94,6 +104,11 @@ A CLI-only install compresses only when you also set
 `ALFRED_HEADROOM_COMPRESS_CMD`, since `headroom-ai`'s CLI is oriented at
 wrapping/proxying an agent rather than a documented "compress this blob"
 subcommand, and Alfred does not invent one.
+
+The library path returns headroom's `CompressResult` object (compressed
+`.messages` plus `.tokens_saved` / `.compression_ratio`); Alfred unwraps the
+compressed text from it and only falls back to the built-in compactor when
+headroom genuinely returned nothing usable.
 
 ## The hook stays stdlib-only
 

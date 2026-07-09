@@ -108,7 +108,6 @@ def test_headroom_used_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_headroom_unavailable_falls_back_to_builtin(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ce.headroom_engine, "headroom_available", lambda env=None: False)
-    monkeypatch.setattr(ce.headroom_engine, "maybe_autofetch", lambda env=None: False)
     raw = _big_log()
     result = ce.compact_output_via_engine(
         raw, tool_name="Bash", exit_code=0, env={"ALFRED_COMPRESSION_ENGINE": "headroom"}
@@ -117,6 +116,31 @@ def test_headroom_unavailable_falls_back_to_builtin(monkeypatch: pytest.MonkeyPa
     # reason.
     assert result.applied
     assert result.reason == "compacted"
+
+
+def test_hook_path_never_autofetches(monkeypatch: pytest.MonkeyPatch) -> None:
+    # CRITICAL (Greptile P1): the PostToolUse hook path must NEVER shell out to an
+    # installer inline - that would hang the agent's tool call. When headroom is
+    # absent the selector falls straight back to builtin and touches no installer.
+    monkeypatch.setattr(ce.headroom_engine, "headroom_available", lambda env=None: False)
+    installer_calls: list[object] = []
+    monkeypatch.setattr(
+        ce.headroom_engine,
+        "maybe_autofetch",
+        lambda env=None: installer_calls.append(True),
+    )
+    # Belt and suspenders: any real subprocess would also be a violation.
+    monkeypatch.setattr(
+        ce.headroom_engine.subprocess,
+        "run",
+        lambda *a, **k: installer_calls.append(("subprocess", a)),
+    )
+    raw = _big_log()
+    result = ce.compact_output_via_engine(
+        raw, tool_name="Bash", exit_code=0, env={"ALFRED_COMPRESSION_ENGINE": "headroom"}
+    )
+    assert result.applied and result.reason == "compacted"  # builtin fallback
+    assert installer_calls == []  # installer NEVER invoked on the hook path
 
 
 def test_headroom_declines_falls_back_to_builtin(monkeypatch: pytest.MonkeyPatch) -> None:

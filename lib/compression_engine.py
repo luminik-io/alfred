@@ -95,13 +95,14 @@ def compact_output_via_engine(
     if engine == "builtin":
         return _builtin(text, tool_name, exit_code, resolved)
 
-    # engine == "headroom": optionally autofetch (opt-in, once), then require
-    # real availability. Anything short of a working headroom falls back to the
-    # zero-install built-in compactor.
+    # engine == "headroom": require real availability. This runs on the
+    # PostToolUse hook's critical path, so it must NEVER install anything inline
+    # (a synchronous `pipx install` here would hang the agent's tool call).
+    # Autofetch is strictly out-of-band (see headroom_engine.maybe_autofetch,
+    # called only from an explicit `alfred` setup step). When headroom is not
+    # already present, fall back to the zero-install built-in compactor at once.
     if not headroom_engine.headroom_available(resolved):
-        headroom_engine.maybe_autofetch(resolved)
-        if not headroom_engine.headroom_available(resolved):
-            return _builtin(text, tool_name, exit_code, resolved)
+        return _builtin(text, tool_name, exit_code, resolved)
 
     # Same safety valve as the built-in path: only a confirmed-success, targeted,
     # over-budget output is eligible. Everything else passes through untouched

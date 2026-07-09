@@ -33,6 +33,7 @@ import importlib
 import importlib.util
 import logging
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -150,12 +151,20 @@ def headroom_available(env: Mapping[str, str] | None = None) -> bool:
 def maybe_autofetch(env: Mapping[str, str] | None = None) -> bool:
     """Install headroom-ai when the operator opts in; else do nothing.
 
+    **Out-of-band only.** This shells out to an installer (``pipx install`` by
+    default), which can block for many seconds, so it must NEVER be called from
+    the PostToolUse hook / compaction critical path - a synchronous install
+    there would hang the agent's tool call. Call it only from an explicit
+    ``alfred`` setup/init step. The compaction selector deliberately does not
+    invoke it and falls straight back to the built-in compactor when headroom is
+    absent.
+
     Gated by ``ALFRED_HEADROOM_AUTOFETCH`` (default off, so a strict no-network
     install never reaches the network). The install command is overridable via
-    ``ALFRED_HEADROOM_AUTOFETCH_CMD`` and defaults to ``pipx install
-    headroom-ai``. Best-effort: any failure is logged and swallowed, and the
-    attempt is made at most once per process. Returns True when an install was
-    actually run (not whether it succeeded).
+    ``ALFRED_HEADROOM_AUTOFETCH_CMD`` (shlex-split) and defaults to
+    ``pipx install headroom-ai``. Best-effort: any failure is logged and
+    swallowed, and the attempt is made at most once per process. Returns True
+    when an install was actually run (not whether it succeeded).
     """
     global _autofetch_attempted
     resolved = _resolve(env)
@@ -165,7 +174,13 @@ def maybe_autofetch(env: Mapping[str, str] | None = None) -> bool:
         return False
     _autofetch_attempted = True
     raw = (resolved.get("ALFRED_HEADROOM_AUTOFETCH_CMD") or "").strip()
-    cmd = raw.split() if raw else list(DEFAULT_AUTOFETCH_CMD)
+    # shlex.split so a quoted install command (paths/args with spaces) is
+    # tokenized correctly rather than naively broken on whitespace.
+    try:
+        cmd = shlex.split(raw) if raw else list(DEFAULT_AUTOFETCH_CMD)
+    except ValueError:
+        _LOG.warning("headroom: unparseable ALFRED_HEADROOM_AUTOFETCH_CMD: %r", raw)
+        return False
     if not cmd:
         return False
     try:
@@ -184,15 +199,36 @@ def _model(env: Mapping[str, str]) -> str | None:
     return raw or None
 
 
-def _extract_text(result: object) -> str | None:
-    """Best-effort text out of a ``headroom.compress`` return value.
+def _message_role(env: Mapping[str, str]) -> str:
+    """Role for the message that carries the tool output to headroom.
 
-    ``compress`` is message-oriented, so its return shape is adapted defensively:
-    a plain string is used as-is; a list of message dicts has its string
-    ``content`` fields joined; a single dict with ``content``/``text`` yields
-    that. Anything unrecognized returns ``None`` so the selector falls back to
-    the built-in compactor rather than guess.
+    headroom-ai's public docs describe transparent auto-detection of compressible
+    content (tool outputs, logs, JSON) from message *content* - there is no
+    documented required marker or role field. We therefore pass the tool output
+    as a normal message and let headroom detect it, defaulting the role to
+    ``user`` (universally accepted; an OpenAI-style ``tool`` role additionally
+    requires a ``tool_call_id`` and can be rejected). Operators who want to
+    signal the role explicitly can override it via ``ALFRED_HEADROOM_MESSAGE_ROLE``.
     """
+    raw = (env.get("ALFRED_HEADROOM_MESSAGE_ROLE") or "").strip()
+    return raw or "user"
+
+
+def _extract_text(result: object) -> str | None:
+    """Best-effort compressed text out of a ``headroom.compress`` return value.
+
+    The real ``headroom.compress(...)`` returns a ``CompressResult`` OBJECT, not
+    a string: its ``.messages`` attribute holds the compressed message dicts
+    (alongside ``.tokens_saved`` / ``.compression_ratio``). So this unwraps, in
+    order: a plain string as-is; a ``CompressResult``-shaped object via its
+    ``.messages`` (or a single-field ``.compressed`` / ``.text`` / ``.content``);
+    a mapping's ``content`` / ``text``; a list of message dicts joined on their
+    string ``content``. Anything unrecognized returns ``None`` so the selector
+    falls back to the built-in compactor rather than guess - this is only reached
+    when headroom genuinely returned nothing usable.
+    """
+    if result is None:
+        return None
     if isinstance(result, str):
         return result
     if isinstance(result, Mapping):
@@ -213,6 +249,18 @@ def _extract_text(result: object) -> str | None:
                         parts.append(value)
                         break
         return "\n".join(parts) if parts else None
+    # CompressResult-style object: unwrap its compressed messages first, then any
+    # single compressed-text field. getattr(..., None) keeps this defensive
+    # across headroom versions without a hard dependency on the class.
+    messages = getattr(result, "messages", None)
+    if messages is not None and isinstance(messages, (list, tuple)):
+        unwrapped = _extract_text(messages)
+        if unwrapped is not None:
+            return unwrapped
+    for attr in ("compressed", "text", "content"):
+        value = getattr(result, attr, None)
+        if isinstance(value, str):
+            return value
     return None
 
 
@@ -226,7 +274,9 @@ def _compress_library(text: str, env: Mapping[str, str]) -> str | None:
     if not callable(compress_fn):
         _LOG.debug("headroom: package has no callable compress()")
         return None
-    messages = [{"role": "user", "content": text}]
+    # Pass the tool output as a single message; headroom auto-detects the
+    # compressible JSON/log/tool-output content (see _message_role).
+    messages = [{"role": _message_role(env), "content": text}]
     model = _model(env)
     try:
         result = compress_fn(messages, model=model) if model else compress_fn(messages)
@@ -245,7 +295,13 @@ def _compress_library(text: str, env: Mapping[str, str]) -> str | None:
 
 def _compress_cli(text: str, bin_path: str, cmd: str, env: Mapping[str, str]) -> str | None:
     try:
-        parts = cmd.replace("{bin}", bin_path).split()
+        # shlex.split the template so quoted args survive, then substitute {bin}
+        # per-token so a bin path with spaces is not itself re-split.
+        try:
+            parts = [p.replace("{bin}", bin_path) for p in shlex.split(cmd)]
+        except ValueError:
+            _LOG.debug("headroom: unparseable ALFRED_HEADROOM_COMPRESS_CMD: %r", cmd)
+            return None
         if not parts:
             return None
         proc = subprocess.run(

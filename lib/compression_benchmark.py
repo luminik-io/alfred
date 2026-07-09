@@ -214,7 +214,12 @@ class PayloadResult:
 
 
 def _mean_reduction(measures: Sequence[EngineMeasure], attr: str) -> float | None:
-    ran = [getattr(m, attr) for m in measures if m.ran and m.applied]
+    # Average over EVERY payload the engine actually measured, not only the ones
+    # it chose to compress. A payload the engine left untouched is a real 0%
+    # reduction and must count, otherwise the mean is biased upward by silently
+    # dropping the misses. Only ``not-run`` measures (the arm never executed,
+    # e.g. headroom absent) are excluded, since there is no measurement to average.
+    ran = [getattr(m, attr) for m in measures if m.ran]
     if not ran:
         return None
     return round(sum(ran) / len(ran), 4)
