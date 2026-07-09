@@ -74,15 +74,17 @@ Alfred is built for one operator. One always-on Mac or Debian/Ubuntu host, one C
 - **No cloud queue, no shared service.** The fleet writes operational state to plain JSON files in `~/.alfred/state/`, and durable lessons to the local fleet-brain SQLite file. There is no required Redis, SQS, or Postgres. State that lives outside the operator's filesystem becomes state the operator has to operate.
 - **No multi-tenancy.** Hardcoding "your account, your repos, your channel" is fine when the user is the maintainer.
 
-## The codename pattern
+## The role pattern
 
-Codenames are Batman side-characters in the shipped defaults: Batman for multi-repo coordination, Lucius for feature dev, Drake for issue planning, Bane for tests, Robin for triage, Nightwing for review-fix, Huntress for E2E smoke, Gordon for deployment health, and Ra's al Ghul for code review. The naming is deliberate: codenames appear in PR titles, Slack messages, and commit authorship, so they must be memorable and internally consistent. Alfred Desktop can layer preset or custom display names over those stable codenames for the desktop and Slack, but scheduler labels, worktrees, GitHub labels, and merge gates still use the runtime codename.
+Every scheduled agent has a stable **role slug** and a themed **display name**. The role slug is the canonical identity: `architect` for multi-repo coordination, `senior-dev` for feature dev, `planner` for issue planning, `test-engineer` for tests, `triage` for triage, `fixer` for review-fix, `e2e-runner` for E2E smoke, `ops-watch` for deployment health, and `reviewer` for code review. Scheduler labels, worktrees, GitHub labels, PR titles, commit trailers, and merge gates all key off the role slug, so renaming a team never breaks the machinery.
 
-Same codename across repos means "same role applied to that repo's code," not "one agent spans repos." Lucius in `<your-backend-repo>` and Lucius in `<your-frontend-repo>` are two separate processes running the same prompt against different codebases. They never share state.
+Display names ride on top. In the shipped `batman` theme the roles surface as Batman-cast side-characters (Lucius for `senior-dev`, Drake for `planner`, Bane for `test-engineer`, Ra's al Ghul for `reviewer`, and so on); Alfred Desktop can swap in preset or custom names for the desktop and Slack. The display name is what a human reads; the role slug is what the scheduler runs. See [`docs/IDENTITY_AND_THEMES.md`](docs/IDENTITY_AND_THEMES.md).
+
+Same role across repos means "same role applied to that repo's code," not "one agent spans repos." The `senior-dev` role in `<your-backend-repo>` and in `<your-frontend-repo>` are two separate processes running the same prompt against different codebases. They never share state.
 
 This is the opposite of the CrewAI / AutoGen design, where a generalist agent decomposes tasks across roles at runtime. Alfred wires the roles at deploy time. The decomposition is the host scheduler. The negotiation channel is the consumer's Slack channel.
 
-Why narrow specialists rather than one general agent: each role gets a different turn budget, a different IAM scope, a different tool list, a different escalation rule, a different failure-mode taxonomy. Lucius is allowed `Read,Edit,Write,Bash,Grep` and 80 turns; Robin gets `Read,Bash` and 30 turns. Generalist prompts that try to cover every case end up with the worst spend profile of all the cases combined.
+Why narrow specialists rather than one general agent: each role gets a different turn budget, a different IAM scope, a different tool list, a different escalation rule, a different failure-mode taxonomy. The `senior-dev` role is allowed `Read,Edit,Write,Bash,Grep` and a generous turn budget for multi-file work; `triage` gets a read-mostly `Read,Bash,Glob,Grep` set and a much tighter budget. Generalist prompts that try to cover every case end up with the worst spend profile of all the cases combined.
 
 ## Scheduled, not chat-driven
 
@@ -254,7 +256,7 @@ A Lucius-style feature agent is the canonical example. The exit codes are not re
 | `[LUCIUS-FAIL-STREAK]` | 8 consecutive failures with 0 successes. | Slack-post; agent stays on schedule, but the streak is now visible for the operator to investigate. |
 | `[<AGENT>-GLOBAL-BLOCKED]` | Another agent already tripped the global block. | Exit silently. |
 
-The salvage path for `[LUCIUS-NO-COMMIT]` is interesting: when `claude -p` returns success but `git rev-list origin/main..HEAD` shows zero commits, the runner inspects `git status --porcelain`. If there are unstaged changes, it auto-commits them with a `WIP:` prefix, pushes, opens a draft PR with the `do-not-review` label, and marks the firing as a failure for spend purposes. The operator gets a draft to inspect rather than losing the work to the worktree-cleanup step. From `lucius.py`:
+The salvage path for `[LUCIUS-NO-COMMIT]` is interesting: when `claude -p` returns success but `git rev-list origin/main..HEAD` shows zero commits, the runner inspects `git status --porcelain`. If there are unstaged changes, it auto-commits them with a `WIP:` prefix, pushes, opens a draft PR with the `do-not-review` label, and marks the firing as a failure for spend purposes. The operator gets a draft to inspect rather than losing the work to the worktree-cleanup step. From `senior-dev.py`:
 
 ```py
 if commit_count == 0:

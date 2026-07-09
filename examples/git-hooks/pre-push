@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pre-push hook — refuse to push if a referenced issue is currently in-flight
+# pre-push hook: refuse to push if a referenced issue is currently in-flight
 # (claimed by an agent) or already has a PR open. Symmetric guard against
 # the operator accidentally racing an autonomous agent.
 #

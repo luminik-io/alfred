@@ -10,8 +10,8 @@ Before you install against your own repos, see the whole loop in one run. All
 you need is an authenticated `claude` CLI (no GitHub, no Slack, no tokens):
 
 ```sh
-git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
-cd ~/code/alfred-os
+git clone https://github.com/luminik-io/alfred.git ~/code/alfred
+cd ~/code/alfred
 ./bin/alfred demo
 ```
 

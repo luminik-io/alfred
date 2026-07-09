@@ -39,15 +39,15 @@ global:
   ✅ AWS dedicated profiles: 3/3 usable
   ✅ engine auth: claude ok, codex ok
 
-agent       load  eng     fired  fires  ok  fail  streak  turns  cost    state
-------------------------------------------------------------------------------
-drake       ✅    hybrid  12m    8      7   1     0       52     $0.96   ok
-senior-dev      ✅    hybrid  3m     12     9   3     0       78     $1.42   ok
-rasalghul   ✅    hybrid  never  9      9   0     0       123    $2.30   ok
-bane        ✅    hybrid  never  1      1   0     0       49     $0.80   ok
+agent          load  eng     fired  fires  ok  fail  streak  turns  cost    state
+--------------------------------------------------------------------------------
+planner        ✅    hybrid  12m    8      7   1     0       52     $0.96   ok
+senior-dev     ✅    hybrid  3m     12     9   3     0       78     $1.42   ok
+reviewer       ✅    hybrid  never  9      9   0     0       123    $2.30   ok
+test-engineer  ✅    hybrid  never  1      1   0     0       49     $0.80   ok
 architect      ✅    hybrid  never  10     0   0     0       0      $0.00   ok
-nightwing   ✅    hybrid  never  20     0   0     0       0      $0.00   ok
-huntress    ⏸     -       never  0      0   0     0       0      $0.00   ⏸️ paused
+fixer          ✅    hybrid  never  20     0   0     0       0      $0.00   ok
+e2e-runner     ⏸     -       never  0      0   0     0       0      $0.00   ⏸️ paused
 ```
 
 The numbers above are illustrative. Your own output shows your configured
@@ -138,8 +138,8 @@ alfred-metrics - last 7 days @ 2026-05-23 12:17 UTC
 
 codename     firings  ok    fail  turns   codex  ctok   cost     tools  top tool       skills
 --------------------------------------------------------------------------------------------------
-senior-dev       12       9     3     78      2      4500   $1.42    34     Bashx14        review x3
-drake        8        7     1     52      0      0      $0.96    21     Readx9         -
+senior-dev   12       9     3     78      2      4500   $1.42    34     Bashx14        review x3
+planner      8        7     1     52      0      0      $0.96    21     Readx9         -
 your-agent   3        2     1     14      0      0      $0.42    2      Readx1         -
 --------------------------------------------------------------------------------------------------
 TOTAL        23       18    5     144     2      4500   $2.80    57

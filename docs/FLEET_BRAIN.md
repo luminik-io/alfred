@@ -229,7 +229,7 @@ Outbox record shapes:
 {"event": "memory_candidate", "codename": "senior-dev", "repo": "your-org/api",
  "body": "...", "tags": ["tests"], "source": "import", "confidence": 0.8}
 
-{"event": "failure_event", "codename": "huntress", "repo": "your-org/web",
+{"event": "failure_event", "codename": "e2e-runner", "repo": "your-org/web",
  "firing_id": "01HZ...", "subtype": "error_timeout", "summary": "...",
  "engine": "claude", "severity": "warning"}
 ```

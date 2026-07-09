@@ -135,7 +135,7 @@ records exact before/after character and byte counts in the engine result
 metadata. It never summarizes or invents facts. The agent must recover any
 omitted detail from the repository, tests, memory, or code-memory MCP tools.
 
-Configuration lives in `$ALFRED_HOME/.env` or `$ALFRED_HOME/.env`:
+Configuration lives in `$ALFRED_HOME/.env`:
 
 | Variable | Default | What it does |
 |---|---:|---|

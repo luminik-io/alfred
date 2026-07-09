@@ -88,8 +88,8 @@ unaffected. Nothing fails closed.
 
 ## Configuration
 
-All knobs are environment variables; set them in `$ALFRED_HOME/.env` or
-`$ALFRED_HOME/.env`. Defaults work out of the box.
+All knobs are environment variables; set them in `$ALFRED_HOME/.env`.
+Defaults work out of the box.
 
 | Variable | Default | What it does |
 |---|---|---|
