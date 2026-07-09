@@ -77,7 +77,13 @@ class FleetBrainProvider:
         severity: Severity = "info",
         firing_id: str | None = None,
         created_at: datetime | None = None,
+        memory_id: str | None = None,
     ) -> Lesson:
+        # ``memory_id`` lets the promote path address FleetBrain's own lessons
+        # table as a lesson store (a deterministic id makes a re-promote
+        # idempotent and lets forget_lesson remove exactly what was written).
+        # The recall chain calls reflect without it, so a new id is generated
+        # then, preserving the prior behavior.
         return self.brain.reflect(
             codename=codename,
             repo=repo,
@@ -86,7 +92,21 @@ class FleetBrainProvider:
             severity=severity,
             firing_id=firing_id,
             created_at=created_at,
+            lesson_id=memory_id,
         )
+
+    def forget_lesson(self, lesson_id: str) -> bool:
+        """Remove one lesson from FleetBrain's lessons table by id.
+
+        Lets FleetBrain serve as the promoted-lesson store for a fleet-only
+        chain: the revert / retire / decay levers forget the promoted lesson
+        from the SAME table recall reads. A blank id is a no-op ``False`` so a
+        caller that gates a destructive follow-up on a ``True`` return is safe.
+        """
+        clean = (lesson_id or "").strip()
+        if not clean:
+            return False
+        return self.brain.forget(clean)
 
 
 @dataclass

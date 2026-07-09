@@ -1267,6 +1267,13 @@ class FleetBrain:
         forget_failed: set[str] = set()
         if lesson_forgetter is None:
             lesson_forgetter = self._lesson_provider()
+        if lesson_forgetter is None:
+            # Memory disabled (ALFRED_MEMORY_PROVIDERS=null): there is no store to
+            # forget from, so there is nothing to revert. Controlled no-op rather
+            # than crashing on a None forgetter or reopening candidates whose
+            # lessons were never actually removed.
+            _LOG.debug("revert_auto_promotions: runtime memory disabled; no-op")
+            return []
         # Phase 1: enumerate EVERY validated auto-promotion via offset paging.
         # Reading is non-mutating, so offsets stay stable and a newest page full
         # of human-reviewed or undeletable rows cannot hide older auto-promotions
@@ -1289,16 +1296,16 @@ class FleetBrain:
         # still live in AMS recall.
         for candidate in targets:
             cid = candidate.id
-            forgotten = True
-            if lesson_forgetter is not None:
-                try:
-                    forgotten = bool(lesson_forgetter.forget_lesson(_lesson_memory_id(cid)))
-                except Exception:
-                    _LOG.exception(
-                        "revert_auto_promotions: AMS forget failed for candidate %s",
-                        cid,
-                    )
-                    forgotten = False
+            # A non-None forgetter is guaranteed by the disabled-memory guard
+            # above, so a failed forget is a real outage, not "memory off".
+            try:
+                forgotten = bool(lesson_forgetter.forget_lesson(_lesson_memory_id(cid)))
+            except Exception:
+                _LOG.exception(
+                    "revert_auto_promotions: AMS forget failed for candidate %s",
+                    cid,
+                )
+                forgotten = False
             if not forgotten:
                 forget_failed.add(cid)
                 continue
@@ -1356,18 +1363,26 @@ class FleetBrain:
         forgetter = lesson_forgetter
         if forgetter is None:
             forgetter = self._lesson_provider()
-        forgotten = True
-        if forgetter is not None:
-            try:
-                forgotten = bool(forgetter.forget_lesson(lesson_id))
-            except Exception as exc:
-                _LOG.exception(
-                    "retire_memory_candidate: AMS forget failed for candidate %s",
-                    candidate.id,
-                )
-                raise MemoryPromotionError(
-                    f"retire_memory_candidate: AMS forget failed for {candidate.id!r}"
-                ) from exc
+        if forgetter is None:
+            # Memory disabled (ALFRED_MEMORY_PROVIDERS=null): there is no store to
+            # forget the lesson from, so the retire cannot be confirmed. Raise the
+            # same controlled signal as a forget failure (candidate stays
+            # validated) instead of crashing on None or silently retiring a lesson
+            # that may still be live if memory is re-enabled.
+            raise MemoryPromotionError(
+                "retire_memory_candidate: runtime memory is disabled "
+                "(no lesson forgetter); nothing was retired."
+            )
+        try:
+            forgotten = bool(forgetter.forget_lesson(lesson_id))
+        except Exception as exc:
+            _LOG.exception(
+                "retire_memory_candidate: AMS forget failed for candidate %s",
+                candidate.id,
+            )
+            raise MemoryPromotionError(
+                f"retire_memory_candidate: AMS forget failed for {candidate.id!r}"
+            ) from exc
         if not forgotten:
             # The lesson is still live in AMS recall; do NOT record a retire.
             raise MemoryPromotionError(
@@ -1539,6 +1554,12 @@ class FleetBrain:
                 summary["ams_forget_failed"] += len(candidates)
                 _LOG.exception("consolidate_lessons: could not build AMS lesson forgetter")
                 return 0
+        if forgetter is None:
+            # Memory disabled (ALFRED_MEMORY_PROVIDERS=null): no store to forget
+            # from, so decay/merge cannot run. Controlled no-op rather than
+            # crashing on a None forgetter.
+            _LOG.debug("consolidate_lessons: runtime memory disabled; skipping forget/retire")
+            return 0
         retired = 0
         for candidate in candidates:
             lesson_id = candidate.promoted_lesson_id or _lesson_memory_id(candidate.id)

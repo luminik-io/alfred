@@ -15,6 +15,7 @@ Covers:
 from __future__ import annotations
 
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -23,9 +24,10 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "lib"))
 
 import memory.sqlite_hybrid as mod  # noqa: E402
-from fleet_brain import FleetBrain, MemoryPromotionError  # noqa: E402
+from fleet_brain import FleetBrain, Lesson, MemoryPromotionError  # noqa: E402
 from memory import MemoryProvider  # noqa: E402
-from memory.config import load_lesson_writer  # noqa: E402
+from memory.config import load_lesson_writer, load_provider  # noqa: E402
+from memory.providers import FleetBrainProvider  # noqa: E402
 from memory.redis_agent_memory import RedisAgentMemoryProvider  # noqa: E402
 from memory.sqlite_hybrid import (  # noqa: E402
     SqliteHybridProvider,
@@ -264,11 +266,18 @@ def test_lesson_writer_redis_chain_still_routes_to_redis() -> None:
     assert isinstance(writer, RedisAgentMemoryProvider)
 
 
-def test_lesson_writer_falls_back_to_sqlite_when_no_recall_store() -> None:
-    # A fleet-only (or null) chain names no dedicated recall store, so a promoted
-    # lesson still lands in the zero-daemon SQLite floor rather than nowhere.
+def test_lesson_writer_fleet_only_targets_fleet_not_sqlite() -> None:
+    # A fleet-only chain names no dedicated recall store, so the promoted lesson
+    # must go to FleetBrain's own lessons table (what fleet recall reads), NOT a
+    # disconnected SQLite file recall would ignore.
     writer = load_lesson_writer(env={"ALFRED_MEMORY_PROVIDERS": "fleet"})
-    assert isinstance(writer, SqliteHybridProvider)
+    assert isinstance(writer, FleetBrainProvider)
+
+
+def test_lesson_writer_is_none_when_no_writable_recall_store() -> None:
+    # gbrain is read-only and not a recall store; with no fleet either, there is
+    # nothing in the recall chain to write to, so promotion is a no-op.
+    assert load_lesson_writer(env={"ALFRED_MEMORY_PROVIDERS": "gbrain"}) is None
 
 
 def test_lesson_writer_picks_first_recall_store_in_chain() -> None:
@@ -379,3 +388,95 @@ def test_dense_in_scope_vector_not_truncated_by_closer_out_of_scope() -> None:
     # out-of-scope vectors.
     out = prov.recall(query="unrelated lookup phrase", codename="lucius", repo="r")
     assert target.id in {L.id for L in out}
+
+
+# ---------------------------------------------------------------------------
+# Fleet-only writes land where recall reads (Greptile P1: "Fleet-Only Writes
+# Disappear")
+# ---------------------------------------------------------------------------
+
+
+def test_fleet_only_promotion_is_recalled_and_creates_no_orphan_store(tmp_path: Path) -> None:
+    # With ALFRED_MEMORY_PROVIDERS=fleet, recall reads ONLY FleetBrain, so a
+    # promotion must land in FleetBrain's lessons table (what recall reads), not
+    # a disconnected SQLite file.
+    env = {"ALFRED_MEMORY_PROVIDERS": "fleet", "ALFRED_HOME": str(tmp_path)}
+    brain = FleetBrain.from_env(env)
+    cand = brain.propose_memory(
+        codename="lucius",
+        repo="acme/api",
+        body="GraphQL schema lives in src/schema.graphql",
+        evidence="saw it at app.py:10",
+        confidence=0.9,
+    )
+    lesson = brain.promote_memory_candidate(cand.id, reviewer="operator", env=env)
+
+    # Recall through the same fleet chain finds the promoted lesson: the write
+    # landed where recall reads.
+    chain = load_provider(env)
+    out = chain.recall(query="graphql", codename="lucius", repo="acme/api")
+    assert lesson.id in {L.id for L in out}
+    # No orphan hybrid SQLite store was created under the state root.
+    assert not (tmp_path / "memory-hybrid.db").exists()
+
+
+# ---------------------------------------------------------------------------
+# Disabled forgetter is a controlled no-op (Greptile P1: "Disabled Forgetter
+# Skips Cleanup")
+# ---------------------------------------------------------------------------
+
+
+class _FakeLessonWriter:
+    """Minimal in-memory lesson writer for staging a validated candidate."""
+
+    name = "sqlite"
+
+    def reflect(
+        self,
+        *,
+        codename: str,
+        repo: str,
+        body: str,
+        tags: object = None,
+        severity: str = "info",
+        firing_id: str | None = None,
+        created_at: datetime | None = None,
+        memory_id: str | None = None,
+    ) -> Lesson:
+        return Lesson(
+            id=memory_id or "fake-lesson-id",
+            codename=codename,
+            repo=repo,
+            body=body,
+            tags=[],
+            created_at=created_at or datetime.now(UTC),
+            firing_id=firing_id,
+            severity="info",
+        )
+
+    def forget_lesson(self, _lesson_id: str) -> bool:
+        return True
+
+
+def test_revert_and_retire_are_controlled_noops_when_memory_disabled(tmp_path: Path) -> None:
+    brain = FleetBrain(db_path=tmp_path / "brain.db")
+    cand = brain.propose_memory(
+        codename="c", repo="r", body="a lesson", evidence="saw it", confidence=0.9
+    )
+    # Stage a validated (promoted) candidate with a working writer.
+    brain.promote_memory_candidate(cand.id, reviewer="auto", lesson_writer=_FakeLessonWriter())
+    assert brain.store.get_memory_candidate(cand.id).status == "validated"  # type: ignore[union-attr]
+
+    # Now memory is disabled: the resolved forgetter is None.
+    brain._lesson_provider = lambda env=None: None  # type: ignore[method-assign]
+
+    # revert is a controlled no-op: no crash, nothing reverted, candidate stays
+    # validated (its lesson was never actually forgotten).
+    assert brain.revert_auto_promotions() == []
+    assert brain.store.get_memory_candidate(cand.id).status == "validated"  # type: ignore[union-attr]
+
+    # retire raises the same controlled MemoryPromotionError as a forget failure,
+    # rather than crashing on a None forgetter or silently retiring.
+    with pytest.raises(MemoryPromotionError):
+        brain.retire_memory_candidate(cand.id)
+    assert brain.store.get_memory_candidate(cand.id).status == "validated"  # type: ignore[union-attr]

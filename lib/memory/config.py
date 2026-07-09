@@ -162,26 +162,28 @@ def load_lesson_writer(env: Mapping[str, str] | None = None) -> MemoryProvider |
     """Build the promoted-lesson WRITE backend from the configured chain.
 
     The capture->judge->promote pipeline (in :mod:`fleet_brain`) writes a
-    promoted lesson to the durable recall store, and the revert/retire/decay
-    levers forget it from that same store. That store must be one of the
-    dedicated recall backends (see :data:`LESSON_STORE_NAMES`), not the
-    FleetBrain candidate ledger.
+    promoted lesson to the recall store, and the revert/retire/decay levers
+    forget it from that same store. The writer MUST target a store the active
+    recall chain actually reads, otherwise a promotion is written somewhere
+    recall never looks and is silently lost.
 
-    Resolution honours ``ALFRED_MEMORY_PROVIDERS`` so the writer always aligns
-    with what recall reads:
+    Resolution honours ``ALFRED_MEMORY_PROVIDERS``:
 
     * memory DISABLED (``ALFRED_MEMORY_PROVIDERS`` empty, or only ``null``) ->
       returns ``None``. Runtime memory is off, so nothing is written: the
       promote path is a no-op and does not silently persist lessons to disk;
-    * default (unset) -> the embedded SQLite hybrid store (zero-daemon);
-    * ``redis,fleet`` -> Redis AMS, unchanged from earlier releases;
-    * the FIRST recall store named in the chain wins when several are present.
+    * a dedicated recall store is named (``sqlite`` / ``redis``) -> write to the
+      FIRST one, since that is exactly where recall reads (default ``sqlite``,
+      ``redis,fleet`` -> Redis, unchanged from earlier releases);
+    * no dedicated recall store but ``fleet`` is in the chain (e.g. ``fleet``
+      only) -> write to FleetBrain's own lessons table, the store fleet recall
+      reads. Never a disconnected SQLite file fleet recall would ignore;
+    * nothing writable in the recall chain (e.g. a read-only ``gbrain`` shim
+      only) -> returns ``None``: the promote path is a no-op rather than writing
+      to a store outside the active recall chain.
 
-    If memory is ENABLED but the chain names NO recall store (e.g. ``fleet``
-    only), the promoted lesson still needs a durable home, so this falls back to
-    the embedded SQLite store: a local, daemon-free floor that never silently
-    loses a promotion. Construction errors propagate to the caller, which treats
-    them as a retryable promotion failure (the candidate stays pending).
+    Construction errors propagate to the caller, which treats them as a
+    retryable promotion failure (the candidate stays pending).
     """
     envmap = env if env is not None else os.environ
     raw = envmap.get("ALFRED_MEMORY_PROVIDERS")
@@ -199,7 +201,13 @@ def load_lesson_writer(env: Mapping[str, str] | None = None) -> MemoryProvider |
             factory = PROVIDER_REGISTRY.get(name)
             if factory is not None:
                 return factory(envmap)
-    return SqliteHybridProvider.from_env(env=envmap)
+    # No dedicated recall store named. If fleet is active, the promoted lesson
+    # belongs in FleetBrain's own lessons table (what fleet recall reads), never
+    # a disconnected SQLite file recall would never consult. If nothing writable
+    # is in the chain, there is no in-chain store to write to: no-op (None).
+    if "fleet" in names:
+        return FleetBrainProvider.from_env(envmap)
+    return None
 
 
 def recall_lessons(

@@ -139,13 +139,20 @@ chain wrapper catches it and tries the next writer.
 
 ### Which provider stores a promoted lesson?
 
-The promote path writes to the **first dedicated recall store** named in
-`ALFRED_MEMORY_PROVIDERS` (`sqlite` or `redis`), resolved by
-`memory.config.load_lesson_writer`. So the default (`sqlite,fleet`) writes to
-the embedded SQLite store, while `redis,fleet` writes to Redis exactly as
-before. `fleet` is the candidate ledger, not a recall store, so it is never the
-write target; if a chain names no recall store at all, promotion falls back to
-the zero-daemon SQLite store so a lesson is never silently lost.
+The promote path always writes to a store the **active recall chain actually
+reads**, resolved by `memory.config.load_lesson_writer`, so a promotion is never
+written somewhere recall never looks:
+
+- A dedicated recall store is named (`sqlite` or `redis`): write to the first
+  one. Default `sqlite,fleet` writes to the embedded SQLite store; `redis,fleet`
+  writes to Redis, exactly as before.
+- No dedicated recall store, but `fleet` is in the chain (e.g. `fleet` only):
+  write to FleetBrain's own lessons table, which fleet recall reads. Promotions
+  are never routed to a disconnected SQLite file that fleet recall would ignore.
+- Memory disabled (`ALFRED_MEMORY_PROVIDERS=null` or empty), or nothing writable
+  in the chain (e.g. a read-only `gbrain` shim only): no writer, so promotion is
+  a no-op and the candidate stays pending. The revert / retire / decay levers are
+  likewise controlled no-ops when memory is disabled, never a crash.
 
 ## Configuration
 
