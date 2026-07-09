@@ -743,6 +743,14 @@ def main() -> int:
         if not result.success:
             until = maybe_set_global_block_for_result(AGENT, result, engine_used=engine_used)
             if until:
+                # The provider block itself is an external non-outcome (it pauses
+                # the whole fleet), so it is NOT counted as this agent's failure.
+                # But failures accumulated EARLIER in this firing are only
+                # committed at the post-loop step, which this short-circuit skips.
+                # Persist them here so a genuinely-failing firing that then hits a
+                # rate limit still advances the streak instead of escaping it.
+                if fixes_landed == 0 and failed_attempts > 0:
+                    spend.increment(failures_today=1, consecutive_failures=1)
                 msg = (
                     f"{AGENT.title()} hit provider rate limit ({result.subtype}, engine={engine_used}). "
                     f"Global block until {until}."

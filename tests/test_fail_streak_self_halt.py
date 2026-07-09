@@ -735,7 +735,7 @@ def _fixer_comment(cid, *, severity="P1", body="fix it"):
     }
 
 
-def _drive_fixer(monkeypatch, tmp_path, comments, *, invoke, run_fn, workflow_ok=True):
+def _drive_fixer(monkeypatch, tmp_path, comments, *, invoke, run_fn, workflow_ok=True, block=None):
     monkeypatch.setenv("GH_ORG", "acme")
     monkeypatch.setenv("ALFRED_FIXER_REPOS", "service-web")
     nightwing = load_bin_module("fixer.py", monkeypatch)
@@ -773,7 +773,9 @@ def _drive_fixer(monkeypatch, tmp_path, comments, *, invoke, run_fn, workflow_ok
     )
     monkeypatch.setattr(nightwing, "make_worktree_from_branch", lambda *_a, **_kw: tmp_path / "wt")
     monkeypatch.setattr(nightwing, "build_prompt", lambda *a, **kw: "prompt")
-    monkeypatch.setattr(nightwing, "maybe_set_global_block_for_result", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        nightwing, "maybe_set_global_block_for_result", block or (lambda *a, **kw: None)
+    )
     monkeypatch.setattr(nightwing, "invoke_agent_engine", invoke)
     monkeypatch.setattr(
         nightwing,
@@ -846,3 +848,27 @@ def test_fixer_healthy_skip_noop_resets_streak(monkeypatch, tmp_path):
     )
     assert {"consecutive_failures": 0} in sets
     assert {"failures_today": 1, "consecutive_failures": 1} not in increments
+
+
+def test_fixer_provider_block_persists_prior_failures(monkeypatch, tmp_path):
+    # First comment fails at the engine (failed_attempts=1, committed only at the
+    # post-loop step); the second comment trips a provider block that returns
+    # mid-loop. The accumulated failure must be persisted before that early
+    # return, not dropped, so the failing firing still advances the streak.
+    calls = {"n": 0}
+
+    def fake_block(*a, **kw):
+        calls["n"] += 1
+        return "2026-07-09T12:00:00Z" if calls["n"] >= 2 else None
+
+    increments, sets = _drive_fixer(
+        monkeypatch,
+        tmp_path,
+        [_fixer_comment(1), _fixer_comment(2)],
+        invoke=lambda *a, **kw: (_engine_failure_result(), "codex"),
+        run_fn=lambda *a, **kw: SimpleNamespace(returncode=0, stdout="", stderr=""),
+        block=fake_block,
+    )
+    # The earlier engine failure is persisted despite the provider-block return.
+    assert {"failures_today": 1, "consecutive_failures": 1} in increments
+    assert {"consecutive_failures": 0} not in sets
