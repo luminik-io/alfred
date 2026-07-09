@@ -695,3 +695,133 @@ def test_reviewer_pr_stale_resets_streak(monkeypatch, tmp_path):
     assert rasalghul.main() == 0
     assert spend.state["consecutive_failures"] == 0
     assert {"consecutive_failures": 0} in spend.sets
+
+
+# ---------------------------------------------------------------------------
+# Re-review finding: a fixer firing that landed no fixes because attempts
+# failed (engine, no-commit, OR push) is a FAILED firing, not a healthy no-op
+# ---------------------------------------------------------------------------
+
+
+def _fixer_comment(cid, *, severity="P1", body="fix it"):
+    return {
+        "body": body,
+        "path": "src/x.py",
+        "line": 3,
+        "user": "rev",
+        "id": cid,
+        "severity": severity,
+    }
+
+
+def _drive_fixer(monkeypatch, tmp_path, comments, *, invoke, run_fn, workflow_ok=True):
+    monkeypatch.setenv("GH_ORG", "acme")
+    monkeypatch.setenv("ALFRED_FIXER_REPOS", "service-web")
+    nightwing = load_bin_module("fixer.py", monkeypatch)
+    increments: list[dict] = []
+    sets: list[dict] = []
+
+    class FakeSpend:
+        def __init__(self, *a, **kw):
+            self.state = {"turns_today": 0, "consecutive_failures": 0}
+
+        def increment(self, **kw):
+            increments.append(kw)
+
+        def set(self, **kw):
+            sets.append(kw)
+            self.state.update(kw)
+
+    monkeypatch.setattr(nightwing, "with_lock", lambda a: None)
+    monkeypatch.setattr(nightwing, "preflight", lambda s: None)
+    monkeypatch.setattr(nightwing, "_refresh_pre_push_config", lambda: None)
+    monkeypatch.setattr(nightwing, "doctor_mode", lambda: False)
+    monkeypatch.setattr(nightwing, "is_globally_blocked", lambda: None)
+    monkeypatch.setattr(nightwing, "EventLog", _FakeEvents)
+    monkeypatch.setattr(nightwing, "SpendState", FakeSpend)
+    monkeypatch.setattr(nightwing, "load_fixed_ids", lambda: set())
+    monkeypatch.setattr(nightwing, "save_fixed_ids", lambda _ids: None)
+    monkeypatch.setattr(nightwing, "load_no_commit_streaks", lambda: {})
+    monkeypatch.setattr(nightwing, "save_no_commit_streaks", lambda _s: None)
+    monkeypatch.setattr(nightwing, "reset_label_present", lambda *_a: False)
+    monkeypatch.setattr(nightwing, "local_repo_dir", lambda _repo: tmp_path / "repo")
+    monkeypatch.setattr(
+        nightwing,
+        "pick_target",
+        lambda _fixed: ("service-web", {"number": 123, "headRefName": "feature/fix"}, comments),
+    )
+    monkeypatch.setattr(nightwing, "make_worktree_from_branch", lambda *_a, **_kw: tmp_path / "wt")
+    monkeypatch.setattr(nightwing, "build_prompt", lambda *a, **kw: "prompt")
+    monkeypatch.setattr(nightwing, "maybe_set_global_block_for_result", lambda *a, **kw: None)
+    monkeypatch.setattr(nightwing, "invoke_agent_engine", invoke)
+    monkeypatch.setattr(
+        nightwing,
+        "validate_changed_workflows",
+        lambda *a, **kw: SimpleNamespace(ok=workflow_ok, files=(), stdout="", stderr="", reason=""),
+    )
+    monkeypatch.setattr(nightwing, "run", run_fn)
+    monkeypatch.setattr(nightwing, "gh_pr_comment", lambda *a, **kw: True)
+    monkeypatch.setattr(nightwing, "gh_json", lambda *a, **kw: [])
+    monkeypatch.setattr(nightwing, "remove_worktree", lambda repo, path: None)
+    monkeypatch.setattr(nightwing, "slack_post", lambda *a, **kw: None)
+
+    assert nightwing.main() == 0
+    return increments, sets
+
+
+def _commit_lands_run(*, push_returncode):
+    """git-log reports a fresh commit; git-push returns the given code."""
+
+    def run_fn(cmd, **kw):
+        if len(cmd) >= 2 and cmd[1] == "push":
+            return SimpleNamespace(returncode=push_returncode, stdout="", stderr="rejected")
+        if len(cmd) >= 2 and cmd[1] == "log":
+            if "origin/" in cmd[-1]:
+                return SimpleNamespace(returncode=0, stdout="parentsha\n", stderr="")
+            return SimpleNamespace(returncode=0, stdout="newsha123\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    return run_fn
+
+
+def test_fixer_all_push_failed_advances_streak(monkeypatch, tmp_path):
+    increments, sets = _drive_fixer(
+        monkeypatch,
+        tmp_path,
+        [_fixer_comment(1), _fixer_comment(2)],
+        invoke=lambda *a, **kw: (_healthy_result("done"), "codex"),
+        run_fn=_commit_lands_run(push_returncode=1),  # every push fails
+    )
+    # Zero fixes landed, every attempt failed at push: a failed firing.
+    assert {"failures_today": 1, "consecutive_failures": 1} in increments
+    assert {"consecutive_failures": 0} not in sets
+
+
+def test_fixer_landed_fix_resets_streak(monkeypatch, tmp_path):
+    increments, sets = _drive_fixer(
+        monkeypatch,
+        tmp_path,
+        [_fixer_comment(1)],
+        invoke=lambda *a, **kw: (_healthy_result("done"), "codex"),
+        run_fn=_commit_lands_run(push_returncode=0),  # push succeeds, fix lands
+    )
+    # A landed fix is healthy work: reset, no failure increment.
+    assert {"consecutive_failures": 0} in sets
+    assert {"failures_today": 1, "consecutive_failures": 1} not in increments
+
+
+def test_fixer_healthy_skip_noop_resets_streak(monkeypatch, tmp_path):
+    def _no_engine(*a, **kw):
+        raise AssertionError("engine must not run on a P0-security-skipped comment")
+
+    # A P0 security finding is deferred to manual review: a healthy skip, not a
+    # failed attempt. The firing lands no fixes but is a legitimate no-op.
+    increments, sets = _drive_fixer(
+        monkeypatch,
+        tmp_path,
+        [_fixer_comment(1, severity="P0", body="possible secret leak in auth handler")],
+        invoke=_no_engine,
+        run_fn=lambda *a, **kw: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+    assert {"consecutive_failures": 0} in sets
+    assert {"failures_today": 1, "consecutive_failures": 1} not in increments

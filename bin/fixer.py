@@ -652,7 +652,12 @@ def main() -> int:
     fixes_landed = 0
     fix_summary = []
     total_turns = 0
-    engine_failures = 0
+    # Attempts that tried to land a fix and failed (engine failure, engine
+    # exited 0 without a commit, or a failed push). A firing that lands zero
+    # fixes with >=1 failed attempt is a FAILED firing, not a healthy no-op.
+    # Healthy skips (P0-security deferral, already-fixed comments) are NOT
+    # counted here.
+    failed_attempts = 0
     engine_counts: dict[str, int] = {}
     preserved_failure_reason = ""
     preserved_recovery_ref: str | None = None
@@ -750,7 +755,7 @@ def main() -> int:
             print(
                 f"[{AGENT.upper()}-FAIL] comment {cid}: engine={engine_used} subtype={result.subtype} turns={result.num_turns}"
             )
-            engine_failures += 1
+            failed_attempts += 1
             continue
 
         # Verify a commit landed
@@ -792,6 +797,10 @@ def main() -> int:
                 fixed_ids.add(cid)
                 no_commit_streaks.pop(_streak_key(repo, pr_num, cid), None)
                 continue
+            # A real no-commit: the engine exited 0 but landed nothing, so this
+            # attempt failed to produce a fix. Count it (distinct from the
+            # already-fixed skip above, which is healthy).
+            failed_attempts += 1
             # Bump the (PR, comment) streak; escalate at the configured
             # threshold so an infinite-retry loop on the same comment
             # surfaces as an operator-actionable Slack post + label.
@@ -820,6 +829,10 @@ def main() -> int:
         push = run(["git", "push", "origin", f"HEAD:{head_ref}"], cwd=str(wt), timeout=60)
         if push.returncode != 0:
             print(f"[{AGENT.upper()}-PUSH-FAIL] comment {cid}: {short(push.stderr, 200)}")
+            # The commit landed locally but never reached the PR, so this attempt
+            # failed to land a fix. Count it so an all-push-failed firing is a
+            # failed firing, not a healthy no-op that clears the streak.
+            failed_attempts += 1
             continue
         gh_pr_comment(
             repo,
@@ -859,24 +872,27 @@ def main() -> int:
 
     remove_worktree(repo, wt)
 
-    if fixes_landed == 0 and engine_failures > 0:
-        # Nothing landed and every attempt this firing hit an engine failure
-        # (success==False, e.g. an empty result or a provider wall). That is a
-        # failed firing, not a healthy no-op, so advance the streak (do NOT
-        # reset) to feed the self-halt gate. Without this a wedged engine would
-        # be swallowed as a no-op success and fire forever.
+    if fixes_landed == 0 and failed_attempts > 0:
+        # Nothing landed and every attempt this firing failed (engine failure,
+        # no-commit, or push failure). That is a FAILED firing, not a healthy
+        # no-op, so advance the streak (do NOT reset) to feed the self-halt
+        # gate. Without this an all-failed firing would be swallowed as a no-op
+        # success and fire forever.
         spend.increment(failures_today=1, consecutive_failures=1)
         msg = (
             f"[{AGENT.upper()}-FAIL] no fixes landed on PR {pr_num}; "
-            f"{engine_failures} engine failure(s) (engines={engine_summary}, turns={total_turns})"
+            f"{failed_attempts} failed attempt(s) (engines={engine_summary}, turns={total_turns})"
         )
         print(msg)
-        events.emit("firing_complete", outcome="engine-failures", engine_failures=engine_failures)
+        events.emit(
+            "firing_complete", outcome="all-attempts-failed", failed_attempts=failed_attempts
+        )
         return 0
 
-    # Reaching here means the firing completed cleanly: fixes landed, or a
-    # genuine no-op with no engine failures. Clear the streak so a prior run of
-    # failures doesn't carry into a healthy firing and trip the self-halt gate.
+    # Reaching here means the firing did healthy work: at least one fix landed,
+    # or a legitimate no-op (nothing to fix, or only healthy skips). Clear the
+    # streak so a prior run of failures doesn't carry into a healthy firing and
+    # trip the self-halt gate.
     spend.set(consecutive_failures=0)
 
     if fixes_landed == 0:
