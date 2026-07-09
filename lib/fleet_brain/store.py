@@ -15,7 +15,7 @@ import os
 import secrets
 import sqlite3
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -515,6 +515,10 @@ class Store(Protocol):
 
     def memory_candidate_stats(self) -> dict[str, int]: ...
 
+    def get_reuse_count(self, scope_key: str) -> int: ...
+
+    def bump_reuse_counts(self, scope_keys: Sequence[str]) -> None: ...
+
 
 # ---------------------------------------------------------------------------
 # SQLite implementation.
@@ -883,6 +887,47 @@ class SQLiteStore:
                 (int(limit),),
             ).fetchall()
             return [_row_to_lesson_anchor(r) for r in rows]
+
+    # ----- reuse counters (Phase 3: durable reinforce-on-reuse) ----------
+
+    def get_reuse_count(self, scope_key: str) -> int:
+        """Return the persisted reuse count for ``scope_key`` (0 if absent).
+
+        The scope key is the process-global identity the ranking layer already
+        builds (``codename`` + ``repo`` + lesson identity); persisting it here
+        lets reinforce-on-reuse survive across firings and process restarts
+        instead of living only in an in-process table. An absent row is zero, so
+        ranking is byte-identical to the in-process default until a lesson is
+        actually reused.
+        """
+        key = (scope_key or "").strip()
+        if not key:
+            return 0
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT reuse_count FROM lesson_reuse WHERE scope_key = ?", (key,)
+            ).fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
+
+    def bump_reuse_counts(self, scope_keys: Sequence[str]) -> None:
+        """Increment the persisted reuse count for each of ``scope_keys`` by one.
+
+        Idempotent-per-call upsert: a key with no row starts at 1, an existing
+        key is incremented. Blank keys are skipped. One transaction for the whole
+        batch so a single reinforce call is one commit.
+        """
+        keys = [k.strip() for k in scope_keys if k and k.strip()]
+        if not keys:
+            return
+        now = _to_iso(datetime.now(UTC))
+        with self._connect() as conn, conn:
+            conn.executemany(
+                "INSERT INTO lesson_reuse (scope_key, reuse_count, updated_at) "
+                "VALUES (?, 1, ?) "
+                "ON CONFLICT (scope_key) DO UPDATE SET "
+                "  reuse_count = reuse_count + 1, updated_at = excluded.updated_at",
+                [(key, now) for key in keys],
+            )
 
     def lessons_for_anchor(
         self,

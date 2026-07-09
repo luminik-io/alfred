@@ -134,11 +134,16 @@ counter increments and its reuse signal rises: `reuse = 1 - 0.5 ** count` (0 use
 -> `0.0`, 1 -> `0.5`, 2 -> `0.75`, saturating below `1.0`). A lesson that keeps
 proving useful edges out an equally relevant one that has never been surfaced.
 
-The reuse counters live **in-process only**. The Redis AMS store has no
-reuse/last-injected field, and this change deliberately does not schema-migrate
-it. Reinforcement therefore resets when the process restarts. Persisting reuse
-through a new AMS field is a clean follow-up if the in-process signal proves
-worthwhile.
+The reuse counter is **durable** (Phase 3). A `lesson_reuse` table in the local
+FleetBrain store and in the SQLite hybrid recall store records the injection
+count per `(codename, repo, lesson-identity)` scope key, and `memory_ranking`
+reads/write-throughs it when the runtime binds a store from the configured
+provider (`set_reuse_store` / `reuse_store_for`), keeping the in-process table as
+a cache. So a lesson that keeps proving useful **retains its reinforcement across
+firings and process restarts** instead of resetting. When no reuse-capable store
+is reachable (for example a pure Redis chain, which has no such field), the
+counter transparently falls back to the in-process-only behaviour, and an absent
+row reads back as zero reuse, so ranking is unchanged.
 
 ### Delta injection
 
@@ -473,13 +478,27 @@ Now `ALFRED_MEMORY_PROVIDERS=redis,fleet,team_wiki` works.
   the other direction (to the first writer in the chain), never out
   to gbrain.
 
+### Consolidation policy (Phase 3)
+
+The periodic pass `alfred brain consolidate` (gated by
+`ALFRED_MEMORY_CONSOLIDATE`) keeps the recall store from bloating. On top of the
+existing lexical-duplicate merge and stale-lesson decay, Phase 3 adds:
+
+- **Semantic near-duplicate merge** (`ALFRED_MEMORY_CONSOLIDATE_SEMANTIC`, cosine
+  threshold `ALFRED_MEMORY_CONSOLIDATE_SIM_THRESHOLD`), using the same embedding
+  path as the SQLite hybrid dense arm and degrading to lexical-only without an
+  embedder.
+- **Provenance-union merge**: a merged-away duplicate's provenance and anchors
+  are unioned onto the survivor and the duplicate is invalidated (not deleted),
+  so no history is lost. Falls back to a plain forget on a store without the
+  capability.
+- **Pressure/budget eviction** (`ALFRED_MEMORY_MAX_LESSONS`): the lowest-value
+  lessons (by the ranking value score) are invalidated down to the cap,
+  reversible. See [`CODE_MEMORY.md`](CODE_MEMORY.md) "Phase 3" for the full
+  description and the config table.
+
 ## Deferred
 
-- **Persisted reuse counts.** Reinforce-on-reuse (see "Injection quality" above)
-  keeps its counters in-process and resets on restart. Persisting them through a
-  new Redis AMS field would let a lesson's proven usefulness survive a reboot,
-  but is deferred until the in-process signal proves its worth (no schema
-  migration in the current change).
 - **Reflect-everywhere.** Today `reflect` writes to the first
   writable provider only. A "broadcast" mode that fans the write
   out to every writer is intentionally out of scope until users prove

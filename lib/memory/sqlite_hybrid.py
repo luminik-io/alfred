@@ -49,7 +49,7 @@ import os
 import re
 import sqlite3
 import threading
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -396,6 +396,19 @@ class SqliteHybridProvider:
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS lesson_anchors_lesson_idx ON lesson_anchors (lesson_id)"
+            )
+            # Phase 3: durable reinforce-on-reuse. One row per ranking scope key
+            # (codename + repo + lesson identity) with the injection count. Absent
+            # rows read back as zero, so ranking is unchanged until a lesson is
+            # actually reused.
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS lesson_reuse (
+                    scope_key   TEXT NOT NULL PRIMARY KEY,
+                    reuse_count INTEGER NOT NULL DEFAULT 0,
+                    updated_at  TEXT NOT NULL
+                )
+                """
             )
             if self._fts_ok is None:
                 self._fts_ok = self._try_create_fts(conn)
@@ -926,6 +939,192 @@ class SqliteHybridProvider:
                 relation="supersedes",
             )
         return True
+
+    def merge_lesson(self, loser_id: str, survivor_id: str) -> bool:
+        """Merge ``loser_id`` into ``survivor_id`` without losing history.
+
+        The Phase 3 provenance-union merge the consolidation pass calls instead of
+        a plain forget when it collapses a duplicate: it UNIONS the loser's
+        provenance and its anchors onto the survivor, then INVALIDATES the loser
+        (``superseded_by`` + ``valid_until`` = now) so recall stops surfacing it
+        while the row survives for audit (invalidate-not-delete). One transaction,
+        so a survivor never keeps a half-merged history. No-op ``False`` on
+        blank/identical ids or a missing survivor/loser row."""
+        loser = (loser_id or "").strip()
+        survivor = (survivor_id or "").strip()
+        if not loser or not survivor or loser == survivor:
+            return False
+        now = _iso(datetime.now(UTC))
+        with self._connect() as conn, conn:
+            survivor_row = conn.execute(
+                "SELECT provenance FROM lessons WHERE id = ?", (survivor,)
+            ).fetchone()
+            loser_row = conn.execute(
+                "SELECT provenance FROM lessons WHERE id = ?", (loser,)
+            ).fetchone()
+            if survivor_row is None or loser_row is None:
+                return False
+            # Union provenance (survivor's history first), so the surviving lesson
+            # carries every firing/PR that produced either copy.
+            merged_provenance = _union_provenance(survivor_row[0], loser_row[0])
+            conn.execute(
+                "UPDATE lessons SET provenance = ? WHERE id = ?",
+                (merged_provenance, survivor),
+            )
+            # Union anchors: copy every one of the loser's links onto the survivor
+            # (idempotent), so the survivor is grounded to all the code entities
+            # both copies were about.
+            anchor_rows = conn.execute(
+                "SELECT anchor_type, anchor_ref, relation, repo "
+                "FROM lesson_anchors WHERE lesson_id = ?",
+                (loser,),
+            ).fetchall()
+            for anchor_type, anchor_ref, relation, repo in anchor_rows:
+                self._write_anchor(
+                    conn,
+                    lesson_id=survivor,
+                    anchor_type=anchor_type,
+                    anchor_ref=anchor_ref,
+                    relation=relation,
+                    repo=repo,
+                )
+            # Invalidate-not-delete the loser and record the supersedes link.
+            cur = conn.execute(
+                "UPDATE lessons SET superseded_by = ?, valid_until = ? WHERE id = ?",
+                (survivor, now, loser),
+            )
+            if cur.rowcount <= 0:
+                return False
+            self._write_anchor(
+                conn,
+                lesson_id=survivor,
+                anchor_type="lesson",
+                anchor_ref=loser,
+                relation="supersedes",
+            )
+        return True
+
+    def evict_to_cap(
+        self,
+        *,
+        max_lessons: int,
+        env: Mapping[str, str] | None = None,
+        now: datetime | None = None,
+        dry_run: bool = False,
+    ) -> list[str]:
+        """Invalidate the lowest-value lessons down to ``max_lessons`` (Phase 3).
+
+        Pressure/budget eviction: when the count of still-valid lessons exceeds
+        the cap, the lowest-value lessons are expired (``valid_until`` = now,
+        ``superseded_by`` left NULL) so recall stops surfacing them, but the rows
+        survive and eviction is reversible by clearing ``valid_until``. Value is
+        the #452 score (:func:`agent_runner.memory_ranking.score_lesson`) with a
+        neutral relevance (there is no query at GC time), so ROI/severity, recency
+        and durable reuse decide what stays. A non-positive cap is a no-op.
+        Returns the evicted (or, in dry-run, would-evict) ids, lowest value
+        first."""
+        cap = int(max_lessons)
+        if cap <= 0:
+            return []
+        from agent_runner import memory_ranking
+
+        moment = now or datetime.now(UTC)
+        weights = memory_ranking.rank_weights(env)
+        half_life = memory_ranking.decay_half_life_days(env)
+        with self._connect() as conn:
+            valid_ids = self._valid_lesson_ids(conn, moment)
+            if len(valid_ids) <= cap:
+                return []
+            lessons = self._hydrate(conn, valid_ids)
+        scored: list[tuple[float, datetime, str, Lesson]] = []
+        for lesson in lessons:
+            scope_key = memory_ranking.lesson_key(
+                lesson, codename=lesson.codename, repo=lesson.repo
+            )
+            reuse = self.get_reuse_count(scope_key)
+            score = memory_ranking.score_lesson(
+                lesson,
+                None,
+                weights=weights,
+                half_life_days=half_life,
+                reuse_count=reuse,
+                now=moment,
+            )
+            scored.append((score.total, lesson.created_at, lesson.id, lesson))
+        # Lowest value first; ties break to the older lesson, then id, so the
+        # choice is fully deterministic.
+        scored.sort(key=lambda row: (row[0], row[1], row[2]))
+        evict_count = len(scored) - cap
+        evicted = [row[2] for row in scored[:evict_count]]
+        if dry_run or not evicted:
+            return evicted
+        stamp = _iso(moment)
+        with self._connect() as conn, conn:
+            conn.executemany(
+                "UPDATE lessons SET valid_until = ? WHERE id = ? AND valid_until IS NULL",
+                [(stamp, lid) for lid in evicted],
+            )
+        return evicted
+
+    def _valid_lesson_ids(self, conn: sqlite3.Connection, now: datetime) -> list[str]:
+        """Ids of every still-valid lesson (not superseded, not expired)."""
+        now_iso = _iso(now)
+        rows = conn.execute(
+            "SELECT id FROM lessons "
+            "WHERE superseded_by IS NULL AND (valid_until IS NULL OR valid_until > ?) "
+            "ORDER BY created_at DESC",
+            (now_iso,),
+        ).fetchall()
+        return [r[0] for r in rows]
+
+    # ----- durable reuse counters (Phase 3) -----------------------------
+
+    def get_reuse_count(self, scope_key: str) -> int:
+        """Persisted reinforce-on-reuse count for a ranking scope key (0 if absent).
+
+        Mirrors :meth:`fleet_brain.store.SQLiteStore.get_reuse_count` so the
+        ranking layer can persist reuse against whichever store backs recall."""
+        key = (scope_key or "").strip()
+        if not key:
+            return 0
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT reuse_count FROM lesson_reuse WHERE scope_key = ?", (key,)
+            ).fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
+
+    def bump_reuse_counts(self, scope_keys: Sequence[str]) -> None:
+        """Increment the persisted reuse count for each scope key by one."""
+        keys = [k.strip() for k in scope_keys if k and k.strip()]
+        if not keys:
+            return
+        now = _iso(datetime.now(UTC))
+        with self._connect() as conn, conn:
+            conn.executemany(
+                "INSERT INTO lesson_reuse (scope_key, reuse_count, updated_at) "
+                "VALUES (?, 1, ?) "
+                "ON CONFLICT (scope_key) DO UPDATE SET "
+                "  reuse_count = reuse_count + 1, updated_at = excluded.updated_at",
+                [(key, now) for key in keys],
+            )
+
+
+def _union_provenance(survivor: str | None, loser: str | None) -> str | None:
+    """Comma-join two provenance strings, survivor first, de-duped in order.
+
+    Provenance is a free-text firing/PR reference (or a comma list of them after
+    an earlier merge). The union keeps the survivor's references first, then adds
+    any of the loser's that are new, so a merged lesson records the full history
+    of both copies without ever dropping a link. ``None`` when both are empty."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for source in (survivor, loser):
+        for part in (source or "").split(","):
+            token = part.strip()
+            if token and token not in seen:
+                seen.add(token)
+                out.append(token)
+    return ", ".join(out) if out else None
 
 
 def _tokenize(text: str) -> list[str]:

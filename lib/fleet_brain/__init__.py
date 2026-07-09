@@ -45,9 +45,10 @@ from __future__ import annotations
 
 import inspect
 import logging
+import math
 import os
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -130,10 +131,13 @@ __all__ = [
     "WorkerStatus",
     "candidate_id_from_lesson_id",
     "consolidate_enabled",
+    "consolidate_semantic_enabled",
+    "consolidate_sim_threshold",
     "default_db_path",
     "densify_enabled",
     "direct_auto_promote_env",
     "edges_for_file_touch",
+    "max_lessons_cap",
     "new_id",
     "normalize_anchor_relation",
     "normalize_anchor_type",
@@ -306,6 +310,63 @@ def consolidate_enabled(env: Mapping[str, str] | None = None) -> bool:
     so a caller (the CLI, the scheduled runner) can check the opt-in BEFORE
     opening the ledger and avoid touching the store on a disarmed no-op run."""
     return _env_opt_in_armed("ALFRED_MEMORY_CONSOLIDATE", env)
+
+
+def consolidate_semantic_enabled(env: Mapping[str, str] | None = None) -> bool:
+    """Whether the OPTIONAL semantic near-duplicate merge is armed (Phase 3).
+
+    Gated by ``ALFRED_MEMORY_CONSOLIDATE_SEMANTIC`` and only meaningful when the
+    parent ``ALFRED_MEMORY_CONSOLIDATE`` pass is also armed. Off by default: with
+    it disarmed (or no embedder available) consolidation collapses only lessons
+    whose bodies are LEXICALLY identical, exactly as before. When armed AND an
+    embedder is available, near-duplicate (not just identical) lessons are merged
+    on top of that lexical pass. Fails closed on a typo (the same opt-in contract
+    as the parent switch)."""
+    return _env_opt_in_armed("ALFRED_MEMORY_CONSOLIDATE_SEMANTIC", env)
+
+
+# Cosine-similarity floor at/above which two lessons in the same repo+codename
+# scope are treated as near-duplicates by the semantic merge. Conservative: only
+# very close bodies collapse, so a genuinely distinct lesson is never merged
+# away. Override with ``ALFRED_MEMORY_CONSOLIDATE_SIM_THRESHOLD``.
+_DEFAULT_CONSOLIDATE_SIM_THRESHOLD = 0.92
+
+
+def consolidate_sim_threshold(env: Mapping[str, str] | None = None) -> float:
+    """Cosine near-duplicate threshold for the semantic merge, clamped to (0, 1].
+
+    A non-numeric, non-positive, or >1 value falls back to the conservative
+    default rather than merging on a bad config."""
+    src = env if env is not None else os.environ
+    raw = src.get("ALFRED_MEMORY_CONSOLIDATE_SIM_THRESHOLD")
+    if raw is None or not str(raw).strip():
+        return _DEFAULT_CONSOLIDATE_SIM_THRESHOLD
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return _DEFAULT_CONSOLIDATE_SIM_THRESHOLD
+    if not (0.0 < value <= 1.0):
+        return _DEFAULT_CONSOLIDATE_SIM_THRESHOLD
+    return value
+
+
+def max_lessons_cap(env: Mapping[str, str] | None = None) -> int:
+    """Configured pressure/budget cap on live recall-able lessons (0 = disabled).
+
+    Read from ``ALFRED_MEMORY_MAX_LESSONS``. When positive and the recall store
+    supports it, the consolidation pass evicts the lowest-value lessons (by the
+    #452 value score) down to this cap, invalidate-not-delete. Zero, negative, or
+    unparseable disables eviction (the default), so growth is unbounded unless an
+    operator opts in."""
+    src = env if env is not None else os.environ
+    raw = src.get("ALFRED_MEMORY_MAX_LESSONS")
+    if raw is None or not str(raw).strip():
+        return 0
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return 0
+    return value if value > 0 else 0
 
 
 def _env_flag_default_on(name: str, env: Mapping[str, str] | None = None) -> bool:
@@ -619,6 +680,20 @@ class FleetBrain:
     def lesson_anchors(self, lesson_id: str, *, limit: int = 100) -> list[LessonAnchor]:
         """Return the anchors linked to ``lesson_id``, most recent first."""
         return self.store.list_lesson_anchors(lesson_id, limit=limit)
+
+    # ----- durable reuse counters (Phase 3) -----------------------------
+
+    def get_reuse_count(self, scope_key: str) -> int:
+        """Persisted reinforce-on-reuse count for a ranking scope key (0 if absent).
+
+        Delegates to the store so the ranking layer can read a lesson's reuse
+        weight from durable state instead of an in-process table. See
+        :meth:`fleet_brain.store.SQLiteStore.get_reuse_count`."""
+        return self.store.get_reuse_count(scope_key)
+
+    def bump_reuse_counts(self, scope_keys: Sequence[str]) -> None:
+        """Increment the persisted reuse count for each scope key by one."""
+        self.store.bump_reuse_counts(scope_keys)
 
     def lessons_for_anchor(
         self,
@@ -1537,30 +1612,42 @@ class FleetBrain:
         dry_run: bool = False,
         env: Mapping[str, str] | None = None,
         lesson_forgetter: Any | None = None,
+        embedder: Embedder | None = None,
     ) -> dict[str, Any]:
         """Periodic consolidation/decay pass over promoted lessons (OFF by default).
 
-        Two minimal, invalidate-not-delete operations over validated (promoted)
-        candidates whose lesson lives in Redis AMS:
+        Invalidate-not-delete operations over validated (promoted) candidates
+        whose lesson lives in the recall store (Redis AMS or the SQLite hybrid):
 
-          * decay: a promoted candidate older than ``stale_days`` has its AMS
+          * decay: a promoted candidate older than ``stale_days`` has its recall
             lesson forgotten and its row flipped to ``retired`` so recall stops
             surfacing it, but the audit row is kept (never deleted);
           * merge: auto-promoted (``reviewed_by == "auto"``) promoted candidates
-            whose bodies normalize to the same text are collapsed to the oldest;
-            the rest have their AMS lesson forgotten and are retired.
+            that are DUPLICATES are collapsed to the oldest. Duplicates are found
+            lexically (bodies normalize to the same text) and, when
+            ``ALFRED_MEMORY_CONSOLIDATE_SEMANTIC`` is armed AND an ``embedder`` is
+            available, ALSO semantically (near-duplicate bodies, cosine >=
+            ``ALFRED_MEMORY_CONSOLIDATE_SIM_THRESHOLD``) on top of the lexical
+            pass. With no embedder it degrades to lexical-only, byte-identical to
+            before. When the recall store supports it (``merge_lesson``), a merge
+            UNIONS the loser's provenance and anchors onto the surviving lesson
+            and INVALIDATES the loser (``superseded_by``), so no provenance is
+            lost; otherwise it falls back to forgetting the loser (Redis AMS);
+          * evict: when ``ALFRED_MEMORY_MAX_LESSONS`` is set and the store grows
+            past it, the lowest-value lessons (by the #452 value score) are
+            invalidated down to the cap (reversible, never deleted).
 
-        A candidate is retired ONLY once its AMS lesson is actually forgotten:
-        if the forget fails (a transient outage, or forgetting disabled
-        server-side) the row is left ``validated`` and logged, so the ledger
-        never claims a decay/merge while the lesson is still live in AMS recall.
-        This mirrors the revert lever and keeps the two paths honest.
+        A candidate is retired/merged ONLY once its recall lesson is actually
+        forgotten or superseded: if the store op fails (a transient outage, or
+        forgetting disabled server-side) the row is left ``validated`` and logged,
+        so the ledger never claims a decay/merge while the lesson is still live in
+        recall. This mirrors the revert lever and keeps the paths honest.
 
         Gated behind ``ALFRED_MEMORY_CONSOLIDATE`` so it never runs unless armed;
-        ``dry_run`` reports counts without writing. Deliberately conservative (no
-        LLM merge yet) so it can be scheduled safely -- scheduling it disarmed is
-        a true no-op. ``lesson_forgetter`` is the AMS provider; tests inject a
-        stub. Returns a summary dict (always safe to log)."""
+        ``dry_run`` reports counts without writing. ``lesson_forgetter`` is the
+        recall provider; tests inject a stub. ``embedder`` is the optional dense
+        embedder (the same contract the SQLite hybrid dense arm uses); tests
+        inject a deterministic stub. Returns a summary dict (always safe to log)."""
         # A negative stale_days is invalid input, not "0". Clamping it to 0 would
         # set the cutoff to NOW and forget/retire every promoted lesson, so
         # reject it up front (fail fast, before any read or write).
@@ -1571,6 +1658,8 @@ class FleetBrain:
             "dry_run": bool(dry_run),
             "decayed": 0,
             "merged": 0,
+            "provenance_unioned": 0,
+            "evicted": 0,
             "ams_forget_attempted": 0,
             "ams_forgotten": 0,
             "ams_forget_failed": 0,
@@ -1609,26 +1698,19 @@ class FleetBrain:
                 # lessons are left alone (a human deliberately kept both).
                 fresh_auto.append(cand)
 
-        # Merge losers: among still-fresh auto-promoted candidates, keep the
-        # OLDEST per (repo, codename, normalized body) and mark the rest for
-        # retirement. Scope the group by repo + codename because AMS recall is
-        # topic-scoped: two identical-body lessons for DIFFERENT repos/codenames
-        # are not redundant (each answers a different recall scope), so they must
-        # not collapse into one. (Stale rows already decay above and are excluded
-        # here to avoid double-counting the same candidate.)
-        by_scoped_body: dict[tuple[str, str, str], list[MemoryCandidate]] = {}
-        for cand in fresh_auto:
-            key = (cand.repo, cand.codename, _canonical_memory_body(cand.body))
-            by_scoped_body.setdefault(key, []).append(cand)
-        merge_losers: list[MemoryCandidate] = []
-        for group in by_scoped_body.values():
-            if len(group) < 2:
-                continue
-            ordered = sorted(group, key=lambda c: (c.created_at, c.id))
-            merge_losers.extend(ordered[1:])
+        # Merge pairs: among still-fresh auto-promoted candidates, keep the OLDEST
+        # of each duplicate set and pair every loser with that survivor. Scope by
+        # repo + codename because recall is topic-scoped: two identical-body
+        # lessons for DIFFERENT repos/codenames are not redundant (each answers a
+        # different recall scope), so they must not collapse into one. (Stale rows
+        # already decay above and are excluded here to avoid double-counting.)
+        merge_pairs = self._merge_pairs(
+            fresh_auto,
+            env=env,
+            embedder=embedder,
+        )
 
         decay_reason = f"consolidate: decayed (stale > {int(stale_days)}d)"
-        merge_reason = "consolidate: merged (duplicate of an older lesson)"
         decayed = self._retire_consolidated(
             stale,
             reason=decay_reason,
@@ -1637,9 +1719,8 @@ class FleetBrain:
             summary=summary,
             env=env,
         )
-        merged = self._retire_consolidated(
-            merge_losers,
-            reason=merge_reason,
+        merged = self._merge_consolidated(
+            merge_pairs,
             dry_run=dry_run,
             lesson_forgetter=lesson_forgetter,
             summary=summary,
@@ -1647,6 +1728,16 @@ class FleetBrain:
         )
         summary["decayed"] = decayed
         summary["merged"] = merged
+
+        # Pressure/budget eviction (Phase 3): when the store has grown past the
+        # configured cap, invalidate the lowest-value lessons down to it. Purely
+        # store-level and reversible; a store without the capability is skipped.
+        summary["evicted"] = self._evict_to_cap(
+            dry_run=dry_run,
+            lesson_forgetter=lesson_forgetter,
+            summary=summary,
+            env=env,
+        )
         return summary
 
     def _retire_consolidated(
@@ -1719,6 +1810,164 @@ class FleetBrain:
             )
             retired += 1
         return retired
+
+    def _merge_pairs(
+        self,
+        fresh_auto: list[MemoryCandidate],
+        *,
+        env: Mapping[str, str] | None,
+        embedder: Embedder | None,
+    ) -> list[tuple[MemoryCandidate, str]]:
+        """Pair each duplicate loser with the surviving (oldest) lesson id.
+
+        Lexical duplicates (bodies that normalize to the same text) collapse
+        first; the survivor of each lexical set then feeds an OPTIONAL semantic
+        pass that also collapses near-duplicate survivors when the semantic switch
+        is armed AND an embedder is available. Both passes keep the OLDEST as the
+        survivor, so the same lesson is never re-merged. Returns ``(loser,
+        survivor_lesson_id)`` pairs; the survivor id is the recall-store key the
+        loser's provenance/anchors are unioned onto."""
+        semantic = bool(embedder) and consolidate_semantic_enabled(env)
+        threshold = consolidate_sim_threshold(env)
+        # Scope by (repo, codename): duplicates only collapse within one recall
+        # scope (see the caller's note).
+        by_scope: dict[tuple[str, str], list[MemoryCandidate]] = {}
+        for cand in fresh_auto:
+            by_scope.setdefault((cand.repo, cand.codename), []).append(cand)
+
+        pairs: list[tuple[MemoryCandidate, str]] = []
+        for scope_cands in by_scope.values():
+            # Lexical pass: keep the oldest per normalized body.
+            by_body: dict[str, list[MemoryCandidate]] = {}
+            for cand in scope_cands:
+                by_body.setdefault(_canonical_memory_body(cand.body), []).append(cand)
+            survivors: list[MemoryCandidate] = []
+            for group in by_body.values():
+                ordered = sorted(group, key=lambda c: (c.created_at, c.id))
+                survivor = ordered[0]
+                survivors.append(survivor)
+                survivor_id = str(survivor.promoted_lesson_id)
+                for loser in ordered[1:]:
+                    pairs.append((loser, survivor_id))
+            if not semantic or len(survivors) < 2:
+                continue
+            # Semantic pass over the lexical survivors: near-duplicate bodies that
+            # are not lexically identical still collapse to the oldest. ``embedder``
+            # is truthy here (guarded by ``semantic``).
+            assert embedder is not None
+            by_id = {s.id: s for s in survivors}
+            groups = _semantic_dup_groups([(s.id, s.body) for s in survivors], embedder, threshold)
+            for id_group in groups:
+                members = sorted((by_id[i] for i in id_group), key=lambda c: (c.created_at, c.id))
+                survivor = members[0]
+                survivor_id = str(survivor.promoted_lesson_id)
+                for loser in members[1:]:
+                    pairs.append((loser, survivor_id))
+        return pairs
+
+    def _merge_consolidated(
+        self,
+        pairs: list[tuple[MemoryCandidate, str]],
+        *,
+        dry_run: bool,
+        lesson_forgetter: Any | None,
+        summary: dict[str, Any],
+        env: Mapping[str, str] | None = None,
+    ) -> int:
+        """Merge each duplicate loser into its survivor, then retire the row.
+
+        When the recall store exposes ``merge_lesson`` (the SQLite hybrid does),
+        the loser's provenance and anchors are UNIONED onto the survivor and the
+        loser is INVALIDATED (``superseded_by``) rather than deleted, so the
+        surviving lesson keeps the full history and nothing is lost. A store
+        without that capability (Redis AMS) falls back to forgetting the loser,
+        exactly as the pre-Phase-3 merge did. A row is retired ONLY once the store
+        op confirms, mirroring the decay path. Dry-run reports the would-merge
+        count without writing."""
+        merge_reason = "consolidate: merged (duplicate of an older lesson)"
+        if dry_run:
+            return len(pairs)
+        if not pairs:
+            return 0
+        forgetter = lesson_forgetter
+        if forgetter is None:
+            try:
+                forgetter = self._lesson_provider(env)
+            except Exception:
+                summary["ams_forget_failed"] += len(pairs)
+                _LOG.exception("consolidate_lessons: could not build recall provider for merge")
+                return 0
+        if forgetter is None:
+            _LOG.debug("consolidate_lessons: runtime memory disabled; skipping merge")
+            return 0
+        can_union = hasattr(forgetter, "merge_lesson")
+        merged = 0
+        for loser, survivor_lesson_id in pairs:
+            loser_lesson_id = loser.promoted_lesson_id or _lesson_memory_id(loser.id)
+            summary["ams_forget_attempted"] += 1
+            ok = False
+            try:
+                if can_union and survivor_lesson_id:
+                    ok = bool(forgetter.merge_lesson(loser_lesson_id, survivor_lesson_id))
+                    if ok:
+                        summary["provenance_unioned"] += 1
+                else:
+                    ok = bool(forgetter.forget_lesson(loser_lesson_id))
+            except Exception:
+                _LOG.exception(
+                    "consolidate_lessons: recall merge failed for candidate %s",
+                    loser.id,
+                )
+            if not ok:
+                summary["ams_forget_failed"] += 1
+                continue
+            summary["ams_forgotten"] += 1
+            self.store.update_memory_candidate(
+                replace(
+                    loser,
+                    status="retired",
+                    reviewed_at=datetime.now(UTC),
+                    reviewed_by="consolidate",
+                    review_note=merge_reason,
+                    promoted_lesson_id=None,
+                )
+            )
+            merged += 1
+        return merged
+
+    def _evict_to_cap(
+        self,
+        *,
+        dry_run: bool,
+        lesson_forgetter: Any | None,
+        summary: dict[str, Any],
+        env: Mapping[str, str] | None = None,
+    ) -> int:
+        """Invalidate the lowest-value lessons down to ``ALFRED_MEMORY_MAX_LESSONS``.
+
+        Delegates to the recall store's ``evict_to_cap`` (the SQLite hybrid ranks
+        by the #452 value score and expires the lowest, invalidate-not-delete). A
+        store without that capability (Redis AMS) is skipped. Disabled when the
+        cap is unset or non-positive. Returns the number evicted (or, in dry-run,
+        the number that would be)."""
+        cap = max_lessons_cap(env)
+        if cap <= 0:
+            return 0
+        forgetter = lesson_forgetter
+        if forgetter is None:
+            try:
+                forgetter = self._lesson_provider(env)
+            except Exception:
+                _LOG.exception("consolidate_lessons: could not build recall provider for eviction")
+                return 0
+        if forgetter is None or not hasattr(forgetter, "evict_to_cap"):
+            return 0
+        try:
+            evicted = forgetter.evict_to_cap(max_lessons=cap, env=env, dry_run=dry_run)
+        except Exception:
+            _LOG.exception("consolidate_lessons: eviction failed")
+            return 0
+        return len(evicted) if evicted else 0
 
     def record_failure(
         self,
@@ -2806,6 +3055,77 @@ def _failure_action_summary(pattern: dict[str, Any]) -> str:
 
 def _canonical_memory_body(body: str) -> str:
     return " ".join((body or "").strip().lower().split())
+
+
+# Embedder contract shared with the SQLite hybrid dense arm: text -> vector, or
+# ``None`` when the embedder is unreachable. The semantic merge degrades to
+# lexical-only whenever this returns ``None`` for any body (so a down embedder is
+# never a hard failure).
+Embedder = Callable[[str], "list[float] | None"]
+
+
+def _cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
+    """Cosine similarity of two equal-length vectors in ``[-1, 1]``.
+
+    Returns ``0.0`` for a length mismatch or a zero-magnitude vector, so a
+    degenerate embedding never merges two lessons by accident."""
+    if len(a) != len(b) or not a:
+        return 0.0
+    dot = 0.0
+    na = 0.0
+    nb = 0.0
+    for x, y in zip(a, b, strict=False):
+        dot += x * y
+        na += x * x
+        nb += y * y
+    if na <= 0.0 or nb <= 0.0:
+        return 0.0
+    return dot / math.sqrt(na * nb)
+
+
+def _semantic_dup_groups(
+    items: list[tuple[str, str]],
+    embedder: Embedder,
+    threshold: float,
+) -> list[list[str]]:
+    """Greedy-cluster ``(id, body)`` pairs into semantic near-duplicate groups.
+
+    ``items`` are already scoped to one ``(repo, codename)`` bucket by the caller,
+    so proximity here means "the same lesson said two ways". Each body is embedded
+    once; a body is added to the first existing cluster whose seed it is within
+    ``threshold`` cosine of, else it seeds a new cluster. Any body the embedder
+    cannot embed is left as its own singleton (never merged on missing signal),
+    which is how the pass DEGRADES to lexical-only when embeddings are absent.
+
+    Returns only the multi-member groups (a singleton is not a duplicate),
+    preserving the input order of ``items`` both across and within groups so the
+    caller's "keep the oldest" choice stays deterministic."""
+    vectors: list[tuple[str, list[float] | None]] = []
+    for lesson_id, body in items:
+        try:
+            vec = embedder(body)
+        except Exception:
+            vec = None
+        vectors.append((lesson_id, vec if vec else None))
+
+    clusters: list[dict[str, Any]] = []
+    for lesson_id, vec in vectors:
+        if vec is None:
+            # No embedding signal: never fold it into another lesson.
+            clusters.append({"seed": None, "ids": [lesson_id]})
+            continue
+        placed = False
+        for cluster in clusters:
+            seed = cluster["seed"]
+            if seed is None:
+                continue
+            if _cosine_similarity(vec, seed) >= threshold:
+                cluster["ids"].append(lesson_id)
+                placed = True
+                break
+        if not placed:
+            clusters.append({"seed": vec, "ids": [lesson_id]})
+    return [c["ids"] for c in clusters if len(c["ids"]) > 1]
 
 
 def _bundle_slug_from_labels(labels: list[str]) -> str | None:

@@ -44,6 +44,11 @@ The schema deliberately mirrors the entity model documented in
   to another lesson (``supersedes``/``related``/``contradicts``). Unique on
   ``(lesson_id, anchor_type, anchor_ref, relation)`` so re-anchoring is
   idempotent.
+* ``lesson_reuse``: Phase 3 durable reinforce-on-reuse. One row per
+  ``(codename, repo, lesson-identity)`` scope key with the number of times
+  that lesson has been injected. Persists the ``#452`` reuse counter across
+  firings/processes (it lived only in-process before). Absent rows read back
+  as zero reuse, so ranking is unchanged until a lesson is actually reused.
 * ``schema_version`` - single-row record of the applied schema
   version, for forward migrations.
 
@@ -61,7 +66,7 @@ from typing import Final
 
 from .taxonomy import DEFAULT_LESSON_KIND
 
-SCHEMA_VERSION: Final[int] = 9
+SCHEMA_VERSION: Final[int] = 10
 
 # Each CREATE statement is a string in this tuple. We execute them
 # one at a time so a syntax error in one statement does not silently
@@ -261,6 +266,13 @@ _CREATE_STATEMENTS: Final[tuple[str, ...]] = (
         created_at  TEXT NOT NULL,
         UNIQUE (lesson_id, anchor_type, anchor_ref, relation),
         FOREIGN KEY (lesson_id) REFERENCES lessons(id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS lesson_reuse (
+        scope_key   TEXT    NOT NULL PRIMARY KEY,
+        reuse_count INTEGER NOT NULL DEFAULT 0,
+        updated_at  TEXT    NOT NULL
     )
     """,
     # Indexes - recall is read-heavy on (codename, repo) and recent-first,

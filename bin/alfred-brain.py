@@ -94,6 +94,7 @@ from fleet_brain import (  # noqa: E402
     FleetBrain,
     MemoryPromotionError,
     consolidate_enabled,
+    consolidate_semantic_enabled,
     default_db_path,
     direct_auto_promote_env,
 )
@@ -708,6 +709,24 @@ def cmd_stats(args: argparse.Namespace) -> int:
     return 0
 
 
+def _consolidate_embedder(env: dict[str, str] | None) -> Any:
+    """Build the dense embedder the semantic near-duplicate merge uses, or None.
+
+    Returns ``None`` when the semantic switch is disarmed, so the merge stays
+    lexical-only. When armed, it reuses the SAME embedder the SQLite hybrid dense
+    arm speaks (``mxbai-embed-large`` over local Ollama). If Ollama is unreachable
+    the embedder returns ``None`` per body and the merge transparently degrades to
+    lexical-only, so an armed switch with no embedding server is never a failure."""
+    if not consolidate_semantic_enabled(env):
+        return None
+    try:
+        from memory.sqlite_hybrid import _OllamaEmbedder
+
+        return _OllamaEmbedder.from_env(env or os.environ)
+    except Exception:
+        return None
+
+
 def cmd_consolidate(args: argparse.Namespace) -> int:
     """Periodic consolidation/decay pass (gated, off by default)."""
     # Honor the persisted opt-in the same way auto-promote does: load
@@ -724,6 +743,8 @@ def cmd_consolidate(args: argparse.Namespace) -> int:
             "dry_run": bool(args.dry_run),
             "decayed": 0,
             "merged": 0,
+            "provenance_unioned": 0,
+            "evicted": 0,
             "ams_forget_attempted": 0,
             "ams_forgotten": 0,
             "ams_forget_failed": 0,
@@ -739,6 +760,7 @@ def cmd_consolidate(args: argparse.Namespace) -> int:
         stale_days=args.stale_days,
         dry_run=args.dry_run,
         env=env_src,
+        embedder=_consolidate_embedder(env_src),
     )
     ams_failed = int(summary.get("ams_forget_failed") or 0)
     if args.json:
@@ -750,6 +772,8 @@ def cmd_consolidate(args: argparse.Namespace) -> int:
             "consolidate "
             f"enabled=true dry_run={summary.get('dry_run')} "
             f"decayed={summary.get('decayed')} merged={summary.get('merged')} "
+            f"provenance_unioned={summary.get('provenance_unioned', 0)} "
+            f"evicted={summary.get('evicted', 0)} "
             f"ams_forget_attempted={summary.get('ams_forget_attempted', 0)} "
             f"ams_forgotten={summary.get('ams_forgotten', 0)} "
             f"ams_forget_failed={ams_failed}"
