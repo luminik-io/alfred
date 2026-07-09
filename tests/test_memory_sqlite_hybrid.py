@@ -22,6 +22,8 @@ import pytest
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "lib"))
 
+import memory.sqlite_hybrid as mod  # noqa: E402
+from fleet_brain import FleetBrain, MemoryPromotionError  # noqa: E402
 from memory import MemoryProvider  # noqa: E402
 from memory.config import load_lesson_writer  # noqa: E402
 from memory.redis_agent_memory import RedisAgentMemoryProvider  # noqa: E402
@@ -294,3 +296,86 @@ def test_from_env_reads_knobs(tmp_path: Path) -> None:
     assert prov.pool == 7
     assert prov.dense is False
     assert prov.embedder is None
+
+
+# ---------------------------------------------------------------------------
+# Disabled memory writes nothing (Greptile P1: "Disabled Memory Still Writes")
+# ---------------------------------------------------------------------------
+
+
+def test_lesson_writer_is_none_when_memory_disabled() -> None:
+    # ALFRED_MEMORY_PROVIDERS=null (or empty) disables runtime memory, so there
+    # is no writer and the promote path must not fall back to a SQLite file.
+    assert load_lesson_writer(env={"ALFRED_MEMORY_PROVIDERS": "null"}) is None
+    assert load_lesson_writer(env={"ALFRED_MEMORY_PROVIDERS": ""}) is None
+    assert load_lesson_writer(env={"ALFRED_MEMORY_PROVIDERS": " , "}) is None
+
+
+def test_promotion_is_a_noop_when_memory_disabled(tmp_path: Path) -> None:
+    brain = FleetBrain(db_path=tmp_path / "brain.db")
+    cand = brain.propose_memory(
+        codename="c", repo="r", body="a lesson", evidence="saw it", confidence=0.9
+    )
+    # With memory disabled the promote is a no-op: nothing is written and the
+    # candidate stays pending (re-promotable) rather than flipping to validated.
+    with pytest.raises(MemoryPromotionError):
+        brain.promote_memory_candidate(cand.id, env={"ALFRED_MEMORY_PROVIDERS": "null"})
+    still = brain.store.get_memory_candidate(cand.id)
+    assert still is not None and still.status == "candidate"
+    # No hybrid store file was created as a side effect of the disabled promote.
+    assert not (tmp_path / "memory-hybrid.db").exists()
+
+
+# ---------------------------------------------------------------------------
+# Tag recall under the LIKE fallback (Greptile P1: "Tag Recall Drops Without FTS")
+# ---------------------------------------------------------------------------
+
+
+def test_tag_only_match_recalled_under_like_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Force the no-FTS5 build: the provider must still recall a lesson whose only
+    # match is a tag, mirroring what the FTS arm indexes (body + tags).
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    prov = SqliteHybridProvider(db_path=Path(":memory:"))
+    prov.reflect(
+        codename="c",
+        repo="r",
+        body="deploy pipeline runbook",  # body does NOT contain the tag token
+        tags=["graphql"],
+    )
+    assert prov.health()["lexical"] == "like"
+    out = prov.recall(query="graphql", codename="c", repo="r")
+    assert out and out[0].tags == ["graphql"]
+
+
+# ---------------------------------------------------------------------------
+# Scoped dense results not truncated (Greptile P1: "Scoped Dense Results Are
+# Truncated") -- requires the optional sqlite-vec extension.
+# ---------------------------------------------------------------------------
+
+
+def test_dense_in_scope_vector_not_truncated_by_closer_out_of_scope() -> None:
+    pytest.importorskip("sqlite_vec")
+
+    # The query embeds onto the filler vector, so the global nearest neighbours
+    # are all out-of-scope fillers. With pool=2 the old "top-k then filter"
+    # approach dropped the single in-scope vector entirely; the over-fetch loop
+    # must still surface it.
+    def _embed(text: str) -> list[float]:
+        if "scope-target" in text.lower():
+            return [0.9, 0.1, 0.0, 0.0]
+        return [1.0, 0.0, 0.0, 0.0]
+
+    prov = SqliteHybridProvider(
+        db_path=Path(":memory:"), dense=True, dimensions=4, embedder=_embed, pool=2
+    )
+    for i in range(5):
+        prov.reflect(codename="other", repo="r", body=f"filler note {i}")
+    target = prov.reflect(codename="lucius", repo="r", body="scope-target note")
+
+    # Query text has no lexical overlap with any body, so only the dense arm
+    # contributes; it must return the in-scope target despite five closer
+    # out-of-scope vectors.
+    out = prov.recall(query="unrelated lookup phrase", codename="lucius", repo="r")
+    assert target.id in {L.id for L in out}

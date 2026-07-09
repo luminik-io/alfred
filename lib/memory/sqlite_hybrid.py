@@ -575,13 +575,22 @@ class SqliteHybridProvider:
                 return [r[0] for r in rows]
             except sqlite3.OperationalError as exc:
                 _LOG.debug("memory.sqlite: FTS query failed, falling back to LIKE: %s", exc)
-        # LIKE fallback: any-token substring match, most-recent first.
-        like_sql = " OR ".join("l.body LIKE ?" for _ in tokens)
+        # LIKE fallback (SQLite build without FTS5): any-token substring match,
+        # most-recent first. Match the SAME body+tags surface the FTS arm indexes
+        # via _fts_text(), so a tag-only hit is still recalled here. Tags are
+        # stored as a JSON array in tags_json, so a token like "graphql" matches
+        # the serialized '["graphql", ...]'.
+        like_params: list[Any] = []
+        clauses: list[str] = []
+        for tok in tokens:
+            clauses.append("(l.body LIKE ? OR l.tags_json LIKE ?)")
+            like_params.extend([f"%{tok}%", f"%{tok}%"])
+        like_sql = " OR ".join(clauses)
         sql = (
             f"SELECT l.id FROM lessons l WHERE ({like_sql}) {scope_sql} "
             "ORDER BY l.created_at DESC LIMIT ?"
         )
-        params = [*[f"%{t}%" for t in tokens], *scope_params, self.pool]
+        params = [*like_params, *scope_params, self.pool]
         rows = conn.execute(sql, params).fetchall()
         return [r[0] for r in rows]
 
@@ -598,20 +607,51 @@ class SqliteHybridProvider:
         vec = self.embedder(text)
         if not vec or len(vec) != int(self.dimensions):
             return []
+        serialized = _serialize_vector(vec)
+        want = self.pool
+        scoped = bool(codename or repo)
+        if not scoped:
+            return self._knn(conn, serialized, limit=want)
+        # Scoped recall. The vec0 KNN limit is GLOBAL: taking the top `want`
+        # nearest vectors first and filtering by scope afterwards would drop
+        # in-scope vectors whenever enough out-of-scope vectors rank closer. So
+        # grow the KNN window until we have `want` in-scope hits or we have
+        # pulled every stored vector (an upper bound from the lessons count), so
+        # the scope filter can never truncate away a relevant in-scope vector.
+        (total,) = conn.execute("SELECT COUNT(*) FROM lessons").fetchone()
+        total = max(1, int(total))
+        k = min(total, max(want * 4, want))
+        while True:
+            candidate_ids = self._knn(conn, serialized, limit=k)
+            if not candidate_ids:
+                return []
+            in_scope = self._filter_scope(conn, candidate_ids, codename=codename, repo=repo)
+            if len(in_scope) >= want or k >= total:
+                return in_scope[:want]
+            k = min(total, k * 2)
+
+    def _knn(self, conn: sqlite3.Connection, serialized: Any, *, limit: int) -> list[str]:
         try:
             rows = conn.execute(
                 "SELECT lesson_id FROM lessons_vec "
                 "WHERE embedding MATCH ? ORDER BY distance LIMIT ?",
-                (_serialize_vector(vec), self.pool),
+                (serialized, max(1, int(limit))),
             ).fetchall()
         except Exception as exc:
             _LOG.debug("memory.sqlite: dense KNN failed: %s", exc)
             return []
-        candidate_ids = [r[0] for r in rows]
-        if not candidate_ids or not (codename or repo):
-            return candidate_ids
-        # vec0 KNN cannot filter on scope columns; narrow in Python, preserving
-        # the KNN order.
+        return [r[0] for r in rows]
+
+    def _filter_scope(
+        self,
+        conn: sqlite3.Connection,
+        candidate_ids: list[str],
+        *,
+        codename: str | None,
+        repo: str | None,
+    ) -> list[str]:
+        # vec0 KNN cannot filter on scope columns, so narrow in Python while
+        # preserving the KNN (distance) order.
         scope_sql, scope_params = _scope_clause(codename, repo, alias="l")
         placeholders = ",".join("?" for _ in candidate_ids)
         allowed = {

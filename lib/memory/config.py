@@ -158,7 +158,7 @@ def load_provider(env: Mapping[str, str] | None = None) -> MemoryProvider:
     return build_chain(names, env=envmap)
 
 
-def load_lesson_writer(env: Mapping[str, str] | None = None) -> MemoryProvider:
+def load_lesson_writer(env: Mapping[str, str] | None = None) -> MemoryProvider | None:
     """Build the promoted-lesson WRITE backend from the configured chain.
 
     The capture->judge->promote pipeline (in :mod:`fleet_brain`) writes a
@@ -170,19 +170,30 @@ def load_lesson_writer(env: Mapping[str, str] | None = None) -> MemoryProvider:
     Resolution honours ``ALFRED_MEMORY_PROVIDERS`` so the writer always aligns
     with what recall reads:
 
+    * memory DISABLED (``ALFRED_MEMORY_PROVIDERS`` empty, or only ``null``) ->
+      returns ``None``. Runtime memory is off, so nothing is written: the
+      promote path is a no-op and does not silently persist lessons to disk;
     * default (unset) -> the embedded SQLite hybrid store (zero-daemon);
     * ``redis,fleet`` -> Redis AMS, unchanged from earlier releases;
     * the FIRST recall store named in the chain wins when several are present.
 
-    If the chain names NO recall store (e.g. ``fleet`` or ``null`` only), the
-    promoted lesson still needs a durable home, so this falls back to the
-    embedded SQLite store: a local, daemon-free floor that never silently loses
-    a promotion. Construction errors propagate to the caller, which treats them
-    as a retryable promotion failure (the candidate stays pending).
+    If memory is ENABLED but the chain names NO recall store (e.g. ``fleet``
+    only), the promoted lesson still needs a durable home, so this falls back to
+    the embedded SQLite store: a local, daemon-free floor that never silently
+    loses a promotion. Construction errors propagate to the caller, which treats
+    them as a retryable promotion failure (the candidate stays pending).
     """
     envmap = env if env is not None else os.environ
     raw = envmap.get("ALFRED_MEMORY_PROVIDERS")
-    names = list(DEFAULT_PROVIDER_NAMES) if raw is None else parse_provider_names(raw)
+    if raw is None:
+        names = list(DEFAULT_PROVIDER_NAMES)
+    else:
+        names = parse_provider_names(raw)
+        # Memory explicitly disabled (empty list, or only the ``null`` no-op):
+        # no writer, so promotion writes nothing. Mirrors ``load_provider``
+        # returning ``NullMemoryProvider`` for the same input.
+        if not names or all(name == "null" for name in names):
+            return None
     for name in names:
         if name in LESSON_STORE_NAMES:
             factory = PROVIDER_REGISTRY.get(name)

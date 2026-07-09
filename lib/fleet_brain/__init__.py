@@ -874,6 +874,15 @@ class FleetBrain:
         try:
             if lesson_writer is None:
                 lesson_writer = self._lesson_provider(env=env)
+            if lesson_writer is None:
+                # Runtime memory is disabled (ALFRED_MEMORY_PROVIDERS=null or
+                # empty): there is no recall store to write to, so promotion is a
+                # no-op. Leave the candidate pending rather than flipping it to
+                # validated with no durable lesson behind it.
+                raise MemoryPromotionError(
+                    "promote_memory_candidate: runtime memory is disabled "
+                    "(no lesson writer configured); nothing was written."
+                )
             lesson = lesson_writer.reflect(
                 codename=candidate.codename,
                 repo=candidate.repo,
@@ -883,6 +892,10 @@ class FleetBrain:
                 severity=candidate.severity,
                 memory_id=_lesson_memory_id(candidate.id),
             )
+        except MemoryPromotionError:
+            # Already the retryable, candidate-stays-pending signal; do not
+            # re-wrap it (that would bury the disabled-memory message).
+            raise
         except Exception as exc:
             _LOG.exception(
                 "promote_memory_candidate: AMS lesson write failed for "
