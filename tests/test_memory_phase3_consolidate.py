@@ -41,7 +41,11 @@ from fleet_brain import (  # noqa: E402
     max_lessons_cap,
     new_id,
 )
-from memory.providers import ChainedMemoryProvider, FleetBrainProvider  # noqa: E402
+from memory.providers import (  # noqa: E402
+    ChainedMemoryProvider,
+    FleetBrainProvider,
+    NullMemoryProvider,
+)
 from memory.sqlite_hybrid import SqliteHybridProvider, _union_provenance  # noqa: E402
 
 ARM = {"ALFRED_MEMORY_CONSOLIDATE": "1"}
@@ -485,6 +489,45 @@ def test_consolidate_lexical_merge_falls_back_to_forget(tmp_path: Path) -> None:
     assert summary["provenance_unioned"] == 0  # no union capability -> forget path
     assert _lesson_id(dup) in store.forgotten
     assert _lesson_id(keep) not in store.forgotten
+
+
+@pytest.mark.parametrize("force_fts_off", _fts_variants())
+def test_consolidate_merge_unwraps_chain_to_union_capable_store(
+    tmp_path: Path, force_fts_off: bool
+) -> None:
+    """A merge-capable SQLite store nested in a chain must be used, not bypassed.
+
+    Regression for the wrapped-provider orphan: a shallow hasattr on the chain
+    would miss the nested store, fall back to forget, and orphan the loser's
+    persisted reuse. Here the union-capable store is NOT even the first chain
+    member, so the walk must unwrap to reach it."""
+    hybrid = SqliteHybridProvider(db_path=Path(":memory:"))
+    if force_fts_off:
+        hybrid._fts_ok = False
+    brain = _brain_with(hybrid, tmp_path)
+    older = datetime.now(UTC) - timedelta(days=3)
+    newer = datetime.now(UTC) - timedelta(days=1)
+    keep = _promote_auto(brain, "Same body.", created_at=older)  # lexical dup pair
+    dup = _promote_auto(brain, "same body.", created_at=newer)
+    keep_lid, dup_lid = _lesson_id(keep), _lesson_id(dup)
+    # Reinforce both lessons in the store, then reuse gets unioned on merge.
+    keep_key = memory_ranking.scope_key(lesson_id=keep_lid, codename="lucius", repo="acme/api")
+    dup_key = memory_ranking.scope_key(lesson_id=dup_lid, codename="lucius", repo="acme/api")
+    hybrid.bump_reuse_counts([keep_key, keep_key])  # survivor reused 2x
+    hybrid.bump_reuse_counts([dup_key, dup_key, dup_key])  # loser reused 3x
+
+    # The union-capable hybrid is the SECOND member, behind a no-op provider.
+    chain = ChainedMemoryProvider(providers=[NullMemoryProvider(), hybrid])
+    summary = brain.consolidate_lessons(env=ARM, lesson_forgetter=chain)
+
+    assert summary["merged"] == 1
+    assert summary["provenance_unioned"] == 1  # union path, NOT the orphaning forget
+    # Loser is invalidated in the nested store, not deleted.
+    assert _raw_lesson(hybrid, dup_lid)["superseded_by"] == keep_lid
+    # Reuse was unioned onto the survivor and the loser's row cleaned up.
+    assert hybrid.get_reuse_count(keep_key) == 5
+    assert hybrid.get_reuse_count(dup_key) == 0
+    assert brain.store.get_memory_candidate(dup).status == "retired"  # type: ignore[union-attr]
 
 
 def test_consolidate_eviction_wired_to_provider(tmp_path: Path) -> None:

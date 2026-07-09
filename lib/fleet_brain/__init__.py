@@ -48,7 +48,7 @@ import logging
 import math
 import os
 import re
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import asdict, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -1884,14 +1884,17 @@ class FleetBrain:
     ) -> int:
         """Merge each duplicate loser into its survivor, then retire the row.
 
-        When the recall store exposes ``merge_lesson`` (the SQLite hybrid does),
-        the loser's provenance and anchors are UNIONED onto the survivor and the
-        loser is INVALIDATED (``superseded_by``) rather than deleted, so the
-        surviving lesson keeps the full history and nothing is lost. A store
-        without that capability (Redis AMS) falls back to forgetting the loser,
-        exactly as the pre-Phase-3 merge did. A row is retired ONLY once the store
-        op confirms, mirroring the decay path. Dry-run reports the would-merge
-        count without writing."""
+        When a member of the recall store exposes ``merge_lesson`` (the SQLite
+        hybrid does), the loser's provenance, anchors, and durable reuse are
+        UNIONED onto the survivor and the loser is INVALIDATED (``superseded_by``)
+        rather than deleted, so the surviving lesson keeps the full history and
+        nothing is lost. The capability is found by UNWRAPPING the provider: a
+        union-capable store nested inside a ``ChainedMemoryProvider`` (e.g. the
+        default ``sqlite,fleet`` chain) is still used for the merge. Only when NO
+        member anywhere in the chain supports it (e.g. a Redis-only chain) does it
+        fall back to forgetting the loser, exactly as the pre-Phase-3 merge did.
+        A row is retired ONLY once the store op confirms, mirroring the decay
+        path. Dry-run reports the would-merge count without writing."""
         merge_reason = "consolidate: merged (duplicate of an older lesson)"
         if dry_run:
             return len(pairs)
@@ -1908,19 +1911,22 @@ class FleetBrain:
         if forgetter is None:
             _LOG.debug("consolidate_lessons: runtime memory disabled; skipping merge")
             return 0
-        can_union = hasattr(forgetter, "merge_lesson")
+        # Unwrap the chain/wrapper: the union-capable store (and the forget target)
+        # may be nested inside a ChainedMemoryProvider, not the top-level object.
+        merger = _first_member_with(forgetter, "merge_lesson")
+        forget_target = _first_member_with(forgetter, "forget_lesson")
         merged = 0
         for loser, survivor_lesson_id in pairs:
             loser_lesson_id = loser.promoted_lesson_id or _lesson_memory_id(loser.id)
             summary["ams_forget_attempted"] += 1
             ok = False
             try:
-                if can_union and survivor_lesson_id:
-                    ok = bool(forgetter.merge_lesson(loser_lesson_id, survivor_lesson_id))
+                if merger is not None and survivor_lesson_id:
+                    ok = bool(merger.merge_lesson(loser_lesson_id, survivor_lesson_id))
                     if ok:
                         summary["provenance_unioned"] += 1
-                else:
-                    ok = bool(forgetter.forget_lesson(loser_lesson_id))
+                elif forget_target is not None:
+                    ok = bool(forget_target.forget_lesson(loser_lesson_id))
             except Exception:
                 _LOG.exception(
                     "consolidate_lessons: recall merge failed for candidate %s",
@@ -3070,6 +3076,44 @@ def _canonical_memory_body(body: str) -> str:
 # lexical-only whenever this returns ``None`` for any body (so a down embedder is
 # never a hard failure).
 Embedder = Callable[[str], "list[float] | None"]
+
+
+def _provider_members(provider: Any) -> Iterator[Any]:
+    """Yield ``provider`` and every nested member, breadth-first, each once.
+
+    A recall provider may be a plain store, a wrapper that holds a
+    ``FleetBrain`` (``.brain``), or a ``ChainedMemoryProvider`` (``.providers``)
+    that itself nests either. Breadth-first from the top so an outer member is
+    visited before the members it wraps, and chain order is preserved. Used to
+    reach a capability (e.g. ``merge_lesson``) that lives on a store nested inside
+    the wrapper/chain, not on the wrapper itself."""
+    seen: set[int] = set()
+    queue: list[Any] = [provider]
+    while queue:
+        obj = queue.pop(0)
+        if obj is None or id(obj) in seen:
+            continue
+        seen.add(id(obj))
+        yield obj
+        brain = getattr(obj, "brain", None)
+        if brain is not None:
+            queue.append(brain)
+        members = getattr(obj, "providers", None)
+        if members:
+            queue.extend(members)
+
+
+def _first_member_with(provider: Any, attr: str) -> Any | None:
+    """First member of ``provider`` (unwrapping chain/wrapper) with callable ``attr``.
+
+    Returns ``None`` when no member anywhere in the chain exposes the capability,
+    so a caller can fall back cleanly (e.g. a Redis-only chain has no
+    ``merge_lesson`` member and falls back to a plain forget)."""
+    for member in _provider_members(provider):
+        fn = getattr(member, attr, None)
+        if callable(fn):
+            return member
+    return None
 
 
 def _cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
