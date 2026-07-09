@@ -575,17 +575,18 @@ def test_planner_in_prompt_cap_detected_via_same_sentinel(monkeypatch, tmp_path)
 
 
 class _PresetSpend:
-    """SpendState double preloaded with a streak; records set() calls."""
+    """SpendState double preloaded with a streak; records set()/increment()."""
 
     def __init__(self, *a, **kw):
         self.state = {"consecutive_failures": 3, "turns_today": 0, "reviews_posted": 0}
         self.sets: list[dict] = []
+        self.increments: list[dict] = []
 
     def is_blocked(self):
         return None
 
     def increment(self, **kw):
-        pass
+        self.increments.append(kw)
 
     def set(self, **kw):
         self.sets.append(kw)
@@ -652,6 +653,26 @@ def test_test_engineer_bug_found_resets_streak(monkeypatch, tmp_path):
     )
     assert spend.state["consecutive_failures"] == 0
     assert {"consecutive_failures": 0} in spend.sets
+
+
+def test_test_engineer_bug_found_filing_failure_advances_streak(monkeypatch, tmp_path):
+    def _extra(bane):
+        # `gh issue create` fails: the bug was found but never filed, so the
+        # healthy action did not complete. This is a failed firing.
+        monkeypatch.setattr(
+            bane,
+            "run",
+            lambda *a, **kw: SimpleNamespace(returncode=1, stdout="", stderr="gh: HTTP 500"),
+        )
+
+    spend = _drive_test_engineer_healthy(
+        monkeypatch, tmp_path, "[BUG-FOUND] null deref in foo", extra=_extra
+    )
+    # Reaching the [BUG-FOUND] branch is not enough: filing failed, so the
+    # streak advances and is NOT cleared.
+    assert {"failures_today": 1, "consecutive_failures": 1} in spend.increments
+    assert {"consecutive_failures": 0} not in spend.sets
+    assert spend.state["consecutive_failures"] == 3
 
 
 def test_reviewer_pr_stale_resets_streak(monkeypatch, tmp_path):

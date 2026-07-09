@@ -373,8 +373,22 @@ def main() -> int:
         )
         if res.returncode == 0:
             issue_url = (res.stdout or "").strip().splitlines()[-1]
-        # Healthy outcome: the engine did its job and filed a bug for triage.
-        # Clear the streak so this healthy firing does not carry a stale count.
+        if not issue_url:
+            # The bug was found but `gh issue create` failed, so nothing was
+            # actually recorded. Reaching the healthy branch is not enough: the
+            # healthy action failed, so this is a FAILED firing. Advance the
+            # streak instead of clearing it.
+            spend.increment(failures_today=1, consecutive_failures=1)
+            msg = (
+                f"[{AGENT.upper()}-BUG-FILE-FAILED] {repo}: bug found but filing the issue failed. "
+                f"engine={engine_used} turns={result.num_turns}. {short(res.stderr or res.stdout, 200)}"
+            )
+            print(msg)
+            slack_post(msg, severity="warn")
+            events.emit("firing_complete", outcome="bug-file-failed")
+            return 0
+        # Healthy outcome: the bug was actually filed for triage. Clear the
+        # streak so this healthy firing does not carry a stale count.
         spend.set(consecutive_failures=0)
         msg = f"🐛 {AGENT.title()} {repo}: bug found, filed {issue_url}. engine={engine_used} turns={result.num_turns}"
         print(msg)
