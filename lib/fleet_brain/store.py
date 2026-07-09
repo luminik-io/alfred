@@ -519,6 +519,8 @@ class Store(Protocol):
 
     def bump_reuse_counts(self, scope_keys: Sequence[str]) -> None: ...
 
+    def union_reuse_counts(self, survivor_key: str, loser_key: str) -> None: ...
+
 
 # ---------------------------------------------------------------------------
 # SQLite implementation.
@@ -928,6 +930,37 @@ class SQLiteStore:
                 "  reuse_count = reuse_count + 1, updated_at = excluded.updated_at",
                 [(key, now) for key in keys],
             )
+
+    def union_reuse_counts(self, survivor_key: str, loser_key: str) -> None:
+        """Move the loser scope key's reuse count onto the survivor, then drop it.
+
+        Keeps reinforce-on-reuse whole across a merge: ``survivor += loser`` and
+        the loser's orphaned row is deleted so nothing dangles on the invalidated
+        key. Idempotent and a no-op when the loser has no reuse row or the keys
+        are blank/identical.
+        """
+        s_key = (survivor_key or "").strip()
+        l_key = (loser_key or "").strip()
+        if not s_key or not l_key or s_key == l_key:
+            return
+        now = _to_iso(datetime.now(UTC))
+        with self._connect() as conn, conn:
+            row = conn.execute(
+                "SELECT reuse_count FROM lesson_reuse WHERE scope_key = ?", (l_key,)
+            ).fetchone()
+            loser_count = int(row[0]) if row and row[0] else 0
+            if loser_count <= 0:
+                conn.execute("DELETE FROM lesson_reuse WHERE scope_key = ?", (l_key,))
+                return
+            conn.execute(
+                "INSERT INTO lesson_reuse (scope_key, reuse_count, updated_at) "
+                "VALUES (?, ?, ?) "
+                "ON CONFLICT (scope_key) DO UPDATE SET "
+                "  reuse_count = reuse_count + excluded.reuse_count, "
+                "  updated_at = excluded.updated_at",
+                (s_key, loser_count, now),
+            )
+            conn.execute("DELETE FROM lesson_reuse WHERE scope_key = ?", (l_key,))
 
     def lessons_for_anchor(
         self,

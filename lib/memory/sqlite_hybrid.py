@@ -957,10 +957,10 @@ class SqliteHybridProvider:
         now = _iso(datetime.now(UTC))
         with self._connect() as conn, conn:
             survivor_row = conn.execute(
-                "SELECT provenance FROM lessons WHERE id = ?", (survivor,)
+                "SELECT provenance, codename, repo FROM lessons WHERE id = ?", (survivor,)
             ).fetchone()
             loser_row = conn.execute(
-                "SELECT provenance FROM lessons WHERE id = ?", (loser,)
+                "SELECT provenance, codename, repo FROM lessons WHERE id = ?", (loser,)
             ).fetchone()
             if survivor_row is None or loser_row is None:
                 return False
@@ -971,6 +971,20 @@ class SqliteHybridProvider:
                 "UPDATE lessons SET provenance = ? WHERE id = ?",
                 (merged_provenance, survivor),
             )
+            # Union durable reuse: the loser's accumulated reinforce-on-reuse count
+            # moves onto the survivor and its now-orphaned row is deleted, so a
+            # heavily-reused lesson keeps its weight through a merge (ranking and
+            # eviction score the survivor, not the invalidated loser). Keys are
+            # built the SAME way the reinforce path wrote them.
+            from agent_runner import memory_ranking
+
+            survivor_key = memory_ranking.scope_key(
+                lesson_id=survivor, codename=survivor_row[1], repo=survivor_row[2]
+            )
+            loser_key = memory_ranking.scope_key(
+                lesson_id=loser, codename=loser_row[1], repo=loser_row[2]
+            )
+            _union_reuse_on_conn(conn, survivor_key=survivor_key, loser_key=loser_key, now=now)
             # Union anchors: copy every one of the loser's links onto the survivor
             # (idempotent), so the survivor is grounded to all the code entities
             # both copies were about.
@@ -1107,6 +1121,50 @@ class SqliteHybridProvider:
                 "  reuse_count = reuse_count + 1, updated_at = excluded.updated_at",
                 [(key, now) for key in keys],
             )
+
+    def union_reuse_counts(self, survivor_key: str, loser_key: str) -> None:
+        """Move the loser scope key's reuse count onto the survivor, then drop it.
+
+        Keeps reinforce-on-reuse whole across a merge: ``survivor += loser`` and
+        the loser's orphaned row is deleted so nothing dangles on the invalidated
+        key. Idempotent and a no-op when the loser has no reuse row."""
+        with self._connect() as conn, conn:
+            _union_reuse_on_conn(
+                conn,
+                survivor_key=survivor_key,
+                loser_key=loser_key,
+                now=_iso(datetime.now(UTC)),
+            )
+
+
+def _union_reuse_on_conn(
+    conn: sqlite3.Connection, *, survivor_key: str, loser_key: str, now: str
+) -> None:
+    """Add the loser key's reuse count onto the survivor and delete the loser row.
+
+    Operates on an open connection so a merge can do it inside its own
+    transaction. No-op when the keys are blank/identical or the loser has no
+    persisted reuse to move."""
+    s_key = (survivor_key or "").strip()
+    l_key = (loser_key or "").strip()
+    if not s_key or not l_key or s_key == l_key:
+        return
+    row = conn.execute(
+        "SELECT reuse_count FROM lesson_reuse WHERE scope_key = ?", (l_key,)
+    ).fetchone()
+    loser_count = int(row[0]) if row and row[0] else 0
+    if loser_count <= 0:
+        # Still clean up a stray zero-count loser row if one somehow exists.
+        conn.execute("DELETE FROM lesson_reuse WHERE scope_key = ?", (l_key,))
+        return
+    conn.execute(
+        "INSERT INTO lesson_reuse (scope_key, reuse_count, updated_at) "
+        "VALUES (?, ?, ?) "
+        "ON CONFLICT (scope_key) DO UPDATE SET "
+        "  reuse_count = reuse_count + excluded.reuse_count, updated_at = excluded.updated_at",
+        (s_key, loser_count, now),
+    )
+    conn.execute("DELETE FROM lesson_reuse WHERE scope_key = ?", (l_key,))
 
 
 def _union_provenance(survivor: str | None, loser: str | None) -> str | None:

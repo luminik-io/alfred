@@ -176,6 +176,79 @@ def test_merge_lesson_noops_on_bad_ids() -> None:
     assert provider.merge_lesson("missing", "solo") is False
 
 
+@pytest.mark.parametrize("force_fts_off", _fts_variants())
+def test_merge_lesson_unions_reuse_and_clears_loser(force_fts_off: bool) -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    if force_fts_off:
+        provider._fts_ok = False
+    survivor = provider.reflect(codename="c", repo="r", body="keep body", memory_id="keep")
+    loser = provider.reflect(codename="c", repo="r", body="dup body", memory_id="dup")
+    survivor_key = memory_ranking.lesson_key(survivor, codename="c", repo="r")
+    loser_key = memory_ranking.lesson_key(loser, codename="c", repo="r")
+    # Survivor reused 2x, loser reused 3x.
+    provider.bump_reuse_counts([survivor_key, survivor_key])
+    provider.bump_reuse_counts([loser_key, loser_key, loser_key])
+
+    assert provider.merge_lesson(loser.id, survivor.id) is True
+
+    # Survivor now carries M + N (2 + 3); the loser's orphaned row is gone.
+    assert provider.get_reuse_count(survivor_key) == 5
+    assert provider.get_reuse_count(loser_key) == 0
+    with provider._connect() as conn:
+        (rows,) = conn.execute(
+            "SELECT COUNT(*) FROM lesson_reuse WHERE scope_key = ?", (loser_key,)
+        ).fetchone()
+    assert rows == 0
+
+
+def test_merge_lesson_reuse_union_when_survivor_has_none() -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    survivor = provider.reflect(codename="c", repo="r", body="keep", memory_id="keep")
+    loser = provider.reflect(codename="c", repo="r", body="dup", memory_id="dup")
+    survivor_key = memory_ranking.lesson_key(survivor, codename="c", repo="r")
+    loser_key = memory_ranking.lesson_key(loser, codename="c", repo="r")
+    provider.bump_reuse_counts([loser_key, loser_key])  # only the loser was reused
+
+    assert provider.merge_lesson(loser.id, survivor.id) is True
+
+    assert provider.get_reuse_count(survivor_key) == 2
+    assert provider.get_reuse_count(loser_key) == 0
+
+
+def test_fleet_store_union_reuse_counts_moves_and_clears() -> None:
+    brain = FleetBrain(db_path=Path(":memory:"))
+    brain.bump_reuse_counts(["survivor", "survivor"])
+    brain.bump_reuse_counts(["loser", "loser", "loser"])
+
+    brain.union_reuse_counts("survivor", "loser")
+
+    assert brain.get_reuse_count("survivor") == 5
+    assert brain.get_reuse_count("loser") == 0
+
+
+def test_union_reuse_counts_noop_on_bad_keys() -> None:
+    brain = FleetBrain(db_path=Path(":memory:"))
+    brain.bump_reuse_counts(["a"])
+    brain.union_reuse_counts("a", "a")  # identical -> no-op
+    brain.union_reuse_counts("a", "")  # blank loser -> no-op
+    assert brain.get_reuse_count("a") == 1
+
+
+def test_scope_key_matches_lesson_key_by_id() -> None:
+    lesson = Lesson(
+        id="L9",
+        codename="c",
+        repo="r",
+        body="b",
+        tags=[],
+        created_at=datetime.now(UTC),
+        firing_id=None,
+    )
+    assert memory_ranking.scope_key(lesson_id="L9", codename="c", repo="r") == (
+        memory_ranking.lesson_key(lesson, codename="c", repo="r")
+    )
+
+
 # ---------------------------------------------------------------------------
 # SQLite hybrid: pressure/budget eviction by value (item 3)
 # ---------------------------------------------------------------------------

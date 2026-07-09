@@ -695,6 +695,14 @@ class FleetBrain:
         """Increment the persisted reuse count for each scope key by one."""
         self.store.bump_reuse_counts(scope_keys)
 
+    def union_reuse_counts(self, survivor_key: str, loser_key: str) -> None:
+        """Move the loser scope key's reuse count onto the survivor, then drop it.
+
+        The reuse counterpart to the provenance/anchor union at merge time: a
+        merged-away lesson's accumulated reuse is added to the survivor and its
+        orphaned row deleted, so the survivor keeps the full reinforcement."""
+        self.store.union_reuse_counts(survivor_key, loser_key)
+
     def lessons_for_anchor(
         self,
         *,

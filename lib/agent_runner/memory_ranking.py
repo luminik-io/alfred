@@ -361,11 +361,19 @@ def lesson_key(lesson: Any, *, codename: str | None = None, repo: str | None = N
     scope_repo = str(repo if repo is not None else getattr(lesson, "repo", "") or "")
     lesson_id = getattr(lesson, "id", None)
     if lesson_id:
-        ident = f"id:{lesson_id}"
-    else:
-        body = " ".join(str(getattr(lesson, "body", "") or "").split()).strip().casefold()
-        ident = f"body:{body}"
-    return f"{scope_codename}{_KEY_SEP}{scope_repo}{_KEY_SEP}{ident}"
+        return scope_key(lesson_id=str(lesson_id), codename=scope_codename, repo=scope_repo)
+    body = " ".join(str(getattr(lesson, "body", "") or "").split()).strip().casefold()
+    return f"{scope_codename}{_KEY_SEP}{scope_repo}{_KEY_SEP}body:{body}"
+
+
+def scope_key(*, lesson_id: str, codename: str | None, repo: str | None) -> str:
+    """The reuse scope key for a lesson known by id + its ``codename``/``repo``.
+
+    The by-id branch of :func:`lesson_key`, exposed so a store that only holds the
+    lesson id (the consolidation merge, eviction) builds the EXACT same key the
+    reinforce path wrote, guaranteeing a merged/evicted lesson's persisted reuse
+    is addressed by the identical key."""
+    return f"{codename or '':s}{_KEY_SEP}{repo or '':s}{_KEY_SEP}id:{lesson_id}"
 
 
 def reuse_count(lesson: Any, *, codename: str | None = None, repo: str | None = None) -> int:
