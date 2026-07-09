@@ -129,6 +129,13 @@
 
   --radius: 0;
 
+  /* Chat bubble max inline size, shared by every conversational surface (Ask,
+     the theme builder, onboarding) so a long turn wraps at the same width in all
+     of them instead of one surface capping earlier. Not a color token, so the
+     theme-token guard does not require per-theme copies; the narrower theme and
+     onboarding containers cap it naturally. */
+  --chat-bubble-max: min(42rem, 92%);
+
   --sidebar: oklch(0.145 0.020 270 / 0.68);
   --sidebar-foreground: oklch(0.94 0.012 275);
   --sidebar-primary: oklch(0.68 0.21 286);
@@ -2045,7 +2052,7 @@ body {
   flex-direction: column;
   gap: 0.2rem;
   width: fit-content;
-  max-width: min(30rem, 90%);
+  max-width: var(--chat-bubble-max);
   border: 1px solid var(--hairline);
   border-radius: 0;
   padding: 0.6rem 0.8rem;
@@ -3719,7 +3726,7 @@ body {
 /* Chat bubbles. */
 .ask-bubble {
   width: fit-content;
-  max-width: min(42rem, 92%);
+  max-width: var(--chat-bubble-max);
   border: 1px solid var(--hairline);
   border-radius: 0;
   padding: 0.7rem 0.9rem;
