@@ -16,7 +16,6 @@ import contextlib
 import os
 import re
 import sys
-import tomllib
 from pathlib import Path
 
 sys.path.insert(
@@ -48,8 +47,10 @@ from agent_runner import (
     is_globally_blocked,
     is_repo_paused,
     issue_memory_query,
+    load_pre_push_config,
     local_repo_dir,
     make_worktree_from_branch,
+    maybe_halt_on_fail_streak,
     maybe_set_global_block_for_result,
     optional_env_int,
     preflight,
@@ -346,31 +347,37 @@ def preserve_workflow_validation_failure(
     return reason, recovery_ref
 
 
-def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
-    """Same format / defaults as senior-dev._load_pre_push_config."""
-    cfg_path = ALFRED_HOME / "agents" / f"{agent_codename}.toml"
-    user_cfg: dict[str, str] = {}
-    if cfg_path.exists():
-        try:
-            data = tomllib.loads(cfg_path.read_text())
-            user_cfg = dict(data.get("pre_push", {}) or {})
-        except (OSError, tomllib.TOMLDecodeError):
-            user_cfg = {}
+# Node repos, for fixer, are matched by name suffix (no package.json probe).
+_NODE_PRE_PUSH_SUFFIXES = ("-frontend", "-mobile", "-web", "-nango")
 
-    out: dict[str, str] = {}
-    for repo in WATCH_REPOS:
-        if repo in user_cfg:
-            out[repo] = user_cfg[repo]
-            continue
-        if repo.endswith("-backend") or repo.endswith("-api"):
-            out[repo] = "./gradlew check"
-        elif repo.endswith(("-frontend", "-mobile", "-web", "-nango")):
-            out[repo] = "npm run lint && npx tsc --noEmit"
-        elif (WORKSPACE / local_repo_dir(repo) / "pyproject.toml").exists():
-            out[repo] = "uv run ruff check . && uv run mypy . && uv run pytest"
-        else:
-            out[repo] = ""
-    return out
+
+def _fixer_node_default(repo: str, _local_dir: Path) -> str:
+    """Fixer's Node pre-push default: a static lint + typecheck by repo suffix.
+
+    NOTE: this is deliberately simpler than senior-dev's package.json-aware
+    resolver (``_default_node_pre_push_command``). The divergence predates the
+    shared-loader extraction and is preserved here rather than silently
+    unified onto senior-dev's richer command.
+    """
+    if repo.endswith(_NODE_PRE_PUSH_SUFFIXES):
+        return "npm run lint && npx tsc --noEmit"
+    return ""
+
+
+def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
+    """Load per-repo pre-push commands via ``load_pre_push_config``.
+
+    Shares the TOML load + gradle/python/else defaults with senior-dev; only
+    the Node default differs (see :func:`_fixer_node_default`).
+    """
+    return load_pre_push_config(
+        agent_codename=agent_codename,
+        repos=WATCH_REPOS,
+        alfred_home=ALFRED_HOME,
+        workspace=WORKSPACE,
+        local_repo_dir=local_repo_dir,
+        node_default=_fixer_node_default,
+    )
 
 
 PRE_PUSH = _load_pre_push_config(AGENT)
@@ -581,6 +588,9 @@ def main() -> int:
         events.emit("firing_complete", outcome="daily-cap")
         return 0
 
+    if maybe_halt_on_fail_streak(AGENT, spend, events, LAUNCHD_LABEL):
+        return 0
+
     fixed_ids = load_fixed_ids()
     repo, pr, comments = pick_target(fixed_ids)
     if not repo:
@@ -642,6 +652,12 @@ def main() -> int:
     fixes_landed = 0
     fix_summary = []
     total_turns = 0
+    # Attempts that tried to land a fix and failed (engine failure, engine
+    # exited 0 without a commit, or a failed push). A firing that lands zero
+    # fixes with >=1 failed attempt is a FAILED firing, not a healthy no-op.
+    # Healthy skips (P0-security deferral, already-fixed comments) are NOT
+    # counted here.
+    failed_attempts = 0
     engine_counts: dict[str, int] = {}
     preserved_failure_reason = ""
     preserved_recovery_ref: str | None = None
@@ -727,6 +743,14 @@ def main() -> int:
         if not result.success:
             until = maybe_set_global_block_for_result(AGENT, result, engine_used=engine_used)
             if until:
+                # The provider block itself is an external non-outcome (it pauses
+                # the whole fleet), so it is NOT counted as this agent's failure.
+                # But failures accumulated EARLIER in this firing are only
+                # committed at the post-loop step, which this short-circuit skips.
+                # Persist them here so a genuinely-failing firing that then hits a
+                # rate limit still advances the streak instead of escaping it.
+                if fixes_landed == 0 and failed_attempts > 0:
+                    spend.increment(failures_today=1, consecutive_failures=1)
                 msg = (
                     f"{AGENT.title()} hit provider rate limit ({result.subtype}, engine={engine_used}). "
                     f"Global block until {until}."
@@ -739,6 +763,7 @@ def main() -> int:
             print(
                 f"[{AGENT.upper()}-FAIL] comment {cid}: engine={engine_used} subtype={result.subtype} turns={result.num_turns}"
             )
+            failed_attempts += 1
             continue
 
         # Verify a commit landed
@@ -780,6 +805,10 @@ def main() -> int:
                 fixed_ids.add(cid)
                 no_commit_streaks.pop(_streak_key(repo, pr_num, cid), None)
                 continue
+            # A real no-commit: the engine exited 0 but landed nothing, so this
+            # attempt failed to produce a fix. Count it (distinct from the
+            # already-fixed skip above, which is healthy).
+            failed_attempts += 1
             # Bump the (PR, comment) streak; escalate at the configured
             # threshold so an infinite-retry loop on the same comment
             # surfaces as an operator-actionable Slack post + label.
@@ -808,6 +837,10 @@ def main() -> int:
         push = run(["git", "push", "origin", f"HEAD:{head_ref}"], cwd=str(wt), timeout=60)
         if push.returncode != 0:
             print(f"[{AGENT.upper()}-PUSH-FAIL] comment {cid}: {short(push.stderr, 200)}")
+            # The commit landed locally but never reached the PR, so this attempt
+            # failed to land a fix. Count it so an all-push-failed firing is a
+            # failed firing, not a healthy no-op that clears the streak.
+            failed_attempts += 1
             continue
         gh_pr_comment(
             repo,
@@ -846,6 +879,29 @@ def main() -> int:
         return 0
 
     remove_worktree(repo, wt)
+
+    if fixes_landed == 0 and failed_attempts > 0:
+        # Nothing landed and every attempt this firing failed (engine failure,
+        # no-commit, or push failure). That is a FAILED firing, not a healthy
+        # no-op, so advance the streak (do NOT reset) to feed the self-halt
+        # gate. Without this an all-failed firing would be swallowed as a no-op
+        # success and fire forever.
+        spend.increment(failures_today=1, consecutive_failures=1)
+        msg = (
+            f"[{AGENT.upper()}-FAIL] no fixes landed on PR {pr_num}; "
+            f"{failed_attempts} failed attempt(s) (engines={engine_summary}, turns={total_turns})"
+        )
+        print(msg)
+        events.emit(
+            "firing_complete", outcome="all-attempts-failed", failed_attempts=failed_attempts
+        )
+        return 0
+
+    # Reaching here means the firing did healthy work: at least one fix landed,
+    # or a legitimate no-op (nothing to fix, or only healthy skips). Clear the
+    # streak so a prior run of failures doesn't carry into a healthy firing and
+    # trip the self-halt gate.
+    spend.set(consecutive_failures=0)
 
     if fixes_landed == 0:
         # No fixes landed but the firing completed cleanly. Count as no-op

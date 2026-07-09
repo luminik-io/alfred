@@ -59,9 +59,9 @@ from agent_runner import (
     is_repo_paused,
     list_paused_repos,
     load_prompt,
+    maybe_halt_on_fail_streak,
     optional_env_int,
     preflight,
-    run,
     set_global_block,
     short,
     slack_post,
@@ -75,6 +75,13 @@ LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 # Keyed off the runtime role slug. Themes and custom visible names do not change
 # the machine identity or env-var contract.
 PLANNER_REPOS = agent_repos(AGENT)
+
+# Single canonical daily-cap sentinel. The runner's own pre-flight cap-hit log
+# and the in-prompt cap-hit detection MUST use the same string or cap-hit
+# detection silently never matches (a prior rename left the pre-flight emit as
+# [PLANNER-DAILY-CAP-HIT] while the grep looked for [DRAKE-DAILY-CAP-HIT]). The
+# [DRAKE-*] family is the LLM-output contract fixed in prompts/planner.md.
+DAILY_CAP_SENTINEL = "[DRAKE-DAILY-CAP-HIT]"
 
 
 def _build_state_machine_context() -> str:
@@ -232,20 +239,7 @@ def main() -> int:
     if rate_blocked:
         print(f"[{AGENT.upper()}-RATE-LIMITED] {rate_blocked}. Skipping firing.")
         return 0
-    if spend.state.get("consecutive_failures", 0) >= 5:
-        msg = (
-            f"[{AGENT.upper()}-FAIL-STREAK] {spend.state['consecutive_failures']} consecutive "
-            "failures, 0 successes. Pausing for human review."
-        )
-        print(msg)
-        slack_post(msg, severity="alert")
-        events.emit(
-            "agent_paused",
-            reason="fail_streak",
-            consecutive_failures=spend.state["consecutive_failures"],
-        )
-        events.emit("firing_complete", outcome="paused_fail_streak")
-        run(["launchctl", "bootout", f"gui/{os.getuid()}/{LAUNCHD_LABEL}"], timeout=10)
+    if maybe_halt_on_fail_streak(AGENT, spend, events, LAUNCHD_LABEL):
         return 0
 
     # Pre-flight daily cap check at the runner level. Skips the firing entirely
@@ -253,13 +247,17 @@ def main() -> int:
     today_count = _issues_authored_in_last_24h()
     if today_count >= DAILY_ISSUE_CAP:
         msg = (
-            f"[{AGENT.upper()}-DAILY-CAP-HIT] {today_count} issues created by @me in last 24h "
+            f"{DAILY_CAP_SENTINEL} {today_count} issues created by @me in last 24h "
             f">= cap of {DAILY_ISSUE_CAP}. Skipping firing."
         )
         print(msg)
         slack_post(
             f"⏸️ {AGENT.title()}: daily {DAILY_ISSUE_CAP}-issue cap reached, skipping firing."
         )
+        # A daily-cap hit means the runner is healthy, just done for the day, so
+        # clear any streak rather than leaving a stale count that could later
+        # mislead the self-halt gate.
+        spend.set(consecutive_failures=0)
         return 0
 
     if not PROMPT_PATH.exists():
@@ -358,9 +356,12 @@ def main() -> int:
 
     # Successful subprocess return. Parse the sentinel the prompt was instructed
     # to emit so we can report meaningfully.
-    if "[DRAKE-DAILY-CAP-HIT]" in text:
+    if DAILY_CAP_SENTINEL in text:
         print(text[-400:])
         slack_post(f"⏸️ {AGENT.title()}: daily cap (in-prompt check). {short(text[-300:], 300)}")
+        # Cap-hit is a healthy "done for the day", not a failure: reset the
+        # streak so it does not carry a stale count into the self-halt gate.
+        spend.set(consecutive_failures=0)
         spend.increment(successes_today=1)
         return 0
 

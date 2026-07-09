@@ -38,6 +38,7 @@ from agent_runner import (
     is_repo_paused,
     issue_memory_query,
     local_repo_dir,
+    maybe_halt_on_fail_streak,
     maybe_set_global_block_for_result,
     optional_env_int,
     preflight,
@@ -289,6 +290,9 @@ def main() -> int:
         events.emit("firing_complete", outcome="review-cap")
         return 0
 
+    if maybe_halt_on_fail_streak(AGENT, spend, events, LAUNCHD_LABEL):
+        return 0
+
     repo, pr = pick_pr()
     if not repo:
         print(f"[{AGENT.upper()}-IDLE]")
@@ -508,7 +512,7 @@ Ship-ready: yes / no - <one sentence>
     )
 
     if not result.success:
-        spend.increment(failures_today=1)
+        spend.increment(failures_today=1, consecutive_failures=1)
         until = maybe_set_global_block_for_result(AGENT, result, engine_used=engine_used)
         if until:
             msg = (
@@ -566,11 +570,14 @@ Ship-ready: yes / no - <one sentence>
     if state != "OPEN":
         msg = f"[{AGENT.upper()}-STALE] PR {pr_num} is now {state}, not posting review."
         print(msg)
+        # Not a failure: the review generated fine, the PR just closed under it.
+        # Clear the streak so this healthy no-op does not preserve a stale count.
+        spend.set(consecutive_failures=0)
         events.emit("firing_complete", outcome="pr-stale", state=state)
         return 0
 
     if not gh_pr_comment(repo, pr_num, text):
-        spend.increment(failures_today=1)
+        spend.increment(failures_today=1, consecutive_failures=1)
         msg = f"❌ {AGENT.title()}: failed to post review on PR {pr_num}"
         print(msg)
         slack_post(msg)
@@ -591,6 +598,9 @@ Ship-ready: yes / no - <one sentence>
             posted_split += 1
 
     spend.increment(reviews_posted=1, successes_today=1)
+    # A posted review clears the fail streak so the self-halt gate only trips
+    # on a genuine run of consecutive failures.
+    spend.set(consecutive_failures=0)
     events.emit(
         "review_posted",
         repo=f"{GH_ORG}/{repo}",
