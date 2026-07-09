@@ -129,6 +129,13 @@
 
   --radius: 0;
 
+  /* Chat bubble max inline size, shared by every conversational surface (Ask,
+     the theme builder, onboarding) so a long turn wraps at the same width in all
+     of them instead of one surface capping earlier. Not a color token, so the
+     theme-token guard does not require per-theme copies; the narrower theme and
+     onboarding containers cap it naturally. */
+  --chat-bubble-max: min(42rem, 92%);
+
   --sidebar: oklch(0.145 0.020 270 / 0.68);
   --sidebar-foreground: oklch(0.94 0.012 275);
   --sidebar-primary: oklch(0.68 0.21 286);
@@ -2033,44 +2040,45 @@ body {
   gap: 0.35rem;
 }
 
-/* "Name your team" chat bubbles. User turns sit to the right, Alfred to the left,
-   both on the same tokens the Ask surface uses so the chat matches every theme. */
-.theme-builder__bubble {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  max-width: 88%;
-}
-
-.theme-builder__bubble--user {
-  margin-left: auto;
-  align-items: flex-end;
-  text-align: right;
-}
-
-.theme-builder__bubble--assistant {
-  margin-right: auto;
-  align-items: flex-start;
-}
-
-/* Conversational onboarding chat bubbles. Same layout + tokens as the theme
-   builder so the "Set it up by chatting" surface matches every theme. */
+/* Conversational surfaces: the theme builder's "Name your team" and onboarding's
+   "Set it up by chatting". Both reuse the Ask surface's bubble treatment so every
+   chat in the app reads the same, a bordered padded turn pushed to one side and
+   tinted toward the accent for the person's own turns, so user and assistant are
+   distinguishable at a glance rather than left as undifferentiated aligned text.
+   One rule set drives both surfaces so they can never drift apart or from Ask. */
+.theme-builder__bubble,
 .onboarding-converse__bubble {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
-  max-width: 88%;
+  gap: 0.2rem;
+  width: fit-content;
+  max-width: var(--chat-bubble-max);
+  border: 1px solid var(--hairline);
+  border-radius: 0;
+  padding: 0.6rem 0.8rem;
+  background: color-mix(in oklch, var(--card), var(--background) 8%);
+  animation: alfred-rise 180ms ease-out both;
 }
 
+.theme-builder__bubble--user,
 .onboarding-converse__bubble--user {
   margin-left: auto;
-  align-items: flex-end;
-  text-align: right;
+  border-color: color-mix(in oklch, var(--primary), transparent 62%);
+  background: color-mix(in oklch, var(--primary), var(--card) 86%);
 }
 
+.theme-builder__bubble--assistant,
 .onboarding-converse__bubble--assistant {
   margin-right: auto;
-  align-items: flex-start;
+}
+
+/* Match the Ask surface's turn label: a quiet uppercase caps eyebrow so "You" /
+   "Alfred" reads as a speaker tag, not body copy. Only sets what the inline
+   utilities do not, so there is no specificity fight with Tailwind. */
+.theme-builder__who,
+.onboarding-converse__who {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .custom-theme-editor__legend {
@@ -3718,7 +3726,7 @@ body {
 /* Chat bubbles. */
 .ask-bubble {
   width: fit-content;
-  max-width: min(42rem, 92%);
+  max-width: var(--chat-bubble-max);
   border: 1px solid var(--hairline);
   border-radius: 0;
   padding: 0.7rem 0.9rem;
