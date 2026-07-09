@@ -75,6 +75,27 @@ The whole path is also **fail-conservative**: on any ambiguity or parse problem
 the original bytes are returned unchanged. The worst case is fewer tokens saved,
 never a hidden error.
 
+## Pluggable engines (builtin vs headroom)
+
+The compaction above is the **built-in** engine: pure-Python, stdlib-only, the
+zero-install default. Alfred also ships an optional, more capable engine,
+[`headroom-ai`](https://pypi.org/project/headroom-ai/) (Apache-2.0 upstream),
+behind a config-driven selector:
+
+```sh
+ALFRED_COMPRESSION_ENGINE=builtin   # default: this compactor
+ALFRED_COMPRESSION_ENGINE=headroom  # route through headroom when available
+ALFRED_COMPRESSION_ENGINE=off       # disable compaction entirely
+```
+
+The built-in compactor stays the default **and** the fallback: headroom is never
+a hard dependency, and when it is not installed the headroom setting behaves
+exactly like `builtin`. Crucially, the confirmed-success safety valve below is
+enforced identically no matter which engine runs - an errored or unknown-status
+output is teed through untouched before any engine sees it, so an error is never
+hidden. See [COMPRESSION.md](COMPRESSION.md) for the selector, headroom install,
+and the no-op-when-absent behaviour.
+
 ## Enabling the battery
 
 The compactor rides the same opt-in flag as the guardrail hook. It is attached
@@ -89,7 +110,8 @@ can override them in production without a redeploy.
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `ALFRED_AGENT_HOOKS` | off | Master opt-in that wires the PreToolUse guardrails and the PostToolUse compactor. |
-| `ALFRED_OUTPUT_COMPACTOR` | on | Set to `0` to disable output compaction (raw output passes through). |
+| `ALFRED_COMPRESSION_ENGINE` | `builtin` | Engine selector: `builtin` (this compactor) \| `headroom` (optional engine, else builtin) \| `off`. See [COMPRESSION.md](COMPRESSION.md). |
+| `ALFRED_OUTPUT_COMPACTOR` | on | Set to `0` to disable output compaction (raw output passes through). Applies to both engines. |
 | `ALFRED_OUTPUT_COMPACTOR_TOOLS` | `Bash` | Comma-separated list of tools whose output is compacted. |
 | `ALFRED_OUTPUT_COMPACTOR_MIN_BYTES` | `2000` | Output smaller than this passes through un-compacted. |
 | `ALFRED_OUTPUT_COMPACTOR_MAX_BYTES` | `8000` | Target byte budget for a compacted result. |

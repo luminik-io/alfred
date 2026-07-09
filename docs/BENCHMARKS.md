@@ -409,6 +409,64 @@ How to read it honestly:
 Reproduce exactly with `uv run python bin/alfred-benchmark.py memory --stub`
 (or `--json` for the machine-readable record these numbers were read from).
 
+## Compression: builtin #453 vs headroom
+
+A third benchmark answers a different question: **on the verbose output a firing
+actually produces (grep dumps, JSON blobs, build logs), how much context does
+each compression engine save?** It runs the *same* real payloads through the
+built-in #453 compactor and through the optional headroom engine (see
+[COMPRESSION.md](COMPRESSION.md)) and reports the token-reduction ratio for each.
+
+Run it:
+
+```sh
+# Human-readable table (offline, no model, no quota):
+alfred benchmark compression
+
+# Machine-readable:
+alfred benchmark compression --json > compression-before.json
+
+# Point at your own payloads:
+alfred benchmark compression --fixture ./my-payloads
+```
+
+### What it measures, honestly
+
+- **Same payloads, both engines.** The built-in arm runs
+  `tool_compactor.compact_output` on each payload; the headroom arm runs the
+  headroom engine on the identical input. Byte reduction is exact; token
+  reduction uses `tiktoken` (cl100k_base) when installed and otherwise a
+  deterministic `chars/4` estimate - and the report **labels which estimator
+  produced the number**, so an estimate is never presented as truth.
+- **headroom is optional, and honestly reported.** When headroom is not
+  installed in the environment running the benchmark, its arm is marked
+  `not-run` - never zero, never a fabricated ratio. The built-in arm still
+  reports its real numbers. Only an engine that actually ran is scored.
+- **Offline-testable.** The built-in arm and the token accounting are pure
+  stdlib; the harness is unit-tested in `tests/test_compression_benchmark.py`
+  with headroom either absent (marked not-run) or mocked. No headroom install
+  and no network are required.
+
+The built-in fixtures live in `tests/fixtures/compression/` (`grep-symbols.txt`,
+`data.json`, `log-build.txt`) - representative grep, JSON, and log tool output.
+
+### Reference numbers (built-in arm, this repo's fixtures)
+
+Measured with `alfred benchmark compression` on the built-in fixtures
+(`tiktoken:cl100k_base`), the **built-in #453 compactor** alone reduces tokens by
+roughly:
+
+| payload | kind | builtin token reduction |
+|---|---|---|
+| `log-build.txt` | log | ~94% |
+| `data.json` | json | ~98% |
+| `grep-symbols.txt` | grep | ~90% |
+
+These are the built-in engine's own numbers on high-redundancy fixtures; they
+are a floor a solo install already gets with **zero** extra dependencies. The
+headroom arm is left for you to fill by installing headroom-ai and re-running -
+this doc does not quote a headroom number the harness has not measured here.
+
 ## Feeding a future desktop Metrics view
 
 `alfred benchmark report --json` already emits the exact shape a desktop

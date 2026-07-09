@@ -1,0 +1,5402 @@
+[
+  {
+    "id": "evt_00000",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 0",
+      "company": "Acme 0",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.0
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00001",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 1",
+      "company": "Acme 1",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.01
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00002",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 2",
+      "company": "Acme 2",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.02
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00003",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 3",
+      "company": "Acme 3",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.03
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00004",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 4",
+      "company": "Acme 4",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.04
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00005",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 5",
+      "company": "Acme 5",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.05
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00006",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 6",
+      "company": "Acme 6",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.06
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00007",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 7",
+      "company": "Acme 7",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.07
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00008",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 8",
+      "company": "Acme 8",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.08
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00009",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 9",
+      "company": "Acme 9",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.09
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00010",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 10",
+      "company": "Acme 10",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.1
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00011",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 11",
+      "company": "Acme 11",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.11
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00012",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 12",
+      "company": "Acme 12",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.12
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00013",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 13",
+      "company": "Acme 13",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.13
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00014",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 14",
+      "company": "Acme 14",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.14
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00015",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 15",
+      "company": "Acme 15",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.15
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00016",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 16",
+      "company": "Acme 16",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.16
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00017",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 17",
+      "company": "Acme 17",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.17
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00018",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 18",
+      "company": "Acme 18",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.18
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00019",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 19",
+      "company": "Acme 19",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.19
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00020",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 20",
+      "company": "Acme 20",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.2
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00021",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 21",
+      "company": "Acme 21",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.21
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00022",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 22",
+      "company": "Acme 22",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.22
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00023",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 23",
+      "company": "Acme 23",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.23
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00024",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 24",
+      "company": "Acme 24",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.24
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00025",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 25",
+      "company": "Acme 0",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.25
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00026",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 26",
+      "company": "Acme 1",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.26
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00027",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 27",
+      "company": "Acme 2",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.27
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00028",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 28",
+      "company": "Acme 3",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.28
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00029",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 29",
+      "company": "Acme 4",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.29
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00030",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 30",
+      "company": "Acme 5",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.3
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00031",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 31",
+      "company": "Acme 6",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.31
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00032",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 32",
+      "company": "Acme 7",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.32
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00033",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 33",
+      "company": "Acme 8",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.33
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00034",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 34",
+      "company": "Acme 9",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.34
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00035",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 35",
+      "company": "Acme 10",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.35
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00036",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 36",
+      "company": "Acme 11",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.36
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00037",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 37",
+      "company": "Acme 12",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.37
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00038",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 38",
+      "company": "Acme 13",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.38
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00039",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 39",
+      "company": "Acme 14",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.39
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00040",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 40",
+      "company": "Acme 15",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.4
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00041",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 41",
+      "company": "Acme 16",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.41
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00042",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 42",
+      "company": "Acme 17",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.42
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00043",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 43",
+      "company": "Acme 18",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.43
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00044",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 44",
+      "company": "Acme 19",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.44
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00045",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 45",
+      "company": "Acme 20",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.45
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00046",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 46",
+      "company": "Acme 21",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.46
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00047",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 47",
+      "company": "Acme 22",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.47
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00048",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 48",
+      "company": "Acme 23",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.48
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00049",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 49",
+      "company": "Acme 24",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.49
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00050",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 50",
+      "company": "Acme 0",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.5
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00051",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 51",
+      "company": "Acme 1",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.51
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00052",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 52",
+      "company": "Acme 2",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.52
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00053",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 53",
+      "company": "Acme 3",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.53
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00054",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 54",
+      "company": "Acme 4",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.54
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00055",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 55",
+      "company": "Acme 5",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.55
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00056",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 56",
+      "company": "Acme 6",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.56
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00057",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 57",
+      "company": "Acme 7",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.57
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00058",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 58",
+      "company": "Acme 8",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.58
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00059",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 59",
+      "company": "Acme 9",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.59
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00060",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 60",
+      "company": "Acme 10",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.6
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00061",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 61",
+      "company": "Acme 11",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.61
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00062",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 62",
+      "company": "Acme 12",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.62
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00063",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 63",
+      "company": "Acme 13",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.63
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00064",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 64",
+      "company": "Acme 14",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.64
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00065",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 65",
+      "company": "Acme 15",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.65
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00066",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 66",
+      "company": "Acme 16",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.66
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00067",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 67",
+      "company": "Acme 17",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.67
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00068",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 68",
+      "company": "Acme 18",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.68
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00069",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 69",
+      "company": "Acme 19",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.69
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00070",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 70",
+      "company": "Acme 20",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.7
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00071",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 71",
+      "company": "Acme 21",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.71
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00072",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 72",
+      "company": "Acme 22",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.72
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00073",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 73",
+      "company": "Acme 23",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.73
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00074",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 74",
+      "company": "Acme 24",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.74
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00075",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 75",
+      "company": "Acme 0",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.75
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00076",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 76",
+      "company": "Acme 1",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.76
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00077",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 77",
+      "company": "Acme 2",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.77
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00078",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 78",
+      "company": "Acme 3",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.78
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00079",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 79",
+      "company": "Acme 4",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.79
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00080",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 80",
+      "company": "Acme 5",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.8
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00081",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 81",
+      "company": "Acme 6",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.81
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00082",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 82",
+      "company": "Acme 7",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.82
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00083",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 83",
+      "company": "Acme 8",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.83
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00084",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 84",
+      "company": "Acme 9",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.84
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00085",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 85",
+      "company": "Acme 10",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.85
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00086",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 86",
+      "company": "Acme 11",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.86
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00087",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 87",
+      "company": "Acme 12",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.87
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00088",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 88",
+      "company": "Acme 13",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.88
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00089",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 89",
+      "company": "Acme 14",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.89
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00090",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 90",
+      "company": "Acme 15",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.9
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00091",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 91",
+      "company": "Acme 16",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.91
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00092",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 92",
+      "company": "Acme 17",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.92
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00093",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 93",
+      "company": "Acme 18",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.93
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00094",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 94",
+      "company": "Acme 19",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.94
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00095",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 95",
+      "company": "Acme 20",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.95
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00096",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 96",
+      "company": "Acme 21",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.96
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00097",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 97",
+      "company": "Acme 22",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.97
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00098",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 98",
+      "company": "Acme 23",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.98
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00099",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 99",
+      "company": "Acme 24",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.99
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00100",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 100",
+      "company": "Acme 0",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.0
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00101",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 101",
+      "company": "Acme 1",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.01
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00102",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 102",
+      "company": "Acme 2",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.02
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00103",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 103",
+      "company": "Acme 3",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.03
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00104",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 104",
+      "company": "Acme 4",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.04
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00105",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 105",
+      "company": "Acme 5",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.05
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00106",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 106",
+      "company": "Acme 6",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.06
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00107",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 107",
+      "company": "Acme 7",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.07
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00108",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 108",
+      "company": "Acme 8",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.08
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00109",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 109",
+      "company": "Acme 9",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.09
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00110",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 110",
+      "company": "Acme 10",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.1
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00111",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 111",
+      "company": "Acme 11",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.11
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00112",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 112",
+      "company": "Acme 12",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.12
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00113",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 113",
+      "company": "Acme 13",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.13
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00114",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 114",
+      "company": "Acme 14",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.14
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00115",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 115",
+      "company": "Acme 15",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.15
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00116",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 116",
+      "company": "Acme 16",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.16
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00117",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 117",
+      "company": "Acme 17",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.17
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00118",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 118",
+      "company": "Acme 18",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.18
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00119",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 119",
+      "company": "Acme 19",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.19
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00120",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 120",
+      "company": "Acme 20",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.2
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00121",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 121",
+      "company": "Acme 21",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.21
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00122",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 122",
+      "company": "Acme 22",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.22
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00123",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 123",
+      "company": "Acme 23",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.23
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00124",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 124",
+      "company": "Acme 24",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.24
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00125",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 125",
+      "company": "Acme 0",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.25
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00126",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 126",
+      "company": "Acme 1",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.26
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00127",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 127",
+      "company": "Acme 2",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.27
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00128",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 128",
+      "company": "Acme 3",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.28
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00129",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 129",
+      "company": "Acme 4",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.29
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00130",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 130",
+      "company": "Acme 5",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.3
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00131",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 131",
+      "company": "Acme 6",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.31
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00132",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 132",
+      "company": "Acme 7",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.32
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00133",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 133",
+      "company": "Acme 8",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.33
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00134",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 134",
+      "company": "Acme 9",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.34
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00135",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 135",
+      "company": "Acme 10",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.35
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00136",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 136",
+      "company": "Acme 11",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.36
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00137",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 137",
+      "company": "Acme 12",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.37
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00138",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 138",
+      "company": "Acme 13",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.38
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00139",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 139",
+      "company": "Acme 14",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.39
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00140",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 140",
+      "company": "Acme 15",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.4
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00141",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 141",
+      "company": "Acme 16",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.41
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00142",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 142",
+      "company": "Acme 17",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.42
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00143",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 143",
+      "company": "Acme 18",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.43
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00144",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 144",
+      "company": "Acme 19",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.44
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00145",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 145",
+      "company": "Acme 20",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.45
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00146",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 146",
+      "company": "Acme 21",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.46
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00147",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 147",
+      "company": "Acme 22",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.47
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00148",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 148",
+      "company": "Acme 23",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.48
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00149",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 149",
+      "company": "Acme 24",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.49
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00150",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 150",
+      "company": "Acme 0",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.5
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00151",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 151",
+      "company": "Acme 1",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.51
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00152",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 152",
+      "company": "Acme 2",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.52
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00153",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 153",
+      "company": "Acme 3",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.53
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00154",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 154",
+      "company": "Acme 4",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.54
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00155",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 155",
+      "company": "Acme 5",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.55
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00156",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 156",
+      "company": "Acme 6",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.56
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00157",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 157",
+      "company": "Acme 7",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.57
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00158",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 158",
+      "company": "Acme 8",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.58
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00159",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 159",
+      "company": "Acme 9",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.59
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00160",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 160",
+      "company": "Acme 10",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.6
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00161",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 161",
+      "company": "Acme 11",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.61
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00162",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 162",
+      "company": "Acme 12",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.62
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00163",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 163",
+      "company": "Acme 13",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.63
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00164",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 164",
+      "company": "Acme 14",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.64
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00165",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 165",
+      "company": "Acme 15",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.65
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00166",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 166",
+      "company": "Acme 16",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.66
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00167",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 167",
+      "company": "Acme 17",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.67
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00168",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 168",
+      "company": "Acme 18",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.68
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00169",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 169",
+      "company": "Acme 19",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.69
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00170",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 170",
+      "company": "Acme 20",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.7
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00171",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 171",
+      "company": "Acme 21",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.71
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00172",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 172",
+      "company": "Acme 22",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.72
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00173",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 173",
+      "company": "Acme 23",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.73
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00174",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 174",
+      "company": "Acme 24",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.74
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00175",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 175",
+      "company": "Acme 0",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.75
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00176",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 176",
+      "company": "Acme 1",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.76
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00177",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 177",
+      "company": "Acme 2",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.77
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00178",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 178",
+      "company": "Acme 3",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.78
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00179",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 179",
+      "company": "Acme 4",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.79
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00180",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 180",
+      "company": "Acme 5",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.8
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00181",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 181",
+      "company": "Acme 6",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.81
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00182",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 182",
+      "company": "Acme 7",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.82
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00183",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 183",
+      "company": "Acme 8",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.83
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00184",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 184",
+      "company": "Acme 9",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.84
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00185",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 185",
+      "company": "Acme 10",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.85
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00186",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 186",
+      "company": "Acme 11",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.86
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00187",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 187",
+      "company": "Acme 12",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.87
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00188",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 188",
+      "company": "Acme 13",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.88
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00189",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 189",
+      "company": "Acme 14",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.89
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00190",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 190",
+      "company": "Acme 15",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.9
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00191",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 191",
+      "company": "Acme 16",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.91
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00192",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 192",
+      "company": "Acme 17",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.92
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00193",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 193",
+      "company": "Acme 18",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.93
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00194",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 194",
+      "company": "Acme 19",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.94
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00195",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 195",
+      "company": "Acme 20",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.95
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00196",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 196",
+      "company": "Acme 21",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.96
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00197",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 197",
+      "company": "Acme 22",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.97
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00198",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 198",
+      "company": "Acme 23",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.98
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00199",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 199",
+      "company": "Acme 24",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.99
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00200",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 200",
+      "company": "Acme 0",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.0
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00201",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 201",
+      "company": "Acme 1",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.01
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00202",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 202",
+      "company": "Acme 2",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.02
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00203",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 203",
+      "company": "Acme 3",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.03
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00204",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 204",
+      "company": "Acme 4",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.04
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00205",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 205",
+      "company": "Acme 5",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.05
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00206",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 206",
+      "company": "Acme 6",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.06
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00207",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 207",
+      "company": "Acme 7",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.07
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00208",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 208",
+      "company": "Acme 8",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.08
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00209",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 209",
+      "company": "Acme 9",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.09
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00210",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 210",
+      "company": "Acme 10",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.1
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00211",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 211",
+      "company": "Acme 11",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.11
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00212",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 212",
+      "company": "Acme 12",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.12
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00213",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 213",
+      "company": "Acme 13",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.13
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00214",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 214",
+      "company": "Acme 14",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.14
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00215",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 215",
+      "company": "Acme 15",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.15
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00216",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 216",
+      "company": "Acme 16",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.16
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00217",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 217",
+      "company": "Acme 17",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.17
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00218",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 218",
+      "company": "Acme 18",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.18
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00219",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 219",
+      "company": "Acme 19",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.19
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00220",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 220",
+      "company": "Acme 20",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.2
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00221",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 221",
+      "company": "Acme 21",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.21
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00222",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 222",
+      "company": "Acme 22",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.22
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00223",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 223",
+      "company": "Acme 23",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.23
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00224",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 224",
+      "company": "Acme 24",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.24
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00225",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 225",
+      "company": "Acme 0",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.25
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00226",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 226",
+      "company": "Acme 1",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.26
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00227",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 227",
+      "company": "Acme 2",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.27
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00228",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 228",
+      "company": "Acme 3",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.28
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00229",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 229",
+      "company": "Acme 4",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.29
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00230",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 230",
+      "company": "Acme 5",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.3
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00231",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 231",
+      "company": "Acme 6",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.31
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00232",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 232",
+      "company": "Acme 7",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.32
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00233",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 233",
+      "company": "Acme 8",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.33
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00234",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 234",
+      "company": "Acme 9",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.34
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00235",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 235",
+      "company": "Acme 10",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.35
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00236",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 236",
+      "company": "Acme 11",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.36
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00237",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 237",
+      "company": "Acme 12",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.37
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00238",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 238",
+      "company": "Acme 13",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.38
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00239",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 239",
+      "company": "Acme 14",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.39
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00240",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 240",
+      "company": "Acme 15",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.4
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00241",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 241",
+      "company": "Acme 16",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.41
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00242",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 242",
+      "company": "Acme 17",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.42
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00243",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 243",
+      "company": "Acme 18",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.43
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00244",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 244",
+      "company": "Acme 19",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.44
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00245",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 245",
+      "company": "Acme 20",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.45
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00246",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 246",
+      "company": "Acme 21",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.46
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00247",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 247",
+      "company": "Acme 22",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.47
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00248",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 248",
+      "company": "Acme 23",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.48
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00249",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 249",
+      "company": "Acme 24",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.49
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00250",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 250",
+      "company": "Acme 0",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.5
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00251",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 251",
+      "company": "Acme 1",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.51
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00252",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 252",
+      "company": "Acme 2",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.52
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00253",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 253",
+      "company": "Acme 3",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.53
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00254",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 254",
+      "company": "Acme 4",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.54
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00255",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 255",
+      "company": "Acme 5",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.55
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00256",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 256",
+      "company": "Acme 6",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.56
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00257",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 257",
+      "company": "Acme 7",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.57
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00258",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 258",
+      "company": "Acme 8",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.58
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00259",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 259",
+      "company": "Acme 9",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.59
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00260",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 260",
+      "company": "Acme 10",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.6
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00261",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 261",
+      "company": "Acme 11",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.61
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00262",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 262",
+      "company": "Acme 12",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.62
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00263",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 263",
+      "company": "Acme 13",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.63
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00264",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 264",
+      "company": "Acme 14",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.64
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00265",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 265",
+      "company": "Acme 15",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.65
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00266",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 266",
+      "company": "Acme 16",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.66
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00267",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 267",
+      "company": "Acme 17",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.67
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00268",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 268",
+      "company": "Acme 18",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.68
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00269",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 269",
+      "company": "Acme 19",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.69
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00270",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 270",
+      "company": "Acme 20",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.7
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00271",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 271",
+      "company": "Acme 21",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.71
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00272",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 272",
+      "company": "Acme 22",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.72
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00273",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 273",
+      "company": "Acme 23",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.73
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00274",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 274",
+      "company": "Acme 24",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.74
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00275",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 275",
+      "company": "Acme 0",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.75
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00276",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 276",
+      "company": "Acme 1",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.76
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00277",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 277",
+      "company": "Acme 2",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.77
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00278",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 278",
+      "company": "Acme 3",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.78
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00279",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 279",
+      "company": "Acme 4",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.79
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00280",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 280",
+      "company": "Acme 5",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.8
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00281",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 281",
+      "company": "Acme 6",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.81
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00282",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 282",
+      "company": "Acme 7",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.82
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00283",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 283",
+      "company": "Acme 8",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.83
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00284",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 284",
+      "company": "Acme 9",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.84
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00285",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 285",
+      "company": "Acme 10",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.85
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00286",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 286",
+      "company": "Acme 11",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.86
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00287",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 287",
+      "company": "Acme 12",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.87
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00288",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 288",
+      "company": "Acme 13",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.88
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00289",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 289",
+      "company": "Acme 14",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.89
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00290",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 290",
+      "company": "Acme 15",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.9
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00291",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 291",
+      "company": "Acme 16",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.91
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00292",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 292",
+      "company": "Acme 17",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.92
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00293",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 293",
+      "company": "Acme 18",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.93
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00294",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 294",
+      "company": "Acme 19",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.94
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00295",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 295",
+      "company": "Acme 20",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.95
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00296",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 296",
+      "company": "Acme 21",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.96
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00297",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 297",
+      "company": "Acme 22",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.97
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00298",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 298",
+      "company": "Acme 23",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.98
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  },
+  {
+    "id": "evt_00299",
+    "type": "attendee.captured",
+    "createdAt": "2026-07-09T12:00:00Z",
+    "source": "booth-scanner",
+    "attributes": {
+      "name": "Person 299",
+      "company": "Acme 24",
+      "title": "Head of Growth",
+      "tags": [
+        "lead",
+        "warm",
+        "event-2026"
+      ],
+      "score": 0.99
+    },
+    "notes": "captured at booth; follow up within 48h; interested in the pipeline product"
+  }
+]
