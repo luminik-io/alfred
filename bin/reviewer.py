@@ -570,6 +570,9 @@ Ship-ready: yes / no - <one sentence>
     if state != "OPEN":
         msg = f"[{AGENT.upper()}-STALE] PR {pr_num} is now {state}, not posting review."
         print(msg)
+        # Not a failure: the review generated fine, the PR just closed under it.
+        # Clear the streak so this healthy no-op does not preserve a stale count.
+        spend.set(consecutive_failures=0)
         events.emit("firing_complete", outcome="pr-stale", state=state)
         return 0
 

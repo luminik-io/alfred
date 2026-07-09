@@ -341,6 +341,10 @@ def main() -> int:
 
     if "[BANE-SILENT]" in head:
         remove_worktree(repo, wt)
+        # Healthy outcome: the engine ran and found everything well-covered.
+        # Clear the streak so a prior run of failures does not survive a
+        # healthy firing and later trip the self-halt gate.
+        spend.set(consecutive_failures=0)
         msg = f"[{AGENT.upper()}-SILENT] {repo}: all candidates well-covered. turns={result.num_turns}"
         print(msg)
         events.emit("firing_complete", outcome="silent-well-covered")
@@ -369,6 +373,9 @@ def main() -> int:
         )
         if res.returncode == 0:
             issue_url = (res.stdout or "").strip().splitlines()[-1]
+        # Healthy outcome: the engine did its job and filed a bug for triage.
+        # Clear the streak so this healthy firing does not carry a stale count.
+        spend.set(consecutive_failures=0)
         msg = f"🐛 {AGENT.title()} {repo}: bug found, filed {issue_url}. engine={engine_used} turns={result.num_turns}"
         print(msg)
         slack_post(msg)

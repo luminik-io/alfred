@@ -566,3 +566,132 @@ def test_planner_in_prompt_cap_detected_via_same_sentinel(monkeypatch, tmp_path)
     # The in-prompt grep detects the same sentinel: healthy success + reset.
     assert {"successes_today": 1} in increments
     assert {"consecutive_failures": 0} in sets
+
+
+# ---------------------------------------------------------------------------
+# Re-review finding: a healthy terminal outcome must clear a prior streak
+# (a consecutive-failure streak survives only across actual failures)
+# ---------------------------------------------------------------------------
+
+
+class _PresetSpend:
+    """SpendState double preloaded with a streak; records set() calls."""
+
+    def __init__(self, *a, **kw):
+        self.state = {"consecutive_failures": 3, "turns_today": 0, "reviews_posted": 0}
+        self.sets: list[dict] = []
+
+    def is_blocked(self):
+        return None
+
+    def increment(self, **kw):
+        pass
+
+    def set(self, **kw):
+        self.sets.append(kw)
+        self.state.update(kw)
+
+
+def _healthy_result(result_text):
+    return SimpleNamespace(
+        success=True,
+        subtype="success",
+        num_turns=3,
+        cost_usd=0.0,
+        result_text=result_text,
+        raw={},
+        fallback_from_subtype=None,
+    )
+
+
+def _drive_test_engineer_healthy(monkeypatch, tmp_path, result_text, extra=None):
+    monkeypatch.setenv("ALFRED_TEST_ENGINEER_REPOS", "backend")
+    bane = load_bin_module("test-engineer.py", monkeypatch)
+    spend = _PresetSpend()
+
+    monkeypatch.setattr(bane, "with_lock", lambda a: None)
+    monkeypatch.setattr(bane, "preflight", lambda s: None)
+    monkeypatch.setattr(bane, "doctor_mode", lambda: False)
+    monkeypatch.setattr(bane, "EventLog", _FakeEvents)
+    monkeypatch.setattr(bane, "is_globally_blocked", lambda: None)
+    monkeypatch.setattr(bane, "SpendState", lambda *a, **kw: spend)
+    monkeypatch.setattr(bane, "pick_repo", lambda: "backend")
+    monkeypatch.setattr(bane, "local_repo_dir", lambda repo: repo)
+    monkeypatch.setattr(bane, "WORKSPACE", tmp_path)
+    monkeypatch.setattr(bane, "make_worktree", lambda repo, agent, kind: (tmp_path, "bane/1"))
+    monkeypatch.setattr(bane, "remove_worktree", lambda repo, path: None)
+    monkeypatch.setattr(bane, "slack_post", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        bane, "invoke_agent_engine", lambda *a, **kw: (_healthy_result(result_text), "codex")
+    )
+    if extra:
+        extra(bane)
+
+    assert bane.main() == 0
+    return spend
+
+
+def test_test_engineer_bane_silent_resets_streak(monkeypatch, tmp_path):
+    spend = _drive_test_engineer_healthy(monkeypatch, tmp_path, "[BANE-SILENT] all covered")
+    assert spend.state["consecutive_failures"] == 0
+    assert {"consecutive_failures": 0} in spend.sets
+
+
+def test_test_engineer_bug_found_resets_streak(monkeypatch, tmp_path):
+    def _extra(bane):
+        monkeypatch.setattr(
+            bane,
+            "run",
+            lambda *a, **kw: SimpleNamespace(
+                returncode=0, stdout="https://github.com/acme/backend/issues/9\n", stderr=""
+            ),
+        )
+
+    spend = _drive_test_engineer_healthy(
+        monkeypatch, tmp_path, "[BUG-FOUND] null deref in foo", extra=_extra
+    )
+    assert spend.state["consecutive_failures"] == 0
+    assert {"consecutive_failures": 0} in spend.sets
+
+
+def test_reviewer_pr_stale_resets_streak(monkeypatch, tmp_path):
+    monkeypatch.setenv("GH_ORG", "acme")
+    monkeypatch.setenv("ALFRED_REVIEWER_REPOS", "service-web")
+    rasalghul = load_bin_module("reviewer.py", monkeypatch)
+    spend = _PresetSpend()
+
+    def fake_gh_json(cmd, *a, **kw):
+        joined = " ".join(cmd)
+        if "/comments" in joined:
+            return []
+        if "additions" in joined:  # the PR meta fetch
+            return {"title": "t", "body": "b", "additions": 1, "deletions": 0, "headRefOid": "abc"}
+        return {"state": "CLOSED"}  # the post-review re-verify: PR closed under us
+
+    monkeypatch.setattr(rasalghul, "with_lock", lambda a: None)
+    monkeypatch.setattr(rasalghul, "preflight", lambda s: None)
+    monkeypatch.setattr(rasalghul, "doctor_mode", lambda: False)
+    monkeypatch.setattr(rasalghul, "EventLog", _FakeEvents)
+    monkeypatch.setattr(rasalghul, "is_globally_blocked", lambda: None)
+    monkeypatch.setattr(rasalghul, "SpendState", lambda *a, **kw: spend)
+    monkeypatch.setattr(rasalghul, "pick_pr", lambda: ("service-web", {"number": 5}))
+    monkeypatch.setattr(rasalghul, "slack_post", lambda *a, **kw: None)
+    monkeypatch.setattr(rasalghul, "gh_pr_comment", lambda *a, **kw: True)
+    monkeypatch.setattr(
+        rasalghul,
+        "run",
+        lambda *a, **kw: SimpleNamespace(stdout="diff --git a b\n+line\n", stderr="", returncode=0),
+    )
+    monkeypatch.setattr(rasalghul, "gh_json", fake_gh_json)
+    monkeypatch.setattr(
+        rasalghul,
+        "invoke_agent_engine",
+        lambda *a, **kw: (
+            _healthy_result("Ra's al Ghul review\n\n## Blockers (P0)\n- none\n\nShip-ready: yes"),
+            "codex",
+        ),
+    )
+
+    assert rasalghul.main() == 0
+    assert spend.state["consecutive_failures"] == 0
+    assert {"consecutive_failures": 0} in spend.sets
