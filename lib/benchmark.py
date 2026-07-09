@@ -831,6 +831,51 @@ def run_report(
 
 
 # --------------------------------------------------------------------------
+# Memory A/B eval (coding-fleet memory benchmark)
+#
+# The repeated-mistake-rate A/B lives in the sibling ``memory_benchmark``
+# module (it can RUN a solver, so it is kept out of this pure telemetry
+# reader). Its public surface is re-exported here lazily so callers can reach
+# the whole benchmark family from one import without a load-time cycle:
+# ``memory_benchmark`` imports :class:`TokenUsage` from this module, so a
+# top-level import back would be circular. PEP 562 ``__getattr__`` defers the
+# import until first attribute access, after this module has finished loading.
+# --------------------------------------------------------------------------
+
+# Names re-exported from ``memory_benchmark``. ``build_report`` is intentionally
+# omitted: it exists in both modules with different meanings, so callers reach
+# the memory one via ``memory_benchmark.build_report`` to avoid ambiguity.
+_MEMORY_AB_EXPORTS = frozenset(
+    {
+        "MemoryABReport",
+        "MemoryArmMetrics",
+        "RetrievalMetrics",
+        "MemTask",
+        "SeedLesson",
+        "Fixture",
+        "TaskAttempt",
+        "SolveResult",
+        "load_fixture",
+        "run_memory_ab",
+        "make_stub_solver",
+        "make_cli_engine_solver",
+        "judge_solution",
+        "seed_fleet_provider",
+        "default_fixture_dir",
+    }
+)
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily re-export the memory A/B surface from :mod:`memory_benchmark`."""
+    if name in _MEMORY_AB_EXPORTS:
+        import memory_benchmark
+
+        return getattr(memory_benchmark, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+# --------------------------------------------------------------------------
 # Subscription-quota cost framing
 #
 # Cost is reported as a SHARE OF SUBSCRIPTION QUOTA, never $/PR.

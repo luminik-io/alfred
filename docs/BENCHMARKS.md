@@ -220,6 +220,142 @@ Cost (subscription quota)
 Keep the before/after pair together so the delta is legible. Do not turn it
 into a "beats X" claim; the value is the honest trend on your own install.
 
+## Memory A/B: the repeated-mistake-rate
+
+The telemetry reader above answers "is the fleet getting better or worse". A
+second, separate benchmark answers a question no chat-recall leaderboard asks:
+**when a repo has already taught the fleet a lesson, does durable memory stop
+the next firing from repeating the mistake that lesson was about?**
+
+This is the benchmark category Alfred owns: coding-fleet memory, measured by the
+**repeated-mistake-rate**, not chat recall. LongMemEval and LoCoMo score whether
+a model can retrieve a fact from a long conversation. They do not score whether
+memory changes what an agent *does* to a codebase. That behavioural delta is the
+whole point of fleet memory, and it is what this A/B measures.
+
+Run it:
+
+```
+# Offline, deterministic, no model, no quota - proves the harness and prints
+# an ILLUSTRATIVE result you can read the shape of:
+alfred benchmark memory --stub
+
+# A real memory-ON vs memory-OFF A/B (burns real quota):
+alfred benchmark memory --engine claude
+alfred benchmark memory --engine claude --json > mem-after.json
+
+# Just the paired task suite:
+alfred benchmark memory --show-suite
+```
+
+### How the A/B is built
+
+The *same* task suite runs twice against the *same* seed repo and the *same*
+seeded lessons. The only variable between the two arms is memory:
+
+- **memory ON** uses a provider seeded with the lessons the fleet has already
+  "learned" about the seed repo (the real in-memory FleetBrain, or your
+  configured provider chain), and injects recalled lessons through the exact
+  path a live firing uses (`format_memory_context`).
+- **memory OFF** uses `NullMemoryProvider`: it recalls nothing and injects
+  nothing. It is a true no-memory control, not memory-with-an-empty-store.
+
+Each suite task is a bounded coding change that *re-tempts a specific known
+mistake* the seeded lesson warns about (a naive `datetime.now()`, a bare
+`except: pass`, a mutable default argument, an N+1 query). A task's output is
+judged deterministically: declared `mistake_markers` (regexes) mean the known
+mistake was repeated; `success_markers` with no mistake mean it was solved.
+There is **no LLM judge** in the loop, so the verdict is reproducible.
+
+### Metrics, and the exact denominator of each
+
+| Metric | Definition | Denominator |
+|---|---|---|
+| **repeated-mistake-rate** (headline) | mistakes repeated on the arm | **N** = suite tasks flagged `repeats_known_mistake` (a control task never counts). `None` when N = 0 |
+| task success rate | tasks solved (success marker, no mistake marker) | tasks attempted |
+| tokens / turns | summed engine cost, plus per-task figures | tasks attempted |
+| retrieval **recall** of the right lesson | relevant lessons recalled | total relevant lessons, over tasks that declare one. `None` only when no task declares a relevant lesson |
+| retrieval **precision** of the right lesson | relevant lessons recalled | all lessons recalled for those tasks. `None` when nothing was recalled (memory-OFF) |
+
+The report always prints **N**, the per-arm rates, the **delta** (`off - on`),
+and a per-task table (did each task repeat its mistake, off vs on). It never
+prints a solo "memory is X% better" number: the headline is meaningless without
+the N it was measured over and the per-task breakdown behind it.
+
+### Reproducibility
+
+1. **Pick or write a fixture.** The built-in fixture lives at
+   `tests/fixtures/mem-bench/` and has three parts: `lessons.json` (the lessons
+   the fleet "learned", including distractors), `tasks.json` (the paired tasks
+   with their mistake/success markers and the relevant lesson id), and `repo/`
+   (a tiny deterministic sample repo an engine can edit). Point at your own with
+   `--fixture DIR`.
+2. **Capture a baseline** with `--engine <name> --label before --json`.
+3. **Change something** - the memory provider, the recall limit, a prompt.
+4. **Re-run** with `--label after --json` and compare. Same suite, same seed
+   repo, same seeded lessons: the delta is the memory signal.
+
+### Caveats (read before quoting a number)
+
+- **Marker fidelity is the honest limit.** The mistake/success verdict is a
+  regex match against solver output. A marker that is too loose or too tight
+  mis-scores a task. Markers live in `tasks.json`; audit them for your fixture.
+- **The local FleetBrain fallback recalls by recency, not semantics.** The
+  literal-substring match surfaces a lesson whose body contains the task's
+  recall query, then backfills by recency up to the limit. Per-task *semantic*
+  discrimination is the Redis Agent Memory layer's job (see
+  [`MEMORY_PROVIDERS.md`](MEMORY_PROVIDERS.md)); a fixture that leans on the
+  local fallback measures recency retrieval, and precision reflects the
+  distractor share in the top-K. Say which backend a result used.
+- **`--stub` numbers are illustrative, not a result.** The stub solver is
+  deterministic and reacts only to whether the lesson text reached the prompt.
+  It exercises the harness (recall, injection, scoring) with no model; it is
+  **not** evidence about any real engine. Only `--engine` runs produce a real
+  result.
+- **N is small by design.** The fixture is a handful of tasks. Report N; do not
+  extrapolate a 4-task delta into a population claim.
+
+### LongMemEval-S is an optional secondary check only
+
+If you want an external comparability point, LongMemEval-S can be run as a
+*secondary* chat-recall sanity check - "does the memory layer at least retrieve
+facts as well as a standard recall benchmark". It is **never the headline**. The
+headline for coding-fleet memory is the repeated-mistake-rate above, because
+chat-recall accuracy does not tell you whether memory changed what the fleet
+*did* to the code. Keep any LongMemEval-S number in a clearly separate
+"secondary comparability" row, not next to the repeated-mistake-rate.
+
+### Results template (illustrative until you run it)
+
+The table below is a **template with placeholders**, not a result. Fill it from
+one `alfred benchmark memory --engine <name> --json`. Until a real run fills it,
+leave it marked illustrative - do not paste stub numbers here as if they were a
+result.
+
+```
+Memory A/B run                     (ILLUSTRATIVE until a real --engine run fills it)
+  label:        <before | after | ...>
+  seed repo:    tests/fixtures/mem-bench/repo   (or your fixture)
+  memory backend: <fleet-local (recency) | redis+fleet (semantic)>
+  solver:       <engine:claude | engine:codex>
+  N (tasks that re-tempt a learned mistake): <n>
+
+  repeated-mistake-rate     memory OFF: <%>     memory ON: <%>     delta: <+pts>
+  task success rate         memory OFF: <%>     memory ON: <%>
+  retrieval precision/recall (ON only):  <%> / <%>
+  tokens in / turns         memory OFF: <n>/<n>  memory ON: <n>/<n>
+
+  per-task (mistake repeated?  off / on):
+    <task_id>               off=<yes|no>  on=<yes|no>
+    ...
+
+  secondary comparability (optional, NOT the headline):
+    LongMemEval-S recall@<k>: <%>
+```
+
+Keep the OFF/ON pair together so the delta is legible, always next to N and the
+per-task rows.
+
 ## Feeding a future desktop Metrics view
 
 `alfred benchmark report --json` already emits the exact shape a desktop
@@ -241,4 +377,16 @@ with the rest of the suite:
 
 ```
 uv run pytest tests/test_benchmark.py
+```
+
+The memory A/B is covered by `tests/test_memory_benchmark.py`. It runs the full
+A/B over the built-in fixture with the deterministic stub solver and a **real**
+in-memory FleetBrain (SQLite `:memory:`), so recall, injection and every metric
+are exercised for real - only the engine is stubbed. **No LLM is called, no
+network is touched, and no quota is burned.** The one path left uncovered is the
+real-engine solver (`make_cli_engine_solver`), by design: exercising it needs a
+live model.
+
+```
+uv run pytest tests/test_memory_benchmark.py
 ```
