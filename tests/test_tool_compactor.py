@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Tests for lib/tool_compactor.py - output compaction + command normalization.
+"""Tests for lib/tool_compactor.py - deterministic tool-output compaction.
 
-Three concerns are covered explicitly:
+Two concerns are covered explicitly:
   1. Deterministic compaction of noisy, low-signal Bash output.
-  2. The allowlisted PreToolUse command normalizer.
-  3. The CRITICAL tee-on-failure safety valve: a failed command's full output is
+  2. The CRITICAL tee-on-failure safety valve: a failed command's full output is
      never compacted, so an error can never be hidden from the model.
 """
 
@@ -200,84 +199,6 @@ def test_empty_output_is_safe() -> None:
     result = tc.compact_output("", tool_name="Bash", exit_code=0)
     assert not result.applied
     assert result.text == ""
-
-
-# --------------------------------------------------------------------------
-# PreToolUse command normalizer (allowlist only)
-# --------------------------------------------------------------------------
-def test_normalize_git_status_is_left_alone() -> None:
-    # `git status --short` is NOT output-equivalent under status.submoduleSummary
-    # (the long form emits a submodule summary the short form drops), so status is
-    # deliberately off the allowlist.
-    new, changed, note = tc.normalize_command("git status")
-    assert not changed
-    assert note == "no_rule"
-    assert new == "git status"
-
-
-def test_normalize_git_pull_is_left_alone() -> None:
-    # `git pull --quiet` would swallow the merge/fast-forward summary the user
-    # needs, so pull is deliberately off the allowlist.
-    new, changed, note = tc.normalize_command("git pull origin main")
-    assert not changed
-    assert note == "no_rule"
-    assert new == "git pull origin main"
-
-
-def test_normalize_git_fetch_and_clone() -> None:
-    new, changed, _ = tc.normalize_command("git fetch")
-    assert changed
-    assert new == "git fetch --quiet"
-    new, changed, _ = tc.normalize_command("git clone https://example.com/x.git")
-    assert changed
-    assert new == "git clone --quiet https://example.com/x.git"
-
-
-def test_normalize_preserves_extra_args() -> None:
-    new, changed, _ = tc.normalize_command("git fetch origin main")
-    assert changed
-    assert new == "git fetch --quiet origin main"
-
-
-def test_normalize_skips_already_quiet() -> None:
-    new, changed, _ = tc.normalize_command("git fetch --quiet")
-    assert not changed
-    assert new == "git fetch --quiet"
-
-
-def test_normalize_skips_verbose_intent() -> None:
-    # An explicit --verbose means the agent wants the noise; do not fight it.
-    _new, changed, _ = tc.normalize_command("git fetch --verbose")
-    assert not changed
-
-
-def test_normalize_refuses_compound_commands() -> None:
-    for cmd in ("git fetch | grep foo", "git fetch && echo done", "git fetch > out.txt"):
-        new, changed, note = tc.normalize_command(cmd)
-        assert not changed, cmd
-        assert note == "compound"
-        assert new == cmd
-
-
-def test_normalize_unknown_command_unchanged() -> None:
-    new, changed, note = tc.normalize_command("ls -la")
-    assert not changed
-    assert note == "no_rule"
-    assert new == "ls -la"
-
-
-def test_normalize_disabled_flag(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ALFRED_CMD_NORMALIZER", "0")
-    new, changed, note = tc.normalize_command("git status")
-    assert not changed
-    assert note == "disabled"
-    assert new == "git status"
-
-
-def test_normalize_empty_command() -> None:
-    _new, changed, note = tc.normalize_command("   ")
-    assert not changed
-    assert note == "empty"
 
 
 # --------------------------------------------------------------------------

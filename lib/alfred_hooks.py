@@ -32,13 +32,15 @@ This handler also carries the tool-output *compactor* battery (see
 ``lib/tool_compactor.py``), which extends the same hook seam without changing its
 philosophy:
 
-  - ``pretooluse``: after the deny checks pass, an allowlisted command normalizer
-    rewrites a verbose Bash command into its quiet/porcelain equivalent (emitted
-    as ``hookSpecificOutput.updatedInput``).
   - ``posttooluse``: verbose, low-signal Bash output is compacted before it
     enters the model's context (emitted as ``hookSpecificOutput.updatedToolOutput``).
     The compactor tees the full output through untouched whenever a command
     fails, so an error is never hidden.
+
+A PreToolUse *command normalizer* (rewriting verbose commands to quiet
+equivalents) was intentionally dropped: no ``git`` command rewrite proved
+reliably output-equivalent, so the battery keeps only the safe half, compacting
+output that has already been produced.
 
 Wired in via ``agent_runner._agent_settings_args()`` which emits a ``--settings``
 payload pointing PreToolUse at ``python3 <lib>/alfred_hooks.py pretooluse`` and
@@ -512,23 +514,6 @@ def _emit(decision: str, reason: str) -> int:
     return 0
 
 
-def _emit_pretooluse_rewrite(updated_input: dict) -> int:
-    """Emit an allow-with-rewrite PreToolUse decision (exit 0 + JSON).
-
-    ``updatedInput`` replaces the tool arguments before the tool runs. We do NOT
-    set ``permissionDecision`` so the rewrite composes with Claude Code's own
-    allow/ask logic instead of forcing an allow.
-    """
-    out = {
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "updatedInput": updated_input,
-        }
-    }
-    print(json.dumps(out))
-    return 0
-
-
 def _extract_tool_text(response: object) -> str:
     """Best-effort plain text of a Bash tool_response (str or structured)."""
     if isinstance(response, str):
@@ -608,21 +593,7 @@ def main(argv: list[str] | None = None) -> int:
         decision, reason = evaluate_pretooluse(tool_name, tool_input, cwd)
     except Exception:
         return 0  # fail open on any unexpected shape
-    if decision == "deny":
-        return _emit(decision, reason)
-
-    # Allowed: offer an allowlisted quiet-command rewrite for Bash calls.
-    if _compactor is not None and tool_name == "Bash":
-        try:
-            command = str(tool_input.get("command", ""))
-            new_command, changed, _note = _compactor.normalize_command(command)
-            if changed:
-                updated = dict(tool_input)
-                updated["command"] = new_command
-                return _emit_pretooluse_rewrite(updated)
-        except Exception:
-            return 0  # fail open: a normalizer bug must never block the call
-    return 0
+    return _emit(decision, reason)
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -1,25 +1,24 @@
 #!/usr/bin/env python3
-"""Deterministic tool-output compaction and PreToolUse command normalization.
+"""Deterministic tool-output compaction before it enters the model's context.
 
 The single biggest recurring token sink in an autonomous firing is verbose tool
 output: thousand-line build logs, ``npm install`` chatter, all-green test runs,
 progress spinners, ANSI colour codes. Every byte of it re-enters the model's
 context and is paid for on every turn. This module intercepts that output at the
-Claude Code tool-I/O boundary and compacts it *before* it reaches the model, and
-normalizes a small allowlist of verbose commands into their quiet equivalents
-*before* they run.
+Claude Code tool-I/O boundary and compacts it *before* it reaches the model.
 
-Two seams, both wired through ``lib/alfred_hooks.py`` (see that file's
-``main()``):
+It is wired through ``lib/alfred_hooks.py`` (see that file's ``main()``) as a
+**PostToolUse output compactor** (:func:`compact_output`): it collapses
+low-signal Bash output into ANSI-stripped, de-duplicated, budget-bounded
+head+tail form with an explicit omitted-N marker, and emits it back to Claude
+Code as ``hookSpecificOutput.updatedToolOutput``.
 
-* **PostToolUse output compactor** (:func:`compact_output`): collapses
-  low-signal Bash output into ANSI-stripped, de-duplicated, budget-bounded
-  head+tail form with an explicit omitted-N marker. Emitted back to Claude Code
-  as ``hookSpecificOutput.updatedToolOutput``.
-* **PreToolUse command normalizer** (:func:`normalize_command`): an allowlisted,
-  conservative rewrite table that swaps a verbose command for a quiet/porcelain
-  equivalent only when the two are semantically identical. Emitted as
-  ``hookSpecificOutput.updatedInput``.
+A PreToolUse command normalizer (a rewrite table that swapped verbose commands
+for quiet equivalents) was intentionally dropped: no ``git`` command rewrite
+proved reliably output-equivalent (``git status --short`` drops the submodule
+summary; ``git pull``/``git fetch --quiet`` drop the merge and ref-update
+summaries), so the battery keeps only the safe half - compacting output that has
+already been produced, guarded by the tee-on-failure valve below.
 
 Critical safety valve (borrowed from rtk's tee-full-output-on-failure): if a
 command **failed** (non-zero exit) or its output matches an error signature, the
@@ -47,17 +46,14 @@ from __future__ import annotations
 
 import os
 import re
-import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass
 
 __all__ = [
     "CompactionResult",
-    "command_normalizer_enabled",
     "compact_output",
     "compact_text",
     "looks_like_failure",
-    "normalize_command",
     "output_compactor_enabled",
     "strip_ansi",
 ]
@@ -108,11 +104,6 @@ _ERROR_SIGNATURE_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
-# Shell metacharacters that make a command a pipeline / compound / redirect.
-# The normalizer refuses to rewrite any command containing one of these: a
-# porcelain swap could change what a downstream ``grep``/``awk`` parses.
-_SHELL_META_RE = re.compile(r"[|&;<>`$()]|\|\||&&|\n")
-
 
 # --------------------------------------------------------------------------
 # Config
@@ -142,11 +133,6 @@ def _env_int(env: Mapping[str, str], key: str, default: int) -> int:
 def output_compactor_enabled(env: Mapping[str, str] | None = None) -> bool:
     """True unless an operator opts out with ``ALFRED_OUTPUT_COMPACTOR=0``."""
     return _flag_enabled(_resolve(env), "ALFRED_OUTPUT_COMPACTOR")
-
-
-def command_normalizer_enabled(env: Mapping[str, str] | None = None) -> bool:
-    """True unless an operator opts out with ``ALFRED_CMD_NORMALIZER=0``."""
-    return _flag_enabled(_resolve(env), "ALFRED_CMD_NORMALIZER")
 
 
 def _compact_tools(env: Mapping[str, str]) -> frozenset[str]:
@@ -385,68 +371,3 @@ def compact_output(
         omitted_lines=omitted,
         reason="compacted",
     )
-
-
-# --------------------------------------------------------------------------
-# PreToolUse command normalization
-# --------------------------------------------------------------------------
-# Allowlist only, and STRICTLY output-equivalent. Each rule maps a verbose
-# command to a quiet equivalent that changes only transfer/progress chatter,
-# never the result the agent needs. When a rewrite is not always equivalent, it
-# is left off the allowlist rather than guarded by clever detection. Notably
-# absent, and why:
-#   - `git status` -> `--short --branch`: NOT equivalent when
-#     `status.submoduleSummary` is set (the long form emits a submodule summary
-#     the short form drops).
-#   - `git pull --quiet`: silences the merge/fast-forward summary the user needs
-#     to see what was integrated.
-# A rule receives the shlex tokens and returns the rewritten token list or None.
-def _rule_git_quiet(toks: list[str]) -> tuple[list[str], str] | None:
-    # `git fetch|clone` -> add `--quiet`: these are pure transfer commands whose
-    # only suppressed output is download progress. They have no merge or working
-    # tree summary to hide, and errors still print. `git pull` is deliberately
-    # excluded because it also merges, and `--quiet` would drop that summary.
-    if len(toks) >= 2 and toks[0] == "git" and toks[1] in {"fetch", "clone"}:
-        rest = toks[2:]
-        noisy = {"-v", "--verbose", "--progress", "-q", "--quiet"}
-        if any(flag in rest for flag in noisy):
-            return None
-        return ([toks[0], toks[1], "--quiet", *rest], f"git {toks[1]} -> --quiet")
-    return None
-
-
-_RULES = (_rule_git_quiet,)
-
-
-def normalize_command(
-    command: str, *, env: Mapping[str, str] | None = None
-) -> tuple[str, bool, str]:
-    """Rewrite an allowlisted verbose command to its quiet equivalent.
-
-    Returns ``(command, changed, note)``. Conservative by construction:
-
-    * Disabled via ``ALFRED_CMD_NORMALIZER=0`` -> unchanged.
-    * Any shell metacharacter (pipe, redirect, ``&&``, ``$(...)``) -> unchanged:
-      a porcelain swap could break a downstream parser.
-    * Only the exact allowlisted base commands are ever touched; everything else
-      passes through verbatim.
-    """
-    resolved = _resolve(env)
-    if not command_normalizer_enabled(resolved):
-        return command, False, "disabled"
-    if not command or not command.strip():
-        return command, False, "empty"
-    if _SHELL_META_RE.search(command):
-        return command, False, "compound"
-    try:
-        toks = shlex.split(command)
-    except ValueError:
-        return command, False, "unparseable"
-    if not toks:
-        return command, False, "empty"
-    for rule in _RULES:
-        result = rule(toks)
-        if result is not None:
-            new_toks, note = result
-            return shlex.join(new_toks), True, note
-    return command, False, "no_rule"

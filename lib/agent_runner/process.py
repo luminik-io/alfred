@@ -154,9 +154,7 @@ def _agent_hook_settings() -> dict:
     The same opt-in ``ALFRED_AGENT_HOOKS`` flag wires two hooks at
     ``lib/alfred_hooks.py``:
 
-    * ``PreToolUse`` - the deterministic guardrails, plus an allowlisted
-      command normalizer that rewrites verbose Bash commands to quiet
-      equivalents (``ALFRED_CMD_NORMALIZER``).
+    * ``PreToolUse`` - the deterministic guardrails.
     * ``PostToolUse`` - the tool-output compactor that shrinks noisy Bash logs
       before they enter context, teeing full output through on failure
       (``ALFRED_OUTPUT_COMPACTOR``).

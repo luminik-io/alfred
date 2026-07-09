@@ -48,7 +48,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`CONNECTORS.md`](CONNECTORS.md): input connectors that feed the `agent:implement` issue queue from non-GitHub sources such as Linear tickets and Sentry alerts without changing the agents.
 - [`CLAUDE_CODE.md`](CLAUDE_CODE.md): Claude Code and Codex install, account routing, engine routing, and quota behavior.
 - [`CAPABILITIES.md`](CAPABILITIES.md): read-only local inventory for code graph memory, Alfred's context governor, and engineering skill packs.
-- [`TOOL_COMPACTOR.md`](TOOL_COMPACTOR.md): the tool-output compactor and PreToolUse command normalizer. Shrinks noisy Bash output before it enters context and rewrites verbose commands to quiet equivalents, with a tee-full-output-on-failure safety valve and config knobs.
+- [`TOOL_COMPACTOR.md`](TOOL_COMPACTOR.md): the tool-output compactor. Shrinks noisy Bash output before it enters context, with a tee-full-output-on-failure safety valve and config knobs.
 - [`BENCHMARKS.md`](BENCHMARKS.md): reproducible self-benchmark harness. The fixed task suite, the four metric families read from existing telemetry, how to run before/after, and cost framed as a share of subscription quota.
 - [`TELEMETRY.md`](TELEMETRY.md): the opt-out anonymous usage reporter that sends aggregate totals to the public Impact counter, its controls, and how to point it at a self-hosted collector.
 - [`CODEX_PROVIDER.md`](CODEX_PROVIDER.md): Codex engine modes, diagnostics, runtime contract, and billing posture.

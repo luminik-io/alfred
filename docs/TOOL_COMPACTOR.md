@@ -1,52 +1,44 @@
-# Tool-output compactor and command normalizer
+# Tool-output compactor
 
 The single biggest recurring token sink in an autonomous firing is verbose tool
 output: thousand-line build logs, `npm install` chatter, all-green test runs,
 progress spinners, and ANSI colour codes. Every byte of that re-enters the
 model's context and is paid for on every turn. Alfred intercepts it at the Claude
-Code tool-I/O boundary and shrinks it before it reaches the model, and rewrites a
-small allowlist of verbose commands into their quiet equivalents before they run.
+Code tool-I/O boundary and shrinks it before it reaches the model.
 
 This battery extends the same hook seam as the deterministic guardrails in
-[`lib/alfred_hooks.py`](../lib/alfred_hooks.py). The compaction and normalization
-logic lives in [`lib/tool_compactor.py`](../lib/tool_compactor.py). It is
-deterministic and byte-budget driven, mirroring the prompt
+[`lib/alfred_hooks.py`](../lib/alfred_hooks.py). The compaction logic lives in
+[`lib/tool_compactor.py`](../lib/tool_compactor.py). It is deterministic and
+byte-budget driven, mirroring the prompt
 [context governor](../lib/agent_runner/context_governor.py); there is no LLM call
 and no summarization that invents facts.
 
-## The two seams
+## The seam
 
-- **PostToolUse output compactor.** After a Bash command runs, its output is
-  ANSI-stripped, de-duplicated (runs of identical lines collapse to `line (xN)`),
-  progress spinners are flattened, and the result is bounded to a byte budget as a
-  head-plus-tail excerpt with an explicit `[ALFRED_OUTPUT_COMPACTOR omitted_lines=N]`
-  marker. An all-green test run is reduced to its counts line. The compact form is
-  returned to Claude Code as `hookSpecificOutput.updatedToolOutput`, so the model
-  never sees the raw blob.
+**PostToolUse output compactor.** After a Bash command runs, its output is
+ANSI-stripped, de-duplicated (runs of identical lines collapse to `line (xN)`),
+progress spinners are flattened, and the result is bounded to a byte budget as a
+head-plus-tail excerpt with an explicit `[ALFRED_OUTPUT_COMPACTOR omitted_lines=N]`
+marker. An all-green test run is reduced to its counts line. The compact form is
+returned to Claude Code as `hookSpecificOutput.updatedToolOutput`, so the model
+never sees the raw blob.
 
-- **PreToolUse command normalizer.** Before a Bash command runs, an allowlisted
-  rewrite table swaps a verbose command for a quiet equivalent that is strictly
-  output-equivalent (it changes only transfer or progress chatter, never the result
-  the agent needs). The rewrite is returned as `hookSpecificOutput.updatedInput`.
-  Current allowlist:
+## Why there is no command normalizer
 
-  | Command | Rewritten to | Why it is safe |
-  | --- | --- | --- |
-  | `git fetch` / `git clone` | same command with `--quiet` | Pure transfer commands whose only suppressed output is download progress. They have no merge or working-tree summary to hide, and errors still print. |
+An earlier draft of this battery also carried a PreToolUse *command normalizer*: a
+small allowlist that rewrote verbose commands to quiet equivalents (for example
+`git status` to `git status --short --branch`, or adding `--quiet` to
+`git pull` / `git fetch`). It was **intentionally dropped**.
 
-  The allowlist is kept deliberately small, and a rewrite is left off entirely
-  rather than guarded by clever detection when it is not always equivalent:
-
-  - `git status` is **not** rewritten to `--short --branch`: under
-    `status.submoduleSummary` the long form emits a submodule summary the short
-    form drops, so the two are not always output-equivalent.
-  - `git pull` is **not** given `--quiet`: it also merges, and `--quiet` would
-    swallow the merge or fast-forward summary the user needs.
-
-  The normalizer also refuses to touch any command containing a shell
-  metacharacter (pipe, redirect, `&&`, `$(...)`), because a rewrite could change
-  what a downstream `grep` or `awk` parses. Anything not on the allowlist passes
-  through verbatim.
+No `git` command rewrite proved reliably output-equivalent. `git status --short`
+drops the submodule summary when `status.submoduleSummary` is set; `git pull
+--quiet` drops the merge or fast-forward summary; `git fetch --quiet` drops the
+new-branch, tag, and ref-update summaries that Git normally prints. Each is the
+same class of problem: the "quiet" form silently omits output the agent may need.
+Rather than chase edge cases with ever-cleverer detection, the battery keeps only
+the safe half. Compacting output that has *already been produced* is safe because
+the tee-on-failure valve below guarantees an error is never hidden; rewriting a
+command up front to suppress output it has not produced yet is not.
 
 ## Safety valve: tee the full output on failure
 
@@ -54,8 +46,9 @@ Compaction must never hide an error. If a command **failed**, the full output is
 passed through untouched:
 
 - A non-zero exit code always tees the full output.
-- When the exit code is unknown, an error signature (a Python traceback, `fatal:`,
-  `npm ERR!`, a segfault, `command not found`) or a failing test tail
+- When the exit code is unknown (a plain-string tool response carries no exit
+  code), an error signature (a Python traceback, `fatal:`, `npm ERR!`, a segfault,
+  a bare `Error` / `FAILED` / `Exception` token) or a failing test tail
   (`1 failed, ...`) also tees the full output.
 
 So the compactor only ever shrinks the boring, successful logs. A traceback, a
@@ -69,9 +62,9 @@ never a hidden error.
 
 ## Enabling the battery
 
-Both seams ride the same opt-in flag as the guardrail hook. They are attached only
-when `ALFRED_AGENT_HOOKS=1` (unattended autonomy stays the default, so the hook is
-off unless you ask for it). Within that, each half is individually tunable.
+The compactor rides the same opt-in flag as the guardrail hook. It is attached
+only when `ALFRED_AGENT_HOOKS=1` (unattended autonomy stays the default, so the
+hook is off unless you ask for it).
 
 ## Configuration knobs
 
@@ -80,14 +73,13 @@ can override them in production without a redeploy.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `ALFRED_AGENT_HOOKS` | off | Master opt-in that wires both the PreToolUse and PostToolUse hooks. |
+| `ALFRED_AGENT_HOOKS` | off | Master opt-in that wires the PreToolUse guardrails and the PostToolUse compactor. |
 | `ALFRED_OUTPUT_COMPACTOR` | on | Set to `0` to disable output compaction (raw output passes through). |
 | `ALFRED_OUTPUT_COMPACTOR_TOOLS` | `Bash` | Comma-separated list of tools whose output is compacted. |
 | `ALFRED_OUTPUT_COMPACTOR_MIN_BYTES` | `2000` | Output smaller than this passes through un-compacted. |
 | `ALFRED_OUTPUT_COMPACTOR_MAX_BYTES` | `8000` | Target byte budget for a compacted result. |
 | `ALFRED_OUTPUT_COMPACTOR_HEAD_LINES` | `40` | Lines kept from the head of a compacted excerpt. |
 | `ALFRED_OUTPUT_COMPACTOR_TAIL_LINES` | `40` | Lines kept from the tail of a compacted excerpt. |
-| `ALFRED_CMD_NORMALIZER` | on | Set to `0` to disable the PreToolUse command rewrite. |
 
 The compactor stays stdlib-only so it runs on the Claude Code hook path under any
 `python3` without the project venv, exactly like the guardrail hook it sits beside.

@@ -303,37 +303,6 @@ def test_main_ignores_non_pretooluse(monkeypatch):
     assert ah.main(["stop"]) == 0  # only PreToolUse / PostToolUse are handled
 
 
-# ---------------- PreToolUse command normalization ----------------
-
-
-def test_main_pretooluse_rewrites_git_fetch(monkeypatch, capsys):
-    event = {"tool_name": "Bash", "tool_input": {"command": "git fetch", "description": "fetch"}}
-    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
-    rc = ah.main(["pretooluse"])
-    assert rc == 0
-    payload = json.loads(capsys.readouterr().out)
-    hso = payload["hookSpecificOutput"]
-    assert hso["hookEventName"] == "PreToolUse"
-    assert hso["updatedInput"]["command"] == "git fetch --quiet"
-    # Other input fields are preserved, and no forced permission decision.
-    assert hso["updatedInput"]["description"] == "fetch"
-    assert "permissionDecision" not in hso
-
-
-def test_main_pretooluse_no_rewrite_is_silent(monkeypatch, capsys):
-    event = {"tool_name": "Bash", "tool_input": {"command": "ls -la"}}
-    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
-    assert ah.main(["pretooluse"]) == 0
-    assert capsys.readouterr().out == ""  # nothing emitted when no rule matches
-
-
-def test_main_pretooluse_deny_takes_precedence_over_rewrite(monkeypatch, capsys):
-    # A denied command must still deny (exit 2), never get rewritten.
-    event = {"tool_name": "Bash", "tool_input": {"command": "git push origin main"}}
-    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
-    assert ah.main(["pretooluse"]) == 2
-
-
 # ---------------- PostToolUse output compaction ----------------
 
 
