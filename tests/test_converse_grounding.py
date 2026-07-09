@@ -223,9 +223,32 @@ def test_build_repo_grounding_rejects_path_traversal_slug(tmp_path: Path) -> Non
     assert "No local checkout or CLAUDE.md available" in grounding
 
 
-def test_build_repo_grounding_rejects_absolute_component_slug(tmp_path: Path) -> None:
-    # An absolute mapped path must be rejected before any read/list, even when it
-    # points at a real directory with a CLAUDE.md.
+def test_build_repo_grounding_reads_trusted_absolute_mapping(tmp_path: Path) -> None:
+    # A TRUSTED repo_to_local mapping (operator's GH_REPO_TO_LOCAL) may point at
+    # an absolute checkout OUTSIDE workspace_root. That is a legitimate operator
+    # config, so its CLAUDE.md must still be read - containment applies only to
+    # the untrusted request-slug fallback, not to this trusted mapping.
+    checkout = tmp_path / "elsewhere" / "acme-api"
+    checkout.mkdir(parents=True)
+    (checkout / "CLAUDE.md").write_text("# Acme API canon\nBackend rules.", encoding="utf-8")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    grounding = cc.build_repo_grounding(
+        ["acme-io/acme-api"],
+        workspace_root=workspace,
+        repo_to_local={"acme-api": str(checkout)},
+    )
+
+    assert "Acme API canon" in grounding
+    assert "Backend rules." in grounding
+
+
+def test_build_repo_grounding_rejects_absolute_untrusted_slug(tmp_path: Path) -> None:
+    # With no mapping, an absolute bare name from the request slug must be
+    # rejected before any read/list. ``x//abs`` splits (maxsplit=1) to a bare
+    # name of ``/abs`` - an absolute, untrusted path - which must not be read.
     outside = tmp_path / "abs-secret"
     outside.mkdir()
     (outside / "CLAUDE.md").write_text("absolute-path secret", encoding="utf-8")
@@ -234,9 +257,8 @@ def test_build_repo_grounding_rejects_absolute_component_slug(tmp_path: Path) ->
     workspace.mkdir()
 
     grounding = cc.build_repo_grounding(
-        ["acme/secret"],
+        [f"x/{outside}"],  # bare name becomes the absolute str(outside)
         workspace_root=workspace,
-        repo_to_local={"acme/secret": str(outside)},
     )
 
     assert "absolute-path secret" not in grounding
