@@ -15,7 +15,7 @@ import os
 import secrets
 import sqlite3
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -352,6 +352,8 @@ class Store(Protocol):
         self, old_id: str, new_id_: str, *, at: datetime | None = None
     ) -> bool: ...
 
+    def set_lesson_provenance(self, lesson_id: str, provenance: str | None) -> bool: ...
+
     def add_lesson_anchor(self, anchor: LessonAnchor) -> LessonAnchor: ...
 
     def list_lesson_anchors(self, lesson_id: str, limit: int = 100) -> list[LessonAnchor]: ...
@@ -514,6 +516,12 @@ class Store(Protocol):
     def stats(self) -> dict[str, int]: ...
 
     def memory_candidate_stats(self) -> dict[str, int]: ...
+
+    def get_reuse_count(self, scope_key: str) -> int: ...
+
+    def bump_reuse_counts(self, scope_keys: Sequence[str]) -> None: ...
+
+    def union_reuse_counts(self, survivor_key: str, loser_key: str) -> None: ...
 
 
 # ---------------------------------------------------------------------------
@@ -845,6 +853,22 @@ class SQLiteStore:
             )
         return True
 
+    def set_lesson_provenance(self, lesson_id: str, provenance: str | None) -> bool:
+        """Overwrite one lesson's ``provenance`` column. No-op ``False`` if absent.
+
+        Used by the consolidation merge to write the UNION of a survivor's and a
+        merged-away duplicate's provenance onto the survivor, so no firing/PR link
+        is lost. Blank id is a no-op ``False``.
+        """
+        clean = (lesson_id or "").strip()
+        if not clean:
+            return False
+        with self._connect() as conn, conn:
+            cur = conn.execute(
+                "UPDATE lessons SET provenance = ? WHERE id = ?", (provenance, clean)
+            )
+        return cur.rowcount > 0
+
     def add_lesson_anchor(self, anchor: LessonAnchor) -> LessonAnchor:
         """Persist one lesson->entity or lesson->lesson link (idempotent)."""
         with self._connect() as conn, conn:
@@ -883,6 +907,78 @@ class SQLiteStore:
                 (int(limit),),
             ).fetchall()
             return [_row_to_lesson_anchor(r) for r in rows]
+
+    # ----- reuse counters (Phase 3: durable reinforce-on-reuse) ----------
+
+    def get_reuse_count(self, scope_key: str) -> int:
+        """Return the persisted reuse count for ``scope_key`` (0 if absent).
+
+        The scope key is the process-global identity the ranking layer already
+        builds (``codename`` + ``repo`` + lesson identity); persisting it here
+        lets reinforce-on-reuse survive across firings and process restarts
+        instead of living only in an in-process table. An absent row is zero, so
+        ranking is byte-identical to the in-process default until a lesson is
+        actually reused.
+        """
+        key = (scope_key or "").strip()
+        if not key:
+            return 0
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT reuse_count FROM lesson_reuse WHERE scope_key = ?", (key,)
+            ).fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
+
+    def bump_reuse_counts(self, scope_keys: Sequence[str]) -> None:
+        """Increment the persisted reuse count for each of ``scope_keys`` by one.
+
+        Idempotent-per-call upsert: a key with no row starts at 1, an existing
+        key is incremented. Blank keys are skipped. One transaction for the whole
+        batch so a single reinforce call is one commit.
+        """
+        keys = [k.strip() for k in scope_keys if k and k.strip()]
+        if not keys:
+            return
+        now = _to_iso(datetime.now(UTC))
+        with self._connect() as conn, conn:
+            conn.executemany(
+                "INSERT INTO lesson_reuse (scope_key, reuse_count, updated_at) "
+                "VALUES (?, 1, ?) "
+                "ON CONFLICT (scope_key) DO UPDATE SET "
+                "  reuse_count = reuse_count + 1, updated_at = excluded.updated_at",
+                [(key, now) for key in keys],
+            )
+
+    def union_reuse_counts(self, survivor_key: str, loser_key: str) -> None:
+        """Move the loser scope key's reuse count onto the survivor, then drop it.
+
+        Keeps reinforce-on-reuse whole across a merge: ``survivor += loser`` and
+        the loser's orphaned row is deleted so nothing dangles on the invalidated
+        key. Idempotent and a no-op when the loser has no reuse row or the keys
+        are blank/identical.
+        """
+        s_key = (survivor_key or "").strip()
+        l_key = (loser_key or "").strip()
+        if not s_key or not l_key or s_key == l_key:
+            return
+        now = _to_iso(datetime.now(UTC))
+        with self._connect() as conn, conn:
+            row = conn.execute(
+                "SELECT reuse_count FROM lesson_reuse WHERE scope_key = ?", (l_key,)
+            ).fetchone()
+            loser_count = int(row[0]) if row and row[0] else 0
+            if loser_count <= 0:
+                conn.execute("DELETE FROM lesson_reuse WHERE scope_key = ?", (l_key,))
+                return
+            conn.execute(
+                "INSERT INTO lesson_reuse (scope_key, reuse_count, updated_at) "
+                "VALUES (?, ?, ?) "
+                "ON CONFLICT (scope_key) DO UPDATE SET "
+                "  reuse_count = reuse_count + excluded.reuse_count, "
+                "  updated_at = excluded.updated_at",
+                (s_key, loser_count, now),
+            )
+            conn.execute("DELETE FROM lesson_reuse WHERE scope_key = ?", (l_key,))
 
     def lessons_for_anchor(
         self,

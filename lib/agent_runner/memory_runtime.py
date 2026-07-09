@@ -443,6 +443,12 @@ def format_memory_context(
         return ""
     if not pairs:
         return ""
+    # Bind the durable reuse backend (Phase 3) from the provider so ranking reads
+    # (and reinforce below writes) the reuse count that survives across firings.
+    # A provider with no persisted reuse store leaves this None -> in-process
+    # behaviour, unchanged. Only meaningful when ranking is armed.
+    if memory_ranking.rank_enabled():
+        memory_ranking.set_reuse_store(memory_ranking.reuse_store_for(provider))
     # Delta first so freed budget goes to fresh material, then rank so the
     # budget below keeps the best of what remains. Both are no-ops by default.
     # The reuse/delta state is process-global, so codename+repo scope every key
