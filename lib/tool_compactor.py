@@ -84,20 +84,27 @@ _TEST_TAIL_RE = re.compile(
 _TEST_FAIL_COUNT_RE = re.compile(r"\b([1-9]\d*)\s+(failed|error)s?\b", re.IGNORECASE)
 
 # Error signatures that force a full-output tee even when no exit code is known.
-# Intentionally conservative: these only DISABLE compaction (the safe
-# direction), and they target genuine failures, not the word "error" appearing
-# incidentally in a healthy log ("0 errors", "error handling").
+# This is the load-bearing backstop for a plain-STRING tool_response, which
+# carries no exit code: without it, an error string could be compacted and the
+# failure hidden. It only ever DISABLES compaction (the safe direction). The
+# word-boundary anchors keep it from firing on incidental healthy text such as
+# "0 errors" or "compiled without failures".
 _ERROR_SIGNATURE_RE = re.compile(
     r"Traceback \(most recent call last\)"
     r"|^\s*File \"[^\"]+\", line \d+"
     r"|\bpanic:"
     r"|Segmentation fault"
-    r"|\bfatal:\s"
+    r"|\bfatal:"
     r"|\bnpm ERR!"
     r"|command not found"
     r"|No such file or directory"
     r"|\bunhandled exception\b"
-    r"|\bcore dumped\b",
+    r"|\bcore dumped\b"
+    r"|\bError\b"
+    r"|\bFAILED\b"
+    r"|\bexception\b"
+    r"|non-zero exit"
+    r"|exited with code",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -383,23 +390,23 @@ def compact_output(
 # --------------------------------------------------------------------------
 # PreToolUse command normalization
 # --------------------------------------------------------------------------
-# Allowlist only. Each rule maps a verbose command to a quiet/porcelain
-# equivalent that is SEMANTICALLY IDENTICAL - it changes only what is printed,
-# never what the command does, and never drops signal the agent needs. A rule
-# receives the shlex tokens and returns the rewritten token list or ``None``.
-def _rule_git_status(toks: list[str]) -> tuple[list[str], str] | None:
-    # `git status` -> `git status --short --branch`: the porcelain-stable short
-    # format. `--branch` is chosen over a bare `--porcelain` so the branch and
-    # ahead/behind line is preserved; only the verbose per-file prose is dropped.
-    if toks == ["git", "status"]:
-        return (["git", "status", "--short", "--branch"], "git status -> short+branch porcelain")
-    return None
-
-
+# Allowlist only, and STRICTLY output-equivalent. Each rule maps a verbose
+# command to a quiet equivalent that changes only transfer/progress chatter,
+# never the result the agent needs. When a rewrite is not always equivalent, it
+# is left off the allowlist rather than guarded by clever detection. Notably
+# absent, and why:
+#   - `git status` -> `--short --branch`: NOT equivalent when
+#     `status.submoduleSummary` is set (the long form emits a submodule summary
+#     the short form drops).
+#   - `git pull --quiet`: silences the merge/fast-forward summary the user needs
+#     to see what was integrated.
+# A rule receives the shlex tokens and returns the rewritten token list or None.
 def _rule_git_quiet(toks: list[str]) -> tuple[list[str], str] | None:
-    # `git pull|fetch|clone` -> add `--quiet`: suppresses progress chatter only.
-    # Errors, conflicts and the summary all still print.
-    if len(toks) >= 2 and toks[0] == "git" and toks[1] in {"pull", "fetch", "clone"}:
+    # `git fetch|clone` -> add `--quiet`: these are pure transfer commands whose
+    # only suppressed output is download progress. They have no merge or working
+    # tree summary to hide, and errors still print. `git pull` is deliberately
+    # excluded because it also merges, and `--quiet` would drop that summary.
+    if len(toks) >= 2 and toks[0] == "git" and toks[1] in {"fetch", "clone"}:
         rest = toks[2:]
         noisy = {"-v", "--verbose", "--progress", "-q", "--quiet"}
         if any(flag in rest for flag in noisy):
@@ -408,7 +415,7 @@ def _rule_git_quiet(toks: list[str]) -> tuple[list[str], str] | None:
     return None
 
 
-_RULES = (_rule_git_status, _rule_git_quiet)
+_RULES = (_rule_git_quiet,)
 
 
 def normalize_command(

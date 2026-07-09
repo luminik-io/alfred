@@ -25,20 +25,28 @@ and no summarization that invents facts.
   never sees the raw blob.
 
 - **PreToolUse command normalizer.** Before a Bash command runs, an allowlisted
-  rewrite table swaps a verbose command for a quiet or porcelain equivalent that is
-  semantically identical (it changes only what is printed, never what the command
-  does). The rewrite is returned as `hookSpecificOutput.updatedInput`. Current
-  allowlist:
+  rewrite table swaps a verbose command for a quiet equivalent that is strictly
+  output-equivalent (it changes only transfer or progress chatter, never the result
+  the agent needs). The rewrite is returned as `hookSpecificOutput.updatedInput`.
+  Current allowlist:
 
   | Command | Rewritten to | Why it is safe |
   | --- | --- | --- |
-  | `git status` | `git status --short --branch` | Porcelain-stable short format; `--branch` keeps the branch and ahead/behind line, so only the verbose per-file prose is dropped. |
-  | `git pull` / `git fetch` / `git clone` | same command with `--quiet` | `--quiet` suppresses progress chatter only; errors, conflicts, and the summary still print. |
+  | `git fetch` / `git clone` | same command with `--quiet` | Pure transfer commands whose only suppressed output is download progress. They have no merge or working-tree summary to hide, and errors still print. |
 
-  The normalizer refuses to touch any command containing a shell metacharacter
-  (pipe, redirect, `&&`, `$(...)`), because a porcelain swap could change what a
-  downstream `grep` or `awk` parses. Anything not on the allowlist passes through
-  verbatim.
+  The allowlist is kept deliberately small, and a rewrite is left off entirely
+  rather than guarded by clever detection when it is not always equivalent:
+
+  - `git status` is **not** rewritten to `--short --branch`: under
+    `status.submoduleSummary` the long form emits a submodule summary the short
+    form drops, so the two are not always output-equivalent.
+  - `git pull` is **not** given `--quiet`: it also merges, and `--quiet` would
+    swallow the merge or fast-forward summary the user needs.
+
+  The normalizer also refuses to touch any command containing a shell
+  metacharacter (pipe, redirect, `&&`, `$(...)`), because a rewrite could change
+  what a downstream `grep` or `awk` parses. Anything not on the allowlist passes
+  through verbatim.
 
 ## Safety valve: tee the full output on failure
 

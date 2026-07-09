@@ -306,17 +306,17 @@ def test_main_ignores_non_pretooluse(monkeypatch):
 # ---------------- PreToolUse command normalization ----------------
 
 
-def test_main_pretooluse_rewrites_git_status(monkeypatch, capsys):
-    event = {"tool_name": "Bash", "tool_input": {"command": "git status", "description": "status"}}
+def test_main_pretooluse_rewrites_git_fetch(monkeypatch, capsys):
+    event = {"tool_name": "Bash", "tool_input": {"command": "git fetch", "description": "fetch"}}
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
     rc = ah.main(["pretooluse"])
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     hso = payload["hookSpecificOutput"]
     assert hso["hookEventName"] == "PreToolUse"
-    assert hso["updatedInput"]["command"] == "git status --short --branch"
+    assert hso["updatedInput"]["command"] == "git fetch --quiet"
     # Other input fields are preserved, and no forced permission decision.
-    assert hso["updatedInput"]["description"] == "status"
+    assert hso["updatedInput"]["description"] == "fetch"
     assert "permissionDecision" not in hso
 
 
@@ -380,6 +380,16 @@ def test_main_posttooluse_string_response(monkeypatch, capsys):
     assert ah.main(["posttooluse"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
+
+
+def test_main_posttooluse_string_error_response_is_teed(monkeypatch, capsys):
+    # A plain-STRING tool_response has no exit code (Greptile P1). An error string
+    # must still be teed in full, never compacted, so the failure is not hidden.
+    raw = _big_bash_log() + "Error: build failed on step 42\n"
+    event = {"tool_name": "Bash", "tool_input": {"command": "make"}, "tool_response": raw}
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    assert ah.main(["posttooluse"]) == 0
+    assert capsys.readouterr().out == ""  # nothing emitted; raw output preserved
 
 
 def test_main_posttooluse_fails_open_on_garbage(monkeypatch):
