@@ -174,9 +174,10 @@ def load_lesson_writer(env: Mapping[str, str] | None = None) -> MemoryProvider |
     * memory DISABLED (``ALFRED_MEMORY_PROVIDERS`` empty, or only ``null``) ->
       returns ``None``. Runtime memory is off, so nothing is written: the
       promote path is a no-op and does not silently persist lessons to disk;
-    * a dedicated recall store is named (``sqlite`` / ``redis``) -> write to the
-      FIRST one, since that is exactly where recall reads (default ``sqlite``,
-      ``redis,fleet`` -> Redis, unchanged from earlier releases);
+    * a dedicated recall store is named (``sqlite`` / ``pgvector`` / ``redis``) ->
+      write to the FIRST one that actually constructs, since that is exactly
+      where recall reads (default ``sqlite``, ``redis,fleet`` -> Redis, unchanged
+      from earlier releases);
     * no dedicated recall store but ``fleet`` is in the chain (e.g. ``fleet``
       only) -> write to FleetBrain's own lessons table, the store fleet recall
       reads. Never a disconnected SQLite file fleet recall would ignore;
@@ -184,8 +185,15 @@ def load_lesson_writer(env: Mapping[str, str] | None = None) -> MemoryProvider |
       only) -> returns ``None``: the promote path is a no-op rather than writing
       to a store outside the active recall chain.
 
-    Construction errors propagate to the caller, which treats them as a
-    retryable promotion failure (the candidate stays pending).
+    A named store whose factory fails to CONSTRUCT (an opt-in backend that is
+    not armed -- e.g. ``pgvector`` with psycopg not installed or no DSN) is
+    treated as unavailable and SKIPPED, so the writer degrades to the next
+    writable store in the chain exactly as recall's ``build_chain`` does. This
+    is the same graceful-degrade contract the recall path honours; it is safe
+    because these factories fail only when the backend is unarmed, not on a
+    transient runtime error (they do not connect at construction). A store that
+    constructs and only fails later, at ``reflect`` time, still surfaces that
+    error to the promote path as a retryable failure.
     """
     envmap = env if env is not None else os.environ
     raw = envmap.get("ALFRED_MEMORY_PROVIDERS")
@@ -202,11 +210,19 @@ def load_lesson_writer(env: Mapping[str, str] | None = None) -> MemoryProvider |
         if name in LESSON_STORE_NAMES:
             factory = PROVIDER_REGISTRY.get(name)
             if factory is not None:
-                return factory(envmap)
-    # No dedicated recall store named. If fleet is active, the promoted lesson
-    # belongs in FleetBrain's own lessons table (what fleet recall reads), never
-    # a disconnected SQLite file recall would never consult. If nothing writable
-    # is in the chain, there is no in-chain store to write to: no-op (None).
+                try:
+                    return factory(envmap)
+                except Exception:
+                    _LOG.warning(
+                        "memory.config: lesson store %r unavailable; "
+                        "falling back to the next writable store in the chain",
+                        name,
+                    )
+                    continue
+    # No dedicated recall store constructed. If fleet is active, the promoted
+    # lesson belongs in FleetBrain's own lessons table (what fleet recall reads),
+    # never a disconnected SQLite file recall would never consult. If nothing
+    # writable is in the chain, there is no in-chain store to write to: no-op.
     if "fleet" in names:
         return FleetBrainProvider.from_env(envmap)
     return None

@@ -54,6 +54,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import threading
 from collections.abc import Iterable, Mapping, Sequence
 from contextlib import contextmanager
@@ -124,6 +125,17 @@ try:  # pragma: no cover - import guard
     _register_vector = _register_vector_fn
 except Exception:  # pgvector adapter absent -> text-literal ``%s::vector`` path
     _register_vector = None
+
+
+# A table-name prefix is interpolated into DDL/query identifiers (it cannot be a
+# bound ``%s`` parameter -- SQL identifiers are not parameterizable), so it MUST
+# be a safe SQL identifier and nothing else. This allowlist both closes the
+# injection-via-config surface and guarantees the composed name (prefix +
+# ``lessons``) is a valid *unquoted* identifier: it must start with a letter or
+# underscore (never a digit) and contain only letters, digits, and underscores.
+# A common operator value like ``alfred-prod`` (dash) is rejected with a clear
+# error rather than silently producing broken or injectable SQL.
+_TABLE_PREFIX_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def psycopg_available() -> bool:
@@ -415,6 +427,14 @@ class PgvectorProvider:
         self.index_kind = (self.index_kind or "hnsw").strip().lower()
         if self.index_kind not in ("hnsw", "ivfflat"):
             self.index_kind = "hnsw"
+        prefix = (self.table_prefix or "").strip()
+        if prefix and not _TABLE_PREFIX_RE.match(prefix):
+            raise ValueError(
+                "ALFRED_MEMORY_PG_TABLE_PREFIX must be a valid SQL identifier prefix "
+                "(letters, digits, and underscores; not starting with a digit), "
+                f"e.g. 'alfred_prod'; got {prefix!r}."
+            )
+        self.table_prefix = prefix
 
     @classmethod
     def from_env(cls, *, env: Mapping[str, str] | None = None) -> PgvectorProvider:

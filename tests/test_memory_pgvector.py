@@ -41,6 +41,7 @@ from memory.config import (  # noqa: E402
     DEFAULT_PROVIDER_NAMES,
     LESSON_STORE_NAMES,
     PROVIDER_REGISTRY,
+    load_lesson_writer,
     load_provider,
 )
 from memory.pgvector_provider import (  # noqa: E402
@@ -224,6 +225,78 @@ def test_from_env_builds_when_armed(monkeypatch: pytest.MonkeyPatch) -> None:
     assert provider.name == "pgvector"
     assert provider.index_kind == "ivfflat"
     assert provider.rrf_k == 42
+
+
+# ---------------------------------------------------------------------------
+# Table prefix is a SQL identifier, not an injection surface
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_prefix",
+    ["alfred-prod", "a b", "9lead", 'x"; DROP TABLE lessons; --', "tbl;", "a.b"],
+)
+def test_unsafe_table_prefix_is_rejected(bad_prefix: str) -> None:
+    # A prefix that is not a valid SQL identifier must raise a clear config error
+    # rather than being raw-interpolated into DDL/query identifiers.
+    with pytest.raises(ValueError, match="ALFRED_MEMORY_PG_TABLE_PREFIX"):
+        PgvectorProvider(dsn="postgresql://u:p@h/db", table_prefix=bad_prefix)
+
+
+def test_safe_table_prefix_composes_valid_identifiers() -> None:
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", table_prefix="alfred_prod_")
+    # Composed table names are valid unquoted identifiers, no stray characters.
+    assert provider._lessons == "alfred_prod_lessons"
+    assert provider._anchors == "alfred_prod_lesson_anchors"
+    assert provider._reuse == "alfred_prod_lesson_reuse"
+    # And they flow through the SQL builders verbatim (no injection, no breakage).
+    sql, _ = _recency_query(table=provider._lessons, codename="c", repo="r", limit=1, now=_NOW)
+    assert "FROM alfred_prod_lessons l" in sql
+
+
+def test_empty_table_prefix_is_the_default() -> None:
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db")
+    assert provider._lessons == "lessons"
+
+
+def test_from_env_rejects_unsafe_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(mod, "_psycopg", object())
+    with pytest.raises(ValueError, match="ALFRED_MEMORY_PG_TABLE_PREFIX"):
+        PgvectorProvider.from_env(
+            env={
+                "ALFRED_MEMORY_PG_DSN": "postgresql://u:p@h/db",
+                "ALFRED_MEMORY_PG_TABLE_PREFIX": "alfred-prod",
+            }
+        )
+
+
+# ---------------------------------------------------------------------------
+# Writer resolution degrades to the next store when pgvector is unarmed
+# ---------------------------------------------------------------------------
+
+
+def test_unarmed_pgvector_writer_falls_back_to_fleet(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ALFRED_MEMORY_PROVIDERS=pgvector,fleet with psycopg absent: the promoted-
+    # lesson writer must degrade to fleet, not error or drop the write.
+    monkeypatch.setattr(mod, "_psycopg", None)
+    env = {"ALFRED_MEMORY_PROVIDERS": "pgvector,fleet", "ALFRED_HOME": str(tmp_path)}
+    writer = load_lesson_writer(env=env)
+    assert writer is not None
+    assert writer.name == "fleet"
+    # And a promotion round-trips through the fallback writer: recall then finds
+    # it via the same chain, so no write is silently lost.
+    writer.reflect(
+        codename="lucius",
+        repo="acme/api",
+        body="Fallback lesson stored via fleet when pgvector is unarmed",
+        memory_id="fallback-1",
+    )
+    recalled = load_provider(env=env).recall(
+        query="fallback lesson", codename="lucius", repo="acme/api"
+    )
+    assert "fallback-1" in {L.id for L in recalled}
 
 
 # ---------------------------------------------------------------------------
