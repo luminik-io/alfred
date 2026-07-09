@@ -389,6 +389,49 @@ def test_invoke_agent_engine_clears_delta_on_exception(monkeypatch) -> None:
     assert "fid-boom" not in mr._INJECTED_BY_FIRING
 
 
+def test_invoke_agent_engine_clears_delta_on_inject_phase_exception(monkeypatch) -> None:
+    """The try arms cleanup BEFORE injection: if prompt governance raises right
+    after with_memory_prompt has recorded the firing's injected lessons, the
+    finally still clears that firing's delta state (no leak in the inject phase)."""
+    import agent_runner.process as proc
+    from agent_runner import memory_ranking as mr
+
+    class Provider:
+        name = "fleet"
+
+        def recall(self, **kwargs):
+            return [_LessonStub("Injected lesson body.", id="L1")]
+
+    monkeypatch.setattr(proc, "load_runtime_memory", lambda: Provider())
+    monkeypatch.setenv("ALFRED_MEMORY_DELTA", "1")
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+
+    def boom_govern(prompt):
+        # By now with_memory_prompt has already recorded the firing's injected
+        # lessons; governance raising here is the inject-phase failure the try
+        # must cover.
+        assert "fid-inject" in mr._INJECTED_BY_FIRING
+        raise RuntimeError("prompt governance failed mid-inject")
+
+    monkeypatch.setattr(proc, "govern_prompt_context", boom_govern)
+
+    with pytest.raises(RuntimeError):
+        proc.invoke_agent_engine(
+            "Implement the issue.",
+            engine="claude",
+            agent="lucius",
+            firing_id="fid-inject",
+            workdir=Path("/tmp"),
+            claude_allowed_tools="Read",
+            timeout=30,
+            claude_fn=lambda *a, **k: None,
+            memory_repo="org/api",
+        )
+
+    # The inject-phase raise still ran the finally: no lingering delta state.
+    assert "fid-inject" not in mr._INJECTED_BY_FIRING
+
+
 def test_delta_table_is_bounded_and_evicts_old_firings(monkeypatch) -> None:
     """A long-lived process never accumulates delta state without limit: when
     more than the cap of distinct firings are tracked, the oldest are evicted."""
