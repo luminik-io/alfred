@@ -39,8 +39,19 @@ The schema deliberately mirrors the entity model documented in
   over the ledger: ``PR -[changed]-> file``, ``file -[owned_by]-> owner``,
   and ``file -[in]-> repo``. One row per (kind, src, dst) so re-projecting
   the same touch never duplicates an edge.
+* ``lesson_anchors``: Phase 2 code-grounding. One row per link from a
+  lesson to a code entity (a ``file``/``symbol``/``node`` it is about) or
+  to another lesson (``supersedes``/``related``/``contradicts``). Unique on
+  ``(lesson_id, anchor_type, anchor_ref, relation)`` so re-anchoring is
+  idempotent.
 * ``schema_version`` - single-row record of the applied schema
   version, for forward migrations.
+
+Phase 2 additive columns (never a destructive rewrite): ``lessons`` and
+``memory_candidates`` gain a ``kind`` (typed taxonomy), and ``lessons`` gains
+``valid_until`` / ``superseded_by`` (bi-temporal validity, invalidate-not-delete)
+and ``provenance`` (the firing/PR that created a promoted lesson). All are added
+through :func:`_add_column_if_missing` so an existing brain migrates in place.
 """
 
 from __future__ import annotations
@@ -48,7 +59,9 @@ from __future__ import annotations
 import sqlite3
 from typing import Final
 
-SCHEMA_VERSION: Final[int] = 8
+from .taxonomy import DEFAULT_LESSON_KIND
+
+SCHEMA_VERSION: Final[int] = 9
 
 # Each CREATE statement is a string in this tuple. We execute them
 # one at a time so a syntax error in one statement does not silently
@@ -237,6 +250,19 @@ _CREATE_STATEMENTS: Final[tuple[str, ...]] = (
         CHECK (kind IN ('changed', 'owned_by', 'in'))
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS lesson_anchors (
+        id          TEXT NOT NULL PRIMARY KEY,
+        lesson_id   TEXT NOT NULL,
+        anchor_type TEXT NOT NULL,
+        anchor_ref  TEXT NOT NULL,
+        relation    TEXT NOT NULL DEFAULT 'about',
+        repo        TEXT,
+        created_at  TEXT NOT NULL,
+        UNIQUE (lesson_id, anchor_type, anchor_ref, relation),
+        FOREIGN KEY (lesson_id) REFERENCES lessons(id) ON DELETE CASCADE
+    )
+    """,
     # Indexes - recall is read-heavy on (codename, repo) and recent-first,
     # so we cover that path explicitly.
     """
@@ -343,6 +369,18 @@ _CREATE_STATEMENTS: Final[tuple[str, ...]] = (
     CREATE INDEX IF NOT EXISTS graph_edges_repo_idx
         ON graph_edges (repo, last_seen DESC)
     """,
+    """
+    CREATE INDEX IF NOT EXISTS lesson_anchors_lesson_idx
+        ON lesson_anchors (lesson_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS lesson_anchors_ref_idx
+        ON lesson_anchors (anchor_type, anchor_ref)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS lesson_anchors_repo_idx
+        ON lesson_anchors (repo, anchor_ref)
+    """,
 )
 
 
@@ -363,6 +401,23 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         _add_column_if_missing(conn, "github_items", "created_at", "TEXT")
         _add_column_if_missing(conn, "github_items", "changed_files", "INTEGER NOT NULL DEFAULT 0")
         _add_column_if_missing(conn, "github_items", "file_metrics_seen_at", "TEXT")
+        # Phase 2 (schema v9): typed lessons + bi-temporal validity + provenance.
+        # Additive columns on the existing tables so a pre-Phase-2 brain migrates
+        # in place. Existing untyped rows read back as DEFAULT_LESSON_KIND; a
+        # NULL validity/supersede/provenance means "still valid, no provenance
+        # recorded", so recall behaviour is unchanged until the columns are used.
+        _add_column_if_missing(
+            conn, "lessons", "kind", f"TEXT NOT NULL DEFAULT '{DEFAULT_LESSON_KIND}'"
+        )
+        _add_column_if_missing(conn, "lessons", "valid_until", "TEXT")
+        _add_column_if_missing(conn, "lessons", "superseded_by", "TEXT")
+        _add_column_if_missing(conn, "lessons", "provenance", "TEXT")
+        _add_column_if_missing(
+            conn,
+            "memory_candidates",
+            "kind",
+            f"TEXT NOT NULL DEFAULT '{DEFAULT_LESSON_KIND}'",
+        )
         # Record the schema version, idempotently. A row with the
         # current version means "we have run ensure_schema at least
         # once at this code revision".

@@ -78,12 +78,16 @@ class FleetBrainProvider:
         firing_id: str | None = None,
         created_at: datetime | None = None,
         memory_id: str | None = None,
+        kind: str | None = None,
+        provenance: str | None = None,
     ) -> Lesson:
         # ``memory_id`` lets the promote path address FleetBrain's own lessons
         # table as a lesson store (a deterministic id makes a re-promote
         # idempotent and lets forget_lesson remove exactly what was written).
         # The recall chain calls reflect without it, so a new id is generated
-        # then, preserving the prior behavior.
+        # then, preserving the prior behavior. ``kind``/``provenance`` are the
+        # Phase 2 typed + provenance fields, threaded through when the promote
+        # path supplies them.
         return self.brain.reflect(
             codename=codename,
             repo=repo,
@@ -93,6 +97,8 @@ class FleetBrainProvider:
             firing_id=firing_id,
             created_at=created_at,
             lesson_id=memory_id,
+            kind=kind,
+            provenance=provenance,
         )
 
     def forget_lesson(self, lesson_id: str) -> bool:

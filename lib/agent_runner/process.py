@@ -1561,6 +1561,7 @@ def invoke_agent_engine(
             query=memory_query,
             limit=memory_limit,
             firing_id=firing_id,
+            repo_root=str(workdir) if workdir else None,
         )
         prompt_with_context = _with_skills_block(prompt_with_context, role, agent)
         prompt_with_context = _with_skeleton_priming_block(

@@ -152,3 +152,100 @@ The binary runs locally and indexes only the repos you list. No code, symbols,
 or graph data leave the host. Fetching the binary contacts GitHub releases
 only; disable that with `ALFRED_CODE_MEMORY_AUTOFETCH=0` and install the binary
 yourself.
+
+## Phase 2: typed, linked, and time-aware lessons
+
+Phase 1 gave lessons semantic recall (a body, tags, severity) in the embedded
+SQLite hybrid store. Phase 2 adds **structure** on top of that same store (and
+the FleetBrain ledger), so a lesson is no longer a flat sentence. Every part is
+**additive, off by default, and backward-compatible**: with nothing enabled, an
+older untyped lesson reads and recalls exactly as before, and the schema
+migrates in place through guarded `ALTER TABLE ... ADD COLUMN` calls (the same
+idempotent pattern the rest of the brain uses). Phase 2 **feeds** the existing
+capture -> judge -> promote pipeline; it never replaces it.
+
+### 1. Typed lessons (`kind`)
+
+Each lesson carries a `kind` from a small taxonomy
+(`lib/fleet_brain/taxonomy.py`):
+
+| kind | what it captures |
+|---|---|
+| `convention` | a durable repo convention (where things live, how they are named) |
+| `fix` | a concrete fix that worked for a class of bug |
+| `failure` | a mistake or gotcha to avoid |
+| `decision` | a decision the fleet made and should not relitigate |
+| `review-pattern` | a recurring review finding |
+| `note` | the neutral default; also where an **untyped legacy lesson lands** |
+
+`note` is deliberately not one of the five differentiating kinds: an old row
+reads back as `note` rather than being mislabelled as a convention it was never
+asserted to be. Unknown or aliased kinds fold to a canonical value and never
+raise.
+
+**Type-aware recall** (`ALFRED_MEMORY_TYPED_RECALL`, off by default) prefers the
+kinds that matter when editing code: conventions first, then review-patterns and
+fixes, then the failures to avoid, ahead of passive notes. It is a stable
+reordering applied after the existing rank pass, so relevance still orders
+lessons within a kind bucket and the default output is byte-for-byte unchanged.
+
+### 2. Code-grounding anchors
+
+A `lesson_anchors` table links a lesson to the code entity it is about (a
+`file`, `symbol`, or graph `node`) or to another `lesson`
+(`supersedes` / `related` / `contradicts`). The write is idempotent on
+`(lesson_id, anchor_type, anchor_ref, relation)`.
+
+The pay-off is anchored recall: pass the files a firing is about to edit as
+`anchor_refs=[...]` and the store surfaces "editing `auth.py` -> the convention +
+the fix that worked + the mistake to avoid" **first**, before the general
+lexical/dense hits. `lessons_for_anchor(anchor_ref=...)` is the direct read:
+"what does the fleet know about this file." Anchors reference the same node-id
+shape as the fleet graph (`file:<repo>/<path>`), so they compose with the
+`graph_edges` layer without a graph database.
+
+### 3. Validity + provenance (invalidate, never delete)
+
+Two columns give a lesson bi-temporal validity: `valid_until` (when it stops
+being true) and `superseded_by` (the lesson that replaced it). Recall always
+filters these out, so a superseded or expired lesson silently stops surfacing
+while its **row survives for audit**. The filter is inert until something is
+actually superseded, so default recall is unchanged.
+
+`supersede_lesson(old, new)` is the supersede primitive: it stamps the old row,
+records a `supersedes` lesson-to-lesson anchor, and leaves the audit trail
+intact. A new lesson that contradicts an existing one supersedes it rather than
+piling up a near-duplicate. Every promoted lesson also records `provenance` (the
+firing or PR that created it), which defaults to the firing id when not given.
+
+### 4. Deterministic repo-profile injector
+
+`lib/agent_runner/repo_profile.py` builds a small, **deterministic** profile of a
+repo from what Alfred can already see on disk: the manifest(s) and package
+manager, the exact test/lint/build commands to verify with, the
+agent-instruction files, and a one-line structure summary. It is injected as a
+convention-memory block so a headless firing does not re-discover the project's
+shape every run.
+
+The idea is ported from Hermes' `coding_context.build_coding_workspace_block`,
+adapted to Alfred's headless model: no interactive session lifecycle, and
+**no live `git status`** (which drifts), so the same tree always yields a
+byte-identical block. Injection is gated by `ALFRED_REPO_PROFILE` (off by
+default) and bounded to a character budget (`ALFRED_REPO_PROFILE_MAX_CHARS`,
+default 1200) so "profile on" can never balloon the run prompt. It is
+independent of the recall provider, so it can orient a firing even when memory
+recall is empty.
+
+### Phase 2 configuration
+
+All off by default; set in `$ALFRED_HOME/.env`.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `ALFRED_MEMORY_TYPED_RECALL` | `0` (off) | Prefer conventions + fixes by lesson `kind` in recall order. |
+| `ALFRED_REPO_PROFILE` | `0` (off) | Inject the deterministic repo-profile block into each firing. |
+| `ALFRED_REPO_PROFILE_MAX_CHARS` | `1200` | Character budget for the injected repo-profile block. |
+
+Typed lessons, anchors, and validity are always **stored** (they are schema, not
+behaviour); only their recall-shaping effects are gated. A/B against the Phase 1
+numbers with `alfred benchmark` by toggling the flags above.

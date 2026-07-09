@@ -295,6 +295,10 @@ def format_memory_context(
     # to keep unrelated firings from cross-contaminating each other.
     pairs = memory_ranking.apply_delta(pairs, firing_id, codename=codename, repo=repo)
     pairs = memory_ranking.rank_pairs(pairs, codename=codename, repo=repo)
+    # Type-aware recall LAST (gated, off by default): when armed it lifts the
+    # kinds that matter for editing code (conventions + fixes) ahead of passive
+    # notes, with relevance/recency still ordering within a kind bucket.
+    pairs = memory_ranking.apply_typed_recall(pairs)
     if not pairs:
         return ""
     header = [
@@ -402,14 +406,25 @@ def with_memory_prompt(
     query: str | None = None,
     limit: int = 3,
     firing_id: str | None = None,
+    repo_root: str | None = None,
 ) -> str:
     """Prepend recall context and append reflection instructions when enabled.
 
     ``firing_id`` is optional and only used by the delta-injection pipeline
     (``ALFRED_MEMORY_DELTA``): passing it lets a later turn of the same firing
     skip lessons already injected on an earlier turn.
+
+    ``repo_root`` is optional and only used by the repo-profile injector
+    (``ALFRED_REPO_PROFILE``, off by default): when armed, a deterministic
+    profile of the repo (manifest, package manager, verify commands, structure)
+    is prepended as a convention-memory block so a headless firing does not have
+    to rediscover the project's shape. It is independent of the recall provider,
+    so it can orient a firing even when memory recall is empty.
     """
+    profile = _repo_profile_block(repo_root)
     if provider is None or not repo or getattr(provider, "name", "") == "null":
+        if profile:
+            return "\n\n".join([profile, prompt])
         return prompt
     context = format_memory_context(
         provider,
@@ -420,11 +435,26 @@ def with_memory_prompt(
         firing_id=firing_id,
     )
     chunks = []
+    if profile:
+        chunks.append(profile)
     if context:
         chunks.append(context)
     chunks.append(prompt)
     chunks.append(memory_reflection_instructions())
     return "\n\n".join(chunks)
+
+
+def _repo_profile_block(repo_root: str | None) -> str:
+    """Best-effort deterministic repo-profile block (empty unless armed)."""
+    if not repo_root:
+        return ""
+    try:
+        from .repo_profile import repo_profile_block
+
+        return repo_profile_block(repo_root)
+    except Exception:
+        _LOG.exception("memory runtime: repo profile build failed")
+        return ""
 
 
 def parse_memory_reflections(text: str) -> list[MemoryReflection]:

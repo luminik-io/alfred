@@ -75,6 +75,7 @@ from .store import (
     GitHubItemState,
     GraphEdgeRow,
     Lesson,
+    LessonAnchor,
     MemoryCandidate,
     MemoryCandidateStatus,
     RepoNote,
@@ -86,8 +87,21 @@ from .store import (
     default_db_path,
     new_id,
 )
+from .taxonomy import (
+    ANCHOR_RELATIONS,
+    ANCHOR_TYPES,
+    DEFAULT_LESSON_KIND,
+    LESSON_KINDS,
+    normalize_anchor_relation,
+    normalize_anchor_type,
+    normalize_kind,
+)
 
 __all__ = [
+    "ANCHOR_RELATIONS",
+    "ANCHOR_TYPES",
+    "DEFAULT_LESSON_KIND",
+    "LESSON_KINDS",
     "BundleItem",
     "CodeOwnerRow",
     "CodeOwnerRule",
@@ -103,6 +117,7 @@ __all__ = [
     "GraphEdge",
     "GraphEdgeRow",
     "Lesson",
+    "LessonAnchor",
     "MemoryCandidate",
     "MemoryCandidateStatus",
     "MemoryPromotionError",
@@ -119,6 +134,9 @@ __all__ = [
     "direct_auto_promote_env",
     "edges_for_file_touch",
     "new_id",
+    "normalize_anchor_relation",
+    "normalize_anchor_type",
+    "normalize_kind",
     "owners_for_path",
     "parse_codeowners",
 ]
@@ -500,6 +518,8 @@ class FleetBrain:
         severity: Severity = "info",
         lesson_id: str | None = None,
         created_at: datetime | None = None,
+        kind: str | None = None,
+        provenance: str | None = None,
     ) -> Lesson:
         """File a lesson the firing learned. Returns the persisted row.
 
@@ -507,6 +527,11 @@ class FleetBrain:
         severity routing: ``info`` (recall-only context), ``warning``
         (worth bubbling into a future prompt), ``blocker`` (the next
         firing must read this before doing anything).
+
+        ``kind`` types the lesson (convention/fix/failure/decision/
+        review-pattern; unknown folds to ``note``). ``provenance`` records the
+        firing/PR that created a promoted lesson. Both are optional and
+        backward-compatible.
         """
         if not codename or not repo or not body:
             raise ValueError("reflect: codename, repo, and body are required")
@@ -521,9 +546,76 @@ class FleetBrain:
             created_at=created_at or datetime.now(UTC),
             firing_id=firing_id,
             severity=severity,
+            kind=normalize_kind(kind),
+            provenance=(provenance or firing_id or None),
         )
-        _LOG.debug("reflect: codename=%s repo=%s tags=%s", codename, repo, lesson.tags)
+        _LOG.debug(
+            "reflect: codename=%s repo=%s kind=%s tags=%s",
+            codename,
+            repo,
+            lesson.kind,
+            lesson.tags,
+        )
         return self.store.insert_lesson(lesson)
+
+    # ----- code-grounding + validity (Phase 2) --------------------------
+
+    def anchor_lesson(
+        self,
+        *,
+        lesson_id: str,
+        anchor_ref: str,
+        anchor_type: str = "file",
+        relation: str = "about",
+        repo: str | None = None,
+        created_at: datetime | None = None,
+    ) -> LessonAnchor:
+        """Link a lesson to a code entity (a file/symbol/node) or another lesson.
+
+        This is the code-grounding write: after it, ``lessons_for_anchor`` can
+        surface "editing ``auth.py`` -> the convention + the fix that worked".
+        Idempotent on ``(lesson_id, anchor_type, anchor_ref, relation)``.
+        """
+        if not lesson_id or not anchor_ref:
+            raise ValueError("anchor_lesson: lesson_id and anchor_ref are required")
+        anchor = LessonAnchor(
+            id=new_id(),
+            lesson_id=lesson_id.strip(),
+            anchor_type=normalize_anchor_type(anchor_type),
+            anchor_ref=anchor_ref.strip(),
+            relation=normalize_anchor_relation(relation),
+            repo=(repo or None),
+            created_at=created_at or datetime.now(UTC),
+        )
+        return self.store.add_lesson_anchor(anchor)
+
+    def lesson_anchors(self, lesson_id: str, *, limit: int = 100) -> list[LessonAnchor]:
+        """Return the anchors linked to ``lesson_id``, most recent first."""
+        return self.store.list_lesson_anchors(lesson_id, limit=limit)
+
+    def lessons_for_anchor(
+        self,
+        *,
+        anchor_ref: str,
+        anchor_type: str | None = None,
+        repo: str | None = None,
+        limit: int = 50,
+    ) -> list[Lesson]:
+        """Return the still-valid lessons anchored to ``anchor_ref`` (e.g. a file)."""
+        return self.store.lessons_for_anchor(
+            anchor_ref=anchor_ref,
+            anchor_type=anchor_type,
+            repo=repo,
+            limit=limit,
+        )
+
+    def supersede_lesson(self, *, old_id: str, new_id: str, at: datetime | None = None) -> bool:
+        """Invalidate ``old_id`` in favour of ``new_id`` (invalidate, not delete).
+
+        Recall stops surfacing the old lesson; the audit row is kept. Returns
+        ``False`` for a blank/unknown old id so callers can gate on it.
+        """
+        return self.store.supersede_lesson(old_id, new_id, at=at)
 
     def firing_log(
         self,
@@ -788,6 +880,7 @@ class FleetBrain:
         confidence: float = 0.5,
         candidate_id: str | None = None,
         created_at: datetime | None = None,
+        kind: str | None = None,
     ) -> MemoryCandidate:
         """Stage a lesson candidate without adding it to prompt recall.
 
@@ -816,6 +909,7 @@ class FleetBrain:
             confidence=float(confidence),
             status="candidate",
             created_at=created_at or datetime.now(UTC),
+            kind=normalize_kind(kind),
         )
         return self.store.insert_memory_candidate(candidate)
 
@@ -883,15 +977,27 @@ class FleetBrain:
                     "promote_memory_candidate: runtime memory is disabled "
                     "(no lesson writer configured); nothing was written."
                 )
-            lesson = lesson_writer.reflect(
-                codename=candidate.codename,
-                repo=candidate.repo,
-                body=candidate.body,
-                tags=candidate.tags,
-                firing_id=candidate.source_firing_id,
-                severity=candidate.severity,
-                memory_id=_lesson_memory_id(candidate.id),
-            )
+            reflect_kwargs: dict[str, Any] = {
+                "codename": candidate.codename,
+                "repo": candidate.repo,
+                "body": candidate.body,
+                "tags": candidate.tags,
+                "firing_id": candidate.source_firing_id,
+                "severity": candidate.severity,
+                "memory_id": _lesson_memory_id(candidate.id),
+            }
+            try:
+                # Phase 2: pass the typed ``kind`` and ``provenance`` through.
+                lesson = lesson_writer.reflect(
+                    **reflect_kwargs,
+                    kind=candidate.kind,
+                    provenance=candidate.source_firing_id,
+                )
+            except TypeError:
+                # A writer that predates the Phase 2 kwargs (a custom provider or
+                # an older backend) still gets a working, backward-compatible
+                # promote on the Phase 1 contract.
+                lesson = lesson_writer.reflect(**reflect_kwargs)
         except MemoryPromotionError:
             # Already the retryable, candidate-stays-pending signal; do not
             # re-wrap it (that would bury the disabled-memory message).

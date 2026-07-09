@@ -155,6 +155,25 @@ sees the lesson again) and is independent of ranking.
 The per-firing tracking is in-process and bounded; a firing's set is cleared when
 the firing completes.
 
+### Typed, linked, and time-aware lessons (Phase 2)
+
+Phase 2 adds structure to lessons: a `kind` taxonomy, code-grounding anchors,
+and bi-temporal validity. It is additive and off by default, so Phase 1 recall
+is preserved unless a flag below is set. The full write-side model (taxonomy,
+anchoring, supersede/validity, provenance) and the deterministic repo-profile
+injector are documented in [CODE_MEMORY.md](CODE_MEMORY.md#phase-2-typed-linked-and-time-aware-lessons).
+The recall-shaping knobs are:
+
+| Env var | Default | Meaning |
+| --- | --- | --- |
+| `ALFRED_MEMORY_TYPED_RECALL` | `0` (off) | Prefer conventions + fixes by lesson `kind`, applied after ranking. |
+| `ALFRED_REPO_PROFILE` | `0` (off) | Inject a deterministic repo-profile block (manifest, package manager, verify commands, structure) into each firing. |
+| `ALFRED_REPO_PROFILE_MAX_CHARS` | `1200` | Character budget for the injected repo-profile block. |
+
+Invalidated lessons (superseded or past `valid_until`) are always filtered from
+recall, but the filter is inert until something is superseded, so with no
+supersede activity recall is byte-for-byte unchanged.
+
 This doc covers the **provider layer** above the brain: how to chain memory
 backends so agents recall semantic lessons from Redis while FleetBrain keeps the
 local queue, ledger, and review state.
