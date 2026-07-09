@@ -648,10 +648,11 @@ def maybe_halt_on_fail_streak(
     """Auto-pause ``agent``'s launchd job after a run of failed firings.
 
     Returns ``True`` when the streak gate tripped and the runner should stop
-    (the caller returns 0); ``False`` when it is clear to proceed. Mirrors the
-    daily-cap bootout mechanism exactly: a Slack alert, an ``agent_paused`` /
-    ``firing_complete`` event pair, then a ``launchctl bootout`` of the agent's
-    own job.
+    (the caller returns 0); ``False`` when it is clear to proceed. On a trip it
+    posts a Slack alert, emits the ``agent_paused`` / ``firing_complete`` event
+    pair, writes the canonical pause marker (so ``alfred status`` / doctor /
+    ``is_agent_paused`` reflect the self-pause), then boots the agent's own
+    launchd job out.
     """
     count = int(spend.state.get("consecutive_failures", 0))
     if count < threshold:
@@ -664,6 +665,9 @@ def maybe_halt_on_fail_streak(
     slack_post(msg, severity="alert")
     events.emit("agent_paused", reason="fail_streak", consecutive_failures=count)
     events.emit("firing_complete", outcome="paused_fail_streak")
+    # Write the pause marker BEFORE the bootout so the rest of the system sees
+    # the self-pause even if the bootout races or the job is relaunched by hand.
+    write_agent_pause_marker(agent, reason=f"fail_streak={count}")
     run(["launchctl", "bootout", f"gui/{os.getuid()}/{launchd_label}"], timeout=10)
     return True
 

@@ -309,6 +309,10 @@ def main() -> int:
     )
 
     if not result.success:
+        # A non-successful engine result (including empty output and provider
+        # limits) is a failed firing, so advance the streak to feed the
+        # self-halt gate. Without this a wedged engine would fire forever.
+        spend.increment(failures_today=1, consecutive_failures=1)
         until = maybe_set_global_block_for_result(AGENT, result, engine_used=engine_used)
         if until:
             remove_worktree(repo, wt)

@@ -18,6 +18,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -62,6 +63,10 @@ def _patch_bootout_capture(monkeypatch, ar):
     posts: list[str] = []
     monkeypatch.setattr(ar, "run", lambda cmd, **kw: runs.append(cmd))
     monkeypatch.setattr(ar, "slack_post", lambda msg, **kw: posts.append(msg))
+    # Stub the marker write so these in-process gate/runner tests never touch a
+    # real ``$ALFRED_HOME/state/_paused`` dir; the real write is covered by
+    # test_halt_writes_pause_marker with an isolated ALFRED_HOME.
+    monkeypatch.setattr(ar, "write_agent_pause_marker", lambda *a, **kw: None)
     return runs, posts
 
 
@@ -306,3 +311,258 @@ def test_load_pre_push_config_ignores_malformed_toml(tmp_path):
     )
 
     assert cfg["service-backend"] == ar.BACKEND_PRE_PUSH_DEFAULT
+
+
+# ---------------------------------------------------------------------------
+# Re-review finding #4: the halt writes the canonical pause marker
+# ---------------------------------------------------------------------------
+
+
+def _fresh_agent_runner(tmp_path, monkeypatch):
+    """Import agent_runner with an isolated ALFRED_HOME (real marker writes)."""
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    for mod in list(sys.modules):
+        if mod == "agent_runner" or mod.startswith("agent_runner."):
+            del sys.modules[mod]
+    sys.path.insert(0, str(ROOT / "lib"))
+    import agent_runner as ar
+
+    monkeypatch.setattr(ar, "run", lambda cmd, **kw: None)
+    monkeypatch.setattr(ar, "slack_post", lambda msg, **kw: None)
+    return ar
+
+
+def test_halt_writes_pause_marker(tmp_path, monkeypatch):
+    ar = _fresh_agent_runner(tmp_path, monkeypatch)
+
+    assert ar.is_agent_paused("lucius") is False
+
+    tripped = ar.maybe_halt_on_fail_streak(
+        "lucius", _Spend(ar.FAIL_STREAK_THRESHOLD), _FakeEvents(), "my.fleet.lucius"
+    )
+
+    assert tripped is True
+    marker = ar.agent_pause_marker_path("lucius")
+    assert marker.is_file()
+    assert f"fail_streak={ar.FAIL_STREAK_THRESHOLD}" in marker.read_text()
+    # The marker the halt writes is exactly the one alfred status / doctor read.
+    assert ar.is_agent_paused("lucius") is True
+
+
+def test_below_threshold_writes_no_marker(tmp_path, monkeypatch):
+    ar = _fresh_agent_runner(tmp_path, monkeypatch)
+
+    tripped = ar.maybe_halt_on_fail_streak(
+        "lucius", _Spend(ar.FAIL_STREAK_THRESHOLD - 1), _FakeEvents(), "my.fleet.lucius"
+    )
+
+    assert tripped is False
+    assert ar.is_agent_paused("lucius") is False
+
+
+# ---------------------------------------------------------------------------
+# Re-review finding #1: a non-successful engine result advances the streak
+# ---------------------------------------------------------------------------
+
+
+def _engine_failure_result():
+    return SimpleNamespace(
+        success=False,
+        subtype="error_execution",
+        num_turns=2,
+        cost_usd=0.0,
+        result_text="",
+        raw={},
+        fallback_from_subtype=None,
+    )
+
+
+def test_test_engineer_engine_failure_increments_streak(monkeypatch, tmp_path):
+    monkeypatch.setenv("ALFRED_TEST_ENGINEER_REPOS", "backend")
+    bane = load_bin_module("test-engineer.py", monkeypatch)
+    increments: list[dict] = []
+
+    class FakeSpend:
+        def __init__(self, *a, **kw):
+            self.state = {"consecutive_failures": 0}
+
+        def increment(self, **kw):
+            increments.append(kw)
+
+        def set(self, **kw):
+            self.state.update(kw)
+
+    monkeypatch.setattr(bane, "with_lock", lambda a: None)
+    monkeypatch.setattr(bane, "preflight", lambda s: None)
+    monkeypatch.setattr(bane, "doctor_mode", lambda: False)
+    monkeypatch.setattr(bane, "EventLog", _FakeEvents)
+    monkeypatch.setattr(bane, "is_globally_blocked", lambda: None)
+    monkeypatch.setattr(bane, "SpendState", FakeSpend)
+    monkeypatch.setattr(bane, "pick_repo", lambda: "backend")
+    monkeypatch.setattr(bane, "local_repo_dir", lambda repo: repo)
+    monkeypatch.setattr(bane, "WORKSPACE", tmp_path)
+    monkeypatch.setattr(bane, "make_worktree", lambda repo, agent, kind: (tmp_path, "bane/1"))
+    monkeypatch.setattr(bane, "maybe_set_global_block_for_result", lambda *a, **kw: None)
+    monkeypatch.setattr(bane, "remove_worktree", lambda repo, path: None)
+    monkeypatch.setattr(bane, "slack_post", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        bane, "invoke_agent_engine", lambda *a, **kw: (_engine_failure_result(), "codex")
+    )
+
+    assert bane.main() == 0
+    assert {"failures_today": 1, "consecutive_failures": 1} in increments
+
+
+def test_fixer_all_engine_failures_increments_streak(monkeypatch, tmp_path):
+    monkeypatch.setenv("GH_ORG", "acme")
+    monkeypatch.setenv("ALFRED_FIXER_REPOS", "service-web")
+    nightwing = load_bin_module("fixer.py", monkeypatch)
+    increments: list[dict] = []
+    sets: list[dict] = []
+
+    class FakeSpend:
+        def __init__(self, *a, **kw):
+            self.state = {"turns_today": 0, "consecutive_failures": 0}
+
+        def increment(self, **kw):
+            increments.append(kw)
+
+        def set(self, **kw):
+            sets.append(kw)
+            self.state.update(kw)
+
+    monkeypatch.setattr(nightwing, "with_lock", lambda a: None)
+    monkeypatch.setattr(nightwing, "preflight", lambda s: None)
+    monkeypatch.setattr(nightwing, "_refresh_pre_push_config", lambda: None)
+    monkeypatch.setattr(nightwing, "doctor_mode", lambda: False)
+    monkeypatch.setattr(nightwing, "is_globally_blocked", lambda: None)
+    monkeypatch.setattr(nightwing, "EventLog", _FakeEvents)
+    monkeypatch.setattr(nightwing, "SpendState", FakeSpend)
+    monkeypatch.setattr(nightwing, "load_fixed_ids", lambda: set())
+    monkeypatch.setattr(nightwing, "save_fixed_ids", lambda _ids: None)
+    monkeypatch.setattr(nightwing, "load_no_commit_streaks", lambda: {})
+    monkeypatch.setattr(nightwing, "save_no_commit_streaks", lambda _streaks: None)
+    monkeypatch.setattr(nightwing, "reset_label_present", lambda *_a: False)
+    monkeypatch.setattr(nightwing, "local_repo_dir", lambda _repo: tmp_path / "repo")
+    monkeypatch.setattr(
+        nightwing,
+        "pick_target",
+        lambda _fixed_ids: (
+            "service-web",
+            {"number": 123, "headRefName": "feature/fix"},
+            [
+                {
+                    "body": "fix it",
+                    "path": "src/x.py",
+                    "line": 3,
+                    "user": "rev",
+                    "id": 9,
+                    "severity": "P1",
+                }
+            ],
+        ),
+    )
+    monkeypatch.setattr(nightwing, "make_worktree_from_branch", lambda *_a, **_kw: tmp_path / "wt")
+    monkeypatch.setattr(nightwing, "build_prompt", lambda *a, **kw: "prompt")
+    monkeypatch.setattr(nightwing, "maybe_set_global_block_for_result", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        nightwing, "invoke_agent_engine", lambda *a, **kw: (_engine_failure_result(), "codex")
+    )
+    monkeypatch.setattr(nightwing, "remove_worktree", lambda repo, path: None)
+    monkeypatch.setattr(nightwing, "slack_post", lambda *a, **kw: None)
+
+    assert nightwing.main() == 0
+    # Zero fixes + an engine failure is a failed firing: streak advances...
+    assert {"failures_today": 1, "consecutive_failures": 1} in increments
+    # ...and the streak is NOT reset on this path.
+    assert {"consecutive_failures": 0} not in sets
+
+
+# ---------------------------------------------------------------------------
+# Re-review findings #2 + #3: daily-cap hit resets the streak and uses one
+# canonical sentinel for both the runner emit and the in-prompt detection
+# ---------------------------------------------------------------------------
+
+
+def _planner_spend(sets, increments):
+    class FakeSpend:
+        def __init__(self, *a, **kw):
+            self.state = {"consecutive_failures": 0}
+
+        def is_blocked(self):
+            return None
+
+        def increment(self, **kw):
+            increments.append(kw)
+
+        def set(self, **kw):
+            sets.append(kw)
+            self.state.update(kw)
+
+    return FakeSpend
+
+
+def test_planner_preflight_cap_resets_streak_and_emits_canonical_sentinel(monkeypatch, capsys):
+    monkeypatch.setenv("ALFRED_PLANNER_REPOS", "backend")
+    drake = load_bin_module("planner.py", monkeypatch)
+    sets: list[dict] = []
+
+    assert drake.DAILY_CAP_SENTINEL == "[DRAKE-DAILY-CAP-HIT]"
+
+    monkeypatch.setattr(drake, "with_lock", lambda a: None)
+    monkeypatch.setattr(drake, "PLANNER_REPOS", ["backend"])
+    monkeypatch.setattr(drake, "preflight", lambda s: None)
+    monkeypatch.setattr(drake, "doctor_mode", lambda: False)
+    monkeypatch.setattr(drake, "EventLog", _FakeEvents)
+    monkeypatch.setattr(drake, "is_globally_blocked", lambda: None)
+    monkeypatch.setattr(drake, "SpendState", _planner_spend(sets, []))
+    monkeypatch.setattr(drake, "_issues_authored_in_last_24h", lambda: 10**6)
+    monkeypatch.setattr(drake, "slack_post", lambda *a, **kw: None)
+
+    assert drake.main() == 0
+    # Cap hit resets the streak (healthy, done for the day) ...
+    assert {"consecutive_failures": 0} in sets
+    # ... and the runner emits the one canonical sentinel.
+    assert drake.DAILY_CAP_SENTINEL in capsys.readouterr().out
+
+
+def test_planner_in_prompt_cap_detected_via_same_sentinel(monkeypatch, tmp_path):
+    monkeypatch.setenv("ALFRED_PLANNER_REPOS", "backend")
+    drake = load_bin_module("planner.py", monkeypatch)
+    sets: list[dict] = []
+    increments: list[dict] = []
+
+    prompt_file = tmp_path / "planner.md"
+    prompt_file.write_text("prompt")
+
+    monkeypatch.setattr(drake, "with_lock", lambda a: None)
+    monkeypatch.setattr(drake, "PLANNER_REPOS", ["backend"])
+    monkeypatch.setattr(drake, "preflight", lambda s: None)
+    monkeypatch.setattr(drake, "doctor_mode", lambda: False)
+    monkeypatch.setattr(drake, "EventLog", _FakeEvents)
+    monkeypatch.setattr(drake, "is_globally_blocked", lambda: None)
+    monkeypatch.setattr(drake, "SpendState", _planner_spend(sets, increments))
+    monkeypatch.setattr(drake, "_issues_authored_in_last_24h", lambda: 0)
+    monkeypatch.setattr(drake, "PROMPT_PATH", prompt_file)
+    monkeypatch.setattr(drake, "build_prompt", lambda: "prompt")
+    monkeypatch.setattr(drake, "slack_post", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        drake,
+        "invoke_agent_engine",
+        lambda *a, **kw: (
+            SimpleNamespace(
+                success=True,
+                subtype="success",
+                num_turns=1,
+                cost_usd=0.0,
+                result_text=f"work done {drake.DAILY_CAP_SENTINEL} stop",
+            ),
+            "codex",
+        ),
+    )
+
+    assert drake.main() == 0
+    # The in-prompt grep detects the same sentinel: healthy success + reset.
+    assert {"successes_today": 1} in increments
+    assert {"consecutive_failures": 0} in sets

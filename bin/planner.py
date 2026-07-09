@@ -76,6 +76,13 @@ LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 # the machine identity or env-var contract.
 PLANNER_REPOS = agent_repos(AGENT)
 
+# Single canonical daily-cap sentinel. The runner's own pre-flight cap-hit log
+# and the in-prompt cap-hit detection MUST use the same string or cap-hit
+# detection silently never matches (a prior rename left the pre-flight emit as
+# [PLANNER-DAILY-CAP-HIT] while the grep looked for [DRAKE-DAILY-CAP-HIT]). The
+# [DRAKE-*] family is the LLM-output contract fixed in prompts/planner.md.
+DAILY_CAP_SENTINEL = "[DRAKE-DAILY-CAP-HIT]"
+
 
 def _build_state_machine_context() -> str:
     """Snapshot the issues already in the lifecycle so Drake can skip them.
@@ -240,13 +247,17 @@ def main() -> int:
     today_count = _issues_authored_in_last_24h()
     if today_count >= DAILY_ISSUE_CAP:
         msg = (
-            f"[{AGENT.upper()}-DAILY-CAP-HIT] {today_count} issues created by @me in last 24h "
+            f"{DAILY_CAP_SENTINEL} {today_count} issues created by @me in last 24h "
             f">= cap of {DAILY_ISSUE_CAP}. Skipping firing."
         )
         print(msg)
         slack_post(
             f"⏸️ {AGENT.title()}: daily {DAILY_ISSUE_CAP}-issue cap reached, skipping firing."
         )
+        # A daily-cap hit means the runner is healthy, just done for the day, so
+        # clear any streak rather than leaving a stale count that could later
+        # mislead the self-halt gate.
+        spend.set(consecutive_failures=0)
         return 0
 
     if not PROMPT_PATH.exists():
@@ -345,9 +356,12 @@ def main() -> int:
 
     # Successful subprocess return. Parse the sentinel the prompt was instructed
     # to emit so we can report meaningfully.
-    if "[DRAKE-DAILY-CAP-HIT]" in text:
+    if DAILY_CAP_SENTINEL in text:
         print(text[-400:])
         slack_post(f"⏸️ {AGENT.title()}: daily cap (in-prompt check). {short(text[-300:], 300)}")
+        # Cap-hit is a healthy "done for the day", not a failure: reset the
+        # streak so it does not carry a stale count into the self-halt gate.
+        spend.set(consecutive_failures=0)
         spend.increment(successes_today=1)
         return 0
 

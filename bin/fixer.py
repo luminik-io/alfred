@@ -652,6 +652,7 @@ def main() -> int:
     fixes_landed = 0
     fix_summary = []
     total_turns = 0
+    engine_failures = 0
     engine_counts: dict[str, int] = {}
     preserved_failure_reason = ""
     preserved_recovery_ref: str | None = None
@@ -749,6 +750,7 @@ def main() -> int:
             print(
                 f"[{AGENT.upper()}-FAIL] comment {cid}: engine={engine_used} subtype={result.subtype} turns={result.num_turns}"
             )
+            engine_failures += 1
             continue
 
         # Verify a commit landed
@@ -856,10 +858,25 @@ def main() -> int:
         return 0
 
     remove_worktree(repo, wt)
-    # Reaching here means the firing completed without a preserved failure, so
-    # it counts as a success (with or without landed fixes). Clear the streak
-    # so a prior run of failures doesn't carry into a healthy firing and trip
-    # the self-halt gate.
+
+    if fixes_landed == 0 and engine_failures > 0:
+        # Nothing landed and every attempt this firing hit an engine failure
+        # (success==False, e.g. an empty result or a provider wall). That is a
+        # failed firing, not a healthy no-op, so advance the streak (do NOT
+        # reset) to feed the self-halt gate. Without this a wedged engine would
+        # be swallowed as a no-op success and fire forever.
+        spend.increment(failures_today=1, consecutive_failures=1)
+        msg = (
+            f"[{AGENT.upper()}-FAIL] no fixes landed on PR {pr_num}; "
+            f"{engine_failures} engine failure(s) (engines={engine_summary}, turns={total_turns})"
+        )
+        print(msg)
+        events.emit("firing_complete", outcome="engine-failures", engine_failures=engine_failures)
+        return 0
+
+    # Reaching here means the firing completed cleanly: fixes landed, or a
+    # genuine no-op with no engine failures. Clear the streak so a prior run of
+    # failures doesn't carry into a healthy firing and trip the self-halt gate.
     spend.set(consecutive_failures=0)
 
     if fixes_landed == 0:
