@@ -71,11 +71,18 @@ class MemoryProvider(Protocol):
         codename: str | None = None,
         repo: str | None = None,
         limit: int = 5,
+        anchor_refs: Iterable[str] | None = None,
     ) -> list[Lesson]:
         """Return up to ``limit`` lessons matching the filters.
 
         Returning an empty list is the normal "I have nothing" answer;
         chained providers use that signal to fall through.
+
+        ``anchor_refs`` is the Phase 2 code-grounding hint: the code entities
+        (typically the files a firing is about to edit) whose anchored lessons
+        should be surfaced first. A backend that does not support anchoring MUST
+        accept and ignore it, so the parameter is safe to thread through the
+        whole provider chain.
         """
         ...
 

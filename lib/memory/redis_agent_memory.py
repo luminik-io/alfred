@@ -274,7 +274,10 @@ class RedisAgentMemoryProvider:
         codename: str | None = None,
         repo: str | None = None,
         limit: int = 5,
+        anchor_refs: Iterable[str] | None = None,
     ) -> list[Lesson]:
+        # ``anchor_refs`` is accepted for provider-chain compatibility; AMS has
+        # no code-anchor index, so it is intentionally ignored here.
         text = (query or " ".join(x for x in (codename, repo) if x) or "alfred").strip()
         payload: dict[str, Any] = {
             "text": text,

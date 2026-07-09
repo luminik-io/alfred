@@ -19,6 +19,7 @@ registry, never by editing this file -- Open-Closed.
 
 from __future__ import annotations
 
+import inspect
 import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -31,6 +32,27 @@ if TYPE_CHECKING:
     from . import MemoryProvider
 
 _LOG = logging.getLogger(__name__)
+
+
+def _recall_accepts_anchor_refs(provider: object) -> bool:
+    """Whether ``provider.recall`` declares the Phase 2 ``anchor_refs`` kwarg.
+
+    Lets :class:`ChainedMemoryProvider` thread ``anchor_refs`` only to members
+    that accept it, so a provider written against the pre-Phase-2 protocol (or a
+    test double) is never handed an unexpected keyword. A ``**kwargs`` recall is
+    treated as accepting it; any introspection failure conservatively returns
+    ``False`` (the member simply does not get anchor-grounded recall).
+    """
+    recall = getattr(provider, "recall", None)
+    if recall is None:
+        return False
+    try:
+        params = inspect.signature(recall).parameters
+    except (TypeError, ValueError):
+        return False
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return True
+    return "anchor_refs" in params
 
 
 @dataclass
@@ -59,13 +81,33 @@ class FleetBrainProvider:
         codename: str | None = None,
         repo: str | None = None,
         limit: int = 5,
+        anchor_refs: Iterable[str] | None = None,
     ) -> list[Lesson]:
-        return self.brain.recall(
+        base = self.brain.recall(
             codename=codename,
             repo=repo,
             query=query,
             limit=limit,
         )
+        refs = [r.strip() for r in (anchor_refs or []) if r and r.strip()]
+        if not refs:
+            return base
+        # Phase 2 code-grounding: surface lessons anchored to the edited files
+        # first, then fill with the normal recall order, deduped, capped.
+        ordered: list[Lesson] = []
+        seen: set[str] = set()
+        for ref in refs:
+            for lesson in self.brain.lessons_for_anchor(anchor_ref=ref, repo=repo, limit=limit):
+                if lesson.id in seen:
+                    continue
+                seen.add(lesson.id)
+                ordered.append(lesson)
+        for lesson in base:
+            if lesson.id in seen:
+                continue
+            seen.add(lesson.id)
+            ordered.append(lesson)
+        return ordered[: max(1, int(limit))]
 
     def reflect(
         self,
@@ -132,6 +174,7 @@ class NullMemoryProvider:
         codename: str | None = None,
         repo: str | None = None,
         limit: int = 5,
+        anchor_refs: Iterable[str] | None = None,
     ) -> list[Lesson]:
         return []
 
@@ -186,17 +229,32 @@ class ChainedMemoryProvider:
         codename: str | None = None,
         repo: str | None = None,
         limit: int = 5,
+        anchor_refs: Iterable[str] | None = None,
     ) -> list[Lesson]:
         provider_lessons: list[list[Lesson]] = []
         seen: set[str] = set()
         for provider in self.providers:
+            # Only thread ``anchor_refs`` when the caller supplied it AND this
+            # member's recall accepts it. Passing it unconditionally would break
+            # a provider (or test double) written against the pre-Phase-2
+            # protocol; with no anchor refs the call is byte-identical to before.
+            use_anchors = anchor_refs is not None and _recall_accepts_anchor_refs(provider)
             try:
-                lessons = provider.recall(
-                    query=query,
-                    codename=codename,
-                    repo=repo,
-                    limit=limit,
-                )
+                if use_anchors:
+                    lessons = provider.recall(
+                        query=query,
+                        codename=codename,
+                        repo=repo,
+                        limit=limit,
+                        anchor_refs=anchor_refs,
+                    )
+                else:
+                    lessons = provider.recall(
+                        query=query,
+                        codename=codename,
+                        repo=repo,
+                        limit=limit,
+                    )
             except Exception:
                 # One flaky backend must not break the chain. Log and
                 # try the next provider; the firing still gets context.

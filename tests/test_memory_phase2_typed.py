@@ -33,11 +33,22 @@ from agent_runner.repo_profile import (  # noqa: E402
     repo_profile_block,
     repo_profile_enabled,
 )
-from fleet_brain import FleetBrain, Lesson, SQLiteStore, normalize_kind  # noqa: E402
+from fleet_brain import (  # noqa: E402
+    FleetBrain,
+    Lesson,
+    MemoryPromotionError,
+    SQLiteStore,
+    normalize_kind,
+)
 from fleet_brain.taxonomy import (  # noqa: E402
     DEFAULT_LESSON_KIND,
     LESSON_KINDS,
     kind_recall_bonus,
+)
+from memory.providers import (  # noqa: E402
+    ChainedMemoryProvider,
+    FleetBrainProvider,
+    NullMemoryProvider,
 )
 from memory.sqlite_hybrid import SqliteHybridProvider  # noqa: E402
 
@@ -380,3 +391,185 @@ def test_repo_profile_missing_root_is_none() -> None:
     assert build_repo_profile("/does/not/exist/anywhere-123") is None
     assert format_repo_profile_block(None) == ""
     assert format_repo_profile_block(RepoProfile(root=Path("/x"))) == ""
+
+
+# --------------------------------------------------------------------------
+# P1: promotion errors must not be swallowed (signature-checked fallback)
+# --------------------------------------------------------------------------
+
+
+class _Phase2Writer:
+    """A writer whose reflect DOES accept the Phase 2 kwargs but raises inside."""
+
+    name = "phase2-raising"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def reflect(
+        self,
+        *,
+        codename: str,
+        repo: str,
+        body: str,
+        tags=None,
+        severity="info",
+        firing_id=None,
+        created_at=None,
+        memory_id=None,
+        kind=None,
+        provenance=None,
+    ) -> Lesson:
+        self.calls += 1
+        raise TypeError("internal bug unrelated to the signature")
+
+
+class _Phase1Writer:
+    """A writer that predates the Phase 2 kwargs (Phase 1 contract only)."""
+
+    name = "phase1"
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.last_kwargs: dict[str, object] | None = None
+
+    def reflect(
+        self,
+        *,
+        codename: str,
+        repo: str,
+        body: str,
+        tags=None,
+        severity="info",
+        firing_id=None,
+        created_at=None,
+        memory_id=None,
+    ) -> Lesson:
+        self.calls += 1
+        self.last_kwargs = {"memory_id": memory_id}
+        return Lesson(
+            id=memory_id or "x",
+            codename=codename,
+            repo=repo,
+            body=body,
+            tags=list(tags or []),
+            created_at=datetime.now(UTC),
+            firing_id=firing_id,
+            severity=severity,
+        )
+
+
+def _candidate(brain: FleetBrain, body: str) -> str:
+    cand = brain.propose_memory(
+        codename="lucius",
+        repo="acme/api",
+        body=body,
+        evidence="seen twice",
+        confidence=0.9,
+        kind="fix",
+    )
+    return cand.id
+
+
+def test_promote_does_not_mask_internal_typeerror(brain: FleetBrain) -> None:
+    # A writer that accepts kind/provenance but raises TypeError internally must
+    # surface as a MemoryPromotionError and be called exactly once (never retried
+    # without the Phase 2 kwargs, which would mask the real bug).
+    writer = _Phase2Writer()
+    cid = _candidate(brain, "a real fix")
+    with pytest.raises(MemoryPromotionError):
+        brain.promote_memory_candidate(cid, lesson_writer=writer)
+    assert writer.calls == 1
+    # Candidate stays pending (re-promotable), not silently validated.
+    assert brain.store.get_memory_candidate(cid).status == "candidate"
+
+
+def test_promote_falls_back_for_phase1_writer(brain: FleetBrain) -> None:
+    # A Phase-1-only writer (no kind/provenance) still promotes: the signature
+    # check skips the Phase 2 kwargs rather than erroring.
+    writer = _Phase1Writer()
+    cid = _candidate(brain, "a fix a phase-1 writer can store")
+    lesson = brain.promote_memory_candidate(cid, lesson_writer=writer)
+    assert writer.calls == 1
+    assert lesson.id == _lesson_memory_id_for(cid)
+    assert brain.store.get_memory_candidate(cid).status == "validated"
+
+
+def _lesson_memory_id_for(candidate_id: str) -> str:
+    from fleet_brain import candidate_id_from_lesson_id
+
+    # Round-trip helper: the promote path derives a deterministic memory id from
+    # the candidate id; recover it the same way the retire path does.
+    prefix = "lesson:memory_candidate:"
+    assert candidate_id_from_lesson_id(prefix + candidate_id) == candidate_id
+    return prefix + candidate_id
+
+
+# --------------------------------------------------------------------------
+# P1: anchors must round-trip through export / import
+# --------------------------------------------------------------------------
+
+
+def test_export_includes_anchors_and_import_restores_them() -> None:
+    source = FleetBrain(store=SQLiteStore(db_path=Path(":memory:")))
+    lesson = source.reflect(
+        codename="lucius", repo="acme/api", body="auth convention", kind="convention"
+    )
+    source.anchor_lesson(lesson_id=lesson.id, anchor_ref="acme/api/auth.py", repo="acme/api")
+
+    snapshot = source.export()
+    assert "lesson_anchors" in snapshot
+    assert any(a["anchor_ref"] == "acme/api/auth.py" for a in snapshot["lesson_anchors"])
+
+    target = FleetBrain(store=SQLiteStore(db_path=Path(":memory:")))
+    counts = target.import_snapshot(snapshot)
+    assert counts["lessons"] == 1
+    assert counts["lesson_anchors"] == 1
+    restored = target.lessons_for_anchor(anchor_ref="acme/api/auth.py", repo="acme/api")
+    assert [lesson.id] == [r.id for r in restored]
+    # the lesson's typed kind survived the round-trip too
+    assert restored[0].kind == "convention"
+
+
+# --------------------------------------------------------------------------
+# P1: anchor_refs recall must work THROUGH the chained provider / protocol
+# --------------------------------------------------------------------------
+
+
+def test_anchor_refs_recall_through_chained_provider() -> None:
+    sqlite = SqliteHybridProvider(db_path=Path(":memory:"))
+    conv = sqlite.reflect(
+        codename="lucius",
+        repo="acme/api",
+        body="auth uses JWT verified in the middleware",
+        kind="convention",
+        anchors=[("file", "acme/api/auth.py")],
+    )
+    sqlite.reflect(codename="lucius", repo="acme/api", body="unrelated readme note", kind="note")
+    # A fleet ledger with nothing anchored, chained AFTER the sqlite store.
+    fleet = FleetBrainProvider(brain=FleetBrain(store=SQLiteStore(db_path=Path(":memory:"))))
+    chain = ChainedMemoryProvider(providers=[sqlite, fleet, NullMemoryProvider()])
+
+    # anchor_refs must reach the sqlite member through the chain; without the
+    # plumbing this raised TypeError or silently ignored the anchor.
+    recalled = chain.recall(
+        codename="lucius",
+        repo="acme/api",
+        query="readme",
+        limit=3,
+        anchor_refs=["acme/api/auth.py"],
+    )
+    assert conv.id in {lesson.id for lesson in recalled}
+    assert recalled[0].id == conv.id
+
+
+def test_fleet_provider_honors_anchor_refs() -> None:
+    brain = FleetBrain(store=SQLiteStore(db_path=Path(":memory:")))
+    lesson = brain.reflect(codename="lucius", repo="acme/api", body="anchored fix", kind="fix")
+    brain.anchor_lesson(lesson_id=lesson.id, anchor_ref="acme/api/auth.py", repo="acme/api")
+    brain.reflect(codename="lucius", repo="acme/api", body="plain note", kind="note")
+    provider = FleetBrainProvider(brain=brain)
+    recalled = provider.recall(
+        codename="lucius", repo="acme/api", limit=3, anchor_refs=["acme/api/auth.py"]
+    )
+    assert recalled[0].id == lesson.id

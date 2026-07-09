@@ -356,6 +356,8 @@ class Store(Protocol):
 
     def list_lesson_anchors(self, lesson_id: str, limit: int = 100) -> list[LessonAnchor]: ...
 
+    def list_all_lesson_anchors(self, limit: int = 100_000) -> list[LessonAnchor]: ...
+
     def lessons_for_anchor(
         self,
         *,
@@ -869,6 +871,16 @@ class SQLiteStore:
                 "FROM lesson_anchors WHERE lesson_id = ? "
                 "ORDER BY created_at DESC LIMIT ?",
                 (lesson_id, int(limit)),
+            ).fetchall()
+            return [_row_to_lesson_anchor(r) for r in rows]
+
+    def list_all_lesson_anchors(self, limit: int = 100_000) -> list[LessonAnchor]:
+        """Enumerate every anchor across all lessons (for export/backup)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, lesson_id, anchor_type, anchor_ref, relation, repo, created_at "
+                "FROM lesson_anchors ORDER BY created_at ASC LIMIT ?",
+                (int(limit),),
             ).fetchall()
             return [_row_to_lesson_anchor(r) for r in rows]
 
