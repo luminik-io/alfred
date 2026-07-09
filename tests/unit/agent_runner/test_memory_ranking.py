@@ -348,6 +348,47 @@ def test_invoke_agent_engine_clears_delta_on_completion(monkeypatch) -> None:
     assert "fid-clear" not in mr._INJECTED_BY_FIRING
 
 
+def test_invoke_agent_engine_clears_delta_on_exception(monkeypatch) -> None:
+    """The clear runs in a ``finally``: if a post-injection step raises before
+    the normal return, the firing's delta state is still released."""
+    import agent_runner.process as proc
+    from agent_runner import memory_ranking as mr
+
+    class Provider:
+        name = "fleet"
+
+        def recall(self, **kwargs):
+            return [_LessonStub("Injected lesson body.", id="L1")]
+
+    monkeypatch.setattr(proc, "load_runtime_memory", lambda: Provider())
+    monkeypatch.setenv("ALFRED_MEMORY_DELTA", "1")
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+
+    boom = RuntimeError("engine blew up after injection")
+
+    def fake_claude(prompt, **kwargs):
+        # The lesson was injected (its firing is tracked) and now the run raises
+        # from inside the wrapped body, exercising the finally path.
+        assert "fid-boom" in mr._INJECTED_BY_FIRING
+        raise boom
+
+    with pytest.raises(RuntimeError):
+        proc.invoke_agent_engine(
+            "Implement the issue.",
+            engine="claude",
+            agent="lucius",
+            firing_id="fid-boom",
+            workdir=Path("/tmp"),
+            claude_allowed_tools="Read",
+            timeout=30,
+            claude_fn=fake_claude,
+            memory_repo="org/api",
+        )
+
+    # Even though the run raised, the firing's delta state was cleared.
+    assert "fid-boom" not in mr._INJECTED_BY_FIRING
+
+
 def test_delta_table_is_bounded_and_evicts_old_firings(monkeypatch) -> None:
     """A long-lived process never accumulates delta state without limit: when
     more than the cap of distinct firings are tracked, the oldest are evicted."""

@@ -1607,92 +1607,95 @@ def invoke_agent_engine(
             breaker.record_success()
         return result
 
-    if mode == "codex":
-        result = _resilient_invoke("codex", _invoke_codex)
-        engine_used = "codex"
-    else:
-        result = _resilient_invoke("claude", _invoke_claude)
-        engine_used = "claude"
-        # The fallback fires ONLY on a capability failure: Claude ran and
-        # returned cleanly but produced nothing useful. Transient failures
-        # were already retried on Claude above and never reach here; fatal
-        # failures (auth/budget/schema) are surfaced honestly, never papered
-        # over by burning the second engine.
-        if mode == "hybrid" and classify_result(result) is FailureClass.CAPABILITY:
-            trigger_subtype = result.subtype
-            if on_fallback:
-                on_fallback(result)
+    # The whole engine run + post-processing is wrapped so the firing's
+    # per-firing delta state is released in a ``finally``, i.e. whether this
+    # returns normally OR a post-engine step raises. Clearing on completion keeps
+    # a finished firing's injected-lesson set from lingering in the process-global
+    # table; the table cap remains only a backstop for a crash before the finally
+    # runs. Reuse counters are intentionally NOT cleared: reinforce-on-reuse is a
+    # cross-firing signal by design.
+    try:
+        if mode == "codex":
             result = _resilient_invoke("codex", _invoke_codex)
-            engine_used = "codex-fallback"
-            # Stamp the Codex result with the Claude capability failure that
-            # triggered the fallback so event logs can explain the path.
-            result.fallback_from_subtype = trigger_subtype
+            engine_used = "codex"
+        else:
+            result = _resilient_invoke("claude", _invoke_claude)
+            engine_used = "claude"
+            # The fallback fires ONLY on a capability failure: Claude ran and
+            # returned cleanly but produced nothing useful. Transient failures
+            # were already retried on Claude above and never reach here; fatal
+            # failures (auth/budget/schema) are surfaced honestly, never papered
+            # over by burning the second engine.
+            if mode == "hybrid" and classify_result(result) is FailureClass.CAPABILITY:
+                trigger_subtype = result.subtype
+                if on_fallback:
+                    on_fallback(result)
+                result = _resilient_invoke("codex", _invoke_codex)
+                engine_used = "codex-fallback"
+                # Stamp the Codex result with the Claude capability failure that
+                # triggered the fallback so event logs can explain the path.
+                result.fallback_from_subtype = trigger_subtype
 
-    result = _stamp_context_governance(result)
-    if memory_provider is not None and memory_repo:
-        result_text = result.result_text or ""
-        reflections = parse_memory_reflections(result_text)
-        if BEGIN_MARKER in result_text:
-            result.result_text = strip_memory_reflections(result_text)
-        if reflections:
-            record_reflections(
+        result = _stamp_context_governance(result)
+        if memory_provider is not None and memory_repo:
+            result_text = result.result_text or ""
+            reflections = parse_memory_reflections(result_text)
+            if BEGIN_MARKER in result_text:
+                result.result_text = strip_memory_reflections(result_text)
+            if reflections:
+                record_reflections(
+                    memory_provider,
+                    reflections,
+                    codename=agent,
+                    repo=memory_repo,
+                    firing_id=firing_id,
+                )
+            record_firing(
                 memory_provider,
-                reflections,
                 codename=agent,
                 repo=memory_repo,
                 firing_id=firing_id,
+                result=result,
+                engine_used=engine_used,
             )
-        record_firing(
-            memory_provider,
-            codename=agent,
-            repo=memory_repo,
-            firing_id=firing_id,
-            result=result,
-            engine_used=engine_used,
-        )
 
-    # Opt-in self-grading gate. Only runs when a rubric is configured, so the
-    # default path is untouched. The verdict is stashed on the result's raw
-    # envelope for a caller to act on; PR-open blocking is a follow-up wired in
-    # the runners (owned by a separate change).
-    active_rubric = _resolve_rubric(rubric)
-    if active_rubric is not None and not is_dry_run():
-        if not result.success:
-            # The primary run itself FAILED (Codex quota / rate-limit, Claude
-            # auth error, timeout, ...). Grading a failed run is pointless and
-            # wastes a grader call, so we skip it entirely and leave a clear
-            # note rather than a verdict. This mirrors the runners, which
-            # already gate their PR-open path on ``if not result.success``.
-            result.raw = dict(result.raw or {})
-            result.raw["rubric_verdict"] = {
-                "result": "not_graded",
-                "explanation": (
-                    "primary run did not succeed "
-                    f"(subtype={result.subtype}); rubric grading skipped"
-                ),
-                "terminal_reason": "primary_run_failed",
-                "criteria": [],
-            }
-        else:
-            grader_fn = rubric_grader_fn or _default_rubric_grader(
-                grader_engine=(
-                    rubric_grader_engine
-                    or os.environ.get("ALFRED_RUBRIC_GRADER_ENGINE", "").strip()
-                ),
-                agent=agent,
-                firing_id=firing_id,
-                workdir=workdir,
-                codex_model=codex_model,
-            )
-            with contextlib.suppress(Exception):
-                _apply_rubric_gate(result, rubric=active_rubric, grader_fn=grader_fn)
+        # Opt-in self-grading gate. Only runs when a rubric is configured, so the
+        # default path is untouched. The verdict is stashed on the result's raw
+        # envelope for a caller to act on; PR-open blocking is a follow-up wired
+        # in the runners (owned by a separate change).
+        active_rubric = _resolve_rubric(rubric)
+        if active_rubric is not None and not is_dry_run():
+            if not result.success:
+                # The primary run itself FAILED (Codex quota / rate-limit, Claude
+                # auth error, timeout, ...). Grading a failed run is pointless and
+                # wastes a grader call, so we skip it entirely and leave a clear
+                # note rather than a verdict. This mirrors the runners, which
+                # already gate their PR-open path on ``if not result.success``.
+                result.raw = dict(result.raw or {})
+                result.raw["rubric_verdict"] = {
+                    "result": "not_graded",
+                    "explanation": (
+                        "primary run did not succeed "
+                        f"(subtype={result.subtype}); rubric grading skipped"
+                    ),
+                    "terminal_reason": "primary_run_failed",
+                    "criteria": [],
+                }
+            else:
+                grader_fn = rubric_grader_fn or _default_rubric_grader(
+                    grader_engine=(
+                        rubric_grader_engine
+                        or os.environ.get("ALFRED_RUBRIC_GRADER_ENGINE", "").strip()
+                    ),
+                    agent=agent,
+                    firing_id=firing_id,
+                    workdir=workdir,
+                    codex_model=codex_model,
+                )
+                with contextlib.suppress(Exception):
+                    _apply_rubric_gate(result, rubric=active_rubric, grader_fn=grader_fn)
 
-    # The firing is complete: drop its per-firing delta state immediately so a
-    # finished firing's injected-lesson set does not linger in the process-global
-    # table (the table cap is only a backstop for a crash before this point).
-    # Reuse counters are intentionally NOT cleared here: reinforce-on-reuse is a
-    # cross-firing signal by design.
-    if firing_id:
-        memory_ranking.clear_firing(firing_id)
-
-    return result, engine_used
+        return result, engine_used
+    finally:
+        if firing_id:
+            memory_ranking.clear_firing(firing_id)
