@@ -820,14 +820,18 @@ class FleetBrain:
         return self.store.insert_memory_candidate(candidate)
 
     def _lesson_provider(self, env: Mapping[str, str] | None = None) -> Any:
-        """Build the Redis AMS provider, the promoted-lesson backend.
+        """Build the promoted-lesson backend from the configured memory chain.
 
-        Imported lazily to avoid an import cycle: the provider imports
-        ``Lesson`` from this package.
+        Resolves ``ALFRED_MEMORY_PROVIDERS`` via
+        :func:`memory.config.load_lesson_writer`: the embedded SQLite hybrid
+        store by default (zero-daemon), Redis AMS when ``redis`` leads the chain.
+        The same backend serves the promote WRITE and the revert/retire/decay
+        forget, so recall and writes stay aligned. Imported lazily to avoid an
+        import cycle: the memory providers import ``Lesson`` from this package.
         """
-        from memory.redis_agent_memory import RedisAgentMemoryProvider
+        from memory.config import load_lesson_writer
 
-        return RedisAgentMemoryProvider.from_env(env=env)
+        return load_lesson_writer(env=env)
 
     def promote_memory_candidate(
         self,

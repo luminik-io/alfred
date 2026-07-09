@@ -3,9 +3,12 @@
 The operator tunes runtime memory via two env vars:
 
 * ``ALFRED_MEMORY_PROVIDERS`` -- comma-separated provider names, in
-  consult order. Example: ``redis,fleet``. Unset means Redis Agent
-  Memory first, with the local FleetBrain ledger behind it; set it to
-  ``null`` or an empty string to disable runtime memory.
+  consult order. Example: ``sqlite,fleet``. Unset means the embedded
+  SQLite hybrid store first (zero-daemon semantic recall), with the local
+  FleetBrain ledger behind it; set it to ``null`` or an empty string to
+  disable runtime memory. Redis Agent Memory (``redis``) stays a supported
+  opt-in: ``ALFRED_MEMORY_PROVIDERS=redis,fleet`` restores the daemon-backed
+  chain unchanged.
 * Per-provider env (e.g. ``ALFRED_GBRAIN_BIN``) -- see the provider's
   docstring.
 
@@ -28,14 +31,17 @@ from .providers import (
     NullMemoryProvider,
 )
 from .redis_agent_memory import RedisAgentMemoryProvider
+from .sqlite_hybrid import SqliteHybridProvider
 
 if TYPE_CHECKING:
     from . import MemoryProvider
 
 __all__ = [
     "DEFAULT_PROVIDER_NAMES",
+    "LESSON_STORE_NAMES",
     "PROVIDER_REGISTRY",
     "build_chain",
+    "load_lesson_writer",
     "load_provider",
     "parse_provider_names",
     "recall_lessons",
@@ -44,7 +50,20 @@ __all__ = [
 _LOG = logging.getLogger(__name__)
 
 ProviderFactory = Callable[[Mapping[str, str]], "MemoryProvider"]
-DEFAULT_PROVIDER_NAMES = ["redis", "fleet"]
+
+# Zero-daemon default: the embedded SQLite hybrid store leads (semantic-quality
+# recall with no Redis/Ollama), with the local FleetBrain ledger behind it. An
+# explicit ``ALFRED_MEMORY_PROVIDERS=redis,fleet`` restores the daemon-backed
+# chain, so this is a backward-compatible default change, not a removal.
+DEFAULT_PROVIDER_NAMES = ["sqlite", "fleet"]
+
+# Providers that are dedicated, writable recall stores: they implement the AMS
+# write contract (``reflect`` with a deterministic ``memory_id``, plus
+# ``forget_lesson``) and are therefore valid targets for the promoted-lesson
+# write path. ``fleet``/``gbrain``/``null`` are NOT: fleet is the candidate
+# ledger, gbrain is a read-only shim, null is a no-op. Order-independent set;
+# ``load_lesson_writer`` picks the first such name in the configured chain.
+LESSON_STORE_NAMES = frozenset({"sqlite", "sqlite_hybrid", "redis"})
 
 # Registry: each entry is a small factory that constructs the provider
 # from the process environment. Keep the factories trivial; the
@@ -53,6 +72,8 @@ PROVIDER_REGISTRY: dict[str, ProviderFactory] = {
     "fleet": lambda env: FleetBrainProvider.from_env(env),
     "gbrain": lambda env: GBrainProvider.from_env(env=dict(env)),
     "redis": lambda env: RedisAgentMemoryProvider.from_env(env=env),
+    "sqlite": lambda env: SqliteHybridProvider.from_env(env=env),
+    "sqlite_hybrid": lambda env: SqliteHybridProvider.from_env(env=env),
     "null": lambda _env: NullMemoryProvider(),
 }
 
@@ -117,10 +138,12 @@ def load_provider(env: Mapping[str, str] | None = None) -> MemoryProvider:
     """Top-level entry point: build the chain from
     ``ALFRED_MEMORY_PROVIDERS``.
 
-    The default (env unset) is Redis Agent Memory first, then FleetBrain.
-    Redis is the semantic memory layer. FleetBrain stays in the chain as the
-    local operational ledger for candidates, firings, GitHub cache, worker
-    heartbeats, and telemetry inputs.
+    The default (env unset) is the embedded SQLite hybrid store first, then
+    FleetBrain. The SQLite store is the zero-daemon semantic-recall layer
+    (FTS5 lexical + optional sqlite-vec dense, fused with RRF). FleetBrain stays
+    in the chain as the local operational ledger for candidates, firings, GitHub
+    cache, worker heartbeats, and telemetry inputs. Redis Agent Memory remains a
+    supported opt-in (``ALFRED_MEMORY_PROVIDERS=redis,fleet``).
     Operators who want only a no-op layer can set
     ``ALFRED_MEMORY_PROVIDERS=null``.
     """
@@ -133,6 +156,39 @@ def load_provider(env: Mapping[str, str] | None = None) -> MemoryProvider:
         # Explicitly empty -- the operator turned memory off.
         return NullMemoryProvider()
     return build_chain(names, env=envmap)
+
+
+def load_lesson_writer(env: Mapping[str, str] | None = None) -> MemoryProvider:
+    """Build the promoted-lesson WRITE backend from the configured chain.
+
+    The capture->judge->promote pipeline (in :mod:`fleet_brain`) writes a
+    promoted lesson to the durable recall store, and the revert/retire/decay
+    levers forget it from that same store. That store must be one of the
+    dedicated recall backends (see :data:`LESSON_STORE_NAMES`), not the
+    FleetBrain candidate ledger.
+
+    Resolution honours ``ALFRED_MEMORY_PROVIDERS`` so the writer always aligns
+    with what recall reads:
+
+    * default (unset) -> the embedded SQLite hybrid store (zero-daemon);
+    * ``redis,fleet`` -> Redis AMS, unchanged from earlier releases;
+    * the FIRST recall store named in the chain wins when several are present.
+
+    If the chain names NO recall store (e.g. ``fleet`` or ``null`` only), the
+    promoted lesson still needs a durable home, so this falls back to the
+    embedded SQLite store: a local, daemon-free floor that never silently loses
+    a promotion. Construction errors propagate to the caller, which treats them
+    as a retryable promotion failure (the candidate stays pending).
+    """
+    envmap = env if env is not None else os.environ
+    raw = envmap.get("ALFRED_MEMORY_PROVIDERS")
+    names = list(DEFAULT_PROVIDER_NAMES) if raw is None else parse_provider_names(raw)
+    for name in names:
+        if name in LESSON_STORE_NAMES:
+            factory = PROVIDER_REGISTRY.get(name)
+            if factory is not None:
+                return factory(envmap)
+    return SqliteHybridProvider.from_env(env=envmap)
 
 
 def recall_lessons(
