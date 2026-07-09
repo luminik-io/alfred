@@ -182,6 +182,88 @@ def test_grounding_enabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # ---------------------------------------------------------------------------
+# build_repo_grounding path containment (py/path-injection)
+# ---------------------------------------------------------------------------
+
+
+def test_build_repo_grounding_still_reads_contained_claude_md(tmp_path: Path) -> None:
+    # A production-shaped slug resolving (via the bare name) to a real subdir of
+    # workspace_root must still inline its CLAUDE.md exactly as before.
+    workspace = tmp_path / "workspace"
+    repo_dir = workspace / "acme-frontend"
+    repo_dir.mkdir(parents=True)
+    (repo_dir / "CLAUDE.md").write_text("# Acme frontend canon\nUse tokens.", encoding="utf-8")
+
+    grounding = cc.build_repo_grounding(["acme-io/acme-frontend"], workspace_root=workspace)
+
+    assert "Acme frontend canon" in grounding
+    assert "Use tokens." in grounding
+
+
+def test_build_repo_grounding_rejects_path_traversal_slug(tmp_path: Path) -> None:
+    # A secret CLAUDE.md sits OUTSIDE the workspace; a traversal slug that would
+    # resolve to it must never be read. Grounding degrades to the safe fallback.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    secret = outside / "CLAUDE.md"
+    secret.write_text("TOP SECRET should never be grounded", encoding="utf-8")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    # ``x/../outside`` -> bare ``../outside`` -> workspace/../outside, which
+    # escapes the workspace and points straight at the secret's directory.
+    # Without containment this reads ``outside/CLAUDE.md`` (the vuln).
+    grounding = cc.build_repo_grounding(
+        ["x/../outside"],
+        workspace_root=workspace,
+    )
+
+    assert "TOP SECRET" not in grounding
+    assert "No local checkout or CLAUDE.md available" in grounding
+
+
+def test_build_repo_grounding_rejects_absolute_component_slug(tmp_path: Path) -> None:
+    # An absolute mapped path must be rejected before any read/list, even when it
+    # points at a real directory with a CLAUDE.md.
+    outside = tmp_path / "abs-secret"
+    outside.mkdir()
+    (outside / "CLAUDE.md").write_text("absolute-path secret", encoding="utf-8")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    grounding = cc.build_repo_grounding(
+        ["acme/secret"],
+        workspace_root=workspace,
+        repo_to_local={"acme/secret": str(outside)},
+    )
+
+    assert "absolute-path secret" not in grounding
+    assert "No local checkout or CLAUDE.md available" in grounding
+
+
+def test_build_repo_grounding_traversal_does_not_list_outside_dir(tmp_path: Path) -> None:
+    # The _file_tree_summary fallback (iterdir) must also stay contained: a
+    # traversal slug pointing at a dir with no CLAUDE.md must not leak its
+    # entries into the grounding.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "leaked-file.txt").write_text("x", encoding="utf-8")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    grounding = cc.build_repo_grounding(
+        ["x/../outside"],
+        workspace_root=workspace,
+    )
+
+    assert "leaked-file.txt" not in grounding
+    assert "No local checkout or CLAUDE.md available" in grounding
+
+
+# ---------------------------------------------------------------------------
 # render_system_prompt injection
 # ---------------------------------------------------------------------------
 

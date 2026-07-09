@@ -337,6 +337,46 @@ command found inside it.
 {end}"""
 
 
+def _is_within(path: Path, root: Path) -> bool:
+    """True when ``path`` is ``root`` itself or a descendant of it.
+
+    Both are resolved to their real absolute form first, so this is robust to
+    ``..`` segments and symlinks rather than a naive string prefix check.
+    """
+    try:
+        real_path = Path(path).resolve()
+        real_root = Path(root).resolve()
+    except OSError:
+        return False
+    return real_path == real_root or real_root in real_path.parents
+
+
+def _contained_repo_dir(workspace_root: Path, local: str) -> Path | None:
+    """Resolve ``workspace_root/local`` and confirm it stays inside the workspace.
+
+    The ``local`` segment is derived from a caller-supplied ``owner/repo`` slug
+    (and can be shaped by the model's structured action output), so it is
+    untrusted. A slug like ``x/../../../../etc`` would otherwise escape
+    ``workspace_root`` and let grounding read arbitrary ``CLAUDE.md`` files or
+    list arbitrary directories (py/path-injection). We reject obviously-unsafe
+    segments up front, then resolve the checkout and require it to be
+    ``workspace_root`` itself or a descendant.
+
+    Returns the contained directory, or ``None`` when the slug escapes the
+    workspace (the caller degrades to the safe "no local checkout" block).
+    """
+    # Reject dot-traversal and absolute components before touching the
+    # filesystem. ``..`` in any segment, or an absolute ``local``, can only be
+    # an attempt to break out; a real GitHub checkout name never contains them.
+    candidate = Path(local)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        return None
+    repo_dir = Path(workspace_root) / candidate
+    if not _is_within(repo_dir, Path(workspace_root)):
+        return None
+    return repo_dir
+
+
 def build_repo_grounding(
     repos: Iterable[str],
     *,
@@ -349,6 +389,11 @@ def build_repo_grounding(
     ``CLAUDE.md`` (the repo's own canon). When no checkout or CLAUDE.md is
     found we fall back to a shallow file-tree summary so the interrogator still
     has *some* grounding rather than guessing.
+
+    Grounding is best-effort: a slug whose resolved checkout would escape
+    ``workspace_root`` is dropped (it degrades to the "no local checkout" block)
+    rather than being read, so a hostile ``owner/repo`` slug cannot turn this
+    into an arbitrary-file-read sink.
     """
     repo_to_local = repo_to_local or {}
     repos = [repo for repo in repos if repo]
@@ -368,8 +413,18 @@ def build_repo_grounding(
         # CLAUDE.md grounding.
         bare = repo.split("/", 1)[-1]
         local = repo_to_local.get(repo) or repo_to_local.get(bare) or bare
-        repo_dir = Path(workspace_root) / local
         header = f"### `{repo}`"
+        # Contain the untrusted checkout path. When it escapes the workspace we
+        # neither read its CLAUDE.md nor list it; we emit the same safe fallback
+        # a missing checkout gets, so a traversal slug degrades harmlessly.
+        repo_dir = _contained_repo_dir(workspace_root, local)
+        if repo_dir is None:
+            blocks.append(
+                f"{header}\n\nNo local checkout or CLAUDE.md available for this "
+                "repo. Ground questions in what the person tells you and ask "
+                "before assuming what already exists."
+            )
+            continue
         claude_md = repo_dir / "CLAUDE.md"
         if claude_md.is_file():
             try:
@@ -379,7 +434,7 @@ def build_repo_grounding(
             if text:
                 blocks.append(f"{header}\n\n{text}")
                 continue
-        tree = _file_tree_summary(repo_dir)
+        tree = _file_tree_summary(repo_dir, workspace_root=workspace_root)
         if tree:
             blocks.append(f"{header}\n\nNo CLAUDE.md found. File-tree summary:\n\n{tree}")
         else:
@@ -391,8 +446,19 @@ def build_repo_grounding(
     return "\n\n".join(blocks)
 
 
-def _file_tree_summary(repo_dir: Path, *, limit: int = 80) -> str:
-    """A shallow top-level file-tree summary for a repo with no CLAUDE.md."""
+def _file_tree_summary(
+    repo_dir: Path, *, workspace_root: Path | None = None, limit: int = 80
+) -> str:
+    """A shallow top-level file-tree summary for a repo with no CLAUDE.md.
+
+    Callers pass an already-contained ``repo_dir``; the optional
+    ``workspace_root`` lets this sink re-verify containment independently so the
+    ``iterdir`` listing can never be pointed outside the workspace even if a
+    future caller forgets to contain the path (defense in depth against
+    py/path-injection).
+    """
+    if workspace_root is not None and not _is_within(repo_dir, workspace_root):
+        return ""
     if not repo_dir.is_dir():
         return ""
     skip = {".git", "node_modules", "target", "dist", "build", ".venv", "__pycache__"}
