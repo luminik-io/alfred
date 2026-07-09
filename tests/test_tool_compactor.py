@@ -214,14 +214,27 @@ def test_empty_output_is_safe() -> None:
 # Hook-path invariants: stdlib-only + wired into the settings payload
 # --------------------------------------------------------------------------
 def test_compactor_and_hook_are_stdlib_only() -> None:
-    """The hook path must import nothing outside the standard library."""
+    """The hook path must import nothing outside the standard library.
+
+    Includes the engine selector (``compression_engine``) and the optional
+    headroom glue (``headroom_engine``): both ride the same Claude Code hook
+    path under any ``python3`` without the venv, so neither may import a
+    non-stdlib package at module scope. ``headroom`` itself is imported
+    DYNAMICALLY inside ``headroom_engine`` (via importlib), so it never appears
+    as a static import here.
+    """
     import ast
     import sys as _sys
 
     stdlib = set(getattr(_sys, "stdlib_module_names", set()))
-    # The hook path is these two sibling modules only.
-    local = {"tool_compactor", "alfred_hooks"}
-    for name in ("tool_compactor.py", "alfred_hooks.py"):
+    # The hook path is these sibling modules only.
+    local = {"tool_compactor", "alfred_hooks", "compression_engine", "headroom_engine"}
+    for name in (
+        "tool_compactor.py",
+        "alfred_hooks.py",
+        "compression_engine.py",
+        "headroom_engine.py",
+    ):
         source = (_LIB / name).read_text(encoding="utf-8")
         tree = ast.parse(source)
         for node in ast.walk(tree):

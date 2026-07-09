@@ -161,6 +161,15 @@ ignore_missing_imports = true
 module = "sqlite_vec"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# Optional tiktoken tokenizer used by the compression benchmark. Not a hard
+# dependency and it ships no type stubs, so its import-guarded use must not error
+# whether or not it is installed. (The headroom engine itself needs no override:
+# headroom-ai is imported dynamically in lib/headroom_engine.py, so mypy never
+# sees a static ``import headroom``.)
+module = "tiktoken"
+ignore_missing_imports = true
+
 # --------------------------------------------------------------------------
 # pytest
 # --------------------------------------------------------------------------

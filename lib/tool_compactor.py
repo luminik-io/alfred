@@ -56,7 +56,9 @@ __all__ = [
     "CompactionResult",
     "compact_output",
     "compact_text",
+    "compaction_gate",
     "output_compactor_enabled",
+    "passthrough_result",
     "strip_ansi",
 ]
 
@@ -285,6 +287,64 @@ def compact_text(text: str, *, max_bytes: int, head_lines: int, tail_lines: int)
     return compacted, omitted
 
 
+def passthrough_result(text: str, original_bytes: int, reason: str) -> CompactionResult:
+    """A no-op :class:`CompactionResult` that leaves ``text`` untouched.
+
+    The single constructor for "return the bytes unchanged", so every engine
+    (the built-in compactor and any alternate one) reports a passthrough the
+    same way.
+    """
+    return CompactionResult(
+        applied=False,
+        text=text,
+        original_bytes=original_bytes,
+        final_bytes=original_bytes,
+        omitted_lines=0,
+        reason=reason,
+    )
+
+
+def compaction_gate(
+    text: str,
+    *,
+    tool_name: str = "Bash",
+    exit_code: int | None = None,
+    env: Mapping[str, str] | None = None,
+) -> tuple[str | None, tuple[int, int, int, int], int]:
+    """The shared confirmed-success safety valve for ANY compression engine.
+
+    Returns ``(passthrough_reason, config, original_bytes)`` where ``config`` is
+    ``(min_bytes, max_bytes, head_lines, tail_lines)``. When
+    ``passthrough_reason`` is not ``None`` the caller MUST leave the output
+    unchanged (build it with :func:`passthrough_result`); a ``None`` reason means
+    the output is eligible for compaction and the caller may compress it within
+    the returned byte budget.
+
+    This is the single source of truth for the #453 safety invariants, so an
+    alternate engine (for example headroom) enforces exactly the same
+    guarantees the built-in compactor does: compaction requires positive proof
+    of success, so an unknown status (``exit_code is None``) or any non-zero exit
+    passes the full output through untouched and an error is never hidden.
+    """
+    resolved = _resolve(env)
+    text = text or ""
+    original_bytes = len(text.encode("utf-8"))
+    config = _compact_config(resolved)
+    if not output_compactor_enabled(resolved):
+        return "disabled", config, original_bytes
+    if tool_name not in _compact_tools(resolved):
+        return "tool_not_targeted", config, original_bytes
+    # Inverted safety valve BEFORE any size gate: compaction requires PROOF of
+    # success. Unknown status and any non-zero exit both preserve full output.
+    if exit_code is None:
+        return "unknown_status", config, original_bytes
+    if exit_code != 0:
+        return "teed_on_failure", config, original_bytes
+    if original_bytes < config[0]:
+        return "within_budget", config, original_bytes
+    return None, config, original_bytes
+
+
 def compact_output(
     text: str,
     *,
@@ -309,34 +369,12 @@ def compact_output(
        byte saving, both pass through unchanged; otherwise the compacted form is
        returned.
     """
-    resolved = _resolve(env)
     text = text or ""
-    original_bytes = len(text.encode("utf-8"))
-
-    def _passthrough(reason: str) -> CompactionResult:
-        return CompactionResult(
-            applied=False,
-            text=text,
-            original_bytes=original_bytes,
-            final_bytes=original_bytes,
-            omitted_lines=0,
-            reason=reason,
-        )
-
-    if not output_compactor_enabled(resolved):
-        return _passthrough("disabled")
-    if tool_name not in _compact_tools(resolved):
-        return _passthrough("tool_not_targeted")
-    # Inverted safety valve BEFORE any size gate: compaction requires PROOF of
-    # success. Unknown status and any non-zero exit both preserve full output.
-    if exit_code is None:
-        return _passthrough("unknown_status")
-    if exit_code != 0:
-        return _passthrough("teed_on_failure")
-
-    min_bytes, max_bytes, head_lines, tail_lines = _compact_config(resolved)
-    if original_bytes < min_bytes:
-        return _passthrough("within_budget")
+    reason, (_min_bytes, max_bytes, head_lines, tail_lines), original_bytes = compaction_gate(
+        text, tool_name=tool_name, exit_code=exit_code, env=env
+    )
+    if reason is not None:
+        return passthrough_result(text, original_bytes, reason)
 
     # Clean noise, then compact the signal.
     cleaned = _collapse_carriage_returns(strip_ansi(text))
@@ -356,7 +394,7 @@ def compact_output(
     final_bytes = len(final.encode("utf-8"))
     if final_bytes >= original_bytes:
         # Cleaning did not help (no ANSI, no dupes, already tight) - keep raw.
-        return _passthrough("no_gain")
+        return passthrough_result(text, original_bytes, "no_gain")
 
     return CompactionResult(
         applied=True,
