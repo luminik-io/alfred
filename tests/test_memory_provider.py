@@ -716,12 +716,24 @@ def test_build_chain_empty_returns_null() -> None:
     assert isinstance(build_chain([], env={}), NullMemoryProvider)
 
 
-def test_load_provider_unset_defaults_to_redis_then_fleet(
+def test_load_provider_unset_defaults_to_sqlite_then_fleet(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("ALFRED_MEMORY_PROVIDERS", raising=False)
     out = load_provider(env={})
-    assert DEFAULT_PROVIDER_NAMES == ["redis", "fleet"]
+    # Zero-daemon default: the embedded SQLite hybrid store leads, FleetBrain
+    # behind it. Redis remains an opt-in (see the explicit-config test below).
+    assert DEFAULT_PROVIDER_NAMES == ["sqlite", "fleet"]
+    assert isinstance(out, ChainedMemoryProvider)
+    assert [provider.name for provider in out.providers] == ["sqlite", "fleet"]
+
+
+def test_load_provider_explicit_redis_fleet_still_honored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Backward compatibility: an operator who pins the daemon-backed chain keeps
+    # exactly the old Redis-first behavior.
+    out = load_provider(env={"ALFRED_MEMORY_PROVIDERS": "redis,fleet"})
     assert isinstance(out, ChainedMemoryProvider)
     assert [provider.name for provider in out.providers] == ["redis", "fleet"]
 

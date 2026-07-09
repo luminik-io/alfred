@@ -46,6 +46,13 @@ dev = [
   "ruff>=0.5",
   "mypy>=1.10",
 ]
+# Optional dense-retrieval arm for the embedded SQLite hybrid memory store.
+# Without it the store runs lexical-only (FTS5/BM25), the true zero-dependency
+# default; installing it enables the sqlite-vec vector arm (still gated behind
+# ALFRED_MEMORY_SQLITE_DENSE and a reachable embedder).
+vector = [
+  "sqlite-vec>=0.1",
+]
 [project.urls]
 Homepage = "https://alfred.luminik.io"
 Repository = "https://github.com/luminik-io/alfred"
@@ -145,6 +152,13 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Optional dense-retrieval extension (pip install "alfred-os[vector]"). It is
+# not a hard dependency and ships no type stubs, so the SQLite hybrid provider's
+# import-guarded uses must not error whether or not it is installed.
+module = "sqlite_vec"
 ignore_missing_imports = true
 
 # --------------------------------------------------------------------------

@@ -3,13 +3,59 @@
 Alfred ships a single-host memory layer: a runner can call
 `memory.recall(...)` before a firing to surface lessons earlier
 firings learned, and `memory.reflect(...)` afterwards to file new
-ones. The default chain is `redis,fleet`: Redis Agent Memory Server stores the
-semantic lessons Alfred recalls, while FleetBrain keeps the local operational
-ledger and review queue.
+ones. The default chain is `sqlite,fleet`: the embedded SQLite hybrid store
+gives semantic-quality recall with **no daemon** (no Redis, no Ollama), while
+FleetBrain keeps the local operational ledger and review queue. Redis Agent
+Memory Server stays a fully supported opt-in for operators who want it
+(`ALFRED_MEMORY_PROVIDERS=redis,fleet`).
 
-The bundled Redis server binds to loopback by default. Nothing is sent to a
-hosted memory service. Anonymous aggregate usage counts are on by default; opt
-out with `alfred telemetry off`.
+Nothing is sent to a hosted memory service. Anonymous aggregate usage counts
+are on by default; opt out with `alfred telemetry off`.
+
+## The zero-daemon default: SQLite hybrid recall
+
+The `sqlite` provider (`lib/memory/sqlite_hybrid.py`) is a single SQLite file
+under the state root (`$ALFRED_HOME/memory-hybrid.db`) that does what Redis AMS
+did for recall, without a running service. It stores every promoted lesson and
+retrieves them with a **hybrid** strategy that degrades in clean tiers:
+
+| Tier | Requires | How it ranks |
+|---|---|---|
+| **Lexical (default)** | nothing beyond stdlib SQLite | FTS5 full-text index, BM25 relevance. Falls back to `LIKE` substring matching if the SQLite build lacks FTS5, so recall never hard-fails. |
+| **Dense (opt-in)** | `ALFRED_MEMORY_SQLITE_DENSE=1` + the optional `sqlite-vec` extension + a reachable Ollama embedder | a `vec0` vector table, k-nearest-neighbour over `mxbai-embed-large` embeddings (Alfred's existing embedding config). |
+
+When both arms run they are fused with **Reciprocal Rank Fusion** (RRF):
+`score(id) = Σ 1 / (k + rank)` over each arm's ranked list, `k` default 60. A
+lesson both arms rank highly rises above one only a single arm found. With only
+the lexical arm, the fused order is exactly the BM25 order.
+
+**The dense arm is optional and degrades cleanly.** If `sqlite-vec` is not
+installed (`pip install "alfred-os[vector]"`) or the Ollama embedder is
+unreachable, the store silently uses lexical-only ranking. Lexical-only is the
+true zero-dependency default: a fresh install gets working recall with nothing
+running.
+
+The store is a first-class **read AND write** target. The
+capture -> judge -> promote pipeline writes each promoted lesson here (with a
+deterministic id, so a re-promote upserts), and the revert / retire / decay
+levers `forget` it here, exactly as they did against Redis AMS. `fleet-brain.db`
+still owns candidates, firing logs, the graph, and review state; the hybrid file
+owns only the promoted, recall-able lessons, so it can be reset or rebuilt
+without touching the operational ledger.
+
+### SQLite hybrid knobs
+
+```sh
+# Where the recall store lives (default $ALFRED_HOME/memory-hybrid.db).
+ALFRED_MEMORY_SQLITE_DB=${ALFRED_HOME}/memory-hybrid.db
+# Arm the dense arm (default off = lexical-only, zero dependencies).
+ALFRED_MEMORY_SQLITE_DENSE=0
+# RRF constant k (default 60) and per-arm candidate pool before fusion.
+ALFRED_MEMORY_SQLITE_RRF_K=60
+ALFRED_MEMORY_SQLITE_POOL=50
+# Dense embeddings reuse the AMS embedding config:
+#   ALFRED_AMS_EMBEDDING_MODEL, ALFRED_AMS_EMBEDDING_DIM, ALFRED_AMS_OLLAMA_BASE_URL
+```
 
 For the **code-structure** layer (where a symbol lives, who calls it, what a
 change breaks, who owns a file) see [CODE_MEMORY.md](CODE_MEMORY.md). It is a
@@ -166,10 +212,28 @@ chain wrapper catches it and tries the next writer.
 
 | Name | File | Writable? | Notes |
 |---|---|---|---|
-| `redis` | `lib/memory/redis_agent_memory.py` | yes | Primary semantic memory client. Defaults to the bundled loopback Agent Memory Server. |
+| `sqlite` (alias `sqlite_hybrid`) | `lib/memory/sqlite_hybrid.py` | yes | **Default** zero-daemon recall store. FTS5 lexical + optional `sqlite-vec` dense, fused with RRF. Single SQLite file, no service. |
+| `redis` | `lib/memory/redis_agent_memory.py` | yes | Opt-in semantic memory client backed by Redis Agent Memory Server (needs the daemon + Ollama). Use with `ALFRED_MEMORY_PROVIDERS=redis,fleet`. |
 | `fleet` | `lib/memory/providers.py` | yes | Local operational ledger and review queue. SQLite under `$ALFRED_HOME`. |
 | `gbrain` | `lib/memory/gbrain_stub.py` | no | Optional subprocess shim into a personal knowledge base CLI. Not bundled functionality. |
 | `null` | `lib/memory/providers.py` | no | No-op. `recall` returns `[]`, `reflect` raises. Used when `ALFRED_MEMORY_PROVIDERS=null` or the env var is explicitly empty. |
+
+### Which provider stores a promoted lesson?
+
+The promote path always writes to a store the **active recall chain actually
+reads**, resolved by `memory.config.load_lesson_writer`, so a promotion is never
+written somewhere recall never looks:
+
+- A dedicated recall store is named (`sqlite` or `redis`): write to the first
+  one. Default `sqlite,fleet` writes to the embedded SQLite store; `redis,fleet`
+  writes to Redis, exactly as before.
+- No dedicated recall store, but `fleet` is in the chain (e.g. `fleet` only):
+  write to FleetBrain's own lessons table, which fleet recall reads. Promotions
+  are never routed to a disconnected SQLite file that fleet recall would ignore.
+- Memory disabled (`ALFRED_MEMORY_PROVIDERS=null` or empty), or nothing writable
+  in the chain (e.g. a read-only `gbrain` shim only): no writer, so promotion is
+  a no-op and the candidate stays pending. The revert / retire / decay levers are
+  likewise controlled no-ops when memory is disabled, never a crash.
 
 ## Configuration
 
@@ -177,8 +241,8 @@ Two env vars drive the chain:
 
 ```sh
 # Consult order. Comma-separated. Whitespace and case insensitive.
-# Unset default -> redis,fleet.
-ALFRED_MEMORY_PROVIDERS=redis,fleet
+# Unset default -> sqlite,fleet (zero-daemon). Opt into Redis with redis,fleet.
+ALFRED_MEMORY_PROVIDERS=sqlite,fleet
 
 # Optional: path to a personal knowledge base CLI.
 # Read by gbrain_stub; the binary is invoked with a JSON payload on

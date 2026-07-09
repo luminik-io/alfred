@@ -116,10 +116,12 @@ summarized with `alfred brain governor`. The governor classifies local setup
 problems, provider limits, auth failures, timeouts, and agent-quality loops,
 then returns a read-only action list for you and the dashboard.
 
-The default provider chain is `redis,fleet`. Set
-`ALFRED_MEMORY_PROVIDERS=null` to disable runtime recall and reflection, or
-`ALFRED_MEMORY_PROVIDERS=redis,fleet,gbrain` to add a read-only personal
-knowledge base behind the default stack. Keep `fleet` in the chain if you want
+The default provider chain is `sqlite,fleet`: the embedded SQLite hybrid store
+gives zero-daemon semantic recall (no Redis or Ollama), with FleetBrain behind
+it. Set `ALFRED_MEMORY_PROVIDERS=redis,fleet` to opt into Redis Agent Memory
+instead, `ALFRED_MEMORY_PROVIDERS=null` to disable runtime recall and
+reflection, or `ALFRED_MEMORY_PROVIDERS=sqlite,fleet,gbrain` to add a read-only
+personal knowledge base behind the default stack. Keep `fleet` in the chain if you want
 reviewable memory candidates, firing logs, GitHub cache, worker heartbeats, and
 telemetry inputs. See [Fleet brain](./FLEET_BRAIN.md) for the local ledger and
 CLI, and [Memory providers](./MEMORY_PROVIDERS.md) for the provider chain.
