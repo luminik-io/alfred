@@ -111,8 +111,10 @@ def test_delta_max_ratio_env() -> None:
     assert delta_max_ratio({"ALFRED_READ_DELTA_MAX_RATIO": "nope"}) == pytest.approx(0.5)
 
 
-def test_ledger_root_override_and_isolation(tmp_path: Path) -> None:
-    override = ledger_root_for(None, env={"ALFRED_READ_LEDGER_DIR": str(tmp_path / "x")})
+def test_ledger_root_isolation_per_firing(tmp_path: Path) -> None:
+    override = ledger_root_for(
+        None, env={"ALFRED_READ_LEDGER_DIR": str(tmp_path / "x"), "ALFRED_FIRING_ID": "f1"}
+    )
     # The override is a base dir; the ledger is still scoped beneath it.
     assert override.parent == tmp_path / "x"
 
@@ -139,33 +141,27 @@ def test_override_dir_is_scoped_per_firing(tmp_path: Path) -> None:
     assert f1 != f2
     assert f1.parent == tmp_path / "shared"
 
-    # Override with no firing id is process-scoped, not one keyless shared dir,
-    # and differs from any firing-scoped dir under the same override.
-    no_firing = ledger_root_for(None, env={"ALFRED_READ_LEDGER_DIR": override})
-    assert no_firing != f1
-    assert no_firing.parent == tmp_path / "shared"
-    # Stable within the same process (one firing) so re-reads still diff.
-    assert no_firing == ledger_root_for(None, env={"ALFRED_READ_LEDGER_DIR": override})
+
+def test_ledger_root_requires_firing_id(tmp_path: Path) -> None:
+    # A firing id is mandatory: never invent a process- or content-shared scope
+    # two firings could collide on. This holds even with the dir override set.
+    with pytest.raises(ValueError):
+        ledger_root_for(None, env={}, state_root=tmp_path / "state")
+    with pytest.raises(ValueError):
+        ledger_root_for(None, env={"ALFRED_READ_LEDGER_DIR": str(tmp_path / "x")})
+    with pytest.raises(ValueError):
+        ledger_root_for(None, env={"ALFRED_FIRING_ID": "  "}, state_root=tmp_path / "state")
 
 
-def test_read_delta_available_requires_firing_scope() -> None:
-    # No firing id and no explicit ledger dir: not scoped, so unavailable.
-    assert read_delta_available({}) is False
-    # A firing id scopes the ledger.
+def test_read_delta_available_strictly_requires_firing_id() -> None:
+    # A firing id is the only thing that enables delta.
     assert read_delta_available({"ALFRED_FIRING_ID": "f1"}) is True
-    # An explicit ledger dir is a deliberate opt-in scope.
-    assert read_delta_available({"ALFRED_READ_LEDGER_DIR": "/tmp/x"}) is True
-    # Blank values do not count as a scope.
+    # No firing id: disabled, even with an explicit ledger dir set.
+    assert read_delta_available({}) is False
+    assert read_delta_available({"ALFRED_READ_LEDGER_DIR": "/tmp/x"}) is False
+    # Blank firing id does not count.
     assert read_delta_available({"ALFRED_FIRING_ID": "  "}) is False
-
-
-def test_ledger_root_falls_back_to_pid_without_firing() -> None:
-    import os
-
-    root = ledger_root_for(None, env={}, state_root="/tmp/state")
-    assert root.name != ""
-    # Distinct firings still map to distinct directories.
-    other = ledger_root_for(None, env={"ALFRED_FIRING_ID": "f9"}, state_root="/tmp/state")
-    assert root != other
-    # The no-firing digest is process-scoped, not an empty shared key.
-    assert f"pid-{os.getpid()}" not in str(root)  # hashed, not literal
+    assert (
+        read_delta_available({"ALFRED_FIRING_ID": "  ", "ALFRED_READ_LEDGER_DIR": "/tmp/x"})
+        is False
+    )

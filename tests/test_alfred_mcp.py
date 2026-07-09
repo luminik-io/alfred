@@ -416,6 +416,8 @@ def test_mcp_read_delta_full_then_delta(tmp_path: Path, monkeypatch) -> None:
     sys.path.insert(0, str(repo / "lib"))
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
     monkeypatch.setenv("ALFRED_READ_LEDGER_DIR", str(tmp_path / "ledger"))
+    # Delta strictly requires a firing id.
+    monkeypatch.setenv("ALFRED_FIRING_ID", "firing-abc")
 
     workspace = tmp_path / "ws"
     target_dir = workspace / "svc" / "app"
@@ -480,10 +482,11 @@ def test_mcp_read_delta_full_without_firing_scope(tmp_path: Path, monkeypatch) -
     repo = Path(__file__).resolve().parent.parent
     sys.path.insert(0, str(repo / "lib"))
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
-    # No ALFRED_FIRING_ID and no ledger-dir override: the ledger cannot be
-    # scoped to one firing, so every read must be full (never a shared delta).
+    # No ALFRED_FIRING_ID: delta is disabled and every read is full, even with
+    # ALFRED_READ_LEDGER_DIR set (an override dir is not a firing scope, so two
+    # firings must never share a delta ledger).
     monkeypatch.delenv("ALFRED_FIRING_ID", raising=False)
-    monkeypatch.delenv("ALFRED_READ_LEDGER_DIR", raising=False)
+    monkeypatch.setenv("ALFRED_READ_LEDGER_DIR", str(tmp_path / "ledger"))
 
     mod = _load("alfred_mcp_cli_no_scope", repo / "bin" / "alfred-mcp.py")
     workspace = _setup_svc_checkout(tmp_path, monkeypatch, mod)
