@@ -254,6 +254,7 @@ def _gated_pairs(
     limit: int,
     threshold: float,
     anchor_refs: list[str] | None = None,
+    anchored_ids: set[str] | None = None,
 ) -> list[tuple[object, float | None]]:
     """Recall lessons, gate by relevance threshold, and dedupe by body.
 
@@ -265,6 +266,14 @@ def _gated_pairs(
 
     ``anchor_refs`` (Phase 2 code-grounding) is threaded through both paths so
     lessons anchored to the firing's files surface first.
+
+    ``anchored_ids`` makes the body-dedup ANCHOR-AWARE: when the same lesson body
+    is returned by both a scored provider (not anchored) and the local file store
+    (anchored), a plain first-wins dedup would keep the scored copy and drop the
+    anchored one, and the later id-based hoist could no longer recognize the
+    survivor as anchored. So on a body tie an anchored copy wins over a
+    non-anchored one. With ``anchored_ids`` empty (anchor recall off) this is a
+    no-op and dedup keeps the first as before.
     """
     scored = _recall_scored_lessons(
         provider, codename=codename, repo=repo, query=query, limit=limit, anchor_refs=anchor_refs
@@ -281,17 +290,28 @@ def _gated_pairs(
         pairs: list[tuple[object, float | None]] = [(lesson, None) for lesson in lessons]
     else:
         pairs = scored
+    anchored = anchored_ids or set()
     out: list[tuple[object, float | None]] = []
-    seen_bodies: set[str] = set()
+    body_pos: dict[str, int] = {}
     for lesson, score in pairs:
         # A reported score below threshold is dropped; an absent score (None)
         # is always kept (the gate cannot judge it).
         if score is not None and score < threshold:
             continue
         key = _normalized_body(getattr(lesson, "body", ""))
-        if not key or key in seen_bodies:
+        if not key:
             continue
-        seen_bodies.add(key)
+        if key in body_pos:
+            # Duplicate body. Anchor-aware: if this copy is anchored and the one
+            # already kept is not, swap it in so the survivor is the anchored
+            # lesson (which the hoist can then promote). Otherwise keep the first.
+            idx = body_pos[key]
+            kept_id = getattr(out[idx][0], "id", None)
+            this_id = getattr(lesson, "id", None)
+            if this_id in anchored and kept_id not in anchored:
+                out[idx] = (lesson, score)
+            continue
+        body_pos[key] = len(out)
         out.append((lesson, score))
     return out
 
@@ -401,6 +421,12 @@ def format_memory_context(
     if provider is None or getattr(provider, "name", "") == "null":
         return ""
     threshold = _recall_relevance_threshold()
+    # Compute the anchored-id set ONCE, before dedup, so both the anchor-aware
+    # body-dedup (an anchored copy wins a duplicate-body tie) and the later hoist
+    # use the same set. Empty (and both a no-op) when no anchor_refs were passed.
+    anchored_ids = (
+        _anchored_lesson_ids(provider, anchor_refs=anchor_refs, repo=repo) if anchor_refs else set()
+    )
     try:
         pairs = _gated_pairs(
             provider,
@@ -410,6 +436,7 @@ def format_memory_context(
             limit=limit,
             threshold=threshold,
             anchor_refs=anchor_refs,
+            anchored_ids=anchored_ids,
         )
     except Exception:
         _LOG.exception("memory runtime: recall failed")
@@ -430,11 +457,11 @@ def format_memory_context(
     # point of anchor recall is that file-linked lessons surface FIRST. In a
     # scored chain (e.g. Redis + FleetBrain) the scored member's generic hits are
     # merged ahead of the non-scored member's anchored lessons, so without this
-    # step the anchored lessons lose their priority. Hoisting once here, after
-    # merge + rank, works for any chain shape (scored-only, non-scored-only, or
-    # mixed) and is a no-op when no anchor_refs were passed.
-    if anchor_refs:
-        anchored_ids = _anchored_lesson_ids(provider, anchor_refs=anchor_refs, repo=repo)
+    # step the anchored lessons lose their priority. Reuses the same
+    # ``anchored_ids`` the anchor-aware dedup used, so a survivor swapped in for a
+    # duplicate body is recognized here too. Works for any chain shape and is a
+    # no-op when no anchor_refs were passed.
+    if anchored_ids:
         pairs = _hoist_anchored(pairs, anchored_ids)
     if not pairs:
         return ""

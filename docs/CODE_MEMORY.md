@@ -233,6 +233,15 @@ step moves every lesson matching the requested `anchor_refs` to the front
 whether that member is scored. The hoist runs only when `anchor_refs` were
 supplied, so with anchor recall off the ordering is byte-identical.
 
+The body-dedup that runs before the hoist is also **anchor-aware**: when the same
+lesson body is returned by both a scored provider (not anchored) and the local
+file store (anchored), a plain first-wins dedup would keep the scored copy and
+drop the anchored one, and the id-based hoist could no longer recognize the
+survivor as anchored. So on a duplicate-body tie the anchored copy wins. The
+anchored-id set is computed once, before dedup, and reused by both the dedup and
+the hoist. With anchor recall off the dedup keeps the first copy exactly as
+before.
+
 ### 3. Validity + provenance (invalidate, never delete)
 
 Two columns give a lesson bi-temporal validity: `valid_until` (when it stops

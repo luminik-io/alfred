@@ -759,3 +759,125 @@ def test_mixed_chain_hoists_anchored_lesson_ahead_of_scored_hits(
     assert "scored generic hit" in off
     if "auth uses JWT" in off:
         assert off.index("scored generic hit") < off.index("auth uses JWT")
+
+
+class _ListProvider:
+    """A plain (non-scored) provider that returns a fixed lesson list."""
+
+    name = "list"
+
+    def __init__(self, lessons: list[Lesson]) -> None:
+        self._lessons = lessons
+
+    def recall(
+        self,
+        *,
+        query: str | None = None,
+        codename: str | None = None,
+        repo: str | None = None,
+        limit: int = 5,
+        anchor_refs=None,
+    ) -> list[Lesson]:
+        return list(self._lessons)
+
+
+def test_gated_pairs_dedup_prefers_anchored_copy_on_body_tie() -> None:
+    from agent_runner.memory_runtime import _gated_pairs
+
+    now = datetime.now(UTC)
+    a = Lesson(
+        id="A",
+        codename="lucius",
+        repo="acme/api",
+        body="shared body",
+        tags=[],
+        created_at=now,
+        firing_id=None,
+    )
+    b = Lesson(
+        id="B",
+        codename="lucius",
+        repo="acme/api",
+        body="shared body",
+        tags=[],
+        created_at=now,
+        firing_id=None,
+    )
+    provider = _ListProvider([a, b])  # A (not anchored) before B (anchored)
+    # Anchored copy B wins the duplicate-body tie so the hoist can promote it.
+    on = _gated_pairs(
+        provider,
+        codename="lucius",
+        repo="acme/api",
+        query=None,
+        limit=5,
+        threshold=0.0,
+        anchored_ids={"B"},
+    )
+    assert [p[0].id for p in on] == ["B"]
+    # Anchor recall off (empty set): dedup keeps the first (A), unchanged.
+    off = _gated_pairs(
+        provider,
+        codename="lucius",
+        repo="acme/api",
+        query=None,
+        limit=5,
+        threshold=0.0,
+        anchored_ids=set(),
+    )
+    assert [p[0].id for p in off] == ["A"]
+
+
+def test_mixed_chain_dedup_keeps_and_hoists_anchored_copy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agent_runner.memory_runtime import format_memory_context
+
+    shared = "shared lesson about the auth subsystem"
+    # Same BODY in the scored member (id, not anchored) and the file store
+    # (anchored), distinguished only by tags so the survivor is identifiable.
+    generic = Lesson(
+        id="scored-dup-1",
+        codename="lucius",
+        repo="acme/api",
+        body=shared,
+        tags=["scored-copy"],
+        created_at=datetime.now(UTC),
+        firing_id=None,
+        kind="note",
+    )
+    sqlite = SqliteHybridProvider(db_path=Path(":memory:"))
+    sqlite.reflect(
+        codename="lucius",
+        repo="acme/api",
+        body=shared,
+        tags=["anchored-copy"],
+        kind="convention",
+        anchors=[("file", "acme/api/src/auth.py")],
+    )
+    chain = ChainedMemoryProvider(providers=[_ScoredStub(generic), sqlite])
+
+    # ON: the anchored copy wins the body tie and is the survivor that leads.
+    monkeypatch.setenv("ALFRED_MEMORY_ANCHOR_RECALL", "1")
+    on = format_memory_context(
+        chain,
+        codename="lucius",
+        repo="acme/api",
+        query="auth",
+        limit=3,
+        anchor_refs=["acme/api/src/auth.py"],
+    )
+    assert "anchored-copy" in on
+    assert "scored-copy" not in on  # the scored duplicate was dropped for the anchored one
+
+    # OFF: dedup keeps the first (scored) copy, as before.
+    off = format_memory_context(
+        chain,
+        codename="lucius",
+        repo="acme/api",
+        query="auth",
+        limit=3,
+        anchor_refs=None,
+    )
+    assert "scored-copy" in off
+    assert "anchored-copy" not in off
