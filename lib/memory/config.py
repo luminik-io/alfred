@@ -25,7 +25,7 @@ from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING
 
 from .gbrain_stub import GBrainProvider
-from .pgvector_provider import PgvectorProvider
+from .pgvector_provider import MemoryProviderUnavailable, PgvectorProvider
 from .providers import (
     ChainedMemoryProvider,
     FleetBrainProvider,
@@ -113,6 +113,14 @@ def build_chain(
 
     Unknown names are logged and skipped (a typo in env must not
     break the runner).
+
+    A provider that is merely UNAVAILABLE (an opt-in backend that is not armed,
+    e.g. ``pgvector`` with psycopg not installed or no DSN) raises
+    :class:`MemoryProviderUnavailable`; it is logged and skipped so the chain
+    falls through. A provider that is MISCONFIGURED (a genuine bad config value,
+    e.g. an invalid table prefix) raises a different error, which is NOT
+    swallowed here: it surfaces to the operator rather than silently disabling
+    the backend.
     """
     envmap = env if env is not None else os.environ
     reg = registry if registry is not None else PROVIDER_REGISTRY
@@ -124,10 +132,11 @@ def build_chain(
             continue
         try:
             built.append(factory(envmap))
-        except Exception:
-            _LOG.exception(
-                "memory.config: provider %r failed to initialize; skipping",
+        except MemoryProviderUnavailable as exc:
+            _LOG.info(
+                "memory.config: provider %r unavailable (not armed); skipping: %s",
                 name,
+                exc,
             )
     if not built:
         return NullMemoryProvider()
@@ -185,15 +194,15 @@ def load_lesson_writer(env: Mapping[str, str] | None = None) -> MemoryProvider |
       only) -> returns ``None``: the promote path is a no-op rather than writing
       to a store outside the active recall chain.
 
-    A named store whose factory fails to CONSTRUCT (an opt-in backend that is
-    not armed -- e.g. ``pgvector`` with psycopg not installed or no DSN) is
-    treated as unavailable and SKIPPED, so the writer degrades to the next
-    writable store in the chain exactly as recall's ``build_chain`` does. This
-    is the same graceful-degrade contract the recall path honours; it is safe
-    because these factories fail only when the backend is unarmed, not on a
-    transient runtime error (they do not connect at construction). A store that
-    constructs and only fails later, at ``reflect`` time, still surfaces that
-    error to the promote path as a retryable failure.
+    A named store that is UNAVAILABLE (an opt-in backend that is not armed --
+    e.g. ``pgvector`` with psycopg not installed or no DSN, which raises
+    :class:`MemoryProviderUnavailable`) is SKIPPED, so the writer degrades to
+    the next writable store in the chain exactly as recall's ``build_chain``
+    does. A store that is MISCONFIGURED (a genuine bad config value, e.g. an
+    invalid table prefix) raises a different error that is NOT swallowed: it
+    surfaces to the operator rather than silently routing writes elsewhere. And
+    a store that constructs and only fails later, at ``reflect`` time, still
+    surfaces that error to the promote path as a retryable failure.
     """
     envmap = env if env is not None else os.environ
     raw = envmap.get("ALFRED_MEMORY_PROVIDERS")
@@ -212,9 +221,9 @@ def load_lesson_writer(env: Mapping[str, str] | None = None) -> MemoryProvider |
             if factory is not None:
                 try:
                     return factory(envmap)
-                except Exception:
-                    _LOG.warning(
-                        "memory.config: lesson store %r unavailable; "
+                except MemoryProviderUnavailable:
+                    _LOG.info(
+                        "memory.config: lesson store %r unavailable (not armed); "
                         "falling back to the next writable store in the chain",
                         name,
                     )

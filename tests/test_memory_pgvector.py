@@ -23,6 +23,7 @@ store, so it is exercised on two levels:
 from __future__ import annotations
 
 import os
+import re
 import sys
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -45,6 +46,9 @@ from memory.config import (  # noqa: E402
     load_provider,
 )
 from memory.pgvector_provider import (  # noqa: E402
+    _MAX_PG_IDENTIFIER_BYTES,
+    _MAX_TABLE_PREFIX_LEN,
+    MemoryProviderUnavailable,
     PgvectorProvider,
     _dense_query,
     _lexical_like_query,
@@ -187,15 +191,16 @@ def test_default_chain_is_unchanged() -> None:
 
 def test_from_env_requires_psycopg(monkeypatch: pytest.MonkeyPatch) -> None:
     # Force the "psycopg not installed" branch deterministically, even on a box
-    # that has it: from_env must raise (which build_chain turns into a skip).
+    # that has it. This is UNAVAILABLE (not armed), so it is the type the chain
+    # builders skip -- distinct from a misconfiguration.
     monkeypatch.setattr(mod, "_psycopg", None)
-    with pytest.raises(RuntimeError, match="psycopg"):
+    with pytest.raises(MemoryProviderUnavailable, match="psycopg"):
         PgvectorProvider.from_env(env={"ALFRED_MEMORY_PG_DSN": "postgresql://h/db"})
 
 
 def test_from_env_requires_dsn(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(mod, "_psycopg", object())  # pretend psycopg is present
-    with pytest.raises(RuntimeError, match="ALFRED_MEMORY_PG_DSN"):
+    with pytest.raises(MemoryProviderUnavailable, match="ALFRED_MEMORY_PG_DSN"):
         PgvectorProvider.from_env(env={})
 
 
@@ -270,6 +275,42 @@ def test_from_env_rejects_unsafe_prefix(monkeypatch: pytest.MonkeyPatch) -> None
         )
 
 
+def test_over_long_table_prefix_is_rejected() -> None:
+    # A prefix that still matches the identifier allowlist but is long enough to
+    # push a generated identifier past PostgreSQL's 63-byte limit (where it would
+    # be silently truncated) must be rejected with a clear error.
+    too_long = "a" * (_MAX_TABLE_PREFIX_LEN + 1)
+    with pytest.raises(ValueError, match="too long"):
+        PgvectorProvider(dsn="postgresql://u:p@h/db", table_prefix=too_long)
+
+
+def test_max_length_prefix_keeps_generated_identifiers_within_limit() -> None:
+    # A prefix at exactly the max length composes valid identifiers, and EVERY
+    # identifier the provider actually emits during schema creation stays within
+    # 63 bytes. Driving the real schema against a recording connection re-derives
+    # the identifiers, so a future longer index name would trip this test until
+    # the prefix bound is updated.
+    prefix = "p" * _MAX_TABLE_PREFIX_LEN
+    provider = PgvectorProvider(
+        dsn="postgresql://u:p@h/db",
+        table_prefix=prefix,
+        dense=True,
+        embedder=lambda _text: [0.0] * 4,
+        dimensions=4,
+        index_kind="ivfflat",  # the longest of the two vector index names
+    )
+    rec = _RecordingConn()
+    provider._conn = rec
+    provider._ensure_schema(rec)
+
+    identifiers = _generated_identifiers(rec.sql)
+    assert identifiers, "expected the schema to create at least one identifier"
+    oversized = {i: len(i.encode("utf-8")) for i in identifiers if len(i.encode("utf-8")) > 63}
+    assert not oversized, f"identifiers exceed 63 bytes: {oversized}"
+    # The bound is tight: the longest generated identifier lands exactly on 63.
+    assert max(len(i.encode("utf-8")) for i in identifiers) == _MAX_PG_IDENTIFIER_BYTES
+
+
 # ---------------------------------------------------------------------------
 # Writer resolution degrades to the next store when pgvector is unarmed
 # ---------------------------------------------------------------------------
@@ -299,6 +340,38 @@ def test_unarmed_pgvector_writer_falls_back_to_fleet(
     assert "fallback-1" in {L.id for L in recalled}
 
 
+def test_misconfigured_pgvector_writer_surfaces_not_silent_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # pgvector is ARMED (psycopg present + a DSN) but MISCONFIGURED (invalid table
+    # prefix). This is an operator typo, not an unavailable backend, so the writer
+    # must RAISE the config error rather than silently degrading to fleet and
+    # writing lessons somewhere the operator did not intend.
+    monkeypatch.setattr(mod, "_psycopg", object())
+    env = {
+        "ALFRED_MEMORY_PROVIDERS": "pgvector,fleet",
+        "ALFRED_MEMORY_PG_DSN": "postgresql://u:p@h/db",
+        "ALFRED_MEMORY_PG_TABLE_PREFIX": "alfred-prod",
+    }
+    with pytest.raises(ValueError, match="ALFRED_MEMORY_PG_TABLE_PREFIX"):
+        load_lesson_writer(env=env)
+
+
+def test_misconfigured_pgvector_recall_surfaces_not_silent_skip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Same on the recall path: build_chain skips an UNAVAILABLE provider but must
+    # propagate a MISCONFIGURATION so the typo is not silently swallowed.
+    monkeypatch.setattr(mod, "_psycopg", object())
+    env = {
+        "ALFRED_MEMORY_PROVIDERS": "pgvector,fleet",
+        "ALFRED_MEMORY_PG_DSN": "postgresql://u:p@h/db",
+        "ALFRED_MEMORY_PG_TABLE_PREFIX": "alfred-prod",
+    }
+    with pytest.raises(ValueError, match="ALFRED_MEMORY_PG_TABLE_PREFIX"):
+        load_provider(env=env)
+
+
 # ---------------------------------------------------------------------------
 # Consolidation surface driven against a fake connection (no daemon)
 # ---------------------------------------------------------------------------
@@ -319,12 +392,51 @@ class _FakeCursor:
 class _ManyCursor:
     """Cursor handle for ``conn.cursor().executemany(...)`` (bump path)."""
 
-    def __init__(self, conn: _FakePgConn) -> None:
+    def __init__(self, conn: Any) -> None:
         self._conn = conn
 
     def executemany(self, sql: str, seq: list[tuple[Any, ...]]) -> None:
         for params in seq:
             self._conn.execute(sql, params)
+
+
+class _RecordingConn:
+    """psycopg-shaped fake that only records the SQL it is asked to execute.
+
+    Used to drive ``_ensure_schema`` without a live Postgres so a test can assert
+    every generated table/index identifier stays within the 63-byte limit.
+    """
+
+    def __init__(self) -> None:
+        self.closed = False
+        self.sql: list[str] = []
+
+    @contextmanager
+    def transaction(self) -> Any:
+        yield self
+
+    def cursor(self) -> _ManyCursor:
+        return _ManyCursor(self)
+
+    def execute(self, sql: str, params: tuple[Any, ...] | list[Any] = ()) -> _FakeCursor:
+        self.sql.append(" ".join(sql.split()))
+        return _FakeCursor()
+
+
+def _generated_identifiers(sql_log: list[str]) -> set[str]:
+    """Extract the table/index identifiers a schema run created."""
+    ids: set[str] = set()
+    patterns = (
+        r"CREATE TABLE IF NOT EXISTS (\w+)",
+        r"CREATE INDEX IF NOT EXISTS (\w+)",
+        r"ALTER TABLE (\w+)",
+    )
+    for statement in sql_log:
+        for pat in patterns:
+            m = re.search(pat, statement)
+            if m:
+                ids.add(m.group(1))
+    return ids
 
 
 class _FakePgConn:

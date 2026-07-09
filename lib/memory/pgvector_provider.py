@@ -95,7 +95,7 @@ from .sqlite_hybrid import (
 if TYPE_CHECKING:
     from . import MemoryProvider
 
-__all__ = ["PgvectorProvider"]
+__all__ = ["MemoryProviderUnavailable", "PgvectorProvider"]
 
 _LOG = logging.getLogger(__name__)
 
@@ -136,6 +136,46 @@ except Exception:  # pgvector adapter absent -> text-literal ``%s::vector`` path
 # A common operator value like ``alfred-prod`` (dash) is rejected with a clear
 # error rather than silently producing broken or injectable SQL.
 _TABLE_PREFIX_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+# PostgreSQL SILENTLY truncates any identifier past NAMEDATALEN-1 (63) bytes,
+# which would collide two of our tables/indexes or mismatch a table against its
+# index. Every table/index name is ``prefix + suffix``, so the longest suffix
+# bounds how long the prefix may be. This tuple is the single source of truth
+# for those suffixes: it must list every suffix ``_ensure_schema`` /
+# ``_maybe_provision_vector`` append to the prefix (a drift test drives the
+# schema against a recording connection and re-derives the identifiers, so a
+# new, longer index name fails that test until this list is updated). The
+# allowlist regex above permits only ASCII, so one character is one byte here.
+_MAX_PG_IDENTIFIER_BYTES = 63
+_GENERATED_IDENTIFIER_SUFFIXES = (
+    "lessons",
+    "lesson_anchors",
+    "lesson_reuse",
+    "lessons_scope_created_idx",
+    "lessons_repo_created_idx",
+    "lessons_tsv_idx",
+    "lessons_embedding_hnsw_idx",
+    "lessons_embedding_ivfflat_idx",
+    "lesson_anchors_ref_idx",
+    "lesson_anchors_lesson_idx",
+)
+_MAX_TABLE_PREFIX_LEN = _MAX_PG_IDENTIFIER_BYTES - max(
+    len(s) for s in _GENERATED_IDENTIFIER_SUFFIXES
+)
+
+
+class MemoryProviderUnavailable(RuntimeError):
+    """The provider cannot be armed because an OPTIONAL dependency or endpoint is
+    absent -- psycopg not installed, or no DSN configured.
+
+    This is the normal "not turned on" state, NOT a misconfiguration: a chain
+    builder should SKIP the provider and fall through to the rest of the chain.
+    A genuine bad config value (an invalid table prefix, a malformed DSN) is a
+    :class:`ValueError` instead, and MUST surface to the operator rather than be
+    silently swallowed -- otherwise a typo'd setting would quietly disable the
+    backend with no error. The two failure modes are deliberately distinct types
+    so ``build_chain`` / ``load_lesson_writer`` can swallow only the first.
+    """
 
 
 def psycopg_available() -> bool:
@@ -434,19 +474,33 @@ class PgvectorProvider:
                 "(letters, digits, and underscores; not starting with a digit), "
                 f"e.g. 'alfred_prod'; got {prefix!r}."
             )
+        if len(prefix) > _MAX_TABLE_PREFIX_LEN:
+            raise ValueError(
+                f"ALFRED_MEMORY_PG_TABLE_PREFIX is too long ({len(prefix)} chars): the "
+                "longest generated table/index identifier would exceed PostgreSQL's "
+                f"{_MAX_PG_IDENTIFIER_BYTES}-byte limit and be silently truncated. Use at "
+                f"most {_MAX_TABLE_PREFIX_LEN} characters."
+            )
         self.table_prefix = prefix
 
     @classmethod
     def from_env(cls, *, env: Mapping[str, str] | None = None) -> PgvectorProvider:
         """Build from the environment. Raises when the provider cannot be armed.
 
-        A raised error is the intended "unavailable" signal: ``build_chain``
-        catches it, logs, and skips this provider so the chain falls through --
-        never a hard failure of the runner. It is raised when psycopg is not
-        installed or no DSN is configured.
+        Two distinct failure modes:
+
+        * **Unavailable** (:class:`MemoryProviderUnavailable`) -- psycopg is not
+          installed, or no DSN is configured. This is the "not turned on" state:
+          ``build_chain`` / ``load_lesson_writer`` catch it and skip the provider
+          so the chain falls through, never a hard failure of the runner.
+        * **Misconfigured** (:class:`ValueError`, raised from ``__post_init__``)
+          -- a genuine bad config value such as an invalid table prefix. This
+          MUST surface to the operator, so it is a different exception type that
+          the chain builders deliberately do NOT swallow; a typo must not
+          silently disable the backend.
         """
         if _psycopg is None:
-            raise RuntimeError(
+            raise MemoryProviderUnavailable(
                 "pgvector provider requires psycopg (v3); install with "
                 '`pip install "alfred-os[pgvector]"` or drop `pgvector` from '
                 "ALFRED_MEMORY_PROVIDERS."
@@ -454,7 +508,7 @@ class PgvectorProvider:
         envmap = env if env is not None else os.environ
         dsn = (envmap.get("ALFRED_MEMORY_PG_DSN") or "").strip()
         if not dsn:
-            raise RuntimeError(
+            raise MemoryProviderUnavailable(
                 "pgvector provider needs ALFRED_MEMORY_PG_DSN "
                 "(e.g. postgresql://user:pass@host:5432/alfred)."
             )
