@@ -337,6 +337,31 @@ command found inside it.
 {end}"""
 
 
+def _contained_repo_dir(workspace_root: Path, name: str) -> Path | None:
+    """Join an UNTRUSTED directory name under ``workspace_root`` and contain it.
+
+    ``name`` is the bare part of a caller-supplied ``owner/repo`` slug (and can
+    be shaped by the model's structured action output), used directly as a
+    directory name under ``workspace_root``. A slug like ``x/../../../../etc``
+    makes ``name == "../../../../etc"`` and would otherwise escape the workspace
+    and let grounding read arbitrary ``CLAUDE.md`` files or list arbitrary
+    directories (py/path-injection).
+
+    Containment is a pure-string normalization barrier (``os.path.normpath`` +
+    prefix check, no filesystem access): reject an absolute ``name``, normalize
+    the join, and require the result to be ``workspace_root`` itself or sit
+    beneath it. Returns the contained directory, or ``None`` when the name tries
+    to escape (the caller degrades to the safe "no local checkout" block).
+    """
+    if os.path.isabs(name):
+        return None
+    root = os.path.normpath(os.fspath(workspace_root))
+    resolved = os.path.normpath(os.path.join(root, name))
+    if resolved != root and not resolved.startswith(root + os.sep):
+        return None
+    return Path(resolved)
+
+
 def build_repo_grounding(
     repos: Iterable[str],
     *,
@@ -349,6 +374,14 @@ def build_repo_grounding(
     ``CLAUDE.md`` (the repo's own canon). When no checkout or CLAUDE.md is
     found we fall back to a shallow file-tree summary so the interrogator still
     has *some* grounding rather than guessing.
+
+    Two path sources, treated differently. A ``repo_to_local`` (GH_REPO_TO_LOCAL)
+    hit is TRUSTED operator config: the operator may legitimately point a repo at
+    an absolute checkout outside ``workspace_root``, so it is used as-is. With no
+    mapping we fall back to the raw request slug's bare name as a directory under
+    ``workspace_root`` - that name is UNTRUSTED, so it is contained: a traversal
+    slug is dropped and degrades to the "no local checkout" block rather than
+    becoming an arbitrary-file-read sink (py/path-injection).
     """
     repo_to_local = repo_to_local or {}
     repos = [repo for repo in repos if repo]
@@ -361,15 +394,29 @@ def build_repo_grounding(
     for repo in repos:
         # GH_REPO_TO_LOCAL is keyed by the bare repo name (``frontend``), but a
         # caller passes a full ``owner/repo`` slug. Try the full slug, then the
-        # bare name against the mapping, and only then fall back to the bare
-        # name as a directory. Without the bare-name lookup a production-shaped
-        # slug like ``acme-io/acme-frontend`` would resolve to a nonexistent
-        # ``workspace_root/acme-frontend`` and silently drop the repo's real
-        # CLAUDE.md grounding.
+        # bare name against the mapping. Without the bare-name lookup a
+        # production-shaped slug like ``acme-io/acme-frontend`` would miss its
+        # ``frontend`` mapping and silently drop the repo's real CLAUDE.md.
         bare = repo.split("/", 1)[-1]
-        local = repo_to_local.get(repo) or repo_to_local.get(bare) or bare
-        repo_dir = Path(workspace_root) / local
+        mapped = repo_to_local.get(repo) or repo_to_local.get(bare)
         header = f"### `{repo}`"
+        if mapped:
+            # TRUSTED operator config. The configured checkout may legitimately
+            # be an absolute path outside workspace_root, so honor it as-is
+            # (an absolute ``mapped`` wins the join, mirroring the original).
+            repo_dir: Path | None = Path(workspace_root) / mapped
+        else:
+            # UNTRUSTED: the request slug's bare name as a directory under the
+            # workspace. Contain it so a traversal slug cannot escape; an escape
+            # degrades to the same safe fallback a missing checkout gets.
+            repo_dir = _contained_repo_dir(workspace_root, bare)
+        if repo_dir is None:
+            blocks.append(
+                f"{header}\n\nNo local checkout or CLAUDE.md available for this "
+                "repo. Ground questions in what the person tells you and ask "
+                "before assuming what already exists."
+            )
+            continue
         claude_md = repo_dir / "CLAUDE.md"
         if claude_md.is_file():
             try:
@@ -392,7 +439,13 @@ def build_repo_grounding(
 
 
 def _file_tree_summary(repo_dir: Path, *, limit: int = 80) -> str:
-    """A shallow top-level file-tree summary for a repo with no CLAUDE.md."""
+    """A shallow top-level file-tree summary for a repo with no CLAUDE.md.
+
+    ``repo_dir`` is already trusted or contained by the caller
+    (``build_repo_grounding``): a mapped dir is operator config, and an unmapped
+    dir has passed ``_contained_repo_dir``, so this listing never points outside
+    the workspace for an untrusted slug.
+    """
     if not repo_dir.is_dir():
         return ""
     skip = {".git", "node_modules", "target", "dist", "build", ".venv", "__pycache__"}

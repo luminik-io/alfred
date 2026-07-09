@@ -182,6 +182,110 @@ def test_grounding_enabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # ---------------------------------------------------------------------------
+# build_repo_grounding path containment (py/path-injection)
+# ---------------------------------------------------------------------------
+
+
+def test_build_repo_grounding_still_reads_contained_claude_md(tmp_path: Path) -> None:
+    # A production-shaped slug resolving (via the bare name) to a real subdir of
+    # workspace_root must still inline its CLAUDE.md exactly as before.
+    workspace = tmp_path / "workspace"
+    repo_dir = workspace / "acme-frontend"
+    repo_dir.mkdir(parents=True)
+    (repo_dir / "CLAUDE.md").write_text("# Acme frontend canon\nUse tokens.", encoding="utf-8")
+
+    grounding = cc.build_repo_grounding(["acme-io/acme-frontend"], workspace_root=workspace)
+
+    assert "Acme frontend canon" in grounding
+    assert "Use tokens." in grounding
+
+
+def test_build_repo_grounding_rejects_path_traversal_slug(tmp_path: Path) -> None:
+    # A secret CLAUDE.md sits OUTSIDE the workspace; a traversal slug that would
+    # resolve to it must never be read. Grounding degrades to the safe fallback.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    secret = outside / "CLAUDE.md"
+    secret.write_text("TOP SECRET should never be grounded", encoding="utf-8")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    # ``x/../outside`` -> bare ``../outside`` -> workspace/../outside, which
+    # escapes the workspace and points straight at the secret's directory.
+    # Without containment this reads ``outside/CLAUDE.md`` (the vuln).
+    grounding = cc.build_repo_grounding(
+        ["x/../outside"],
+        workspace_root=workspace,
+    )
+
+    assert "TOP SECRET" not in grounding
+    assert "No local checkout or CLAUDE.md available" in grounding
+
+
+def test_build_repo_grounding_reads_trusted_absolute_mapping(tmp_path: Path) -> None:
+    # A TRUSTED repo_to_local mapping (operator's GH_REPO_TO_LOCAL) may point at
+    # an absolute checkout OUTSIDE workspace_root. That is a legitimate operator
+    # config, so its CLAUDE.md must still be read - containment applies only to
+    # the untrusted request-slug fallback, not to this trusted mapping.
+    checkout = tmp_path / "elsewhere" / "acme-api"
+    checkout.mkdir(parents=True)
+    (checkout / "CLAUDE.md").write_text("# Acme API canon\nBackend rules.", encoding="utf-8")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    grounding = cc.build_repo_grounding(
+        ["acme-io/acme-api"],
+        workspace_root=workspace,
+        repo_to_local={"acme-api": str(checkout)},
+    )
+
+    assert "Acme API canon" in grounding
+    assert "Backend rules." in grounding
+
+
+def test_build_repo_grounding_rejects_absolute_untrusted_slug(tmp_path: Path) -> None:
+    # With no mapping, an absolute bare name from the request slug must be
+    # rejected before any read/list. ``x//abs`` splits (maxsplit=1) to a bare
+    # name of ``/abs`` - an absolute, untrusted path - which must not be read.
+    outside = tmp_path / "abs-secret"
+    outside.mkdir()
+    (outside / "CLAUDE.md").write_text("absolute-path secret", encoding="utf-8")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    grounding = cc.build_repo_grounding(
+        [f"x/{outside}"],  # bare name becomes the absolute str(outside)
+        workspace_root=workspace,
+    )
+
+    assert "absolute-path secret" not in grounding
+    assert "No local checkout or CLAUDE.md available" in grounding
+
+
+def test_build_repo_grounding_traversal_does_not_list_outside_dir(tmp_path: Path) -> None:
+    # The _file_tree_summary fallback (iterdir) must also stay contained: a
+    # traversal slug pointing at a dir with no CLAUDE.md must not leak its
+    # entries into the grounding.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "leaked-file.txt").write_text("x", encoding="utf-8")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    grounding = cc.build_repo_grounding(
+        ["x/../outside"],
+        workspace_root=workspace,
+    )
+
+    assert "leaked-file.txt" not in grounding
+    assert "No local checkout or CLAUDE.md available" in grounding
+
+
+# ---------------------------------------------------------------------------
 # render_system_prompt injection
 # ---------------------------------------------------------------------------
 
