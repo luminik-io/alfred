@@ -291,8 +291,10 @@ def format_memory_context(
         return ""
     # Delta first so freed budget goes to fresh material, then rank so the
     # budget below keeps the best of what remains. Both are no-ops by default.
-    pairs = memory_ranking.apply_delta(pairs, firing_id)
-    pairs = memory_ranking.rank_pairs(pairs)
+    # The reuse/delta state is process-global, so codename+repo scope every key
+    # to keep unrelated firings from cross-contaminating each other.
+    pairs = memory_ranking.apply_delta(pairs, firing_id, codename=codename, repo=repo)
+    pairs = memory_ranking.rank_pairs(pairs, codename=codename, repo=repo)
     if not pairs:
         return ""
     header = [
@@ -319,9 +321,9 @@ def format_memory_context(
         # re-inject them. Both are gated so the default path accumulates no
         # state at all (byte-identical, side-effect-free legacy behavior).
         if memory_ranking.rank_enabled():
-            memory_ranking.record_reuse(injected)
+            memory_ranking.record_reuse(injected, codename=codename, repo=repo)
         if firing_id and memory_ranking.delta_enabled():
-            memory_ranking.record_injected(firing_id, injected)
+            memory_ranking.record_injected(firing_id, injected, codename=codename, repo=repo)
     return "\n".join(lines).strip()
 
 

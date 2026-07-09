@@ -266,6 +266,88 @@ def test_clear_firing_resets_delta(monkeypatch) -> None:
     assert not mr.already_injected("fid", a)
 
 
+def test_delta_table_is_bounded_and_evicts_old_firings(monkeypatch) -> None:
+    """A long-lived process never accumulates delta state without limit: when
+    more than the cap of distinct firings are tracked, the oldest are evicted."""
+    from agent_runner import memory_ranking as mr
+
+    monkeypatch.setattr(mr, "_DELTA_TABLE_MAX", 8)
+    lesson = _LessonStub("shared", id="L1")
+    for i in range(100):
+        mr.record_injected(f"firing-{i}", [lesson])
+    # The table is bounded by the cap, not by the number of firings seen.
+    assert len(mr._INJECTED_BY_FIRING) <= 8
+    # The oldest firings were evicted; only the most recent survive.
+    assert "firing-0" not in mr._INJECTED_BY_FIRING
+    assert "firing-99" in mr._INJECTED_BY_FIRING
+
+
+# --------------------------------------------------------------------------
+# Scope: reuse/delta state must not collide across repos / codenames
+# --------------------------------------------------------------------------
+
+
+def test_lesson_key_is_scoped_by_codename_and_repo() -> None:
+    from agent_runner import memory_ranking as mr
+
+    lesson = _LessonStub("body", id="L1")
+    key_a = mr.lesson_key(lesson, codename="lucius", repo="org/api")
+    key_b = mr.lesson_key(lesson, codename="lucius", repo="org/web")
+    key_c = mr.lesson_key(lesson, codename="huntress", repo="org/api")
+    # Same lesson id, different repo or codename -> distinct keys.
+    assert key_a != key_b
+    assert key_a != key_c
+
+
+def test_reuse_does_not_collide_across_repos() -> None:
+    from agent_runner import memory_ranking as mr
+
+    lesson = _LessonStub("shared body", id="L1")
+    # Reinforce the lesson only within repo A.
+    mr.record_reuse([lesson], codename="lucius", repo="org/api")
+    mr.record_reuse([lesson], codename="lucius", repo="org/api")
+    assert mr.reuse_count(lesson, codename="lucius", repo="org/api") == 2
+    # The same lesson id in a different repo carries none of that reinforcement.
+    assert mr.reuse_count(lesson, codename="lucius", repo="org/web") == 0
+    # A different codename on the same repo is also independent.
+    assert mr.reuse_count(lesson, codename="huntress", repo="org/api") == 0
+
+
+def test_delta_does_not_collide_across_repos(monkeypatch) -> None:
+    from agent_runner import memory_ranking as mr
+
+    monkeypatch.setenv("ALFRED_MEMORY_DELTA", "1")
+    lesson = _LessonStub("shared body", id="L1")
+    # Same firing id can be reused by unrelated repos; scope must keep them apart.
+    mr.record_injected("fid", [lesson], codename="lucius", repo="org/api")
+    assert mr.already_injected("fid", lesson, codename="lucius", repo="org/api")
+    # A different repo under the same firing id is NOT considered already injected.
+    assert not mr.already_injected("fid", lesson, codename="lucius", repo="org/web")
+    filtered = mr.apply_delta([(lesson, 0.9)], "fid", codename="lucius", repo="org/web")
+    assert len(filtered) == 1
+
+
+def test_format_context_delta_scoped_per_repo(monkeypatch) -> None:
+    """Two firings sharing a firing id but on different repos do not delta each
+    other out: the second repo still sees the lesson."""
+    from agent_runner import memory_runtime as runtime
+
+    lesson_a = _LessonStub("Shared lesson.", id="L1")
+    provider_a = _Scored([(lesson_a, 0.9)])
+    provider_b = _Scored([(_LessonStub("Shared lesson.", id="L1"), 0.9)])
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+    monkeypatch.setenv("ALFRED_MEMORY_DELTA", "1")
+
+    runtime.format_memory_context(
+        provider_a, codename="lucius", repo="org/api", limit=1, firing_id="fid"
+    )
+    # Same firing id, different repo -> the lesson is fresh, not deltaed away.
+    out = runtime.format_memory_context(
+        provider_b, codename="lucius", repo="org/web", limit=1, firing_id="fid"
+    )
+    assert "Shared lesson." in out
+
+
 # --------------------------------------------------------------------------
 # Integration through format_memory_context
 # --------------------------------------------------------------------------
@@ -388,11 +470,13 @@ def test_format_context_reinforces_injected_lessons(monkeypatch) -> None:
     monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
     monkeypatch.setenv("ALFRED_MEMORY_RANK", "1")
 
-    assert mr.reuse_count(lesson) == 0
+    # Reuse is scoped by the firing's codename+repo (matching what
+    # format_memory_context records), so the count is read with the same scope.
+    assert mr.reuse_count(lesson, codename="lucius", repo="org/api") == 0
     runtime.format_memory_context(provider, codename="lucius", repo="org/api", limit=1)
-    assert mr.reuse_count(lesson) == 1
+    assert mr.reuse_count(lesson, codename="lucius", repo="org/api") == 1
     runtime.format_memory_context(provider, codename="lucius", repo="org/api", limit=1)
-    assert mr.reuse_count(lesson) == 2
+    assert mr.reuse_count(lesson, codename="lucius", repo="org/api") == 2
 
 
 def test_format_context_default_path_accumulates_no_state(monkeypatch) -> None:

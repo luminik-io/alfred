@@ -81,8 +81,11 @@ _DEFAULT_ROI = _ROI_BY_SEVERITY["info"]
 _REUSE_TABLE_MAX = 20_000
 
 # Cap on the number of distinct firings tracked for delta at once, evicted the
-# same way. A firing's set is normally cleared explicitly when it finishes.
-_DELTA_TABLE_MAX = 2_000
+# same way (oldest-first). Completed firings are not explicitly cleared in the
+# single-call firing path, so this cap is the hard bound that keeps a long-lived
+# process (serve/MCP) from leaking delta state. Kept small: delta only needs the
+# handful of firings currently in flight.
+_DELTA_TABLE_MAX = 512
 
 
 def _truthy(value: str | None) -> bool:
@@ -268,24 +271,51 @@ def score_lesson(
 _REUSE_COUNTS: OrderedDict[str, int] = OrderedDict()
 
 
-def lesson_key(lesson: Any) -> str:
-    """Stable identity for reuse/delta tracking: the lesson id, else its body."""
+# Field separator for composite keys. A control char that cannot appear in a
+# codename or a ``org/repo`` slug, so no key can be forged by a repo name that
+# happens to contain the delimiter.
+_KEY_SEP = "\x1f"
+
+
+def lesson_key(lesson: Any, *, codename: str | None = None, repo: str | None = None) -> str:
+    """Scoped, stable identity for reuse/delta tracking.
+
+    The reuse and delta tables are process-global, so the key MUST carry the
+    firing's ``codename`` and ``repo`` scope; otherwise two unrelated firings on
+    different repos that recall a lesson sharing the same id (or body) would
+    collide and cross-contaminate each other's reuse/delta state. ``codename``
+    and ``repo`` are taken from the caller when given, else from the lesson's own
+    attributes, else empty. The lesson id is preferred over the body as the
+    within-scope identity; a scoped body hash is the fallback for stores that do
+    not assign ids.
+    """
+    scope_codename = str(
+        codename if codename is not None else getattr(lesson, "codename", "") or ""
+    )
+    scope_repo = str(repo if repo is not None else getattr(lesson, "repo", "") or "")
     lesson_id = getattr(lesson, "id", None)
     if lesson_id:
-        return f"id:{lesson_id}"
-    body = " ".join(str(getattr(lesson, "body", "") or "").split()).strip().casefold()
-    return f"body:{body}"
+        ident = f"id:{lesson_id}"
+    else:
+        body = " ".join(str(getattr(lesson, "body", "") or "").split()).strip().casefold()
+        ident = f"body:{body}"
+    return f"{scope_codename}{_KEY_SEP}{scope_repo}{_KEY_SEP}{ident}"
 
 
-def reuse_count(lesson: Any) -> int:
-    """Times this lesson has been injected so far this process (0 if never)."""
-    return _REUSE_COUNTS.get(lesson_key(lesson), 0)
+def reuse_count(lesson: Any, *, codename: str | None = None, repo: str | None = None) -> int:
+    """Times this lesson has been injected so far this process (0 if never).
+
+    Scoped by ``codename``/``repo`` so counts do not bleed across repos.
+    """
+    return _REUSE_COUNTS.get(lesson_key(lesson, codename=codename, repo=repo), 0)
 
 
-def record_reuse(lessons: Iterable[Any]) -> None:
-    """Reinforce: increment the reuse counter for each injected lesson."""
+def record_reuse(
+    lessons: Iterable[Any], *, codename: str | None = None, repo: str | None = None
+) -> None:
+    """Reinforce: increment the (scoped) reuse counter for each injected lesson."""
     for lesson in lessons:
-        key = lesson_key(lesson)
+        key = lesson_key(lesson, codename=codename, repo=repo)
         _REUSE_COUNTS[key] = _REUSE_COUNTS.get(key, 0) + 1
         _REUSE_COUNTS.move_to_end(key)
     _evict_if_needed(_REUSE_COUNTS, _REUSE_TABLE_MAX)
@@ -303,17 +333,31 @@ def reset_reuse_state() -> None:
 _INJECTED_BY_FIRING: OrderedDict[str, set[str]] = OrderedDict()
 
 
-def already_injected(firing_id: str, lesson: Any) -> bool:
+def already_injected(
+    firing_id: str, lesson: Any, *, codename: str | None = None, repo: str | None = None
+) -> bool:
     """Whether ``lesson`` was already injected earlier in ``firing_id``."""
     seen = _INJECTED_BY_FIRING.get(firing_id)
-    return bool(seen and lesson_key(lesson) in seen)
+    return bool(seen and lesson_key(lesson, codename=codename, repo=repo) in seen)
 
 
-def record_injected(firing_id: str, lessons: Iterable[Any]) -> None:
-    """Remember the lessons injected on this turn of ``firing_id`` for delta."""
+def record_injected(
+    firing_id: str,
+    lessons: Iterable[Any],
+    *,
+    codename: str | None = None,
+    repo: str | None = None,
+) -> None:
+    """Remember the lessons injected on this turn of ``firing_id`` for delta.
+
+    The per-firing table is bounded: when more than ``_DELTA_TABLE_MAX`` distinct
+    firings are tracked, the oldest (least-recently-touched) firings are evicted,
+    so a long-lived process (serve/MCP) can never accumulate firing state without
+    limit even though completed firings are not explicitly cleared.
+    """
     seen = _INJECTED_BY_FIRING.setdefault(firing_id, set())
     for lesson in lessons:
-        seen.add(lesson_key(lesson))
+        seen.add(lesson_key(lesson, codename=codename, repo=repo))
     _INJECTED_BY_FIRING.move_to_end(firing_id)
     _evict_if_needed(_INJECTED_BY_FIRING, _DELTA_TABLE_MAX)
 
@@ -346,21 +390,30 @@ def apply_delta(
     pairs: list[tuple[Any, float | None]],
     firing_id: str | None,
     *,
+    codename: str | None = None,
+    repo: str | None = None,
     env: Mapping[str, str] | None = None,
 ) -> list[tuple[Any, float | None]]:
     """Drop lessons already injected earlier in ``firing_id`` (when delta is on).
 
     Returns ``pairs`` unchanged when delta is disabled or no ``firing_id`` is
-    known, so the default path is untouched.
+    known, so the default path is untouched. ``codename``/``repo`` scope the key
+    so the check is confined to this firing's own repo.
     """
     if not firing_id or not delta_enabled(env):
         return pairs
-    return [pair for pair in pairs if not already_injected(firing_id, pair[0])]
+    return [
+        pair
+        for pair in pairs
+        if not already_injected(firing_id, pair[0], codename=codename, repo=repo)
+    ]
 
 
 def rank_pairs(
     pairs: list[tuple[Any, float | None]],
     *,
+    codename: str | None = None,
+    repo: str | None = None,
     env: Mapping[str, str] | None = None,
     now: datetime | None = None,
 ) -> list[tuple[Any, float | None]]:
@@ -368,7 +421,8 @@ def rank_pairs(
 
     Returns ``pairs`` unchanged when ranking is disabled. The sort is stable on
     a descending total score, so ties keep their incoming recall order and the
-    ordering is fully deterministic.
+    ordering is fully deterministic. ``codename``/``repo`` scope the reuse lookup
+    so a lesson's reinforcement is read from this repo's counter only.
     """
     if not rank_enabled(env):
         return pairs
@@ -383,7 +437,7 @@ def rank_pairs(
             score,
             weights=weights,
             half_life_days=half_life,
-            reuse_count=reuse_count(lesson),
+            reuse_count=reuse_count(lesson, codename=codename, repo=repo),
             now=moment,
         ).total
 
