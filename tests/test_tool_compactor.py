@@ -71,6 +71,7 @@ def test_compact_respects_byte_budget(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_compact_all_pass_test_log_summarized(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A PURE pytest run (nothing but test-runner output) collapses to its count.
     monkeypatch.delenv("ALFRED_OUTPUT_COMPACTOR", raising=False)
     raw = _all_pass_test_log()
     result = tc.compact_output(raw, tool_name="Bash", exit_code=0)
@@ -78,6 +79,35 @@ def test_compact_all_pass_test_log_summarized(monkeypatch: pytest.MonkeyPatch) -
     assert "all passed" in result.text
     assert "500 passed" in result.text
     assert result.final_bytes < result.original_bytes
+
+
+def test_compact_mixed_success_keeps_non_test_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A successful COMPOUND command (e.g. `git fetch && pytest`) prints useful
+    # non-test output before the all-green footer. The test-only summary must NOT
+    # replace the whole result with just the count; the non-test output survives.
+    monkeypatch.delenv("ALFRED_OUTPUT_COMPACTOR", raising=False)
+    git_out = (
+        "From github.com:acme/repo\n"
+        " * branch            main       -> FETCH_HEAD\n"
+        "   abc1234..def5678  main       -> origin/main\n"
+    )
+    raw = git_out + _all_pass_test_log()
+    result = tc.compact_output(raw, tool_name="Bash", exit_code=0)
+    assert result.applied
+    # The non-test output is preserved (head+tail fallback), not discarded.
+    assert "FETCH_HEAD" in result.text
+    assert "origin/main" in result.text
+    # It did NOT collapse to only the one-line test count.
+    assert "Test run (all passed)" not in result.text
+    assert result.final_bytes < result.original_bytes
+
+
+def test_is_pure_test_run_classifier() -> None:
+    assert tc._is_pure_test_run(_all_pass_test_log()) is True
+    # Any substantial non-test line makes it mixed.
+    assert tc._is_pure_test_run("From github.com:acme/repo\n" + _all_pass_test_log()) is False
+    # No test tail at all is not a test run.
+    assert tc._is_pure_test_run("just some build output\nmore output\n") is False
 
 
 def test_compact_strips_ansi_and_dedupes(monkeypatch: pytest.MonkeyPatch) -> None:

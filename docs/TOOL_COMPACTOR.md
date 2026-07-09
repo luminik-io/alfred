@@ -20,9 +20,16 @@ confirms success (see the safety valve below), its output is ANSI-stripped,
 de-duplicated (runs of identical lines collapse to `line (xN)`), progress
 spinners are flattened, and the result is bounded to a byte budget as a
 head-plus-tail excerpt with an explicit `[ALFRED_OUTPUT_COMPACTOR omitted_lines=N]`
-marker. An all-green test run is reduced to its counts line. The compact form is
-returned to Claude Code as `hookSpecificOutput.updatedToolOutput`, so the model
-never sees the raw blob.
+marker. The compact form is returned to Claude Code as
+`hookSpecificOutput.updatedToolOutput`, so the model never sees the raw blob.
+
+A run that is **purely** a test run (every line is test-runner output ending in
+an all-green footer) is collapsed further, to just its counts line, since the
+thousands of `PASSED` lines carry no signal. This aggressive shortcut is gated on
+the output being nothing but a test run: a *mixed* success such as
+`git fetch && pytest`, where useful non-test output precedes the footer, falls
+back to the normal head-plus-tail compaction so that non-test output is preserved
+rather than discarded.
 
 ## Why there is no command normalizer
 

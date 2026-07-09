@@ -82,6 +82,22 @@ _TEST_TAIL_RE = re.compile(
 # as a defensive guard when summarizing an already-confirmed-success test run.
 _TEST_FAIL_COUNT_RE = re.compile(r"\b([1-9]\d*)\s+(failed|error)s?\b", re.IGNORECASE)
 
+# Lines that a test runner itself emits, used to decide whether output is PURELY
+# a test run (see _is_pure_test_run). Deliberately narrow: it must not match
+# arbitrary program output (e.g. a `git fetch` summary), because a false positive
+# would let the test-only summary discard real non-test output. A false negative
+# is safe - it just falls back to the normal head+tail compaction.
+_TEST_LINE_RE = re.compile(
+    r"^(PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)\b"  # short-summary node lines
+    r"|^\S+::\S+\s+(PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)\b"  # verbose node lines
+    r"|^=+.*=+\s*$"  # ===-decorated headers / footers
+    r"|^_+ .* _+\s*$"  # ___ failure-section separators
+    r"|^\S+\.py[ .FsxEXP]*(\[\s*\d+%\])?\s*$"  # progress line: file + result chars
+    r"|^[.FsxEXP]+\s*(\[\s*\d+%\])?\s*$"  # bare progress dots / result chars
+    r"|^(platform |rootdir:|plugins:|collected |collecting|cachedir:"
+    r"|configfile:|testpaths:|hypothesis profile|worker |gw\d+ )"  # pytest boilerplate
+)
+
 
 # --------------------------------------------------------------------------
 # Config
@@ -206,13 +222,31 @@ def _marker(omitted_lines: int, max_bytes: int) -> str:
     )
 
 
-def _all_pass_test_summary(text: str) -> str | None:
-    """One-line summary for an all-green test run, else ``None``.
+def _is_pure_test_run(text: str) -> bool:
+    """True when EVERY non-blank line is test-runner output ending in a tail.
 
-    Failing runs are handled by the tee valve, so this only fires when the tail
-    reports zero failures/errors. It shrinks a thousand ``PASSED`` lines to the
-    single counts line the model actually needs.
+    This gate keeps the aggressive test-only summary from firing on a *mixed*
+    success, e.g. ``git fetch && pytest`` where useful non-test output precedes
+    the all-green footer. If any non-blank line is not recognizable test-runner
+    output, the caller falls back to the normal head+tail compaction, which
+    preserves that non-test content instead of discarding it.
     """
+    if not _TEST_TAIL_RE.search(text):
+        return False
+    return all(_TEST_LINE_RE.match(line) for line in text.split("\n") if line.strip())
+
+
+def _all_pass_test_summary(text: str) -> str | None:
+    """One-line summary for a PURE, all-green test run, else ``None``.
+
+    Only fires when (a) the output is purely a test run (:func:`_is_pure_test_run`,
+    so no non-test content is discarded) and (b) the tail reports zero
+    failures/errors. Failing runs never reach here - they are teed by the valve.
+    It shrinks a thousand ``PASSED`` lines to the single counts line the model
+    actually needs.
+    """
+    if not _is_pure_test_run(text):
+        return None
     tail: str | None = None
     for match in _TEST_TAIL_RE.finditer(text):
         tail = match.group("body").strip()
