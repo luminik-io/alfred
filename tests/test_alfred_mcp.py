@@ -415,8 +415,8 @@ def test_mcp_read_delta_full_then_delta(tmp_path: Path, monkeypatch) -> None:
     repo = Path(__file__).resolve().parent.parent
     sys.path.insert(0, str(repo / "lib"))
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
-    monkeypatch.setenv("ALFRED_READ_LEDGER_DIR", str(tmp_path / "ledger"))
-    # Delta strictly requires a firing id.
+    # Delta strictly requires a firing id; the ledger lives at its default
+    # location under ALFRED_HOME/state.
     monkeypatch.setenv("ALFRED_FIRING_ID", "firing-abc")
 
     workspace = tmp_path / "ws"
@@ -453,7 +453,6 @@ def test_mcp_source_tools_reject_path_traversal(tmp_path: Path, monkeypatch) -> 
     repo = Path(__file__).resolve().parent.parent
     sys.path.insert(0, str(repo / "lib"))
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
-    monkeypatch.setenv("ALFRED_READ_LEDGER_DIR", str(tmp_path / "ledger"))
     _write_skeleton_code_map(tmp_path)
 
     # A secret file outside the repo checkout.
@@ -482,11 +481,9 @@ def test_mcp_read_delta_full_without_firing_scope(tmp_path: Path, monkeypatch) -
     repo = Path(__file__).resolve().parent.parent
     sys.path.insert(0, str(repo / "lib"))
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
-    # No ALFRED_FIRING_ID: delta is disabled and every read is full, even with
-    # ALFRED_READ_LEDGER_DIR set (an override dir is not a firing scope, so two
-    # firings must never share a delta ledger).
+    # No ALFRED_FIRING_ID: delta is disabled and every read is full, so two
+    # firings can never share a delta ledger.
     monkeypatch.delenv("ALFRED_FIRING_ID", raising=False)
-    monkeypatch.setenv("ALFRED_READ_LEDGER_DIR", str(tmp_path / "ledger"))
 
     mod = _load("alfred_mcp_cli_no_scope", repo / "bin" / "alfred-mcp.py")
     workspace = _setup_svc_checkout(tmp_path, monkeypatch, mod)
@@ -509,7 +506,6 @@ def test_mcp_source_tools_reject_malicious_repo_slug(tmp_path: Path, monkeypatch
     repo = Path(__file__).resolve().parent.parent
     sys.path.insert(0, str(repo / "lib"))
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
-    monkeypatch.setenv("ALFRED_READ_LEDGER_DIR", str(tmp_path / "ledger"))
 
     mod = _load("alfred_mcp_cli_bad_repo", repo / "bin" / "alfred-mcp.py")
     _setup_svc_checkout(tmp_path, monkeypatch, mod)

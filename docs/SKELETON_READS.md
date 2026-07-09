@@ -59,8 +59,11 @@ content and returns it in full. On a re-read within the same firing:
   not usefully text, or no prior read exists; full content is returned.
 
 State is **per-worktree and per-firing**: the ledger directory is keyed by the
-firing id plus the worktree path, so two firings never share a cache. It lives
-under `$ALFRED_HOME/state/read-ledger/<digest>/` by default.
+firing id plus the worktree path, so two firings never share a cache. It always
+lives at a single, firing-scoped location, `$ALFRED_HOME/state/read-ledger/<digest>/`.
+Delta strictly requires `ALFRED_FIRING_ID`; without it the tool falls back to
+full reads (which are always correct), so there is no configuration that could
+let two firings share one ledger.
 
 Entry points (`lib/agent_runner/read_ledger.py`): `ReadLedger.surface(key,
 content, ...)` returns a `ReadResult` with the mode, reason, and byte counts.
@@ -96,7 +99,6 @@ hardcoded at the call site.
 | `ALFRED_READ_DELTA_MAX_RATIO` | `0.5` | Emit a delta only when the diff is at most this fraction of the full file; otherwise full. |
 | `ALFRED_READ_DELTA_CONTEXT` | `3` | Unchanged context lines each side of a change in the diff. |
 | `ALFRED_READ_DELTA_MAX_CHARS` | `400000` | Above this size on either side, skip diffing and return full content. |
-| `ALFRED_READ_LEDGER_DIR` | derived | Override the ledger directory (tests and explicit deployments). |
 | `ALFRED_SKELETON_PRIMING` | off | Arm push priming of orientation skeletons into the prompt. |
 | `ALFRED_SKELETON_MAX_FILES` | `6` | Max orientation files rendered per priming pass. |
 | `ALFRED_SKELETON_MAX_SIGNATURE_LINES` | `6` | Max lines kept per signature before eliding. |

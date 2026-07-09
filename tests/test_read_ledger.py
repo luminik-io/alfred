@@ -112,11 +112,12 @@ def test_delta_max_ratio_env() -> None:
 
 
 def test_ledger_root_isolation_per_firing(tmp_path: Path) -> None:
-    override = ledger_root_for(
-        None, env={"ALFRED_READ_LEDGER_DIR": str(tmp_path / "x"), "ALFRED_FIRING_ID": "f1"}
-    )
-    # The override is a base dir; the ledger is still scoped beneath it.
-    assert override.parent == tmp_path / "x"
+    # Distinct firings map to distinct ledger directories at the default
+    # location under the state root.
+    f1 = ledger_root_for(None, env={"ALFRED_FIRING_ID": "f1"}, state_root=tmp_path / "state")
+    f2 = ledger_root_for(None, env={"ALFRED_FIRING_ID": "f2"}, state_root=tmp_path / "state")
+    assert f1 != f2
+    assert f1.parent == tmp_path / "state" / "read-ledger"
 
     root_a = ledger_root_for(
         tmp_path / "wt-a",
@@ -133,22 +134,12 @@ def test_ledger_root_isolation_per_firing(tmp_path: Path) -> None:
     assert root_a.parent == tmp_path / "state" / "read-ledger"
 
 
-def test_override_dir_is_scoped_per_firing(tmp_path: Path) -> None:
-    override = str(tmp_path / "shared")
-    # Two firings pointed at the same override dir get distinct ledgers.
-    f1 = ledger_root_for(None, env={"ALFRED_READ_LEDGER_DIR": override, "ALFRED_FIRING_ID": "f1"})
-    f2 = ledger_root_for(None, env={"ALFRED_READ_LEDGER_DIR": override, "ALFRED_FIRING_ID": "f2"})
-    assert f1 != f2
-    assert f1.parent == tmp_path / "shared"
-
-
 def test_ledger_root_requires_firing_id(tmp_path: Path) -> None:
-    # A firing id is mandatory: never invent a process- or content-shared scope
-    # two firings could collide on. This holds even with the dir override set.
+    # A firing id is mandatory: never invent a scope two firings could collide
+    # on. There is no directory override, so the default location is the only
+    # place the ledger ever lives.
     with pytest.raises(ValueError):
         ledger_root_for(None, env={}, state_root=tmp_path / "state")
-    with pytest.raises(ValueError):
-        ledger_root_for(None, env={"ALFRED_READ_LEDGER_DIR": str(tmp_path / "x")})
     with pytest.raises(ValueError):
         ledger_root_for(None, env={"ALFRED_FIRING_ID": "  "}, state_root=tmp_path / "state")
 
@@ -156,12 +147,7 @@ def test_ledger_root_requires_firing_id(tmp_path: Path) -> None:
 def test_read_delta_available_strictly_requires_firing_id() -> None:
     # A firing id is the only thing that enables delta.
     assert read_delta_available({"ALFRED_FIRING_ID": "f1"}) is True
-    # No firing id: disabled, even with an explicit ledger dir set.
+    # No firing id: disabled.
     assert read_delta_available({}) is False
-    assert read_delta_available({"ALFRED_READ_LEDGER_DIR": "/tmp/x"}) is False
     # Blank firing id does not count.
     assert read_delta_available({"ALFRED_FIRING_ID": "  "}) is False
-    assert (
-        read_delta_available({"ALFRED_FIRING_ID": "  ", "ALFRED_READ_LEDGER_DIR": "/tmp/x"})
-        is False
-    )

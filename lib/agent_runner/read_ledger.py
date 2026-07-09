@@ -80,12 +80,9 @@ def read_delta_available(env: Mapping[str, str] | None = None) -> bool:
     """True only when a real firing id scopes the ledger.
 
     Delta re-read strictly requires ``ALFRED_FIRING_ID``. Without it the ledger
-    could be shared across firings (even two firings in the same process, or two
-    firings pointed at the same ``ALFRED_READ_LEDGER_DIR``), so a re-read could
-    diff against another firing's content and leak or corrupt it. In that case
-    delta is disabled and callers fall back to full reads, which are always
-    correct. ``ALFRED_READ_LEDGER_DIR`` only relocates the ledger; it is not a
-    firing scope and never enables delta on its own.
+    would be shared across firings, so a re-read could diff against another
+    firing's content and leak or corrupt it. In that case delta is disabled and
+    callers fall back to full reads, which are always correct.
     """
     resolved = os.environ if env is None else env
     return bool((resolved.get("ALFRED_FIRING_ID") or "").strip())
@@ -135,27 +132,21 @@ def ledger_root_for(
     env: Mapping[str, str] | None = None,
     state_root: Path | str | None = None,
 ) -> Path:
-    """Return the per-firing ledger directory.
+    """Return the per-firing ledger directory at its default location.
 
-    The ledger is always scoped to a single firing via ``ALFRED_FIRING_ID``. A
-    firing id is mandatory: delta re-read is only available when one is set (see
-    :func:`read_delta_available`), so this raises ``ValueError`` when it is
-    absent rather than inventing a process- or content-shared scope that two
-    firings could collide on. When ``ALFRED_READ_LEDGER_DIR`` pins a base
-    directory the firing scope still applies beneath it, so an override shared by
-    two firings yields two distinct ledgers. Otherwise the ledger lives under
-    ``<state_root>/read-ledger/<digest>`` keyed by the firing id plus the
-    worktree path.
+    The ledger always lives under ``<state_root>/read-ledger/<digest>`` (state
+    root defaults to ``$ALFRED_HOME/state``), keyed by the firing id plus the
+    worktree path. A firing id is mandatory: delta re-read is only available
+    when one is set (see :func:`read_delta_available`), so this raises
+    ``ValueError`` when it is absent rather than inventing a scope that two
+    firings could collide on. There is deliberately no directory override: the
+    single, firing-scoped default location is what keeps two firings from ever
+    sharing a ledger.
     """
     resolved = os.environ if env is None else env
     firing = (resolved.get("ALFRED_FIRING_ID") or "").strip()
     if not firing:
         raise ValueError("read-delta ledger requires ALFRED_FIRING_ID")
-
-    override = resolved.get("ALFRED_READ_LEDGER_DIR")
-    if override and override.strip():
-        scope_digest = hashlib.sha256(firing.encode()).hexdigest()[:16]
-        return Path(override).expanduser() / scope_digest
 
     base = Path(state_root) if state_root is not None else _default_state_root(resolved)
     workdir_token = str(Path(workdir).resolve()) if workdir else ""
