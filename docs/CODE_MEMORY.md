@@ -4,7 +4,7 @@ Alfred's memory has three layers, each answering a different question:
 
 | Layer | Question it answers | Backend |
 |---|---|---|
-| Semantic lessons | "What did a past firing learn about this repo?" | Redis Agent Memory (vectors) |
+| Semantic lessons | "What did a past firing learn about this repo?" | Embedded SQLite hybrid memory by default |
 | Operational graph | "What relations has the fleet recorded?" | FleetBrain / AGE graph |
 | **Code structure** | "Where is this symbol, who calls it, what breaks if I change it, who owns it?" | **codebase-memory-mcp** |
 

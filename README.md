@@ -222,9 +222,9 @@ separate step, run by a different agent than the one who wrote the code.
   decide what becomes durable context, so the queue does not need a human
   babysitting every candidate. You can still inspect or override it from Slack or
   the desktop app.
-- **Local by default.** Recalled lessons live in a loopback Redis Agent Memory
-  Server; the operational ledger and review queue live in a local FleetBrain.
-  If Redis is disabled or unreachable, Alfred keeps running. See
+- **Local by default.** Recalled lessons live in an embedded SQLite hybrid
+  store; the operational ledger and review queue live in local FleetBrain.
+  Redis Agent Memory remains an opt-in scale battery. See
   [`docs/MEMORY_PROVIDERS.md`](docs/MEMORY_PROVIDERS.md).
 
 ### Reliability and safety

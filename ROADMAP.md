@@ -17,8 +17,16 @@ What is in the OSS tree today.
 
 ### Main after v0.6.0
 
-This is merged on `main` and will be part of the next release. Nothing new has
-landed here yet.
+This is merged on `main` and will be part of the next release.
+
+- Slack flat notifications now use the configured Slack app path instead of a
+  legacy webhook path.
+- The connector-sync fallback parser accepts the documented top-level connector
+  list even when PyYAML is unavailable.
+- Codex usage scans are bounded by recency and file count, avoiding expensive
+  full-history reads on long-lived hosts.
+- README battery requirements and current light/dark Desktop screenshots now
+  match the shipped setup experience.
 
 ### v0.6.0: 2026-07-10
 

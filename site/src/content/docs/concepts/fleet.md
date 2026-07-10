@@ -150,8 +150,8 @@ The default install is engineering-only. Future categories are tracked in [`ROAD
 ## Memory
 
 Every engine-aware codename that knows its target repo can recall what earlier
-firings learned about that repo, file class, or issue type. Redis Agent Memory
-runs on loopback by default, and FleetBrain keeps the review queue and
+firings learned about that repo, file class, or issue type. Embedded SQLite
+hybrid memory is the default, and FleetBrain keeps the review queue and
 operational ledger under `$ALFRED_HOME`. The next firing prepends relevant
 lessons to its prompt context, so the fleet stops rediscovering the same
 conventions on every run.
@@ -169,13 +169,13 @@ repo-relative paths changed by a firing or PR. `alfred brain files your-org/api`
 answers the practical question "what did the fleet touch here recently?"
 without requiring a hosted dashboard or external index.
 
-The default memory stack is Redis Agent Memory Server for recalled lessons,
+The default memory stack is embedded SQLite hybrid memory for recalled lessons,
 with FleetBrain behind it as the local review queue and reliability ledger. If
 you maintain a separate personal knowledge base, chain it behind the default
 stack:
 
 ```sh
-ALFRED_MEMORY_PROVIDERS=redis,fleet,gbrain
+ALFRED_MEMORY_PROVIDERS=sqlite,fleet,gbrain
 ALFRED_GBRAIN_BIN=/usr/local/bin/gbrain
 ```
 
@@ -183,7 +183,8 @@ The `gbrain` provider is read-only and not bundled; it is your personal
 knowledge base CLI, and the shim degrades to empty when the binary is missing.
 
 If you run Agent Memory Server on a different endpoint, set
-`ALFRED_REDIS_MEMORY_URL`. Leave it unset to use the bundled loopback server.
+`ALFRED_REDIS_MEMORY_URL`. Redis is an opt-in battery and requires a separately
+installed Agent Memory Server.
 
 Set `ALFRED_MEMORY_PROVIDERS=null` to turn memory off. Full reference:
 [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred/blob/main/docs/FLEET_BRAIN.md)
