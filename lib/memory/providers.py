@@ -211,9 +211,9 @@ class ChainedMemoryProvider:
     """Consults a list of providers in order.
 
     ``recall`` merges results from every readable provider in order. This keeps
-    the default ``redis,fleet`` chain honest: Redis provides semantic recall,
+    the default ``sqlite,fleet`` chain honest: SQLite provides semantic recall,
     while freshly reviewed FleetBrain lessons still appear in prompts before a
-    separate Redis sync has run.
+    separate store promotion has run.
 
     ``reflect`` writes to the first provider that does not raise
     :class:`NotImplementedError`. Read-only providers later in the

@@ -880,7 +880,11 @@ fn is_allowed_conversation_control(path: &str) -> bool {
 fn is_allowed_setup_action(path: &str) -> bool {
     matches!(
         path,
-        "/api/setup/repos" | "/api/setup/playbook" | "/api/setup/demo" | "/api/setup/demo/clear"
+        "/api/setup/repos"
+            | "/api/setup/batteries"
+            | "/api/setup/playbook"
+            | "/api/setup/demo"
+            | "/api/setup/demo/clear"
     )
 }
 
@@ -3165,6 +3169,7 @@ done"#;
             "/api/setup/status",
             "/api/setup/repos",
             "/api/setup/repos?limit=50",
+            "/api/setup/batteries",
             "/api/setup/playbooks",
             "/api/roster-theme",
         ] {
@@ -3173,6 +3178,7 @@ done"#;
 
         for write in [
             "/api/setup/repos",
+            "/api/setup/batteries",
             "/api/setup/playbook",
             "/api/setup/demo",
             "/api/setup/demo/clear",

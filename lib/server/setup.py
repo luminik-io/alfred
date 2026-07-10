@@ -1983,7 +1983,7 @@ def install_inventory(
     memory_detail = (
         "Custom Redis Agent Memory settings found."
         if memory_overridden
-        else "Using bundled local Redis Agent Memory defaults."
+        else "Using embedded SQLite hybrid memory defaults."
     )
 
     items = [

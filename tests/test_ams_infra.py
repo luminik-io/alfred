@@ -68,31 +68,35 @@ def test_ams_launcher_registers_token_before_api_start() -> None:
     assert text.index("agent-memory token add") < text.index("AMS_API_ARGS=(api")
 
 
-def test_deploy_starts_ams_as_host_service() -> None:
+def test_deploy_only_starts_ams_when_redis_memory_is_selected() -> None:
     text = DEPLOY_SH.read_text()
 
+    assert "redis_memory_enabled" in text
     assert "install_ams_service_linux" in text
     assert "install_ams_service_launchd" in text
+    assert "remove_ams_service_linux" in text
+    assert "remove_ams_service_launchd" in text
     assert "alfred-ams.service" in text
     assert "io.luminik.alfred.ams.plist" in text
     assert "ams-launch.sh" in text
     assert "enable --now alfred-ams.service" in text
     assert "restart alfred-ams.service" in text
     assert "launchctl bootstrap" in text
+    assert "embedded SQLite memory selected; AMS service not installed" in text
+    assert text.count("if redis_memory_enabled; then") == 2
 
 
-def test_installer_provisions_ams_dependencies() -> None:
+def test_core_installer_keeps_redis_and_ollama_out_of_the_default_path() -> None:
     text = INSTALL_SH.read_text()
 
-    assert "redis-stack/redis-stack" in text
-    assert "redis-stack-server" in text
-    assert "gpg --batch --yes --dearmor" in text
-    assert "ollama" in text
-    assert "uv tool install --python 3.12" in text
-    assert "agent-memory-server.git" in text
-    assert "mxbai-embed-large llama3.2:1b" in text
-    assert 'ollama pull "$ollama_model"' in text
-    assert "Deploy also starts the local Redis Agent Memory Server" in text
+    assert "redis-stack/redis-stack" not in text
+    assert "redis-stack-server" not in text
+    assert "packages.redis.io" not in text
+    assert "ollama pull" not in text
+    assert "uv tool install --python 3.12" not in text
+    assert "agent-memory-server.git" not in text
+    assert "SQLite hybrid memory is built in" in text
+    assert "Embedded SQLite memory needs no separate service" in text
     apt_line = next(line for line in text.splitlines() if "local apt_pkgs=" in line)
     assert "redis-server" not in apt_line
-    assert "redis-tools" in text
+    assert "redis-tools" not in apt_line

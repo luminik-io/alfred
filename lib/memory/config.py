@@ -185,8 +185,7 @@ def load_lesson_writer(env: Mapping[str, str] | None = None) -> MemoryProvider |
       promote path is a no-op and does not silently persist lessons to disk;
     * a dedicated recall store is named (``sqlite`` / ``pgvector`` / ``redis``) ->
       write to the FIRST one that actually constructs, since that is exactly
-      where recall reads (default ``sqlite``, ``redis,fleet`` -> Redis, unchanged
-      from earlier releases);
+      where recall reads (the default ``sqlite,fleet`` chain writes to SQLite);
     * no dedicated recall store but ``fleet`` is in the chain (e.g. ``fleet``
       only) -> write to FleetBrain's own lessons table, the store fleet recall
       reads. Never a disconnected SQLite file fleet recall would ignore;

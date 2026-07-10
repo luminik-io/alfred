@@ -6,10 +6,10 @@ Alfred is built on the premise that the host filesystem is a fine operational
 state store for a single-operator fleet. Every firing reads its inputs from
 scratch, writes operational state to plain JSON or JSONL files under
 `$ALFRED_HOME/state/`, and records local review and reliability state in
-`$ALFRED_HOME/fleet-brain.db`. Recalled semantic lessons live in the local
-Redis Agent Memory Server by default. If you delete the state tree and
-FleetBrain database, the next firing rebuilds whatever it still can from GitHub
-and local config.
+`$ALFRED_HOME/fleet-brain.db`. Recalled semantic lessons live in the embedded
+SQLite hybrid store by default. If you delete the state tree, memory database,
+and FleetBrain database, the next firing rebuilds whatever it still can from
+GitHub and local config.
 
 This page maps the local state files, the fleet-brain database, and the contract each part carries.
 
@@ -83,19 +83,19 @@ $ALFRED_HOME/state/
 | In-flight worktree | no (removed on exit) | n/a | n/a |
 | Process state, in-memory caches | no | no | n/a |
 | Engine session id from `claude -p` | written to the result; not resumed | n/a | n/a |
-| Semantic lessons in Redis Agent Memory | yes | yes | yes |
+| Semantic lessons in embedded SQLite memory | yes | yes | yes |
 | FleetBrain review and reliability ledger | yes | yes | yes |
 
 The contract is intentionally narrow: operational state is JSON or JSONL on
-disk, promoted lessons live in Redis Agent Memory, and review/reliability rows
-live in FleetBrain. Anything else is reconstructed from GitHub, the repo
+disk, promoted lessons live in embedded SQLite memory, and review/reliability
+rows live in FleetBrain. Anything else is reconstructed from GitHub, the repo
 checkout, or the operator's `$ALFRED_HOME/.env`.
 
 ## The fleet brain
 
 The state files above are operational memory. They tell Alfred what is blocked, what is paused, what spend is left, and which worktree to clean up. They are not where the fleet remembers *lessons* (repo conventions, recurring bugs, the operator's preferred PR style).
 
-Promoted lesson recall belongs to Redis Agent Memory Server. Engine-aware
+Promoted lesson recall belongs to the configured memory provider. Engine-aware
 runners that know their target repo recall up to three lessons before invoking
 the engine. If the engine returns a machine-readable memory reflection block,
 Alfred strips it from the user-facing result and queues those entries as
@@ -158,7 +158,7 @@ needs read-only memory access.
 
 FleetBrain is dependency-inverted on a `Store` Protocol, so operational storage
 can change without touching agent runners. Runtime lesson recall goes through
-the memory provider chain, with Redis Agent Memory first by default.
+the memory provider chain, with embedded SQLite first by default.
 
 ## Privacy model
 

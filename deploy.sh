@@ -166,6 +166,22 @@ load_env_file "$ALFRED_HOME/.env" no_clobber
 WORKSPACE_ROOT="$(expand_user_path "$WORKSPACE_ROOT")"
 export ALFRED_HOME WORKSPACE_ROOT
 
+redis_memory_enabled() {
+  local provider
+  local providers="${ALFRED_MEMORY_PROVIDERS:-sqlite,fleet}"
+  local old_ifs="$IFS"
+  IFS=','
+  for provider in $providers; do
+    provider="$(trim_env_value "$provider")"
+    if [ "$provider" = "redis" ]; then
+      IFS="$old_ifs"
+      return 0
+    fi
+  done
+  IFS="$old_ifs"
+  return 1
+}
+
 RUNTIME_BIN="$ALFRED_HOME/bin"
 RUNTIME_LIB="$ALFRED_HOME/lib"
 RUNTIME_LAUNCHD="$ALFRED_HOME/launchd"
@@ -434,6 +450,19 @@ EOF
   fi
 }
 
+remove_ams_service_linux() {
+  local systemd_user_dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
+  local service="$systemd_user_dir/alfred-ams.service"
+  systemctl --user disable --now alfred-ams.service >/dev/null 2>&1 || true
+  if [ -f "$service" ]; then
+    rm -f "$service"
+    systemctl --user daemon-reload >/dev/null 2>&1 || true
+    echo "[alfred-os/deploy] removed stale alfred-ams.service (Redis memory is not selected)"
+  else
+    echo "[alfred-os/deploy] embedded SQLite memory selected; AMS service not installed"
+  fi
+}
+
 install_ams_service_launchd() {
   local launch_agents_dir="$HOME/Library/LaunchAgents"
   local plist="$launch_agents_dir/io.luminik.alfred.ams.plist"
@@ -480,6 +509,21 @@ EOF
     echo "[alfred-os/deploy] io.luminik.alfred.ams loaded"
   else
     echo "[alfred-os/deploy] io.luminik.alfred.ams installed; bootstrap failed, see /tmp/alfred-ams.stderr"
+  fi
+}
+
+remove_ams_service_launchd() {
+  local launch_agents_dir="$HOME/Library/LaunchAgents"
+  local plist="$launch_agents_dir/io.luminik.alfred.ams.plist"
+  local uid_value
+  uid_value="$(id -u)"
+  launchctl bootout "gui/$uid_value/io.luminik.alfred.ams" >/dev/null 2>&1 || true
+  launchctl unload "$plist" >/dev/null 2>&1 || true
+  if [ -f "$plist" ]; then
+    rm -f "$plist"
+    echo "[alfred-os/deploy] removed stale io.luminik.alfred.ams (Redis memory is not selected)"
+  else
+    echo "[alfred-os/deploy] embedded SQLite memory selected; AMS service not installed"
   fi
 }
 
@@ -541,9 +585,17 @@ has_previous_managed_scheduler_labels() {
 }
 
 if [ "$(uname -s)" = "Linux" ]; then
-  install_ams_service_linux
+  if redis_memory_enabled; then
+    install_ams_service_linux
+  else
+    remove_ams_service_linux
+  fi
 elif [ "$(uname -s)" = "Darwin" ]; then
-  install_ams_service_launchd
+  if redis_memory_enabled; then
+    install_ams_service_launchd
+  else
+    remove_ams_service_launchd
+  fi
 fi
 
 # Render + install the systemd --user units on Linux. Mirrors the launchd

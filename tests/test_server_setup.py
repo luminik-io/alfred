@@ -106,6 +106,22 @@ def test_install_inventory_reports_existing_config_without_secret_values(
     assert by_key["token"]["ok"] is True
 
 
+def test_install_inventory_names_the_zero_daemon_memory_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "alfred"
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspace"))
+
+    inventory = setup_mod.install_inventory()
+    memory = next(item for item in inventory["items"] if item["key"] == "memory")
+
+    assert memory["ok"] is True
+    assert memory["detail"] == "Using embedded SQLite hybrid memory defaults."
+
+
 def test_install_inventory_uses_active_serve_home_for_agents_conf(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
