@@ -303,7 +303,8 @@ def test_slack_post_native_preferred_skips_webhook_resolution(monkeypatch):
     monkeypatch.setenv("SLACK_HOME_CHANNEL", "eng-fleet")
     monkeypatch.setattr(slack_format, "post_flat", lambda *a, **kw: True)
     monkeypatch.setattr(
-        _notify, "_resolve_webhook",
+        _notify,
+        "_resolve_webhook",
         lambda: pytest.fail("resolved the webhook before the app path"),
     )
     assert ar.slack_post("shipped", severity="info") is True
