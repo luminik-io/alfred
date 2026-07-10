@@ -77,6 +77,17 @@ flowchart LR
     gate --> done["merged PRs<br/>across repos"]
 ```
 
+## Screenshots
+
+Alfred's desktop app, and the same UI served in a browser via `alfred serve`,
+runs entirely on your machine and is theme-aware. More, including light and dark
+for every screen, in [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
+
+![Ask Alfred anything](docs/images/ask-dark.png)
+
+*Ask a question or describe a change; Alfred answers, or shapes a plan you can
+file for the fleet to build, review, and ship.*
+
 ## Quick start
 
 The signed desktop app is the recommended way in. It bundles the Alfred core
