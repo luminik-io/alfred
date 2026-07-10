@@ -292,6 +292,24 @@ def test_slack_post_keeps_webhook_channel_when_not_opted_in(monkeypatch):
     assert probe.hits == 1
 
 
+def test_slack_post_native_preferred_skips_webhook_resolution(monkeypatch):
+    """When native sends are preferred and the app posts, the webhook resolver
+    (which can block on an 8s AWS lookup) must not be called at all."""
+    import agent_runner as ar
+    import slack_format
+    from agent_runner import notify as _notify
+
+    monkeypatch.delenv("ALFRED_DRY_RUN", raising=False)
+    monkeypatch.setenv("SLACK_HOME_CHANNEL", "eng-fleet")
+    monkeypatch.setattr(slack_format, "post_flat", lambda *a, **kw: True)
+    monkeypatch.setattr(
+        _notify,
+        "_resolve_webhook",
+        lambda: pytest.fail("resolved the webhook before the app path"),
+    )
+    assert ar.slack_post("shipped", severity="info") is True
+
+
 def test_slack_post_opt_in_flag_prefers_app_over_webhook(monkeypatch):
     """``ALFRED_SLACK_NATIVE_SENDS=1`` opts an install into app sends even
     when a webhook is present."""
