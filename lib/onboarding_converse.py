@@ -86,6 +86,7 @@ ONBOARDING_ACTIONS: frozenset[str] = frozenset(
         "pick_agents",
         "propose_theme",
         "save_theme",
+        "set_batteries",
         "set_schedule",
         "finish_setup",
     }
@@ -102,6 +103,7 @@ MAX_REPOS = 50
 MAX_ROLES = 40
 MAX_SLUG_LEN = 80
 MAX_SCHEDULE_LEN = 64
+MAX_BATTERIES = 20
 
 # The set of schedule cadences the client understands. The model may only pick a
 # cadence from this set (or omit the action); anything else degrades to no
@@ -240,6 +242,46 @@ def _validate_pick_agents(args: dict[str, Any]) -> dict[str, Any] | None:
     return {"roles": roles}
 
 
+def _validate_set_batteries(args: dict[str, Any]) -> dict[str, Any] | None:
+    """Validate a ``set_batteries`` action into a bounded list of real opt-in ids.
+
+    Only ids of real OPT-IN batteries (from the shared ``batteries`` manifest)
+    survive: unknown ids and always-on built-ins are dropped, so the model can
+    never name something the client cannot enable. Two mutually-exclusive primary
+    memory stores (Redis and pgvector) are a conflict, so the action degrades to
+    ``None`` (the reply stands and asks the person to pick one) rather than
+    forwarding a selection that would collide. An empty result drops the action.
+    """
+    import batteries
+
+    raw = args.get("batteries")
+    if raw is None:
+        raw = args.get("battery")
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return None
+    valid_opt_ins = {b.id for b in batteries.opt_in_batteries()}
+    ids: list[str] = []
+    seen: set[str] = set()
+    for value in raw:
+        slug = _clean_slug(value)
+        if slug is None:
+            continue
+        key = slug.lower()
+        if key in seen or key not in valid_opt_ins:
+            continue
+        seen.add(key)
+        ids.append(key)
+        if len(ids) >= MAX_BATTERIES:
+            break
+    if not ids:
+        return None
+    if batteries.selection_conflict(ids):
+        return None
+    return {"batteries": ids}
+
+
 def _validate_set_schedule(args: dict[str, Any]) -> dict[str, Any] | None:
     """Validate a ``set_schedule`` action's args into a known cadence.
 
@@ -296,6 +338,7 @@ def _validate_theme_action(action: cc.ConverseAction) -> cc.ConverseAction | Non
 _ARG_VALIDATORS: dict[str, Callable[[dict[str, Any]], dict[str, Any] | None]] = {
     "set_repos": _validate_set_repos,
     "pick_agents": _validate_pick_agents,
+    "set_batteries": _validate_set_batteries,
     "set_schedule": _validate_set_schedule,
 }
 

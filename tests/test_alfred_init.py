@@ -2327,3 +2327,96 @@ def test_doctor_sentinel_via_subprocess():
     )
     assert cp.returncode == 0
     assert "[ALFRED-INIT-DOCTOR-OK]" in cp.stdout
+
+
+# ---------------------------------------------------------------------------
+# Battery-selection step (step_8c) and --batteries / config wiring.
+# ---------------------------------------------------------------------------
+
+
+def _battery_state(init_mod, tmp_path):
+    return init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        env_file=tmp_path / ".env",
+        repo_root=tmp_path,
+    )
+
+
+def test_non_interactive_keeps_builtins_only(init_mod, tmp_path):
+    state = _battery_state(init_mod, tmp_path)
+    init_mod.step_8c_batteries(state, non_interactive=True)
+    assert state.batteries == []
+    env = init_mod.env_assignments_for(state)
+    # No opt-in env flag written when the operator picked nothing.
+    assert "ALFRED_MEMORY_SQLITE_DENSE" not in env
+    assert "ALFRED_MEMORY_PROVIDERS" not in env
+
+
+def test_batteries_arg_selects_opt_ins(init_mod, tmp_path):
+    state = _battery_state(init_mod, tmp_path)
+    init_mod.apply_batteries_arg(state, "dense-embeddings,pgvector")
+    init_mod.step_8c_batteries(state, non_interactive=True)
+    assert state.batteries == ["dense-embeddings", "pgvector"]
+    env = init_mod.env_assignments_for(state)
+    assert env["ALFRED_MEMORY_SQLITE_DENSE"] == "1"
+    # pgvector composes as primary onto the default chain, keeping sqlite + fleet.
+    assert env["ALFRED_MEMORY_PROVIDERS"] == "pgvector,sqlite,fleet"
+
+
+def test_batteries_arg_none_clears(init_mod, tmp_path):
+    state = _battery_state(init_mod, tmp_path)
+    state.batteries = ["dense-embeddings"]
+    init_mod.apply_batteries_arg(state, "none")
+    assert state.batteries == []
+
+
+def test_batteries_arg_rejects_builtin_and_unknown(init_mod, tmp_path, capsys):
+    state = _battery_state(init_mod, tmp_path)
+    init_mod.apply_batteries_arg(state, "sqlite-memory,bogus,headroom-compression")
+    assert state.batteries == ["headroom-compression"]
+
+
+def test_config_batteries_override(init_mod, tmp_path):
+    state = _battery_state(init_mod, tmp_path)
+    init_mod.apply_config_overrides(state, {"batteries": ["dense-embeddings"]})
+    assert state.batteries == ["dense-embeddings"]
+
+
+def test_battery_env_keys_are_managed(init_mod):
+    managed = init_mod.ALFRED_INIT_MANAGED_ENV_KEYS
+    assert "ALFRED_MEMORY_SQLITE_DENSE" in managed
+    assert "ALFRED_MEMORY_PROVIDERS" in managed
+    assert "ALFRED_COMPRESSION_ENGINE" in managed
+
+
+# ---------------------------------------------------------------------------
+# Battery chain composition + multi-select conflict (Greptile P1s).
+# ---------------------------------------------------------------------------
+
+
+def test_non_interactive_redis_and_pgvector_conflict_exits(init_mod, tmp_path):
+    state = _battery_state(init_mod, tmp_path)
+    state.batteries = ["redis-ams", "pgvector"]
+    with pytest.raises(SystemExit):
+        init_mod.step_8c_batteries(state, non_interactive=True)
+
+
+def test_env_assignments_compose_provider_onto_existing_chain(init_mod, tmp_path):
+    state = _battery_state(init_mod, tmp_path)
+    # An existing custom chain must be preserved, not clobbered.
+    state.env_file.parent.mkdir(parents=True, exist_ok=True)
+    state.env_file.write_text("ALFRED_MEMORY_PROVIDERS=sqlite,fleet\n", encoding="utf-8")
+    state.batteries = ["redis-ams"]
+    env = init_mod.env_assignments_for(state)
+    assert env["ALFRED_MEMORY_PROVIDERS"] == "redis,sqlite,fleet"
+
+
+def test_env_assignments_multiple_batteries_same_key_do_not_clobber(init_mod, tmp_path):
+    state = _battery_state(init_mod, tmp_path)
+    state.env_file.parent.mkdir(parents=True, exist_ok=True)
+    state.env_file.write_text("ALFRED_MEMORY_PROVIDERS=sqlite,fleet\n", encoding="utf-8")
+    # dense (a flag) and redis (a provider) write different keys; both land.
+    state.batteries = ["dense-embeddings", "redis-ams"]
+    env = init_mod.env_assignments_for(state)
+    assert env["ALFRED_MEMORY_SQLITE_DENSE"] == "1"
+    assert env["ALFRED_MEMORY_PROVIDERS"] == "redis,sqlite,fleet"

@@ -551,6 +551,7 @@ export type OnboardingActionTool =
   | "pick_agents"
   | "propose_theme"
   | "save_theme"
+  | "set_batteries"
   | "set_schedule"
   | "finish_setup";
 
@@ -783,6 +784,51 @@ export type SetupSelectReposResponse = {
   repos: string[];
   env_path: string;
   keys: string[];
+};
+
+// One battery in the picker. Built-ins are always on ("included"); the rest are
+// opt-in enhancements the person turns on. Mirrors lib/batteries.py so the CLI
+// and the desktop app read one manifest.
+export type SetupBattery = {
+  id: string;
+  name: string;
+  category: "memory" | "compression" | "code-graph" | string;
+  what: string;
+  how_it_helps: string;
+  builtin: boolean;
+  default_on: boolean;
+  status: "included" | "enabled" | "available" | "not_installed" | string;
+  enabled: boolean;
+  installed: boolean;
+  requires_daemon: boolean;
+  service: string;
+  install_kind: "included" | "pip-extra" | "autofetch" | "daemon" | string;
+  install_hint: string;
+  pip_extra: string;
+  env_keys: string[];
+  docs: string;
+};
+
+export type SetupBatteryManifest = {
+  version: number;
+  summary: {
+    included?: number;
+    enabled?: number;
+    available?: number;
+    not_installed?: number;
+    total?: number;
+  };
+  batteries: SetupBattery[];
+  error?: string;
+};
+
+export type SetupBatterySaveResponse = {
+  ok: boolean;
+  battery: string;
+  enabled: boolean;
+  env_path: string;
+  keys: string[];
+  manifest: SetupBatteryManifest;
 };
 
 export type SetupPlaybook = {

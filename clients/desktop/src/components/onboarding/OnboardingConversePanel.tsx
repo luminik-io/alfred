@@ -54,6 +54,7 @@ const ACTION_APPROVE_LABEL: Record<OnboardingActionTool, string> = {
   pick_agents: "Use these agents",
   propose_theme: "Preview team",
   save_theme: "Save team names",
+  set_batteries: "Turn on batteries",
   set_schedule: "Set schedule",
   finish_setup: "Finish setup",
 };
