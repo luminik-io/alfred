@@ -6634,6 +6634,10 @@ body {
     display: none;
   }
 
+  .alfred-onboarding-rail__loop {
+    display: none;
+  }
+
   .alfred-onboarding-rail__foot {
     flex: 1 1 auto;
     flex-direction: row;
