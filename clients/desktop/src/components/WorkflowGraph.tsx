@@ -235,6 +235,10 @@ export function WorkflowGraph({
       return next;
     });
   };
+  const selectNode = (codename: string) => {
+    if (maximized) setMaximized(false);
+    onSelect(codename);
+  };
   useEffect(() => {
     if (!maximized) return;
     const onKey = (event: KeyboardEvent) => {
@@ -293,7 +297,7 @@ export function WorkflowGraph({
         proOptions={{ hideAttribution: false }}
         onNodeClick={(_event, node) => {
           if (node.type === "agent") {
-            onSelect(node.id);
+            selectNode(node.id);
           }
         }}
       >

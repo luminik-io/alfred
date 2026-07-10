@@ -68,4 +68,18 @@ describe("WorkflowGraph", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(canvas.dataset.maximized).toBe("false");
   });
+
+  it("exits the overlay before opening an agent drawer from a node", () => {
+    const onSelect = vi.fn();
+    const { container } = render(
+      <WorkflowGraph agents={ROSTER} selectedCodename={null} onSelect={onSelect} />,
+    );
+    const canvas = container.querySelector(".workflow-graph") as HTMLElement;
+
+    fireEvent.click(screen.getByRole("button", { name: /maximize workflow/i }));
+    fireEvent.click(screen.getByText("senior-dev"));
+
+    expect(canvas.dataset.maximized).toBe("false");
+    expect(onSelect).toHaveBeenCalledWith("senior-dev");
+  });
 });
