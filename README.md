@@ -467,21 +467,38 @@ Rendered docs: https://alfred.luminik.io/.
 
 ## Status
 
-**Latest release: v0.5.3.** Alfred ships a local coding-agent team for single
+**Latest release: v0.6.0.** Alfred ships a local coding-agent team for single
 operators and small teams. In the box today:
 
 - Install, full-team setup, prompt seeding, GitHub label setup, specs-assisted
   workspace patterns, doctor, dry-run, code-memory readiness, and starter skills.
+- Conversational setup: assemble and name your team by chatting, build a full
+  roster theme from a description, and let Alfred run the guided install, all
+  through the same allowlisted, approval-gated actions as the form-based flow.
+- A stable role identity (`architect`, `senior-dev`, `reviewer`, `test-engineer`)
+  with themes layered on top, so renaming your team never changes how the
+  runtime, scheduler, or GitHub labels behave.
+- Coding-fleet memory that works with nothing extra to run: the default store is
+  a single embedded SQLite file (keyword plus optional vector recall), so there
+  is no daemon for the common case. Redis Agent Memory and Postgres/pgvector stay
+  supported as opt-in scale tiers.
+- Optional [batteries](docs/BATTERIES.md): a shared manifest, an
+  `alfred batteries` command, and a picker in the desktop onboarding to turn
+  extras (stronger compression, the code-structure memory server, dense
+  embeddings, Redis or Postgres memory) on or off. Alfred runs fully with none.
+- Token-efficient runs by default: verbose tool output is compacted, large files
+  are read structure-first with targeted follow-ups, and only the lessons that
+  matter are injected, ranked and trimmed to a budget.
 - macOS launchd or Linux systemd scheduling, Claude and Codex engine routing,
-  Slack reporting, and isolated worktree execution.
+  and isolated worktree execution, with a single-repo approval gate, multi-repo
+  architect planning through `agent:large-feature`, a disk guardian, FleetBrain
+  reliability tooling, and a self-grading rubric gate before implementation PRs.
 - A signed macOS desktop app and Linux packages (Tauri), with live Claude and
   Codex subscription usage, setup chat, team-theme chat, and repair buttons for
   missing local capabilities.
-- A single-repo approval gate, multi-repo architect planning through
-  `agent:large-feature`, a disk guardian, Redis-backed memory, FleetBrain
-  reliability tooling, and a self-grading rubric gate before implementation PRs.
-- A Slack planning path that turns an approved draft into a labeled GitHub issue,
-  one-command setup-token bootstrap, and a public download page.
+- Slack-native reporting and a planning path that turns an approved draft into a
+  labeled GitHub issue, one-command setup-token bootstrap, and a public download
+  page.
 
 See [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the full
 ledger. PRs are welcome when they strengthen the shape above: reliability, setup,
