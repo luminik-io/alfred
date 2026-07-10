@@ -89,15 +89,18 @@ def slack_post(text: str, *, severity: str = SLACK_SEVERITY_INFO) -> bool:
     if len(text) > _SLACK_MAX_LEN:
         text = text[:_SLACK_MAX_LEN] + "\n...[truncated]"
 
-    # Prefer the app-native ``chat.postMessage`` path when a bot token is
-    # configured: the post then carries the bot identity, the severity
-    # colour stripe, and a real message ``ts``. Fall back to the legacy
-    # incoming webhook when there is no bot token or the API refuses, so
-    # webhook-only installs keep working unchanged.
-    if _post_via_app(text, severity):
+    # Send via the app-native ``chat.postMessage`` path when it is safe to
+    # do so: the post then carries the bot identity, the severity colour
+    # stripe, and a real message ``ts``. It is safe when the operator has
+    # declared where fleet posts go (``SLACK_HOME_CHANNEL``) or explicitly
+    # opted in (``ALFRED_SLACK_NATIVE_SENDS``), OR when there is no webhook
+    # to bypass. This matters because a webhook URL encodes its own target
+    # channel that we cannot read: preferring the app unconditionally would
+    # silently move a webhook-only install's alerts to the default channel.
+    hook = _resolve_webhook()
+    if (_native_sends_preferred() or not hook) and _post_via_app(text, severity):
         return True
 
-    hook = _resolve_webhook()
     if not hook:
         return False
 
@@ -110,6 +113,24 @@ def slack_post(text: str, *, severity: str = SLACK_SEVERITY_INFO) -> bool:
     except Exception as e:
         print(f"[slack-post] error: {type(e).__name__}: {e}", file=sys.stderr)
         return False
+
+
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def _native_sends_preferred() -> bool:
+    """Whether an app-native post should be preferred over a configured
+    webhook.
+
+    True when the operator explicitly opts in via
+    ``ALFRED_SLACK_NATIVE_SENDS``, or when they have declared the fleet's
+    channel via ``SLACK_HOME_CHANNEL`` (so the app post lands where they
+    already point the threaded posts). When neither is set we keep using
+    the webhook, whose bound channel we cannot otherwise honour.
+    """
+    if os.environ.get("ALFRED_SLACK_NATIVE_SENDS", "").strip().lower() in _TRUTHY:
+        return True
+    return bool(os.environ.get("SLACK_HOME_CHANNEL", "").strip())
 
 
 def _post_via_app(text: str, severity: str) -> bool:

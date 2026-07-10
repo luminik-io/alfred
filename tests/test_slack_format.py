@@ -83,6 +83,26 @@ def test_post_flat_posts_via_chat_postmessage_with_colour_stripe(monkeypatch):
     assert payload["attachments"][0]["color"] == sf.SEVERITY_COLOUR["alert"]
 
 
+def test_post_flat_does_not_truncate_at_section_limit(monkeypatch):
+    """The flat body rides in top-level ``text`` (40k ceiling), so a message
+    longer than a Block Kit section (3000) must survive - the webhook path
+    delivered up to ~3500, and the app path must not truncate more."""
+    import slack_format as sf
+
+    monkeypatch.setattr(sf, "_resolve_bot_token", lambda: "xoxb-fake")
+    captured: dict = {}
+
+    def fake_api_post(method, payload, *, token):
+        captured["payload"] = payload
+        return {"ok": True}
+
+    monkeypatch.setattr(sf, "_api_post", fake_api_post)
+
+    body = "x" * 3400
+    assert sf.post_flat(body, severity="info") is True
+    assert captured["payload"]["text"] == body  # untouched, no "...[truncated]"
+
+
 def test_post_flat_returns_false_when_api_refuses(monkeypatch):
     import slack_format as sf
 

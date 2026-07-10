@@ -198,10 +198,12 @@ SEVERITY_EMOJI = {
 }
 
 # Block Kit limits. Header text is the strictest at 150 chars; plain
-# section blocks max out at 3000. Truncation is loud (``...[truncated]``)
-# so an operator sees the cut.
+# section blocks max out at 3000. The top-level message ``text`` field
+# (used by flat, non-Block-Kit posts) allows up to 40000 - keep headroom.
+# Truncation is loud (``...[truncated]``) so an operator sees the cut.
 HEADER_MAX = 150
 SECTION_MAX = 3000
+MESSAGE_MAX = 39000
 _TRUNC = "...[truncated]"
 _GITHUB_ISSUE_OR_PR_RE = re.compile(
     r"^https://github\.com/(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+)/(?:issues|pull)/(?P<number>\d+)$"
@@ -612,7 +614,10 @@ def post_flat(
         return False
     payload = build_chat_postmessage_payload(
         channel=channel_name,
-        text=_truncate(text, SECTION_MAX),
+        # Flat body rides in the top-level ``text`` field, which allows far
+        # more than a Block Kit section, so truncate to the message ceiling
+        # rather than SECTION_MAX. Callers that pre-truncate keep their limit.
+        text=_truncate(text, MESSAGE_MAX),
         severity=_coerce_severity(severity),
     )
     resp = _api_post("chat.postMessage", payload, token=token)
