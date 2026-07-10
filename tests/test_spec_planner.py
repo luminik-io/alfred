@@ -23,6 +23,7 @@ def _isolated_alfred_home(tmp_path, monkeypatch):
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspace"))
     monkeypatch.setenv("GH_ORG", "myorg")
+    monkeypatch.setenv("AGENT_CODENAME", "spec-planner")
     monkeypatch.delenv("ALFRED_SPEC_PLANNER_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_SPEC_PLANNER_SPEC_DIR", raising=False)
     monkeypatch.delenv("ALFRED_SPEC_PLANNER_DAILY_BUNDLE_CAP", raising=False)

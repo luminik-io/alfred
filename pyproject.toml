@@ -141,7 +141,9 @@ no_implicit_reexport = true
 strict_equality = true
 # Excluded from type checking:
 # - lib/server/: FastAPI route layer is still migrating to strict typing.
-exclude = ["^lib/server/"]
+# - tests/, bin/, examples/: repo checks type the library surface and cover
+#   runner scripts through pytest.
+exclude = ["^lib/server/", "^tests/", "^bin/", "^examples/"]
 
 [[tool.mypy.overrides]]
 # agent_runner.py predates strict typing; opt in incrementally.
