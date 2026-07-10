@@ -48,14 +48,21 @@ describe("WorkflowGraph", () => {
   });
 
   it("maximizes the canvas to a full-viewport overlay and exits again", () => {
+    const onMaximize = vi.fn();
     const { container } = render(
-      <WorkflowGraph agents={ROSTER} selectedCodename={null} onSelect={vi.fn()} />,
+      <WorkflowGraph
+        agents={ROSTER}
+        selectedCodename="senior-dev"
+        onSelect={vi.fn()}
+        onMaximize={onMaximize}
+      />,
     );
     const canvas = container.querySelector(".workflow-graph") as HTMLElement;
     expect(canvas.dataset.maximized).toBe("false");
 
     fireEvent.click(screen.getByRole("button", { name: /maximize workflow/i }));
     expect(canvas.dataset.maximized).toBe("true");
+    expect(onMaximize).toHaveBeenCalledOnce();
 
     // Escape exits full screen.
     fireEvent.keyDown(window, { key: "Escape" });

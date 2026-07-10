@@ -204,10 +204,12 @@ export function WorkflowGraph({
   agents,
   selectedCodename,
   onSelect,
+  onMaximize,
 }: {
   agents: WorkflowNodeInput[];
   selectedCodename: string | null;
   onSelect: (codename: string) => void;
+  onMaximize?: () => void;
 }) {
   const { nodes, edges } = useMemo(
     () => buildWorkflowGraph(agents, selectedCodename),
@@ -226,6 +228,13 @@ export function WorkflowGraph({
   // roster header, so a mouse or trackpad user gets room to actually pan and
   // zoom. Escape exits; the signature change re-fits the graph to the new size.
   const [maximized, setMaximized] = useState(false);
+  const toggleMaximized = () => {
+    setMaximized((value) => {
+      const next = !value;
+      if (next) onMaximize?.();
+      return next;
+    });
+  };
   useEffect(() => {
     if (!maximized) return;
     const onKey = (event: KeyboardEvent) => {
@@ -245,7 +254,7 @@ export function WorkflowGraph({
       <button
         type="button"
         className="wf-maximize"
-        onClick={() => setMaximized((value) => !value)}
+        onClick={toggleMaximized}
         aria-pressed={maximized}
         aria-label={maximized ? "Exit full screen" : "Maximize workflow"}
         title={maximized ? "Exit full screen (Esc)" : "Maximize"}
