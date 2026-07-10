@@ -124,6 +124,9 @@ slack_post("Staging deploy drifted from main", severity="alert")  # 🚨 + <!her
 Required when you want to:
 
 - Post Block Kit firing roots and threaded replies via `lib/slack_format.py`.
+- Send the everyday flat notifications (`slack_post()`) through the app instead
+  of a webhook, so they carry the bot identity, the severity colour stripe, and
+  a real message timestamp (see [§ App-native flat sends](#app-native-flat-sends)).
 - Update the channel topic from your fleet's recap script.
 - React to messages programmatically.
 
@@ -161,6 +164,33 @@ SLACK_BOT_TOKEN_SECRET_REGION=us-east-1
 
 `SLACK_HOME_CHANNEL` can be a channel name or ID. If posting by name fails in
 your workspace, use the channel ID (`C...`) from Slack's channel details.
+
+### App-native flat sends
+
+With a bot token, the everyday flat notifications from `slack_post()` can go
+through the app's `chat.postMessage` API instead of the incoming webhook. The
+app-sent version carries the bot identity, the severity colour stripe, and a
+real message timestamp, matching the firing threads Alfred already posts through
+the app.
+
+Because a webhook URL encodes its own locked channel that Alfred cannot read,
+this does **not** happen silently: an install with a configured webhook keeps
+using it unless you tell Alfred where app posts should go. Alfred prefers the
+app path when either is true:
+
+- `SLACK_HOME_CHANNEL` is set (you have declared the fleet's channel, so app
+  posts land where the threaded posts already go), or
+- `ALFRED_SLACK_NATIVE_SENDS=1` (explicit opt-in).
+
+If neither is set, or the app call fails, or no bot token is configured, Alfred
+falls back to the webhook, so webhook-only installs are unchanged. When there is
+no webhook at all, the app path is used whenever a bot token is present.
+
+```sh
+# opt an existing webhook install into app-native flat sends
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_HOME_CHANNEL=alfred          # or ALFRED_SLACK_NATIVE_SENDS=1
+```
 
 ## Optional: Slack planning listener
 
