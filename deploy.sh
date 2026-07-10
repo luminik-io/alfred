@@ -19,7 +19,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: ./deploy.sh [--help]
+Usage: ./deploy.sh [--adopt-legacy-ams] [--help]
 
 Deploy Alfred runtime files into ${ALFRED_HOME:-$HOME/.alfred}.
 
@@ -28,11 +28,17 @@ builds the bundled desktop UI when available, links CLI shims into
 $HOME/.local/bin, and renders/reloads launchd or systemd scheduler units when
 a runtime roster exists.
 
+Options:
+  --adopt-legacy-ams  Adopt and remove an unmarked legacy AMS service only when
+                      it exactly matches Alfred's generated service definition.
+
 Environment overrides:
   ALFRED_HOME     Runtime root for this install (default: $HOME/.alfred)
   WORKSPACE_ROOT  Workspace root written into rendered scheduler units
 EOF
 }
+
+ADOPT_LEGACY_AMS=0
 
 if [ "$#" -gt 1 ]; then
   echo "deploy.sh: too many arguments: $*" >&2
@@ -42,6 +48,9 @@ fi
 
 if [ "$#" -eq 1 ]; then
   case "$1" in
+    --adopt-legacy-ams)
+      ADOPT_LEGACY_AMS=1
+      ;;
     -h|--help)
       usage
       exit 0
@@ -441,7 +450,22 @@ install_ams_service_linux() {
   local systemd_user_dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
   local service="$systemd_user_dir/alfred-ams.service"
   mkdir -p "$systemd_user_dir"
-  cat > "$service" <<EOF
+  render_ams_service_linux > "$service"
+  mark_ams_service_managed "$service"
+  systemctl --user daemon-reload >/dev/null 2>&1 || true
+  if systemctl --user enable --now alfred-ams.service >/dev/null 2>&1; then
+    if systemctl --user restart alfred-ams.service >/dev/null 2>&1; then
+      echo "[alfred-os/deploy] alfred-ams.service enabled and restarted"
+    else
+      echo "[alfred-os/deploy] alfred-ams.service enabled; restart failed, see 'systemctl --user status alfred-ams.service'"
+    fi
+  else
+    echo "[alfred-os/deploy] alfred-ams.service installed; enable failed, see 'systemctl --user status alfred-ams.service'"
+  fi
+}
+
+render_ams_service_linux() {
+  cat <<EOF
 [Unit]
 Description=Alfred Redis Agent Memory Server
 After=network-online.target
@@ -461,23 +485,28 @@ Environment=WORKSPACE_ROOT=$WORKSPACE_ROOT
 [Install]
 WantedBy=default.target
 EOF
-  mark_ams_service_managed "$service"
-  systemctl --user daemon-reload >/dev/null 2>&1 || true
-  if systemctl --user enable --now alfred-ams.service >/dev/null 2>&1; then
-    if systemctl --user restart alfred-ams.service >/dev/null 2>&1; then
-      echo "[alfred-os/deploy] alfred-ams.service enabled and restarted"
-    else
-      echo "[alfred-os/deploy] alfred-ams.service enabled; restart failed, see 'systemctl --user status alfred-ams.service'"
-    fi
-  else
-    echo "[alfred-os/deploy] alfred-ams.service installed; enable failed, see 'systemctl --user status alfred-ams.service'"
+}
+
+adopt_legacy_ams_service() {
+  local service="$1" renderer="$2" expected
+  [ "$ADOPT_LEGACY_AMS" = "1" ] || return 1
+  [ -f "$service" ] || return 1
+  expected="$(mktemp "${TMPDIR:-/tmp}/alfred-ams-service.XXXXXX")"
+  "$renderer" > "$expected"
+  if cmp -s "$service" "$expected"; then
+    rm -f "$expected"
+    mark_ams_service_managed "$service"
+    echo "[alfred-os/deploy] adopted verified legacy AMS service: $service"
+    return 0
   fi
+  rm -f "$expected"
+  return 1
 }
 
 remove_ams_service_linux() {
   local systemd_user_dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
   local service="$systemd_user_dir/alfred-ams.service"
-  if ! ams_service_is_managed "$service"; then
+  if ! ams_service_is_managed "$service" && ! adopt_legacy_ams_service "$service" render_ams_service_linux; then
     if [ -e "$service" ]; then
       echo "[alfred-os/deploy] left unowned alfred-ams.service unchanged"
     else
@@ -504,7 +533,18 @@ install_ams_service_launchd() {
   local uid_value
   mkdir -p "$launch_agents_dir"
   uid_value="$(id -u)"
-  cat > "$plist" <<EOF
+  render_ams_service_launchd > "$plist"
+  mark_ams_service_managed "$plist"
+  launchctl bootout "gui/$uid_value" "$plist" >/dev/null 2>&1 || true
+  if launchctl bootstrap "gui/$uid_value" "$plist" >/dev/null 2>&1; then
+    echo "[alfred-os/deploy] io.luminik.alfred.ams loaded"
+  else
+    echo "[alfred-os/deploy] io.luminik.alfred.ams installed; bootstrap failed, see /tmp/alfred-ams.stderr"
+  fi
+}
+
+render_ams_service_launchd() {
+  cat <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -539,13 +579,6 @@ install_ams_service_launchd() {
 </dict>
 </plist>
 EOF
-  mark_ams_service_managed "$plist"
-  launchctl bootout "gui/$uid_value" "$plist" >/dev/null 2>&1 || true
-  if launchctl bootstrap "gui/$uid_value" "$plist" >/dev/null 2>&1; then
-    echo "[alfred-os/deploy] io.luminik.alfred.ams loaded"
-  else
-    echo "[alfred-os/deploy] io.luminik.alfred.ams installed; bootstrap failed, see /tmp/alfred-ams.stderr"
-  fi
 }
 
 remove_ams_service_launchd() {
@@ -553,7 +586,7 @@ remove_ams_service_launchd() {
   local plist="$launch_agents_dir/io.luminik.alfred.ams.plist"
   local uid_value
   uid_value="$(id -u)"
-  if ! ams_service_is_managed "$plist"; then
+  if ! ams_service_is_managed "$plist" && ! adopt_legacy_ams_service "$plist" render_ams_service_launchd; then
     if [ -e "$plist" ]; then
       echo "[alfred-os/deploy] left unowned io.luminik.alfred.ams.plist unchanged"
     else
