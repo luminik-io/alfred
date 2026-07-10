@@ -1,9 +1,9 @@
 # FleetBrain: Alfred's local operational ledger
 
-FleetBrain is Alfred's per-host operational ledger. Redis Agent Memory is the
-default recalled-lesson store; FleetBrain keeps the review queue, firing
-history, failure patterns, GitHub cache, file touches, and evidence that makes
-those lessons trustworthy.
+FleetBrain is Alfred's per-host operational ledger. Embedded SQLite hybrid
+memory is the default recalled-lesson store; FleetBrain keeps the review queue,
+firing history, failure patterns, GitHub cache, file touches, and evidence that
+makes those lessons trustworthy.
 
 FleetBrain is a single SQLite file in your `$ALFRED_HOME`. Raw prompts, paths,
 candidate text, and firing history stay on your machine. The normal outbound
@@ -150,19 +150,19 @@ machine-readable reflection block; if the engine returns durable lessons,
 Alfred strips that block from the user-facing result and queues reviewable
 memory candidates in the fleet-brain.
 
-Runtime lesson recall is on by default through Redis Agent Memory Server, with
-FleetBrain behind it as the local review queue and operational ledger. To
+Runtime lesson recall is on by default through embedded SQLite hybrid memory,
+with FleetBrain behind it as the local review queue and operational ledger. To
 disable runtime recall and reflection:
 
 ```sh
 export ALFRED_MEMORY_PROVIDERS=null
 ```
 
-To keep the default Redis plus FleetBrain stack and add a read-only personal
+To keep the default SQLite plus FleetBrain stack and add a read-only personal
 knowledge base behind it:
 
 ```sh
-export ALFRED_MEMORY_PROVIDERS=redis,fleet,gbrain
+export ALFRED_MEMORY_PROVIDERS=sqlite,fleet,gbrain
 export ALFRED_GBRAIN_BIN=/usr/local/bin/gbrain
 ```
 

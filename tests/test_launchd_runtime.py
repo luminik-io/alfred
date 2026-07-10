@@ -411,6 +411,7 @@ def test_deploy_removes_stale_managed_plists(tmp_path):
     assert "alfred.old.plist" in log
     assert "alfred.personal.plist" not in log
     assert "alfred.new.plist" in log
+    assert f"enable gui/{os.getuid()}/alfred.new" in log
 
 
 def test_deploy_copies_skills_registry_into_runtime(tmp_path):
@@ -682,7 +683,7 @@ def test_deploy_linux_stays_framework_only_without_conf_or_custom_agents(tmp_pat
     assert (systemd_user / "backup.timer").exists()
     assert (systemd_user / "backup.service").exists()
     assert not (alfred / "systemd" / "managed-labels.txt").exists()
-    log = systemctl_log.read_text(encoding="utf-8")
+    log = systemctl_log.read_text(encoding="utf-8") if systemctl_log.exists() else ""
     assert "alfred.old.timer" not in log
     assert "backup.timer" not in log
 

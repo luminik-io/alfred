@@ -1,7 +1,7 @@
 """Redis Agent Memory Server provider.
 
 This adapter is Alfred's primary semantic memory client. A fresh install
-talks to the bundled loopback AMS by default; ``ALFRED_REDIS_MEMORY_URL``
+talks to a loopback AMS endpoint by default; ``ALFRED_REDIS_MEMORY_URL``
 can point it at a different endpoint.
 
 The provider is deliberately tolerant: recall failures return ``[]``;

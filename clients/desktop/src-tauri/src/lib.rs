@@ -880,7 +880,11 @@ fn is_allowed_conversation_control(path: &str) -> bool {
 fn is_allowed_setup_action(path: &str) -> bool {
     matches!(
         path,
-        "/api/setup/repos" | "/api/setup/playbook" | "/api/setup/demo" | "/api/setup/demo/clear"
+        "/api/setup/repos"
+            | "/api/setup/batteries"
+            | "/api/setup/playbook"
+            | "/api/setup/demo"
+            | "/api/setup/demo/clear"
     )
 }
 
@@ -1474,7 +1478,10 @@ fn core_install_plan(app: &AppHandle) -> Result<CoreInstallPlan, String> {
                 "all".to_string(),
             ],
             deploy_program: "/bin/bash".to_string(),
-            deploy_args: vec![core_dir.join("deploy.sh").to_string_lossy().into_owned()],
+            deploy_args: vec![
+                core_dir.join("deploy.sh").to_string_lossy().into_owned(),
+                "--adopt-legacy-ams".to_string(),
+            ],
             skills_program: "alfred".to_string(),
             skills_args: vec![
                 "skills".to_string(),
@@ -1507,7 +1514,10 @@ fn core_install_plan(app: &AppHandle) -> Result<CoreInstallPlan, String> {
                 "all".to_string(),
             ],
             deploy_program: "/bin/bash".to_string(),
-            deploy_args: vec![core_dir.join("deploy.sh").to_string_lossy().into_owned()],
+            deploy_args: vec![
+                core_dir.join("deploy.sh").to_string_lossy().into_owned(),
+                "--adopt-legacy-ams".to_string(),
+            ],
             skills_program: "alfred".to_string(),
             skills_args: vec![
                 "skills".to_string(),
@@ -1535,7 +1545,7 @@ fn core_install_plan(app: &AppHandle) -> Result<CoreInstallPlan, String> {
                 "all".to_string(),
             ],
             deploy_program: "alfred-deploy".to_string(),
-            deploy_args: Vec::new(),
+            deploy_args: vec!["--adopt-legacy-ams".to_string()],
             skills_program: "alfred".to_string(),
             skills_args: vec![
                 "skills".to_string(),
@@ -2658,7 +2668,10 @@ mod tests {
                 "all".to_string(),
             ],
             deploy_program: "/bin/bash".to_string(),
-            deploy_args: vec!["/tmp/alfred core/deploy.sh".to_string()],
+            deploy_args: vec![
+                "/tmp/alfred core/deploy.sh".to_string(),
+                "--adopt-legacy-ams".to_string(),
+            ],
             skills_program: "alfred".to_string(),
             skills_args: vec![
                 "skills".to_string(),
@@ -2684,7 +2697,7 @@ mod tests {
         assert!(command.contains(
             "python3 '/tmp/alfred core/bin/alfred-init.py' --seed-runtime-roster --agents all"
         ));
-        assert!(command.contains("'/tmp/alfred core/deploy.sh'"));
+        assert!(command.contains("'/tmp/alfred core/deploy.sh' --adopt-legacy-ams"));
         assert!(command.contains("alfred skills install --starter"));
         assert!(command.contains("alfred code-memory doctor"));
         assert!(command.contains("nohup alfred serve --port 7123 --no-browser"));
@@ -3165,6 +3178,7 @@ done"#;
             "/api/setup/status",
             "/api/setup/repos",
             "/api/setup/repos?limit=50",
+            "/api/setup/batteries",
             "/api/setup/playbooks",
             "/api/roster-theme",
         ] {
@@ -3173,6 +3187,7 @@ done"#;
 
         for write in [
             "/api/setup/repos",
+            "/api/setup/batteries",
             "/api/setup/playbook",
             "/api/setup/demo",
             "/api/setup/demo/clear",

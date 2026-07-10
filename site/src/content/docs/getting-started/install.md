@@ -97,7 +97,9 @@ exist. It assigns the selected repo list to each repo-operating agent, skips
 Slack safely, seeds prompt templates into
 `~/.alfred/prompts/`, creates standard GitHub labels on the selected repos,
 writes `launchd/agents.conf`, writes the shared scheduler manifest, updates
-`$ALFRED_HOME/.env`, runs deploy, and runs doctor.
+`$ALFRED_HOME/.env`, runs deploy, and runs doctor. The repair flow explicitly
+adopts a pre-marker AMS service only when it exactly matches Alfred's generated
+unit; custom or operator-owned units stay untouched.
 
 The `architect` role is included in the full fleet and shows as Batman in the
 default theme. It only acts on approved `agent:large-feature` parent issues after
@@ -107,6 +109,10 @@ the runner with `alfred enable architect`.
 
 For a framework-only install with no agents configured, run `bash deploy.sh &&
 ./bin/alfred doctor`; doctor should report `0 passed, 0 failed`.
+
+For an upgrade from an older Redis AMS install, run
+`bash deploy.sh --adopt-legacy-ams`. Plain deploy never claims or removes an
+unmarked service.
 
 ## Install With Claude Code or Codex
 

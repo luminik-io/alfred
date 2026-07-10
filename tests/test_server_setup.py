@@ -106,6 +106,50 @@ def test_install_inventory_reports_existing_config_without_secret_values(
     assert by_key["token"]["ok"] is True
 
 
+def test_install_inventory_names_the_zero_daemon_memory_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "alfred"
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.delenv("ALFRED_MEMORY_PROVIDERS", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspace"))
+
+    inventory = setup_mod.install_inventory()
+    memory = next(item for item in inventory["items"] if item["key"] == "memory")
+
+    assert memory["ok"] is True
+    assert memory["detail"] == "Using embedded SQLite hybrid memory defaults."
+
+
+@pytest.mark.parametrize(
+    ("providers", "detail"),
+    [
+        ("Redis,fleet", "Using configured memory providers: Redis Agent Memory, FleetBrain."),
+        ("pgvector,fleet", "Using configured memory providers: Postgres pgvector, FleetBrain."),
+        ("null", "Runtime lesson memory is disabled."),
+    ],
+)
+def test_install_inventory_reports_the_configured_memory_chain(
+    tmp_path: Path,
+    providers: str,
+    detail: str,
+) -> None:
+    inventory = setup_mod.install_inventory(
+        env={
+            "ALFRED_HOME": str(tmp_path / "alfred"),
+            "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+            "ALFRED_MEMORY_PROVIDERS": providers,
+        }
+    )
+    memory = next(item for item in inventory["items"] if item["key"] == "memory")
+
+    assert inventory["memory_configured"] is True
+    assert memory["detail"] == detail
+    assert memory["path"] == str(tmp_path / "alfred" / ".env")
+
+
 def test_install_inventory_uses_active_serve_home_for_agents_conf(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -324,6 +368,7 @@ def test_install_inventory_does_not_mix_launcher_config_into_active_process_home
         "ALFRED_AMS_HOST",
         "ALFRED_AMS_PORT",
         "ALFRED_AMS_REDIS_URL",
+        "ALFRED_MEMORY_PROVIDERS",
     ):
         monkeypatch.delenv(key, raising=False)
 

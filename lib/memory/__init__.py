@@ -1,7 +1,7 @@
 """Alfred memory-provider layer.
 
 A thin Protocol that lets Alfred chain memory backends. The default shipping
-chain is Redis Agent Memory for semantic recalled lessons, followed by the
+chain is the embedded SQLite hybrid store for recalled lessons, followed by the
 in-tree :mod:`fleet_brain` operational ledger. Operators can chain additional
 read-only backends (a personal knowledge base, a team wiki shim, anything that
 can answer ``recall``) by setting ``ALFRED_MEMORY_PROVIDERS`` and any
@@ -15,7 +15,7 @@ Design rules:
 * Read-only providers are first-class. ``reflect`` may raise
   :class:`NotImplementedError`; the chained provider handles the
   exception by falling through to the next writer.
-* OSS installs get Redis Agent Memory plus FleetBrain by default. Personal
+* OSS installs get embedded SQLite memory plus FleetBrain by default. Personal
   knowledge-base paths are not wired up unless the operator explicitly opts in
   via env.
 * Zero new third-party dependencies; everything is stdlib.
