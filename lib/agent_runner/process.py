@@ -365,7 +365,7 @@ def _code_memory_launcher() -> Path | None:
     return script if script.exists() else None
 
 
-def _code_memory_mcp_server(*, force: bool = False) -> dict[str, Any] | None:
+def _code_memory_mcp_server() -> dict[str, Any] | None:
     """Return the ``mcpServers`` entry for the code-memory server, or ``None``.
 
     ``None`` when disabled by env or when the launcher is missing (e.g. a lib
@@ -373,7 +373,7 @@ def _code_memory_mcp_server(*, force: bool = False) -> dict[str, Any] | None:
     launcher itself decides whether the underlying binary is present and exits
     cleanly if not, so attaching it is always safe.
     """
-    if not force and not _code_memory_mcp_enabled():
+    if not _code_memory_mcp_enabled():
         return None
     launcher = _code_memory_launcher()
     if launcher is None:
@@ -501,10 +501,10 @@ def _active_code_graph_server(workdir: Path | None = None) -> dict[str, Any] | N
         graphify = _graphify_mcp_server(workdir)
         if graphify is not None:
             return graphify
-        # Enabling graphify turns the normal code-memory gate off, but repos are
-        # indexed independently. Keep structural tools available until this
-        # worktree has a graph rather than dropping both engines.
-        return _code_memory_mcp_server(force=True)
+        # A manually enabled Graphify can fall back only when code-memory's own
+        # gate allows it. The battery picker writes that gate off when Graphify
+        # is selected, so an explicit engine choice is never silently bypassed.
+        return _code_memory_mcp_server()
     return _code_memory_mcp_server()
 
 

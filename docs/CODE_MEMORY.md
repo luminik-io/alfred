@@ -381,7 +381,8 @@ Setup:
 
 ```sh
 alfred batteries enable graphify --yes  # installs pinned graphifyy[mcp] with uv
-graphify update /path/to/repo    # build graphify-out/graph.json (no LLM)
+graphify /path/to/repo           # first build: graphify-out/graph.json (no LLM)
+graphify /path/to/repo --update  # later incremental refresh
 ```
 
 Then enable it (or tick it in `alfred batteries` / the desktop battery picker):
@@ -393,9 +394,10 @@ Then enable it (or tick it in `alfred batteries` / the desktop battery picker):
 | `ALFRED_GRAPHIFY_GRAPH` | `graphify-out/graph.json` | Graph file passed to the MCP server, relative to each firing's repo worktree unless absolute. |
 
 A firing serves the graph in its own working directory (`graphify-out/graph.json`),
-so build or update the graph per repo. If that repo has no graph yet, Alfred
-keeps the code-memory MCP slot instead of starting a graphify server that cannot
-load its graph.
+so build or update the graph per repo. If that repo has no graph yet, Alfred does
+not attach Graphify. It falls back to code-memory only when
+`ALFRED_CODE_MEMORY_MCP` remains enabled; choosing Graphify through the battery
+picker disables that fallback so the selected engine is never silently replaced.
 
 The read-only tools it exposes: `query_graph`, `get_node`, `get_neighbors`,
 `get_community`, `god_nodes`, `graph_stats`, `shortest_path`, `list_prs`,

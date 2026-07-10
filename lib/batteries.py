@@ -284,7 +284,8 @@ BATTERIES: tuple[Battery, ...] = (
         install_kind=INSTALL_AUTOFETCH,
         install_hint=(
             "Alfred installs the pinned graphifyy MCP tool with uv. Build a graph per repo with "
-            "`graphify update <repo>`; firings then serve `graphify-out/graph.json` read-only. "
+            "`graphify <repo>`; refresh it later with `graphify <repo> --update`. Firings then serve "
+            "`graphify-out/graph.json` read-only. "
             "Local; no daemon, no embeddings."
         ),
         autofetch_cmd=(
