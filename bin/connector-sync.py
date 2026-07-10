@@ -49,10 +49,13 @@ for _cand in _candidates:
             sys.path.insert(0, str(_cand))
         break
 
-from connectors import Connector  # noqa: E402
-from connectors.linear import LinearConnector  # noqa: E402
-from connectors.runner import ConnectorRunner, SyncReport  # noqa: E402
-from connectors.sentry import SentryConnector  # noqa: E402
+from connectors import Connector  # type: ignore # noqa: E402
+from connectors.linear import LinearConnector  # type: ignore # noqa: E402
+from connectors.runner import (  # type: ignore # noqa: E402
+    ConnectorRunner,
+    SyncReport,
+)
+from connectors.sentry import SentryConnector  # type: ignore # noqa: E402
 
 logger = logging.getLogger("connector-sync")
 
