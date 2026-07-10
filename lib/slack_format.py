@@ -198,10 +198,12 @@ SEVERITY_EMOJI = {
 }
 
 # Block Kit limits. Header text is the strictest at 150 chars; plain
-# section blocks max out at 3000. Truncation is loud (``...[truncated]``)
-# so an operator sees the cut.
+# section blocks max out at 3000. The top-level message ``text`` field
+# (used by flat, non-Block-Kit posts) allows up to 40000 - keep headroom.
+# Truncation is loud (``...[truncated]``) so an operator sees the cut.
 HEADER_MAX = 150
 SECTION_MAX = 3000
+MESSAGE_MAX = 39000
 _TRUNC = "...[truncated]"
 _GITHUB_ISSUE_OR_PR_RE = re.compile(
     r"^https://github\.com/(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+)/(?:issues|pull)/(?P<number>\d+)$"
@@ -582,6 +584,46 @@ def firing_thread_close(
     return firing_thread_reply(handle, text=text, severity=sev)
 
 
+def post_flat(
+    text: str,
+    *,
+    severity: str = "info",
+    channel: str | None = None,
+) -> bool:
+    """Post a flat (non-threaded) message via the Slack ``chat.postMessage``
+    Web API, using the bot token.
+
+    This is the app-native equivalent of the legacy incoming-webhook post:
+    same everyday "one line to the channel" shape, but sent through the
+    installed Slack app so the message carries the bot's identity, the
+    severity colour stripe, and (unlike a webhook) a real ``ts`` the caller
+    could thread from later.
+
+    Returns ``True`` only on a confirmed ``ok`` response. Returns ``False``
+    when no bot token is configured or Slack refuses the post, so callers
+    can fall back to the webhook path. Never raises.
+    """
+    text = (text or "").strip()
+    if not text:
+        return False
+    token = _resolve_bot_token()
+    if not token:
+        return False
+    channel_name = _home_channel(channel)
+    if not channel_name:
+        return False
+    payload = build_chat_postmessage_payload(
+        channel=channel_name,
+        # Flat body rides in the top-level ``text`` field, which allows far
+        # more than a Block Kit section, so truncate to the message ceiling
+        # rather than SECTION_MAX. Callers that pre-truncate keep their limit.
+        text=_truncate(text, MESSAGE_MAX),
+        severity=_coerce_severity(severity),
+    )
+    resp = _api_post("chat.postMessage", payload, token=token)
+    return bool(resp.get("ok"))
+
+
 __all__ = [
     "HOME_CHANNEL_DEFAULT",
     "HOME_CHANNEL_ENV",
@@ -594,6 +636,7 @@ __all__ = [
     "firing_thread_root",
     "github_issue_link",
     "github_url_link",
+    "post_flat",
     "themed_agent_name",
     "themed_agent_role",
 ]
