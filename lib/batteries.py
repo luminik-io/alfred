@@ -525,7 +525,9 @@ def _graphify_available(env: Mapping[str, str]) -> bool:
     override = str(env.get("ALFRED_GRAPHIFY_BIN", "")).strip()
     if override and Path(override).expanduser().exists():
         return True
-    return bool(shutil.which("graphify-mcp"))
+    # uvx resolves the pinned package with the MCP extra even when a base-only
+    # graphify install left a broken graphify-mcp console script on PATH.
+    return bool(shutil.which("uvx"))
 
 
 def _headroom_available(env: Mapping[str, str]) -> bool:

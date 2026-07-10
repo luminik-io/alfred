@@ -321,3 +321,20 @@ def test_enabling_a_code_graph_engine_atomically_disables_the_other() -> None:
         "ALFRED_CODE_MEMORY_AUTOFETCH": "0",
     }
     assert batteries.enable_values(code_memory, {})["ALFRED_GRAPHIFY_MCP"] == "0"
+
+
+def test_graphify_availability_requires_the_pinned_uvx_runtime(monkeypatch) -> None:
+    graphify = batteries.battery_by_id("graphify")
+    monkeypatch.setattr(
+        batteries.shutil,
+        "which",
+        lambda name: "/usr/local/bin/graphify-mcp" if name == "graphify-mcp" else None,
+    )
+    assert batteries.is_installed(graphify, {}) is False
+
+    monkeypatch.setattr(
+        batteries.shutil,
+        "which",
+        lambda name: "/usr/local/bin/uvx" if name == "uvx" else None,
+    )
+    assert batteries.is_installed(graphify, {}) is True

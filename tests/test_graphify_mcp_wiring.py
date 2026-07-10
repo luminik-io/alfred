@@ -95,7 +95,7 @@ def test_graphify_enabled_takes_code_graph_slot(monkeypatch, tmp_path: Path) -> 
     assert "code_memory" not in servers
     assert servers["graphify"]["command"] == "/usr/local/bin/graphify-mcp"
     assert servers["graphify"]["args"] == [
-        "graphify-out/graph.json",
+        str(tmp_path / "graphify-out" / "graph.json"),
         "--transport",
         "stdio",
     ]
@@ -151,6 +151,26 @@ def test_graphify_uses_pinned_uvx_fallback_and_explicit_graph(monkeypatch, tmp_p
             ],
         }
     }
+
+
+def test_graphify_expands_home_relative_graph_path(monkeypatch, tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    graph = home / "graphs" / "repo.json"
+    graph.parent.mkdir(parents=True)
+    graph.write_text('{"nodes": [], "links": []}', encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_GRAPHIFY_MCP", "1")
+    monkeypatch.setenv("ALFRED_GRAPHIFY_GRAPH", "~/graphs/repo.json")
+    monkeypatch.setattr(
+        _proc.shutil,
+        "which",
+        lambda name: "/usr/local/bin/uvx" if name == "uvx" else None,
+    )
+
+    server = _proc._graphify_mcp_server(tmp_path)
+
+    assert server is not None
+    assert server["graphify"]["args"][3] == str(graph)
 
 
 def test_graphify_tool_names_use_server_prefix() -> None:

@@ -430,12 +430,12 @@ def _graphify_command() -> tuple[str, list[str]] | None:
         if shutil.which(override) or Path(expanded).is_file():
             return expanded, []
         return None
-    installed = shutil.which("graphify-mcp")
-    if installed:
-        return installed, []
     uvx = shutil.which("uvx")
     if uvx:
         return uvx, ["--from", _GRAPHIFY_PACKAGE, "graphify-mcp"]
+    installed = shutil.which("graphify-mcp")
+    if installed:
+        return installed, []
     return None
 
 
@@ -460,10 +460,11 @@ def _graphify_mcp_server(workdir: Path | None = None) -> dict[str, Any] | None:
     )
     if resolved_graph is not None and not resolved_graph.is_file():
         return None
+    graph_arg = str(resolved_graph) if resolved_graph is not None else str(graph_path)
     return {
         GRAPHIFY_MCP_SERVER: {
             "command": cmd,
-            "args": [*prefix, graph, "--transport", "stdio"],
+            "args": [*prefix, graph_arg, "--transport", "stdio"],
         }
     }
 
