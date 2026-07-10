@@ -97,12 +97,20 @@ def slack_post(text: str, *, severity: str = SLACK_SEVERITY_INFO) -> bool:
     # to bypass. This matters because a webhook URL encodes its own target
     # channel that we cannot read: preferring the app unconditionally would
     # silently move a webhook-only install's alerts to the default channel.
-    hook = _resolve_webhook()
-    if (_native_sends_preferred() or not hook) and _post_via_app(text, severity):
+    #
+    # When native sends are preferred, try the app FIRST, before resolving the
+    # webhook: ``_resolve_webhook`` can fall through to an 8s AWS Secrets
+    # Manager lookup, and a native-only install must not block on it.
+    prefer_app = _native_sends_preferred()
+    if prefer_app and _post_via_app(text, severity):
         return True
 
+    hook = _resolve_webhook()
     if not hook:
-        return False
+        # No webhook configured: as a last resort try the app even when it was
+        # not the preferred path, so a bot-token-only install still posts. When
+        # native was preferred we already tried the app above, so don't repeat.
+        return not prefer_app and _post_via_app(text, severity)
 
     payload = json.dumps({"text": text}).encode("utf-8")
     req = urllib.request.Request(hook, data=payload, headers={"content-type": "application/json"})
