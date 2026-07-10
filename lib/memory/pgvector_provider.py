@@ -55,6 +55,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import threading
 from collections.abc import Iterable, Mapping, Sequence
 from contextlib import contextmanager
@@ -195,13 +196,24 @@ def _vector_literal(vec: Sequence[float]) -> str:
     return "[" + ",".join(repr(float(x)) for x in vec) + "]"
 
 
+_URI_QUERY_PASSWORD_RE = re.compile(r"(?i)([?&]password=)[^&\s]*")
+
+
 def _redact_dsn(dsn: str) -> str:
     """Best-effort password scrub for a DSN so ``health`` never leaks a secret.
 
-    Handles the two common libpq shapes: a URL (``postgresql://u:pw@host/db``)
-    and keyword form (``password=... host=...``). Anything it cannot parse is
-    reported as ``"<dsn>"`` rather than echoed, so a malformed string can never
-    leak a credential.
+    Handles the two common libpq shapes:
+
+    * **URI** (``postgresql://u:pw@host/db``) -- the ``user:pw@`` credential is
+      collapsed to ``user:***@``, and a password carried as a ``?password=`` query
+      parameter is scrubbed too.
+    * **Keyword/value** (``host=... password=... dbname=...``) -- parsed
+      QUOTE-AWARE with :mod:`shlex`, so a quoted value with spaces
+      (``password='my secret pw'``) is one token and is fully redacted rather
+      than leaking its tail after a naive whitespace split.
+
+    Anything it cannot parse is reported as ``"<dsn>"`` rather than echoed, so a
+    malformed string can never leak a credential.
     """
     raw = (dsn or "").strip()
     if not raw:
@@ -212,11 +224,17 @@ def _redact_dsn(dsn: str) -> str:
             if "@" in rest:
                 creds, host = rest.split("@", 1)
                 user = creds.split(":", 1)[0]
-                return f"{scheme}://{user}:***@{host}"
-            return f"{scheme}://{rest}"
-        parts = []
-        for token in raw.split():
-            if token.lower().startswith("password="):
+                redacted = f"{scheme}://{user}:***@{host}"
+            else:
+                redacted = f"{scheme}://{rest}"
+            # A libpq URI may also carry the password as a query parameter.
+            return _URI_QUERY_PASSWORD_RE.sub(r"\1***", redacted)
+        # Keyword/value DSN: tokenize honouring single/double quotes so a quoted
+        # password containing spaces is a single token and is redacted whole.
+        parts: list[str] = []
+        for token in shlex.split(raw):
+            key, sep, _value = token.partition("=")
+            if sep and key.strip().lower() == "password":
                 parts.append("password=***")
             else:
                 parts.append(token)

@@ -174,6 +174,43 @@ def test_redact_dsn_handles_no_password() -> None:
     assert _redact_dsn("") == ""
 
 
+def test_redact_dsn_scrubs_quoted_keyword_password_with_spaces() -> None:
+    # A keyword DSN whose password is quoted and contains spaces must be redacted
+    # whole; a naive whitespace split would leak the tail of the secret.
+    out = _redact_dsn("host=db.local password='my secret pw' dbname=alfred")
+    assert "my secret pw" not in out
+    assert "secret" not in out
+    assert "pw" not in out
+    assert "password=***" in out
+    # Non-secret fields survive.
+    assert "host=db.local" in out
+    assert "dbname=alfred" in out
+
+
+def test_redact_dsn_scrubs_uri_query_password() -> None:
+    # A password carried as a URI query parameter is scrubbed too.
+    out = _redact_dsn("postgresql://user@host:5432/db?sslmode=require&password=s3cret")
+    assert "s3cret" not in out
+    assert "password=***" in out
+
+
+def test_health_output_fully_redacts_quoted_password(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The finding is about health() output: with psycopg absent, health() reports
+    # ok=False and the REDACTED dsn, and the quoted secret must not appear anywhere.
+    monkeypatch.setattr(mod, "_psycopg", None)
+    provider = PgvectorProvider(dsn="host=db.local password='my secret pw' dbname=alfred")
+    report = provider.health()
+    assert report["ok"] is False
+    assert "my secret pw" not in report["dsn"]
+    assert "my secret pw" not in str(report)
+    assert "secret" not in str(report)
+    # URI-form password stays redacted in health() as well.
+    uri_provider = PgvectorProvider(dsn="postgresql://u:topsecret@h:5432/db")
+    assert "topsecret" not in uri_provider.health()["dsn"]
+
+
 # ---------------------------------------------------------------------------
 # Registration + arming: opt-in, never the default, never a hard dependency
 # ---------------------------------------------------------------------------
