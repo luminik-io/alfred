@@ -411,6 +411,7 @@ def test_deploy_removes_stale_managed_plists(tmp_path):
     assert "alfred.old.plist" in log
     assert "alfred.personal.plist" not in log
     assert "alfred.new.plist" in log
+    assert f"enable gui/{os.getuid()}/alfred.new" in log
 
 
 def test_deploy_copies_skills_registry_into_runtime(tmp_path):

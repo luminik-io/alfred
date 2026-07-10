@@ -798,6 +798,9 @@ if [ "$(uname -s)" = "Darwin" ]; then
     local label="$1"
     local plist="$2"
     local pid
+    # `launchctl disable` persists across bootout and plist replacement. A
+    # previously paused fleet therefore cannot be recovered by bootstrap alone.
+    launchctl enable "gui/$UID_VALUE/$label" >/dev/null 2>&1 || true
     pid="$(launchctl_pid_for_label "$label")"
     if [ -n "$pid" ] && [ "$pid" != "-" ] && [ "${ALFRED_DEPLOY_RESTART_RUNNING:-0}" != "1" ]; then
       echo "  - $label running pid $pid; installed but reload deferred"

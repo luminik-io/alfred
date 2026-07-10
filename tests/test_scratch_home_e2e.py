@@ -208,6 +208,8 @@ def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path)
     assert "removed stale" in deploy.stdout
     assert not stale_ams.exists()
     assert (runtime / "launchd" / "agents.conf").is_file()
+    scheduler_calls = scheduler_log.read_text(encoding="utf-8")
+    assert "enable gui/" in scheduler_calls or "enable --now" in scheduler_calls
 
     alfred = runtime / "bin" / "alfred"
     _run([str(alfred), "skills", "install", "--starter"], env=env)
