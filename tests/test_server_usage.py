@@ -188,6 +188,29 @@ def _codex_token_count(
     return {"timestamp": ts, "type": "event_msg", "payload": payload}
 
 
+def _codex_delta_token_count(
+    *,
+    ts: str,
+    total: int,
+    inp: int,
+    out: int,
+    rate_limits: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "type": "token_count",
+        "info": {
+            "last_token_usage": {
+                "input_tokens": inp,
+                "output_tokens": out,
+                "total_tokens": total,
+            }
+        },
+    }
+    if rate_limits is not None:
+        payload["rate_limits"] = rate_limits
+    return {"timestamp": ts, "type": "event_msg", "payload": payload}
+
+
 def _seed_codex(sessions_dir: Path) -> None:
     """Seed a Codex rollout spanning two days so the latest-day bucket and the
     all-time total are both exercised. ``total_token_usage`` is cumulative, as
@@ -555,6 +578,831 @@ def test_build_usage_codex_dedupes_subagent_replay(
     assert codex["latest_day"]["total_tokens"] == 7500
     assert codex["latest_day"]["input_tokens"] == 6000
     assert codex["latest_day"]["output_tokens"] == 1500
+
+
+def test_codex_session_summary_stops_at_prior_day_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The per-session summarizer must not read old prefixes of huge files."""
+
+    rows = [
+        _codex_token_count(
+            ts="2026-06-03T09:30:00.000Z",
+            last_total=2500,
+            last_input=2000,
+            last_output=500,
+            cum_total=8500,
+            cum_input=6800,
+            cum_output=1700,
+            rate_limits=_rate_limits(
+                primary_pct=22.5,
+                primary_reset="2026-06-03T14:00:00Z",
+                secondary_pct=41.0,
+                secondary_reset="2026-06-08T09:00:00Z",
+            ),
+        ),
+        _codex_token_count(
+            ts="2026-06-03T09:00:00.000Z",
+            last_total=5000,
+            last_input=4000,
+            last_output=1000,
+            cum_total=6000,
+            cum_input=4800,
+            cum_output=1200,
+        ),
+        _codex_token_count(
+            ts="2026-06-02T10:05:00.000Z",
+            last_total=1000,
+            last_input=800,
+            last_output=200,
+            cum_total=1000,
+            cum_input=800,
+            cum_output=200,
+        ),
+        _codex_token_count(
+            ts="2026-01-01T10:05:00.000Z",
+            last_total=999999,
+            last_input=999999,
+            last_output=0,
+            cum_total=999999,
+            cum_input=999999,
+            cum_output=0,
+        ),
+    ]
+    yielded: list[int] = []
+
+    def reverse_rows(_path: str):
+        for idx, row in enumerate(rows):
+            if idx == 3:
+                raise AssertionError("read past prior-day boundary")
+            yielded.append(idx)
+            yield row
+
+    monkeypatch.setattr(usage_module, "_iter_jsonl_reverse", reverse_rows)
+
+    summary = usage_module._codex_session_summary("ignored.jsonl")
+
+    assert yielded == [0, 1, 2]
+    assert summary["latest_date"].isoformat() == "2026-06-03"
+    assert summary["day_final"] == {"total": 8500, "input": 6800, "output": 1700}
+    assert summary["prior"] == {"total": 1000, "input": 800, "output": 200}
+
+
+def test_codex_session_summary_continues_past_boundary_for_quota(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Usage can stop at the boundary while quota scans to the older valid row."""
+
+    rows = [
+        _codex_token_count(
+            ts="2026-06-03T09:30:00.000Z",
+            last_total=2500,
+            last_input=2000,
+            last_output=500,
+            cum_total=8500,
+            cum_input=6800,
+            cum_output=1700,
+            rate_limits={"primary": None, "secondary": None},
+        ),
+        _codex_token_count(
+            ts="2026-06-02T23:55:00.000Z",
+            last_total=1000,
+            last_input=800,
+            last_output=200,
+            cum_total=6000,
+            cum_input=4800,
+            cum_output=1200,
+        ),
+        _codex_token_count(
+            ts="2026-06-02T23:30:00.000Z",
+            last_total=500,
+            last_input=400,
+            last_output=100,
+            cum_total=5500,
+            cum_input=4400,
+            cum_output=1100,
+            rate_limits=_rate_limits(
+                primary_pct=62.0,
+                primary_reset="2026-06-03T13:00:00Z",
+                secondary_pct=20.0,
+                secondary_reset="2026-06-08T09:00:00Z",
+                plan_type="team",
+            ),
+        ),
+        _codex_token_count(
+            ts="2026-01-01T10:05:00.000Z",
+            last_total=999999,
+            last_input=999999,
+            last_output=0,
+            cum_total=999999,
+            cum_input=999999,
+            cum_output=0,
+        ),
+    ]
+    yielded: list[int] = []
+
+    def reverse_rows(_path: str):
+        for idx, row in enumerate(rows):
+            if idx == 3:
+                raise AssertionError("read past quota discovery")
+            yielded.append(idx)
+            yield row
+
+    monkeypatch.setattr(usage_module, "_iter_jsonl_reverse", reverse_rows)
+
+    summary = usage_module._codex_session_summary("ignored.jsonl")
+
+    assert yielded == [0, 1, 2]
+    assert summary["day_final"] == {"total": 8500, "input": 6800, "output": 1700}
+    assert summary["prior"] == {"total": 6000, "input": 4800, "output": 1200}
+    quota = summary["quota"]
+    assert quota["primary"]["used_percent"] == 62.0
+    assert quota["secondary"]["used_percent"] == 20.0
+    assert quota["plan_type"] == "team"
+
+
+def test_codex_session_summary_keeps_later_quota_on_timestamp_tie(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reverse scans keep the later file row when quota timestamps tie."""
+
+    rows = [
+        _codex_token_count(
+            ts="2026-06-03T09:30:00.000Z",
+            last_total=2500,
+            last_input=2000,
+            last_output=500,
+            cum_total=8500,
+            cum_input=6800,
+            cum_output=1700,
+            rate_limits=_rate_limits(
+                primary_pct=62.0,
+                primary_reset="2026-06-03T14:00:00Z",
+                secondary_pct=20.0,
+                secondary_reset="2026-06-08T09:00:00Z",
+                plan_type="team",
+            ),
+        ),
+        _codex_token_count(
+            ts="2026-06-03T09:30:00.000Z",
+            last_total=1000,
+            last_input=800,
+            last_output=200,
+            cum_total=6000,
+            cum_input=4800,
+            cum_output=1200,
+            rate_limits=_rate_limits(
+                primary_pct=10.0,
+                primary_reset="2026-06-03T12:00:00Z",
+                secondary_pct=15.0,
+                secondary_reset="2026-06-07T09:00:00Z",
+                plan_type="pro",
+            ),
+        ),
+    ]
+
+    monkeypatch.setattr(usage_module, "_iter_jsonl_reverse", lambda _path: iter(rows))
+
+    summary = usage_module._codex_session_summary("ignored.jsonl")
+    quota = summary["quota"]
+
+    assert quota["primary"]["used_percent"] == 62.0
+    assert quota["secondary"]["used_percent"] == 20.0
+    assert quota["plan_type"] == "team"
+
+
+def test_codex_session_summary_preserves_prior_when_newer_day_seen_later(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replayed older tail row can still provide today's prior boundary."""
+
+    rows = [
+        _codex_token_count(
+            ts="2026-06-02T23:55:00.000Z",
+            last_total=1000,
+            last_input=800,
+            last_output=200,
+            cum_total=6000,
+            cum_input=4800,
+            cum_output=1200,
+        ),
+        _codex_token_count(
+            ts="2026-06-03T09:30:00.000Z",
+            last_total=2500,
+            last_input=2000,
+            last_output=500,
+            cum_total=8500,
+            cum_input=6800,
+            cum_output=1700,
+        ),
+    ]
+
+    monkeypatch.setattr(usage_module, "_iter_jsonl_reverse", lambda _path: iter(rows))
+
+    summary = usage_module._codex_session_summary("ignored.jsonl")
+
+    assert summary["latest_date"].isoformat() == "2026-06-03"
+    assert summary["day_final"] == {"total": 8500, "input": 6800, "output": 1700}
+    assert summary["prior"] == {"total": 6000, "input": 4800, "output": 1200}
+
+
+def test_codex_session_summary_continues_past_delta_boundary_for_prior(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A prior-day delta row must not hide an older cumulative boundary."""
+
+    rows = [
+        _codex_token_count(
+            ts="2026-06-03T09:30:00.000Z",
+            last_total=2500,
+            last_input=2000,
+            last_output=500,
+            cum_total=8500,
+            cum_input=6800,
+            cum_output=1700,
+            rate_limits=_rate_limits(
+                primary_pct=22.5,
+                primary_reset="2026-06-03T14:00:00Z",
+                secondary_pct=41.0,
+                secondary_reset="2026-06-08T09:00:00Z",
+            ),
+        ),
+        _codex_delta_token_count(
+            ts="2026-06-02T23:55:00.000Z",
+            total=250,
+            inp=200,
+            out=50,
+        ),
+        _codex_token_count(
+            ts="2026-06-02T23:30:00.000Z",
+            last_total=500,
+            last_input=400,
+            last_output=100,
+            cum_total=6000,
+            cum_input=4800,
+            cum_output=1200,
+        ),
+        _codex_token_count(
+            ts="2026-01-01T10:05:00.000Z",
+            last_total=999999,
+            last_input=999999,
+            last_output=0,
+            cum_total=999999,
+            cum_input=999999,
+            cum_output=0,
+        ),
+    ]
+    yielded: list[int] = []
+
+    def reverse_rows(_path: str):
+        for idx, row in enumerate(rows):
+            if idx == 3:
+                raise AssertionError("read past prior cumulative boundary")
+            yielded.append(idx)
+            yield row
+
+    monkeypatch.setattr(usage_module, "_iter_jsonl_reverse", reverse_rows)
+
+    summary = usage_module._codex_session_summary("ignored.jsonl")
+
+    assert yielded == [0, 1, 2]
+    assert summary["day_final"] == {"total": 8500, "input": 6800, "output": 1700}
+    assert summary["prior"] == {"total": 6000, "input": 4800, "output": 1200}
+
+
+def test_codex_session_summary_bounds_prior_boundary_search(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The older cumulative boundary search stays bounded through old objects."""
+
+    rows = [
+        _codex_token_count(
+            ts="2026-06-03T09:30:00.000Z",
+            last_total=2500,
+            last_input=2000,
+            last_output=500,
+            cum_total=8500,
+            cum_input=6800,
+            cum_output=1700,
+            rate_limits=_rate_limits(
+                primary_pct=22.5,
+                primary_reset="2026-06-03T14:00:00Z",
+                secondary_pct=41.0,
+                secondary_reset="2026-06-08T09:00:00Z",
+            ),
+        ),
+        _codex_delta_token_count(
+            ts="2026-06-02T23:55:00.000Z",
+            total=250,
+            inp=200,
+            out=50,
+        ),
+        {"type": "session_meta", "timestamp": "2026-06-02T23:54:00.000Z"},
+        {
+            "type": "event_msg",
+            "timestamp": "2026-06-02T23:53:00.000Z",
+            "payload": {"type": "agent_reasoning", "text": "older output"},
+        },
+        _codex_token_count(
+            ts="2026-06-02T23:30:00.000Z",
+            last_total=500,
+            last_input=400,
+            last_output=100,
+            cum_total=6000,
+            cum_input=4800,
+            cum_output=1200,
+        ),
+    ]
+    yielded: list[int] = []
+
+    def reverse_rows(_path: str):
+        for idx, row in enumerate(rows):
+            if idx == 4:
+                raise AssertionError("read past prior boundary cap")
+            yielded.append(idx)
+            yield row
+
+    monkeypatch.setattr(usage_module, "_MAX_CODEX_PRIOR_BOUNDARY_BACKSCAN_OBJECTS", 2)
+    monkeypatch.setattr(usage_module, "_iter_jsonl_reverse", reverse_rows)
+
+    summary = usage_module._codex_session_summary("ignored.jsonl")
+
+    assert yielded == [0, 1, 2, 3]
+    assert summary["usage_truncated"] is True
+    assert summary["day_final"] is None
+    assert summary["prior"] == {"total": 0, "input": 0, "output": 0}
+    assert summary["delta_total"] == {"total": 0, "input": 0, "output": 0}
+
+
+def test_codex_session_summary_delta_only_stops_after_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Delta-only sessions stop usage scanning at the first older-day event."""
+
+    def delta_only(
+        ts: str, total: int, inp: int, out: int, rate_limits: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "type": "token_count",
+            "info": {
+                "last_token_usage": {
+                    "input_tokens": inp,
+                    "output_tokens": out,
+                    "total_tokens": total,
+                }
+            },
+        }
+        if rate_limits is not None:
+            payload["rate_limits"] = rate_limits
+        return {"timestamp": ts, "type": "event_msg", "payload": payload}
+
+    rows = [
+        delta_only(
+            "2026-06-03T00:10:00.000Z",
+            1500,
+            1000,
+            500,
+            rate_limits=_rate_limits(
+                primary_pct=10.0,
+                primary_reset="2026-06-03T13:00:00Z",
+                secondary_pct=20.0,
+                secondary_reset="2026-06-08T09:00:00Z",
+            ),
+        ),
+        delta_only("2026-06-02T23:50:00.000Z", 4000, 3000, 1000),
+        delta_only("2026-01-01T10:05:00.000Z", 999999, 999999, 0),
+    ]
+    yielded: list[int] = []
+
+    def reverse_rows(_path: str):
+        for idx, row in enumerate(rows):
+            if idx == 2:
+                raise AssertionError("read past delta-only boundary")
+            yielded.append(idx)
+            yield row
+
+    monkeypatch.setattr(usage_module, "_iter_jsonl_reverse", reverse_rows)
+
+    summary = usage_module._codex_session_summary("ignored.jsonl")
+
+    assert yielded == [0, 1]
+    assert summary["day_final"] is None
+    assert summary["delta_total"] == {"total": 1500, "input": 1000, "output": 500}
+
+
+def test_codex_session_summary_quota_backscan_counts_non_token_objects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The quota lookback is bounded even through old non-token JSON events."""
+
+    rows = [
+        _codex_token_count(
+            ts="2026-06-03T09:30:00.000Z",
+            last_total=2500,
+            last_input=2000,
+            last_output=500,
+            cum_total=8500,
+            cum_input=6800,
+            cum_output=1700,
+        ),
+        _codex_token_count(
+            ts="2026-06-02T23:55:00.000Z",
+            last_total=1000,
+            last_input=800,
+            last_output=200,
+            cum_total=6000,
+            cum_input=4800,
+            cum_output=1200,
+        ),
+        {"type": "session_meta", "timestamp": "2026-06-02T23:54:00.000Z"},
+        {
+            "type": "event_msg",
+            "timestamp": "2026-06-02T23:53:00.000Z",
+            "payload": {"type": "agent_reasoning", "text": "older output"},
+        },
+        _codex_token_count(
+            ts="2026-06-02T23:30:00.000Z",
+            last_total=500,
+            last_input=400,
+            last_output=100,
+            cum_total=5500,
+            cum_input=4400,
+            cum_output=1100,
+            rate_limits=_rate_limits(
+                primary_pct=62.0,
+                primary_reset="2026-06-03T13:00:00Z",
+                secondary_pct=20.0,
+                secondary_reset="2026-06-08T09:00:00Z",
+            ),
+        ),
+    ]
+    yielded: list[int] = []
+
+    def reverse_rows(_path: str):
+        for idx, row in enumerate(rows):
+            if idx == 4:
+                raise AssertionError("read past quota object cap")
+            yielded.append(idx)
+            yield row
+
+    monkeypatch.setattr(usage_module, "_MAX_CODEX_QUOTA_BACKSCAN_OBJECTS", 2)
+    monkeypatch.setattr(usage_module, "_iter_jsonl_reverse", reverse_rows)
+
+    summary = usage_module._codex_session_summary("ignored.jsonl")
+
+    assert yielded == [0, 1, 2, 3]
+    assert summary["quota"]["primary"] is None
+
+
+def test_codex_session_summary_delta_boundary_counts_non_token_objects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Older non-token rows start the bounded quota lookback for delta sessions."""
+
+    rows = [
+        _codex_delta_token_count(
+            ts="2026-06-03T09:30:00.000Z",
+            total=1500,
+            inp=1000,
+            out=500,
+        ),
+        {"type": "session_meta", "timestamp": "2026-06-02T23:59:00.000Z"},
+        {
+            "type": "event_msg",
+            "timestamp": "2026-06-02T23:58:00.000Z",
+            "payload": {"type": "agent_reasoning", "text": "older output"},
+        },
+        {
+            "type": "event_msg",
+            "timestamp": "2026-06-02T23:57:00.000Z",
+            "payload": {"type": "agent_reasoning", "text": "older output"},
+        },
+        _codex_token_count(
+            ts="2026-06-02T23:30:00.000Z",
+            last_total=500,
+            last_input=400,
+            last_output=100,
+            cum_total=6000,
+            cum_input=4800,
+            cum_output=1200,
+        ),
+    ]
+    yielded: list[int] = []
+
+    def reverse_rows(_path: str):
+        for idx, row in enumerate(rows):
+            if idx == 4:
+                raise AssertionError("read past delta boundary cap")
+            yielded.append(idx)
+            yield row
+
+    monkeypatch.setattr(usage_module, "_MAX_CODEX_QUOTA_BACKSCAN_OBJECTS", 2)
+    monkeypatch.setattr(usage_module, "_iter_jsonl_reverse", reverse_rows)
+
+    summary = usage_module._codex_session_summary("ignored.jsonl")
+
+    assert yielded == [0, 1, 2, 3]
+    assert summary["day_final"] is None
+    assert summary["delta_total"] == {"total": 1500, "input": 1000, "output": 500}
+
+
+def test_codex_session_summary_bounds_initial_non_token_suffix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A live non-token suffix before the latest token row is bounded."""
+
+    rows = [
+        {
+            "type": "event_msg",
+            "timestamp": "2026-06-03T09:32:00.000Z",
+            "payload": {"type": "agent_reasoning", "text": "streaming output"},
+        },
+        {"type": "session_meta", "timestamp": "2026-06-03T09:31:00.000Z"},
+        _codex_token_count(
+            ts="2026-06-03T09:30:00.000Z",
+            last_total=2500,
+            last_input=2000,
+            last_output=500,
+            cum_total=8500,
+            cum_input=6800,
+            cum_output=1700,
+        ),
+    ]
+    yielded: list[int] = []
+
+    def reverse_rows(_path: str):
+        for idx, row in enumerate(rows):
+            if idx == 2:
+                raise AssertionError("read past initial suffix cap")
+            yielded.append(idx)
+            yield row
+
+    monkeypatch.setattr(usage_module, "_MAX_CODEX_INITIAL_BACKSCAN_OBJECTS", 2)
+    monkeypatch.setattr(usage_module, "_iter_jsonl_reverse", reverse_rows)
+
+    summary = usage_module._codex_session_summary("ignored.jsonl")
+
+    assert yielded == [0, 1]
+    assert summary["latest_date"] is None
+    assert summary["day_final"] is None
+
+
+def test_codex_session_summary_bounds_same_day_sessions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A same-day-only Codex file does not force a full reverse scan."""
+
+    rows = [
+        _codex_token_count(
+            ts="2026-06-03T09:30:00.000Z",
+            last_total=2500,
+            last_input=2000,
+            last_output=500,
+            cum_total=8500,
+            cum_input=6800,
+            cum_output=1700,
+            rate_limits=_rate_limits(
+                primary_pct=22.5,
+                primary_reset="2026-06-03T14:00:00Z",
+                secondary_pct=41.0,
+                secondary_reset="2026-06-08T09:00:00Z",
+            ),
+        ),
+        {"type": "session_meta", "timestamp": "2026-06-03T09:29:00.000Z"},
+        {
+            "type": "event_msg",
+            "timestamp": "2026-06-03T09:28:00.000Z",
+            "payload": {"type": "agent_reasoning", "text": "same-day output"},
+        },
+        _codex_token_count(
+            ts="2026-06-03T09:27:00.000Z",
+            last_total=500,
+            last_input=400,
+            last_output=100,
+            cum_total=6000,
+            cum_input=4800,
+            cum_output=1200,
+        ),
+    ]
+    yielded: list[int] = []
+
+    def reverse_rows(_path: str):
+        for idx, row in enumerate(rows):
+            if idx == 3:
+                raise AssertionError("read past same-day cap")
+            yielded.append(idx)
+            yield row
+
+    monkeypatch.setattr(
+        usage_module,
+        "_jsonl_oldest_date",
+        lambda _path: datetime(2026, 6, 3, tzinfo=UTC).date(),
+    )
+    monkeypatch.setattr(usage_module, "_MAX_CODEX_SAME_DAY_BACKSCAN_OBJECTS", 2)
+    monkeypatch.setattr(usage_module, "_iter_jsonl_reverse", reverse_rows)
+
+    summary = usage_module._codex_session_summary("ignored.jsonl")
+
+    assert yielded == [0, 1, 2]
+    assert summary["day_final"] == {"total": 8500, "input": 6800, "output": 1700}
+
+
+def test_codex_session_summary_drops_cumulative_when_same_day_cap_hides_prior(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A capped cross-day session must not treat unknown prior usage as zero."""
+
+    rows = [
+        _codex_token_count(
+            ts="2026-06-03T09:30:00.000Z",
+            last_total=2500,
+            last_input=2000,
+            last_output=500,
+            cum_total=8500,
+            cum_input=6800,
+            cum_output=1700,
+            rate_limits=_rate_limits(
+                primary_pct=22.5,
+                primary_reset="2026-06-03T14:00:00Z",
+                secondary_pct=41.0,
+                secondary_reset="2026-06-08T09:00:00Z",
+            ),
+        ),
+        {"type": "session_meta", "timestamp": "2026-06-03T09:29:00.000Z"},
+        {
+            "type": "event_msg",
+            "timestamp": "2026-06-03T09:28:00.000Z",
+            "payload": {"type": "agent_reasoning", "text": "same-day output"},
+        },
+        _codex_token_count(
+            ts="2026-06-02T23:55:00.000Z",
+            last_total=500,
+            last_input=400,
+            last_output=100,
+            cum_total=6000,
+            cum_input=4800,
+            cum_output=1200,
+        ),
+    ]
+    yielded: list[int] = []
+
+    def reverse_rows(_path: str):
+        for idx, row in enumerate(rows):
+            if idx == 3:
+                raise AssertionError("read past same-day cap")
+            yielded.append(idx)
+            yield row
+
+    monkeypatch.setattr(
+        usage_module,
+        "_jsonl_oldest_date",
+        lambda _path: datetime(2026, 6, 2, tzinfo=UTC).date(),
+    )
+    monkeypatch.setattr(usage_module, "_MAX_CODEX_SAME_DAY_BACKSCAN_OBJECTS", 2)
+    monkeypatch.setattr(usage_module, "_iter_jsonl_reverse", reverse_rows)
+
+    summary = usage_module._codex_session_summary("ignored.jsonl")
+
+    assert yielded == [0, 1, 2]
+    assert summary["usage_truncated"] is True
+    assert summary["day_final"] is None
+    assert summary["delta_total"] == {"total": 0, "input": 0, "output": 0}
+
+
+def test_codex_session_summary_marks_truncated_when_oldest_date_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unknown oldest date is reported as truncated instead of guessed."""
+
+    rows = [
+        _codex_token_count(
+            ts="2026-06-03T09:30:00.000Z",
+            last_total=2500,
+            last_input=2000,
+            last_output=500,
+            cum_total=8500,
+            cum_input=6800,
+            cum_output=1700,
+            rate_limits=_rate_limits(
+                primary_pct=22.5,
+                primary_reset="2026-06-03T14:00:00Z",
+                secondary_pct=41.0,
+                secondary_reset="2026-06-08T09:00:00Z",
+            ),
+        ),
+        {"type": "session_meta", "timestamp": "2026-06-03T09:29:00.000Z"},
+        {
+            "type": "event_msg",
+            "timestamp": "2026-06-03T09:28:00.000Z",
+            "payload": {"type": "agent_reasoning", "text": "same-day output"},
+        },
+        _codex_token_count(
+            ts="2026-06-03T09:27:00.000Z",
+            last_total=500,
+            last_input=400,
+            last_output=100,
+            cum_total=6000,
+            cum_input=4800,
+            cum_output=1200,
+        ),
+    ]
+    yielded: list[int] = []
+
+    def reverse_rows(_path: str):
+        for idx, row in enumerate(rows):
+            if idx == 3:
+                raise AssertionError("read past same-day cap")
+            yielded.append(idx)
+            yield row
+
+    monkeypatch.setattr(usage_module, "_jsonl_oldest_date", lambda _path: None)
+    monkeypatch.setattr(usage_module, "_MAX_CODEX_SAME_DAY_BACKSCAN_OBJECTS", 2)
+    monkeypatch.setattr(usage_module, "_iter_jsonl_reverse", reverse_rows)
+
+    summary = usage_module._codex_session_summary("ignored.jsonl")
+
+    assert yielded == [0, 1, 2]
+    assert summary["usage_truncated"] is True
+    assert summary["day_final"] is None
+    assert summary["delta_total"] == {"total": 0, "input": 0, "output": 0}
+
+
+def test_build_codex_reports_all_truncated_latest_day_as_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Unsafe truncated sessions surface null totals instead of zero tokens."""
+
+    session = tmp_path / "rollout.jsonl"
+    session.write_text("{}", encoding="utf-8")
+    latest = datetime(2026, 6, 3, tzinfo=UTC).date()
+
+    monkeypatch.setattr(usage_module, "_codex_session_dirs", lambda: [str(tmp_path)])
+    monkeypatch.setattr(
+        usage_module,
+        "_codex_session_summary",
+        lambda _path: {
+            "latest_date": latest,
+            "prior": {"total": 0, "input": 0, "output": 0},
+            "day_final": None,
+            "delta_total": {"total": 0, "input": 0, "output": 0},
+            "quota": {},
+            "usage_truncated": True,
+        },
+    )
+
+    codex = usage_module._build_codex()
+
+    assert codex is not None
+    assert codex["latest_day"]["date"] == "2026-06-03"
+    assert codex["latest_day"]["total_tokens"] is None
+    assert codex["latest_day"]["input_tokens"] is None
+    assert codex["latest_day"]["output_tokens"] is None
+    assert codex["latest_day"]["truncated"] is True
+
+
+def test_build_codex_reports_mixed_truncated_latest_day_as_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """One truncated latest-day session makes the aggregate inexact."""
+
+    counted = tmp_path / "counted.jsonl"
+    truncated = tmp_path / "truncated.jsonl"
+    counted.write_text("{}", encoding="utf-8")
+    truncated.write_text("{}", encoding="utf-8")
+    latest = datetime(2026, 6, 3, tzinfo=UTC).date()
+
+    def summary(path: str) -> dict[str, Any]:
+        if path.endswith("truncated.jsonl"):
+            return {
+                "latest_date": latest,
+                "prior": {"total": 0, "input": 0, "output": 0},
+                "day_final": None,
+                "delta_total": {"total": 0, "input": 0, "output": 0},
+                "quota": {},
+                "usage_truncated": True,
+            }
+        return {
+            "latest_date": latest,
+            "prior": {"total": 1000, "input": 800, "output": 200},
+            "day_final": {"total": 8500, "input": 6800, "output": 1700},
+            "delta_total": {"total": 0, "input": 0, "output": 0},
+            "quota": {},
+            "usage_truncated": False,
+        }
+
+    monkeypatch.setattr(usage_module, "_codex_session_dirs", lambda: [str(tmp_path)])
+    monkeypatch.setattr(usage_module, "_codex_session_summary", summary)
+
+    codex = usage_module._build_codex()
+
+    assert codex is not None
+    assert codex["latest_day"]["date"] == "2026-06-03"
+    assert codex["latest_day"]["total_tokens"] is None
+    assert codex["latest_day"]["input_tokens"] is None
+    assert codex["latest_day"]["output_tokens"] is None
+    assert codex["latest_day"]["truncated"] is True
 
 
 def test_build_usage_codex_delta_only_session_resets_on_day_rollover(

@@ -64,7 +64,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Iterable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from glob import iglob
 from typing import Any
 
@@ -89,6 +89,19 @@ _SYNTHETIC_MODELS = frozenset({"<synthetic>"})
 # latest UTC day is complete; the UI does not need all-time totals.
 _MAX_CLAUDE_FILES = 400
 _MAX_CODEX_FILES = 200
+# Once latest-day usage is complete, look a little farther back for the last
+# non-null Codex quota payload. Count every parsed JSON object after the boundary
+# so a huge prefix of non-token events cannot make the endpoint slow again.
+_MAX_CODEX_QUOTA_BACKSCAN_OBJECTS = 2048
+# If a cumulative latest-day session crosses into older delta-only rows, keep
+# looking briefly for the older cumulative boundary before falling back to zero.
+_MAX_CODEX_PRIOR_BOUNDARY_BACKSCAN_OBJECTS = 2048
+# Same-day sessions may have no older boundary at all. Once the latest day is
+# known, cap that pre-boundary search so one huge live file cannot dominate.
+_MAX_CODEX_SAME_DAY_BACKSCAN_OBJECTS = 4096
+# A live Codex file can end with a long suffix of non-token streaming events
+# before the next token_count arrives. Bound that suffix before latest_date exists.
+_MAX_CODEX_INITIAL_BACKSCAN_OBJECTS = 4096
 
 
 def _claude_projects_dir() -> str:
@@ -913,11 +926,7 @@ def _build_codex() -> dict[str, Any] | None:
     is the operator's current Codex headroom.
     """
     latest_date = None
-    # Per-session latest-day token contribution, keyed by session file path so a
-    # replayed delta in one file cannot inflate another. Each entry stores the
-    # cumulative total/input/output at the prior-day boundary and on the latest
-    # day's final event.
-    sessions: dict[str, dict[str, Any]] = {}
+    sessions: list[dict[str, Any]] = []
     # Newest non-null rate_limits windows, tracked independently so a later
     # payload that reports a null window (Codex emits these between billing
     # windows) cannot wipe an earlier valid one.
@@ -934,109 +943,47 @@ def _build_codex() -> dict[str, Any] | None:
         for path in _recent_files(os.path.join(root, "**", "*.jsonl"), limit=_MAX_CODEX_FILES):
             if latest_date is not None and _safe_mtime(path) < _utc_midnight_ts(latest_date):
                 break
-            for obj in _iter_jsonl(path):
-                if obj.get("type") != "event_msg":
-                    continue
-                payload = obj.get("payload")
-                if not isinstance(payload, dict) or payload.get("type") != "token_count":
-                    continue
-                ts = _parse_iso(obj.get("timestamp"))
-                if ts is None:
-                    continue
+            summary = _codex_session_summary(path)
+            quota = summary.get("quota") or {}
+            prim = quota.get("primary")
+            prim_ts = quota.get("primary_ts")
+            if isinstance(prim_ts, datetime) and (primary_ts is None or prim_ts >= primary_ts):
+                primary_ts = prim_ts
+                primary_raw = prim
+            sec = quota.get("secondary")
+            sec_ts = quota.get("secondary_ts")
+            if isinstance(sec_ts, datetime) and (secondary_ts is None or sec_ts >= secondary_ts):
+                secondary_ts = sec_ts
+                secondary_raw = sec
+            plan = quota.get("plan_type")
+            plan_seen_at = quota.get("plan_ts")
+            if (
+                isinstance(plan, str)
+                and plan.strip()
+                and isinstance(plan_seen_at, datetime)
+                and (plan_ts is None or plan_seen_at >= plan_ts)
+            ):
+                plan_ts = plan_seen_at
+                plan_type = plan.strip()
 
-                rate_limits = payload.get("rate_limits")
-                if isinstance(rate_limits, dict):
-                    prim = rate_limits.get("primary")
-                    if _codex_quota_window(prim) is not None and (
-                        primary_ts is None or ts >= primary_ts
-                    ):
-                        primary_ts = ts
-                        primary_raw = prim
-                    sec = rate_limits.get("secondary")
-                    if _codex_quota_window(sec) is not None and (
-                        secondary_ts is None or ts >= secondary_ts
-                    ):
-                        secondary_ts = ts
-                        secondary_raw = sec
-                    plan = rate_limits.get("plan_type")
-                    if (
-                        isinstance(plan, str)
-                        and plan.strip()
-                        and (plan_ts is None or ts >= plan_ts)
-                    ):
-                        plan_ts = ts
-                        plan_type = plan.strip()
-
-                info = payload.get("info")
-                if not isinstance(info, dict):
-                    continue
-                cumulative = info.get("total_token_usage")
-                last = info.get("last_token_usage")
-                # Prefer the cumulative session total to dodge the replay
-                # over-count. Fall back to the per-turn delta only when a session
-                # omits the cumulative block.
-                if isinstance(cumulative, dict):
-                    total = _int(cumulative.get("total_tokens"))
-                    inp = _int(cumulative.get("input_tokens"))
-                    outp = _int(cumulative.get("output_tokens"))
-                    is_cumulative = True
-                elif isinstance(last, dict):
-                    total = _int(last.get("total_tokens"))
-                    inp = _int(last.get("input_tokens"))
-                    outp = _int(last.get("output_tokens"))
-                    is_cumulative = False
-                else:
-                    continue
-                if total == 0 and inp == 0 and outp == 0:
-                    continue
-
-                event_date = ts.date()
-                if latest_date is None or event_date > latest_date:
-                    latest_date = event_date
-                    # A newer day rolls every session's latest-day accounting
-                    # forward: the old day's final cumulative total becomes the
-                    # prior-day boundary for the new latest day.
-                    for entry in sessions.values():
-                        day_final = entry.get("day_final")
-                        if isinstance(day_final, dict):
-                            entry["prior"] = dict(day_final)
-                        entry["day_final"] = None
-                        # Delta-only sessions have no cumulative boundary, so
-                        # their old-day deltas must be dropped here or a
-                        # session spanning midnight double-counts yesterday
-                        # inside today's bucket.
-                        entry["delta_total"] = {"total": 0, "input": 0, "output": 0}
-
-                entry = sessions.setdefault(
-                    path,
-                    {
-                        "prior": {"total": 0, "input": 0, "output": 0},
-                        "day_final": None,
-                        "delta_total": {"total": 0, "input": 0, "output": 0},
-                    },
-                )
-                if is_cumulative:
-                    if event_date < latest_date:
-                        entry["prior"] = {"total": total, "input": inp, "output": outp}
-                    elif event_date == latest_date:
-                        entry["day_final"] = {
-                            "total": total,
-                            "input": inp,
-                            "output": outp,
-                        }
-                else:
-                    # Delta fallback: only count events on the latest day.
-                    if event_date == latest_date:
-                        d = entry["delta_total"]
-                        d["total"] += total
-                        d["input"] += inp
-                        d["output"] += outp
+            session_date = summary.get("latest_date")
+            if session_date is None:
+                continue
+            sessions.append(summary)
+            if latest_date is None or session_date > latest_date:
+                latest_date = session_date
 
     if latest_date is None:
         return None
 
     bucket = {"total": 0, "input": 0, "output": 0}
-    for entry in sessions.values():
+    truncated_latest_sessions = 0
+    for entry in sessions:
+        if entry.get("latest_date") != latest_date:
+            continue
+        if entry.get("usage_truncated"):
+            truncated_latest_sessions += 1
+            continue
         day_final = entry.get("day_final")
         if isinstance(day_final, dict):
             prior = entry.get("prior") or {"total": 0, "input": 0, "output": 0}
@@ -1047,14 +994,25 @@ def _build_codex() -> dict[str, Any] | None:
             for key in ("total", "input", "output"):
                 bucket[key] += _int(d.get(key))
 
-    latest_day = {
-        "date": latest_date.isoformat(),
-        "total_tokens": bucket["total"],
-        # No meaningful dollar cost (Codex subscription).
-        "cost_usd": None,
-        "input_tokens": bucket["input"],
-        "output_tokens": bucket["output"],
-    }
+    if truncated_latest_sessions > 0:
+        latest_day = {
+            "date": latest_date.isoformat(),
+            "total_tokens": None,
+            "cost_usd": None,
+            "input_tokens": None,
+            "output_tokens": None,
+            "truncated": True,
+        }
+    else:
+        latest_day = {
+            "date": latest_date.isoformat(),
+            "total_tokens": bucket["total"],
+            # No meaningful dollar cost (Codex subscription).
+            "cost_usd": None,
+            "input_tokens": bucket["input"],
+            "output_tokens": bucket["output"],
+            "truncated": truncated_latest_sessions > 0,
+        }
     totals = {"total_tokens": None, "cost_usd": None}
     out: dict[str, Any] = {"latest_day": latest_day, "totals": totals}
     quota_raw: dict[str, Any] | None = None
@@ -1068,6 +1026,217 @@ def _build_codex() -> dict[str, Any] | None:
     if quota is not None:
         out["quota"] = quota
     return out
+
+
+def _codex_session_summary(path: str) -> dict[str, Any]:
+    """Summarize one Codex session by scanning from the tail backward.
+
+    Large, long-lived Codex sessions can grow into multi-gigabyte JSONL files.
+    The dashboard only needs the latest UTC day's contribution plus the newest
+    quota payload, so reading from the end lets us stop once we have the latest
+    day final cumulative total and the prior-day boundary.
+    """
+
+    latest_date = None
+    oldest_date = _jsonl_oldest_date(path)
+    prior = {"total": 0, "input": 0, "output": 0}
+    day_final: dict[str, int] | None = None
+    delta_total = {"total": 0, "input": 0, "output": 0}
+    primary_ts: datetime | None = None
+    secondary_ts: datetime | None = None
+    plan_ts: datetime | None = None
+    primary_raw: dict[str, Any] | None = None
+    secondary_raw: dict[str, Any] | None = None
+    plan_type: str | None = None
+    usage_done = False
+    usage_truncated = False
+    prior_boundary_seen = False
+    prior_boundary_backscan_objects = 0
+    same_day_backscan_objects = 0
+    initial_backscan_objects = 0
+    quota_backscan_objects = 0
+
+    def mark_usage_truncated() -> None:
+        nonlocal day_final, delta_total, usage_truncated
+        usage_truncated = True
+        day_final = None
+        delta_total = {"total": 0, "input": 0, "output": 0}
+
+    def quota_complete() -> bool:
+        return primary_raw is not None and secondary_raw is not None and plan_type is not None
+
+    def initial_cap_reached() -> bool:
+        nonlocal initial_backscan_objects
+        if latest_date is not None:
+            return False
+        initial_backscan_objects += 1
+        return initial_backscan_objects >= _MAX_CODEX_INITIAL_BACKSCAN_OBJECTS
+
+    for obj in _iter_jsonl_reverse(path):
+        ts = _parse_iso(obj.get("timestamp"))
+        if usage_done:
+            if quota_complete():
+                break
+            quota_backscan_objects += 1
+            if quota_backscan_objects >= _MAX_CODEX_QUOTA_BACKSCAN_OBJECTS:
+                break
+        elif prior_boundary_seen:
+            prior_boundary_backscan_objects += 1
+            if prior_boundary_backscan_objects >= _MAX_CODEX_PRIOR_BOUNDARY_BACKSCAN_OBJECTS:
+                mark_usage_truncated()
+                usage_done = True
+                if quota_complete():
+                    break
+
+        if (
+            not usage_done
+            and not prior_boundary_seen
+            and latest_date is not None
+            and ts is not None
+            and ts.date() < latest_date
+        ):
+            if day_final is None:
+                usage_done = True
+                if quota_complete():
+                    break
+            else:
+                prior_boundary_seen = True
+
+        if not usage_done and not prior_boundary_seen and latest_date is not None:
+            same_day_backscan_objects += 1
+            if same_day_backscan_objects >= _MAX_CODEX_SAME_DAY_BACKSCAN_OBJECTS:
+                if day_final is None or oldest_date != latest_date:
+                    mark_usage_truncated()
+                usage_done = True
+                if quota_complete():
+                    break
+
+        if obj.get("type") != "event_msg":
+            if initial_cap_reached():
+                break
+            continue
+        payload = obj.get("payload")
+        if not isinstance(payload, dict) or payload.get("type") != "token_count":
+            if initial_cap_reached():
+                break
+            continue
+        if ts is None:
+            if initial_cap_reached():
+                break
+            continue
+
+        rate_limits = payload.get("rate_limits")
+        if isinstance(rate_limits, dict):
+            prim = rate_limits.get("primary")
+            if _codex_quota_window(prim) is not None and (primary_ts is None or ts > primary_ts):
+                primary_ts = ts
+                primary_raw = prim
+            sec = rate_limits.get("secondary")
+            if _codex_quota_window(sec) is not None and (secondary_ts is None or ts > secondary_ts):
+                secondary_ts = ts
+                secondary_raw = sec
+            plan = rate_limits.get("plan_type")
+            if isinstance(plan, str) and plan.strip() and (plan_ts is None or ts > plan_ts):
+                plan_ts = ts
+                plan_type = plan.strip()
+
+        if usage_done:
+            if quota_complete():
+                break
+            continue
+
+        usage = _codex_usage_totals(payload)
+        if usage is None:
+            if initial_cap_reached():
+                break
+            continue
+        event_date = ts.date()
+        if latest_date is None:
+            latest_date = event_date
+        if event_date > latest_date:
+            prior = (
+                {
+                    "total": day_final["total"],
+                    "input": day_final["input"],
+                    "output": day_final["output"],
+                }
+                if isinstance(day_final, dict)
+                else {"total": 0, "input": 0, "output": 0}
+            )
+            latest_date = event_date
+            day_final = None
+            delta_total = {"total": 0, "input": 0, "output": 0}
+            same_day_backscan_objects = 0
+        if event_date == latest_date:
+            if usage["is_cumulative"]:
+                if day_final is None:
+                    day_final = {
+                        "total": usage["total"],
+                        "input": usage["input"],
+                        "output": usage["output"],
+                    }
+            else:
+                delta_total["total"] += usage["total"]
+                delta_total["input"] += usage["input"]
+                delta_total["output"] += usage["output"]
+        elif event_date < latest_date:
+            if usage["is_cumulative"]:
+                prior = {
+                    "total": usage["total"],
+                    "input": usage["input"],
+                    "output": usage["output"],
+                }
+                usage_done = True
+            elif day_final is None:
+                usage_done = True
+            else:
+                prior_boundary_seen = True
+            if usage_done and quota_complete():
+                break
+
+    return {
+        "latest_date": latest_date,
+        "prior": prior,
+        "day_final": day_final,
+        "delta_total": delta_total,
+        "quota": {
+            "primary": primary_raw,
+            "primary_ts": primary_ts,
+            "secondary": secondary_raw,
+            "secondary_ts": secondary_ts,
+            "plan_type": plan_type,
+            "plan_ts": plan_ts,
+        },
+        "usage_truncated": usage_truncated,
+    }
+
+
+def _codex_usage_totals(payload: dict[str, Any]) -> dict[str, Any] | None:
+    info = payload.get("info")
+    if not isinstance(info, dict):
+        return None
+    cumulative = info.get("total_token_usage")
+    last = info.get("last_token_usage")
+    if isinstance(cumulative, dict):
+        total = _int(cumulative.get("total_tokens"))
+        inp = _int(cumulative.get("input_tokens"))
+        outp = _int(cumulative.get("output_tokens"))
+        is_cumulative = True
+    elif isinstance(last, dict):
+        total = _int(last.get("total_tokens"))
+        inp = _int(last.get("input_tokens"))
+        outp = _int(last.get("output_tokens"))
+        is_cumulative = False
+    else:
+        return None
+    if total == 0 and inp == 0 and outp == 0:
+        return None
+    return {
+        "total": total,
+        "input": inp,
+        "output": outp,
+        "is_cumulative": is_cumulative,
+    }
 
 
 def _codex_quota(rate_limits: Any) -> dict[str, Any] | None:
@@ -1173,6 +1342,71 @@ def _iter_jsonl(path: str) -> Iterable[dict[str, Any]]:
                 if isinstance(obj, dict):
                     yield obj
     except (OSError, UnicodeError):
+        return
+
+
+def _jsonl_oldest_date(path: str, *, max_lines: int = 256) -> date | None:
+    """Return the first valid timestamp date without scanning a whole JSONL file."""
+
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for idx, line in enumerate(fh):
+                if idx >= max_lines:
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                if not isinstance(obj, dict):
+                    continue
+                ts = _parse_iso(obj.get("timestamp"))
+                if ts is not None:
+                    return ts.date()
+    except (OSError, UnicodeError):
+        return None
+    return None
+
+
+def _iter_jsonl_reverse(path: str, *, chunk_size: int = 1024 * 1024) -> Iterable[dict[str, Any]]:
+    """Yield parsed JSONL objects from newest line to oldest.
+
+    Used for Codex usage, where one resumed session file can be several GB but
+    the latest cumulative token counters sit near the tail. Malformed lines are
+    skipped, matching :func:`_iter_jsonl`.
+    """
+
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            position = fh.tell()
+            carry = b""
+            while position > 0:
+                read_size = min(chunk_size, position)
+                position -= read_size
+                fh.seek(position)
+                block = fh.read(read_size) + carry
+                lines = block.split(b"\n")
+                carry = lines[0]
+                for raw in reversed(lines[1:]):
+                    if not raw.strip():
+                        continue
+                    try:
+                        obj = json.loads(raw)
+                    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+                        continue
+                    if isinstance(obj, dict):
+                        yield obj
+            if carry.strip():
+                try:
+                    obj = json.loads(carry)
+                except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+                    return
+                if isinstance(obj, dict):
+                    yield obj
+    except OSError:
         return
 
 
