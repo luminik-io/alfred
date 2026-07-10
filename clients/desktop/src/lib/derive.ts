@@ -91,14 +91,12 @@ export function buildNeedsYou(snapshot: Snapshot | null): AttentionItem[] {
     );
     items.push({
       id: "memory-review",
-      label: "Review queue",
-      title: `${plural(candidates.length, "memory candidate")} ready`,
+      label: "Memory",
+      title: `${plural(candidates.length, "new lesson")} learned`,
       detail: repos.length
-        ? `Review before promotion: ${repos.slice(0, 3).join(", ")}${repos.length > 3 ? ", ..." : ""}.`
-        : "Review candidates before they enter recall.",
-      tone: candidates.some((candidate) => candidate.severity === "blocker")
-        ? "error"
-        : "info",
+        ? `Alfred added these to memory on its own, from ${repos.slice(0, 3).join(", ")}${repos.length > 3 ? ", ..." : ""}.`
+        : "Alfred added these to memory on its own. Open Learnings to see them.",
+      tone: "info",
       targetTab: "lessons",
       icon: "memory",
     });
@@ -107,9 +105,9 @@ export function buildNeedsYou(snapshot: Snapshot | null): AttentionItem[] {
     if (suggestions.length) {
       items.push({
         id: "memory-suggestions",
-        label: "Review queue",
-        title: `${plural(suggestions.length, "memory suggestion")} ready`,
-        detail: "Review suggested memory updates before they are saved.",
+        label: "Memory",
+        title: `${plural(suggestions.length, "memory update")} saved`,
+        detail: "Alfred saved these to memory on its own. Open Learnings to see them.",
         tone: "info",
         targetTab: "lessons",
         icon: "memory",

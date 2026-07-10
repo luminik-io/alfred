@@ -1293,6 +1293,58 @@ body {
   }
 }
 
+/* Maximize: lift the canvas to a full-viewport overlay so the wide pipeline has
+   room to pan and zoom. */
+.workflow-graph[data-maximized="true"] {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  height: 100svh;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  /* Opaque ground so the dimmed page never bleeds through the canvas gaps. */
+  background:
+    radial-gradient(
+      120% 90% at 50% 0%,
+      color-mix(in oklch, var(--primary), transparent 92%),
+      transparent 55%
+    ),
+    var(--background);
+}
+
+.wf-maximize {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--card), transparent 12%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.wf-maximize:hover {
+  background: color-mix(in oklch, var(--accent), transparent 6%);
+  border-color: color-mix(in oklch, var(--primary), transparent 55%);
+}
+
+.wf-maximize:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .workflow-graph .react-flow__background {
   color: color-mix(in oklch, var(--muted-foreground), transparent 68%);
 }
@@ -6134,8 +6186,10 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
-  /* Push the promise toward the vertical center of the rail, foot stays pinned. */
-  margin-top: auto;
+  /* Sits directly under the brand (no stretch gap); only the foot is pinned to
+     the bottom, so the rail reads as one composed block instead of three
+     islands floating in empty space. */
+  margin-top: 0.5rem;
 }
 
 .alfred-onboarding-rail__eyebrow {
@@ -6163,6 +6217,39 @@ body {
   font-size: 0.9rem;
   line-height: 1.45;
   color: var(--muted-foreground);
+}
+
+.alfred-onboarding-rail__loop {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.alfred-onboarding-rail__loop li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: color-mix(in oklch, var(--foreground), var(--muted-foreground) 40%);
+}
+
+.alfred-onboarding-rail__loopstep {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.4rem;
+  height: 1.4rem;
+  margin-top: 0.05rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--primary-foreground, oklch(0.98 0 0));
+  background: color-mix(in oklch, var(--primary), transparent 15%);
 }
 
 .alfred-onboarding-rail__foot {

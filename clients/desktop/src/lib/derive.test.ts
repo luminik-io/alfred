@@ -194,7 +194,7 @@ describe("buildNeedsYou (calm client-owned decisions)", () => {
     });
     const items = buildNeedsYou(snap);
     expect(items[0].id).toBe("memory-review");
-    expect(items[0].title).toBe("1 memory candidate ready");
+    expect(items[0].title).toBe("1 new lesson learned");
   });
 
   it("does not include reliability inspection signals (those are operator depth)", () => {

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { WorkflowGraph } from "./WorkflowGraph";
@@ -45,5 +45,20 @@ describe("WorkflowGraph", () => {
     );
     expect(screen.getByLabelText("Workflow legend")).toBeInTheDocument();
     expect(screen.getByText("Delivery pipeline")).toBeInTheDocument();
+  });
+
+  it("maximizes the canvas to a full-viewport overlay and exits again", () => {
+    const { container } = render(
+      <WorkflowGraph agents={ROSTER} selectedCodename={null} onSelect={vi.fn()} />,
+    );
+    const canvas = container.querySelector(".workflow-graph") as HTMLElement;
+    expect(canvas.dataset.maximized).toBe("false");
+
+    fireEvent.click(screen.getByRole("button", { name: /maximize workflow/i }));
+    expect(canvas.dataset.maximized).toBe("true");
+
+    // Escape exits full screen.
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(canvas.dataset.maximized).toBe("false");
   });
 });
