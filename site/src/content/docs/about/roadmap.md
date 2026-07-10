@@ -18,6 +18,19 @@ Effort sizing is uniform across tiers: **S** is roughly a week of focused work, 
 
 The [changelog](/about/changelog/) is the detailed, version-by-version ledger. This tier is the short version, so the roadmap stays a forward-looking document.
 
+### Main after v0.6.0
+
+Slack app notifications replaced the legacy webhook path, connector sync now
+parses the documented connector list without PyYAML, Codex usage scans are
+bounded on long-lived hosts, and the README has current battery requirements
+plus real light and dark Desktop screenshots.
+
+### v0.6.0 (2026-07-10)
+
+Stable role identity with configurable roster themes, conversational Desktop and
+Slack setup, embedded zero-daemon SQLite memory, optional scale and efficiency
+batteries, self-halting runners, and a rewritten public product story.
+
 ### v0.5.3 (2026-06-24)
 
 The signed macOS desktop app and Linux packages published with a working `brew install --cask alfred-os`, a conversational Ask surface, a full-width workflow canvas with a dismissible agent drawer, an honest run timeline with an errors-only filter, a self-healing reliability core (classify, retry, break, loop-detect), a code-structure memory layer over MCP, single-source scheduled auth, and a stronger memory store.

@@ -3,7 +3,7 @@
 ``fleet_brain`` records what each agent firing learned about a repo
 or codename. It keeps reviewable candidates, firing history, file
 touches, GitHub cache rows, and local evidence under ``$ALFRED_HOME``.
-Redis Agent Memory is the default recalled-lesson layer for new
+Embedded SQLite hybrid memory is the default recalled-lesson layer for new
 installs; FleetBrain is the local ledger behind that review loop.
 
 Quick start::

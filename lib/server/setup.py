@@ -294,6 +294,13 @@ _MEMORY_CONFIG_KEYS = (
     "ALFRED_AMS_PORT",
     "ALFRED_AMS_REDIS_URL",
 )
+_MEMORY_PROVIDER_LABELS = {
+    "sqlite": "embedded SQLite hybrid memory",
+    "fleet": "FleetBrain",
+    "redis": "Redis Agent Memory",
+    "pgvector": "Postgres pgvector",
+    "gbrain": "gbrain",
+}
 
 
 def _runtime_config_value(key: str, default: str = "") -> str:
@@ -1976,15 +1983,29 @@ def install_inventory(
     selected_env_present = any(_has_config_key(resolved_env, key) for key in _REPO_ENV_KEYS)
     board_env_present = any(_has_config_key(resolved_env, key) for key in _BOARD_REPO_ENV_KEYS)
     slack_configured = any(_has_config_value(resolved_env, key) for key in _SLACK_CONFIG_KEYS)
-    memory_overridden = any(_has_config_value(resolved_env, key) for key in _MEMORY_CONFIG_KEYS)
+    provider_key_present = _has_config_key(resolved_env, "ALFRED_MEMORY_PROVIDERS")
+    provider_names = [
+        token.strip().lower()
+        for token in resolved_env.get("ALFRED_MEMORY_PROVIDERS", "").split(",")
+        if token.strip()
+    ]
+    memory_overridden = provider_key_present or any(
+        _has_config_value(resolved_env, key) for key in _MEMORY_CONFIG_KEYS
+    )
     roster_theme = _install_roster_theme(home)
     custom_agents = _install_custom_agents(home)
     repo_local_map = _install_repo_local_map(resolved_env)
-    memory_detail = (
-        "Custom Redis Agent Memory settings found."
-        if memory_overridden
-        else "Using bundled local Redis Agent Memory defaults."
-    )
+    if provider_key_present:
+        active_names = [name for name in provider_names if name != "null"]
+        if not active_names:
+            memory_detail = "Runtime lesson memory is disabled."
+        else:
+            labels = [_MEMORY_PROVIDER_LABELS.get(name, name) for name in active_names]
+            memory_detail = f"Using configured memory providers: {', '.join(labels)}."
+    elif memory_overridden:
+        memory_detail = "Embedded SQLite is active; custom Redis connection settings are present."
+    else:
+        memory_detail = "Using embedded SQLite hybrid memory defaults."
 
     items = [
         _inventory_item(

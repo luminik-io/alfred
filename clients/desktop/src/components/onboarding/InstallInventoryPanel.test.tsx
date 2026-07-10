@@ -58,7 +58,7 @@ function inventory(overrides: Partial<SetupInstallInventory> = {}): SetupInstall
         key: "memory",
         label: "Memory layer",
         ok: true,
-        detail: "Using bundled local Redis Agent Memory defaults.",
+        detail: "Using embedded SQLite hybrid memory defaults.",
         path: null,
       },
       {
