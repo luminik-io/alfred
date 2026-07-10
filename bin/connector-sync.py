@@ -170,6 +170,11 @@ def _load_config(path: Path) -> dict[str, Any]:
 
 _YAML_KV_RE = re.compile(r"^(\s*)([A-Za-z0-9_\-]+)\s*:\s*(.*?)\s*$")
 _YAML_ITEM_RE = re.compile(r"^(\s*)-\s+(.*?)\s*$")
+# A list item is a mapping entry only when a bare key is followed by a colon
+# and whitespace (or end of line). This mirrors real YAML: ``- source:linear``
+# (no space after the colon) is the scalar string, not a ``{source: linear}``
+# mapping, so it must stay a scalar.
+_YAML_MAP_ITEM_RE = re.compile(r"^[A-Za-z0-9_\-]+:(\s|$)")
 _YamlFrame = tuple[int, Any, bool]
 
 
@@ -204,12 +209,17 @@ def _minimal_yaml_load(text: str) -> dict[str, Any]:
                 parent = _promote_pending_list(stack, pending_containers, indent)
             if not isinstance(parent, list):
                 raise ValueError(f"unexpected list item under non-list: {line!r}")
-            item: dict[str, Any] = {}
-            parent.append(item)
             rest = m_item.group(2)
-            stack.append((indent + 2, item, False))
-            if rest:
+            if rest and _YAML_MAP_ITEM_RE.match(rest):
+                # ``- key: value`` starts a mapping item; nested keys on the
+                # following lines attach to this dict frame.
+                item: dict[str, Any] = {}
+                parent.append(item)
+                stack.append((indent + 2, item, False))
                 _consume_kv(rest, indent + 2, stack, pending_containers)
+            else:
+                # ``- scalar`` (or ``-`` alone) is a plain list element.
+                parent.append(_parse_scalar(rest))
             continue
 
         # Key/value?
