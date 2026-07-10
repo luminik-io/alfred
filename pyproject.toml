@@ -5,7 +5,7 @@
 # URLs below already point at the new slug. Revisit the package rename as a
 # deliberate, separately-versioned change, not as part of the repo-slug sweep.
 name = "alfred-os"
-version = "0.5.3"
+version = "0.6.0"
 description = "A small framework for running a fleet of narrow-specialist Claude Code and Codex agents on one host, isolated by git worktree."
 readme = "README.md"
 license = { file = "LICENSE" }

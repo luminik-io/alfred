@@ -15,37 +15,53 @@ Effort sizing is uniform across tiers: **S** is roughly a week of focused work, 
 
 What is in the OSS tree today.
 
-### Main after v0.5.3: batteries-included setup and role themes
+### Main after v0.6.0
 
-This is merged on `main` and will be part of the next release.
+This is merged on `main` and will be part of the next release. Nothing new has
+landed here yet.
+
+### v0.6.0: 2026-07-10
+
+Conversational setup and steering, stable role identity with themes on top, a
+zero-daemon memory that recalls past lessons by default, optional efficiency and
+scale batteries, and a rewritten public story.
 
 - Role-slug identity is now canonical. Runtime files, scheduler labels, GitHub
   labels, worktrees, and engine overrides use stable roles such as `architect`,
   `senior-dev`, `reviewer`, and `test-engineer`; Batman, Lucius, Ra's al Ghul,
-  and Bane are default-theme display names layered on top.
-- Multiple roster themes and custom names ship in the desktop app. Operators can
-  pick a preset or build a full team theme by chatting with Alfred; the saved
-  names resolve across Desktop, Slack, onboarding, and runtime status surfaces
-  without changing the underlying role contracts.
-- Conversational onboarding is in the native client. Alfred can ask setup
-  questions, propose fixed allowlisted actions, preview team names, and route
-  writes through the same approval gates as the stepped setup form.
-- Native first-run repair is real. Desktop Setup can install/repair bundled
-  core resources, start the runtime, inspect an existing install, check
-  code-memory readiness, index the code graph, install starter skills, and run
-  safe status/dry-run actions through a native allowlist.
-- The starter skill plane is in tree: first-party skills, vendored review/QA/UI
-  skills, a runner injector, and `alfred skills evolve` for lesson-driven skill
-  proposals.
-- Implementation runs can opt into a self-grading rubric gate before PR creation,
-  with bounded retry, explicit failure classes, and tests for malformed grader
-  output.
-- The memory and reliability wave tightened recall quality, duplicate collapse,
-  issue-relevant lessons, prompt budget caps, retry/provider classification, and
-  the optional code-memory MCP readiness path.
-- Repo strategy has moved to OSS-first. `luminik-io/alfred` is the public
-  product repo; the private sibling is a thin overlay for operator-specific
-  operations, launch planning, and private context only.
+  and Bane are the default-theme display names layered on top, and custom themes
+  resolve across Desktop, Slack, onboarding, and runtime status without changing
+  the role contracts.
+- Conversational setup and theming ship in the desktop app. Alfred can run
+  first-run onboarding as a conversation, propose fixed allowlisted actions,
+  preview team names, and let you build a full roster theme by chatting, all
+  routed through the same approval gates as the stepped setup form.
+- Slack and the desktop Ask surface are real conversational agents: a plain
+  question gets a direct, streamed answer, the plan-and-issue flow opens only for
+  build requests, and long conversations are condensed in the middle so the goal
+  and recent turns survive.
+- The zero-daemon memory default. An embedded SQLite hybrid store (FTS5 lexical,
+  optional `sqlite-vec` dense arm, fused with Reciprocal Rank Fusion) recalls past
+  lessons with no Redis and no daemon; Redis Agent Memory stays a supported
+  opt-in. Phase 2 adds typed, linked, time-aware lessons and a repo-profile
+  injector; Phase 3 adds consolidation and persisted reuse; a Postgres and
+  pgvector scale tier is an opt-in.
+- Token-efficiency batteries: a tool-output compactor that compacts on confirmed
+  success and tees full output through on failure, structure-first skeleton and
+  delta code reads, ranked/decayed/delta memory injection under a budget, and
+  blast-radius briefings in the code map.
+- Optional batteries are first-class and opt-in. A shared manifest, an
+  `alfred batteries` command, and a desktop picker toggle Redis memory, the
+  headroom compression engine, the code-structure memory server, dense
+  embeddings, and the Postgres scale tier. Alfred runs fully with zero batteries.
+- Reliability: every engineering runner has a consecutive-failure self-halt, so a
+  broken runner stops itself instead of burning through work.
+- Security: contained a path-traversal risk in the conversational
+  repository-grounding checkout path.
+- The public README, hero, and docs were rewritten to plain-language enterprise
+  positioning, with new guides for identity and themes, onboarding, memory
+  providers, the tool compactor, skeleton reads, compression engines, and the
+  `alfred demo` one-command walkthrough.
 
 ### v0.5.3: 2026-06-24
 
