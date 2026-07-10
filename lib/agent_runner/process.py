@@ -365,7 +365,7 @@ def _code_memory_launcher() -> Path | None:
     return script if script.exists() else None
 
 
-def _code_memory_mcp_server() -> dict[str, Any] | None:
+def _code_memory_mcp_server(*, force: bool = False) -> dict[str, Any] | None:
     """Return the ``mcpServers`` entry for the code-memory server, or ``None``.
 
     ``None`` when disabled by env or when the launcher is missing (e.g. a lib
@@ -373,7 +373,7 @@ def _code_memory_mcp_server() -> dict[str, Any] | None:
     launcher itself decides whether the underlying binary is present and exits
     cleanly if not, so attaching it is always safe.
     """
-    if not _code_memory_mcp_enabled():
+    if not force and not _code_memory_mcp_enabled():
         return None
     launcher = _code_memory_launcher()
     if launcher is None:
@@ -430,13 +430,31 @@ def _graphify_command() -> tuple[str, list[str]] | None:
         if shutil.which(override) or Path(expanded).is_file():
             return expanded, []
         return None
+    installed = shutil.which("graphify-mcp")
+    if installed and _graphify_entrypoint_works(installed):
+        return installed, []
     uvx = shutil.which("uvx")
     if uvx:
         return uvx, ["--from", _GRAPHIFY_PACKAGE, "graphify-mcp"]
-    installed = shutil.which("graphify-mcp")
-    if installed:
-        return installed, []
     return None
+
+
+def _graphify_entrypoint_works(command: str) -> bool:
+    """Reject base-only graphify installs whose console script cannot import MCP."""
+    try:
+        return (
+            subprocess.run(
+                [command, "--help"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+                check=False,
+            ).returncode
+            == 0
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def _graphify_mcp_server(workdir: Path | None = None) -> dict[str, Any] | None:
@@ -479,16 +497,24 @@ def _active_code_graph_server(workdir: Path | None = None) -> dict[str, Any] | N
     graphify wins when enabled (explicit opt-in); otherwise code-memory (on by
     default when its binary is present). Never returns both.
     """
-    graphify = _graphify_mcp_server(workdir)
-    if graphify is not None:
-        return graphify
+    if _graphify_mcp_enabled():
+        graphify = _graphify_mcp_server(workdir)
+        if graphify is not None:
+            return graphify
+        # Enabling graphify turns the normal code-memory gate off, but repos are
+        # indexed independently. Keep structural tools available until this
+        # worktree has a graph rather than dropping both engines.
+        return _code_memory_mcp_server(force=True)
     return _code_memory_mcp_server()
 
 
 def _active_code_graph_tool_names(workdir: Path | None = None) -> list[str]:
-    if _graphify_mcp_server(workdir) is not None:
+    server = _active_code_graph_server(workdir)
+    if server is None:
+        return []
+    if GRAPHIFY_MCP_SERVER in server:
         return _graphify_tool_names()
-    if _code_memory_mcp_server() is not None:
+    if CODE_MEMORY_MCP_SERVER in server:
         return _code_memory_tool_names()
     return []
 

@@ -28,6 +28,7 @@ import os
 import re
 import shutil
 import socket
+import subprocess
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -525,6 +526,21 @@ def _graphify_available(env: Mapping[str, str]) -> bool:
     override = str(env.get("ALFRED_GRAPHIFY_BIN", "")).strip()
     if override and Path(override).expanduser().exists():
         return True
+    installed = shutil.which("graphify-mcp")
+    if installed:
+        try:
+            probe = subprocess.run(
+                [installed, "--help"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+                check=False,
+            )
+            if probe.returncode == 0:
+                return True
+        except (OSError, subprocess.TimeoutExpired):
+            pass
     # uvx resolves the pinned package with the MCP extra even when a base-only
     # graphify install left a broken graphify-mcp console script on PATH.
     return bool(shutil.which("uvx"))

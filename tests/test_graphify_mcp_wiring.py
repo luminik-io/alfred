@@ -47,6 +47,11 @@ def _capture(
         return real_which(name)
 
     monkeypatch.setattr(_proc.shutil, "which", fake_which)
+    monkeypatch.setattr(
+        _proc,
+        "_graphify_entrypoint_works",
+        lambda command: graphify_present,
+    )
     if graph_present:
         graph = tmp_path / "graphify-out" / "graph.json"
         graph.parent.mkdir(parents=True, exist_ok=True)
@@ -118,10 +123,23 @@ def test_graphify_enabled_but_missing_binary_falls_back(monkeypatch, tmp_path: P
 
 def test_graphify_enabled_without_repo_graph_falls_back(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("ALFRED_GRAPHIFY_MCP", "1")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_MCP", "0")
     cfg = _mcp_config(_capture(monkeypatch, tmp_path, graph_present=False))
     assert cfg is not None
     assert "graphify" not in cfg["mcpServers"]
     assert "code_memory" in cfg["mcpServers"]
+
+
+def test_graphify_prefers_a_verified_installed_entrypoint_over_uvx(monkeypatch) -> None:
+    monkeypatch.delenv("ALFRED_GRAPHIFY_BIN", raising=False)
+    monkeypatch.setattr(
+        _proc.shutil,
+        "which",
+        lambda name: f"/usr/local/bin/{name}" if name in {"graphify-mcp", "uvx"} else None,
+    )
+    monkeypatch.setattr(_proc, "_graphify_entrypoint_works", lambda command: True)
+
+    assert _proc._graphify_command() == ("/usr/local/bin/graphify-mcp", [])
 
 
 def test_graphify_uses_pinned_uvx_fallback_and_explicit_graph(monkeypatch, tmp_path: Path) -> None:
