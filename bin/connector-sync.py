@@ -49,10 +49,13 @@ for _cand in _candidates:
             sys.path.insert(0, str(_cand))
         break
 
-from connectors import Connector  # noqa: E402
-from connectors.linear import LinearConnector  # noqa: E402
-from connectors.runner import ConnectorRunner, SyncReport  # noqa: E402
-from connectors.sentry import SentryConnector  # noqa: E402
+from connectors import Connector  # type: ignore # noqa: E402
+from connectors.linear import LinearConnector  # type: ignore # noqa: E402
+from connectors.runner import (  # type: ignore # noqa: E402
+    ConnectorRunner,
+    SyncReport,
+)
+from connectors.sentry import SentryConnector  # type: ignore # noqa: E402
 
 logger = logging.getLogger("connector-sync")
 
@@ -167,6 +170,12 @@ def _load_config(path: Path) -> dict[str, Any]:
 
 _YAML_KV_RE = re.compile(r"^(\s*)([A-Za-z0-9_\-]+)\s*:\s*(.*?)\s*$")
 _YAML_ITEM_RE = re.compile(r"^(\s*)-\s+(.*?)\s*$")
+# A list item is a mapping entry only when a bare key is followed by a colon
+# and whitespace (or end of line). This mirrors real YAML: ``- source:linear``
+# (no space after the colon) is the scalar string, not a ``{source: linear}``
+# mapping, so it must stay a scalar.
+_YAML_MAP_ITEM_RE = re.compile(r"^[A-Za-z0-9_\-]+:(\s|$)")
+_YamlFrame = tuple[int, Any, bool]
 
 
 def _minimal_yaml_load(text: str) -> dict[str, Any]:
@@ -179,11 +188,11 @@ def _minimal_yaml_load(text: str) -> dict[str, Any]:
       * indentation-based nesting (2 spaces)
 
     Anything more exotic should rely on PyYAML being available; the
-    operator's first ``pip install pyyaml`` opt-in unlocks full YAML.
+    operator's first ``pip install pyyaml`` opt-in enables full YAML.
     """
     root: dict[str, Any] = {}
-    stack: list[tuple[int, Any]] = [(-1, root)]
-    pending_key: list[tuple[int, str, dict]] = []
+    stack: list[_YamlFrame] = [(-1, root, False)]
+    pending_containers: dict[int, tuple[str, dict[str, Any]]] = {}
 
     for raw_line in text.splitlines():
         line = raw_line.split("#", 1)[0].rstrip()
@@ -197,13 +206,20 @@ def _minimal_yaml_load(text: str) -> dict[str, Any]:
             _pop_to_indent(stack, indent)
             parent = stack[-1][1]
             if not isinstance(parent, list):
+                parent = _promote_pending_list(stack, pending_containers, indent)
+            if not isinstance(parent, list):
                 raise ValueError(f"unexpected list item under non-list: {line!r}")
-            item: dict[str, Any] = {}
-            parent.append(item)
             rest = m_item.group(2)
-            stack.append((indent + 2, item))
-            if rest:
-                _consume_kv(rest, indent + 2, stack)
+            if rest and _YAML_MAP_ITEM_RE.match(rest):
+                # ``- key: value`` starts a mapping item; nested keys on the
+                # following lines attach to this dict frame.
+                item: dict[str, Any] = {}
+                parent.append(item)
+                stack.append((indent + 2, item, False))
+                _consume_kv(rest, indent + 2, stack, pending_containers)
+            else:
+                # ``- scalar`` (or ``-`` alone) is a plain list element.
+                parent.append(_parse_scalar(rest))
             continue
 
         # Key/value?
@@ -217,40 +233,64 @@ def _minimal_yaml_load(text: str) -> dict[str, Any]:
         parent = stack[-1][1]
         if isinstance(parent, list):
             raise ValueError(f"mapping under a list without dash: {line!r}")
+        pending_containers.pop(id(parent), None)
         if value == "":
             # Block scalar follows on next indent - could be mapping or list.
             container: Any = {}
             parent[key] = container
-            stack.append((indent + 2, container))
-            pending_key.append((indent, key, parent))
+            stack.append((indent, container, True))
+            pending_containers[id(container)] = (key, parent)
         elif value.startswith("["):
             parent[key] = _parse_flow_list(value)
         else:
             parent[key] = _parse_scalar(value)
-    # Promote any pending-key containers that turned out to be lists
-    # (detected when first child line was a dash; handled inline above).
     return root
 
 
-def _consume_kv(rest: str, indent: int, stack: list[tuple[int, Any]]) -> None:
+def _promote_pending_list(
+    stack: list[_YamlFrame],
+    pending_containers: dict[int, tuple[str, dict[str, Any]]],
+    indent: int,
+) -> Any:
+    frame_indent, container, pop_on_equal = stack[-1]
+    if frame_indent + 2 != indent or not isinstance(container, dict) or container:
+        return container
+    pending = pending_containers.pop(id(container), None)
+    if pending is None:
+        return container
+    key, parent = pending
+    promoted: list[Any] = []
+    parent[key] = promoted
+    stack[-1] = (frame_indent, promoted, pop_on_equal)
+    return promoted
+
+
+def _consume_kv(
+    rest: str,
+    indent: int,
+    stack: list[_YamlFrame],
+    pending_containers: dict[int, tuple[str, dict[str, Any]]],
+) -> None:
     m_kv = _YAML_KV_RE.match(" " * indent + rest)
     if not m_kv:
         return
     key = m_kv.group(2)
     value = m_kv.group(3)
     parent = stack[-1][1]
+    pending_containers.pop(id(parent), None)
     if value == "":
         container: Any = {}
         parent[key] = container
-        stack.append((indent + 2, container))
+        stack.append((indent, container, True))
+        pending_containers[id(container)] = (key, parent)
     elif value.startswith("["):
         parent[key] = _parse_flow_list(value)
     else:
         parent[key] = _parse_scalar(value)
 
 
-def _pop_to_indent(stack: list[tuple[int, Any]], indent: int) -> None:
-    while stack and stack[-1][0] >= indent:
+def _pop_to_indent(stack: list[_YamlFrame], indent: int) -> None:
+    while stack and (stack[-1][0] > indent or (stack[-1][0] == indent and stack[-1][2])):
         stack.pop()
     if not stack:
         raise ValueError("indentation underflow")
