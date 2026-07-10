@@ -173,6 +173,7 @@ redis_memory_enabled() {
   IFS=','
   for provider in $providers; do
     provider="$(trim_env_value "$provider")"
+    provider="$(printf '%s' "$provider" | tr '[:upper:]' '[:lower:]')"
     if [ "$provider" = "redis" ]; then
       IFS="$old_ifs"
       return 0
@@ -414,6 +415,28 @@ if command -v codex >/dev/null 2>&1; then
   echo "[alfred-os/deploy] linked codex → $LOCAL_BIN/codex"
 fi
 
+ams_service_marker() {
+  printf '%s/ams-service-managed.path\n' "$RUNTIME_LAUNCHD"
+}
+
+mark_ams_service_managed() {
+  local marker
+  marker="$(ams_service_marker)"
+  mkdir -p "$(dirname "$marker")"
+  printf '%s\n' "$1" > "$marker"
+  chmod 600 "$marker"
+}
+
+ams_service_is_managed() {
+  local marker
+  marker="$(ams_service_marker)"
+  [ -f "$marker" ] && [ "$(cat "$marker")" = "$1" ]
+}
+
+clear_ams_service_marker() {
+  rm -f "$(ams_service_marker)"
+}
+
 install_ams_service_linux() {
   local systemd_user_dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
   local service="$systemd_user_dir/alfred-ams.service"
@@ -438,6 +461,7 @@ Environment=WORKSPACE_ROOT=$WORKSPACE_ROOT
 [Install]
 WantedBy=default.target
 EOF
+  mark_ams_service_managed "$service"
   systemctl --user daemon-reload >/dev/null 2>&1 || true
   if systemctl --user enable --now alfred-ams.service >/dev/null 2>&1; then
     if systemctl --user restart alfred-ams.service >/dev/null 2>&1; then
@@ -453,12 +477,23 @@ EOF
 remove_ams_service_linux() {
   local systemd_user_dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
   local service="$systemd_user_dir/alfred-ams.service"
+  if ! ams_service_is_managed "$service"; then
+    if [ -e "$service" ]; then
+      echo "[alfred-os/deploy] left unowned alfred-ams.service unchanged"
+    else
+      clear_ams_service_marker
+      echo "[alfred-os/deploy] embedded SQLite memory selected; AMS service not installed"
+    fi
+    return 0
+  fi
   systemctl --user disable --now alfred-ams.service >/dev/null 2>&1 || true
   if [ -f "$service" ]; then
     rm -f "$service"
+    clear_ams_service_marker
     systemctl --user daemon-reload >/dev/null 2>&1 || true
     echo "[alfred-os/deploy] removed stale alfred-ams.service (Redis memory is not selected)"
   else
+    clear_ams_service_marker
     echo "[alfred-os/deploy] embedded SQLite memory selected; AMS service not installed"
   fi
 }
@@ -504,6 +539,7 @@ install_ams_service_launchd() {
 </dict>
 </plist>
 EOF
+  mark_ams_service_managed "$plist"
   launchctl bootout "gui/$uid_value" "$plist" >/dev/null 2>&1 || true
   if launchctl bootstrap "gui/$uid_value" "$plist" >/dev/null 2>&1; then
     echo "[alfred-os/deploy] io.luminik.alfred.ams loaded"
@@ -517,12 +553,23 @@ remove_ams_service_launchd() {
   local plist="$launch_agents_dir/io.luminik.alfred.ams.plist"
   local uid_value
   uid_value="$(id -u)"
+  if ! ams_service_is_managed "$plist"; then
+    if [ -e "$plist" ]; then
+      echo "[alfred-os/deploy] left unowned io.luminik.alfred.ams.plist unchanged"
+    else
+      clear_ams_service_marker
+      echo "[alfred-os/deploy] embedded SQLite memory selected; AMS service not installed"
+    fi
+    return 0
+  fi
   launchctl bootout "gui/$uid_value/io.luminik.alfred.ams" >/dev/null 2>&1 || true
   launchctl unload "$plist" >/dev/null 2>&1 || true
   if [ -f "$plist" ]; then
     rm -f "$plist"
+    clear_ams_service_marker
     echo "[alfred-os/deploy] removed stale io.luminik.alfred.ams (Redis memory is not selected)"
   else
+    clear_ams_service_marker
     echo "[alfred-os/deploy] embedded SQLite memory selected; AMS service not installed"
   fi
 }

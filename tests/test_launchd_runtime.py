@@ -683,7 +683,7 @@ def test_deploy_linux_stays_framework_only_without_conf_or_custom_agents(tmp_pat
     assert (systemd_user / "backup.timer").exists()
     assert (systemd_user / "backup.service").exists()
     assert not (alfred / "systemd" / "managed-labels.txt").exists()
-    log = systemctl_log.read_text(encoding="utf-8")
+    log = systemctl_log.read_text(encoding="utf-8") if systemctl_log.exists() else ""
     assert "alfred.old.timer" not in log
     assert "backup.timer" not in log
 

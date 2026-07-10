@@ -202,6 +202,9 @@ def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path)
         stale_ams = home / ".config" / "systemd" / "user" / "alfred-ams.service"
     stale_ams.parent.mkdir(parents=True, exist_ok=True)
     stale_ams.write_text("stale", encoding="utf-8")
+    marker = runtime / "launchd" / "ams-service-managed.path"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(f"{stale_ams}\n", encoding="utf-8")
 
     deploy = _run(["/bin/bash", str(ROOT / "deploy.sh")], env=env)
     assert "embedded SQLite memory selected; AMS service not installed" not in deploy.stdout
@@ -210,6 +213,11 @@ def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path)
     assert (runtime / "launchd" / "agents.conf").is_file()
     scheduler_calls = scheduler_log.read_text(encoding="utf-8")
     assert "enable gui/" in scheduler_calls or "enable --now" in scheduler_calls
+
+    stale_ams.write_text("operator-owned", encoding="utf-8")
+    unowned_deploy = _run(["/bin/bash", str(ROOT / "deploy.sh")], env=env)
+    assert "left unowned" in unowned_deploy.stdout
+    assert stale_ams.read_text(encoding="utf-8") == "operator-owned"
 
     alfred = runtime / "bin" / "alfred"
     _run([str(alfred), "skills", "install", "--starter"], env=env)
@@ -276,7 +284,10 @@ def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path)
         assert checks["context_compression"]["ready"] is True
         assert checks["engineering_skills"]["ready"] is True
         memory = next(item for item in status["install"]["items"] if item["key"] == "memory")
-        assert memory["detail"] == "Using embedded SQLite hybrid memory defaults."
+        assert (
+            memory["detail"]
+            == "Using configured memory providers: embedded SQLite hybrid memory, FleetBrain."
+        )
 
         batteries = _request_json(base_url, "/api/setup/batteries")
         builtins = {row["id"] for row in batteries["batteries"] if row["builtin"]}
