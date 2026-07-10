@@ -150,7 +150,9 @@ no_implicit_reexport = true
 strict_equality = true
 # Excluded from type checking:
 # - lib/server/: FastAPI route layer is still migrating to strict typing.
-exclude = ["^lib/server/"]
+# - tests/, bin/, examples/: repo checks type the library surface and cover
+#   runner scripts through pytest.
+exclude = ["^lib/server/", "^tests/", "^bin/", "^examples/"]
 
 [[tool.mypy.overrides]]
 # agent_runner.py predates strict typing; opt in incrementally.
@@ -175,6 +177,15 @@ ignore_missing_imports = true
 # the pgvector psycopg adapter are not hard dependencies and the provider's uses
 # are import-guarded, so mypy must not error whether or not they are installed.
 module = ["psycopg", "pgvector.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Optional tiktoken tokenizer used by the compression benchmark. Not a hard
+# dependency and it ships no type stubs, so its import-guarded use must not error
+# whether or not it is installed. (The headroom engine itself needs no override:
+# headroom-ai is imported dynamically in lib/headroom_engine.py, so mypy never
+# sees a static ``import headroom``.)
+module = "tiktoken"
 ignore_missing_imports = true
 
 # --------------------------------------------------------------------------

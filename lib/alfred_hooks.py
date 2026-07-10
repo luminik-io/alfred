@@ -66,6 +66,15 @@ try:
 except Exception:  # pragma: no cover - defensive; module ships with this one
     _compactor = None  # type: ignore[assignment]
 
+# compression_engine is the engine SELECTOR (builtin | headroom | off). It is a
+# stdlib-only sibling too (headroom is imported dynamically only when selected +
+# present), so it rides the same hook path. Guarded so a partial deploy that is
+# missing it falls back to the built-in compactor directly.
+try:
+    import compression_engine as _engine
+except Exception:  # pragma: no cover - defensive; ships with this one
+    _engine = None  # type: ignore[assignment]
+
 # Branches the fleet must never push to directly (locked guardrail).
 PROTECTED_BRANCHES = {"main", "master", "production", "release", "prod"}
 
@@ -559,19 +568,25 @@ def _extract_exit_code(response: object) -> int | None:
 
 
 def _handle_posttooluse(payload: dict) -> int:
-    """Compact verbose tool output, but only on a confirmed-success exit (exit 0)."""
-    if _compactor is None:
+    """Compact verbose tool output, but only on a confirmed-success exit (exit 0).
+
+    Compaction is routed through the configured engine (``ALFRED_COMPRESSION_ENGINE``:
+    builtin | headroom | off) via ``compression_engine``. The built-in #453
+    compactor stays the default and the fallback, and the confirmed-success
+    safety valve is enforced identically no matter which engine runs.
+    """
+    if _engine is None and _compactor is None:
         return 0
     tool_name = payload.get("tool_name", "")
     response = payload.get("tool_response")
     text = _extract_tool_text(response)
     if not text:
         return 0  # nothing textual to compact
-    result = _compactor.compact_output(
-        text,
-        tool_name=tool_name,
-        exit_code=_extract_exit_code(response),
-    )
+    exit_code = _extract_exit_code(response)
+    if _engine is not None:
+        result = _engine.compact_output_via_engine(text, tool_name=tool_name, exit_code=exit_code)
+    else:
+        result = _compactor.compact_output(text, tool_name=tool_name, exit_code=exit_code)
     if not result.applied:
         return 0  # disabled, unknown status, teed on failure, or no gain: leave raw
     out = {

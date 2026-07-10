@@ -64,6 +64,19 @@ from benchmark import (  # noqa: E402
     quota_cost_for_report,
     run_report,
 )
+from compression_benchmark import (  # noqa: E402
+    default_fixture_dir as compression_fixture_dir,
+)
+from compression_benchmark import (  # noqa: E402
+    load_payloads,
+    run_compression_benchmark,
+)
+from compression_benchmark import (  # noqa: E402
+    render_report_json as render_compression_json,
+)
+from compression_benchmark import (  # noqa: E402
+    render_report_table as render_compression_table,
+)
 from memory_benchmark import (  # noqa: E402
     MemoryABReport,
     MemoryArmMetrics,
@@ -353,6 +366,20 @@ def build_parser() -> argparse.ArgumentParser:
     mem.add_argument("--json", action="store_true", dest="json_out", help="machine-readable JSON")
     mem.add_argument("--verbose", "-v", action="store_true", help="debug logging")
 
+    comp = sub.add_parser(
+        "compression",
+        help="compression A/B: token reduction of builtin #453 vs headroom on real payloads",
+    )
+    comp.add_argument(
+        "--fixture",
+        type=Path,
+        default=None,
+        help="compression fixture dir (default: built-in tests/fixtures/compression)",
+    )
+    comp.add_argument("--label", default="run", help="tag for this run, e.g. before/after")
+    comp.add_argument("--json", action="store_true", dest="json_out", help="machine-readable JSON")
+    comp.add_argument("--verbose", "-v", action="store_true", help="debug logging")
+
     # Top-level mirrors so `alfred-benchmark --json` (no subcommand) works as report.
     p.add_argument("--label", default="run", help=argparse.SUPPRESS)
     p.add_argument("--codename", action="append", help=argparse.SUPPRESS)
@@ -459,6 +486,23 @@ def _cmd_memory(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_compression(args: argparse.Namespace) -> int:
+    fixture_dir = args.fixture or compression_fixture_dir()
+    payloads = load_payloads(fixture_dir)
+    if not payloads:
+        print(
+            f"alfred-benchmark: no compression payloads in {fixture_dir}",
+            file=sys.stderr,
+        )
+        return 2
+    report = run_compression_benchmark(payloads, label=args.label)
+    if args.json_out:
+        print(render_compression_json(report))
+    else:
+        print(render_compression_table(report))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(
@@ -472,6 +516,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_write_suite(args)
     if command == "memory":
         return _cmd_memory(args)
+    if command == "compression":
+        return _cmd_compression(args)
     return _cmd_report(args)
 
 
