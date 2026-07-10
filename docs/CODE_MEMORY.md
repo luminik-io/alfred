@@ -363,3 +363,38 @@ run at all.
 Durable reuse has no switch of its own: it persists whenever ranking
 (`ALFRED_MEMORY_RANK`) is armed and the configured provider exposes a reuse
 store, and is otherwise a no-op.
+
+## Graphify: an alternative code-graph engine (opt-in)
+
+`graphify` is an optional, pure-Python code-graph engine you can run *instead of*
+`codebase-memory-mcp`. It parses your repos with tree-sitter (~40 languages) into
+a `graphify-out/graph.json` and serves that graph read-only over MCP, so the agent
+can ask for a symbol's neighbours, the shortest path between two symbols, or a
+subsystem summary rather than re-reading files. Extraction is local and needs no
+LLM, database, or embeddings.
+
+It is **mutually exclusive** with `codebase-memory-mcp`: both attach as the single
+code-graph MCP server, so Alfred runs at most one. When `ALFRED_GRAPHIFY_MCP` is
+on, graphify takes the slot and code-memory is not attached.
+
+Setup:
+
+```sh
+uv tool install graphifyy        # or: pipx install graphifyy
+graphify update /path/to/repo    # build graphify-out/graph.json (no LLM)
+```
+
+Then enable it (or tick it in `alfred batteries` / the desktop battery picker):
+
+| Variable | Default | What it does |
+|---|---|---|
+| `ALFRED_GRAPHIFY_MCP` | `0` (off) | Attach graphify's read-only graph MCP to firings, taking the code-graph slot. |
+| `ALFRED_GRAPHIFY_BIN` | `graphify-mcp` | Override the server command for a non-PATH install. |
+
+A firing serves the graph in its own working directory (`graphify-out/graph.json`),
+so build the graph per repo (a `graphify watch <repo>` keeps it fresh). If no graph
+has been built the server simply exposes nothing, so enabling it is always safe.
+
+The read-only tools it exposes: `query_graph`, `get_node`, `get_neighbors`,
+`get_community`, `god_nodes`, `graph_stats`, `shortest_path`, `list_prs`,
+`get_pr_impact`, `triage_prs`, `viewport`.

@@ -42,6 +42,7 @@ CATEGORY_CODE_GRAPH = "code-graph"
 # How a battery is obtained. "included" batteries ship on; the rest are opt-in.
 INSTALL_INCLUDED = "included"  # built-in, nothing to install
 INSTALL_PIP_EXTRA = "pip-extra"  # pip install "alfred-os[<extra>]"
+INSTALL_PIP = "pip"  # a standalone pip package you install yourself
 INSTALL_AUTOFETCH = "autofetch"  # a helper fetches a pinned binary on first use
 INSTALL_DAEMON = "daemon"  # you run an external service (Redis / Postgres)
 
@@ -61,6 +62,10 @@ _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 # value: enabling a memory battery composes its provider into the existing chain
 # rather than replacing it. These anchor the composition logic below.
 MEMORY_PROVIDERS_KEY = "ALFRED_MEMORY_PROVIDERS"
+
+# The external code-graph engines that attach as the code-graph MCP server.
+# They are mutually exclusive: enable at most one.
+_CODE_GRAPH_ENGINES = frozenset({"code-memory-mcp", "graphify"})
 DEFAULT_PROVIDER_CHAIN: tuple[str, ...] = ("sqlite", "fleet")
 # Providers that actually store and recall lessons. The chain must always keep at
 # least one of these, so disabling a store never leaves a chain that cannot
@@ -257,6 +262,35 @@ BATTERIES: tuple[Battery, ...] = (
         docs="docs/CODE_MEMORY.md",
     ),
     Battery(
+        id="graphify",
+        name="Graphify code graph",
+        category=CATEGORY_CODE_GRAPH,
+        what=(
+            "A pure-Python code-graph engine (graphifyy, tree-sitter over ~40 languages) that maps "
+            "imports, calls, and inheritance into a queryable graph, served to the agent over MCP."
+        ),
+        how_it_helps=(
+            "The agent navigates a large codebase by real relationships and shortest paths between "
+            "symbols instead of re-reading files, cutting the tokens spent rediscovering structure. "
+            "Extraction is local and needs no LLM, database, or embeddings. This is an alternative to "
+            "Codebase memory (MCP); enable one code-graph engine, not both."
+        ),
+        builtin=False,
+        default_on=False,
+        enable_env={"ALFRED_GRAPHIFY_MCP": "1"},
+        disable_env={"ALFRED_GRAPHIFY_MCP": "0"},
+        enable_flag=("ALFRED_GRAPHIFY_MCP", _ANY_TRUTHY),
+        requires_daemon=False,
+        install_kind=INSTALL_PIP,
+        install_hint=(
+            "Install the graphifyy package (uv tool install graphifyy, or pipx install graphifyy), then "
+            "build a graph per repo with `graphify update <repo>`. Alfred serves the graph read-only "
+            "over MCP (graphify-mcp). Local; no daemon, no embeddings."
+        ),
+        detect="graphify",
+        docs="docs/CODE_MEMORY.md",
+    ),
+    Battery(
         id="redis-ams",
         name="Redis Agent Memory Server",
         category=CATEGORY_MEMORY,
@@ -428,7 +462,8 @@ def selection_conflict(battery_ids: Iterable[str]) -> str:
     (``ALFRED_MEMORY_PROVIDERS``), so enabling both is a conflict rather than a
     silent last-write-wins. Returns an empty string when the selection is fine.
     """
-    providers = [bid for bid in battery_ids if (b := battery_by_id(bid)) and b.provider]
+    ids = list(battery_ids)
+    providers = [bid for bid in ids if (b := battery_by_id(bid)) and b.provider]
     unique = list(dict.fromkeys(providers))
     if len(unique) > 1:
         names = " and ".join(unique)
@@ -436,6 +471,13 @@ def selection_conflict(battery_ids: Iterable[str]) -> str:
             f"{names} each replace the primary memory store "
             f"({MEMORY_PROVIDERS_KEY}); enable only one of them."
         )
+    # The two external code-graph engines both attach as the code-graph MCP
+    # server; running both would double-attach and double-index, so they are
+    # mutually exclusive.
+    graphs = [bid for bid in dict.fromkeys(ids) if bid in _CODE_GRAPH_ENGINES]
+    if len(graphs) > 1:
+        names = " and ".join(graphs)
+        return f"{names} are both code-graph engines; enable only one of them."
     return ""
 
 
@@ -473,6 +515,15 @@ def _code_memory_binary(env: Mapping[str, str]) -> bool:
     return fetched.exists()
 
 
+def _graphify_available(env: Mapping[str, str]) -> bool:
+    override = str(env.get("ALFRED_GRAPHIFY_BIN", "")).strip()
+    if override and Path(override).expanduser().exists():
+        return True
+    if shutil.which("graphify-mcp") or shutil.which("graphify"):
+        return True
+    return _find_spec("graphify")
+
+
 def _headroom_available(env: Mapping[str, str]) -> bool:
     if _find_spec("headroom"):
         return True
@@ -506,6 +557,8 @@ def is_installed(battery: Battery, env: Mapping[str, str]) -> bool:
         return _headroom_available(env)
     if battery.detect == "code_memory":
         return _code_memory_binary(env)
+    if battery.detect == "graphify":
+        return _graphify_available(env)
     if battery.detect == "redis_ams":
         return _ams_reachable(env)
     if battery.detect == "pgvector":

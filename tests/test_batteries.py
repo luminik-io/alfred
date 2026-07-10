@@ -69,6 +69,7 @@ def test_opt_ins_are_off_by_default_and_declare_enable_disable() -> None:
         "dense-embeddings",
         "headroom-compression",
         "code-memory-mcp",
+        "graphify",
         "redis-ams",
         "pgvector",
     }
@@ -278,3 +279,31 @@ def test_write_env_permissions(tmp_path: Path) -> None:
 def test_write_env_rejects_unsafe_key(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         batteries.write_env(tmp_path / ".env", {"bad key": "1"})
+
+
+def test_graphify_is_optin_code_graph_engine() -> None:
+    g = batteries.battery_by_id("graphify")
+    assert g is not None
+    assert g.category == batteries.CATEGORY_CODE_GRAPH
+    assert g.builtin is False and g.default_on is False
+    assert g.enable_flag == ("ALFRED_GRAPHIFY_MCP", batteries._ANY_TRUTHY)
+    assert g.enable_env.get("ALFRED_GRAPHIFY_MCP") == "1"
+    assert g.disable_env.get("ALFRED_GRAPHIFY_MCP") == "0"
+    assert g.requires_daemon is False
+    assert g.detect == "graphify"
+
+
+def test_graphify_and_code_memory_are_mutually_exclusive() -> None:
+    msg = batteries.selection_conflict(["graphify", "code-memory-mcp"])
+    assert msg
+    assert "graphify" in msg and "code-memory-mcp" in msg
+    # Either alone is fine.
+    assert batteries.selection_conflict(["graphify"]) == ""
+    assert batteries.selection_conflict(["code-memory-mcp"]) == ""
+
+
+def test_graphify_enable_disable_are_flag_toggles() -> None:
+    g = batteries.battery_by_id("graphify")
+    assert batteries.is_enabled(g, {"ALFRED_GRAPHIFY_MCP": "1"}) is True
+    assert batteries.is_enabled(g, {"ALFRED_GRAPHIFY_MCP": "0"}) is False
+    assert batteries.is_enabled(g, {}) is False

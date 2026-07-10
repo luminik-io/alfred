@@ -29,6 +29,7 @@ import contextlib
 import json
 import os
 import secrets
+import shutil
 import signal
 import subprocess
 import threading
@@ -287,7 +288,7 @@ def _memory_mcp_args(script: Path | None | _Unresolved = _UNRESOLVED) -> list[st
     memory = _memory_mcp_server(script)
     if memory:
         servers.update(memory)
-    code = _code_memory_mcp_server()
+    code = _active_code_graph_server()
     if code:
         servers.update(code)
     if not servers:
@@ -315,8 +316,7 @@ def _with_memory_mcp_tools(
         resolved = _memory_mcp_script() if isinstance(script, _Unresolved) else script
         if resolved is not None:
             wanted.extend(_memory_tool_names())
-    if _code_memory_mcp_server():
-        wanted.extend(_code_memory_tool_names())
+    wanted.extend(_active_code_graph_tool_names())
     if not wanted:
         return base
     existing = set(base.replace(",", " ").split())
@@ -379,6 +379,88 @@ def _code_memory_mcp_server() -> dict[str, Any] | None:
 
 def _code_memory_tool_names() -> list[str]:
     return [f"mcp__{CODE_MEMORY_MCP_SERVER}__{t}" for t in _CODE_MEMORY_TOOLS]
+
+
+# ---------- Graphify MCP attachment ----------
+#
+# graphify (graphifyy, MIT) is an OPT-IN alternative code-graph engine: a
+# pip-installed Python package invoked over MCP via its ``graphify-mcp`` command
+# (``python -m graphify.serve``). It serves a per-repo ``graphify-out/graph.json``
+# read-only, exposing graph-query tools (query, neighbours, shortest path,
+# stats, community). Off by default; turn on with ALFRED_GRAPHIFY_MCP=1. It is
+# mutually exclusive with code-memory: when graphify is on it takes the
+# code-graph slot and code-memory is not attached, so a firing never runs two
+# code-graph servers at once.
+GRAPHIFY_MCP_SERVER = "graphify"
+# The read-only tools graphify's server exposes. Kept as an explicit allowlist
+# so an upstream addition cannot silently widen agent capability.
+_GRAPHIFY_TOOLS = (
+    "query_graph",
+    "get_node",
+    "get_neighbors",
+    "get_community",
+    "god_nodes",
+    "graph_stats",
+    "shortest_path",
+    "list_prs",
+    "get_pr_impact",
+    "triage_prs",
+    "viewport",
+)
+
+
+def _graphify_mcp_enabled() -> bool:
+    """Off unless ALFRED_GRAPHIFY_MCP is explicitly truthy (opt-in)."""
+    val = os.environ.get("ALFRED_GRAPHIFY_MCP")
+    if val is None:
+        return False
+    return val.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _graphify_command() -> str:
+    """The graphify MCP server command. Overridable for non-PATH installs."""
+    override = os.environ.get("ALFRED_GRAPHIFY_BIN", "").strip()
+    return override or "graphify-mcp"
+
+
+def _graphify_mcp_server() -> dict[str, Any] | None:
+    """Return the ``mcpServers`` entry for graphify, or ``None`` when disabled
+    or the command is not on PATH.
+
+    Uses the cwd-relative default graph (``graphify-out/graph.json``), so a
+    firing running in a repo worktree serves that repo's own graph. If no graph
+    has been built the server simply exposes no useful nodes; attaching is safe.
+    """
+    if not _graphify_mcp_enabled():
+        return None
+    cmd = _graphify_command()
+    if shutil.which(cmd) is None and not Path(cmd).expanduser().exists():
+        return None
+    return {GRAPHIFY_MCP_SERVER: {"command": cmd, "args": ["--transport", "stdio"]}}
+
+
+def _graphify_tool_names() -> list[str]:
+    return [f"mcp__{GRAPHIFY_MCP_SERVER}__{t}" for t in _GRAPHIFY_TOOLS]
+
+
+def _active_code_graph_server() -> dict[str, Any] | None:
+    """The single code-graph MCP server to attach, honouring exclusivity.
+
+    graphify wins when enabled (explicit opt-in); otherwise code-memory (on by
+    default when its binary is present). Never returns both.
+    """
+    graphify = _graphify_mcp_server()
+    if graphify is not None:
+        return graphify
+    return _code_memory_mcp_server()
+
+
+def _active_code_graph_tool_names() -> list[str]:
+    if _graphify_mcp_server() is not None:
+        return _graphify_tool_names()
+    if _code_memory_mcp_server() is not None:
+        return _code_memory_tool_names()
+    return []
 
 
 def _subprocess_text(value: object) -> str:
