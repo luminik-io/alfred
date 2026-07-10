@@ -315,11 +315,14 @@ def test_enabling_a_code_graph_engine_atomically_disables_the_other() -> None:
     graphify = batteries.battery_by_id("graphify")
     code_memory = batteries.battery_by_id("code-memory-mcp")
 
-    assert batteries.enable_values(graphify, {}) == {
+    graphify_values = batteries.enable_values(graphify, {})
+    assert graphify_values == {
         "ALFRED_GRAPHIFY_MCP": "1",
+        "ALFRED_GRAPHIFY_FALLBACK": "code-memory",
         "ALFRED_CODE_MEMORY_MCP": "0",
-        "ALFRED_CODE_MEMORY_AUTOFETCH": "0",
+        "ALFRED_CODE_MEMORY_AUTOFETCH": "1",
     }
+    assert batteries.is_enabled(code_memory, graphify_values) is False
     assert batteries.enable_values(code_memory, {})["ALFRED_GRAPHIFY_MCP"] == "0"
 
 

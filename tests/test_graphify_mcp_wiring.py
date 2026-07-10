@@ -124,10 +124,24 @@ def test_graphify_enabled_but_missing_binary_falls_back(monkeypatch, tmp_path: P
 def test_graphify_optout_does_not_force_code_memory_fallback(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("ALFRED_GRAPHIFY_MCP", "1")
     monkeypatch.setenv("ALFRED_CODE_MEMORY_MCP", "0")
+    monkeypatch.delenv("ALFRED_GRAPHIFY_FALLBACK", raising=False)
     cfg = _mcp_config(_capture(monkeypatch, tmp_path, graph_present=False))
     assert cfg is not None
     assert "graphify" not in cfg["mcpServers"]
     assert "code_memory" not in cfg["mcpServers"]
+
+
+def test_graphify_battery_fallback_keeps_one_engine_for_unindexed_repo(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("ALFRED_GRAPHIFY_MCP", "1")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_MCP", "0")
+    monkeypatch.setenv("ALFRED_GRAPHIFY_FALLBACK", "code-memory")
+
+    cfg = _mcp_config(_capture(monkeypatch, tmp_path, graph_present=False))
+
+    assert "graphify" not in cfg["mcpServers"]
+    assert "code_memory" in cfg["mcpServers"]
 
 
 def test_graphify_prefers_a_verified_installed_entrypoint_over_uvx(monkeypatch) -> None:

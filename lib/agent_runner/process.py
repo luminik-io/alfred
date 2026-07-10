@@ -365,7 +365,7 @@ def _code_memory_launcher() -> Path | None:
     return script if script.exists() else None
 
 
-def _code_memory_mcp_server() -> dict[str, Any] | None:
+def _code_memory_mcp_server(*, explicit_fallback: bool = False) -> dict[str, Any] | None:
     """Return the ``mcpServers`` entry for the code-memory server, or ``None``.
 
     ``None`` when disabled by env or when the launcher is missing (e.g. a lib
@@ -373,7 +373,7 @@ def _code_memory_mcp_server() -> dict[str, Any] | None:
     launcher itself decides whether the underlying binary is present and exits
     cleanly if not, so attaching it is always safe.
     """
-    if not _code_memory_mcp_enabled():
+    if not explicit_fallback and not _code_memory_mcp_enabled():
         return None
     launcher = _code_memory_launcher()
     if launcher is None:
@@ -420,6 +420,11 @@ def _graphify_mcp_enabled() -> bool:
     if val is None:
         return False
     return val.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _graphify_code_memory_fallback_enabled() -> bool:
+    """Whether Graphify explicitly selected code-memory for unindexed repos."""
+    return os.environ.get("ALFRED_GRAPHIFY_FALLBACK", "").strip().lower() == "code-memory"
 
 
 def _graphify_command() -> tuple[str, list[str]] | None:
@@ -501,10 +506,10 @@ def _active_code_graph_server(workdir: Path | None = None) -> dict[str, Any] | N
         graphify = _graphify_mcp_server(workdir)
         if graphify is not None:
             return graphify
-        # A manually enabled Graphify can fall back only when code-memory's own
-        # gate allows it. The battery picker writes that gate off when Graphify
-        # is selected, so an explicit engine choice is never silently bypassed.
-        return _code_memory_mcp_server()
+        # Manual env users retain the normal code-memory gate. The Graphify
+        # battery records an explicit fallback so unindexed repos keep one
+        # structural engine without pretending both servers are active.
+        return _code_memory_mcp_server(explicit_fallback=_graphify_code_memory_fallback_enabled())
     return _code_memory_mcp_server()
 
 

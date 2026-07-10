@@ -124,14 +124,16 @@ def test_set_battery_switches_code_graph_engines_atomically(
 
     assert set(result["keys"]) == {
         "ALFRED_GRAPHIFY_MCP",
+        "ALFRED_GRAPHIFY_FALLBACK",
         "ALFRED_CODE_MEMORY_MCP",
         "ALFRED_CODE_MEMORY_AUTOFETCH",
     }
     import os
 
     assert os.environ["ALFRED_GRAPHIFY_MCP"] == "1"
+    assert os.environ["ALFRED_GRAPHIFY_FALLBACK"] == "code-memory"
     assert os.environ["ALFRED_CODE_MEMORY_MCP"] == "0"
-    assert os.environ["ALFRED_CODE_MEMORY_AUTOFETCH"] == "0"
+    assert os.environ["ALFRED_CODE_MEMORY_AUTOFETCH"] == "1"
     env_text = (alfred_home / ".env").read_text(encoding="utf-8")
     assert "ALFRED_GRAPHIFY_MCP=1" in env_text
     assert "ALFRED_CODE_MEMORY_MCP=0" in env_text

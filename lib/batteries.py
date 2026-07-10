@@ -250,7 +250,7 @@ BATTERIES: tuple[Battery, ...] = (
         # not just stop autofetch: the MCP defaults on and would still attach a
         # previously fetched binary, so "off" in the picker must write MCP=0.
         disable_env={"ALFRED_CODE_MEMORY_MCP": "0", "ALFRED_CODE_MEMORY_AUTOFETCH": "0"},
-        enable_flag=("ALFRED_CODE_MEMORY_AUTOFETCH", _ANY_TRUTHY),
+        enable_flag=("ALFRED_CODE_MEMORY_MCP", _ANY_TRUTHY),
         requires_daemon=False,
         install_kind=INSTALL_AUTOFETCH,
         install_hint=(
@@ -277,15 +277,23 @@ BATTERIES: tuple[Battery, ...] = (
         ),
         builtin=False,
         default_on=False,
-        enable_env={"ALFRED_GRAPHIFY_MCP": "1"},
-        disable_env={"ALFRED_GRAPHIFY_MCP": "0"},
+        enable_env={
+            "ALFRED_GRAPHIFY_MCP": "1",
+            "ALFRED_GRAPHIFY_FALLBACK": "code-memory",
+            "ALFRED_CODE_MEMORY_AUTOFETCH": "1",
+        },
+        disable_env={
+            "ALFRED_GRAPHIFY_MCP": "0",
+            "ALFRED_GRAPHIFY_FALLBACK": "none",
+        },
         enable_flag=("ALFRED_GRAPHIFY_MCP", _ANY_TRUTHY),
         requires_daemon=False,
         install_kind=INSTALL_AUTOFETCH,
         install_hint=(
             "Alfred installs the pinned graphifyy MCP tool with uv. Build a graph per repo with "
             "`graphify <repo>`; refresh it later with `graphify <repo> --update`. Firings then serve "
-            "`graphify-out/graph.json` read-only. "
+            "`graphify-out/graph.json` read-only. Until each repo is indexed, Alfred explicitly "
+            "falls back to its code-memory engine. "
             "Local; no daemon, no embeddings."
         ),
         autofetch_cmd=(
@@ -613,12 +621,13 @@ def enable_values(battery: Battery, env: Mapping[str, str] | None = None) -> dic
         chain = _provider_chain(env if env is not None else load_env())
         composed = compose_provider_chain(chain, battery.provider, enable=True)
         return {MEMORY_PROVIDERS_KEY: ",".join(composed)}
-    values = dict(battery.enable_env)
+    values: dict[str, str] = {}
     if battery.id in _CODE_GRAPH_ENGINES:
         for other_id in _CODE_GRAPH_ENGINES - {battery.id}:
             other = battery_by_id(other_id)
             if other is not None:
                 values.update(other.disable_env)
+    values.update(battery.enable_env)
     return values
 
 
