@@ -194,7 +194,54 @@ describe("buildNeedsYou (calm client-owned decisions)", () => {
     });
     const items = buildNeedsYou(snap);
     expect(items[0].id).toBe("memory-review");
-    expect(items[0].title).toBe("1 new lesson learned");
+    expect(items[0].title).toBe("1 memory candidate pending");
+    expect(items[0].detail).toContain("Awaiting promotion evaluation");
+  });
+
+  it("keeps blocker memory candidates visually urgent", () => {
+    const snap = emptySnapshot({
+      memoryCandidates: {
+        rows: [
+          {
+            id: "mem:blocker",
+            codename: "reviewer",
+            repo: "your-org/api",
+            body: "Never bypass the release gate.",
+            tags: ["release"],
+            severity: "blocker",
+            source: "review",
+            source_firing_id: null,
+            evidence: "PR 42",
+            confidence: 0.99,
+            status: "candidate",
+            created_at: "2026-07-10T12:00:00Z",
+          },
+        ],
+      },
+    });
+
+    expect(buildNeedsYou(snap)[0]).toMatchObject({
+      id: "memory-review",
+      tone: "error",
+    });
+  });
+
+  it("does not describe promotion suggestions as already saved", () => {
+    const snap = emptySnapshot({
+      actions: {
+        status: "ok",
+        actions: [],
+        failure_patterns: [],
+        stale_workers: [],
+        promotion_suggestions: [{ title: "Prefer request fixtures" }],
+      },
+    });
+
+    expect(buildNeedsYou(snap)[0]).toMatchObject({
+      id: "memory-suggestions",
+      title: "1 memory suggestion pending",
+      detail: "Awaiting promotion evaluation before entering active recall.",
+    });
   });
 
   it("does not include reliability inspection signals (those are operator depth)", () => {

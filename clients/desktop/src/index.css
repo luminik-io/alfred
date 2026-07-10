@@ -1298,7 +1298,7 @@ body {
 .workflow-graph[data-maximized="true"] {
   position: fixed;
   inset: 0;
-  z-index: 120;
+  z-index: 1000;
   height: 100svh;
   min-height: 0;
   border: 0;
@@ -1316,14 +1316,14 @@ body {
 .wf-maximize {
   position: absolute;
   top: 12px;
-  right: 12px;
-  z-index: 6;
+  left: 12px;
+  z-index: 21;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  font-size: 0.78rem;
-  font-weight: 500;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   color: var(--foreground);
   background: color-mix(in oklch, var(--card), transparent 12%);
   border: 1px solid var(--border);

@@ -255,7 +255,6 @@ export function WorkflowGraph({
         ) : (
           <Maximize2 aria-hidden="true" size={15} />
         )}
-        <span>{maximized ? "Exit" : "Maximize"}</span>
       </button>
       <ReactFlow
         nodes={nodes}
