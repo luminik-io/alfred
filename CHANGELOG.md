@@ -502,7 +502,8 @@ Initial public framework extraction.
 - `tests/test_agent_runner.py`: 22 cases covering preflight, doctor_mode, load_prompt, commit_trailer, HandoffTable, EventLog, _full_repo.
 - Top-level docs: `README.md`, `ARCHITECTURE.md`, `BOOTSTRAP.md`, `CONTRIBUTING.md`, `LICENSE` (MIT), `docs/INDEX.md`.
 
-[Unreleased]: https://github.com/luminik-io/alfred/compare/v0.5.3...HEAD
+[Unreleased]: https://github.com/luminik-io/alfred/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/luminik-io/alfred/compare/v0.5.3...v0.6.0
 [0.5.3]: https://github.com/luminik-io/alfred/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/luminik-io/alfred/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/luminik-io/alfred/compare/v0.5.0...v0.5.1
