@@ -6,26 +6,41 @@ import os
 
 import pytest
 
+_OPERATOR_ENV_NAMES = (
+    "ALFREDRC",
+    "ALFRED_REPO_LOCAL_MAP",
+    "ARCHITECT_ROLLOUT_ORDER",
+    "BATMAN_ROLLOUT_ORDER",
+    "SLACK_APPROVER_USER_ID",
+)
+
+
+def _operator_env_names() -> tuple[str, ...]:
+    wildcard_names = tuple(
+        name
+        for name in tuple(os.environ)
+        if (
+            name == "AGENT_CODENAME"
+            or name.startswith("AGENT_CODENAME_")
+            or (name.startswith("ALFRED_") and name.endswith("_REPOS"))
+        )
+    )
+    return (*wildcard_names, *_OPERATOR_ENV_NAMES)
+
+
+def _scrub_operator_env() -> None:
+    for name in _operator_env_names():
+        os.environ.pop(name, None)
+
+
+_scrub_operator_env()
+
 
 @pytest.fixture(autouse=True)
 def isolate_external_operator_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Tests that need live operator env values set them explicitly."""
 
-    for name in tuple(os.environ):
-        if (
-            name == "AGENT_CODENAME"
-            or name.startswith("AGENT_CODENAME_")
-            or (name.startswith("ALFRED_") and name.endswith("_REPOS"))
-        ):
-            monkeypatch.delenv(name, raising=False)
-
-    for name in (
-        "ALFREDRC",
-        "ALFRED_REPO_LOCAL_MAP",
-        "ARCHITECT_ROLLOUT_ORDER",
-        "BATMAN_ROLLOUT_ORDER",
-        "SLACK_APPROVER_USER_ID",
-    ):
+    for name in _operator_env_names():
         monkeypatch.delenv(name, raising=False)
 
     # The Slack intent router defaults ON in production (Slack is Alfred's
