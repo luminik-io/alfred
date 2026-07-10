@@ -37,6 +37,7 @@ sys.path.insert(0, str(_REPO / "lib"))
 
 import memory.pgvector_provider as mod  # noqa: E402
 from agent_runner import memory_ranking  # noqa: E402
+from fleet_brain import Lesson  # noqa: E402
 from memory import MemoryProvider  # noqa: E402
 from memory.config import (  # noqa: E402
     DEFAULT_PROVIDER_NAMES,
@@ -474,6 +475,74 @@ def _generated_identifiers(sql_log: list[str]) -> set[str]:
             if m:
                 ids.add(m.group(1))
     return ids
+
+
+class _VectorFailConn:
+    """psycopg-shaped fake whose vector UPDATE raises, tracking transaction depth.
+
+    Models the failure mode the savepoint isolation guards against: a rejected
+    vector write inside the reflect() transaction. ``transaction()`` tracks
+    nesting so a test can assert the vector write ran inside its own savepoint
+    (a nested transaction) and that the outer transaction kept going after the
+    isolated failure.
+    """
+
+    def __init__(self) -> None:
+        self.closed = False
+        self.depth = 0
+        self.max_depth = 0
+        self.executed: list[str] = []
+
+    @contextmanager
+    def transaction(self) -> Any:
+        self.depth += 1
+        self.max_depth = max(self.max_depth, self.depth)
+        try:
+            yield self
+        finally:
+            self.depth -= 1
+
+    def execute(self, sql: str, params: tuple[Any, ...] | list[Any] = ()) -> _FakeCursor:
+        s = " ".join(sql.split())
+        self.executed.append(s)
+        if "SET embedding = %s::vector" in s:
+            raise RuntimeError("vector rejected by postgres")
+        return _FakeCursor()
+
+
+def _make_lesson(body: str = "dense lesson", lesson_id: str = "L1") -> Lesson:
+    return Lesson(
+        id=lesson_id,
+        codename="lucius",
+        repo="acme/api",
+        body=body,
+        tags=[],
+        created_at=_NOW,
+        firing_id=None,
+    )
+
+
+def test_vector_write_failure_is_isolated_and_outer_transaction_survives() -> None:
+    provider = PgvectorProvider(
+        dsn="postgresql://u:p@h/db",
+        dense=True,
+        embedder=lambda _text: [0.1] * 4,
+        dimensions=4,
+    )
+    provider._vec_ok = True
+    conn = _VectorFailConn()
+    # Simulate reflect()'s outer transaction: lesson insert, then the failing
+    # vector write, then an anchor insert that must still run.
+    with conn.transaction():
+        conn.execute("INSERT INTO lessons ...")
+        provider._write_vector(conn, _make_lesson())  # rejected vector, isolated
+        conn.execute("INSERT INTO lesson_anchors ...")
+    # The vector write opened its own savepoint (nested transaction)...
+    assert conn.max_depth == 2
+    # ...it did not propagate (the outer transaction was never aborted)...
+    assert any("SET embedding = %s::vector" in s for s in conn.executed)
+    # ...and the statement AFTER the failure still ran (lesson not lost).
+    assert any("INSERT INTO lesson_anchors" in s for s in conn.executed)
 
 
 class _FakePgConn:

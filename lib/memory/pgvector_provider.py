@@ -825,16 +825,29 @@ class PgvectorProvider:
     def _write_vector(self, conn: Any, lesson: Lesson) -> None:
         assert self.embedder is not None
         vec = self.embedder(lesson.body)
-        if not vec or len(vec) != int(self.dimensions):
-            # Embedder unreachable or wrong shape: skip the dense arm for this
-            # lesson (lexical recall still finds it), and clear any stale vector.
-            conn.execute(f"UPDATE {self._lessons} SET embedding = NULL WHERE id = %s", (lesson.id,))
-            return
+        # The dense arm is best-effort and MUST NOT be able to lose the lesson.
+        # In Postgres, a statement error aborts the whole surrounding transaction
+        # ("current transaction is aborted, commands ignored until end of
+        # transaction block"), so a rejected vector UPDATE run in the caller's
+        # reflect() transaction would roll the lesson INSERT back too. Isolate the
+        # vector write in its own SAVEPOINT (a nested ``conn.transaction()``) and
+        # swallow a failure there: the savepoint rolls back but the outer
+        # transaction -- and the lesson row -- survives, and lexical recall still
+        # finds the lesson.
         try:
-            conn.execute(
-                f"UPDATE {self._lessons} SET embedding = %s::vector WHERE id = %s",
-                (self._vector_param(vec), lesson.id),
-            )
+            with conn.transaction():
+                if not vec or len(vec) != int(self.dimensions):
+                    # Embedder unreachable or wrong shape: skip the dense arm and
+                    # clear any stale vector so a re-promote does not keep an old one.
+                    conn.execute(
+                        f"UPDATE {self._lessons} SET embedding = NULL WHERE id = %s",
+                        (lesson.id,),
+                    )
+                else:
+                    conn.execute(
+                        f"UPDATE {self._lessons} SET embedding = %s::vector WHERE id = %s",
+                        (self._vector_param(vec), lesson.id),
+                    )
         except Exception as exc:
             _LOG.debug("memory.pgvector: vector write failed for %s: %s", lesson.id, exc)
 
