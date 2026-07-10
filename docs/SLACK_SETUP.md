@@ -182,6 +182,11 @@ app path when either is true:
   posts land where the threaded posts already go), or
 - `ALFRED_SLACK_NATIVE_SENDS=1` (explicit opt-in).
 
+Either way the app posts to `SLACK_HOME_CHANNEL` (default `alfred`), the same
+channel Alfred's threaded posts use, **not** the webhook's locked channel. If
+your webhook points at a different channel, set `SLACK_HOME_CHANNEL` to the
+channel you want app posts to land in when you opt in.
+
 If neither is set, or the app call fails, or no bot token is configured, Alfred
 falls back to the webhook, so webhook-only installs are unchanged. When there is
 no webhook at all, the app path is used whenever a bot token is present.
