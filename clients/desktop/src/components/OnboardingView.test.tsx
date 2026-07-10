@@ -193,6 +193,11 @@ beforeEach(() => {
   vi.spyOn(api, "supportsMutations").mockReturnValue(true);
   vi.spyOn(api, "loadSetupStatus").mockResolvedValue(makeStatus());
   vi.spyOn(api, "loadSetupRepos").mockResolvedValue(REPOS);
+  vi.spyOn(api, "loadSetupBatteries").mockResolvedValue({
+    version: 1,
+    summary: { included: 4, enabled: 0, available: 0, not_installed: 5, total: 9 },
+    batteries: [],
+  });
   vi.spyOn(api, "loadSetupPlaybooks").mockResolvedValue(PLAYBOOKS);
   vi.spyOn(api, "loadTrustedSlackUsers").mockResolvedValue(TRUSTED_EMPTY);
 });
@@ -277,8 +282,8 @@ describe("OnboardingView seven-step takeover", () => {
 
     // On the welcome step of a detected install, the rail must not read 0 done.
     expect(await screen.findByText(/review your setup/i)).toBeInTheDocument();
-    const progress = await screen.findByLabelText(/of 7 onboarding steps complete/i);
-    const match = /(\d+) of 7 onboarding steps complete/.exec(progress.getAttribute("aria-label") || "");
+    const progress = await screen.findByLabelText(/of 8 onboarding steps complete/i);
+    const match = /(\d+) of 8 onboarding steps complete/.exec(progress.getAttribute("aria-label") || "");
     expect(match).not.toBeNull();
     expect(Number(match?.[1])).toBeGreaterThan(0);
   });
@@ -301,8 +306,8 @@ describe("OnboardingView seven-step takeover", () => {
     );
     renderOnboarding();
 
-    const progress = await screen.findByLabelText(/of 7 onboarding steps complete/i);
-    expect(progress.getAttribute("aria-label")).toMatch(/^0 of 7/);
+    const progress = await screen.findByLabelText(/of 8 onboarding steps complete/i);
+    expect(progress.getAttribute("aria-label")).toMatch(/^0 of 8/);
   });
 
   it("uses neutral shell copy while setup inventory is loading", async () => {
@@ -939,7 +944,7 @@ describe("OnboardingView seven-step takeover", () => {
       /^team$/i,
     );
     expect(
-      within(stepper).getByLabelText("3 of 7 onboarding steps complete"),
+      within(stepper).getByLabelText("4 of 8 onboarding steps complete"),
     ).toBeInTheDocument();
     expect(screen.getByText(/active roster/i)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /transformers/i })).toBeInTheDocument();
@@ -1180,11 +1185,11 @@ describe("OnboardingView seven-step takeover", () => {
     expect(current).toHaveAccessibleName(/repositories/i);
     // The completion count reflects the three detected-done steps.
     expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
-      /3 of 7/i,
+      /3 of 8/i,
     );
   });
 
-  it("opens on Welcome at 0 of 7 done even when tools, gh and repos are pre-detected", async () => {
+  it("opens on Welcome at 0 of 8 done even when tools, gh and repos are pre-detected", async () => {
     // Regression for the broken progress logic: on a fresh launch where Claude
     // Code is installed, gh is already signed in, and repos are already saved,
     // the rail used to show "3 of 7 done" while the user was still on step 1
@@ -1204,7 +1209,7 @@ describe("OnboardingView seven-step takeover", () => {
     expect(current).toHaveAccessibleName(/welcome/i);
     await waitFor(() =>
       expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
-        /0 of 7/i,
+        /0 of 8/i,
       ),
     );
   });

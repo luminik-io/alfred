@@ -116,6 +116,59 @@ async def api_setup_select_repos(request: Request) -> JSONResponse:
     return JSONResponse(views._jsonable(result))
 
 
+@router.get("/api/setup/batteries", response_class=JSONResponse)
+async def api_setup_batteries(request: Request) -> JSONResponse:
+    """Battery manifest for the onboarding picker.
+
+    Read-only. Returns the shared battery manifest (built-in and opt-in
+    enhancements) with each battery's status on this host, so the GUI and the
+    CLI agree on one list. Nothing is installed or started by this call.
+    """
+    from server import setup as setup_mod
+
+    try:
+        payload = await run_in_threadpool(setup_mod.battery_manifest)
+    except Exception:  # never break the client on a probe failure
+        logger.exception("api_setup_batteries: manifest probe failed")
+        return JSONResponse(
+            {"version": 1, "summary": {}, "batteries": [], "error": views._GENERIC_ERROR}
+        )
+    return JSONResponse(views._jsonable(payload))
+
+
+@router.post("/api/setup/batteries", response_class=JSONResponse)
+async def api_setup_set_battery(request: Request) -> JSONResponse:
+    """Enable or disable one opt-in battery.
+
+    Body: ``{"battery": "<id>", "enabled": true|false}``. Writes the battery's
+    env flag(s) to ``$ALFRED_HOME/.env`` and mirrors them into the live process.
+    This only flips the flag; it never installs a pip extra, fetches a binary, or
+    starts a daemon (Redis / Postgres). The manifest tells the client what still
+    needs installing so the choice stays explicit.
+    """
+    if not views._same_origin_post(request) or not views._authorized_mutation(request):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    body, error_response = await views._read_json_body(request)
+    if error_response is not None:
+        return error_response
+    battery_id = str(body.get("battery") or "").strip()
+    if not battery_id:
+        return JSONResponse({"error": "battery id is required"}, status_code=400)
+    enabled = body.get("enabled", True)
+    if not isinstance(enabled, bool):
+        return JSONResponse({"error": "enabled must be a boolean"}, status_code=400)
+    from server import setup as setup_mod
+
+    try:
+        result = await run_in_threadpool(lambda: setup_mod.set_battery(battery_id, enabled=enabled))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except OSError:
+        logger.exception("api_setup_set_battery: failed to persist battery selection")
+        return JSONResponse({"error": "could not persist battery selection"}, status_code=400)
+    return JSONResponse(views._jsonable(result))
+
+
 @router.get("/api/setup/playbooks", response_class=JSONResponse)
 async def api_setup_playbooks(request: Request) -> JSONResponse:
     """Starter playbooks the client offers as first jobs."""

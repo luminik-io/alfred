@@ -30,6 +30,8 @@ import type {
   QueueAction,
   QueueActionResponse,
   ScheduleResponse,
+  SetupBatteryManifest,
+  SetupBatterySaveResponse,
   SetupDemoResponse,
   SetupPlaybookComposeResponse,
   SetupPlaybooksResponse,
@@ -892,6 +894,22 @@ export async function saveSetupRepos(
   repos: string[],
 ): Promise<SetupSelectReposResponse> {
   return writeAlfredJson(baseUrl, "/api/setup/repos", { repos, queue_repos: repos });
+}
+
+export async function loadSetupBatteries(baseUrl: string): Promise<SetupBatteryManifest> {
+  return withTimeout(
+    readAlfredJson<SetupBatteryManifest>(baseUrl, "/api/setup/batteries"),
+    12000,
+    "/api/setup/batteries",
+  );
+}
+
+export async function saveSetupBattery(
+  baseUrl: string,
+  battery: string,
+  enabled: boolean,
+): Promise<SetupBatterySaveResponse> {
+  return writeAlfredJson(baseUrl, "/api/setup/batteries", { battery, enabled });
 }
 
 export async function loadSetupPlaybooks(

@@ -2333,6 +2333,121 @@ def cmd_capabilities(args: argparse.Namespace) -> int:
     return 0
 
 
+_BATTERY_STATUS_LABEL = {
+    "included": "INCLUDED",
+    "enabled": "ENABLED",
+    "available": "AVAILABLE",
+    "not_installed": "INSTALL",
+}
+
+
+def _print_battery_list(payload: dict[str, Any]) -> None:
+    summary = payload.get("summary", {})
+    print("Alfred batteries")
+    print(
+        f"included {summary.get('included', 0)}  enabled {summary.get('enabled', 0)}  "
+        f"available {summary.get('available', 0)}  not-installed {summary.get('not_installed', 0)}"
+    )
+    print("Alfred runs fully with zero batteries; the built-ins are always on.")
+    for battery in payload.get("batteries", []):
+        marker = _BATTERY_STATUS_LABEL.get(battery["status"], battery["status"].upper())
+        daemon = f" (needs {battery['service']})" if battery.get("requires_daemon") else ""
+        print(f"{marker:<10} {battery['id']:<20} [{battery['category']}]{daemon}")
+        print(f"           {battery['how_it_helps']}")
+        if battery["status"] in {"available", "not_installed"} and battery.get("install_hint"):
+            print(f"           enable: alfred batteries enable {battery['id']}")
+            if battery["status"] == "not_installed":
+                print(f"           needs:  {battery['install_hint']}")
+
+
+def cmd_batteries(args: argparse.Namespace) -> int:
+    """List batteries, or enable/disable one opt-in battery.
+
+    Enabling writes the battery's env flag(s) to ``$ALFRED_HOME/.env``. For a
+    battery with a pip extra or an autofetch binary, we ask before running the
+    install (or print the exact command with ``--print-command``). We NEVER
+    install or start a daemon (Redis / Postgres); for those we print setup
+    guidance. Idempotent.
+    """
+    from batteries import (
+        battery_by_id,
+        disable_values,
+        enable_values,
+        is_enabled,
+        is_installed,
+        load_env,
+        manifest,
+        write_env,
+    )
+
+    action = getattr(args, "battery_action", None) or "list"
+
+    if action == "list":
+        payload = manifest()
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+            return 0
+        _print_battery_list(payload)
+        return 0
+
+    battery = battery_by_id(args.battery_id)
+    if battery is None:
+        print(f"alfred: unknown battery {args.battery_id!r}. Run `alfred batteries` to list them.")
+        return 1
+    if battery.builtin:
+        print(f"alfred: {battery.id} is a built-in and is always on; nothing to change.")
+        return 1
+
+    env_path = _runtime_env_path()
+    enabling = action == "enable"
+    values = enable_values(battery) if enabling else disable_values(battery)
+    write_env(env_path, values)
+    verb = "enabled" if enabling else "disabled"
+    print(f"alfred: {verb} {battery.id}. Wrote {', '.join(values)} to {env_path}")
+
+    if enabling and battery.requires_daemon:
+        print(
+            f"alfred: {battery.id} needs {battery.service} running, which you must start yourself."
+        )
+        print(f"        {battery.install_hint}")
+        return 0
+
+    if enabling and battery.install_kind in {"pip-extra", "autofetch"}:
+        env = load_env()
+        if is_enabled(battery, env) and is_installed(battery, env):
+            return 0
+        return _battery_run_install(args, battery)
+    return 0
+
+
+def _battery_run_install(args: argparse.Namespace, battery: Any) -> int:
+    """Prompt for consent and run a battery's install, or print the command."""
+    if battery.pip_extra:
+        command = [sys.executable, "-m", "pip", "install", f"alfred-os[{battery.pip_extra}]"]
+    elif battery.autofetch_cmd:
+        command = list(battery.autofetch_cmd)
+    else:
+        return 0
+    printable = " ".join(shlex.quote(part) for part in command)
+
+    if getattr(args, "print_command", False):
+        print(f"alfred: run this to finish installing {battery.id}:")
+        print(f"        {printable}")
+        return 0
+
+    if not getattr(args, "yes", False):
+        if not sys.stdin.isatty():
+            print(f"alfred: {battery.id} still needs its install. Run:")
+            print(f"        {printable}")
+            return 0
+        answer = input(f"alfred: run `{printable}` now? [y/N]: ").strip().lower()
+        if not answer.startswith("y"):
+            print(f"alfred: skipped. Run it yourself later:\n        {printable}")
+            return 0
+    print(f"alfred: running {printable}")
+    return subprocess.run(command, check=False).returncode
+
+
 def cmd_github_poll(args: argparse.Namespace) -> int:
     script = _HERE / "fleet-github-poll.py"
     cmd = [sys.executable, str(script)]
@@ -3599,6 +3714,28 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     )
     p_capabilities.add_argument("--json", action="store_true")
     p_capabilities.set_defaults(func=cmd_capabilities)
+
+    p_batteries = sub.add_parser(
+        "batteries",
+        help="list or toggle Alfred's opt-in enhancements (memory, compression, code graph)",
+    )
+    p_batteries.add_argument("--json", action="store_true", help="emit the manifest as JSON")
+    p_batteries.set_defaults(func=cmd_batteries, battery_action="list")
+    batteries_sub = p_batteries.add_subparsers(dest="battery_action")
+    p_batteries_list = batteries_sub.add_parser("list", help="list all batteries with status")
+    p_batteries_list.add_argument("--json", action="store_true")
+    p_batteries_list.set_defaults(func=cmd_batteries, battery_action="list")
+    for verb in ("enable", "disable"):
+        p_verb = batteries_sub.add_parser(verb, help=f"{verb} one opt-in battery by id")
+        p_verb.add_argument("battery_id", help="battery id, e.g. dense-embeddings")
+        p_verb.add_argument("--yes", action="store_true", help="run any install without prompting")
+        p_verb.add_argument(
+            "--print-command",
+            action="store_true",
+            help="print the install command instead of running it",
+        )
+        p_verb.add_argument("--json", action="store_true")
+        p_verb.set_defaults(func=cmd_batteries, battery_action=verb)
 
     p_github_poll = sub.add_parser("github-poll", help="poll GitHub issues/PRs into fleet-brain")
     p_github_poll.add_argument("--repo", action="append")

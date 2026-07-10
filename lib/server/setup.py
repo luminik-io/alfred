@@ -811,6 +811,55 @@ def capability_status(
     }
 
 
+# --------------------------------------------------------------------------- #
+# Battery picker (opt-in enhancements). One manifest, shared with the CLI.
+# --------------------------------------------------------------------------- #
+def battery_manifest(env: dict[str, str] | None = None) -> dict[str, Any]:
+    """The battery manifest with per-battery status for the onboarding picker.
+
+    Read-only. Delegates to ``batteries`` (the single source of truth also read
+    by ``bin/alfred-init.py`` and ``alfred batteries``) so the CLI and the
+    desktop app never drift. Nothing is installed or started here.
+    """
+    import batteries
+
+    resolved = env if env is not None else _runtime_config_env()
+    return batteries.manifest(resolved)
+
+
+def set_battery(battery_id: str, *, enabled: bool) -> dict[str, Any]:
+    """Enable or disable one opt-in battery by writing its env flag(s).
+
+    Writes the battery's env flags to ``$ALFRED_HOME/.env`` and mirrors them into
+    the live process so the change is effective without a restart, matching the
+    repo picker. This only flips the env flag; it never installs a pip extra,
+    fetches a binary, or starts a daemon (Redis / Postgres). The client surfaces
+    the install requirement from the manifest so the choice stays explicit.
+    """
+    import batteries
+
+    battery = batteries.battery_by_id(battery_id)
+    if battery is None:
+        raise ValueError(f"unknown battery: {battery_id!r}")
+    if battery.builtin:
+        raise ValueError(f"battery {battery_id!r} is a built-in and is always on")
+    values = batteries.enable_values(battery) if enabled else batteries.disable_values(battery)
+    env_path = write_env_values(values)
+    for key, value in values.items():
+        if value:
+            os.environ[key] = value
+        else:
+            os.environ.pop(key, None)
+    return {
+        "ok": True,
+        "battery": battery_id,
+        "enabled": enabled,
+        "env_path": str(env_path),
+        "keys": list(values),
+        "manifest": battery_manifest(),
+    }
+
+
 def _capability_base(
     key: str,
     *,

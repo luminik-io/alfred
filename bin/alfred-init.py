@@ -55,6 +55,15 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# The battery manifest is the one source of truth shared with `alfred batteries`
+# and the desktop picker, so the wizard never keeps a second, drifting copy of
+# the opt-in list. It is pure stdlib like this file; importing it adds no
+# external dependency, it just points every surface at the same manifest.
+_LIB_DIR = Path(__file__).resolve().parent.parent / "lib"
+if _LIB_DIR.is_dir() and str(_LIB_DIR) not in sys.path:
+    sys.path.insert(0, str(_LIB_DIR))
+import batteries  # noqa: E402
+
 # ---------------------------------------------------------------------------
 # Constants, the canonical role catalog.
 # ---------------------------------------------------------------------------
@@ -327,6 +336,7 @@ def alfred_init_managed_env_keys() -> frozenset[str]:
         "ALFRED_TELEMETRY_URL",
         "ALFRED_TELEMETRY_TOKEN",
         *MEMORY_AUTO_PROMOTE_CONTROL_ENVS,
+        *batteries.managed_env_keys(),
     }
     for role, (default_codename, _, _, _) in AGENT_CATALOG.items():
         default_slug = default_codename.upper().replace("-", "_")
@@ -450,6 +460,7 @@ class WizardState:
     telemetry_enabled: bool = True  # anonymous proof telemetry is opt-out
     telemetry_url: str = field(default_factory=default_telemetry_url)
     telemetry_token: str = ""  # optional shared ingest token (X-Ingest-Token)
+    batteries: list[str] = field(default_factory=list)  # opt-in battery ids to enable
 
     def codename_for(self, role: str) -> str:
         return self.role_to_codename.get(role, AGENT_CATALOG[role][0])
@@ -1300,6 +1311,12 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
             out["ALFRED_TELEMETRY_TOKEN"] = state.telemetry_token
     elif not state.telemetry_enabled:
         out["ALFRED_TELEMETRY_ENABLED"] = "0"
+    # Opt-in batteries the operator picked. Alfred works fully with none of these;
+    # each just sets its real env flag(s) from the shared manifest.
+    for battery_id in state.batteries:
+        battery = batteries.battery_by_id(battery_id)
+        if battery is not None and not battery.builtin:
+            out.update(batteries.enable_values(battery))
     return out
 
 
@@ -1921,6 +1938,95 @@ def step_8b_telemetry(state: WizardState, *, non_interactive: bool) -> None:
     ok("Telemetry enabled. Disable any time with `alfred telemetry off`.")
 
 
+def apply_batteries_arg(state: WizardState, batteries_arg: str | None) -> None:
+    """Merge a ``--batteries`` selection into the wizard state.
+
+    Accepts a comma-separated list of opt-in battery ids, or ``none``/``builtin``
+    to keep built-ins only. Unknown ids and built-in ids are warned and skipped,
+    so an operator can never enable something that is not a real opt-in battery.
+    """
+    if batteries_arg is None:
+        return
+    raw = batteries_arg.strip().lower()
+    if raw in {"", "none", "builtin", "built-in", "builtins"}:
+        state.batteries = []
+        return
+    selected: list[str] = list(state.batteries)
+    for token in raw.split(","):
+        bid = token.strip()
+        if not bid:
+            continue
+        battery = batteries.battery_by_id(bid)
+        if battery is None:
+            warn(f"--batteries: unknown battery {bid!r}; ignored")
+            continue
+        if battery.builtin:
+            warn(f"--batteries: {bid!r} is a built-in and is always on; ignored")
+            continue
+        if bid not in selected:
+            selected.append(bid)
+    state.batteries = selected
+
+
+def _battery_requirement_line(battery: batteries.Battery) -> str:
+    if battery.requires_daemon:
+        return f"needs {battery.service} running (you start it yourself)"
+    if battery.install_kind == batteries.INSTALL_PIP_EXTRA and battery.pip_extra:
+        return f'needs `pip install "alfred-os[{battery.pip_extra}]"`'
+    if battery.install_kind == batteries.INSTALL_PIP_EXTRA:
+        return "needs an extra Python package"
+    if battery.install_kind == batteries.INSTALL_AUTOFETCH:
+        return "Alfred fetches a small pinned binary on first use"
+    return "no extra install"
+
+
+def step_8c_batteries(state: WizardState, *, non_interactive: bool) -> None:
+    """Offer the optional batteries. Built-ins stay on; opt-ins are opt-in.
+
+    Non-interactive keeps the built-ins only unless the operator named batteries
+    with ``--batteries`` (or ``--config``). Interactive shows each opt-in with a
+    plain "how it helps" and its requirement, and toggles it with a yes/no. This
+    only records the choice; ``step_9_generate`` writes the env flags, and the
+    install itself is left to `alfred batteries enable` so the wizard never runs
+    an installer or starts a daemon behind the operator's back.
+    """
+    step("Batteries (optional enhancements)")
+    note("Alfred works fully with none of these. The built-ins below are always on:")
+    for battery in batteries.builtin_batteries():
+        note(f"    included  {battery.name} ({battery.category})")
+
+    opt_ins = batteries.opt_in_batteries()
+    if non_interactive:
+        if state.batteries:
+            chosen = ", ".join(state.batteries)
+            ok(f"Batteries selected: {chosen}. Built-ins stay on regardless.")
+        else:
+            ok("Built-ins only. Add more later with `alfred batteries`.")
+        return
+
+    note("The optional batteries are off by default. Turn on any you want:")
+    selected = list(state.batteries)
+    for battery in opt_ins:
+        print(f"  {STYLE.BLUE}{battery.name}{STYLE.OFF} ({battery.category})")
+        print(f"    {battery.how_it_helps}")
+        print(f"    {_battery_requirement_line(battery)}")
+        default_on = battery.id in selected
+        if ask_yes_no(f"Enable {battery.name}?", default=default_on):
+            if battery.id not in selected:
+                selected.append(battery.id)
+            if battery.requires_daemon:
+                note(f"    Remember: start {battery.service} yourself. {battery.install_hint}")
+            elif battery.install_kind in (batteries.INSTALL_PIP_EXTRA, batteries.INSTALL_AUTOFETCH):
+                note(f"    Finish install later with `alfred batteries enable {battery.id}`.")
+        elif battery.id in selected:
+            selected.remove(battery.id)
+    state.batteries = selected
+    if selected:
+        ok(f"Batteries selected: {', '.join(selected)}.")
+    else:
+        ok("Built-ins only. Add more later with `alfred batteries`.")
+
+
 def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:
     step("Generate config")
     conf = render_agents_conf(state)
@@ -2160,6 +2266,15 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
         help="Comma-separated repo selection for repo-operating agents.",
     )
     p.add_argument(
+        "--batteries",
+        type=str,
+        default=None,
+        help=(
+            "Comma-separated opt-in battery ids to enable (e.g. dense-embeddings). "
+            "'none' keeps built-ins only. Works in non-interactive mode."
+        ),
+    )
+    p.add_argument(
         "--slack-webhook",
         type=str,
         default=None,
@@ -2254,6 +2369,9 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
       quoted ``"false"`` opts out.
     - ``telemetry_token`` (str): optional shared ingest token sent as
       ``X-Ingest-Token``; only written when telemetry is opted in.
+    - ``batteries`` (str | list[str]): opt-in battery ids to enable (e.g.
+      ``["dense-embeddings"]``). ``"none"`` keeps built-ins only. Built-ins are
+      always on and cannot be listed here.
     """
     if "gh_org" in cfg:
         state.gh_org = cfg["gh_org"]
@@ -2341,6 +2459,10 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
         state.telemetry_url = str(cfg["telemetry_url"])
     if "telemetry_token" in cfg:
         state.telemetry_token = str(cfg["telemetry_token"])
+    if "batteries" in cfg:
+        raw = cfg["batteries"]
+        tokens = raw if isinstance(raw, list) else [raw]
+        apply_batteries_arg(state, ",".join(str(item) for item in tokens))
 
 
 def main(argv: Iterable[str] | None = None) -> int:
@@ -2383,6 +2505,8 @@ def main(argv: Iterable[str] | None = None) -> int:
     step_7_repos(state, repos_arg=args.repos or config_repos, non_interactive=non_interactive)
     step_8_schedule(state, non_interactive=non_interactive)
     step_8b_telemetry(state, non_interactive=non_interactive)
+    apply_batteries_arg(state, args.batteries)
+    step_8c_batteries(state, non_interactive=non_interactive)
     step_9_generate(state, non_interactive=non_interactive)
     step_10_labels(state, skip=args.skip_label_setup)
     step_10_deploy(state)

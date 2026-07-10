@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   ArrowRight,
+  BatteryCharging,
   Bot,
   GitPullRequest,
   ListChecks,
@@ -19,6 +20,7 @@ import {
   errorDetail,
   loadSchedule,
   loadSetupStatus,
+  saveSetupBattery,
   saveSetupRepos,
   supportsMutations,
 } from "../api";
@@ -33,6 +35,7 @@ import {
 } from "../lib/agentThemes";
 import type { NativeActionRequest, TabKey } from "../lib/uiTypes";
 import type { NativeCommandResult, OnboardingAction, SetupStatus } from "../types";
+import { BatteryPickerStep } from "./onboarding/BatteryPickerStep";
 import { EngineStep } from "./onboarding/EngineStep";
 import {
   OnboardingConversePanel,
@@ -189,6 +192,14 @@ const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
     blurb: "Pick the projects Alfred may open pull requests in. You can change this anytime.",
     icon: Plug,
     optional: false,
+  },
+  batteries: {
+    key: "batteries",
+    title: "Add batteries?",
+    railTitle: "Batteries",
+    blurb: "Optional local enhancements: better memory, more token savings, a live code graph. Off by default.",
+    icon: BatteryCharging,
+    optional: true,
   },
   team: {
     key: "team",
@@ -666,6 +677,49 @@ export function OnboardingView({
             await onSaveCustomNames({ names, roles: roles ?? {} });
             return { ok: true, note: "Saved your team names." };
           }
+          case "set_batteries": {
+            // Optional enhancements. Turning a battery on writes its env flag
+            // through the same setup-save path the picker uses; it never installs
+            // a pip extra or starts a daemon, so the person still finishes any
+            // install themselves. Unknown ids and built-ins are refused.
+            if (!canMutate) {
+              return {
+                ok: false,
+                note: "I cannot change batteries in this read-only preview. Use the Batteries step to pick them.",
+              };
+            }
+            const ids = Array.isArray(action.args.batteries)
+              ? action.args.batteries.filter((id): id is string => typeof id === "string")
+              : [];
+            if (!ids.length) {
+              return {
+                ok: false,
+                note: "No battery names came through. Which would you like: dense embeddings, headroom compression, or codebase memory?",
+              };
+            }
+            const enabledNow: string[] = [];
+            const failed: string[] = [];
+            for (const id of ids) {
+              try {
+                await saveSetupBattery(baseUrl, id, true);
+                enabledNow.push(id);
+              } catch {
+                failed.push(id);
+              }
+            }
+            await refreshStatus();
+            if (!enabledNow.length) {
+              return {
+                ok: false,
+                note: "I could not turn those on. Open the Batteries step to pick them, or run `alfred batteries`.",
+              };
+            }
+            const tail = failed.length ? ` I could not turn on: ${failed.join(", ")}.` : "";
+            return {
+              ok: true,
+              note: `Turned on ${enabledNow.join(", ")}. Some may still need a package or a service; the Batteries step shows what.${tail}`,
+            };
+          }
           case "set_schedule": {
             // Persist the cadence through the SAME native primitive the Fleet view
             // uses (`alfred schedule set` / `pause`), never a fake acknowledgement.
@@ -799,6 +853,15 @@ export function OnboardingView({
           return githubConnected;
         case "repos":
           return reposSelected;
+        case "batteries":
+          // Batteries are optional; Alfred works with zero of them. The step
+          // reads satisfied once the user moves past it or skips it. We never
+          // require a battery to be enabled to continue.
+          return (
+            reachedIndex > ONBOARDING_STEP_ORDER.indexOf("batteries") ||
+            skipped.has("batteries") ||
+            installInitialized
+          );
         case "team":
           // The shipped Batman roster is already valid. Keeping the default is a
           // complete state only after the operator continues past Team, OR when
@@ -1135,6 +1198,19 @@ export function OnboardingView({
                 canMutate={canMutate}
                 githubConnected={githubConnected}
                 selectedCount={status?.repos.count ?? 0}
+                onSaved={async () => {
+                  await refreshStatus();
+                }}
+                setNotice={setNotice}
+              />
+            </StepFrame>
+          ) : null}
+
+          {stepKey === "batteries" ? (
+            <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb} accentLabel="Optional">
+              <BatteryPickerStep
+                baseUrl={baseUrl}
+                canMutate={canMutate}
                 onSaved={async () => {
                   await refreshStatus();
                 }}
