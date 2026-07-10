@@ -91,11 +91,11 @@ export function buildNeedsYou(snapshot: Snapshot | null): AttentionItem[] {
     );
     items.push({
       id: "memory-review",
-      label: "Review queue",
-      title: `${plural(candidates.length, "memory candidate")} ready`,
+      label: "Evaluation queue",
+      title: `${plural(candidates.length, "memory candidate")} pending`,
       detail: repos.length
-        ? `Review before promotion: ${repos.slice(0, 3).join(", ")}${repos.length > 3 ? ", ..." : ""}.`
-        : "Review candidates before they enter recall.",
+        ? `Awaiting promotion evaluation: ${repos.slice(0, 3).join(", ")}${repos.length > 3 ? ", ..." : ""}.`
+        : "Awaiting promotion evaluation before entering active recall.",
       tone: candidates.some((candidate) => candidate.severity === "blocker")
         ? "error"
         : "info",
@@ -107,9 +107,9 @@ export function buildNeedsYou(snapshot: Snapshot | null): AttentionItem[] {
     if (suggestions.length) {
       items.push({
         id: "memory-suggestions",
-        label: "Review queue",
-        title: `${plural(suggestions.length, "memory suggestion")} ready`,
-        detail: "Review suggested memory updates before they are saved.",
+        label: "Evaluation queue",
+        title: `${plural(suggestions.length, "memory suggestion")} pending`,
+        detail: "Awaiting promotion evaluation before entering active recall.",
         tone: "info",
         targetTab: "lessons",
         icon: "memory",

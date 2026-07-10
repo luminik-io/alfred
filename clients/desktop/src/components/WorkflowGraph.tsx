@@ -11,7 +11,8 @@ import {
   useReactFlow,
   useStore,
 } from "@xyflow/react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Maximize2, Minimize2 } from "lucide-react";
 
 import {
   type AgentNodeData,
@@ -203,10 +204,12 @@ export function WorkflowGraph({
   agents,
   selectedCodename,
   onSelect,
+  onMaximize,
 }: {
   agents: WorkflowNodeInput[];
   selectedCodename: string | null;
   onSelect: (codename: string) => void;
+  onMaximize?: () => void;
 }) {
   const { nodes, edges } = useMemo(
     () => buildWorkflowGraph(agents, selectedCodename),
@@ -220,9 +223,52 @@ export function WorkflowGraph({
     [agents],
   );
 
+  // Maximize expands the canvas to a full-viewport overlay. The pipeline is a
+  // wide graph that is cramped when it shares the page with the stat cards and
+  // roster header, so a mouse or trackpad user gets room to actually pan and
+  // zoom. Escape exits; the signature change re-fits the graph to the new size.
+  const [maximized, setMaximized] = useState(false);
+  const toggleMaximized = () => {
+    setMaximized((value) => {
+      const next = !value;
+      if (next) onMaximize?.();
+      return next;
+    });
+  };
+  const selectNode = (codename: string) => {
+    if (maximized) setMaximized(false);
+    onSelect(codename);
+  };
+  useEffect(() => {
+    if (!maximized) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMaximized(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [maximized]);
+
   return (
-    <div className="workflow-graph" aria-label="Agent workflow graph">
+    <div
+      className="workflow-graph"
+      data-maximized={maximized ? "true" : "false"}
+      aria-label="Agent workflow graph"
+    >
       <WorkflowLegend />
+      <button
+        type="button"
+        className="wf-maximize"
+        onClick={toggleMaximized}
+        aria-pressed={maximized}
+        aria-label={maximized ? "Exit full screen" : "Maximize workflow"}
+        title={maximized ? "Exit full screen (Esc)" : "Maximize"}
+      >
+        {maximized ? (
+          <Minimize2 aria-hidden="true" size={15} />
+        ) : (
+          <Maximize2 aria-hidden="true" size={15} />
+        )}
+      </button>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -251,7 +297,7 @@ export function WorkflowGraph({
         proOptions={{ hideAttribution: false }}
         onNodeClick={(_event, node) => {
           if (node.type === "agent") {
-            onSelect(node.id);
+            selectNode(node.id);
           }
         }}
       >

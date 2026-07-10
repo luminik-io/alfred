@@ -308,8 +308,8 @@ export function SignalCard({ signal }: { signal: ReliabilitySignal }) {
       <MemoryStick size={20} aria-hidden="true" />
       <div>
         <span>{signal.severity || "memory"}</span>
-        <strong>{signal.title || signal.action || signal.codename || "Memory candidate"}</strong>
-        <p>{signal.message || signal.summary || signal.reason || "Review evidence before promotion."}</p>
+        <strong>{signal.title || signal.action || signal.codename || "Memory suggestion"}</strong>
+        <p>{signal.message || signal.summary || signal.reason || "Awaiting promotion evaluation."}</p>
         {signal.command ? <code>{signal.command}</code> : null}
       </div>
     </article>

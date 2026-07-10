@@ -1062,6 +1062,23 @@ export function OnboardingView({
           </p>
         </div>
 
+        {/* Fills the rail with the actual loop, so the intro reads as one
+            composed block instead of a headline floating over empty space. */}
+        <ol className="alfred-onboarding-rail__loop">
+          <li>
+            <span className="alfred-onboarding-rail__loopstep">1</span>
+            <span>Connect your repositories and local tools.</span>
+          </li>
+          <li>
+            <span className="alfred-onboarding-rail__loopstep">2</span>
+            <span>Approve a plan; the team builds and reviews it.</span>
+          </li>
+          <li>
+            <span className="alfred-onboarding-rail__loopstep">3</span>
+            <span>Alfred opens the pull request and reports back.</span>
+          </li>
+        </ol>
+
         <div className="alfred-onboarding-rail__foot">
           <p className="alfred-onboarding-rail__trust">
             No API keys. Alfred runs on the Claude and Codex subscriptions you

@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { StatusPill } from "./atoms";
+import { SignalCard, StatusPill } from "./atoms";
 import type { Snapshot } from "../types";
 
 function snapshot(reliabilityStatus: string): Snapshot {
@@ -49,5 +49,15 @@ describe("StatusPill", () => {
     expect(pill).toHaveAttribute("aria-label", "Connected to Alfred serve, fleet Warn");
     expect(pill.getAttribute("aria-label")).not.toMatch(/^Connection /);
     expect(pill.className).toContain("status-pill--warn");
+  });
+});
+
+describe("SignalCard", () => {
+  it("keeps a sparse promotion suggestion pending", () => {
+    render(<SignalCard signal={{}} />);
+
+    expect(screen.getByText("Memory suggestion")).toBeInTheDocument();
+    expect(screen.getByText("Awaiting promotion evaluation.")).toBeInTheDocument();
+    expect(screen.queryByText(/added this to memory/i)).not.toBeInTheDocument();
   });
 });

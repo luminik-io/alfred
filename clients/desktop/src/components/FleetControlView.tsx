@@ -240,6 +240,7 @@ export function FleetControlView({
                 agents={workflowInputs}
                 selectedCodename={drawerOpen ? selectedRow?.codename ?? null : null}
                 onSelect={selectAgent}
+                onMaximize={() => setDrawerOpen(false)}
               />
             ) : (
               <div className="agents-deck__rail" aria-label="Roster list">
