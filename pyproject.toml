@@ -53,6 +53,15 @@ dev = [
 vector = [
   "sqlite-vec>=0.1",
 ]
+# Optional scale-tier memory backend: Postgres + pgvector behind the provider
+# seam (ALFRED_MEMORY_PROVIDERS=pgvector,fleet). Not a hard dependency; without
+# it the pgvector provider is simply unavailable and the chain falls through to
+# the SQLite default. `psycopg` is the client; the `pgvector` package is the
+# optional psycopg vector adapter on top of the server-side `vector` extension.
+pgvector = [
+  "psycopg[binary]>=3.1",
+  "pgvector>=0.2",
+]
 [project.urls]
 Homepage = "https://alfred.luminik.io"
 Repository = "https://github.com/luminik-io/alfred"
@@ -161,6 +170,13 @@ ignore_missing_imports = true
 # not a hard dependency and ships no type stubs, so the SQLite hybrid provider's
 # import-guarded uses must not error whether or not it is installed.
 module = "sqlite_vec"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Optional scale-tier backend (pip install "alfred-os[pgvector]"). psycopg and
+# the pgvector psycopg adapter are not hard dependencies and the provider's uses
+# are import-guarded, so mypy must not error whether or not they are installed.
+module = ["psycopg", "pgvector.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

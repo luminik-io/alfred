@@ -3834,6 +3834,7 @@ def _readiness_payload(readiness: Any | None) -> dict[str, Any]:
 def _default_memory_provider() -> Any | None:
     try:
         from memory.config import load_provider
+        from memory.pgvector_provider import MemoryProviderMisconfigured
     except Exception as exc:
         print(
             f"[SLACK-LISTENER-WARN] memory provider unavailable: {exc}",
@@ -3842,6 +3843,10 @@ def _default_memory_provider() -> Any | None:
         return None
     try:
         return load_provider()
+    except MemoryProviderMisconfigured:
+        # A bad memory config value must surface, not silently disable recall
+        # (mirrors load_runtime_memory).
+        raise
     except Exception as exc:
         print(
             f"[SLACK-LISTENER-WARN] memory provider failed to load: {exc}",

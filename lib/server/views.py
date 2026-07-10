@@ -2442,10 +2442,16 @@ def _planning_memory_provider(request: Request):
 def _load_planning_memory_provider_from_env():
     if not (os.environ.get("ALFRED_HOME") or os.environ.get("FLEET_BRAIN_HOST")):
         return None
+    from memory.pgvector_provider import MemoryProviderMisconfigured
+
     try:
         from memory.config import load_provider
 
         return load_provider()
+    except MemoryProviderMisconfigured:
+        # A bad memory config value must surface, not silently disable planning
+        # recall (mirrors load_runtime_memory).
+        raise
     except Exception:
         return None
 
