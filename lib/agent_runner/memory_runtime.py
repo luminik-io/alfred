@@ -69,11 +69,23 @@ def issue_memory_query(
 
 
 def load_runtime_memory(env: Mapping[str, str] | None = None):
-    """Return the configured memory provider, or ``None`` on any failure."""
+    """Return the configured memory provider, or ``None`` on a load failure.
+
+    A genuine MISCONFIGURATION (:class:`MemoryProviderMisconfigured`, e.g. an
+    invalid ``ALFRED_MEMORY_PG_TABLE_PREFIX``) is re-raised, never swallowed: a
+    typo in a memory setting must surface rather than silently start the runner
+    with recall memory disabled. Every other failure (an unavailable backend, a
+    transient error) still degrades to ``None`` so optional memory never crashes
+    a firing.
+    """
+    from memory.pgvector_provider import MemoryProviderMisconfigured
+
     try:
         from memory.config import load_provider
 
         return load_provider(env=env)
+    except MemoryProviderMisconfigured:
+        raise
     except Exception:
         _LOG.exception("memory runtime: provider load failed")
         return None

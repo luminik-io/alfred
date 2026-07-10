@@ -96,7 +96,11 @@ from .sqlite_hybrid import (
 if TYPE_CHECKING:
     from . import MemoryProvider
 
-__all__ = ["MemoryProviderUnavailable", "PgvectorProvider"]
+__all__ = [
+    "MemoryProviderMisconfigured",
+    "MemoryProviderUnavailable",
+    "PgvectorProvider",
+]
 
 _LOG = logging.getLogger(__name__)
 
@@ -171,11 +175,26 @@ class MemoryProviderUnavailable(RuntimeError):
 
     This is the normal "not turned on" state, NOT a misconfiguration: a chain
     builder should SKIP the provider and fall through to the rest of the chain.
-    A genuine bad config value (an invalid table prefix, a malformed DSN) is a
-    :class:`ValueError` instead, and MUST surface to the operator rather than be
-    silently swallowed -- otherwise a typo'd setting would quietly disable the
-    backend with no error. The two failure modes are deliberately distinct types
-    so ``build_chain`` / ``load_lesson_writer`` can swallow only the first.
+    A genuine bad config value is a :class:`MemoryProviderMisconfigured` instead,
+    and MUST surface to the operator rather than be silently swallowed --
+    otherwise a typo'd setting would quietly disable the backend with no error.
+    The two failure modes are deliberately distinct types so ``build_chain`` /
+    ``load_lesson_writer`` (and the runtime loaders above them) can swallow only
+    the first.
+    """
+
+
+class MemoryProviderMisconfigured(ValueError):
+    """A provider is armed but a config VALUE is invalid -- e.g. an
+    ``ALFRED_MEMORY_PG_TABLE_PREFIX`` that is not a valid SQL identifier or is
+    long enough to overflow PostgreSQL's identifier limit.
+
+    Subclasses :class:`ValueError` so callers that already handle a bad value
+    keep working, but it is a NAMED type so the runtime memory loaders can
+    re-raise it (surface the operator's typo) while still swallowing a genuinely
+    :class:`MemoryProviderUnavailable` (not-armed) backend. A misconfiguration
+    must never silently disable recall/promotion the way an unavailable backend
+    is allowed to.
     """
 
 
@@ -487,13 +506,13 @@ class PgvectorProvider:
             self.index_kind = "hnsw"
         prefix = (self.table_prefix or "").strip()
         if prefix and not _TABLE_PREFIX_RE.match(prefix):
-            raise ValueError(
+            raise MemoryProviderMisconfigured(
                 "ALFRED_MEMORY_PG_TABLE_PREFIX must be a valid SQL identifier prefix "
                 "(letters, digits, and underscores; not starting with a digit), "
                 f"e.g. 'alfred_prod'; got {prefix!r}."
             )
         if len(prefix) > _MAX_TABLE_PREFIX_LEN:
-            raise ValueError(
+            raise MemoryProviderMisconfigured(
                 f"ALFRED_MEMORY_PG_TABLE_PREFIX is too long ({len(prefix)} chars): the "
                 "longest generated table/index identifier would exceed PostgreSQL's "
                 f"{_MAX_PG_IDENTIFIER_BYTES}-byte limit and be silently truncated. Use at "
@@ -511,11 +530,12 @@ class PgvectorProvider:
           installed, or no DSN is configured. This is the "not turned on" state:
           ``build_chain`` / ``load_lesson_writer`` catch it and skip the provider
           so the chain falls through, never a hard failure of the runner.
-        * **Misconfigured** (:class:`ValueError`, raised from ``__post_init__``)
-          -- a genuine bad config value such as an invalid table prefix. This
-          MUST surface to the operator, so it is a different exception type that
-          the chain builders deliberately do NOT swallow; a typo must not
-          silently disable the backend.
+        * **Misconfigured** (:class:`MemoryProviderMisconfigured`, a
+          :class:`ValueError`, raised from ``__post_init__``) -- a genuine bad
+          config value such as an invalid or over-long table prefix. This MUST
+          surface to the operator, so it is a different exception type that the
+          chain builders and the runtime loaders deliberately do NOT swallow; a
+          typo must not silently disable the backend.
         """
         if _psycopg is None:
             raise MemoryProviderUnavailable(

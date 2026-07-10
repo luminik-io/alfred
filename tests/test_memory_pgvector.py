@@ -37,6 +37,7 @@ sys.path.insert(0, str(_REPO / "lib"))
 
 import memory.pgvector_provider as mod  # noqa: E402
 from agent_runner import memory_ranking  # noqa: E402
+from agent_runner.memory_runtime import load_runtime_memory  # noqa: E402
 from fleet_brain import Lesson  # noqa: E402
 from memory import MemoryProvider  # noqa: E402
 from memory.config import (  # noqa: E402
@@ -49,6 +50,7 @@ from memory.config import (  # noqa: E402
 from memory.pgvector_provider import (  # noqa: E402
     _MAX_PG_IDENTIFIER_BYTES,
     _MAX_TABLE_PREFIX_LEN,
+    MemoryProviderMisconfigured,
     MemoryProviderUnavailable,
     PgvectorProvider,
     _dense_query,
@@ -281,8 +283,9 @@ def test_from_env_builds_when_armed(monkeypatch: pytest.MonkeyPatch) -> None:
 )
 def test_unsafe_table_prefix_is_rejected(bad_prefix: str) -> None:
     # A prefix that is not a valid SQL identifier must raise a clear config error
-    # rather than being raw-interpolated into DDL/query identifiers.
-    with pytest.raises(ValueError, match="ALFRED_MEMORY_PG_TABLE_PREFIX"):
+    # rather than being raw-interpolated into DDL/query identifiers. It is a
+    # MemoryProviderMisconfigured (a ValueError) so the runtime loaders surface it.
+    with pytest.raises(MemoryProviderMisconfigured, match="ALFRED_MEMORY_PG_TABLE_PREFIX"):
         PgvectorProvider(dsn="postgresql://u:p@h/db", table_prefix=bad_prefix)
 
 
@@ -318,7 +321,7 @@ def test_over_long_table_prefix_is_rejected() -> None:
     # push a generated identifier past PostgreSQL's 63-byte limit (where it would
     # be silently truncated) must be rejected with a clear error.
     too_long = "a" * (_MAX_TABLE_PREFIX_LEN + 1)
-    with pytest.raises(ValueError, match="too long"):
+    with pytest.raises(MemoryProviderMisconfigured, match="too long"):
         PgvectorProvider(dsn="postgresql://u:p@h/db", table_prefix=too_long)
 
 
@@ -408,6 +411,34 @@ def test_misconfigured_pgvector_recall_surfaces_not_silent_skip(
     }
     with pytest.raises(ValueError, match="ALFRED_MEMORY_PG_TABLE_PREFIX"):
         load_provider(env=env)
+
+
+def test_runtime_loader_surfaces_misconfig_instead_of_disabling_memory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The runtime memory loader degrades to None on an unavailable backend, but a
+    # MISCONFIGURATION must surface: otherwise a firing would start with recall
+    # memory silently disabled instead of the operator's typo being reported.
+    monkeypatch.setattr(mod, "_psycopg", object())
+    env = {
+        "ALFRED_MEMORY_PROVIDERS": "pgvector,fleet",
+        "ALFRED_MEMORY_PG_DSN": "postgresql://u:p@h/db",
+        "ALFRED_MEMORY_PG_TABLE_PREFIX": "alfred-prod",
+    }
+    with pytest.raises(MemoryProviderMisconfigured, match="ALFRED_MEMORY_PG_TABLE_PREFIX"):
+        load_runtime_memory(env=env)
+
+
+def test_runtime_loader_degrades_when_pgvector_unavailable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Unavailable (not armed) must still degrade gracefully: the loader returns
+    # the rest of the chain (fleet), never None and never a raise.
+    monkeypatch.setattr(mod, "_psycopg", None)
+    env = {"ALFRED_MEMORY_PROVIDERS": "pgvector,fleet", "ALFRED_HOME": str(tmp_path)}
+    provider = load_runtime_memory(env=env)
+    assert provider is not None
+    assert provider.name == "fleet"
 
 
 # ---------------------------------------------------------------------------
