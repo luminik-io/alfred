@@ -215,6 +215,66 @@ def test_slack_post_dry_run_logs_the_line(monkeypatch, capsys):
     assert "staging is down" in out
 
 
+# ---------- Slack seam: app-native send preferred over webhook ----------
+
+
+def test_slack_post_prefers_app_when_bot_token_present(monkeypatch):
+    """When ``slack_format.post_flat`` succeeds, ``slack_post`` returns True
+    via the app and never touches the webhook."""
+    import agent_runner as ar
+    import slack_format
+
+    monkeypatch.delenv("ALFRED_DRY_RUN", raising=False)
+    calls = {}
+
+    def fake_post_flat(text, *, severity="info", channel=None):
+        calls["text"] = text
+        calls["severity"] = severity
+        return True
+
+    monkeypatch.setattr(slack_format, "post_flat", fake_post_flat)
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *a, **kw: pytest.fail("slack_post hit the webhook while the app path was available"),
+    )
+
+    assert ar.slack_post("shipped the fix", severity="warn") is True
+    # Severity decoration still runs before the app hand-off.
+    assert calls["severity"] == "warn"
+    assert "shipped the fix" in calls["text"]
+
+
+def test_slack_post_falls_back_to_webhook_when_app_declines(monkeypatch):
+    """No bot token (post_flat returns False) -> the legacy webhook fires."""
+    import agent_runner as ar
+    import slack_format
+
+    monkeypatch.delenv("ALFRED_DRY_RUN", raising=False)
+    monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.example.test/x")
+    monkeypatch.setattr(slack_format, "post_flat", lambda *a, **kw: False)
+
+    hits = {"n": 0}
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b""
+
+    def fake_urlopen(*a, **kw):
+        hits["n"] += 1
+        return _Resp()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    assert ar.slack_post("staging is down", severity="alert") is True
+    assert hits["n"] == 1
+
+
 # ---------- GitHub seam: no gh mutation ----------
 
 

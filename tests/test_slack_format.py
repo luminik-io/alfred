@@ -47,6 +47,52 @@ def test_firing_thread_root_returns_none_without_bot_token(monkeypatch):
     assert handle is None
 
 
+def test_post_flat_returns_false_without_bot_token(monkeypatch):
+    import slack_format as sf
+
+    monkeypatch.setattr(sf, "_resolve_bot_token", lambda: None)
+    monkeypatch.setattr(
+        sf, "_api_post", lambda *a, **kw: pytest.fail("post_flat hit the API with no token")
+    )
+    assert sf.post_flat("anything", severity="warn") is False
+
+
+def test_post_flat_posts_via_chat_postmessage_with_colour_stripe(monkeypatch):
+    import slack_format as sf
+
+    monkeypatch.setenv("SLACK_HOME_CHANNEL", "eng-fleet")
+    monkeypatch.setattr(sf, "_resolve_bot_token", lambda: "xoxb-fake")
+
+    captured: dict = {}
+
+    def fake_api_post(method, payload, *, token):
+        captured["method"] = method
+        captured["payload"] = payload
+        captured["token"] = token
+        return {"ok": True, "ts": "1700000000.000200", "channel": "C9"}
+
+    monkeypatch.setattr(sf, "_api_post", fake_api_post)
+
+    assert sf.post_flat("staging is down", severity="alert") is True
+    assert captured["method"] == "chat.postMessage"
+    assert captured["token"] == "xoxb-fake"
+    payload = captured["payload"]
+    assert payload["channel"] == "eng-fleet"
+    # Flat post: body in top-level text, colour stripe on the attachment.
+    assert payload["text"] == "staging is down"
+    assert payload["attachments"][0]["color"] == sf.SEVERITY_COLOUR["alert"]
+
+
+def test_post_flat_returns_false_when_api_refuses(monkeypatch):
+    import slack_format as sf
+
+    monkeypatch.setattr(sf, "_resolve_bot_token", lambda: "xoxb-fake")
+    monkeypatch.setattr(
+        sf, "_api_post", lambda *a, **kw: {"ok": False, "error": "channel_not_found"}
+    )
+    assert sf.post_flat("hello", severity="info") is False
+
+
 def test_firing_thread_root_posts_block_kit_with_role_when_set(monkeypatch):
     import slack_format as sf
 

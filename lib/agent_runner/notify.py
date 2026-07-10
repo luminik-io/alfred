@@ -89,6 +89,14 @@ def slack_post(text: str, *, severity: str = SLACK_SEVERITY_INFO) -> bool:
     if len(text) > _SLACK_MAX_LEN:
         text = text[:_SLACK_MAX_LEN] + "\n...[truncated]"
 
+    # Prefer the app-native ``chat.postMessage`` path when a bot token is
+    # configured: the post then carries the bot identity, the severity
+    # colour stripe, and a real message ``ts``. Fall back to the legacy
+    # incoming webhook when there is no bot token or the API refuses, so
+    # webhook-only installs keep working unchanged.
+    if _post_via_app(text, severity):
+        return True
+
     hook = _resolve_webhook()
     if not hook:
         return False
@@ -101,6 +109,25 @@ def slack_post(text: str, *, severity: str = SLACK_SEVERITY_INFO) -> bool:
         return True
     except Exception as e:
         print(f"[slack-post] error: {type(e).__name__}: {e}", file=sys.stderr)
+        return False
+
+
+def _post_via_app(text: str, severity: str) -> bool:
+    """Best-effort app-native post via ``slack_format.post_flat``.
+
+    Returns ``True`` only on a confirmed ``chat.postMessage`` success.
+    Returns ``False`` (so the caller falls back to the webhook) when no
+    bot token is configured, the Slack API refuses, or the import is
+    unavailable on a stripped-down install. Never raises.
+    """
+    try:
+        from slack_format import post_flat
+    except Exception:
+        return False
+    try:
+        return bool(post_flat(text, severity=severity))
+    except Exception as e:
+        print(f"[slack-post] app path error: {type(e).__name__}: {e}", file=sys.stderr)
         return False
 
 
