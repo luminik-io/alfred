@@ -151,3 +151,18 @@ def test_post_battery_rejects_builtin(alfred_home: Path, tmp_path: Path) -> None
         headers=_auth_headers(state),
     )
     assert resp.status_code == 400
+
+
+def test_post_battery_conflict_returns_clear_error(
+    alfred_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ALFRED_MEMORY_PROVIDERS", "redis,sqlite,fleet")
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+    resp = client.post(
+        "/api/setup/batteries",
+        json={"battery": "pgvector", "enabled": True},
+        headers=_auth_headers(state),
+    )
+    assert resp.status_code == 400
+    assert "conflicts with redis-ams" in resp.json()["error"]

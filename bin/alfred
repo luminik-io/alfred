@@ -2443,6 +2443,12 @@ def _battery_run_install(args: argparse.Namespace, battery: Any) -> int:
         command = [sys.executable, "-m", "pip", "install", f"alfred-os[{battery.pip_extra}]"]
     elif battery.autofetch_cmd:
         command = list(battery.autofetch_cmd)
+        # Resolve a bundled launcher (e.g. code-memory-mcp) against Alfred's own
+        # bin dir so the command works even when that dir is not on PATH: a bare
+        # name would make --print-command unusable and --yes raise FileNotFound.
+        launcher = _HERE / command[0]
+        if launcher.exists():
+            command[0] = str(launcher)
     else:
         return 0
     printable = " ".join(shlex.quote(part) for part in command)

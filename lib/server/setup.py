@@ -827,6 +827,31 @@ def battery_manifest(env: dict[str, str] | None = None) -> dict[str, Any]:
     return batteries.manifest(resolved)
 
 
+def battery_action_error(battery_id: str, *, enabled: bool) -> str | None:
+    """Return a client-safe reason a battery toggle is rejected, or ``None``.
+
+    The route calls this BEFORE ``set_battery`` so a rejected toggle returns a
+    message we construct here (unknown id, built-in, or a primary-store conflict)
+    rather than surfacing raw exception text to the client. Read-only.
+    """
+    import batteries
+
+    battery = batteries.battery_by_id(battery_id)
+    if battery is None:
+        return "unknown battery"
+    if battery.builtin:
+        return f"{battery_id} is a built-in and is always on"
+    if enabled and battery.provider:
+        runtime_env = batteries.load_env(_runtime_config_env())
+        others = [pid for pid in batteries.enabled_provider_ids(runtime_env) if pid != battery_id]
+        if others:
+            return (
+                f"{battery_id} conflicts with {', '.join(others)}: both replace the "
+                f"primary memory store. Disable the other first."
+            )
+    return None
+
+
 def set_battery(battery_id: str, *, enabled: bool) -> dict[str, Any]:
     """Enable or disable one opt-in battery by writing its env flag(s).
 

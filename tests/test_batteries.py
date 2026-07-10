@@ -258,6 +258,16 @@ def test_enabled_provider_ids_reads_the_chain() -> None:
     assert batteries.enabled_provider_ids({"ALFRED_MEMORY_PROVIDERS": "sqlite,fleet"}) == []
 
 
+def test_disable_code_memory_closes_the_runtime_gate() -> None:
+    # Disabling must write ALFRED_CODE_MEMORY_MCP=0 (the real gate), not just stop
+    # autofetch, so a previously fetched binary cannot still attach.
+    code_memory = batteries.battery_by_id("code-memory-mcp")
+    assert code_memory is not None
+    values = batteries.disable_values(code_memory)
+    assert values["ALFRED_CODE_MEMORY_MCP"] == "0"
+    assert values["ALFRED_CODE_MEMORY_AUTOFETCH"] == "0"
+
+
 def test_write_env_permissions(tmp_path: Path) -> None:
     env_path = tmp_path / ".env"
     batteries.write_env(env_path, {"ALFRED_MEMORY_SQLITE_DENSE": "1"})

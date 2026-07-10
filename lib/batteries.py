@@ -241,7 +241,10 @@ BATTERIES: tuple[Battery, ...] = (
         builtin=False,
         default_on=False,
         enable_env={"ALFRED_CODE_MEMORY_MCP": "1", "ALFRED_CODE_MEMORY_AUTOFETCH": "1"},
-        disable_env={"ALFRED_CODE_MEMORY_AUTOFETCH": "0"},
+        # Disabling must close the REAL runtime gate (ALFRED_CODE_MEMORY_MCP),
+        # not just stop autofetch: the MCP defaults on and would still attach a
+        # previously fetched binary, so "off" in the picker must write MCP=0.
+        disable_env={"ALFRED_CODE_MEMORY_MCP": "0", "ALFRED_CODE_MEMORY_AUTOFETCH": "0"},
         enable_flag=("ALFRED_CODE_MEMORY_AUTOFETCH", _ANY_TRUTHY),
         requires_daemon=False,
         install_kind=INSTALL_AUTOFETCH,

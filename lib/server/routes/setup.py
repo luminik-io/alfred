@@ -159,11 +159,16 @@ async def api_setup_set_battery(request: Request) -> JSONResponse:
         return JSONResponse({"error": "enabled must be a boolean"}, status_code=400)
     from server import setup as setup_mod
 
+    # Validate first and return a message we construct here, so raw exception text
+    # (a stack trace sink flagged by CodeQL) never reaches the client.
+    reason = await run_in_threadpool(
+        lambda: setup_mod.battery_action_error(battery_id, enabled=enabled)
+    )
+    if reason is not None:
+        return JSONResponse({"error": reason}, status_code=400)
     try:
         result = await run_in_threadpool(lambda: setup_mod.set_battery(battery_id, enabled=enabled))
-    except ValueError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=400)
-    except OSError:
+    except (OSError, ValueError):
         logger.exception("api_setup_set_battery: failed to persist battery selection")
         return JSONResponse({"error": "could not persist battery selection"}, status_code=400)
     return JSONResponse(views._jsonable(result))
