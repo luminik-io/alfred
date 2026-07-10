@@ -366,10 +366,10 @@ def test_install_inventory_does_not_mix_launcher_config_into_active_process_home
         "ALFRED_REDIS_MEMORY_URL",
         "ALFRED_REDIS_MEMORY_NAMESPACE",
         "ALFRED_AMS_HOST",
-            "ALFRED_AMS_PORT",
-            "ALFRED_AMS_REDIS_URL",
-            "ALFRED_MEMORY_PROVIDERS",
-        ):
+        "ALFRED_AMS_PORT",
+        "ALFRED_AMS_REDIS_URL",
+        "ALFRED_MEMORY_PROVIDERS",
+    ):
         monkeypatch.delenv(key, raising=False)
 
     (tmp_path / ".alfredrc").write_text(f"ALFRED_HOME={launcher_home}\n", encoding="utf-8")

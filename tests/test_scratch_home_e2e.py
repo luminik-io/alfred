@@ -214,6 +214,27 @@ def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path)
     scheduler_calls = scheduler_log.read_text(encoding="utf-8")
     assert "enable gui/" in scheduler_calls or "enable --now" in scheduler_calls
 
+    if platform.system() == "Darwin":
+        legacy_service = "\n".join(
+            [
+                "<string>io.luminik.alfred.ams</string>",
+                f"<string>{runtime / 'bin' / 'ams-launch.sh'}</string>",
+                f"<string>{runtime}</string>",
+            ]
+        )
+    else:
+        legacy_service = "\n".join(
+            [
+                "Description=Alfred Redis Agent Memory Server",
+                f"ExecStart={runtime / 'bin' / 'ams-launch.sh'}",
+                f"Environment=ALFRED_HOME={runtime}",
+            ]
+        )
+    stale_ams.write_text(f"{legacy_service}\n", encoding="utf-8")
+    legacy_deploy = _run(["/bin/bash", str(ROOT / "deploy.sh")], env=env)
+    assert "removed stale" in legacy_deploy.stdout
+    assert not stale_ams.exists()
+
     stale_ams.write_text("operator-owned", encoding="utf-8")
     unowned_deploy = _run(["/bin/bash", str(ROOT / "deploy.sh")], env=env)
     assert "left unowned" in unowned_deploy.stdout

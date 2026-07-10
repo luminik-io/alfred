@@ -433,6 +433,22 @@ ams_service_is_managed() {
   [ -f "$marker" ] && [ "$(cat "$marker")" = "$1" ]
 }
 
+ams_service_is_legacy_linux() {
+  local service="$1"
+  [ -f "$service" ] \
+    && grep -Fqx "Description=Alfred Redis Agent Memory Server" "$service" \
+    && grep -Fqx "ExecStart=$RUNTIME_BIN/ams-launch.sh" "$service" \
+    && grep -Fqx "Environment=ALFRED_HOME=$ALFRED_HOME" "$service"
+}
+
+ams_service_is_legacy_launchd() {
+  local plist="$1"
+  [ -f "$plist" ] \
+    && grep -Fq "<string>io.luminik.alfred.ams</string>" "$plist" \
+    && grep -Fq "<string>$RUNTIME_BIN/ams-launch.sh</string>" "$plist" \
+    && grep -Fq "<string>$ALFRED_HOME</string>" "$plist"
+}
+
 clear_ams_service_marker() {
   rm -f "$(ams_service_marker)"
 }
@@ -477,7 +493,7 @@ EOF
 remove_ams_service_linux() {
   local systemd_user_dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
   local service="$systemd_user_dir/alfred-ams.service"
-  if ! ams_service_is_managed "$service"; then
+  if ! ams_service_is_managed "$service" && ! ams_service_is_legacy_linux "$service"; then
     if [ -e "$service" ]; then
       echo "[alfred-os/deploy] left unowned alfred-ams.service unchanged"
     else
@@ -553,7 +569,7 @@ remove_ams_service_launchd() {
   local plist="$launch_agents_dir/io.luminik.alfred.ams.plist"
   local uid_value
   uid_value="$(id -u)"
-  if ! ams_service_is_managed "$plist"; then
+  if ! ams_service_is_managed "$plist" && ! ams_service_is_legacy_launchd "$plist"; then
     if [ -e "$plist" ]; then
       echo "[alfred-os/deploy] left unowned io.luminik.alfred.ams.plist unchanged"
     else
