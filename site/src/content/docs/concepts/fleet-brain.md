@@ -7,9 +7,9 @@ FleetBrain is Alfred's per-host operational ledger. It is not a cloud service
 and it is not a hidden agent loop. It is a local SQLite file under
 `$ALFRED_HOME/fleet-brain.db`, read and written by short-lived firings.
 
-Redis Agent Memory is the default recalled-lesson store. FleetBrain keeps the
-review queue, firing history, failure patterns, GitHub cache, file touches, and
-evidence that makes those lessons trustworthy.
+Embedded SQLite hybrid memory is the default recalled-lesson store. FleetBrain
+keeps the review queue, firing history, failure patterns, GitHub cache, file
+touches, and evidence that makes those lessons trustworthy.
 
 Full source doc: [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred/blob/main/docs/FLEET_BRAIN.md).
 
@@ -54,8 +54,8 @@ alfred brain doctor
 alfred mcp serve
 ```
 
-Runtime memory is on by default through `redis,fleet`: Redis handles recalled
-lessons, and FleetBrain keeps the local review and reliability ledger. Turn
+Runtime memory is on by default through `sqlite,fleet`: embedded SQLite handles
+recalled lessons, and FleetBrain keeps the local review and reliability ledger. Turn
 runtime recall off:
 
 ```sh

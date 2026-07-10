@@ -94,6 +94,7 @@ def test_deploy_help_is_read_only(tmp_path):
 
     assert "Usage: ./deploy.sh" in result.stdout
     assert "Deploy Alfred runtime files" in result.stdout
+    assert "--adopt-legacy-ams" in result.stdout
     assert result.stderr == ""
     assert not alfred_home.exists()
 

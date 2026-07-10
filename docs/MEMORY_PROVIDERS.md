@@ -451,7 +451,7 @@ stored:
 | Mode | Behavior |
 |---|---|
 | `candidate` | Default. Queue reviewable FleetBrain candidates. |
-| `direct` | Write through the provider chain immediately. Redis is first in the default chain. |
+| `direct` | Write through the provider chain immediately. SQLite is first in the default chain. |
 | `off` | Skip runtime reflection. Recall still works. |
 
 Check the local server:
@@ -550,8 +550,8 @@ Now `ALFRED_MEMORY_PROVIDERS=redis,fleet,team_wiki` works.
   base. It is **not** bundled with Alfred. The shim only knows the
   path you configure; if the binary is missing, recall
   returns empty and the chain keeps working.
-- Nothing in the default memory layer phones home. Redis Agent Memory Server
-  binds to loopback, and FleetBrain is a SQLite file under `$ALFRED_HOME`.
+- Nothing in the default memory layer phones home. The hybrid memory store and
+  FleetBrain are SQLite files under `$ALFRED_HOME`.
 - `alfred brain redis-sync` remains available for carrying older reviewed
   FleetBrain lessons into Redis.
 - Read-only providers cannot exfiltrate FleetBrain. Writes flow
