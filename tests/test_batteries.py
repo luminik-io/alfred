@@ -291,6 +291,8 @@ def test_graphify_is_optin_code_graph_engine() -> None:
     assert g.disable_env.get("ALFRED_GRAPHIFY_MCP") == "0"
     assert g.requires_daemon is False
     assert g.detect == "graphify"
+    assert g.install_kind == batteries.INSTALL_AUTOFETCH
+    assert g.autofetch_cmd[-1] == "graphifyy[mcp]==0.9.8"
 
 
 def test_graphify_and_code_memory_are_mutually_exclusive() -> None:
@@ -307,3 +309,15 @@ def test_graphify_enable_disable_are_flag_toggles() -> None:
     assert batteries.is_enabled(g, {"ALFRED_GRAPHIFY_MCP": "1"}) is True
     assert batteries.is_enabled(g, {"ALFRED_GRAPHIFY_MCP": "0"}) is False
     assert batteries.is_enabled(g, {}) is False
+
+
+def test_enabling_a_code_graph_engine_atomically_disables_the_other() -> None:
+    graphify = batteries.battery_by_id("graphify")
+    code_memory = batteries.battery_by_id("code-memory-mcp")
+
+    assert batteries.enable_values(graphify, {}) == {
+        "ALFRED_GRAPHIFY_MCP": "1",
+        "ALFRED_CODE_MEMORY_MCP": "0",
+        "ALFRED_CODE_MEMORY_AUTOFETCH": "0",
+    }
+    assert batteries.enable_values(code_memory, {})["ALFRED_GRAPHIFY_MCP"] == "0"

@@ -42,7 +42,6 @@ CATEGORY_CODE_GRAPH = "code-graph"
 # How a battery is obtained. "included" batteries ship on; the rest are opt-in.
 INSTALL_INCLUDED = "included"  # built-in, nothing to install
 INSTALL_PIP_EXTRA = "pip-extra"  # pip install "alfred-os[<extra>]"
-INSTALL_PIP = "pip"  # a standalone pip package you install yourself
 INSTALL_AUTOFETCH = "autofetch"  # a helper fetches a pinned binary on first use
 INSTALL_DAEMON = "daemon"  # you run an external service (Redis / Postgres)
 
@@ -281,11 +280,18 @@ BATTERIES: tuple[Battery, ...] = (
         disable_env={"ALFRED_GRAPHIFY_MCP": "0"},
         enable_flag=("ALFRED_GRAPHIFY_MCP", _ANY_TRUTHY),
         requires_daemon=False,
-        install_kind=INSTALL_PIP,
+        install_kind=INSTALL_AUTOFETCH,
         install_hint=(
-            "Install the graphifyy package (uv tool install graphifyy, or pipx install graphifyy), then "
-            "build a graph per repo with `graphify update <repo>`. Alfred serves the graph read-only "
-            "over MCP (graphify-mcp). Local; no daemon, no embeddings."
+            "Alfred installs the pinned graphifyy MCP tool with uv. Build a graph per repo with "
+            "`graphify update <repo>`; firings then serve `graphify-out/graph.json` read-only. "
+            "Local; no daemon, no embeddings."
+        ),
+        autofetch_cmd=(
+            "uv",
+            "tool",
+            "install",
+            "--force",
+            "graphifyy[mcp]==0.9.8",
         ),
         detect="graphify",
         docs="docs/CODE_MEMORY.md",
@@ -519,9 +525,7 @@ def _graphify_available(env: Mapping[str, str]) -> bool:
     override = str(env.get("ALFRED_GRAPHIFY_BIN", "")).strip()
     if override and Path(override).expanduser().exists():
         return True
-    if shutil.which("graphify-mcp") or shutil.which("graphify"):
-        return True
-    return _find_spec("graphify")
+    return bool(shutil.which("graphify-mcp"))
 
 
 def _headroom_available(env: Mapping[str, str]) -> bool:
@@ -590,7 +594,13 @@ def enable_values(battery: Battery, env: Mapping[str, str] | None = None) -> dic
         chain = _provider_chain(env if env is not None else load_env())
         composed = compose_provider_chain(chain, battery.provider, enable=True)
         return {MEMORY_PROVIDERS_KEY: ",".join(composed)}
-    return dict(battery.enable_env)
+    values = dict(battery.enable_env)
+    if battery.id in _CODE_GRAPH_ENGINES:
+        for other_id in _CODE_GRAPH_ENGINES - {battery.id}:
+            other = battery_by_id(other_id)
+            if other is not None:
+                values.update(other.disable_env)
+    return values
 
 
 def disable_values(battery: Battery, env: Mapping[str, str] | None = None) -> dict[str, str]:

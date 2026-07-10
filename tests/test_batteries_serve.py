@@ -105,6 +105,30 @@ def test_set_battery_rejects_second_primary(
     assert "conflicts with redis-ams" in str(exc.value)
 
 
+def test_set_battery_switches_code_graph_engines_atomically(
+    alfred_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_MCP", "1")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_AUTOFETCH", "1")
+    monkeypatch.delenv("ALFRED_GRAPHIFY_MCP", raising=False)
+
+    result = setup_mod.set_battery("graphify", enabled=True)
+
+    assert set(result["keys"]) == {
+        "ALFRED_GRAPHIFY_MCP",
+        "ALFRED_CODE_MEMORY_MCP",
+        "ALFRED_CODE_MEMORY_AUTOFETCH",
+    }
+    import os
+
+    assert os.environ["ALFRED_GRAPHIFY_MCP"] == "1"
+    assert os.environ["ALFRED_CODE_MEMORY_MCP"] == "0"
+    assert os.environ["ALFRED_CODE_MEMORY_AUTOFETCH"] == "0"
+    env_text = (alfred_home / ".env").read_text(encoding="utf-8")
+    assert "ALFRED_GRAPHIFY_MCP=1" in env_text
+    assert "ALFRED_CODE_MEMORY_MCP=0" in env_text
+
+
 # --------------------------------------------------------------------------- #
 # HTTP routes
 # --------------------------------------------------------------------------- #

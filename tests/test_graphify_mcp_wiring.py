@@ -26,7 +26,13 @@ _OK = (
 )
 
 
-def _capture(monkeypatch, *, graphify_present: bool = True) -> list[str]:
+def _capture(
+    monkeypatch,
+    tmp_path: Path,
+    *,
+    graphify_present: bool = True,
+    graph_present: bool = True,
+) -> list[str]:
     monkeypatch.delenv("ALFRED_DRY_RUN", raising=False)
     monkeypatch.setattr(_proc, "_memory_mcp_script", lambda: Path("/repo/bin/alfred-mcp.py"))
     monkeypatch.setattr(_proc, "_code_memory_launcher", lambda: Path("/repo/bin/code-memory-mcp"))
@@ -36,9 +42,15 @@ def _capture(monkeypatch, *, graphify_present: bool = True) -> list[str]:
     def fake_which(name):
         if name == "graphify-mcp":
             return "/usr/local/bin/graphify-mcp" if graphify_present else None
+        if name == "uvx":
+            return None
         return real_which(name)
 
     monkeypatch.setattr(_proc.shutil, "which", fake_which)
+    if graph_present:
+        graph = tmp_path / "graphify-out" / "graph.json"
+        graph.parent.mkdir(parents=True, exist_ok=True)
+        graph.write_text('{"nodes": [], "links": []}', encoding="utf-8")
     captured: dict = {}
 
     def fake_run(cmd, *, cwd=None, timeout=60, capture=True, env=None, **kwargs):
@@ -47,7 +59,7 @@ def _capture(monkeypatch, *, graphify_present: bool = True) -> list[str]:
 
     with mock.patch.dict(agent_runner.claude_invoke.__globals__, {"run": fake_run}):
         agent_runner.claude_invoke(
-            prompt="hi", workdir=Path("/tmp"), allowed_tools="Read,Bash", max_turns=None, timeout=10
+            prompt="hi", workdir=tmp_path, allowed_tools="Read,Bash", max_turns=None, timeout=10
         )
     return captured["cmd"]
 
@@ -62,27 +74,31 @@ def _allowed(cmd: list[str]) -> str:
     return cmd[cmd.index("--allowedTools") + 1]
 
 
-def test_graphify_off_by_default_keeps_code_memory(monkeypatch) -> None:
+def test_graphify_off_by_default_keeps_code_memory(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("ALFRED_GRAPHIFY_MCP", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
-    cfg = _mcp_config(_capture(monkeypatch))
+    cfg = _mcp_config(_capture(monkeypatch, tmp_path))
     assert cfg is not None
     assert "code_memory" in cfg["mcpServers"]
     assert "graphify" not in cfg["mcpServers"]
 
 
-def test_graphify_enabled_takes_code_graph_slot(monkeypatch) -> None:
+def test_graphify_enabled_takes_code_graph_slot(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("ALFRED_GRAPHIFY_MCP", "1")
     monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
-    cmd = _capture(monkeypatch)
+    cmd = _capture(monkeypatch, tmp_path)
     cfg = _mcp_config(cmd)
     assert cfg is not None
     servers = cfg["mcpServers"]
     # graphify present, code-memory NOT attached (mutual exclusion).
     assert "graphify" in servers
     assert "code_memory" not in servers
-    assert servers["graphify"]["command"] == "graphify-mcp"
-    assert servers["graphify"]["args"] == ["--transport", "stdio"]
+    assert servers["graphify"]["command"] == "/usr/local/bin/graphify-mcp"
+    assert servers["graphify"]["args"] == [
+        "graphify-out/graph.json",
+        "--transport",
+        "stdio",
+    ]
     allowed = _allowed(cmd)
     for name in _proc._graphify_tool_names():
         assert name in allowed, f"{name} missing from allowlist"
@@ -90,14 +106,51 @@ def test_graphify_enabled_takes_code_graph_slot(monkeypatch) -> None:
         assert name not in allowed
 
 
-def test_graphify_enabled_but_missing_binary_falls_back(monkeypatch) -> None:
+def test_graphify_enabled_but_missing_binary_falls_back(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("ALFRED_GRAPHIFY_MCP", "1")
     monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
-    cfg = _mcp_config(_capture(monkeypatch, graphify_present=False))
+    cfg = _mcp_config(_capture(monkeypatch, tmp_path, graphify_present=False))
     assert cfg is not None
     # No graphify on PATH -> code-memory keeps the slot rather than nothing.
     assert "graphify" not in cfg["mcpServers"]
     assert "code_memory" in cfg["mcpServers"]
+
+
+def test_graphify_enabled_without_repo_graph_falls_back(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("ALFRED_GRAPHIFY_MCP", "1")
+    cfg = _mcp_config(_capture(monkeypatch, tmp_path, graph_present=False))
+    assert cfg is not None
+    assert "graphify" not in cfg["mcpServers"]
+    assert "code_memory" in cfg["mcpServers"]
+
+
+def test_graphify_uses_pinned_uvx_fallback_and_explicit_graph(monkeypatch, tmp_path: Path) -> None:
+    graph = tmp_path / "graphify-out" / "graph.json"
+    graph.parent.mkdir(parents=True)
+    graph.write_text('{"nodes": [], "links": []}', encoding="utf-8")
+    monkeypatch.setenv("ALFRED_GRAPHIFY_MCP", "1")
+    monkeypatch.setenv("ALFRED_GRAPHIFY_GRAPH", str(graph))
+    monkeypatch.setattr(
+        _proc.shutil,
+        "which",
+        lambda name: "/usr/local/bin/uvx" if name == "uvx" else None,
+    )
+
+    server = _proc._graphify_mcp_server()
+
+    assert server == {
+        "graphify": {
+            "command": "/usr/local/bin/uvx",
+            "args": [
+                "--from",
+                "graphifyy[mcp]==0.9.8",
+                "graphify-mcp",
+                str(graph),
+                "--transport",
+                "stdio",
+            ],
+        }
+    }
 
 
 def test_graphify_tool_names_use_server_prefix() -> None:

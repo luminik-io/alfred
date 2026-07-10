@@ -380,7 +380,7 @@ on, graphify takes the slot and code-memory is not attached.
 Setup:
 
 ```sh
-uv tool install graphifyy        # or: pipx install graphifyy
+alfred batteries enable graphify --yes  # installs pinned graphifyy[mcp] with uv
 graphify update /path/to/repo    # build graphify-out/graph.json (no LLM)
 ```
 
@@ -389,12 +389,14 @@ Then enable it (or tick it in `alfred batteries` / the desktop battery picker):
 | Variable | Default | What it does |
 |---|---|---|
 | `ALFRED_GRAPHIFY_MCP` | `0` (off) | Attach graphify's read-only graph MCP to firings, taking the code-graph slot. |
-| `ALFRED_GRAPHIFY_BIN` | `graphify-mcp` | Override the server command for a non-PATH install. |
+| `ALFRED_GRAPHIFY_BIN` | auto | Override the `graphify-mcp` executable path. Alfred otherwise uses the installed entrypoint or pinned `uvx` package. |
+| `ALFRED_GRAPHIFY_GRAPH` | `graphify-out/graph.json` | Graph file passed to the MCP server, relative to each firing's repo worktree unless absolute. |
 
 A firing serves the graph in its own working directory (`graphify-out/graph.json`),
-so build the graph per repo (a `graphify watch <repo>` keeps it fresh). If no graph
-has been built the server simply exposes nothing, so enabling it is always safe.
+so build or update the graph per repo. If that repo has no graph yet, Alfred
+keeps the code-memory MCP slot instead of starting a graphify server that cannot
+load its graph.
 
 The read-only tools it exposes: `query_graph`, `get_node`, `get_neighbors`,
 `get_community`, `god_nodes`, `graph_stats`, `shortest_path`, `list_prs`,
-`get_pr_impact`, `triage_prs`, `viewport`.
+`get_pr_impact`, `triage_prs`.

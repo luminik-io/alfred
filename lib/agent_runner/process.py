@@ -268,7 +268,9 @@ def _memory_mcp_server(script: Path | None | _Unresolved = _UNRESOLVED) -> dict[
     return {MEMORY_MCP_SERVER: {"command": "python3", "args": [str(resolved), "serve"]}}
 
 
-def _memory_mcp_args(script: Path | None | _Unresolved = _UNRESOLVED) -> list[str]:
+def _memory_mcp_args(
+    script: Path | None | _Unresolved = _UNRESOLVED, workdir: Path | None = None
+) -> list[str]:
     """``--mcp-config`` args attaching the read-only memory + code-memory
     servers, or ``[]``.
 
@@ -288,7 +290,7 @@ def _memory_mcp_args(script: Path | None | _Unresolved = _UNRESOLVED) -> list[st
     memory = _memory_mcp_server(script)
     if memory:
         servers.update(memory)
-    code = _active_code_graph_server()
+    code = _active_code_graph_server(workdir)
     if code:
         servers.update(code)
     if not servers:
@@ -301,7 +303,9 @@ def _memory_tool_names() -> list[str]:
 
 
 def _with_memory_mcp_tools(
-    allowed_tools: str, script: Path | None | _Unresolved = _UNRESOLVED
+    allowed_tools: str,
+    script: Path | None | _Unresolved = _UNRESOLVED,
+    workdir: Path | None = None,
 ) -> str:
     """Append the read-only memory recall tools to an allowlist when enabled.
 
@@ -316,7 +320,7 @@ def _with_memory_mcp_tools(
         resolved = _memory_mcp_script() if isinstance(script, _Unresolved) else script
         if resolved is not None:
             wanted.extend(_memory_tool_names())
-    wanted.extend(_active_code_graph_tool_names())
+    wanted.extend(_active_code_graph_tool_names(workdir))
     if not wanted:
         return base
     existing = set(base.replace(",", " ").split())
@@ -384,8 +388,8 @@ def _code_memory_tool_names() -> list[str]:
 # ---------- Graphify MCP attachment ----------
 #
 # graphify (graphifyy, MIT) is an OPT-IN alternative code-graph engine: a
-# pip-installed Python package invoked over MCP via its ``graphify-mcp`` command
-# (``python -m graphify.serve``). It serves a per-repo ``graphify-out/graph.json``
+# pinned Python package invoked over MCP via its ``graphify-mcp`` entrypoint. It
+# serves a per-repo ``graphify-out/graph.json``
 # read-only, exposing graph-query tools (query, neighbours, shortest path,
 # stats, community). Off by default; turn on with ALFRED_GRAPHIFY_MCP=1. It is
 # mutually exclusive with code-memory: when graphify is on it takes the
@@ -405,8 +409,9 @@ _GRAPHIFY_TOOLS = (
     "list_prs",
     "get_pr_impact",
     "triage_prs",
-    "viewport",
 )
+
+_GRAPHIFY_PACKAGE = "graphifyy[mcp]==0.9.8"
 
 
 def _graphify_mcp_enabled() -> bool:
@@ -417,13 +422,24 @@ def _graphify_mcp_enabled() -> bool:
     return val.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _graphify_command() -> str:
-    """The graphify MCP server command. Overridable for non-PATH installs."""
+def _graphify_command() -> tuple[str, list[str]] | None:
+    """Resolve a supported graphify MCP entrypoint and its bootstrap arguments."""
     override = os.environ.get("ALFRED_GRAPHIFY_BIN", "").strip()
-    return override or "graphify-mcp"
+    if override:
+        expanded = str(Path(override).expanduser())
+        if shutil.which(override) or Path(expanded).is_file():
+            return expanded, []
+        return None
+    installed = shutil.which("graphify-mcp")
+    if installed:
+        return installed, []
+    uvx = shutil.which("uvx")
+    if uvx:
+        return uvx, ["--from", _GRAPHIFY_PACKAGE, "graphify-mcp"]
+    return None
 
 
-def _graphify_mcp_server() -> dict[str, Any] | None:
+def _graphify_mcp_server(workdir: Path | None = None) -> dict[str, Any] | None:
     """Return the ``mcpServers`` entry for graphify, or ``None`` when disabled
     or the command is not on PATH.
 
@@ -433,30 +449,43 @@ def _graphify_mcp_server() -> dict[str, Any] | None:
     """
     if not _graphify_mcp_enabled():
         return None
-    cmd = _graphify_command()
-    if shutil.which(cmd) is None and not Path(cmd).expanduser().exists():
+    invocation = _graphify_command()
+    if invocation is None:
         return None
-    return {GRAPHIFY_MCP_SERVER: {"command": cmd, "args": ["--transport", "stdio"]}}
+    cmd, prefix = invocation
+    graph = os.environ.get("ALFRED_GRAPHIFY_GRAPH", "").strip() or "graphify-out/graph.json"
+    graph_path = Path(graph).expanduser()
+    resolved_graph = (
+        graph_path if graph_path.is_absolute() else (workdir / graph_path if workdir else None)
+    )
+    if resolved_graph is not None and not resolved_graph.is_file():
+        return None
+    return {
+        GRAPHIFY_MCP_SERVER: {
+            "command": cmd,
+            "args": [*prefix, graph, "--transport", "stdio"],
+        }
+    }
 
 
 def _graphify_tool_names() -> list[str]:
     return [f"mcp__{GRAPHIFY_MCP_SERVER}__{t}" for t in _GRAPHIFY_TOOLS]
 
 
-def _active_code_graph_server() -> dict[str, Any] | None:
+def _active_code_graph_server(workdir: Path | None = None) -> dict[str, Any] | None:
     """The single code-graph MCP server to attach, honouring exclusivity.
 
     graphify wins when enabled (explicit opt-in); otherwise code-memory (on by
     default when its binary is present). Never returns both.
     """
-    graphify = _graphify_mcp_server()
+    graphify = _graphify_mcp_server(workdir)
     if graphify is not None:
         return graphify
     return _code_memory_mcp_server()
 
 
-def _active_code_graph_tool_names() -> list[str]:
-    if _graphify_mcp_server() is not None:
+def _active_code_graph_tool_names(workdir: Path | None = None) -> list[str]:
+    if _graphify_mcp_server(workdir) is not None:
         return _graphify_tool_names()
     if _code_memory_mcp_server() is not None:
         return _code_memory_tool_names()
@@ -670,7 +699,7 @@ def claude_invoke(
         "-p",
         prompt,
         "--allowedTools",
-        _with_memory_mcp_tools(allowed_tools, memory_script),
+        _with_memory_mcp_tools(allowed_tools, memory_script, workdir),
         "--max-turns",
         str(effective_max_turns),
         "--output-format",
@@ -686,7 +715,7 @@ def claude_invoke(
     # Attach the read-only memory MCP server so agents can recall lessons as a
     # tool (capability, on by default; ALFRED_MEMORY_MCP=0 to disable). Reuses
     # the single resolved memory_script from above.
-    cmd.extend(_memory_mcp_args(memory_script))
+    cmd.extend(_memory_mcp_args(memory_script, workdir))
     if model:
         cmd.extend(["--model", model])
     if resume_session:
@@ -795,7 +824,7 @@ def claude_invoke_streaming(
         "-p",
         prompt,
         "--allowedTools",
-        _with_memory_mcp_tools(allowed_tools, memory_script),
+        _with_memory_mcp_tools(allowed_tools, memory_script, workdir),
         "--max-turns",
         str(max_turns),
         "--output-format",
@@ -805,7 +834,7 @@ def claude_invoke_streaming(
         "bypassPermissions",
     ]
     cmd.extend(_agent_settings_args())
-    cmd.extend(_memory_mcp_args(memory_script))
+    cmd.extend(_memory_mcp_args(memory_script, workdir))
     if model:
         cmd.extend(["--model", model])
     if resume_session:
