@@ -167,6 +167,7 @@ def _load_config(path: Path) -> dict[str, Any]:
 
 _YAML_KV_RE = re.compile(r"^(\s*)([A-Za-z0-9_\-]+)\s*:\s*(.*?)\s*$")
 _YAML_ITEM_RE = re.compile(r"^(\s*)-\s+(.*?)\s*$")
+_YamlFrame = tuple[int, Any, bool]
 
 
 def _minimal_yaml_load(text: str) -> dict[str, Any]:
@@ -182,7 +183,7 @@ def _minimal_yaml_load(text: str) -> dict[str, Any]:
     operator's first ``pip install pyyaml`` opt-in enables full YAML.
     """
     root: dict[str, Any] = {}
-    stack: list[tuple[int, Any]] = [(-1, root)]
+    stack: list[_YamlFrame] = [(-1, root, False)]
     pending_containers: dict[int, tuple[str, dict[str, Any]]] = {}
 
     for raw_line in text.splitlines():
@@ -203,7 +204,7 @@ def _minimal_yaml_load(text: str) -> dict[str, Any]:
             item: dict[str, Any] = {}
             parent.append(item)
             rest = m_item.group(2)
-            stack.append((indent + 2, item))
+            stack.append((indent + 2, item, False))
             if rest:
                 _consume_kv(rest, indent + 2, stack, pending_containers)
             continue
@@ -224,7 +225,7 @@ def _minimal_yaml_load(text: str) -> dict[str, Any]:
             # Block scalar follows on next indent - could be mapping or list.
             container: Any = {}
             parent[key] = container
-            stack.append((indent + 2, container))
+            stack.append((indent, container, True))
             pending_containers[id(container)] = (key, parent)
         elif value.startswith("["):
             parent[key] = _parse_flow_list(value)
@@ -234,12 +235,12 @@ def _minimal_yaml_load(text: str) -> dict[str, Any]:
 
 
 def _promote_pending_list(
-    stack: list[tuple[int, Any]],
+    stack: list[_YamlFrame],
     pending_containers: dict[int, tuple[str, dict[str, Any]]],
     indent: int,
 ) -> Any:
-    child_indent, container = stack[-1]
-    if child_indent != indent or not isinstance(container, dict) or container:
+    frame_indent, container, pop_on_equal = stack[-1]
+    if frame_indent + 2 != indent or not isinstance(container, dict) or container:
         return container
     pending = pending_containers.pop(id(container), None)
     if pending is None:
@@ -247,14 +248,14 @@ def _promote_pending_list(
     key, parent = pending
     promoted: list[Any] = []
     parent[key] = promoted
-    stack[-1] = (child_indent, promoted)
+    stack[-1] = (frame_indent, promoted, pop_on_equal)
     return promoted
 
 
 def _consume_kv(
     rest: str,
     indent: int,
-    stack: list[tuple[int, Any]],
+    stack: list[_YamlFrame],
     pending_containers: dict[int, tuple[str, dict[str, Any]]],
 ) -> None:
     m_kv = _YAML_KV_RE.match(" " * indent + rest)
@@ -267,7 +268,7 @@ def _consume_kv(
     if value == "":
         container: Any = {}
         parent[key] = container
-        stack.append((indent + 2, container))
+        stack.append((indent, container, True))
         pending_containers[id(container)] = (key, parent)
     elif value.startswith("["):
         parent[key] = _parse_flow_list(value)
@@ -275,8 +276,8 @@ def _consume_kv(
         parent[key] = _parse_scalar(value)
 
 
-def _pop_to_indent(stack: list[tuple[int, Any]], indent: int) -> None:
-    while stack and stack[-1][0] > indent:
+def _pop_to_indent(stack: list[_YamlFrame], indent: int) -> None:
+    while stack and (stack[-1][0] > indent or (stack[-1][0] == indent and stack[-1][2])):
         stack.pop()
     if not stack:
         raise ValueError("indentation underflow")
