@@ -172,27 +172,90 @@ def test_write_env_enable_disable_roundtrip(tmp_path: Path) -> None:
     env_path = tmp_path / ".env"
     env_path.write_text("GH_ORG=acme\n", encoding="utf-8")
 
+    def file_env() -> dict[str, str]:
+        return batteries._parse_env_file(env_path)
+
     redis = batteries.battery_by_id("redis-ams")
     dense = batteries.battery_by_id("dense-embeddings")
     assert redis is not None and dense is not None
 
-    batteries.write_env(env_path, batteries.enable_values(dense))
-    batteries.write_env(env_path, batteries.enable_values(redis))
-    env = batteries.load_env({"ALFRED_HOME": str(tmp_path)})
+    batteries.write_env(env_path, batteries.enable_values(dense, file_env()))
+    batteries.write_env(env_path, batteries.enable_values(redis, file_env()))
+    env = file_env()
     assert env["ALFRED_MEMORY_SQLITE_DENSE"] == "1"
-    assert env["ALFRED_MEMORY_PROVIDERS"] == "redis,fleet"
+    # Redis composed as primary onto the default chain; sqlite and fleet retained.
+    assert env["ALFRED_MEMORY_PROVIDERS"] == "redis,sqlite,fleet"
     assert env["GH_ORG"] == "acme"  # untouched line preserved
 
-    # Disabling redis returns to the sqlite default without touching dense.
-    batteries.write_env(env_path, batteries.disable_values(redis))
-    env = batteries.load_env({"ALFRED_HOME": str(tmp_path)})
+    # Disabling redis removes just that provider, leaving the rest intact.
+    batteries.write_env(env_path, batteries.disable_values(redis, file_env()))
+    env = file_env()
     assert env["ALFRED_MEMORY_PROVIDERS"] == "sqlite,fleet"
     assert env["ALFRED_MEMORY_SQLITE_DENSE"] == "1"
 
     # Idempotent: writing the same value again does not duplicate the key.
     before = env_path.read_text(encoding="utf-8")
-    batteries.write_env(env_path, batteries.disable_values(redis))
+    batteries.write_env(env_path, batteries.disable_values(redis, file_env()))
     assert env_path.read_text(encoding="utf-8") == before
+
+
+# --------------------------------------------------------------------------- #
+# Provider chain composition (Greptile P1: chain must compose, not clobber)
+# --------------------------------------------------------------------------- #
+def test_enable_provider_composes_onto_existing_chain() -> None:
+    redis = batteries.battery_by_id("redis-ams")
+    assert redis is not None
+    # Enabling redis on the default sqlite,fleet keeps BOTH, redis primary.
+    values = batteries.enable_values(redis, {"ALFRED_MEMORY_PROVIDERS": "sqlite,fleet"})
+    assert values["ALFRED_MEMORY_PROVIDERS"] == "redis,sqlite,fleet"
+
+
+def test_enable_provider_preserves_custom_chain_order() -> None:
+    pg = batteries.battery_by_id("pgvector")
+    assert pg is not None
+    values = batteries.enable_values(pg, {"ALFRED_MEMORY_PROVIDERS": "sqlite_hybrid,fleet"})
+    # pgvector goes to the front; the custom chain is preserved after it.
+    assert values["ALFRED_MEMORY_PROVIDERS"] == "pgvector,sqlite_hybrid,fleet"
+
+
+def test_enable_provider_does_not_duplicate_when_already_present() -> None:
+    redis = batteries.battery_by_id("redis-ams")
+    assert redis is not None
+    values = batteries.enable_values(redis, {"ALFRED_MEMORY_PROVIDERS": "sqlite,redis,fleet"})
+    assert values["ALFRED_MEMORY_PROVIDERS"] == "redis,sqlite,fleet"
+
+
+def test_disable_provider_removes_only_that_provider() -> None:
+    redis = batteries.battery_by_id("redis-ams")
+    assert redis is not None
+    values = batteries.disable_values(redis, {"ALFRED_MEMORY_PROVIDERS": "redis,sqlite,fleet"})
+    assert values["ALFRED_MEMORY_PROVIDERS"] == "sqlite,fleet"
+
+
+def test_disable_provider_never_leaves_chain_without_a_store() -> None:
+    redis = batteries.battery_by_id("redis-ams")
+    assert redis is not None
+    # Removing redis from redis,fleet would leave only the fleet ledger with no
+    # recall store, so sqlite is restored.
+    values = batteries.disable_values(redis, {"ALFRED_MEMORY_PROVIDERS": "redis,fleet"})
+    assert values["ALFRED_MEMORY_PROVIDERS"] == "sqlite,fleet"
+
+
+def test_selection_conflict_rejects_two_primaries() -> None:
+    # Redis and pgvector both want the primary store slot.
+    msg = batteries.selection_conflict(["redis-ams", "pgvector"])
+    assert msg
+    assert "redis-ams" in msg and "pgvector" in msg
+    # A single provider, or a provider plus a flag battery, is fine.
+    assert batteries.selection_conflict(["redis-ams"]) == ""
+    assert batteries.selection_conflict(["redis-ams", "dense-embeddings"]) == ""
+
+
+def test_enabled_provider_ids_reads_the_chain() -> None:
+    assert batteries.enabled_provider_ids({"ALFRED_MEMORY_PROVIDERS": "redis,fleet"}) == [
+        "redis-ams"
+    ]
+    assert batteries.enabled_provider_ids({"ALFRED_MEMORY_PROVIDERS": "sqlite,fleet"}) == []
 
 
 def test_write_env_permissions(tmp_path: Path) -> None:

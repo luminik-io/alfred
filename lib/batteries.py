@@ -28,7 +28,7 @@ import os
 import re
 import shutil
 import socket
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -56,6 +56,16 @@ _ANY_TRUTHY = "__truthy__"
 
 _TRUTHY = {"1", "true", "yes", "on"}
 _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+# The memory provider chain is a comma-separated CONSULT ORDER, not a single
+# value: enabling a memory battery composes its provider into the existing chain
+# rather than replacing it. These anchor the composition logic below.
+MEMORY_PROVIDERS_KEY = "ALFRED_MEMORY_PROVIDERS"
+DEFAULT_PROVIDER_CHAIN: tuple[str, ...] = ("sqlite", "fleet")
+# Providers that actually store and recall lessons. The chain must always keep at
+# least one of these, so disabling a store never leaves a chain that cannot
+# recall (e.g. a bare "fleet" ledger).
+STORE_PROVIDERS = frozenset({"sqlite", "sqlite_hybrid", "redis", "pgvector"})
 
 
 def _truthy(value: str) -> bool:
@@ -371,10 +381,59 @@ def load_env(env: Mapping[str, str] | None = None) -> dict[str, str]:
 
 
 def _provider_chain(env: Mapping[str, str]) -> list[str]:
-    raw = env.get("ALFRED_MEMORY_PROVIDERS", "")
+    raw = env.get(MEMORY_PROVIDERS_KEY, "")
     if not raw.strip():
-        return ["sqlite", "fleet"]  # the documented zero-daemon default
+        return list(DEFAULT_PROVIDER_CHAIN)  # the documented zero-daemon default
     return [tok.strip() for tok in raw.split(",") if tok.strip()]
+
+
+def compose_provider_chain(chain: list[str], provider: str, *, enable: bool) -> list[str]:
+    """Merge one memory provider into an existing chain without clobbering it.
+
+    Enabling makes ``provider`` the primary recall store (front of the chain) and
+    keeps every other provider (including the local ``fleet`` ledger) in order.
+    Disabling drops just ``provider`` and preserves the rest; if that would leave
+    no recall store, ``sqlite`` is restored so the chain can still recall, and an
+    emptied chain falls back to the documented ``sqlite,fleet`` default. This is
+    why toggling Redis or pgvector never replaces a user's custom chain.
+    """
+    rest = [name for name in chain if name != provider]
+    if enable:
+        return [provider, *rest]
+    if not any(name in STORE_PROVIDERS for name in rest):
+        rest = ["sqlite", *rest]
+    if not rest:
+        return list(DEFAULT_PROVIDER_CHAIN)
+    return rest
+
+
+def provider_batteries() -> tuple[Battery, ...]:
+    """Opt-in batteries that swap the primary memory store (Redis, pgvector)."""
+    return tuple(b for b in BATTERIES if b.provider)
+
+
+def enabled_provider_ids(env: Mapping[str, str]) -> list[str]:
+    """Ids of provider batteries whose provider is currently in the chain."""
+    chain = _provider_chain(env)
+    return [b.id for b in provider_batteries() if b.provider in chain]
+
+
+def selection_conflict(battery_ids: Iterable[str]) -> str:
+    """Return a plain error if a set of batteries cannot be enabled together.
+
+    Redis and pgvector each want to be the single primary recall store
+    (``ALFRED_MEMORY_PROVIDERS``), so enabling both is a conflict rather than a
+    silent last-write-wins. Returns an empty string when the selection is fine.
+    """
+    providers = [bid for bid in battery_ids if (b := battery_by_id(bid)) and b.provider]
+    unique = list(dict.fromkeys(providers))
+    if len(unique) > 1:
+        names = " and ".join(unique)
+        return (
+            f"{names} each replace the primary memory store "
+            f"({MEMORY_PROVIDERS_KEY}); enable only one of them."
+        )
+    return ""
 
 
 # --------------------------------------------------------------------------- #
@@ -461,15 +520,36 @@ def battery_status(battery: Battery, env: Mapping[str, str]) -> str:
     return STATUS_NOT_INSTALLED
 
 
-def enable_values(battery: Battery) -> dict[str, str]:
+def enable_values(battery: Battery, env: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Env values to write to enable ``battery``.
+
+    For a memory-provider battery (Redis, pgvector) the chain-valued
+    ``ALFRED_MEMORY_PROVIDERS`` is COMPOSED onto the current chain (read from
+    ``env``, or the effective env when omitted) so an existing or custom chain is
+    preserved. Flag batteries return their static enable flag(s).
+    """
     if battery.builtin:
         return {}
+    if battery.provider:
+        chain = _provider_chain(env if env is not None else load_env())
+        composed = compose_provider_chain(chain, battery.provider, enable=True)
+        return {MEMORY_PROVIDERS_KEY: ",".join(composed)}
     return dict(battery.enable_env)
 
 
-def disable_values(battery: Battery) -> dict[str, str]:
+def disable_values(battery: Battery, env: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Env values to write to disable ``battery``.
+
+    For a memory-provider battery this removes just that provider from the chain
+    (preserving the rest, falling back to the default when nothing recall-worthy
+    remains). Flag batteries return their static disable flag(s).
+    """
     if battery.builtin:
         return {}
+    if battery.provider:
+        chain = _provider_chain(env if env is not None else load_env())
+        composed = compose_provider_chain(chain, battery.provider, enable=False)
+        return {MEMORY_PROVIDERS_KEY: ",".join(composed)}
     return dict(battery.disable_env)
 
 

@@ -2398,9 +2398,26 @@ def cmd_batteries(args: argparse.Namespace) -> int:
         print(f"alfred: {battery.id} is a built-in and is always on; nothing to change.")
         return 1
 
+    from batteries import enabled_provider_ids
+
     env_path = _runtime_env_path()
     enabling = action == "enable"
-    values = enable_values(battery) if enabling else disable_values(battery)
+    current_env = load_env()
+    # Enabling a second primary memory store (Redis vs pgvector) would compose
+    # two primaries into the chain; refuse it with a clear message instead.
+    if enabling and battery.provider:
+        others = [pid for pid in enabled_provider_ids(current_env) if pid != battery.id]
+        if others:
+            print(
+                f"alfred: {battery.id} conflicts with {', '.join(others)}: both replace the "
+                f"primary memory store. Run `alfred batteries disable {others[0]}` first."
+            )
+            return 1
+    # Compose the chain onto the current env so a custom or existing chain is
+    # preserved rather than clobbered.
+    values = (
+        enable_values(battery, current_env) if enabling else disable_values(battery, current_env)
+    )
     write_env(env_path, values)
     verb = "enabled" if enabling else "disabled"
     print(f"alfred: {verb} {battery.id}. Wrote {', '.join(values)} to {env_path}")

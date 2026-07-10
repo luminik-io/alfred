@@ -29,6 +29,12 @@ already connected, move on). Never repeat a step that is done.
 3. **Pick repos.** Ask which projects Alfred may open pull requests in. Once they
    name them, request `set_repos` with the `owner/repo` slugs. You may change
    this later, so a short starting list is fine.
+3b. **Batteries (optional).** Alfred works fully with nothing extra. If the person
+   wants more, you may offer the optional batteries: `dense-embeddings` (better
+   memory recall), `headroom-compression` (more token savings), `code-memory-mcp`
+   (a live code graph the agent can query), or a scale-tier memory store
+   (`redis-ams` or `pgvector`, but only one of those two). When they choose, request
+   `set_batteries` with the ids. Never push these; skipping them is the norm.
 4. **Name the team.** Offer to name the agent team for a vibe they choose (a
    sci-fi crew, a band, Greek gods). When they pick a vibe, propose the full
    roster with `propose_theme`, then, once they are happy, `save_theme`. Keeping
@@ -59,6 +65,10 @@ action (you are just asking a question), omit the `action` block.
   `reviewer`, `e2e-runner`). A partial map is dropped.
 - `save_theme` : same shape as `propose_theme`; request it only after the person
   confirms the proposed names.
+- `set_batteries` : `{ "batteries": ["dense-embeddings", "code-memory-mcp"] }`.
+  Optional enhancements the person turns on. Use the real ids only
+  (`dense-embeddings`, `headroom-compression`, `code-memory-mcp`, `redis-ams`,
+  `pgvector`), and never both `redis-ams` and `pgvector` in one request.
 - `set_schedule` : `{ "cadence": "daily" }`. Cadence is one of `off`, `hourly`,
   `daily`, `weekly`.
 - `finish_setup` : mark setup complete. No args. Set `done` to `true` on this

@@ -177,6 +177,42 @@ def test_parse_turn_set_schedule_rejects_unknown_cadence() -> None:
     assert turn.action is None  # unknown cadence drops the action, reply stands
 
 
+def test_set_batteries_is_in_the_scoped_allowlist() -> None:
+    assert "set_batteries" in ob.ONBOARDING_ACTIONS
+
+
+def test_parse_turn_set_batteries_validates_and_bounds_ids() -> None:
+    turn = ob.parse_turn(
+        '{"reply": "Turning those on.", "action": {"tool": "set_batteries", '
+        '"args": {"batteries": ["dense-embeddings", "code-memory-mcp", "not-a-battery", '
+        '"sqlite-memory"]}}}'
+    )
+    assert turn is not None
+    assert turn.action is not None
+    assert turn.action.tool == "set_batteries"
+    # Unknown ids and always-on built-ins are dropped; only real opt-ins survive.
+    assert turn.action.args["batteries"] == ["dense-embeddings", "code-memory-mcp"]
+
+
+def test_parse_turn_set_batteries_rejects_two_primaries() -> None:
+    turn = ob.parse_turn(
+        '{"reply": "Which store?", "action": {"tool": "set_batteries", '
+        '"args": {"batteries": ["redis-ams", "pgvector"]}}}'
+    )
+    assert turn is not None
+    # Two mutually-exclusive primaries degrade to no action; the reply stands.
+    assert turn.action is None
+
+
+def test_parse_turn_set_batteries_empty_degrades_to_reply() -> None:
+    turn = ob.parse_turn(
+        '{"reply": "No batteries then.", "action": {"tool": "set_batteries", '
+        '"args": {"batteries": ["nonsense"]}}}'
+    )
+    assert turn is not None
+    assert turn.action is None
+
+
 def test_parse_turn_save_theme_reuses_theme_builder_completeness() -> None:
     # save_theme delegates to theme_builder.parse_proposal: a complete map (every
     # required core role) is accepted and shaped for POST /api/roster-theme.

@@ -843,7 +843,22 @@ def set_battery(battery_id: str, *, enabled: bool) -> dict[str, Any]:
         raise ValueError(f"unknown battery: {battery_id!r}")
     if battery.builtin:
         raise ValueError(f"battery {battery_id!r} is a built-in and is always on")
-    values = batteries.enable_values(battery) if enabled else batteries.disable_values(battery)
+    runtime_env = batteries.load_env(_runtime_config_env())
+    # A memory-provider battery replaces the primary recall store; refuse to
+    # enable a second one on top of an already-enabled provider so two primaries
+    # never silently collide. The client surfaces this message.
+    if enabled and battery.provider:
+        others = [pid for pid in batteries.enabled_provider_ids(runtime_env) if pid != battery_id]
+        if others:
+            raise ValueError(
+                f"{battery_id} conflicts with {', '.join(others)}: both replace the "
+                f"primary memory store. Disable the other first."
+            )
+    values = (
+        batteries.enable_values(battery, runtime_env)
+        if enabled
+        else batteries.disable_values(battery, runtime_env)
+    )
     env_path = write_env_values(values)
     for key, value in values.items():
         if value:

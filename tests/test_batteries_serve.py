@@ -84,6 +84,27 @@ def test_set_battery_rejects_builtin_and_unknown(alfred_home: Path) -> None:
         setup_mod.set_battery("does-not-exist", enabled=True)
 
 
+def test_set_battery_composes_provider_chain(
+    alfred_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ALFRED_MEMORY_PROVIDERS", raising=False)
+    result = setup_mod.set_battery("redis-ams", enabled=True)
+    # Redis composed as primary; sqlite and fleet retained, not clobbered.
+    assert result["keys"] == ["ALFRED_MEMORY_PROVIDERS"]
+    import os
+
+    assert os.environ["ALFRED_MEMORY_PROVIDERS"] == "redis,sqlite,fleet"
+
+
+def test_set_battery_rejects_second_primary(
+    alfred_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ALFRED_MEMORY_PROVIDERS", "redis,sqlite,fleet")
+    with pytest.raises(ValueError) as exc:
+        setup_mod.set_battery("pgvector", enabled=True)
+    assert "conflicts with redis-ams" in str(exc.value)
+
+
 # --------------------------------------------------------------------------- #
 # HTTP routes
 # --------------------------------------------------------------------------- #

@@ -1312,11 +1312,18 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
     elif not state.telemetry_enabled:
         out["ALFRED_TELEMETRY_ENABLED"] = "0"
     # Opt-in batteries the operator picked. Alfred works fully with none of these;
-    # each just sets its real env flag(s) from the shared manifest.
+    # each just sets its real env flag(s) from the shared manifest. Compose onto
+    # the existing config so a memory battery merges into the current provider
+    # chain (never clobbers it) and two batteries writing the same key (composed
+    # sequentially) do not collide. Mutually-exclusive primaries are rejected
+    # earlier in step_8c, so at most one provider battery reaches here.
+    compose_env = {**existing_effective_env, **out}
     for battery_id in state.batteries:
         battery = batteries.battery_by_id(battery_id)
         if battery is not None and not battery.builtin:
-            out.update(batteries.enable_values(battery))
+            values = batteries.enable_values(battery, compose_env)
+            out.update(values)
+            compose_env.update(values)
     return out
 
 
@@ -1997,6 +2004,13 @@ def step_8c_batteries(state: WizardState, *, non_interactive: bool) -> None:
 
     opt_ins = batteries.opt_in_batteries()
     if non_interactive:
+        # A pre-seeded selection (--batteries / --config) that names two
+        # mutually-exclusive primaries (Redis and pgvector) is a hard error, not
+        # a silent last-write-wins on ALFRED_MEMORY_PROVIDERS.
+        conflict = batteries.selection_conflict(state.batteries)
+        if conflict:
+            fail(f"Battery selection conflict: {conflict}")
+            sys.exit(1)
         if state.batteries:
             chosen = ", ".join(state.batteries)
             ok(f"Batteries selected: {chosen}. Built-ins stay on regardless.")
@@ -2012,6 +2026,25 @@ def step_8c_batteries(state: WizardState, *, non_interactive: bool) -> None:
         print(f"    {_battery_requirement_line(battery)}")
         default_on = battery.id in selected
         if ask_yes_no(f"Enable {battery.name}?", default=default_on):
+            # Only one primary memory store at a time: refuse a second provider
+            # battery and tell the operator which one already holds the slot.
+            if battery.provider:
+                other = next(
+                    (
+                        bid
+                        for bid in selected
+                        if bid != battery.id
+                        and (other_b := batteries.battery_by_id(bid)) is not None
+                        and other_b.provider
+                    ),
+                    None,
+                )
+                if other is not None:
+                    warn(
+                        f"Only one primary memory store at a time. Keeping {other}; "
+                        f"skipping {battery.id}. Disable {other} first if you want {battery.id}."
+                    )
+                    continue
             if battery.id not in selected:
                 selected.append(battery.id)
             if battery.requires_daemon:
