@@ -7,7 +7,9 @@ mirrors them into the live process.
 
 from __future__ import annotations
 
+import os
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -37,7 +39,7 @@ def _auth_headers(state: Path) -> dict[str, str]:
 
 
 @pytest.fixture
-def alfred_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+def alfred_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[Path]:
     home = tmp_path / ".alfred"
     home.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("ALFRED_HOME", str(home))
@@ -48,7 +50,13 @@ def alfred_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     monkeypatch.setattr(batteries, "_code_memory_binary", lambda env: False)
     monkeypatch.setattr(batteries, "_headroom_available", lambda env: False)
     monkeypatch.setattr(batteries, "_find_spec", lambda name: False)
-    return home
+    managed_env = {key: os.environ.get(key) for key in batteries.managed_env_keys()}
+    yield home
+    for key, value in managed_env.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
 
 
 # --------------------------------------------------------------------------- #
