@@ -197,6 +197,32 @@ def test_redact_dsn_scrubs_uri_query_password() -> None:
     assert "password=***" in out
 
 
+@pytest.mark.parametrize(
+    "dsn",
+    [
+        "host=db.local password = 'my secret pw' dbname=alfred",  # spaced '=', quoted
+        "host=db.local password ='my secret pw' dbname=alfred",  # space before '='
+        "host=db.local password= 'my secret pw' dbname=alfred",  # space after '='
+        "password = 'my secret pw'",  # leading, spaced
+    ],
+)
+def test_redact_dsn_handles_spaced_equals_libpq_password(dsn: str) -> None:
+    # libpq allows whitespace around '='; a shlex/whitespace split would tear
+    # `password = 'my secret pw'` into separate tokens and leak the value.
+    out = _redact_dsn(dsn)
+    assert "my secret pw" not in out
+    assert "secret" not in out
+    assert "password=***" in out
+
+
+def test_redact_dsn_scrubs_sslpassword_keyword() -> None:
+    # sslpassword (client-key passphrase) is a secret too.
+    out = _redact_dsn("host=db.local sslpassword='key pass' sslmode=require")
+    assert "key pass" not in out
+    assert "sslpassword=***" in out
+    assert "sslmode=require" in out
+
+
 def test_health_output_fully_redacts_quoted_password(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

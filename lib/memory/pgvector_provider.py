@@ -55,7 +55,6 @@ import json
 import logging
 import os
 import re
-import shlex
 import threading
 from collections.abc import Iterable, Mapping, Sequence
 from contextlib import contextmanager
@@ -217,19 +216,37 @@ def _vector_literal(vec: Sequence[float]) -> str:
 
 _URI_QUERY_PASSWORD_RE = re.compile(r"(?i)([?&]password=)[^&\s]*")
 
+# One libpq keyword/value setting: ``keyword = value``. Per the libpq conninfo
+# grammar, whitespace around ``=`` is optional and the value is either a
+# single-quoted string (backslash escapes allowed, so it may contain spaces), an
+# unquoted run of non-space characters, or empty. Matching the value as a whole
+# -- including the quoted case -- is what makes redaction robust against
+# ``password = 'my secret pw'`` (spaced ``=`` and internal spaces), which a
+# whitespace/shlex split would tear into separate tokens and leak.
+_LIBPQ_SETTING_RE = re.compile(r"(?P<key>\w+)\s*=\s*(?P<value>'(?:[^'\\]|\\.)*'|[^\s']+|)")
+
+
+def _redact_password_setting(match: re.Match[str]) -> str:
+    # Redact any *password keyword (``password``, ``sslpassword``); keep every
+    # other setting verbatim so the shape of the DSN is still legible.
+    if match.group("key").lower().endswith("password"):
+        return f"{match.group('key')}=***"
+    return match.group(0)
+
 
 def _redact_dsn(dsn: str) -> str:
     """Best-effort password scrub for a DSN so ``health`` never leaks a secret.
 
-    Handles the two common libpq shapes:
+    Handles the two libpq shapes:
 
     * **URI** (``postgresql://u:pw@host/db``) -- the ``user:pw@`` credential is
       collapsed to ``user:***@``, and a password carried as a ``?password=`` query
       parameter is scrubbed too.
-    * **Keyword/value** (``host=... password=... dbname=...``) -- parsed
-      QUOTE-AWARE with :mod:`shlex`, so a quoted value with spaces
-      (``password='my secret pw'``) is one token and is fully redacted rather
-      than leaking its tail after a naive whitespace split.
+    * **Keyword/value** (``host=... password=... dbname=...``) -- each setting is
+      matched with the libpq grammar (:data:`_LIBPQ_SETTING_RE`), so a password is
+      redacted whole even with a spaced ``=`` and a quoted, space-containing value
+      (``password = 'my secret pw'``). A naive whitespace/shlex split would tear
+      that into separate tokens and leak the value.
 
     Anything it cannot parse is reported as ``"<dsn>"`` rather than echoed, so a
     malformed string can never leak a credential.
@@ -248,16 +265,9 @@ def _redact_dsn(dsn: str) -> str:
                 redacted = f"{scheme}://{rest}"
             # A libpq URI may also carry the password as a query parameter.
             return _URI_QUERY_PASSWORD_RE.sub(r"\1***", redacted)
-        # Keyword/value DSN: tokenize honouring single/double quotes so a quoted
-        # password containing spaces is a single token and is redacted whole.
-        parts: list[str] = []
-        for token in shlex.split(raw):
-            key, sep, _value = token.partition("=")
-            if sep and key.strip().lower() == "password":
-                parts.append("password=***")
-            else:
-                parts.append(token)
-        return " ".join(parts)
+        # Keyword/value DSN: redact any *password setting, honouring quoted values
+        # and optional whitespace around ``=``.
+        return _LIBPQ_SETTING_RE.sub(_redact_password_setting, raw)
     except Exception:
         return "<dsn>"
 
