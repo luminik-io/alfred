@@ -363,3 +363,47 @@ run at all.
 Durable reuse has no switch of its own: it persists whenever ranking
 (`ALFRED_MEMORY_RANK`) is armed and the configured provider exposes a reuse
 store, and is otherwise a no-op.
+
+## Graphify: an alternative code-graph engine (opt-in)
+
+`graphify` is an optional, pure-Python code-graph engine you can run *instead of*
+`codebase-memory-mcp`. It parses your repos with tree-sitter (~40 languages) into
+a `graphify-out/graph.json` and serves that graph read-only over MCP, so the agent
+can ask for a symbol's neighbours, the shortest path between two symbols, or a
+subsystem summary rather than re-reading files. Extraction is local and needs no
+LLM, database, or embeddings.
+
+It is **mutually exclusive** with `codebase-memory-mcp`: both attach as the single
+code-graph MCP server, so Alfred runs at most one. When `ALFRED_GRAPHIFY_MCP` is
+on and that repo's graph is ready, Graphify takes the slot. An explicit fallback
+may occupy the same slot only while the Graphify graph is unavailable.
+
+Setup:
+
+```sh
+alfred batteries enable graphify --yes  # installs pinned graphifyy[mcp] with uv
+graphify /path/to/repo           # first build: graphify-out/graph.json (no LLM)
+graphify /path/to/repo --update  # later incremental refresh
+```
+
+Then enable it (or tick it in `alfred batteries` / the desktop battery picker):
+
+| Variable | Default | What it does |
+|---|---|---|
+| `ALFRED_GRAPHIFY_MCP` | `0` (off) | Attach graphify's read-only graph MCP to firings, taking the code-graph slot. |
+| `ALFRED_GRAPHIFY_FALLBACK` | unset (`code-memory` when enabled through the battery picker) | Explicit engine to use while a repo has no Graphify graph. Set `none` to leave the slot empty instead. |
+| `ALFRED_GRAPHIFY_BIN` | auto | Override the `graphify-mcp` executable path. Alfred otherwise uses the installed entrypoint. Package installation happens during battery setup, never inside an agent firing. |
+| `ALFRED_GRAPHIFY_GRAPH` | `graphify-out/graph.json` | Graph file passed to the MCP server, relative to each firing's repo worktree unless absolute. |
+
+A firing serves the graph in its own working directory (`graphify-out/graph.json`),
+so build or update the graph per repo. If that repo has no graph yet, Alfred does
+not attach Graphify. Manual configuration falls back only when
+`ALFRED_CODE_MEMORY_MCP` remains enabled. The battery picker records the explicit
+`code-memory` fallback while still disabling its normal gate, so an unindexed
+repo keeps one structural engine and the fallback is visible in configuration.
+Autofetch stays enabled for that fallback, but code-memory is not attached while
+Graphify has a usable graph.
+
+The read-only tools it exposes: `query_graph`, `get_node`, `get_neighbors`,
+`get_community`, `god_nodes`, `graph_stats`, `shortest_path`, `list_prs`,
+`get_pr_impact`, `triage_prs`.

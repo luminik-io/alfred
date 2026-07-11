@@ -28,6 +28,8 @@ import os
 import re
 import shutil
 import socket
+import subprocess
+import tempfile
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -61,6 +63,10 @@ _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 # value: enabling a memory battery composes its provider into the existing chain
 # rather than replacing it. These anchor the composition logic below.
 MEMORY_PROVIDERS_KEY = "ALFRED_MEMORY_PROVIDERS"
+
+# The external code-graph engines that attach as the code-graph MCP server.
+# They are mutually exclusive: enable at most one.
+_CODE_GRAPH_ENGINES = frozenset({"code-memory-mcp", "graphify"})
 DEFAULT_PROVIDER_CHAIN: tuple[str, ...] = ("sqlite", "fleet")
 # Providers that actually store and recall lessons. The chain must always keep at
 # least one of these, so disabling a store never leaves a chain that cannot
@@ -245,7 +251,7 @@ BATTERIES: tuple[Battery, ...] = (
         # not just stop autofetch: the MCP defaults on and would still attach a
         # previously fetched binary, so "off" in the picker must write MCP=0.
         disable_env={"ALFRED_CODE_MEMORY_MCP": "0", "ALFRED_CODE_MEMORY_AUTOFETCH": "0"},
-        enable_flag=("ALFRED_CODE_MEMORY_AUTOFETCH", _ANY_TRUTHY),
+        enable_flag=("ALFRED_CODE_MEMORY_MCP", _ANY_TRUTHY),
         requires_daemon=False,
         install_kind=INSTALL_AUTOFETCH,
         install_hint=(
@@ -254,6 +260,51 @@ BATTERIES: tuple[Battery, ...] = (
         ),
         autofetch_cmd=("code-memory-mcp", "doctor"),
         detect="code_memory",
+        docs="docs/CODE_MEMORY.md",
+    ),
+    Battery(
+        id="graphify",
+        name="Graphify code graph",
+        category=CATEGORY_CODE_GRAPH,
+        what=(
+            "A pure-Python code-graph engine (graphifyy, tree-sitter over ~40 languages) that maps "
+            "imports, calls, and inheritance into a queryable graph, served to the agent over MCP."
+        ),
+        how_it_helps=(
+            "The agent navigates a large codebase by real relationships and shortest paths between "
+            "symbols instead of re-reading files, cutting the tokens spent rediscovering structure. "
+            "Extraction is local and needs no LLM, database, or embeddings. This is an alternative to "
+            "Codebase memory (MCP); enable one code-graph engine, not both."
+        ),
+        builtin=False,
+        default_on=False,
+        enable_env={
+            "ALFRED_GRAPHIFY_MCP": "1",
+            "ALFRED_GRAPHIFY_FALLBACK": "code-memory",
+            "ALFRED_CODE_MEMORY_AUTOFETCH": "1",
+        },
+        disable_env={
+            "ALFRED_GRAPHIFY_MCP": "0",
+            "ALFRED_GRAPHIFY_FALLBACK": "none",
+        },
+        enable_flag=("ALFRED_GRAPHIFY_MCP", _ANY_TRUTHY),
+        requires_daemon=False,
+        install_kind=INSTALL_AUTOFETCH,
+        install_hint=(
+            "Alfred installs the pinned graphifyy MCP tool with uv. Build a graph per repo with "
+            "`graphify <repo>`; refresh it later with `graphify <repo> --update`. Firings then serve "
+            "`graphify-out/graph.json` read-only. Until each repo is indexed, Alfred explicitly "
+            "falls back to its code-memory engine. "
+            "Local; no daemon, no embeddings."
+        ),
+        autofetch_cmd=(
+            "uv",
+            "tool",
+            "install",
+            "--force",
+            "graphifyy[mcp]==0.9.8",
+        ),
+        detect="graphify",
         docs="docs/CODE_MEMORY.md",
     ),
     Battery(
@@ -428,7 +479,8 @@ def selection_conflict(battery_ids: Iterable[str]) -> str:
     (``ALFRED_MEMORY_PROVIDERS``), so enabling both is a conflict rather than a
     silent last-write-wins. Returns an empty string when the selection is fine.
     """
-    providers = [bid for bid in battery_ids if (b := battery_by_id(bid)) and b.provider]
+    ids = list(battery_ids)
+    providers = [bid for bid in ids if (b := battery_by_id(bid)) and b.provider]
     unique = list(dict.fromkeys(providers))
     if len(unique) > 1:
         names = " and ".join(unique)
@@ -436,6 +488,13 @@ def selection_conflict(battery_ids: Iterable[str]) -> str:
             f"{names} each replace the primary memory store "
             f"({MEMORY_PROVIDERS_KEY}); enable only one of them."
         )
+    # The two external code-graph engines both attach as the code-graph MCP
+    # server; running both would double-attach and double-index, so they are
+    # mutually exclusive.
+    graphs = [bid for bid in dict.fromkeys(ids) if bid in _CODE_GRAPH_ENGINES]
+    if len(graphs) > 1:
+        names = " and ".join(graphs)
+        return f"{names} are both code-graph engines; enable only one of them."
     return ""
 
 
@@ -473,6 +532,32 @@ def _code_memory_binary(env: Mapping[str, str]) -> bool:
     return fetched.exists()
 
 
+def _graphify_available(env: Mapping[str, str]) -> bool:
+    override = str(env.get("ALFRED_GRAPHIFY_BIN", "")).strip()
+    if override and Path(override).expanduser().exists():
+        return True
+    installed = shutil.which("graphify-mcp")
+    cli = shutil.which("graphify")
+    if installed and cli:
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", encoding="utf-8") as graph:
+                graph.write('{"nodes": [], "links": []}')
+                graph.flush()
+                probe = subprocess.run(
+                    [installed, graph.name, "--transport", "stdio"],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5,
+                    check=False,
+                )
+                if probe.returncode == 0:
+                    return True
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return False
+
+
 def _headroom_available(env: Mapping[str, str]) -> bool:
     if _find_spec("headroom"):
         return True
@@ -506,6 +591,8 @@ def is_installed(battery: Battery, env: Mapping[str, str]) -> bool:
         return _headroom_available(env)
     if battery.detect == "code_memory":
         return _code_memory_binary(env)
+    if battery.detect == "graphify":
+        return _graphify_available(env)
     if battery.detect == "redis_ams":
         return _ams_reachable(env)
     if battery.detect == "pgvector":
@@ -537,7 +624,14 @@ def enable_values(battery: Battery, env: Mapping[str, str] | None = None) -> dic
         chain = _provider_chain(env if env is not None else load_env())
         composed = compose_provider_chain(chain, battery.provider, enable=True)
         return {MEMORY_PROVIDERS_KEY: ",".join(composed)}
-    return dict(battery.enable_env)
+    values: dict[str, str] = {}
+    if battery.id in _CODE_GRAPH_ENGINES:
+        for other_id in _CODE_GRAPH_ENGINES - {battery.id}:
+            other = battery_by_id(other_id)
+            if other is not None:
+                values.update(other.disable_env)
+    values.update(battery.enable_env)
+    return values
 
 
 def disable_values(battery: Battery, env: Mapping[str, str] | None = None) -> dict[str, str]:

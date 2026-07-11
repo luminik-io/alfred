@@ -7,7 +7,9 @@ mirrors them into the live process.
 
 from __future__ import annotations
 
+import os
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -37,7 +39,7 @@ def _auth_headers(state: Path) -> dict[str, str]:
 
 
 @pytest.fixture
-def alfred_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+def alfred_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[Path]:
     home = tmp_path / ".alfred"
     home.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("ALFRED_HOME", str(home))
@@ -48,7 +50,13 @@ def alfred_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     monkeypatch.setattr(batteries, "_code_memory_binary", lambda env: False)
     monkeypatch.setattr(batteries, "_headroom_available", lambda env: False)
     monkeypatch.setattr(batteries, "_find_spec", lambda name: False)
-    return home
+    managed_env = {key: os.environ.get(key) for key in batteries.managed_env_keys()}
+    yield home
+    for key, value in managed_env.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
 
 
 # --------------------------------------------------------------------------- #
@@ -103,6 +111,32 @@ def test_set_battery_rejects_second_primary(
     with pytest.raises(ValueError) as exc:
         setup_mod.set_battery("pgvector", enabled=True)
     assert "conflicts with redis-ams" in str(exc.value)
+
+
+def test_set_battery_switches_code_graph_engines_atomically(
+    alfred_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_MCP", "1")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_AUTOFETCH", "1")
+    monkeypatch.delenv("ALFRED_GRAPHIFY_MCP", raising=False)
+
+    result = setup_mod.set_battery("graphify", enabled=True)
+
+    assert set(result["keys"]) == {
+        "ALFRED_GRAPHIFY_MCP",
+        "ALFRED_GRAPHIFY_FALLBACK",
+        "ALFRED_CODE_MEMORY_MCP",
+        "ALFRED_CODE_MEMORY_AUTOFETCH",
+    }
+    import os
+
+    assert os.environ["ALFRED_GRAPHIFY_MCP"] == "1"
+    assert os.environ["ALFRED_GRAPHIFY_FALLBACK"] == "code-memory"
+    assert os.environ["ALFRED_CODE_MEMORY_MCP"] == "0"
+    assert os.environ["ALFRED_CODE_MEMORY_AUTOFETCH"] == "1"
+    env_text = (alfred_home / ".env").read_text(encoding="utf-8")
+    assert "ALFRED_GRAPHIFY_MCP=1" in env_text
+    assert "ALFRED_CODE_MEMORY_MCP=0" in env_text
 
 
 # --------------------------------------------------------------------------- #

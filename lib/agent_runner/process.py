@@ -29,8 +29,10 @@ import contextlib
 import json
 import os
 import secrets
+import shutil
 import signal
 import subprocess
+import tempfile
 import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -267,7 +269,9 @@ def _memory_mcp_server(script: Path | None | _Unresolved = _UNRESOLVED) -> dict[
     return {MEMORY_MCP_SERVER: {"command": "python3", "args": [str(resolved), "serve"]}}
 
 
-def _memory_mcp_args(script: Path | None | _Unresolved = _UNRESOLVED) -> list[str]:
+def _memory_mcp_args(
+    script: Path | None | _Unresolved = _UNRESOLVED, workdir: Path | None = None
+) -> list[str]:
     """``--mcp-config`` args attaching the read-only memory + code-memory
     servers, or ``[]``.
 
@@ -287,7 +291,7 @@ def _memory_mcp_args(script: Path | None | _Unresolved = _UNRESOLVED) -> list[st
     memory = _memory_mcp_server(script)
     if memory:
         servers.update(memory)
-    code = _code_memory_mcp_server()
+    code = _active_code_graph_server(workdir)
     if code:
         servers.update(code)
     if not servers:
@@ -300,7 +304,9 @@ def _memory_tool_names() -> list[str]:
 
 
 def _with_memory_mcp_tools(
-    allowed_tools: str, script: Path | None | _Unresolved = _UNRESOLVED
+    allowed_tools: str,
+    script: Path | None | _Unresolved = _UNRESOLVED,
+    workdir: Path | None = None,
 ) -> str:
     """Append the read-only memory recall tools to an allowlist when enabled.
 
@@ -315,8 +321,7 @@ def _with_memory_mcp_tools(
         resolved = _memory_mcp_script() if isinstance(script, _Unresolved) else script
         if resolved is not None:
             wanted.extend(_memory_tool_names())
-    if _code_memory_mcp_server():
-        wanted.extend(_code_memory_tool_names())
+    wanted.extend(_active_code_graph_tool_names(workdir))
     if not wanted:
         return base
     existing = set(base.replace(",", " ").split())
@@ -361,7 +366,7 @@ def _code_memory_launcher() -> Path | None:
     return script if script.exists() else None
 
 
-def _code_memory_mcp_server() -> dict[str, Any] | None:
+def _code_memory_mcp_server(*, explicit_fallback: bool = False) -> dict[str, Any] | None:
     """Return the ``mcpServers`` entry for the code-memory server, or ``None``.
 
     ``None`` when disabled by env or when the launcher is missing (e.g. a lib
@@ -369,7 +374,7 @@ def _code_memory_mcp_server() -> dict[str, Any] | None:
     launcher itself decides whether the underlying binary is present and exits
     cleanly if not, so attaching it is always safe.
     """
-    if not _code_memory_mcp_enabled():
+    if not explicit_fallback and not _code_memory_mcp_enabled():
         return None
     launcher = _code_memory_launcher()
     if launcher is None:
@@ -379,6 +384,143 @@ def _code_memory_mcp_server() -> dict[str, Any] | None:
 
 def _code_memory_tool_names() -> list[str]:
     return [f"mcp__{CODE_MEMORY_MCP_SERVER}__{t}" for t in _CODE_MEMORY_TOOLS]
+
+
+# ---------- Graphify MCP attachment ----------
+#
+# graphify (graphifyy, MIT) is an OPT-IN alternative code-graph engine: a
+# pinned Python package invoked over MCP via its ``graphify-mcp`` entrypoint. It
+# serves a per-repo ``graphify-out/graph.json``
+# read-only, exposing graph-query tools (query, neighbours, shortest path,
+# stats, community). Off by default; turn on with ALFRED_GRAPHIFY_MCP=1. It is
+# mutually exclusive with code-memory: when graphify is on it takes the
+# code-graph slot and code-memory is not attached, so a firing never runs two
+# code-graph servers at once.
+GRAPHIFY_MCP_SERVER = "graphify"
+# The read-only tools graphify's server exposes. Kept as an explicit allowlist
+# so an upstream addition cannot silently widen agent capability.
+_GRAPHIFY_TOOLS = (
+    "query_graph",
+    "get_node",
+    "get_neighbors",
+    "get_community",
+    "god_nodes",
+    "graph_stats",
+    "shortest_path",
+    "list_prs",
+    "get_pr_impact",
+    "triage_prs",
+)
+
+
+def _graphify_mcp_enabled() -> bool:
+    """Off unless ALFRED_GRAPHIFY_MCP is explicitly truthy (opt-in)."""
+    val = os.environ.get("ALFRED_GRAPHIFY_MCP")
+    if val is None:
+        return False
+    return val.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _graphify_code_memory_fallback_enabled() -> bool:
+    """Whether Graphify explicitly selected code-memory for unindexed repos."""
+    return os.environ.get("ALFRED_GRAPHIFY_FALLBACK", "").strip().lower() == "code-memory"
+
+
+def _graphify_command() -> tuple[str, list[str]] | None:
+    """Resolve a supported graphify MCP entrypoint and its bootstrap arguments."""
+    override = os.environ.get("ALFRED_GRAPHIFY_BIN", "").strip()
+    if override:
+        expanded = str(Path(override).expanduser())
+        if shutil.which(override) or Path(expanded).is_file():
+            return expanded, []
+        return None
+    installed = shutil.which("graphify-mcp")
+    if installed and _graphify_entrypoint_works(installed):
+        return installed, []
+    return None
+
+
+def _graphify_entrypoint_works(command: str) -> bool:
+    """Start stdio against an empty graph to verify the optional MCP runtime."""
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", encoding="utf-8") as graph:
+            graph.write('{"nodes": [], "links": []}')
+            graph.flush()
+            return (
+                subprocess.run(
+                    [command, graph.name, "--transport", "stdio"],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5,
+                    check=False,
+                ).returncode
+                == 0
+            )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def _graphify_mcp_server(workdir: Path | None = None) -> dict[str, Any] | None:
+    """Return the ``mcpServers`` entry for graphify, or ``None`` when disabled
+    or the command is not on PATH.
+
+    Uses the cwd-relative default graph (``graphify-out/graph.json``), so a
+    firing running in a repo worktree serves that repo's own graph. If no graph
+    has been built the server simply exposes no useful nodes; attaching is safe.
+    """
+    if not _graphify_mcp_enabled():
+        return None
+    invocation = _graphify_command()
+    if invocation is None:
+        return None
+    cmd, prefix = invocation
+    graph = os.environ.get("ALFRED_GRAPHIFY_GRAPH", "").strip() or "graphify-out/graph.json"
+    graph_path = Path(graph).expanduser()
+    resolved_graph = (
+        graph_path if graph_path.is_absolute() else (workdir / graph_path if workdir else None)
+    )
+    if resolved_graph is not None and not resolved_graph.is_file():
+        return None
+    graph_arg = str(resolved_graph) if resolved_graph is not None else str(graph_path)
+    return {
+        GRAPHIFY_MCP_SERVER: {
+            "command": cmd,
+            "args": [*prefix, graph_arg, "--transport", "stdio"],
+        }
+    }
+
+
+def _graphify_tool_names() -> list[str]:
+    return [f"mcp__{GRAPHIFY_MCP_SERVER}__{t}" for t in _GRAPHIFY_TOOLS]
+
+
+def _active_code_graph_server(workdir: Path | None = None) -> dict[str, Any] | None:
+    """The single code-graph MCP server to attach, honouring exclusivity.
+
+    graphify wins when enabled (explicit opt-in); otherwise code-memory (on by
+    default when its binary is present). Never returns both.
+    """
+    if _graphify_mcp_enabled():
+        graphify = _graphify_mcp_server(workdir)
+        if graphify is not None:
+            return graphify
+        # Manual env users retain the normal code-memory gate. The Graphify
+        # battery records an explicit fallback so unindexed repos keep one
+        # structural engine without pretending both servers are active.
+        return _code_memory_mcp_server(explicit_fallback=_graphify_code_memory_fallback_enabled())
+    return _code_memory_mcp_server()
+
+
+def _active_code_graph_tool_names(workdir: Path | None = None) -> list[str]:
+    server = _active_code_graph_server(workdir)
+    if server is None:
+        return []
+    if GRAPHIFY_MCP_SERVER in server:
+        return _graphify_tool_names()
+    if CODE_MEMORY_MCP_SERVER in server:
+        return _code_memory_tool_names()
+    return []
 
 
 def _subprocess_text(value: object) -> str:
@@ -588,7 +730,7 @@ def claude_invoke(
         "-p",
         prompt,
         "--allowedTools",
-        _with_memory_mcp_tools(allowed_tools, memory_script),
+        _with_memory_mcp_tools(allowed_tools, memory_script, workdir),
         "--max-turns",
         str(effective_max_turns),
         "--output-format",
@@ -604,7 +746,7 @@ def claude_invoke(
     # Attach the read-only memory MCP server so agents can recall lessons as a
     # tool (capability, on by default; ALFRED_MEMORY_MCP=0 to disable). Reuses
     # the single resolved memory_script from above.
-    cmd.extend(_memory_mcp_args(memory_script))
+    cmd.extend(_memory_mcp_args(memory_script, workdir))
     if model:
         cmd.extend(["--model", model])
     if resume_session:
@@ -713,7 +855,7 @@ def claude_invoke_streaming(
         "-p",
         prompt,
         "--allowedTools",
-        _with_memory_mcp_tools(allowed_tools, memory_script),
+        _with_memory_mcp_tools(allowed_tools, memory_script, workdir),
         "--max-turns",
         str(max_turns),
         "--output-format",
@@ -723,7 +865,7 @@ def claude_invoke_streaming(
         "bypassPermissions",
     ]
     cmd.extend(_agent_settings_args())
-    cmd.extend(_memory_mcp_args(memory_script))
+    cmd.extend(_memory_mcp_args(memory_script, workdir))
     if model:
         cmd.extend(["--model", model])
     if resume_session:

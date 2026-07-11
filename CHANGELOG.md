@@ -6,6 +6,8 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Added
 
+- Optional `graphify` code-graph battery: a pure-Python engine (graphifyy, tree-sitter over ~40 languages) that maps imports, calls, and inheritance into a queryable graph, served read-only over MCP. Off by default and mutually exclusive with the `code-memory-mcp` battery (enable one code-graph engine). Turn on with `ALFRED_GRAPHIFY_MCP=1`. See [docs/CODE_MEMORY.md](docs/CODE_MEMORY.md).
+
 ### Changed
 
 ### Fixed

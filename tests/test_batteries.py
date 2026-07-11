@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -69,6 +70,7 @@ def test_opt_ins_are_off_by_default_and_declare_enable_disable() -> None:
         "dense-embeddings",
         "headroom-compression",
         "code-memory-mcp",
+        "graphify",
         "redis-ams",
         "pgvector",
     }
@@ -278,3 +280,77 @@ def test_write_env_permissions(tmp_path: Path) -> None:
 def test_write_env_rejects_unsafe_key(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         batteries.write_env(tmp_path / ".env", {"bad key": "1"})
+
+
+def test_graphify_is_optin_code_graph_engine() -> None:
+    g = batteries.battery_by_id("graphify")
+    assert g is not None
+    assert g.category == batteries.CATEGORY_CODE_GRAPH
+    assert g.builtin is False and g.default_on is False
+    assert g.enable_flag == ("ALFRED_GRAPHIFY_MCP", batteries._ANY_TRUTHY)
+    assert g.enable_env.get("ALFRED_GRAPHIFY_MCP") == "1"
+    assert g.disable_env.get("ALFRED_GRAPHIFY_MCP") == "0"
+    assert g.requires_daemon is False
+    assert g.detect == "graphify"
+    assert g.install_kind == batteries.INSTALL_AUTOFETCH
+    assert g.autofetch_cmd[-1] == "graphifyy[mcp]==0.9.8"
+
+
+def test_graphify_and_code_memory_are_mutually_exclusive() -> None:
+    msg = batteries.selection_conflict(["graphify", "code-memory-mcp"])
+    assert msg
+    assert "graphify" in msg and "code-memory-mcp" in msg
+    # Either alone is fine.
+    assert batteries.selection_conflict(["graphify"]) == ""
+    assert batteries.selection_conflict(["code-memory-mcp"]) == ""
+
+
+def test_graphify_enable_disable_are_flag_toggles() -> None:
+    g = batteries.battery_by_id("graphify")
+    assert batteries.is_enabled(g, {"ALFRED_GRAPHIFY_MCP": "1"}) is True
+    assert batteries.is_enabled(g, {"ALFRED_GRAPHIFY_MCP": "0"}) is False
+    assert batteries.is_enabled(g, {}) is False
+
+
+def test_enabling_a_code_graph_engine_atomically_disables_the_other() -> None:
+    graphify = batteries.battery_by_id("graphify")
+    code_memory = batteries.battery_by_id("code-memory-mcp")
+
+    graphify_values = batteries.enable_values(graphify, {})
+    assert graphify_values == {
+        "ALFRED_GRAPHIFY_MCP": "1",
+        "ALFRED_GRAPHIFY_FALLBACK": "code-memory",
+        "ALFRED_CODE_MEMORY_MCP": "0",
+        "ALFRED_CODE_MEMORY_AUTOFETCH": "1",
+    }
+    assert batteries.is_enabled(code_memory, graphify_values) is False
+    assert batteries.enable_values(code_memory, {})["ALFRED_GRAPHIFY_MCP"] == "0"
+
+
+def test_graphify_availability_requires_installed_cli_and_verified_mcp(monkeypatch) -> None:
+    graphify = batteries.battery_by_id("graphify")
+    monkeypatch.setattr(
+        batteries.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0),
+    )
+    monkeypatch.setattr(
+        batteries.shutil,
+        "which",
+        lambda name: "/usr/local/bin/graphify-mcp" if name == "graphify-mcp" else None,
+    )
+    assert batteries.is_installed(graphify, {}) is False
+
+    monkeypatch.setattr(
+        batteries.shutil,
+        "which",
+        lambda name: f"/usr/local/bin/{name}" if name in {"graphify", "graphify-mcp"} else None,
+    )
+    assert batteries.is_installed(graphify, {}) is True
+
+    monkeypatch.setattr(
+        batteries.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=1),
+    )
+    assert batteries.is_installed(graphify, {}) is False

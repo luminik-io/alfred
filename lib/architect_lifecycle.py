@@ -1846,7 +1846,7 @@ def build_cross_repo_contract(
 
     lines.append("")
     lines.append(
-        "Before implementing, consult the code-graph MCP (`code_memory` tools) "
+        "Before implementing, consult the active code-graph MCP tools "
         "for cross-repo impact: search for the shared types, endpoints, and event "
         "names above so this repo's change lands compatibly with its siblings."
     )
