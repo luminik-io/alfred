@@ -1482,7 +1482,8 @@ def _make_push_recovery_hook(
 
     Each recovery turn's turns and cost are charged to ``spend`` when given, so a
     self-healing pass is visible to ``turns_today`` / ``cost_usd_today`` and the
-    daily turn cap rather than being invisible paid work.
+    daily turn cap rather than being invisible paid work. The cap is checked
+    immediately before every recovery attempt, including retries.
     """
     if not recovery_enabled():
         return None
@@ -1492,6 +1493,18 @@ def _make_push_recovery_hook(
             events.emit(event_type, **payload)
 
     def _hook(failure_text: str, kind: str, retry: Callable[[], bool]) -> bool:
+        def _before_attempt(_attempt_index: int, _category: RecoveryCategory) -> str | None:
+            if spend is None:
+                return None
+            turns_today = int(spend.state.get("turns_today", 0))
+            remaining = DAILY_TURN_CAP - turns_today
+            if remaining < RECOVERY_MAX_TURNS:
+                return (
+                    "insufficient daily turn budget for recovery "
+                    f"({remaining} remaining; requires up to {RECOVERY_MAX_TURNS})"
+                )
+            return None
+
         def _attempt(attempt_index: int, category: RecoveryCategory) -> bool:
             if is_dry_run():
                 dry_run_log(
@@ -1542,7 +1555,12 @@ def _make_push_recovery_hook(
             # the push lands.
             return retry()
 
-        recovery_outcome = run_recovery(failure_text, attempt_fn=_attempt, on_event=_emit)
+        recovery_outcome = run_recovery(
+            failure_text,
+            attempt_fn=_attempt,
+            before_attempt_fn=_before_attempt,
+            on_event=_emit,
+        )
         if recovery_outcome.recovered:
             msg = (
                 f"[{AGENT.upper()}-RECOVERED] #{issue_num} self-healed "

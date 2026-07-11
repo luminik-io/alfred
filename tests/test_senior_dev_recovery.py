@@ -159,11 +159,14 @@ def test_make_push_recovery_hook_enabled_returns_callable(monkeypatch, tmp_path)
 class _FakeSpend:
     """Minimal SpendState stub capturing increment kwargs."""
 
-    def __init__(self):
+    def __init__(self, *, turns_today: int = 0):
         self.calls: list[dict] = []
+        self.state = {"turns_today": turns_today}
 
     def increment(self, **kw):
         self.calls.append(kw)
+        for key, value in kw.items():
+            self.state[key] = self.state.get(key, 0) + value
 
 
 def _engine_result(**over):
@@ -221,6 +224,80 @@ def test_recovery_turn_with_clean_tree_retries_and_charges_spend(monkeypatch, tm
     assert recovered is True
     assert retried == [1]
     assert spend.calls == [{"turns_today": 3, "cost_usd_today": 0.12}]
+
+
+def test_recovery_turn_is_not_invoked_when_daily_spend_cap_is_reached(monkeypatch, tmp_path):
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_TURN_CAP", "10")
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
+    monkeypatch.setenv("ALFRED_RECOVERY_MAX_ATTEMPTS", "1")
+    invoked: list[int] = []
+    monkeypatch.setattr(
+        lucius,
+        "invoke_agent_engine",
+        lambda *a, **kw: invoked.append(1) or (_engine_result(), "claude"),
+    )
+
+    spend = _FakeSpend(turns_today=10)
+    events: list[tuple[str, dict]] = []
+    event_log = SimpleNamespace(emit=lambda event, **payload: events.append((event, payload)))
+    hook = lucius._make_push_recovery_hook(
+        "frontend", 7, "fid-9", tmp_path, "senior-dev/7", event_log, spend
+    )
+
+    assert hook("eslint hook failed", "pre_push", lambda: True) is False
+    assert invoked == []
+    assert spend.calls == []
+    assert events[-1][0] == "recovery_skipped"
+    assert events[-1][1]["reason"] == (
+        "insufficient daily turn budget for recovery (0 remaining; requires up to 12)"
+    )
+
+
+def test_recovery_turn_is_not_invoked_when_remaining_budget_cannot_cover_bound(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_TURN_CAP", "20")
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
+    monkeypatch.setenv("ALFRED_RECOVERY_MAX_ATTEMPTS", "1")
+    invoked: list[int] = []
+    monkeypatch.setattr(
+        lucius,
+        "invoke_agent_engine",
+        lambda *a, **kw: invoked.append(1) or (_engine_result(), "claude"),
+    )
+
+    spend = _FakeSpend(turns_today=9)
+    hook = lucius._make_push_recovery_hook(
+        "frontend", 7, "fid-9", tmp_path, "senior-dev/7", None, spend
+    )
+
+    assert hook("eslint hook failed", "pre_push", lambda: True) is False
+    assert invoked == []
+    assert spend.calls == []
+
+
+def test_recovery_rechecks_daily_spend_cap_between_attempts(monkeypatch, tmp_path):
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_TURN_CAP", "14")
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
+    monkeypatch.setenv("ALFRED_RECOVERY_MAX_ATTEMPTS", "2")
+    invoked: list[int] = []
+
+    def invoke(*_args, **_kwargs):
+        invoked.append(1)
+        return _engine_result(subtype="failure"), "claude"
+
+    monkeypatch.setattr(lucius, "invoke_agent_engine", invoke)
+    monkeypatch.setattr(lucius, "codex_sandbox_for_agent", lambda *a, **kw: "workspace-write")
+    monkeypatch.setattr(lucius, "local_repo_dir", lambda repo: repo)
+
+    spend = _FakeSpend()
+    hook = lucius._make_push_recovery_hook(
+        "frontend", 7, "fid-9", tmp_path, "senior-dev/7", None, spend
+    )
+
+    assert hook("eslint hook failed", "pre_push", lambda: True) is False
+    assert invoked == [1]
+    assert spend.state["turns_today"] == 3
 
 
 def test_failed_recovery_preserves_latest_gate_not_stale_one(monkeypatch, tmp_path):

@@ -20,6 +20,12 @@ re-push. Only if that turn cannot heal the failure does the firing fall back to
 its existing behaviour: preserve the local work on a recovery ref, release the
 issue for retry, and post a warning.
 
+Captured command, CI, and review output is untrusted prompt data. Alfred places
+it in a JSON string with control characters and Markdown/XML fence characters
+escaped, rather than interpolating it into a Markdown fence. The recovery prompt
+explicitly tells the model never to follow instructions found in captured
+output and to use that output only as diagnostic evidence.
+
 ## What it recovers, and what it never touches
 
 Four failure classes are recoverable, because a bounded turn can fix them:
@@ -57,6 +63,12 @@ before the firing holds. The default is `1`. Setting it to `0` disables recovery
 entirely, and the push step behaves exactly as it did before this existed. The
 value is clamped to a small ceiling so a misconfigured value cannot spawn a long
 chain of paid turns. See [`CONFIG.md`](CONFIG.md).
+
+The senior-dev runner also reserves enough remaining daily turn budget for the
+full bounded recovery turn immediately before each attempt. If the main firing
+is too close to the cap, or an earlier recovery attempt consumes that budget, no
+further recovery model call is made, a `recovery_skipped` event records the
+budget reason, and the firing falls back to hold.
 
 ## Telemetry
 
