@@ -57,7 +57,7 @@ def _reviewed_sha(body: str, marker: str) -> str | None:
 
 
 def _matches_head(reviewed: str | None, head: str) -> bool:
-    return bool(reviewed and len(reviewed) >= 7 and head.lower().startswith(reviewed.lower()))
+    return bool(reviewed and len(reviewed) == 40 and reviewed.lower() == head.lower())
 
 
 def _latest_comment(comments: list[dict[str, Any]], logins: set[str]) -> dict[str, Any] | None:
@@ -116,6 +116,59 @@ def _graphql_threads(owner: str, name: str, number: int) -> dict[str, Any]:
     return pr
 
 
+def _graphql_checks(owner: str, name: str, head: str) -> list[dict[str, Any]]:
+    query = (
+        "query($owner:String!,$name:String!,$head:GitObjectID!,$after:String){"
+        "repository(owner:$owner,name:$name){object(oid:$head){... on Commit{"
+        "statusCheckRollup{contexts(first:100,after:$after){nodes{__typename "
+        "... on CheckRun{name status conclusion} "
+        "... on StatusContext{context state}}"
+        "pageInfo{hasNextPage endCursor}}}}}}}"
+    )
+    checks: list[dict[str, Any]] = []
+    after: str | None = None
+    while True:
+        command = [
+            "gh",
+            "api",
+            "graphql",
+            "-f",
+            f"query={query}",
+            "-F",
+            f"owner={owner}",
+            "-F",
+            f"name={name}",
+            "-F",
+            f"head={head}",
+        ]
+        if after is not None:
+            command.extend(["-F", f"after={after}"])
+        payload = _run_json(command)
+        commit = ((payload.get("data") or {}).get("repository") or {}).get("object")
+        rollup = (commit or {}).get("statusCheckRollup")
+        contexts = (rollup or {}).get("contexts")
+        if not isinstance(contexts, dict):
+            raise GateError("GitHub did not return the complete CI check rollup")
+        for node in contexts.get("nodes") or []:
+            if node.get("__typename") == "StatusContext":
+                checks.append(
+                    {
+                        "name": node.get("context"),
+                        "status": "COMPLETED",
+                        "conclusion": node.get("state"),
+                    }
+                )
+            else:
+                checks.append(node)
+        page_info = contexts.get("pageInfo") or {}
+        if not page_info.get("hasNextPage"):
+            return checks
+        next_cursor = page_info.get("endCursor")
+        if not next_cursor or next_cursor == after:
+            raise GateError("CI check pagination did not advance")
+        after = str(next_cursor)
+
+
 def collect_snapshot(
     repo: str,
     number: int,
@@ -156,7 +209,7 @@ def collect_snapshot(
     unresolved = int(threads.get("unresolved_threads") or 0)
     if unresolved:
         raise GateError(f"{unresolved} unresolved review thread(s)")
-    checks = _check_states(pr.get("statusCheckRollup") or [])
+    checks = _check_states(_graphql_checks(owner, name, head))
     comments = _run_json(["gh", "api", f"repos/{repo}/issues/{number}/comments?per_page=100"])
     if len(comments) >= 100:
         raise GateError("issue comment count reached the 100-comment safety limit")
@@ -191,15 +244,14 @@ def collect_snapshot(
     codex_evidence: list[tuple[str, str]] = []
     for review in reviews:
         login = (review.get("user") or {}).get("login") or ""
-        if login in CODEX_LOGINS:
-            codex_evidence.append(
-                (str(review.get("submitted_at") or ""), str(review.get("commit_id") or "").lower())
-            )
+        commit_id = str(review.get("commit_id") or "").lower()
+        if login in CODEX_LOGINS and len(commit_id) == 40:
+            codex_evidence.append((str(review.get("submitted_at") or ""), commit_id))
     for comment in comments:
         login = (comment.get("user") or {}).get("login") or ""
         if login in CODEX_LOGINS:
             reviewed = _reviewed_sha(str(comment.get("body") or ""), "Reviewed commit")
-            if reviewed:
+            if reviewed and len(reviewed) == 40:
                 codex_evidence.append((str(comment.get("updated_at") or ""), reviewed))
     codex_commit = max(codex_evidence, default=("", ""))[1] or None
     if require_codex and not _matches_head(codex_commit, head):
