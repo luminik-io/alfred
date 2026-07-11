@@ -84,7 +84,13 @@ def _payloads(head: str) -> list[object]:
                 "body": f"Reviewed commit: `{head[:10]}`\nNo major issues.",
             },
         ],
-        [{"user": {"login": "chatgpt-codex-connector[bot]"}, "commit_id": head}],
+        [
+            {
+                "user": {"login": "chatgpt-codex-connector[bot]"},
+                "commit_id": head,
+                "submitted_at": "2026-07-11T10:02:00Z",
+            }
+        ],
     ]
 
 
@@ -172,6 +178,19 @@ def test_matches_head_rejects_abbreviated_review_sha(gate_module):
 
     assert not gate_module._matches_head(head[:10], head)
     assert gate_module._matches_head(head, head)
+
+
+def test_collect_snapshot_resolves_unique_codex_abbreviation(gate_module, monkeypatch):
+    head = "abcdef1234" + "0" * 30
+    payloads = _payloads(head)
+    payloads[4][0]["commit_id"] = "f" * 40
+    payloads[4][0]["submitted_at"] = "2026-07-11T10:00:00Z"
+    payloads.append({"sha": head})
+    monkeypatch.setattr(gate_module.subprocess, "run", _fake_run(payloads))
+
+    snapshot = gate_module.collect_snapshot("acme/app", 42)
+
+    assert snapshot.codex_commit == head
 
 
 def test_graphql_checks_fetches_every_page(gate_module, monkeypatch):
