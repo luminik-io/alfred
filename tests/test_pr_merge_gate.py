@@ -133,6 +133,16 @@ def test_collect_snapshot_selects_latest_edited_greptile_summary(gate_module, mo
     assert gate_module.collect_snapshot("acme/app", 42).greptile_commit == head
 
 
+def test_collect_snapshot_rejects_abbreviated_greptile_sha(gate_module, monkeypatch):
+    head = "c" * 40
+    payloads = _payloads(head)
+    payloads[3][0]["body"] = f"Confidence Score: 5/5\nLast reviewed commit: `{head[:10]}`"
+    monkeypatch.setattr(gate_module.subprocess, "run", _fake_run(payloads))
+
+    with pytest.raises(gate_module.GateError, match="Greptile has not signed off"):
+        gate_module.collect_snapshot("acme/app", 42)
+
+
 def test_collect_snapshot_blocks_late_unresolved_thread(gate_module, monkeypatch):
     head = "d" * 40
     payloads = _payloads(head)
@@ -180,17 +190,14 @@ def test_matches_head_rejects_abbreviated_review_sha(gate_module):
     assert gate_module._matches_head(head, head)
 
 
-def test_collect_snapshot_resolves_unique_codex_abbreviation(gate_module, monkeypatch):
+def test_collect_snapshot_rejects_unique_but_abbreviated_codex_sha(gate_module, monkeypatch):
     head = "abcdef1234" + "0" * 30
     payloads = _payloads(head)
     payloads[4][0]["commit_id"] = "f" * 40
-    payloads[4][0]["submitted_at"] = "2026-07-11T10:00:00Z"
-    payloads.append({"sha": head})
     monkeypatch.setattr(gate_module.subprocess, "run", _fake_run(payloads))
 
-    snapshot = gate_module.collect_snapshot("acme/app", 42)
-
-    assert snapshot.codex_commit == head
+    with pytest.raises(gate_module.GateError, match="Codex has not reviewed exact HEAD"):
+        gate_module.collect_snapshot("acme/app", 42)
 
 
 def test_graphql_checks_fetches_every_page(gate_module, monkeypatch):

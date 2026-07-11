@@ -60,19 +60,6 @@ def _matches_head(reviewed: str | None, head: str) -> bool:
     return bool(reviewed and len(reviewed) == 40 and reviewed.lower() == head.lower())
 
 
-def _resolve_reviewed_sha(repo: str, reviewed: str | None) -> str | None:
-    if not reviewed:
-        return None
-    reviewed = reviewed.lower()
-    if len(reviewed) == 40:
-        return reviewed
-    if len(reviewed) < 7:
-        return None
-    payload = _run_json(["gh", "api", f"repos/{repo}/commits/{reviewed}"])
-    resolved = str(payload.get("sha") or "").lower()
-    return resolved if len(resolved) == 40 else None
-
-
 def _latest_comment(comments: list[dict[str, Any]], logins: set[str]) -> dict[str, Any] | None:
     matches = [c for c in comments if ((c.get("user") or {}).get("login") or "") in logins]
     return (
@@ -260,26 +247,12 @@ def collect_snapshot(
         commit_id = str(review.get("commit_id") or "").lower()
         if login in CODEX_LOGINS and len(commit_id) == 40:
             codex_evidence.append((str(review.get("submitted_at") or ""), commit_id))
-    codex_comments = [
-        comment
-        for comment in comments
-        if ((comment.get("user") or {}).get("login") or "") in CODEX_LOGINS
-        and _reviewed_sha(str(comment.get("body") or ""), "Reviewed commit")
-    ]
-    if codex_comments:
-        latest_codex_comment = max(
-            codex_comments,
-            key=lambda comment: comment.get("updated_at") or comment.get("created_at") or "",
-        )
-        comment_at = str(
-            latest_codex_comment.get("updated_at") or latest_codex_comment.get("created_at") or ""
-        )
-        latest_review_at = max((submitted for submitted, _ in codex_evidence), default="")
-        if comment_at >= latest_review_at:
-            reviewed = _reviewed_sha(str(latest_codex_comment.get("body") or ""), "Reviewed commit")
-            resolved = _resolve_reviewed_sha(repo, reviewed)
-            if resolved:
-                codex_evidence.append((comment_at, resolved))
+    for comment in comments:
+        login = (comment.get("user") or {}).get("login") or ""
+        if login in CODEX_LOGINS:
+            reviewed = _reviewed_sha(str(comment.get("body") or ""), "Reviewed commit")
+            if reviewed and len(reviewed) == 40:
+                codex_evidence.append((str(comment.get("updated_at") or ""), reviewed))
     codex_commit = max(codex_evidence, default=("", ""))[1] or None
     if require_codex and not _matches_head(codex_commit, head):
         raise GateError("Codex has not reviewed exact HEAD")
