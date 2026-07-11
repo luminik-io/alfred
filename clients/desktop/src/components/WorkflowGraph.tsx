@@ -17,6 +17,7 @@ import { Maximize2, Minimize2 } from "lucide-react";
 import {
   type AgentNodeData,
   buildWorkflowGraph,
+  initialWorkflowViewport,
   type LaneNodeData,
   WORKFLOW_ZOOM,
   type WorkflowNodeInput,
@@ -132,11 +133,13 @@ function WorkflowLegend() {
   );
 }
 
-// Fit/reset uses the SAME zoom bounds as the canvas and the pure zoom helpers
-// (clampWorkflowZoom / fitToViewZoom), so the live fit-to-view control lands on
-// exactly the level the tested helpers compute. Diverging bounds here would let
-// a very wide graph stay clipped after a reset (fit stopping short of the real
-// min) and a tiny graph reset to a different scale than fitToViewZoom asserts.
+// The explicit fit-to-view button (React Flow's <Controls>) may reach all the
+// way down to WORKFLOW_ZOOM.min so a single click reveals the WHOLE pipeline,
+// even below the readable floor the default view respects. The default framing
+// (initial load + resize) is driven by initialWorkflowViewport instead, which
+// floors zoom at WORKFLOW_ZOOM.readable and starts wide graphs at their leftmost
+// lanes. Keeping the two separate is deliberate: the default stays legible while
+// "show me everything" stays one click away.
 const FIT_OPTIONS = {
   padding: WORKFLOW_ZOOM.fitPadding,
   minZoom: WORKFLOW_ZOOM.min,
@@ -174,14 +177,17 @@ function prefersReducedMotion(): boolean {
 }
 
 /**
- * Keep the whole pipeline in frame as the canvas resizes. React Flow tracks the
- * container size but does not re-fit on its own, so the graph would clip when
- * the window resizes, the sidebar toggles, or the layout stacks below on narrow
- * screens. We watch the store's width/height and re-fit (debounced) so the view
- * stays correct at every breakpoint and zoom level.
+ * Frame the pipeline on load and keep it framed as the canvas resizes. React
+ * Flow tracks the container size but does not re-fit on its own, so the graph
+ * would open unframed and then clip when the window resizes, the sidebar
+ * toggles, or the layout stacks below on narrow screens. We watch the store's
+ * width/height and (debounced) set the viewport with initialWorkflowViewport, so
+ * the default view respects the readable zoom floor and starts a too-wide fleet
+ * at its leftmost lanes at every breakpoint, instead of shrinking node text to
+ * fit. The explicit fit-to-view button (Controls) still reaches the full graph.
  */
 function FitToContainer({ signature }: { signature: string }) {
-  const { fitView } = useReactFlow();
+  const { getNodes, getNodesBounds, setViewport } = useReactFlow();
   const width = useStore((state) => state.width);
   const height = useStore((state) => state.height);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -192,10 +198,15 @@ function FitToContainer({ signature }: { signature: string }) {
     }
     clearTimeout(timer.current);
     timer.current = setTimeout(() => {
-      void fitView({ ...FIT_OPTIONS, duration: prefersReducedMotion() ? 0 : 240 });
+      const nodes = getNodes();
+      if (!nodes.length) return;
+      const bounds = getNodesBounds(nodes);
+      if (bounds.width <= 0 || bounds.height <= 0) return;
+      const target = initialWorkflowViewport(bounds, { width, height });
+      void setViewport(target, { duration: prefersReducedMotion() ? 0 : 240 });
     }, 80);
     return () => clearTimeout(timer.current);
-  }, [width, height, signature, fitView]);
+  }, [width, height, signature, getNodes, getNodesBounds, setViewport]);
 
   return null;
 }
@@ -273,7 +284,10 @@ export function WorkflowGraph({
         nodes={nodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
-        fitView
+        // Initial + resize framing is driven by FitToContainer (readable floor,
+        // leftmost-lane start). We deliberately omit the `fitView` prop so React
+        // Flow does not auto-fit the whole graph below the readable floor on
+        // load. The Controls fit button still uses fitViewOptions to reach it.
         fitViewOptions={FIT_OPTIONS}
         minZoom={WORKFLOW_ZOOM.min}
         maxZoom={WORKFLOW_ZOOM.max}

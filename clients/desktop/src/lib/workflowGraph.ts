@@ -72,6 +72,13 @@ export type LaneNodeData = { label: string; [key: string]: unknown };
 export const WORKFLOW_ZOOM = {
   min: 0.35,
   max: 1.75,
+  // The readable floor: the smallest zoom at which an agent card's name + role
+  // text stays legible. The DEFAULT view (initial load + resize re-fit) never
+  // drops below this, so a large fleet is shown at a readable scale from its
+  // leftmost lanes and panned, rather than shrunk to an unreadable overview.
+  // `min` still bounds manual zoom-out and the explicit fit-to-view button, so
+  // the user keeps a one-click "show me everything" escape hatch below the floor.
+  readable: 0.7,
   // Multiplicative step for a single zoom-in / zoom-out control press, matching
   // React Flow's own zoomIn/zoomOut factor so the buttons and the wheel agree.
   step: 1.2,
@@ -96,22 +103,62 @@ export function zoomOutLevel(zoom: number): number {
 }
 
 /**
- * The zoom the "reset / fit to view" control lands on for a given content and
- * viewport size: the largest zoom (within bounds) at which the whole graph
- * bounding box, plus its padding, still fits the viewport. Pure so the fit math
- * is testable without a live canvas; the live canvas uses React Flow's fitView,
- * which computes the same quantity.
+ * The zoom the DEFAULT view lands on for a given content and viewport size: the
+ * largest zoom at which the whole graph bounding box, plus its padding, fits the
+ * viewport, but never below the readable floor and never above the max.
+ *
+ * The floor is the key behavior: a pipeline too wide to fit at `readable` is NOT
+ * shrunk to an unreadable overview. It stays at `readable` and is shown from its
+ * leftmost lanes (see `initialWorkflowViewport`), which the user pans. Only the
+ * explicit fit-to-view button and manual zoom-out reach below the floor (down to
+ * `min`), so "show me everything" stays one click away without making the
+ * default illegible. Pure so the fit math is testable without a live canvas.
  */
 export function fitToViewZoom(
   content: { width: number; height: number },
   viewport: { width: number; height: number },
 ): number {
-  if (content.width <= 0 || content.height <= 0) return WORKFLOW_ZOOM.min;
-  if (viewport.width <= 0 || viewport.height <= 0) return WORKFLOW_ZOOM.min;
+  if (content.width <= 0 || content.height <= 0) return WORKFLOW_ZOOM.readable;
+  if (viewport.width <= 0 || viewport.height <= 0) return WORKFLOW_ZOOM.readable;
   const pad = 1 + WORKFLOW_ZOOM.fitPadding * 2;
   const scaleX = viewport.width / (content.width * pad);
   const scaleY = viewport.height / (content.height * pad);
-  return clampWorkflowZoom(Math.min(scaleX, scaleY));
+  const raw = Math.min(scaleX, scaleY);
+  // Floor at `readable` (not `min`) so the default never crushes node text; cap
+  // at `max` so a tiny graph is not blown up past readable size.
+  return Math.min(WORKFLOW_ZOOM.max, Math.max(WORKFLOW_ZOOM.readable, raw));
+}
+
+/**
+ * The viewport (pan + zoom) the DEFAULT view opens on. Zoom is `fitToViewZoom`
+ * (floored at the readable level). When the graph fits at that zoom it is
+ * centered; when it is too wide to fit, it is pinned to its leftmost lanes (the
+ * pipeline start) with a small left gutter so the user reads the flow from the
+ * beginning and pans right, rather than opening centered with both ends clipped.
+ * The same rule governs the vertical axis. Pure so the framing is testable.
+ */
+export function initialWorkflowViewport(
+  content: { x: number; y: number; width: number; height: number },
+  viewport: { width: number; height: number },
+): { x: number; y: number; zoom: number } {
+  const zoom = fitToViewZoom(content, viewport);
+  const scaledWidth = content.width * zoom;
+  const scaledHeight = content.height * zoom;
+  const gutterX = viewport.width * WORKFLOW_ZOOM.fitPadding;
+  const gutterY = viewport.height * WORKFLOW_ZOOM.fitPadding;
+  // Center on an axis when the content fits it; otherwise pin the start (left /
+  // top) so the pipeline is read from its beginning. The `- content.x * zoom`
+  // term maps the content's own origin into the viewport transform, so a graph
+  // whose bounds do not start at (0, 0) still frames correctly.
+  const x =
+    scaledWidth <= viewport.width
+      ? (viewport.width - scaledWidth) / 2 - content.x * zoom
+      : gutterX - content.x * zoom;
+  const y =
+    scaledHeight <= viewport.height
+      ? (viewport.height - scaledHeight) / 2 - content.y * zoom
+      : gutterY - content.y * zoom;
+  return { x, y, zoom };
 }
 
 /**
