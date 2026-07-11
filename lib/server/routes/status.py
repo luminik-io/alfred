@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
@@ -148,7 +148,9 @@ async def api_shipped(request: Request) -> JSONResponse:
     return JSONResponse(views._jsonable(board))
 
 
-@router.post("/api/queue", response_class=JSONResponse)
+@router.post(
+    "/api/queue", response_class=JSONResponse, dependencies=[Depends(views.require_mutation_token)]
+)
 async def api_queue(request: Request) -> JSONResponse:
     """Operator queue control: assign, arm, hold, or close an issue.
 
@@ -165,8 +167,6 @@ async def api_queue(request: Request) -> JSONResponse:
     same-origin request. A drive-by localhost page cannot read the
     ``0600`` token file, so it can never arm or close work.
     """
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     try:
         body = json.loads((await request.body()).decode("utf-8") or "{}")
     except (json.JSONDecodeError, UnicodeDecodeError):
