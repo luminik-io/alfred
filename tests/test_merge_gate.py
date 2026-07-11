@@ -393,6 +393,36 @@ def test_collect_snapshot_reads_current_head_approval_from_later_review_page():
     assert evaluate_gate(snap, min_approvals=1).mergeable is True
 
 
+def test_collect_snapshot_fails_closed_on_nonadvancing_review_cursor():
+    view = {
+        "state": "OPEN",
+        "headRefOid": "d" * 40,
+        "reviewDecision": None,
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "statusCheckRollup": [],
+    }
+    calls = 0
+
+    def _runner(cmd, default):
+        nonlocal calls
+        if any("reviews(first:100" in str(arg) for arg in cmd):
+            calls += 1
+            return {
+                "nodes": [],
+                "pageInfo": {"hasNextPage": True, "endCursor": "stuck"},
+            }
+        if "graphql" in cmd:
+            return {"nodes": [], "pageInfo": {"hasNextPage": False, "endCursor": None}}
+        return view
+
+    snap = collect_snapshot("acme/repo", 7, gh_json=_runner)
+
+    assert calls == 2
+    assert any("review pagination" in error for error in snap.errors)
+    assert evaluate_gate(snap).mergeable is False
+
+
 def test_collect_snapshot_paginates_all_review_threads():
     view = {
         "state": "OPEN",

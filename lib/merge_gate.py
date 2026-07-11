@@ -484,6 +484,7 @@ def _collect_reviews(
             page_info.get("hasNextPage") is not True
             or not isinstance(next_cursor, str)
             or not next_cursor
+            or next_cursor == cursor
         ):
             errors.append("review pagination was incomplete")
             return []
