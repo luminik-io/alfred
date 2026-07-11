@@ -27,6 +27,31 @@ def test_runtime_cli_bin_honors_post_import_override(fresh_agent_runner, monkeyp
     assert proc._runtime_cli_bin("CLAUDE_BIN", "claude") == "/opt/alfred/bin/claude"
 
 
+def test_claude_subprocess_env_defaults_to_standard_auth_dir(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.process as proc
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+
+    env = proc._claude_subprocess_env()
+
+    assert env["CLAUDE_CONFIG_DIR"] == str(tmp_path / ".claude")
+    assert "CLAUDE_CONFIG_DIR" not in proc.os.environ
+
+
+def test_claude_subprocess_env_preserves_explicit_auth_dir(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.process as proc
+
+    configured = tmp_path / "claude-secondary"
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(configured))
+
+    assert proc._claude_subprocess_env()["CLAUDE_CONFIG_DIR"] == str(configured)
+
+
 def test_gh_json_returns_default_on_nonzero(fresh_agent_runner, monkeypatch):
     """gh_json swallows failures and returns the caller's default."""
     ar = fresh_agent_runner
@@ -153,6 +178,7 @@ def test_claude_invoke_streaming_writes_transcript(fresh_agent_runner, monkeypat
     assert cmd[cmd.index("--allowedTools") + 1].startswith("Read,Bash")
     assert captured["timeout"] == 42
     assert captured["kwargs"]["cwd"] == "/tmp"
+    assert captured["kwargs"]["env"]["CLAUDE_CONFIG_DIR"]
     transcript = ar.transcript_path("testagent", "20260524-123456-aaaa")
     assert transcript.read_text(encoding="utf-8") == stream
 

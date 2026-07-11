@@ -107,6 +107,17 @@ def _runtime_cli_bin(env_name: str, imported_default: str) -> str:
     return os.environ.get(env_name, "").strip() or imported_default
 
 
+def _claude_subprocess_env() -> dict[str, str]:
+    """Give headless Claude the standard auth directory without shell inheritance."""
+
+    env = dict(os.environ)
+    if not env.get("CLAUDE_CONFIG_DIR", "").strip():
+        home = env.get("HOME", "").strip()
+        if home:
+            env["CLAUDE_CONFIG_DIR"] = str(Path(home).expanduser() / ".claude")
+    return env
+
+
 # Headless fleet agents run unattended under launchd, so a Claude Code
 # desktop/push notification on every firing is pure noise (and on macOS it
 # stacks up banners no one reads). We pass these settings via the CLI's
@@ -759,7 +770,13 @@ def claude_invoke(
     if resume_session:
         cmd.extend(["--resume", resume_session])
 
-    res = run(cmd, cwd=str(workdir), timeout=timeout, capture=True)
+    res = run(
+        cmd,
+        cwd=str(workdir),
+        timeout=timeout,
+        capture=True,
+        env=_claude_subprocess_env(),
+    )
 
     if res.returncode == 124:
         return ClaudeResult(
@@ -890,6 +907,7 @@ def claude_invoke_streaming(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env=_claude_subprocess_env(),
         )
     except FileNotFoundError as exc:
         return ClaudeResult(
