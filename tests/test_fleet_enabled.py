@@ -727,11 +727,11 @@ def test_status_ignores_only_expected_disabled_skip_tails():
     assert status._only_expected_disabled_skips(f"real failure\n{skips}") is False
 
 
-def test_status_uses_runtime_gate_for_opt_in_agents(monkeypatch):
+def test_status_uses_runtime_gate_for_renamed_opt_in_agents(monkeypatch):
     status = _load_status_module()
     record = status.AgentRecord(
-        label="alfred.spec-planner",
-        codename="spec-planner",
+        label="alfred.story-planner",
+        codename="story-planner",
         script="spec-planner.py",
         schedule="hourly",
         log_stem="alfred.spec-planner",

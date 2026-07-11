@@ -53,7 +53,7 @@ ENGINE_AWARE_AGENTS = {
     "test-engineer",
     "triage",
 }
-FLEET_OPT_IN_AGENTS = {"architect", "spec-planner"}
+FLEET_OPT_IN_SCRIPTS = {"architect.py", "spec-planner.py"}
 
 DEFAULT_AGENT_NAMES = [
     "agent-cleanup",
@@ -463,7 +463,7 @@ def _only_expected_disabled_skips(text: str) -> bool:
 
 def _record_disabled(record: AgentRecord) -> bool:
     return record.disabled or (
-        record.codename in FLEET_OPT_IN_AGENTS
+        record.script in FLEET_OPT_IN_SCRIPTS
         and not agent_runner.is_agent_enabled(record.codename, default=False)
     )
 
