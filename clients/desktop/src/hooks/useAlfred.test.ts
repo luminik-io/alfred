@@ -52,28 +52,45 @@ const startLocalRuntimeMock = hooks.startLocalRuntimeMock as ReturnType<
 const setQueuePickupMock = hooks.setQueuePickupMock;
 const rememberBaseUrlMock = hooks.rememberBaseUrlMock;
 
-vi.mock("../api", () => ({
+vi.mock("../api/agents", () => ({
+  runNativeAction: () => hooks.runNativeActionMock(),
+  installAlfredCore: (port: number) => hooks.installAlfredCoreMock(port),
+  startLocalRuntime: (port?: number) => hooks.startLocalRuntimeMock(port),
+  setTrayStatus: vi.fn(async () => undefined),
+}));
+vi.mock("../api/client", () => ({
   initialBaseUrl: () => hooks.DEFAULT_BASE_URL,
   clientBaseUrl: (value?: string | null) => {
     const normalized = (value?.trim() || hooks.DEFAULT_BASE_URL).replace(/\/$/, "");
     return normalized;
   },
   rememberBaseUrl: (value: string) => hooks.rememberBaseUrlMock(value),
-  loadSnapshot: (baseUrl: string) => hooks.loadSnapshotMock(baseUrl),
-  loadShipped: (baseUrl: string) => hooks.loadShippedMock(baseUrl),
-  loadUsage: (baseUrl: string) => hooks.loadUsageMock(baseUrl),
-  runNativeAction: () => hooks.runNativeActionMock(),
-  installAlfredCore: (port: number) => hooks.installAlfredCoreMock(port),
-  setQueuePickup: (...args: unknown[]) => hooks.setQueuePickupMock(...args),
+  supportsNativeActions: () => true,
+  errorDetail: (err: unknown) => (err instanceof Error ? err.message : null),
+}));
+vi.mock("../api/memory", () => ({
+  promoteMemoryCandidate: vi.fn(),
+  rejectMemoryCandidate: vi.fn(),
+  retireMemoryLesson: vi.fn(),
+}));
+vi.mock("../api/plans", () => ({
   convertFollowupToDraft: vi.fn(),
   markFollowupHandled: vi.fn(),
   decidePlan: (...args: unknown[]) => hooks.decidePlanMock(...args),
   discardPlan: (...args: unknown[]) => hooks.discardPlanMock(...args),
   filePlanIssue: (...args: unknown[]) => hooks.filePlanIssueMock(...args),
-  startLocalRuntime: (port?: number) => hooks.startLocalRuntimeMock(port),
-  setTrayStatus: vi.fn(async () => undefined),
-  supportsNativeActions: () => true,
-  errorDetail: (err: unknown) => (err instanceof Error ? err.message : null),
+}));
+vi.mock("../api/queue", () => ({
+  setQueuePickup: (...args: unknown[]) => hooks.setQueuePickupMock(...args),
+}));
+vi.mock("../api/slack", () => ({
+  addTrustedSlackUser: vi.fn(),
+  removeTrustedSlackUser: vi.fn(),
+}));
+vi.mock("../api/snapshot", () => ({
+  loadSnapshot: (baseUrl: string) => hooks.loadSnapshotMock(baseUrl),
+  loadShipped: (baseUrl: string) => hooks.loadShippedMock(baseUrl),
+  loadUsage: (baseUrl: string) => hooks.loadUsageMock(baseUrl),
 }));
 
 vi.mock("../lib/trayEvents", () => ({

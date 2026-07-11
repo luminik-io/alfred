@@ -2,14 +2,14 @@ import { act, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LogsView } from "./LogsView";
-import { streamFiringTail, type LogTailHandlers } from "../api";
+import { streamFiringTail, type LogTailHandlers } from "../api/snapshot";
 import type { FiringRecord } from "../types";
 
 // Mock the streaming + history helpers so the live tail is driven by the test
 // rather than a real EventSource. `loadAgentFirings` is unused here (the agent
 // is in the global feed) but mocked so the api module never touches the network.
-vi.mock("../api", async () => {
-  const actual = await vi.importActual<typeof import("../api")>("../api");
+vi.mock("../api/snapshot", async () => {
+  const actual = await vi.importActual<typeof import("../api/snapshot")>("../api/snapshot");
   return {
     ...actual,
     streamFiringTail: vi.fn(() => () => {}),

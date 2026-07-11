@@ -7,7 +7,8 @@ import type { PlanDraft, ShippedBoard, ShippedCard } from "../types";
 
 // PipelineView merges the old Work board and Plans page into the single
 // lifecycle board. Render in desktop-capable mode so the queue actions appear.
-vi.mock("../api", () => ({
+vi.mock("../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/client")>()),
   supportsMutations: () => true,
 }));
 

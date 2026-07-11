@@ -33,7 +33,8 @@ import {
 } from "./components/ui";
 import { useAlfred } from "./hooks/useAlfred";
 import { useDesktopRoute } from "./hooks/useDesktopRoute";
-import { loadSetupStatus, supportsNativeActions } from "./api";
+import { supportsNativeActions } from "./api/client";
+import { loadSetupStatus } from "./api/setup";
 import { isSetupComplete } from "./lib/setupCompletion";
 import { FLEET_SUBTABS, PRIMARY_TABS } from "./lib/primaryTabs";
 import {

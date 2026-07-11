@@ -3,32 +3,34 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ComposeView } from "./ComposeView";
+import { ApiError, isLiveSessionUnavailable } from "../api/client";
 import {
-  ApiError,
   composeConverse,
   composeDraft,
   conversationControl,
-  filePlanIssue,
-  isLiveSessionUnavailable,
   streamComposeConverse,
-} from "../api";
+} from "../api/converse";
+import { filePlanIssue } from "../api/plans";
 import type { ComposeDraftResponse, ConverseResponse } from "../types";
 
-vi.mock("../api", async () => {
-  const actual = await vi.importActual<typeof import("../api")>("../api");
-  return {
-    ...actual,
-    supportsNativeActions: () => true,
-    // The conversational surface runs whenever an engine is reachable (native
-    // or hosted-browser); this suite exercises that live-converse path.
-    supportsConversation: () => true,
-    composeConverse: vi.fn(),
-    composeDraft: vi.fn(),
-    conversationControl: vi.fn(),
-    filePlanIssue: vi.fn(),
-    streamComposeConverse: vi.fn(),
-  };
-});
+vi.mock("../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/client")>()),
+  supportsNativeActions: () => true,
+  // The conversational surface runs whenever an engine is reachable (native
+  // or hosted-browser); this suite exercises that live-converse path.
+  supportsConversation: () => true,
+}));
+vi.mock("../api/converse", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/converse")>()),
+  composeConverse: vi.fn(),
+  composeDraft: vi.fn(),
+  conversationControl: vi.fn(),
+  streamComposeConverse: vi.fn(),
+}));
+vi.mock("../api/plans", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/plans")>()),
+  filePlanIssue: vi.fn(),
+}));
 
 const converseMock = vi.mocked(composeConverse);
 const draftMock = vi.mocked(composeDraft);

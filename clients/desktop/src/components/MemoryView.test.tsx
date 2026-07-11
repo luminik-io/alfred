@@ -5,13 +5,11 @@ import { describe, expect, it, vi } from "vitest";
 import { MemoryView } from "./MemoryView";
 import type { MemoryCandidate, MemoryLesson, Snapshot } from "../types";
 
-vi.mock("../api", () => ({
+// Real `isCandidateBackedLesson` (from ../api/memory) runs unmocked so the
+// "hide Undo on non-candidate lessons" behavior is exercised, not stubbed away.
+vi.mock("../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/client")>()),
   supportsNativeActions: () => true,
-  // Real prefix check so the "hide Undo on non-candidate lessons" behavior is
-  // exercised, not stubbed away.
-  isCandidateBackedLesson: (lessonId: string) =>
-    (lessonId || "").startsWith("lesson:memory_candidate:") &&
-    lessonId.length > "lesson:memory_candidate:".length,
 }));
 
 function candidate(overrides: Partial<MemoryCandidate> = {}): MemoryCandidate {

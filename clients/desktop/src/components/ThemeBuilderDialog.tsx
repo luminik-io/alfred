@@ -1,7 +1,8 @@
 import { Send, Sparkles, WandSparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { isLiveSessionUnavailable, themeBuilderConverse } from "../api";
+import { isLiveSessionUnavailable } from "../api/client";
+import { themeBuilderConverse } from "../api/roster";
 import type { CustomRosterNames } from "../lib/agentThemes";
 import type { ConverseMessage, ThemeProposalAction } from "../types";
 import { Button } from "./ui/button";

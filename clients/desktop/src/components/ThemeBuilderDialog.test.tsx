@@ -3,15 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ThemeBuilderDialog } from "./ThemeBuilderDialog";
-import { themeBuilderConverse } from "../api";
+import { themeBuilderConverse } from "../api/roster";
 import type { ThemeBuilderResponse } from "../types";
 
-vi.mock("../api", () => ({
+// The real `isLiveSessionUnavailable` (from ../api/client) runs unmocked; only
+// the converse turn is stubbed so the test drives its outcome directly.
+vi.mock("../api/roster", () => ({
   themeBuilderConverse: vi.fn(),
-  isLiveSessionUnavailable: (err: unknown) =>
-    err instanceof Error
-      ? err.message.includes("live_session_unavailable") || err.message.includes("503")
-      : false,
 }));
 
 const converseMock = vi.mocked(themeBuilderConverse);

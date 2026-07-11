@@ -2,7 +2,9 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as api from "../api";
+import * as apiClient from "../api/client";
+import * as apiSetup from "../api/setup";
+import * as apiSlack from "../api/slack";
 import { OnboardingView } from "./OnboardingView";
 import type {
   SetupPlaybooksResponse,
@@ -189,17 +191,17 @@ async function gotoStep(user: ReturnType<typeof userEvent.setup>, railName: RegE
 }
 
 beforeEach(() => {
-  vi.spyOn(api, "supportsNativeActions").mockReturnValue(true);
-  vi.spyOn(api, "supportsMutations").mockReturnValue(true);
-  vi.spyOn(api, "loadSetupStatus").mockResolvedValue(makeStatus());
-  vi.spyOn(api, "loadSetupRepos").mockResolvedValue(REPOS);
-  vi.spyOn(api, "loadSetupBatteries").mockResolvedValue({
+  vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
+  vi.spyOn(apiClient, "supportsMutations").mockReturnValue(true);
+  vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeStatus());
+  vi.spyOn(apiSetup, "loadSetupRepos").mockResolvedValue(REPOS);
+  vi.spyOn(apiSetup, "loadSetupBatteries").mockResolvedValue({
     version: 1,
     summary: { included: 4, enabled: 0, available: 0, not_installed: 5, total: 9 },
     batteries: [],
   });
-  vi.spyOn(api, "loadSetupPlaybooks").mockResolvedValue(PLAYBOOKS);
-  vi.spyOn(api, "loadTrustedSlackUsers").mockResolvedValue(TRUSTED_EMPTY);
+  vi.spyOn(apiSetup, "loadSetupPlaybooks").mockResolvedValue(PLAYBOOKS);
+  vi.spyOn(apiSlack, "loadTrustedSlackUsers").mockResolvedValue(TRUSTED_EMPTY);
 });
 
 afterEach(() => {
@@ -242,7 +244,7 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("shows detected existing install inventory on the welcome step", async () => {
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         install: makeInstall(),
         repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
@@ -266,7 +268,7 @@ describe("OnboardingView seven-step takeover", () => {
     // wizard. With an install detected, steps the runtime proves complete
     // (engine, github, repos, team) must show as done so the rail agrees with
     // the inventory.
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         install: makeInstall(),
         github: { ok: true, account: "octocat", detail: "Signed in as octocat." },
@@ -292,7 +294,7 @@ describe("OnboardingView seven-step takeover", () => {
     // No existing install: even if engine/gh/repos are pre-detected, a brand-new
     // first run opens on Welcome with nothing marked done so the flow never feels
     // skipped. The cursor still governs completion here.
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         install: makeInstall({ initialized: false }),
         github: { ok: true, account: "octocat", detail: "Signed in as octocat." },
@@ -312,7 +314,7 @@ describe("OnboardingView seven-step takeover", () => {
 
   it("uses neutral shell copy while setup inventory is loading", async () => {
     const pending = deferred<SetupStatus>();
-    vi.spyOn(api, "loadSetupStatus").mockReturnValue(pending.promise);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockReturnValue(pending.promise);
     renderOnboarding();
 
     expect(screen.getByText(/checking setup/i)).toBeInTheDocument();
@@ -333,7 +335,7 @@ describe("OnboardingView seven-step takeover", () => {
 
   it("clears displayed welcome inventory while a new server URL is loading", async () => {
     const newRequest = deferred<SetupStatus>();
-    vi.spyOn(api, "loadSetupStatus")
+    vi.spyOn(apiSetup, "loadSetupStatus")
       .mockResolvedValueOnce(
         makeStatus({ install: makeInstall({ alfred_home: "/tmp/old-alfred-home" }) }),
       )
@@ -374,7 +376,7 @@ describe("OnboardingView seven-step takeover", () => {
   it("ignores stale welcome inventory reads after the server URL changes", async () => {
     const oldRequest = deferred<SetupStatus>();
     const newRequest = deferred<SetupStatus>();
-    vi.spyOn(api, "loadSetupStatus")
+    vi.spyOn(apiSetup, "loadSetupStatus")
       .mockReturnValueOnce(oldRequest.promise)
       .mockReturnValueOnce(newRequest.promise);
 
@@ -413,7 +415,7 @@ describe("OnboardingView seven-step takeover", () => {
 
   it("welcome 'Get started' moves to the tools step", async () => {
     // Engine not ready yet, so Tools does not auto-advance and the user sees it.
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         engine_ready: false,
         github: { ok: false, account: null, detail: "Not signed in to GitHub." },
@@ -436,7 +438,7 @@ describe("OnboardingView seven-step takeover", () => {
   it("detects CLIs via a native auth probe on the tools step", async () => {
     const onRunLocalAction = vi.fn();
     // Keep gh NOT signed in so auto-advance does not skip past Tools immediately.
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         engine_ready: false,
         github: { ok: false, account: null, detail: "Not signed in to GitHub." },
@@ -450,7 +452,7 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("surfaces code-memory readiness on the tools step", async () => {
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         github: { ok: false, account: null, detail: "Not signed in to GitHub." },
         code_memory: {
@@ -546,7 +548,7 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("labels disabled optional capabilities without calling setup ready", async () => {
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         github: { ok: false, account: null, detail: "Not signed in to GitHub." },
         capability_plane: {
@@ -584,7 +586,7 @@ describe("OnboardingView seven-step takeover", () => {
   it("handles older code-memory payloads without repo metadata", async () => {
     const legacyCodeMemory = { ...makeStatus().code_memory! };
     delete legacyCodeMemory.repos;
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         github: { ok: false, account: null, detail: "Not signed in to GitHub." },
         code_memory: {
@@ -611,7 +613,7 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("shows an honest empty state when no engine is found", async () => {
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         engine_ready: false,
         github: { ok: false, account: null, detail: "Not signed in to GitHub." },
@@ -646,7 +648,7 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("keeps the user on Tools when local capabilities need attention", async () => {
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         github: { ok: true, account: "octocat", detail: "Signed in to GitHub as octocat." },
         engine_ready: true,
@@ -699,7 +701,7 @@ describe("OnboardingView seven-step takeover", () => {
       github: { ok: false, account: null, detail: "Not signed in to GitHub." },
     });
     const loadStatus = vi
-      .spyOn(api, "loadSetupStatus")
+      .spyOn(apiSetup, "loadSetupStatus")
       .mockResolvedValueOnce(pending)
       .mockResolvedValueOnce(makeStatus());
     const onRunLocalAction = vi.fn(async () => ({
@@ -736,7 +738,7 @@ describe("OnboardingView seven-step takeover", () => {
     });
     const pollStatus = deferred<SetupStatus>();
     const loadStatus = vi
-      .spyOn(api, "loadSetupStatus")
+      .spyOn(apiSetup, "loadSetupStatus")
       .mockResolvedValue(pending)
       .mockResolvedValueOnce(pending)
       .mockReturnValueOnce(pollStatus.promise);
@@ -806,7 +808,7 @@ describe("OnboardingView seven-step takeover", () => {
     const pending = makeStatus({
       github: { ok: false, account: null, detail: "Not signed in to GitHub." },
     });
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(pending);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(pending);
     const nativeAuth = deferred<Awaited<ReturnType<React.ComponentProps<typeof OnboardingView>["onRunLocalAction"]>>>();
     const onRunLocalAction = vi.fn(() => nativeAuth.promise);
     const props = {
@@ -864,9 +866,9 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("falls back to copy-paste gh auth + recheck in browser mode", async () => {
-    vi.spyOn(api, "supportsNativeActions").mockReturnValue(false);
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(false);
     const refetch = vi
-      .spyOn(api, "loadSetupStatus")
+      .spyOn(apiSetup, "loadSetupStatus")
       .mockResolvedValue(
         makeStatus({
           engine_ready: false,
@@ -884,7 +886,7 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("loads, picks, and saves repositories leading with name + description", async () => {
-    const save = vi.spyOn(api, "saveSetupRepos").mockResolvedValue({
+    const save = vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
       ok: true,
       repos: ["octocat/web"],
       env_path: "/home/.alfred/.env",
@@ -916,7 +918,7 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("blocks the repo step until GitHub is connected", async () => {
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         engine_ready: false,
         github: { ok: false, account: null, detail: "Not signed in to GitHub." },
@@ -974,7 +976,7 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("lets a Dev add a trusted Slack approver", async () => {
-    const add = vi.spyOn(api, "addTrustedSlackUser").mockResolvedValue({
+    const add = vi.spyOn(apiSlack, "addTrustedSlackUser").mockResolvedValue({
       operator_user_id: null,
       users: [
         { user_id: "U999", sources: ["onboarding"], added_at: null, added_by: null, can_remove: true },
@@ -993,7 +995,7 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("composes a starter spec into a real first request and lands on Ask", async () => {
-    const compose = vi.spyOn(api, "composeSetupPlaybook").mockResolvedValue({
+    const compose = vi.spyOn(apiSetup, "composeSetupPlaybook").mockResolvedValue({
       ok: true,
       playbook: "triage-prs",
       draft_id: "compose-x",
@@ -1018,7 +1020,7 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("seeds a labelled demo lifecycle and lands on a populated Inbox", async () => {
-    const seed = vi.spyOn(api, "seedSetupDemo").mockResolvedValue({ seeded: true });
+    const seed = vi.spyOn(apiSetup, "seedSetupDemo").mockResolvedValue({ seeded: true });
     const onSwitch = vi.fn();
     const onRefreshBoard = vi.fn(async () => undefined);
     renderOnboarding({ onSwitch, onRefreshBoard });
@@ -1035,8 +1037,8 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("clears the seeded sample and flips the board back out of demo mode", async () => {
-    vi.spyOn(api, "seedSetupDemo").mockResolvedValue({ seeded: true });
-    const clear = vi.spyOn(api, "clearSetupDemo").mockResolvedValue({ cleared: true });
+    vi.spyOn(apiSetup, "seedSetupDemo").mockResolvedValue({ seeded: true });
+    const clear = vi.spyOn(apiSetup, "clearSetupDemo").mockResolvedValue({ cleared: true });
     const onRefreshBoard = vi.fn(async () => undefined);
     renderOnboarding({ onRefreshBoard });
     const user = userEvent.setup();
@@ -1060,7 +1062,7 @@ describe("OnboardingView seven-step takeover", () => {
     // Inbox, reload, navigate back). The in-component seed flag has reset, but
     // the server still reports demo.present, so the step must derive the
     // "Clear sample data" exit from server truth rather than strand the user.
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({ demo: { present: true } }),
     );
     renderOnboarding();
@@ -1079,7 +1081,7 @@ describe("OnboardingView seven-step takeover", () => {
   it("Enter advances to the next step when focus is not in a field", async () => {
     // Engine + GitHub both not detected so neither step auto-advances and the
     // Enter-driven move from Tools to GitHub is observable.
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         engine_ready: false,
         github: { ok: false, account: null, detail: "Not signed in to GitHub." },
@@ -1111,8 +1113,8 @@ describe("OnboardingView seven-step takeover", () => {
   it("degrades mutating steps gracefully off-Tauri with a clear note", async () => {
     // The token-less dev preview: neither native actions nor token-gated HTTP
     // mutations are available, so the mutating steps show the read-only note.
-    vi.spyOn(api, "supportsNativeActions").mockReturnValue(false);
-    vi.spyOn(api, "supportsMutations").mockReturnValue(false);
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(false);
+    vi.spyOn(apiClient, "supportsMutations").mockReturnValue(false);
     renderOnboarding({ canRun: false });
     const user = userEvent.setup();
     await gotoStep(user, /^first request$/i);
@@ -1125,7 +1127,7 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("surfaces a setup-status read error without blanking the steps", async () => {
-    vi.spyOn(api, "loadSetupStatus").mockRejectedValue(new Error("boom"));
+    vi.spyOn(apiSetup, "loadSetupStatus").mockRejectedValue(new Error("boom"));
     renderOnboarding();
     expect(await screen.findByText(/manual fallback/i)).toBeInTheDocument();
     // The welcome step still renders.
@@ -1148,7 +1150,7 @@ describe("OnboardingView seven-step takeover", () => {
 
   it("renders a persistent numbered stepper with current and upcoming states", async () => {
     // Engine + gh not detected so nothing auto-advances and Welcome stays current.
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         engine_ready: false,
         github: { ok: false, account: null, detail: "Not signed in to GitHub." },
@@ -1195,7 +1197,7 @@ describe("OnboardingView seven-step takeover", () => {
     // the rail used to show "3 of 7 done" while the user was still on step 1
     // (Welcome). The count must reflect where the user actually is, so a step the
     // user has not reached never reads done even when its signal is satisfied.
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         engine_ready: true,
         github: { ok: true, account: "octocat", detail: "Signed in to GitHub as octocat." },
@@ -1215,7 +1217,7 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("moves Back and Continue through the footer", async () => {
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         engine_ready: false,
         github: { ok: false, account: null, detail: "Not signed in to GitHub." },
@@ -1269,7 +1271,7 @@ describe("OnboardingView conversational setup actions", () => {
     // GitHub starts disconnected; the device flow succeeds and the poll lands on a
     // connected status. The executor must report success from the FRESH verdict,
     // not the stale pre-action render value.
-    vi.spyOn(api, "loadSetupStatus")
+    vi.spyOn(apiSetup, "loadSetupStatus")
       .mockResolvedValueOnce(
         makeStatus({ github: { ok: false, account: null, detail: "Not signed in to GitHub." } }),
       )
@@ -1292,7 +1294,7 @@ describe("OnboardingView conversational setup actions", () => {
     // messages, which carry the threaded [setup] outcome note.
     let secondTurnMessages: { role: string; content: string }[] = [];
     const converse = vi
-      .spyOn(api, "onboardingConverse")
+      .spyOn(apiSetup, "onboardingConverse")
       .mockResolvedValueOnce({
         reply: "Connecting GitHub.",
         action: { tool: "connect_github", args: {} },
@@ -1321,7 +1323,7 @@ describe("OnboardingView conversational setup actions", () => {
   it("persists the requested schedule through the native primitive (Codex P2)", async () => {
     // set_schedule with a daily cadence must call the native `alfred schedule set`
     // primitive for each scheduled agent, not just acknowledge it.
-    vi.spyOn(api, "loadSchedule").mockResolvedValue({
+    vi.spyOn(apiSetup, "loadSchedule").mockResolvedValue({
       runs: [
         {
           codename: "architect",
@@ -1344,7 +1346,7 @@ describe("OnboardingView conversational setup actions", () => {
     const onRunLocalAction = vi.fn(async () => makeNativeResult({ message: "schedule set" }));
     let secondTurnMessages: { role: string; content: string }[] = [];
     const converse = vi
-      .spyOn(api, "onboardingConverse")
+      .spyOn(apiSetup, "onboardingConverse")
       .mockResolvedValueOnce({
         reply: "Setting a daily cadence.",
         action: { tool: "set_schedule", args: { cadence: "daily" } },
@@ -1385,7 +1387,7 @@ describe("OnboardingView conversational setup actions", () => {
     // check_engine must read the FRESH status the refresh fetched, not the stale
     // closure. Seed a fresh status that has an installed engine and assert the
     // outcome threaded to the model reports it found the engine.
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         engine_ready: true,
         engines: [
@@ -1396,7 +1398,7 @@ describe("OnboardingView conversational setup actions", () => {
     );
     let secondTurnMessages: { role: string; content: string }[] = [];
     const converse = vi
-      .spyOn(api, "onboardingConverse")
+      .spyOn(apiSetup, "onboardingConverse")
       .mockResolvedValueOnce({
         reply: "Checking your tools.",
         action: { tool: "check_engine", args: {} },

@@ -1,7 +1,8 @@
 import { ArrowRight, Check, Send, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { isLiveSessionUnavailable, onboardingConverse } from "../../api";
+import { isLiveSessionUnavailable } from "../../api/client";
+import { onboardingConverse } from "../../api/setup";
 import type { ConverseMessage, OnboardingAction, OnboardingActionTool } from "../../types";
 import { Button } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";

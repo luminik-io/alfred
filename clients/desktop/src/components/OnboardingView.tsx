@@ -2,11 +2,9 @@ import {
   ArrowLeft,
   ArrowRight,
   BatteryCharging,
-  Bot,
   GitPullRequest,
   ListChecks,
   MessageCircle,
-  Plus,
   Plug,
   Settings2,
   Sparkles,
@@ -16,34 +14,20 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import {
-  errorDetail,
-  loadSchedule,
-  loadSetupStatus,
-  saveSetupBattery,
-  saveSetupRepos,
-  supportsMutations,
-} from "../api";
+import { errorDetail, supportsMutations } from "../api/client";
+import { loadSetupStatus } from "../api/setup";
 import { pollGithubAuthStatus } from "../lib/githubAuth";
-import {
-  type CustomRosterNames,
-  editableAgents,
-  resolveThemedIdentity,
-  rosterThemeBlurb,
-  rosterThemeLabel,
-  type RosterThemeId,
-} from "../lib/agentThemes";
+import { type CustomRosterNames, type RosterThemeId } from "../lib/agentThemes";
 import type { NativeActionRequest, TabKey } from "../lib/uiTypes";
-import type { NativeCommandResult, OnboardingAction, SetupStatus } from "../types";
+import type { NativeCommandResult, SetupStatus } from "../types";
 import { BatteryPickerStep } from "./onboarding/BatteryPickerStep";
 import { EngineStep } from "./onboarding/EngineStep";
-import {
-  OnboardingConversePanel,
-  type OnboardingActionResult,
-} from "./onboarding/OnboardingConversePanel";
+import { OnboardingConversePanel } from "./onboarding/OnboardingConversePanel";
 import { FirstRequestStep } from "./onboarding/FirstRequestStep";
 import { GitHubStep } from "./onboarding/GitHubStep";
+import { OnboardingRail } from "./onboarding/OnboardingRail";
 import { ReposStep } from "./onboarding/ReposStep";
+import { RosterThemeStep } from "./onboarding/RosterThemeStep";
 import { SlackStep } from "./onboarding/SlackStep";
 import { StepFrame } from "./onboarding/StepFrame";
 import { Stepper, type StepperItem } from "./onboarding/Stepper";
@@ -54,8 +38,8 @@ import {
   type OnboardingStepKey,
   type StepProgress,
 } from "./onboarding/types";
+import { useOnboardingActions } from "./onboarding/useOnboardingActions";
 import { WelcomeStep } from "./onboarding/WelcomeStep";
-import { RosterThemePicker } from "./RosterThemePicker";
 import { Button, Card, CardContent } from "./ui";
 import { cn } from "@/lib/utils";
 
@@ -109,56 +93,7 @@ const IDLE_GITHUB_AUTH_FLOW: GithubAuthFlow = {
   detail: null,
 };
 
-const ROSTER_PREVIEW_AGENTS = (() => {
-  const seenRoles = new Set<string>();
-  const agents: ReturnType<typeof editableAgents> = [];
-  for (const agent of editableAgents()) {
-    if (seenRoles.has(agent.role)) continue;
-    seenRoles.add(agent.role);
-    agents.push(agent);
-    if (agents.length === 4) break;
-  }
-  return agents;
-})();
-
 const GITHUB_DEVICE_URL = "https://github.com/login/device";
-
-/**
- * Coerce a loosely-typed action-arg value into a string->string record, keeping
- * only string values. The onboarding action args arrive as `Record<string,
- * unknown>` (validated + bounded server-side); this narrows the theme maps to
- * the `CustomRosterNames` shape without trusting the wire type. Returns null when
- * the value is not an object, so the caller can degrade gracefully.
- */
-function asStringRecord(value: unknown): Record<string, string> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const out: Record<string, string> = {};
-  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof raw === "string") out[key] = raw;
-  }
-  return out;
-}
-
-/**
- * Map an onboarding cadence (off/hourly/daily/weekly, the vocabulary the server
- * validates) to the canonical schedule string the native `alfred schedule set`
- * primitive accepts (see bin/alfred-schedule.py canonical_schedule). `off` has
- * no per-agent "set" form; it is handled separately by unloading the scheduler
- * with the existing `pause` action. Returns null for an unknown cadence so the
- * caller can report a real failure instead of writing a bogus schedule.
- */
-function scheduleForCadence(cadence: string): string | null {
-  switch (cadence) {
-    case "hourly":
-      return "1h";
-    case "daily":
-      return "daily@09:00";
-    case "weekly":
-      return "weekly@mon:09:00";
-    default:
-      return null;
-  }
-}
 
 const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
   welcome: {
@@ -577,249 +512,21 @@ export function OnboardingView({
   const toolsReady = engineReady && capabilityActionableCount === 0;
   const reposSelected = (status?.repos.count ?? 0) > 0;
 
-  // Execute one onboarding action REQUESTED by the conversational guide. This is
-  // the single source of truth: every branch runs the SAME handler the stepped
-  // flow already uses (the GitHub device flow, saveSetupRepos, onSaveCustomNames,
-  // refreshStatus), never a duplicate config write. The panel only requests; this
-  // executor runs it under the same token gate. Returns a plain result note the
-  // panel threads back into the chat.
-  const runOnboardingAction = useCallback(
-    async (action: OnboardingAction): Promise<OnboardingActionResult> => {
-      try {
-        switch (action.tool) {
-          case "check_engine": {
-            // Read the FRESH status the refresh just fetched, not the closed-over
-            // `status`/`engineReady` render values (those are only scheduled state
-            // updates and would report stale "no engine" on a first run).
-            const fresh = await refreshStatus();
-            const engines = (fresh?.engines ?? [])
-              .filter((engine) => engine.installed)
-              .map((engine) => engine.name);
-            if (Boolean(fresh?.engine_ready) || engines.length > 0) {
-              const list = engines.length ? engines.join(" and ") : "a coding engine";
-              return { ok: true, note: `Found ${list} on this Mac.` };
-            }
-            return {
-              ok: false,
-              note: "No coding engine detected yet. Install Claude Code or Codex, then say so.",
-            };
-          }
-          case "connect_github": {
-            if (githubConnected) {
-              return { ok: true, note: "GitHub is already connected." };
-            }
-            if (!canRun || !connected) {
-              return {
-                ok: false,
-                note: "GitHub sign-in needs the local runtime. Open the desktop app, then retry.",
-              };
-            }
-            // Use the FRESH verdict the device flow settled on, not the stale
-            // pre-action `githubConnected` render value: a flow that just
-            // succeeded must report success to the next model turn.
-            const connectedAfter = await startGithubAuthLogin();
-            await refreshStatus();
-            return connectedAfter
-              ? { ok: true, note: "GitHub is connected." }
-              : {
-                  ok: false,
-                  note: "Started GitHub sign-in. Finish it in your browser, then tell me when it is done.",
-                };
-          }
-          case "set_repos": {
-            if (!canMutate) {
-              return {
-                ok: false,
-                note: "I cannot save repos in this read-only preview. Use the step-by-step setup to pick repos.",
-              };
-            }
-            const repos = Array.isArray(action.args.repos)
-              ? action.args.repos.filter((repo): repo is string => typeof repo === "string")
-              : [];
-            if (!repos.length) {
-              return {
-                ok: false,
-                note: "No valid repo names came through. Which repos should I watch?",
-              };
-            }
-            await saveSetupRepos(baseUrl, repos);
-            await refreshStatus();
-            return { ok: true, note: `Alfred will work in ${repos.join(", ")}.` };
-          }
-          case "pick_agents": {
-            // The fleet is fixed; picking agents is a display preference the
-            // person can refine on the Team step. Acknowledge without a write.
-            const roles = Array.isArray(action.args.roles)
-              ? action.args.roles.filter((role): role is string => typeof role === "string")
-              : [];
-            const note = roles.length
-              ? `Noted: ${roles.join(", ")}. You can fine-tune names on the Team step.`
-              : "The full senior-engineering team is ready. You can rename it next.";
-            return { ok: true, note };
-          }
-          case "propose_theme": {
-            // A proposal is a preview, not a save. Surface it; the person confirms
-            // by asking to save (the model then sends save_theme).
-            return {
-              ok: true,
-              note: "Here is a proposed team. Say the word and I will save it, or ask for tweaks.",
-            };
-          }
-          case "save_theme": {
-            const names = asStringRecord(action.args.custom_names);
-            const roles = asStringRecord(action.args.custom_roles);
-            if (!names || Object.keys(names).length === 0) {
-              return {
-                ok: false,
-                note: "That team was not complete. Let's name every core role first.",
-              };
-            }
-            await onSaveCustomNames({ names, roles: roles ?? {} });
-            return { ok: true, note: "Saved your team names." };
-          }
-          case "set_batteries": {
-            // Optional enhancements. Turning a battery on writes its env flag
-            // through the same setup-save path the picker uses; it never installs
-            // a pip extra or starts a daemon, so the person still finishes any
-            // install themselves. Unknown ids and built-ins are refused.
-            if (!canMutate) {
-              return {
-                ok: false,
-                note: "I cannot change batteries in this read-only preview. Use the Batteries step to pick them.",
-              };
-            }
-            const ids = Array.isArray(action.args.batteries)
-              ? action.args.batteries.filter((id): id is string => typeof id === "string")
-              : [];
-            if (!ids.length) {
-              return {
-                ok: false,
-                note: "No battery names came through. Which would you like: dense embeddings, headroom compression, or codebase memory?",
-              };
-            }
-            const enabledNow: string[] = [];
-            const failed: string[] = [];
-            for (const id of ids) {
-              try {
-                await saveSetupBattery(baseUrl, id, true);
-                enabledNow.push(id);
-              } catch {
-                failed.push(id);
-              }
-            }
-            await refreshStatus();
-            if (!enabledNow.length) {
-              return {
-                ok: false,
-                note: "I could not turn those on. Open the Batteries step to pick them, or run `alfred batteries`.",
-              };
-            }
-            const tail = failed.length ? ` I could not turn on: ${failed.join(", ")}.` : "";
-            return {
-              ok: true,
-              note: `Turned on ${enabledNow.join(", ")}. Some may still need a package or a service; the Batteries step shows what.${tail}`,
-            };
-          }
-          case "set_schedule": {
-            // Persist the cadence through the SAME native primitive the Fleet view
-            // uses (`alfred schedule set` / `pause`), never a fake acknowledgement.
-            // `off` unloads the scheduler via the existing pause action; a cadence
-            // is applied to every currently scheduled agent via `schedule set`.
-            const cadence =
-              typeof action.args.cadence === "string" ? action.args.cadence : "daily";
-            if (!canRun || !connected) {
-              return {
-                ok: false,
-                note: "Setting a schedule needs the local runtime. Open the desktop app, then retry.",
-              };
-            }
-            if (cadence === "off") {
-              const result = await onRunLocalAction({
-                action: "pause",
-                target: "all",
-                refreshAfter: true,
-              });
-              if (!result || !result.success) {
-                return {
-                  ok: false,
-                  note: "Could not pause the schedule. Try again, or set it on the Fleet page.",
-                };
-              }
-              return { ok: true, note: "Paused the schedule. Alfred will only run when you ask." };
-            }
-            const mapped = scheduleForCadence(cadence);
-            if (mapped === null) {
-              return {
-                ok: false,
-                note: "I did not recognize that cadence. Try off, hourly, daily, or weekly.",
-              };
-            }
-            // Re-cadence every scheduled agent through the native primitive. Read
-            // the live schedule so we target the agents that actually exist.
-            let runs: { codename: string }[] = [];
-            try {
-              runs = (await loadSchedule(baseUrl)).runs ?? [];
-            } catch {
-              runs = [];
-            }
-            const codenames = Array.from(
-              new Set(runs.map((run) => run.codename).filter((name): name is string => Boolean(name))),
-            );
-            if (!codenames.length) {
-              return {
-                ok: false,
-                note: "No scheduled agents are set up yet, so there is nothing to re-time. You can set schedules on the Fleet page after setup.",
-              };
-            }
-            let applied = 0;
-            for (const codename of codenames) {
-              const result = await onRunLocalAction({
-                action: "schedule",
-                target: codename,
-                cadence: mapped,
-                refreshAfter: false,
-              });
-              if (result && result.success) applied += 1;
-            }
-            if (applied === 0) {
-              return {
-                ok: false,
-                note: "Could not save the schedule. Try again, or set it on the Fleet page.",
-              };
-            }
-            await refreshStatus();
-            return { ok: true, note: `Alfred will sweep for work ${cadence}.` };
-          }
-          case "finish_setup": {
-            await refreshStatus();
-            setRequestDone(true);
-            return {
-              ok: true,
-              note: "Setup is done. Give Alfred its first job whenever you are ready.",
-            };
-          }
-          default:
-            return { ok: false, note: "I do not know how to do that step yet." };
-        }
-      } catch (err) {
-        return {
-          ok: false,
-          note: errorDetail(err) || (err instanceof Error ? err.message : "That step failed."),
-        };
-      }
-    },
-    [
-      baseUrl,
-      canMutate,
-      canRun,
-      connected,
-      githubConnected,
-      onRunLocalAction,
-      onSaveCustomNames,
-      refreshStatus,
-      startGithubAuthLogin,
-    ],
-  );
+  // Execute one onboarding action REQUESTED by the conversational guide. The
+  // executor lives in useOnboardingActions so both paths share one source of
+  // truth; every branch runs the SAME handler the stepped flow already uses.
+  const runOnboardingAction = useOnboardingActions({
+    baseUrl,
+    canMutate,
+    canRun,
+    connected,
+    githubConnected,
+    refreshStatus,
+    startGithubAuthLogin,
+    onRunLocalAction,
+    onSaveCustomNames,
+    onFinishSetup: useCallback(() => setRequestDone(true), []),
+  });
 
   const currentIndex = ONBOARDING_STEP_ORDER.indexOf(stepKey);
 
@@ -1036,63 +743,10 @@ export function OnboardingView({
           fills the left of the frame so the takeover reads as one composed
           product intro, not a card floating in a void. Collapses above the main
           column at narrow widths. */}
-      <aside className="alfred-onboarding-rail alfred-glass" aria-hidden="true">
-        <div className="alfred-onboarding-rail__brand">
-          <span className="alfred-brand-mark size-9 shrink-0">
-            <img
-              src="/brand/alfred-logo-transparent.png"
-              alt=""
-              className="alfred-brand-logo size-9 object-contain"
-            />
-          </span>
-          <span className="alfred-onboarding-rail__wordmark">
-            <span className="alfred-onboarding-rail__name">Alfred</span>
-            <span className="alfred-onboarding-rail__kicker">Autonomous coding agents</span>
-          </span>
-        </div>
-
-        <div className="alfred-onboarding-rail__promise">
-          <p className="alfred-onboarding-rail__eyebrow">Set up in about two minutes</p>
-          <h2 className="alfred-onboarding-rail__headline">
-            Wake up to shipped work you can trust.
-          </h2>
-          <p className="alfred-onboarding-rail__sub">
-            Alfred opens pull requests, handles reviews, and reports back, all on
-            your own machine while you stay in control.
-          </p>
-        </div>
-
-        {/* Fills the rail with the actual loop, so the intro reads as one
-            composed block instead of a headline floating over empty space. */}
-        <ol className="alfred-onboarding-rail__loop">
-          <li>
-            <span className="alfred-onboarding-rail__loopstep">1</span>
-            <span>Connect your repositories and local tools.</span>
-          </li>
-          <li>
-            <span className="alfred-onboarding-rail__loopstep">2</span>
-            <span>Approve a plan; the team builds and reviews it.</span>
-          </li>
-          <li>
-            <span className="alfred-onboarding-rail__loopstep">3</span>
-            <span>Alfred opens the pull request and reports back.</span>
-          </li>
-        </ol>
-
-        <div className="alfred-onboarding-rail__foot">
-          <p className="alfred-onboarding-rail__trust">
-            No API keys. Alfred runs on the Claude and Codex subscriptions you
-            already pay for.
-          </p>
-          <p className="alfred-onboarding-rail__cost">
-            No per-request bill. Watch live usage and limits any time in the
-            sidebar.
-          </p>
-          <p className="alfred-onboarding-rail__progress">
-            {completedCount} of {ONBOARDING_STEP_ORDER.length} steps done
-          </p>
-        </div>
-      </aside>
+      <OnboardingRail
+        completedCount={completedCount}
+        totalSteps={ONBOARDING_STEP_ORDER.length}
+      />
 
       <div className="alfred-onboarding-shell alfred-glass">
         <header className="alfred-onboarding-shell__head">
@@ -1329,87 +983,5 @@ export function OnboardingView({
         )}
       </div>
     </section>
-  );
-}
-
-function RosterThemeStep({
-  customNames,
-  rosterTheme,
-  saveError,
-  onChange,
-  onEditCustom,
-  onOpenCustomAgents,
-}: {
-  customNames: CustomRosterNames;
-  rosterTheme: RosterThemeId;
-  saveError: string | null;
-  onChange: (next: RosterThemeId) => void;
-  onEditCustom: () => void;
-  onOpenCustomAgents?: () => void;
-}) {
-  const preview = useMemo(
-    () =>
-      ROSTER_PREVIEW_AGENTS.map(({ codename }) => ({
-        codename,
-        identity: resolveThemedIdentity({ codename }, rosterTheme, customNames),
-      })),
-    [customNames, rosterTheme],
-  );
-
-  return (
-    <div className="space-y-4">
-      <RosterThemePicker
-        value={rosterTheme}
-        onChange={onChange}
-        onEditCustom={onEditCustom}
-        saveError={saveError}
-      />
-      <div className="grid gap-3 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <div className="rounded-lg border border-border/70 bg-card/60 p-4">
-          <p className="text-xs font-medium uppercase text-muted-foreground">Active roster</p>
-          <h3 className="mt-1 text-lg font-medium text-foreground">
-            {rosterThemeLabel(rosterTheme)}
-          </h3>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {rosterThemeBlurb(rosterTheme)}
-          </p>
-        </div>
-        <div className="rounded-lg border border-border/70 bg-card/60 p-4">
-          <p className="text-xs font-medium uppercase text-muted-foreground">Preview</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {preview.map(({ codename, identity }) => (
-              <div key={codename} className="rounded-md border border-border/60 bg-background/40 p-3">
-                <p className="text-sm font-medium text-foreground">{identity.name}</p>
-                <p className="text-xs text-muted-foreground">{identity.roleLabel}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Roles, permissions, schedules, labels, worktrees, and merge gates stay unchanged.
-      </p>
-      {onOpenCustomAgents ? (
-        <div className="rounded-lg border border-border/70 bg-card/60 p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 gap-3">
-              <span className="grid size-9 shrink-0 place-items-center rounded-md border border-primary/25 bg-primary/10 text-primary">
-                <Bot size={17} aria-hidden="true" />
-              </span>
-              <span className="min-w-0">
-                <p className="text-sm font-medium text-foreground">Need another role?</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Add a custom agent with its own engine, prompt, schedule, and repo scope.
-                </p>
-              </span>
-            </div>
-            <Button type="button" variant="outline" size="sm" onClick={onOpenCustomAgents}>
-              <Plus size={15} aria-hidden="true" />
-              <span>Add custom agent</span>
-            </Button>
-          </div>
-        </div>
-      ) : null}
-    </div>
   );
 }

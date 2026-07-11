@@ -3,22 +3,27 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ComposeView } from "./ComposeView";
-import { composeDraft, conversationControl, filePlanIssue } from "../api";
+import { composeDraft, conversationControl } from "../api/converse";
+import { filePlanIssue } from "../api/plans";
 import type { ComposeDraftResponse } from "../types";
 
-vi.mock("../api", () => ({
+vi.mock("../api/converse", () => ({
   composeConverse: vi.fn(),
   composeDraft: vi.fn(),
   conversationControl: vi.fn(),
-  filePlanIssue: vi.fn(),
-  isLiveSessionUnavailable: (err: unknown) =>
-    err instanceof Error
-      ? err.message.includes("live_session_unavailable") || err.message.includes("503")
-      : false,
   streamComposeConverse: vi.fn(),
+}));
+vi.mock("../api/plans", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/plans")>()),
+  filePlanIssue: vi.fn(),
+}));
+// The real `isLiveSessionUnavailable` (from ../api/client) runs unmocked; only
+// the capability flags are overridden. This suite exercises the offline
+// draft-fallback surface, so conversation is explicitly unavailable (a bare
+// preview with no served backend).
+vi.mock("../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/client")>()),
   supportsNativeActions: () => false,
-  // This suite exercises the offline draft-fallback surface, so conversation is
-  // explicitly unavailable (a bare preview with no served backend).
   supportsConversation: () => false,
 }));
 
