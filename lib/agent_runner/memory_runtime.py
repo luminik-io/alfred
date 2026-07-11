@@ -141,6 +141,32 @@ def _inject_max_chars(env: Mapping[str, str] | None = None) -> int:
     return value
 
 
+_RECALL_OVERFETCH_FACTOR = 6
+_RECALL_OVERFETCH_MIN_MARGIN = 12
+_RECALL_OVERFETCH_MAX = 48
+
+
+def _recall_fetch_limit(limit: int) -> int:
+    """Candidate-pool size to recall before the injection reorders run.
+
+    The injection reorders (the ops/codebase split, and rank/typed when armed)
+    can only promote a codebase lesson into the injected page if that lesson was
+    actually recalled. Fetching exactly ``limit`` rows means a repo whose top
+    ``limit`` semantic hits are all ops lessons has no codebase row to promote,
+    so the split silently fails exactly when ops lessons dominate recall. So pull
+    a bounded larger candidate pool here; the ``pairs[:limit]`` slice and the
+    character budget downstream still cap what is actually injected, and the
+    output stays byte-identical when no reorder changes the order. Bounded above
+    so a huge ``limit`` cannot pull an unbounded page from the provider.
+    """
+    if limit <= 0:
+        return limit
+    return min(
+        max(limit * _RECALL_OVERFETCH_FACTOR, limit + _RECALL_OVERFETCH_MIN_MARGIN),
+        _RECALL_OVERFETCH_MAX,
+    )
+
+
 def _normalized_body(body: str) -> str:
     """Whitespace- and case-folded body used as a dedup key."""
     return " ".join(str(body or "").split()).strip().casefold()
@@ -439,13 +465,18 @@ def format_memory_context(
     anchored_ids = (
         _anchored_lesson_ids(provider, anchor_refs=anchor_refs, repo=repo) if anchor_refs else set()
     )
+    # Over-fetch a bounded candidate pool so the reorders below (ops/codebase
+    # split, rank, typed) have codebase lessons to promote even when the top
+    # ``limit`` semantic hits are all ops lessons. The ``pairs[:limit]`` slice and
+    # the character budget still cap what is injected.
+    fetch_limit = _recall_fetch_limit(limit)
     try:
         pairs = _gated_pairs(
             provider,
             codename=codename,
             repo=repo,
             query=query,
-            limit=limit,
+            limit=fetch_limit,
             threshold=threshold,
             anchor_refs=anchor_refs,
             anchored_ids=anchored_ids,
@@ -471,23 +502,27 @@ def format_memory_context(
     # kinds that matter for editing code (conventions + fixes) ahead of passive
     # notes, with relevance/recency still ordering within a kind bucket.
     pairs = memory_ranking.apply_typed_recall(pairs)
-    # Ops/codebase split (ON by default, ALFRED_MEMORY_INJECT_OPS to disable):
-    # push Alfred-runtime lessons (provider quota, auth, engine timeouts) below
-    # lessons about the underlying codebase so the injection budget leads with
-    # what an engineer needs. A pure reorder, so no lesson is dropped; the
-    # anchor hoist below (which only lifts file-anchored codebase lessons) still
-    # has the final say when anchor_refs were supplied.
-    pairs = memory_ranking.deprioritize_ops(pairs)
-    # Anchor hoist LAST of all (only when anchor_refs were supplied): the whole
-    # point of anchor recall is that file-linked lessons surface FIRST. In a
-    # scored chain (e.g. Redis + FleetBrain) the scored member's generic hits are
-    # merged ahead of the non-scored member's anchored lessons, so without this
-    # step the anchored lessons lose their priority. Reuses the same
-    # ``anchored_ids`` the anchor-aware dedup used, so a survivor swapped in for a
-    # duplicate body is recognized here too. Works for any chain shape and is a
-    # no-op when no anchor_refs were passed.
+    # Anchor hoist (only when anchor_refs were supplied): the whole point of
+    # anchor recall is that file-linked lessons surface FIRST. In a scored chain
+    # (e.g. Redis + FleetBrain) the scored member's generic hits are merged ahead
+    # of the non-scored member's anchored lessons, so without this step the
+    # anchored lessons lose their priority. Reuses the same ``anchored_ids`` the
+    # anchor-aware dedup used, so a survivor swapped in for a duplicate body is
+    # recognized here too. Works for any chain shape and is a no-op when no
+    # anchor_refs were passed.
     if anchored_ids:
         pairs = _hoist_anchored(pairs, anchored_ids)
+    # Ops/codebase split LAST (ON by default, ALFRED_MEMORY_INJECT_OPS to
+    # disable): push Alfred-runtime lessons (provider quota, auth, engine
+    # timeouts) below lessons about the underlying codebase so the injection
+    # budget leads with what an engineer needs. Running it AFTER the hoist means
+    # an ops lesson that happens to be file-anchored does NOT jump ahead of
+    # codebase lessons and consume the slots this split reserves for them; the
+    # stable sort keeps the hoisted codebase lessons first within the codebase
+    # bucket and an anchored ops lesson first within the ops bucket. A pure
+    # reorder, so no lesson is dropped, and a no-op when disabled (which leaves
+    # the hoist as the final say, exactly as before).
+    pairs = memory_ranking.deprioritize_ops(pairs)
     if not pairs:
         return ""
     header = [

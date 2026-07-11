@@ -96,7 +96,11 @@ _DELTA_TABLE_MAX = 512
 
 
 def _truthy(value: str | None) -> bool:
-    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+    # ``enabled`` is included to match the convention the rest of the memory
+    # runtime uses (anchor_recall_enabled, repo_profile) so an operator who sets
+    # e.g. ``ALFRED_MEMORY_INJECT_OPS=enabled`` gets the expected effect rather
+    # than a silently ignored value.
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on", "enabled"}
 
 
 def rank_enabled(env: Mapping[str, str] | None = None) -> bool:

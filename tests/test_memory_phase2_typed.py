@@ -699,6 +699,48 @@ def test_runtime_anchor_recall_through_chained_provider(
     assert block.index("auth uses JWT") < block.index("general readme housekeeping")
 
 
+def test_runtime_anchored_ops_lesson_stays_below_codebase(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # An ops lesson that happens to be file-anchored must NOT jump ahead of
+    # codebase lessons and consume the slots the ops/codebase split reserves for
+    # them: the hoist runs first, then the split settles the anchored ops lesson
+    # back below the codebase lesson.
+    from agent_runner.memory_runtime import format_memory_context
+
+    monkeypatch.setenv("ALFRED_MEMORY_ANCHOR_RECALL", "1")
+    monkeypatch.delenv("ALFRED_MEMORY_INJECT_OPS", raising=False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    # An ops lesson anchored to the firing's file.
+    provider.reflect(
+        codename="lucius",
+        repo="acme/api",
+        body="provider quota hit, retry later",
+        tags=["ops", "class:provider_limit"],
+        kind="note",
+        anchors=[("file", "acme/api/src/auth.py")],
+    )
+    # A codebase lesson recalled by the query (not anchored).
+    provider.reflect(
+        codename="lucius",
+        repo="acme/api",
+        body="auth uses JWT verified in the middleware",
+        kind="convention",
+    )
+    block = format_memory_context(
+        provider,
+        codename="lucius",
+        repo="acme/api",
+        query="auth",
+        limit=3,
+        anchor_refs=["acme/api/src/auth.py"],
+    )
+    assert "provider quota hit" in block
+    assert "auth uses JWT" in block
+    # Codebase leads even though the ops lesson is file-anchored.
+    assert block.index("auth uses JWT") < block.index("provider quota hit")
+
+
 class _ScoredStub:
     """A scored chain member (Redis-like): high-scored generic hit, no anchors."""
 
