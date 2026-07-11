@@ -54,6 +54,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import alfred_config
+
 DEFAULT_WINDOW_DAYS = 7
 # Per-day-window query limit. The window is split into UTC-day sub-queries, so
 # this cap applies to ONE day of one repo's merges, not the whole window. A repo
@@ -242,10 +244,10 @@ def _self_repo() -> str | None:
     ``None`` when neither is set so ``resolve_repos`` simply falls through to
     the configured shipped-repo list.
     """
-    explicit = os.environ.get("ALFRED_SELF_PROOF_SELF_REPO", "").strip()
+    explicit = (alfred_config.get_str("ALFRED_SELF_PROOF_SELF_REPO") or "").strip()
     if explicit:
         return explicit
-    canonical = os.environ.get("ALFRED_SELF_REPO", "").strip()
+    canonical = (alfred_config.get_str("ALFRED_SELF_REPO") or "").strip()
     return canonical or None
 
 
@@ -260,9 +262,9 @@ def resolve_repos(explicit: list[str] | None = None) -> list[str]:
     if explicit:
         return _dedupe([r.strip() for r in explicit if r.strip()])
 
-    direct = os.environ.get("ALFRED_SELF_PROOF_REPOS", "").strip()
+    direct = alfred_config.get_list("ALFRED_SELF_PROOF_REPOS")
     if direct:
-        return _dedupe([r.strip() for r in direct.split(",") if r.strip()])
+        return _dedupe(direct)
 
     repos: list[str] = []
     self_repo = _self_repo()

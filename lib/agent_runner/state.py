@@ -39,6 +39,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import alfred_config
+
 from . import process as _process
 from .agent_events import (  # noqa: F401  (re-exported for callers)
     Event,
@@ -644,7 +646,7 @@ def reset_consecutive_failures(codename: str) -> None:
 # rather than per-file literals that drift apart.
 # --------------------------------------------------------------------------
 
-FAIL_STREAK_THRESHOLD = int(os.environ.get("ALFRED_FAIL_STREAK_THRESHOLD", "5"))
+FAIL_STREAK_THRESHOLD = alfred_config.require_int("ALFRED_FAIL_STREAK_THRESHOLD")
 
 
 def maybe_halt_on_fail_streak(

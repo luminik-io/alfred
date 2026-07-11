@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+import alfred_config
+
 from . import memory_ranking
 from .result import ClaudeResult
 
@@ -798,7 +800,7 @@ def record_reflections(
         return 0
     # Default changed from direct lesson writes to reviewable candidates so
     # engine-generated memories never enter recall without operator review.
-    mode = os.environ.get("ALFRED_MEMORY_REFLECTION_MODE", "candidate").strip().lower()
+    mode = (alfred_config.get_str("ALFRED_MEMORY_REFLECTION_MODE") or "").strip().lower()
     if mode not in _REFLECTION_MODES:
         mode = "candidate"
     if mode == "off":

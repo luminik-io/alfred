@@ -28,14 +28,16 @@ through to its live-probe path.
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-AUTH_TTL_SECONDS = int(os.environ.get("ALFRED_STATUS_AUTH_TTL_SECONDS", "60"))
-SLOW_TTL_SECONDS = int(os.environ.get("ALFRED_STATUS_SLOW_TTL_SECONDS", "1800"))
+import alfred_config
+
+# Defaults live in the central config registry (lib/alfred_config.py).
+AUTH_TTL_SECONDS = alfred_config.get_int("ALFRED_STATUS_AUTH_TTL_SECONDS")
+SLOW_TTL_SECONDS = alfred_config.get_int("ALFRED_STATUS_SLOW_TTL_SECONDS")
 
 _TIMESTAMP_KEY = "cache_written_at"
 
