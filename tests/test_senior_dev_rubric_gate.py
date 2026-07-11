@@ -348,6 +348,59 @@ def test_salvage_commit_failure_resets_worktree(senior_dev, monkeypatch):
     assert any(t == "rubric_revision_salvage_failed" for t, _ in events.emitted)
 
 
+def test_salvage_cleanup_leaving_tree_dirty_is_escalated(senior_dev, monkeypatch):
+    # If reset + clean cannot restore a clean tree (pathological git failure),
+    # the still-dirty outcome is surfaced loudly rather than silently ignored.
+    monkeypatch.setenv("ALFRED_RUBRIC_GATE", "1")
+    monkeypatch.setenv("ALFRED_RUBRIC_MAX_ITERATIONS", "1")
+    monkeypatch.setattr(
+        senior_dev,
+        "build_rubric_grader",
+        lambda **_k: (
+            lambda _p: json.dumps(
+                {
+                    "result": "needs_revision",
+                    "explanation": "gap",
+                    "criteria": [{"name": "c", "passed": False, "gap": "x"}],
+                }
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        senior_dev,
+        "invoke_agent_engine",
+        lambda *a, **k: (type("R", (), {"num_turns": 1, "cost_usd": 0.0})(), "codex"),
+    )
+
+    diffs = iter(["diff before", "diff after"])
+
+    def _fake_run(args, **_kw):
+        if "status" in args:
+            # Always dirty: cleanup could not restore the tree.
+            return type("R", (), {"stdout": " M lib/foo.py", "returncode": 0, "stderr": ""})()
+        if "diff" in args:
+            return type("R", (), {"stdout": next(diffs), "returncode": 0, "stderr": ""})()
+        if "commit" in args:
+            return type("R", (), {"stdout": "", "returncode": 1, "stderr": "commit failed"})()
+        return type("R", (), {"stdout": "", "returncode": 0, "stderr": ""})()
+
+    monkeypatch.setattr(senior_dev, "run", _fake_run)
+
+    events = _Events()
+    senior_dev._run_rubric_gate(
+        "api",
+        _ISSUE_WITH_CRITERIA,
+        Path("/tmp/wt"),
+        "HEAD~1",
+        "feat/x",
+        "fid",
+        "codex",
+        _Spend(),
+        events,
+    )
+    assert any(t == "rubric_revision_worktree_unclean" for t, _ in events.emitted)
+
+
 def test_revision_exception_still_settles_worktree(senior_dev, monkeypatch):
     # If the revision engine raises AFTER writing files, the finally-block settle
     # must still run so the worktree does not stay dirty.

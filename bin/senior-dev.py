@@ -534,6 +534,12 @@ def _settle_revision_worktree(
     events.emit("rubric_revision_salvage_failed", reason=short(detail, 200))
     run(["git", "reset", "--hard", "HEAD"], cwd=str(wt), timeout=30)
     run(["git", "clean", "-fd"], cwd=str(wt), timeout=30)
+    # Verify the OUTCOME rather than trust the cleanup exit codes: if the tree is
+    # still dirty (a pathological git failure), surface it loudly. The gate stays
+    # non-blocking by design, but this makes an unclean worktree observable
+    # instead of leaving the downstream push path as the only signal.
+    if _worktree_status(wt):
+        events.emit("rubric_revision_worktree_unclean", firing_id=firing_id)
 
 
 def _revision_prompt(
