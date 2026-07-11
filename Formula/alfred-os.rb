@@ -9,12 +9,12 @@
 class AlfredOs < Formula
   desc "Local coding agents for Claude Code and Codex"
   homepage "https://alfred.luminik.io"
-  url "https://github.com/luminik-io/alfred/archive/refs/tags/v0.5.3.tar.gz"
+  url "https://github.com/luminik-io/alfred/archive/refs/tags/v0.6.0.tar.gz"
   # GitHub's generated source archive names its top-level directory after the
-  # repo (alfred-0.5.3/ after the rename, previously alfred-os-0.5.3/), so the
+  # repo (alfred-0.6.0/ after the rename, previously alfred-os-0.6.0/), so the
   # tarball bytes and this checksum change with the slug even for the same tag.
   # Recomputed against the luminik-io/alfred archive.
-  sha256 "e26a528e022bd823df22b53f68d6c3195f91aff3c838db5f86fe94f49cf46bcd"
+  sha256 "dc375843fed0fe71e6b9e24b8d9649f98185572dbf08463631680c99538e295b"
   license "MIT"
   head "https://github.com/luminik-io/alfred.git", branch: "main"
 
