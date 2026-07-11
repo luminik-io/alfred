@@ -47,6 +47,11 @@ flowchart TD
 
 The automerge gate is not a single boolean. `bin/automerge.py:is_mergeable` requires, in order: no unresolved reviewer threads, a review-agent main review whose body says `Ship-ready: yes`, the reviewed head SHA matches the current PR head, the review is newer than the latest commit, and no unresolved `P0` comment. PRs younger than `ALFRED_AUTOMERGE_MIN_AGE_MIN` (default 30 minutes) wait. Only `agent:authored` PRs in `ALFRED_AUTOMERGE_REPOS` are eligible, and the merge is a squash.
 
+Operator-driven merges use the stricter [`alfred pr` gate](PR_MERGE_GATE.md).
+It requires exact-head Greptile and Codex evidence, green CI, mergeable-clean
+state, and zero unresolved threads. It takes the complete snapshot twice before
+issuing a squash merge guarded by the expected head SHA.
+
 The claim is `release_issue`-symmetric: every claim comment is paired with a release comment carrying the same `codename`/`firing_id`. A crash that leaves a claim unpaired is recovered by `find_stale_claims` / `force_release_stale_claim` in the cleanup agent after `ALFRED_CLAIM_MAX_AGE_HOURS` (default 4).
 
 ## Model dispatch and tiers

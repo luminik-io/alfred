@@ -464,6 +464,8 @@ see [`SECURITY.md`](SECURITY.md).
 - [Memory](docs/MEMORY_PROVIDERS.md) and [MCP servers](docs/MCP.md).
 - [Alfred Desktop](docs/DESKTOP_CLIENT.md) and the
   [analytics CLIs](docs/CLI.md).
+- [Pull request merge gate](docs/PR_MERGE_GATE.md): exact-head Greptile and
+  Codex review, green CI, and a fail-closed squash merge.
 - [Claude Code and Codex](docs/CLAUDE_CODE.md) and the
   [Codex provider](docs/CODEX_PROVIDER.md).
 - [Slack setup](docs/SLACK_SETUP.md), [AWS setup](docs/AWS_SETUP.md), and

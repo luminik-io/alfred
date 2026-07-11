@@ -2552,6 +2552,18 @@ def cmd_goal(args: argparse.Namespace) -> int:
     return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
 
 
+def cmd_pr(args: argparse.Namespace) -> int:
+    script = _HERE / "alfred-pr-gate.py"
+    forwarded = [args.pr_action, str(args.number), "--repo", args.repo]
+    if args.skip_greptile:
+        forwarded.append("--skip-greptile")
+    if args.skip_codex:
+        forwarded.append("--skip-codex")
+    if args.json:
+        forwarded.append("--json")
+    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+
+
 def cmd_slack_listener(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-slack-listener.py"
     forwarded = args.listener_args or ["run"]
@@ -3818,6 +3830,15 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_goal = sub.add_parser("goal", help="manage the durable goal ledger")
     p_goal.add_argument("goal_args", nargs=argparse.REMAINDER)
     p_goal.set_defaults(func=cmd_goal)
+
+    p_pr = sub.add_parser("pr", help="check or merge a PR through exact-head review gates")
+    p_pr.add_argument("pr_action", choices=("check", "merge"))
+    p_pr.add_argument("number", type=int)
+    p_pr.add_argument("--repo", required=True, help="GitHub owner/name")
+    p_pr.add_argument("--skip-greptile", action="store_true")
+    p_pr.add_argument("--skip-codex", action="store_true")
+    p_pr.add_argument("--json", action="store_true")
+    p_pr.set_defaults(func=cmd_pr)
 
     p_slack_listener = sub.add_parser(
         "slack-listener",
