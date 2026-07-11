@@ -89,6 +89,7 @@ def _payloads(head: str) -> list[object]:
                 "user": {"login": "chatgpt-codex-connector[bot]"},
                 "commit_id": head,
                 "submitted_at": "2026-07-11T10:02:00Z",
+                "state": "COMMENTED",
             }
         ],
     ]
@@ -160,6 +161,16 @@ def test_collect_snapshot_blocks_stale_codex_review(gate_module, monkeypatch):
     payloads = _payloads(head)
     payloads[3][1]["body"] = f"Reviewed commit: `{'f' * 10}`"
     payloads[4][0]["commit_id"] = "f" * 40
+    monkeypatch.setattr(gate_module.subprocess, "run", _fake_run(payloads))
+
+    with pytest.raises(gate_module.GateError, match="Codex has not reviewed exact HEAD"):
+        gate_module.collect_snapshot("acme/app", 42)
+
+
+def test_collect_snapshot_blocks_dismissed_codex_review(gate_module, monkeypatch):
+    head = "8" * 40
+    payloads = _payloads(head)
+    payloads[4][0]["state"] = "DISMISSED"
     monkeypatch.setattr(gate_module.subprocess, "run", _fake_run(payloads))
 
     with pytest.raises(gate_module.GateError, match="Codex has not reviewed exact HEAD"):

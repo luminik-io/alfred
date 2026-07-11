@@ -245,7 +245,8 @@ def collect_snapshot(
     for review in reviews:
         login = (review.get("user") or {}).get("login") or ""
         commit_id = str(review.get("commit_id") or "").lower()
-        if login in CODEX_LOGINS and len(commit_id) == 40:
+        state = str(review.get("state") or "").upper()
+        if login in CODEX_LOGINS and state in {"APPROVED", "COMMENTED"} and len(commit_id) == 40:
             codex_evidence.append((str(review.get("submitted_at") or ""), commit_id))
     for comment in comments:
         login = (comment.get("user") or {}).get("login") or ""
