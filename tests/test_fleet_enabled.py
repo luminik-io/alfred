@@ -714,6 +714,19 @@ def test_render_table_keeps_display_name_raw():
     assert "&lt;" not in table
 
 
+def test_status_ignores_only_expected_disabled_skip_tails():
+    status = _load_status_module()
+    skips = "\n".join(
+        [
+            "[ARCHITECT-SKIP] architect not enabled in fleet file; run `alfred enable architect`.",
+            "[SPEC-PLANNER-SKIP] spec-planner not enabled in fleet file; run `alfred enable spec-planner`.",
+        ]
+    )
+
+    assert status._only_expected_disabled_skips(skips) is True
+    assert status._only_expected_disabled_skips(f"real failure\n{skips}") is False
+
+
 def test_cli_status_uses_custom_agent_manifest_engine_default(tmp_path):
     alfred = tmp_path / "alfred"
     custom_dir = alfred / "state" / "custom-agents"

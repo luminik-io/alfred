@@ -451,6 +451,15 @@ def _record_engine(record: AgentRecord) -> str | None:
     return agent_runner.agent_engine(record.codename)
 
 
+def _only_expected_disabled_skips(text: str) -> bool:
+    """Return true when a stderr tail contains only legacy disabled-role notices."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return bool(lines) and all(
+        line.startswith("[") and "-SKIP] " in line and " not enabled in fleet file;" in line
+        for line in lines
+    )
+
+
 def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnapshot:
     locked, stale_lock, lock_pid, lock_age_seconds = _lock_status(record.codename)
     pause_marker = PAUSE_DIR / record.codename
@@ -488,6 +497,8 @@ def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnap
         try:
             lines = stderr_path.read_text(errors="replace").splitlines()
             last_stderr_tail = "\n".join(lines[-3:]) if lines else None
+            if last_stderr_tail and _only_expected_disabled_skips(last_stderr_tail):
+                last_stderr_tail = None
         except OSError:
             pass
 
