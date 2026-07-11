@@ -301,3 +301,50 @@ def test_themed_name_for_unknown_codename_is_none() -> None:
     for theme in ("batman", "transformers", "custom"):
         state = RosterThemeState(theme=theme, custom_names={}, custom_roles={})
         assert state.themed_name_for("release-captain") is None
+
+
+def test_legacy_codename_reskinned_by_role() -> None:
+    # A machine installed before the role-slug rename has Batman-cast codenames
+    # (``lucius``) in agents.conf. Those are not canonical slugs, so the
+    # per-codename maps miss them, but the theme layer must still re-skin them by
+    # ROLE so Slack matches the desktop.
+    jl = RosterThemeState(theme="justice-league", custom_names={}, custom_roles={})
+    assert jl.themed_name_for("lucius") == "Superman"
+    assert jl.themed_role_label_for("lucius") == "Senior developer"
+
+    sci = RosterThemeState(theme="scientists", custom_names={}, custom_roles={})
+    assert sci.themed_name_for("rasalghul") == "Curie"
+
+    # The default theme keeps the legacy agent's base persona rather than the raw
+    # slug.
+    default_state = RosterThemeState(theme="batman", custom_names={}, custom_roles={})
+    assert default_state.themed_name_for("lucius") == "Lucius"
+
+
+def test_role_for_codename_maps_slugs_and_legacy_names() -> None:
+    from roster_theme_store import role_for_codename
+
+    assert role_for_codename("senior-dev") == "senior-dev"
+    assert role_for_codename("lucius") == "senior-dev"
+    assert role_for_codename("Ra's al Ghul".replace(" ", "").replace("'", "").lower()) == "reviewer"
+    assert role_for_codename("fleet.local.architect") == "architect"
+    assert role_for_codename("totally-unknown") is None
+
+
+def test_new_builtin_themes_present_and_unique() -> None:
+    from roster_theme_store import PRESET_THEME_IDS
+
+    for theme_id in ("programmers", "scientists", "mathematicians", "philosophers"):
+        assert theme_id in PRESET_THEME_IDS
+        names = list(PRESET_DISPLAY_NAMES[theme_id].values())
+        assert len(names) >= 12
+        # No two agents share a persona within a theme.
+        assert len({name.casefold() for name in names}) == len(names)
+
+
+def test_new_builtin_themes_reskin_on_slack() -> None:
+    # The four new themes must resolve real display names for a canonical slug so
+    # a Slack post under them re-skins the roster.
+    state = RosterThemeState(theme="mathematicians", custom_names={}, custom_roles={})
+    assert state.themed_name_for("architect") == "Gauss"
+    assert state.themed_name_for("senior-dev") == "Euler"

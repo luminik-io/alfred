@@ -1,7 +1,15 @@
 {
   "schema_version": 1,
   "default_theme": "batman",
-  "preset_theme_ids": ["batman", "transformers", "justice-league"],
+  "preset_theme_ids": [
+    "batman",
+    "transformers",
+    "justice-league",
+    "programmers",
+    "scientists",
+    "mathematicians",
+    "philosophers"
+  ],
   "themes": {
     "batman": {
       "label": "Batman",
@@ -14,6 +22,22 @@
     "justice-league": {
       "label": "Justice League",
       "blurb": "The League takes the pipeline. The architect leads, the others ship."
+    },
+    "programmers": {
+      "label": "Programmers",
+      "blurb": "Computing pioneers on the line, from Ada and Turing to Torvalds and Berners-Lee."
+    },
+    "scientists": {
+      "label": "Scientists",
+      "blurb": "The great experimenters, Curie to Kalam, Raman to Einstein, run the fleet."
+    },
+    "mathematicians": {
+      "label": "Mathematicians",
+      "blurb": "From Ramanujan and Aryabhata to Gauss and Noether, the theorists ship."
+    },
+    "philosophers": {
+      "label": "Philosophers",
+      "blurb": "Socrates to Chanakya, Confucius to Kant: the thinkers reason through the pipeline."
     }
   },
   "role_labels": {
@@ -37,7 +61,11 @@
       "names": {
         "batman": "Robin",
         "transformers": "Bumblebee",
-        "justice-league": "The Flash"
+        "justice-league": "The Flash",
+        "programmers": "Ada",
+        "scientists": "Faraday",
+        "mathematicians": "Ramanujan",
+        "philosophers": "Plato"
       }
     },
     {
@@ -46,7 +74,11 @@
       "names": {
         "batman": "Drake",
         "transformers": "Hot Rod",
-        "justice-league": "Green Arrow"
+        "justice-league": "Green Arrow",
+        "programmers": "Guido",
+        "scientists": "Darwin",
+        "mathematicians": "Euclid",
+        "philosophers": "Confucius"
       }
     },
     {
@@ -55,7 +87,11 @@
       "names": {
         "batman": "Damian",
         "transformers": "Blurr",
-        "justice-league": "Hawkgirl"
+        "justice-league": "Hawkgirl",
+        "programmers": "Berners-Lee",
+        "scientists": "Bohr",
+        "mathematicians": "Aryabhata",
+        "philosophers": "Chanakya"
       }
     },
     {
@@ -64,7 +100,11 @@
       "names": {
         "batman": "Batman",
         "transformers": "Optimus Prime",
-        "justice-league": "Batman"
+        "justice-league": "Batman",
+        "programmers": "Turing",
+        "scientists": "Einstein",
+        "mathematicians": "Gauss",
+        "philosophers": "Aristotle"
       }
     },
     {
@@ -73,7 +113,11 @@
       "names": {
         "batman": "Lucius",
         "transformers": "Ironhide",
-        "justice-league": "Superman"
+        "justice-league": "Superman",
+        "programmers": "Torvalds",
+        "scientists": "Newton",
+        "mathematicians": "Euler",
+        "philosophers": "Socrates"
       }
     },
     {
@@ -82,7 +126,11 @@
       "names": {
         "batman": "Bane",
         "transformers": "Grimlock",
-        "justice-league": "Shazam"
+        "justice-league": "Shazam",
+        "programmers": "Hamilton",
+        "scientists": "Franklin",
+        "mathematicians": "Hypatia",
+        "philosophers": "Simone"
       }
     },
     {
@@ -91,7 +139,11 @@
       "names": {
         "batman": "Nightwing",
         "transformers": "Sideswipe",
-        "justice-league": "Aquaman"
+        "justice-league": "Aquaman",
+        "programmers": "Ritchie",
+        "scientists": "Feynman",
+        "mathematicians": "Fermat",
+        "philosophers": "Nietzsche"
       }
     },
     {
@@ -100,7 +152,11 @@
       "names": {
         "batman": "Ra's al Ghul",
         "transformers": "Ratchet",
-        "justice-league": "Wonder Woman"
+        "justice-league": "Wonder Woman",
+        "programmers": "Hopper",
+        "scientists": "Curie",
+        "mathematicians": "Noether",
+        "philosophers": "Kant"
       }
     },
     {
@@ -109,7 +165,11 @@
       "names": {
         "batman": "Auto-merge",
         "transformers": "Jazz",
-        "justice-league": "Green Lantern"
+        "justice-league": "Green Lantern",
+        "programmers": "Stroustrup",
+        "scientists": "Kalam",
+        "mathematicians": "Brahmagupta",
+        "philosophers": "Vivekananda"
       }
     },
     {
@@ -118,7 +178,11 @@
       "names": {
         "batman": "Gordon",
         "transformers": "Wheeljack",
-        "justice-league": "Cyborg"
+        "justice-league": "Cyborg",
+        "programmers": "Kernighan",
+        "scientists": "Hawking",
+        "mathematicians": "Riemann",
+        "philosophers": "Laozi"
       }
     },
     {
@@ -127,7 +191,11 @@
       "names": {
         "batman": "Fleet doctor",
         "transformers": "Perceptor",
-        "justice-league": "Doctor Fate"
+        "justice-league": "Doctor Fate",
+        "programmers": "Lamport",
+        "scientists": "Tesla",
+        "mathematicians": "Erdos",
+        "philosophers": "Hume"
       }
     },
     {
@@ -136,7 +204,11 @@
       "names": {
         "batman": "Huntress",
         "transformers": "Arcee",
-        "justice-league": "Martian Manhunter"
+        "justice-league": "Martian Manhunter",
+        "programmers": "Wozniak",
+        "scientists": "Raman",
+        "mathematicians": "Bhaskara",
+        "philosophers": "Adi Shankara"
       }
     },
     {
@@ -145,7 +217,11 @@
       "names": {
         "batman": "Agent cleanup",
         "transformers": "Cosmos",
-        "justice-league": "Atom"
+        "justice-league": "Atom",
+        "programmers": "Knuth",
+        "scientists": "Mendel",
+        "mathematicians": "Cantor",
+        "philosophers": "Descartes"
       }
     },
     {
@@ -154,7 +230,11 @@
       "names": {
         "batman": "Memory harvest",
         "transformers": "Brainstorm",
-        "justice-league": "Zatanna"
+        "justice-league": "Zatanna",
+        "programmers": "Dijkstra",
+        "scientists": "Galileo",
+        "mathematicians": "Hilbert",
+        "philosophers": "Spinoza"
       }
     },
     {
@@ -163,7 +243,11 @@
       "names": {
         "batman": "Memory auto-promote",
         "transformers": "Chromia",
-        "justice-league": "Mister Miracle"
+        "justice-league": "Mister Miracle",
+        "programmers": "Liskov",
+        "scientists": "Maxwell",
+        "mathematicians": "Poincare",
+        "philosophers": "Aquinas"
       }
     },
     {
@@ -172,7 +256,11 @@
       "names": {
         "batman": "Code map",
         "transformers": "Beachcomber",
-        "justice-league": "Vixen"
+        "justice-league": "Vixen",
+        "programmers": "Thompson",
+        "scientists": "Pasteur",
+        "mathematicians": "Leibniz",
+        "philosophers": "Averroes"
       }
     },
     {
@@ -181,7 +269,11 @@
       "names": {
         "batman": "Morning brief",
         "transformers": "Prowl",
-        "justice-league": "Oracle"
+        "justice-league": "Oracle",
+        "programmers": "Cerf",
+        "scientists": "Bose",
+        "mathematicians": "Galois",
+        "philosophers": "Seneca"
       }
     },
     {
@@ -190,7 +282,11 @@
       "names": {
         "batman": "Fleet recap morning",
         "transformers": "Trailbreaker",
-        "justice-league": "Blue Beetle"
+        "justice-league": "Blue Beetle",
+        "programmers": "Engelbart",
+        "scientists": "Fermi",
+        "mathematicians": "Fibonacci",
+        "philosophers": "Epictetus"
       }
     },
     {
@@ -199,7 +295,11 @@
       "names": {
         "batman": "Fleet recap evening",
         "transformers": "Mirage",
-        "justice-league": "Black Canary"
+        "justice-league": "Black Canary",
+        "programmers": "Backus",
+        "scientists": "Sagan",
+        "mathematicians": "Pascal",
+        "philosophers": "Wittgenstein"
       }
     },
     {
@@ -208,7 +308,11 @@
       "names": {
         "batman": "Shipped summary daily",
         "transformers": "Sunstreaker",
-        "justice-league": "Hawkman"
+        "justice-league": "Hawkman",
+        "programmers": "Perlis",
+        "scientists": "Heisenberg",
+        "mathematicians": "Laplace",
+        "philosophers": "Hegel"
       }
     },
     {
@@ -217,7 +321,11 @@
       "names": {
         "batman": "Shipped summary weekly",
         "transformers": "Wheelie",
-        "justice-league": "Booster Gold"
+        "justice-league": "Booster Gold",
+        "programmers": "McCarthy",
+        "scientists": "Planck",
+        "mathematicians": "Shakuntala",
+        "philosophers": "Locke"
       }
     },
     {
@@ -226,7 +334,11 @@
       "names": {
         "batman": "Telemetry",
         "transformers": "Blaster",
-        "justice-league": "Firestorm"
+        "justice-league": "Firestorm",
+        "programmers": "Sutherland",
+        "scientists": "Rutherford",
+        "mathematicians": "Kolmogorov",
+        "philosophers": "Voltaire"
       }
     }
   ]

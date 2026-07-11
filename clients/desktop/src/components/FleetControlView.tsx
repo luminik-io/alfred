@@ -10,11 +10,18 @@ import {
   type FleetControlRow,
   type FleetServiceState,
 } from "../lib/fleetControl";
-import { agentProfile, type AgentProfile } from "../lib/agentProfile";
 import {
+  agentProfileFromIdentity,
+  type AgentProfile,
+  roleSourceForRow,
+} from "../lib/agentProfile";
+import {
+  buildThemedRoster,
   type CustomRosterNames,
   DEFAULT_ROSTER_THEME,
   EMPTY_CUSTOM_NAMES,
+  normalizeCodename,
+  resolveThemedIdentity,
   type RosterThemeId,
 } from "../lib/agentThemes";
 import type { NativeActionRequest } from "../lib/uiTypes";
@@ -86,13 +93,30 @@ export function FleetControlView({
   const canRun = supportsNativeActions();
   const rows = buildFleetRows(agents, service);
   const scheduleByCodename = useMemo(() => scheduleMap(schedule || []), [schedule]);
+  // Resolve the WHOLE roster's themed names in one pass so no two agents ever
+  // share a display name (the product rule), even on a legacy install where
+  // several agents derive the same role. Keyed by normalized codename.
+  const themedRoster = useMemo(
+    () =>
+      buildThemedRoster(
+        rows.map((row) => roleSourceForRow(row, scheduleFor(scheduleByCodename, row.codename))),
+        rosterTheme,
+        customNames,
+      ),
+    [rows, scheduleByCodename, rosterTheme, customNames],
+  );
   // Theme-bound profile resolver so the list rows and the drawer render the same
   // themed name + plain role label as the canvas, with the two-arg call shape
-  // those call sites already use.
+  // those call sites already use. Each agent's identity comes from the roster-wide
+  // unique-name pass; a row not in that pass (defensive) resolves standalone.
   const themedProfile = useCallback(
-    (row: FleetControlRow, sched?: ScheduledRun) =>
-      agentProfile(row, sched, rosterTheme, customNames),
-    [rosterTheme, customNames],
+    (row: FleetControlRow, sched?: ScheduledRun) => {
+      const identity =
+        themedRoster.get(normalizeCodename(row.codename)) ??
+        resolveThemedIdentity(roleSourceForRow(row, sched), rosterTheme, customNames);
+      return agentProfileFromIdentity(row, sched, identity, rosterTheme, customNames);
+    },
+    [themedRoster, rosterTheme, customNames],
   );
   const health = deriveFleetHealth(rows);
   const stats = agentStats(rows);
