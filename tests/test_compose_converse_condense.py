@@ -68,6 +68,11 @@ def test_converse_engine_detects_installed_subscription_clis(monkeypatch) -> Non
     monkeypatch.delenv(cc.ENGINE_ENV, raising=False)
     monkeypatch.delenv(cc.FALLBACK_ENGINE_ENV, raising=False)
     monkeypatch.delenv("ALFRED_ENGINE", raising=False)
+    # Register the invocation-path variables with monkeypatch before the
+    # production resolver seeds them, so teardown cannot leak fake CLI paths
+    # into later subprocess tests in the full suite.
+    monkeypatch.setenv("CLAUDE_BIN", "")
+    monkeypatch.setenv("CODEX_BIN", "")
 
     monkeypatch.setattr(
         cc,
@@ -75,6 +80,8 @@ def test_converse_engine_detects_installed_subscription_clis(monkeypatch) -> Non
         lambda: {"claude": "/bin/claude", "codex": "/bin/codex"},
     )
     assert cc.converse_engine_from_env() == "hybrid"
+    assert cc.os.environ["CLAUDE_BIN"] == "/bin/claude"
+    assert cc.os.environ["CODEX_BIN"] == "/bin/codex"
 
     monkeypatch.setattr(cc, "_available_engine_clis", lambda: {"codex": "/bin/codex"})
     assert cc.converse_engine_from_env() == "codex"
