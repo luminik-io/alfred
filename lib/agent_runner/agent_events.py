@@ -105,6 +105,16 @@ class EventType(enum.StrEnum):
     CLAUDE_INVOKE_DONE = "claude_invoke_done"
     LLM_FALLBACK = "llm_fallback"
 
+    # -- push / CI / merge-gate auto-recovery ------------------------------
+    # A firing's push/CI/merge-gate step failed and the runner ran bounded
+    # recovery before the preserve/HOLD fallback. These are distinct so proof /
+    # telemetry can count self-healed runs (RECOVERY_SUCCEEDED) against attempts
+    # and never-recover / disabled skips. Emitted by the recovery dispatcher.
+    RECOVERY_ATTEMPTED = "recovery_attempted"
+    RECOVERY_SUCCEEDED = "recovery_succeeded"
+    RECOVERY_EXHAUSTED = "recovery_exhausted"
+    RECOVERY_SKIPPED = "recovery_skipped"
+
     # -- review / triage ----------------------------------------------------
     REVIEW_POSTED = "review_posted"
     TRIAGED = "triaged"

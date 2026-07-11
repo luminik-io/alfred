@@ -288,6 +288,21 @@ from .process import (
 )
 
 # --------------------------------------------------------------------------
+# Bounded auto-recovery for the push / CI / merge-gate step of a firing
+# --------------------------------------------------------------------------
+from .recovery import (
+    RECOVERABLE,
+    RecoveryCategory,
+    RecoveryOutcome,
+    build_recovery_prompt,
+    classify_failure,
+    is_recoverable,
+    recovery_enabled,
+    recovery_max_attempts,
+    run_recovery,
+)
+
+# --------------------------------------------------------------------------
 # Reliability: classification, retry/backoff, circuit breaker, loop detection
 # --------------------------------------------------------------------------
 from .reliability import (
@@ -445,6 +460,16 @@ __all__ = [
     "retry_after_seconds",
     "retry_with_backoff",
     "step_fingerprint",
+    # recovery
+    "RECOVERABLE",
+    "RecoveryCategory",
+    "RecoveryOutcome",
+    "build_recovery_prompt",
+    "classify_failure",
+    "is_recoverable",
+    "recovery_enabled",
+    "recovery_max_attempts",
+    "run_recovery",
     # result
     "ClaudeResult",
     "STOP_REASON_FAIL",
