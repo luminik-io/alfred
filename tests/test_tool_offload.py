@@ -94,6 +94,22 @@ def test_unknown_bucket_symlink_cannot_escape_firings_root(tmp_path: Path) -> No
     assert not (outside / "tool-output").exists()
 
 
+def test_firing_symlink_escape_is_rejected_instead_of_rebucketed(tmp_path: Path) -> None:
+    firings_root = tmp_path / "state" / "firings"
+    outside = tmp_path / "outside"
+    firings_root.mkdir(parents=True)
+    outside.mkdir()
+    (firings_root / "fire-1").symlink_to(outside, target_is_directory=True)
+
+    result = to.offload(_big(), firing_id="fire-1", env=_env(tmp_path))
+
+    assert result.applied is False
+    assert result.reason == "unsafe_path"
+    assert result.path is None
+    assert not (firings_root / "unknown").exists()
+    assert not (outside / "tool-output").exists()
+
+
 # --------------------------------------------------------------------------
 # Preview / pointer format
 # --------------------------------------------------------------------------

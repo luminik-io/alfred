@@ -123,8 +123,6 @@ def firing_offload_dir(firing_id: str | None, env: Mapping[str, str] | None = No
     root = _firings_root(resolved).resolve()
     directory = (root / _safe_firing_id(firing_id) / "tool-output").resolve()
     if root not in directory.parents:
-        directory = (root / _UNKNOWN_FIRING / "tool-output").resolve()
-    if root not in directory.parents:
         raise ValueError("offload directory escapes firings root")
     return directory
 
