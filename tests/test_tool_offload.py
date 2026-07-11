@@ -79,6 +79,21 @@ def test_missing_firing_id_uses_unknown_bucket(tmp_path: Path) -> None:
     assert "unknown" in (result.path or "")
 
 
+def test_unknown_bucket_symlink_cannot_escape_firings_root(tmp_path: Path) -> None:
+    firings_root = tmp_path / "state" / "firings"
+    outside = tmp_path / "outside"
+    firings_root.mkdir(parents=True)
+    outside.mkdir()
+    (firings_root / "unknown").symlink_to(outside, target_is_directory=True)
+
+    result = to.offload(_big(), firing_id="..", env=_env(tmp_path))
+
+    assert result.applied is False
+    assert result.reason == "unsafe_path"
+    assert result.path is None
+    assert not (outside / "tool-output").exists()
+
+
 # --------------------------------------------------------------------------
 # Preview / pointer format
 # --------------------------------------------------------------------------

@@ -123,7 +123,9 @@ def firing_offload_dir(firing_id: str | None, env: Mapping[str, str] | None = No
     root = _firings_root(resolved).resolve()
     directory = (root / _safe_firing_id(firing_id) / "tool-output").resolve()
     if root not in directory.parents:
-        directory = root / _UNKNOWN_FIRING / "tool-output"
+        directory = (root / _UNKNOWN_FIRING / "tool-output").resolve()
+    if root not in directory.parents:
+        raise ValueError("offload directory escapes firings root")
     return directory
 
 
@@ -265,7 +267,10 @@ def offload(
         return OffloadResult(False, full_text, None, 0, 0, "disabled")
 
     payload = full_text.encode("utf-8")
-    directory = firing_offload_dir(firing_id, resolved)
+    try:
+        directory = firing_offload_dir(firing_id, resolved)
+    except ValueError:
+        return OffloadResult(False, full_text, None, 0, 0, "unsafe_path")
     max_bytes = max(
         0, _env_int(resolved, "ALFRED_TOOL_OFFLOAD_MAX_BYTES", DEFAULT_MAX_BYTES_PER_FIRING)
     )
