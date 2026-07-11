@@ -328,6 +328,16 @@ def test_cli_memory_stub_table(capsys):
     assert "memory OFF" in out and "memory ON" in out
 
 
+def test_cli_prioritizes_checkout_lib_over_deployed_runtime(tmp_path: Path, monkeypatch):
+    runtime = tmp_path / "runtime"
+    (runtime / "lib").mkdir(parents=True)
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+
+    _load_cli()
+
+    assert sys.path[0] == str(REPO_ROOT / "lib")
+
+
 def test_cli_memory_stub_json(capsys):
     cli = _load_cli()
     rc = cli.main(["memory", "--stub", "--json"])
