@@ -25,17 +25,32 @@ const THREADS: RecentThread[] = [
 describe("RecentThreads", () => {
   it("closes through the Sheet lifecycle when a deletion leaves one chat", async () => {
     const user = userEvent.setup();
+    const fallback = document.createElement("button");
+    document.body.append(fallback);
+    const onRetireFocus = vi.fn(() => fallback.focus());
     const view = render(
-      <RecentThreads threads={THREADS} onResume={vi.fn()} onDelete={vi.fn()} />,
+      <RecentThreads
+        threads={THREADS}
+        onResume={vi.fn()}
+        onDelete={vi.fn()}
+        onRetireFocus={onRetireFocus}
+      />,
     );
     await user.click(screen.getByRole("button", { name: /recent/i }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
     view.rerender(
-      <RecentThreads threads={[THREADS[0]]} onResume={vi.fn()} onDelete={vi.fn()} />,
+      <RecentThreads
+        threads={[THREADS[0]]}
+        onResume={vi.fn()}
+        onDelete={vi.fn()}
+        onRetireFocus={onRetireFocus}
+      />,
     );
 
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(onRetireFocus).toHaveBeenCalledOnce();
+    expect(fallback).toHaveFocus();
     expect(screen.queryByRole("button", { name: /recent/i })).not.toBeInTheDocument();
   });
 });

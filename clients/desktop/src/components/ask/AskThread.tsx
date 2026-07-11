@@ -62,6 +62,9 @@ export function ComposeView({
   const ask = useAskThread({ baseUrl, selectedRepos });
 
   const onOpenWork = useCallback(() => onSwitch("pipeline"), [onSwitch]);
+  const focusComposer = useCallback(() => {
+    document.getElementById("ask-input")?.focus();
+  }, []);
 
   const messageContext: AskMessageContext = {
     busy: ask.busy,
@@ -154,6 +157,7 @@ export function ComposeView({
                   threads={ask.recentThreads}
                   onResume={ask.resumeConversation}
                   onDelete={ask.deleteThread}
+                  onRetireFocus={focusComposer}
                 />
                 <button
                   className="ghost-button ask__reset"

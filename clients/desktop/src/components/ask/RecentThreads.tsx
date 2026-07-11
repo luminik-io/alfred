@@ -28,22 +28,28 @@ export function RecentThreads({
   threads,
   onResume,
   onDelete,
+  onRetireFocus,
 }: {
   threads: RecentThread[];
   onResume: (id: string) => void;
   onDelete?: (id: string) => void;
+  onRetireFocus?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [retiring, setRetiring] = useState(false);
 
   // A delete can shrink the list to only the active chat while the Sheet is
   // open. Keep it mounted for that close transition so Radix can restore focus
   // and release its dialog state before the trigger disappears.
   useEffect(() => {
-    if (threads.length <= 1 && open) setOpen(false);
+    if (threads.length <= 1 && open) {
+      setRetiring(true);
+      setOpen(false);
+    }
   }, [open, threads.length]);
 
   // Nothing to switch to until there is more than the active thread.
-  if (threads.length <= 1 && !open) return null;
+  if (threads.length <= 1 && !open && !retiring) return null;
 
   const resume = (id: string) => {
     onResume(id);
@@ -58,7 +64,16 @@ export function RecentThreads({
           <span>Recent</span>
         </button>
       </SheetTrigger>
-      <SheetContent side="right" className="ask__history-panel">
+      <SheetContent
+        side="right"
+        className="ask__history-panel"
+        onCloseAutoFocus={(event) => {
+          if (!retiring) return;
+          event.preventDefault();
+          onRetireFocus?.();
+          setRetiring(false);
+        }}
+      >
         <SheetHeader className="ask__history-head">
           <SheetTitle>Recent chats</SheetTitle>
           <SheetDescription>
