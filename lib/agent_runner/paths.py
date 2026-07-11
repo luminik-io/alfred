@@ -31,6 +31,8 @@ from datetime import UTC, datetime
 from fnmatch import fnmatchcase
 from pathlib import Path
 
+from envflags import FALSY_VALUES, TRUTHY_VALUES
+
 # --------------------------------------------------------------------------
 # Operator home + workspace
 # --------------------------------------------------------------------------
@@ -376,11 +378,11 @@ def _runtime_stop_control_active(key: str, value: str) -> bool:
     if not token:
         return False
     if key in {"ALFRED_AUTO_PROMOTE", "ALFRED_AUTO_PROMOTE_LLM_JUDGE"}:
-        return token not in {"1", "true", "yes", "on", "enabled"}
+        return token not in TRUTHY_VALUES
     if key == "ALFRED_AUTO_PROMOTE_KILL":
-        return token not in {"0", "false", "no", "off", "disabled"}
+        return token not in FALSY_VALUES
     if key == "ALFRED_TELEMETRY_ENABLED":
-        return token not in {"1", "true", "yes", "on", "enabled"}
+        return token not in TRUTHY_VALUES
     return False
 
 

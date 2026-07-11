@@ -32,6 +32,8 @@ import os
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any, Protocol
 
+from envflags import FALSY_VALUES, truthy
+
 # Bounds. All overridable by the caller, but the defaults keep the grounding
 # block small enough to sit inside a single-turn prompt without crowding out the
 # repo grounding or the conversation transcript.
@@ -67,7 +69,11 @@ def operational_grounding_enabled() -> bool:
     raw = (os.environ.get(ENV_ENABLED) or "").strip().lower()
     if not raw:
         return True
-    return raw in {"1", "true", "yes", "on"}
+    if truthy(raw):
+        return True
+    if raw in FALSY_VALUES:
+        return False
+    return False
 
 
 def build_operational_grounding(

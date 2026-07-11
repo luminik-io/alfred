@@ -37,6 +37,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
+from envflags import truthy
+
 # Env knobs (12-factor; all optional with safe defaults).
 ENV_ENABLED = "ALFRED_ISSUE_SUMMARY_ENABLED"
 ENV_TIMEOUT = "ALFRED_ISSUE_SUMMARY_TIMEOUT"
@@ -263,7 +265,7 @@ def _resolve_max_chars(override: int | None) -> int:
 
 
 def _env_flag(name: str) -> bool:
-    return (os.environ.get(name) or "").strip().lower() in {"1", "true", "yes", "on"}
+    return truthy(os.environ.get(name))
 
 
 def _env_int(name: str, default: int) -> int:

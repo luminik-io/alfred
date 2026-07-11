@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Any
 
 import skill_packs
+from envflags import FALSY_VALUES
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,7 @@ _REPO_LOCAL_MAP_COMMA_BOUNDARY_RE = re.compile(
 # spawn): the golden path needs at least one of these signed-in subscription
 # CLIs, never an API key paste.
 _ENGINE_BINS = ("claude", "codex")
-_FALSEY = {"0", "false", "no", "off", ""}
+_FALSEY = FALSY_VALUES | {""}
 _CODE_MEMORY_BIN_NAME = "codebase-memory-mcp"
 _CODE_MEMORY_LAUNCHER = Path(__file__).resolve().parents[2] / "bin" / "code-memory-mcp"
 _CODE_MEMORY_VERSION_RE = re.compile(

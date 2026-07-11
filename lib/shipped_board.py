@@ -28,6 +28,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from agent_runner.paths import config_value
+from envflags import truthy
 
 # Directories where the ``gh`` binary commonly lives. The fleet's cron plists
 # already render these into PATH, but the local server is hand-submitted via
@@ -105,10 +106,6 @@ _DEFAULT_AGENT_BRANCH_PREFIXES = (
 )
 
 
-def _truthy(raw: str | None) -> bool:
-    return (raw or "").strip().lower() in {"1", "true", "yes", "on"}
-
-
 def _csv_env(name: str, default: tuple[str, ...] = ()) -> tuple[str, ...]:
     raw = os.environ.get(name, "").strip()
     if raw:
@@ -141,7 +138,7 @@ def _queue_include_hints() -> tuple[str, ...]:
 def _in_progress_requires_agent_evidence() -> bool:
     """True when open PRs need Alfred evidence before counting as in progress."""
     raw = os.environ.get("ALFRED_IN_PROGRESS_REQUIRE_AGENT_EVIDENCE")
-    return not (raw is not None and not _truthy(raw))
+    return not (raw is not None and not truthy(raw))
 
 
 def _shipped_label_hints() -> tuple[str, ...]:

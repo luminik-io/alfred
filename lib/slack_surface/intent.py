@@ -50,6 +50,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from envflags import FALSY_VALUES, truthy
+
 # Env knobs (12-factor; all optional with safe defaults).
 ENV_ENABLED = "ALFRED_INTENT_ROUTER_ENABLED"
 ENV_TIMEOUT = "ALFRED_INTENT_ROUTER_TIMEOUT"
@@ -1448,17 +1450,17 @@ def _resolve_min_confidence(override: float | None) -> float:
 def _env_flag(name: str, *, default: bool = False) -> bool:
     """Read a boolean env var with an explicit default.
 
-    Returns ``default`` when the var is unset or blank, ``True`` for
-    ``1/true/yes/on`` and ``False`` for ``0/false/no/off`` (case-insensitive).
+    Returns ``default`` when the var is unset or blank, ``True`` for canonical
+    true tokens and ``False`` for canonical false tokens (case-insensitive).
     Any other non-blank value falls back to ``default``. Callers that pass no
     ``default`` keep the original off-unless-truthy behavior.
     """
     raw = (os.environ.get(name) or "").strip().lower()
     if not raw:
         return default
-    if raw in {"1", "true", "yes", "on"}:
+    if truthy(raw):
         return True
-    if raw in {"0", "false", "no", "off"}:
+    if raw in FALSY_VALUES:
         return False
     return default
 

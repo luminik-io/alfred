@@ -39,6 +39,7 @@ import sys
 from pathlib import Path
 
 import goals
+from envflags import truthy
 
 # Env knob that arms the whole bridge. OFF by default: a host that does not
 # set this behaves exactly as it does today, regardless of ledger contents.
@@ -64,8 +65,7 @@ def goal_wiring_enabled() -> bool:
     other entry point short-circuits to a no-op so the firing is byte-for-byte
     what it is today.
     """
-    value = os.environ.get(GOAL_WIRING_ENV)
-    return bool(value and value.strip().lower() not in {"", "0", "false", "no", "off"})
+    return truthy(os.environ.get(GOAL_WIRING_ENV))
 
 
 def _normalize_repo(repo: str) -> str:

@@ -34,6 +34,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from envflags import truthy
+
 # --------------------------------------------------------------------------- #
 # Vocabulary
 # --------------------------------------------------------------------------- #
@@ -56,7 +58,6 @@ STATUS_NOT_INSTALLED = "not_installed"  # needs a pip extra / autofetch / daemon
 # Sentinel used by ``enable_flag`` for "any truthy value counts as on".
 _ANY_TRUTHY = "__truthy__"
 
-_TRUTHY = {"1", "true", "yes", "on"}
 _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 # The memory provider chain is a comma-separated CONSULT ORDER, not a single
@@ -72,10 +73,6 @@ DEFAULT_PROVIDER_CHAIN: tuple[str, ...] = ("sqlite", "fleet")
 # least one of these, so disabling a store never leaves a chain that cannot
 # recall (e.g. a bare "fleet" ledger).
 STORE_PROVIDERS = frozenset({"sqlite", "sqlite_hybrid", "redis", "pgvector"})
-
-
-def _truthy(value: str) -> bool:
-    return value.strip().lower() in _TRUTHY
 
 
 # --------------------------------------------------------------------------- #
@@ -511,7 +508,7 @@ def is_enabled(battery: Battery, env: Mapping[str, str]) -> bool:
         return False
     current = env.get(key, "")
     if expected == _ANY_TRUTHY:
-        return _truthy(current)
+        return truthy(current)
     return current == expected
 
 

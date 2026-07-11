@@ -54,6 +54,7 @@ from compose_converse import (
     ConverseMessage,
     ConverseTurn,
 )
+from envflags import FALSY_VALUES, truthy
 
 from slack_surface.posting import SlackPoster
 
@@ -1181,17 +1182,17 @@ def _parse_channels(raw: str | None) -> list[str]:
 def _env_flag(name: str, *, default: bool = False) -> bool:
     """Read a boolean env var with an explicit default.
 
-    Returns ``default`` when unset/blank, ``True`` for ``1/true/yes/on`` and
-    ``False`` for ``0/false/no/off`` (case-insensitive). Any other non-blank
+    Returns ``default`` when unset/blank, ``True`` for canonical true tokens and
+    ``False`` for canonical false tokens (case-insensitive). Any other non-blank
     value falls back to ``default``. Mirrors ``slack_surface.intent._env_flag`` so the
     converse enable flag and the intent-router flag read env the same way.
     """
     raw = (os.environ.get(name) or "").strip().lower()
     if not raw:
         return default
-    if raw in {"1", "true", "yes", "on"}:
+    if truthy(raw):
         return True
-    if raw in {"0", "false", "no", "off"}:
+    if raw in FALSY_VALUES:
         return False
     return default
 

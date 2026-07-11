@@ -61,6 +61,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from envflags import truthy
+
 __all__ = [
     "SUMMARY_ROLE",
     "CondensationRecord",
@@ -162,8 +164,14 @@ class CondenserConfig:
         opening task and a live tail are always preserved.
         """
         source = os.environ if env is None else env
+        enabled_raw = source.get(ENV_ENABLED)
+        enabled = (
+            DEFAULT_ENABLED
+            if enabled_raw is None or not enabled_raw.strip()
+            else truthy(enabled_raw)
+        )
         return cls(
-            enabled=_truthy(source.get(ENV_ENABLED), default=DEFAULT_ENABLED),
+            enabled=enabled,
             keep_first=_clamp_int(source.get(ENV_KEEP_FIRST), DEFAULT_KEEP_FIRST, minimum=1),
             keep_last=_clamp_int(source.get(ENV_KEEP_LAST), DEFAULT_KEEP_LAST, minimum=1),
             trigger_turns=_clamp_int(
@@ -498,15 +506,9 @@ def with_summary_in_role(result: CondensationResult, *, as_role: str) -> Condens
 
 
 # --------------------------------------------------------------------------
-# Small env / string helpers (mirrors agent_runner.config conventions without
-# importing the runtime, so the condenser stays dependency-light and reusable).
+# Small env / string helpers. The condenser uses the shared env flag parser
+# directly so it stays dependency-light and reusable.
 # --------------------------------------------------------------------------
-
-
-def _truthy(raw: str | None, *, default: bool) -> bool:
-    if raw is None or not raw.strip():
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _clamp_int(raw: str | None, default: int, *, minimum: int, maximum: int | None = None) -> int:

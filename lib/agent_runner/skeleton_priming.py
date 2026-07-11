@@ -27,6 +27,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from envflags import truthy
+
 __all__ = [
     "SKELETON_PRIMING_ENV",
     "skeleton_priming_block",
@@ -36,7 +38,6 @@ __all__ = [
 SKELETON_PRIMING_ENV = "ALFRED_SKELETON_PRIMING"
 
 _DEFAULT_MAX_FILES = 6
-_FALSEY = {"0", "false", "no", "off", ""}
 
 CONTEXT_HEADER = "## Orientation skeletons (structure only, bodies elided)"
 
@@ -49,7 +50,7 @@ def skeleton_priming_enabled(env: Mapping[str, str] | None = None) -> bool:
     """
     resolved = os.environ if env is None else env
     raw = resolved.get(SKELETON_PRIMING_ENV)
-    return bool(raw and raw.strip().lower() not in _FALSEY)
+    return truthy(raw)
 
 
 def _env_int(env: Mapping[str, str], key: str, default: int) -> int:
