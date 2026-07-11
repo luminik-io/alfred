@@ -29,7 +29,7 @@ Design contract (mirrors ``compose_converse.build_repo_grounding``):
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any, Protocol
 
 # Bounds. All overridable by the caller, but the defaults keep the grounding
@@ -106,6 +106,49 @@ def build_operational_grounding(
     if not sections:
         return ""
     return "\n\n".join(sections)
+
+
+def build_engine_grounding(
+    engines: Iterable[Mapping[str, Any]],
+    *,
+    conversation_engine: str,
+) -> str:
+    """Render the live CLI inventory without guessing model names.
+
+    Setup owns engine detection, so conversation surfaces should use its result
+    when answering capability questions. The selected conversation route is a
+    separate fact: hybrid means Claude first with Codex fallback, while an
+    installed CLI may still be available to scheduled roles even when this turn
+    uses the other engine.
+    """
+    installed: list[str] = []
+    seen: set[str] = set()
+    labels = {"claude": "Claude Code", "codex": "Codex"}
+    for engine in engines:
+        if not engine.get("installed"):
+            continue
+        name = str(engine.get("name") or "").strip().lower()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        installed.append(labels.get(name, name))
+    if not installed:
+        return ""
+
+    route = (conversation_engine or "").strip().lower()
+    route_label = {
+        "hybrid": "hybrid (Claude Code first, Codex fallback)",
+        "claude": "Claude Code",
+        "codex": "Codex",
+    }.get(route, route or "not reported")
+    available = ", ".join(installed)
+    return (
+        "### Coding engines (live)\n\n"
+        f"- Installed and available to Alfred: {available}.\n"
+        f"- This conversation route: {route_label}.\n"
+        "- Scheduled roles may choose either installed engine independently. "
+        "Do not invent a model name or version that is not listed here."
+    )
 
 
 def _render_agents(agents: list[Any], *, limit: int) -> str:
@@ -233,6 +276,7 @@ __all__ = [
     "DEFAULT_FIRINGS_LIMIT",
     "ENV_ENABLED",
     "OperationalReader",
+    "build_engine_grounding",
     "build_operational_grounding",
     "default_operational_reader_factory",
     "operational_grounding_enabled",

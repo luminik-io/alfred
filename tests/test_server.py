@@ -2613,6 +2613,42 @@ def test_compose_converse_absent_plain_falls_back_to_env_default(
     assert "Plain mode is on" in capture["intake_guidance"]
 
 
+def test_converse_grounding_includes_live_engine_inventory(monkeypatch) -> None:
+    from server import setup as setup_mod
+
+    monkeypatch.delenv("ALFRED_CONVERSE_OPERATIONAL_GROUNDING", raising=False)
+    monkeypatch.setattr(
+        setup_mod,
+        "engine_clis",
+        lambda: [
+            {"name": "claude", "installed": True, "path": "/bin/claude"},
+            {"name": "codex", "installed": True, "path": "/bin/codex"},
+        ],
+    )
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(reader=None)))
+
+    grounding = server_views._converse_operational_grounding(
+        request,
+        conversation_engine="hybrid",
+    )
+
+    assert "Installed and available to Alfred: Claude Code, Codex." in grounding
+    assert "hybrid (Claude Code first, Codex fallback)" in grounding
+
+
+def test_converse_grounding_respects_operational_grounding_off_switch(monkeypatch) -> None:
+    monkeypatch.setenv("ALFRED_CONVERSE_OPERATIONAL_GROUNDING", "0")
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(reader=None)))
+
+    assert (
+        server_views._converse_operational_grounding(
+            request,
+            conversation_engine="hybrid",
+        )
+        == ""
+    )
+
+
 def test_compose_converse_degrades_when_no_engine_configured(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
