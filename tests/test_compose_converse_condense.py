@@ -42,6 +42,8 @@ _VALID_TURN_JSON = (
 def test_converse_engine_prefers_explicit_configuration(monkeypatch) -> None:
     monkeypatch.setenv(cc.ENGINE_ENV, "codex")
     monkeypatch.setenv("ALFRED_ENGINE", "claude")
+    monkeypatch.setenv("CLAUDE_BIN", "")
+    monkeypatch.setenv("CODEX_BIN", "")
     monkeypatch.setattr(
         cc,
         "_available_engine_clis",
@@ -49,12 +51,16 @@ def test_converse_engine_prefers_explicit_configuration(monkeypatch) -> None:
     )
 
     assert cc.converse_engine_from_env() == "codex"
+    assert cc.os.environ["CLAUDE_BIN"] == "/bin/claude"
+    assert cc.os.environ["CODEX_BIN"] == "/bin/codex"
 
 
-def test_converse_engine_uses_fleet_choice_before_detection(monkeypatch) -> None:
+def test_converse_engine_hydrates_cli_paths_before_using_fleet_choice(monkeypatch) -> None:
     monkeypatch.delenv(cc.ENGINE_ENV, raising=False)
     monkeypatch.delenv(cc.FALLBACK_ENGINE_ENV, raising=False)
     monkeypatch.setenv("ALFRED_ENGINE", "codex")
+    monkeypatch.setenv("CLAUDE_BIN", "")
+    monkeypatch.setenv("CODEX_BIN", "")
     monkeypatch.setattr(
         cc,
         "_available_engine_clis",
@@ -62,6 +68,8 @@ def test_converse_engine_uses_fleet_choice_before_detection(monkeypatch) -> None
     )
 
     assert cc.converse_engine_from_env() == "codex"
+    assert cc.os.environ["CLAUDE_BIN"] == "/bin/claude"
+    assert cc.os.environ["CODEX_BIN"] == "/bin/codex"
 
 
 def test_converse_engine_detects_installed_subscription_clis(monkeypatch) -> None:

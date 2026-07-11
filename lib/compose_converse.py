@@ -1597,6 +1597,12 @@ def converse_engine_from_env() -> str:
     Hosts without either CLI retain the deterministic no-engine path.
     """
 
+    detected = _available_engine_clis()
+    for name, path in detected.items():
+        env_name = f"{name.upper()}_BIN"
+        if path and not os.environ.get(env_name, "").strip():
+            os.environ[env_name] = path
+
     configured = (
         os.environ.get(ENGINE_ENV)
         or os.environ.get(FALLBACK_ENGINE_ENV)
@@ -1606,11 +1612,6 @@ def converse_engine_from_env() -> str:
     if configured:
         return configured
 
-    detected = _available_engine_clis()
-    for name, path in detected.items():
-        env_name = f"{name.upper()}_BIN"
-        if path and not os.environ.get(env_name, "").strip():
-            os.environ[env_name] = path
     claude_ready = "claude" in detected
     codex_ready = "codex" in detected
     if claude_ready and codex_ready:
