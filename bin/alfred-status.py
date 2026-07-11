@@ -468,10 +468,12 @@ def _record_disabled(record: AgentRecord) -> bool:
     )
 
 
-def _runtime_noop_markers(record: AgentRecord) -> set[Path]:
-    """Return markers for scheduled and direct implementation invocations."""
+def _noop_markers(record: AgentRecord) -> set[Path]:
+    """Return durable and runtime markers for every supported identity."""
     implementation = Path(record.script).stem
     return {
+        STATE_ROOT / record.codename / "last-noop",
+        STATE_ROOT / implementation / "last-noop",
         agent_runner.runtime_noop_marker_path(record.codename),
         agent_runner.runtime_noop_marker_path(implementation),
     }
@@ -491,7 +493,6 @@ def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnap
 
     stdout_path = Path(f"/tmp/{record.log_stem}.stdout")
     stderr_path = Path(f"/tmp/{record.log_stem}.stderr")
-    noop_marker = STATE_ROOT / record.codename / "last-noop"
     last_fired = _iso(stdout_path.stat().st_mtime) if stdout_path.exists() else None
 
     events_dir = STATE_ROOT / record.codename / "events"
@@ -508,7 +509,7 @@ def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnap
     approval_wait = _approval_wait_status(record.codename)
 
     last_stderr_tail = None
-    marker_paths = {stdout_path, noop_marker, *_runtime_noop_markers(record)}
+    marker_paths = {stdout_path, *_noop_markers(record)}
     freshness_markers = [path.stat().st_mtime for path in marker_paths if path.exists()]
     stderr_is_fresh = stderr_path.exists() and (
         not freshness_markers or stderr_path.stat().st_mtime > max(freshness_markers)

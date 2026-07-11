@@ -755,7 +755,9 @@ def test_status_checks_themed_and_implementation_noop_markers():
         disabled=False,
     )
 
-    assert status._runtime_noop_markers(record) == {
+    assert status._noop_markers(record) == {
+        status.STATE_ROOT / "story-planner" / "last-noop",
+        status.STATE_ROOT / "spec-planner" / "last-noop",
         Path("/tmp/alfred.story-planner.noop"),
         Path("/tmp/alfred.spec-planner.noop"),
     }
