@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -17,16 +17,16 @@ import { describe, expect, it } from "vitest";
 // index.css is a thin manifest that @imports per-surface partials under
 // src/styles/ (the theme token blocks live in styles/tokens.css). Read the
 // whole desktop stylesheet so this guard finds the token blocks wherever a
-// structural split places them.
+// structural split places them. Partials are read in the manifest's own @import
+// order, so first-match parsing inspects the exact cascade the app loads rather
+// than filesystem iteration order.
 const srcDir = resolve(__dirname, "..");
-const stylesDir = resolve(srcDir, "styles");
 
 function readIndexCss(): string {
-  const parts = [readFileSync(resolve(srcDir, "index.css"), "utf8")];
-  for (const entry of readdirSync(stylesDir)) {
-    if (entry.endsWith(".css")) {
-      parts.push(readFileSync(resolve(stylesDir, entry), "utf8"));
-    }
+  const manifest = readFileSync(resolve(srcDir, "index.css"), "utf8");
+  const parts = [manifest];
+  for (const match of manifest.matchAll(/@import\s+"(\.\/[^"]+)"/g)) {
+    parts.push(readFileSync(resolve(srcDir, match[1]), "utf8"));
   }
   return parts.join("\n");
 }

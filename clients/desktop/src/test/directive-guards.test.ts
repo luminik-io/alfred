@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -18,16 +18,16 @@ import { PRIMARY_TABS } from "../lib/primaryTabs";
 // index.css is a thin manifest that @imports per-surface partials under
 // src/styles/. Read the whole desktop stylesheet (manifest + partials) so these
 // guards keep matching the real source of truth wherever a token or @import
-// happens to live after a structural split.
+// happens to live after a structural split. Partials are read in the manifest's
+// own @import order, so the guard sees the exact cascade the app loads rather
+// than filesystem iteration order.
 const srcDir = resolve(__dirname, "..");
-const stylesDir = resolve(srcDir, "styles");
 
 function readIndexCss(): string {
-  const parts = [readFileSync(resolve(srcDir, "index.css"), "utf8")];
-  for (const entry of readdirSync(stylesDir)) {
-    if (entry.endsWith(".css")) {
-      parts.push(readFileSync(resolve(stylesDir, entry), "utf8"));
-    }
+  const manifest = readFileSync(resolve(srcDir, "index.css"), "utf8");
+  const parts = [manifest];
+  for (const match of manifest.matchAll(/@import\s+"(\.\/[^"]+)"/g)) {
+    parts.push(readFileSync(resolve(srcDir, match[1]), "utf8"));
   }
   return parts.join("\n");
 }
