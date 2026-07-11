@@ -235,9 +235,32 @@ def test_no_branch_protection_rejects_approval_for_stale_head():
 
 
 def _fake_gh_json(view_payload, threads_payload, reviews_payload=None):
+    review_page = 0
+
     def _runner(cmd, default):
-        if any(str(arg).endswith("/reviews") for arg in cmd):
-            return reviews_payload if reviews_payload is not None else [[]]
+        nonlocal review_page
+        if any("reviews(first:100" in str(arg) for arg in cmd):
+            pages = reviews_payload if reviews_payload is not None else [[]]
+            if review_page >= len(pages):
+                return default
+            raw_nodes = pages[review_page]
+            nodes = [
+                {
+                    "author": item.get("user") or {},
+                    "state": item.get("state"),
+                    "submittedAt": item.get("submitted_at"),
+                    "commit": {"oid": item.get("commit_id")},
+                }
+                for item in raw_nodes
+            ]
+            review_page += 1
+            return {
+                "nodes": nodes,
+                "pageInfo": {
+                    "hasNextPage": review_page < len(pages),
+                    "endCursor": f"review-cursor-{review_page}",
+                },
+            }
         if "graphql" in cmd:
             if threads_payload is None:
                 return default
@@ -382,8 +405,8 @@ def test_collect_snapshot_paginates_all_review_threads():
     calls = []
 
     def _runner(cmd, default):
-        if any(str(arg).endswith("/reviews") for arg in cmd):
-            return [[]]
+        if any("reviews(first:100" in str(arg) for arg in cmd):
+            return {"nodes": [], "pageInfo": {"hasNextPage": False, "endCursor": None}}
         if "graphql" not in cmd:
             return view
         calls.append(cmd)
@@ -421,8 +444,8 @@ def test_collect_snapshot_fails_closed_on_incomplete_thread_pagination():
     }
 
     def _runner(cmd, default):
-        if any(str(arg).endswith("/reviews") for arg in cmd):
-            return [[]]
+        if any("reviews(first:100" in str(arg) for arg in cmd):
+            return {"nodes": [], "pageInfo": {"hasNextPage": False, "endCursor": None}}
         if "graphql" not in cmd:
             return view
         return {"nodes": [], "pageInfo": {"hasNextPage": True, "endCursor": None}}

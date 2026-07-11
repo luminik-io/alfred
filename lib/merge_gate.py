@@ -404,6 +404,19 @@ _REVIEW_THREADS_QUERY = (
     "}"
 )
 
+_REVIEWS_QUERY = (
+    "query($owner:String!,$name:String!,$num:Int!,$endCursor:String){"
+    " repository(owner:$owner,name:$name){"
+    "  pullRequest(number:$num){"
+    "   reviews(first:100,after:$endCursor){"
+    "    nodes{author{login} state submittedAt commit{oid}}"
+    "    pageInfo{hasNextPage endCursor}"
+    "   }"
+    "  }"
+    " }"
+    "}"
+)
+
 
 def _collect_reviews(
     repo: str,
@@ -413,44 +426,68 @@ def _collect_reviews(
     errors: list[str],
 ) -> list[Review]:
     """Fetch every review, including the reviewed commit, for fallback gating."""
-    _MISSING = object()
-    pages = gh_json(
-        [
+    owner, _, name = repo.partition("/")
+    if not owner or not name:
+        errors.append(f"invalid repo slug '{repo}'")
+        return []
+    reviews: list[Review] = []
+    cursor: str | None = None
+    while True:
+        _MISSING = object()
+        cmd = [
             "gh",
             "api",
-            "--paginate",
-            "--slurp",
-            f"/repos/{repo}/pulls/{pr_number}/reviews",
-        ],
-        _MISSING,
-    )
-    if (
-        pages is _MISSING
-        or not isinstance(pages, list)
-        or any(not isinstance(page, list) for page in pages)
-    ):
-        errors.append("could not read reviews from GitHub")
-        return []
-
-    reviews: list[Review] = []
-    for page in pages:
-        for item in page:
+            "graphql",
+            "-f",
+            f"query={_REVIEWS_QUERY}",
+            "-F",
+            f"owner={owner}",
+            "-F",
+            f"name={name}",
+            "-F",
+            f"num={pr_number}",
+            "--jq",
+            ".data.repository.pullRequest.reviews",
+        ]
+        if cursor is not None:
+            cmd[cmd.index("--jq") : cmd.index("--jq")] = ["-F", f"endCursor={cursor}"]
+        page = gh_json(cmd, _MISSING)
+        if page is _MISSING or not isinstance(page, dict):
+            errors.append("could not read reviews from GitHub")
+            return []
+        nodes = page.get("nodes")
+        page_info = page.get("pageInfo")
+        if not isinstance(nodes, list) or not isinstance(page_info, dict):
+            errors.append("received malformed review page from GitHub")
+            return []
+        for item in nodes:
             if not isinstance(item, dict):
                 errors.append("received malformed review data from GitHub")
                 return []
-            user = item.get("user") or {}
-            if not isinstance(user, dict):
+            author = item.get("author") or {}
+            commit = item.get("commit") or {}
+            if not isinstance(author, dict) or not isinstance(commit, dict):
                 errors.append("received malformed review data from GitHub")
                 return []
             reviews.append(
                 Review(
-                    author=str(user.get("login") or ""),
+                    author=str(author.get("login") or ""),
                     state=str(item.get("state") or ""),
-                    submitted_at=str(item.get("submitted_at") or ""),
-                    commit_id=str(item.get("commit_id") or ""),
+                    submitted_at=str(item.get("submittedAt") or ""),
+                    commit_id=str(commit.get("oid") or ""),
                 )
             )
-    return reviews
+        if page_info.get("hasNextPage") is False:
+            return reviews
+        next_cursor = page_info.get("endCursor")
+        if (
+            page_info.get("hasNextPage") is not True
+            or not isinstance(next_cursor, str)
+            or not next_cursor
+        ):
+            errors.append("review pagination was incomplete")
+            return []
+        cursor = next_cursor
 
 
 def _collect_review_threads(
