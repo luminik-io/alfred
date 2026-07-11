@@ -411,8 +411,6 @@ _GRAPHIFY_TOOLS = (
     "triage_prs",
 )
 
-_GRAPHIFY_PACKAGE = "graphifyy[mcp]==0.9.8"
-
 
 def _graphify_mcp_enabled() -> bool:
     """Off unless ALFRED_GRAPHIFY_MCP is explicitly truthy (opt-in)."""
@@ -438,9 +436,6 @@ def _graphify_command() -> tuple[str, list[str]] | None:
     installed = shutil.which("graphify-mcp")
     if installed and _graphify_entrypoint_works(installed):
         return installed, []
-    uvx = shutil.which("uvx")
-    if uvx:
-        return uvx, ["--from", _GRAPHIFY_PACKAGE, "graphify-mcp"]
     return None
 
 

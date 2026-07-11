@@ -1276,8 +1276,8 @@ def test_child_issue_body_carries_cross_repo_contract():
         assert _CONTRACT_HEADING in child.body, child.repo
         # Exactly one contract block per child (never double-appended).
         assert child.body.count(_CONTRACT_HEADING) == 1, child.repo
-        # Code-graph pointer is always present.
-        assert "code_memory" in child.body, child.repo
+        # Engine-neutral code-graph pointer is always present.
+        assert "active code-graph MCP tools" in child.body, child.repo
 
 
 def test_contract_lists_siblings_with_scopes():
@@ -1335,7 +1335,7 @@ Done when:
     for child in plan.children:
         assert _CONTRACT_HEADING in child.body
         assert "Sibling repos in this rollout" in child.body
-        assert "code_memory" in child.body
+        assert "active code-graph MCP tools" in child.body
         # No shared-interface section when none was supplied.
         assert "Shared interfaces and invariants" not in child.body
         assert "Landing order" not in child.body
@@ -1424,7 +1424,7 @@ def test_contract_reattached_once_after_operator_feedback():
     assert "myorg/nango" in repos
     for child in amended.children:
         assert child.body.count(_CONTRACT_HEADING) == 1, child.repo
-        assert "code_memory" in child.body
+        assert "active code-graph MCP tools" in child.body
     # The new child names an existing sibling, and shared interfaces carried over.
     nango = next(c for c in amended.children if c.repo == "myorg/nango")
     assert "myorg/backend" in nango.body

@@ -144,19 +144,19 @@ def test_graphify_battery_fallback_keeps_one_engine_for_unindexed_repo(
     assert "code_memory" in cfg["mcpServers"]
 
 
-def test_graphify_prefers_a_verified_installed_entrypoint_over_uvx(monkeypatch) -> None:
+def test_graphify_uses_a_verified_installed_entrypoint(monkeypatch) -> None:
     monkeypatch.delenv("ALFRED_GRAPHIFY_BIN", raising=False)
     monkeypatch.setattr(
         _proc.shutil,
         "which",
-        lambda name: f"/usr/local/bin/{name}" if name in {"graphify-mcp", "uvx"} else None,
+        lambda name: "/usr/local/bin/graphify-mcp" if name == "graphify-mcp" else None,
     )
     monkeypatch.setattr(_proc, "_graphify_entrypoint_works", lambda command: True)
 
     assert _proc._graphify_command() == ("/usr/local/bin/graphify-mcp", [])
 
 
-def test_graphify_uses_pinned_uvx_fallback_and_explicit_graph(monkeypatch, tmp_path: Path) -> None:
+def test_graphify_never_resolves_packages_during_a_firing(monkeypatch, tmp_path: Path) -> None:
     graph = tmp_path / "graphify-out" / "graph.json"
     graph.parent.mkdir(parents=True)
     graph.write_text('{"nodes": [], "links": []}', encoding="utf-8")
@@ -170,19 +170,7 @@ def test_graphify_uses_pinned_uvx_fallback_and_explicit_graph(monkeypatch, tmp_p
 
     server = _proc._graphify_mcp_server()
 
-    assert server == {
-        "graphify": {
-            "command": "/usr/local/bin/uvx",
-            "args": [
-                "--from",
-                "graphifyy[mcp]==0.9.8",
-                "graphify-mcp",
-                str(graph),
-                "--transport",
-                "stdio",
-            ],
-        }
-    }
+    assert server is None
 
 
 def test_graphify_expands_home_relative_graph_path(monkeypatch, tmp_path: Path) -> None:
@@ -196,13 +184,14 @@ def test_graphify_expands_home_relative_graph_path(monkeypatch, tmp_path: Path) 
     monkeypatch.setattr(
         _proc.shutil,
         "which",
-        lambda name: "/usr/local/bin/uvx" if name == "uvx" else None,
+        lambda name: "/usr/local/bin/graphify-mcp" if name == "graphify-mcp" else None,
     )
+    monkeypatch.setattr(_proc, "_graphify_entrypoint_works", lambda command: True)
 
     server = _proc._graphify_mcp_server(tmp_path)
 
     assert server is not None
-    assert server["graphify"]["args"][3] == str(graph)
+    assert server["graphify"]["args"][0] == str(graph)
 
 
 def test_graphify_tool_names_use_server_prefix() -> None:

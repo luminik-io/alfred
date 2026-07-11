@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -326,8 +327,13 @@ def test_enabling_a_code_graph_engine_atomically_disables_the_other() -> None:
     assert batteries.enable_values(code_memory, {})["ALFRED_GRAPHIFY_MCP"] == "0"
 
 
-def test_graphify_availability_requires_the_pinned_uvx_runtime(monkeypatch) -> None:
+def test_graphify_availability_requires_installed_cli_and_verified_mcp(monkeypatch) -> None:
     graphify = batteries.battery_by_id("graphify")
+    monkeypatch.setattr(
+        batteries.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0),
+    )
     monkeypatch.setattr(
         batteries.shutil,
         "which",
@@ -338,6 +344,6 @@ def test_graphify_availability_requires_the_pinned_uvx_runtime(monkeypatch) -> N
     monkeypatch.setattr(
         batteries.shutil,
         "which",
-        lambda name: "/usr/local/bin/uvx" if name == "uvx" else None,
+        lambda name: f"/usr/local/bin/{name}" if name in {"graphify", "graphify-mcp"} else None,
     )
     assert batteries.is_installed(graphify, {}) is True

@@ -2026,25 +2026,11 @@ def step_8c_batteries(state: WizardState, *, non_interactive: bool) -> None:
         print(f"    {_battery_requirement_line(battery)}")
         default_on = battery.id in selected
         if ask_yes_no(f"Enable {battery.name}?", default=default_on):
-            # Only one primary memory store at a time: refuse a second provider
-            # battery and tell the operator which one already holds the slot.
-            if battery.provider:
-                other = next(
-                    (
-                        bid
-                        for bid in selected
-                        if bid != battery.id
-                        and (other_b := batteries.battery_by_id(bid)) is not None
-                        and other_b.provider
-                    ),
-                    None,
-                )
-                if other is not None:
-                    warn(
-                        f"Only one primary memory store at a time. Keeping {other}; "
-                        f"skipping {battery.id}. Disable {other} first if you want {battery.id}."
-                    )
-                    continue
+            prospective = [*selected, battery.id] if battery.id not in selected else selected
+            conflict = batteries.selection_conflict(prospective)
+            if conflict:
+                warn(f"Skipping {battery.id}: {conflict}")
+                continue
             if battery.id not in selected:
                 selected.append(battery.id)
             if battery.requires_daemon:

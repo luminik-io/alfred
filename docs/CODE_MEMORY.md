@@ -392,7 +392,7 @@ Then enable it (or tick it in `alfred batteries` / the desktop battery picker):
 |---|---|---|
 | `ALFRED_GRAPHIFY_MCP` | `0` (off) | Attach graphify's read-only graph MCP to firings, taking the code-graph slot. |
 | `ALFRED_GRAPHIFY_FALLBACK` | unset (`code-memory` when enabled through the battery picker) | Explicit engine to use while a repo has no Graphify graph. Set `none` to leave the slot empty instead. |
-| `ALFRED_GRAPHIFY_BIN` | auto | Override the `graphify-mcp` executable path. Alfred otherwise uses the installed entrypoint or pinned `uvx` package. |
+| `ALFRED_GRAPHIFY_BIN` | auto | Override the `graphify-mcp` executable path. Alfred otherwise uses the installed entrypoint. Package installation happens during battery setup, never inside an agent firing. |
 | `ALFRED_GRAPHIFY_GRAPH` | `graphify-out/graph.json` | Graph file passed to the MCP server, relative to each firing's repo worktree unless absolute. |
 
 A firing serves the graph in its own working directory (`graphify-out/graph.json`),

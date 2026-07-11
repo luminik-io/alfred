@@ -536,7 +536,8 @@ def _graphify_available(env: Mapping[str, str]) -> bool:
     if override and Path(override).expanduser().exists():
         return True
     installed = shutil.which("graphify-mcp")
-    if installed:
+    cli = shutil.which("graphify")
+    if installed and cli:
         try:
             probe = subprocess.run(
                 [installed, "--help"],
@@ -550,9 +551,7 @@ def _graphify_available(env: Mapping[str, str]) -> bool:
                 return True
         except (OSError, subprocess.TimeoutExpired):
             pass
-    # uvx resolves the pinned package with the MCP extra even when a base-only
-    # graphify install left a broken graphify-mcp console script on PATH.
-    return bool(shutil.which("uvx"))
+    return False
 
 
 def _headroom_available(env: Mapping[str, str]) -> bool:

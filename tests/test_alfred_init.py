@@ -2401,6 +2401,20 @@ def test_non_interactive_redis_and_pgvector_conflict_exits(init_mod, tmp_path):
         init_mod.step_8c_batteries(state, non_interactive=True)
 
 
+def test_interactive_skips_second_code_graph_engine(init_mod, tmp_path, monkeypatch, capsys):
+    state = _battery_state(init_mod, tmp_path)
+    state.batteries = ["code-memory-mcp"]
+    graphify = init_mod.batteries.battery_by_id("graphify")
+    monkeypatch.setattr(init_mod.batteries, "builtin_batteries", lambda: ())
+    monkeypatch.setattr(init_mod.batteries, "opt_in_batteries", lambda: (graphify,))
+    monkeypatch.setattr(init_mod, "ask_yes_no", lambda *args, **kwargs: True)
+
+    init_mod.step_8c_batteries(state, non_interactive=False)
+
+    assert state.batteries == ["code-memory-mcp"]
+    assert "Skipping graphify" in capsys.readouterr().err
+
+
 def test_env_assignments_compose_provider_onto_existing_chain(init_mod, tmp_path):
     state = _battery_state(init_mod, tmp_path)
     # An existing custom chain must be preserved, not clobbered.
