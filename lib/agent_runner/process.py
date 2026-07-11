@@ -1662,6 +1662,7 @@ def invoke_agent_engine(
     claude_fn: Callable[..., ClaudeResult] | None = None,
     codex_fn: Callable[..., ClaudeResult] | None = None,
     on_fallback: Callable[[ClaudeResult], None] | None = None,
+    hybrid_fallback_on_provider_failure: bool = False,
     memory_repo: str | None = None,
     memory_query: str | None = None,
     memory_limit: int = 3,
@@ -1674,9 +1675,12 @@ def invoke_agent_engine(
 
     Returns ``(result, engine_used)`` where ``engine_used`` is one of
     ``"claude"``, ``"codex"``, or ``"codex-fallback"``. The
-    ``on_fallback`` callback fires only when hybrid mode falls back
-    after a Claude capability failure; useful for posting a
-    one-line Slack warning.
+    ``on_fallback`` fires when hybrid mode falls back. Capability failures
+    always qualify. Interactive callers that auto-select from installed CLIs
+    can set ``hybrid_fallback_on_provider_failure`` so a provider-local auth,
+    quota, budget, or exhausted-transient failure tries Codex instead of
+    treating binary presence as proof that Claude is usable. Scheduled agents
+    keep the stricter default and surface those failures directly.
 
     ``role`` is the firing's agent role (feature-dev, pr-review, planner, ...).
     It is an OPTIONAL override: when omitted (as every production caller does
@@ -1856,12 +1860,16 @@ def invoke_agent_engine(
         else:
             result = _resilient_invoke("claude", _invoke_claude)
             engine_used = "claude"
-            # The fallback fires ONLY on a capability failure: Claude ran and
-            # returned cleanly but produced nothing useful. Transient failures
-            # were already retried on Claude above and never reach here; fatal
-            # failures (auth/budget/schema) are surfaced honestly, never papered
-            # over by burning the second engine.
-            if mode == "hybrid" and classify_result(result) is FailureClass.CAPABILITY:
+            failure_class = classify_result(result)
+            provider_local_failure = failure_class is FailureClass.TRANSIENT or result.subtype in {
+                "error_authentication",
+                "error_budget",
+                "error_quota_exhausted",
+            }
+            should_fallback = failure_class is FailureClass.CAPABILITY or (
+                hybrid_fallback_on_provider_failure and provider_local_failure
+            )
+            if mode == "hybrid" and should_fallback:
                 trigger_subtype = result.subtype
                 if on_fallback:
                     on_fallback(result)

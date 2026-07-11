@@ -1612,9 +1612,11 @@ def converse_engine_from_env() -> str:
     """Resolve the engine driving the interrogator.
 
     Explicit conversational and fleet-wide choices win. A batteries-included
-    desktop install then uses whichever subscription CLI is already available;
-    when both are present, hybrid keeps Alfred's normal Claude-first fallback.
-    Hosts without either CLI retain the deterministic no-engine path.
+    desktop install then uses whichever subscription CLI is already available.
+    When both are present, hybrid starts with Claude and the invocation below
+    opts into provider failover, because binary presence does not prove either
+    CLI is authenticated or has quota. Hosts without either CLI retain the
+    deterministic no-engine path.
     """
 
     detected = _available_engine_clis()
@@ -1715,6 +1717,7 @@ def _build_summarizer(
                 claude_model=model,
                 codex_model=model,
                 codex_timeout=CONDENSER_TIMEOUT,
+                hybrid_fallback_on_provider_failure=True,
             )
         except Exception:
             return ""
@@ -1894,6 +1897,7 @@ def _invoke_converse(
             timeout=timeout,
             claude_max_turns=DEFAULT_MAX_TURNS,
             codex_timeout=timeout,
+            hybrid_fallback_on_provider_failure=True,
         )
     except Exception:
         return None

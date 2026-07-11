@@ -129,7 +129,14 @@ class _EngineSpy:
 
     def __call__(self, prompt: str, **kwargs: Any) -> tuple[_Result, str]:
         agent = kwargs.get("agent")
-        self.calls.append({"prompt": prompt, "agent": agent, "firing_id": kwargs.get("firing_id")})
+        self.calls.append(
+            {
+                "prompt": prompt,
+                "agent": agent,
+                "firing_id": kwargs.get("firing_id"),
+                "provider_failover": kwargs.get("hybrid_fallback_on_provider_failure"),
+            }
+        )
         if agent == cc.CONDENSER_AGENT:
             return _Result(success=True, result_text="COMPACT SUMMARY of older turns"), "claude"
         # Pop the next scripted interrogator result.
@@ -170,6 +177,7 @@ def test_short_conversation_runs_once_without_condensing() -> None:
     assert turn.reply == "Got it."
     assert spy.condenser_calls == []  # no summarizer call
     assert len(spy.interrogator_calls) == 1
+    assert spy.interrogator_calls[0]["provider_failover"] is True
     assert records == []
 
 
