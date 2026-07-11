@@ -951,14 +951,15 @@ def _capability_base(
 def _code_graph_capability(
     code_memory: dict[str, Any], *, graphify: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    if graphify and bool(graphify.get("enabled")) and bool(graphify.get("installed")):
+    if graphify and bool(graphify.get("enabled")):
+        installed = bool(graphify.get("installed"))
         capability = _capability_base(
             "code_graph",
             title="Code graph memory",
             category="memory",
             recommended=True,
-            state="ready",
-            installed=True,
+            state="ready" if installed else "installable",
+            installed=installed,
             enabled=True,
             detail=str(graphify.get("how_it_helps") or graphify.get("what") or ""),
             detected={
@@ -966,7 +967,7 @@ def _code_graph_capability(
                 "status": graphify.get("status"),
                 "docs": graphify.get("docs"),
             },
-            install_hint="",
+            install_hint="" if installed else str(graphify.get("install_hint") or ""),
         )
         capability["source"] = _GRAPHIFY_SOURCE
         return capability
@@ -1922,12 +1923,14 @@ def _code_graph_readiness_check(
     )
     if disabled:
         row["state"] = "disabled"
-    return row | {
-        "detected": {
-            "capability_state": capability_state,
-            "enabled": bool(capability.get("enabled")),
-        },
+    detected: dict[str, Any] = {
+        "capability_state": capability_state,
+        "enabled": bool(capability.get("enabled")),
     }
+    engine = (capability.get("detected") or {}).get("engine")
+    if engine:
+        detected["engine"] = engine
+    return row | {"detected": detected}
 
 
 def _context_compression_readiness_check(capability_plane: dict[str, Any]) -> dict[str, Any]:

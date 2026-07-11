@@ -432,4 +432,57 @@ describe("SetupView", () => {
     });
     expect(screen.queryByRole("button", { name: "Index code memory" })).not.toBeInTheDocument();
   });
+
+  it("installs a selected Graphify battery from readiness", async () => {
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
+    const user = userEvent.setup();
+    const onRunLocalAction = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      setupStatus("/tmp/alfred-home", {
+        first_run: {
+          version: 1,
+          ready: false,
+          status: "needs_action",
+          headline: "Recommended setup can be improved.",
+          summary: {
+            required_ready: 7,
+            required_total: 7,
+            recommended_ready: 0,
+            recommended_total: 3,
+            optional_ready: 0,
+            optional_total: 2,
+            blockers: [],
+          },
+          checks: [
+            {
+              key: "code_graph",
+              title: "Code graph memory",
+              category: "memory",
+              tier: "recommended",
+              required: false,
+              ready: false,
+              state: "actionable",
+              detail: "Graphify is selected and needs its Python package.",
+              action: "Install Graphify.",
+              path: null,
+              detected: {
+                capability_state: "installable",
+                enabled: true,
+                engine: "graphify",
+              },
+            },
+          ],
+        },
+      }),
+    );
+
+    render(renderSetup("http://127.0.0.1:7010", { onRunLocalAction }));
+
+    await user.click(await screen.findByRole("button", { name: "Install Graphify" }));
+    expect(onRunLocalAction).toHaveBeenCalledWith({
+      action: "battery_enable",
+      target: "graphify",
+      refreshAfter: true,
+    });
+  });
 });
