@@ -292,6 +292,8 @@ def test_code_memory_serve_is_unbounded(monkeypatch):
     [
         ([], None),
         (["serve"], None),
+        (["serve", "--db", "/tmp/fleet.db"], None),
+        (["--db", "/tmp/fleet.db", "serve"], 600),
         (["tools"], 600),
         (["export"], 600),
     ],
