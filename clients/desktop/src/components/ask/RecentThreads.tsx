@@ -38,18 +38,26 @@ export function RecentThreads({
   const [open, setOpen] = useState(false);
   const [retiring, setRetiring] = useState(false);
 
+  // The trigger exists to SWITCH chats, so its lifecycle keys on whether any
+  // non-active thread remains, not on the raw list length: deleting the ACTIVE
+  // chat resets the surface to a fresh unsaved conversation, so a single
+  // surviving stored thread is not active and must stay reachable. A pure
+  // length guard would hide the trigger and strand that conversation until a
+  // new chat is saved.
+  const switchable = threads.some((thread) => !thread.active);
+
   // A delete can shrink the list to only the active chat while the Sheet is
   // open. Keep it mounted for that close transition so Radix can restore focus
   // and release its dialog state before the trigger disappears.
   useEffect(() => {
-    if (threads.length <= 1 && open) {
+    if (!switchable && open) {
       setRetiring(true);
       setOpen(false);
     }
-  }, [open, threads.length]);
+  }, [open, switchable]);
 
-  // Nothing to switch to until there is more than the active thread.
-  if (threads.length <= 1 && !open && !retiring) return null;
+  // Nothing to switch to until a non-active thread exists.
+  if (!switchable && !open && !retiring) return null;
 
   const resume = (id: string) => {
     onResume(id);
