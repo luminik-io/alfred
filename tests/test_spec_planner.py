@@ -408,8 +408,9 @@ def test_runner_exits_quietly_when_disabled(monkeypatch, capsys):
 
     rc = runner.main()
     assert rc == 0
-    err = capsys.readouterr().err
-    assert "SPEC-PLANNER-SKIP" in err
+    captured = capsys.readouterr()
+    assert "SPEC-PLANNER-SKIP" in captured.out
+    assert captured.err == ""
 
 
 def test_runner_reports_idle_when_no_scan_repos(monkeypatch, capsys, tmp_path):

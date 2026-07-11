@@ -125,7 +125,6 @@ def main() -> int:
         print(
             f"[{CODENAME.upper()}-SKIP] {CODENAME} not enabled in fleet file; "
             f"run `alfred enable {CODENAME}` to opt in.",
-            file=sys.stderr,
         )
         return 0
 
