@@ -7,8 +7,8 @@
 Every environment variable Alfred reads is declared once in the typed
 registry at `lib/alfred_config.py`. This page is generated from it.
 
-- Declared variables: **387**
-- Operator-facing (in `.env.example`): **68**
+- Declared variables: **388**
+- Operator-facing (in `.env.example`): **69**
 - Internal / experimental: **319**
 
 Operator-facing vars also appear, with their defaults, in
@@ -281,6 +281,7 @@ are experimental, deep-tuning, or set by Alfred itself at runtime.
 | --- | --- | --- | --- | --- |
 | `ALFRED_MERGE_REQUIRE_APPROVAL` | bool | `1` | operator | Automerge only merges PRs an operator approved on GitHub (fail-closed gate). |
 | `ALFRED_MERGE_MIN_APPROVALS` | int | `1` | operator | Distinct exact-head approving reviews Alfred always requires; branch protection may require more. |
+| `ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS` | str | `` | operator | External review summaries that must be clean on the exact head, such as greptile,codex. |
 | `ALFRED_RECOVERY_MAX_ATTEMPTS` | int | `1` | operator | Bounded recovery turns to fix a failed push/CI/merge-gate step before HOLD (0 disables). |
 | `ALFRED_LAUNCH_DIR` | path | `~/Library/LaunchAgents` | internal | Directory launchd plists are installed into. |
 | `ALFRED_LAUNCHD_LABEL_PREFIX` | str | `alfred` | internal | Reverse-DNS label prefix for launchd plists. |

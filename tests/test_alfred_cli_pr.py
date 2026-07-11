@@ -74,6 +74,23 @@ def test_pr_check_failing_returns_one(cli_module, monkeypatch, capsys):
     assert "NOT MERGEABLE" in out
 
 
+def test_pr_check_honors_disabled_human_approval(cli_module, monkeypatch, capsys):
+    monkeypatch.setenv("ALFRED_MERGE_REQUIRE_APPROVAL", "0")
+    seen = {}
+
+    def _gate(repo, number, **kwargs):
+        seen["min_approvals"] = kwargs["min_approvals"]
+        snap = _mergeable_snapshot(review_decision=None, reviews=())
+        return snap, merge_gate.evaluate_gate(snap, min_approvals=kwargs["min_approvals"])
+
+    monkeypatch.setattr(merge_gate, "gate_pull_request", _gate)
+
+    rc = cli_module.main(["pr", "check", "7", "--repo", "acme/widget"])
+
+    assert rc == 0
+    assert seen["min_approvals"] == 0
+
+
 def test_pr_check_json_output(cli_module, monkeypatch, capsys):
     monkeypatch.setattr(
         merge_gate,
@@ -228,6 +245,14 @@ def test_pr_merge_defaults_to_current_checkout_under_gh_org(cli_module, monkeypa
 
 
 def test_pr_min_approvals_reads_env(cli_module, monkeypatch):
+    monkeypatch.setenv("ALFRED_MERGE_REQUIRE_APPROVAL", "")
+    assert cli_module._pr_min_approvals() == 1
+    monkeypatch.setenv("ALFRED_MERGE_REQUIRE_APPROVAL", "off")
+    assert cli_module._pr_min_approvals() == 0
+    monkeypatch.setenv("ALFRED_MERGE_REQUIRE_APPROVAL", "sometimes")
+    with pytest.raises(ValueError, match="must be true or false"):
+        cli_module._pr_min_approvals()
+    monkeypatch.delenv("ALFRED_MERGE_REQUIRE_APPROVAL")
     monkeypatch.setenv("ALFRED_MERGE_MIN_APPROVALS", "3")
     assert cli_module._pr_min_approvals() == 3
     for raw in ("0", "junk"):

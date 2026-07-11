@@ -2649,6 +2649,8 @@ def _battery_run_install(args: argparse.Namespace, battery: Any) -> int:
 def _pr_min_approvals() -> int:
     import merge_gate
 
+    if not merge_gate.parse_require_approval(os.environ.get("ALFRED_MERGE_REQUIRE_APPROVAL")):
+        return 0
     return merge_gate.parse_min_approvals(os.environ.get("ALFRED_MERGE_MIN_APPROVALS"))
 
 
@@ -2683,8 +2685,16 @@ def cmd_pr(args: argparse.Namespace) -> int:
         print(f"alfred pr: {exc}", file=sys.stderr)
         return 2
 
+    required_external_reviews = tuple(
+        item.strip().lower()
+        for item in os.environ.get("ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS", "").split(",")
+        if item.strip()
+    )
     _snapshot, decision = merge_gate.gate_pull_request(
-        repo, args.number, min_approvals=min_approvals
+        repo,
+        args.number,
+        min_approvals=min_approvals,
+        required_external_reviews=required_external_reviews,
     )
 
     payload = {

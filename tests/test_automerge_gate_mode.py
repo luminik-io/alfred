@@ -32,9 +32,34 @@ def test_require_approval_defaults_on(monkeypatch):
     assert automerge.MIN_APPROVALS == 1
 
 
+def test_blank_require_approval_defaults_on(monkeypatch):
+    automerge = load_automerge(monkeypatch, {"ALFRED_MERGE_REQUIRE_APPROVAL": ""})
+    assert automerge.REQUIRE_APPROVAL is True
+
+
 def test_require_approval_can_be_disabled(monkeypatch):
     automerge = load_automerge(monkeypatch, {"ALFRED_MERGE_REQUIRE_APPROVAL": "0"})
     assert automerge.REQUIRE_APPROVAL is False
+
+
+def test_invalid_require_approval_fails_closed(monkeypatch):
+    automerge = load_automerge(
+        monkeypatch,
+        {
+            "ALFRED_MERGE_REQUIRE_APPROVAL": "sometimes",
+            "ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS": "codex",
+        },
+    )
+    monkeypatch.setattr(
+        automerge,
+        "collect_snapshot",
+        lambda *args, **kwargs: pytest.fail("GitHub must not be called"),
+    )
+
+    ok, reason, _title = automerge._merge_via_gate("widget", {"number": 12, "title": "T"})
+
+    assert ok is False
+    assert "must be true or false" in reason
 
 
 def test_min_approvals_reads_env_and_rejects_invalid_values(monkeypatch):
@@ -57,6 +82,49 @@ def test_invalid_min_approvals_blocks_gate_without_github_calls(monkeypatch):
     ok, reason, _title = automerge._merge_via_gate("widget", {"number": 12, "title": "T"})
     assert ok is False
     assert "invalid merge-gate config" in reason
+
+
+def test_external_gate_honors_disabled_human_approval(monkeypatch):
+    automerge = load_automerge(
+        monkeypatch,
+        {
+            "ALFRED_MERGE_REQUIRE_APPROVAL": "0",
+            "ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS": "codex",
+        },
+    )
+    from merge_gate import CheckRun, ExternalReviewEvidence, GateSnapshot, ReviewThread
+
+    head = "a" * 40
+    snap = GateSnapshot(
+        state="OPEN",
+        head_sha=head,
+        review_decision=None,
+        reviews=(),
+        review_threads=(ReviewThread(True, "x.py", "codex"),),
+        merge_state_status="CLEAN",
+        mergeable="MERGEABLE",
+        checks=(CheckRun("ci", "SUCCESS"),),
+        errors=(),
+        external_reviews=(
+            ExternalReviewEvidence(
+                "chatgpt-codex-connector[bot]",
+                "Didn't find any major issues.",
+                "2026-07-11T10:00:00Z",
+                head,
+            ),
+        ),
+    )
+    monkeypatch.setattr(automerge, "collect_snapshot", lambda slug, num, **kw: snap)
+    monkeypatch.setattr(
+        automerge,
+        "guarded_squash_merge",
+        lambda *args, **kwargs: (True, "merged"),
+    )
+
+    ok, reason, _title = automerge._merge_via_gate("widget", {"number": 12, "title": "T"})
+
+    assert ok is True
+    assert reason == "merged"
 
 
 def test_merge_via_gate_merges_when_gate_passes(monkeypatch):

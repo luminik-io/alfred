@@ -488,6 +488,14 @@ _VARS: tuple[ConfigVar, ...] = (
         operator=True,
     ),
     V(
+        "ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS",
+        "str",
+        "",
+        "scheduler",
+        "External review summaries that must be clean on the exact head, such as greptile,codex.",
+        operator=True,
+    ),
+    V(
         "ALFRED_RECOVERY_MAX_ATTEMPTS",
         "int",
         "1",

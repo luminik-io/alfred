@@ -28,6 +28,7 @@ SHA-guarded merge are thin wrappers over ``gh`` that accept injectable runners.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
@@ -101,6 +102,14 @@ class CheckRun:
 
 
 @dataclass(frozen=True)
+class ExternalReviewEvidence:
+    author: str
+    body: str
+    updated_at: str
+    reviewed_sha: str = ""
+
+
+@dataclass(frozen=True)
 class GateSnapshot:
     """Everything the gate needs, already fetched from GitHub."""
 
@@ -112,6 +121,7 @@ class GateSnapshot:
     merge_state_status: str
     mergeable: str
     checks: tuple[CheckRun, ...]
+    external_reviews: tuple[ExternalReviewEvidence, ...] = ()
     errors: tuple[str, ...] = ()
 
 
@@ -164,6 +174,18 @@ def parse_min_approvals(raw: str | None) -> int:
     if parsed < 1:
         raise ValueError("ALFRED_MERGE_MIN_APPROVALS must be an integer >= 1")
     return parsed
+
+
+def parse_require_approval(raw: str | None) -> bool:
+    """Parse the human-approval switch without allowing malformed fail-open values."""
+    if raw is None or raw.strip() == "":
+        return True
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError("ALFRED_MERGE_REQUIRE_APPROVAL must be true or false")
 
 
 def _effective_reviews(reviews: Iterable[Review]) -> dict[str, Review]:
@@ -273,8 +295,52 @@ def _checks_condition(snapshot: GateSnapshot) -> Condition:
     return Condition("checks", label, False, f"failing check(s): {names}")
 
 
+def _external_reviews_condition(snapshot: GateSnapshot, required: Sequence[str]) -> Condition:
+    required_names = tuple(name.strip().lower() for name in required if name.strip())
+    if not required_names:
+        return Condition("external_reviews", "Required bot reviews", True, "not configured")
+    missing: list[str] = []
+    for provider in required_names:
+        aliases = {
+            "codex": {"chatgpt-codex-connector", "chatgpt-codex-connector[bot]"},
+            "greptile": {"greptile-apps", "greptile-apps[bot]"},
+        }.get(provider, {provider, f"{provider}[bot]"})
+        matches = [item for item in snapshot.external_reviews if item.author.lower() in aliases]
+        latest = max(matches, key=lambda item: item.updated_at or "", default=None)
+        body = latest.body if latest else ""
+        exact_head = (
+            bool(latest.reviewed_sha and latest.reviewed_sha.lower() == snapshot.head_sha.lower())
+            if latest
+            else False
+        )
+        if provider == "codex":
+            clean = "didn't find any major issues" in body.lower()
+        elif provider == "greptile":
+            clean = "confidence score: 5/5" in body.lower() and "no blocking issues" in body.lower()
+        else:
+            clean = "no blocking issues" in body.lower() or "approved" in body.lower()
+        if not (latest and exact_head and clean):
+            missing.append(provider)
+    if missing:
+        return Condition(
+            "external_reviews",
+            "Required bot reviews",
+            False,
+            "missing clean exact-head evidence: " + ", ".join(missing),
+        )
+    return Condition(
+        "external_reviews",
+        "Required bot reviews",
+        True,
+        "clean exact-head evidence: " + ", ".join(required_names),
+    )
+
+
 def evaluate_gate(
-    snapshot: GateSnapshot, *, min_approvals: int = MIN_APPROVALS_DEFAULT
+    snapshot: GateSnapshot,
+    *,
+    min_approvals: int = MIN_APPROVALS_DEFAULT,
+    required_external_reviews: Sequence[str] = (),
 ) -> GateDecision:
     """Pure predicate: decide whether the snapshot allows an Alfred merge."""
     # Any collection error is disqualifying: fail closed.
@@ -301,6 +367,7 @@ def evaluate_gate(
     conditions.append(_threads_condition(snapshot))
     conditions.append(_merge_state_condition(snapshot))
     conditions.append(_checks_condition(snapshot))
+    conditions.append(_external_reviews_condition(snapshot, required_external_reviews))
 
     mergeable = all(c.passed for c in conditions)
     return GateDecision(mergeable, snapshot.head_sha, conditions)
@@ -341,6 +408,7 @@ def collect_snapshot(
     pr_number: int,
     *,
     gh_json: GhJson = _default_gh_json,
+    collect_external_reviews: bool = False,
 ) -> GateSnapshot:
     """Fetch everything the gate needs from GitHub for ``owner/repo#number``.
 
@@ -377,6 +445,11 @@ def collect_snapshot(
             checks.append(normalized)
 
     threads = _collect_review_threads(repo, pr_number, gh_json=gh_json, errors=errors)
+    external_reviews = (
+        _collect_external_reviews(repo, pr_number, gh_json=gh_json, errors=errors)
+        if collect_external_reviews
+        else []
+    )
 
     return GateSnapshot(
         state=str(view.get("state") or ""),
@@ -387,6 +460,7 @@ def collect_snapshot(
         merge_state_status=str(view.get("mergeStateStatus") or ""),
         mergeable=str(view.get("mergeable") or ""),
         checks=tuple(checks),
+        external_reviews=tuple(external_reviews),
         errors=tuple(errors),
     )
 
@@ -416,6 +490,82 @@ _REVIEWS_QUERY = (
     " }"
     "}"
 )
+
+
+def _collect_external_reviews(
+    repo: str, pr_number: int, *, gh_json: GhJson, errors: list[str]
+) -> list[ExternalReviewEvidence]:
+    payload = gh_json(
+        [
+            "gh",
+            "api",
+            f"repos/{repo}/issues/{pr_number}/comments",
+            "--paginate",
+            "--slurp",
+        ],
+        None,
+    )
+    if not isinstance(payload, list):
+        errors.append("could not read external review comments from GitHub")
+        return []
+    items = (
+        [item for page in payload for item in page]
+        if all(isinstance(p, list) for p in payload)
+        else payload
+    )
+    trusted_requests: list[tuple[int, str]] = []
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            continue
+        association = str(item.get("author_association") or "").upper()
+        body = str(item.get("body") or "")
+        created_at = str(item.get("created_at") or "")
+        updated_at = str(item.get("updated_at") or "")
+        match = re.search(r"Exact head:\s*`?([0-9a-f]{40})`?", body, re.I)
+        if (
+            association in {"OWNER", "MEMBER", "COLLABORATOR"}
+            and "@codex review" in body.lower()
+            and created_at
+            and updated_at == created_at
+            and match
+        ):
+            trusted_requests.append((index, match.group(1)))
+    evidence: list[ExternalReviewEvidence] = []
+    for index, item in enumerate(items):
+        if not isinstance(item, dict) or not isinstance(item.get("user"), dict):
+            continue
+        author = str(item["user"].get("login") or "")
+        body = str(item.get("body") or "")
+        reviewed_sha = ""
+        if author.lower() in {"chatgpt-codex-connector", "chatgpt-codex-connector[bot]"}:
+            match = re.search(r"Reviewed commit:(?:\*\*)?\s*`?([0-9a-f]{7,40})`?", body, re.I)
+            if match:
+                prefix = match.group(1).lower()
+                matching_shas = {
+                    sha.lower()
+                    for _request_index, sha in trusted_requests
+                    if sha.lower().startswith(prefix)
+                }
+                if len(matching_shas) == 1:
+                    requested_sha = matching_shas.pop()
+                    if any(
+                        request_index < index and sha.lower() == requested_sha
+                        for request_index, sha in trusted_requests
+                    ):
+                        reviewed_sha = requested_sha
+        elif author.lower() in {"greptile-apps", "greptile-apps[bot]"}:
+            match = re.search(r"Last reviewed commit:.*?/commit/([0-9a-f]{40})", body, re.I | re.S)
+            if match:
+                reviewed_sha = match.group(1)
+        evidence.append(
+            ExternalReviewEvidence(
+                author=author,
+                body=body,
+                updated_at=str(item.get("updated_at") or item.get("created_at") or ""),
+                reviewed_sha=reviewed_sha,
+            )
+        )
+    return evidence
 
 
 def _collect_reviews(
@@ -621,10 +771,19 @@ def gate_pull_request(
     *,
     min_approvals: int = MIN_APPROVALS_DEFAULT,
     gh_json: GhJson = _default_gh_json,
+    required_external_reviews: Sequence[str] = (),
 ) -> tuple[GateSnapshot, GateDecision]:
     """Collect a snapshot and evaluate the gate in one call."""
-    snapshot = collect_snapshot(repo, pr_number, gh_json=gh_json)
-    decision = evaluate_gate(snapshot, min_approvals=min_approvals)
+    snapshot = (
+        collect_snapshot(repo, pr_number, gh_json=gh_json, collect_external_reviews=True)
+        if required_external_reviews
+        else collect_snapshot(repo, pr_number, gh_json=gh_json)
+    )
+    decision = evaluate_gate(
+        snapshot,
+        min_approvals=min_approvals,
+        required_external_reviews=required_external_reviews,
+    )
     return snapshot, decision
 
 

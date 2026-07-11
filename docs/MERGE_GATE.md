@@ -46,12 +46,13 @@ moved between the check and the merge, for example a new push landed in that
 window, GitHub rejects the merge and the gate fails closed instead of merging
 unreviewed changes.
 
-## The two knobs
+## Policy knobs
 
 | Environment variable | Default | Effect |
 | --- | --- | --- |
-| `ALFRED_MERGE_REQUIRE_APPROVAL` | on | When on, the automerge sweeper only merges PRs that pass this gate. When off, the sweeper keeps its prior review-agent ship-ready behaviour. |
+| `ALFRED_MERGE_REQUIRE_APPROVAL` | on | Require exact-head GitHub approvals. When off with external reviews configured, Alfred still uses every native gate but does not require a separate human approval. |
 | `ALFRED_MERGE_MIN_APPROVALS` | 1 | Distinct current-head approvals Alfred always requires. Must be an integer of at least 1; invalid values fail closed. GitHub branch protection may impose a stricter rule. |
+| `ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS` | empty | Comma-separated external review summaries that must be clean on the exact head. Set `greptile,codex` for Alfred's own repository policy. |
 
 ## Command line
 

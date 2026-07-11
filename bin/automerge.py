@@ -71,6 +71,7 @@ from merge_gate import (
     evaluate_gate,
     guarded_squash_merge,
     parse_min_approvals,
+    parse_require_approval,
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "automerge")
@@ -90,13 +91,6 @@ WATCH_REPOS = [
 MIN_AGE_SECONDS = int(os.environ.get("ALFRED_AUTOMERGE_MIN_AGE_MIN", "30")) * 60
 
 
-def _env_flag(name: str, *, default: bool) -> bool:
-    raw = os.environ.get(name)
-    if raw is None or raw.strip() == "":
-        return default
-    return raw.strip().lower() in ("1", "true", "yes", "on")
-
-
 # GitHub-native merge gate. When on (the default), the sweeper only merges a PR
 # that GitHub itself reports as approved, thread-clean, mergeable, and green,
 # using a SHA-guarded squash. When off, the sweeper keeps its prior review-agent
@@ -104,7 +98,19 @@ def _env_flag(name: str, *, default: bool) -> bool:
 #
 # NOTE: these are read from the plain environment. If the typed config registry
 # (lib/alfred_config.py) lands later, migrate these two keys into it.
-REQUIRE_APPROVAL = _env_flag("ALFRED_MERGE_REQUIRE_APPROVAL", default=True)
+try:
+    REQUIRE_APPROVAL: bool | None = parse_require_approval(
+        os.environ.get("ALFRED_MERGE_REQUIRE_APPROVAL")
+    )
+    REQUIRE_APPROVAL_ERROR = ""
+except ValueError as exc:
+    REQUIRE_APPROVAL = None
+    REQUIRE_APPROVAL_ERROR = str(exc)
+REQUIRED_EXTERNAL_REVIEWS = tuple(
+    item.strip().lower()
+    for item in os.environ.get("ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS", "").split(",")
+    if item.strip()
+)
 try:
     MIN_APPROVALS: int | None = parse_min_approvals(
         os.environ.get("ALFRED_MERGE_MIN_APPROVALS", str(MIN_APPROVALS_DEFAULT))
@@ -424,11 +430,23 @@ def _merge_via_gate(repo: str, pr: dict) -> tuple[bool, str, str]:
     """
     pr_num = pr["number"]
     title = pr.get("title", "")
-    if MIN_APPROVALS is None:
+    if REQUIRE_APPROVAL is None:
+        return False, f"invalid merge-gate config: {REQUIRE_APPROVAL_ERROR}", title
+    if REQUIRE_APPROVAL and MIN_APPROVALS is None:
         return False, f"invalid merge-gate config: {MIN_APPROVALS_ERROR}", title
+    effective_min_approvals = MIN_APPROVALS if REQUIRE_APPROVAL else 0
+    assert effective_min_approvals is not None
     slug = f"{GH_ORG}/{repo}"
-    snapshot = collect_snapshot(slug, pr_num)
-    decision = evaluate_gate(snapshot, min_approvals=MIN_APPROVALS)
+    snapshot = (
+        collect_snapshot(slug, pr_num, collect_external_reviews=True)
+        if REQUIRED_EXTERNAL_REVIEWS
+        else collect_snapshot(slug, pr_num)
+    )
+    decision = evaluate_gate(
+        snapshot,
+        min_approvals=effective_min_approvals,
+        required_external_reviews=REQUIRED_EXTERNAL_REVIEWS,
+    )
     if not decision.mergeable:
         return False, decision.short_reason(), title
     ok, msg = guarded_squash_merge(slug, pr_num, decision.head_sha, delete_branch=True)
@@ -491,7 +509,7 @@ def main() -> int:
         pr_num = pr["number"]
         pr_author = ((pr.get("author") or {}).get("login")) or ""
 
-        if REQUIRE_APPROVAL:
+        if REQUIRE_APPROVAL is not False or REQUIRED_EXTERNAL_REVIEWS:
             ok, reason, title = _merge_via_gate(repo, pr)
         else:
             ok, reason, title = _merge_via_ship_ready(repo, pr, pr_author)

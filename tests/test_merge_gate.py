@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "lib"))
 import merge_gate  # noqa: E402
 from merge_gate import (  # noqa: E402
     CheckRun,
+    ExternalReviewEvidence,
     GateSnapshot,
     Review,
     ReviewThread,
@@ -139,6 +140,216 @@ def test_api_error_fails_closed():
     assert decision.failing()[0].key == "api"
     # Fail-closed short-circuits: no partial condition list is trusted.
     assert len(decision.conditions) == 1
+
+
+def test_required_external_reviews_must_be_clean_and_exact_head():
+    head = "a" * 40
+    snap = _snapshot(
+        external_reviews=(
+            ExternalReviewEvidence(
+                "greptile-apps[bot]",
+                f"Confidence Score: 5/5\nNo blocking issues\nLast reviewed commit: x/commit/{head}",
+                "2026-07-11T10:00:00Z",
+                head,
+            ),
+            ExternalReviewEvidence(
+                "chatgpt-codex-connector[bot]",
+                "Codex Review: Didn't find any major issues.\n\n**Reviewed commit:** `aaaaaaaaaa`",
+                "2026-07-11T10:01:00Z",
+                head,
+            ),
+        )
+    )
+    assert evaluate_gate(snap, required_external_reviews=("greptile", "codex")).mergeable
+
+    stale = _snapshot(external_reviews=snap.external_reviews[:-1])
+    decision = evaluate_gate(stale, required_external_reviews=("greptile", "codex"))
+    assert decision.mergeable is False
+    assert "codex" in decision.short_reason()
+
+
+def test_required_external_reviews_reject_spoofed_bot_login():
+    snap = _snapshot(
+        external_reviews=(
+            ExternalReviewEvidence(
+                "not-greptile-apps[bot]",
+                f"Confidence Score: 5/5\nNo blocking issues\nLast reviewed commit: x/commit/{'a' * 40}",
+                "2026-07-11T10:00:00Z",
+                "a" * 40,
+            ),
+        )
+    )
+    assert not evaluate_gate(snap, required_external_reviews=("greptile",)).mergeable
+
+
+def test_codex_resolved_commit_must_equal_head_after_force_push():
+    evidence = ExternalReviewEvidence(
+        "chatgpt-codex-connector[bot]",
+        "Didn't find any major issues.\n**Reviewed commit:** `aaaaaaa`",
+        "2026-07-11T10:00:00Z",
+        "aaaaaaa" + "b" * 33,
+    )
+    snap = _snapshot(external_reviews=(evidence,))
+    assert not evaluate_gate(snap, required_external_reviews=("codex",)).mergeable
+
+
+def test_greptile_uses_explicit_last_reviewed_commit_not_incidental_sha():
+    body = (
+        f"Confidence Score: 5/5\nNo blocking issues\nCurrent {'a' * 40}\n"
+        f"Last reviewed commit: x/commit/{'b' * 40}"
+    )
+    snap = _snapshot(
+        external_reviews=(
+            ExternalReviewEvidence("greptile-apps[bot]", body, "2026-07-11", "b" * 40),
+        )
+    )
+    assert not evaluate_gate(snap, required_external_reviews=("greptile",)).mergeable
+
+
+def test_codex_evidence_binds_to_trusted_full_head_request():
+    old_head = "aaaaaaa" + "b" * 33
+    new_head = "aaaaaaa" + "c" * 33
+    payload = [
+        [
+            {
+                "user": {"login": "operator"},
+                "author_association": "OWNER",
+                "body": f"@codex review\nExact head: `{old_head}`",
+                "created_at": "2026-07-11T10:00:00Z",
+                "updated_at": "2026-07-11T10:00:00Z",
+            },
+            {
+                "user": {"login": "chatgpt-codex-connector[bot]"},
+                "body": "Didn't find any major issues.\n**Reviewed commit:** `aaaaaaa`",
+                "created_at": "2026-07-11T10:01:00Z",
+            },
+        ]
+    ]
+    errors: list[str] = []
+    evidence = merge_gate._collect_external_reviews(
+        "acme/repo", 7, gh_json=lambda _cmd, _default: payload, errors=errors
+    )
+    assert errors == []
+    assert evidence[-1].reviewed_sha == old_head
+    snap = _snapshot(head_sha=new_head, external_reviews=tuple(evidence))
+    assert not evaluate_gate(snap, required_external_reviews=("codex",)).mergeable
+
+
+def test_codex_evidence_uses_comment_order_when_timestamps_tie():
+    old_head = "a" * 40
+    new_head = "b" * 40
+    timestamp = "2026-07-11T10:00:00Z"
+    payload = [
+        [
+            {
+                "user": {"login": "operator"},
+                "author_association": "OWNER",
+                "body": f"@codex review\nExact head: `{old_head}`",
+                "created_at": timestamp,
+                "updated_at": timestamp,
+            },
+            {
+                "user": {"login": "chatgpt-codex-connector[bot]"},
+                "body": "Didn't find any major issues.\nReviewed commit: aaaaaaaaaa",
+                "created_at": timestamp,
+            },
+            {
+                "user": {"login": "operator"},
+                "author_association": "OWNER",
+                "body": f"@codex review\nExact head: `{new_head}`",
+                "created_at": timestamp,
+                "updated_at": timestamp,
+            },
+        ]
+    ]
+    evidence = merge_gate._collect_external_reviews(
+        "acme/repo", 7, gh_json=lambda _cmd, _default: payload, errors=[]
+    )
+    assert evidence[1].reviewed_sha == old_head
+
+
+def test_codex_evidence_accepts_unquoted_exact_head_request():
+    head = "a" * 40
+    payload = [
+        [
+            {
+                "user": {"login": "operator"},
+                "author_association": "OWNER",
+                "body": f"@codex review\nExact head: {head}",
+                "created_at": "2026-07-11T10:00:00Z",
+                "updated_at": "2026-07-11T10:00:00Z",
+            },
+            {
+                "user": {"login": "chatgpt-codex-connector[bot]"},
+                "body": "Didn't find any major issues.\nReviewed commit: aaaaaaaaaa",
+            },
+        ]
+    ]
+    evidence = merge_gate._collect_external_reviews(
+        "acme/repo", 7, gh_json=lambda _cmd, _default: payload, errors=[]
+    )
+    assert evidence[-1].reviewed_sha == head
+
+
+def test_codex_evidence_rejects_delayed_response_with_shared_prefix():
+    prefix = "abcdef0"
+    old_head = prefix + "a" * 33
+    new_head = prefix + "b" * 33
+    payload = [
+        [
+            {
+                "user": {"login": "operator"},
+                "author_association": "OWNER",
+                "body": f"@codex review\nExact head: `{old_head}`",
+                "created_at": "2026-07-11T10:00:00Z",
+                "updated_at": "2026-07-11T10:00:00Z",
+            },
+            {
+                "user": {"login": "operator"},
+                "author_association": "OWNER",
+                "body": f"@codex review\nExact head: `{new_head}`",
+                "created_at": "2026-07-11T10:01:00Z",
+                "updated_at": "2026-07-11T10:01:00Z",
+            },
+            {
+                "user": {"login": "chatgpt-codex-connector[bot]"},
+                "body": f"Didn't find any major issues.\nReviewed commit: {prefix}",
+            },
+        ]
+    ]
+    evidence = merge_gate._collect_external_reviews(
+        "acme/repo", 7, gh_json=lambda _cmd, _default: payload, errors=[]
+    )
+    assert evidence[-1].reviewed_sha == ""
+    snap = _snapshot(head_sha=new_head, external_reviews=tuple(evidence))
+    assert not evaluate_gate(snap, required_external_reviews=("codex",)).mergeable
+
+
+def test_codex_evidence_rejects_edited_exact_head_request():
+    head = "a" * 40
+    payload = [
+        [
+            {
+                "user": {"login": "operator"},
+                "author_association": "OWNER",
+                "body": f"@codex review\nExact head: `{head}`",
+                "created_at": "2026-07-11T10:00:00Z",
+                "updated_at": "2026-07-11T10:02:00Z",
+            },
+            {
+                "user": {"login": "chatgpt-codex-connector[bot]"},
+                "body": "Didn't find any major issues.\nReviewed commit: aaaaaaaaaa",
+                "created_at": "2026-07-11T10:01:00Z",
+                "updated_at": "2026-07-11T10:01:00Z",
+            },
+        ]
+    ]
+    evidence = merge_gate._collect_external_reviews(
+        "acme/repo", 7, gh_json=lambda _cmd, _default: payload, errors=[]
+    )
+    assert evidence[-1].reviewed_sha == ""
+    snap = _snapshot(head_sha=head, external_reviews=tuple(evidence))
+    assert not evaluate_gate(snap, required_external_reviews=("codex",)).mergeable
 
 
 def test_unknown_review_decision_fails_closed():
@@ -522,6 +733,16 @@ def test_parse_min_approvals_rejects_invalid_values():
     for raw in ("", "0", "-2", "two"):
         with pytest.raises(ValueError, match="integer >= 1"):
             merge_gate.parse_min_approvals(raw)
+
+
+def test_parse_require_approval_defaults_on_and_rejects_invalid_values():
+    assert merge_gate.parse_require_approval(None) is True
+    assert merge_gate.parse_require_approval("") is True
+    assert merge_gate.parse_require_approval(" true ") is True
+    assert merge_gate.parse_require_approval("0") is False
+    assert merge_gate.parse_require_approval("off") is False
+    with pytest.raises(ValueError, match="must be true or false"):
+        merge_gate.parse_require_approval("sometimes")
 
 
 def test_collect_snapshot_pending_check_is_not_failing():
