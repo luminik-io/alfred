@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from custom_agents import CustomAgentError, CustomAgentStore
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
 from server import views
@@ -24,17 +24,20 @@ async def api_custom_agents(request: Request) -> JSONResponse:
         "true",
         "yes",
     )
-    if include_prompt and (
-        not views._same_origin_request(request) or not views._authorized_mutation(request)
-    ):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
+    # The prompt body is a secret-ish payload, so returning it is gated like a
+    # mutation even though the verb is GET. Conditional on the query flag, so it
+    # raises the shared 403 imperatively rather than declaring the dependency.
+    if include_prompt and not views._mutation_authorized(request):
+        raise views.MutationForbidden
     return JSONResponse(store.snapshot(include_prompt=include_prompt))
 
 
-@router.post("/api/custom-agents", response_class=JSONResponse)
+@router.post(
+    "/api/custom-agents",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_save_custom_agent(request: Request) -> JSONResponse:
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     body, error_response = await views._read_json_body(request)
     if error_response is not None:
         return error_response
@@ -54,10 +57,12 @@ async def api_save_custom_agent(request: Request) -> JSONResponse:
     )
 
 
-@router.delete("/api/custom-agents/{codename}", response_class=JSONResponse)
+@router.delete(
+    "/api/custom-agents/{codename}",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_delete_custom_agent(request: Request, codename: str) -> JSONResponse:
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     store = CustomAgentStore.from_state_root(views._state_root(request))
     try:
         removed = store.delete(codename)

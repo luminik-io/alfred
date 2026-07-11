@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from slack_trust import (
     SlackTrustStore,
@@ -29,10 +29,12 @@ async def api_slack_trusted_users(request: Request) -> JSONResponse:
     )
 
 
-@router.post("/api/slack/trusted-users", response_class=JSONResponse)
+@router.post(
+    "/api/slack/trusted-users",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_slack_trust_user(request: Request) -> JSONResponse:
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     try:
         body = json.loads((await request.body()).decode("utf-8") or "{}")
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -52,10 +54,12 @@ async def api_slack_trust_user(request: Request) -> JSONResponse:
     return JSONResponse(snapshot)
 
 
-@router.post("/api/slack/trusted-users/{user_id}/remove", response_class=JSONResponse)
+@router.post(
+    "/api/slack/trusted-users/{user_id}/remove",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_slack_untrust_user(request: Request, user_id: str) -> JSONResponse:
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     normalized = normalize_slack_user_id(user_id)
     if normalized is None:
         return JSONResponse({"error": "user_id must be a Slack user id"}, status_code=400)

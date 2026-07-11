@@ -3077,6 +3077,55 @@ def test_mutating_post_requires_token_and_is_allowed_with_it(
     assert cross_origin.status_code == 403
 
 
+def test_require_mutation_token_dependency_is_shared_gate(
+    tmp_path: Path,
+) -> None:
+    """The extracted ``require_mutation_token`` dependency is the one gate.
+
+    Directly exercises the dependency (raises ``MutationForbidden`` when the
+    call is unauthorized, returns ``None`` when it carries a valid token), then
+    confirms mutating routes across three different routers reject a token-less
+    POST with the byte-identical ``403 {"error": "forbidden"}`` body the app's
+    single exception handler renders. This is the shared path that replaced the
+    ~20 inline per-route 403 copies.
+    """
+    from types import SimpleNamespace
+
+    state = tmp_path / "state"
+    state.mkdir()
+    token = server_views.ensure_server_token(state)
+
+    def _request(headers: dict[str, str]) -> SimpleNamespace:
+        return SimpleNamespace(
+            app=SimpleNamespace(state=SimpleNamespace(reader=SimpleNamespace(state_root=state))),
+            headers=headers,
+        )
+
+    # Unauthorized (no token header) -> the dependency raises the shared error.
+    with pytest.raises(server_views.MutationForbidden):
+        server_views.require_mutation_token(_request({}))
+
+    # Authorized (valid token, same-origin) -> the dependency returns None so
+    # the handler runs.
+    assert (
+        server_views.require_mutation_token(_request({server_views.SERVER_TOKEN_HEADER: token}))
+        is None
+    )
+
+    # The exact 403 body is emitted once, from the app's registered handler, for
+    # every router that declares the dependency.
+    (state / "planning-drafts").mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+    for path, payload in (
+        ("/api/plans/draft", {"text": "title: x"}),  # plans router
+        ("/api/roster-theme", {"theme": "default"}),  # roster router
+        ("/api/conversation/control", {"action": "noop"}),  # conversation router
+    ):
+        denied = client.post(path, json=payload, headers={"origin": "http://testserver"})
+        assert denied.status_code == 403, path
+        assert denied.json() == {"error": "forbidden"}, path
+
+
 def test_authorized_mutation_fails_closed_without_token_file(
     tmp_path: Path,
 ) -> None:
