@@ -67,7 +67,7 @@ def test_merge_via_gate_merges_when_gate_passes(monkeypatch):
         state="OPEN",
         head_sha="a" * 40,
         review_decision="APPROVED",
-        reviews=(Review("operator", "APPROVED", "2026-07-11T10:00:00Z"),),
+        reviews=(Review("operator", "APPROVED", "2026-07-11T10:00:00Z", "a" * 40),),
         review_threads=(ReviewThread(True, "x.py", "operator"),),
         merge_state_status="CLEAN",
         mergeable="MERGEABLE",

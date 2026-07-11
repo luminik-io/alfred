@@ -192,30 +192,26 @@ def _approval_condition(snapshot: GateSnapshot, min_approvals: int) -> Condition
     label = "Approved on GitHub"
     decision = (snapshot.review_decision or "").upper()
 
-    if decision == "APPROVED":
-        return Condition(
-            "approved",
-            label,
-            True,
-            "GitHub reviewDecision is APPROVED (required approvals satisfied)",
-        )
     if decision == "CHANGES_REQUESTED":
         return Condition("approved", label, False, "changes requested by a reviewer")
     if decision == "REVIEW_REQUIRED":
         return Condition("approved", label, False, "review required but not yet approved")
-    if decision:
+    if decision and decision != "APPROVED":
         # Unknown, non-empty decision: fail closed rather than guess.
         return Condition("approved", label, False, f"unrecognised reviewDecision '{decision}'")
 
-    # decision is empty/null: the repo has no branch-protection review rule.
-    # Fall back to counting approving reviews.
+    # Always count current-head approvals. On protected repos GitHub's
+    # reviewDecision independently enforces the branch rule, while this count
+    # enforces Alfred's threshold and exact-head policy. On unprotected repos
+    # reviewDecision may become APPROVED after one stale approval, so it is not
+    # sufficient by itself.
     effective = _effective_reviews(snapshot.reviews)
     if any((review.state or "").upper() == "CHANGES_REQUESTED" for review in effective.values()):
         return Condition(
             "approved",
             label,
             False,
-            "changes requested by a reviewer (no branch protection)",
+            "changes requested by a reviewer",
         )
     approvals = sum(
         1
@@ -229,15 +225,15 @@ def _approval_condition(snapshot: GateSnapshot, min_approvals: int) -> Condition
             "approved",
             label,
             True,
-            f"{approvals} current-head approving review(s), no branch protection "
-            f"(need {min_approvals})",
+            f"{approvals} current-head approving review(s), need {min_approvals}"
+            + ("; GitHub reviewDecision APPROVED" if decision == "APPROVED" else ""),
         )
     return Condition(
         "approved",
         label,
         False,
-        f"{approvals} current-head approving review(s), need {min_approvals} "
-        f"(repo has no required-review branch protection)",
+        f"{approvals} current-head approving review(s), need {min_approvals}"
+        + ("; GitHub reviewDecision APPROVED" if decision == "APPROVED" else ""),
     )
 
 
@@ -372,11 +368,7 @@ def collect_snapshot(
         view = {}
 
     review_decision = view.get("reviewDecision") if view.get("reviewDecision") else None
-    reviews = (
-        _collect_reviews(repo, pr_number, gh_json=gh_json, errors=errors)
-        if review_decision is None
-        else []
-    )
+    reviews = _collect_reviews(repo, pr_number, gh_json=gh_json, errors=errors)
 
     checks: list[CheckRun] = []
     for entry in view.get("statusCheckRollup") or []:

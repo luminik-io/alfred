@@ -29,7 +29,7 @@ def _snapshot(**overrides) -> GateSnapshot:
         "state": "OPEN",
         "head_sha": "a" * 40,
         "review_decision": "APPROVED",
-        "reviews": (Review("operator", "APPROVED", "2026-07-11T10:00:00Z"),),
+        "reviews": (Review("operator", "APPROVED", "2026-07-11T10:00:00Z", "a" * 40),),
         "review_threads": (ReviewThread(True, "lib/x.py", "operator"),),
         "merge_state_status": "CLEAN",
         "mergeable": "MERGEABLE",
@@ -50,6 +50,23 @@ def test_approved_and_clean_is_mergeable():
     assert decision.mergeable is True
     assert decision.head_sha == "a" * 40
     assert decision.failing() == []
+
+
+def test_github_approved_still_requires_configured_current_head_approvals():
+    stale = _snapshot(
+        review_decision="APPROVED",
+        reviews=(Review("operator", "APPROVED", "2026-07-11T10:00:00Z", "b" * 40),),
+    )
+    assert evaluate_gate(stale, min_approvals=1).mergeable is False
+
+    two_current = _snapshot(
+        review_decision="APPROVED",
+        reviews=(
+            Review("alice", "APPROVED", "2026-07-11T10:00:00Z", "a" * 40),
+            Review("bob", "APPROVED", "2026-07-11T10:01:00Z", "a" * 40),
+        ),
+    )
+    assert evaluate_gate(two_current, min_approvals=2).mergeable is True
 
 
 def test_unresolved_thread_blocks_merge():
@@ -213,7 +230,7 @@ def test_no_branch_protection_rejects_approval_for_stale_head():
 
 def _fake_gh_json(view_payload, threads_payload, reviews_payload=None):
     def _runner(cmd, default):
-        if cmd[-1].endswith("/reviews"):
+        if any(str(arg).endswith("/reviews") for arg in cmd):
             return reviews_payload if reviews_payload is not None else [[]]
         if "graphql" in cmd:
             if threads_payload is None:
@@ -258,12 +275,22 @@ def test_collect_snapshot_builds_from_gh():
             "comments": {"nodes": [{"author": {"login": "operator"}}]},
         }
     ]
-    snap = collect_snapshot("acme/repo", 7, gh_json=_fake_gh_json(view, threads))
+    review_pages = [
+        [
+            {
+                "user": {"login": "operator"},
+                "state": "APPROVED",
+                "submitted_at": "2026-07-11T10:00:00Z",
+                "commit_id": "b" * 40,
+            }
+        ]
+    ]
+    snap = collect_snapshot("acme/repo", 7, gh_json=_fake_gh_json(view, threads, review_pages))
     assert snap.errors == ()
     assert snap.state == "OPEN"
     assert snap.head_sha == "b" * 40
     assert snap.review_decision == "APPROVED"
-    assert snap.reviews == ()
+    assert len(snap.reviews) == 1
     assert len(snap.checks) == 2
     assert evaluate_gate(snap).mergeable is True
 
@@ -349,6 +376,8 @@ def test_collect_snapshot_paginates_all_review_threads():
     calls = []
 
     def _runner(cmd, default):
+        if any(str(arg).endswith("/reviews") for arg in cmd):
+            return [[]]
         if "graphql" not in cmd:
             return view
         calls.append(cmd)
@@ -386,6 +415,8 @@ def test_collect_snapshot_fails_closed_on_incomplete_thread_pagination():
     }
 
     def _runner(cmd, default):
+        if any(str(arg).endswith("/reviews") for arg in cmd):
+            return [[]]
         if "graphql" not in cmd:
             return view
         return {"nodes": [], "pageInfo": {"hasNextPage": True, "endCursor": None}}
@@ -415,7 +446,17 @@ def test_collect_snapshot_pending_check_is_not_failing():
             {"__typename": "CheckRun", "name": "slow", "status": "IN_PROGRESS", "conclusion": ""}
         ],
     }
-    snap = collect_snapshot("acme/repo", 7, gh_json=_fake_gh_json(view, []))
+    review_pages = [
+        [
+            {
+                "user": {"login": "operator"},
+                "state": "APPROVED",
+                "submitted_at": "2026-07-11T10:00:00Z",
+                "commit_id": "e" * 40,
+            }
+        ]
+    ]
+    snap = collect_snapshot("acme/repo", 7, gh_json=_fake_gh_json(view, [], review_pages))
     # A pending check has no failing conclusion; the merge_state field is what
     # would actually gate an incomplete required check.
     assert evaluate_gate(snap).mergeable is True
@@ -480,6 +521,18 @@ def test_gate_pull_request_end_to_end():
         "reviews": [],
         "statusCheckRollup": [],
     }
-    snap, decision = merge_gate.gate_pull_request("acme/repo", 7, gh_json=_fake_gh_json(view, []))
+    review_pages = [
+        [
+            {
+                "user": {"login": "operator"},
+                "state": "APPROVED",
+                "submitted_at": "2026-07-11T10:00:00Z",
+                "commit_id": "a" * 40,
+            }
+        ]
+    ]
+    snap, decision = merge_gate.gate_pull_request(
+        "acme/repo", 7, gh_json=_fake_gh_json(view, [], review_pages)
+    )
     assert decision.mergeable is True
     assert snap.head_sha == "a" * 40

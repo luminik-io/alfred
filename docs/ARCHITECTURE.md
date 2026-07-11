@@ -45,7 +45,7 @@ flowchart TD
     automerge -->|not yet| pr
 ```
 
-The automerge gate is not a single boolean. `bin/automerge.py:is_mergeable` requires, in order: no unresolved reviewer threads, a review-agent main review whose body says `Ship-ready: yes`, the reviewed head SHA matches the current PR head, the review is newer than the latest commit, and no unresolved `P0` comment. PRs younger than `ALFRED_AUTOMERGE_MIN_AGE_MIN` (default 30 minutes) wait. Only `agent:authored` PRs in `ALFRED_AUTOMERGE_REPOS` are eligible, and the merge is a squash.
+The automerge gate is one fail-closed predicate in `lib/merge_gate.py`. It requires distinct approving reviews on the exact current head, no blocking GitHub review decision, zero unresolved review threads, a clean merge state, and no failing checks. Every review and thread page is fetched before deciding. The merge is a SHA-guarded squash, so a push after the snapshot invalidates it. Only `agent:authored` PRs in `ALFRED_AUTOMERGE_REPOS` are eligible. See [MERGE_GATE.md](MERGE_GATE.md) for the complete contract.
 
 The claim is `release_issue`-symmetric: every claim comment is paired with a release comment carrying the same `codename`/`firing_id`. A crash that leaves a claim unpaired is recovered by `find_stale_claims` / `force_release_stale_claim` in the cleanup agent after `ALFRED_CLAIM_MAX_AGE_HOURS` (default 4).
 
