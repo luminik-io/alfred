@@ -507,7 +507,7 @@ def _collect_external_reviews(
             continue
         association = str(item.get("author_association") or "").upper()
         body = str(item.get("body") or "")
-        match = re.search(r"Exact head:\s*`([0-9a-f]{40})`", body, re.I)
+        match = re.search(r"Exact head:\s*`?([0-9a-f]{40})`?", body, re.I)
         if (
             association in {"OWNER", "MEMBER", "COLLABORATOR"}
             and "@codex review" in body.lower()

@@ -265,6 +265,27 @@ def test_codex_evidence_uses_comment_order_when_timestamps_tie():
     assert evidence[1].reviewed_sha == old_head
 
 
+def test_codex_evidence_accepts_unquoted_exact_head_request():
+    head = "a" * 40
+    payload = [
+        [
+            {
+                "user": {"login": "operator"},
+                "author_association": "OWNER",
+                "body": f"@codex review\nExact head: {head}",
+            },
+            {
+                "user": {"login": "chatgpt-codex-connector[bot]"},
+                "body": "Didn't find any major issues.\nReviewed commit: aaaaaaaaaa",
+            },
+        ]
+    ]
+    evidence = merge_gate._collect_external_reviews(
+        "acme/repo", 7, gh_json=lambda _cmd, _default: payload, errors=[]
+    )
+    assert evidence[-1].reviewed_sha == head
+
+
 def test_codex_evidence_rejects_delayed_response_with_shared_prefix():
     prefix = "abcdef0"
     old_head = prefix + "a" * 33
