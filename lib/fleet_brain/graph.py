@@ -35,6 +35,8 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from envflags import FALSY_VALUES
+
 GRAPH_DENSIFY_ENV: str = "ALFRED_GRAPH_DENSIFY"
 
 EdgeKind = str  # "changed" | "owned_by" | "in"
@@ -76,7 +78,7 @@ def densify_enabled(env: Mapping[str, str] | None = None) -> bool:
     """
     src = env if env is not None else os.environ
     raw = str(src.get(GRAPH_DENSIFY_ENV, "")).strip().lower()
-    return raw not in {"0", "false", "no", "off"}
+    return raw not in FALSY_VALUES
 
 
 def file_node(repo: str, path: str) -> str:

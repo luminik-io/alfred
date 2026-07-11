@@ -18,9 +18,11 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 
-_TRUTHY_ENV_TOKENS = {"1", "true", "yes", "on", "enabled"}
-_FALSY_ENV_TOKENS = {"0", "false", "no", "off", "disabled"}
-_RECOGNIZED_ENV_TOKENS = _TRUTHY_ENV_TOKENS | _FALSY_ENV_TOKENS
+from envflags import FALSY_VALUES, RECOGNIZED_VALUES, TRUTHY_VALUES
+
+_TRUTHY_ENV_TOKENS = TRUTHY_VALUES
+_FALSY_ENV_TOKENS = FALSY_VALUES
+_RECOGNIZED_ENV_TOKENS = RECOGNIZED_VALUES
 _AUTO_PROMOTE_STOP_KEYS = {
     "ALFRED_AUTO_PROMOTE",
     "ALFRED_AUTO_PROMOTE_KILL",

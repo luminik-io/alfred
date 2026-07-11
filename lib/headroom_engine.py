@@ -40,9 +40,9 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-_LOG = logging.getLogger("headroom_engine")
+from envflags import truthy
 
-_FALSEY = {"0", "false", "no", "off", ""}
+_LOG = logging.getLogger("headroom_engine")
 
 # The public PyPI distribution and its import name differ: install
 # ``headroom-ai`` (Apache-2.0), import ``headroom``.
@@ -60,10 +60,7 @@ def _resolve(env: Mapping[str, str] | None) -> Mapping[str, str]:
 
 def _flag_on(env: Mapping[str, str], key: str) -> bool:
     """An opt-in flag: False unless set to a truthy token (default off)."""
-    raw = env.get(key)
-    if raw is None:
-        return False
-    return raw.strip().lower() not in _FALSEY
+    return truthy(env.get(key))
 
 
 # --------------------------------------------------------------------------

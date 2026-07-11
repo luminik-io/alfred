@@ -53,6 +53,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 import model_context
+from envflags import FALSY_VALUES
 
 __all__ = [
     "CompactionResult",
@@ -64,7 +65,7 @@ __all__ = [
     "strip_ansi",
 ]
 
-_FALSEY = {"0", "false", "no", "off"}
+_FALSEY = FALSY_VALUES
 
 # ---- defaults (all overridable via env, see _compact_config) --------------
 # The byte budget (min = trigger, max = target) now DEFAULTS to a fraction of the

@@ -14,6 +14,8 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from envflags import FALSY_VALUES, TRUTHY_VALUES
+
 __all__ = [
     "AMS_DEFAULTS",
     "AmsServerConfig",
@@ -186,8 +188,8 @@ def _int_env(env: Mapping[str, str], key: str, default: int) -> int:
         return default
 
 
-_TRUE = {"1", "true", "yes", "on"}
-_FALSE = {"0", "false", "no", "off"}
+_TRUE = TRUTHY_VALUES
+_FALSE = FALSY_VALUES
 
 
 def _bool_env(env: Mapping[str, str], key: str, default: bool) -> bool:

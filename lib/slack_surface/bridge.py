@@ -73,6 +73,8 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
+from envflags import truthy
+
 ENV_ENABLED = "ALFRED_BRIDGE_ENABLED"
 ENV_REPOS = "ALFRED_BRIDGE_REPOS"
 ENV_LABEL = "ALFRED_BRIDGE_LABEL"
@@ -589,7 +591,7 @@ def _strip_mentions(text: str) -> str:
 
 
 def _env_flag(name: str) -> bool:
-    return (os.environ.get(name) or "").strip().lower() in {"1", "true", "yes", "on"}
+    return truthy(os.environ.get(name))
 
 
 __all__ = [

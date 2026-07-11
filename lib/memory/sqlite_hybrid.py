@@ -57,6 +57,7 @@ from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
+from envflags import truthy
 from fleet_brain import (
     Lesson,
     Severity,
@@ -84,8 +85,6 @@ _EMBED_TIMEOUT_S = 5.0
 # a pathological MATCH expression.
 _TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
 _MAX_QUERY_TOKENS = 24
-
-_TRUTHY = {"1", "true", "yes", "on", "enabled"}
 
 
 def default_hybrid_db_path(env: Mapping[str, str] | None = None) -> Path:
@@ -123,10 +122,10 @@ def _env_int(env: Mapping[str, str], key: str, default: int) -> int:
 
 
 def _env_flag(env: Mapping[str, str], key: str, *, default: bool = False) -> bool:
-    raw = (env.get(key) or "").strip().lower()
-    if not raw:
+    raw = env.get(key)
+    if raw is None or not raw.strip():
         return default
-    return raw in _TRUTHY
+    return truthy(raw)
 
 
 def _clean_tags(tags: Iterable[str] | None) -> list[str]:

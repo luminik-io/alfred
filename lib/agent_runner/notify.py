@@ -24,6 +24,8 @@ import sys
 import time
 import urllib.request
 
+from envflags import truthy
+
 from .config import dry_run_log, is_dry_run
 from .paths import SLACK_WEBHOOK_CACHE, SLACK_WEBHOOK_CACHE_TTL
 from .process import run
@@ -123,9 +125,6 @@ def slack_post(text: str, *, severity: str = SLACK_SEVERITY_INFO) -> bool:
         return False
 
 
-_TRUTHY = frozenset({"1", "true", "yes", "on"})
-
-
 def _native_sends_preferred() -> bool:
     """Whether an app-native post should be preferred over a configured
     webhook.
@@ -136,7 +135,7 @@ def _native_sends_preferred() -> bool:
     already point the threaded posts). When neither is set we keep using
     the webhook, whose bound channel we cannot otherwise honour.
     """
-    if os.environ.get("ALFRED_SLACK_NATIVE_SENDS", "").strip().lower() in _TRUTHY:
+    if truthy(os.environ.get("ALFRED_SLACK_NATIVE_SENDS")):
         return True
     return bool(os.environ.get("SLACK_HOME_CHANNEL", "").strip())
 

@@ -11,7 +11,7 @@ High-level groupings:
 * **Paths and binaries**: ``ALFRED_HOME``, ``WORKSPACE_ROOT``,
   ``WORKSPACE``, ``STATE_ROOT``, ``WORKTREE_ROOT``, ``CLAUDE_BIN``,
   ``CODEX_BIN``, ``GH_ORG``, ``now_iso``, ``today_str``.
-* **Config**: ``env_int``, ``optional_env_int``, ``normalize_engine``,
+* **Config**: ``truthy``, ``env_int``, ``optional_env_int``, ``normalize_engine``,
   ``agent_engine``, ``engine_preflight_bins``,
   ``codex_sandbox_for_agent``, ``doctor_requested``, ``doctor_mode``, ``is_dry_run``,
   ``set_dry_run``, ``dry_run_log``.
@@ -98,6 +98,7 @@ from .config import (
     optional_env_int,
     reported_subtype,
     set_dry_run,
+    truthy,
 )
 from .context_governor import (
     ContextGovernance,

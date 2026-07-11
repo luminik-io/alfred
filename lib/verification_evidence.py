@@ -45,6 +45,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from envflags import FALSY_VALUES
+
 RunCmd = Callable[..., subprocess.CompletedProcess]
 
 # Default-on gate for test evidence + self-assessment. Screenshots stay opt-in
@@ -72,7 +74,7 @@ def evidence_enabled(env: dict[str, str] | None = None) -> bool:
     raw = source.get(EVIDENCE_ENV_VAR)
     if raw is None:
         return True
-    return raw.strip().lower() not in {"0", "false", "no", "off", ""}
+    return raw.strip().lower() not in FALSY_VALUES | {""}
 
 
 # ---------------------------------------------------------------------------

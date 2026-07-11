@@ -311,6 +311,15 @@ _RESULT_OVERLOAD_RE = re.compile(
 )
 
 
+def _transcript_truthy(value: Any) -> bool:
+    """Parse Claude's transcript boolean without accepting env-only aliases."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _result_from_event(obj: dict[str, Any]) -> FiringResult:
     raw_subtype = obj.get("subtype")
     result_text = str(obj.get("result") or "")
@@ -323,7 +332,7 @@ def _result_from_event(obj: dict[str, Any]) -> FiringResult:
         total_cost_usd=obj.get("total_cost_usd"),
         session_id=obj.get("session_id"),
         stop_reason=obj.get("stop_reason"),
-        is_error=_truthy(obj.get("is_error")),
+        is_error=_transcript_truthy(obj.get("is_error")),
         api_error_status=api_error_status,
         result_text=result_text or None,
         error_message=error_message,
@@ -333,7 +342,7 @@ def _result_from_event(obj: dict[str, Any]) -> FiringResult:
 def _effective_result_subtype(obj: dict[str, Any]) -> str | None:
     raw = obj.get("subtype")
     raw_str = str(raw or "")
-    is_error = _truthy(obj.get("is_error"))
+    is_error = _transcript_truthy(obj.get("is_error"))
     api_error_status = obj.get("api_error_status")
     has_api_error_status = api_error_status is not None and str(api_error_status).strip() != ""
     stop_reason = str(obj.get("stop_reason") or "")
@@ -398,14 +407,6 @@ def _first_text(obj: dict[str, Any], *keys: str) -> str | None:
         if value:
             return str(value)
     return None
-
-
-def _truthy(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return False
-    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _status_is(value: Any, code: int) -> bool:

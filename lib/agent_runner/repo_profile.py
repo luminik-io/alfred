@@ -34,6 +34,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from envflags import truthy
+
 __all__ = [
     "REPO_PROFILE_ENV",
     "RepoProfile",
@@ -45,8 +47,6 @@ __all__ = [
 
 REPO_PROFILE_ENV = "ALFRED_REPO_PROFILE"
 REPO_PROFILE_BUDGET_ENV = "ALFRED_REPO_PROFILE_MAX_CHARS"
-
-_TRUTHY = {"1", "true", "yes", "on", "enabled"}
 
 # Default character budget for the injected block. Conservative: a repo profile
 # is orientation, not the task, so it should never crowd out recalled lessons or
@@ -121,8 +121,7 @@ def repo_profile_enabled(env: Mapping[str, str] | None = None) -> bool:
     Arms only on a recognized truthy token so a config typo cannot silently turn
     it on. Mirrors the fail-closed opt-in used elsewhere in the memory layer.
     """
-    raw = str((env or os.environ).get(REPO_PROFILE_ENV, "")).strip().lower()
-    return raw in _TRUTHY
+    return truthy((env or os.environ).get(REPO_PROFILE_ENV))
 
 
 def _budget(env: Mapping[str, str] | None = None) -> int:

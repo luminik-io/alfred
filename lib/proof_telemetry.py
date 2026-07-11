@@ -83,6 +83,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from envflags import FALSY_VALUES
+
 logger = logging.getLogger(__name__)
 
 # The single master switch. On unless explicitly disabled.
@@ -117,7 +119,7 @@ _COUNT_PAGE = 1000
 _COUNT_HARD_LIMIT = _MAX_PER_FIELD
 
 _HTTP_TIMEOUT_SECONDS = 8
-_DISABLED_VALUES = {"0", "false", "no", "off", "disabled"}
+_DISABLED_VALUES = FALSY_VALUES
 
 
 def _switch_value(raw: str) -> str:

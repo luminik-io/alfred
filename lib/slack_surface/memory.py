@@ -25,6 +25,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from envflags import FALSY_VALUES
 from spec_helper import IssueDraft
 
 from slack_surface.threads import SlackThreadRegistry
@@ -145,13 +146,7 @@ def _memory_candidate_writer(provider: Any | None) -> Any | None:
 
 
 def _env_disabled(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in {
-        "0",
-        "false",
-        "no",
-        "off",
-        "disabled",
-    }
+    return os.environ.get(name, "").strip().lower() in FALSY_VALUES
 
 
 def _propose_memory_supports_modern_signature(method: Any) -> bool:

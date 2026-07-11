@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any
 
 import alfred_config
+from envflags import truthy
 
 # An invoker takes the extraction prompt and returns the model's raw text
 # (the JSON payload we asked for), or None on any failure. This is the
@@ -75,12 +76,7 @@ _MAX_DETAIL_CHARS = 12_000
 
 def extract_enabled(env: Mapping[str, str] | None = None) -> bool:
     src = env if env is not None else os.environ
-    return str(src.get("ALFRED_MEMORY_EXTRACT", "")).strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    return truthy(src.get("ALFRED_MEMORY_EXTRACT"))
 
 
 def _truncate_tail(text: str, limit: int = _MAX_DETAIL_CHARS) -> str:

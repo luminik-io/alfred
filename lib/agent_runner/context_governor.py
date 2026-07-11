@@ -12,7 +12,9 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-_FALSEY = {"0", "false", "no", "off"}
+from envflags import FALSY_VALUES
+
+_FALSEY = FALSY_VALUES
 _ARGV_SAFE_MAX_BYTES = 96_000
 _DEFAULT_MAX_CHARS = _ARGV_SAFE_MAX_BYTES
 _DEFAULT_MAX_BYTES = _ARGV_SAFE_MAX_BYTES

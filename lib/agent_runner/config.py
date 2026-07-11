@@ -3,7 +3,7 @@
 This module owns the 12-factor env-var contract:
 
 * ``env_int`` / ``optional_env_int`` for clamped integer knobs.
-* ``_truthy_env``, ``_env_value_enabled``, ``_env_present`` for the
+* ``truthy``, ``_truthy_env``, ``_env_value_enabled``, ``_env_present`` for the
   three flavours of boolean env-var test.
 * Engine-selection helpers (``normalize_engine``, ``agent_engine``,
   ``engine_preflight_bins``) and the engine-mode constants
@@ -28,7 +28,12 @@ from __future__ import annotations
 import os
 import sys
 
+from envflags import FALSY_VALUES
+from envflags import truthy as _truthy
+
 from .paths import CLAUDE_BIN, CODEX_BIN, STATE_ROOT
+
+truthy = _truthy
 
 # --------------------------------------------------------------------------
 # Engine vocabulary
@@ -55,14 +60,14 @@ def reported_subtype(result: object) -> str:
 
 
 def _truthy_env(name: str) -> bool:
-    """Standard ``1 / true / yes / on`` env-truthiness check."""
-    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+    """True when env var is set to a canonical true token."""
+    return truthy(os.environ.get(name))
 
 
 def _env_value_enabled(name: str) -> bool:
     """True when env var is set to a non-falsy value (broader than _truthy_env)."""
     value = os.environ.get(name)
-    return bool(value and value.strip().lower() not in {"", "0", "false", "no", "off"})
+    return bool(value and value.strip().lower() not in {"", *FALSY_VALUES})
 
 
 def _env_present(name: str) -> bool:
@@ -245,12 +250,7 @@ def codex_sandbox_for_agent(
     explicit = (env.get(f"ALFRED_{slug}_CODEX_SANDBOX") or "").strip()
     if explicit:
         return explicit
-    if (env.get(f"ALFRED_{slug}_CODEX_WRITE") or "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }:
+    if truthy(env.get(f"ALFRED_{slug}_CODEX_WRITE")):
         return "workspace-write"
     return default
 
