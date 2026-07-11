@@ -88,6 +88,9 @@ def test_managed_python_falls_back_to_install_venv_not_bare_executable(
     install_python = tmp_path / "install" / "venv" / "bin" / "python"
 
     monkeypatch.setenv("ALFRED_HOME", str(fresh))
+    # Hydration captures explicitness before defaulting ALFRED_HOME; an operator
+    # who exported it lands here with the flag set.
+    monkeypatch.setattr(cli, "_ALFRED_HOME_EXPLICIT", True)
     monkeypatch.setattr(cli, "_install_managed_python_candidates", lambda: [install_python])
 
     # Interpreter absent -> last-resort sys.executable, home unchanged.
@@ -100,6 +103,12 @@ def test_managed_python_falls_back_to_install_venv_not_bare_executable(
     install_python.chmod(0o755)
     resolved_present = cli._alfred_managed_python()
     assert resolved_present == str(install_python)
+
+    # A DEFAULT home (hydration-injected, not operator-set) never borrows the
+    # install venv: a source checkout with its own .venv must not silently serve
+    # from it instead of the interpreter the operator invoked.
+    monkeypatch.setattr(cli, "_ALFRED_HOME_EXPLICIT", False)
+    assert cli._alfred_managed_python() == sys.executable
 
 
 def test_serve_materializes_requested_home_state_dir(

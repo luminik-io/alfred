@@ -902,7 +902,12 @@ def _alfred_managed_python() -> str:
     candidate = _alfred_home_path() / "venv" / "bin" / "python"
     if candidate.is_file() and os.access(candidate, os.X_OK):
         return str(candidate)
-    if os.environ.get("ALFRED_HOME", "").strip():
+    # Only an OPERATOR-set home borrows the install's venv. This must read the
+    # pre-hydration flag, not the env var: CLI hydration has already defaulted
+    # ALFRED_HOME, so an env check would fire for every default install and a
+    # source checkout would silently serve from its own .venv instead of the
+    # interpreter the operator invoked.
+    if _ALFRED_HOME_EXPLICIT:
         for install_python in _install_managed_python_candidates():
             if install_python.is_file() and os.access(install_python, os.X_OK):
                 return str(install_python)
