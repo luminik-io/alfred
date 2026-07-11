@@ -120,10 +120,16 @@ def test_serve_materializes_requested_home_state_dir(
     # Hydration captures explicitness before defaulting ALFRED_HOME; an operator
     # who exported it lands here with the flag set.
     monkeypatch.setattr(cli, "_ALFRED_HOME_EXPLICIT", True)
-    monkeypatch.setattr(cli.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0))
+    calls: list[tuple[list[str], float | None]] = []
+    monkeypatch.setattr(
+        cli,
+        "_run_subcommand",
+        lambda command, *, timeout, env=None: calls.append((command, timeout)) or 0,
+    )
 
     args = SimpleNamespace(host=None, port=7012, no_browser=True, log_level=None)
     assert cli.cmd_serve(args) == 0
+    assert calls[0][1] is None
 
     # The requested home is materialized rather than silently swapped away.
     assert (fresh / "state").is_dir()
@@ -141,10 +147,16 @@ def test_serve_does_not_scaffold_a_fresh_default_home(
     default_home = tmp_path / "default-home"
     monkeypatch.setenv("ALFRED_HOME", str(default_home))
     monkeypatch.setattr(cli, "_ALFRED_HOME_EXPLICIT", False)
-    monkeypatch.setattr(cli.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0))
+    calls: list[tuple[list[str], float | None]] = []
+    monkeypatch.setattr(
+        cli,
+        "_run_subcommand",
+        lambda command, *, timeout, env=None: calls.append((command, timeout)) or 0,
+    )
 
     args = SimpleNamespace(host=None, port=7012, no_browser=True, log_level=None)
     assert cli.cmd_serve(args) == 0
+    assert calls[0][1] is None
 
     # No state dir was scaffolded for the non-explicit (defaulted) home.
     assert not (default_home / "state").exists()
