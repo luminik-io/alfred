@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.machinery
 import importlib.util
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -55,6 +56,31 @@ def load_cli_module():
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
     return module
+
+
+def test_real_demo_review_has_budget_for_mandatory_probes(monkeypatch, tmp_path):
+    runner = load_demo_runner()
+    seen: dict[str, object] = {}
+
+    def fake_invoke(_prompt, **kwargs):
+        seen.update(kwargs)
+        return types.SimpleNamespace(success=True, result_text="reviewed", error_message=None)
+
+    monkeypatch.setitem(
+        sys.modules, "agent_runner", types.SimpleNamespace(claude_invoke=fake_invoke)
+    )
+    engine = runner._build_real_engine(verbose=False)
+    engine(
+        EngineCall(
+            step="review",
+            prompt="review",
+            allowed_tools="Read,Bash",
+            workdir=tmp_path,
+            timeout=30,
+        )
+    )
+
+    assert seen["max_turns"] == 14
 
 
 # ---------------------------------------------------------------------------

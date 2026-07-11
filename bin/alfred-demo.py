@@ -81,6 +81,8 @@ _INSTALL_POINTER = (
     "then `alfred-init` to choose agents, repos, and your approval rules."
 )
 
+_STEP_TURNS = {"plan": 6, "review": 14, "build": 25, "fix": 20}
+
 
 def _claude_bin() -> str:
     """Resolve the Claude CLI binary name, honoring CLAUDE_BIN."""
@@ -109,8 +111,6 @@ def _build_real_engine(*, verbose: bool):
     # Keep each step snappy: the read-only reasoning steps need only a couple
     # of turns; the code-editing steps a handful. This caps a step that would
     # otherwise wander, which is the main tail-latency risk in the run.
-    _step_turns = {"plan": 6, "review": 6, "build": 25, "fix": 20}
-
     def engine(call: EngineCall) -> EngineOutcome:
         result = claude_invoke(
             call.prompt,
@@ -118,7 +118,7 @@ def _build_real_engine(*, verbose: bool):
             allowed_tools=call.allowed_tools,
             timeout=call.timeout,
             model=call.model,
-            max_turns=_step_turns.get(call.step),
+            max_turns=_STEP_TURNS.get(call.step),
         )
         text = (result.result_text or "").strip()
         if verbose and result.error_message:
