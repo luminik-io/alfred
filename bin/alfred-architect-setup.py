@@ -38,6 +38,7 @@ ARCHITECT_BUNDLE_PREFIX_ENV = "ARCHITECT_BUNDLE_SLUG_PREFIX"
 ARCHITECT_TIMEOUT_ENV = "ARCHITECT_APPROVAL_TIMEOUT_S"
 ARCHITECT_ROLLOUT_ORDER_ENV = "ARCHITECT_ROLLOUT_ORDER"
 DEFAULT_ROLLOUT_ORDER = "backend,frontend,mobile,agents,data-acquisition"
+SETUP_TOKEN_COMMAND_TIMEOUT_S = 3600
 
 MODE_HALT = "0"
 MODE_APPROVAL_GATE = "approval-gate"
@@ -380,7 +381,11 @@ def step_claude_oauth(
         return
     if ask_yes_no("Run `alfred setup-token` now?", True):
         script = Path(__file__).resolve().parent / "alfred-setup-token.py"
-        rc = subprocess.run([sys.executable, str(script)], check=False).returncode
+        rc = subprocess.run(
+            [sys.executable, str(script)],
+            check=False,
+            timeout=SETUP_TOKEN_COMMAND_TIMEOUT_S,
+        ).returncode
         if rc == 0:
             state.config = read_env_file(state.env_file)
             ok(f"{TOKEN_ENV} configured")

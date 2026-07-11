@@ -44,7 +44,7 @@ def test_serve_forwards_supported_server_args(tmp_path, monkeypatch):
     cli = load_cli_module()
     calls = []
 
-    def fake_run(command, check):
+    def fake_run(command, check, timeout):
         calls.append((command, check))
         return SimpleNamespace(returncode=0)
 
@@ -95,7 +95,7 @@ def test_serve_uses_managed_alfred_venv_when_present(tmp_path, monkeypatch):
     venv_python.chmod(0o755)
     calls = []
 
-    def fake_run(command, check):
+    def fake_run(command, check, timeout):
         calls.append((command, check))
         return SimpleNamespace(returncode=0)
 

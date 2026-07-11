@@ -209,7 +209,7 @@ def test_alfred_wrapper_forwards_rollout_order(monkeypatch):
     cli = _load_alfred_cli()
     calls: list[list[str]] = []
 
-    def fake_run(cmd, *, check=False):
+    def fake_run(cmd, *, check=False, timeout=None):
         calls.append(cmd)
         return subprocess.CompletedProcess(cmd, 0)
 

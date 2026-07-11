@@ -449,7 +449,7 @@ def test_cli_demo_forwards_flags_to_runner(monkeypatch):
     cli = load_cli_module()
     calls: list[list[str]] = []
 
-    def fake_run(command, check):
+    def fake_run(command, check, timeout):
         calls.append(command)
         return _CompletedStub()
 

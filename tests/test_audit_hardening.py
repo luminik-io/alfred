@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import json
 import os
@@ -15,6 +16,47 @@ from types import SimpleNamespace
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def _python_sources_under(*roots: str) -> list[Path]:
+    sources: list[Path] = []
+    for root in roots:
+        for path in (ROOT / root).rglob("*"):
+            if not path.is_file():
+                continue
+            if path.suffix != ".py" and root != "bin":
+                continue
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            if "subprocess.run" not in text:
+                continue
+            try:
+                ast.parse(text, filename=str(path))
+            except SyntaxError:
+                continue
+            sources.append(path)
+    return sorted(sources)
+
+
+def test_subprocess_run_calls_in_lib_and_bin_have_timeouts() -> None:
+    offenders: list[str] = []
+    for path in _python_sources_under("lib", "bin"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if not (
+                isinstance(func, ast.Attribute)
+                and func.attr == "run"
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "subprocess"
+            ):
+                continue
+            if not any(keyword.arg == "timeout" for keyword in node.keywords):
+                rel = path.relative_to(ROOT)
+                offenders.append(f"{rel}:{node.lineno}")
+
+    assert offenders == []
 
 
 def load_bin_module(name: str, monkeypatch: pytest.MonkeyPatch):

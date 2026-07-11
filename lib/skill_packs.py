@@ -55,6 +55,7 @@ __all__ = [
 # personal skills dir. An operator can point this at a project's
 # ``.claude/skills`` for project-scoped installs.
 DEFAULT_SKILLS_DIR_ENV = "ALFRED_SKILLS_DIR"
+FETCH_PACK_TIMEOUT_S = 600
 
 # Valid install shapes.
 _VENDORED = "vendored"
@@ -317,7 +318,12 @@ def _default_shell_runner(cmd: str, cwd: Path) -> int:
     """Real shell runner for fetch packs. Only used outside tests."""
     import subprocess
 
-    return subprocess.run(cmd, shell=True, cwd=str(cwd)).returncode
+    return subprocess.run(
+        cmd,
+        shell=True,
+        cwd=str(cwd),
+        timeout=FETCH_PACK_TIMEOUT_S,
+    ).returncode
 
 
 def installed_packs(packs: Sequence[Pack], *, skills_dir: Path | None = None) -> set[str]:

@@ -225,6 +225,7 @@ MEMORY_AUTO_PROMOTE_CONTROL_ENVS = (
 # JSON config never silently enables telemetry the way bool("false") would.
 _TRUTHY_CONSENT = {"1", "true", "yes", "on"}
 DEFAULT_TELEMETRY_URL = "https://alfred-proof-telemetry.luminik.workers.dev/ingest"
+SETUP_TOKEN_COMMAND_TIMEOUT_S = 3600
 
 
 def default_telemetry_url() -> str:
@@ -1488,7 +1489,11 @@ def _maybe_offer_setup_token(*, non_interactive: bool) -> None:
     answer = input("  Run `alfred setup-token` now? [Y/n] ").strip().lower()
     if answer in ("", "y", "yes"):
         script = Path(__file__).resolve().parent / "alfred-setup-token.py"
-        rc = subprocess.run([sys.executable, str(script)], check=False).returncode
+        rc = subprocess.run(
+            [sys.executable, str(script)],
+            check=False,
+            timeout=SETUP_TOKEN_COMMAND_TIMEOUT_S,
+        ).returncode
         if rc != 0:
             warn(f"`alfred setup-token` exited {rc}. You can re-run it any time.")
     else:
