@@ -7,9 +7,9 @@
 Every environment variable Alfred reads is declared once in the typed
 registry at `lib/alfred_config.py`. This page is generated from it.
 
-- Declared variables: **377**
+- Declared variables: **387**
 - Operator-facing (in `.env.example`): **68**
-- Internal / experimental: **309**
+- Internal / experimental: **319**
 
 Operator-facing vars also appear, with their defaults, in
 `.env.example`. Internal vars are listed here for completeness; they
@@ -179,6 +179,12 @@ are experimental, deep-tuning, or set by Alfred itself at runtime.
 | `ALFRED_OUTPUT_COMPACTOR_HEAD_LINES` | int |  | internal | Head lines kept when compacting tool output. |
 | `ALFRED_OUTPUT_COMPACTOR_TAIL_LINES` | int |  | internal | Tail lines kept when compacting tool output. |
 | `ALFRED_OUTPUT_COMPACTOR_TOOLS` | list |  | internal | Comma-separated tools the output compactor applies to. |
+| `ALFRED_COMPACTION_MODEL` | str |  | internal | Override the model used to derive compaction thresholds. |
+| `ALFRED_COMPACTION_CONTEXT_TOKENS` | int |  | internal | Override the active model's context window (tokens) for threshold derivation. |
+| `ALFRED_TOOL_OFFLOAD` | bool | `1` | internal | Offload oversized tool output to a firing-scoped file; opt out with 0. |
+| `ALFRED_TOOL_OFFLOAD_MAX_BYTES` | int | `50000000` | internal | Per-firing disk bound for offloaded tool output (~50MB). |
+| `ALFRED_TOOL_OFFLOAD_PREVIEW_HEAD_LINES` | int | `20` | internal | Head lines kept inline alongside the offloaded-output pointer. |
+| `ALFRED_TOOL_OFFLOAD_PREVIEW_TAIL_LINES` | int | `20` | internal | Tail lines kept inline alongside the offloaded-output pointer. |
 | `ALFRED_TOOL_DIGEST` | bool | `1` | internal | Digest verbose tool schemas; opt out with 0. |
 | `ALFRED_TOOL_DIGEST_MIN_CHARS` | int |  | internal | Below this size, tool output passes through un-digested. |
 | `ALFRED_SKILLS_INJECT` | bool | `1` | internal | Inject skill headers into the prompt; on by default. |
@@ -295,6 +301,8 @@ are experimental, deep-tuning, or set by Alfred itself at runtime.
 | `ALFRED_EVENTS_RETENTION_DAYS` | int | `30` | internal | Events retention in days for normal cleanup. |
 | `ALFRED_TRANSCRIPT_RETENTION_DAYS` | int | `30` | internal | Transcript retention in days for normal cleanup. |
 | `ALFRED_SPEND_RETENTION_DAYS` | int | `90` | internal | Spend-ledger retention in days. |
+| `ALFRED_FIRINGS_RETENTION_DAYS` | int | `30` | internal | Offloaded tool-output (state/firings) retention in days for normal cleanup. |
+| `ALFRED_EMERGENCY_FIRINGS_RETENTION_DAYS` | int | `1` | internal | Offloaded tool-output retention in days under emergency cleanup. |
 | `ALFRED_PREFLIGHT_FORCE_SLACK` | bool | `0` | internal | Force the Slack preflight even when recently checked. |
 | `ALFRED_PREFLIGHT_SLACK_MIN_MINUTES` | int | `60` | internal | Minimum minutes between Slack preflight checks. |
 | `ALFRED_PRE_PUSH_TIMEOUT_S` | int | `900` | internal | Timeout in seconds for the pre-push hook. |
@@ -456,3 +464,5 @@ are experimental, deep-tuning, or set by Alfred itself at runtime.
 | `ALFRED_DEMO_VERBOSE` | bool | `0` | internal | Verbose demo engine output. |
 | `ALFRED_BRAIN_LOG_LEVEL` | enum (DEBUG/INFO/WARNING/ERROR) | `WARNING` | internal | Log level for the brain process. |
 | `ALFRED_DISK_EMERGENCY_IN_PROGRESS` | bool | `0` | internal | Reentrancy guard set while emergency disk cleanup runs. |
+| `ALFRED_ACTIVE_MODEL` | str |  | internal | Active model exported into a firing so the compaction hook can size budgets. |
+| `ALFRED_ACTIVE_ENGINE` | str |  | internal | Active engine exported into a firing for the compaction hook. |

@@ -227,13 +227,24 @@ def test_compactor_and_hook_are_stdlib_only() -> None:
     import sys as _sys
 
     stdlib = set(getattr(_sys, "stdlib_module_names", set()))
-    # The hook path is these sibling modules only.
-    local = {"tool_compactor", "alfred_hooks", "compression_engine", "headroom_engine"}
+    # The hook path is these sibling modules only. ``model_context`` (byte-budget
+    # derivation) and ``tool_offload`` (offload-to-path) are stdlib-only siblings
+    # that ride the same hook path, so they are allowed and are scanned too.
+    local = {
+        "tool_compactor",
+        "alfred_hooks",
+        "compression_engine",
+        "headroom_engine",
+        "model_context",
+        "tool_offload",
+    }
     for name in (
         "tool_compactor.py",
         "alfred_hooks.py",
         "compression_engine.py",
         "headroom_engine.py",
+        "model_context.py",
+        "tool_offload.py",
     ):
         source = (_LIB / name).read_text(encoding="utf-8")
         tree = ast.parse(source)

@@ -110,6 +110,72 @@ The library path returns headroom's `CompressResult` object (compressed
 compressed text from it and only falls back to the built-in compactor when
 headroom genuinely returned nothing usable.
 
+## Model-derived thresholds
+
+The compactor's byte budget (`min_bytes` = the size an output must exceed before
+compaction fires, `max_bytes` = the target size of the compacted result) now
+**defaults to a fraction of the active model's context window** instead of a
+fixed constant (`lib/model_context.py`). A large-window model can afford more
+inline tool output before compacting; a small one should compact sooner. The
+window is read from the firing's env at hook time - the runner exports
+`ALFRED_ACTIVE_MODEL` / `ALFRED_ACTIVE_ENGINE` into the subprocess env (the
+`--model` alias is a CLI arg, not an inherited var, so it is surfaced there).
+
+The fractions are chosen so the baseline **200K-token window reproduces the
+historical fixed defaults exactly** (2000 / 8000 bytes), and a larger window
+scales up proportionally (a 1M window yields 10000 / 40000). Detection falls back
+conservatively: an undetectable model uses the smallest common Claude window, so
+an unknown model never inflates the budget past today's.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `ALFRED_COMPACTION_MODEL` | (unset) | Override the model used to derive the budget (else `ALFRED_ACTIVE_MODEL` / `ANTHROPIC_MODEL`, or `CODEX_MODEL` on the codex engine). |
+| `ALFRED_COMPACTION_CONTEXT_TOKENS` | (unset) | Override the window directly, in tokens, bypassing the model table (for a model Alfred does not yet know, or for tuning). |
+
+The existing `ALFRED_OUTPUT_COMPACTOR_MIN_BYTES` / `ALFRED_OUTPUT_COMPACTOR_MAX_BYTES`
+overrides still work and **win over the derived value** - the derived value is
+only the new default.
+
+## Offload oversized tool output to a re-readable path
+
+When a successful tool output is large enough to compact, Alfred no longer ships
+only the truncated head+tail. It writes the **full** output to a firing-scoped
+scratch file and inlines a head/tail preview plus the absolute path, so the agent
+can re-read the exact omitted slice (a line range of the saved file) instead of
+re-running the command (`lib/tool_offload.py`, borrowing the shape of deepagents'
+`_message_eviction`). The saved copy lives at:
+
+```
+$ALFRED_HOME/state/firings/<firing_id>/tool-output/<n>.txt
+```
+
+The `<firing_id>` is `ALFRED_FIRING_ID` (exported by the runner) or the Claude
+Code session id. Each file's index is claimed atomically (`O_CREAT | O_EXCL`),
+so two concurrent hook processes offloading for the same firing can never
+overwrite each other's output. The inline preview honours the **same compaction
+byte budget it replaces** (the `ALFRED_OUTPUT_COMPACTOR_MAX_BYTES` override, else
+the model-derived default), so a log made of a few very long lines can never ride
+back into the context nearly in full. Offload is a **best-effort enhancement**:
+it only runs on output the confirmed-success valve already cleared for
+compaction, and any failure (disk bound breached, unwritable path) falls straight
+back to the compactor's own head+tail output - the token win is never lost, and
+an error is never hidden.
+
+Total offloaded disk **per firing is bounded** (`ALFRED_TOOL_OFFLOAD_MAX_BYTES`,
+default ~50MB); once a firing's directory would exceed the bound, further outputs
+skip offload. Expired `tool-output/` subtrees are swept by the existing daily
+cleanup (`bin/agent-cleanup.py`, retention `ALFRED_FIRINGS_RETENTION_DAYS`,
+default 30d; 1d under emergency disk pressure). The sweep removes only the
+`tool-output/` directory offload owns; the parent `state/firings/<id>/` dir is
+reaped only when empty, so sibling firing-scoped state survives.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `ALFRED_TOOL_OFFLOAD` | `1` (on) | Offload oversized tool output to a file; opt out with `0` (falls back to inline compaction). |
+| `ALFRED_TOOL_OFFLOAD_MAX_BYTES` | `50000000` | Per-firing disk bound for offloaded output. |
+| `ALFRED_TOOL_OFFLOAD_PREVIEW_HEAD_LINES` | `20` | Head lines kept inline alongside the saved-path pointer. |
+| `ALFRED_TOOL_OFFLOAD_PREVIEW_TAIL_LINES` | `20` | Tail lines kept inline alongside the saved-path pointer. |
+
 ## The hook stays stdlib-only
 
 The built-in path keeps its stdlib-only guarantee: it runs on the Claude Code
