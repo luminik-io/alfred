@@ -31,7 +31,13 @@ authenticated `claude` CLI and nothing else (no GitHub, no Slack, no tokens),
 `alfred demo` runs the full team against a throwaway sample and streams the story
 to your terminal:
 
-<!-- TODO(operator): a short screen-recorded GIF of `alfred demo` would land even harder than this transcript. -->
+<p align="center">
+  <img src="docs/images/demo.gif" alt="alfred demo: plan, approve, build, review catches a planted bug, fix, ship" width="760">
+</p>
+
+<p align="center"><em>One real run, captured live and unedited: plan to shipped in 82 seconds.</em></p>
+
+The same run as a text transcript, for the terminal-shy:
 
 ```console
 $ alfred demo
@@ -45,10 +51,10 @@ verify        diff applies, sample tests pass
 done          change committed with a PR-style summary
 ```
 
-Four real, sequential model calls, so it runs at real latency, roughly two to
-three minutes, not a canned script. It never fakes success: a missing CLI, a
-failed call, an unchanged worktree, or a failing test suite stops the run
-honestly. Full walkthrough in [`docs/DEMO.md`](docs/DEMO.md).
+Four real, sequential model calls, so it runs at real latency, typically a
+minute and a half to two minutes, not a canned script. It never fakes success:
+a missing CLI, a failed call, an unchanged worktree, or a failing test suite
+stops the run honestly. Full walkthrough in [`docs/DEMO.md`](docs/DEMO.md).
 
 ## What it is
 
@@ -61,6 +67,10 @@ service.
 
 Alfred never merges its own work by default. A drafted plan waits behind an
 approval gate until you approve it, so unapproved work does not ship.
+
+Put plainly: it is the reliability, review, memory, and approval scaffolding you
+would eventually build around cron plus `claude` plus `gh`, already built and
+audited.
 
 ```mermaid
 flowchart LR

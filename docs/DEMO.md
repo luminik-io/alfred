@@ -41,11 +41,13 @@ runs a compressed version of the real fleet loop against it with real
    the real fleet: nothing proceeds without your say-so.
 3. **Build.** Lucius implements the plan directly in the worktree.
 4. **Review.** Ra's al Ghul reviews the change adversarially. The sample
-   project ships with a subtle planted bug in its existing `titlecase`
-   function (it silently collapses runs of consecutive whitespace, and the
-   existing tests do not cover it). The bug is real and manifest: the review
-   prompt requires the reviewer to run an actual reproduction before blocking,
-   so the catch is verified, not recited.
+   project ships with a planted bug in its existing `titlecase` function: it
+   silently collapses runs of consecutive whitespace and drops leading and
+   trailing whitespace, which directly contradicts the spacing-preservation
+   contract its own docstring documents, and the existing tests do not cover
+   it. The bug is real and manifest: the review prompt has the reviewer walk
+   each existing function's documented contract and run an actual reproduction
+   before blocking, so the catch is verified, not recited.
 5. **Fix.** Lucius applies the fix the reviewer demanded and adds a
    regression test.
 6. **Ship.** Before anything is declared shipped, the demo verifies the work:
@@ -62,12 +64,15 @@ At the end it prints the measured run time and a pointer to
 
 The demo makes four real, sequential `claude` calls (plan, build, review,
 fix), so it is bounded by real model latency, not by a canned script.
-Expect roughly two to three minutes of run time on a typical connection. The
-closing line reports the actual measured time for your run, honestly.
+Expect roughly a minute and a half to two minutes of run time on a typical
+connection. The closing line reports the actual measured time for your run,
+honestly.
 
-The read-only reasoning steps (plan and review) run on a small fast model by
-default to keep the run tight; the code-editing steps (build and fix) use the
-default model so the shipped change is reliable.
+The plan step is a one-shot summary with no tool use, so it runs on a small
+fast model by default to keep the run tight. The review step is the whole
+point of the demo (it must catch the planted bug) and drives real reproduction
+commands, so it uses the default model for a reliable catch, as do the
+code-editing build and fix steps.
 
 ## It is honest by construction
 
@@ -99,7 +104,7 @@ only).
 | Variable | Effect |
 | --- | --- |
 | `ALFRED_DEMO_MODEL` | Force one model for every step. |
-| `ALFRED_DEMO_FAST_MODEL` | Override the fast model used for the plan and review steps (default `haiku`). |
+| `ALFRED_DEMO_FAST_MODEL` | Override the fast model used for the plan step (default `haiku`). |
 | `ALFRED_DEMO_VERBOSE` | Print per-step engine notes to stderr. |
 | `CLAUDE_BIN` | Path to the `claude` binary if it is not on `PATH` as `claude`. |
 

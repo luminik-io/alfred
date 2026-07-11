@@ -58,11 +58,14 @@ from demo.presenter import Presenter  # noqa: E402
 _DEFAULT_STEP_TIMEOUT = 90
 
 # The four steps are inherently sequential (each depends on the prior), so the
-# main lever on wall time is model choice. The read-only reasoning steps (plan,
-# review) run well on a small fast model; the code-editing steps (build, fix)
-# keep the default (stronger) model so the shipped change is reliable. Override
-# the fast model with ALFRED_DEMO_FAST_MODEL, or set ALFRED_DEMO_MODEL to force
-# one model everywhere.
+# main lever on wall time is model choice. The plan step is a one-shot summary
+# with no tool use and runs well on a small fast model. The review step is the
+# whole point of the demo (it must catch the planted bug), and it drives several
+# real Bash probes; a small fast model is measurably flaky at that agentic
+# tool-use loop, so review keeps the default (stronger) model for a reliable
+# catch. The code-editing steps (build, fix) keep the default model too, so the
+# shipped change is reliable. Override the fast model with ALFRED_DEMO_FAST_MODEL,
+# or set ALFRED_DEMO_MODEL to force one model everywhere.
 _FAST_MODEL = os.environ.get("ALFRED_DEMO_FAST_MODEL", "haiku")
 
 
@@ -70,7 +73,7 @@ def _step_models() -> dict[str, str]:
     forced = os.environ.get("ALFRED_DEMO_MODEL")
     if forced:
         return dict.fromkeys(("plan", "build", "review", "fix"), forced)
-    return {"plan": _FAST_MODEL, "review": _FAST_MODEL}
+    return {"plan": _FAST_MODEL}
 
 
 _INSTALL_POINTER = (

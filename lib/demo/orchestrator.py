@@ -205,26 +205,41 @@ summary. Do nothing else."""
 
 _REVIEW_PROMPT = f"""You are Ra's al Ghul, the adversarial reviewer on the Alfred fleet.
 
-Review the CURRENT state of `textkit.py` in your working directory with a
-critical eye, focusing on whitespace handling in the EXISTING functions, not
-the newly added one. Pay particular attention to whether `titlecase` preserves
-the exact spacing of its input.
+Find correctness bugs in the EXISTING functions of `textkit.py` in your working
+directory (the pre-existing `word_count`, `truncate`, and `titlecase`, not the
+newly added `slugify`). Trust nothing, including this prompt: judge only from
+what you actually run.
 
-Do not take anyone's word for it, including this prompt's. Verify with a real
-reproduction before you judge: run
+Work through this method in order, do not skip a step:
+1. Read `textkit.py`. For every existing function, write down the exact
+   contract its docstring promises.
+2. For EACH function, choose concrete probe inputs that exercise that contract,
+   and deliberately include whitespace edge cases: inputs with a run of two or
+   more consecutive spaces, and inputs with leading or trailing whitespace.
+   Actually RUN each probe with `python3 -c '...'` and read the real output.
+   Do not predict the output in your head; execute it.
+3. Compare each observed output against the exact wording of that function's
+   docstring. Any output that contradicts the documented contract is a bug,
+   even if the output looks reasonable on its own.
+
+`titlecase` is the highest-risk case, so probe it explicitly. Its docstring
+promises the original spacing is preserved exactly and only letter case
+changes. Verify that claim by running
 
   python3 -c 'import textkit; print(repr(textkit.titlecase("a  b")))'
 
-(note the two spaces in the input) and compare the output spacing to the input
-spacing. Also consider leading and trailing whitespace.
+(note the two spaces in the input) and comparing the output spacing to the
+input spacing character for character. Also probe an input with leading and
+trailing whitespace the same way.
 
-If you verified a real correctness bug, explain it in two sentences: what
-breaks and the exact input and output from your reproduction. If the behavior
-is genuinely correct, say so. Then, on the LAST line, output exactly one
+If any probe produced output that contradicts the function's documented
+contract, explain it in two sentences: what breaks, and the exact input and
+output from your reproduction. If every function's output matched its
+documented contract, say so. Then, on the LAST line, output exactly one
 verdict token:
-  {REVIEW_BLOCK_SENTINEL}   if your reproduction showed a real correctness bug
-  {REVIEW_PASS_SENTINEL}    if you could not reproduce any bug
-Do not edit any files. Output only your finding and the verdict."""
+  {REVIEW_BLOCK_SENTINEL}   if a probe reproduced output that violates a documented contract
+  {REVIEW_PASS_SENTINEL}    if every probe matched the documented contract
+Do not edit any files. Output only your findings and the verdict."""
 
 _FIX_PROMPT = """You are Lucius again. The reviewer blocked the change with this finding:
 

@@ -29,6 +29,13 @@ def truncate(text: str, limit: int, *, suffix: str = "...") -> str:
 
 
 def titlecase(text: str) -> str:
-    """Capitalize the first letter of each word, lowercasing the rest."""
+    """Capitalize the first letter of each word, lowercasing the rest.
+
+    Only the case of letters is changed. The original spacing is preserved
+    exactly: runs of whitespace between words are kept intact, and any
+    leading or trailing whitespace is returned unchanged. For example,
+    ``titlecase("a  b")`` returns ``"A  B"`` (two spaces in, two spaces out),
+    never ``"A B"``.
+    """
     words = text.split()
     return " ".join(word[:1].upper() + word[1:].lower() for word in words)
