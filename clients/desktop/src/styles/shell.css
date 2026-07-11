@@ -1,0 +1,639 @@
+/* App shell: prominent-surface glass (palette/dialogs/popovers), Home/Inbox hero, pane headings, fleet command bar, and fleet responsive rules. */
+
+/* PROMINENT-SURFACE GLASS (command palette, dialogs, sheets, popovers). A real
+ * backdrop blur + saturation over a translucent popover, layered translucent
+ * depth, and a 1px luminous top hairline tinted with the brand cobalt->teal so
+ * these hero chrome surfaces read as glass and match the marketing site. Text
+ * sits on --popover-foreground over a >=90%-opaque popover fill, so contrast
+ * holds WCAG AA; where backdrop-filter is unsupported the popover fill alone is
+ * already AA-safe (see @supports fallback). Corners stay sharp (zero radius).
+ *
+ * POSITIONING IS OFF-LIMITS HERE. This helper is applied to surfaces that are
+ * already positioned by Tailwind utilities (DialogContent/CommandDialog use
+ * `fixed`, PopoverContent is Radix-positioned). It must therefore set ONLY
+ * background / border / box-shadow / backdrop-filter and NEVER position, inset,
+ * top/left, or transform, or it would override a dialog's `fixed` centering and
+ * drop the modal into normal document flow (Codex P1 on PR #385). The luminous
+ * top hairline is drawn as a non-repeating gradient layer in `background` (not a
+ * positioned ::before), so no positioning context is needed. The rule also lives
+ * inside @layer components so it can never win a specificity tie against a
+ * Tailwind utility in @layer utilities. */
+@layer components {
+  .alfred-surface-glass {
+    border: 1px solid
+      color-mix(in oklch, var(--accent) 22%, color-mix(in oklch, var(--border), white 10%));
+    /* Layer order (top paints first): the cobalt->teal 1px hairline pinned to the
+       top edge, the specular highlight wash, then the translucent popover fill. */
+    background:
+      linear-gradient(
+        90deg,
+        transparent,
+        color-mix(in oklch, var(--accent), transparent 45%),
+        color-mix(in oklch, var(--brand-teal), transparent 55%),
+        transparent
+      ) top / 100% 1px no-repeat,
+      linear-gradient(180deg, var(--glass-highlight), transparent 30%),
+      color-mix(in oklch, var(--popover), transparent 6%);
+    box-shadow:
+      inset 0 1px 0 var(--glass-highlight),
+      0 18px 54px var(--glass-shadow);
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  }
+
+  /* Where the backdrop filter cannot render, fall back to an opaque popover fill
+     (keeping the hairline layer) so text-on-glass never loses contrast. */
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .alfred-surface-glass {
+      background:
+        linear-gradient(
+          90deg,
+          transparent,
+          color-mix(in oklch, var(--accent), transparent 45%),
+          color-mix(in oklch, var(--brand-teal), transparent 55%),
+          transparent
+        ) top / 100% 1px no-repeat,
+        var(--popover);
+    }
+  }
+}
+
+.alfred-glass-shell {
+  background: transparent;
+  box-shadow:
+    inset -1px 0 0 color-mix(in oklch, var(--sidebar-border), transparent 0%),
+    inset 0 1px 0 var(--glass-highlight);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+.alfred-glass-shell [data-sidebar="sidebar"] {
+  overflow: hidden;
+  border: 0;
+  border-right: 1px solid color-mix(in oklch, var(--sidebar-border), white 8%);
+  border-radius: 0;
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 28%),
+    linear-gradient(
+      150deg,
+      color-mix(in oklch, var(--primary), transparent 88%),
+      transparent 40%,
+      color-mix(in oklch, var(--accent), transparent 92%) 100%
+    ),
+    color-mix(in oklch, var(--sidebar), transparent 0%);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    10px 0 44px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+.alfred-page-hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid
+    color-mix(in oklch, var(--accent) 20%, color-mix(in oklch, var(--border), white 10%));
+  border-radius: var(--radius-lg);
+  /* Prismatic ember -> amber 1px top edge, a specular wash, an ember corner
+     glow, then the translucent card fill. */
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklch, var(--accent), transparent 40%),
+      color-mix(in oklch, var(--brand-teal), transparent 52%),
+      transparent
+    ) top / 100% 1px no-repeat,
+    radial-gradient(
+      120% 150% at 0% 0%,
+      color-mix(in oklch, var(--accent), transparent 84%),
+      transparent 52%
+    ),
+    linear-gradient(180deg, var(--glass-highlight), transparent 30%),
+    color-mix(in oklch, var(--card), transparent 16%);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 2px 10px color-mix(in oklch, var(--glass-shadow), transparent 45%),
+    0 24px 64px var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+.alfred-page-hero::before {
+  content: none;
+}
+
+.dark .alfred-glass-shell {
+  box-shadow:
+    inset -1px 0 0 color-mix(in oklch, var(--sidebar-border), transparent 8%),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.dark .alfred-glass {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 14px 38px rgba(0, 0, 0, 0.22);
+}
+
+/* Fit-to-viewport: the Inbox fills the content area (hero row auto, the grid row
+   takes the rest) so it never leaves a dead void below and never scrolls the
+   page. Lanes scroll inside their own pane bodies instead. */
+.command-center {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 1rem;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.command-center__top,
+.command-center__pane,
+.command-center__route,
+.command-center__pulse,
+.command-center__capacity {
+  border: 1px solid color-mix(in oklch, var(--border), white 8%);
+  border-radius: var(--radius-xl);
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 32%),
+    color-mix(in oklch, var(--card), var(--background) 4%);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 18px 54px var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+.dark .command-center__top,
+.dark .command-center__pane,
+.dark .command-center__route,
+.dark .command-center__pulse,
+.dark .command-center__capacity {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 16px 42px rgba(0, 0, 0, 0.22);
+}
+
+/* The Home hero: a GLASS banner (blur + specular + ambient steel-violet wash).
+ * Now a two-column morning-after summary plus a single primary CTA. The Ask
+ * prompt is gone (Ask is in the sidebar). */
+.command-center__top {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 5.35rem;
+  align-items: center;
+  gap: 1.1rem;
+  overflow: hidden;
+  padding: 1.15rem 1.25rem;
+  background:
+    radial-gradient(
+      90% 140% at 0% 0%,
+      color-mix(in oklch, var(--primary), transparent 85%),
+      transparent 55%
+    ),
+    linear-gradient(180deg, var(--glass-highlight), transparent 31%),
+    var(--glass);
+}
+
+.command-center__top::before {
+  content: none;
+}
+
+.command-center__title,
+.command-center__actions {
+  position: relative;
+  z-index: 1;
+}
+
+.command-center__title {
+  min-width: 0;
+}
+
+.command-center__title p,
+.command-center__pane-head p,
+.command-center__rail-head p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.command-center__title h1,
+.command-center__pane-head h2,
+.command-center__route h2 {
+  margin: 0;
+  color: var(--foreground);
+  font-family: var(--font-heading);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.command-center__title h1 {
+  margin-top: 0.18rem;
+  font-size: 1.72rem;
+  line-height: 1.12;
+  padding-bottom: 0.04em;
+}
+
+.command-center__title span {
+  display: block;
+  margin-top: 0.28rem;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.command-center__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.command-center__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(19rem, 22rem);
+  min-height: 0;
+  height: 100%;
+  align-items: stretch;
+  gap: 1rem;
+}
+
+.command-center__pane,
+.command-center__rail {
+  min-width: 0;
+  min-height: 0;
+}
+
+.command-center__pane {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.command-center__pane-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--hairline);
+  padding: 0.85rem 0.95rem;
+}
+
+/* Keep pane headings readable; tabs can move below instead of crowding them. */
+.command-center__pane-head > div:first-child {
+  min-width: max-content;
+}
+
+.command-center__pane-head h2 {
+  margin-top: 0.18rem;
+  font-size: 1.1rem;
+}
+
+.command-center__pane-head [role="tablist"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.alfred-tabs-list {
+  gap: 0.25rem;
+  grid-template-columns: repeat(var(--tab-count), minmax(0, 1fr));
+  height: auto;
+  min-height: 2.25rem;
+}
+
+.alfred-tabs-list [role="tab"] {
+  height: 1.75rem;
+  min-height: 1.75rem;
+}
+
+@media (min-width: 640px) {
+  .alfred-tabs-list {
+    grid-template-columns: repeat(var(--tab-count), minmax(max-content, 1fr));
+  }
+}
+
+.command-center__pane-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 0.95rem;
+}
+
+.command-center__rail {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  gap: 1rem;
+}
+
+.command-center__route {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.95rem;
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 26%),
+    color-mix(in oklch, var(--card), var(--background) 6%);
+}
+
+.command-center__agent-route {
+  display: grid;
+  /* Rows keep their natural height; when the rail is short the list scrolls
+     instead of crushing each card into sub-line clipping. */
+  grid-auto-rows: max-content;
+  min-height: 0;
+  align-content: start;
+  gap: 0.6rem;
+  overflow: auto;
+  padding-right: 0.08rem;
+}
+
+.command-center__agent-route article {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.08rem 0.75rem;
+  border: 1px solid color-mix(in oklch, var(--agent-accent, var(--primary)), var(--border) 72%);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  padding: 0.72rem 0.78rem 0.72rem 0.95rem;
+  background:
+    linear-gradient(90deg, color-mix(in oklch, var(--agent-accent, var(--primary)), transparent 79%), transparent 70%),
+    color-mix(in oklch, var(--card), var(--background) 4%);
+}
+
+.command-center__agent-route article::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0.22rem;
+  background: var(--agent-accent, var(--primary));
+  opacity: 0.72;
+}
+
+.command-center__agent-route span {
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+}
+
+.command-center__agent-route strong {
+  color: color-mix(in oklch, var(--agent-accent, var(--primary)), var(--foreground) 28%);
+  font-family: var(--font-heading);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.command-center__agent-route p {
+  grid-column: 1 / -1;
+  margin: 0;
+  overflow: hidden;
+  color: color-mix(in oklch, var(--muted-foreground), var(--foreground) 8%);
+  font-size: 0.68rem;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.command-center__pulse,
+.command-center__capacity {
+  padding: 0.95rem;
+}
+
+.command-center__rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+
+.command-center__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.command-center__metric {
+  display: grid;
+  gap: 0.08rem;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: 0.7rem 0.72rem;
+  background: color-mix(in oklch, var(--card), var(--background) 5%);
+}
+
+.command-center__metric span {
+  min-width: 0;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+}
+
+.command-center__metric strong {
+  color: var(--foreground);
+  font-family: var(--font-heading);
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.command-center__metric p {
+  display: none;
+  min-width: 0;
+  margin: 0;
+  color: color-mix(in oklch, var(--muted-foreground), var(--foreground) 8%);
+  font-size: 0.64rem;
+  line-height: 1.25;
+}
+
+.command-center__proof-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.command-center__proof-strip article {
+  min-width: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: 0.72rem;
+  background: color-mix(in oklch, var(--card), var(--background) 5%);
+}
+
+.command-center__proof-strip span,
+.command-center__proof-strip strong {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.command-center__proof-strip span {
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+}
+
+.command-center__proof-strip strong {
+  margin-top: 0.15rem;
+  color: var(--foreground);
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+@media (max-width: 1180px) {
+  .command-center {
+    height: auto;
+    max-height: none;
+  }
+
+  .command-center__top {
+    min-height: 4.75rem;
+    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .command-center__title h1 {
+    font-size: 1.42rem;
+  }
+
+  .command-center__title {
+    grid-column: 1 / -1;
+  }
+
+  .command-center__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .command-center__rail {
+    display: none;
+  }
+
+  .command-center__pane-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .command-center__pane-head [role="tablist"] {
+    flex: 0 0 auto;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .command-center__actions {
+    align-items: stretch;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 760px) {
+  .command-center {
+    height: auto;
+    min-height: auto;
+  }
+
+  .command-center__top {
+    grid-template-columns: minmax(0, 1fr);
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .command-center__actions {
+    justify-content: flex-start;
+  }
+
+  .command-center__actions .inline-flex {
+    width: 100%;
+  }
+
+  .command-center__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .command-center__pane-body {
+    padding: 0.75rem;
+  }
+}
+
+.agents-deck {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: min(620px, calc(100svh - 10rem));
+}
+
+/* Shared command bar: fleet stats on the left, the Cinematic/List view
+   toggle on the right, above whichever roster view is active. */
+.agents-deck__command {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  /* Query container so the stat grid can pick 2- vs 4-up from the header's own
+     width (which depends on the sidebar), not the viewport. */
+  container-type: inline-size;
+  container-name: agentscommand;
+}
+
+.agents-deck__command .agents-deck__summary {
+  flex: 1 1 320px;
+}
+
+/* When the toggle wraps below the stats on a narrow header, keep it right-aligned. */
+.agents-deck__command .agents-deck__viewtoggle {
+  margin-left: auto;
+}
+
+.agents-deck__viewtoggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid color-mix(in oklch, var(--border), white 8%);
+  border-radius: 0;
+  background: color-mix(in oklch, var(--card), var(--background) 8%);
+}
+
+.agents-deck__viewtoggle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.4rem 0.7rem;
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.agents-deck__viewtoggle button svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.agents-deck__viewtoggle button:hover {
+  color: var(--foreground);
+}
+
+.agents-deck__viewtoggle button[data-active="true"] {
+  background: color-mix(in oklch, var(--primary), transparent 78%);
+  color: var(--foreground);
+}
+
+.agents-deck__grid {
+  display: grid;
+  min-height: min(560px, calc(100svh - 13rem));
+  flex: 1 1 auto;
+  gap: 0.75rem;
+}
+

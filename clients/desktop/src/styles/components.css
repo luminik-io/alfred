@@ -1,0 +1,321 @@
+/* Cross-cutting polish: the phone-width tap-target floor, the motion system (rise/hover/crossfade), and Settings > Appearance theme cards. */
+
+/* ---------------------------------------------------------------------------
+ * Touch-width tap-target floor. Desktop keeps its dense 28 to 32px control
+ * system; at phone widths every interactive control grows to at least 36px on
+ * its short axis so it is comfortably tappable. Scoped to <= 480px so the
+ * desktop grid is untouched. Covers shadcn buttons, the sidebar trigger, tab
+ * triggers, settings appearance controls, and the Ask starter chips found in
+ * the pixel sweep at 375.
+ * ------------------------------------------------------------------------- */
+@media (max-width: 480px) {
+  [data-slot="button"],
+  [data-slot="sidebar-trigger"],
+  .ask__starter,
+  .text-button,
+  .secondary-button,
+  .ghost-button,
+  .ghost-icon,
+  .icon-button,
+  .approve-button,
+  .decline-button,
+  .appearance__card {
+    min-height: 36px;
+  }
+
+  /* Icon-only controls also need 36px of width to be square tappable. */
+  [data-slot="button"][data-size="icon"],
+  [data-slot="button"][data-size="icon-xs"],
+  [data-slot="button"][data-size="icon-sm"],
+  [data-slot="button"][data-size="icon-lg"],
+  [data-slot="sidebar-trigger"],
+  .ghost-icon {
+    min-width: 36px;
+  }
+
+  /* The segmented tab list is a fixed-height shell with inner triggers; grow
+     the shell so each trigger clears 36px, and let triggers fill it. */
+  [data-slot="tabs-list"] {
+    height: auto;
+    min-height: 42px;
+  }
+
+  [data-slot="tabs-trigger"] {
+    min-height: 36px;
+  }
+
+  /* The Alfred segmented control (alfred-tabs-list) already floors its row at
+     2.25rem; lift the inner trigger to a full 36px target too. */
+  .alfred-tabs-list {
+    min-height: 2.75rem;
+  }
+
+  .alfred-tabs-list [role="tab"] {
+    min-height: 36px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Motion system (DESIGN_SPEC section 5 "Motion" + Phase 3). A small, uniform
+ * layer built only on CSS: card lists rise on mount staggered by index, the
+ * canonical card lifts on hover, and tab panels crossfade in. All durations sit
+ * in the 140 to 200ms ease-out band the spec mandates, and every animation is
+ * disabled wholesale under prefers-reduced-motion (the global reduce block
+ * already clamps durations; the mount/hover transforms are neutralized here so
+ * nothing translates).
+ * ------------------------------------------------------------------------- */
+
+/* Rise-on-mount for card lists. The list element opts in with .motion-rise;
+   each child rises with a small per-index stagger. The stagger is capped so a
+   long list never feels slow.
+
+   Fill-mode is "backwards", not "both": the children are the interactive cards
+   and roster rows, so holding the final keyframe (transform: translateY(0))
+   would mask their hover lift (.alfred-card--interactive:hover and
+   .agents-deck__row:hover) for the rest of the session. "backwards" applies the
+   entry frame during the stagger delay so cards do not flash in early, then
+   releases the transform once the rise finishes, leaving hover transforms free
+   to run. The base card transform is none, so there is no jump at completion. */
+.motion-rise > * {
+  animation: alfred-rise 180ms ease-out backwards;
+  animation-delay: calc(var(--rise-index, 0) * 40ms);
+}
+
+/* Index-based stagger for the first several cards; later cards share the last
+   delay so the whole list still settles quickly. */
+.motion-rise > *:nth-child(1) { --rise-index: 0; }
+.motion-rise > *:nth-child(2) { --rise-index: 1; }
+.motion-rise > *:nth-child(3) { --rise-index: 2; }
+.motion-rise > *:nth-child(4) { --rise-index: 3; }
+.motion-rise > *:nth-child(5) { --rise-index: 4; }
+.motion-rise > *:nth-child(n + 6) { --rise-index: 5; }
+
+/* Data cards get a subtle Linear-grade hover only: a quiet background and
+   border shift, no translate and no puffy shadow. The flat surface stays flat. */
+.alfred-card--interactive:hover,
+.alfred-card__select:hover .alfred-card,
+.alfred-card:has(.alfred-card__select:hover) {
+  border-color: color-mix(in oklch, var(--primary), var(--hairline) 55%);
+  background: color-mix(in oklch, var(--surface), var(--foreground) 4%);
+}
+
+.alfred-card--selected:hover,
+.alfred-card:has(.alfred-card__select:hover).alfred-card--selected {
+  background: color-mix(in oklch, var(--accent-soft), var(--surface) 50%);
+}
+
+/* Tab panel crossfade. Radix sets data-state on the content; fade the active
+   panel in. Applied to both the shadcn tabs content and the page sections that
+   swap on tab change via the .motion-fade opt-in. */
+[data-slot="tabs-content"][data-state="active"],
+.motion-fade {
+  animation: alfred-fade 160ms ease-out both;
+}
+
+@keyframes alfred-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Respect reduced motion: no rise, no lift translate, no crossfade. The global
+   reduce block already clamps durations to ~0; here we also strip the
+   transforms so a hovered card does not jump. */
+@media (prefers-reduced-motion: reduce) {
+  .motion-rise > *,
+  [data-slot="tabs-content"][data-state="active"],
+  .motion-fade {
+    animation: none;
+  }
+
+  .alfred-card--interactive:hover,
+  .alfred-card:has(.alfred-card__select:hover),
+  .alfred-pipeline__column:hover,
+  .agent-card:hover {
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Settings > Appearance: theme radio-cards + a light/dark segmented control.
+ * The swatches preview each theme with fixed representative colors so the
+ * preview reads correctly whatever the active theme is.
+ * ------------------------------------------------------------------------- */
+.appearance {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.appearance__group {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.appearance__legend {
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.appearance__cards {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
+}
+
+.appearance__card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0.8rem;
+  background: var(--surface);
+  color: var(--foreground);
+  text-align: left;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    transform 150ms ease;
+}
+
+.appearance__card:hover {
+  border-color: color-mix(in oklch, var(--primary), var(--border) 50%);
+  transform: translateY(-1px);
+}
+
+.appearance__card--selected {
+  border-color: color-mix(in oklch, var(--primary), var(--border) 20%);
+  background: color-mix(in oklch, var(--accent-soft), var(--surface) 40%);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary), transparent 60%);
+}
+
+.appearance__card-text {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.appearance__card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.appearance__card-head strong {
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.appearance__check {
+  color: var(--primary);
+}
+
+.appearance__card-blurb {
+  color: var(--muted-foreground);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+/* The swatch is a tiny stacked preview: base plane, raised card, accent pill.
+ * Fixed colors per theme so it previews the identity, not the active theme. */
+.appearance__swatch {
+  position: relative;
+  display: block;
+  width: 3.25rem;
+  height: 3.25rem;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.appearance__swatch-bg,
+.appearance__swatch-card,
+.appearance__swatch-accent {
+  position: absolute;
+}
+
+.appearance__swatch-bg {
+  inset: 0;
+}
+
+.appearance__swatch-card {
+  inset: 0.55rem 0.55rem auto 0.55rem;
+  height: 0.85rem;
+  border-radius: 0;
+}
+
+.appearance__swatch-accent {
+  left: 0.55rem;
+  bottom: 0.55rem;
+  width: 1.5rem;
+  height: 0.5rem;
+  border-radius: 0;
+}
+
+.appearance__swatch[data-theme-preview="alfred"] .appearance__swatch-bg {
+  background: oklch(0.145 0.017 268);
+}
+.appearance__swatch[data-theme-preview="alfred"] .appearance__swatch-card {
+  background: oklch(0.20 0.019 270);
+}
+.appearance__swatch[data-theme-preview="alfred"] .appearance__swatch-accent {
+  background: oklch(0.64 0.19 262);
+}
+
+.appearance__swatch[data-theme-preview="linear"] .appearance__swatch-bg {
+  background: oklch(0.155 0.008 275);
+}
+.appearance__swatch[data-theme-preview="linear"] .appearance__swatch-card {
+  background: oklch(0.205 0.009 275);
+}
+.appearance__swatch[data-theme-preview="linear"] .appearance__swatch-accent {
+  background: oklch(0.64 0.15 262);
+}
+
+.appearance__segment {
+  display: inline-flex;
+  gap: 0.25rem;
+  width: fit-content;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0.2rem;
+  background: var(--surface);
+}
+
+.appearance__segment-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2rem;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius-lg) - 0.15rem);
+  padding: 0.35rem 0.85rem;
+  color: var(--muted-foreground);
+  font-size: 0.84rem;
+  font-weight: 600;
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.appearance__segment-btn--active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* Placed after the component block so the mobile floor wins the cascade over
+ * the dense desktop min-height above. */
+@media (max-width: 480px) {
+  .appearance__segment-btn {
+    min-height: 36px;
+  }
+}

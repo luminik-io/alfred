@@ -1,0 +1,673 @@
+/* Workflow surface: the delivery pipeline graph (React Flow) - stage canvas, lanes, agent nodes, edge handoffs, legend, and minimap. */
+
+/* Workflow stage: the canvas is the primary surface and takes the full width.
+   The agent detail opens as a slide-over drawer (see .agent-drawer), so the
+   canvas no longer shares the deck with a permanent inspector panel. */
+.agents-deck__stage {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.agents-deck__constellation {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(188px, 1fr));
+  align-content: start;
+  gap: 0.7rem;
+  min-height: 0;
+  max-height: min(72svh, 660px);
+  overflow-y: auto;
+  padding-right: 0.125rem;
+}
+
+/* Workflow graph: the delivery pipeline (React Flow) as lanes + handoffs.
+   Height tracks the viewport so it stays in frame across screen sizes; the
+   graph re-fits on resize (see FitToContainer). */
+.workflow-graph {
+  /* Positioned so the absolutely-positioned .wf-legend anchors to this canvas
+     (not the viewport), keeping the legend inside the graph and inside element
+     screenshots of .workflow-graph. */
+  position: relative;
+  min-height: 420px;
+  height: min(78svh, 760px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(
+      120% 90% at 50% 0%,
+      color-mix(in oklch, var(--primary), transparent 94%),
+      transparent 60%
+    ),
+    color-mix(in oklch, var(--card), var(--background) 12%);
+  overflow: hidden;
+}
+
+@media (max-width: 880px) {
+  .workflow-graph {
+    min-height: 360px;
+    height: min(62svh, 520px);
+  }
+}
+
+/* Maximize: lift the canvas to a full-viewport overlay so the wide pipeline has
+   room to pan and zoom. */
+.workflow-graph[data-maximized="true"] {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  height: 100svh;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  /* Opaque ground so the dimmed page never bleeds through the canvas gaps. */
+  background:
+    radial-gradient(
+      120% 90% at 50% 0%,
+      color-mix(in oklch, var(--primary), transparent 92%),
+      transparent 55%
+    ),
+    var(--background);
+}
+
+.wf-maximize {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 21;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--card), transparent 12%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.wf-maximize:hover {
+  background: color-mix(in oklch, var(--accent), transparent 6%);
+  border-color: color-mix(in oklch, var(--primary), transparent 55%);
+}
+
+.wf-maximize:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.workflow-graph .react-flow__background {
+  color: color-mix(in oklch, var(--muted-foreground), transparent 68%);
+}
+
+.workflow-graph .react-flow__edge-path {
+  stroke: color-mix(in oklch, var(--primary), var(--border) 52%);
+  stroke-width: 1.75;
+}
+
+.workflow-graph .react-flow__edge.animated .react-flow__edge-path {
+  stroke: var(--primary);
+  stroke-width: 2;
+}
+
+/* The human-approval handoff (plan -> approved work) is the most important edge
+   in the pipeline: draw it as a brighter accent dashed line so the operator's
+   go-ahead gate reads at a glance and never looks like an automatic handoff. */
+.workflow-graph .wf-edge--gate .react-flow__edge-path {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+}
+
+/* Edge handoff labels: a small readable chip at the midpoint so a newcomer can
+   read the pipeline verbs (scope / approved plan / pull request / merged). */
+.workflow-graph .react-flow__edge-textwrapper .react-flow__edge-textbg {
+  fill: color-mix(in oklch, var(--card), var(--background) 4%);
+  fill-opacity: 0.92;
+}
+
+.workflow-graph .react-flow__edge-text {
+  fill: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.workflow-graph .wf-edge--gate .react-flow__edge-text {
+  fill: color-mix(in oklch, var(--accent), var(--foreground) 30%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workflow-graph .react-flow__edge.animated .react-flow__edge-path {
+    animation: none;
+  }
+}
+
+/* Legend: a quiet glass card pinned top-left, explaining the pipeline flow,
+   the node status colors, and the two edge kinds (handoff vs. your approval).
+   Purely explanatory chrome, so it never intercepts canvas pointer events. */
+.wf-legend {
+  position: absolute;
+  overflow: hidden;
+  /* Above the React Flow panes (nodes/edges sit around z 2-4) so the legend is
+     never occluded by the graph it explains. */
+  z-index: 20;
+  top: 0.85rem;
+  right: 0.85rem;
+  max-width: 15rem;
+  padding: 0.7rem 0.8rem;
+  pointer-events: none;
+  border: 1px solid
+    color-mix(in oklch, var(--accent) 26%, color-mix(in oklch, var(--border), white 12%));
+  border-radius: var(--radius-lg);
+  /* A hair more opaque than hero glass: the legend overlays busy canvas, so its
+     fill must stay legible while still reading as frosted brand glass. A faint
+     ember corner wash + a defined outer shadow make it register as a distinct
+     panel even over an empty near-black region of the canvas. */
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 34%),
+    radial-gradient(
+      120% 120% at 100% 0%,
+      color-mix(in oklch, var(--accent), transparent 82%),
+      transparent 60%
+    ),
+    var(--popover);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 2px 8px rgba(0, 0, 0, 0.32),
+    0 20px 48px var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+/* Luminous top edge matching the hero-glass language (ember -> amber). */
+.wf-legend::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, var(--accent), transparent 40%),
+    color-mix(in oklch, var(--brand-teal), transparent 52%),
+    transparent
+  );
+  opacity: 0.9;
+}
+
+.wf-legend__title {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.wf-legend__flow {
+  margin: 0.28rem 0 0.55rem;
+  color: var(--foreground);
+  font-family: var(--font-heading);
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.wf-legend__flow span {
+  margin: 0 0.12rem;
+  color: var(--accent);
+}
+
+.wf-legend__items {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.3rem 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wf-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.wf-legend__item--edge {
+  grid-column: span 1;
+}
+
+.wf-legend__swatch {
+  width: 0.6rem;
+  height: 0.6rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--wf-legend-tone, var(--muted-foreground));
+}
+
+.wf-legend__swatch[data-tone="ok"] {
+  background: var(--primary);
+}
+.wf-legend__swatch[data-tone="warn"] {
+  background: oklch(0.78 0.16 80);
+}
+.wf-legend__swatch[data-tone="error"] {
+  background: var(--destructive);
+}
+.wf-legend__swatch[data-tone="idle"] {
+  background: color-mix(in oklch, var(--muted-foreground), var(--border) 30%);
+}
+
+.wf-legend__edge {
+  width: 0.9rem;
+  height: 0;
+  flex: 0 0 auto;
+  border-top: 2px solid color-mix(in oklch, var(--primary), var(--border) 40%);
+}
+
+.wf-legend__edge--gate {
+  border-top-style: dashed;
+  border-top-color: var(--accent);
+}
+
+.workflow-graph .react-flow__controls {
+  box-shadow: none;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.workflow-graph .react-flow__controls-button {
+  background: var(--card);
+  border-bottom-color: var(--border);
+  color: var(--foreground);
+}
+
+.workflow-graph .react-flow__controls-button:hover {
+  background: color-mix(in oklch, var(--primary), var(--card) 88%);
+}
+
+.workflow-graph .react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+.workflow-graph .react-flow__attribution {
+  background: transparent;
+  font-size: 0.58rem;
+  opacity: 0.45;
+}
+
+/* Minimap: a quiet glass overview pinned bottom-right, mirroring the canvas
+   status colors so it reads at a glance without competing with the nodes. */
+.workflow-graph .wf-minimap.react-flow__minimap {
+  margin: 0.85rem;
+  border: 1px solid color-mix(in oklch, var(--border), white 6%);
+  border-radius: var(--radius);
+  background: color-mix(in oklch, var(--card), var(--background) 6%);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+
+.workflow-graph .react-flow__minimap-node {
+  rx: 0;
+  ry: 0;
+}
+
+/* Lane heading above each column. */
+.wf-lane {
+  color: var(--muted-foreground);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Agent node card: an accent rail, monogram, name + role, a status pill, and a
+   metric row (runs today, last run, fail streak). Status drives the rail color
+   so the pipeline reads at a glance. Mirror NODE_WIDTH/NODE_HEIGHT in
+   workflowGraph.ts when these dimensions change. */
+.wf-node {
+  --agent-accent: var(--primary);
+  --wf-tone: var(--agent-accent);
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "mark body status"
+    "meta meta meta";
+  align-items: center;
+  gap: 0.45rem 0.65rem;
+  width: 232px;
+  padding: 0.7rem 0.8rem 0.7rem 0.95rem;
+  border: 1px solid color-mix(in oklch, var(--wf-tone), var(--border) 62%);
+  border-radius: var(--radius-lg);
+  /* Glass node: a translucent tone-tinted pane over the canvas with a real
+     backdrop blur and a luminous top hairline, so the workflow graph reads as
+     floating glass chrome (not flat cards). Corners stay sharp. */
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 34%),
+    color-mix(in oklch, var(--wf-tone) 10%, color-mix(in oklch, var(--card), transparent 14%));
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 10px 26px var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+/* Status -> rail/accent tone mapping. idle stays neutral (never green). */
+.wf-node[data-tone="ok"] {
+  --wf-tone: var(--primary);
+}
+.wf-node[data-tone="warn"] {
+  --wf-tone: oklch(0.78 0.16 80);
+}
+.wf-node[data-tone="error"] {
+  --wf-tone: var(--destructive);
+}
+.wf-node[data-tone="idle"] {
+  --wf-tone: color-mix(in oklch, var(--muted-foreground), var(--border) 30%);
+}
+
+.wf-node__rail {
+  position: absolute;
+  inset: 0.5rem auto 0.5rem 0.35rem;
+  width: 0.2rem;
+  border-radius: 999px;
+  background: var(--wf-tone);
+  opacity: 0.85;
+}
+
+.wf-node:hover {
+  border-color: color-mix(in oklch, var(--wf-tone), var(--border) 28%);
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 10px 26px rgba(0, 0, 0, 0.16);
+}
+
+.wf-node[data-selected="true"] {
+  border-color: var(--wf-tone);
+  box-shadow:
+    0 0 0 1px var(--wf-tone),
+    0 10px 28px color-mix(in oklch, var(--wf-tone), transparent 80%);
+}
+
+.wf-node__mark {
+  grid-area: mark;
+  display: grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 0;
+  background: color-mix(in oklch, var(--agent-accent), transparent 82%);
+  color: var(--agent-accent);
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.wf-node__body {
+  grid-area: body;
+  min-width: 0;
+}
+
+.wf-node__name {
+  display: block;
+  overflow: hidden;
+  color: var(--foreground);
+  font-family: var(--font-heading);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-node__role {
+  display: block;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-node__status {
+  grid-area: status;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.18rem 0.45rem;
+  border-radius: 0;
+  border: 1px solid color-mix(in oklch, var(--wf-tone), var(--border) 55%);
+  background: color-mix(in oklch, var(--wf-tone), var(--card) 88%);
+  color: color-mix(in oklch, var(--wf-tone), var(--foreground) 45%);
+  font-size: 0.64rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.wf-node__meta {
+  grid-area: meta;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.85rem;
+  margin-top: 0.1rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid color-mix(in oklch, var(--border), transparent 35%);
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+}
+
+.wf-node__metaitem {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.wf-node__metalabel {
+  color: color-mix(in oklch, var(--muted-foreground), transparent 18%);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.wf-node__metavalue {
+  color: var(--foreground);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.wf-node__metaitem--warn .wf-node__metavalue {
+  color: var(--destructive);
+}
+
+.wf-node__handle {
+  width: 6px;
+  height: 6px;
+  background: color-mix(in oklch, var(--wf-tone), var(--border) 30%);
+  border: none;
+}
+
+.agent-card {
+  --agent-accent: var(--primary);
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 0.4rem;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 9.5rem;
+  border: 1px solid color-mix(in oklch, var(--agent-accent), var(--border) 72%);
+  border-radius: 0;
+  background: linear-gradient(
+    160deg,
+    color-mix(in oklch, var(--agent-accent), var(--card) 86%),
+    color-mix(in oklch, var(--card), var(--background) 10%) 62%
+  );
+  padding: 0.85rem;
+  color: var(--foreground);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease;
+}
+
+.agent-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--agent-accent), transparent);
+  opacity: 0.7;
+}
+
+.agent-card__glow {
+  position: absolute;
+  inset: -40% 25% auto -12%;
+  height: 70%;
+  background: radial-gradient(
+    60% 60% at 30% 0%,
+    color-mix(in oklch, var(--agent-accent), transparent 68%),
+    transparent 70%
+  );
+  opacity: 0.35;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.agent-card__scan {
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent 0 3px,
+    color-mix(in oklch, var(--agent-accent), transparent 92%) 3px 4px
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+  z-index: -1;
+}
+
+.agent-card:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in oklch, var(--agent-accent), var(--border) 30%);
+  box-shadow: 0 16px 40px color-mix(in oklch, var(--agent-accent), transparent 84%);
+}
+
+.agent-card:hover .agent-card__scan {
+  opacity: 0.5;
+}
+
+.agent-card[data-selected="true"] {
+  border-color: color-mix(in oklch, var(--agent-accent), var(--border) 18%);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklch, var(--agent-accent), transparent 55%),
+    0 14px 38px color-mix(in oklch, var(--agent-accent), transparent 80%);
+}
+
+.agent-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.agent-card__codename {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+}
+
+.agent-card__name {
+  display: -webkit-box;
+  overflow: hidden;
+  font-family: var(--font-heading);
+  font-size: 0.98rem;
+  font-weight: 650;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.agent-card__purpose {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 0.76rem;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.agent-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.1rem;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+}
+
+.agent-card__cadence {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.3rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-card__cadence svg {
+  width: 0.85rem;
+  height: 0.85rem;
+  opacity: 0.7;
+}
+
+.agent-card__runs {
+  flex: 0 0 auto;
+}
+
+.agent-card__signal {
+  overflow: hidden;
+  border-top: 1px solid color-mix(in oklch, var(--border), transparent 35%);
+  padding-top: 0.45rem;
+  color: color-mix(in oklch, var(--muted-foreground), var(--foreground) 18%);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+

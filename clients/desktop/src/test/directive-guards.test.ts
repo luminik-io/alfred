@@ -15,10 +15,21 @@ import { PRIMARY_TABS } from "../lib/primaryTabs";
 //  2. The primary nav uses the job-shaped IA labels Inbox / Ask / Work /
 //     Agents / Setup, so non-technical users do not have to decode runtime nouns.
 
-const indexCssPath = resolve(__dirname, "..", "index.css");
+// index.css is a thin manifest that @imports per-surface partials under
+// src/styles/. Read the whole desktop stylesheet (manifest + partials) so these
+// guards keep matching the real source of truth wherever a token or @import
+// happens to live after a structural split. Partials are read in the manifest's
+// own @import order, so the guard sees the exact cascade the app loads rather
+// than filesystem iteration order.
+const srcDir = resolve(__dirname, "..");
 
 function readIndexCss(): string {
-  return readFileSync(indexCssPath, "utf8");
+  const manifest = readFileSync(resolve(srcDir, "index.css"), "utf8");
+  const parts = [manifest];
+  for (const match of manifest.matchAll(/@import\s+"(\.\/[^"]+)"/g)) {
+    parts.push(readFileSync(resolve(srcDir, match[1]), "utf8"));
+  }
+  return parts.join("\n");
 }
 
 // The lines that actually load a font family, ignoring comments. A comment may

@@ -1,0 +1,581 @@
+/* Pipeline surface: the human chip vocabulary, the canonical lifecycle card, and the Work board (lifecycle columns). */
+
+/* ---------------------------------------------------------------------------
+ * Human chip vocabulary + canonical lifecycle card (DESIGN_SPEC section 5).
+ * One status color per chip, mapped to the semantic status palette. idle is a
+ * neutral gray; it is never green. error never folds into ok.
+ * ------------------------------------------------------------------------- */
+.alfred-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  height: 20px;
+  border: 1px solid color-mix(in oklch, var(--chip-tone), transparent 64%);
+  border-radius: 0;
+  background: color-mix(in oklch, var(--chip-tone), transparent 88%);
+  padding: 0 8px;
+  color: color-mix(in oklch, var(--chip-tone), var(--foreground) 22%);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.alfred-chip__dot {
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: var(--chip-tone);
+}
+
+.alfred-chip--ok {
+  --chip-tone: var(--ok);
+}
+.alfred-chip--working {
+  --chip-tone: var(--blue);
+}
+.alfred-chip--attention {
+  --chip-tone: var(--accent);
+}
+.alfred-chip--error {
+  --chip-tone: var(--error);
+}
+.alfred-chip--idle {
+  --chip-tone: var(--muted-foreground);
+}
+
+.alfred-repo-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  border: 1px solid var(--hairline);
+  border-radius: 0;
+  background: color-mix(in oklch, var(--muted), transparent 42%);
+  padding: 0 8px;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+}
+
+.alfred-repo-chip--overflow {
+  font-family: inherit;
+  cursor: default;
+}
+
+.alfred-card__repos {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+/* The canonical card is a FLAT data surface (Linear grade): opaque flat
+ * background, one hairline, tight padding, subtle hover only. No backdrop-blur,
+ * no specular glass line, no puffy shadow. The glass/flat split (THEME_SYSTEM.md)
+ * keeps blur for chrome; data cards stay flat and dense. */
+.alfred-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 0.6rem 0.7rem;
+  transition:
+    border-color 140ms ease-out,
+    background 140ms ease-out;
+}
+
+/* Quick actions revealed on card hover or keyboard focus, so common actions do
+ * not require opening the detail sheet. Always visible on touch (no hover). */
+.alfred-card__hover {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  z-index: 2;
+  display: flex;
+  gap: 0.3rem;
+  opacity: 0;
+  transform: translateY(-2px);
+  pointer-events: none;
+  transition:
+    opacity 120ms ease-out,
+    transform 120ms ease-out;
+}
+.alfred-card:hover .alfred-card__hover,
+.alfred-card:focus-within .alfred-card__hover {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .alfred-card__hover {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+}
+.card-hover-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: color-mix(in oklch, var(--card), var(--background) 6%);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition:
+    color 120ms ease-out,
+    border-color 120ms ease-out,
+    background 120ms ease-out;
+}
+.card-hover-action:hover:not(:disabled) {
+  color: var(--foreground);
+  border-color: var(--foreground);
+  background: var(--surface);
+}
+.card-hover-action:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.alfred-card--selected {
+  border-color: color-mix(in oklch, var(--primary), var(--hairline) 45%);
+  background: color-mix(in oklch, var(--accent-soft), var(--surface) 55%);
+}
+
+.alfred-card__select {
+  display: block;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.alfred-card__select:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--primary), transparent 30%);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+.alfred-card__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.alfred-card__age {
+  margin-left: auto;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+/* Title: 1-2 lines, then clamp. Plain outcome sentence, dense. */
+.alfred-card__outcome {
+  margin: 0.1rem 0 0;
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 0.86rem;
+  font-weight: 550;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.alfred-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.1rem;
+}
+
+.alfred-card__attribution {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.alfred-card__action {
+  display: inline-flex;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+}
+
+/* Board card attribution: a small agent avatar chip, the themed agent name, and
+   an optional review-state pill. The avatar mirrors the Roster monogram styling
+   (--agent-accent soft fill + accent ink), scaled down for the dense board. */
+.board-attribution {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.board-avatar {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--agent-accent, var(--primary)), var(--border) 55%);
+  background: color-mix(in oklch, var(--agent-accent, var(--primary)), transparent 82%);
+  color: color-mix(in oklch, var(--agent-accent, var(--primary)), var(--foreground) 34%);
+  font-family: var(--font-heading);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.board-attribution__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-attribution__state {
+  flex: 0 0 auto;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--cyan), var(--border) 55%);
+  background: color-mix(in oklch, var(--cyan), transparent 86%);
+  color: color-mix(in oklch, var(--cyan), var(--foreground) 34%);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+/* The Pipeline board: lifecycle columns as flat lanes with light chrome. No
+ * glass, no blur. A slim header, a hairline divider, dense card rhythm. */
+/* The Work route wrapper fills the content area so the board can fit-to-viewport
+   rather than growing the page. */
+.board-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Fit-to-viewport board: the summary hero is auto height, and any transient
+   rows between it and the columns (an action notice shown ~12s, the assign
+   composer, a hard-error notice) are auto too. The columns row is the single
+   flexible child that absorbs the remaining height, so the board stays visible
+   and scrollable no matter how many notices precede it. A flex column is used
+   instead of a fixed grid-template-rows so the columns never get pushed into an
+   implicit, clipped row when a notice or the composer is present. Each column
+   scrolls its own cards instead of growing the page. */
+.alfred-pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* The columns (and the empty state that replaces them) are the flexible child:
+   they take the remaining height and never overflow the fixed-height panel. */
+.alfred-pipeline > .alfred-pipeline__columns,
+.alfred-pipeline > .empty-state {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Transient rows (hero, notices, assign composer) stay at their natural height
+   and never shrink, so the flexible columns row absorbs the rest. */
+.alfred-pipeline > .alfred-page-hero,
+.alfred-pipeline > .inline-notice,
+.alfred-pipeline > .alfred-pipeline__assign {
+  flex: 0 0 auto;
+}
+
+.alfred-pipeline__assign {
+  display: grid;
+  grid-template-columns: minmax(14rem, 0.9fr) minmax(14rem, 1fr) minmax(8rem, 0.45fr) auto;
+  gap: 0.55rem;
+  align-items: center;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface), var(--background) 45%);
+  padding: 0.65rem;
+}
+
+.alfred-pipeline__assign-label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.45rem;
+  row-gap: 0.12rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.alfred-pipeline__assign-label svg {
+  color: var(--primary);
+}
+
+.alfred-pipeline__assign-label span {
+  min-width: 0;
+  color: var(--foreground);
+  font-size: 0.84rem;
+  font-weight: 680;
+}
+
+.alfred-pipeline__assign-label small {
+  grid-column: 2;
+  min-width: 0;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.alfred-pipeline__assign input,
+.alfred-pipeline__assign select {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: color-mix(in oklch, var(--background), var(--surface) 22%);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.84rem;
+  line-height: 1.2;
+}
+
+.alfred-pipeline__assign input {
+  padding: 0.45rem 0.65rem;
+}
+
+.alfred-pipeline__assign select {
+  padding: 0.45rem 0.55rem;
+}
+
+.alfred-pipeline__assign input:focus,
+.alfred-pipeline__assign select:focus {
+  outline: 2px solid color-mix(in oklch, var(--primary), transparent 55%);
+  outline-offset: 1px;
+}
+
+.alfred-pipeline__assign input[aria-invalid="true"] {
+  border-color: color-mix(in oklch, var(--destructive), var(--border) 25%);
+}
+
+.alfred-pipeline__assign-error {
+  grid-column: 2 / 4;
+  margin: -0.2rem 0 0;
+  color: var(--destructive);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 920px) {
+  .alfred-pipeline__assign {
+    grid-template-columns: minmax(0, 1fr) minmax(9rem, 0.4fr) auto;
+  }
+
+  .alfred-pipeline__assign-label {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .alfred-pipeline__assign {
+    grid-template-columns: 1fr;
+  }
+
+  .alfred-pipeline__assign-error {
+    grid-column: 1;
+  }
+}
+
+.alfred-pipeline__columns {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-height: 0;
+  height: 100%;
+}
+
+@media (max-width: 1024px) {
+  .alfred-pipeline__columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .alfred-pipeline__columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Below 900px the per-column internal card scroll (defined in the min-width:900px
+   block) is off and the lanes stack (two-up under 1024px, single-column under
+   640px). Stacked lanes are taller than the viewport, so the fixed-height
+   overflow:hidden panel would clip the lower lanes (Queued / Working / Shipped)
+   and make them unreachable. Below the internal-scroll breakpoint, release the
+   fixed height and let the whole board scroll vertically so every lane is
+   reachable. */
+@media (max-width: 899px) {
+  .board-page {
+    height: auto;
+    min-height: 100%;
+  }
+
+  .alfred-pipeline {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }
+
+  .alfred-pipeline > .alfred-pipeline__columns,
+  .alfred-pipeline > .empty-state {
+    flex: 0 0 auto;
+  }
+
+  .alfred-pipeline__columns {
+    height: auto;
+  }
+}
+
+.alfred-pipeline__column {
+  --col-tone: var(--muted-foreground);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 12rem;
+  border: 1px solid color-mix(in oklch, var(--col-tone) 24%, var(--hairline));
+  border-radius: var(--radius-md);
+  /* A tone-tinted glass column: a 2px status edge on top, a faint tone wash, and
+     the translucent surface fill so the board reads as layered glass lanes. */
+  background:
+    linear-gradient(90deg,
+      color-mix(in oklch, var(--col-tone), transparent 55%),
+      color-mix(in oklch, var(--col-tone), transparent 82%)
+    ) top / 100% 2px no-repeat,
+    linear-gradient(180deg,
+      color-mix(in oklch, var(--col-tone), transparent 92%),
+      transparent 22%
+    ),
+    color-mix(in oklch, var(--surface), transparent 26%);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 14px 40px color-mix(in oklch, var(--glass-shadow), transparent 55%);
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.6)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.6)) saturate(var(--glass-saturate));
+  padding: 0.6rem 0.55rem;
+}
+
+/* Column status tones: go-ahead = ember (needs you), queued = blue, working =
+   cyan, shipped = ok green. Set on the section via data attribute (below). */
+.alfred-pipeline__column[data-lane="needs"] { --col-tone: var(--accent); }
+.alfred-pipeline__column[data-lane="queued"] { --col-tone: var(--blue); }
+.alfred-pipeline__column[data-lane="working"] { --col-tone: var(--cyan); }
+.alfred-pipeline__column[data-lane="shipped"] { --col-tone: var(--ok); }
+
+@media (min-width: 900px) {
+  .alfred-pipeline__columns {
+    align-items: stretch;
+  }
+
+  /* Each column fills its track height; its card list scrolls internally so the
+     board fits the viewport and the page itself never scrolls. */
+  .alfred-pipeline__column {
+    min-height: 0;
+    max-height: 100%;
+  }
+
+  .alfred-pipeline__cards {
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 0.15rem;
+    scrollbar-gutter: stable;
+  }
+}
+
+/* Slim column header: name + count, with a hairline rule beneath. */
+.alfred-pipeline__column-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.1rem 0.15rem 0.5rem;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--foreground);
+}
+
+.alfred-pipeline__column-head small {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.25rem;
+  height: 1.1rem;
+  padding: 0 0.35rem;
+  border-radius: 0;
+  background: color-mix(in oklch, var(--muted), transparent 30%);
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.alfred-pipeline__cards {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/* Empty column + low-signal disclosure (referenced by PipelineView, previously
+ * unstyled). Quiet, dense, hairline-consistent. */
+.alfred-pipeline__empty {
+  margin: 0.35rem 0.15rem;
+  color: var(--muted-foreground);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.alfred-pipeline__lowsignal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.15rem;
+}
+
+.alfred-pipeline__lowsignal-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  width: fit-content;
+  border: 1px solid var(--hairline);
+  border-radius: 0;
+  padding: 0.2rem 0.55rem;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  font-weight: 600;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+
+.alfred-pipeline__lowsignal-toggle:hover {
+  border-color: color-mix(in oklch, var(--primary), var(--hairline) 50%);
+  color: var(--foreground);
+}
+

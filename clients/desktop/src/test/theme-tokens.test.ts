@@ -14,10 +14,21 @@ import { describe, expect, it } from "vitest";
 // reference set. Theme blocks may add tokens, but must never define fewer color
 // tokens than the base.
 
-const indexCssPath = resolve(__dirname, "..", "index.css");
+// index.css is a thin manifest that @imports per-surface partials under
+// src/styles/ (the theme token blocks live in styles/tokens.css). Read the
+// whole desktop stylesheet so this guard finds the token blocks wherever a
+// structural split places them. Partials are read in the manifest's own @import
+// order, so first-match parsing inspects the exact cascade the app loads rather
+// than filesystem iteration order.
+const srcDir = resolve(__dirname, "..");
 
 function readIndexCss(): string {
-  return readFileSync(indexCssPath, "utf8");
+  const manifest = readFileSync(resolve(srcDir, "index.css"), "utf8");
+  const parts = [manifest];
+  for (const match of manifest.matchAll(/@import\s+"(\.\/[^"]+)"/g)) {
+    parts.push(readFileSync(resolve(srcDir, match[1]), "utf8"));
+  }
+  return parts.join("\n");
 }
 
 // Extract the body of the first CSS block matching a selector head. Naive brace
