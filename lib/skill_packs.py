@@ -311,7 +311,10 @@ def install_pack(
     if dry_run:
         return InstallResult(pack.name, pack.install, dest, fetched=cmd, dry_run=True)
     skills_dir.mkdir(parents=True, exist_ok=True)
-    dest_existed = dest.exists()
+    # Path.exists() follows symlinks, so a BROKEN symlink reports False and
+    # would skip the backup; a failed reinstall would then delete the pack's
+    # symlink reference outright. Treat any symlink as an existing install.
+    dest_existed = dest.exists() or dest.is_symlink()
     backup_root: Path | None = None
     backup_dest: Path | None = None
     if dest_existed:
