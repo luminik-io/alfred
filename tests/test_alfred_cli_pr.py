@@ -245,6 +245,14 @@ def test_pr_merge_defaults_to_current_checkout_under_gh_org(cli_module, monkeypa
 
 
 def test_pr_min_approvals_reads_env(cli_module, monkeypatch):
+    monkeypatch.setenv("ALFRED_MERGE_REQUIRE_APPROVAL", "")
+    assert cli_module._pr_min_approvals() == 1
+    monkeypatch.setenv("ALFRED_MERGE_REQUIRE_APPROVAL", "off")
+    assert cli_module._pr_min_approvals() == 0
+    monkeypatch.setenv("ALFRED_MERGE_REQUIRE_APPROVAL", "sometimes")
+    with pytest.raises(ValueError, match="must be true or false"):
+        cli_module._pr_min_approvals()
+    monkeypatch.delenv("ALFRED_MERGE_REQUIRE_APPROVAL")
     monkeypatch.setenv("ALFRED_MERGE_MIN_APPROVALS", "3")
     assert cli_module._pr_min_approvals() == 3
     for raw in ("0", "junk"):

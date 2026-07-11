@@ -735,6 +735,16 @@ def test_parse_min_approvals_rejects_invalid_values():
             merge_gate.parse_min_approvals(raw)
 
 
+def test_parse_require_approval_defaults_on_and_rejects_invalid_values():
+    assert merge_gate.parse_require_approval(None) is True
+    assert merge_gate.parse_require_approval("") is True
+    assert merge_gate.parse_require_approval(" true ") is True
+    assert merge_gate.parse_require_approval("0") is False
+    assert merge_gate.parse_require_approval("off") is False
+    with pytest.raises(ValueError, match="must be true or false"):
+        merge_gate.parse_require_approval("sometimes")
+
+
 def test_collect_snapshot_pending_check_is_not_failing():
     view = {
         "state": "OPEN",

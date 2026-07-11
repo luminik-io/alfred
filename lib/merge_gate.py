@@ -176,6 +176,18 @@ def parse_min_approvals(raw: str | None) -> int:
     return parsed
 
 
+def parse_require_approval(raw: str | None) -> bool:
+    """Parse the human-approval switch without allowing malformed fail-open values."""
+    if raw is None or raw.strip() == "":
+        return True
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError("ALFRED_MERGE_REQUIRE_APPROVAL must be true or false")
+
+
 def _effective_reviews(reviews: Iterable[Review]) -> dict[str, Review]:
     """Return the latest decisive review state per reviewer.
 

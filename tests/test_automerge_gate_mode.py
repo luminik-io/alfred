@@ -32,9 +32,34 @@ def test_require_approval_defaults_on(monkeypatch):
     assert automerge.MIN_APPROVALS == 1
 
 
+def test_blank_require_approval_defaults_on(monkeypatch):
+    automerge = load_automerge(monkeypatch, {"ALFRED_MERGE_REQUIRE_APPROVAL": ""})
+    assert automerge.REQUIRE_APPROVAL is True
+
+
 def test_require_approval_can_be_disabled(monkeypatch):
     automerge = load_automerge(monkeypatch, {"ALFRED_MERGE_REQUIRE_APPROVAL": "0"})
     assert automerge.REQUIRE_APPROVAL is False
+
+
+def test_invalid_require_approval_fails_closed(monkeypatch):
+    automerge = load_automerge(
+        monkeypatch,
+        {
+            "ALFRED_MERGE_REQUIRE_APPROVAL": "sometimes",
+            "ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS": "codex",
+        },
+    )
+    monkeypatch.setattr(
+        automerge,
+        "collect_snapshot",
+        lambda *args, **kwargs: pytest.fail("GitHub must not be called"),
+    )
+
+    ok, reason, _title = automerge._merge_via_gate("widget", {"number": 12, "title": "T"})
+
+    assert ok is False
+    assert "must be true or false" in reason
 
 
 def test_min_approvals_reads_env_and_rejects_invalid_values(monkeypatch):
