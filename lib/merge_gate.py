@@ -432,6 +432,7 @@ def _collect_reviews(
         return []
     reviews: list[Review] = []
     cursor: str | None = None
+    seen_cursors: set[str] = set()
     while True:
         _MISSING = object()
         cmd = [
@@ -484,10 +485,11 @@ def _collect_reviews(
             page_info.get("hasNextPage") is not True
             or not isinstance(next_cursor, str)
             or not next_cursor
-            or next_cursor == cursor
+            or next_cursor in seen_cursors
         ):
             errors.append("review pagination was incomplete")
             return []
+        seen_cursors.add(next_cursor)
         cursor = next_cursor
 
 
