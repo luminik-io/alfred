@@ -507,10 +507,14 @@ def _collect_external_reviews(
             continue
         association = str(item.get("author_association") or "").upper()
         body = str(item.get("body") or "")
+        created_at = str(item.get("created_at") or "")
+        updated_at = str(item.get("updated_at") or "")
         match = re.search(r"Exact head:\s*`?([0-9a-f]{40})`?", body, re.I)
         if (
             association in {"OWNER", "MEMBER", "COLLABORATOR"}
             and "@codex review" in body.lower()
+            and created_at
+            and updated_at == created_at
             and match
         ):
             trusted_requests.append((index, match.group(1)))

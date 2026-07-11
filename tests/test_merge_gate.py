@@ -216,6 +216,7 @@ def test_codex_evidence_binds_to_trusted_full_head_request():
                 "author_association": "OWNER",
                 "body": f"@codex review\nExact head: `{old_head}`",
                 "created_at": "2026-07-11T10:00:00Z",
+                "updated_at": "2026-07-11T10:00:00Z",
             },
             {
                 "user": {"login": "chatgpt-codex-connector[bot]"},
@@ -245,6 +246,7 @@ def test_codex_evidence_uses_comment_order_when_timestamps_tie():
                 "author_association": "OWNER",
                 "body": f"@codex review\nExact head: `{old_head}`",
                 "created_at": timestamp,
+                "updated_at": timestamp,
             },
             {
                 "user": {"login": "chatgpt-codex-connector[bot]"},
@@ -256,6 +258,7 @@ def test_codex_evidence_uses_comment_order_when_timestamps_tie():
                 "author_association": "OWNER",
                 "body": f"@codex review\nExact head: `{new_head}`",
                 "created_at": timestamp,
+                "updated_at": timestamp,
             },
         ]
     ]
@@ -273,6 +276,8 @@ def test_codex_evidence_accepts_unquoted_exact_head_request():
                 "user": {"login": "operator"},
                 "author_association": "OWNER",
                 "body": f"@codex review\nExact head: {head}",
+                "created_at": "2026-07-11T10:00:00Z",
+                "updated_at": "2026-07-11T10:00:00Z",
             },
             {
                 "user": {"login": "chatgpt-codex-connector[bot]"},
@@ -296,11 +301,15 @@ def test_codex_evidence_rejects_delayed_response_with_shared_prefix():
                 "user": {"login": "operator"},
                 "author_association": "OWNER",
                 "body": f"@codex review\nExact head: `{old_head}`",
+                "created_at": "2026-07-11T10:00:00Z",
+                "updated_at": "2026-07-11T10:00:00Z",
             },
             {
                 "user": {"login": "operator"},
                 "author_association": "OWNER",
                 "body": f"@codex review\nExact head: `{new_head}`",
+                "created_at": "2026-07-11T10:01:00Z",
+                "updated_at": "2026-07-11T10:01:00Z",
             },
             {
                 "user": {"login": "chatgpt-codex-connector[bot]"},
@@ -313,6 +322,33 @@ def test_codex_evidence_rejects_delayed_response_with_shared_prefix():
     )
     assert evidence[-1].reviewed_sha == ""
     snap = _snapshot(head_sha=new_head, external_reviews=tuple(evidence))
+    assert not evaluate_gate(snap, required_external_reviews=("codex",)).mergeable
+
+
+def test_codex_evidence_rejects_edited_exact_head_request():
+    head = "a" * 40
+    payload = [
+        [
+            {
+                "user": {"login": "operator"},
+                "author_association": "OWNER",
+                "body": f"@codex review\nExact head: `{head}`",
+                "created_at": "2026-07-11T10:00:00Z",
+                "updated_at": "2026-07-11T10:02:00Z",
+            },
+            {
+                "user": {"login": "chatgpt-codex-connector[bot]"},
+                "body": "Didn't find any major issues.\nReviewed commit: aaaaaaaaaa",
+                "created_at": "2026-07-11T10:01:00Z",
+                "updated_at": "2026-07-11T10:01:00Z",
+            },
+        ]
+    ]
+    evidence = merge_gate._collect_external_reviews(
+        "acme/repo", 7, gh_json=lambda _cmd, _default: payload, errors=[]
+    )
+    assert evidence[-1].reviewed_sha == ""
+    snap = _snapshot(head_sha=head, external_reviews=tuple(evidence))
     assert not evaluate_gate(snap, required_external_reviews=("codex",)).mergeable
 
 
