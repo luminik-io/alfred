@@ -83,6 +83,7 @@ ENV_MIN_READINESS_SCORE = "ALFRED_BRIDGE_MIN_READINESS_SCORE"
 
 DEFAULT_LABEL = "agent:implement"
 DEFAULT_MIN_READINESS_SCORE = 80
+GH_ISSUE_CREATE_TIMEOUT_S = 60
 
 # Default explicit approval phrases. These are matched as whole, normalized
 # tokens against the whole reply (see ``contains_approval_token``); they are
@@ -437,7 +438,7 @@ def default_issue_creator(
         argv.extend(["--label", label])
     run = runner or _run_subprocess
     try:
-        cp = run(argv, capture_output=True, text=True, timeout=60)
+        cp = run(argv, capture_output=True, text=True, timeout=GH_ISSUE_CREATE_TIMEOUT_S)
     except Exception:
         return None
     if cp.returncode != 0:
@@ -446,7 +447,8 @@ def default_issue_creator(
 
 
 def _run_subprocess(argv: list[str], **kwargs) -> subprocess.CompletedProcess:
-    return subprocess.run(argv, check=False, **kwargs)
+    timeout = kwargs.pop("timeout", GH_ISSUE_CREATE_TIMEOUT_S)
+    return subprocess.run(argv, check=False, timeout=timeout, **kwargs)
 
 
 def _extract_issue_url(stdout: str) -> str | None:

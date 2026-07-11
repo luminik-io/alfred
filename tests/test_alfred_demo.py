@@ -494,22 +494,85 @@ def test_runner_reports_missing_claude_cli(tmp_path, monkeypatch, capsys):
 
 def test_cli_demo_forwards_flags_to_runner(monkeypatch):
     cli = load_cli_module()
-    calls: list[list[str]] = []
+    calls: list[tuple[list[str], int]] = []
 
-    def fake_run(command, check):
-        calls.append(command)
-        return _CompletedStub()
+    class FakeProcess:
+        def __init__(self, command, **_kwargs):
+            self.command = command
 
-    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+        def wait(self, timeout):
+            calls.append((self.command, timeout))
+            return 0
+
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
 
     args = _demo_namespace(keep=True, yes=True, timeout=45)
     assert cli.cmd_demo(args) == 0
-    forwarded = calls[0]
+    forwarded, parent_timeout = calls[0]
     assert forwarded[-1] == "45"
     assert "--keep" in forwarded
     assert "--yes" in forwarded
     assert "--timeout" in forwarded
     assert str(ROOT / "bin/alfred-demo.py") in forwarded
+    assert parent_timeout == cli._DELEGATED_COMMAND_TIMEOUT_S
+
+
+def test_cli_demo_parent_timeout_scales_with_forwarded_step_limit(monkeypatch):
+    cli = load_cli_module()
+    timeouts: list[int] = []
+
+    class FakeProcess:
+        def __init__(self, _command, **_kwargs):
+            pass
+
+        def wait(self, timeout):
+            timeouts.append(timeout)
+            return 0
+
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
+
+    assert cli.cmd_demo(_demo_namespace(keep=False, yes=True, timeout=300)) == 0
+    assert timeouts == [(300 * 4) + cli._DEMO_VERIFICATION_BUDGET_S]
+
+
+def test_cli_demo_parent_timeout_leaves_room_for_child_verification(monkeypatch):
+    cli = load_cli_module()
+    timeouts: list[int] = []
+
+    class FakeProcess:
+        def __init__(self, _command, **_kwargs):
+            pass
+
+        def wait(self, timeout):
+            timeouts.append(timeout)
+            return 0
+
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
+
+    assert cli.cmd_demo(_demo_namespace(keep=False, yes=True, timeout=90)) == 0
+    # Four engine calls at the step limit plus the child's own bounded
+    # verification (120s tests + 30s planted-bug check + 30s git steps) must
+    # fit under the parent ceiling so the child reaches its honest error path.
+    child_worst_case = (90 * 4) + 120 + 30 + (5 * 30)
+    assert timeouts[0] >= child_worst_case
+
+
+def test_cli_demo_interactive_approval_is_unbounded(monkeypatch):
+    cli = load_cli_module()
+    timeouts: list[int | None] = []
+
+    class FakeProcess:
+        def __init__(self, _command, **_kwargs):
+            pass
+
+        def wait(self, timeout=None):
+            timeouts.append(timeout)
+            return 0
+
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
+
+    assert cli.cmd_demo(_demo_namespace(keep=False, yes=False, timeout=30)) == 0
+    assert timeouts == [None]
 
 
 class _CompletedStub:

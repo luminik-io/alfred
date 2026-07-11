@@ -29,9 +29,13 @@ runner, so tests stub it). Manifest parsing uses stdlib ``tomllib`` (3.11+).
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shlex
 import shutil
+import signal
+import subprocess
+import tempfile
 import tomllib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -55,6 +59,7 @@ __all__ = [
 # personal skills dir. An operator can point this at a project's
 # ``.claude/skills`` for project-scoped installs.
 DEFAULT_SKILLS_DIR_ENV = "ALFRED_SKILLS_DIR"
+FETCH_PACK_TIMEOUT_S = 600
 
 # Valid install shapes.
 _VENDORED = "vendored"
@@ -306,18 +311,127 @@ def install_pack(
     if dry_run:
         return InstallResult(pack.name, pack.install, dest, fetched=cmd, dry_run=True)
     skills_dir.mkdir(parents=True, exist_ok=True)
+    # Path.exists() follows symlinks, so a BROKEN symlink reports False and
+    # would skip the backup; a failed reinstall would then delete the pack's
+    # symlink reference outright. Treat any symlink as an existing install.
+    dest_existed = dest.exists() or dest.is_symlink()
+    backup_root: Path | None = None
+    backup_dest: Path | None = None
+    if dest_existed:
+        backup_root = Path(tempfile.mkdtemp(prefix=f".{pack.name}-backup-", dir=skills_dir))
+        backup_dest = backup_root / pack.name
+        if dest.is_symlink():
+            shutil.copy2(dest, backup_dest, follow_symlinks=False)
+        elif dest.is_dir():
+            shutil.copytree(dest, backup_dest, symlinks=True)
+        else:
+            shutil.copy2(dest, backup_dest, follow_symlinks=False)
+    entries_before = {entry.name for entry in skills_dir.iterdir()}
     run = runner or _default_shell_runner
-    code = run(cmd, skills_dir)
+    try:
+        code = run(cmd, skills_dir)
+    except BaseException:
+        _remove_new_partial_install(
+            dest,
+            skills_dir=skills_dir,
+            entries_before=entries_before,
+            dest_existed=dest_existed,
+        )
+        _restore_existing_destination(dest, backup_dest)
+        if backup_root:
+            shutil.rmtree(backup_root, ignore_errors=True)
+        raise
     if code != 0:
+        _remove_new_partial_install(
+            dest,
+            skills_dir=skills_dir,
+            entries_before=entries_before,
+            dest_existed=dest_existed,
+        )
+        _restore_existing_destination(dest, backup_dest)
+        if backup_root:
+            shutil.rmtree(backup_root, ignore_errors=True)
         raise RuntimeError(f"fetch for {pack.name!r} failed (exit {code}): {cmd}")
+    if backup_root:
+        shutil.rmtree(backup_root, ignore_errors=True)
     return InstallResult(pack.name, pack.install, dest, fetched=cmd)
+
+
+def _restore_existing_destination(dest: Path, backup: Path | None) -> None:
+    if backup is None:
+        return
+    if dest.is_dir() and not dest.is_symlink():
+        shutil.rmtree(dest)
+    elif dest.exists() or dest.is_symlink():
+        dest.unlink()
+    if backup.is_dir() and not backup.is_symlink():
+        shutil.copytree(backup, dest, symlinks=True)
+    else:
+        shutil.copy2(backup, dest, follow_symlinks=False)
+
+
+def _remove_new_partial_install(
+    dest: Path,
+    *,
+    skills_dir: Path,
+    entries_before: set[str],
+    dest_existed: bool,
+) -> None:
+    """Roll back paths a failed fetch published from its new destination."""
+    dest_path = Path(os.path.abspath(dest))
+    for entry in skills_dir.iterdir():
+        if entry.name in entries_before or not entry.is_symlink():
+            continue
+        target = Path(os.readlink(entry))
+        if not target.is_absolute():
+            target = entry.parent / target
+        target_path = Path(os.path.abspath(target))
+        if target_path == dest_path or dest_path in target_path.parents:
+            entry.unlink()
+
+    if dest_existed or not dest.exists():
+        return
+    if dest.is_dir():
+        shutil.rmtree(dest)
+    else:
+        dest.unlink()
 
 
 def _default_shell_runner(cmd: str, cwd: Path) -> int:
     """Real shell runner for fetch packs. Only used outside tests."""
-    import subprocess
+    process = subprocess.Popen(cmd, shell=True, cwd=str(cwd), start_new_session=True)
 
-    return subprocess.run(cmd, shell=True, cwd=str(cwd)).returncode
+    def _terminate_on_signal(signum: int, _frame) -> None:
+        _terminate_process_group(process)
+        raise SystemExit(128 + signum)
+
+    previous_handlers = {
+        signum: signal.signal(signum, _terminate_on_signal)
+        for signum in (signal.SIGTERM, signal.SIGHUP)
+    }
+    try:
+        return process.wait(timeout=FETCH_PACK_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        _terminate_process_group(process)
+        return 124
+    except KeyboardInterrupt:
+        _terminate_process_group(process)
+        raise
+    finally:
+        for signum, previous in previous_handlers.items():
+            signal.signal(signum, previous)
+
+
+def _terminate_process_group(process) -> None:
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        process.wait(timeout=2)
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGKILL)
+    process.wait()
 
 
 def installed_packs(packs: Sequence[Pack], *, skills_dir: Path | None = None) -> set[str]:

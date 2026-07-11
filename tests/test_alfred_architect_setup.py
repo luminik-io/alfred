@@ -64,6 +64,94 @@ def test_read_env_file_parses_exports_and_quotes(tmp_path, monkeypatch):
     assert out["ARCHITECT_SLACK_CHANNEL"] == "alfred"
 
 
+def test_oauth_step_reports_timeout_without_crashing(tmp_path, monkeypatch, capsys):
+    mod = _load_module(monkeypatch, tmp_path)
+    state = mod.ArchitectSetupState(
+        repo_root=REPO,
+        alfred_home=tmp_path,
+        env_file=tmp_path / ".env",
+        env={},
+    )
+    monkeypatch.setattr(mod, "ask_yes_no", lambda *_args: True)
+
+    class FakeProcess:
+        pid = 778
+
+        def __init__(self, command, **_kwargs):
+            self.command = command
+            self.calls = 0
+
+        def wait(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise subprocess.TimeoutExpired(self.command, timeout)
+            return -15
+
+    monkeypatch.setattr(mod.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(mod.os, "killpg", lambda *_args: None)
+
+    with pytest.raises(SystemExit) as exc:
+        mod.step_claude_oauth(state, non_interactive=False, skip_token_setup=False)
+
+    assert exc.value.code == 124
+    assert "timed out waiting for approval" in capsys.readouterr().err
+
+
+def test_oauth_step_exits_when_token_handoff_fails(tmp_path, monkeypatch, capsys):
+    mod = _load_module(monkeypatch, tmp_path)
+    state = mod.ArchitectSetupState(
+        repo_root=REPO,
+        alfred_home=tmp_path,
+        env_file=tmp_path / ".env",
+        env={},
+    )
+    monkeypatch.setattr(mod, "ask_yes_no", lambda *_args: True)
+    monkeypatch.setattr(mod, "_run_setup_token", lambda _script: 42)
+
+    with pytest.raises(SystemExit) as exc:
+        mod.step_claude_oauth(state, non_interactive=False, skip_token_setup=False)
+
+    assert exc.value.code == 42
+    assert "exited 42" in capsys.readouterr().err
+
+
+def test_setup_token_helper_reaps_child_on_parent_signal(tmp_path, monkeypatch):
+    mod = _load_module(monkeypatch, tmp_path)
+    handlers = {}
+
+    class FakeProcess:
+        pid = 780
+
+        def __init__(self, _command, **_kwargs):
+            self.calls = 0
+
+        def wait(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                handlers[mod.signal.SIGTERM](mod.signal.SIGTERM, None)
+            return -15
+
+    def fake_signal(signum, handler):
+        previous = handlers.get(signum, mod.signal.SIG_DFL)
+        handlers[signum] = handler
+        return previous
+
+    signals = []
+    monkeypatch.setattr(mod.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(mod.signal, "signal", fake_signal)
+    monkeypatch.setattr(mod.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+
+    with pytest.raises(SystemExit) as exc:
+        mod._run_setup_token(tmp_path / "setup-token.py")
+
+    assert exc.value.code == 128 + mod.signal.SIGTERM
+    assert signals == [
+        (780, mod.signal.SIGTERM),
+        (780, mod.signal.SIGKILL),
+    ]
+    assert handlers[mod.signal.SIGTERM] == mod.signal.SIG_DFL
+
+
 def test_upsert_architect_block_is_idempotent_and_preserves_other_blocks(tmp_path, monkeypatch):
     mod = _load_module(monkeypatch, tmp_path)
     env_file = tmp_path / ".env"
@@ -209,11 +297,14 @@ def test_alfred_wrapper_forwards_rollout_order(monkeypatch):
     cli = _load_alfred_cli()
     calls: list[list[str]] = []
 
-    def fake_run(cmd, *, check=False):
-        calls.append(cmd)
-        return subprocess.CompletedProcess(cmd, 0)
+    class FakeProcess:
+        def __init__(self, cmd, **_kwargs):
+            calls.append(cmd)
 
-    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+        def wait(self, timeout):
+            return 0
+
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
     out = cli.cmd_architect_setup(
         argparse.Namespace(
             check_only=False,

@@ -164,11 +164,14 @@ def test_labels_all_reads_fleet_repo_env(cli_module, monkeypatch: pytest.MonkeyP
 def test_setup_token_forwards_paste_back_token(cli_module, monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[list[str]] = []
 
-    def fake_run(cmd, **kwargs):
-        calls.append(list(cmd))
-        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+    class FakeProcess:
+        def __init__(self, cmd, **_kwargs):
+            calls.append(list(cmd))
 
-    monkeypatch.setattr(cli_module.subprocess, "run", fake_run)
+        def wait(self, timeout):
+            return 0
+
+    monkeypatch.setattr(cli_module.subprocess, "Popen", FakeProcess)
 
     assert cli_module.main(["setup-token", "--token", "runtime-token-value"]) == 0
     assert calls == [
@@ -384,11 +387,14 @@ def test_clear_lock_refuses_matching_unpushed_worktree(
 def test_brain_command_forwards_to_brain_cli(cli_module, monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[list[str]] = []
 
-    def fake_run(cmd, **kwargs):
-        calls.append(list(cmd))
-        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+    class FakeProcess:
+        def __init__(self, cmd, **_kwargs):
+            calls.append(list(cmd))
 
-    monkeypatch.setattr(cli_module.subprocess, "run", fake_run)
+        def wait(self, timeout):
+            return 0
+
+    monkeypatch.setattr(cli_module.subprocess, "Popen", FakeProcess)
 
     assert cli_module.main(["brain", "lessons", "lucius", "org/api"]) == 0
     assert calls == [
@@ -407,11 +413,14 @@ def test_code_memory_command_forwards_to_launcher(
 ) -> None:
     calls: list[list[str]] = []
 
-    def fake_run(cmd, **kwargs):
-        calls.append(list(cmd))
-        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+    class FakeProcess:
+        def __init__(self, cmd, **_kwargs):
+            calls.append(list(cmd))
 
-    monkeypatch.setattr(cli_module.subprocess, "run", fake_run)
+        def wait(self, timeout):
+            return 0
+
+    monkeypatch.setattr(cli_module.subprocess, "Popen", FakeProcess)
 
     assert cli_module.main(["code-memory", "doctor"]) == 0
     assert calls == [[str(REPO_ROOT / "bin" / "code-memory-mcp"), "doctor"]]
@@ -422,11 +431,14 @@ def test_code_memory_command_defaults_to_doctor(
 ) -> None:
     calls: list[list[str]] = []
 
-    def fake_run(cmd, **kwargs):
-        calls.append(list(cmd))
-        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+    class FakeProcess:
+        def __init__(self, cmd, **_kwargs):
+            calls.append(list(cmd))
 
-    monkeypatch.setattr(cli_module.subprocess, "run", fake_run)
+        def wait(self, timeout):
+            return 0
+
+    monkeypatch.setattr(cli_module.subprocess, "Popen", FakeProcess)
 
     assert cli_module.main(["code-memory"]) == 0
     assert calls == [[str(REPO_ROOT / "bin" / "code-memory-mcp"), "doctor"]]
@@ -549,14 +561,30 @@ def test_doctor_command_forwards_to_doctor_script(
 ) -> None:
     calls: list[list[str]] = []
 
-    def fake_run(cmd, **kwargs):
-        calls.append(list(cmd))
-        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+    class FakeProcess:
+        def __init__(self, cmd, **_kwargs):
+            calls.append(list(cmd))
 
-    monkeypatch.setattr(cli_module.subprocess, "run", fake_run)
+        def wait(self, timeout):
+            return 0
+
+    monkeypatch.setattr(cli_module.subprocess, "Popen", FakeProcess)
 
     assert cli_module.main(["doctor", "--dev", "--lifecycle"]) == 0
     assert calls == [["bash", str(REPO_ROOT / "bin" / "doctor.sh"), "--dev", "--lifecycle"]]
+
+
+def test_launchctl_timeout_returns_controlled_status(cli_module, monkeypatch):
+    def time_out(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"], stderr="partial")
+
+    monkeypatch.setattr(cli_module.subprocess, "run", time_out)
+
+    result = cli_module._launchctl(["list"])
+
+    assert result.returncode == 124
+    assert "partial" in result.stderr
+    assert "timed out" in result.stderr
 
 
 def test_capabilities_command_emits_json(

@@ -126,6 +126,7 @@ import platform
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -249,10 +250,98 @@ TELEMETRY_TOKEN_ENDPOINT_FILENAME = "telemetry-token-endpoint"
 SUPPORT_SCHEDULER_LABELS = {TELEMETRY_LABEL}
 SUPPORT_SCHEDULER_CODENAMES = {"proof-telemetry"}
 SUPPORT_SCHEDULER_SCRIPTS = {"proof-telemetry.py"}
+_SCHEDULER_COMMAND_TIMEOUT_S = 15
+_NATIVE_DRY_RUN_TIMEOUT_S = 300
+_DELEGATED_COMMAND_TIMEOUT_S = 600
+_BENCHMARK_COMMAND_TIMEOUT_S = 8 * 60 * 60
+_CODE_MEMORY_INDEX_TIMEOUT_S = 8 * 60 * 60
+_INSTALL_COMMAND_TIMEOUT_S = 600
+_INTERACTIVE_COMMAND_TIMEOUT_S = 3600
+# Non-engine budget the demo child may legitimately spend after its four
+# engine calls: bounded test run (120s), planted-bug check (30s), and the
+# 30s-per-step git helpers in lib/demo/orchestrator.py, plus scaffolding
+# slack. The parent timeout must leave room for the child to reach its own
+# honest per-step timeout and error paths instead of being reaped first.
+_DEMO_VERIFICATION_BUDGET_S = 420
 ALFRED_INIT_BANNER_RE = re.compile(
     r"# alfred-init.{1,4}generated below this line\. Safe to re-run\."
 )
 ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+# Forwarded flags whose values are secrets (setup-token forwards --token,
+# architect setup forwards --slack-bot-token). Timeout diagnostics must never
+# echo these values into stderr or captured logs.
+_SECRET_ARG_FLAGS = frozenset({"--token", "--slack-bot-token"})
+_SECRET_ARG_PLACEHOLDER = "[redacted]"
+
+
+def _redact_secret_args(cmd: list[str]) -> list[str]:
+    """Return ``cmd`` with values of secret flags replaced for safe logging.
+
+    Handles both ``--flag value`` and ``--flag=value`` forms.
+    """
+    redacted: list[str] = []
+    skip_next = False
+    for arg in cmd:
+        if skip_next:
+            redacted.append(_SECRET_ARG_PLACEHOLDER)
+            skip_next = False
+            continue
+        flag, eq, _value = arg.partition("=")
+        if flag in _SECRET_ARG_FLAGS:
+            if eq:
+                redacted.append(f"{flag}={_SECRET_ARG_PLACEHOLDER}")
+            else:
+                redacted.append(arg)
+                skip_next = True
+            continue
+        redacted.append(arg)
+    return redacted
+
+
+def _run_subcommand(
+    cmd: list[str],
+    *,
+    timeout: float | None,
+    env: dict[str, str] | None = None,
+) -> int:
+    process = subprocess.Popen(cmd, env=env, start_new_session=True)
+
+    def _terminate_on_signal(signum: int, _frame: Any) -> None:
+        _terminate_process_group(process)
+        raise SystemExit(128 + signum)
+
+    previous_handlers = {
+        signum: signal.signal(signum, _terminate_on_signal)
+        for signum in (signal.SIGTERM, signal.SIGHUP)
+    }
+    try:
+        return process.wait() if timeout is None else process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _terminate_process_group(process)
+        print(
+            f"alfred: command timed out after {timeout:g}s: {shlex.join(_redact_secret_args(cmd))}",
+            file=sys.stderr,
+        )
+        return 124
+    except KeyboardInterrupt:
+        _terminate_process_group(process)
+        raise
+    finally:
+        for signum, previous in previous_handlers.items():
+            signal.signal(signum, previous)
+
+
+def _terminate_process_group(process: subprocess.Popen[Any]) -> None:
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        process.wait(timeout=2)
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGKILL)
+    process.wait()
 
 
 def _switch_value(raw: str) -> str:
@@ -1396,9 +1485,7 @@ def _resume_one(codename: str, label: str) -> int:
     unit_path = scheduler.unit_file(label)
     if unit_path is None or not unit_path.exists():
         where = unit_path if unit_path is not None else "(no scheduler on this host)"
-        print(
-            f"  {codename}: no unit file at {where}; run `bash deploy.sh` first", file=sys.stderr
-        )
+        print(f"  {codename}: no unit file at {where}; run `bash deploy.sh` first", file=sys.stderr)
         return 1
     if scheduler.unit_loaded(label):
         print(f"  resumed {codename} (already loaded; marker cleared)")
@@ -1559,7 +1646,7 @@ def cmd_dry_run(
         cmd = [sys.executable, str(script), "--dry-run"]
         print("  mode: native lifecycle dry-run")
         print(f"  exec: {shlex.join(cmd)}")
-        return subprocess.run(cmd, check=False, env=env).returncode
+        return _run_subcommand(cmd, timeout=_NATIVE_DRY_RUN_TIMEOUT_S, env=env)
     finally:
         os.environ.clear()
         os.environ.update(previous_env)
@@ -1809,13 +1896,16 @@ def cmd_metrics(args: argparse.Namespace) -> int:
         cmd.append("--by-day")
     if args.json:
         cmd.append("--json")
-    return subprocess.run(cmd, check=False).returncode
+    return _run_subcommand(cmd, timeout=_DELEGATED_COMMAND_TIMEOUT_S)
 
 
 def cmd_benchmark(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-benchmark.py"
     forwarded = args.benchmark_args or []
-    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+    return _run_subcommand(
+        [sys.executable, str(script), *forwarded],
+        timeout=_BENCHMARK_COMMAND_TIMEOUT_S,
+    )
 
 
 def cmd_usage(args: argparse.Namespace) -> int:
@@ -1823,7 +1913,7 @@ def cmd_usage(args: argparse.Namespace) -> int:
     cmd = [sys.executable, str(script)]
     if args.json:
         cmd.append("--json")
-    return subprocess.run(cmd, check=False).returncode
+    return _run_subcommand(cmd, timeout=_DELEGATED_COMMAND_TIMEOUT_S)
 
 
 def cmd_logs(args: argparse.Namespace) -> int:
@@ -1837,19 +1927,28 @@ def cmd_logs(args: argparse.Namespace) -> int:
         cmd.append("--show-tool-calls")
     if args.json:
         cmd.append("--json")
-    return subprocess.run(cmd, check=False).returncode
+    return _run_subcommand(cmd, timeout=_DELEGATED_COMMAND_TIMEOUT_S)
 
 
 def cmd_brain(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-brain.py"
     forwarded = args.brain_args or ["status"]
-    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+    return _run_subcommand(
+        [sys.executable, str(script), *forwarded],
+        timeout=_DELEGATED_COMMAND_TIMEOUT_S,
+    )
 
 
 def cmd_code_memory(args: argparse.Namespace) -> int:
     script = _HERE / "code-memory-mcp"
     forwarded = args.code_memory_args or ["doctor"]
-    return subprocess.run([str(script), *forwarded], check=False).returncode
+    if forwarded[0] == "serve":
+        timeout = None
+    elif forwarded[0] in {"index", "refresh"}:
+        timeout = _CODE_MEMORY_INDEX_TIMEOUT_S
+    else:
+        timeout = _DELEGATED_COMMAND_TIMEOUT_S
+    return _run_subcommand([str(script), *forwarded], timeout=timeout)
 
 
 _MEMORY_STATUS_SEVERITY = {"ok": 0, "disabled": 1, "warn": 1, "fail": 2}
@@ -2285,7 +2384,7 @@ def cmd_code_map(args: argparse.Namespace) -> int:
             if not env.get("PYTHONPATH")
             else f"{checkout_lib}{os.pathsep}{env['PYTHONPATH']}"
         )
-        return subprocess.run(forwarded, check=False, env=env).returncode
+        return _run_subcommand(forwarded, timeout=_DELEGATED_COMMAND_TIMEOUT_S, env=env)
 
     if command == "export":
         requested = getattr(args, "format", CODEGRAPH_SCHEMA)
@@ -2544,7 +2643,7 @@ def _battery_run_install(args: argparse.Namespace, battery: Any) -> int:
             print(f"alfred: skipped. Run it yourself later:\n        {printable}")
             return 0
     print(f"alfred: running {printable}")
-    return subprocess.run(command, check=False).returncode
+    return _run_subcommand(command, timeout=_INSTALL_COMMAND_TIMEOUT_S)
 
 
 def _pr_min_approvals() -> int:
@@ -2641,13 +2740,16 @@ def cmd_github_poll(args: argparse.Namespace) -> int:
         cmd.append("--dry-run")
     if args.json:
         cmd.append("--json")
-    return subprocess.run(cmd, check=False).returncode
+    return _run_subcommand(cmd, timeout=_DELEGATED_COMMAND_TIMEOUT_S)
 
 
 def cmd_mcp(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-mcp.py"
     forwarded = args.mcp_args or ["serve"]
-    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+    return _run_subcommand(
+        [sys.executable, str(script), *forwarded],
+        timeout=None,
+    )
 
 
 def cmd_demo(args: argparse.Namespace) -> int:
@@ -2659,7 +2761,19 @@ def cmd_demo(args: argparse.Namespace) -> int:
         forwarded.append("--yes")
     if args.timeout is not None:
         forwarded.extend(["--timeout", str(args.timeout)])
-    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+    step_timeout = args.timeout if args.timeout is not None else 90
+    parent_timeout = (
+        max(
+            _DELEGATED_COMMAND_TIMEOUT_S,
+            (step_timeout * 4) + _DEMO_VERIFICATION_BUDGET_S,
+        )
+        if args.yes
+        else None
+    )
+    return _run_subcommand(
+        [sys.executable, str(script), *forwarded],
+        timeout=parent_timeout,
+    )
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
@@ -2674,15 +2788,19 @@ def cmd_serve(args: argparse.Namespace) -> int:
         forwarded.append("--no-browser")
     if args.log_level:
         forwarded.extend(["--log-level", args.log_level])
-    return subprocess.run(
-        [_alfred_managed_python(), str(script), *forwarded], check=False
-    ).returncode
+    return _run_subcommand(
+        [_alfred_managed_python(), str(script), *forwarded],
+        timeout=None,
+    )
 
 
 def cmd_schedule(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-schedule.py"
     forwarded = args.schedule_args or ["list"]
-    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+    return _run_subcommand(
+        [sys.executable, str(script), *forwarded],
+        timeout=_DELEGATED_COMMAND_TIMEOUT_S,
+    )
 
 
 def cmd_assign(args: argparse.Namespace) -> int:
@@ -2692,25 +2810,37 @@ def cmd_assign(args: argparse.Namespace) -> int:
         forwarded.append("--dry-run")
     if args.json:
         forwarded.append("--json")
-    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+    return _run_subcommand(
+        [sys.executable, str(script), *forwarded],
+        timeout=_DELEGATED_COMMAND_TIMEOUT_S,
+    )
 
 
 def cmd_spec(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-spec.py"
     forwarded = args.spec_args or ["--help"]
-    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+    return _run_subcommand(
+        [sys.executable, str(script), *forwarded],
+        timeout=_DELEGATED_COMMAND_TIMEOUT_S,
+    )
 
 
 def cmd_goal(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-goal.py"
     forwarded = args.goal_args or ["list"]
-    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+    return _run_subcommand(
+        [sys.executable, str(script), *forwarded],
+        timeout=_DELEGATED_COMMAND_TIMEOUT_S,
+    )
 
 
 def cmd_slack_listener(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-slack-listener.py"
     forwarded = args.listener_args or ["run"]
-    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+    return _run_subcommand(
+        [sys.executable, str(script), *forwarded],
+        timeout=None,
+    )
 
 
 def cmd_slack_thread_sync(args: argparse.Namespace) -> int:
@@ -2722,7 +2852,7 @@ def cmd_slack_thread_sync(args: argparse.Namespace) -> int:
         cmd.append("--dry-run")
     if args.state_root:
         cmd.extend(["--state-root", args.state_root])
-    return subprocess.run(cmd, check=False).returncode
+    return _run_subcommand(cmd, timeout=_DELEGATED_COMMAND_TIMEOUT_S)
 
 
 def cmd_shipped(args: argparse.Namespace) -> int:
@@ -2750,7 +2880,7 @@ def cmd_shipped(args: argparse.Namespace) -> int:
         cmd.extend(["--self-proof-days", str(args.self_proof_days)])
     if getattr(args, "self_proof_json", None):
         cmd.extend(["--self-proof-json", args.self_proof_json])
-    return subprocess.run(cmd, check=False).returncode
+    return _run_subcommand(cmd, timeout=_DELEGATED_COMMAND_TIMEOUT_S)
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -2760,7 +2890,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         cmd.append("--json")
     if args.slack:
         cmd.append("--slack")
-    return subprocess.run(cmd, check=False).returncode
+    return _run_subcommand(cmd, timeout=_DELEGATED_COMMAND_TIMEOUT_S)
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
@@ -2775,7 +2905,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         cmd.append("--lifecycle")
     if getattr(args, "deep", False):
         cmd.append("--deep")
-    return subprocess.run(cmd, check=False).returncode
+    return _run_subcommand(cmd, timeout=_DELEGATED_COMMAND_TIMEOUT_S)
 
 
 _EXTRA_BOOTSTRAP_LABELS: tuple[tuple[str, str, str], ...] = (
@@ -3127,17 +3257,35 @@ def cmd_clear_lock(args: argparse.Namespace) -> int:
 
 
 def _launchctl(args: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["launchctl", *args], check=False, capture_output=True, text=True)
+    return _scheduler_command(["launchctl", *args], timeout=_SCHEDULER_COMMAND_TIMEOUT_S)
 
 
 def _systemctl_user(args: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["systemctl", "--user", *args],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
+    return _scheduler_command(["systemctl", "--user", *args], timeout=15)
+
+
+def _scheduler_command(cmd: list[str], *, timeout: float) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            cmd,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = (
+            exc.stdout.decode(errors="replace")
+            if isinstance(exc.stdout, bytes)
+            else exc.stdout or ""
+        )
+        stderr = (
+            exc.stderr.decode(errors="replace")
+            if isinstance(exc.stderr, bytes)
+            else exc.stderr or ""
+        )
+        detail = f"command timed out after {timeout:g}s"
+        return subprocess.CompletedProcess(cmd, 124, stdout=stdout, stderr=f"{stderr}{detail}\n")
 
 
 def _decode_systemd_env_value(value: str) -> str:
@@ -3358,7 +3506,7 @@ def cmd_setup_token(args: argparse.Namespace) -> int:
         cmd.append("--check-only")
     if args.token:
         cmd.extend(["--token", args.token])
-    return subprocess.run(cmd, check=False).returncode
+    return _run_subcommand(cmd, timeout=_INTERACTIVE_COMMAND_TIMEOUT_S)
 
 
 def cmd_architect_setup(args: argparse.Namespace) -> int:
@@ -3391,7 +3539,7 @@ def cmd_architect_setup(args: argparse.Namespace) -> int:
             cmd.extend([flag, str(value)])
     if getattr(args, "approval_timeout_s", None) is not None:
         cmd.extend(["--approval-timeout-s", str(args.approval_timeout_s)])
-    return subprocess.run(cmd, check=False).returncode
+    return _run_subcommand(cmd, timeout=_INTERACTIVE_COMMAND_TIMEOUT_S)
 
 
 def cmd_auth(args: argparse.Namespace) -> int:

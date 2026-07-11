@@ -18,6 +18,7 @@ import json
 import os
 import re
 import shlex
+import signal
 import subprocess
 import sys
 import urllib.error
@@ -38,6 +39,44 @@ ARCHITECT_BUNDLE_PREFIX_ENV = "ARCHITECT_BUNDLE_SLUG_PREFIX"
 ARCHITECT_TIMEOUT_ENV = "ARCHITECT_APPROVAL_TIMEOUT_S"
 ARCHITECT_ROLLOUT_ORDER_ENV = "ARCHITECT_ROLLOUT_ORDER"
 DEFAULT_ROLLOUT_ORDER = "backend,frontend,mobile,agents,data-acquisition"
+SETUP_TOKEN_COMMAND_TIMEOUT_S = 3600
+
+
+def _run_setup_token(script: Path) -> int:
+    process = subprocess.Popen(
+        [sys.executable, str(script)],
+        start_new_session=True,
+    )
+
+    def _terminate_on_signal(signum: int, _frame: Any) -> None:
+        _terminate_process_group(process)
+        raise SystemExit(128 + signum)
+
+    previous_handlers = {
+        signum: signal.signal(signum, _terminate_on_signal)
+        for signum in (signal.SIGTERM, signal.SIGHUP)
+    }
+    try:
+        return process.wait(timeout=SETUP_TOKEN_COMMAND_TIMEOUT_S)
+    except (subprocess.TimeoutExpired, KeyboardInterrupt):
+        _terminate_process_group(process)
+        raise
+    finally:
+        for signum, previous in previous_handlers.items():
+            signal.signal(signum, previous)
+
+
+def _terminate_process_group(process: subprocess.Popen[Any]) -> None:
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        process.wait(timeout=2)
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGKILL)
+    process.wait()
+
 
 MODE_HALT = "0"
 MODE_APPROVAL_GATE = "approval-gate"
@@ -380,12 +419,20 @@ def step_claude_oauth(
         return
     if ask_yes_no("Run `alfred setup-token` now?", True):
         script = Path(__file__).resolve().parent / "alfred-setup-token.py"
-        rc = subprocess.run([sys.executable, str(script)], check=False).returncode
+        try:
+            rc = _run_setup_token(script)
+        except subprocess.TimeoutExpired:
+            warn(
+                "`alfred setup-token` timed out waiting for approval. "
+                "Re-run it before enabling architect."
+            )
+            raise SystemExit(124) from None
         if rc == 0:
             state.config = read_env_file(state.env_file)
             ok(f"{TOKEN_ENV} configured")
         else:
             warn(f"`alfred setup-token` exited {rc}. Re-run it before enabling architect.")
+            raise SystemExit(rc or 1)
     else:
         warn("Skipped token setup.")
 

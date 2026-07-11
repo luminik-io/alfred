@@ -6,6 +6,7 @@ the suite is deterministic and CI-safe. Vendored installs use a tmp skills dir.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -17,6 +18,94 @@ if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
 import skill_packs  # noqa: E402
+
+
+def test_default_shell_runner_returns_timeout_status(tmp_path, monkeypatch) -> None:
+    class FakeProcess:
+        pid = 456
+
+        def __init__(self, command, **_kwargs):
+            self.command = command
+            self.calls = 0
+
+        def wait(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise subprocess.TimeoutExpired(self.command, timeout)
+            return -15
+
+    signals = []
+    monkeypatch.setattr(subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(skill_packs.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+
+    assert skill_packs._default_shell_runner("slow-command", tmp_path) == 124
+    assert signals == [
+        (456, skill_packs.signal.SIGTERM),
+        (456, skill_packs.signal.SIGKILL),
+    ]
+
+
+def test_default_shell_runner_cleans_process_group_on_interrupt(tmp_path, monkeypatch) -> None:
+    class FakeProcess:
+        pid = 654
+
+        def __init__(self, _command, **_kwargs):
+            self.calls = 0
+
+        def wait(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise KeyboardInterrupt
+            return -15
+
+    signals = []
+    monkeypatch.setattr(subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(skill_packs.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+
+    with pytest.raises(KeyboardInterrupt):
+        skill_packs._default_shell_runner("interrupt-me", tmp_path)
+
+    assert signals == [
+        (654, skill_packs.signal.SIGTERM),
+        (654, skill_packs.signal.SIGKILL),
+    ]
+
+
+def test_default_shell_runner_cleans_process_group_on_parent_signal(tmp_path, monkeypatch) -> None:
+    handlers = {}
+
+    class FakeProcess:
+        pid = 655
+
+        def __init__(self, _command, **_kwargs):
+            self.calls = 0
+
+        def wait(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                handlers[skill_packs.signal.SIGTERM](skill_packs.signal.SIGTERM, None)
+            return -15
+
+    def fake_signal(signum, handler):
+        previous = handlers.get(signum, skill_packs.signal.SIG_DFL)
+        handlers[signum] = handler
+        return previous
+
+    signals = []
+    monkeypatch.setattr(subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(skill_packs.signal, "signal", fake_signal)
+    monkeypatch.setattr(skill_packs.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+
+    with pytest.raises(SystemExit) as exc:
+        skill_packs._default_shell_runner("terminate-me", tmp_path)
+
+    assert exc.value.code == 128 + skill_packs.signal.SIGTERM
+    assert signals == [
+        (655, skill_packs.signal.SIGTERM),
+        (655, skill_packs.signal.SIGKILL),
+    ]
+    assert handlers[skill_packs.signal.SIGTERM] == skill_packs.signal.SIG_DFL
+
 
 # --------------------------------------------------------------------------
 # Manifest parsing
@@ -251,6 +340,132 @@ def test_install_fetch_nonzero_runner_raises(tmp_path: Path) -> None:
     pack = _pack(install="fetch", fetch_cmd="false", vendored_path=None)
     with pytest.raises(RuntimeError, match=r"fetch for .* failed"):
         skill_packs.install_pack(pack, skills_dir=tmp_path, runner=lambda _c, _d: 1)
+
+
+def test_install_fetch_failure_removes_new_partial_destination(tmp_path: Path) -> None:
+    pack = _pack(install="fetch", fetch_cmd="clone {skills_dir}/thing", vendored_path=None)
+
+    def partial_runner(_cmd: str, cwd: Path) -> int:
+        (cwd / pack.name).mkdir()
+        (cwd / pack.name / "partial").write_text("incomplete")
+        return 124
+
+    with pytest.raises(RuntimeError, match="exit 124"):
+        skill_packs.install_pack(pack, skills_dir=tmp_path, runner=partial_runner)
+
+    assert not (tmp_path / pack.name).exists()
+
+
+def test_install_fetch_failure_removes_new_symlinks_published_from_destination(
+    tmp_path: Path,
+) -> None:
+    pack = _pack(install="fetch", fetch_cmd="clone {skills_dir}/thing", vendored_path=None)
+    existing = tmp_path / "existing"
+    existing.symlink_to(tmp_path / "preexisting-target")
+
+    def partial_runner(_cmd: str, cwd: Path) -> int:
+        dest = cwd / pack.name
+        (dest / "skills" / "review").mkdir(parents=True)
+        (cwd / "review").symlink_to(dest / "skills" / "review", target_is_directory=True)
+        return 124
+
+    with pytest.raises(RuntimeError, match="exit 124"):
+        skill_packs.install_pack(pack, skills_dir=tmp_path, runner=partial_runner)
+
+    assert not (tmp_path / pack.name).exists()
+    assert not (tmp_path / "review").is_symlink()
+    assert existing.is_symlink()
+
+
+def test_install_fetch_failure_preserves_existing_destination(tmp_path: Path) -> None:
+    pack = _pack(install="fetch", fetch_cmd="clone {skills_dir}/thing", vendored_path=None)
+    dest = tmp_path / pack.name
+    dest.mkdir()
+    marker = dest / "working-skill"
+    marker.write_text("keep")
+
+    with pytest.raises(RuntimeError, match="exit 124"):
+        skill_packs.install_pack(pack, skills_dir=tmp_path, runner=lambda _c, _d: 124)
+
+    assert marker.read_text() == "keep"
+
+
+def test_install_fetch_reinstall_failure_removes_only_new_published_symlinks(
+    tmp_path: Path,
+) -> None:
+    pack = _pack(install="fetch", fetch_cmd="setup {skills_dir}/thing", vendored_path=None)
+    dest = tmp_path / pack.name
+    (dest / "skills" / "review").mkdir(parents=True)
+    marker = dest / "working-skill"
+    marker.write_text("keep")
+
+    def failed_reinstall(_cmd: str, cwd: Path) -> int:
+        (cwd / "review").symlink_to(dest / "skills" / "review", target_is_directory=True)
+        return 124
+
+    with pytest.raises(RuntimeError, match="exit 124"):
+        skill_packs.install_pack(pack, skills_dir=tmp_path, runner=failed_reinstall)
+
+    assert marker.read_text() == "keep"
+    assert not (tmp_path / "review").is_symlink()
+
+
+def test_install_fetch_reinstall_failure_restores_mutated_destination(tmp_path: Path) -> None:
+    pack = _pack(install="fetch", fetch_cmd="setup {skills_dir}/thing", vendored_path=None)
+    dest = tmp_path / pack.name
+    dest.mkdir()
+    (dest / "keep").write_text("original")
+    (dest / "also-keep").write_text("present")
+
+    def failed_reinstall(_cmd: str, _cwd: Path) -> int:
+        (dest / "keep").write_text("mutated")
+        (dest / "also-keep").unlink()
+        (dest / "partial").write_text("new")
+        return 42
+
+    with pytest.raises(RuntimeError, match="exit 42"):
+        skill_packs.install_pack(pack, skills_dir=tmp_path, runner=failed_reinstall)
+
+    assert (dest / "keep").read_text() == "original"
+    assert (dest / "also-keep").read_text() == "present"
+    assert not (dest / "partial").exists()
+
+
+def test_install_fetch_reinstall_failure_preserves_symlink_destination(tmp_path: Path) -> None:
+    pack = _pack(install="fetch", fetch_cmd="setup {skills_dir}/thing", vendored_path=None)
+    target = tmp_path / "shared-pack"
+    target.mkdir()
+    (target / "skill").write_text("original")
+    dest = tmp_path / pack.name
+    dest.symlink_to(target, target_is_directory=True)
+
+    def failed_reinstall(_cmd: str, _cwd: Path) -> int:
+        dest.unlink()
+        dest.mkdir()
+        (dest / "partial").write_text("new")
+        return 42
+
+    with pytest.raises(RuntimeError, match="exit 42"):
+        skill_packs.install_pack(pack, skills_dir=tmp_path, runner=failed_reinstall)
+
+    assert dest.is_symlink()
+    assert dest.resolve() == target.resolve()
+    assert (target / "skill").read_text() == "original"
+
+
+def test_install_fetch_interrupt_removes_new_partial_destination(tmp_path: Path) -> None:
+    pack = _pack(install="fetch", fetch_cmd="clone {skills_dir}/thing", vendored_path=None)
+
+    def interrupted_runner(_cmd: str, cwd: Path) -> int:
+        (cwd / pack.name).mkdir()
+        (cwd / pack.name / "partial").write_text("incomplete")
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        skill_packs.install_pack(pack, skills_dir=tmp_path, runner=interrupted_runner)
+
+    assert not (tmp_path / pack.name).exists()
+    assert pack.name not in skill_packs.installed_packs([pack], skills_dir=tmp_path)
 
 
 def test_install_fetch_shell_quotes_spaced_skills_dir(tmp_path: Path) -> None:

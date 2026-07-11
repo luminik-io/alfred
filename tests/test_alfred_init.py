@@ -1454,6 +1454,89 @@ def test_maybe_offer_setup_token_accepts_runtime_env_file_token(
     assert "Run `alfred setup-token` now?" not in captured.out
 
 
+def test_maybe_offer_setup_token_exits_with_timeout_status(tmp_path, init_mod, monkeypatch, capsys):
+    import subprocess
+
+    alfred_home = tmp_path / ".alfred"
+    alfred_home.mkdir()
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
+
+    class FakeProcess:
+        pid = 777
+
+        def __init__(self, command, **_kwargs):
+            self.command = command
+            self.calls = 0
+
+        def wait(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise subprocess.TimeoutExpired(self.command, timeout)
+            return -15
+
+    monkeypatch.setattr(init_mod.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(init_mod.os, "killpg", lambda *_args: None)
+
+    with pytest.raises(SystemExit) as exc:
+        init_mod._maybe_offer_setup_token(non_interactive=False)
+
+    assert exc.value.code == 124
+    assert "timed out waiting for approval" in capsys.readouterr().err
+
+
+def test_maybe_offer_setup_token_exits_when_handoff_fails(tmp_path, init_mod, monkeypatch, capsys):
+    alfred_home = tmp_path / ".alfred"
+    alfred_home.mkdir()
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
+    monkeypatch.setattr(init_mod, "_run_setup_token", lambda _script: 7)
+
+    with pytest.raises(SystemExit) as exc:
+        init_mod._maybe_offer_setup_token(non_interactive=False)
+
+    assert exc.value.code == 7
+    assert "exited 7" in capsys.readouterr().err
+
+
+def test_setup_token_helper_reaps_child_on_parent_signal(tmp_path, init_mod, monkeypatch):
+    handlers = {}
+
+    class FakeProcess:
+        pid = 779
+
+        def __init__(self, _command, **_kwargs):
+            self.calls = 0
+
+        def wait(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                handlers[init_mod.signal.SIGHUP](init_mod.signal.SIGHUP, None)
+            return -15
+
+    def fake_signal(signum, handler):
+        previous = handlers.get(signum, init_mod.signal.SIG_DFL)
+        handlers[signum] = handler
+        return previous
+
+    signals = []
+    monkeypatch.setattr(init_mod.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(init_mod.signal, "signal", fake_signal)
+    monkeypatch.setattr(init_mod.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+
+    with pytest.raises(SystemExit) as exc:
+        init_mod._run_setup_token(tmp_path / "setup-token.py")
+
+    assert exc.value.code == 128 + init_mod.signal.SIGHUP
+    assert signals == [
+        (779, init_mod.signal.SIGTERM),
+        (779, init_mod.signal.SIGKILL),
+    ]
+    assert handlers[init_mod.signal.SIGHUP] == init_mod.signal.SIG_DFL
+
+
 def test_upsert_env_file_idempotent(tmp_path, init_mod):
     rc = tmp_path / ".env"
     rc.write_text("# pre-existing\nGH_ORG=acme\n")
