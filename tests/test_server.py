@@ -2619,6 +2619,8 @@ def test_compose_converse_degrades_when_no_engine_configured(
     # clear 503 (the client falls back to the one-shot form) instead of faking.
     monkeypatch.delenv("ALFRED_COMPOSE_CONVERSE_ENGINE", raising=False)
     monkeypatch.delenv("ALFRED_PLANNING_ASSISTANT_ENGINE", raising=False)
+    monkeypatch.delenv("ALFRED_ENGINE", raising=False)
+    monkeypatch.setattr(server_views.cc.shutil, "which", lambda _name: None)
     state = tmp_path / "state"
     state.mkdir()
     client = TestClient(create_app(FilesystemReader(state_root=state)))
@@ -2639,6 +2641,8 @@ def test_compose_converse_stream_degrades_with_sse_error_when_no_engine_configur
     # Ask stream should not create a red resource error before falling back.
     monkeypatch.delenv("ALFRED_COMPOSE_CONVERSE_ENGINE", raising=False)
     monkeypatch.delenv("ALFRED_PLANNING_ASSISTANT_ENGINE", raising=False)
+    monkeypatch.delenv("ALFRED_ENGINE", raising=False)
+    monkeypatch.setattr(server_views.cc.shutil, "which", lambda _name: None)
     state = tmp_path / "state"
     state.mkdir()
     client = TestClient(create_app(FilesystemReader(state_root=state)))

@@ -30,6 +30,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -1589,8 +1590,32 @@ def draft_from_payload(payload: Any) -> IssueDraft:
 
 
 def converse_engine_from_env() -> str:
-    """Resolve the engine driving the interrogator, or "" when none is set."""
-    return (os.environ.get(ENGINE_ENV) or os.environ.get(FALLBACK_ENGINE_ENV) or "").strip()
+    """Resolve the engine driving the interrogator.
+
+    Explicit conversational and fleet-wide choices win. A batteries-included
+    desktop install then uses whichever subscription CLI is already available;
+    when both are present, hybrid keeps Alfred's normal Claude-first fallback.
+    Hosts without either CLI retain the deterministic no-engine path.
+    """
+
+    configured = (
+        os.environ.get(ENGINE_ENV)
+        or os.environ.get(FALLBACK_ENGINE_ENV)
+        or os.environ.get("ALFRED_ENGINE")
+        or ""
+    ).strip()
+    if configured:
+        return configured
+
+    claude_ready = shutil.which("claude") is not None
+    codex_ready = shutil.which("codex") is not None
+    if claude_ready and codex_ready:
+        return "hybrid"
+    if claude_ready:
+        return "claude"
+    if codex_ready:
+        return "codex"
+    return ""
 
 
 def converse_firing_id() -> str:
