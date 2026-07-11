@@ -206,6 +206,34 @@ def test_greptile_uses_explicit_last_reviewed_commit_not_incidental_sha():
     assert not evaluate_gate(snap, required_external_reviews=("greptile",)).mergeable
 
 
+def test_codex_evidence_binds_to_trusted_full_head_request():
+    old_head = "aaaaaaa" + "b" * 33
+    new_head = "aaaaaaa" + "c" * 33
+    payload = [
+        [
+            {
+                "user": {"login": "operator"},
+                "author_association": "OWNER",
+                "body": f"@codex review\nExact head: `{old_head}`",
+                "created_at": "2026-07-11T10:00:00Z",
+            },
+            {
+                "user": {"login": "chatgpt-codex-connector[bot]"},
+                "body": "Didn't find any major issues.\n**Reviewed commit:** `aaaaaaa`",
+                "created_at": "2026-07-11T10:01:00Z",
+            },
+        ]
+    ]
+    errors: list[str] = []
+    evidence = merge_gate._collect_external_reviews(
+        "acme/repo", 7, gh_json=lambda _cmd, _default: payload, errors=errors
+    )
+    assert errors == []
+    assert evidence[-1].reviewed_sha == old_head
+    snap = _snapshot(head_sha=new_head, external_reviews=tuple(evidence))
+    assert not evaluate_gate(snap, required_external_reviews=("codex",)).mergeable
+
+
 def test_unknown_review_decision_fails_closed():
     decision = evaluate_gate(_snapshot(review_decision="SOMETHING_NEW"))
     assert decision.mergeable is False

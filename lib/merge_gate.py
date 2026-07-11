@@ -501,6 +501,21 @@ def _collect_external_reviews(
         if all(isinstance(p, list) for p in payload)
         else payload
     )
+    trusted_requests: list[tuple[str, str]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        association = str(item.get("author_association") or "").upper()
+        body = str(item.get("body") or "")
+        match = re.search(r"Exact head:\s*`([0-9a-f]{40})`", body, re.I)
+        if (
+            association in {"OWNER", "MEMBER", "COLLABORATOR"}
+            and "@codex review" in body.lower()
+            and match
+        ):
+            trusted_requests.append(
+                (str(item.get("created_at") or item.get("updated_at") or ""), match.group(1))
+            )
     evidence: list[ExternalReviewEvidence] = []
     for item in items:
         if not isinstance(item, dict) or not isinstance(item.get("user"), dict):
@@ -511,9 +526,12 @@ def _collect_external_reviews(
         if author.lower() in {"chatgpt-codex-connector", "chatgpt-codex-connector[bot]"}:
             match = re.search(r"Reviewed commit:\*\*\s*`([0-9a-f]{7,40})`", body, re.I)
             if match:
-                commit = gh_json(["gh", "api", f"repos/{repo}/commits/{match.group(1)}"], None)
-                if isinstance(commit, dict):
-                    reviewed_sha = str(commit.get("sha") or "")
+                evidence_time = str(item.get("created_at") or item.get("updated_at") or "")
+                preceding = [entry for entry in trusted_requests if entry[0] <= evidence_time]
+                if preceding:
+                    _requested_at, requested_sha = max(preceding, key=lambda entry: entry[0])
+                    if requested_sha.lower().startswith(match.group(1).lower()):
+                        reviewed_sha = requested_sha
         elif author.lower() in {"greptile-apps", "greptile-apps[bot]"}:
             match = re.search(r"Last reviewed commit:.*?/commit/([0-9a-f]{40})", body, re.I | re.S)
             if match:
