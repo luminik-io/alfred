@@ -8,7 +8,7 @@ LIB = REPO / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
-from slack_thread_status import (  # noqa: E402
+from slack_surface.threads import (  # noqa: E402
     STATE_CI_FAIL,
     STATE_CI_PASS,
     STATE_CLAIMED,
@@ -315,7 +315,7 @@ def test_default_fetcher_returns_none_on_issue_read_failure(tmp_path: Path) -> N
 
 
 def test_render_uses_issue_url_when_present() -> None:
-    from slack_thread_status import ThreadStatusRecord
+    from slack_surface.threads import ThreadStatusRecord
 
     record = ThreadStatusRecord(
         channel=CHANNEL,

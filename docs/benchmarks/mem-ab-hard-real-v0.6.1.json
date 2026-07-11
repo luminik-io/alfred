@@ -1,0 +1,719 @@
+{
+  "label": "real-hard-v0.6.1",
+  "generated_at": "2026-07-11T16:21:18.655460+00:00",
+  "codename": "mem-bench",
+  "repo": "acme-org/widgets",
+  "solver_kind": "engine:claude",
+  "suite": [
+    {
+      "task_id": "http-client-wrapper",
+      "kind": "feature",
+      "title": "Fetch a user record over HTTP",
+      "prompt": "In repo/service.py, implement fetch_user(uid) that returns the parsed JSON body from a GET to https://api.acme.internal/users/{uid}. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+      "mistake_id": "raw-requests",
+      "relevant_lesson_ids": [
+        "L-http"
+      ],
+      "mistake_markers": [
+        "requests\\.get",
+        "import requests"
+      ],
+      "success_markers": [
+        "acme_http\\.fetch"
+      ],
+      "recall_query": "outbound HTTP",
+      "lesson_signal": "acme_http.fetch",
+      "repeats_known_mistake": true,
+      "correct_solution": "import acme_http\ndef fetch_user(uid):\n    return acme_http.fetch(f'https://api.acme.internal/users/{uid}').json()",
+      "mistaken_solution": "import requests\ndef fetch_user(uid):\n    return requests.get(f'https://api.acme.internal/users/{uid}').json()"
+    },
+    {
+      "task_id": "project-error-type",
+      "kind": "fix",
+      "title": "Reject a non-positive charge",
+      "prompt": "In repo/service.py, implement charge(amount) that raises an error when amount is not positive, then records the charge. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+      "mistake_id": "bare-valueerror",
+      "relevant_lesson_ids": [
+        "L-err"
+      ],
+      "mistake_markers": [
+        "raise ValueError",
+        "raise RuntimeError"
+      ],
+      "success_markers": [
+        "AcmeValidationError"
+      ],
+      "recall_query": "input validation errors",
+      "lesson_signal": "AcmeValidationError",
+      "repeats_known_mistake": true,
+      "correct_solution": "from acme.errors import AcmeValidationError\ndef charge(amount):\n    if amount <= 0:\n        raise AcmeValidationError('amount must be positive')\n    _record(amount)",
+      "mistaken_solution": "def charge(amount):\n    if amount <= 0:\n        raise ValueError('amount must be positive')\n    _record(amount)"
+    },
+    {
+      "task_id": "structured-logger",
+      "kind": "feature",
+      "title": "Log when a worker starts",
+      "prompt": "In repo/service.py, add a module-level logger and have worker() log an 'order processed' message. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+      "mistake_id": "stdlib-logger",
+      "relevant_lesson_ids": [
+        "L-log"
+      ],
+      "mistake_markers": [
+        "logging\\.getLogger",
+        "print\\("
+      ],
+      "success_markers": [
+        "acme_log\\.get_logger"
+      ],
+      "recall_query": "structured logging",
+      "lesson_signal": "acme_log.get_logger",
+      "repeats_known_mistake": true,
+      "correct_solution": "import acme_log\nlogger = acme_log.get_logger(__name__)\ndef worker():\n    logger.info('order processed')",
+      "mistaken_solution": "import logging\nlogger = logging.getLogger(__name__)\ndef worker():\n    logger.info('order processed')"
+    },
+    {
+      "task_id": "config-access",
+      "kind": "feature",
+      "title": "Read a configured timeout",
+      "prompt": "In repo/service.py, implement timeout_seconds() returning the configured ACME_TIMEOUT value as an int. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+      "mistake_id": "raw-environ",
+      "relevant_lesson_ids": [
+        "L-cfg"
+      ],
+      "mistake_markers": [
+        "os\\.environ",
+        "os\\.getenv"
+      ],
+      "success_markers": [
+        "acme_config\\.get"
+      ],
+      "recall_query": "runtime configuration",
+      "lesson_signal": "acme_config.get",
+      "repeats_known_mistake": true,
+      "correct_solution": "import acme_config\ndef timeout_seconds():\n    return acme_config.get('ACME_TIMEOUT', cast=int)",
+      "mistaken_solution": "import os\ndef timeout_seconds():\n    return int(os.environ['ACME_TIMEOUT'])"
+    },
+    {
+      "task_id": "id-generation",
+      "kind": "feature",
+      "title": "Mint an order id",
+      "prompt": "In repo/service.py, implement new_order_id() that returns a unique id string for a new order. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+      "mistake_id": "raw-uuid4",
+      "relevant_lesson_ids": [
+        "L-id"
+      ],
+      "mistake_markers": [
+        "uuid4",
+        "uuid\\.uuid1"
+      ],
+      "success_markers": [
+        "acme_ids\\.new_id"
+      ],
+      "recall_query": "identifier generation",
+      "lesson_signal": "acme_ids.new_id",
+      "repeats_known_mistake": true,
+      "correct_solution": "import acme_ids\ndef new_order_id():\n    return acme_ids.new_id('ord')",
+      "mistaken_solution": "import uuid\ndef new_order_id():\n    return str(uuid.uuid4())"
+    },
+    {
+      "task_id": "current-time",
+      "kind": "feature",
+      "title": "Timestamp an audit record",
+      "prompt": "In repo/service.py, implement created_at() returning the current timestamp for a new audit record. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+      "mistake_id": "raw-datetime-now",
+      "relevant_lesson_ids": [
+        "L-clock"
+      ],
+      "mistake_markers": [
+        "datetime\\.now\\(",
+        "datetime\\.utcnow"
+      ],
+      "success_markers": [
+        "acme_clock\\.now"
+      ],
+      "recall_query": "current time",
+      "lesson_signal": "acme_clock.now",
+      "repeats_known_mistake": true,
+      "correct_solution": "import acme_clock\ndef created_at():\n    return acme_clock.now()",
+      "mistaken_solution": "from datetime import datetime\ndef created_at():\n    return datetime.now()"
+    },
+    {
+      "task_id": "response-serialization",
+      "kind": "feature",
+      "title": "Serialize a response dict",
+      "prompt": "In repo/service.py, implement render(payload) that returns the response dict serialized as a JSON string. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+      "mistake_id": "stdlib-json-dumps",
+      "relevant_lesson_ids": [
+        "L-json"
+      ],
+      "mistake_markers": [
+        "\\bjson\\.dumps"
+      ],
+      "success_markers": [
+        "acme_json\\.dumps"
+      ],
+      "recall_query": "response serialization",
+      "lesson_signal": "acme_json.dumps",
+      "repeats_known_mistake": true,
+      "correct_solution": "import acme_json\ndef render(payload):\n    return acme_json.dumps(payload)",
+      "mistaken_solution": "import json\ndef render(payload):\n    return json.dumps(payload)"
+    },
+    {
+      "task_id": "db-write-uow",
+      "kind": "feature",
+      "title": "Persist a widget durably",
+      "prompt": "In repo/service.py, implement save_widget(session, widget) that persists the widget so the write is durable. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+      "mistake_id": "raw-session-commit",
+      "relevant_lesson_ids": [
+        "L-uow"
+      ],
+      "mistake_markers": [
+        "\\.commit\\(\\)"
+      ],
+      "success_markers": [
+        "unit_of_work"
+      ],
+      "recall_query": "database writes",
+      "lesson_signal": "unit_of_work",
+      "repeats_known_mistake": true,
+      "correct_solution": "import acme_db\ndef save_widget(session, widget):\n    with acme_db.unit_of_work() as uow:\n        uow.add(widget)",
+      "mistaken_solution": "def save_widget(session, widget):\n    session.add(widget)\n    session.commit()"
+    },
+    {
+      "task_id": "shell-exec",
+      "kind": "feature",
+      "title": "Run the backup command",
+      "prompt": "In repo/service.py, implement run_backup(path) that runs the 'acme-backup' shell command with path as an argument. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+      "mistake_id": "raw-subprocess",
+      "relevant_lesson_ids": [
+        "L-shell"
+      ],
+      "mistake_markers": [
+        "subprocess\\.run",
+        "subprocess\\.call",
+        "os\\.system"
+      ],
+      "success_markers": [
+        "acme_shell\\.run"
+      ],
+      "recall_query": "shelling out",
+      "lesson_signal": "acme_shell.run",
+      "repeats_known_mistake": true,
+      "correct_solution": "import acme_shell\ndef run_backup(path):\n    acme_shell.run(['acme-backup', path])",
+      "mistaken_solution": "import subprocess\ndef run_backup(path):\n    subprocess.run(['acme-backup', path])"
+    },
+    {
+      "task_id": "precondition-check",
+      "kind": "fix",
+      "title": "Guard a self-transfer",
+      "prompt": "In repo/service.py, implement transfer(src, dst, amount) that first checks src and dst are different, then moves the amount. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+      "mistake_id": "bare-assert",
+      "relevant_lesson_ids": [
+        "L-req"
+      ],
+      "mistake_markers": [
+        "\\bassert\\b"
+      ],
+      "success_markers": [
+        "acme_validate\\.require"
+      ],
+      "recall_query": "preconditions",
+      "lesson_signal": "acme_validate.require",
+      "repeats_known_mistake": true,
+      "correct_solution": "import acme_validate\ndef transfer(src, dst, amount):\n    acme_validate.require(src != dst, 'cannot transfer to self')\n    _move(src, dst, amount)",
+      "mistaken_solution": "def transfer(src, dst, amount):\n    assert src != dst, 'cannot transfer to self'\n    _move(src, dst, amount)"
+    },
+    {
+      "task_id": "add-docstring",
+      "kind": "test",
+      "title": "Document a small helper",
+      "prompt": "In repo/service.py, add a one-line docstring to normalize(text). End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+      "mistake_id": "none",
+      "relevant_lesson_ids": [],
+      "mistake_markers": [],
+      "success_markers": [
+        "Strip and lowercase"
+      ],
+      "recall_query": "docstring",
+      "lesson_signal": "",
+      "repeats_known_mistake": false,
+      "correct_solution": "def normalize(text):\n    \"\"\"Strip and lowercase the text.\"\"\"\n    return text.strip().lower()",
+      "mistaken_solution": "def normalize(text):\n    \"\"\"Strip and lowercase the text.\"\"\"\n    return text.strip().lower()"
+    },
+    {
+      "task_id": "add-type-hint",
+      "kind": "test",
+      "title": "Annotate a return type",
+      "prompt": "In repo/service.py, add a return type hint to is_even(n). End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+      "mistake_id": "none",
+      "relevant_lesson_ids": [],
+      "mistake_markers": [],
+      "success_markers": [
+        "-> bool"
+      ],
+      "recall_query": "type hint",
+      "lesson_signal": "",
+      "repeats_known_mistake": false,
+      "correct_solution": "def is_even(n) -> bool:\n    return n % 2 == 0",
+      "mistaken_solution": "def is_even(n) -> bool:\n    return n % 2 == 0"
+    }
+  ],
+  "memory_on": {
+    "arm": "memory_on",
+    "tasks": 12,
+    "mistake_eligible": 10,
+    "mistakes_repeated": 0,
+    "repeated_mistake_rate": 0.0,
+    "succeeded": 11,
+    "task_success_rate": 0.9166666666666666,
+    "tokens_in": 240235,
+    "tokens_out": 332,
+    "turns": 34,
+    "tokens_in_per_task": 20019.6,
+    "turns_per_task": 2.83,
+    "retrieval": {
+      "tasks_with_relevant": 10,
+      "relevant_total": 10,
+      "recalled_total": 30,
+      "recalled_relevant": 10,
+      "precision": 0.3333333333333333,
+      "recall": 1.0
+    }
+  },
+  "memory_off": {
+    "arm": "memory_off",
+    "tasks": 12,
+    "mistake_eligible": 10,
+    "mistakes_repeated": 8,
+    "repeated_mistake_rate": 0.8,
+    "succeeded": 1,
+    "task_success_rate": 0.08333333333333333,
+    "tokens_in": 294652,
+    "tokens_out": 682,
+    "turns": 59,
+    "tokens_in_per_task": 24554.3,
+    "turns_per_task": 4.92,
+    "retrieval": {
+      "tasks_with_relevant": 10,
+      "relevant_total": 10,
+      "recalled_total": 0,
+      "recalled_relevant": 0,
+      "precision": null,
+      "recall": 0.0
+    }
+  },
+  "delta": {
+    "repeated_mistake_rate": 0.8,
+    "task_success_rate": 0.8333
+  },
+  "attempts": [
+    {
+      "task_id": "http-client-wrapper",
+      "arm": "memory_on",
+      "made_mistake": false,
+      "succeeded": true,
+      "recalled_lesson_ids": [
+        "L-http",
+        "D-typing",
+        "D-testname"
+      ],
+      "turns": 2,
+      "tokens": {
+        "tokens_in": 17302,
+        "tokens_out": 14,
+        "cache_read": 67122,
+        "cache_creation": 23560,
+        "cache_hit_rate": 0.6216
+      }
+    },
+    {
+      "task_id": "project-error-type",
+      "arm": "memory_on",
+      "made_mistake": false,
+      "succeeded": true,
+      "recalled_lesson_ids": [
+        "L-err",
+        "D-typing",
+        "D-testname"
+      ],
+      "turns": 4,
+      "tokens": {
+        "tokens_in": 24552,
+        "tokens_out": 26,
+        "cache_read": 177834,
+        "cache_creation": 33292,
+        "cache_hit_rate": 0.7546
+      }
+    },
+    {
+      "task_id": "structured-logger",
+      "arm": "memory_on",
+      "made_mistake": false,
+      "succeeded": true,
+      "recalled_lesson_ids": [
+        "L-log",
+        "D-typing",
+        "D-testname"
+      ],
+      "turns": 3,
+      "tokens": {
+        "tokens_in": 20925,
+        "tokens_out": 17,
+        "cache_read": 94581,
+        "cache_creation": 24103,
+        "cache_hit_rate": 0.6775
+      }
+    },
+    {
+      "task_id": "config-access",
+      "arm": "memory_on",
+      "made_mistake": false,
+      "succeeded": true,
+      "recalled_lesson_ids": [
+        "L-cfg",
+        "D-typing",
+        "D-testname"
+      ],
+      "turns": 2,
+      "tokens": {
+        "tokens_in": 17302,
+        "tokens_out": 20,
+        "cache_read": 67112,
+        "cache_creation": 23724,
+        "cache_hit_rate": 0.6206
+      }
+    },
+    {
+      "task_id": "id-generation",
+      "arm": "memory_on",
+      "made_mistake": false,
+      "succeeded": true,
+      "recalled_lesson_ids": [
+        "L-id",
+        "D-typing",
+        "D-testname"
+      ],
+      "turns": 3,
+      "tokens": {
+        "tokens_in": 20925,
+        "tokens_out": 15,
+        "cache_read": 94625,
+        "cache_creation": 24156,
+        "cache_hit_rate": 0.6773
+      }
+    },
+    {
+      "task_id": "current-time",
+      "arm": "memory_on",
+      "made_mistake": false,
+      "succeeded": true,
+      "recalled_lesson_ids": [
+        "L-clock",
+        "D-typing",
+        "D-testname"
+      ],
+      "turns": 4,
+      "tokens": {
+        "tokens_in": 20925,
+        "tokens_out": 157,
+        "cache_read": 94656,
+        "cache_creation": 24525,
+        "cache_hit_rate": 0.6756
+      }
+    },
+    {
+      "task_id": "response-serialization",
+      "arm": "memory_on",
+      "made_mistake": false,
+      "succeeded": true,
+      "recalled_lesson_ids": [
+        "L-json",
+        "D-typing",
+        "D-testname"
+      ],
+      "turns": 2,
+      "tokens": {
+        "tokens_in": 17302,
+        "tokens_out": 14,
+        "cache_read": 67150,
+        "cache_creation": 23826,
+        "cache_hit_rate": 0.6202
+      }
+    },
+    {
+      "task_id": "db-write-uow",
+      "arm": "memory_on",
+      "made_mistake": false,
+      "succeeded": true,
+      "recalled_lesson_ids": [
+        "L-uow",
+        "D-typing",
+        "D-testname"
+      ],
+      "turns": 2,
+      "tokens": {
+        "tokens_in": 17302,
+        "tokens_out": 14,
+        "cache_read": 67142,
+        "cache_creation": 23828,
+        "cache_hit_rate": 0.6201
+      }
+    },
+    {
+      "task_id": "shell-exec",
+      "arm": "memory_on",
+      "made_mistake": false,
+      "succeeded": true,
+      "recalled_lesson_ids": [
+        "L-shell",
+        "D-typing",
+        "D-testname"
+      ],
+      "turns": 2,
+      "tokens": {
+        "tokens_in": 17300,
+        "tokens_out": 11,
+        "cache_read": 49196,
+        "cache_creation": 14228,
+        "cache_hit_rate": 0.6094
+      }
+    },
+    {
+      "task_id": "precondition-check",
+      "arm": "memory_on",
+      "made_mistake": false,
+      "succeeded": true,
+      "recalled_lesson_ids": [
+        "L-req",
+        "D-typing",
+        "D-testname"
+      ],
+      "turns": 4,
+      "tokens": {
+        "tokens_in": 20927,
+        "tokens_out": 17,
+        "cache_read": 112581,
+        "cache_creation": 35356,
+        "cache_hit_rate": 0.6667
+      }
+    },
+    {
+      "task_id": "add-docstring",
+      "arm": "memory_on",
+      "made_mistake": false,
+      "succeeded": false,
+      "recalled_lesson_ids": [
+        "D-typing",
+        "D-testname",
+        "D-imports"
+      ],
+      "turns": 3,
+      "tokens": {
+        "tokens_in": 24548,
+        "tokens_out": 18,
+        "cache_read": 121780,
+        "cache_creation": 25300,
+        "cache_hit_rate": 0.7096
+      }
+    },
+    {
+      "task_id": "add-type-hint",
+      "arm": "memory_on",
+      "made_mistake": false,
+      "succeeded": true,
+      "recalled_lesson_ids": [
+        "D-typing",
+        "D-testname",
+        "D-imports"
+      ],
+      "turns": 3,
+      "tokens": {
+        "tokens_in": 20925,
+        "tokens_out": 9,
+        "cache_read": 94408,
+        "cache_creation": 24090,
+        "cache_hit_rate": 0.6771
+      }
+    },
+    {
+      "task_id": "http-client-wrapper",
+      "arm": "memory_off",
+      "made_mistake": false,
+      "succeeded": false,
+      "recalled_lesson_ids": [],
+      "turns": 6,
+      "tokens": {
+        "tokens_in": 24562,
+        "tokens_out": 36,
+        "cache_read": 334874,
+        "cache_creation": 34296,
+        "cache_hit_rate": 0.8505
+      }
+    },
+    {
+      "task_id": "project-error-type",
+      "arm": "memory_off",
+      "made_mistake": true,
+      "succeeded": false,
+      "recalled_lesson_ids": [],
+      "turns": 7,
+      "tokens": {
+        "tokens_in": 24560,
+        "tokens_out": 73,
+        "cache_read": 304196,
+        "cache_creation": 34075,
+        "cache_hit_rate": 0.8384
+      }
+    },
+    {
+      "task_id": "structured-logger",
+      "arm": "memory_off",
+      "made_mistake": true,
+      "succeeded": false,
+      "recalled_lesson_ids": [],
+      "turns": 4,
+      "tokens": {
+        "tokens_in": 24552,
+        "tokens_out": 16,
+        "cache_read": 176400,
+        "cache_creation": 31906,
+        "cache_hit_rate": 0.7575
+      }
+    },
+    {
+      "task_id": "config-access",
+      "arm": "memory_off",
+      "made_mistake": true,
+      "succeeded": false,
+      "recalled_lesson_ids": [],
+      "turns": 6,
+      "tokens": {
+        "tokens_in": 24560,
+        "tokens_out": 42,
+        "cache_read": 304846,
+        "cache_creation": 34214,
+        "cache_hit_rate": 0.8384
+      }
+    },
+    {
+      "task_id": "id-generation",
+      "arm": "memory_off",
+      "made_mistake": true,
+      "succeeded": false,
+      "recalled_lesson_ids": [],
+      "turns": 5,
+      "tokens": {
+        "tokens_in": 24554,
+        "tokens_out": 31,
+        "cache_read": 207828,
+        "cache_creation": 32308,
+        "cache_hit_rate": 0.7852
+      }
+    },
+    {
+      "task_id": "current-time",
+      "arm": "memory_off",
+      "made_mistake": true,
+      "succeeded": false,
+      "recalled_lesson_ids": [],
+      "turns": 6,
+      "tokens": {
+        "tokens_in": 24558,
+        "tokens_out": 106,
+        "cache_read": 271728,
+        "cache_creation": 32937,
+        "cache_hit_rate": 0.8254
+      }
+    },
+    {
+      "task_id": "response-serialization",
+      "arm": "memory_off",
+      "made_mistake": true,
+      "succeeded": false,
+      "recalled_lesson_ids": [],
+      "turns": 4,
+      "tokens": {
+        "tokens_in": 24552,
+        "tokens_out": 22,
+        "cache_read": 176304,
+        "cache_creation": 32026,
+        "cache_hit_rate": 0.7571
+      }
+    },
+    {
+      "task_id": "db-write-uow",
+      "arm": "memory_off",
+      "made_mistake": true,
+      "succeeded": false,
+      "recalled_lesson_ids": [],
+      "turns": 5,
+      "tokens": {
+        "tokens_in": 24556,
+        "tokens_out": 28,
+        "cache_read": 239824,
+        "cache_creation": 33688,
+        "cache_hit_rate": 0.8046
+      }
+    },
+    {
+      "task_id": "shell-exec",
+      "arm": "memory_off",
+      "made_mistake": true,
+      "succeeded": false,
+      "recalled_lesson_ids": [],
+      "turns": 5,
+      "tokens": {
+        "tokens_in": 28175,
+        "tokens_out": 148,
+        "cache_read": 219779,
+        "cache_creation": 20503,
+        "cache_hit_rate": 0.8187
+      }
+    },
+    {
+      "task_id": "precondition-check",
+      "arm": "memory_off",
+      "made_mistake": false,
+      "succeeded": false,
+      "recalled_lesson_ids": [],
+      "turns": 4,
+      "tokens": {
+        "tokens_in": 24550,
+        "tokens_out": 19,
+        "cache_read": 148790,
+        "cache_creation": 28244,
+        "cache_hit_rate": 0.7381
+      }
+    },
+    {
+      "task_id": "add-docstring",
+      "arm": "memory_off",
+      "made_mistake": false,
+      "succeeded": false,
+      "recalled_lesson_ids": [],
+      "turns": 3,
+      "tokens": {
+        "tokens_in": 20923,
+        "tokens_out": 75,
+        "cache_read": 76228,
+        "cache_creation": 14065,
+        "cache_hit_rate": 0.6854
+      }
+    },
+    {
+      "task_id": "add-type-hint",
+      "arm": "memory_off",
+      "made_mistake": false,
+      "succeeded": true,
+      "recalled_lesson_ids": [],
+      "turns": 4,
+      "tokens": {
+        "tokens_in": 24550,
+        "tokens_out": 86,
+        "cache_read": 158585,
+        "cache_creation": 22171,
+        "cache_hit_rate": 0.7724
+      }
+    }
+  ]
+}

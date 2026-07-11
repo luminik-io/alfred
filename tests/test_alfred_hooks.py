@@ -311,6 +311,9 @@ def _big_bash_log(n: int = 600) -> str:
 
 
 def test_main_posttooluse_compacts_verbose_output(monkeypatch, capsys):
+    # Offload off: this exercises the pure inline-compaction path (head+tail
+    # marker). The offload-enabled default is covered separately below.
+    monkeypatch.setenv("ALFRED_TOOL_OFFLOAD", "0")
     raw = _big_bash_log()
     event = {
         "tool_name": "Bash",
@@ -326,6 +329,48 @@ def test_main_posttooluse_compacts_verbose_output(monkeypatch, capsys):
     compacted = hso["updatedToolOutput"]
     assert len(compacted) < len(raw)
     assert "ALFRED_OUTPUT_COMPACTOR" in compacted
+
+
+def test_main_posttooluse_offloads_full_output_to_path(monkeypatch, capsys, tmp_path):
+    # The offload-enabled default: verbose successful output is saved in full to a
+    # firing-scoped file and the inline body becomes a preview + re-readable path.
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_FIRING_ID", "fire-42")
+    raw = _big_bash_log()
+    event = {
+        "tool_name": "Bash",
+        "tool_input": {"command": "make build"},
+        "tool_response": {"stdout": raw, "stderr": "", "exit_code": 0},
+    }
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    assert ah.main(["posttooluse"]) == 0
+    updated = json.loads(capsys.readouterr().out)["hookSpecificOutput"]["updatedToolOutput"]
+    assert "Full output saved to" in updated
+    assert "ALFRED_TOOL_OFFLOAD" in updated
+    # The saved file under the firing dir holds the full raw output.
+    saved = tmp_path / "state" / "firings" / "fire-42" / "tool-output" / "1.txt"
+    assert saved.is_file()
+    assert saved.read_text(encoding="utf-8") == raw
+
+
+def test_main_posttooluse_offload_falls_back_to_compaction_when_unwritable(
+    monkeypatch, capsys, tmp_path
+):
+    # If offload cannot write (disk bound breached), the compactor's own head+tail
+    # output is still emitted - the token win is never lost.
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_TOOL_OFFLOAD_MAX_BYTES", "1")
+    raw = _big_bash_log()
+    event = {
+        "tool_name": "Bash",
+        "tool_input": {"command": "make build"},
+        "tool_response": {"stdout": raw, "exit_code": 0},
+    }
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    assert ah.main(["posttooluse"]) == 0
+    updated = json.loads(capsys.readouterr().out)["hookSpecificOutput"]["updatedToolOutput"]
+    assert "ALFRED_OUTPUT_COMPACTOR" in updated  # fell back to inline compaction
+    assert "Full output saved to" not in updated
 
 
 def test_main_posttooluse_tees_full_output_on_failure(monkeypatch, capsys):

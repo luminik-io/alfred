@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from roster_theme_store import RosterThemeError, RosterThemeStore
 
@@ -26,13 +26,15 @@ async def api_roster_theme(request: Request) -> JSONResponse:
     return JSONResponse(store.load().to_dict())
 
 
-@router.post("/api/roster-theme", response_class=JSONResponse)
+@router.post(
+    "/api/roster-theme",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_set_roster_theme(request: Request) -> JSONResponse:
     # Persist the chosen theme + custom name/role maps so the desktop and the
     # Slack message path honor the same roster. Token-gated like every other
     # state-mutating POST so a drive-by same-origin page cannot rename agents.
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     try:
         body = json.loads((await request.body()).decode("utf-8") or "{}")
     except (json.JSONDecodeError, UnicodeDecodeError):

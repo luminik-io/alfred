@@ -52,6 +52,8 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+import model_context
+
 __all__ = [
     "CompactionResult",
     "compact_output",
@@ -65,8 +67,10 @@ __all__ = [
 _FALSEY = {"0", "false", "no", "off"}
 
 # ---- defaults (all overridable via env, see _compact_config) --------------
-_DEFAULT_MIN_BYTES = 2_000  # below this, output passes through un-compacted
-_DEFAULT_MAX_BYTES = 8_000  # target byte budget for a compacted result
+# The byte budget (min = trigger, max = target) now DEFAULTS to a fraction of the
+# active model's context window (see ``model_context.derived_compaction_bytes``)
+# rather than a fixed constant, so a large-window model tolerates more inline tool
+# output before compacting. The 200K baseline reproduces the historical 2000/8000.
 _DEFAULT_HEAD_LINES = 40
 _DEFAULT_TAIL_LINES = 40
 _MIN_EDGE_LINES = 3
@@ -140,8 +144,11 @@ def _compact_tools(env: Mapping[str, str]) -> frozenset[str]:
 
 
 def _compact_config(env: Mapping[str, str]) -> tuple[int, int, int, int]:
-    min_bytes = max(0, _env_int(env, "ALFRED_OUTPUT_COMPACTOR_MIN_BYTES", _DEFAULT_MIN_BYTES))
-    max_bytes = max(256, _env_int(env, "ALFRED_OUTPUT_COMPACTOR_MAX_BYTES", _DEFAULT_MAX_BYTES))
+    # Derive the default byte budget from the active model's context window; the
+    # explicit env overrides still win over the derived value.
+    derived_min, derived_max = model_context.derived_compaction_bytes(env)
+    min_bytes = max(0, _env_int(env, "ALFRED_OUTPUT_COMPACTOR_MIN_BYTES", derived_min))
+    max_bytes = max(256, _env_int(env, "ALFRED_OUTPUT_COMPACTOR_MAX_BYTES", derived_max))
     head_lines = max(
         _MIN_EDGE_LINES, _env_int(env, "ALFRED_OUTPUT_COMPACTOR_HEAD_LINES", _DEFAULT_HEAD_LINES)
     )

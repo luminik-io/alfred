@@ -58,11 +58,14 @@ from demo.presenter import Presenter  # noqa: E402
 _DEFAULT_STEP_TIMEOUT = 90
 
 # The four steps are inherently sequential (each depends on the prior), so the
-# main lever on wall time is model choice. The read-only reasoning steps (plan,
-# review) run well on a small fast model; the code-editing steps (build, fix)
-# keep the default (stronger) model so the shipped change is reliable. Override
-# the fast model with ALFRED_DEMO_FAST_MODEL, or set ALFRED_DEMO_MODEL to force
-# one model everywhere.
+# main lever on wall time is model choice. The plan step is a one-shot summary
+# with no tool use and runs well on a small fast model. The review step is the
+# whole point of the demo (it must catch the planted bug), and it drives several
+# real Bash probes; a small fast model is measurably flaky at that agentic
+# tool-use loop, so review keeps the default (stronger) model for a reliable
+# catch. The code-editing steps (build, fix) keep the default model too, so the
+# shipped change is reliable. Override the fast model with ALFRED_DEMO_FAST_MODEL,
+# or set ALFRED_DEMO_MODEL to force one model everywhere.
 _FAST_MODEL = os.environ.get("ALFRED_DEMO_FAST_MODEL", "haiku")
 
 
@@ -70,13 +73,15 @@ def _step_models() -> dict[str, str]:
     forced = os.environ.get("ALFRED_DEMO_MODEL")
     if forced:
         return dict.fromkeys(("plan", "build", "review", "fix"), forced)
-    return {"plan": _FAST_MODEL, "review": _FAST_MODEL}
+    return {"plan": _FAST_MODEL}
 
 
 _INSTALL_POINTER = (
     "Ready for the real fleet? See INSTALL.md to point Alfred at your own repos, "
     "then `alfred-init` to choose agents, repos, and your approval rules."
 )
+
+_STEP_TURNS = {"plan": 6, "review": 14, "build": 25, "fix": 20}
 
 
 def _claude_bin() -> str:
@@ -106,8 +111,6 @@ def _build_real_engine(*, verbose: bool):
     # Keep each step snappy: the read-only reasoning steps need only a couple
     # of turns; the code-editing steps a handful. This caps a step that would
     # otherwise wander, which is the main tail-latency risk in the run.
-    _step_turns = {"plan": 6, "review": 6, "build": 25, "fix": 20}
-
     def engine(call: EngineCall) -> EngineOutcome:
         result = claude_invoke(
             call.prompt,
@@ -115,7 +118,7 @@ def _build_real_engine(*, verbose: bool):
             allowed_tools=call.allowed_tools,
             timeout=call.timeout,
             model=call.model,
-            max_turns=_step_turns.get(call.step),
+            max_turns=_STEP_TURNS.get(call.step),
         )
         text = (result.result_text or "").strip()
         if verbose and result.error_message:

@@ -1,7 +1,7 @@
 """Turn an approved Slack planning draft into a labeled GitHub issue.
 
 This module is the missing wire between Slack planning and the autonomous
-fleet. The Slack planning listener (``slack_listener.py``) already refines a
+fleet. The Slack planning listener (``slack_surface.listener``) already refines a
 trusted user's request into a saved planning draft. This bridge takes the
 final, deliberate step: when the configured operator explicitly approves a draft
 in its registered thread, it converts the saved draft JSON into a single GitHub

@@ -1,8 +1,14 @@
-"""Compute the "quotable self-proof" stat: the share of merged PRs shipped by
-Alfred agents, for a configured repo set over a rolling window.
+"""Compute the "quotable self-proof" stat: how many merged PRs Alfred agents
+have shipped, for a configured repo set.
 
-The measurable claim this module produces, in the spirit of Aider's "wrote 70%
-of its own code" line, is:
+The HEADLINE claim this module produces is CUMULATIVE (all-time), because a
+rolling window reads as 0 the moment the fleet pauses or works private repos,
+which understates real impact:
+
+    Alfred agents have merged N agent-attributed PRs so far
+
+The rolling window is kept as a secondary stat, in the spirit of Aider's "wrote
+70% of its own code" line:
 
     X% of a repo's merged PRs in the last N days were shipped by Alfred agents
 
@@ -54,12 +60,19 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import alfred_config
+
 DEFAULT_WINDOW_DAYS = 7
 # Per-day-window query limit. The window is split into UTC-day sub-queries, so
 # this cap applies to ONE day of one repo's merges, not the whole window. A repo
 # merging 500+ PRs in a single day trips the ``capped`` flag and is excluded
 # from the aggregate rather than silently undercounted.
 _PER_WINDOW_LIMIT = 500
+# All-time cumulative queries fetch one label's full merged history in a single
+# call, so the cap sits at GitHub search's own ~1000-result ceiling rather than
+# the per-day window limit. A repo that trips it is counted as a floor ("N+"),
+# not dropped to zero.
+_CUMULATIVE_LIMIT = 1000
 
 # Alfred's provenance labels, kept in lockstep with shipped_board.py and the
 # shipped summary so the self-proof numerator matches what the rest of the
@@ -242,10 +255,10 @@ def _self_repo() -> str | None:
     ``None`` when neither is set so ``resolve_repos`` simply falls through to
     the configured shipped-repo list.
     """
-    explicit = os.environ.get("ALFRED_SELF_PROOF_SELF_REPO", "").strip()
+    explicit = (alfred_config.get_str("ALFRED_SELF_PROOF_SELF_REPO") or "").strip()
     if explicit:
         return explicit
-    canonical = os.environ.get("ALFRED_SELF_REPO", "").strip()
+    canonical = (alfred_config.get_str("ALFRED_SELF_REPO") or "").strip()
     return canonical or None
 
 
@@ -260,9 +273,9 @@ def resolve_repos(explicit: list[str] | None = None) -> list[str]:
     if explicit:
         return _dedupe([r.strip() for r in explicit if r.strip()])
 
-    direct = os.environ.get("ALFRED_SELF_PROOF_REPOS", "").strip()
+    direct = alfred_config.get_list("ALFRED_SELF_PROOF_REPOS")
     if direct:
-        return _dedupe([r.strip() for r in direct.split(",") if r.strip()])
+        return _dedupe(direct)
 
     repos: list[str] = []
     self_repo = _self_repo()
@@ -405,11 +418,87 @@ def _fetch_repo(
     }
 
 
+def _fetch_repo_cumulative(
+    repo: str,
+    *,
+    limit: int,
+    gh_json: Callable[..., Any],
+) -> dict[str, Any]:
+    """Count one repo's ALL-TIME agent-attributed merged PRs.
+
+    Queries once per provenance label (``--label`` ANDs, so an OR across labels
+    is expressed as separate queries unioned by PR number) and keeps only PRs
+    that pass :func:`pr_is_agent_shipped`, so a mislabelled dependabot bump can
+    never inflate the cumulative count.
+
+    ``errored`` is True when any label query failed. ``capped`` is True when any
+    label query returned as many rows as the limit: GitHub's search backing
+    ``--label`` tops out around 1000 results, so beyond that the OLDER tail is
+    unseen. Crucially, a capped repo is NOT dropped to zero (that would let the
+    public headline read "No agent-attributed PRs merged yet" for a repo with
+    hundreds of agent PRs). Instead the observed, de-duplicated count is returned
+    as a FLOOR and the caller renders it as "N+"; ``first_agent_merged_at`` is
+    withheld when incomplete because the earliest merge is exactly what a
+    most-recent-first cap hides. Pure per-repo work, concurrency-safe.
+    """
+    seen: dict[int, dict] = {}
+    errored = False
+    capped = False
+    for label in _shipped_label_hints():
+        prs = gh_json(
+            [
+                "pr",
+                "list",
+                "--repo",
+                repo,
+                "--state",
+                "merged",
+                "--label",
+                label,
+                "--limit",
+                str(limit),
+                "--json",
+                "number,title,url,author,mergedAt,labels,headRefName",
+            ]
+        )
+        if prs is None:
+            errored = True
+            continue
+        if len(prs) >= limit:
+            capped = True
+        for pr in prs:
+            number = pr.get("number")
+            if isinstance(number, int):
+                seen[number] = pr
+
+    agent_shipped = 0
+    first_merged: datetime | None = None
+    for pr in seen.values():
+        if not pr_is_agent_shipped(pr):
+            continue
+        agent_shipped += 1
+        merged = _parse_ts(pr.get("mergedAt"))
+        if merged and (first_merged is None or merged < first_merged):
+            first_merged = merged
+
+    incomplete = errored or capped
+    return {
+        "repo": repo,
+        "agent_shipped_total": agent_shipped,
+        "first_agent_merged_at": None
+        if incomplete or first_merged is None
+        else first_merged.astimezone(UTC).isoformat(),
+        "errored": errored,
+        "capped": capped,
+    }
+
+
 def compute_self_proof(
     repos: list[str],
     *,
     days: int = DEFAULT_WINDOW_DAYS,
     limit: int = _PER_WINDOW_LIMIT,
+    cumulative_limit: int = _CUMULATIVE_LIMIT,
     now: datetime | None = None,
     gh_json: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -431,11 +520,22 @@ def compute_self_proof(
             "merged_total": 40, "agent_shipped": 30, "share_pct": 75.0,
             "repos_counted": 3, "repos_with_agent_work": 2
           },
+          "cumulative": {
+            "agent_shipped_total": 128, "first_agent_merged_at": "...ISO...",
+            "incomplete": false, "repos_with_agent_work": 2,
+            "per_repo": [...], "errors": [], "capped": []
+          },
           "errors": ["owner/flaky"],
           "capped": ["owner/firehose"],
-          "headline": "Alfred agents shipped 30 of 40 merged PRs (75%) across 3 repos in the last 7 days.",
-          "sentence": "75% of merged PRs across 3 repos were shipped by Alfred agents in the last 7 days."
+          "headline": "Alfred agents have merged 128 agent-attributed PRs so far.",
+          "sentence": "128 agent-attributed PRs merged so far.",
+          "window_headline": "Alfred agents shipped 30 of 40 merged PRs (75%) across 3 repos in the last 7 days.",
+          "window_sentence": "75% of merged PRs across 3 repos were shipped by Alfred agents in the last 7 days."
         }
+
+    The HEADLINE metric is CUMULATIVE (all-time agent-attributed merged PRs); the
+    rolling window survives as ``window_headline`` / ``window_sentence`` and the
+    ``aggregate`` block.
 
     Repos are queried concurrently, one UTC-day search window at a time (see
     ``_fetch_repo``), so the denominator is complete for the window. A failing
@@ -511,17 +611,119 @@ def compute_self_proof(
         "repos_with_agent_work": repos_with_agent_work,
     }
 
+    cumulative = _compute_cumulative(repos, limit=cumulative_limit, gh_json=fetch)
+
     return {
         "generated_at": now.astimezone(UTC).isoformat(),
         "window_days": days,
         "repos": list(repos),
         "per_repo": per_repo,
         "aggregate": aggregate,
+        "cumulative": cumulative,
         "errors": sorted(set(errors)),
         "capped": sorted(set(capped)),
-        "headline": _headline(aggregate, days),
-        "sentence": _sentence(aggregate, days),
+        "headline": _cumulative_headline(cumulative),
+        "sentence": _cumulative_sentence(cumulative),
+        "window_headline": _headline(aggregate, days),
+        "window_sentence": _sentence(aggregate, days),
     }
+
+
+def _compute_cumulative(
+    repos: list[str],
+    *,
+    limit: int,
+    gh_json: Callable[..., Any],
+) -> dict[str, Any]:
+    """Aggregate all-time agent-attributed merged PRs across ``repos``.
+
+    Every repo's observed count contributes to the total, including a capped or
+    errored repo whose count is a lower bound rather than an exact figure: a
+    floor with the count marked ``incomplete`` is more honest than dropping a
+    real repo to zero and publishing "No agent-attributed PRs merged yet". The
+    ``incomplete`` flag and the per-repo ``errors`` / ``capped`` lists let the
+    caller render the total as "N+" and surface a warning. ``first_agent_merged_at``
+    is only reported when every counted repo returned complete data, because a
+    most-recent-first cap hides exactly the earliest merge.
+    """
+    per_repo: list[dict[str, Any]] = []
+    errors: list[str] = []
+    capped: list[str] = []
+    if repos:
+        max_workers = min(len(repos), 8)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {
+                pool.submit(_fetch_repo_cumulative, repo, limit=limit, gh_json=gh_json): repo
+                for repo in repos
+            }
+            results: dict[str, dict[str, Any]] = {}
+            for fut in concurrent.futures.as_completed(futures):
+                repo = futures[fut]
+                try:
+                    results[repo] = fut.result()
+                except Exception:
+                    results[repo] = {
+                        "repo": repo,
+                        "agent_shipped_total": 0,
+                        "first_agent_merged_at": None,
+                        "errored": True,
+                        "capped": False,
+                    }
+        for repo in repos:
+            row = results[repo]
+            if row.get("errored"):
+                errors.append(repo)
+            if row.get("capped"):
+                capped.append(repo)
+            per_repo.append(row)
+
+    # Count every repo's observed agent PRs; a capped/errored repo contributes a
+    # floor, never a silent zero.
+    agent_total = sum(r["agent_shipped_total"] for r in per_repo)
+    incomplete = bool(errors or capped)
+    first_dates = [r["first_agent_merged_at"] for r in per_repo if r["first_agent_merged_at"]]
+    repos_with_agent_work = sum(1 for r in per_repo if r["agent_shipped_total"] > 0)
+    return {
+        "agent_shipped_total": agent_total,
+        "first_agent_merged_at": None
+        if incomplete
+        else (min(first_dates) if first_dates else None),
+        "incomplete": incomplete,
+        "repos_with_agent_work": repos_with_agent_work,
+        "per_repo": per_repo,
+        "errors": sorted(set(errors)),
+        "capped": sorted(set(capped)),
+    }
+
+
+def _cumulative_headline(cumulative: dict[str, Any]) -> str:
+    """A re-quotable cumulative one-liner, honest on empty and incomplete data.
+
+    A clean 0 says so plainly. A count that could not be fully enumerated (a gh
+    error or a search cap) renders as a floor ("N+"), and a zero observed under
+    an error says the count is unavailable rather than falsely claiming none.
+    """
+    total = int(cumulative.get("agent_shipped_total") or 0)
+    incomplete = bool(cumulative.get("incomplete"))
+    if total <= 0:
+        if incomplete:
+            return "Agent-attributed PR count is temporarily unavailable."
+        return "No agent-attributed PRs merged yet."
+    noun = "PR" if total == 1 and not incomplete else "PRs"
+    count = f"{total}+" if incomplete else str(total)
+    return f"Alfred agents have merged {count} agent-attributed {noun} so far."
+
+
+def _cumulative_sentence(cumulative: dict[str, Any]) -> str:
+    total = int(cumulative.get("agent_shipped_total") or 0)
+    incomplete = bool(cumulative.get("incomplete"))
+    if total <= 0:
+        if incomplete:
+            return "Agent-attributed PR count is temporarily unavailable."
+        return "No agent-attributed PRs merged yet."
+    noun = "PR" if total == 1 and not incomplete else "PRs"
+    count = f"{total}+" if incomplete else str(total)
+    return f"{count} agent-attributed {noun} merged so far."
 
 
 def _repo_word(count: int) -> str:

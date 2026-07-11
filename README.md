@@ -31,7 +31,13 @@ authenticated `claude` CLI and nothing else (no GitHub, no Slack, no tokens),
 `alfred demo` runs the full team against a throwaway sample and streams the story
 to your terminal:
 
-<!-- TODO(operator): a short screen-recorded GIF of `alfred demo` would land even harder than this transcript. -->
+<p align="center">
+  <img src="docs/images/demo.gif" alt="alfred demo: plan, approve, build, review catches a planted bug, fix, ship" width="760">
+</p>
+
+<p align="center"><em>One real run, captured live and unedited: plan to shipped in 82 seconds.</em></p>
+
+The same run as a text transcript, for the terminal-shy:
 
 ```console
 $ alfred demo
@@ -45,10 +51,10 @@ verify        diff applies, sample tests pass
 done          change committed with a PR-style summary
 ```
 
-Four real, sequential model calls, so it runs at real latency, roughly two to
-three minutes, not a canned script. It never fakes success: a missing CLI, a
-failed call, an unchanged worktree, or a failing test suite stops the run
-honestly. Full walkthrough in [`docs/DEMO.md`](docs/DEMO.md).
+Four real, sequential model calls, so it runs at real latency, typically a
+minute and a half to two minutes, not a canned script. It never fakes success:
+a missing CLI, a failed call, an unchanged worktree, or a failing test suite
+stops the run honestly. Full walkthrough in [`docs/DEMO.md`](docs/DEMO.md).
 
 ## What it is
 
@@ -61,6 +67,10 @@ service.
 
 Alfred never merges its own work by default. A drafted plan waits behind an
 approval gate until you approve it, so unapproved work does not ship.
+
+Put plainly: it is the reliability, review, memory, and approval scaffolding you
+would eventually build around cron plus `claude` plus `gh`, already built and
+audited.
 
 ```mermaid
 flowchart LR
@@ -99,6 +109,38 @@ Budget about 30 minutes on a dev machine that already has GitHub auth, Claude
 Code, a package manager, and Python. A fresh laptop or a small always-on box is
 closer to 60 to 120 minutes, because browser auth and Slack setup take real
 time.
+
+The fastest look, though, is the two-minute demo, and it needs none of that
+setup.
+
+### One command (fastest demo)
+
+One line lands Alfred on your machine and points you straight at the demo. It
+detects your OS, checks prerequisites with plain-language guidance for anything
+missing, and clones the repo to `~/alfred`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/luminik-io/alfred/main/get.sh | sh
+```
+
+Then run the demo. It asks nothing of you but an authenticated `claude` CLI,
+no GitHub, no Slack, no tokens:
+
+```sh
+cd ~/alfred
+./bin/alfred demo
+```
+
+The installer is idempotent, re-running it updates the checkout in place.
+Override the target directory with `ALFRED_CHECKOUT=/path`, or set
+`ALFRED_RUN_INSTALL=1` to have it run the full `install.sh` after cloning.
+
+**Platform notes.** macOS on Apple silicon is the primary target and the only
+one with a signed, notarized app. macOS on Intel runs Alfred and the demo the
+same way, from source; there is no signed Intel binary. Linux schedules the
+fleet with `systemd --user` timers, covered in
+[`docs/LINUX.md`](docs/LINUX.md). None of the platform specifics touch the demo,
+which only needs the clone above plus `claude`.
 
 ### Desktop app (recommended)
 
@@ -276,13 +318,14 @@ alfred telemetry off      # opt out (or set ALFRED_TELEMETRY_ENABLED=0)
 alfred telemetry status   # see local state
 ```
 
-The Impact page also carries a **self-proof** stat: the share of merged PRs, in
-a configured repo set over a rolling window, shipped by Alfred agents. It is
-computed from GitHub attribution, never fabricated. An empty window reports "no
-merged PRs yet" rather than a 0% share. Alfred's own public repo proof line is
-generated the same way:
+The Impact page also carries a **self-proof** stat: the cumulative, all-time
+count of merged PRs shipped by Alfred agents, with the rolling 30-day window
+kept as a secondary line. It is computed from GitHub attribution, never
+fabricated. The cumulative total is the truthful measure of total impact, so it
+does not read as 0 when the fleet is paused or the window happens to be empty.
+Alfred's own public repo proof line is generated the same way:
 
-<!-- SELF_PROOF -->No public agent-attributed PRs in Alfred's own repo in the last 30 days yet<!-- /SELF_PROOF -->.
+<!-- SELF_PROOF -->Alfred agents have merged 3 agent-attributed PRs in this repo so far, 3 in the last 30 days<!-- /SELF_PROOF -->.
 
 The line between the markers is refreshed from live GitHub data by
 `npm run proof:update` in [`site/`](site/), never hand-typed. If the repo has
@@ -435,6 +478,7 @@ see [`SECURITY.md`](SECURITY.md).
 | [`lib/slack_control.py`](lib/slack_control.py), [`lib/slack_trust.py`](lib/slack_trust.py) | Trusted Slack control and query commands, validated, no shell, with local collaborator state. |
 | [`launchd/`](launchd/), [`systemd/`](systemd/) | Schedule templates and `render.sh` (TSV to units) for the macOS and Linux paths. |
 | [`deploy.sh`](deploy.sh) | Sync `lib/` and `bin/` into `$ALFRED_HOME` and render the schedule. |
+| [`get.sh`](get.sh) | One-command remote installer for `curl \| sh`: preflight, clone to `~/alfred`, then point at `alfred demo`. Idempotent. |
 | [`install.sh`](install.sh) | Fresh-machine bootstrap for macOS or Debian/Ubuntu. Idempotent. |
 | [`telemetry/worker/`](telemetry/worker/) | Cloudflare Worker for the aggregate counter, also self-hostable. |
 | [`examples/bin/`](examples/bin/) | Reference agents: `hello.py` (minimum) and `echo_summarise.py` (full lifecycle). |

@@ -32,6 +32,8 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+import alfred_config
+
 # An invoker takes the extraction prompt and returns the model's raw text
 # (the JSON payload we asked for), or None on any failure. This is the
 # single seam tests stub out.
@@ -176,7 +178,7 @@ def _default_invoker() -> Invoker:
                 # Read-only distillation: no tools needed.
                 allowed_tools="",
                 max_turns=1,
-                timeout=int(os.environ.get("ALFRED_MEMORY_EXTRACT_TIMEOUT", "180")),
+                timeout=alfred_config.require_int("ALFRED_MEMORY_EXTRACT_TIMEOUT"),
             )
         except Exception:
             return None

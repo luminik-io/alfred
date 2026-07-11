@@ -9,8 +9,8 @@
 #   brew install alfred-os            # CLI (formula)
 #   brew install --cask alfred-os     # desktop app (this cask)
 #
-# Pinned to the published v0.5.3 desktop app. The `sha256` below is the
-# checksum of the `Alfred.dmg` asset on the v0.5.3 release, so every install is
+# Pinned to the published v0.6.0 desktop app. The `sha256` below is the
+# checksum of the `Alfred.dmg` asset on the v0.6.0 release, so every install is
 # verified against a known build. To refresh for a future release, bump
 # `version` and recompute the checksum against the published asset:
 #
@@ -30,8 +30,8 @@
 # release asset. Tap-scoped installs (luminik-io/alfred/alfred-os) are
 # unaffected by the mainstream token.
 cask "alfred-os" do
-  version "0.5.3"
-  sha256 "2b3009c14665b81fd224362e0630cef3874056b21696a877432c3130b1a32ada"
+  version "0.6.0"
+  sha256 "cd8b69e3c5fa47baf881b12db8162a8e6775989b8af2968afdd90ecd488cba78"
 
   url "https://github.com/luminik-io/alfred/releases/download/v#{version}/Alfred.dmg",
       verified: "github.com/luminik-io/alfred/"

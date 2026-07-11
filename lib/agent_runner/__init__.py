@@ -276,6 +276,7 @@ from .pre_push import (
 # --------------------------------------------------------------------------
 from .process import (
     _CLAUDE_UNLIMITED_TURNS,
+    build_rubric_grader,
     claude_invoke,
     claude_invoke_streaming,
     codex_invoke,
@@ -285,6 +286,21 @@ from .process import (
     resolve_grader_engine,
     run,
     short,
+)
+
+# --------------------------------------------------------------------------
+# Bounded auto-recovery for the push / CI / merge-gate step of a firing
+# --------------------------------------------------------------------------
+from .recovery import (
+    RECOVERABLE,
+    RecoveryCategory,
+    RecoveryOutcome,
+    build_recovery_prompt,
+    classify_failure,
+    is_recoverable,
+    recovery_enabled,
+    recovery_max_attempts,
+    run_recovery,
 )
 
 # --------------------------------------------------------------------------
@@ -327,14 +343,19 @@ from .result import (
 # --------------------------------------------------------------------------
 from .rubric import (
     DEFAULT_MAX_ITERATIONS,
+    GENERIC_ENGINEERING_RUBRIC,
     MAX_CRITERIA,
+    MAX_DERIVED_CRITERIA,
     MAX_TRANSCRIPT_CHARS,
     CriterionEval,
     GraderVerdict,
     Rubric,
     build_grader_prompt,
+    derive_rubric,
     grade,
+    grade_revise_loop,
     parse_verdict,
+    render_verdict_markdown,
     run_rubric_loop,
 )
 from .state import (
@@ -445,6 +466,16 @@ __all__ = [
     "retry_after_seconds",
     "retry_with_backoff",
     "step_fingerprint",
+    # recovery
+    "RECOVERABLE",
+    "RecoveryCategory",
+    "RecoveryOutcome",
+    "build_recovery_prompt",
+    "classify_failure",
+    "is_recoverable",
+    "recovery_enabled",
+    "recovery_max_attempts",
+    "run_recovery",
     # result
     "ClaudeResult",
     "STOP_REASON_FAIL",
@@ -469,11 +500,17 @@ __all__ = [
     "GraderVerdict",
     "Rubric",
     "DEFAULT_MAX_ITERATIONS",
+    "GENERIC_ENGINEERING_RUBRIC",
     "MAX_CRITERIA",
+    "MAX_DERIVED_CRITERIA",
     "MAX_TRANSCRIPT_CHARS",
     "build_grader_prompt",
+    "build_rubric_grader",
+    "derive_rubric",
     "grade",
+    "grade_revise_loop",
     "parse_verdict",
+    "render_verdict_markdown",
     "run_rubric_loop",
     # transcripts
     "codex_artifact_paths",

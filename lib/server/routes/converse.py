@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 
 from server import views
@@ -13,7 +13,11 @@ from server import views
 router = APIRouter()
 
 
-@router.post("/api/theme-builder/converse", response_class=JSONResponse)
+@router.post(
+    "/api/theme-builder/converse",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_theme_builder_converse(request: Request) -> JSONResponse:
     """Run one turn of the conversational roster theme builder.
 
@@ -32,8 +36,6 @@ async def api_theme_builder_converse(request: Request) -> JSONResponse:
     503 when no live engine is configured so the client falls back to the
     manual editor.
     """
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     try:
         body = json.loads((await request.body()).decode("utf-8") or "{}")
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -43,7 +45,11 @@ async def api_theme_builder_converse(request: Request) -> JSONResponse:
     return views._run_theme_builder_converse(request, body)
 
 
-@router.post("/api/onboarding/converse", response_class=JSONResponse)
+@router.post(
+    "/api/onboarding/converse",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_onboarding_converse(request: Request) -> JSONResponse:
     """Run one turn of the conversational Ask-driven onboarding guide.
 
@@ -62,8 +68,6 @@ async def api_onboarding_converse(request: Request) -> JSONResponse:
     Degrades with a 503 when no live engine is configured so the client falls
     back to the stepped flow.
     """
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     try:
         body = json.loads((await request.body()).decode("utf-8") or "{}")
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -73,7 +77,11 @@ async def api_onboarding_converse(request: Request) -> JSONResponse:
     return views._run_onboarding_converse(request, body)
 
 
-@router.post("/api/compose/converse", response_class=JSONResponse)
+@router.post(
+    "/api/compose/converse",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_compose_converse(request: Request) -> JSONResponse:
     """Run one turn of the conversational, repo-grounded spec-builder.
 
@@ -90,8 +98,6 @@ async def api_compose_converse(request: Request) -> JSONResponse:
     Degrades with a 503 when no live engine is configured (the off-Tauri
     browser preview never calls this; it stays on the one-shot rubric form).
     """
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     try:
         body = json.loads((await request.body()).decode("utf-8") or "{}")
     except (json.JSONDecodeError, UnicodeDecodeError):
