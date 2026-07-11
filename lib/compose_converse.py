@@ -1053,6 +1053,14 @@ _READ_ONLY_COMMAND_VERBS = (
 
 _READ_ONLY_COMMAND_PREFIXES = ("alfred", "please", "just")
 
+_READ_ONLY_FORMAT_PREFIXES = (
+    ("in", "one", "short", "sentence"),
+    ("in", "a", "short", "sentence"),
+    ("in", "one", "sentence"),
+    ("in", "a", "sentence"),
+    ("briefly",),
+)
+
 _READ_ONLY_SHOW_VERBS = ("show", "display")
 
 _READ_ONLY_MODAL_OPENERS = ("can", "could", "would", "will")
@@ -1163,6 +1171,8 @@ _READ_ONLY_STATUS_WORDS = frozenset(
         "backlog",
         "config",
         "configuration",
+        "engine",
+        "engines",
         "health",
         "install",
         "installation",
@@ -1204,6 +1214,8 @@ _READ_ONLY_SUBJECT_WORDS = frozenset(
         "backlog",
         "config",
         "configuration",
+        "engine",
+        "engines",
         "fleet",
         "health",
         "install",
@@ -1271,12 +1283,16 @@ _EXPLICIT_READ_ONLY_PHRASES = (
     "don't file",
     "do not open",
     "don't open",
+    "do not start a plan",
+    "don't start a plan",
+    "no plan",
     "no changes",
     "read only",
     "read-only",
     "without changing",
     "without opening",
     "without filing",
+    "without starting a plan",
 )
 
 
@@ -1410,6 +1426,10 @@ def looks_like_read_only_info_request(text: str) -> bool:
         return False
 
     command_index = 0
+    for prefix in _READ_ONLY_FORMAT_PREFIXES:
+        if tuple(tokens[: len(prefix)]) == prefix:
+            command_index = len(prefix)
+            break
     while command_index < len(tokens) and tokens[command_index] in _READ_ONLY_COMMAND_PREFIXES:
         command_index += 1
     if command_index >= len(tokens):
