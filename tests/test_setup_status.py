@@ -930,7 +930,10 @@ def test_capability_plane_reports_missing_optional_layers(
 
 def test_capability_plane_reports_enabled_graphify_instead_of_disabled_alternative(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
+    graph = tmp_path / "graph.json"
+    graph.write_text("{}", encoding="utf-8")
     monkeypatch.setattr(
         setup_mod.batteries,
         "manifest",
@@ -955,7 +958,10 @@ def test_capability_plane_reports_enabled_graphify_instead_of_disabled_alternati
         "detail": "Code memory is disabled with ALFRED_CODE_MEMORY_MCP.",
     }
 
-    payload = setup_mod.capability_status(code_memory, launcher_env={"ALFRED_HOME": "/tmp/x"})
+    payload = setup_mod.capability_status(
+        code_memory,
+        launcher_env={"ALFRED_HOME": "/tmp/x", "ALFRED_GRAPHIFY_GRAPH": str(graph)},
+    )
     code_graph = next(item for item in payload["capabilities"] if item["key"] == "code_graph")
 
     assert code_graph["state"] == "ready"
@@ -1008,6 +1014,26 @@ def test_capability_plane_reports_enabled_missing_graphify_as_installable(
         "enabled": True,
         "engine": "graphify",
     }
+
+
+def test_ready_code_memory_wins_while_graphify_is_not_usable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        setup_mod.batteries,
+        "manifest",
+        lambda _env: {"batteries": [{"id": "graphify", "enabled": True, "installed": False}]},
+    )
+    code_memory = {
+        "enabled": True,
+        "binary": {"resolved": True},
+        "index_present": True,
+        "detail": "Code memory is ready.",
+    }
+    payload = setup_mod.capability_status(code_memory, launcher_env={"ALFRED_HOME": "/tmp/x"})
+    code_graph = next(item for item in payload["capabilities"] if item["key"] == "code_graph")
+    assert code_graph["state"] == "ready"
+    assert code_graph["source"]["source"] == "DeusData/codebase-memory-mcp"
 
 
 def test_capability_plane_reports_builtin_context_governor_with_headroom_detected(

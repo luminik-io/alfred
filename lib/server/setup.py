@@ -809,6 +809,15 @@ def capability_status(
         (row for row in battery_rows if isinstance(row, dict) and row.get("id") == "graphify"),
         None,
     )
+    if graphify is not None:
+        graphify = dict(graphify)
+        graph_path = Path(
+            runtime_env.get("ALFRED_GRAPHIFY_GRAPH") or "graphify-out/graph.json"
+        ).expanduser()
+        if not graph_path.is_absolute():
+            graph_path = Path.cwd() / graph_path
+        graphify["graph_present"] = graph_path.is_file()
+        graphify["graph_path"] = str(graph_path)
     capabilities = [
         _code_graph_capability(code_memory, graphify=graphify),
         _context_compression_capability(runtime_env),
@@ -951,14 +960,30 @@ def _capability_base(
 def _code_graph_capability(
     code_memory: dict[str, Any], *, graphify: dict[str, Any] | None = None
 ) -> dict[str, Any]:
+    code_binary = code_memory.get("binary") or {}
+    code_ready = (
+        bool(code_memory.get("enabled"))
+        and bool(code_binary.get("resolved"))
+        and bool(code_memory.get("index_present"))
+    )
     if graphify and bool(graphify.get("enabled")):
         installed = bool(graphify.get("installed"))
+        graph_present = bool(graphify.get("graph_present"))
+        if code_ready and not (installed and graph_present):
+            graphify = None
+        else:
+            state = (
+                "ready"
+                if installed and graph_present
+                else ("needs_index" if installed else "installable")
+            )
+    if graphify and bool(graphify.get("enabled")):
         capability = _capability_base(
             "code_graph",
             title="Code graph memory",
             category="memory",
             recommended=True,
-            state="ready" if installed else "installable",
+            state=state,
             installed=installed,
             enabled=True,
             detail=str(graphify.get("how_it_helps") or graphify.get("what") or ""),
@@ -966,6 +991,8 @@ def _code_graph_capability(
                 "engine": "graphify",
                 "status": graphify.get("status"),
                 "docs": graphify.get("docs"),
+                "graph_path": graphify.get("graph_path"),
+                "graph_present": graph_present,
             },
             install_hint="" if installed else str(graphify.get("install_hint") or ""),
         )

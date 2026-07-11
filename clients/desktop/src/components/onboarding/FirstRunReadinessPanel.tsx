@@ -226,6 +226,9 @@ function readinessRepairFor(check: SetupFirstRunCheck): ReadinessRepair | null {
       };
     }
     if (state === "needs_index") {
+      if (codeGraphEngine(check) === "graphify") {
+        return null;
+      }
       return {
         request: { action: "code_memory_index", refreshAfter: true },
         label: "Index code memory",
