@@ -87,8 +87,8 @@ Inbox opens to the decision queue plus a capacity rail for Claude and Codex subs
 
 The Slack tier is the planning listener plus the issue bridge. It turns Slack into an intake and refinement surface without making chat an approval mechanism for code.
 
-- The **listener** (`lib/slack_listener.py`) runs in Socket Mode. The configured approver and trusted users can DM or mention Alfred; the listener refines the request into a saved local draft, scores readiness, and asks for missing scope. It never files issues, opens PRs, or runs code.
-- The **bridge** (`lib/slack_issue_bridge.py`) is off by default. When the configured approver explicitly approves a draft, and the bridge is enabled with a repo allowlist, it files one labeled GitHub issue. From there the fleet claims it through every existing gate. The bridge runs no code.
+- The **listener** (`lib/slack_surface/listener.py`) runs in Socket Mode. The configured approver and trusted users can DM or mention Alfred; the listener refines the request into a saved local draft, scores readiness, and asks for missing scope. It never files issues, opens PRs, or runs code.
+- The **bridge** (`lib/slack_surface/bridge.py`) is off by default. When the configured approver explicitly approves a draft, and the bridge is enabled with a repo allowlist, it files one labeled GitHub issue. From there the fleet claims it through every existing gate. The bridge runs no code.
 
 The base install already includes the runtime dependencies for core, the local API, and Slack/AWS integrations, so the only thing the Slack tier needs beyond `core` is configuration:
 

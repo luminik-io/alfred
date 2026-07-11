@@ -59,7 +59,7 @@ stateDiagram-v2
 |---|---|---|
 | `agent:implement` | Eligible for autonomous pickup | Drake (or human) |
 | `agent:in-flight` | An agent is actively working it | `claim_issue()` |
-| `agent:plan-pending-approval` | Plan posted for approval, waiting on go/no-go | Slack approval gate (`lib/slack_approval.py`) before reaction resolves |
+| `agent:plan-pending-approval` | Plan posted for approval, waiting on go/no-go | Slack approval gate (`lib/slack_surface/approval.py`) before reaction resolves |
 | `agent:pr-open` | A PR exists for this issue | `release_issue(transition_to=...)` |
 | `agent:done` | Closed and shipped | external (PR merge handler) |
 

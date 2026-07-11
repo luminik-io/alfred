@@ -225,7 +225,7 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 - `alfred-logs` CLI: tail and filter per-firing transcripts without grepping `state/` by hand.
 - `alfred-label-state` CLI: read-only inspector for the issue-claim state machine across all configured repos.
 - Damian spec-bundle planner: a planner codename that turns a spec document into an `agent:large-feature` bundle that Batman can execute.
-- `slack_approval`: reaction-based approval gate. An agent posts a proposal, the operator reacts with the configured emoji, the agent proceeds.
+- `slack_surface.approval`: reaction-based approval gate. An agent posts a proposal, the operator reacts with the configured emoji, the agent proceeds.
 - `slop-detector`: PR-time linter for AI-authored prose patterns. Used by the new `curator` codename.
 - `curator` codename: documentation hygiene agent. Runs slop-detector against docs PRs, flags drift between code and docs.
 - FleetBrain operational ledger: reviewable memory candidates, failure-event history, worker heartbeats, GitHub cache, `alfred brain doctor`, and a read-only memory MCP bridge.

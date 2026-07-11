@@ -2,7 +2,7 @@
 
 Alfred agents can pause in plan mode and wait for an explicit go/no-go from
 the configured approver before writing any code. The gate lives in
-[`lib/slack_approval.py`](../lib/slack_approval.py). It posts the plan to a
+[`lib/slack_surface/approval.py`](../lib/slack_surface/approval.py). It posts the plan to a
 Slack channel, polls reactions on that one message, and resolves only when
 the configured approver reacts with an approve or reject emoji.
 
@@ -177,7 +177,7 @@ client without `slack-sdk` installed.
 ## 5. Wire it into your agent
 
 ```python
-from slack_approval import (
+from slack_surface.approval import (
     SlackApproval,
     default_slack_client,
     operator_user_id_from_env,

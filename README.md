@@ -485,7 +485,7 @@ see [`SECURITY.md`](SECURITY.md).
 | [`bin/alfred`](bin/alfred) | The Alfred CLI. |
 | [`bin/`](bin/) | Role runners and local helpers, including the `doctor.sh` implementation behind `alfred doctor`. |
 | [`lib/architect_lifecycle.py`](lib/architect_lifecycle.py) | Architect primitives: parent-plan parsing, approval, child issue filing, and bundle labels. |
-| [`lib/slack_control.py`](lib/slack_control.py), [`lib/slack_trust.py`](lib/slack_trust.py) | Trusted Slack control and query commands, validated, no shell, with local collaborator state. |
+| [`lib/slack_surface/control.py`](lib/slack_surface/control.py), [`lib/slack_surface/trust.py`](lib/slack_surface/trust.py) | Trusted Slack control and query commands, validated, no shell, with local collaborator state. |
 | [`launchd/`](launchd/), [`systemd/`](systemd/) | Schedule templates and `render.sh` (TSV to units) for the macOS and Linux paths. |
 | [`deploy.sh`](deploy.sh) | Sync `lib/` and `bin/` into `$ALFRED_HOME` and render the schedule. |
 | [`get.sh`](get.sh) | One-command remote installer for `curl \| sh`: preflight, clone to `~/alfred`, then point at `alfred demo`. Idempotent. |
