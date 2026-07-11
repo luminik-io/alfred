@@ -39,6 +39,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from conversation_condenser import looks_like_context_overflow
+
 from . import memory_ranking
 from .config import (
     _truthy_env,
@@ -1861,7 +1863,14 @@ def invoke_agent_engine(
             result = _resilient_invoke("claude", _invoke_claude)
             engine_used = "claude"
             failure_class = classify_result(result)
-            provider_local_failure = failure_class is FailureClass.TRANSIENT or result.subtype in {
+            failure_text = " ".join(
+                str(getattr(result, attr, "") or "")
+                for attr in ("error_message", "result_text", "subtype")
+            )
+            provider_local_failure = (
+                failure_class is FailureClass.TRANSIENT
+                and not looks_like_context_overflow(failure_text)
+            ) or result.subtype in {
                 "error_authentication",
                 "error_budget",
                 "error_quota_exhausted",

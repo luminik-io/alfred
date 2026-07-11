@@ -335,6 +335,7 @@ def test_run_turn_parses_injected_engine_action() -> None:
     def fake_invoke(prompt: str, **kwargs: object) -> tuple[_FakeResult, str]:
         assert "UNTRUSTED" in prompt
         assert kwargs["agent"] == ob.GUIDE_AGENT
+        assert kwargs["hybrid_fallback_on_provider_failure"] is True
         return _FakeResult(success=True, result_text=payload), "claude"
 
     turn = ob.run_turn(

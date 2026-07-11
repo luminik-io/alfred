@@ -672,6 +672,96 @@ def test_invoke_agent_engine_hybrid_transient_retries_claude_no_fallback(monkeyp
     assert fallback_seen == []
 
 
+def test_interactive_hybrid_keeps_context_overflow_for_caller_recovery(monkeypatch):
+    """Compose must see overflows so it can condense before another provider runs."""
+    import agent_runner as ar
+
+    monkeypatch.setenv("ALFRED_TRANSIENT_MAX_RETRIES", "0")
+    calls: list[str] = []
+
+    def fake_claude(*args, **kwargs):
+        calls.append("claude")
+        return ar.ClaudeResult(
+            success=False,
+            subtype="error_api",
+            num_turns=1,
+            cost_usd=0.0,
+            session_id="claude-session",
+            result_text="",
+            raw={},
+            stop_reason="error",
+            error_message="prompt is too long: maximum context length exceeded",
+        )
+
+    def fake_codex(*args, **kwargs):  # pragma: no cover - must not run
+        calls.append("codex")
+        raise AssertionError("context overflow must return to the condenser")
+
+    out, engine_used = ar.invoke_agent_engine(
+        "hi",
+        engine="hybrid",
+        agent="compose-interrogator",
+        firing_id="f-overflow",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        claude_fn=fake_claude,
+        codex_fn=fake_codex,
+        hybrid_fallback_on_provider_failure=True,
+    )
+
+    assert out.subtype == "error_api"
+    assert engine_used == "claude"
+    assert calls == ["claude"]
+
+
+def test_interactive_hybrid_falls_back_after_claude_timeout(monkeypatch):
+    """Claude timeouts use stop_reason=aborted but still qualify for failover."""
+    import agent_runner as ar
+
+    monkeypatch.setenv("ALFRED_TRANSIENT_MAX_RETRIES", "0")
+
+    timeout = ar.ClaudeResult(
+        success=False,
+        subtype="error_timeout",
+        num_turns=0,
+        cost_usd=0.0,
+        session_id=None,
+        result_text="",
+        raw={},
+        stop_reason="aborted",
+        error_message="timed out after 180s",
+    )
+    success = ar.ClaudeResult(
+        success=True,
+        subtype="success",
+        num_turns=1,
+        cost_usd=0.0,
+        session_id="codex-session",
+        result_text="codex recovered",
+        raw={},
+        stop_reason="end_turn",
+        error_message=None,
+    )
+
+    out, engine_used = ar.invoke_agent_engine(
+        "hi",
+        engine="hybrid",
+        agent="compose-interrogator",
+        firing_id="f-timeout",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        claude_fn=lambda *args, **kwargs: timeout,
+        codex_fn=lambda *args, **kwargs: success,
+        hybrid_fallback_on_provider_failure=True,
+    )
+
+    assert out.result_text == "codex recovered"
+    assert out.fallback_from_subtype == "error_timeout"
+    assert engine_used == "codex-fallback"
+
+
 def test_invoke_agent_engine_hybrid_falls_back_on_capability_gap():
     """The fallback fires ONLY on a capability failure (engine ran but
     produced nothing useful)."""

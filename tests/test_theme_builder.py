@@ -431,6 +431,7 @@ def test_run_turn_parses_injected_engine_proposal() -> None:
         # The roster contract and the untrusted transcript both reach the prompt.
         assert "propose_theme" in prompt
         assert kwargs["agent"] == tb.BUILDER_AGENT
+        assert kwargs["hybrid_fallback_on_provider_failure"] is True
         return _FakeResult(success=True, result_text=payload), "claude"
 
     turn = tb.run_turn(
