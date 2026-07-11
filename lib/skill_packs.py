@@ -35,6 +35,7 @@ import shlex
 import shutil
 import signal
 import subprocess
+import tempfile
 import tomllib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -311,6 +312,15 @@ def install_pack(
         return InstallResult(pack.name, pack.install, dest, fetched=cmd, dry_run=True)
     skills_dir.mkdir(parents=True, exist_ok=True)
     dest_existed = dest.exists()
+    backup_root: Path | None = None
+    backup_dest: Path | None = None
+    if dest_existed:
+        backup_root = Path(tempfile.mkdtemp(prefix=f".{pack.name}-backup-", dir=skills_dir))
+        backup_dest = backup_root / pack.name
+        if dest.is_dir():
+            shutil.copytree(dest, backup_dest, symlinks=True)
+        else:
+            shutil.copy2(dest, backup_dest, follow_symlinks=False)
     entries_before = {entry.name for entry in skills_dir.iterdir()}
     run = runner or _default_shell_runner
     try:
@@ -322,6 +332,9 @@ def install_pack(
             entries_before=entries_before,
             dest_existed=dest_existed,
         )
+        _restore_existing_destination(dest, backup_dest)
+        if backup_root:
+            shutil.rmtree(backup_root, ignore_errors=True)
         raise
     if code != 0:
         _remove_new_partial_install(
@@ -330,8 +343,26 @@ def install_pack(
             entries_before=entries_before,
             dest_existed=dest_existed,
         )
+        _restore_existing_destination(dest, backup_dest)
+        if backup_root:
+            shutil.rmtree(backup_root, ignore_errors=True)
         raise RuntimeError(f"fetch for {pack.name!r} failed (exit {code}): {cmd}")
+    if backup_root:
+        shutil.rmtree(backup_root, ignore_errors=True)
     return InstallResult(pack.name, pack.install, dest, fetched=cmd)
+
+
+def _restore_existing_destination(dest: Path, backup: Path | None) -> None:
+    if backup is None:
+        return
+    if dest.is_dir() and not dest.is_symlink():
+        shutil.rmtree(dest)
+    elif dest.exists() or dest.is_symlink():
+        dest.unlink()
+    if backup.is_dir() and not backup.is_symlink():
+        shutil.copytree(backup, dest, symlinks=True)
+    else:
+        shutil.copy2(backup, dest, follow_symlinks=False)
 
 
 def _remove_new_partial_install(
