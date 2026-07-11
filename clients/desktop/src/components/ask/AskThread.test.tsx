@@ -352,7 +352,7 @@ describe("Ask recent-threads switcher (last-5 persistence)", () => {
 
     // The Recent switcher now has two entries; open it and resume the first.
     await user.click(screen.getByRole("button", { name: /recent/i }));
-    const menu = await screen.findByLabelText(/recent ask conversations/i);
+    const menu = await screen.findByRole("dialog", { name: /recent chats/i });
     await user.click(within(menu).getByText(/first conversation question/i));
 
     // Resuming restores the first conversation's transcript and drops the
@@ -384,13 +384,13 @@ describe("Ask recent-threads switcher (last-5 persistence)", () => {
     // Switch to B mid-stream. Without the persist-before-switch fix, A's turn is
     // dropped because the swap replaces it while busy.
     await user.click(screen.getByRole("button", { name: /recent/i }));
-    let menu = await screen.findByLabelText(/recent ask conversations/i);
+    let menu = await screen.findByRole("dialog", { name: /recent chats/i });
     await user.click(within(menu).getByText(/question b/i));
     await screen.findByText(/b reply\./i);
 
     // A must still be recoverable from Recent: its message was persisted.
     await user.click(screen.getByRole("button", { name: /recent/i }));
-    menu = await screen.findByLabelText(/recent ask conversations/i);
+    menu = await screen.findByRole("dialog", { name: /recent chats/i });
     await user.click(within(menu).getByText(/question a unfinished/i));
     expect(await screen.findByText(/question a unfinished/i)).toBeInTheDocument();
   });
@@ -413,6 +413,93 @@ describe("Ask recent-threads switcher (last-5 persistence)", () => {
     expect(screen.getByText(/a question to persist/i)).toBeInTheDocument();
   });
 
+});
+
+describe("Ask chat-history panel (redesigned recent switcher)", () => {
+  // Seed `count` settled conversations so the history panel has entries to
+  // render. Each becomes one stored thread; the last one is the active thread.
+  async function seedConversations(
+    user: ReturnType<typeof userEvent.setup>,
+    labels: string[],
+  ) {
+    for (let i = 0; i < labels.length; i += 1) {
+      if (i > 0) await user.click(screen.getByRole("button", { name: /new chat/i }));
+      streamMock.mockImplementationOnce(async () =>
+        converseResponse({ reply: `${labels[i]} reply.` }),
+      );
+      await send(user, labels[i]);
+      await screen.findByText(new RegExp(`${labels[i]} reply\\.`, "i"));
+    }
+  }
+
+  it("renders each thread with a title, relative time, and message count, and marks the active one", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await seedConversations(user, ["Alpha question", "Beta question"]);
+
+    await user.click(screen.getByRole("button", { name: /recent/i }));
+    const panel = await screen.findByRole("dialog", { name: /recent chats/i });
+
+    // Both derived titles show as distinct rows (no more identical truncated
+    // text): the older thread and the current one.
+    expect(within(panel).getByText(/alpha question/i)).toBeInTheDocument();
+    expect(within(panel).getByText(/beta question/i)).toBeInTheDocument();
+
+    // The non-active thread shows a relative timestamp + its message count; the
+    // active thread is labelled as the current chat. Each seeded thread has one
+    // user turn plus one assistant reply = two messages.
+    expect(within(panel).getByText(/just now · 2 messages/i)).toBeInTheDocument();
+    expect(within(panel).getByText(/current chat · 2 messages/i)).toBeInTheDocument();
+
+    // The active row is marked for assistive tech.
+    const active = within(panel).getByRole("button", { current: true });
+    expect(active).toHaveTextContent(/beta question/i);
+  });
+
+  it("deletes a thread from the panel without touching the active conversation", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await seedConversations(user, ["Keep one", "Drop me", "Keep two"]);
+
+    await user.click(screen.getByRole("button", { name: /recent/i }));
+    let panel = await screen.findByRole("dialog", { name: /recent chats/i });
+    expect(within(panel).getByText(/drop me/i)).toBeInTheDocument();
+
+    // Delete the middle (non-active) thread via its hover action.
+    await user.click(
+      within(panel).getByRole("button", { name: /delete chat: drop me/i }),
+    );
+
+    // The panel stays open, the deleted thread is gone, and the others remain.
+    panel = await screen.findByRole("dialog", { name: /recent chats/i });
+    await waitFor(() =>
+      expect(within(panel).queryByText(/drop me/i)).not.toBeInTheDocument(),
+    );
+    expect(within(panel).getByText(/keep one/i)).toBeInTheDocument();
+    expect(within(panel).getByText(/keep two/i)).toBeInTheDocument();
+    // The active conversation (Keep two) is untouched.
+    expect(screen.getByText(/keep two reply\./i)).toBeInTheDocument();
+  });
+
+  it("closes on Escape and returns focus to the trigger", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await seedConversations(user, ["First one", "Second one"]);
+
+    const trigger = screen.getByRole("button", { name: /recent/i });
+    await user.click(trigger);
+    await screen.findByRole("dialog", { name: /recent chats/i });
+
+    await user.keyboard("{Escape}");
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: /recent chats/i }),
+      ).not.toBeInTheDocument(),
+    );
+    // Focus returns to the trigger so the keyboard user is not stranded.
+    expect(screen.getByRole("button", { name: /recent/i })).toHaveFocus();
+  });
 });
 
 describe("Ask streaming render is incremental (perf)", () => {

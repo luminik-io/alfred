@@ -150,7 +150,11 @@ export function ComposeView({
             <header className="ask__head">
               <span className="ask__eyebrow">Ask Alfred</span>
               <div className="ask__head-controls">
-                <RecentThreads threads={ask.recentThreads} onResume={ask.resumeConversation} />
+                <RecentThreads
+                  threads={ask.recentThreads}
+                  onResume={ask.resumeConversation}
+                  onDelete={ask.deleteThread}
+                />
                 <button
                   className="ghost-button ask__reset"
                   type="button"

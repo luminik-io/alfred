@@ -59,6 +59,9 @@ export type RecentThread = {
   title: string;
   updatedAt: number;
   active: boolean;
+  // Number of message turns (user + assistant) in the conversation, shown as a
+  // second line in the history panel so threads are easy to tell apart.
+  messageCount: number;
 };
 
 // Args/result shape on the draft tool-call part the converter emits. The
@@ -611,6 +614,32 @@ export function useAskThread({
     [conversationId, turns, result],
   );
 
+  // Drop one stored conversation from the history panel. Deleting the active
+  // thread clears the surface to a fresh empty chat (there is nothing to keep
+  // showing once its history is gone); deleting any other thread only prunes it
+  // from the list and leaves the current conversation untouched.
+  const deleteThread = useCallback(
+    (id: string) => {
+      deleteConversation(id);
+      if (id === conversationId) {
+        abortRef.current?.abort();
+        abortRef.current = null;
+        setConversationId(newConversationId());
+        setTurns([]);
+        setResult(null);
+        setError(null);
+        busyRef.current = false;
+        setBusy(false);
+        setFileNotices({});
+        fileBusyIdRef.current = null;
+        setFileBusyId(null);
+        lastUserTextRef.current = "";
+      }
+      setRecent(loadConversations());
+    },
+    [conversationId],
+  );
+
   // Drop every stored conversation and start clean.
   const clearAll = useCallback(() => {
     abortRef.current?.abort();
@@ -729,6 +758,7 @@ export function useAskThread({
         title: c.title || conversationTitle(c.turns),
         updatedAt: c.updatedAt,
         active: c.id === conversationId,
+        messageCount: c.turns.filter((t) => t.kind === "message").length,
       })),
     [recent, conversationId],
   );
@@ -748,6 +778,7 @@ export function useAskThread({
     stop,
     newChat,
     resumeConversation,
+    deleteThread,
     clearAll,
     fileIssue,
     canRetry: !busy && lastUserTextRef.current.length > 0 && turns.length > 0,
