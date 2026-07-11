@@ -928,6 +928,43 @@ def test_capability_plane_reports_missing_optional_layers(
     assert by_key["engineering_skills"]["state"] == "missing"
 
 
+def test_capability_plane_reports_enabled_graphify_instead_of_disabled_alternative(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        setup_mod.batteries,
+        "manifest",
+        lambda _env: {
+            "batteries": [
+                {
+                    "id": "graphify",
+                    "enabled": True,
+                    "installed": True,
+                    "status": "enabled",
+                    "docs": "docs/CODE_MEMORY.md",
+                    "how_it_helps": "Graphify is active for local relationship queries.",
+                }
+            ]
+        },
+    )
+    code_memory = {
+        "enabled": False,
+        "autofetch": False,
+        "binary": {"resolved": True},
+        "index_present": True,
+        "detail": "Code memory is disabled with ALFRED_CODE_MEMORY_MCP.",
+    }
+
+    payload = setup_mod.capability_status(code_memory, launcher_env={"ALFRED_HOME": "/tmp/x"})
+    code_graph = next(item for item in payload["capabilities"] if item["key"] == "code_graph")
+
+    assert code_graph["state"] == "ready"
+    assert code_graph["enabled"] is True
+    assert code_graph["installed"] is True
+    assert code_graph["detected"]["engine"] == "graphify"
+    assert code_graph["source"]["source"] == "graphifyy"
+
+
 def test_capability_plane_reports_builtin_context_governor_with_headroom_detected(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -958,7 +995,15 @@ def test_capability_plane_reports_builtin_context_governor_with_headroom_detecte
         "detail": "Code-memory binary and index are present.",
     }
 
-    payload = setup_mod.capability_status(code_memory)
+    payload = setup_mod.capability_status(
+        code_memory,
+        launcher_env={
+            "ALFRED_GRAPHIFY_MCP": "0",
+            "ALFRED_CONTEXT_COMPRESSION": "1",
+            "CODEX_HOME": str(codex_home),
+            "CLAUDE_HOME": str(tmp_path / "claude"),
+        },
+    )
     by_key = {item["key"]: item for item in payload["capabilities"]}
 
     assert payload["summary"]["ready"] == 3

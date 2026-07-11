@@ -42,6 +42,7 @@ from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any
 
+import batteries
 import skill_packs
 
 logger = logging.getLogger(__name__)
@@ -154,6 +155,11 @@ _CAPABILITY_SOURCES: dict[str, dict[str, str]] = {
         "url": "https://github.com/garrytan/gstack",
         "license": "MIT",
     },
+}
+_GRAPHIFY_SOURCE = {
+    "source": "graphifyy",
+    "url": "https://pypi.org/project/graphifyy/",
+    "license": "MIT",
 }
 
 
@@ -797,8 +803,14 @@ def capability_status(
 
     runtime_env = launcher_env or _runtime_config_env()
     code_memory = code_memory or code_memory_status()
+    battery_rows_value = batteries.manifest(runtime_env).get("batteries", [])
+    battery_rows = battery_rows_value if isinstance(battery_rows_value, list) else []
+    graphify = next(
+        (row for row in battery_rows if isinstance(row, dict) and row.get("id") == "graphify"),
+        None,
+    )
     capabilities = [
-        _code_graph_capability(code_memory),
+        _code_graph_capability(code_memory, graphify=graphify),
         _context_compression_capability(runtime_env),
         _engineering_skills_capability(runtime_env),
     ]
@@ -936,7 +948,30 @@ def _capability_base(
     }
 
 
-def _code_graph_capability(code_memory: dict[str, Any]) -> dict[str, Any]:
+def _code_graph_capability(
+    code_memory: dict[str, Any], *, graphify: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    if graphify and bool(graphify.get("enabled")):
+        installed = bool(graphify.get("installed"))
+        capability = _capability_base(
+            "code_graph",
+            title="Code graph memory",
+            category="memory",
+            recommended=True,
+            state="ready" if installed else "installable",
+            installed=installed,
+            enabled=True,
+            detail=str(graphify.get("how_it_helps") or graphify.get("what") or ""),
+            detected={
+                "engine": "graphify",
+                "status": graphify.get("status"),
+                "docs": graphify.get("docs"),
+            },
+            install_hint="" if installed else str(graphify.get("install_hint") or ""),
+        )
+        capability["source"] = _GRAPHIFY_SOURCE
+        return capability
+
     binary = code_memory.get("binary") or {}
     enabled = bool(code_memory.get("enabled"))
     installed = bool(binary.get("resolved"))
