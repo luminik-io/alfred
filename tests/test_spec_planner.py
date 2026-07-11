@@ -401,15 +401,34 @@ def _load_runner():
     return mod
 
 
-def test_runner_exits_quietly_when_disabled(monkeypatch, capsys):
+def test_runner_exits_quietly_when_disabled(monkeypatch, capsys, tmp_path):
     runner = _load_runner()
     monkeypatch.setattr(runner, "doctor_mode", lambda: False)
     monkeypatch.setattr(runner, "is_agent_enabled", lambda *_a, **_k: False)
+    monkeypatch.setattr(runner, "ALFRED_HOME", tmp_path)
 
     rc = runner.main()
     assert rc == 0
-    err = capsys.readouterr().err
-    assert "SPEC-PLANNER-SKIP" in err
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert (tmp_path / "state" / "spec-planner" / "last-noop").exists()
+
+
+def test_runner_disabled_noop_survives_unwritable_state(monkeypatch, capsys, tmp_path):
+    runner = _load_runner()
+    monkeypatch.setattr(runner, "doctor_mode", lambda: False)
+    monkeypatch.setattr(runner, "is_agent_enabled", lambda *_a, **_k: False)
+    monkeypatch.setattr(runner, "ALFRED_HOME", tmp_path)
+    runtime_marker = tmp_path / "alfred.spec-planner.noop"
+    monkeypatch.setattr(runner, "runtime_noop_marker_path", lambda _codename: runtime_marker)
+    monkeypatch.setattr(runner.Path, "mkdir", lambda *_a, **_k: (_ for _ in ()).throw(OSError()))
+
+    assert runner.main() == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert runtime_marker.exists()
 
 
 def test_runner_reports_idle_when_no_scan_repos(monkeypatch, capsys, tmp_path):

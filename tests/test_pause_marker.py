@@ -38,6 +38,12 @@ def test_is_agent_paused_false_when_no_marker():
     assert ar.is_agent_paused("lucius") is False
 
 
+def test_runtime_noop_marker_uses_only_codename():
+    import agent_runner as ar
+
+    assert ar.runtime_noop_marker_path("story-planner") == Path("/tmp/alfred.story-planner.noop")
+
+
 def test_write_and_clear_pause_marker_round_trip():
     import agent_runner as ar
 

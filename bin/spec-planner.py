@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import os
 import sys
+from contextlib import suppress
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -66,6 +67,7 @@ from agent_runner import (  # noqa: E402
     is_agent_enabled,
     load_prompt,
     preflight,
+    runtime_noop_marker_path,
     slack_post,
     with_lock,
 )
@@ -122,11 +124,13 @@ def main() -> int:
     # spec directory the planner can read. Fresh installs stay quiet until
     # ``alfred enable spec-planner`` flips the gate.
     if not is_agent_enabled(CODENAME, default=False):
-        print(
-            f"[{CODENAME.upper()}-SKIP] {CODENAME} not enabled in fleet file; "
-            f"run `alfred enable {CODENAME}` to opt in.",
-            file=sys.stderr,
-        )
+        marker = Path(ALFRED_HOME) / "state" / CODENAME / "last-noop"
+        try:
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.touch()
+        except OSError:
+            with suppress(OSError):
+                runtime_noop_marker_path(CODENAME).touch()
         return 0
 
     spec = PreflightSpec(

@@ -53,6 +53,7 @@ ENGINE_AWARE_AGENTS = {
     "test-engineer",
     "triage",
 }
+FLEET_OPT_IN_SCRIPTS = {"architect.py", "spec-planner.py"}
 
 DEFAULT_AGENT_NAMES = [
     "agent-cleanup",
@@ -451,7 +452,35 @@ def _record_engine(record: AgentRecord) -> str | None:
     return agent_runner.agent_engine(record.codename)
 
 
+def _only_expected_disabled_skips(text: str) -> bool:
+    """Return true when a stderr tail contains only legacy disabled-role notices."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return bool(lines) and all(
+        line.startswith("[") and "-SKIP] " in line and " not enabled in fleet file;" in line
+        for line in lines
+    )
+
+
+def _record_disabled(record: AgentRecord) -> bool:
+    return record.disabled or (
+        record.script in FLEET_OPT_IN_SCRIPTS
+        and not agent_runner.is_agent_enabled(record.codename, default=False)
+    )
+
+
+def _noop_markers(record: AgentRecord) -> set[Path]:
+    """Return durable and runtime markers for every supported identity."""
+    implementation = Path(record.script).stem
+    return {
+        STATE_ROOT / record.codename / "last-noop",
+        STATE_ROOT / implementation / "last-noop",
+        agent_runner.runtime_noop_marker_path(record.codename),
+        agent_runner.runtime_noop_marker_path(implementation),
+    }
+
+
 def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnapshot:
+    disabled = _record_disabled(record)
     locked, stale_lock, lock_pid, lock_age_seconds = _lock_status(record.codename)
     pause_marker = PAUSE_DIR / record.codename
     paused = pause_marker.exists()
@@ -480,14 +509,17 @@ def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnap
     approval_wait = _approval_wait_status(record.codename)
 
     last_stderr_tail = None
-    if (
-        stderr_path.exists()
-        and stdout_path.exists()
-        and stderr_path.stat().st_mtime > stdout_path.stat().st_mtime
-    ):
+    marker_paths = {stdout_path, *_noop_markers(record)}
+    freshness_markers = [path.stat().st_mtime for path in marker_paths if path.exists()]
+    stderr_is_fresh = stderr_path.exists() and (
+        not freshness_markers or stderr_path.stat().st_mtime > max(freshness_markers)
+    )
+    if stderr_is_fresh:
         try:
-            lines = stderr_path.read_text(errors="replace").splitlines()
-            last_stderr_tail = "\n".join(lines[-3:]) if lines else None
+            stderr_text = stderr_path.read_text(errors="replace")
+            if not _only_expected_disabled_skips(stderr_text):
+                lines = stderr_text.splitlines()
+                last_stderr_tail = "\n".join(lines[-3:]) if lines else None
         except OSError:
             pass
 
@@ -506,7 +538,7 @@ def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnap
         role=record.role,
         schedule=record.schedule,
         loaded=record.label in loaded_labels,
-        disabled=record.disabled,
+        disabled=disabled,
         engine=_record_engine(record),
         locked=locked,
         stale_lock=stale_lock,

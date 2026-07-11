@@ -714,6 +714,55 @@ def test_render_table_keeps_display_name_raw():
     assert "&lt;" not in table
 
 
+def test_status_ignores_only_expected_disabled_skip_tails():
+    status = _load_status_module()
+    skips = "\n".join(
+        [
+            "[ARCHITECT-SKIP] architect not enabled in fleet file; run `alfred enable architect`.",
+            "[SPEC-PLANNER-SKIP] spec-planner not enabled in fleet file; run `alfred enable spec-planner`.",
+        ]
+    )
+
+    assert status._only_expected_disabled_skips(skips) is True
+    assert status._only_expected_disabled_skips(f"real failure\n{skips}") is False
+
+
+def test_status_uses_runtime_gate_for_renamed_opt_in_agents(monkeypatch):
+    status = _load_status_module()
+    record = status.AgentRecord(
+        label="alfred.story-planner",
+        codename="story-planner",
+        script="spec-planner.py",
+        schedule="hourly",
+        log_stem="alfred.spec-planner",
+        role="Spec planner",
+        disabled=False,
+    )
+    monkeypatch.setattr(status.agent_runner, "is_agent_enabled", lambda *_a, **_kw: False)
+
+    assert status._record_disabled(record) is True
+
+
+def test_status_checks_themed_and_implementation_noop_markers():
+    status = _load_status_module()
+    record = status.AgentRecord(
+        label="alfred.story-planner",
+        codename="story-planner",
+        script="spec-planner.py",
+        schedule="hourly",
+        log_stem="custom.spec-planner",
+        role="Spec planner",
+        disabled=False,
+    )
+
+    assert status._noop_markers(record) == {
+        status.STATE_ROOT / "story-planner" / "last-noop",
+        status.STATE_ROOT / "spec-planner" / "last-noop",
+        Path("/tmp/alfred.story-planner.noop"),
+        Path("/tmp/alfred.spec-planner.noop"),
+    }
+
+
 def test_cli_status_uses_custom_agent_manifest_engine_default(tmp_path):
     alfred = tmp_path / "alfred"
     custom_dir = alfred / "state" / "custom-agents"
@@ -885,3 +934,22 @@ def test_cli_agents_does_not_disable_default_agents_when_gate_file_exists(tmp_pa
     }
     assert "yes" in lines["architect"].split()
     assert "yes" in lines["senior-dev"].split()
+
+
+def test_cli_agents_keeps_renamed_spec_planner_opt_in(tmp_path):
+    alfred = tmp_path / "alfred"
+    launchd = alfred / "launchd"
+    launchd.mkdir(parents=True)
+    (launchd / "agents.conf").write_text(
+        "alfred.story-planner\tspec-planner.py\tinterval:3600\tno\t\tSpec planner\n"
+    )
+    env = {
+        "ALFRED_HOME": str(alfred),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+    }
+
+    res = _run_cli("agents", env_extra=env)
+
+    assert res.returncode == 0, res.stderr
+    row = next(line for line in res.stdout.splitlines() if line.startswith("story-planner"))
+    assert row.split()[4] == "no"

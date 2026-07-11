@@ -51,6 +51,17 @@ def test_batman_pickup_blocks_completed_large_features():
     )
 
 
+def test_main_reports_disabled_skip_without_stderr(monkeypatch, capsys):
+    runner = _load_runner()
+    monkeypatch.setattr(runner, "doctor_mode", lambda: False)
+    monkeypatch.setattr(runner, "is_agent_enabled", lambda *_a, **_kw: False)
+
+    assert runner.main() == 0
+    captured = capsys.readouterr()
+    assert "ARCHITECT-SKIP" in captured.out
+    assert captured.err == ""
+
+
 def test_main_noops_when_parent_repo_unconfigured(monkeypatch, capsys):
     runner = _load_runner()
 
