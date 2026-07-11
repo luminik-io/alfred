@@ -109,14 +109,32 @@ def _runtime_cli_bin(env_name: str, imported_default: str) -> str:
     return os.environ.get(env_name, "").strip() or imported_default
 
 
-def _claude_subprocess_env() -> dict[str, str]:
-    """Give headless Claude the standard auth directory without shell inheritance."""
+def _claude_subprocess_env(
+    *,
+    model: str | None = None,
+    engine: str | None = None,
+    firing_id: str | None = None,
+) -> dict[str, str]:
+    """Give headless Claude the standard auth directory without shell inheritance.
+
+    Also exports the ACTIVE model/engine and firing id so the PostToolUse
+    compaction hook (``lib/alfred_hooks.py`` -> ``model_context`` / ``tool_offload``)
+    can size its byte budget to the firing's real model and scope offloaded tool
+    output to the firing's own directory. The model passed to ``--model`` is a CLI
+    argument, not an inherited env var, so we surface it here explicitly.
+    """
 
     env = dict(os.environ)
     if not env.get("CLAUDE_CONFIG_DIR", "").strip():
         home = env.get("HOME", "").strip()
         if home:
             env["CLAUDE_CONFIG_DIR"] = str(Path(home).expanduser() / ".claude")
+    if model and model.strip():
+        env["ALFRED_ACTIVE_MODEL"] = model.strip()
+    if engine and engine.strip():
+        env["ALFRED_ACTIVE_ENGINE"] = engine.strip()
+    if firing_id and firing_id.strip():
+        env["ALFRED_FIRING_ID"] = firing_id.strip()
     return env
 
 
@@ -777,7 +795,7 @@ def claude_invoke(
         cwd=str(workdir),
         timeout=timeout,
         capture=True,
-        env=_claude_subprocess_env(),
+        env=_claude_subprocess_env(model=model, engine="claude"),
     )
 
     if res.returncode == 124:
@@ -909,7 +927,7 @@ def claude_invoke_streaming(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            env=_claude_subprocess_env(),
+            env=_claude_subprocess_env(model=model, engine="claude", firing_id=firing_id),
         )
     except FileNotFoundError as exc:
         return ClaudeResult(
