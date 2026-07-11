@@ -29,6 +29,7 @@ import re
 import shutil
 import socket
 import subprocess
+import tempfile
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -539,16 +540,19 @@ def _graphify_available(env: Mapping[str, str]) -> bool:
     cli = shutil.which("graphify")
     if installed and cli:
         try:
-            probe = subprocess.run(
-                [installed, "--help"],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=5,
-                check=False,
-            )
-            if probe.returncode == 0:
-                return True
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", encoding="utf-8") as graph:
+                graph.write('{"nodes": [], "links": []}')
+                graph.flush()
+                probe = subprocess.run(
+                    [installed, graph.name, "--transport", "stdio"],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5,
+                    check=False,
+                )
+                if probe.returncode == 0:
+                    return True
         except (OSError, subprocess.TimeoutExpired):
             pass
     return False

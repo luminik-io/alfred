@@ -32,6 +32,7 @@ import secrets
 import shutil
 import signal
 import subprocess
+import tempfile
 import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -440,19 +441,22 @@ def _graphify_command() -> tuple[str, list[str]] | None:
 
 
 def _graphify_entrypoint_works(command: str) -> bool:
-    """Reject base-only graphify installs whose console script cannot import MCP."""
+    """Start stdio against an empty graph to verify the optional MCP runtime."""
     try:
-        return (
-            subprocess.run(
-                [command, "--help"],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=5,
-                check=False,
-            ).returncode
-            == 0
-        )
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", encoding="utf-8") as graph:
+            graph.write('{"nodes": [], "links": []}')
+            graph.flush()
+            return (
+                subprocess.run(
+                    [command, graph.name, "--transport", "stdio"],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5,
+                    check=False,
+                ).returncode
+                == 0
+            )
     except (OSError, subprocess.TimeoutExpired):
         return False
 

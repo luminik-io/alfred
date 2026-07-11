@@ -156,6 +156,21 @@ def test_graphify_uses_a_verified_installed_entrypoint(monkeypatch) -> None:
     assert _proc._graphify_command() == ("/usr/local/bin/graphify-mcp", [])
 
 
+def test_graphify_probe_reaches_mcp_server_startup(monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    def reject_base_install(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(_proc.subprocess, "run", reject_base_install)
+
+    assert _proc._graphify_entrypoint_works("/usr/local/bin/graphify-mcp") is False
+    assert calls[0][0] == "/usr/local/bin/graphify-mcp"
+    assert calls[0][-2:] == ["--transport", "stdio"]
+    assert "--help" not in calls[0]
+
+
 def test_graphify_never_resolves_packages_during_a_firing(monkeypatch, tmp_path: Path) -> None:
     graph = tmp_path / "graphify-out" / "graph.json"
     graph.parent.mkdir(parents=True)

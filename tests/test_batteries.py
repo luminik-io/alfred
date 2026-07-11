@@ -347,3 +347,10 @@ def test_graphify_availability_requires_installed_cli_and_verified_mcp(monkeypat
         lambda name: f"/usr/local/bin/{name}" if name in {"graphify", "graphify-mcp"} else None,
     )
     assert batteries.is_installed(graphify, {}) is True
+
+    monkeypatch.setattr(
+        batteries.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=1),
+    )
+    assert batteries.is_installed(graphify, {}) is False
