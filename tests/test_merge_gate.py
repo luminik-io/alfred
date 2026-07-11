@@ -35,7 +35,6 @@ def _snapshot(**overrides) -> GateSnapshot:
         "merge_state_status": "CLEAN",
         "mergeable": "MERGEABLE",
         "checks": (CheckRun("ci", "SUCCESS"),),
-        "commit_shas": ("a" * 40,),
         "errors": (),
     }
     base.update(overrides)
@@ -151,11 +150,13 @@ def test_required_external_reviews_must_be_clean_and_exact_head():
                 "greptile-apps[bot]",
                 f"Confidence Score: 5/5\nNo blocking issues\nLast reviewed commit: x/commit/{head}",
                 "2026-07-11T10:00:00Z",
+                head,
             ),
             ExternalReviewEvidence(
                 "chatgpt-codex-connector[bot]",
                 "Codex Review: Didn't find any major issues.\n\n**Reviewed commit:** `aaaaaaaaaa`",
                 "2026-07-11T10:01:00Z",
+                head,
             ),
         )
     )
@@ -174,22 +175,21 @@ def test_required_external_reviews_reject_spoofed_bot_login():
                 "not-greptile-apps[bot]",
                 f"Confidence Score: 5/5\nNo blocking issues\nLast reviewed commit: x/commit/{'a' * 40}",
                 "2026-07-11T10:00:00Z",
+                "a" * 40,
             ),
         )
     )
     assert not evaluate_gate(snap, required_external_reviews=("greptile",)).mergeable
 
 
-def test_codex_abbreviation_must_resolve_uniquely_to_head():
+def test_codex_resolved_commit_must_equal_head_after_force_push():
     evidence = ExternalReviewEvidence(
         "chatgpt-codex-connector[bot]",
         "Didn't find any major issues.\n**Reviewed commit:** `aaaaaaa`",
         "2026-07-11T10:00:00Z",
+        "aaaaaaa" + "b" * 33,
     )
-    snap = _snapshot(
-        commit_shas=("a" * 40, "aaaaaaa" + "b" * 33),
-        external_reviews=(evidence,),
-    )
+    snap = _snapshot(external_reviews=(evidence,))
     assert not evaluate_gate(snap, required_external_reviews=("codex",)).mergeable
 
 
@@ -199,7 +199,9 @@ def test_greptile_uses_explicit_last_reviewed_commit_not_incidental_sha():
         f"Last reviewed commit: x/commit/{'b' * 40}"
     )
     snap = _snapshot(
-        external_reviews=(ExternalReviewEvidence("greptile-apps[bot]", body, "2026-07-11"),)
+        external_reviews=(
+            ExternalReviewEvidence("greptile-apps[bot]", body, "2026-07-11", "b" * 40),
+        )
     )
     assert not evaluate_gate(snap, required_external_reviews=("greptile",)).mergeable
 
