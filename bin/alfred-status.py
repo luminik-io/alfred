@@ -53,6 +53,7 @@ ENGINE_AWARE_AGENTS = {
     "test-engineer",
     "triage",
 }
+FLEET_OPT_IN_AGENTS = {"architect", "spec-planner"}
 
 DEFAULT_AGENT_NAMES = [
     "agent-cleanup",
@@ -460,7 +461,15 @@ def _only_expected_disabled_skips(text: str) -> bool:
     )
 
 
+def _record_disabled(record: AgentRecord) -> bool:
+    return record.disabled or (
+        record.codename in FLEET_OPT_IN_AGENTS
+        and not agent_runner.is_agent_enabled(record.codename, default=False)
+    )
+
+
 def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnapshot:
+    disabled = _record_disabled(record)
     locked, stale_lock, lock_pid, lock_age_seconds = _lock_status(record.codename)
     pause_marker = PAUSE_DIR / record.codename
     paused = pause_marker.exists()
@@ -490,15 +499,16 @@ def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnap
 
     last_stderr_tail = None
     if (
-        stderr_path.exists()
+        not disabled
+        and stderr_path.exists()
         and stdout_path.exists()
         and stderr_path.stat().st_mtime > stdout_path.stat().st_mtime
     ):
         try:
-            lines = stderr_path.read_text(errors="replace").splitlines()
-            last_stderr_tail = "\n".join(lines[-3:]) if lines else None
-            if last_stderr_tail and _only_expected_disabled_skips(last_stderr_tail):
-                last_stderr_tail = None
+            stderr_text = stderr_path.read_text(errors="replace")
+            if not _only_expected_disabled_skips(stderr_text):
+                lines = stderr_text.splitlines()
+                last_stderr_tail = "\n".join(lines[-3:]) if lines else None
         except OSError:
             pass
 
@@ -517,7 +527,7 @@ def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnap
         role=record.role,
         schedule=record.schedule,
         loaded=record.label in loaded_labels,
-        disabled=record.disabled,
+        disabled=disabled,
         engine=_record_engine(record),
         locked=locked,
         stale_lock=stale_lock,

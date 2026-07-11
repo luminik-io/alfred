@@ -727,6 +727,22 @@ def test_status_ignores_only_expected_disabled_skip_tails():
     assert status._only_expected_disabled_skips(f"real failure\n{skips}") is False
 
 
+def test_status_uses_runtime_gate_for_opt_in_agents(monkeypatch):
+    status = _load_status_module()
+    record = status.AgentRecord(
+        label="alfred.spec-planner",
+        codename="spec-planner",
+        script="spec-planner.py",
+        schedule="hourly",
+        log_stem="alfred.spec-planner",
+        role="Spec planner",
+        disabled=False,
+    )
+    monkeypatch.setattr(status.agent_runner, "is_agent_enabled", lambda *_a, **_kw: False)
+
+    assert status._record_disabled(record) is True
+
+
 def test_cli_status_uses_custom_agent_manifest_engine_default(tmp_path):
     alfred = tmp_path / "alfred"
     custom_dir = alfred / "state" / "custom-agents"
