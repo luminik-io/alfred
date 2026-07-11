@@ -557,6 +557,24 @@ def test_cli_demo_parent_timeout_leaves_room_for_child_verification(monkeypatch)
     assert timeouts[0] >= child_worst_case
 
 
+def test_cli_demo_interactive_approval_is_unbounded(monkeypatch):
+    cli = load_cli_module()
+    timeouts: list[int | None] = []
+
+    class FakeProcess:
+        def __init__(self, _command, **_kwargs):
+            pass
+
+        def wait(self, timeout=None):
+            timeouts.append(timeout)
+            return 0
+
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
+
+    assert cli.cmd_demo(_demo_namespace(keep=False, yes=False, timeout=30)) == 0
+    assert timeouts == [None]
+
+
 class _CompletedStub:
     returncode = 0
 

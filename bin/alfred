@@ -254,6 +254,7 @@ _SCHEDULER_COMMAND_TIMEOUT_S = 15
 _NATIVE_DRY_RUN_TIMEOUT_S = 300
 _DELEGATED_COMMAND_TIMEOUT_S = 600
 _BENCHMARK_COMMAND_TIMEOUT_S = 8 * 60 * 60
+_CODE_MEMORY_INDEX_TIMEOUT_S = 8 * 60 * 60
 _INSTALL_COMMAND_TIMEOUT_S = 600
 _INTERACTIVE_COMMAND_TIMEOUT_S = 3600
 # Non-engine budget the demo child may legitimately spend after its four
@@ -1941,7 +1942,12 @@ def cmd_brain(args: argparse.Namespace) -> int:
 def cmd_code_memory(args: argparse.Namespace) -> int:
     script = _HERE / "code-memory-mcp"
     forwarded = args.code_memory_args or ["doctor"]
-    timeout = None if forwarded[0] == "serve" else _DELEGATED_COMMAND_TIMEOUT_S
+    if forwarded[0] == "serve":
+        timeout = None
+    elif forwarded[0] in {"index", "refresh"}:
+        timeout = _CODE_MEMORY_INDEX_TIMEOUT_S
+    else:
+        timeout = _DELEGATED_COMMAND_TIMEOUT_S
     return _run_subcommand([str(script), *forwarded], timeout=timeout)
 
 
@@ -2756,9 +2762,13 @@ def cmd_demo(args: argparse.Namespace) -> int:
     if args.timeout is not None:
         forwarded.extend(["--timeout", str(args.timeout)])
     step_timeout = args.timeout if args.timeout is not None else 90
-    parent_timeout = max(
-        _DELEGATED_COMMAND_TIMEOUT_S,
-        (step_timeout * 4) + _DEMO_VERIFICATION_BUDGET_S,
+    parent_timeout = (
+        max(
+            _DELEGATED_COMMAND_TIMEOUT_S,
+            (step_timeout * 4) + _DEMO_VERIFICATION_BUDGET_S,
+        )
+        if args.yes
+        else None
     )
     return _run_subcommand(
         [sys.executable, str(script), *forwarded],

@@ -287,6 +287,24 @@ def test_code_memory_serve_is_unbounded(monkeypatch):
     assert calls == [([str(ROOT / "bin/code-memory-mcp"), "serve"], None)]
 
 
+@pytest.mark.parametrize("command", ["index", "refresh"])
+def test_code_memory_rebuilds_get_large_repo_budget(monkeypatch, command):
+    cli = load_cli_module()
+    calls = []
+    monkeypatch.setattr(
+        cli,
+        "_run_subcommand",
+        lambda argv, *, timeout, env=None: calls.append((argv, timeout)) or 0,
+    )
+
+    args = SimpleNamespace(code_memory_args=[command])
+    assert cli.cmd_code_memory(args) == 0
+    assert calls == [
+        ([str(ROOT / "bin/code-memory-mcp"), command], cli._CODE_MEMORY_INDEX_TIMEOUT_S)
+    ]
+    assert calls[0][1] > cli._DELEGATED_COMMAND_TIMEOUT_S
+
+
 def test_benchmark_wrapper_allows_full_bounded_ab_run(monkeypatch):
     cli = load_cli_module()
     calls = []
