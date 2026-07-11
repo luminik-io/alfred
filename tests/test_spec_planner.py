@@ -409,7 +409,7 @@ def test_runner_exits_quietly_when_disabled(monkeypatch, capsys):
     rc = runner.main()
     assert rc == 0
     captured = capsys.readouterr()
-    assert "SPEC-PLANNER-SKIP" in captured.out
+    assert captured.out == ""
     assert captured.err == ""
 
 

@@ -122,10 +122,6 @@ def main() -> int:
     # spec directory the planner can read. Fresh installs stay quiet until
     # ``alfred enable spec-planner`` flips the gate.
     if not is_agent_enabled(CODENAME, default=False):
-        print(
-            f"[{CODENAME.upper()}-SKIP] {CODENAME} not enabled in fleet file; "
-            f"run `alfred enable {CODENAME}` to opt in.",
-        )
         return 0
 
     spec = PreflightSpec(
