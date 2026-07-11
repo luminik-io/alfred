@@ -21,10 +21,17 @@ import subprocess
 import sys
 from pathlib import Path
 
-import alfred_config as cfg
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+# ``alfred_config`` lives in ``lib/`` and is only importable as an installed
+# package (CI builds the wheel). A bare ``pytest tests/`` from the repo root
+# has no such install, so put ``lib/`` on the path before importing, matching
+# the convention used by the other tests in this suite.
+sys.path.insert(0, str(REPO_ROOT / "lib"))
+
+import alfred_config as cfg  # noqa: E402 - path set above
+
 _TOKEN = re.compile(r"ALFRED_[A-Z0-9_]+")
 _SKIP_SUFFIX = {".pyc", ".pyo", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".woff", ".woff2"}
 

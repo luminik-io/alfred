@@ -32,9 +32,20 @@ import alfred_config as cfg  # noqa: E402 - path set above
 ENV_EXAMPLE = REPO_ROOT / ".env.example"
 CONFIG_MD = REPO_ROOT / "docs" / "CONFIG.md"
 
-# Vars that must stay UNCOMMENTED in .env.example because tooling rewrites the
-# line in place (install.sh does ``s|^GH_ORG=.*|GH_ORG=...|``).
-REQUIRED_UNCOMMENTED = frozenset({"GH_ORG"})
+# Vars that must stay UNCOMMENTED in .env.example because install.sh rewrites
+# the line in place with ``s|^VAR=.*|VAR=...|`` when seeding a fresh
+# ``$ALFRED_HOME/.env``. A commented ``# VAR=`` line would not match, so the
+# operator's prompted value would be silently dropped. Keep this set in sync
+# with the sed substitutions in install.sh.
+REQUIRED_UNCOMMENTED = frozenset(
+    {
+        "GH_ORG",
+        "OPERATOR_NAME",
+        "OPERATOR_EMAIL",
+        "ALFRED_HOME",
+        "WORKSPACE_ROOT",
+    }
+)
 
 CATEGORY_TITLES: dict[str, str] = {
     "runtime": "Runtime, paths, and repo scope",
@@ -138,9 +149,7 @@ def render_config_md() -> str:
             if var.choices:
                 kind = f"{kind} ({'/'.join(var.choices)})"
             desc = var.description.replace("|", "\\|")
-            lines.append(
-                f"| `{var.name}` | {kind} | {default} | {scope} | {desc} |"
-            )
+            lines.append(f"| `{var.name}` | {kind} | {default} | {scope} | {desc} |")
         lines.append("")
     return "\n".join(lines).rstrip("\n") + "\n"
 
@@ -168,8 +177,7 @@ def main() -> int:
         if stale:
             names = ", ".join(str(p.relative_to(REPO_ROOT)) for p in stale)
             print(
-                f"config docs are stale: {names}\n"
-                "run bin/alfred-config-doc.py to regenerate.",
+                f"config docs are stale: {names}\nrun bin/alfred-config-doc.py to regenerate.",
                 file=sys.stderr,
             )
             return 1
