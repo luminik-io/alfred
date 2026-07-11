@@ -53,9 +53,14 @@ export function isSetupComplete(status: SetupStatus | null | undefined): boolean
   const hasFleetInventory =
     typeof install?.agents_conf_present === "boolean" &&
     typeof install?.scheduled_runs === "number";
+  // A custom-agent-only fleet is a supported deployment: the scheduler merges
+  // enabled CustomAgentStore rows (each carries its own schedule) even when no
+  // base agents.conf exists, so enabled custom agents count as a deployed fleet
+  // and must not bounce a working install back into onboarding.
+  const customFleetDeployed = (install?.custom_agents?.enabled_count ?? 0) > 0;
   const fleetDeployed =
     install && hasFleetInventory
-      ? install.agents_conf_present && install.scheduled_runs > 0
+      ? (install.agents_conf_present && install.scheduled_runs > 0) || customFleetDeployed
       : true;
 
   return engineReady && githubConnected && reposSelected && fleetDeployed;

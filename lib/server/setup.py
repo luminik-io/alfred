@@ -1822,18 +1822,28 @@ def _first_existing_git_repo_candidate(
 
 def _scheduled_fleet_readiness_check(install: dict[str, Any]) -> dict[str, Any]:
     runs = int(install.get("scheduled_runs") or 0)
-    ready = bool(install.get("agents_conf_present")) and runs > 0
+    # A custom-agent-only fleet is a supported deployment: the scheduler merges
+    # enabled CustomAgentStore rows (each carries its own schedule) even with no
+    # base agents.conf, so enabled custom agents count as a deployed fleet.
+    custom_agents = install.get("custom_agents") or {}
+    custom_enabled = int(custom_agents.get("enabled_count") or 0)
+    base_ready = bool(install.get("agents_conf_present")) and runs > 0
+    ready = base_ready or custom_enabled > 0
+    if base_ready:
+        detail = f"{runs} scheduled run{'' if runs == 1 else 's'} found."
+    elif custom_enabled > 0:
+        detail = (
+            f"{custom_enabled} enabled custom agent{'' if custom_enabled == 1 else 's'} scheduled."
+        )
+    else:
+        detail = "No deployed scheduled fleet was found."
     return _readiness_check(
         "scheduled_fleet",
         "Scheduled fleet",
         category="runtime",
         tier="required",
         ready=ready,
-        detail=(
-            f"{runs} scheduled run{'' if runs == 1 else 's'} found."
-            if ready
-            else "No deployed scheduled fleet was found."
-        ),
+        detail=detail,
         action="Use Desktop Install or repair, or run `bash deploy.sh`, then recheck setup.",
         path=str(install.get("agents_conf_path") or "") or None,
     )

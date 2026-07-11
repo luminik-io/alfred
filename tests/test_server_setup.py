@@ -1699,3 +1699,29 @@ def test_persist_selected_repos_ignores_stale_rc_queue_scope_when_runtime_has_bo
     rc_text = (tmp_path / ".alfredrc").read_text(encoding="utf-8")
     assert "export ALFRED_QUEUE_REPOS=prod/safe" in rc_text
     assert "export ALFRED_SHIPPED_REPOS=prod/api,prod/mobile" not in rc_text
+
+
+def test_scheduled_fleet_readiness_counts_custom_only_fleet() -> None:
+    # A custom-agent-only fleet (enabled CustomAgentStore rows, no base
+    # agents.conf) is a supported deployment: the scheduler merges those rows on
+    # its own, so the readiness check must report the fleet as deployed instead
+    # of steering the operator back through installation.
+    check = setup_mod._scheduled_fleet_readiness_check(
+        {
+            "agents_conf_present": False,
+            "scheduled_runs": 0,
+            "custom_agents": {"enabled_count": 2, "count": 2, "disabled_count": 0},
+        }
+    )
+    assert check["ready"] is True
+    assert check["detail"] == "2 enabled custom agents scheduled."
+
+    # Disabled-only custom agents do not count as a deployed fleet.
+    empty = setup_mod._scheduled_fleet_readiness_check(
+        {
+            "agents_conf_present": False,
+            "scheduled_runs": 0,
+            "custom_agents": {"enabled_count": 0, "count": 1, "disabled_count": 1},
+        }
+    )
+    assert empty["ready"] is False

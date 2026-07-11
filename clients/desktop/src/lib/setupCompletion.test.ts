@@ -107,4 +107,41 @@ describe("isSetupComplete", () => {
     });
     expect(isSetupComplete(status)).toBe(true);
   });
+
+  it("treats a custom-agent-only fleet as deployed", () => {
+    // A supported deployment: enabled CustomAgentStore rows carry their own
+    // schedules and run with no base agents.conf. Such an install must boot to
+    // the Inbox, not be forced back into onboarding on every launch.
+    const status = makeStatus({
+      install: makeInstall({
+        agents_conf_present: false,
+        scheduled_runs: 0,
+        custom_agents: {
+          path: null,
+          count: 2,
+          enabled_count: 2,
+          disabled_count: 0,
+          agents: [],
+        },
+      }),
+    });
+    expect(isSetupComplete(status)).toBe(true);
+  });
+
+  it("does not count disabled-only custom agents as a deployed fleet", () => {
+    const status = makeStatus({
+      install: makeInstall({
+        agents_conf_present: false,
+        scheduled_runs: 0,
+        custom_agents: {
+          path: null,
+          count: 1,
+          enabled_count: 0,
+          disabled_count: 1,
+          agents: [],
+        },
+      }),
+    });
+    expect(isSetupComplete(status)).toBe(false);
+  });
 });
