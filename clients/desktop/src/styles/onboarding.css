@@ -1,0 +1,706 @@
+/* Onboarding + Setup surface: the Setup route takeover, the onboarding stepper shell, value rail, steps, and stepper responsive rules. */
+
+/* --------------------------------------------------------------------------- *
+ * Onboarding stepper (DESIGN_SPEC section 7). A clean, single-decision-per-step
+ * first-run journey. One GLASS shell floats over the ambient base; a persistent
+ * minimal numbered Stepper sits at the top, the active step lives in a centered
+ * column with generous whitespace, and a Back / Continue footer closes it. Only
+ * the single primary CTA per step carries the steel-violet accent; every data
+ * surface inside a step (repo list, engine probe) stays flat. Appended last so
+ * it overrides nothing above and is easy to lift out if onboarding ever moves.
+ * --------------------------------------------------------------------------- */
+/* The Setup route wrapper fills the content area and becomes a column so its
+   header + Setup/Settings tabs stay fixed and the active panel (onboarding or
+   settings) flexes to fill the frame instead of growing the page. */
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.settings-page > .alfred-onboarding,
+.settings-page > .setup-mode-stack {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.alfred-onboarding {
+  --alfred-onboarding-accent: var(--primary);
+  position: relative;
+  /* Two-column takeover: a fixed-width value/brand rail on the left and the
+     step column on the right, together filling the whole content frame so the
+     wizard reads as one composed product intro with no dead space. It collapses
+     to a single column below the tablet breakpoint (rail stacks above). */
+  display: grid;
+  grid-template-columns: minmax(19rem, 24rem) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 1.25rem;
+  min-height: 100%;
+  height: 100%;
+  padding: 0.25rem 0;
+}
+
+/* Onboarding is the one place we lean into spectacle: amp the same painted
+ * atmosphere ~1.4x with a bright accent bloom rising behind the shell, so the
+ * takeover reads as a product intro, not a form floating in a void. GPU-cheap
+ * (static radial gradients on one layer), behind the shell, no pointer events. */
+.alfred-onboarding::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      70% 55% at 50% 8%,
+      color-mix(in oklch, var(--accent), transparent 74%),
+      transparent 62%
+    ),
+    radial-gradient(
+      60% 60% at 88% 4%,
+      color-mix(in oklch, var(--brand-teal), transparent 82%),
+      transparent 60%
+    ),
+    radial-gradient(
+      55% 60% at 8% 100%,
+      color-mix(in oklch, var(--accent-2), transparent 86%),
+      transparent 60%
+    );
+}
+
+/* The step column: the right track of the takeover grid. .alfred-glass supplies
+ * the translucency, specular top border, blur, and ambient shadow per the theme
+ * tokens; this lays out the head / stepper / panel / footer stack and fills its
+ * grid track so the journey fills the frame beside the rail. */
+.alfred-onboarding-shell {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  min-width: 0;
+  /* Fill the frame; a tall step scrolls inside the panel, never the page.
+     head + stepper + footer stay fixed; the panel flexes. */
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  border-radius: var(--radius-xl);
+  padding: 1.75rem 2rem;
+  overflow: hidden;
+  /* A touch stronger shadow than base glass so the shell reads as clearly lifted
+     above the amped bloom. */
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 2px 10px color-mix(in oklch, var(--glass-shadow), transparent 40%),
+    0 32px 80px var(--glass-shadow);
+}
+
+/* The left value/brand rail: brand mark, the value promise headline, and the
+ * trust + spend reassurance pinned to the foot. It fills the left track and
+ * carries a soft accent wash so the frame reads as one composed surface. */
+.alfred-onboarding-rail {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-width: 0;
+  max-height: 100%;
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  padding: 1.9rem 1.8rem;
+  background:
+    radial-gradient(
+      120% 80% at 0% 0%,
+      color-mix(in oklch, var(--accent), transparent 80%),
+      transparent 58%
+    ),
+    radial-gradient(
+      120% 90% at 100% 100%,
+      color-mix(in oklch, var(--accent-2), transparent 86%),
+      transparent 60%
+    ),
+    linear-gradient(180deg, var(--glass-highlight), transparent 30%),
+    color-mix(in oklch, var(--card), transparent 12%);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 32px 80px var(--glass-shadow);
+}
+
+.alfred-onboarding-rail__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.alfred-onboarding-rail__wordmark {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.alfred-onboarding-rail__name {
+  font-family: var(--font-heading);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.alfred-onboarding-rail__kicker {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.alfred-onboarding-rail__promise {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  /* Sits directly under the brand (no stretch gap); only the foot is pinned to
+     the bottom, so the rail reads as one composed block instead of three
+     islands floating in empty space. */
+  margin-top: 0.5rem;
+}
+
+.alfred-onboarding-rail__eyebrow {
+  margin: 0;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--accent), var(--foreground) 45%);
+}
+
+.alfred-onboarding-rail__headline {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.75rem;
+  font-weight: 500;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+
+.alfred-onboarding-rail__sub {
+  margin: 0;
+  max-width: 22rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+
+.alfred-onboarding-rail__loop {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.alfred-onboarding-rail__loop li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: color-mix(in oklch, var(--foreground), var(--muted-foreground) 40%);
+}
+
+.alfred-onboarding-rail__loopstep {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.4rem;
+  height: 1.4rem;
+  margin-top: 0.05rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--primary-foreground, oklch(0.98 0 0));
+  background: color-mix(in oklch, var(--primary), transparent 15%);
+}
+
+.alfred-onboarding-rail__foot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-top: auto;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.alfred-onboarding-rail__trust {
+  margin: 0;
+  padding-left: 0.85rem;
+  border-left: 2px solid color-mix(in oklch, var(--accent), transparent 40%);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--foreground);
+}
+
+.alfred-onboarding-rail__cost {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+}
+
+.alfred-onboarding-rail__progress {
+  margin: 0;
+  font-size: 0.74rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: color-mix(in oklch, var(--accent), var(--foreground) 40%);
+}
+
+.alfred-onboarding-shell__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.alfred-onboarding-shell__eyebrow {
+  margin: 0 0 0.35rem;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.alfred-onboarding-shell__title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.4rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+
+.alfred-onboarding-shell__lede {
+  margin: 0.3rem 0 0;
+  max-width: 36rem;
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+}
+
+.alfred-onboarding-shell__advanced {
+  flex-shrink: 0;
+}
+
+/* The persistent progress indicator: numbered nodes joined by thin connectors,
+ * with current / done / upcoming states. The one chrome element of the stepper,
+ * deliberately quiet. */
+.alfred-stepper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.alfred-stepper__track {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.alfred-stepper__step {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+/* Connectors flex to fill the gap between nodes so the row spans the shell
+ * evenly at any width. A filled connector (previous step done) reads accent. */
+.alfred-stepper__connector {
+  flex: 1 1 auto;
+  height: 2px;
+  min-width: 0.75rem;
+  margin: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--hairline);
+  transition: background-color 160ms ease-out;
+}
+
+.alfred-stepper__connector.is-filled {
+  background: color-mix(in oklch, var(--primary), transparent 35%);
+}
+
+.alfred-stepper__step:first-child {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* The first node hugs the start; every node after it lets its connector flex. */
+.alfred-stepper__step:not(:first-child) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The active step owns its label, so let its node shrink and the label truncate
+ * rather than push the row past the shell at any sub-desktop width. */
+.alfred-stepper__step.is-active .alfred-stepper__node {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.alfred-stepper__label.is-visible {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alfred-stepper__node {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.35rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color 160ms ease-out,
+    background-color 160ms ease-out;
+}
+
+.alfred-stepper__node:hover {
+  color: var(--foreground);
+}
+
+.alfred-stepper__node:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.alfred-stepper__dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--surface), var(--background) 20%);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+  transition:
+    background-color 160ms ease-out,
+    border-color 160ms ease-out,
+    color 160ms ease-out;
+}
+
+.alfred-stepper__step.is-active .alfred-stepper__dot {
+  border-color: color-mix(in oklch, var(--primary), transparent 45%);
+  background: color-mix(in oklch, var(--primary), transparent 82%);
+  color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary), transparent 88%);
+}
+
+.alfred-stepper__step.is-done .alfred-stepper__dot {
+  border-color: color-mix(in oklch, var(--primary), transparent 30%);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.alfred-stepper__step.is-active .alfred-stepper__node,
+.alfred-stepper__step.is-done .alfred-stepper__node {
+  color: var(--foreground);
+}
+
+.alfred-stepper__label {
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+/* On wide layouts every step shows its label; on narrow layouts only the active
+ * step keeps its label and the rest collapse to dots, so the row never wraps. */
+.alfred-stepper__count {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The active step's panel: a centered column with breathing room. No box of its
+ * own; it sits directly on the shell so the journey is one surface. It flexes to
+ * fill the shell and scrolls internally only if a step's body is unusually tall,
+ * so the wizard fits the viewport without the page scrolling. */
+.alfred-onboarding-shell__panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.15rem;
+  scrollbar-gutter: stable;
+}
+
+.alfred-step {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.alfred-step__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+
+.alfred-step__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in oklch, var(--primary), transparent 60%);
+  border-radius: 0;
+  background: color-mix(in oklch, var(--primary), transparent 84%);
+  color: var(--primary);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+}
+
+.alfred-step__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.alfred-step__blurb {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+}
+
+.alfred-onboarding-shell__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.alfred-onboarding-shell__progress {
+  font-size: 0.8rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Step 0 welcome leans typographic. Left-aligned to sit inside the right step
+ * column beside the value rail (the rail carries the persistent promise + wash),
+ * so the welcome body is action-focused: heading, detected inventory, CTAs. */
+.alfred-onboarding-welcome {
+  position: relative;
+  display: grid;
+  gap: 1.5rem;
+  padding: 0.5rem 0.25rem;
+  text-align: left;
+}
+
+/* The trust differentiator, a quiet pill under the welcome heading: the
+ * can't-miss "no API keys, runs on the subscriptions you already pay for" point.
+ * A bordered steel-violet chip, not buried fine print. */
+.alfred-onboarding-welcome__trust {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 34rem;
+  padding: 0.55rem 0.95rem;
+  border: 1px solid color-mix(in oklch, var(--primary), transparent 65%);
+  border-radius: 0;
+  background: color-mix(in oklch, var(--primary), transparent 88%);
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--foreground);
+  text-align: left;
+}
+
+.alfred-onboarding-welcome__trust > svg {
+  flex-shrink: 0;
+  color: var(--primary);
+}
+
+@media (max-width: 480px) {
+  .alfred-onboarding-welcome__trust {
+    border-radius: var(--radius-lg);
+  }
+}
+
+/* The first-request cost reassurance: a quiet inline glass callout (not a warning
+ * banner) that appears once the first job fires. Tells a solo builder spend is
+ * legible and under control before anything runs for real. */
+.alfred-onboarding-cost-chip {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid color-mix(in oklch, var(--accent) 22%, var(--border));
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(90deg, var(--accent-soft), transparent 72%),
+    color-mix(in oklch, var(--card), transparent 12%);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--foreground);
+}
+
+.alfred-onboarding-cost-chip > svg {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+  color: var(--accent);
+}
+
+/* Below the wide breakpoint the two-column takeover collapses to a single column:
+ * the value rail stacks above the step column as a compact banner (its promise
+ * headline hides, the brand + trust + progress stay) so the step card gets the
+ * full width. */
+@media (max-width: 1024px) {
+  .alfred-onboarding {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: min-content minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .alfred-onboarding-rail {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1.25rem;
+    max-height: none;
+    padding: 1rem 1.25rem;
+  }
+
+  .alfred-onboarding-rail__promise {
+    display: none;
+  }
+
+  .alfred-onboarding-rail__loop {
+    display: none;
+  }
+
+  .alfred-onboarding-rail__foot {
+    flex: 1 1 auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 1.25rem;
+    margin: 0;
+    padding: 0;
+    border-top: 0;
+  }
+
+  .alfred-onboarding-rail__trust {
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .alfred-onboarding-rail__progress {
+    margin-left: auto;
+  }
+}
+
+/* Responsive: below the tablet breakpoint the shell tightens its padding and the
+ * stepper collapses inactive labels to dots so the row stays on one line with no
+ * horizontal scroll. The footer never truncates because Back / Continue are
+ * short and the step-count hides first. */
+@media (max-width: 768px) {
+  .alfred-onboarding-shell {
+    padding: 1.25rem;
+    gap: 1.25rem;
+  }
+
+  .alfred-onboarding-shell__head {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .alfred-onboarding-rail__trust,
+  .alfred-onboarding-rail__cost {
+    flex-basis: 100%;
+  }
+}
+
+/* Below the wide-desktop breakpoint only the active step keeps its label; the
+ * rest collapse to numbered dots so the row stays on one line with no overflow.
+ * Full labels return at >= 1280px where the shell, minus the app sidebar, has
+ * room for all six. display:none (not a clip) keeps collapsed labels out of
+ * flow; each node keeps its aria-label so every step is still announced. */
+@media (max-width: 1279px) {
+  .alfred-stepper__label.is-collapsible {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .alfred-onboarding-shell__progress {
+    display: none;
+  }
+}
+
+/* Phone-width tap-target floor for the stepper nodes (the rail buttons are raw
+ * <button>s, not data-slot buttons, so the global 480px floor does not reach
+ * them). Each node clears 36px on its short axis, and the connectors tighten so
+ * six dots plus the active label fit on one line at 375 with no overflow. */
+@media (max-width: 480px) {
+  .alfred-stepper__node {
+    min-height: 36px;
+    padding-inline: 0.2rem;
+  }
+
+  /* A collapsed (dot-only) node still needs a 36px square hit area. */
+  .alfred-stepper__step:not(.is-active) .alfred-stepper__node {
+    min-width: 36px;
+    justify-content: center;
+  }
+
+  .alfred-stepper__dot {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+
+  .alfred-stepper__connector {
+    min-width: 0.1rem;
+    margin: 0 0.1rem;
+  }
+}
+
+/* The very narrowest phones (<= 400px) shave the dot a touch more so six 36px
+ * hit areas plus connectors and the active label clear the row with no overflow,
+ * while the dots still read as 36px tappable via the node min-height/width. */
+@media (max-width: 400px) {
+  .alfred-stepper__dot {
+    width: 1.6rem;
+    height: 1.6rem;
+  }
+
+  /* Let connectors fully absorb the last few pixels so the longest active label
+   * ("Repositories") never nudges the row past the shell edge. */
+  .alfred-stepper__connector {
+    min-width: 0;
+    margin: 0 0.08rem;
+  }
+}
+

@@ -1,0 +1,1363 @@
+/* Ask surface: the ChatGPT-grade conversation thread, recent-threads switcher, chat bubbles, code blocks, saved-plan cards, and composer. */
+
+/* ------------------------------------------------------------------------ */
+/* Ask: one ChatGPT-grade conversation surface. A full-height thread, an     */
+/* autogrowing bottom composer, and inline lifecycle cards for saved plans.  */
+/* ------------------------------------------------------------------------ */
+
+.ask {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 0.85rem;
+  height: min(100%, calc(100svh - 5.5rem));
+  min-height: 28rem;
+}
+
+/* Empty state: a single centered hero that owns the one headline, the composer,
+ * and the starter chips, so the screen is not three copies of the same prompt. */
+.ask--empty {
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.ask__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+.ask__eyebrow {
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* The centered hero: headline, sub, composer, and starter chips stacked and
+ * vertically centered in the available space. The composer is the focal point. */
+.ask__hero {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 1rem;
+  width: min(46rem, 100%);
+  margin-inline: auto;
+  text-align: center;
+}
+
+.ask__hero-title {
+  margin: 0;
+  color: var(--foreground);
+  font-family: var(--font-heading);
+  font-size: clamp(1.55rem, 3vw, 2.05rem);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.ask__hero-sub {
+  max-width: 54ch;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.ask__hero .ask__composer-wrap,
+.ask__hero .ask__starters,
+.ask__hero .ask__error {
+  width: 100%;
+}
+
+.ask__head-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.ask__reset {
+  min-height: 2.25rem;
+}
+
+/* Recent-threads switcher: a quiet ghost trigger that opens a right-side
+ * slide-in history panel of the last few local Ask conversations. Resuming one
+ * makes it the active thread; the panel is full-height and viewport-anchored so
+ * it is never clipped by the conversation container. */
+.ask__recent-trigger {
+  min-height: 2.25rem;
+}
+
+/* The panel: a fixed-width column with a header and a scrolling list. Width is
+ * capped so it stays a focused switcher (never a half-screen drawer) on a wide
+ * desktop window, and shrinks on narrow ones. */
+.ask__history-panel {
+  width: min(23rem, 92vw);
+  max-width: none;
+  gap: 0;
+  padding: 0;
+}
+
+.ask__history-head {
+  gap: 0.2rem;
+  padding: 1.15rem 1.25rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.ask__history-list {
+  display: grid;
+  gap: 0.2rem;
+  align-content: start;
+  min-height: 0;
+  margin: 0;
+  padding: 0.6rem;
+  overflow-y: auto;
+  list-style: none;
+}
+
+/* A row wraps the resume button and the hover delete as siblings (never nested
+ * buttons), so the whole row highlights while each control stays independent. */
+.ask__history-row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md, 0.6rem);
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.ask__history-row:hover {
+  background: color-mix(in oklch, var(--primary), var(--card) 90%);
+}
+
+.ask__history-row--active {
+  border-color: color-mix(in oklch, var(--primary), transparent 62%);
+  background: color-mix(in oklch, var(--primary), var(--card) 86%);
+}
+
+.ask__history-item {
+  display: grid;
+  gap: 0.2rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 3rem;
+  border: 0;
+  border-radius: inherit;
+  padding: 0.5rem 0.65rem;
+  color: var(--foreground);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ask__history-item:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+  border-radius: var(--radius-md, 0.6rem);
+}
+
+.ask__history-item-title {
+  overflow: hidden;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ask__history-item-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.ask__history-item-meta svg {
+  flex: 0 0 auto;
+  opacity: 0.8;
+}
+
+/* The delete control stays out of the way (revealed on row hover / when
+ * focused) so the list reads clean, but is always reachable by keyboard. */
+.ask__history-delete {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  margin: 0.35rem 0.35rem 0.35rem 0;
+  border: 0;
+  border-radius: var(--radius-md, 0.6rem);
+  color: var(--muted-foreground);
+  background: transparent;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.ask__history-row:hover .ask__history-delete,
+.ask__history-delete:focus-visible {
+  opacity: 1;
+}
+
+.ask__history-delete:hover {
+  color: var(--destructive, var(--foreground));
+  background: color-mix(in oklch, var(--destructive, var(--foreground)), transparent 88%);
+}
+
+.ask__history-delete:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+/* Touch and coarse pointers cannot hover, so keep delete visible there. */
+@media (hover: none) {
+  .ask__history-delete {
+    opacity: 1;
+  }
+}
+
+/* assistant-ui wraps the scrolling viewport in a ThreadPrimitive.Root. It is
+ * the grid row that fills the available height; the viewport scrolls within it
+ * and carries the floating-glass styling. */
+.ask__thread-root {
+  display: flex;
+  min-height: 0;
+}
+
+/* The thread is a floating glass plane with quiet native depth. */
+.ask__thread {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border: 1px solid color-mix(in oklch, var(--border), white 8%);
+  border-radius: var(--radius-xl);
+  padding: 1.1rem;
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 16%),
+    linear-gradient(
+      135deg,
+      color-mix(in oklch, var(--card), white 4%) 0%,
+      color-mix(in oklch, var(--card), var(--background) 12%) 100%
+    ),
+    color-mix(in oklch, var(--card), var(--background) 10%);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 14px 40px var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+.ask__turns {
+  display: grid;
+  gap: 0.9rem;
+  width: min(48rem, 100%);
+  margin-inline: auto;
+}
+
+/* Chat bubbles. */
+.ask-bubble {
+  width: fit-content;
+  max-width: var(--chat-bubble-max);
+  border: 1px solid var(--hairline);
+  border-radius: 0;
+  padding: 0.7rem 0.9rem;
+  background: color-mix(in oklch, var(--card), var(--background) 8%);
+  animation: alfred-rise 180ms ease-out both;
+}
+
+.ask-bubble--user {
+  margin-left: auto;
+  border-color: color-mix(in oklch, var(--primary), transparent 62%);
+  background: color-mix(in oklch, var(--primary), var(--card) 86%);
+}
+
+.ask-bubble__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.ask-bubble__who {
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.ask-bubble__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.ask-bubble__copy,
+.ask-bubble__action {
+  display: inline-grid;
+  place-items: center;
+  min-height: 1.6rem;
+  width: 1.6rem;
+  border: 1px solid transparent;
+  border-radius: 0;
+  color: var(--muted-foreground);
+  background: transparent;
+  opacity: 0.7;
+  transition: opacity 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.ask-bubble__copy:hover,
+.ask-bubble__action:hover {
+  opacity: 1;
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--primary), var(--card) 90%);
+}
+
+.ask-bubble__copy:focus-visible,
+.ask-bubble__action:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.ask-bubble__text,
+.ask-bubble__md,
+.ask-bubble__md p {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.ask-bubble__md > :first-child {
+  margin-top: 0;
+}
+
+.ask-bubble__md > :last-child {
+  margin-bottom: 0;
+}
+
+.ask-bubble__md ul,
+.ask-bubble__md ol {
+  padding-left: 1.2rem;
+  margin: 0.4rem 0;
+}
+
+.ask-bubble__md code {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.ask-bubble__md :not(pre) > code {
+  border-radius: 0;
+  padding: 0.1rem 0.3rem;
+  background: color-mix(in oklch, var(--black), var(--background) 10%);
+}
+
+/* Fenced code block with a header bar (language label + copy-code). */
+.ask-code {
+  margin: 0.55rem 0;
+  border: 1px solid var(--hairline);
+  border-radius: 0;
+  overflow: hidden;
+  background: color-mix(in oklch, var(--black), var(--background) 10%);
+}
+
+.ask-code__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0.3rem 0.25rem 0.65rem;
+  border-bottom: 1px solid var(--hairline);
+  background: color-mix(in oklch, var(--card), var(--background) 14%);
+}
+
+.ask-code__lang {
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.ask-code__copy {
+  display: inline-grid;
+  place-items: center;
+  min-height: 1.6rem;
+  width: 1.6rem;
+  border: 1px solid transparent;
+  border-radius: 0;
+  color: var(--muted-foreground);
+  background: transparent;
+  opacity: 0.75;
+  transition: opacity 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.ask-code__copy:hover {
+  opacity: 1;
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--primary), var(--card) 90%);
+}
+
+.ask-code__copy:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.ask-code pre {
+  margin: 0;
+  overflow: auto;
+  padding: 0.7rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.ask-code pre code {
+  background: none;
+  padding: 0;
+}
+
+/* The in-flight reply renders as fast raw text (no per-token markdown parse);
+   preserve its newlines and wrapping so it reads like prose until it settles
+   into the rich markdown pass. */
+.ask-bubble__stream-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* A live caret on the streaming assistant turn, so tokens visibly land. */
+.ask-bubble__md--streaming > :last-child::after {
+  content: "";
+  display: inline-block;
+  width: 0.5rem;
+  height: 1rem;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  border-radius: 0;
+  background: var(--primary);
+  animation: alfred-caret 1s steps(2, start) infinite;
+}
+
+@keyframes alfred-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Syntax-highlight theme, mapped to design tokens (no raw hex). highlight.js
+   emits .hljs-* token classes; we colour them from the palette so light and
+   dark themes both read cleanly. */
+.ask-code .hljs {
+  color: var(--foreground);
+  background: transparent;
+}
+
+.ask-code .hljs-comment,
+.ask-code .hljs-quote {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+.ask-code .hljs-keyword,
+.ask-code .hljs-selector-tag,
+.ask-code .hljs-built_in,
+.ask-code .hljs-name,
+.ask-code .hljs-tag {
+  color: var(--primary);
+}
+
+.ask-code .hljs-string,
+.ask-code .hljs-title,
+.ask-code .hljs-section,
+.ask-code .hljs-attribute,
+.ask-code .hljs-literal,
+.ask-code .hljs-template-tag,
+.ask-code .hljs-template-variable,
+.ask-code .hljs-type,
+.ask-code .hljs-addition {
+  color: var(--accent);
+}
+
+.ask-code .hljs-number,
+.ask-code .hljs-symbol,
+.ask-code .hljs-bullet,
+.ask-code .hljs-link,
+.ask-code .hljs-meta,
+.ask-code .hljs-selector-id,
+.ask-code .hljs-selector-class {
+  color: color-mix(in oklch, var(--accent), var(--foreground) 35%);
+}
+
+.ask-code .hljs-emphasis {
+  font-style: italic;
+}
+
+.ask-code .hljs-strong {
+  font-weight: 700;
+}
+
+.ask-code .hljs-deletion {
+  color: var(--destructive);
+}
+
+.ask-bubble__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--primary);
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.ask-bubble__unsafe-link {
+  color: var(--muted-foreground);
+}
+
+.ask-bubble__pending {
+  display: inline-flex;
+  gap: 0.28rem;
+  padding: 0.15rem 0;
+}
+
+.ask-bubble__dot {
+  width: 0.4rem;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  background: var(--muted-foreground);
+  animation: alfred-pulse 1s ease-in-out infinite;
+}
+
+.ask-bubble__dot:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.ask-bubble__dot:nth-child(3) {
+  animation-delay: 240ms;
+}
+
+@keyframes alfred-pulse {
+  50% {
+    opacity: 0.35;
+    transform: translateY(-2px);
+  }
+}
+
+/* Inline saved-plan card (one-gate File issue). */
+.ask-draft {
+  display: grid;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.75rem;
+  animation: alfred-rise 200ms ease-out both;
+}
+
+.ask-draft__file span {
+  white-space: nowrap;
+}
+
+.ask-draft__questions {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+/* Enriched plan sections: a quiet, hairline-separated brief (Intent / Scope /
+   Done when / Verified by) below the lifecycle card. Flat data surface (no
+   glass), matching the dense lists elsewhere. Each section is omitted when it
+   has no data, so a header never sits above nothing. */
+.ask-draft__detail {
+  display: grid;
+  gap: 0.6rem;
+  border-top: 1px solid var(--hairline);
+  padding-top: 0.6rem;
+}
+
+.ask-draft__section {
+  display: grid;
+  grid-template-columns: minmax(0, 6.5rem) minmax(0, 1fr);
+  gap: 0.15rem 0.85rem;
+  align-items: start;
+}
+
+.ask-draft__section-label {
+  color: var(--muted-foreground);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding-top: 0.08rem;
+}
+
+.ask-draft__section-body {
+  min-width: 0;
+  color: color-mix(in oklch, var(--muted-foreground), var(--foreground) 30%);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.ask-draft__section-body p {
+  margin: 0;
+}
+
+.ask-draft__section-body p + p {
+  margin-top: 0.3rem;
+}
+
+.ask-draft__scope {
+  color: var(--foreground);
+}
+
+.ask-draft__criteria {
+  display: grid;
+  gap: 0.28rem;
+  margin: 0;
+  padding-left: 1rem;
+}
+
+/* The plain-words consequence line for the File issue action: what happens when
+   you file. Uses the accent-soft wash so it reads as a deliberate note, not an
+   error. Status color is never borrowed here. */
+.ask-draft__consequence {
+  margin: 0;
+  border-left: 2px solid color-mix(in oklch, var(--primary), var(--border) 30%);
+  border-radius: 0;
+  background: var(--accent-soft);
+  padding: 0.5rem 0.7rem;
+  color: color-mix(in oklch, var(--muted-foreground), var(--foreground) 26%);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+/* Repo-less state: a neutral "still missing" hint, not a consequence. Drop the
+   accent wash + rail so it does not read as a confirmed filing. */
+.ask-draft__consequence--hint {
+  border-left-color: var(--hairline);
+  background: color-mix(in oklch, var(--muted), transparent 55%);
+  color: var(--muted-foreground);
+}
+
+@media (max-width: 520px) {
+  .ask-draft__section {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.1rem;
+  }
+}
+
+.ask-draft__notice {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.ask-draft__notice--ok {
+  color: color-mix(in oklch, var(--ok), var(--foreground) 16%);
+}
+
+.ask-draft__notice--error {
+  color: color-mix(in oklch, var(--destructive), var(--foreground) 18%);
+}
+
+.ask__error {
+  margin: 0;
+}
+
+/* Composer wrap: the hero input plus a hint line. In the empty state it is
+ * centered and width-capped so the composer reads as a deliberate hero, not a
+ * thin afterthought bar. */
+.ask__composer-wrap {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.ask--empty .ask__composer-wrap {
+  width: min(46rem, 100%);
+  margin-inline: auto;
+}
+
+.ask__starters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Starters sit inside the hero in the empty state; center them. */
+.ask__hero .ask__starters {
+  justify-content: center;
+  margin-top: 0.1rem;
+}
+
+.ask__starter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.1rem;
+  border: 1px solid var(--hairline);
+  border-radius: 0;
+  padding: 0.4rem 0.8rem;
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--card), var(--background) 10%);
+  font-size: 0.82rem;
+  font-weight: 600;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.ask__starter:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--primary), var(--border) 40%);
+  background: color-mix(in oklch, var(--primary), var(--card) 90%);
+  transform: translateY(-1px);
+}
+
+.ask__starter svg {
+  color: var(--muted-foreground);
+}
+
+/* The composer is the hero: a large, bordered, generously-padded glass input.
+ * Glass is appropriate here (it is the primary overlay control, not a flat data
+ * card). It carries strong presence via a slightly heavier border and a focus
+ * ring that lands on the steel-violet accent. */
+.ask__composer {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.6rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  padding: 0.7rem 0.7rem 0.7rem 1.1rem;
+  background: var(--glass);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 12px 32px var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+/* In the empty state the hero composer is taller so it dominates the screen. */
+.ask--empty .ask__composer {
+  padding: 0.95rem 0.95rem 0.95rem 1.25rem;
+}
+
+.ask__composer:focus-within {
+  border-color: color-mix(in oklch, var(--primary), var(--border-strong) 30%);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 0 0 3px color-mix(in oklch, var(--primary), transparent 78%);
+}
+
+.ask__input {
+  width: 100%;
+  min-height: 1.6rem;
+  max-height: 14rem;
+  border: none;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.98rem;
+  line-height: 1.55;
+  resize: none;
+  outline: none;
+  padding: 0.4rem 0;
+}
+
+/* The hero composer opens larger so it reads as the focus of the screen. */
+.ask--empty .ask__input {
+  min-height: 3.2rem;
+  font-size: 1.02rem;
+}
+
+.ask__input::placeholder {
+  color: var(--muted-foreground);
+}
+
+/* The send button is a subtle round icon, not a labelled button. */
+.ask__send {
+  display: inline-grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in oklch, var(--primary), transparent 70%);
+  border-radius: 0;
+  color: var(--primary-foreground);
+  background: var(--primary);
+  box-shadow: 0 8px 20px color-mix(in oklch, var(--primary), transparent 82%);
+  transition: filter 140ms ease, transform 140ms ease, opacity 140ms ease;
+}
+
+.ask__send:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.ask__send:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  transform: none;
+}
+
+.ask__hint {
+  padding-inline: 0.4rem;
+  color: var(--muted-foreground);
+  font-size: 0.74rem;
+}
+
+/* Narrow widths: stack the head, let starters wrap, keep tap targets >= 36px. */
+@media (max-width: 640px) {
+  .ask {
+    height: auto;
+    min-height: 0;
+  }
+
+  .ask__thread {
+    min-height: 22rem;
+    max-height: 60svh;
+    padding: 0.85rem;
+  }
+
+  .ask-bubble {
+    max-width: 100%;
+  }
+}
+
+.request-thread {
+  padding: 0.8rem;
+}
+
+.request-thread__head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.request-thread__title strong {
+  display: block;
+  color: var(--foreground);
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.request-thread__repo {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 0.25rem;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 0;
+  padding: 0.18rem 0.45rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.request-thread__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.request-stepper {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin: 0.8rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.request-step {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+  align-content: start;
+}
+
+.request-step__marker {
+  display: grid;
+  width: 1.45rem;
+  height: 1.45rem;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--muted), transparent 30%);
+  color: var(--muted-foreground);
+}
+
+.request-step--done .request-step__marker {
+  border-color: color-mix(in oklch, var(--ok), transparent 54%);
+  background: color-mix(in oklch, var(--ok), transparent 82%);
+  color: var(--ok);
+}
+
+.request-step--active .request-step__marker {
+  border-color: color-mix(in oklch, var(--primary), transparent 45%);
+  background: color-mix(in oklch, var(--primary), transparent 82%);
+  color: var(--primary);
+}
+
+.request-step--missing .request-step__marker {
+  border-style: dashed;
+}
+
+.request-step__label {
+  min-width: 0;
+  color: var(--foreground);
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.request-step--pending .request-step__label,
+.request-step--missing .request-step__label {
+  color: var(--muted-foreground);
+}
+
+.request-step__missing {
+  color: var(--muted-foreground);
+  font-weight: 500;
+}
+
+.request-step__detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.request-step__rail {
+  position: absolute;
+  top: 0.72rem;
+  left: 1.45rem;
+  right: -0.35rem;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.request-step--done .request-step__rail {
+  background: color-mix(in oklch, var(--ok), transparent 45%);
+}
+
+.usage-panel {
+  padding: 0.85rem;
+}
+
+.usage-panel--compact {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.usage-panel__note {
+  margin: 0 0 0.6rem;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+}
+
+.usage-panel__note--warn {
+  color: color-mix(in oklch, var(--warn), var(--foreground) 20%);
+}
+
+.usage-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.usage-panel--compact .usage-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.usage-tile {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: center;
+  padding: 0.7rem;
+}
+
+.usage-tile svg {
+  color: var(--primary);
+}
+
+.usage-tile strong,
+.usage-tile span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-tile strong {
+  color: var(--foreground);
+  font-size: 0.92rem;
+}
+
+.usage-tile span {
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+}
+
+.feed-groups {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.feed-group {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.feed-group__title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+/* The count rides the uppercase section label but reads as plain text. */
+.feed-group__count {
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted-foreground);
+}
+
+.feed-list {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feed-item__row {
+  display: grid;
+  width: 100%;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+  border: 0;
+  padding: 0.75rem;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.feed-item--clickable {
+  transition:
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.feed-item--clickable:hover {
+  border-color: color-mix(in oklch, var(--primary), var(--border) 42%);
+  background: color-mix(in oklch, var(--primary), var(--card) 93%);
+}
+
+.feed-item svg {
+  color: var(--primary);
+}
+
+.feed-item--ok svg {
+  color: var(--ok);
+}
+
+.feed-item--warn svg {
+  color: var(--warn);
+}
+
+.feed-item--error svg {
+  color: var(--destructive);
+}
+
+/* Unread items. NotificationsView sets `feed-item--new` but there was no rule
+   for it, so the only unread cue was a 0.45rem pip. For an inbox whose whole
+   job is "what needs attention now", give unread rows a left status bar plus a
+   faint accent tint: structural, non-color cues (WCAG 1.4.1) that read at a
+   glance. (No font-weight bump: Tailwind Preflight already resolves `strong`
+   to bolder/700, so an override there would be a no-op.) */
+.feed-item--new {
+  border-color: color-mix(in oklch, var(--accent), var(--border) 45%);
+  background: color-mix(in oklch, var(--accent), var(--card) 92%);
+  box-shadow:
+    inset 3px 0 0 var(--accent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Preserve the accent identity on hover for rows that are both unread and
+   clickable. The generic `.feed-item--clickable:hover` rule has higher
+   specificity and would otherwise swap the accent tint for the primary hover
+   tint, erasing the unread cue (the left bar survives as box-shadow). */
+.feed-item--new.feed-item--clickable:hover {
+  border-color: color-mix(in oklch, var(--accent), var(--border) 30%);
+  background: color-mix(in oklch, var(--accent), var(--card) 86%);
+}
+
+.feed-item__body {
+  min-width: 0;
+}
+
+.feed-item__head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.feed-item__head strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feed-item__pip {
+  width: 0.45rem;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.feed-item p {
+  margin: 0.2rem 0 0;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.feed-item__side {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+}
+
+.feed-item__time {
+  white-space: nowrap;
+}
+
+.feed-item__chevron {
+  opacity: 0.65;
+}
+
+.tail-layout {
+  display: grid;
+  grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
+  gap: 0.75rem;
+  min-height: 26rem;
+}
+
+.tail-agents {
+  display: grid;
+  align-content: start;
+  gap: 0.45rem;
+  min-height: 0;
+  overflow: auto;
+}
+
+.tail-agent,
+.tail-run {
+  display: grid;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: color-mix(in oklch, var(--card), var(--background) 10%);
+  color: var(--foreground);
+  text-align: left;
+}
+
+.tail-agent {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.25rem 0.55rem;
+  align-items: center;
+  padding: 0.65rem;
+}
+
+.tail-agent--active,
+.tail-run--active {
+  border-color: color-mix(in oklch, var(--primary), var(--border) 35%);
+  background: color-mix(in oklch, var(--primary), var(--card) 92%);
+}
+
+.tail-agent__dot {
+  --tail-tone: var(--muted-foreground);
+  width: 0.5rem;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  background: var(--tail-tone);
+}
+
+.tail-agent__dot--ok {
+  --tail-tone: var(--ok);
+}
+
+.tail-agent__dot--warn {
+  --tail-tone: var(--warn);
+}
+
+.tail-agent__dot--error {
+  --tail-tone: var(--destructive);
+}
+
+.tail-agent__name,
+.tail-agent__meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tail-agent__name {
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.tail-agent__meta {
+  grid-column: 2;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+}
+
+.tail-console {
+  min-width: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--card), var(--background) 10%);
+  overflow: hidden;
+}
+
+.tail-console__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--hairline);
+  padding: 0.8rem;
+}
+
+.tail-console__head strong {
+  color: var(--foreground);
+}
+
+.tail-console__head small {
+  color: var(--muted-foreground);
+}
+
+.tail-status {
+  margin-left: 0.45rem;
+  border-radius: 0;
+  background: color-mix(in oklch, var(--muted), transparent 36%);
+  padding: 0.2rem 0.45rem;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+}
+
+.tail-status--ok {
+  color: var(--ok);
+}
+
+.tail-status--warn {
+  color: var(--warn);
+}
+
+.tail-status--error {
+  color: var(--destructive);
+}
+
+.tail-runs {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--hairline);
+  padding: 0.65rem 0.8rem;
+}
+
+.tail-run {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 0.4rem 0.6rem;
+  color: var(--muted-foreground);
+  font-size: 0.76rem;
+}
+
+.tail-stream {
+  max-height: 28rem;
+  min-height: 18rem;
+  overflow: auto;
+  padding: 0.8rem;
+}
+
+.tail-stream__summary,
+.tail-stream__empty {
+  margin: 0 0 0.7rem;
+  color: var(--muted-foreground);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.tail-lines {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tail-lines--live {
+  margin-top: 0.65rem;
+}
+
+.tail-line {
+  display: grid;
+  grid-template-columns: 4.8rem minmax(0, 1fr);
+  gap: 0.6rem;
+  border-radius: 0;
+  padding: 0.4rem 0.5rem;
+  background: color-mix(in oklch, var(--black), var(--background) 18%);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.tail-line__ts {
+  color: var(--muted-foreground);
+}
+
+.tail-line__text {
+  min-width: 0;
+  color: color-mix(in oklch, var(--foreground), var(--muted-foreground) 8%);
+  overflow-wrap: anywhere;
+}
+
+.tail-line--live {
+  border: 1px solid color-mix(in oklch, var(--primary), transparent 74%);
+  background: color-mix(in oklch, var(--primary), var(--black) 88%);
+}
+

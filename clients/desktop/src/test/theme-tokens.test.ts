@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -14,10 +14,21 @@ import { describe, expect, it } from "vitest";
 // reference set. Theme blocks may add tokens, but must never define fewer color
 // tokens than the base.
 
-const indexCssPath = resolve(__dirname, "..", "index.css");
+// index.css is a thin manifest that @imports per-surface partials under
+// src/styles/ (the theme token blocks live in styles/tokens.css). Read the
+// whole desktop stylesheet so this guard finds the token blocks wherever a
+// structural split places them.
+const srcDir = resolve(__dirname, "..");
+const stylesDir = resolve(srcDir, "styles");
 
 function readIndexCss(): string {
-  return readFileSync(indexCssPath, "utf8");
+  const parts = [readFileSync(resolve(srcDir, "index.css"), "utf8")];
+  for (const entry of readdirSync(stylesDir)) {
+    if (entry.endsWith(".css")) {
+      parts.push(readFileSync(resolve(stylesDir, entry), "utf8"));
+    }
+  }
+  return parts.join("\n");
 }
 
 // Extract the body of the first CSS block matching a selector head. Naive brace

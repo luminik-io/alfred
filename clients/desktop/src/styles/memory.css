@@ -1,0 +1,264 @@
+/* Memory surface: the learnings grid, the lessons Alfred is using, and the runtime ops lessons disclosure. */
+
+/* Learnings are short records, so flow them into a responsive multi-column grid
+   instead of one full-width column per lesson. This roughly halves the scroll
+   on a wide window and stops each short lesson from spanning 1000+px. */
+.attention-list,
+.active-lesson-list {
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.55rem;
+}
+
+/* "Lessons Alfred is using": the confirmed/active lessons in recall, below the
+   review queue. Quieter than the review cards since they need no decision. */
+.lessons-active {
+  margin-top: 1.25rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.lessons-active__intro {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+}
+
+.active-lesson-list {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.active-lesson {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in oklch, var(--card), var(--background) 8%);
+}
+
+.active-lesson__text {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.active-lesson__what {
+  color: var(--foreground);
+  font-size: 0.88rem;
+}
+
+.active-lesson__where {
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+}
+
+.active-lesson__undo {
+  flex: none;
+}
+
+/* "About Alfred's runs": the ops (runtime) lessons, grouped into a closed
+   disclosure below the codebase lessons so fleet-ops noise (provider quota,
+   auth, engine timeouts) never leads the Learnings tab. */
+.ops-lessons {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.ops-lessons > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  font-weight: 650;
+  list-style: none;
+  cursor: pointer;
+}
+
+.ops-lessons > summary::-webkit-details-marker {
+  display: none;
+}
+
+.lessons-review {
+  margin-top: 1.5rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.attention-card,
+.lesson-card,
+.plan-card,
+.request-thread,
+.usage-tile,
+.feed-item,
+.trusted-user,
+.advanced-panel,
+.cli-fallback,
+.detail-panel,
+.ask-draft {
+  border: 1px solid color-mix(in oklch, var(--border), white 6%);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--card), var(--background) 9%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.attention-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: start;
+  padding: 0.7rem 0.75rem;
+}
+
+.attention-card > svg {
+  color: var(--primary);
+}
+
+.attention-card--warn > svg {
+  color: var(--warn);
+}
+
+.attention-card--error > svg {
+  color: var(--destructive);
+}
+
+.attention-card--info > svg {
+  color: var(--primary);
+}
+
+.attention-card span,
+.plan-card__meta span,
+.lesson-card__origin,
+.lesson-card__provenance,
+.lesson-card__hint,
+.request-thread__repo,
+.request-step__detail {
+  color: var(--muted-foreground);
+  font-size: 0.74rem;
+}
+
+.attention-card strong {
+  display: block;
+  margin-top: 0.12rem;
+  color: var(--foreground);
+  font-size: 0.95rem;
+}
+
+.attention-card p,
+.plan-card p,
+.lesson-card p,
+.request-thread__note {
+  margin: 0.3rem 0 0;
+  color: var(--muted-foreground);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.attention-card code {
+  display: inline-block;
+  margin-top: 0.4rem;
+  border-radius: 0;
+  background: color-mix(in oklch, var(--muted), transparent 42%);
+  padding: 0.2rem 0.4rem;
+  font-size: 0.72rem;
+}
+
+.attention-card__decision-note,
+.plan-card__decision-note,
+.plan-decision__note {
+  border-left: 2px solid var(--primary);
+  padding-left: 0.6rem;
+}
+
+.plans-workspace {
+  grid-template-columns: repeat(auto-fit, minmax(min(24rem, 100%), 1fr));
+}
+
+.plan-card {
+  display: grid;
+  gap: 0.8rem;
+  padding: 0.9rem;
+}
+
+.plan-card--selected {
+  border-color: color-mix(in oklch, var(--primary), var(--border) 35%);
+}
+
+.plan-card__meta,
+.compact-meta,
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.plan-card__meta span,
+.tag-row span,
+.compact-meta div {
+  border: 1px solid var(--hairline);
+  border-radius: 0;
+  background: color-mix(in oklch, var(--muted), transparent 38%);
+  padding: 0.2rem 0.5rem;
+}
+
+.compact-meta {
+  margin: 0.65rem 0 0;
+}
+
+.compact-meta dt {
+  display: inline;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+}
+
+.compact-meta dd {
+  display: inline;
+  margin: 0 0 0 0.25rem;
+  color: var(--foreground);
+  font-size: 0.74rem;
+  font-weight: 650;
+}
+
+.detail-panel {
+  padding: 1rem;
+}
+
+.detail-panel--sheet {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.detail-panel__head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.detail-panel__head span {
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.plan-decision {
+  margin-top: 0.85rem;
+}
+
+.plan-detail-sheet {
+  width: min(36rem, calc(100vw - 2rem));
+}
+

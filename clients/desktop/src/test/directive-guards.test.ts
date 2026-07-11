@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -15,10 +15,21 @@ import { PRIMARY_TABS } from "../lib/primaryTabs";
 //  2. The primary nav uses the job-shaped IA labels Inbox / Ask / Work /
 //     Agents / Setup, so non-technical users do not have to decode runtime nouns.
 
-const indexCssPath = resolve(__dirname, "..", "index.css");
+// index.css is a thin manifest that @imports per-surface partials under
+// src/styles/. Read the whole desktop stylesheet (manifest + partials) so these
+// guards keep matching the real source of truth wherever a token or @import
+// happens to live after a structural split.
+const srcDir = resolve(__dirname, "..");
+const stylesDir = resolve(srcDir, "styles");
 
 function readIndexCss(): string {
-  return readFileSync(indexCssPath, "utf8");
+  const parts = [readFileSync(resolve(srcDir, "index.css"), "utf8")];
+  for (const entry of readdirSync(stylesDir)) {
+    if (entry.endsWith(".css")) {
+      parts.push(readFileSync(resolve(stylesDir, entry), "utf8"));
+    }
+  }
+  return parts.join("\n");
 }
 
 // The lines that actually load a font family, ignoring comments. A comment may
