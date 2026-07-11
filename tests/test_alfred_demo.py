@@ -32,6 +32,7 @@ from demo import (  # noqa: E402
 from demo.orchestrator import (  # noqa: E402
     REVIEW_BLOCK_SENTINEL,
     REVIEW_PASS_SENTINEL,
+    _verify_planted_bug_fixed,
 )
 from demo.presenter import Presenter  # noqa: E402
 
@@ -364,7 +365,7 @@ def test_ship_fails_when_fix_does_not_fix_the_planted_bug(tmp_path):
     with pytest.raises(DemoEngineError) as exc_info:
         _run(engine, tmp_path)
     assert exc_info.value.step == "ship"
-    assert "did not resolve it" in exc_info.value.message
+    assert "did not resolve every reproduction" in exc_info.value.message
     # Nothing was committed: HEAD is still the initial snapshot.
     import subprocess
 
@@ -376,6 +377,26 @@ def test_ship_fails_when_fix_does_not_fix_the_planted_bug(tmp_path):
         timeout=30,
     ).stdout.strip()
     assert head == "Initial textkit snapshot"
+
+
+def test_ship_probe_rejects_fix_that_still_strips_edge_whitespace(tmp_path):
+    workdir = materialize_sample_repo(tmp_path / "textkit")
+    module = workdir / "textkit.py"
+    text = module.read_text(encoding="utf-8")
+    text = text.replace(
+        "    words = text.split()\n"
+        '    return " ".join(word[:1].upper() + word[1:].lower() for word in words)',
+        "    import re\n"
+        "    return re.sub(\n"
+        '        r"\\S+",\n'
+        "        lambda m: m.group(0)[:1].upper() + m.group(0)[1:].lower(),\n"
+        "        text.strip(),\n"
+        "    )",
+    )
+    module.write_text(text, encoding="utf-8")
+
+    with pytest.raises(DemoEngineError, match="leading/trailing whitespace"):
+        _verify_planted_bug_fixed(workdir)
 
 
 def test_shipped_commit_excludes_test_cache_artifacts(tmp_path):
