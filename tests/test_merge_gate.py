@@ -265,6 +265,36 @@ def test_codex_evidence_uses_comment_order_when_timestamps_tie():
     assert evidence[1].reviewed_sha == old_head
 
 
+def test_codex_evidence_rejects_delayed_response_with_shared_prefix():
+    prefix = "abcdef0"
+    old_head = prefix + "a" * 33
+    new_head = prefix + "b" * 33
+    payload = [
+        [
+            {
+                "user": {"login": "operator"},
+                "author_association": "OWNER",
+                "body": f"@codex review\nExact head: `{old_head}`",
+            },
+            {
+                "user": {"login": "operator"},
+                "author_association": "OWNER",
+                "body": f"@codex review\nExact head: `{new_head}`",
+            },
+            {
+                "user": {"login": "chatgpt-codex-connector[bot]"},
+                "body": f"Didn't find any major issues.\nReviewed commit: {prefix}",
+            },
+        ]
+    ]
+    evidence = merge_gate._collect_external_reviews(
+        "acme/repo", 7, gh_json=lambda _cmd, _default: payload, errors=[]
+    )
+    assert evidence[-1].reviewed_sha == ""
+    snap = _snapshot(head_sha=new_head, external_reviews=tuple(evidence))
+    assert not evaluate_gate(snap, required_external_reviews=("codex",)).mergeable
+
+
 def test_unknown_review_decision_fails_closed():
     decision = evaluate_gate(_snapshot(review_decision="SOMETHING_NEW"))
     assert decision.mergeable is False

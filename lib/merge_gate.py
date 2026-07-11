@@ -524,10 +524,18 @@ def _collect_external_reviews(
         if author.lower() in {"chatgpt-codex-connector", "chatgpt-codex-connector[bot]"}:
             match = re.search(r"Reviewed commit:(?:\*\*)?\s*`?([0-9a-f]{7,40})`?", body, re.I)
             if match:
-                preceding = [entry for entry in trusted_requests if entry[0] < index]
-                if preceding:
-                    _request_index, requested_sha = max(preceding, key=lambda entry: entry[0])
-                    if requested_sha.lower().startswith(match.group(1).lower()):
+                prefix = match.group(1).lower()
+                matching_shas = {
+                    sha.lower()
+                    for _request_index, sha in trusted_requests
+                    if sha.lower().startswith(prefix)
+                }
+                if len(matching_shas) == 1:
+                    requested_sha = matching_shas.pop()
+                    if any(
+                        request_index < index and sha.lower() == requested_sha
+                        for request_index, sha in trusted_requests
+                    ):
                         reviewed_sha = requested_sha
         elif author.lower() in {"greptile-apps", "greptile-apps[bot]"}:
             match = re.search(r"Last reviewed commit:.*?/commit/([0-9a-f]{40})", body, re.I | re.S)
