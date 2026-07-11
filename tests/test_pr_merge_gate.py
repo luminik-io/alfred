@@ -201,6 +201,13 @@ def test_matches_head_rejects_abbreviated_review_sha(gate_module):
     assert gate_module._matches_head(head, head)
 
 
+def test_reviewed_sha_uses_marker_value_not_later_full_sha(gate_module):
+    head = "a" * 40
+    body = f"Reviewed commit: `abcdef1234`\nRelated: /commit/{head}"
+
+    assert gate_module._reviewed_sha(body, "Reviewed commit") == "abcdef1234"
+
+
 def test_collect_snapshot_rejects_unique_but_abbreviated_codex_sha(gate_module, monkeypatch):
     head = "abcdef1234" + "0" * 30
     payloads = _payloads(head)

@@ -53,7 +53,7 @@ def _reviewed_sha(body: str, marker: str) -> str | None:
     if marker_at < 0:
         return None
     matches = SHA_RE.findall(body[marker_at : marker_at + 500])
-    return max(matches, key=len).lower() if matches else None
+    return matches[0].lower() if matches else None
 
 
 def _matches_head(reviewed: str | None, head: str) -> bool:
