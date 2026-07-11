@@ -51,7 +51,9 @@ describe("RecentThreads", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(onRetireFocus).toHaveBeenCalledOnce();
     expect(fallback).toHaveFocus();
-    expect(screen.queryByRole("button", { name: /recent/i })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /recent/i })).not.toBeInTheDocument(),
+    );
   });
 
   it("keeps the trigger when the sole surviving thread is not the active chat", async () => {

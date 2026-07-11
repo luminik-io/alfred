@@ -563,6 +563,26 @@ export function useAskThread({
     setRecent(loadConversations());
   }, [conversationId, turns, result]);
 
+  const activateStoredConversation = useCallback((target: PersistedConversation) => {
+    const restoredTurns = target.turns.map(fromPersistedTurn);
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setConversationId(target.id);
+    setTurns(restoredTurns);
+    setResult(
+      target.draftId && target.draft
+        ? ({ draft_id: target.draftId, draft: target.draft } as unknown as ConverseResponse)
+        : null,
+    );
+    setError(null);
+    busyRef.current = false;
+    setBusy(false);
+    setFileNotices({});
+    fileBusyIdRef.current = null;
+    setFileBusyId(null);
+    lastUserTextRef.current = lastUserTextOf(restoredTurns);
+  }, []);
+
   // Resume a stored conversation by id, making it the active thread.
   const resumeConversation = useCallback(
     (id: string) => {
@@ -593,25 +613,10 @@ export function useAskThread({
           turns: settled.map(toPersistedTurn),
         });
       }
-      abortRef.current?.abort();
-      abortRef.current = null;
-      setConversationId(target.id);
-      setTurns(target.turns.map(fromPersistedTurn));
-      setResult(
-        target.draftId && target.draft
-          ? ({ draft_id: target.draftId, draft: target.draft } as unknown as ConverseResponse)
-          : null,
-      );
-      setError(null);
-      busyRef.current = false;
-    setBusy(false);
-      setFileNotices({});
-      fileBusyIdRef.current = null;
-    setFileBusyId(null);
-      lastUserTextRef.current = lastUserTextOf(target.turns.map(fromPersistedTurn));
+      activateStoredConversation(target);
       setRecent(loadConversations());
     },
-    [conversationId, turns, result],
+    [activateStoredConversation, conversationId, turns, result],
   );
 
   // Drop one stored conversation from the history panel. Deleting the active
@@ -621,23 +626,29 @@ export function useAskThread({
   const deleteThread = useCallback(
     (id: string) => {
       deleteConversation(id);
+      const remaining = loadConversations();
       if (id === conversationId) {
-        abortRef.current?.abort();
-        abortRef.current = null;
-        setConversationId(newConversationId());
-        setTurns([]);
-        setResult(null);
-        setError(null);
-        busyRef.current = false;
-        setBusy(false);
-        setFileNotices({});
-        fileBusyIdRef.current = null;
-        setFileBusyId(null);
-        lastUserTextRef.current = "";
+        const next = remaining[0];
+        if (next) {
+          activateStoredConversation(next);
+        } else {
+          abortRef.current?.abort();
+          abortRef.current = null;
+          setConversationId(newConversationId());
+          setTurns([]);
+          setResult(null);
+          setError(null);
+          busyRef.current = false;
+          setBusy(false);
+          setFileNotices({});
+          fileBusyIdRef.current = null;
+          setFileBusyId(null);
+          lastUserTextRef.current = "";
+        }
       }
-      setRecent(loadConversations());
+      setRecent(remaining);
     },
-    [conversationId],
+    [activateStoredConversation, conversationId],
   );
 
   // Drop every stored conversation and start clean.

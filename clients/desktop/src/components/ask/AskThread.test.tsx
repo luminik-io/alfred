@@ -481,6 +481,22 @@ describe("Ask chat-history panel (redesigned recent switcher)", () => {
     expect(screen.getByText(/keep two reply\./i)).toBeInTheDocument();
   });
 
+  it("activates the surviving thread when the current chat is deleted", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await seedConversations(user, ["Surviving chat", "Delete current"]);
+
+    await user.click(screen.getByRole("button", { name: /recent/i }));
+    const panel = await screen.findByRole("dialog", { name: /recent chats/i });
+    await user.click(
+      within(panel).getByRole("button", { name: /delete chat: delete current/i }),
+    );
+
+    expect(await screen.findByText(/surviving chat reply\./i)).toBeInTheDocument();
+    expect(screen.queryByText(/delete current reply\./i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /recent/i })).not.toBeInTheDocument();
+  });
+
   it("closes on Escape and returns focus to the trigger", async () => {
     const user = userEvent.setup();
     renderChat();
