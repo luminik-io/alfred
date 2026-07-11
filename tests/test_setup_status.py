@@ -1040,6 +1040,9 @@ def test_ready_code_memory_wins_while_graphify_is_not_usable(
     code_graph = next(item for item in payload["capabilities"] if item["key"] == "code_graph")
     assert code_graph["state"] == "ready"
     assert code_graph["source"]["source"] == "DeusData/codebase-memory-mcp"
+    assert code_graph["detail"] == (
+        "Code-memory fallback is ready while Graphify awaits a per-repo graph."
+    )
 
 
 def test_relative_graph_is_not_probed_against_setup_server_cwd(

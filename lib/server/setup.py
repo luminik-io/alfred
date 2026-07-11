@@ -976,6 +976,9 @@ def _code_graph_capability(
             if fallback_enabled and not code_memory.get("enabled"):
                 code_memory = dict(code_memory)
                 code_memory["enabled"] = True
+                code_memory["detail"] = (
+                    "Code-memory fallback is ready while Graphify awaits a per-repo graph."
+                )
             graphify = None
         else:
             state = (
