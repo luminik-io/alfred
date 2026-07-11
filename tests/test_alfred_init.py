@@ -1486,6 +1486,21 @@ def test_maybe_offer_setup_token_exits_with_timeout_status(tmp_path, init_mod, m
     assert "timed out waiting for approval" in capsys.readouterr().err
 
 
+def test_maybe_offer_setup_token_exits_when_handoff_fails(tmp_path, init_mod, monkeypatch, capsys):
+    alfred_home = tmp_path / ".alfred"
+    alfred_home.mkdir()
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
+    monkeypatch.setattr(init_mod, "_run_setup_token", lambda _script: 7)
+
+    with pytest.raises(SystemExit) as exc:
+        init_mod._maybe_offer_setup_token(non_interactive=False)
+
+    assert exc.value.code == 7
+    assert "exited 7" in capsys.readouterr().err
+
+
 def test_setup_token_helper_reaps_child_on_parent_signal(tmp_path, init_mod, monkeypatch):
     handlers = {}
 

@@ -390,6 +390,26 @@ def test_install_fetch_failure_preserves_existing_destination(tmp_path: Path) ->
     assert marker.read_text() == "keep"
 
 
+def test_install_fetch_reinstall_failure_removes_only_new_published_symlinks(
+    tmp_path: Path,
+) -> None:
+    pack = _pack(install="fetch", fetch_cmd="setup {skills_dir}/thing", vendored_path=None)
+    dest = tmp_path / pack.name
+    (dest / "skills" / "review").mkdir(parents=True)
+    marker = dest / "working-skill"
+    marker.write_text("keep")
+
+    def failed_reinstall(_cmd: str, cwd: Path) -> int:
+        (cwd / "review").symlink_to(dest / "skills" / "review", target_is_directory=True)
+        return 124
+
+    with pytest.raises(RuntimeError, match="exit 124"):
+        skill_packs.install_pack(pack, skills_dir=tmp_path, runner=failed_reinstall)
+
+    assert marker.read_text() == "keep"
+    assert not (tmp_path / "review").is_symlink()
+
+
 def test_install_fetch_interrupt_removes_new_partial_destination(tmp_path: Path) -> None:
     pack = _pack(install="fetch", fetch_cmd="clone {skills_dir}/thing", vendored_path=None)
 

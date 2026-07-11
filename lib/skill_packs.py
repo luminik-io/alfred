@@ -342,17 +342,16 @@ def _remove_new_partial_install(
     dest_existed: bool,
 ) -> None:
     """Roll back paths a failed fetch published from its new destination."""
-    if not dest_existed:
-        dest_path = Path(os.path.abspath(dest))
-        for entry in skills_dir.iterdir():
-            if entry.name in entries_before or not entry.is_symlink():
-                continue
-            target = Path(os.readlink(entry))
-            if not target.is_absolute():
-                target = entry.parent / target
-            target_path = Path(os.path.abspath(target))
-            if target_path == dest_path or dest_path in target_path.parents:
-                entry.unlink()
+    dest_path = Path(os.path.abspath(dest))
+    for entry in skills_dir.iterdir():
+        if entry.name in entries_before or not entry.is_symlink():
+            continue
+        target = Path(os.readlink(entry))
+        if not target.is_absolute():
+            target = entry.parent / target
+        target_path = Path(os.path.abspath(target))
+        if target_path == dest_path or dest_path in target_path.parents:
+            entry.unlink()
 
     if dest_existed or not dest.exists():
         return
