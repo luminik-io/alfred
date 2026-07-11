@@ -574,6 +574,19 @@ def test_doctor_command_forwards_to_doctor_script(
     assert calls == [["bash", str(REPO_ROOT / "bin" / "doctor.sh"), "--dev", "--lifecycle"]]
 
 
+def test_launchctl_timeout_returns_controlled_status(cli_module, monkeypatch):
+    def time_out(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"], stderr="partial")
+
+    monkeypatch.setattr(cli_module.subprocess, "run", time_out)
+
+    result = cli_module._launchctl(["list"])
+
+    assert result.returncode == 124
+    assert "partial" in result.stderr
+    assert "timed out" in result.stderr
+
+
 def test_capabilities_command_emits_json(
     cli_module, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:

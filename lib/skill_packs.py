@@ -29,10 +29,12 @@ runner, so tests stub it). Manifest parsing uses stdlib ``tomllib`` (3.11+).
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shlex
 import shutil
 import signal
+import subprocess
 import tomllib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -323,25 +325,27 @@ def install_pack(
 
 def _default_shell_runner(cmd: str, cwd: Path) -> int:
     """Real shell runner for fetch packs. Only used outside tests."""
-    import subprocess
-
     process = subprocess.Popen(cmd, shell=True, cwd=str(cwd), start_new_session=True)
     try:
         return process.wait(timeout=FETCH_PACK_TIMEOUT_S)
     except subprocess.TimeoutExpired:
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            return 124
-        try:
-            process.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                return 124
-            process.wait()
+        _terminate_process_group(process)
         return 124
+    except KeyboardInterrupt:
+        _terminate_process_group(process)
+        raise
+
+
+def _terminate_process_group(process) -> None:
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        process.wait(timeout=2)
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGKILL)
+    process.wait()
 
 
 def installed_packs(packs: Sequence[Pack], *, skills_dir: Path | None = None) -> set[str]:

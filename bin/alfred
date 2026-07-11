@@ -276,24 +276,20 @@ def _run_subcommand(
             file=sys.stderr,
         )
         return 124
+    except KeyboardInterrupt:
+        _terminate_process_group(process)
+        raise
 
 
 def _terminate_process_group(process: subprocess.Popen[Any]) -> None:
-    if process.poll() is not None:
-        return
     try:
         os.killpg(process.pid, signal.SIGTERM)
     except ProcessLookupError:
         return
-    try:
+    with contextlib.suppress(subprocess.TimeoutExpired):
         process.wait(timeout=2)
-        return
-    except subprocess.TimeoutExpired:
-        pass
-    try:
+    with contextlib.suppress(ProcessLookupError):
         os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        return
     process.wait()
 
 
@@ -3118,23 +3114,35 @@ def cmd_clear_lock(args: argparse.Namespace) -> int:
 
 
 def _launchctl(args: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["launchctl", *args],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=_SCHEDULER_COMMAND_TIMEOUT_S,
-    )
+    return _scheduler_command(["launchctl", *args], timeout=_SCHEDULER_COMMAND_TIMEOUT_S)
 
 
 def _systemctl_user(args: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["systemctl", "--user", *args],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
+    return _scheduler_command(["systemctl", "--user", *args], timeout=15)
+
+
+def _scheduler_command(cmd: list[str], *, timeout: float) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            cmd,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = (
+            exc.stdout.decode(errors="replace")
+            if isinstance(exc.stdout, bytes)
+            else exc.stdout or ""
+        )
+        stderr = (
+            exc.stderr.decode(errors="replace")
+            if isinstance(exc.stderr, bytes)
+            else exc.stderr or ""
+        )
+        detail = f"command timed out after {timeout:g}s"
+        return subprocess.CompletedProcess(cmd, 124, stdout=stdout, stderr=f"{stderr}{detail}\n")
 
 
 def _decode_systemd_env_value(value: str) -> str:

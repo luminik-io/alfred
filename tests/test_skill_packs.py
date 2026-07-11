@@ -39,7 +39,36 @@ def test_default_shell_runner_returns_timeout_status(tmp_path, monkeypatch) -> N
     monkeypatch.setattr(skill_packs.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
 
     assert skill_packs._default_shell_runner("slow-command", tmp_path) == 124
-    assert signals == [(456, skill_packs.signal.SIGTERM)]
+    assert signals == [
+        (456, skill_packs.signal.SIGTERM),
+        (456, skill_packs.signal.SIGKILL),
+    ]
+
+
+def test_default_shell_runner_cleans_process_group_on_interrupt(tmp_path, monkeypatch) -> None:
+    class FakeProcess:
+        pid = 654
+
+        def __init__(self, _command, **_kwargs):
+            self.calls = 0
+
+        def wait(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise KeyboardInterrupt
+            return -15
+
+    signals = []
+    monkeypatch.setattr(subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(skill_packs.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+
+    with pytest.raises(KeyboardInterrupt):
+        skill_packs._default_shell_runner("interrupt-me", tmp_path)
+
+    assert signals == [
+        (654, skill_packs.signal.SIGTERM),
+        (654, skill_packs.signal.SIGKILL),
+    ]
 
 
 # --------------------------------------------------------------------------

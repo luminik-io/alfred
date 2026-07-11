@@ -1454,9 +1454,7 @@ def test_maybe_offer_setup_token_accepts_runtime_env_file_token(
     assert "Run `alfred setup-token` now?" not in captured.out
 
 
-def test_maybe_offer_setup_token_reports_timeout_without_crashing(
-    tmp_path, init_mod, monkeypatch, capsys
-):
+def test_maybe_offer_setup_token_exits_with_timeout_status(tmp_path, init_mod, monkeypatch, capsys):
     import subprocess
 
     alfred_home = tmp_path / ".alfred"
@@ -1470,8 +1468,10 @@ def test_maybe_offer_setup_token_reports_timeout_without_crashing(
 
     monkeypatch.setattr(init_mod.subprocess, "run", time_out)
 
-    init_mod._maybe_offer_setup_token(non_interactive=False)
+    with pytest.raises(SystemExit) as exc:
+        init_mod._maybe_offer_setup_token(non_interactive=False)
 
+    assert exc.value.code == 124
     assert "timed out waiting for approval" in capsys.readouterr().err
 
 

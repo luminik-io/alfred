@@ -1500,7 +1500,7 @@ def _maybe_offer_setup_token(*, non_interactive: bool) -> None:
                 "`alfred setup-token` timed out waiting for approval. "
                 "Re-run it when you are ready to finish authentication."
             )
-            return
+            raise SystemExit(124) from None
         if rc != 0:
             warn(f"`alfred setup-token` exited {rc}. You can re-run it any time.")
     else:

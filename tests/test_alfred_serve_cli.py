@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -143,7 +145,32 @@ def test_bounded_subcommand_returns_timeout_status(monkeypatch, capsys):
 
     assert cli._run_subcommand(["slow-command"], timeout=2) == 124
     assert "timed out after 2s" in capsys.readouterr().err
-    assert signals == [(123, cli.signal.SIGTERM)]
+    assert signals == [(123, cli.signal.SIGTERM), (123, cli.signal.SIGKILL)]
+
+
+def test_bounded_subcommand_cleans_process_group_on_interrupt(monkeypatch):
+    cli = load_cli_module()
+
+    class FakeProcess:
+        pid = 321
+
+        def __init__(self, _command, **_kwargs):
+            self.calls = 0
+
+        def wait(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise KeyboardInterrupt
+            return -15
+
+    signals = []
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(cli.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+
+    with pytest.raises(KeyboardInterrupt):
+        cli._run_subcommand(["interrupt-me"], timeout=2)
+
+    assert signals == [(321, cli.signal.SIGTERM), (321, cli.signal.SIGKILL)]
 
 
 def test_code_memory_serve_is_unbounded(monkeypatch):
