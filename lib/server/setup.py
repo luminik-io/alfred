@@ -978,6 +978,8 @@ def _code_graph_capability(
                 code_memory["enabled"] = True
                 code_memory["detail"] = (
                     "Code-memory fallback is ready while Graphify awaits a per-repo graph."
+                    if installed
+                    else "Code-memory fallback is ready while Graphify is not installed."
                 )
             graphify = None
         else:
