@@ -6,6 +6,7 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Added
 
+- A harder memory-benchmark fixture (`tests/fixtures/mem-bench-hard/`, N=10 plus 2 controls) where every task's correct behaviour is a repo-specific convention that cannot be guessed from the repo itself: internal platform helpers for HTTP, logging, config, ids, clock, JSON serialization, database unit-of-work, shell execution and preconditions, plus a project error type. The convention exists only in the seeded lessons, a unit test mechanically forbids the fixture repo from leaking it, and each task demands a code-only reply so the deterministic markers grade code rather than commentary. A real `alfred benchmark memory --engine claude` A/B on this fixture measured repeated-mistake-rate 80% with memory OFF vs 0% with memory ON (delta +80 pts over N=10); the committed record and the one-command repro live in `docs/BENCHMARKS.md` and `docs/benchmarks/mem-ab-hard-real-v0.6.1.json`.
 - Optional `graphify` code-graph battery: a pure-Python engine (graphifyy, tree-sitter over ~40 languages) that maps imports, calls, and inheritance into a queryable graph, served read-only over MCP. Off by default and mutually exclusive with the `code-memory-mcp` battery (enable one code-graph engine). Turn on with `ALFRED_GRAPHIFY_MCP=1`. See [docs/CODE_MEMORY.md](docs/CODE_MEMORY.md).
 
 ### Changed
