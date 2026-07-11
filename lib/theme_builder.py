@@ -437,6 +437,7 @@ def run_turn(
             timeout=timeout,
             claude_max_turns=DEFAULT_MAX_TURNS,
             codex_timeout=timeout,
+            hybrid_fallback_on_provider_failure=True,
         )
     except Exception:
         return None
