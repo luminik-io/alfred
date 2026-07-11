@@ -21,12 +21,25 @@ import skill_packs  # noqa: E402
 
 
 def test_default_shell_runner_returns_timeout_status(tmp_path, monkeypatch) -> None:
-    def time_out(command, **kwargs):
-        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+    class FakeProcess:
+        pid = 456
 
-    monkeypatch.setattr(subprocess, "run", time_out)
+        def __init__(self, command, **_kwargs):
+            self.command = command
+            self.calls = 0
+
+        def wait(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise subprocess.TimeoutExpired(self.command, timeout)
+            return -15
+
+    signals = []
+    monkeypatch.setattr(subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(skill_packs.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
 
     assert skill_packs._default_shell_runner("slow-command", tmp_path) == 124
+    assert signals == [(456, skill_packs.signal.SIGTERM)]
 
 
 # --------------------------------------------------------------------------

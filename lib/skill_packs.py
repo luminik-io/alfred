@@ -32,6 +32,7 @@ from __future__ import annotations
 import os
 import shlex
 import shutil
+import signal
 import tomllib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -324,14 +325,22 @@ def _default_shell_runner(cmd: str, cwd: Path) -> int:
     """Real shell runner for fetch packs. Only used outside tests."""
     import subprocess
 
+    process = subprocess.Popen(cmd, shell=True, cwd=str(cwd), start_new_session=True)
     try:
-        return subprocess.run(
-            cmd,
-            shell=True,
-            cwd=str(cwd),
-            timeout=FETCH_PACK_TIMEOUT_S,
-        ).returncode
+        return process.wait(timeout=FETCH_PACK_TIMEOUT_S)
     except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return 124
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                return 124
+            process.wait()
         return 124
 
 

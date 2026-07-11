@@ -120,6 +120,7 @@ import platform
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -260,16 +261,40 @@ def _run_subcommand(
     timeout: float | None,
     env: dict[str, str] | None = None,
 ) -> int:
-    try:
+    if timeout is None:
         if env is not None:
-            return subprocess.run(cmd, check=False, timeout=timeout, env=env).returncode
-        return subprocess.run(cmd, check=False, timeout=timeout).returncode
+            return subprocess.run(cmd, check=False, timeout=None, env=env).returncode
+        return subprocess.run(cmd, check=False, timeout=None).returncode
+
+    process = subprocess.Popen(cmd, env=env, start_new_session=True)
+    try:
+        return process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
+        _terminate_process_group(process)
         print(
             f"alfred: command timed out after {timeout:g}s: {shlex.join(cmd)}",
             file=sys.stderr,
         )
         return 124
+
+
+def _terminate_process_group(process: subprocess.Popen[Any]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        process.wait(timeout=2)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return
+    process.wait()
 
 
 def _switch_value(raw: str) -> str:

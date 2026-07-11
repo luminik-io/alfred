@@ -121,13 +121,29 @@ def test_serve_uses_managed_alfred_venv_when_present(tmp_path, monkeypatch):
 def test_bounded_subcommand_returns_timeout_status(monkeypatch, capsys):
     cli = load_cli_module()
 
-    def fake_run(command, check, timeout):
-        raise cli.subprocess.TimeoutExpired(command, timeout)
+    class FakeProcess:
+        pid = 123
 
-    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+        def __init__(self, command, **_kwargs):
+            self.command = command
+            self.calls = 0
+
+        def wait(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise cli.subprocess.TimeoutExpired(self.command, timeout)
+            return -15
+
+        def poll(self):
+            return None
+
+    signals = []
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(cli.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
 
     assert cli._run_subcommand(["slow-command"], timeout=2) == 124
     assert "timed out after 2s" in capsys.readouterr().err
+    assert signals == [(123, cli.signal.SIGTERM)]
 
 
 def test_code_memory_serve_is_unbounded(monkeypatch):

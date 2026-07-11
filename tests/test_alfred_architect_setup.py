@@ -231,11 +231,14 @@ def test_alfred_wrapper_forwards_rollout_order(monkeypatch):
     cli = _load_alfred_cli()
     calls: list[list[str]] = []
 
-    def fake_run(cmd, *, check=False, timeout=None):
-        calls.append(cmd)
-        return subprocess.CompletedProcess(cmd, 0)
+    class FakeProcess:
+        def __init__(self, cmd, **_kwargs):
+            calls.append(cmd)
 
-    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+        def wait(self, timeout):
+            return 0
+
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
     out = cli.cmd_architect_setup(
         argparse.Namespace(
             check_only=False,

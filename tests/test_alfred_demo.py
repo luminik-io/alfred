@@ -449,11 +449,15 @@ def test_cli_demo_forwards_flags_to_runner(monkeypatch):
     cli = load_cli_module()
     calls: list[tuple[list[str], int]] = []
 
-    def fake_run(command, check, timeout):
-        calls.append((command, timeout))
-        return _CompletedStub()
+    class FakeProcess:
+        def __init__(self, command, **_kwargs):
+            self.command = command
 
-    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+        def wait(self, timeout):
+            calls.append((self.command, timeout))
+            return 0
+
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
 
     args = _demo_namespace(keep=True, yes=True, timeout=45)
     assert cli.cmd_demo(args) == 0
@@ -470,11 +474,15 @@ def test_cli_demo_parent_timeout_scales_with_forwarded_step_limit(monkeypatch):
     cli = load_cli_module()
     timeouts: list[int] = []
 
-    def fake_run(command, check, timeout):
-        timeouts.append(timeout)
-        return _CompletedStub()
+    class FakeProcess:
+        def __init__(self, _command, **_kwargs):
+            pass
 
-    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+        def wait(self, timeout):
+            timeouts.append(timeout)
+            return 0
+
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
 
     assert cli.cmd_demo(_demo_namespace(keep=False, yes=True, timeout=300)) == 0
     assert timeouts == [(300 * 4) + 120]
