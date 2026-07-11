@@ -146,6 +146,8 @@ const FIT_OPTIONS = {
   maxZoom: WORKFLOW_ZOOM.max,
 } as const;
 
+const MAX_INITIAL_FRAME_ATTEMPTS = 8;
+
 // MiniMap node color tracks the agent's live status, so the overview reads the
 // same as the canvas. The minimap paints into a raw SVG, so resolve theme
 // tokens to concrete values up front (CSS variables do not apply on <rect>).
@@ -187,7 +189,7 @@ function prefersReducedMotion(): boolean {
  * fit. The explicit fit-to-view button (Controls) still reaches the full graph.
  */
 function FitToContainer({ signature }: { signature: string }) {
-  const { getNodes, getNodesBounds, setViewport } = useReactFlow();
+  const { getNodes, getNodesBounds, setViewport, fitView } = useReactFlow();
   const width = useStore((state) => state.width);
   const height = useStore((state) => state.height);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -196,17 +198,40 @@ function FitToContainer({ signature }: { signature: string }) {
     if (!width || !height) {
       return;
     }
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      const nodes = getNodes();
-      if (!nodes.length) return;
-      const bounds = getNodesBounds(nodes);
-      if (bounds.width <= 0 || bounds.height <= 0) return;
-      const target = initialWorkflowViewport(bounds, { width, height });
-      void setViewport(target, { duration: prefersReducedMotion() ? 0 : 240 });
-    }, 80);
-    return () => clearTimeout(timer.current);
-  }, [width, height, signature, getNodes, getNodesBounds, setViewport]);
+    let cancelled = false;
+    let attempts = 0;
+
+    const frame = () => {
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => {
+        if (cancelled) return;
+        const nodes = getNodes();
+        const bounds = nodes.length ? getNodesBounds(nodes) : null;
+        if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
+          attempts += 1;
+          if (attempts < MAX_INITIAL_FRAME_ATTEMPTS) {
+            frame();
+          } else {
+            // Bounds never became usable within the retry budget (a very slow
+            // mount, or a store that adopted nodes before measuring them). Fall
+            // back to React Flow's own fit so the canvas is always framed rather
+            // than left at its default viewport; minZoom in FIT_OPTIONS still
+            // holds the readable floor.
+            void fitView(FIT_OPTIONS);
+          }
+          return;
+        }
+        const target = initialWorkflowViewport(bounds, { width, height });
+        void setViewport(target, { duration: prefersReducedMotion() ? 0 : 240 });
+      }, 80);
+    };
+
+    frame();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer.current);
+    };
+  }, [width, height, signature, getNodes, getNodesBounds, setViewport, fitView]);
 
   return null;
 }
