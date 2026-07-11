@@ -1,13 +1,13 @@
 import { ArrowRight, GaugeCircle, PlayCircle, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { errorDetail } from "../../api/client";
 import {
   clearSetupDemo,
   composeSetupPlaybook,
-  errorDetail,
   loadSetupPlaybooks,
   seedSetupDemo,
-} from "../../api";
+} from "../../api/setup";
 import type { TabKey } from "../../lib/uiTypes";
 import type { SetupPlaybook } from "../../types";
 import { Button, Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "../ui";

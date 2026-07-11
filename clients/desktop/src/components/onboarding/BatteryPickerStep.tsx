@@ -1,7 +1,8 @@
 import { CheckCircle2, CircleDashed, Package, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-import { errorDetail, loadSetupBatteries, saveSetupBattery } from "../../api";
+import { errorDetail } from "../../api/client";
+import { loadSetupBatteries, saveSetupBattery } from "../../api/setup";
 import type { SetupBattery, SetupBatteryManifest } from "../../types";
 import { Badge, Button, Card, CardContent, Switch } from "../ui";
 import { cn } from "@/lib/utils";

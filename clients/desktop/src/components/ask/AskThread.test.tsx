@@ -3,14 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ComposeView } from "../ComposeView";
+import { ApiError } from "../../api/client";
 import {
-  ApiError,
   composeConverse,
   composeDraft,
   conversationControl,
-  filePlanIssue,
   streamComposeConverse,
-} from "../../api";
+} from "../../api/converse";
+import { filePlanIssue } from "../../api/plans";
 import type { ConverseResponse } from "../../types";
 
 // These tests exercise the assistant-ui ExternalStore adapter wiring that the
@@ -25,20 +25,23 @@ import type { ConverseResponse } from "../../types";
 // server-side engine rather than dropping to the offline draft fallback.
 let conversationAvailable = true;
 
-vi.mock("../../api", async () => {
-  const actual = await vi.importActual<typeof import("../../api")>("../../api");
-  return {
-    ...actual,
-    // Native actions stay Tauri-only; the hosted-browser test flips this false.
-    supportsNativeActions: () => false,
-    supportsConversation: () => conversationAvailable,
-    composeConverse: vi.fn(),
-    composeDraft: vi.fn(),
-    conversationControl: vi.fn(),
-    filePlanIssue: vi.fn(),
-    streamComposeConverse: vi.fn(),
-  };
-});
+vi.mock("../../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/client")>()),
+  // Native actions stay Tauri-only; the hosted-browser test flips this false.
+  supportsNativeActions: () => false,
+  supportsConversation: () => conversationAvailable,
+}));
+vi.mock("../../api/converse", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/converse")>()),
+  composeConverse: vi.fn(),
+  composeDraft: vi.fn(),
+  conversationControl: vi.fn(),
+  streamComposeConverse: vi.fn(),
+}));
+vi.mock("../../api/plans", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/plans")>()),
+  filePlanIssue: vi.fn(),
+}));
 
 const converseMock = vi.mocked(composeConverse);
 const draftMock = vi.mocked(composeDraft);

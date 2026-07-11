@@ -1,7 +1,8 @@
 import { CheckCircle2, RefreshCw } from "lucide-react";
 import { useCallback, useState } from "react";
 
-import { errorDetail, loadSetupRepos, saveSetupRepos } from "../../api";
+import { errorDetail } from "../../api/client";
+import { loadSetupRepos, saveSetupRepos } from "../../api/setup";
 import type { SetupRepo } from "../../types";
 import { Badge, Button, Card, CardContent } from "../ui";
 import type { OnboardingNotice } from "./types";

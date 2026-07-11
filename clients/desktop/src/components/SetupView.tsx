@@ -13,7 +13,8 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { errorDetail, loadSetupStatus, supportsNativeActions } from "../api";
+import { errorDetail, supportsNativeActions } from "../api/client";
+import { loadSetupStatus } from "../api/setup";
 import type { ActionNotice, NativeActionRequest } from "../lib/uiTypes";
 import type { SetupStatus, TrustedSlackUsersResponse } from "../types";
 import { EmptyState, PanelHeader } from "./atoms";

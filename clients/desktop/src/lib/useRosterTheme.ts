@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { loadRosterTheme, saveRosterTheme } from "../api";
+import { loadRosterTheme, saveRosterTheme } from "../api/roster";
 import {
   type CustomRosterNames,
   DEFAULT_ROSTER_THEME,

@@ -5,15 +5,14 @@ import {
   type ThreadMessageLike,
 } from "@assistant-ui/react";
 
+import { isLiveSessionUnavailable, supportsConversation } from "../../api/client";
 import {
   composeConverse,
   composeDraft,
   conversationControl,
-  filePlanIssue,
-  isLiveSessionUnavailable,
   streamComposeConverse,
-  supportsConversation,
-} from "../../api";
+} from "../../api/converse";
+import { filePlanIssue } from "../../api/plans";
 import {
   clearConversations,
   conversationTitle,

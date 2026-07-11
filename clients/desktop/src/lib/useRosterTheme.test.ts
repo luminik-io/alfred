@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { RosterThemeResponse } from "../api";
+import type { RosterThemeResponse } from "../api/roster";
 import { useRosterTheme } from "./useRosterTheme";
 
 // The hook talks to the runtime through these two api helpers; mock them so the
@@ -10,7 +10,7 @@ const loadRosterTheme = vi.fn<(baseUrl: string) => Promise<RosterThemeResponse>>
 const saveRosterTheme =
   vi.fn<(baseUrl: string, body: unknown) => Promise<RosterThemeResponse>>();
 
-vi.mock("../api", () => ({
+vi.mock("../api/roster", () => ({
   loadRosterTheme: (baseUrl: string) => loadRosterTheme(baseUrl),
   saveRosterTheme: (baseUrl: string, body: unknown) => saveRosterTheme(baseUrl, body),
 }));

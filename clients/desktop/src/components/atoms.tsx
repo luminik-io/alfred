@@ -20,7 +20,7 @@ import type { LucideIcon } from "lucide-react";
 import { titleCase } from "../format";
 import { openExternal } from "../lib/links";
 import type { AttentionItem } from "../lib/uiTypes";
-import { supportsNativeActions } from "../api";
+import { supportsNativeActions } from "../api/client";
 import type {
   NativeCommandResult,
   PlanDecision,

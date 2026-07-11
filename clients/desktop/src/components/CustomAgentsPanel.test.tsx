@@ -12,10 +12,14 @@ const apiMocks = vi.hoisted(() => ({
   supportsMutations: vi.fn(),
 }));
 
-vi.mock("../api", () => ({
+vi.mock("../api/agents", () => ({
   deleteCustomAgent: apiMocks.deleteCustomAgent,
   loadCustomAgents: apiMocks.loadCustomAgents,
   saveCustomAgent: apiMocks.saveCustomAgent,
+}));
+
+vi.mock("../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/client")>()),
   supportsMutations: apiMocks.supportsMutations,
 }));
 

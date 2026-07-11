@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { loadAgentFirings, streamFiringTail } from "../api";
+import { loadAgentFirings, streamFiringTail } from "../api/snapshot";
 import { exactTime, friendlyTime } from "../format";
 import { formatTranscriptLine } from "../lib/transcript";
 import type { FeedItem, FeedTarget } from "../lib/notifications";

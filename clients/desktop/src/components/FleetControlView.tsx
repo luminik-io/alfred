@@ -1,7 +1,7 @@
 import { Rows3, Workflow as WorkflowIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { supportsNativeActions } from "../api";
+import { supportsNativeActions } from "../api/client";
 import { friendlyTime } from "../format";
 import { isErrorStatus } from "../lib/derive";
 import {

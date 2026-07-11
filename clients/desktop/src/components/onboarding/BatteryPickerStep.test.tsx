@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import * as api from "../../api";
+import * as api from "../../api/setup";
 import { BatteryPickerStep } from "./BatteryPickerStep";
 import type { SetupBattery, SetupBatteryManifest } from "../../types";
 

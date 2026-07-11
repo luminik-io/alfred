@@ -14,7 +14,8 @@ import {
 } from "lucide-react";
 
 import { friendlyTime, titleCase } from "../format";
-import { isCandidateBackedLesson, supportsNativeActions } from "../api";
+import { supportsNativeActions } from "../api/client";
+import { isCandidateBackedLesson } from "../api/memory";
 import type { MemoryCandidate, MemoryLesson, Snapshot } from "../types";
 import type { ActionNotice, NativeActionRequest } from "../lib/uiTypes";
 import { EmptyState, PanelHeader, SignalCard } from "./atoms";

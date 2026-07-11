@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { supportsMutations } from "../api";
+import { supportsMutations } from "../api/client";
 import { exactTime, friendlyTime } from "../format";
 import {
   agentForShipped,

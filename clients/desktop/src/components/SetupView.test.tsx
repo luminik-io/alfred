@@ -2,7 +2,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import * as api from "../api";
+import * as apiClient from "../api/client";
+import * as apiSetup from "../api/setup";
 import type { SetupStatus } from "../types";
 import { SetupView } from "./SetupView";
 
@@ -125,8 +126,8 @@ describe("SetupView", () => {
   it("defaults diagnostics dry-run to the canonical senior-dev role", async () => {
     const user = userEvent.setup();
     const onRunLocalAction = vi.fn();
-    vi.spyOn(api, "supportsNativeActions").mockReturnValue(true);
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(setupStatus("/tmp/alfred-home"));
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(setupStatus("/tmp/alfred-home"));
 
     render(renderSetup("http://127.0.0.1:7010", { onRunLocalAction }));
 
@@ -144,8 +145,8 @@ describe("SetupView", () => {
 
   it("clears displayed setup inventory while a new server URL is loading", async () => {
     const newRequest = deferred<SetupStatus>();
-    vi.spyOn(api, "supportsNativeActions").mockReturnValue(true);
-    vi.spyOn(api, "loadSetupStatus")
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(apiSetup, "loadSetupStatus")
       .mockResolvedValueOnce(setupStatus("/tmp/old-alfred-home"))
       .mockReturnValueOnce(newRequest.promise);
 
@@ -165,8 +166,8 @@ describe("SetupView", () => {
   it("ignores stale setup inventory reads after the server URL changes", async () => {
     const oldRequest = deferred<SetupStatus>();
     const newRequest = deferred<SetupStatus>();
-    vi.spyOn(api, "supportsNativeActions").mockReturnValue(true);
-    vi.spyOn(api, "loadSetupStatus")
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(apiSetup, "loadSetupStatus")
       .mockReturnValueOnce(oldRequest.promise)
       .mockReturnValueOnce(newRequest.promise);
 
@@ -185,10 +186,10 @@ describe("SetupView", () => {
   it("ignores stale setup inventory after a same-url disconnect and reconnect", async () => {
     const staleRequest = deferred<SetupStatus>();
     const loadStatus = vi
-      .spyOn(api, "loadSetupStatus")
+      .spyOn(apiSetup, "loadSetupStatus")
       .mockReturnValueOnce(staleRequest.promise)
       .mockResolvedValue(setupStatus("/tmp/reconnected-alfred-home"));
-    vi.spyOn(api, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
 
     const view = render(renderSetup("http://127.0.0.1:7010"));
     await waitFor(() => expect(loadStatus).toHaveBeenCalledTimes(1));
@@ -209,8 +210,8 @@ describe("SetupView", () => {
   it("surfaces first-run readiness blockers on the connection setup tab", async () => {
     const user = userEvent.setup();
     const onRunLocalAction = vi.fn();
-    vi.spyOn(api, "supportsNativeActions").mockReturnValue(true);
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       setupStatus("/tmp/alfred-home", {
         first_run: {
           version: 1,
@@ -294,8 +295,8 @@ describe("SetupView", () => {
   });
 
   it("shows first-run repair progress while a native readiness action is busy", async () => {
-    vi.spyOn(api, "supportsNativeActions").mockReturnValue(true);
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       setupStatus("/tmp/alfred-home", {
         first_run: {
           version: 1,
@@ -340,8 +341,8 @@ describe("SetupView", () => {
   });
 
   it("does not offer code-memory indexing when code memory is disabled", async () => {
-    vi.spyOn(api, "supportsNativeActions").mockReturnValue(true);
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       setupStatus("/tmp/alfred-home", {
         first_run: {
           version: 1,
@@ -383,10 +384,10 @@ describe("SetupView", () => {
   });
 
   it("runs the code-memory install repair before indexing on fresh machines", async () => {
-    vi.spyOn(api, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
     const user = userEvent.setup();
     const onRunLocalAction = vi.fn().mockResolvedValue(undefined);
-    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       setupStatus("/tmp/alfred-home", {
         first_run: {
           version: 1,

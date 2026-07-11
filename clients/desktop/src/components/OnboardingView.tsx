@@ -16,14 +16,13 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { errorDetail, supportsMutations } from "../api/client";
 import {
-  errorDetail,
   loadSchedule,
   loadSetupStatus,
   saveSetupBattery,
   saveSetupRepos,
-  supportsMutations,
-} from "../api";
+} from "../api/setup";
 import { pollGithubAuthStatus } from "../lib/githubAuth";
 import {
   type CustomRosterNames,

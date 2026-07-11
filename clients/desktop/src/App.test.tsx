@@ -7,14 +7,14 @@ import type { SetupStatus, Snapshot } from "./types";
 // control (a plain vi.spyOn would miss the binding App captured at import time,
 // since the App module is cached across the dynamic imports below).
 const loadSetupStatusMock = vi.fn<() => Promise<SetupStatus>>();
-vi.mock("./api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./api")>();
-  return {
-    ...actual,
-    loadSetupStatus: (...args: unknown[]) => loadSetupStatusMock(...(args as [])),
-    supportsNativeActions: () => false,
-  };
-});
+vi.mock("./api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./api/client")>()),
+  supportsNativeActions: () => false,
+}));
+vi.mock("./api/setup", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./api/setup")>()),
+  loadSetupStatus: (...args: unknown[]) => loadSetupStatusMock(...(args as [])),
+}));
 
 // Stub the heavy screen components down to identifiable markers so the test can
 // assert which screen the initial route lands on without rendering the whole

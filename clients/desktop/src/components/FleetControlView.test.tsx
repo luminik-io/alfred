@@ -7,7 +7,8 @@ import { parseFleetServiceState } from "../lib/fleetControl";
 import type { AgentSummary, NativeCommandResult, ScheduledRun } from "../types";
 
 // Render in the desktop-capable mode so the control buttons appear.
-vi.mock("../api", () => ({
+vi.mock("../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/client")>()),
   supportsNativeActions: () => true,
 }));
 

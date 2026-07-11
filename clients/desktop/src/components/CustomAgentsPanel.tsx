@@ -11,12 +11,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-import {
-  deleteCustomAgent,
-  loadCustomAgents,
-  saveCustomAgent,
-  supportsMutations,
-} from "../api";
+import { deleteCustomAgent, loadCustomAgents, saveCustomAgent } from "../api/agents";
+import { supportsMutations } from "../api/client";
 import type {
   CustomAgentEngine,
   CustomAgentRecord,

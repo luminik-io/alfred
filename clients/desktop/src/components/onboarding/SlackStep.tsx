@@ -1,11 +1,8 @@
 import { ArrowRight, MessageCircle, UserPlus, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import {
-  addTrustedSlackUser,
-  errorDetail,
-  loadTrustedSlackUsers,
-} from "../../api";
+import { errorDetail } from "../../api/client";
+import { addTrustedSlackUser, loadTrustedSlackUsers } from "../../api/slack";
 import type { TrustedSlackUser } from "../../types";
 import { Button, Card, CardContent, Input, Label } from "../ui";
 import type { OnboardingNotice } from "./types";
