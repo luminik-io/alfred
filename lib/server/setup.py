@@ -814,9 +814,9 @@ def capability_status(
         graph_path = Path(
             runtime_env.get("ALFRED_GRAPHIFY_GRAPH") or "graphify-out/graph.json"
         ).expanduser()
-        if not graph_path.is_absolute():
-            graph_path = Path.cwd() / graph_path
-        graphify["graph_present"] = graph_path.is_file()
+        # Relative graphs are resolved per firing worktree by agent_runner.
+        # The setup server has no single target repo, so it cannot prove them ready.
+        graphify["graph_present"] = graph_path.is_absolute() and graph_path.is_file()
         graphify["graph_path"] = str(graph_path)
         graphify["fallback"] = runtime_env.get("ALFRED_GRAPHIFY_FALLBACK", "")
     capabilities = [

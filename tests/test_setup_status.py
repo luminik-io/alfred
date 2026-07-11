@@ -1042,6 +1042,27 @@ def test_ready_code_memory_wins_while_graphify_is_not_usable(
     assert code_graph["source"]["source"] == "DeusData/codebase-memory-mcp"
 
 
+def test_relative_graph_is_not_probed_against_setup_server_cwd(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    graph = tmp_path / "graphify-out" / "graph.json"
+    graph.parent.mkdir()
+    graph.write_text("{}", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        setup_mod.batteries,
+        "manifest",
+        lambda _env: {"batteries": [{"id": "graphify", "enabled": True, "installed": True}]},
+    )
+    payload = setup_mod.capability_status(
+        {"enabled": False, "binary": {"resolved": False}, "index_present": False},
+        launcher_env={"ALFRED_GRAPHIFY_GRAPH": "graphify-out/graph.json"},
+    )
+    code_graph = next(item for item in payload["capabilities"] if item["key"] == "code_graph")
+    assert code_graph["state"] == "needs_index"
+    assert code_graph["detected"]["graph_present"] is False
+
+
 def test_capability_plane_reports_builtin_context_governor_with_headroom_detected(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
