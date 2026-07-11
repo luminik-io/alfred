@@ -7,9 +7,9 @@
 Every environment variable Alfred reads is declared once in the typed
 registry at `lib/alfred_config.py`. This page is generated from it.
 
-- Declared variables: **376**
-- Operator-facing (in `.env.example`): **66**
-- Internal / experimental: **310**
+- Declared variables: **377**
+- Operator-facing (in `.env.example`): **68**
+- Internal / experimental: **309**
 
 Operator-facing vars also appear, with their defaults, in
 `.env.example`. Internal vars are listed here for completeness; they
@@ -391,9 +391,10 @@ are experimental, deep-tuning, or set by Alfred itself at runtime.
 | `ALFRED_AUTO_PROMOTE_NO_JUDGE_THRESHOLD` | float |  | internal | Score threshold used when the judge is disabled. |
 | `ALFRED_AUTO_PROMOTE_MAX_PER_RUN` | int |  | internal | Max memories auto-promoted per run. |
 | `ALFRED_AUTO_PROMOTE_MAX_JUDGE_CALLS` | int |  | internal | Max judge calls per auto-promote run. |
+| `ALFRED_RUBRIC_GATE` | bool | `0` | operator | Grade the build against an issue-derived rubric and revise before opening a PR. |
 | `ALFRED_RUBRIC` | str |  | internal | Inline rubric or rubric name enabling graded output. |
 | `ALFRED_RUBRIC_GRADER_ENGINE` | str |  | internal | Engine used by the rubric grader. |
-| `ALFRED_RUBRIC_MAX_ITERATIONS` | int | `3` | internal | Max rubric improvement iterations (1..10). |
+| `ALFRED_RUBRIC_MAX_ITERATIONS` | int | `1` | operator | Max rubric revision passes before opening the PR (1..10). |
 | `ALFRED_PLANNING_ASSISTANT_ENGINE` | str |  | internal | Fallback engine for the planning assistant. |
 | `ALFRED_PLANNING_ASSISTANT_TIMEOUT` | int | `180` | internal | Timeout in seconds for the planning assistant. |
 | `ALFRED_ISSUE_SUMMARY_ENABLED` | bool | `0` | internal | Enable LLM issue summaries. |

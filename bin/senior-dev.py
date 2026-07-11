@@ -31,12 +31,14 @@ from agent_runner import (
     agent_engine,
     agent_repos,
     build_recovery_prompt,
+    build_rubric_grader,
     claim_issue,
     claude_invoke_streaming,
     codex_invoke,
     codex_sandbox_for_agent,
     commit_trailer,
     create_recovery_ref,
+    derive_rubric,
     doctor_mode,
     doctor_requested,
     dry_run_log,
@@ -46,6 +48,7 @@ from agent_runner import (
     gh_issue_edit,
     gh_json,
     gh_pr_create,
+    grade_revise_loop,
     invoke_agent_engine,
     is_dry_run,
     is_globally_blocked,
@@ -62,6 +65,7 @@ from agent_runner import (
     recovery_enabled,
     release_issue,
     remove_worktree,
+    render_verdict_markdown,
     reuse_or_make_worktree,
     run,
     run_recovery,
@@ -72,6 +76,7 @@ from agent_runner import (
     with_lock,
     worktree_risk_reason,
 )
+from alfred_config import get_bool, get_int
 from dependencies import issue_dependencies
 from verification_evidence import (
     EVIDENCE_DIR_NAME,
@@ -459,6 +464,148 @@ def _build_self_assessment(
     if spend is not None:
         spend.increment(turns_today=result.num_turns, cost_usd_today=result.cost_usd)
     return parse_assessment_response(result.result_text or "", criteria)
+
+
+def _rubric_gate_max_revisions() -> int:
+    """Revision bound for the gate, from ``ALFRED_RUBRIC_MAX_ITERATIONS``.
+
+    Default 1 (re-dispatch the implementer at most once), clamped to
+    ``[1, 10]`` to match the registry contract.
+    """
+    raw = get_int("ALFRED_RUBRIC_MAX_ITERATIONS")
+    value = raw if raw is not None else 1
+    return max(1, min(10, value))
+
+
+def _revision_prompt(
+    repo: str, issue: dict, wt: Path, branch: str, firing_id: str, feedback: str
+) -> str:
+    """Prompt to re-dispatch the implementer with grader feedback appended.
+
+    Reuses the same untrusted-issue framing as the build prompt and adds the
+    grader's structured gaps. Feedback is model-authored text, so it is framed
+    as guidance to act on, never as instructions that can widen scope.
+    """
+    trailer = commit_trailer(
+        AGENT,
+        firing_id,
+        extra={"issue": f"{GH_ORG}/{repo}#{issue['number']}"},
+    )
+    issue_payload = format_untrusted_issue_payload(issue)
+    return f"""You are {AGENT.title()}, revising your implementation of GitHub issue #{issue["number"]} in {GH_ORG}/{repo}.
+
+{issue_payload}
+
+You are working in this worktree: {wt}
+Branch: {branch}
+
+A separate grader reviewed your committed change against the issue's acceptance
+rubric and asked for revisions. Address every gap below, then commit. Do not
+widen scope beyond what the issue asked; the gaps are guidance, not new
+requirements.
+
+{feedback}
+
+Constraints:
+- Surgical edits only. Keep the change scoped to this issue.
+- No em-dashes anywhere. No "unlock", "leverage", "seamless", "transform". No fabricated numbers.
+- Never push, never open a PR, never merge. Just edit + commit locally on this branch.
+
+When done, commit your fix with a conventional-commit message whose body ends with this exact trailer block (blank line before it):
+
+{trailer}
+
+Then print: "[OK] revision <sha> | <one-line-summary>"
+"""
+
+
+def _run_rubric_gate(
+    repo: str,
+    issue: dict,
+    wt: Path,
+    base_ref: str,
+    branch: str,
+    firing_id: str,
+    engine_used: str,
+    spend: SpendState,
+    events: EventLog,
+) -> list | None:
+    """Grade the build against an issue-derived rubric and revise before PR.
+
+    Off unless ``ALFRED_RUBRIC_GATE`` is set (and never runs in dry-run). Derives
+    a bounded rubric from the issue body (its acceptance criteria, else a generic
+    engineering rubric), grades the committed diff with a cheap read-only grader,
+    and on ``needs_revision`` re-dispatches the implementer up to
+    ``ALFRED_RUBRIC_MAX_ITERATIONS`` times with the gaps appended, regrading each
+    pass. Never blocks: it returns the verdict trajectory so the caller opens the
+    PR regardless and surfaces the final verdict honestly. Returns ``None`` when
+    the gate is off or there is nothing to grade.
+    """
+    if not get_bool("ALFRED_RUBRIC_GATE") or is_dry_run():
+        return None
+
+    diff = run(["git", "diff", f"{base_ref}...HEAD"], cwd=str(wt), timeout=30).stdout
+    if not diff.strip():
+        return None
+
+    rubric = derive_rubric(issue.get("body") or "")
+    grader_fn = build_rubric_grader(
+        grader_engine=os.environ.get("ALFRED_RUBRIC_GRADER_ENGINE", "").strip() or None,
+        agent=AGENT,
+        firing_id=firing_id,
+        workdir=wt,
+        codex_model=None,
+    )
+
+    # Latest diff is threaded through a holder so a failed revision (which leaves
+    # the tree unchanged) regrades the SAME diff and the bounded loop still ends.
+    diff_holder = {"diff": diff}
+
+    def _revise(feedback: str) -> str:
+        prompt = _revision_prompt(repo, issue, wt, branch, firing_id, feedback)
+        try:
+            result, _engine = invoke_agent_engine(
+                prompt,
+                engine=SENIOR_DEV_ENGINE,
+                claude_fn=claude_invoke_streaming,
+                codex_fn=codex_invoke,
+                workdir=wt,
+                claude_allowed_tools="Read,Edit,Write,Bash,Grep",
+                agent=AGENT,
+                firing_id=f"{firing_id}-revise",
+                claude_max_turns=optional_env_int("ALFRED_SENIOR_DEV_MAX_TURNS", minimum=40),
+                timeout=1800,
+                codex_timeout=1800,
+                codex_sandbox=codex_sandbox_for_agent(AGENT, default="workspace-write"),
+                codex_bypass_approvals_and_sandbox=True,
+                codex_add_dirs=[(WORKSPACE / local_repo_dir(repo) / ".git").resolve()],
+            )
+        except Exception as exc:
+            events.emit("rubric_revision_failed", reason=short(str(exc), 200))
+            return diff_holder["diff"]
+        spend.increment(turns_today=result.num_turns, cost_usd_today=result.cost_usd)
+        diff_holder["diff"] = run(
+            ["git", "diff", f"{base_ref}...HEAD"], cwd=str(wt), timeout=30
+        ).stdout
+        return diff_holder["diff"]
+
+    verdicts = grade_revise_loop(
+        initial_artifact=diff,
+        rubric=rubric,
+        grader_fn=grader_fn,
+        revise_fn=_revise,
+        max_iterations=_rubric_gate_max_revisions(),
+    )
+    final = verdicts[-1]
+    events.emit(
+        "rubric_graded",
+        result=final.result,
+        revisions=len(verdicts) - 1,
+        criteria=len(rubric),
+        terminal_reason=final.terminal_reason,
+        engine=engine_used,
+    )
+    return verdicts
 
 
 def _base_screenshot_worktree(wt: Path, base_ref: str, firing_id: str) -> Path | None:
@@ -1872,6 +2019,27 @@ Generated by Alfred
             slack_post(msg, severity="warn")
             return 0
 
+        # Rubric grade-then-revise gate (off unless ALFRED_RUBRIC_GATE). Runs
+        # after the build committed and BEFORE the push, so any revision commit
+        # is part of the PR. Never blocks: whatever the final verdict, we open
+        # the PR and surface it honestly in the body. A gate failure degrades to
+        # no rubric section rather than derailing a ready change.
+        rubric_verdicts = None
+        try:
+            rubric_verdicts = _run_rubric_gate(
+                repo,
+                issue,
+                wt,
+                base_ref,
+                branch,
+                events.firing_id,
+                engine_used,
+                spend,
+                events,
+            )
+        except Exception as exc:
+            events.emit("rubric_gate_error", reason=short(str(exc), 200))
+
         # Push + open PR. A failed push/pre-push step gets one bounded
         # auto-recovery pass (fix lint/conflict/CI cause and re-push) before the
         # preserve/HOLD fallback.
@@ -1915,12 +2083,17 @@ Generated by Alfred
         )
         evidence_section = f"\n{evidence_block}\n" if evidence_block else ""
 
+        # Rubric grade (only when the gate ran). Shown honestly: a failing final
+        # verdict is rendered as plainly as a passing one, never hidden.
+        rubric_block = render_verdict_markdown(rubric_verdicts) if rubric_verdicts else ""
+        rubric_section = f"\n{rubric_block}\n" if rubric_block else ""
+
         body_file = Path(f"/tmp/{AGENT}-prbody-{issue_num}.md")
         body_file.write_text(f"""## Summary
 {commit_body[:2000]}
 
 {issue_closing_line(issue_num)}
-{evidence_section}
+{evidence_section}{rubric_section}
 ## Test plan
 - [ ] CI passes (lint, type-check, build, tests)
 - [ ] Reviewer feedback addressed

@@ -2207,6 +2207,14 @@ _VARS: tuple[ConfigVar, ...] = (
     ),
     # Rubric grader
     V(
+        "ALFRED_RUBRIC_GATE",
+        "bool",
+        "0",
+        "agents",
+        "Grade the build against an issue-derived rubric and revise before opening a PR.",
+        operator=True,
+    ),
+    V(
         "ALFRED_RUBRIC",
         "str",
         None,
@@ -2217,9 +2225,10 @@ _VARS: tuple[ConfigVar, ...] = (
     V(
         "ALFRED_RUBRIC_MAX_ITERATIONS",
         "int",
-        "3",
+        "1",
         "agents",
-        "Max rubric improvement iterations (1..10).",
+        "Max rubric revision passes before opening the PR (1..10).",
+        operator=True,
     ),
     # Planning assistant
     V(

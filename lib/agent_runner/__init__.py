@@ -276,6 +276,7 @@ from .pre_push import (
 # --------------------------------------------------------------------------
 from .process import (
     _CLAUDE_UNLIMITED_TURNS,
+    build_rubric_grader,
     claude_invoke,
     claude_invoke_streaming,
     codex_invoke,
@@ -342,14 +343,19 @@ from .result import (
 # --------------------------------------------------------------------------
 from .rubric import (
     DEFAULT_MAX_ITERATIONS,
+    GENERIC_ENGINEERING_RUBRIC,
     MAX_CRITERIA,
+    MAX_DERIVED_CRITERIA,
     MAX_TRANSCRIPT_CHARS,
     CriterionEval,
     GraderVerdict,
     Rubric,
     build_grader_prompt,
+    derive_rubric,
     grade,
+    grade_revise_loop,
     parse_verdict,
+    render_verdict_markdown,
     run_rubric_loop,
 )
 from .state import (
@@ -494,11 +500,17 @@ __all__ = [
     "GraderVerdict",
     "Rubric",
     "DEFAULT_MAX_ITERATIONS",
+    "GENERIC_ENGINEERING_RUBRIC",
     "MAX_CRITERIA",
+    "MAX_DERIVED_CRITERIA",
     "MAX_TRANSCRIPT_CHARS",
     "build_grader_prompt",
+    "build_rubric_grader",
+    "derive_rubric",
     "grade",
+    "grade_revise_loop",
     "parse_verdict",
+    "render_verdict_markdown",
     "run_rubric_loop",
     # transcripts
     "codex_artifact_paths",
