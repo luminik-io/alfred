@@ -135,6 +135,14 @@ from urllib.parse import urlparse
 # own checkout so source commands cannot accidentally import stale deployed
 # libraries just because ALFRED_HOME is set.
 _HERE = Path(__file__).resolve().parent
+
+# Whether the operator exported ``ALFRED_HOME`` themselves, captured BEFORE CLI
+# hydration defaults it to ``~/.alfred``. After hydration the env var is always
+# set, so it can no longer distinguish an explicit home from the default; this
+# flag preserves that pre-hydration truth for the few call sites that must only
+# act on an operator-chosen home (see ``_ensure_requested_home_scaffolding``).
+_ALFRED_HOME_EXPLICIT = bool(os.environ.get("ALFRED_HOME", "").strip())
+
 for candidate in (
     Path(os.environ.get("ALFRED_HOME", "")) / "lib",
     # Processed last, so source checkout lib lands at sys.path[0].
@@ -692,7 +700,11 @@ def _hydrate_cli_env_from_runtime_env() -> None:
     """
 
     os.environ.pop("ALFREDRC", None)
-    if not os.environ.get("ALFRED_HOME", "").strip():
+    # Record whether the operator set ALFRED_HOME themselves BEFORE we default it,
+    # so a later call site can tell an explicit home from the injected default.
+    global _ALFRED_HOME_EXPLICIT
+    _ALFRED_HOME_EXPLICIT = bool(os.environ.get("ALFRED_HOME", "").strip())
+    if not _ALFRED_HOME_EXPLICIT:
         os.environ["ALFRED_HOME"] = str(_home_child(".alfred"))
     for key, value in _read_env_values(_runtime_env_path()).items():
         if key == "ALFREDRC" or key in os.environ:
@@ -860,12 +872,66 @@ def _alfred_home_path() -> Path:
     return _home_child(".alfred")
 
 
+def _install_managed_python_candidates() -> list[Path]:
+    """Interpreters provisioned alongside the installed/checked-out code.
+
+    ``_HERE`` is ``<install>/bin``; the deployed fleet ships its venv at
+    ``<install>/venv`` and a source checkout at ``<install>/.venv``.
+    """
+    install_root = _HERE.parent
+    return [
+        install_root / "venv" / "bin" / "python",
+        install_root / ".venv" / "bin" / "python",
+    ]
+
+
 def _alfred_managed_python() -> str:
-    """Return Alfred's managed runtime interpreter when it is provisioned."""
+    """Return the interpreter that runs Alfred's server and helper scripts.
+
+    Precedence:
+
+    1. ``$ALFRED_HOME/venv`` - the requested home's own managed venv.
+    2. When ``ALFRED_HOME`` is explicitly set to a home that has no venv of its
+       own (a fresh state/config home whose code is loaded from the deployed
+       install), the install's own venv. That venv carries the dashboard deps,
+       so serve works instead of dying on a bare ``sys.executable`` that lacks
+       them. Only the interpreter (and the library it imports) comes from the
+       install; ``ALFRED_HOME`` still anchors every state/config path.
+    3. ``sys.executable`` as a last resort.
+    """
     candidate = _alfred_home_path() / "venv" / "bin" / "python"
     if candidate.is_file() and os.access(candidate, os.X_OK):
         return str(candidate)
+    # Only an OPERATOR-set home borrows the install's venv. This must read the
+    # pre-hydration flag, not the env var: CLI hydration has already defaulted
+    # ALFRED_HOME, so an env check would fire for every default install and a
+    # source checkout would silently serve from its own .venv instead of the
+    # interpreter the operator invoked.
+    if _ALFRED_HOME_EXPLICIT:
+        for install_python in _install_managed_python_candidates():
+            if install_python.is_file() and os.access(install_python, os.X_OK):
+                return str(install_python)
     return sys.executable
+
+
+def _ensure_requested_home_scaffolding() -> None:
+    """Create the minimal state directory for an explicitly-set ``ALFRED_HOME``.
+
+    An operator who points ``ALFRED_HOME`` at a fresh directory expects that
+    home to be used for all state/config, even when the code is loaded from the
+    deployed install. Create the state directory (rather than silently falling
+    back to another home) so the requested home is materialized and honored.
+    Only fires for a home the operator set EXPLICITLY. It must read the
+    pre-hydration flag, not ``ALFRED_HOME`` from the env: CLI hydration has
+    already defaulted the env var to ``~/.alfred``, so scaffolding off the env
+    would create ``~/.alfred/state`` on a genuinely fresh default install and
+    make ``install_inventory`` report it as initialized, trapping a first run
+    out of onboarding.
+    """
+    if not _ALFRED_HOME_EXPLICIT:
+        return
+    with contextlib.suppress(OSError):
+        (_alfred_home_path() / "state").mkdir(parents=True, exist_ok=True)
 
 
 def _source_agents_conf_for_root(root: Path) -> Path | None:
@@ -2510,6 +2576,7 @@ def cmd_demo(args: argparse.Namespace) -> int:
 
 def cmd_serve(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-serve.py"
+    _ensure_requested_home_scaffolding()
     forwarded: list[str] = []
     if args.host:
         forwarded.extend(["--host", args.host])
