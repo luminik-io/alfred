@@ -27,7 +27,7 @@ LIB = REPO_ROOT / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
-import slack.converse as sc  # noqa: E402
+import slack_surface.converse as sc  # noqa: E402
 from compose_converse import (  # noqa: E402
     INTENT_BUILD,
     INTENT_CONVERSATION,

@@ -55,7 +55,7 @@ from compose_converse import (
     ConverseTurn,
 )
 
-from slack.posting import SlackPoster
+from slack_surface.posting import SlackPoster
 
 # Environment knobs. All optional; unset means the feature is off (or a safe
 # default), so dropping this module into the listener changes nothing until an
@@ -117,7 +117,7 @@ PLACEHOLDER = "_Alfred is thinking…_"
 class StreamingSlackClient(SlackPoster, Protocol):
     """The Slack Web API subset the streaming poster needs.
 
-    Extends the package-wide :class:`slack.posting.SlackPoster` (which supplies
+    Extends the package-wide :class:`slack_surface.posting.SlackPoster` (which supplies
     ``chat_postMessage``) with the streaming ``chat_update`` verb, so the
     ``chat_postMessage`` shim lives in exactly one place. ``slack_sdk.WebClient``
     satisfies this natively; tests pass a fake with the same method names.
@@ -1183,7 +1183,7 @@ def _env_flag(name: str, *, default: bool = False) -> bool:
 
     Returns ``default`` when unset/blank, ``True`` for ``1/true/yes/on`` and
     ``False`` for ``0/false/no/off`` (case-insensitive). Any other non-blank
-    value falls back to ``default``. Mirrors ``slack.intent._env_flag`` so the
+    value falls back to ``default``. Mirrors ``slack_surface.intent._env_flag`` so the
     converse enable flag and the intent-router flag read env the same way.
     """
     raw = (os.environ.get(name) or "").strip().lower()

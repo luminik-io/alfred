@@ -3,7 +3,7 @@
 The fleet's legacy Slack transport is
 incoming-webhook-only: text, no threads, no severity colour. Webhooks
 cannot post threaded replies. That requires ``chat.postMessage`` with a
-``xoxb-`` bot token + ``thread_ts``. ``slack.approval`` already proves
+``xoxb-`` bot token + ``thread_ts``. ``slack_surface.approval`` already proves
 the bot-token path for plan approvals; this module generalises it for
 agent firings.
 
@@ -20,7 +20,7 @@ Design notes
   on the per-firing state (role-slug runners keep one) and pass it to
   every reply call. ``channel`` + ``ts`` is what Slack's
   ``chat.postMessage`` needs to thread a reply, and what
-  ``slack.approval.SlackApproval`` polls for the approval flow,
+  ``slack_surface.approval.SlackApproval`` polls for the approval flow,
   same surface, two readers.
 - Block Kit ``header`` block has a hard 150-char text limit. The
   per-block plain-text limit is 3000. We truncate aggressively in both
@@ -48,7 +48,7 @@ from typing import Any, Protocol
 
 from agent_runner.metadata import agent_role, codename_with_role
 
-from slack.approval import resolve_bot_token as _resolve_bot_token
+from slack_surface.approval import resolve_bot_token as _resolve_bot_token
 
 
 class SlackPoster(Protocol):
@@ -368,7 +368,7 @@ def _coerce_severity(severity: str) -> str:
 def _api_post(method: str, payload: dict, *, token: str) -> dict:
     """Tiny ``application/json`` Slack Web API wrapper.
 
-    Block Kit requires a JSON body. The ``slack.approval`` module's
+    Block Kit requires a JSON body. The ``slack_surface.approval`` module's
     ``_api_call`` form-encodes its parameters, which Slack accepts for
     plain-text posts but rejects for ``blocks`` / ``attachments``. Keep
     this caller separate so the two code paths don't fight over content

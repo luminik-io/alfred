@@ -32,7 +32,7 @@ if str(LIB) not in sys.path:
 
 import compose_converse as cc  # noqa: E402
 import converse_grounding as cg  # noqa: E402
-import slack.converse as sc  # noqa: E402
+import slack_surface.converse as sc  # noqa: E402
 from compose_converse import INTENT_BUILD, INTENT_CONVERSATION  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -431,7 +431,7 @@ def _mention(text: str, *, event_id: str = "EvX") -> dict:
 
 
 def _make_listener(tmp_path: Path, converse_runner):
-    from slack.listener import SlackPlanningListener
+    from slack_surface.listener import SlackPlanningListener
 
     config = sc.SlackConverseConfig(enabled=True, engine="claude", channels=frozenset())
     return SlackPlanningListener(

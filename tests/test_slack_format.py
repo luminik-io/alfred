@@ -29,14 +29,14 @@ def _isolated_alfred_home(tmp_path, monkeypatch):
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspace"))
     for mod in list(sys.modules):
-        if mod.startswith("agent_runner") or mod == "slack.posting":
+        if mod.startswith("agent_runner") or mod == "slack_surface.posting":
             del sys.modules[mod]
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
     yield
 
 
 def test_firing_thread_root_returns_none_without_bot_token(monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     monkeypatch.setattr(sf, "_resolve_bot_token", lambda: None)
     handle = sf.firing_thread_root(
@@ -48,7 +48,7 @@ def test_firing_thread_root_returns_none_without_bot_token(monkeypatch):
 
 
 def test_post_flat_returns_false_without_bot_token(monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     monkeypatch.setattr(sf, "_resolve_bot_token", lambda: None)
     monkeypatch.setattr(
@@ -58,7 +58,7 @@ def test_post_flat_returns_false_without_bot_token(monkeypatch):
 
 
 def test_post_flat_posts_via_chat_postmessage_with_colour_stripe(monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     monkeypatch.setenv("SLACK_HOME_CHANNEL", "eng-fleet")
     monkeypatch.setattr(sf, "_resolve_bot_token", lambda: "xoxb-fake")
@@ -87,7 +87,7 @@ def test_post_flat_does_not_truncate_at_section_limit(monkeypatch):
     """The flat body rides in top-level ``text`` (40k ceiling), so a message
     longer than a Block Kit section (3000) must survive - the webhook path
     delivered up to ~3500, and the app path must not truncate more."""
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     monkeypatch.setattr(sf, "_resolve_bot_token", lambda: "xoxb-fake")
     captured: dict = {}
@@ -104,7 +104,7 @@ def test_post_flat_does_not_truncate_at_section_limit(monkeypatch):
 
 
 def test_post_flat_returns_false_when_api_refuses(monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     monkeypatch.setattr(sf, "_resolve_bot_token", lambda: "xoxb-fake")
     monkeypatch.setattr(
@@ -114,7 +114,7 @@ def test_post_flat_returns_false_when_api_refuses(monkeypatch):
 
 
 def test_firing_thread_root_posts_block_kit_with_role_when_set(monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     monkeypatch.setenv("ALFRED_SENIOR_DEV_ROLE", "Single-repo feature engineer")
     monkeypatch.setattr(sf, "_resolve_bot_token", lambda: "xoxb-fake")
@@ -145,7 +145,7 @@ def test_firing_thread_root_posts_block_kit_with_role_when_set(monkeypatch):
 
 
 def test_firing_thread_root_severity_drives_colour(monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     monkeypatch.setattr(sf, "_resolve_bot_token", lambda: "xoxb-fake")
     monkeypatch.setattr(sf, "_get_permalink", lambda *a, **kw: None)
@@ -170,7 +170,7 @@ def test_firing_thread_root_no_duplicate_text_in_attachment(monkeypatch):
     """PR #141-equivalent guard: the attachment must NOT carry a ``text``
     field that mirrors the top-level ``text``, otherwise Slack renders
     the body twice in the channel."""
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     monkeypatch.setattr(sf, "_resolve_bot_token", lambda: "xoxb-fake")
     monkeypatch.setattr(sf, "_get_permalink", lambda *a, **kw: None)
@@ -196,13 +196,13 @@ def test_firing_thread_root_no_duplicate_text_in_attachment(monkeypatch):
 
 
 def test_firing_thread_reply_returns_false_without_handle():
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     assert sf.firing_thread_reply(None, text="anything") is False
 
 
 def test_firing_thread_reply_posts_to_thread_ts(monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     monkeypatch.setattr(sf, "_resolve_bot_token", lambda: "xoxb-fake")
 
@@ -223,7 +223,7 @@ def test_firing_thread_reply_posts_to_thread_ts(monkeypatch):
 
 
 def test_firing_thread_close_summarises_outcome_duration_firing_id(monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     monkeypatch.setattr(sf, "_resolve_bot_token", lambda: "xoxb-fake")
 
@@ -250,7 +250,7 @@ def test_firing_thread_close_summarises_outcome_duration_firing_id(monkeypatch):
 
 
 def test_home_channel_resolution(monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     monkeypatch.delenv("SLACK_HOME_CHANNEL", raising=False)
     assert sf._home_channel() == "alfred"
@@ -261,7 +261,7 @@ def test_home_channel_resolution(monkeypatch):
 
 
 def test_truncate_aggressive_with_marker():
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     short = sf._truncate("abc", 10)
     assert short == "abc"
@@ -271,7 +271,7 @@ def test_truncate_aggressive_with_marker():
 
 
 def test_github_links_render_as_slack_mrkdwn():
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     assert (
         sf.github_issue_link("luminik-io/alfred", 113)
@@ -297,7 +297,7 @@ def _persist_theme(tmp_path, **payload):
 
 
 def test_themed_label_default_uses_batman_theme(monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     monkeypatch.setenv("ALFRED_SENIOR_DEV_ROLE", "Single-repo feature engineer")
     # No theme persisted: Slack renders the default theme rather than raw
@@ -306,7 +306,7 @@ def test_themed_label_default_uses_batman_theme(monkeypatch):
 
 
 def test_themed_label_preset_renders_preset_identity(tmp_path, monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     monkeypatch.setenv("ALFRED_SENIOR_DEV_ROLE", "Fleet lead")
     # A saved preset must render the preset's themed name on Slack the same way
@@ -318,7 +318,7 @@ def test_themed_label_preset_renders_preset_identity(tmp_path, monkeypatch):
 
 
 def test_themed_label_preset_transformers_differs_from_justice_league(tmp_path, monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     _persist_theme(tmp_path, theme="transformers")
     assert sf._themed_codename_label("senior-dev") == "Ironhide (Senior developer)"
@@ -326,7 +326,7 @@ def test_themed_label_preset_transformers_differs_from_justice_league(tmp_path, 
 
 
 def test_themed_label_preset_unknown_codename_falls_back(tmp_path, monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
     from agent_runner.metadata import codename_with_role
 
     _persist_theme(tmp_path, theme="transformers")
@@ -335,7 +335,7 @@ def test_themed_label_preset_unknown_codename_falls_back(tmp_path, monkeypatch):
 
 
 def test_themed_label_custom_name_and_role_applied(tmp_path, monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     monkeypatch.setenv("ALFRED_ARCHITECT_ROLE", "Fleet lead")
     _persist_theme(
@@ -348,7 +348,7 @@ def test_themed_label_custom_name_and_role_applied(tmp_path, monkeypatch):
 
 
 def test_themed_label_custom_name_falls_back_to_batman_base_role(tmp_path, monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     monkeypatch.setenv("ALFRED_ARCHITECT_ROLE", "Fleet lead")
     # Custom name set, but no custom role: the desktop shows the base-theme role
@@ -359,7 +359,7 @@ def test_themed_label_custom_name_falls_back_to_batman_base_role(tmp_path, monke
 
 
 def test_themed_label_custom_without_name_uses_batman_base_name_and_role(tmp_path, monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     monkeypatch.setenv("ALFRED_SENIOR_DEV_ROLE", "Engineer")
     # A custom theme that did not name THIS agent must still match the desktop,
@@ -370,7 +370,7 @@ def test_themed_label_custom_without_name_uses_batman_base_name_and_role(tmp_pat
 
 
 def test_themed_label_custom_unknown_codename_keeps_shipped_behavior(tmp_path, monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
     from agent_runner.metadata import codename_with_role
 
     monkeypatch.setenv("ALFRED_MYSTERY_BOT_ROLE", "Wildcard")
@@ -381,7 +381,7 @@ def test_themed_label_custom_unknown_codename_keeps_shipped_behavior(tmp_path, m
 
 
 def test_themed_label_escapes_slack_markup(tmp_path, monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     # The label lands in a mrkdwn message body, so an operator-authored name like
     # ``<!channel>`` or ``<@U123>`` must not render as a broadcast or a mention.
@@ -399,7 +399,7 @@ def test_themed_label_escapes_slack_markup(tmp_path, monkeypatch):
 
 
 def test_themed_label_default_theme_resolves_slug_to_batman_cast_name(monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     # After the role-slug rename the codename is a slug (``senior-dev``). With no
     # theme persisted the default Batman theme must still render the Batman-cast
@@ -410,7 +410,7 @@ def test_themed_label_default_theme_resolves_slug_to_batman_cast_name(monkeypatc
 
 
 def test_themed_agent_name_default_theme_is_batman_cast_bare_name(monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     # ``themed_agent_name`` is the bare-name resolver (no role suffix) the Slack
     # assignment lane and CLI status table use. Default theme -> Batman-cast name.
@@ -419,7 +419,7 @@ def test_themed_agent_name_default_theme_is_batman_cast_bare_name(monkeypatch):
 
 
 def test_themed_agent_name_preset_and_custom(tmp_path, monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     _persist_theme(tmp_path, theme="transformers")
     assert sf.themed_agent_name("senior-dev") == "Ironhide"
@@ -432,7 +432,7 @@ def test_themed_agent_name_preset_and_custom(tmp_path, monkeypatch):
 
 
 def test_themed_agent_name_unknown_codename_returns_raw(monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     # A codename outside the known fleet has no theme name; keep the bare slug so
     # the caller still prints something (a custom agent falls here).
@@ -440,7 +440,7 @@ def test_themed_agent_name_unknown_codename_returns_raw(monkeypatch):
 
 
 def test_escape_mrkdwn_neutralizes_markup_and_entities():
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     ZWSP = "​"
     # Slack entity chars become HTML entities so a mention/broadcast/link can't fire.
@@ -454,7 +454,7 @@ def test_escape_mrkdwn_neutralizes_markup_and_entities():
 
 
 def test_themed_agent_name_stays_raw_for_non_slack_surfaces(tmp_path, monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     # ``themed_agent_name`` feeds the plain-text CLI too, so it must NOT escape:
     # the raw operator name comes back verbatim. Slack callers escape themselves.
@@ -464,7 +464,7 @@ def test_themed_agent_name_stays_raw_for_non_slack_surfaces(tmp_path, monkeypatc
 
 
 def test_themed_agent_role_uses_custom_role_overlay(tmp_path, monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     # A custom theme's per-agent role label wins over the manifest default, so the
     # role a surface renders matches what the operator set on the desktop.
@@ -480,7 +480,7 @@ def test_themed_agent_role_uses_custom_role_overlay(tmp_path, monkeypatch):
 
 
 def test_themed_agent_role_unknown_codename_is_none(monkeypatch):
-    import slack.posting as sf
+    import slack_surface.posting as sf
 
     # No theme persisted (default Batman) and a codename outside the fleet: no
     # themed role, so the caller keeps its own fallback.

@@ -5,11 +5,11 @@ intent routing, conversational replies, thread status/registry, the issue
 bridge, control commands, event dedup, and the socket-mode listener that wires
 them together.
 
-Submodules are imported directly (``from slack.trust import SlackTrustStore``).
+Submodules are imported directly (``from slack_surface.trust import SlackTrustStore``).
 This ``__init__`` additionally re-exports the headline public API as a
 convenience facade, resolved lazily via :pep:`562` ``__getattr__`` so importing
-a light submodule (``slack.trust``) never drags in the heavy ones
-(``slack.listener`` / ``slack.converse`` and their ``slack_sdk`` deps).
+a light submodule (``slack_surface.trust``) never drags in the heavy ones
+(``slack_surface.listener`` / ``slack_surface.converse`` and their ``slack_sdk`` deps).
 """
 
 from __future__ import annotations

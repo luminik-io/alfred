@@ -150,7 +150,7 @@ def _post_via_app(text: str, severity: str) -> bool:
     unavailable on a stripped-down install. Never raises.
     """
     try:
-        from slack.posting import post_flat
+        from slack_surface.posting import post_flat
     except Exception:
         return False
     try:

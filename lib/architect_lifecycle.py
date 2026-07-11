@@ -2064,7 +2064,7 @@ def _assess_plan_readiness(
 
 def _issue_link(repo: str, number: int) -> str:
     try:
-        from slack.posting import github_issue_link
+        from slack_surface.posting import github_issue_link
 
         return github_issue_link(repo, number)
     except Exception:
@@ -2073,7 +2073,7 @@ def _issue_link(repo: str, number: int) -> str:
 
 def _slack_url_link(url: str, *, label: str | None = None) -> str:
     try:
-        from slack.posting import github_url_link
+        from slack_surface.posting import github_url_link
 
         return github_url_link(url, label=label)
     except Exception:
@@ -2224,7 +2224,7 @@ class SlackReporter:
         self._firing_id = firing_id
         self._codename = codename
         if thread_root is None:
-            from slack.posting import firing_thread_root as thread_root
+            from slack_surface.posting import firing_thread_root as thread_root
         if fallback_post is None:
             try:
                 from agent_runner import slack_post as fallback_post
@@ -2303,7 +2303,7 @@ class SlackReporter:
         if not text:
             return False
         try:
-            from slack.posting import ThreadHandle, firing_thread_reply
+            from slack_surface.posting import ThreadHandle, firing_thread_reply
         except Exception:  # pragma: no cover
             return False
         return bool(
@@ -2363,7 +2363,7 @@ class SlackReporter:
         plan_path: Path | None = None,
     ) -> None:
         try:
-            from slack.threads import SlackThreadRecord, SlackThreadRegistry
+            from slack_surface.threads import SlackThreadRecord, SlackThreadRegistry
         except Exception:  # pragma: no cover - optional local state helper
             return
         plan_path = plan_path or self._write_plan_copy(plan)
@@ -2393,7 +2393,7 @@ class SlackReporter:
 
     def _register_report_thread(self, envelope: ReportEnvelope, handle: object) -> None:
         try:
-            from slack.threads import SlackThreadRecord, SlackThreadRegistry
+            from slack_surface.threads import SlackThreadRecord, SlackThreadRegistry
         except Exception:  # pragma: no cover - optional local state helper
             return
         channel = str(getattr(handle, "channel", "") or "")
@@ -2462,7 +2462,7 @@ class SlackReporter:
         if reader is not None:
             return _feedback_texts(reader(channel, ts))
         try:
-            from slack.approval import (
+            from slack_surface.approval import (
                 collect_trusted_thread_feedback,
                 default_slack_client,
                 operator_user_id_from_env,
@@ -2498,7 +2498,7 @@ class SlackReporter:
         reply: Callable[..., object] | None = self._feedback_reply
         if reply is None:
             try:
-                from slack.posting import firing_thread_reply as imported_reply
+                from slack_surface.posting import firing_thread_reply as imported_reply
             except Exception:  # pragma: no cover - optional Slack surface
                 return False
             reply = cast(Callable[..., object], imported_reply)
@@ -2685,7 +2685,7 @@ class ArchitectLifecycle:
         verdict_raw = getattr(raw, "verdict", "unknown")
         feedback = _approval_feedback(raw)
         self.operator_feedback = feedback
-        from slack.approval import (
+        from slack_surface.approval import (
             APPROVAL_GRANTED,
             APPROVAL_REJECTED,
             APPROVAL_TIMEOUT,

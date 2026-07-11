@@ -11,7 +11,7 @@ LIB = REPO / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
-from slack.trust import (  # noqa: E402
+from slack_surface.trust import (  # noqa: E402
     SlackTrustStore,
     normalize_slack_user_id,
     parse_trusted_user_ids,

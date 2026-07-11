@@ -18,7 +18,7 @@ LIB = REPO_ROOT / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
-from slack.approval import (  # noqa: E402
+from slack_surface.approval import (  # noqa: E402
     APPROVAL_GRANTED,
     APPROVAL_REJECTED,
     APPROVAL_TIMEOUT,

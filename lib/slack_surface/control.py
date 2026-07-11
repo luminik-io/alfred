@@ -75,14 +75,14 @@ from server.reader import (
     default_state_root as default_reader_state_root,
 )
 
-from slack.trust import (
+from slack_surface.trust import (
     SlackTrustStore,
     env_trusted_user_ids,
     normalize_slack_user_id,
     operator_user_id_from_env,
     trusted_users_snapshot,
 )
-from slack.trust import (
+from slack_surface.trust import (
     default_state_root as default_trust_state_root,
 )
 

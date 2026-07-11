@@ -46,7 +46,7 @@ Configuration is via env vars (12-factor):
 
 Sample usage::
 
-    from slack.approval import SlackApproval, default_slack_client
+    from slack_surface.approval import SlackApproval, default_slack_client
 
     client = default_slack_client()  # raises ImportError if slack-sdk is missing
     gate = SlackApproval(client, operator_user_id="U0123ABCDEF")
@@ -349,7 +349,7 @@ def trusted_feedback_user_ids_from_env(
 ) -> tuple[str, ...]:
     """Read trusted Slack users whose thread replies can amend a plan."""
     try:
-        from slack.trust import trusted_user_ids
+        from slack_surface.trust import trusted_user_ids
 
         return trusted_user_ids(operator_user_id=operator_user_id, state_root=state_root)
     except Exception as exc:

@@ -41,22 +41,22 @@ from planning_assistant import (
 )
 from spec_helper import IssueDraft
 
-from slack.approval import (
+from slack_surface.approval import (
     ThreadFeedback,
     default_slack_client,
     operator_user_id_from_env,
     resolve_bot_token,
     trusted_feedback_user_ids_from_env,
 )
-from slack.bridge import SlackIssueBridge, build_issue_body
-from slack.control import SlackControlHandler, is_control_message, parse_control_command
-from slack.converse import (
+from slack_surface.bridge import SlackIssueBridge, build_issue_body
+from slack_surface.control import SlackControlHandler, is_control_message, parse_control_command
+from slack_surface.converse import (
     SlackConverseConfig,
     gather_thread_context,
     run_slack_converse,
 )
-from slack.dedup import SeenEventStore
-from slack.intent import (
+from slack_surface.dedup import SeenEventStore
+from slack_surface.intent import (
     ACTION_ASSIGN,
     ACTION_DRY_RUN_AGENT,
     ACTION_HOLD,
@@ -80,16 +80,16 @@ from slack.intent import (
     resolve_assignment_agent,
     resolve_issue,
 )
-from slack.memory import (
+from slack_surface.memory import (
     CONVERSE_OFFER_SIGNATURE_KEY,
     SlackConverseOfferStore,
     SlackMemoryCandidateProposer,
     _append_memory_candidate_ids,
 )
-from slack.memory import (
+from slack_surface.memory import (
     _short_plain as _short_plain,
 )
-from slack.posting import (
+from slack_surface.posting import (
     SlackPoster,
     SlackThreadPoster,
     escape_mrkdwn,
@@ -98,8 +98,8 @@ from slack.posting import (
     themed_agent_name,
     themed_agent_role,
 )
-from slack.threads import SlackThreadRecord, SlackThreadRegistry, SlackThreadStatusTracker
-from slack.trust import SlackTrustStore, normalize_slack_user_id
+from slack_surface.threads import SlackThreadRecord, SlackThreadRegistry, SlackThreadStatusTracker
+from slack_surface.trust import SlackTrustStore, normalize_slack_user_id
 
 ENV_APP_TOKEN = "SLACK_APP_TOKEN"
 ENV_ALT_APP_TOKEN = "ALFRED_SLACK_APP_TOKEN"
@@ -486,7 +486,7 @@ class SlackPlanningListener:
         """An approval reaction on a registered draft thread can create an issue.
 
         Reactions on non-draft threads (plan/report/pr) carry no approval
-        authority here: the reaction approval gate in ``slack.approval`` owns
+        authority here: the reaction approval gate in ``slack_surface.approval`` owns
         plan execution. This path bridges a *draft* into a queued issue, and
         resolves the workspace owner's confirm/cancel on a *conversational_action*
         card surfaced by the intent router.
@@ -1834,7 +1834,7 @@ class SlackPlanningListener:
         Unlike :meth:`_post_thread_ack` this surfaces the response so the
         caller can register the posted message's ts (needed to resolve a later
         confirm reaction). Best-effort: returns ``None`` when there is no
-        poster or the API call fails. Delegates to the ``slack.posting`` seam.
+        poster or the API call fails. Delegates to the ``slack_surface.posting`` seam.
         """
         return SlackThreadPoster(self.poster).post_message(
             channel, text, blocks=blocks, thread_ts=thread_ts
@@ -2137,7 +2137,7 @@ class SlackPlanningListener:
         the listener's optional idle-loop hook. ``fetcher`` defaults to the
         read-only ``gh``-backed fetcher.
         """
-        from slack.threads import default_issue_state_fetcher
+        from slack_surface.threads import default_issue_state_fetcher
 
         return self.status_tracker.sweep(fetcher=fetcher or default_issue_state_fetcher)
 
@@ -2377,7 +2377,7 @@ def draft_from_slack_text(text: str) -> IssueDraft:
 
 
 # Reaction vocabulary for the conversational-action confirmation gate. These
-# mirror ``slack.approval.SlackApproval`` defaults so the workspace owner uses
+# mirror ``slack_surface.approval.SlackApproval`` defaults so the workspace owner uses
 # the same gestures everywhere: a check / thumbs-up confirms, an x / thumbs-down
 # cancels.
 _CONFIRM_REACTIONS: frozenset[str] = frozenset({"white_check_mark", "thumbsup", "+1"})

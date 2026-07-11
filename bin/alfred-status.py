@@ -30,7 +30,7 @@ for candidate in (
 
 import agent_runner  # noqa: E402
 from custom_agents import CustomAgentStore  # noqa: E402
-from slack.posting import escape_mrkdwn, themed_agent_name  # noqa: E402
+from slack_surface.posting import escape_mrkdwn, themed_agent_name  # noqa: E402
 
 ALFRED_HOME = agent_runner.ALFRED_HOME
 STATE_ROOT = agent_runner.STATE_ROOT

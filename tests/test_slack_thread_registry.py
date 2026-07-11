@@ -8,7 +8,7 @@ LIB = REPO / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
-from slack.threads import SlackThreadRecord, SlackThreadRegistry  # noqa: E402
+from slack_surface.threads import SlackThreadRecord, SlackThreadRegistry  # noqa: E402
 
 
 def test_registry_round_trips_thread_record(tmp_path: Path) -> None:

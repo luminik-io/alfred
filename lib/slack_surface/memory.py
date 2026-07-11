@@ -27,7 +27,7 @@ from typing import Any
 
 from spec_helper import IssueDraft
 
-from slack.threads import SlackThreadRegistry
+from slack_surface.threads import SlackThreadRegistry
 
 
 class SlackMemoryCandidateProposer:

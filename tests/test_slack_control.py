@@ -13,7 +13,7 @@ if str(LIB) not in sys.path:
 
 from planning_actions import mark_followup_handled  # noqa: E402
 from server.reader import FilesystemReader, PlanDraft  # noqa: E402
-from slack.control import (  # noqa: E402
+from slack_surface.control import (  # noqa: E402
     RunResult,
     SlackControlHandler,
     is_control_message,
@@ -22,7 +22,7 @@ from slack.control import (  # noqa: E402
     parse_control_command,
     render_plan_detail,
 )
-from slack.trust import SlackTrustStore  # noqa: E402
+from slack_surface.trust import SlackTrustStore  # noqa: E402
 
 STATUS_JSON = json.dumps(
     {

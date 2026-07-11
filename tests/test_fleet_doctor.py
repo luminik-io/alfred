@@ -27,7 +27,7 @@ def _isolated_alfred_home(tmp_path, monkeypatch):
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspace"))
     for mod in list(sys.modules):
-        if mod.startswith("agent_runner") or mod in ("slack.posting", "fleet_doctor"):
+        if mod.startswith("agent_runner") or mod in ("slack_surface.posting", "fleet_doctor"):
             del sys.modules[mod]
     sys.path.insert(0, str(REPO / "lib"))
     yield
