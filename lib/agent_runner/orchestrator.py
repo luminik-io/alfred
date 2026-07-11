@@ -387,7 +387,7 @@ _PREFLIGHT_SLACK_STATE_NAME = "last-slack-preflight-post.json"
 
 
 def _preflight_slack_min_minutes() -> int:
-    return alfred_config.get_int("ALFRED_PREFLIGHT_SLACK_MIN_MINUTES")
+    return alfred_config.require_int("ALFRED_PREFLIGHT_SLACK_MIN_MINUTES")
 
 
 def _preflight_error_signature(misses: list[str]) -> str:
@@ -462,7 +462,7 @@ _DISK_SLACK_STATE_NAME = "last-slack-disk-warning.json"
 
 
 def _disk_slack_min_hours() -> int:
-    return max(1, alfred_config.get_int("ALFRED_DISK_SLACK_MIN_HOURS"))
+    return max(1, alfred_config.require_int("ALFRED_DISK_SLACK_MIN_HOURS"))
 
 
 def _disk_slack_state_path(agent: str) -> Path:

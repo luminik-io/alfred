@@ -2510,7 +2510,7 @@ def get_str(name: str, environ: dict[str, str] | None = None) -> str | None:
 def get_bool(name: str, environ: dict[str, str] | None = None) -> bool:
     """Return a truthy-checked bool (``1/true/yes/on``), default-aware."""
     raw = _raw(name, environ)
-    return bool(raw) and raw.strip().lower() in _TRUTHY
+    return raw is not None and raw.strip().lower() in _TRUTHY
 
 
 def get_int(name: str, environ: dict[str, str] | None = None) -> int | None:
@@ -2531,6 +2531,20 @@ def get_int(name: str, environ: dict[str, str] | None = None) -> int | None:
         except ValueError:
             continue
     return None
+
+
+def require_int(name: str, environ: dict[str, str] | None = None) -> int:
+    """Like :func:`get_int`, but for vars with a guaranteed integer default.
+
+    Returns a plain ``int`` so callers can do arithmetic without a ``None``
+    guard. If the value ever resolves to ``None`` (an unregistered var, or one
+    with no parseable default), that is a config-wiring bug, so raise loudly
+    instead of letting ``None`` leak into ``max``/comparisons downstream.
+    """
+    value = get_int(name, environ)
+    if value is None:
+        raise KeyError(f"{name} has no integer value or registered default")
+    return value
 
 
 def get_float(name: str, environ: dict[str, str] | None = None) -> float | None:

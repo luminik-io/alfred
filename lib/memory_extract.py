@@ -178,7 +178,7 @@ def _default_invoker() -> Invoker:
                 # Read-only distillation: no tools needed.
                 allowed_tools="",
                 max_turns=1,
-                timeout=alfred_config.get_int("ALFRED_MEMORY_EXTRACT_TIMEOUT"),
+                timeout=alfred_config.require_int("ALFRED_MEMORY_EXTRACT_TIMEOUT"),
             )
         except Exception:
             return None

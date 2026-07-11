@@ -646,7 +646,7 @@ def reset_consecutive_failures(codename: str) -> None:
 # rather than per-file literals that drift apart.
 # --------------------------------------------------------------------------
 
-FAIL_STREAK_THRESHOLD = alfred_config.get_int("ALFRED_FAIL_STREAK_THRESHOLD")
+FAIL_STREAK_THRESHOLD = alfred_config.require_int("ALFRED_FAIL_STREAK_THRESHOLD")
 
 
 def maybe_halt_on_fail_streak(

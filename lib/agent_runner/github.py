@@ -1092,7 +1092,7 @@ def _parse_claim_comment(body: str) -> dict:
 
 def _claim_window_hours() -> int:
     """How long an unreleased claim comment should block a fresh claim."""
-    return max(alfred_config.get_int("ALFRED_CLAIM_MAX_AGE_HOURS"), 1)
+    return max(alfred_config.require_int("ALFRED_CLAIM_MAX_AGE_HOURS"), 1)
 
 
 def _parse_github_ts(value: str | None) -> float | None:

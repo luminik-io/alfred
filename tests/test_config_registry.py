@@ -111,6 +111,16 @@ def test_typed_accessors_prefer_env_then_default() -> None:
     assert cfg.get_list("ALFRED_MEMORY_PROVIDERS", env) == ["sqlite", "fleet"]
 
 
+def test_require_int_returns_int_for_vars_with_defaults() -> None:
+    # A var with a registered integer default always resolves to an int.
+    assert cfg.require_int("ALFRED_MAX_STEPS", {}) == 200
+    # Env override still wins.
+    assert cfg.require_int("ALFRED_MAX_STEPS", {"ALFRED_MAX_STEPS": "9"}) == 9
+    # A var with no integer value or default is a wiring bug -> raise.
+    with pytest.raises(KeyError):
+        cfg.require_int("ALFRED_NOT_A_REGISTERED_INT_VAR", {})
+
+
 def test_generated_docs_are_current() -> None:
     result = subprocess.run(
         [sys.executable, str(REPO_ROOT / "bin" / "alfred-config-doc.py"), "--check"],
