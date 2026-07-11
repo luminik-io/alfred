@@ -74,7 +74,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`SHIPPED_EMITTER.md`](SHIPPED_EMITTER.md): the `alfred-shipped-public` emitter that scrubs local state through a field allowlist and redaction table to publish a weekly shipped-work feed for your own repos.
 - [`SLOP_DETECTOR.md`](SLOP_DETECTOR.md): the read-only, stdlib-only `alfred slop-detect` scanner that flags LLM-cliche vocabulary and phrasing in prose and exits non-zero in CI.
 - [`../lib/agent_runner/`](../lib/agent_runner/__init__.py): shared runtime library (package; public API in `__init__.py`).
-- [`../lib/slack_format.py`](../lib/slack_format.py): Slack Block Kit formatting helpers.
+- [`../lib/slack_surface/posting.py`](../lib/slack_surface/posting.py): Slack Block Kit formatting helpers.
 - [`../lib/architect_lifecycle.py`](../lib/architect_lifecycle.py): multi-repo bundle primitives.
 - [`../bin/`](../bin/): Alfred CLI, init wizard, doctor, deploy helpers, and reference agent runners.
 - [`../launchd/`](../launchd/): plist template, renderer, and `agents.conf.example`.

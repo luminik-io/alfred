@@ -6,7 +6,7 @@ description: Create the app, mint the webhook, store it, post your first message
 Alfred posts simple agent reports via an incoming webhook. `slack_post()`
 resolves the URL via env -> 30-day disk cache -> AWS Secrets Manager, so
 steady-state firings don't pay an AWS round-trip every time. Agents that use
-`lib/slack_format.py` can also post Block Kit firing threads with an optional
+`lib/slack_surface/posting.py` can also post Block Kit firing threads with an optional
 Slack bot token.
 
 Full guide at [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/alfred/blob/main/docs/SLACK_SETUP.md). Highlights:
@@ -76,7 +76,7 @@ You should see the message in your channel.
 ## Optional: bot token (`xoxb-`)
 
 Required for `firing_thread_root`, `firing_thread_reply`, and
-`firing_thread_close` in `lib/slack_format.py`.
+`firing_thread_close` in `lib/slack_surface/posting.py`.
 
 ```sh
 SLACK_BOT_TOKEN=xoxb-...
@@ -116,7 +116,7 @@ See [Slack setup → Optional: Slack planning listener](https://github.com/lumin
 ## Optional: plan-mode approval gate
 
 If you want every architect plan approved in Slack (instead of
-the file-polling fallback), wire up `lib/slack_approval.py`. It reuses the
+the file-polling fallback), wire up `lib/slack_surface/approval.py`. It reuses the
 bot token resolved above, posts the plan, and polls reactions on that one
 message until the configured approver reacts with `:white_check_mark:` (or
 `:x:` to reject).

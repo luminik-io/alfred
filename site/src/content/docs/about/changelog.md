@@ -83,6 +83,6 @@ The pivot from "extracted framework substrate" to "complete engineering agent fl
 
 - **Role field on every agent**: `agents.conf` gains a 6th column; the role surfaces in CLI and Slack output.
 - **Runner-level fleet gate**: `enabled.txt` plus `alfred enable / disable / agents`.
-- **Slack threading + Block Kit + severity colour stripes**: `lib/slack_format.py` with bot-token-aware per-firing threads.
+- **Slack threading + Block Kit + severity colour stripes**: `lib/slack_surface/posting.py` with bot-token-aware per-firing threads.
 - **Runner-side dedup**: `find_open_authored_pr_for_issue` + `reuse_or_make_worktree` so partial work survives across firings.
 - **Release-readiness hardening**: Lucius wraps GitHub issue content as untrusted input and checks issue-author association before autonomous execution.

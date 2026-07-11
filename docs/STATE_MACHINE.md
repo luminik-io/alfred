@@ -73,7 +73,7 @@ Where the label comes from depends on the path:
   approves before any work begins.
 - **Approved Slack / Compose drafts are different.** The human has already
   approved the draft inside Slack, so `SlackIssueBridge.convert()`
-  ([`lib/slack_issue_bridge.py`](../lib/slack_issue_bridge.py)) files the issue
+  ([`lib/slack_surface/bridge.py`](../lib/slack_surface/bridge.py)) files the issue
   directly with only `agent:implement` (the bridge's default
   `config.label`) and no gate label. These issues are immediately eligible for
   pickup, by design; do not expect an approved draft to be held.

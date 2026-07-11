@@ -1,7 +1,7 @@
 # Slack setup
 
 Alfred posts simple agent reports via an **incoming webhook**. Agents that
-use `lib/slack_format.py` can also post Block Kit firing threads via an
+use `lib/slack_surface/posting.py` can also post Block Kit firing threads via an
 optional Slack bot token. This doc covers both paths.
 
 If you already have a webhook URL, the framework needs `SLACK_WEBHOOK_URL` in your environment (or in AWS Secrets Manager; see below). Skip to [§ Wiring it up](#wiring-it-up).
@@ -16,7 +16,7 @@ If you already have a webhook URL, the framework needs `SLACK_WEBHOOK_URL` in yo
 
 The webhook URL is enough for plain `slack_post()` messages. The bot token is
 used today by `firing_thread_root`, `firing_thread_reply`, and
-`firing_thread_close` in `lib/slack_format.py`.
+`firing_thread_close` in `lib/slack_surface/posting.py`.
 
 ## 1. Create the Slack app
 
@@ -123,7 +123,7 @@ slack_post("Staging deploy drifted from main", severity="alert")  # 🚨 + <!her
 
 Required when you want to:
 
-- Post Block Kit firing roots and threaded replies via `lib/slack_format.py`.
+- Post Block Kit firing roots and threaded replies via `lib/slack_surface/posting.py`.
 - Send the everyday flat notifications (`slack_post()`) through the app instead
   of a webhook, so they carry the bot identity, the severity colour stripe, and
   a real message timestamp (see [§ App-native flat sends](#app-native-flat-sends)).
@@ -364,7 +364,7 @@ alfred slack-listener run
 
 When the planning listener is running, a trusted user can also drive the fleet
 from chat by **leading a message with a known verb**. These are handled by
-`lib/slack_control.py`, separately from planning intake:
+`lib/slack_surface/control.py`, separately from planning intake:
 
 | Command | What it does |
 |---|---|
@@ -427,7 +427,7 @@ Safety model:
 
 When the issue bridge converts an approved draft into a GitHub issue, the
 originating Slack thread would normally go quiet while the fleet works. The
-thread-sync sweep (`lib/slack_thread_status.py`, `bin/alfred-slack-thread-sync.py`)
+thread-sync sweep (`lib/slack_surface/threads.py`, `bin/alfred-slack-thread-sync.py`)
 closes that loop: for each thread that filed an issue, it reads the issue and
 its linked PR read-only and posts **only the new lifecycle states** back into
 the thread: claimed, PR opened, CI pass/fail, merged, closed.

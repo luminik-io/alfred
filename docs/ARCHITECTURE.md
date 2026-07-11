@@ -1,6 +1,6 @@
 # Architecture diagrams
 
-This is the diagram companion to the top-level [`../ARCHITECTURE.md`](../ARCHITECTURE.md). That doc explains *why* Alfred has the shape it has; this one shows *how* the moving parts connect, with one mermaid diagram per subsystem. Every diagram is traced from the code in `lib/agent_runner/`, `lib/slack_listener.py`, `lib/slack_issue_bridge.py`, and `bin/`.
+This is the diagram companion to the top-level [`../ARCHITECTURE.md`](../ARCHITECTURE.md). That doc explains *why* Alfred has the shape it has; this one shows *how* the moving parts connect, with one mermaid diagram per subsystem. Every diagram is traced from the code in `lib/agent_runner/`, `lib/slack_surface/listener.py`, `lib/slack_surface/bridge.py`, and `bin/`.
 
 If a diagram and the code ever disagree, the code wins. File references are inline so you can verify each box.
 
@@ -142,7 +142,7 @@ Slack is a conversational surface for the fleet, not an approval mechanism for a
 2. **Plan and ship work.** A message *without* a leading verb is refined into a saved draft and scored for readiness. Only the configured approver can cross the (off-by-default) bridge into a labeled GitHub issue, which the fleet picks up through every existing gate.
 3. **Watch progress without leaving the thread.** Once the bridge files an issue, the originating thread is registered. The `alfred slack-thread-sync` sweep (or the listener's idle loop) reads the issue and its linked PR read-only and posts only the new lifecycle states back into that thread.
 
-Code: `lib/slack_listener.py` (`SlackPlanningListener`), `lib/slack_control.py` (`SlackControlHandler`), `lib/slack_issue_bridge.py` (`SlackIssueBridge`), `lib/slack_thread_status.py` (`SlackThreadStatusTracker`), `bin/alfred-slack-thread-sync.py`.
+Code: `lib/slack_surface/listener.py` (`SlackPlanningListener`), `lib/slack_surface/control.py` (`SlackControlHandler`), `lib/slack_surface/bridge.py` (`SlackIssueBridge`), `lib/slack_surface/threads.py` (`SlackThreadStatusTracker`), `bin/alfred-slack-thread-sync.py`.
 
 ```mermaid
 sequenceDiagram
@@ -292,7 +292,7 @@ flowchart TB
 
 - **`core`** is the fleet (`lib/agent_runner/` plus the `bin/*.py` runners), the Alfred CLI (`bin/alfred`), the host scheduler (launchd on macOS, `systemd --user` on Linux), and `alfred serve`, a localhost JSON API over `$ALFRED_HOME/state`. Core is headless and Linux-friendly: nothing here needs a desktop, a browser, or Slack. This is the only tier you must install.
 - **`client`** is Alfred Desktop under `clients/desktop`: bundled core install/repair, fleet service control, a command center, plan/run/memory views, and safe local actions. It is the recommended local installer and control surface, not a second scheduler or hosted runtime. It talks to core over the `alfred serve` JSON seam, restricted to `http://localhost` / `http://127.0.0.1` / `http://[::1]` and a fixed set of read paths plus a narrow native command allowlist. Run Alfred with or without it.
-- **`slack`** is the planning listener plus the issue bridge. The listener (`lib/slack_listener.py`) runs in Socket Mode; the bridge (`lib/slack_issue_bridge.py`) is off by default and only ever files a labeled issue. `alfred serve` is part of core because Alfred Desktop uses it by default; FastAPI, httpx, uvicorn, Jinja2, `slack-sdk`, and `boto3` are base runtime dependencies.
+- **`slack`** is the planning listener plus the issue bridge. The listener (`lib/slack_surface/listener.py`) runs in Socket Mode; the bridge (`lib/slack_surface/bridge.py`) is off by default and only ever files a labeled issue. `alfred serve` is part of core because Alfred Desktop uses it by default; FastAPI, httpx, uvicorn, Jinja2, `slack-sdk`, and `boto3` are base runtime dependencies.
 
 The boundary matters: Alfred Desktop and any future surface read and write the same `$ALFRED_HOME` state, GitHub issues and PRs, and Slack threads. The desktop app adds a safer local UI; it does not replace the fleet. See [`INSTALL_TIERS.md`](INSTALL_TIERS.md) for how to install each tier and [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) and [`SERVE.md`](SERVE.md) for the client and API contracts.
 
