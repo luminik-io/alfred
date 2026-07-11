@@ -431,6 +431,28 @@ def test_install_fetch_reinstall_failure_restores_mutated_destination(tmp_path: 
     assert not (dest / "partial").exists()
 
 
+def test_install_fetch_reinstall_failure_preserves_symlink_destination(tmp_path: Path) -> None:
+    pack = _pack(install="fetch", fetch_cmd="setup {skills_dir}/thing", vendored_path=None)
+    target = tmp_path / "shared-pack"
+    target.mkdir()
+    (target / "skill").write_text("original")
+    dest = tmp_path / pack.name
+    dest.symlink_to(target, target_is_directory=True)
+
+    def failed_reinstall(_cmd: str, _cwd: Path) -> int:
+        dest.unlink()
+        dest.mkdir()
+        (dest / "partial").write_text("new")
+        return 42
+
+    with pytest.raises(RuntimeError, match="exit 42"):
+        skill_packs.install_pack(pack, skills_dir=tmp_path, runner=failed_reinstall)
+
+    assert dest.is_symlink()
+    assert dest.resolve() == target.resolve()
+    assert (target / "skill").read_text() == "original"
+
+
 def test_install_fetch_interrupt_removes_new_partial_destination(tmp_path: Path) -> None:
     pack = _pack(install="fetch", fetch_cmd="clone {skills_dir}/thing", vendored_path=None)
 

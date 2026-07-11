@@ -317,7 +317,9 @@ def install_pack(
     if dest_existed:
         backup_root = Path(tempfile.mkdtemp(prefix=f".{pack.name}-backup-", dir=skills_dir))
         backup_dest = backup_root / pack.name
-        if dest.is_dir():
+        if dest.is_symlink():
+            shutil.copy2(dest, backup_dest, follow_symlinks=False)
+        elif dest.is_dir():
             shutil.copytree(dest, backup_dest, symlinks=True)
         else:
             shutil.copy2(dest, backup_dest, follow_symlinks=False)
