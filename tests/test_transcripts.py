@@ -158,6 +158,21 @@ def test_transcript_summary_full_shape(state_dir: Path) -> None:
     assert not s.result.is_error
 
 
+def test_transcript_summary_does_not_apply_env_aliases_to_is_error(state_dir: Path) -> None:
+    path = _write_firing(
+        state_dir,
+        "lucius",
+        "L002",
+        _result_only_event(is_error="enabled"),
+    )
+
+    summary = transcripts.transcript_summary(path)
+
+    assert summary.result is not None
+    assert summary.result.is_error is False
+    assert summary.result.subtype == "success"
+
+
 def test_transcript_summary_classifies_provider_error_envelope(state_dir: Path) -> None:
     path = _write_firing(state_dir, "drake", "D401", _claude_auth_error_events())
     s = transcripts.transcript_summary(path)
