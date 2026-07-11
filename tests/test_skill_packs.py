@@ -264,6 +264,33 @@ def test_install_fetch_nonzero_runner_raises(tmp_path: Path) -> None:
         skill_packs.install_pack(pack, skills_dir=tmp_path, runner=lambda _c, _d: 1)
 
 
+def test_install_fetch_failure_removes_new_partial_destination(tmp_path: Path) -> None:
+    pack = _pack(install="fetch", fetch_cmd="clone {skills_dir}/thing", vendored_path=None)
+
+    def partial_runner(_cmd: str, cwd: Path) -> int:
+        (cwd / pack.name).mkdir()
+        (cwd / pack.name / "partial").write_text("incomplete")
+        return 124
+
+    with pytest.raises(RuntimeError, match="exit 124"):
+        skill_packs.install_pack(pack, skills_dir=tmp_path, runner=partial_runner)
+
+    assert not (tmp_path / pack.name).exists()
+
+
+def test_install_fetch_failure_preserves_existing_destination(tmp_path: Path) -> None:
+    pack = _pack(install="fetch", fetch_cmd="clone {skills_dir}/thing", vendored_path=None)
+    dest = tmp_path / pack.name
+    dest.mkdir()
+    marker = dest / "working-skill"
+    marker.write_text("keep")
+
+    with pytest.raises(RuntimeError, match="exit 124"):
+        skill_packs.install_pack(pack, skills_dir=tmp_path, runner=lambda _c, _d: 124)
+
+    assert marker.read_text() == "keep"
+
+
 def test_install_fetch_shell_quotes_spaced_skills_dir(tmp_path: Path) -> None:
     """A skills dir with spaces (or metacharacters) must be shell-quoted.
 

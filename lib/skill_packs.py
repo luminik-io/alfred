@@ -307,9 +307,15 @@ def install_pack(
     if dry_run:
         return InstallResult(pack.name, pack.install, dest, fetched=cmd, dry_run=True)
     skills_dir.mkdir(parents=True, exist_ok=True)
+    dest_existed = dest.exists()
     run = runner or _default_shell_runner
     code = run(cmd, skills_dir)
     if code != 0:
+        if not dest_existed and dest.exists():
+            if dest.is_dir():
+                shutil.rmtree(dest)
+            else:
+                dest.unlink()
         raise RuntimeError(f"fetch for {pack.name!r} failed (exit {code}): {cmd}")
     return InstallResult(pack.name, pack.install, dest, fetched=cmd)
 

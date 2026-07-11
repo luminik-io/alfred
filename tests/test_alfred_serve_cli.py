@@ -128,3 +128,18 @@ def test_bounded_subcommand_returns_timeout_status(monkeypatch, capsys):
 
     assert cli._run_subcommand(["slow-command"], timeout=2) == 124
     assert "timed out after 2s" in capsys.readouterr().err
+
+
+def test_code_memory_serve_is_unbounded(monkeypatch):
+    cli = load_cli_module()
+    calls = []
+
+    def fake_run(command, check, timeout):
+        calls.append((command, timeout))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    args = SimpleNamespace(code_memory_args=["serve"])
+    assert cli.cmd_code_memory(args) == 0
+    assert calls == [([str(ROOT / "bin/code-memory-mcp"), "serve"], None)]

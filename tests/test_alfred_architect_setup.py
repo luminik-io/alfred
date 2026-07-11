@@ -79,8 +79,10 @@ def test_oauth_step_reports_timeout_without_crashing(tmp_path, monkeypatch, caps
 
     monkeypatch.setattr(mod.subprocess, "run", time_out)
 
-    mod.step_claude_oauth(state, non_interactive=False, skip_token_setup=False)
+    with pytest.raises(SystemExit) as exc:
+        mod.step_claude_oauth(state, non_interactive=False, skip_token_setup=False)
 
+    assert exc.value.code == 124
     assert "timed out waiting for approval" in capsys.readouterr().err
 
 

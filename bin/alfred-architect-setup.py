@@ -392,7 +392,7 @@ def step_claude_oauth(
                 "`alfred setup-token` timed out waiting for approval. "
                 "Re-run it before enabling architect."
             )
-            return
+            raise SystemExit(124) from None
         if rc == 0:
             state.config = read_env_file(state.env_file)
             ok(f"{TOKEN_ENV} configured")

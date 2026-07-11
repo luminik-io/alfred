@@ -1872,7 +1872,8 @@ def cmd_brain(args: argparse.Namespace) -> int:
 def cmd_code_memory(args: argparse.Namespace) -> int:
     script = _HERE / "code-memory-mcp"
     forwarded = args.code_memory_args or ["doctor"]
-    return _run_subcommand([str(script), *forwarded], timeout=_DELEGATED_COMMAND_TIMEOUT_S)
+    timeout = None if forwarded[0] == "serve" else _DELEGATED_COMMAND_TIMEOUT_S
+    return _run_subcommand([str(script), *forwarded], timeout=timeout)
 
 
 _MEMORY_STATUS_SEVERITY = {"ok": 0, "disabled": 1, "warn": 1, "fail": 2}
