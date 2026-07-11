@@ -255,6 +255,12 @@ _NATIVE_DRY_RUN_TIMEOUT_S = 300
 _DELEGATED_COMMAND_TIMEOUT_S = 600
 _INSTALL_COMMAND_TIMEOUT_S = 600
 _INTERACTIVE_COMMAND_TIMEOUT_S = 3600
+# Non-engine budget the demo child may legitimately spend after its four
+# engine calls: bounded test run (120s), planted-bug check (30s), and the
+# 30s-per-step git helpers in lib/demo/orchestrator.py, plus scaffolding
+# slack. The parent timeout must leave room for the child to reach its own
+# honest per-step timeout and error paths instead of being reaped first.
+_DEMO_VERIFICATION_BUDGET_S = 420
 ALFRED_INIT_BANNER_RE = re.compile(
     r"# alfred-init.{1,4}generated below this line\. Safe to re-run\."
 )
@@ -1477,9 +1483,7 @@ def _resume_one(codename: str, label: str) -> int:
     unit_path = scheduler.unit_file(label)
     if unit_path is None or not unit_path.exists():
         where = unit_path if unit_path is not None else "(no scheduler on this host)"
-        print(
-            f"  {codename}: no unit file at {where}; run `bash deploy.sh` first", file=sys.stderr
-        )
+        print(f"  {codename}: no unit file at {where}; run `bash deploy.sh` first", file=sys.stderr)
         return 1
     if scheduler.unit_loaded(label):
         print(f"  resumed {codename} (already loaded; marker cleared)")
@@ -2751,7 +2755,10 @@ def cmd_demo(args: argparse.Namespace) -> int:
     if args.timeout is not None:
         forwarded.extend(["--timeout", str(args.timeout)])
     step_timeout = args.timeout if args.timeout is not None else 90
-    parent_timeout = max(_DELEGATED_COMMAND_TIMEOUT_S, (step_timeout * 4) + 120)
+    parent_timeout = max(
+        _DELEGATED_COMMAND_TIMEOUT_S,
+        (step_timeout * 4) + _DEMO_VERIFICATION_BUDGET_S,
+    )
     return _run_subcommand(
         [sys.executable, str(script), *forwarded],
         timeout=parent_timeout,

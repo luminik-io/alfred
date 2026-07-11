@@ -532,7 +532,29 @@ def test_cli_demo_parent_timeout_scales_with_forwarded_step_limit(monkeypatch):
     monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
 
     assert cli.cmd_demo(_demo_namespace(keep=False, yes=True, timeout=300)) == 0
-    assert timeouts == [(300 * 4) + 120]
+    assert timeouts == [(300 * 4) + cli._DEMO_VERIFICATION_BUDGET_S]
+
+
+def test_cli_demo_parent_timeout_leaves_room_for_child_verification(monkeypatch):
+    cli = load_cli_module()
+    timeouts: list[int] = []
+
+    class FakeProcess:
+        def __init__(self, _command, **_kwargs):
+            pass
+
+        def wait(self, timeout):
+            timeouts.append(timeout)
+            return 0
+
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
+
+    assert cli.cmd_demo(_demo_namespace(keep=False, yes=True, timeout=90)) == 0
+    # Four engine calls at the step limit plus the child's own bounded
+    # verification (120s tests + 30s planted-bug check + 30s git steps) must
+    # fit under the parent ceiling so the child reaches its honest error path.
+    child_worst_case = (90 * 4) + 120 + 30 + (5 * 30)
+    assert timeouts[0] >= child_worst_case
 
 
 class _CompletedStub:
