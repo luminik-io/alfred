@@ -277,8 +277,26 @@ def _candidate_to_api(candidate: Any) -> dict[str, Any]:
             payload["evidence"] = ""
         elif not isinstance(evidence, str):
             payload["evidence"] = json.dumps(evidence, sort_keys=True)
+        # Ops vs codebase: a first-class flag the desktop uses to group lessons
+        # about Alfred's own runtime (provider quota, auth, engine timeouts)
+        # separately from lessons about the underlying codebase. Computed from
+        # tags so it works for harvested candidates that predate the ``ops`` tag.
+        payload["ops"] = _is_ops_memory(payload.get("tags"))
         return payload
     return {}
+
+
+def _is_ops_memory(tags: Any) -> bool:
+    """Whether a memory row's tags mark it as an Alfred-runtime (ops) lesson.
+
+    Thin wrapper over :func:`fleet_brain.taxonomy.is_ops_lesson`, imported lazily
+    so the server module never hard-depends on the taxonomy at import time.
+    Degrades to ``False`` if the taxonomy is somehow unavailable."""
+    try:
+        from fleet_brain.taxonomy import is_ops_lesson
+    except Exception:  # pragma: no cover - taxonomy is always present in practice
+        return False
+    return is_ops_lesson(tags)
 
 
 def _lesson_to_api(lesson: Any) -> dict[str, Any]:
@@ -294,6 +312,9 @@ def _lesson_to_api(lesson: Any) -> dict[str, Any]:
             payload["tags"] = []
         if not payload.get("severity"):
             payload["severity"] = "info"
+        # Same ops/codebase flag as candidates, so the desktop groups active
+        # lessons about Alfred's runs apart from lessons about the codebase.
+        payload["ops"] = _is_ops_memory(payload.get("tags"))
         return payload
     return {}
 

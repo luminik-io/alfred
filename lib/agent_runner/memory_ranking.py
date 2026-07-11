@@ -47,6 +47,7 @@ from typing import Any, Protocol, runtime_checkable
 _RANK_ENABLED_ENV = "ALFRED_MEMORY_RANK"
 _DELTA_ENABLED_ENV = "ALFRED_MEMORY_DELTA"
 _TYPED_RECALL_ENV = "ALFRED_MEMORY_TYPED_RECALL"
+_INJECT_OPS_ENV = "ALFRED_MEMORY_INJECT_OPS"
 _HALFLIFE_ENV = "ALFRED_MEMORY_DECAY_HALFLIFE_DAYS"
 _W_RELEVANCE_ENV = "ALFRED_MEMORY_RANK_W_RELEVANCE"
 _W_ROI_ENV = "ALFRED_MEMORY_RANK_W_ROI"
@@ -95,7 +96,11 @@ _DELTA_TABLE_MAX = 512
 
 
 def _truthy(value: str | None) -> bool:
-    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+    # ``enabled`` is included to match the convention the rest of the memory
+    # runtime uses (anchor_recall_enabled, repo_profile) so an operator who sets
+    # e.g. ``ALFRED_MEMORY_INJECT_OPS=enabled`` gets the expected effect rather
+    # than a silently ignored value.
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on", "enabled"}
 
 
 def rank_enabled(env: Mapping[str, str] | None = None) -> bool:
@@ -591,3 +596,38 @@ def apply_typed_recall(
         return kind_recall_bonus(getattr(pair[0], "kind", None))
 
     return sorted(pairs, key=kind_pref, reverse=True)
+
+
+def ops_deprioritized(env: Mapping[str, str] | None = None) -> bool:
+    """Whether ops (Alfred-runtime) lessons are pushed below codebase lessons.
+
+    ON by default, unlike the other injection knobs. The ops/codebase split
+    exists precisely so coding prompts lead with lessons about the underlying
+    codebase; leaving fleet-ops noise (provider quota, auth, engine timeouts)
+    interleaved would defeat that. Set ``ALFRED_MEMORY_INJECT_OPS`` truthy to
+    restore the pre-split behavior where ops lessons keep their recall position.
+    """
+    return not _truthy((env or os.environ).get(_INJECT_OPS_ENV))
+
+
+def deprioritize_ops(
+    pairs: list[tuple[Any, float | None]],
+    *,
+    env: Mapping[str, str] | None = None,
+) -> list[tuple[Any, float | None]]:
+    """Stable-sort ops lessons below codebase lessons (a down-weight, not a drop).
+
+    Ops lessons (see :func:`fleet_brain.taxonomy.is_ops_lesson`) are about
+    Alfred's own runtime, so within the finite injection budget the codebase
+    lessons an engineer actually needs should lead. This is a pure reorder:
+    codebase lessons keep their incoming rank order, ops lessons keep theirs and
+    are still injected when budget remains, so no lesson is lost and the change
+    is fully deterministic. Returns ``pairs`` unchanged when disabled or empty.
+    """
+    if not pairs or not ops_deprioritized(env):
+        return pairs
+    from fleet_brain.taxonomy import is_ops_lesson
+
+    # Stable sort on the ops flag: False (codebase, sorts as 0) leads, True (ops,
+    # sorts as 1) trails; each bucket preserves its incoming order.
+    return sorted(pairs, key=lambda pair: is_ops_lesson(getattr(pair[0], "tags", None)))

@@ -38,6 +38,12 @@ export function MemoryView({
   const suggestions = snapshot?.actions.promotion_suggestions || [];
   const candidatesError = snapshot?.memoryCandidates.error || null;
   const activeLessons = snapshot?.memoryLessons?.rows || [];
+  // Split the active lessons on the server-computed ops flag: lessons about the
+  // underlying codebase lead the tab, lessons about Alfred's own runs (provider
+  // quota, auth, engine failures) are tucked into a secondary, collapsed group
+  // so fleet-ops noise never crowds out what an engineer wants to see.
+  const codebaseLessons = activeLessons.filter((lesson) => !lesson.ops);
+  const opsLessons = activeLessons.filter((lesson) => lesson.ops);
 
   return (
     <section className="panel animate-rise">
@@ -66,21 +72,52 @@ export function MemoryView({
         />
       ) : activeLessons.length ? (
         <section className="lessons-active" aria-label="Lessons Alfred is using">
-          <h3 className="subsection-title">Lessons Alfred is using</h3>
+          <h3 className="subsection-title">About your codebase</h3>
           <p className="lessons-active__intro">
-            Alfred remembered these on its own and applies them as it works. Undo any that look
-            wrong.
+            What Alfred learned about your projects: conventions, fixes, and review patterns it
+            applies as it works. Undo any that look wrong.
           </p>
-          <ul className="active-lesson-list">
-            {activeLessons.map((lesson) => (
-              <ActiveLessonRow
-                key={lesson.id}
-                lesson={lesson}
-                busyMemoryAction={busyMemoryAction}
-                onMemoryCandidateAction={onMemoryCandidateAction}
-              />
-            ))}
-          </ul>
+          {codebaseLessons.length ? (
+            <ul className="active-lesson-list">
+              {codebaseLessons.map((lesson) => (
+                <ActiveLessonRow
+                  key={lesson.id}
+                  lesson={lesson}
+                  busyMemoryAction={busyMemoryAction}
+                  onMemoryCandidateAction={onMemoryCandidateAction}
+                />
+              ))}
+            </ul>
+          ) : (
+            <p className="lessons-active__intro">
+              Nothing about your codebase yet. As Alfred ships work on your projects, what it learns
+              lands here.
+            </p>
+          )}
+
+          {opsLessons.length ? (
+            <details className="ops-lessons">
+              <summary>
+                <Repeat size={15} aria-hidden="true" />
+                <span>About Alfred&rsquo;s runs ({opsLessons.length})</span>
+              </summary>
+              <p className="lessons-active__intro">
+                Lessons about Alfred&rsquo;s own runs, not your code: provider limits, sign-in, and
+                engine hiccups. Alfred handles these itself, so they stay out of the way here and do
+                not crowd its coding hints.
+              </p>
+              <ul className="active-lesson-list">
+                {opsLessons.map((lesson) => (
+                  <ActiveLessonRow
+                    key={lesson.id}
+                    lesson={lesson}
+                    busyMemoryAction={busyMemoryAction}
+                    onMemoryCandidateAction={onMemoryCandidateAction}
+                  />
+                ))}
+              </ul>
+            </details>
+          ) : null}
         </section>
       ) : suggestions.length ? (
         <div className="attention-list">

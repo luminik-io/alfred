@@ -369,6 +369,8 @@ def test_api_memory_candidates_promote_and_reject(
     assert rows[0]["severity"] == "info"
     assert rows[0]["confidence"] == 0.5
     assert rows[0]["source_firing_id"] is None
+    # A plain Slack-sourced candidate is about the codebase, not ops.
+    assert rows[0]["ops"] is False
     assert json.loads(rows[0]["evidence"]) == [{"source": "slack"}]
     assert rows[0]["created_at"].endswith("+00:00")
     assert brain.calls[0] == ("list", ("candidate", 50))
@@ -474,7 +476,18 @@ def test_api_memory_lessons_lists_active_lessons(
                 tags=["graphql"],
                 created_at=datetime(2026, 5, 30, 12, 0, tzinfo=UTC),
                 firing_id=None,
-            )
+            ),
+            # A harvested run-failure lesson: about Alfred's runtime, not the
+            # codebase. The endpoint must flag it ops so the UI groups it apart.
+            Lesson(
+                id="lesson:memory_candidate:2",
+                codename="senior-dev",
+                repo="example-org/alfred",
+                body="Provider quota hit on example-org/alfred; retry later.",
+                tags=["auto-harvest", "failure-pattern", "ops", "class:provider_limit"],
+                created_at=datetime(2026, 5, 30, 12, 5, tzinfo=UTC),
+                firing_id=None,
+            ),
         ]
     )
     app = create_app(FilesystemReader(state_root=state))
@@ -484,12 +497,15 @@ def test_api_memory_lessons_lists_active_lessons(
     resp = client.get("/api/memory/lessons")
     assert resp.status_code == 200
     rows = resp.json()["rows"]
-    assert len(rows) == 1
+    assert len(rows) == 2
     assert rows[0]["id"] == "lesson:memory_candidate:1"
     assert rows[0]["codename"] == "senior-dev"
     assert rows[0]["body"].startswith("GraphQL")
     assert rows[0]["tags"] == ["graphql"]
     assert rows[0]["severity"] == "info"
+    # Ops flag: the codebase lesson is not ops; the harvested one is.
+    assert rows[0]["ops"] is False
+    assert rows[1]["ops"] is True
     # Proves the read went through recall (the AMS-aware path), not list_lessons.
     assert provider.calls and provider.calls[0]["limit"] <= 200
 

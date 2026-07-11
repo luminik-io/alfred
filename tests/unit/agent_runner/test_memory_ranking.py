@@ -540,6 +540,139 @@ def test_format_context_ranks_before_budget(monkeypatch) -> None:
     assert "Weak" not in out
 
 
+# --------------------------------------------------------------------------
+# Ops vs codebase down-weight (deprioritize_ops)
+# --------------------------------------------------------------------------
+
+
+def test_ops_deprioritized_is_on_by_default(monkeypatch) -> None:
+    from agent_runner import memory_ranking as mr
+
+    monkeypatch.delenv("ALFRED_MEMORY_INJECT_OPS", raising=False)
+    assert mr.ops_deprioritized() is True
+    # The env override restores the pre-split interleaved behavior.
+    monkeypatch.setenv("ALFRED_MEMORY_INJECT_OPS", "1")
+    assert mr.ops_deprioritized() is False
+
+
+def test_deprioritize_ops_moves_ops_lessons_to_the_back(monkeypatch) -> None:
+    from agent_runner import memory_ranking as mr
+
+    monkeypatch.delenv("ALFRED_MEMORY_INJECT_OPS", raising=False)
+    codebase = _LessonStub("Use the API fixture factory.", tags=["convention"])
+    ops = _LessonStub("Provider quota hit; retry later.", tags=["ops", "class:provider_limit"])
+    # Ops lesson comes FIRST in recall order but must be pushed below codebase.
+    ordered = mr.deprioritize_ops([(ops, 0.9), (codebase, 0.2)])
+    assert [p[0] for p in ordered] == [codebase, ops]
+
+
+def test_deprioritize_ops_is_stable_within_each_bucket(monkeypatch) -> None:
+    from agent_runner import memory_ranking as mr
+
+    monkeypatch.delenv("ALFRED_MEMORY_INJECT_OPS", raising=False)
+    c1 = _LessonStub("Codebase one.", tags=["fix"])
+    c2 = _LessonStub("Codebase two.", tags=[])
+    o1 = _LessonStub("Ops one.", tags=["failure-pattern"])
+    o2 = _LessonStub("Ops two.", tags=["ops"])
+    ordered = mr.deprioritize_ops([(c1, None), (o1, None), (c2, None), (o2, None)])
+    # Codebase lessons keep their relative order, then ops keep theirs.
+    assert [p[0] for p in ordered] == [c1, c2, o1, o2]
+
+
+def test_deprioritize_ops_is_noop_when_disabled(monkeypatch) -> None:
+    from agent_runner import memory_ranking as mr
+
+    monkeypatch.setenv("ALFRED_MEMORY_INJECT_OPS", "1")
+    ops = _LessonStub("Ops.", tags=["ops"])
+    codebase = _LessonStub("Codebase.", tags=["convention"])
+    pairs = [(ops, 0.9), (codebase, 0.2)]
+    assert mr.deprioritize_ops(pairs) == pairs
+
+
+def test_format_context_leads_with_codebase_over_ops(monkeypatch) -> None:
+    """By default a tiny budget keeps the codebase lesson even when an ops lesson
+    was recalled first and scored higher: the ops split reorders it to the back
+    and the budget then drops it."""
+    from agent_runner import memory_runtime as runtime
+
+    body = "x" * 300
+    provider = _Scored(
+        [
+            (_LessonStub(f"Ops {body}", tags=["ops", "class:provider_limit"]), 0.95),
+            (_LessonStub(f"Codebase {body}", tags=["convention"]), 0.10),
+        ]
+    )
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+    monkeypatch.delenv("ALFRED_MEMORY_INJECT_OPS", raising=False)
+    # Budget fits the header plus roughly one lesson line.
+    monkeypatch.setenv("ALFRED_MEMORY_INJECT_MAX_CHARS", "500")
+    out = runtime.format_memory_context(provider, codename="lucius", repo="org/api", limit=5)
+    assert "Codebase" in out
+    assert "Ops" not in out
+
+
+def test_format_context_inject_ops_env_restores_interleave(monkeypatch) -> None:
+    """With ALFRED_MEMORY_INJECT_OPS set, ops lessons keep their recall position."""
+    from agent_runner import memory_runtime as runtime
+
+    provider = _Scored(
+        [
+            (_LessonStub("Ops lesson.", tags=["ops"]), 0.9),
+            (_LessonStub("Codebase lesson.", tags=["convention"]), 0.8),
+        ]
+    )
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+    monkeypatch.delenv("ALFRED_MEMORY_INJECT_MAX_CHARS", raising=False)
+    monkeypatch.setenv("ALFRED_MEMORY_INJECT_OPS", "1")
+    out = runtime.format_memory_context(provider, codename="lucius", repo="org/api", limit=5)
+    # Recall order preserved: ops lesson still leads.
+    assert out.index("Ops lesson.") < out.index("Codebase lesson.")
+
+
+def test_recall_fetch_limit_overfetches_and_is_bounded() -> None:
+    from agent_runner import memory_runtime as runtime
+
+    # A tiny inject limit pulls a much larger candidate pool so the reorders have
+    # codebase lessons to promote.
+    assert runtime._recall_fetch_limit(3) > 3
+    # Bounded above so a huge limit cannot pull an unbounded page.
+    assert runtime._recall_fetch_limit(1000) == runtime._RECALL_OVERFETCH_MAX
+    # Degenerate limits are passed through untouched.
+    assert runtime._recall_fetch_limit(0) == 0
+
+
+def test_format_context_overfetches_so_codebase_survives_ops_flood(monkeypatch) -> None:
+    """When the top ``limit`` recall hits are all ops lessons and the first
+    codebase lesson sits beyond ``limit``, over-fetch pulls it into the pool so
+    the ops split can promote it into the injected page."""
+    from agent_runner import memory_runtime as runtime
+
+    class _LimitedScored:
+        """Scored provider that RESPECTS ``limit`` (unlike ``_Scored``), so it
+        models a real provider returning only the requested page."""
+
+        name = "redis"
+
+        def __init__(self, pairs) -> None:
+            self._pairs = pairs
+
+        def recall_scored(self, *, codename, repo, query=None, limit=5):
+            return list(self._pairs)[:limit]
+
+        def recall(self, *, codename, repo, query=None, limit=5):
+            return [lesson for lesson, _ in list(self._pairs)[:limit]]
+
+    ops = [(_LessonStub(f"Ops {i}.", tags=["ops", "class:provider_limit"]), 0.9) for i in range(5)]
+    codebase = (_LessonStub("Codebase convention.", tags=["convention"]), 0.2)
+    # Codebase lesson sits at recall index 5, past the inject limit of 3.
+    provider = _LimitedScored([*ops, codebase])
+    monkeypatch.delenv("ALFRED_MEMORY_INJECT_OPS", raising=False)
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+    monkeypatch.delenv("ALFRED_MEMORY_INJECT_MAX_CHARS", raising=False)
+    out = runtime.format_memory_context(provider, codename="lucius", repo="org/api", limit=3)
+    assert "Codebase convention." in out
+
+
 def test_format_context_default_preserves_recall_order(monkeypatch) -> None:
     """Ranking off (default): output is byte-identical to legacy recall order."""
     from agent_runner import memory_runtime as runtime

@@ -43,6 +43,8 @@ from fleet_brain import (  # noqa: E402
 from fleet_brain.taxonomy import (  # noqa: E402
     DEFAULT_LESSON_KIND,
     LESSON_KINDS,
+    OPS_TAG,
+    is_ops_lesson,
     kind_recall_bonus,
 )
 from memory.providers import (  # noqa: E402
@@ -72,6 +74,27 @@ def test_kind_recall_preference_orders_conventions_first() -> None:
     assert kind_recall_bonus("fix") > kind_recall_bonus("note")
     assert kind_recall_bonus("note") == 0.0
     assert "note" in LESSON_KINDS
+
+
+def test_is_ops_lesson_detects_runtime_markers() -> None:
+    # Explicit ops tag, the harvest marker, and any runtime class all read ops.
+    assert is_ops_lesson([OPS_TAG])
+    assert is_ops_lesson(["failure-pattern", "pattern:bane|-|x|-"])
+    assert is_ops_lesson(["auto-harvest", "class:provider_limit"])
+    assert is_ops_lesson(["class:auth"])
+    assert is_ops_lesson(("class:TIMEOUT",))  # case-insensitive, tuple ok
+
+
+def test_is_ops_lesson_leaves_codebase_lessons_alone() -> None:
+    # Codebase lessons (conventions, fixes, review patterns) are never ops, and
+    # an unclassified failure is NOT asserted to be a runtime issue.
+    assert not is_ops_lesson(["tests", "graphql"])
+    assert not is_ops_lesson(["class:unknown"])
+    assert not is_ops_lesson(["review-pattern"])
+    # Defensive: a non-iterable or malformed tags value never raises.
+    assert not is_ops_lesson(None)
+    assert not is_ops_lesson("failure-pattern")  # a bare string is not a tag list
+    assert not is_ops_lesson([None, 123])
 
 
 # --------------------------------------------------------------------------
@@ -674,6 +697,48 @@ def test_runtime_anchor_recall_through_chained_provider(
     )
     assert "auth uses JWT" in block
     assert block.index("auth uses JWT") < block.index("general readme housekeeping")
+
+
+def test_runtime_anchored_ops_lesson_stays_below_codebase(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # An ops lesson that happens to be file-anchored must NOT jump ahead of
+    # codebase lessons and consume the slots the ops/codebase split reserves for
+    # them: the hoist runs first, then the split settles the anchored ops lesson
+    # back below the codebase lesson.
+    from agent_runner.memory_runtime import format_memory_context
+
+    monkeypatch.setenv("ALFRED_MEMORY_ANCHOR_RECALL", "1")
+    monkeypatch.delenv("ALFRED_MEMORY_INJECT_OPS", raising=False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    # An ops lesson anchored to the firing's file.
+    provider.reflect(
+        codename="lucius",
+        repo="acme/api",
+        body="provider quota hit, retry later",
+        tags=["ops", "class:provider_limit"],
+        kind="note",
+        anchors=[("file", "acme/api/src/auth.py")],
+    )
+    # A codebase lesson recalled by the query (not anchored).
+    provider.reflect(
+        codename="lucius",
+        repo="acme/api",
+        body="auth uses JWT verified in the middleware",
+        kind="convention",
+    )
+    block = format_memory_context(
+        provider,
+        codename="lucius",
+        repo="acme/api",
+        query="auth",
+        limit=3,
+        anchor_refs=["acme/api/src/auth.py"],
+    )
+    assert "provider quota hit" in block
+    assert "auth uses JWT" in block
+    # Codebase leads even though the ops lesson is file-anchored.
+    assert block.index("auth uses JWT") < block.index("provider quota hit")
 
 
 class _ScoredStub:

@@ -3397,6 +3397,30 @@ body {
   flex: none;
 }
 
+/* "About Alfred's runs": the ops (runtime) lessons, grouped into a closed
+   disclosure below the codebase lessons so fleet-ops noise (provider quota,
+   auth, engine timeouts) never leads the Learnings tab. */
+.ops-lessons {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.ops-lessons > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  font-weight: 650;
+  list-style: none;
+  cursor: pointer;
+}
+
+.ops-lessons > summary::-webkit-details-marker {
+  display: none;
+}
+
 .lessons-review {
   margin-top: 1.5rem;
   display: grid;

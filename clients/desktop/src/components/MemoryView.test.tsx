@@ -83,15 +83,77 @@ describe("MemoryView", () => {
 
     // The intro reframes memory as automatic, not a review queue.
     expect(screen.getByText(/alfred remembers what it learns on its own/i)).toBeInTheDocument();
-    // The auto-remembered lessons lead the surface.
+    // The codebase lessons lead the surface.
     expect(
-      screen.getByRole("heading", { name: /lessons alfred is using/i }),
+      screen.getByRole("heading", { name: /about your codebase/i }),
     ).toBeInTheDocument();
     expect(screen.getByText(/graphql schema lives in/i)).toBeInTheDocument();
     // No pile of "keep this lesson" cards as the primary action.
     expect(
       screen.queryByRole("button", { name: /keep this lesson/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("groups codebase lessons first and tucks Alfred's-runs lessons into a closed disclosure", () => {
+    render(
+      <MemoryView
+        snapshot={snapshot({
+          memoryLessons: {
+            rows: [
+              lesson({ id: "lesson:memory_candidate:1", body: "GraphQL schema lives here." }),
+              // An ops lesson: about Alfred's runtime, not the codebase.
+              lesson({
+                id: "lesson:memory_candidate:9",
+                body: "Provider quota hit; retry later.",
+                ops: true,
+              }),
+            ],
+          },
+        })}
+        actionNotice={null}
+        busyMemoryAction={null}
+        nativeBusy={null}
+        onMemoryCandidateAction={vi.fn()}
+        onRunLocalAction={vi.fn()}
+      />,
+    );
+
+    // Codebase lesson leads under the primary heading.
+    expect(screen.getByRole("heading", { name: /about your codebase/i })).toBeInTheDocument();
+    expect(screen.getByText(/graphql schema lives here/i)).toBeInTheDocument();
+
+    // The ops lesson lives under a secondary, CLOSED disclosure so it does not
+    // crowd the codebase lessons.
+    const opsSummary = screen.getByText(/about alfred.s runs/i);
+    const opsDetails = opsSummary.closest("details");
+    expect(opsDetails).not.toBeNull();
+    expect(opsDetails).not.toHaveAttribute("open");
+    expect(within(opsDetails as HTMLElement).getByText(/provider quota hit/i)).toBeInTheDocument();
+  });
+
+  it("shows a friendly empty note when every lesson is an ops lesson", () => {
+    render(
+      <MemoryView
+        snapshot={snapshot({
+          memoryLessons: {
+            rows: [
+              lesson({ id: "lesson:memory_candidate:9", body: "Auth failed; ask a human.", ops: true }),
+            ],
+          },
+        })}
+        actionNotice={null}
+        busyMemoryAction={null}
+        nativeBusy={null}
+        onMemoryCandidateAction={vi.fn()}
+        onRunLocalAction={vi.fn()}
+      />,
+    );
+
+    // No codebase lessons yet, so the primary group explains that plainly...
+    expect(screen.getByText(/nothing about your codebase yet/i)).toBeInTheDocument();
+    // ...while the ops lesson is still available under Alfred's runs.
+    const opsSummary = screen.getByText(/about alfred.s runs/i);
+    expect(within(opsSummary.closest("details") as HTMLElement).getByText(/auth failed/i)).toBeInTheDocument();
   });
 
   it("gives every auto-remembered lesson an undo affordance that retires it", async () => {
