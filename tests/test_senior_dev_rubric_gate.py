@@ -341,8 +341,10 @@ def test_salvage_commit_failure_resets_worktree(senior_dev, monkeypatch):
         _Spend(),
         events,
     )
-    # A failed salvage must hard-reset, not leave the tree dirty.
+    # A failed salvage must reset tracked edits AND clean untracked revision
+    # files, so nothing outside the committed build survives for the push.
     assert any(a[:3] == ["git", "reset", "--hard"] for a in calls)
+    assert any(a[:2] == ["git", "clean"] for a in calls)
     assert any(t == "rubric_revision_salvage_failed" for t, _ in events.emitted)
 
 

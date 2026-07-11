@@ -501,11 +501,11 @@ def _settle_revision_worktree(
     those edits are invisible to the committed ``base_ref...HEAD`` diff the
     grader reads AND leave the tree dirty for the push. This stages and commits
     them under the revision trailer so the graded diff matches what the PR ships.
-    If staging or committing fails, it hard-resets to ``HEAD`` so the tree is
-    clean for the push (discarding only the uncommitted revision edits; the build
-    commit is preserved) rather than leaving a dirty tree that could break
-    pre-push or ship a partial change. A no-op when the worktree is already
-    clean. Called from a ``finally`` so it runs even when the revision raised.
+    If staging or committing fails, it discards the uncommitted revision output
+    so the tree is clean for the push (the build commit is preserved) rather than
+    leaving a dirty tree that could break pre-push or ship a partial change. A
+    no-op when the worktree is already clean. Called from a ``finally`` so it
+    runs even when the revision raised.
     """
     if not _worktree_status(wt):
         return
@@ -527,10 +527,13 @@ def _settle_revision_worktree(
     else:
         detail = add.stderr or add.stdout
     # Staging or committing the revision failed. Do NOT leave a dirty tree: reset
-    # to the clean committed build state so the push ships exactly what was built
-    # and graded, and pre-push cannot trip on leftover edits.
+    # tracked edits AND clean untracked files the revision created (git clean -fd
+    # honors .gitignore, so build artifacts are kept) so the tree matches the
+    # committed build exactly. Otherwise a stray new file would survive the reset
+    # and pre-push could run against files outside the PR diff.
     events.emit("rubric_revision_salvage_failed", reason=short(detail, 200))
     run(["git", "reset", "--hard", "HEAD"], cwd=str(wt), timeout=30)
+    run(["git", "clean", "-fd"], cwd=str(wt), timeout=30)
 
 
 def _revision_prompt(
