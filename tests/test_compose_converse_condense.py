@@ -42,7 +42,7 @@ _VALID_TURN_JSON = (
 def test_converse_engine_prefers_explicit_configuration(monkeypatch) -> None:
     monkeypatch.setenv(cc.ENGINE_ENV, "codex")
     monkeypatch.setenv("ALFRED_ENGINE", "claude")
-    monkeypatch.setattr(cc.shutil, "which", lambda _name: "/installed")
+    monkeypatch.setattr(cc, "_available_engine_clis", lambda: {"claude", "codex"})
 
     assert cc.converse_engine_from_env() == "codex"
 
@@ -51,7 +51,7 @@ def test_converse_engine_uses_fleet_choice_before_detection(monkeypatch) -> None
     monkeypatch.delenv(cc.ENGINE_ENV, raising=False)
     monkeypatch.delenv(cc.FALLBACK_ENGINE_ENV, raising=False)
     monkeypatch.setenv("ALFRED_ENGINE", "codex")
-    monkeypatch.setattr(cc.shutil, "which", lambda _name: "/installed")
+    monkeypatch.setattr(cc, "_available_engine_clis", lambda: {"claude", "codex"})
 
     assert cc.converse_engine_from_env() == "codex"
 
@@ -61,14 +61,27 @@ def test_converse_engine_detects_installed_subscription_clis(monkeypatch) -> Non
     monkeypatch.delenv(cc.FALLBACK_ENGINE_ENV, raising=False)
     monkeypatch.delenv("ALFRED_ENGINE", raising=False)
 
-    monkeypatch.setattr(cc.shutil, "which", lambda name: f"/bin/{name}")
+    monkeypatch.setattr(cc, "_available_engine_clis", lambda: {"claude", "codex"})
     assert cc.converse_engine_from_env() == "hybrid"
 
-    monkeypatch.setattr(cc.shutil, "which", lambda name: "/bin/codex" if name == "codex" else None)
+    monkeypatch.setattr(cc, "_available_engine_clis", lambda: {"codex"})
     assert cc.converse_engine_from_env() == "codex"
 
-    monkeypatch.setattr(cc.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(cc, "_available_engine_clis", set)
     assert cc.converse_engine_from_env() == ""
+
+
+def test_converse_engine_honors_configured_binary_override(monkeypatch) -> None:
+    import server.setup as setup
+
+    monkeypatch.delenv(cc.ENGINE_ENV, raising=False)
+    monkeypatch.delenv(cc.FALLBACK_ENGINE_ENV, raising=False)
+    monkeypatch.delenv("ALFRED_ENGINE", raising=False)
+    monkeypatch.setenv("CLAUDE_BIN", "/opt/alfred/bin/claude")
+    monkeypatch.delenv("CODEX_BIN", raising=False)
+    monkeypatch.setattr(setup.shutil, "which", lambda *_args, **_kwargs: None)
+
+    assert cc.converse_engine_from_env() == "claude"
 
 
 def _messages(n: int) -> list[cc.ConverseMessage]:

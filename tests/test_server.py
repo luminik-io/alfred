@@ -19,6 +19,7 @@ LIB = REPO_ROOT / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
+import compose_converse as cc  # noqa: E402
 import server.views as server_views  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from fleet_brain import Lesson  # noqa: E402
@@ -2620,7 +2621,7 @@ def test_compose_converse_degrades_when_no_engine_configured(
     monkeypatch.delenv("ALFRED_COMPOSE_CONVERSE_ENGINE", raising=False)
     monkeypatch.delenv("ALFRED_PLANNING_ASSISTANT_ENGINE", raising=False)
     monkeypatch.delenv("ALFRED_ENGINE", raising=False)
-    monkeypatch.setattr(server_views.cc.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(cc, "_available_engine_clis", set)
     state = tmp_path / "state"
     state.mkdir()
     client = TestClient(create_app(FilesystemReader(state_root=state)))
@@ -2642,7 +2643,7 @@ def test_compose_converse_stream_degrades_with_sse_error_when_no_engine_configur
     monkeypatch.delenv("ALFRED_COMPOSE_CONVERSE_ENGINE", raising=False)
     monkeypatch.delenv("ALFRED_PLANNING_ASSISTANT_ENGINE", raising=False)
     monkeypatch.delenv("ALFRED_ENGINE", raising=False)
-    monkeypatch.setattr(server_views.cc.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(cc, "_available_engine_clis", set)
     state = tmp_path / "state"
     state.mkdir()
     client = TestClient(create_app(FilesystemReader(state_root=state)))

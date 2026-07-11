@@ -30,7 +30,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -1607,8 +1606,9 @@ def converse_engine_from_env() -> str:
     if configured:
         return configured
 
-    claude_ready = shutil.which("claude") is not None
-    codex_ready = shutil.which("codex") is not None
+    detected = _available_engine_clis()
+    claude_ready = "claude" in detected
+    codex_ready = "codex" in detected
     if claude_ready and codex_ready:
         return "hybrid"
     if claude_ready:
@@ -1616,6 +1616,18 @@ def converse_engine_from_env() -> str:
     if codex_ready:
         return "codex"
     return ""
+
+
+def _available_engine_clis() -> set[str]:
+    """Return subscription CLIs resolved by the canonical setup detector."""
+
+    from server.setup import engine_clis
+
+    return {
+        str(item.get("name") or "").strip().lower()
+        for item in engine_clis()
+        if item.get("installed")
+    }
 
 
 def converse_firing_id() -> str:
