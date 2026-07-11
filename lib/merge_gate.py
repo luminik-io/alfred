@@ -501,8 +501,8 @@ def _collect_external_reviews(
         if all(isinstance(p, list) for p in payload)
         else payload
     )
-    trusted_requests: list[tuple[str, str]] = []
-    for item in items:
+    trusted_requests: list[tuple[int, str]] = []
+    for index, item in enumerate(items):
         if not isinstance(item, dict):
             continue
         association = str(item.get("author_association") or "").upper()
@@ -513,23 +513,20 @@ def _collect_external_reviews(
             and "@codex review" in body.lower()
             and match
         ):
-            trusted_requests.append(
-                (str(item.get("created_at") or item.get("updated_at") or ""), match.group(1))
-            )
+            trusted_requests.append((index, match.group(1)))
     evidence: list[ExternalReviewEvidence] = []
-    for item in items:
+    for index, item in enumerate(items):
         if not isinstance(item, dict) or not isinstance(item.get("user"), dict):
             continue
         author = str(item["user"].get("login") or "")
         body = str(item.get("body") or "")
         reviewed_sha = ""
         if author.lower() in {"chatgpt-codex-connector", "chatgpt-codex-connector[bot]"}:
-            match = re.search(r"Reviewed commit:\*\*\s*`([0-9a-f]{7,40})`", body, re.I)
+            match = re.search(r"Reviewed commit:(?:\*\*)?\s*`?([0-9a-f]{7,40})`?", body, re.I)
             if match:
-                evidence_time = str(item.get("created_at") or item.get("updated_at") or "")
-                preceding = [entry for entry in trusted_requests if entry[0] <= evidence_time]
+                preceding = [entry for entry in trusted_requests if entry[0] < index]
                 if preceding:
-                    _requested_at, requested_sha = max(preceding, key=lambda entry: entry[0])
+                    _request_index, requested_sha = max(preceding, key=lambda entry: entry[0])
                     if requested_sha.lower().startswith(match.group(1).lower()):
                         reviewed_sha = requested_sha
         elif author.lower() in {"greptile-apps", "greptile-apps[bot]"}:

@@ -234,6 +234,37 @@ def test_codex_evidence_binds_to_trusted_full_head_request():
     assert not evaluate_gate(snap, required_external_reviews=("codex",)).mergeable
 
 
+def test_codex_evidence_uses_comment_order_when_timestamps_tie():
+    old_head = "a" * 40
+    new_head = "b" * 40
+    timestamp = "2026-07-11T10:00:00Z"
+    payload = [
+        [
+            {
+                "user": {"login": "operator"},
+                "author_association": "OWNER",
+                "body": f"@codex review\nExact head: `{old_head}`",
+                "created_at": timestamp,
+            },
+            {
+                "user": {"login": "chatgpt-codex-connector[bot]"},
+                "body": "Didn't find any major issues.\nReviewed commit: aaaaaaaaaa",
+                "created_at": timestamp,
+            },
+            {
+                "user": {"login": "operator"},
+                "author_association": "OWNER",
+                "body": f"@codex review\nExact head: `{new_head}`",
+                "created_at": timestamp,
+            },
+        ]
+    ]
+    evidence = merge_gate._collect_external_reviews(
+        "acme/repo", 7, gh_json=lambda _cmd, _default: payload, errors=[]
+    )
+    assert evidence[1].reviewed_sha == old_head
+
+
 def test_unknown_review_decision_fails_closed():
     decision = evaluate_gate(_snapshot(review_decision="SOMETHING_NEW"))
     assert decision.mergeable is False
