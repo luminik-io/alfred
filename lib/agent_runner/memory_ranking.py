@@ -40,6 +40,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol, runtime_checkable
 
+from envflags import truthy
+
 # --------------------------------------------------------------------------
 # Config knobs (env-driven, conservative defaults)
 # --------------------------------------------------------------------------
@@ -95,21 +97,13 @@ _REUSE_TABLE_MAX = 20_000
 _DELTA_TABLE_MAX = 512
 
 
-def _truthy(value: str | None) -> bool:
-    # ``enabled`` is included to match the convention the rest of the memory
-    # runtime uses (anchor_recall_enabled, repo_profile) so an operator who sets
-    # e.g. ``ALFRED_MEMORY_INJECT_OPS=enabled`` gets the expected effect rather
-    # than a silently ignored value.
-    return str(value or "").strip().lower() in {"1", "true", "yes", "on", "enabled"}
-
-
 def rank_enabled(env: Mapping[str, str] | None = None) -> bool:
     """Whether the weighted rank + decay + reinforce scoring is active.
 
     OFF by default: recalled lessons keep their existing recall order and no
     reuse state is accumulated.
     """
-    return _truthy((env or os.environ).get(_RANK_ENABLED_ENV))
+    return truthy((env or os.environ).get(_RANK_ENABLED_ENV))
 
 
 def delta_enabled(env: Mapping[str, str] | None = None) -> bool:
@@ -118,7 +112,7 @@ def delta_enabled(env: Mapping[str, str] | None = None) -> bool:
     OFF by default: every turn injects the full ranked set regardless of what an
     earlier turn of the same firing already showed.
     """
-    return _truthy((env or os.environ).get(_DELTA_ENABLED_ENV))
+    return truthy((env or os.environ).get(_DELTA_ENABLED_ENV))
 
 
 def _env_float(env: Mapping[str, str], key: str, default: float, *, minimum: float) -> float:
@@ -572,7 +566,7 @@ def typed_recall_enabled(env: Mapping[str, str] | None = None) -> bool:
     editing code (conventions first, then review-patterns and fixes, then the
     failures to avoid) ahead of passive notes.
     """
-    return _truthy((env or os.environ).get(_TYPED_RECALL_ENV))
+    return truthy((env or os.environ).get(_TYPED_RECALL_ENV))
 
 
 def apply_typed_recall(
@@ -607,7 +601,7 @@ def ops_deprioritized(env: Mapping[str, str] | None = None) -> bool:
     interleaved would defeat that. Set ``ALFRED_MEMORY_INJECT_OPS`` truthy to
     restore the pre-split behavior where ops lessons keep their recall position.
     """
-    return not _truthy((env or os.environ).get(_INJECT_OPS_ENV))
+    return not truthy((env or os.environ).get(_INJECT_OPS_ENV))
 
 
 def deprioritize_ops(

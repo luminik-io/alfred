@@ -33,6 +33,8 @@ import os
 import re
 from dataclasses import dataclass, field
 
+from envflags import FALSY_VALUES
+
 __all__ = [
     "ToolDigest",
     "digest_diff",
@@ -204,7 +206,7 @@ def digest_tool_output(text: str, *, kind: str | None = None) -> ToolDigest:
 def tool_digest_enabled() -> bool:
     """True unless an operator opts out via ``ALFRED_TOOL_DIGEST=0`` (default on)."""
     val = os.environ.get(_DIGEST_FLAG)
-    return val is None or val.strip().lower() not in {"0", "false", "no", "off"}
+    return val is None or val.strip().lower() not in FALSY_VALUES
 
 
 def tool_digest_min_chars() -> int:

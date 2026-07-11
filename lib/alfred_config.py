@@ -29,6 +29,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Literal
 
+from envflags import truthy
+
 Kind = Literal["bool", "int", "float", "str", "enum", "list", "path", "secret"]
 
 # Categories used to group vars in the generated docs. Keep this list and the
@@ -48,12 +50,6 @@ CATEGORIES: tuple[str, ...] = (
     "onboarding",
     "internal",
 )
-
-# Truthy set shared with agent_runner.config._truthy_env. Kept local so this
-# module has no import dependency on agent_runner (avoids an import cycle: the
-# runner imports the registry, not the other way round).
-_TRUTHY = frozenset({"1", "true", "yes", "on"})
-
 
 @dataclass(frozen=True)
 class ConfigVar:
@@ -2508,9 +2504,9 @@ def get_str(name: str, environ: dict[str, str] | None = None) -> str | None:
 
 
 def get_bool(name: str, environ: dict[str, str] | None = None) -> bool:
-    """Return a truthy-checked bool (``1/true/yes/on``), default-aware."""
+    """Return a truthy-checked bool, default-aware."""
     raw = _raw(name, environ)
-    return raw is not None and raw.strip().lower() in _TRUTHY
+    return truthy(raw)
 
 
 def get_int(name: str, environ: dict[str, str] | None = None) -> int | None:

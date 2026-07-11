@@ -49,6 +49,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from envflags import TRUTHY_VALUES
+
 # A judge takes the judge prompt and returns the model's raw text (the JSON
 # verdict we asked for), or None on any failure. This is the single seam tests
 # stub out.
@@ -123,7 +125,7 @@ def judge_enabled(env: Mapping[str, str] | None = None) -> bool:
     value = _env_token(raw)
     if raw is None or not value:
         return True  # default ON for autonomous memory
-    return value in {"1", "true", "yes", "on", "enabled"}
+    return value in TRUTHY_VALUES
 
 
 def _env_token(raw: object) -> str:

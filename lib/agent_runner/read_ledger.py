@@ -31,6 +31,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from envflags import FALSY_VALUES
+
 __all__ = [
     "DEFAULT_CONTEXT_LINES",
     "DEFAULT_MAX_DIFF_CHARS",
@@ -64,7 +66,7 @@ DEFAULT_CONTEXT_LINES = 3
 # full content. Bounds the cost of ``difflib`` on pathologically large files.
 DEFAULT_MAX_DIFF_CHARS = 400_000
 
-_FALSEY = {"0", "false", "no", "off", ""}
+_FALSEY = FALSY_VALUES | {""}
 
 
 def read_delta_enabled(env: Mapping[str, str] | None = None) -> bool:

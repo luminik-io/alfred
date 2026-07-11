@@ -54,6 +54,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from envflags import FALSY_VALUES, RECOGNIZED_VALUES, TRUTHY_VALUES
+
 from .graph import (
     CodeOwnerRule,
     GraphEdge,
@@ -202,9 +204,9 @@ AUTO_PROMOTE_NO_JUDGE_THRESHOLD = 0.9
 # .store so the store's stats query and this hold path share one source).
 # Subsequent runs see the marker and never re-judge the row, so a held candidate
 # cannot starve the per-run judge budget or re-post the same alert every run.
-_TRUTHY_ENV_TOKENS = {"1", "true", "yes", "on", "enabled"}
-_FALSY_ENV_TOKENS = {"0", "false", "no", "off", "disabled"}
-_RECOGNIZED_ENV_TOKENS = _TRUTHY_ENV_TOKENS | _FALSY_ENV_TOKENS
+_TRUTHY_ENV_TOKENS = TRUTHY_VALUES
+_FALSY_ENV_TOKENS = FALSY_VALUES
+_RECOGNIZED_ENV_TOKENS = RECOGNIZED_VALUES
 _AUTO_PROMOTE_STOP_KEYS = {
     "ALFRED_AUTO_PROMOTE",
     "ALFRED_AUTO_PROMOTE_KILL",

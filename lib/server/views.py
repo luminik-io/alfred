@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from envflags import FALSY_VALUES
 from fastapi import FastAPI, Request
 from fastapi.responses import (
     JSONResponse,
@@ -2609,7 +2610,7 @@ def _memory_candidate_body(draft: IssueDraft) -> str:
 
 
 def _env_disabled(name: str) -> bool:
-    return (os.environ.get(name) or "").strip().lower() in {"0", "false", "no", "off"}
+    return (os.environ.get(name) or "").strip().lower() in FALSY_VALUES
 
 
 def _planning_workdir(request: Request) -> Path:

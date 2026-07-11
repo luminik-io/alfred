@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import alfred_config
+from envflags import truthy
 
 from . import memory_ranking
 from .result import ClaudeResult
@@ -634,8 +635,7 @@ def anchor_recall_enabled(env: Mapping[str, str] | None = None) -> bool:
     1. When armed, the firing's available file context (its orientation paths)
     is passed to recall so lessons anchored to those files surface first.
     """
-    raw = str((env or os.environ).get(_ANCHOR_RECALL_ENV, "")).strip().lower()
-    return raw in {"1", "true", "yes", "on", "enabled"}
+    return truthy((env or os.environ).get(_ANCHOR_RECALL_ENV))
 
 
 def derive_anchor_refs(

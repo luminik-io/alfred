@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from conversation_condenser import looks_like_context_overflow
+from envflags import FALSY_VALUES, truthy
 
 from . import memory_ranking
 from .config import (
@@ -133,13 +134,13 @@ _AGENT_NOTIF_SUPPRESS_SETTINGS = '{"agentPushNotifEnabled":false,"preferredNotif
 
 
 def _is_falsy_env(name: str) -> bool:
-    """True when ``name`` is explicitly set to a falsy value (0/false/no/off).
+    """True when ``name`` is explicitly set to a canonical falsy value.
 
     Used for default-ON features that an operator can opt OUT of: an unset
     env var returns ``False`` here so the feature stays enabled.
     """
     val = os.environ.get(name)
-    return val is not None and val.strip().lower() in {"0", "false", "no", "off"}
+    return val is not None and val.strip().lower() in FALSY_VALUES
 
 
 def _agent_notifications_enabled() -> bool:
@@ -254,7 +255,7 @@ def _memory_mcp_enabled() -> bool:
     val = os.environ.get("ALFRED_MEMORY_MCP")
     if val is None:
         return True
-    return val.strip().lower() not in {"0", "false", "no", "off", ""}
+    return val.strip().lower() not in FALSY_VALUES | {""}
 
 
 def _memory_mcp_script() -> Path | None:
@@ -377,7 +378,7 @@ def _code_memory_mcp_enabled() -> bool:
     val = os.environ.get("ALFRED_CODE_MEMORY_MCP")
     if val is None:
         return True
-    return val.strip().lower() not in {"0", "false", "no", "off", ""}
+    return val.strip().lower() not in FALSY_VALUES | {""}
 
 
 def _code_memory_launcher() -> Path | None:
@@ -436,9 +437,7 @@ _GRAPHIFY_TOOLS = (
 def _graphify_mcp_enabled() -> bool:
     """Off unless ALFRED_GRAPHIFY_MCP is explicitly truthy (opt-in)."""
     val = os.environ.get("ALFRED_GRAPHIFY_MCP")
-    if val is None:
-        return False
-    return val.strip().lower() in {"1", "true", "yes", "on"}
+    return truthy(val)
 
 
 def _graphify_code_memory_fallback_enabled() -> bool:

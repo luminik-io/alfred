@@ -52,6 +52,8 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from envflags import FALSY_VALUES
+
 __all__ = [
     "CompactionResult",
     "compact_output",
@@ -62,7 +64,7 @@ __all__ = [
     "strip_ansi",
 ]
 
-_FALSEY = {"0", "false", "no", "off"}
+_FALSEY = FALSY_VALUES
 
 # ---- defaults (all overridable via env, see _compact_config) --------------
 _DEFAULT_MIN_BYTES = 2_000  # below this, output passes through un-compacted

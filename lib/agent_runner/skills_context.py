@@ -35,6 +35,8 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from envflags import FALSY_VALUES
+
 __all__ = [
     "MAX_SKILL_FILE_SIZE",
     "SKILLS_INJECT_ENV",
@@ -208,7 +210,7 @@ def _skills_inject_enabled(env: dict[str, str] | None = None) -> bool:
     val = envmap.get(SKILLS_INJECT_ENV)
     if val is None:
         return True
-    return val.strip().lower() not in {"0", "false", "no", "off", ""}
+    return val.strip().lower() not in FALSY_VALUES | {""}
 
 
 def _default_skill_dirs() -> list[Path]:

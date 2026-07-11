@@ -66,6 +66,7 @@ from pathlib import Path
 from typing import Any
 
 import alfred_config
+from envflags import truthy
 from planning_actions import convert_followup_to_draft, mark_followup_handled
 from server.reader import (
     FilesystemReader,
@@ -1210,7 +1211,7 @@ def render_fleet_status(data: dict[str, Any]) -> str:
     if not agents:
         lines.append("_No agents configured._")
     else:
-        loaded = sum(1 for a in agents if _truthy(a.get("loaded")))
+        loaded = sum(1 for a in agents if _agent_status_on(a.get("loaded")))
         paused = sum(1 for a in agents if _agent_paused(a))
         lines.append(f"*Agents:* {len(agents)} configured, {loaded} loaded, {paused} paused")
         for agent in agents[:20]:
@@ -1720,13 +1721,13 @@ def _extract_candidate_id(raw: str) -> str | None:
 def _agent_state_label(agent: dict[str, Any]) -> str:
     if _agent_paused(agent):
         return "paused"
-    if _truthy(agent.get("loaded")):
+    if _agent_status_on(agent.get("loaded")):
         return "loaded"
     return "not loaded"
 
 
 def _agent_paused(agent: dict[str, Any]) -> bool:
-    if _truthy(agent.get("paused")):
+    if _agent_status_on(agent.get("paused")):
         return True
     return str(agent.get("enable_state") or "").lower() == "paused"
 
@@ -1772,11 +1773,12 @@ def _readiness_label(plan: PlanDraft) -> str:
     return f"{state} ({score}/100)"
 
 
-def _truthy(value: Any) -> bool:
+def _agent_status_on(value: Any) -> bool:
     if isinstance(value, bool):
         return value
     if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "on", "loaded"}
+        token = value.strip().lower()
+        return truthy(token) or token == "loaded"
     return bool(value)
 
 
