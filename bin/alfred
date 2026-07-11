@@ -860,12 +860,57 @@ def _alfred_home_path() -> Path:
     return _home_child(".alfred")
 
 
+def _install_managed_python_candidates() -> list[Path]:
+    """Interpreters provisioned alongside the installed/checked-out code.
+
+    ``_HERE`` is ``<install>/bin``; the deployed fleet ships its venv at
+    ``<install>/venv`` and a source checkout at ``<install>/.venv``.
+    """
+    install_root = _HERE.parent
+    return [
+        install_root / "venv" / "bin" / "python",
+        install_root / ".venv" / "bin" / "python",
+    ]
+
+
 def _alfred_managed_python() -> str:
-    """Return Alfred's managed runtime interpreter when it is provisioned."""
+    """Return the interpreter that runs Alfred's server and helper scripts.
+
+    Precedence:
+
+    1. ``$ALFRED_HOME/venv`` - the requested home's own managed venv.
+    2. When ``ALFRED_HOME`` is explicitly set to a home that has no venv of its
+       own (a fresh state/config home whose code is loaded from the deployed
+       install), the install's own venv. That venv carries the dashboard deps,
+       so serve works instead of dying on a bare ``sys.executable`` that lacks
+       them. Only the interpreter (and the library it imports) comes from the
+       install; ``ALFRED_HOME`` still anchors every state/config path.
+    3. ``sys.executable`` as a last resort.
+    """
     candidate = _alfred_home_path() / "venv" / "bin" / "python"
     if candidate.is_file() and os.access(candidate, os.X_OK):
         return str(candidate)
+    if os.environ.get("ALFRED_HOME", "").strip():
+        for install_python in _install_managed_python_candidates():
+            if install_python.is_file() and os.access(install_python, os.X_OK):
+                return str(install_python)
     return sys.executable
+
+
+def _ensure_requested_home_scaffolding() -> None:
+    """Create the minimal state directory for an explicitly-set ``ALFRED_HOME``.
+
+    An operator who points ``ALFRED_HOME`` at a fresh directory expects that
+    home to be used for all state/config, even when the code is loaded from the
+    deployed install. Create the state directory (rather than silently falling
+    back to another home) so the requested home is materialized and honored.
+    Only fires for an explicitly-set home; the default ``~/.alfred`` is left to
+    the installer.
+    """
+    if not os.environ.get("ALFRED_HOME", "").strip():
+        return
+    with contextlib.suppress(OSError):
+        (_alfred_home_path() / "state").mkdir(parents=True, exist_ok=True)
 
 
 def _source_agents_conf_for_root(root: Path) -> Path | None:
@@ -2510,6 +2555,7 @@ def cmd_demo(args: argparse.Namespace) -> int:
 
 def cmd_serve(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-serve.py"
+    _ensure_requested_home_scaffolding()
     forwarded: list[str] = []
     if args.host:
         forwarded.extend(["--host", args.host])

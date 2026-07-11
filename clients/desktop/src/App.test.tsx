@@ -80,6 +80,11 @@ function makeSetupStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
     engine_ready: true,
     repos: { selected: ["acme-org/api"], count: 1, keys: [] },
     demo: { present: false },
+    install: {
+      agents_conf_present: true,
+      scheduled_runs: 3,
+      initialized: true,
+    } as SetupStatus["install"],
     ready: true,
     ...overrides,
   };
@@ -155,6 +160,26 @@ describe("App initial route gating", () => {
     useAlfredMock.mockReturnValue(baseAlfredReturn({ snapshot: makeSnapshot(), error: null }));
     loadSetupStatusMock.mockResolvedValue(
       makeSetupStatus({ engine_ready: false, repos: { selected: [], count: 0, keys: [] } }),
+    );
+    await renderApp();
+    expect(await screen.findByTestId("onboarding-screen")).toBeInTheDocument();
+    expect(screen.queryByTestId("inbox-screen")).not.toBeInTheDocument();
+  });
+
+  it("lands on onboarding when repo scope is present but the fleet was never deployed", async () => {
+    // Regression: a machine can report engine + GitHub + a selected repo (repo
+    // scope is often inherited from the shell environment) while never having run
+    // setup, so it has no agents.conf and zero scheduled agents. That install
+    // must land on the onboarding takeover, not on an empty Inbox.
+    useAlfredMock.mockReturnValue(baseAlfredReturn({ snapshot: makeSnapshot(), error: null }));
+    loadSetupStatusMock.mockResolvedValue(
+      makeSetupStatus({
+        install: {
+          agents_conf_present: false,
+          scheduled_runs: 0,
+          initialized: true,
+        } as SetupStatus["install"],
+      }),
     );
     await renderApp();
     expect(await screen.findByTestId("onboarding-screen")).toBeInTheDocument();

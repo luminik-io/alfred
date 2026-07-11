@@ -3,6 +3,17 @@ import { describe, expect, it } from "vitest";
 import type { SetupStatus } from "../types";
 import { isSetupComplete } from "./setupCompletion";
 
+function makeInstall(
+  overrides: Partial<SetupStatus["install"]> = {},
+): SetupStatus["install"] {
+  return {
+    agents_conf_present: true,
+    scheduled_runs: 3,
+    initialized: true,
+    ...overrides,
+  } as SetupStatus["install"];
+}
+
 function makeStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
   return {
     github: { ok: true, account: "octocat", detail: "Signed in to GitHub as octocat." },
@@ -10,6 +21,7 @@ function makeStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
     engine_ready: true,
     repos: { selected: ["acme-org/api"], count: 1, keys: ["ALFRED_QUEUE_REPOS"] },
     demo: { present: false },
+    install: makeInstall(),
     ready: true,
     ...overrides,
   };
@@ -21,8 +33,32 @@ describe("isSetupComplete", () => {
     expect(isSetupComplete(undefined)).toBe(false);
   });
 
-  it("is true when engine is ready, GitHub is connected, and a repo is selected", () => {
+  it("is true when engine is ready, GitHub is connected, a repo is selected, and the fleet is scheduled", () => {
     expect(isSetupComplete(makeStatus())).toBe(true);
+  });
+
+  it("is false when repo scope is present but the fleet was never deployed (no agents.conf)", () => {
+    // The Inbox-misroute bug: engine + GitHub + a selected repo (often inherited
+    // from the shell environment) with NO agents.conf and zero scheduled agents
+    // is NOT a set-up install. It must land on onboarding, not the Inbox.
+    const status = makeStatus({
+      install: makeInstall({ agents_conf_present: false, scheduled_runs: 0 }),
+    });
+    expect(isSetupComplete(status)).toBe(false);
+  });
+
+  it("is false when agents.conf exists but no agents are scheduled yet", () => {
+    const status = makeStatus({
+      install: makeInstall({ agents_conf_present: true, scheduled_runs: 0 }),
+    });
+    expect(isSetupComplete(status)).toBe(false);
+  });
+
+  it("falls back to the core gates when the server reports no install state", () => {
+    // An older runtime that omits install state must not trap a returning user
+    // whose engine, GitHub, and repo scope are all present.
+    const status = makeStatus({ install: undefined });
+    expect(isSetupComplete(status)).toBe(true);
   });
 
   it("is false when no coding engine is ready", () => {
@@ -56,9 +92,7 @@ describe("isSetupComplete", () => {
 
   it("stays true when install.initialized is true and all gates pass", () => {
     const status = makeStatus({
-      install: {
-        initialized: true,
-      } as SetupStatus["install"],
+      install: makeInstall({ initialized: true }),
     });
     expect(isSetupComplete(status)).toBe(true);
   });
