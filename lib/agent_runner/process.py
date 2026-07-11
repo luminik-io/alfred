@@ -1869,7 +1869,6 @@ def invoke_agent_engine(
             )
             provider_local_failure = (
                 failure_class is FailureClass.TRANSIENT
-                and getattr(result, "stop_reason", None) != "aborted"
                 and not looks_like_context_overflow(failure_text)
             ) or result.subtype in {
                 "error_authentication",
