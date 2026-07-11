@@ -471,6 +471,13 @@ def format_memory_context(
     # kinds that matter for editing code (conventions + fixes) ahead of passive
     # notes, with relevance/recency still ordering within a kind bucket.
     pairs = memory_ranking.apply_typed_recall(pairs)
+    # Ops/codebase split (ON by default, ALFRED_MEMORY_INJECT_OPS to disable):
+    # push Alfred-runtime lessons (provider quota, auth, engine timeouts) below
+    # lessons about the underlying codebase so the injection budget leads with
+    # what an engineer needs. A pure reorder, so no lesson is dropped; the
+    # anchor hoist below (which only lifts file-anchored codebase lessons) still
+    # has the final say when anchor_refs were supplied.
+    pairs = memory_ranking.deprioritize_ops(pairs)
     # Anchor hoist LAST of all (only when anchor_refs were supplied): the whole
     # point of anchor recall is that file-linked lessons surface FIRST. In a
     # scored chain (e.g. Redis + FleetBrain) the scored member's generic hits are

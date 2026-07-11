@@ -99,6 +99,7 @@ from fleet_brain import (  # noqa: E402
     direct_auto_promote_env,
 )
 from fleet_brain.doctor import run_memory_doctor  # noqa: E402
+from fleet_brain.taxonomy import OPS_TAG  # noqa: E402
 from memory.redis_agent_memory import RedisAgentMemoryProvider  # noqa: E402
 
 
@@ -1047,9 +1048,19 @@ def _harvest_failure_pattern_memories(
                     tags=[
                         "auto-harvest",
                         "failure-pattern",
+                        # First-class ops marker: these lessons are about
+                        # Alfred's own runtime (provider quota, auth, engine
+                        # timeouts), not the underlying codebase. Recall
+                        # down-weights them and the desktop UI groups them under
+                        # "About Alfred's runs" so they never crowd out codebase
+                        # lessons. See fleet_brain.taxonomy.is_ops_lesson.
+                        OPS_TAG,
                         f"class:{pattern.get('classification') or 'unknown'}",
                         f"pattern:{pattern_key}",
                     ],
+                    # A repeated run failure IS a failure kind, so the typed
+                    # taxonomy reflects it (default was the neutral ``note``).
+                    kind="failure",
                     severity=pattern.get("severity", "warning"),
                     source="memory-harvest",
                     evidence=json.dumps(

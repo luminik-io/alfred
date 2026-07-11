@@ -677,6 +677,14 @@ def test_cli_harvest_previews_and_applies_failure_memories(
     candidate = brain.list_memory_candidates()[0]
     assert candidate.source == "memory-harvest"
     assert "failure-pattern" in candidate.tags
+    # Harvested run-failure patterns are ops lessons (about Alfred's runtime,
+    # not the codebase): they carry the first-class ``ops`` tag and the typed
+    # ``failure`` kind so recall down-weights them and the UI groups them apart.
+    assert "ops" in candidate.tags
+    assert candidate.kind == "failure"
+    from fleet_brain.taxonomy import is_ops_lesson
+
+    assert is_ops_lesson(candidate.tags)
 
     brain.record_failure(
         codename="huntress",

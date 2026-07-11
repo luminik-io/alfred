@@ -340,6 +340,10 @@ export type MemoryCandidate = {
   reviewed_by?: string | null;
   review_note?: string | null;
   promoted_lesson_id?: string | null;
+  // True when the lesson is about Alfred's own runtime (provider quota, auth,
+  // engine timeouts) rather than the underlying codebase. Set server-side from
+  // tags; older servers omit it, so the client treats it as falsy (codebase).
+  ops?: boolean;
 };
 
 export type MemoryCandidatesResponse = {
@@ -358,6 +362,10 @@ export type MemoryLesson = {
   severity: "info" | "warning" | "blocker" | string;
   created_at: string;
   firing_id?: string | null;
+  // True when the lesson is about Alfred's own runtime rather than the
+  // underlying codebase (see MemoryCandidate.ops). Drives the codebase-vs-runs
+  // grouping in the Learnings tab.
+  ops?: boolean;
 };
 
 export type MemoryLessonsResponse = {

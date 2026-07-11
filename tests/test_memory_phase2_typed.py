@@ -43,6 +43,8 @@ from fleet_brain import (  # noqa: E402
 from fleet_brain.taxonomy import (  # noqa: E402
     DEFAULT_LESSON_KIND,
     LESSON_KINDS,
+    OPS_TAG,
+    is_ops_lesson,
     kind_recall_bonus,
 )
 from memory.providers import (  # noqa: E402
@@ -72,6 +74,27 @@ def test_kind_recall_preference_orders_conventions_first() -> None:
     assert kind_recall_bonus("fix") > kind_recall_bonus("note")
     assert kind_recall_bonus("note") == 0.0
     assert "note" in LESSON_KINDS
+
+
+def test_is_ops_lesson_detects_runtime_markers() -> None:
+    # Explicit ops tag, the harvest marker, and any runtime class all read ops.
+    assert is_ops_lesson([OPS_TAG])
+    assert is_ops_lesson(["failure-pattern", "pattern:bane|-|x|-"])
+    assert is_ops_lesson(["auto-harvest", "class:provider_limit"])
+    assert is_ops_lesson(["class:auth"])
+    assert is_ops_lesson(("class:TIMEOUT",))  # case-insensitive, tuple ok
+
+
+def test_is_ops_lesson_leaves_codebase_lessons_alone() -> None:
+    # Codebase lessons (conventions, fixes, review patterns) are never ops, and
+    # an unclassified failure is NOT asserted to be a runtime issue.
+    assert not is_ops_lesson(["tests", "graphql"])
+    assert not is_ops_lesson(["class:unknown"])
+    assert not is_ops_lesson(["review-pattern"])
+    # Defensive: a non-iterable or malformed tags value never raises.
+    assert not is_ops_lesson(None)
+    assert not is_ops_lesson("failure-pattern")  # a bare string is not a tag list
+    assert not is_ops_lesson([None, 123])
 
 
 # --------------------------------------------------------------------------
