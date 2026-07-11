@@ -61,6 +61,7 @@ have() { command -v "$1" >/dev/null 2>&1; }
 REPO_URL="${ALFRED_REPO_URL:-https://github.com/luminik-io/alfred.git}"
 REPO_REF="${ALFRED_REPO_REF:-}"
 CHECKOUT="${ALFRED_CHECKOUT:-$HOME/alfred}"
+RUN_FULL_INSTALL="${ALFRED_RUN_INSTALL:-}"
 
 # --------------------------------------------------------------------------
 # 1. Host detection
@@ -109,34 +110,44 @@ else
   die "git is not installed. Install it, then re-run. macOS: 'xcode-select --install'. Debian/Ubuntu: 'sudo apt-get install -y git'."
 fi
 
-# python3.11+: required to run the alfred CLI and the demo.
+# python3.11+: required to run the alfred CLI and the demo. Prefer the normal
+# `python3` command when it is recent enough, but retain the exact validated
+# executable so a host with old `python3` plus `python3.11` runs the demo with
+# the interpreter that passed preflight.
 python_bin=""
-if have python3.11; then
-  python_bin="python3.11"
-elif have python3; then
-  python_bin="python3"
-fi
-if [ -z "$python_bin" ]; then
-  die "python3 is not installed. Alfred needs Python 3.11+. macOS: 'brew install python@3.11'. Debian/Ubuntu: 'sudo apt-get install -y python3'."
+python_version=""
+find_supported_python() {
+  for candidate in python3 python3.11; do
+    if ! have "$candidate"; then
+      continue
+    fi
+    candidate_version="$("$candidate" --version 2>&1 | awk '{print $2}')"
+    candidate_major="${candidate_version%%.*}"
+    candidate_rest="${candidate_version#*.}"
+    candidate_minor="${candidate_rest%%.*}"
+    case "${candidate_major}-${candidate_minor}" in
+      *[!0-9-]*|-*|*-)
+        continue
+        ;;
+      *)
+        if { [ "$candidate_major" -eq 3 ] && [ "$candidate_minor" -ge 11 ]; } \
+          || [ "$candidate_major" -gt 3 ]; then
+          python_bin="$candidate"
+          python_version="$candidate_version"
+          return 0
+        fi
+        ;;
+    esac
+  done
+  return 1
+}
+
+if find_supported_python; then
+  ok "$python_bin $python_version"
+elif [ "$RUN_FULL_INSTALL" = "1" ]; then
+  warn "Python 3.11+ is not available yet; install.sh will install the managed runtime."
 else
-  py_ver="$("$python_bin" --version 2>&1 | awk '{print $2}')"
-  py_major="${py_ver%%.*}"
-  py_rest="${py_ver#*.}"
-  py_minor="${py_rest%%.*}"
-  case "${py_major}-${py_minor}" in
-    *[!0-9-]*|-*|*-)
-      warn "could not parse python version '$py_ver'; assuming it is recent enough"
-      ;;
-    *)
-      if [ "$py_major" -eq 3 ] && [ "$py_minor" -ge 11 ]; then
-        ok "$python_bin $py_ver"
-      elif [ "$py_major" -gt 3 ]; then
-        ok "$python_bin $py_ver"
-      else
-        die "$python_bin is $py_ver; Alfred needs Python 3.11+. macOS: 'brew install python@3.11'. Debian/Ubuntu: 'sudo apt-get install -y python3.11' (or 'uv python install 3.11'). Then re-run."
-      fi
-      ;;
-  esac
+  die "Alfred needs Python 3.11+, but no supported interpreter is installed. macOS: 'brew install python@3.11'. Debian/Ubuntu: 'sudo apt-get install -y python3.11' (or 'uv python install 3.11'). Then re-run."
 fi
 
 # claude or codex: at least one coding CLI is required. The demo runs on
@@ -147,7 +158,11 @@ if have claude; then
 elif have codex; then
   warn "codex CLI found, but no claude. The fleet can run on codex, but 'alfred demo' needs Claude Code. Install it: 'npm install -g @anthropic-ai/claude-code', then run 'claude' once to sign in."
 else
-  die "No coding CLI found. Alfred drives 'claude' (recommended) or 'codex'. Install Claude Code: 'npm install -g @anthropic-ai/claude-code', then run 'claude' once to sign in."
+  if [ "$RUN_FULL_INSTALL" = "1" ]; then
+    warn "No coding CLI found yet; install.sh will install Claude Code."
+  else
+    die "No coding CLI found. Alfred drives 'claude' (recommended) or 'codex'. Install Claude Code: 'npm install -g @anthropic-ai/claude-code', then run 'claude' once to sign in."
+  fi
 fi
 
 # gh: needed for real repos, not for the demo. Warn only.
@@ -206,16 +221,31 @@ fi
 # (packages, npm, venv) is opt-in because it touches the system and may prompt
 # for sudo, which is unfriendly inside a piped `curl | sh`. Only the exact
 # documented value enables it, so ALFRED_RUN_INSTALL=0 stays demo-only.
-if [ "${ALFRED_RUN_INSTALL:-}" = "1" ]; then
+if [ "$RUN_FULL_INSTALL" = "1" ]; then
   if [ -f "$CHECKOUT/install.sh" ]; then
     step "Running install.sh (ALFRED_RUN_INSTALL=1)"
     if have bash; then
       ( cd "$CHECKOUT" && ALFRED_NONINTERACTIVE="${ALFRED_NONINTERACTIVE:-1}" bash install.sh --non-interactive )
     else
-      warn "bash not found; skipping install.sh. Run it yourself from $CHECKOUT."
+      die "bash is required for the full install but was not found on PATH."
     fi
   else
-    warn "install.sh not found in $CHECKOUT; skipping."
+    die "install.sh not found in $CHECKOUT; cannot complete the requested full install."
+  fi
+
+  python_bin=""
+  python_version=""
+  if find_supported_python; then
+    ok "$python_bin $python_version available after install"
+  else
+    die "install.sh completed but Python 3.11+ is still unavailable on PATH."
+  fi
+  if have claude; then
+    ok "claude CLI available after install"
+  elif have codex; then
+    ok "codex CLI available after install"
+  else
+    die "install.sh completed but neither claude nor codex is available on PATH."
   fi
 fi
 
@@ -230,7 +260,7 @@ Start with the two-minute demo. It needs nothing but an authenticated
 'claude' CLI, no GitHub, no Slack, no tokens:
 
   ${C_BLUE}cd $(printf '%s' "$CHECKOUT")${C_OFF}
-  ${C_BLUE}./bin/alfred demo${C_OFF}
+  ${C_BLUE}$python_bin ./bin/alfred demo${C_OFF}
 
 When you are ready to wire up the full fleet (packages, scheduler, repos):
 

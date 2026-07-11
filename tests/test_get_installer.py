@@ -99,7 +99,7 @@ def test_happy_path_preflight_and_clone(tmp_path):
     out = result.stdout
     # Preflight reported every tool.
     assert "git 2.44.0" in out
-    assert "python3.11 3.11.9" in out
+    assert "python3 3.11.9" in out
     assert "claude CLI on PATH" in out
     assert "gh 2.50.0" in out
     # Cloned into the chosen checkout.
@@ -219,6 +219,90 @@ def test_old_python_fails_preflight(tmp_path):
     assert "Alfred needs Python 3.11+" in result.stderr
     # It must stop at preflight, before cloning.
     assert not (checkout / ".git").exists()
+
+
+def test_demo_command_uses_the_interpreter_that_passed_preflight(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    stub_bin = _make_stub_bin(tmp_path / "bin", python=False)
+    _write_stub(stub_bin, "python3", 'echo "Python 3.9.6"\n')
+    _write_stub(stub_bin, "python3.11", 'echo "Python 3.11.9"\n')
+    checkout = tmp_path / "alfred"
+
+    result = _run(home, stub_bin, checkout)
+
+    assert result.returncode == 0, result.stderr
+    assert "python3.11 ./bin/alfred demo" in result.stdout
+
+
+def test_full_install_can_bootstrap_missing_coding_cli(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    stub_bin = _make_stub_bin(tmp_path / "bin", claude=False)
+    bash = shutil.which("bash")
+    assert bash
+    (stub_bin / "bash").symlink_to(bash)
+    checkout = tmp_path / "alfred"
+    (checkout / ".git").mkdir(parents=True)
+    (checkout / "bin").mkdir()
+    (checkout / "bin" / "alfred").write_text("#!/usr/bin/env python3\n")
+    install = checkout / "install.sh"
+    install.write_text(
+        "#!/bin/sh\n"
+        f"printf '#!/bin/sh\\nexit 0\\n' > {stub_bin / 'claude'}\n"
+        f"chmod +x {stub_bin / 'claude'}\n"
+    )
+    install.chmod(0o755)
+
+    env = {
+        "HOME": str(home),
+        "PATH": str(stub_bin),
+        "ALFRED_CHECKOUT": str(checkout),
+        "ALFRED_REPO_URL": "https://example.invalid/alfred.git",
+        "ALFRED_RUN_INSTALL": "1",
+    }
+    result = subprocess.run([_SH, str(_SCRIPT)], env=env, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stderr
+    assert "No coding CLI found yet; install.sh will install Claude Code" in result.stderr
+    assert "Running install.sh" in result.stdout
+    assert "claude CLI available after install" in result.stdout
+
+
+def test_full_install_can_bootstrap_missing_python(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    stub_bin = _make_stub_bin(tmp_path / "bin", python=False, claude=False)
+    bash = shutil.which("bash")
+    assert bash
+    (stub_bin / "bash").symlink_to(bash)
+    checkout = tmp_path / "alfred"
+    (checkout / ".git").mkdir(parents=True)
+    (checkout / "bin").mkdir()
+    (checkout / "bin" / "alfred").write_text("#!/usr/bin/env python3\n")
+    install = checkout / "install.sh"
+    install.write_text(
+        "#!/bin/sh\n"
+        f"printf '#!/bin/sh\\necho Python 3.11.9\\n' > {stub_bin / 'python3.11'}\n"
+        f"chmod +x {stub_bin / 'python3.11'}\n"
+        f"printf '#!/bin/sh\\nexit 0\\n' > {stub_bin / 'claude'}\n"
+        f"chmod +x {stub_bin / 'claude'}\n"
+    )
+    install.chmod(0o755)
+
+    env = {
+        "HOME": str(home),
+        "PATH": str(stub_bin),
+        "ALFRED_CHECKOUT": str(checkout),
+        "ALFRED_REPO_URL": "https://example.invalid/alfred.git",
+        "ALFRED_RUN_INSTALL": "1",
+    }
+    result = subprocess.run([_SH, str(_SCRIPT)], env=env, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stderr
+    assert "Python 3.11+ is not available yet; install.sh will install" in result.stderr
+    assert "python3.11 3.11.9 available after install" in result.stdout
+    assert "python3.11 ./bin/alfred demo" in result.stdout
 
 
 def test_failed_update_does_not_report_success(tmp_path):
