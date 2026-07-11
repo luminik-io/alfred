@@ -1,0 +1,330 @@
+{
+  "label": "real-v0.6.0",
+  "generated_at": "2026-07-11T13:02:52.621084+00:00",
+  "codename": "mem-bench",
+  "repo": "acme-org/widgets",
+  "solver_kind": "engine:claude",
+  "suite": [
+    {
+      "task_id": "tz-naive-datetime",
+      "kind": "fix",
+      "title": "Return a comparable timestamp",
+      "prompt": "In repo/widgets.py, implement stamp() to return the current time for later comparison against stored UTC timestamps.",
+      "mistake_id": "naive-datetime",
+      "relevant_lesson_ids": [
+        "L-tz"
+      ],
+      "mistake_markers": [
+        "datetime\\.now\\(\\)"
+      ],
+      "success_markers": [
+        "datetime\\.now\\(UTC\\)"
+      ],
+      "recall_query": "timezone",
+      "lesson_signal": "timezone-aware",
+      "repeats_known_mistake": true,
+      "correct_solution": "def stamp():\n    return datetime.now(UTC)  # timezone-aware",
+      "mistaken_solution": "def stamp():\n    return datetime.now()  # naive local time"
+    },
+    {
+      "task_id": "swallow-exceptions",
+      "kind": "fix",
+      "title": "Handle a failing call safely",
+      "prompt": "In repo/widgets.py, wrap the risky() call so a failure is not lost.",
+      "mistake_id": "bare-except-pass",
+      "relevant_lesson_ids": [
+        "L-exc"
+      ],
+      "mistake_markers": [
+        "except Exception:\\s*pass"
+      ],
+      "success_markers": [
+        "raise"
+      ],
+      "recall_query": "exception",
+      "lesson_signal": "log and re-raise",
+      "repeats_known_mistake": true,
+      "correct_solution": "try:\n    risky()\nexcept Exception:\n    logger.exception('risky failed')\n    raise",
+      "mistaken_solution": "try:\n    risky()\nexcept Exception:\n    pass"
+    },
+    {
+      "task_id": "mutable-default-arg",
+      "kind": "refactor",
+      "title": "Accumulate items into a bucket",
+      "prompt": "In repo/widgets.py, implement add(item, bucket) that appends item to bucket and returns it, defaulting bucket when not given.",
+      "mistake_id": "mutable-default",
+      "relevant_lesson_ids": [
+        "L-default"
+      ],
+      "mistake_markers": [
+        "=\\[\\]"
+      ],
+      "success_markers": [
+        "is None"
+      ],
+      "recall_query": "default argument",
+      "lesson_signal": "use None and create inside",
+      "repeats_known_mistake": true,
+      "correct_solution": "def add(item, bucket=None):\n    if bucket is None:\n        bucket = []\n    bucket.append(item)\n    return bucket",
+      "mistaken_solution": "def add(item, bucket=[]):\n    bucket.append(item)\n    return bucket"
+    },
+    {
+      "task_id": "n-plus-one-query",
+      "kind": "feature",
+      "title": "Load rows for a set of ids",
+      "prompt": "In repo/reporting.py, load the rows for a list of ids for the report response.",
+      "mistake_id": "n-plus-one",
+      "relevant_lesson_ids": [
+        "L-nplus1"
+      ],
+      "mistake_markers": [
+        "for id in ids"
+      ],
+      "success_markers": [
+        "get_many"
+      ],
+      "recall_query": "N+1",
+      "lesson_signal": "single IN query",
+      "repeats_known_mistake": true,
+      "correct_solution": "rows = db.get_many(ids)  # single IN query, no N+1",
+      "mistaken_solution": "rows = []\nfor id in ids:\n    rows.append(db.get(id))  # one query per id"
+    },
+    {
+      "task_id": "add-docstring",
+      "kind": "test",
+      "title": "Document a small helper",
+      "prompt": "In repo/widgets.py, add a one-line docstring to area(w, h).",
+      "mistake_id": "none",
+      "relevant_lesson_ids": [],
+      "mistake_markers": [],
+      "success_markers": [
+        "Return width times height"
+      ],
+      "recall_query": "docstring",
+      "lesson_signal": "",
+      "repeats_known_mistake": false,
+      "correct_solution": "def area(w, h):\n    \"\"\"Return width times height.\"\"\"\n    return w * h",
+      "mistaken_solution": "def area(w, h):\n    \"\"\"Return width times height.\"\"\"\n    return w * h"
+    }
+  ],
+  "memory_on": {
+    "arm": "memory_on",
+    "tasks": 5,
+    "mistake_eligible": 4,
+    "mistakes_repeated": 0,
+    "repeated_mistake_rate": 0.0,
+    "succeeded": 4,
+    "task_success_rate": 0.8,
+    "tokens_in": 109537,
+    "tokens_out": 237,
+    "turns": 19,
+    "tokens_in_per_task": 21907.4,
+    "turns_per_task": 3.8,
+    "retrieval": {
+      "tasks_with_relevant": 4,
+      "relevant_total": 4,
+      "recalled_total": 12,
+      "recalled_relevant": 4,
+      "precision": 0.3333333333333333,
+      "recall": 1.0
+    }
+  },
+  "memory_off": {
+    "arm": "memory_off",
+    "tasks": 5,
+    "mistake_eligible": 4,
+    "mistakes_repeated": 2,
+    "repeated_mistake_rate": 0.5,
+    "succeeded": 2,
+    "task_success_rate": 0.4,
+    "tokens_in": 117585,
+    "tokens_out": 155,
+    "turns": 17,
+    "tokens_in_per_task": 23517.0,
+    "turns_per_task": 3.4,
+    "retrieval": {
+      "tasks_with_relevant": 4,
+      "relevant_total": 4,
+      "recalled_total": 0,
+      "recalled_relevant": 0,
+      "precision": null,
+      "recall": 0.0
+    }
+  },
+  "delta": {
+    "repeated_mistake_rate": 0.5,
+    "task_success_rate": 0.4
+  },
+  "attempts": [
+    {
+      "task_id": "tz-naive-datetime",
+      "arm": "memory_on",
+      "made_mistake": false,
+      "succeeded": true,
+      "recalled_lesson_ids": [
+        "L-tz",
+        "D-testname",
+        "D-imports"
+      ],
+      "turns": 4,
+      "tokens": {
+        "tokens_in": 20459,
+        "tokens_out": 25,
+        "cache_read": 129415,
+        "cache_creation": 41069,
+        "cache_hit_rate": 0.6778
+      }
+    },
+    {
+      "task_id": "swallow-exceptions",
+      "arm": "memory_on",
+      "made_mistake": false,
+      "succeeded": true,
+      "recalled_lesson_ids": [
+        "L-exc",
+        "D-testname",
+        "D-imports"
+      ],
+      "turns": 3,
+      "tokens": {
+        "tokens_in": 20457,
+        "tokens_out": 17,
+        "cache_read": 111445,
+        "cache_creation": 31845,
+        "cache_hit_rate": 0.6806
+      }
+    },
+    {
+      "task_id": "mutable-default-arg",
+      "arm": "memory_on",
+      "made_mistake": false,
+      "succeeded": true,
+      "recalled_lesson_ids": [
+        "L-default",
+        "D-testname",
+        "D-imports"
+      ],
+      "turns": 5,
+      "tokens": {
+        "tokens_in": 24086,
+        "tokens_out": 97,
+        "cache_read": 228763,
+        "cache_creation": 37386,
+        "cache_hit_rate": 0.7882
+      }
+    },
+    {
+      "task_id": "n-plus-one-query",
+      "arm": "memory_on",
+      "made_mistake": false,
+      "succeeded": true,
+      "recalled_lesson_ids": [
+        "L-nplus1",
+        "D-testname",
+        "D-imports"
+      ],
+      "turns": 4,
+      "tokens": {
+        "tokens_in": 24082,
+        "tokens_out": 26,
+        "cache_read": 174932,
+        "cache_creation": 31504,
+        "cache_hit_rate": 0.7589
+      }
+    },
+    {
+      "task_id": "add-docstring",
+      "arm": "memory_on",
+      "made_mistake": false,
+      "succeeded": false,
+      "recalled_lesson_ids": [
+        "D-testname",
+        "D-imports",
+        "D-fstring"
+      ],
+      "turns": 3,
+      "tokens": {
+        "tokens_in": 20453,
+        "tokens_out": 72,
+        "cache_read": 75783,
+        "cache_creation": 13613,
+        "cache_hit_rate": 0.6899
+      }
+    },
+    {
+      "task_id": "tz-naive-datetime",
+      "arm": "memory_off",
+      "made_mistake": true,
+      "succeeded": false,
+      "recalled_lesson_ids": [],
+      "turns": 4,
+      "tokens": {
+        "tokens_in": 20457,
+        "tokens_out": 17,
+        "cache_read": 110905,
+        "cache_creation": 31879,
+        "cache_hit_rate": 0.6794
+      }
+    },
+    {
+      "task_id": "swallow-exceptions",
+      "arm": "memory_off",
+      "made_mistake": false,
+      "succeeded": true,
+      "recalled_lesson_ids": [],
+      "turns": 4,
+      "tokens": {
+        "tokens_in": 27705,
+        "tokens_out": 26,
+        "cache_read": 200034,
+        "cache_creation": 31442,
+        "cache_hit_rate": 0.7718
+      }
+    },
+    {
+      "task_id": "mutable-default-arg",
+      "arm": "memory_off",
+      "made_mistake": true,
+      "succeeded": false,
+      "recalled_lesson_ids": [],
+      "turns": 3,
+      "tokens": {
+        "tokens_in": 28978,
+        "tokens_out": 13,
+        "cache_read": 126549,
+        "cache_creation": 33550,
+        "cache_hit_rate": 0.6693
+      }
+    },
+    {
+      "task_id": "n-plus-one-query",
+      "arm": "memory_off",
+      "made_mistake": false,
+      "succeeded": true,
+      "recalled_lesson_ids": [],
+      "turns": 3,
+      "tokens": {
+        "tokens_in": 19992,
+        "tokens_out": 27,
+        "cache_read": 93179,
+        "cache_creation": 22442,
+        "cache_hit_rate": 0.6871
+      }
+    },
+    {
+      "task_id": "add-docstring",
+      "arm": "memory_off",
+      "made_mistake": false,
+      "succeeded": false,
+      "recalled_lesson_ids": [],
+      "turns": 3,
+      "tokens": {
+        "tokens_in": 20453,
+        "tokens_out": 72,
+        "cache_read": 75502,
+        "cache_creation": 13334,
+        "cache_hit_rate": 0.6908
+      }
+    }
+  ]
+}

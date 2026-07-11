@@ -57,7 +57,9 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shutil
 import subprocess
+import tempfile
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -468,8 +470,10 @@ def make_cli_engine_solver(
     true token usage from the transcript with :func:`benchmark.extract_token_usage`.
     It is intentionally *not* covered by unit tests -- exercising it needs a live
     model and burns real quota -- but it lets ``alfred benchmark memory`` produce
-    a genuine memory-ON vs memory-OFF result. Any engine failure yields an empty
-    solution rather than raising, so one bad task does not abort the run.
+    a genuine memory-ON vs memory-OFF result. Every attempt gets a fresh copy of
+    ``cwd`` so one task or arm cannot alter the fixture observed by another.
+    Any engine failure yields an empty solution rather than raising, so one bad
+    task does not abort the run.
     """
 
     def solve(task: MemTask, memory_context: str, arm: str) -> SolveResult:
@@ -479,14 +483,39 @@ def make_cli_engine_solver(
             cmd += ["--model", model]
         cmd += list(extra_args)
         try:
-            proc = subprocess.run(
-                cmd,
-                cwd=str(cwd) if cwd else None,
-                capture_output=True,
-                text=True,
-                timeout=timeout_s,
-                check=False,
-            )
+            if cwd:
+                with tempfile.TemporaryDirectory(prefix="alfred-mem-bench-") as temp:
+                    attempt_cwd = Path(temp) / "repo"
+                    shutil.copytree(
+                        cwd,
+                        attempt_cwd,
+                        ignore=shutil.ignore_patterns(
+                            ".git",
+                            ".venv",
+                            "node_modules",
+                            "__pycache__",
+                            ".pytest_cache",
+                            ".mypy_cache",
+                            ".ruff_cache",
+                        ),
+                    )
+                    proc = subprocess.run(
+                        cmd,
+                        cwd=str(attempt_cwd),
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout_s,
+                        check=False,
+                    )
+            else:
+                proc = subprocess.run(
+                    cmd,
+                    cwd=None,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_s,
+                    check=False,
+                )
         except (OSError, subprocess.TimeoutExpired):
             logger.exception("mem-bench: engine %s failed for task %s", engine, task.task_id)
             return SolveResult(solution_text="")
