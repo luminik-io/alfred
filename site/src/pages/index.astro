@@ -308,6 +308,33 @@ const heroRuntimeLines = [
           ]}
         />
       </div>
+      <div class="memory-bench">
+        <div class="memory-bench__head">
+          <span class="m-mono memory-bench__label">MEMORY A/B</span>
+          <span class="memory-bench__note">Synthetic fixture, N=10 (+2 controls), single engine run</span>
+        </div>
+        <div class="memory-bench__stats">
+          <div class="memory-bench__stat">
+            <span class="memory-bench__num">80% <span class="memory-bench__to">to</span> 0%</span>
+            <span class="memory-bench__cap">repeated-mistake rate over 10 convention tasks, memory off then on</span>
+          </div>
+          <div class="memory-bench__stat">
+            <span class="memory-bench__num">8.3% <span class="memory-bench__to">to</span> 91.7%</span>
+            <span class="memory-bench__cap">task success across all 12 tasks, memory off then on</span>
+          </div>
+          <div class="memory-bench__stat">
+            <span class="memory-bench__num">240k vs 295k</span>
+            <span class="memory-bench__cap">tokens in, memory on used fewer</span>
+          </div>
+        </div>
+        <p class="memory-bench__body">
+          The same suite of ten repo-convention tasks plus two controls ran twice
+          through the <code>claude</code> CLI, changing only whether memory was on. It
+          measures one thing: whether an agent repeats a mistake the fleet already
+          learned about.
+          <a class="m-link" href="https://github.com/luminik-io/alfred/blob/main/docs/BENCHMARKS.md#harder-fixture-result-engineclaude-n10">Method and repro</a>.
+        </p>
+      </div>
     </div>
   </section>
 
@@ -688,6 +715,70 @@ const heroRuntimeLines = [
     line-height: 1.6;
   }
   .memory-link { margin: 4px 0 0; }
+  .memory-bench {
+    margin-top: 28px;
+    padding: 22px 24px;
+    background: var(--alfred-bg-elevated);
+    border: 1px solid var(--alfred-border-strong);
+    border-radius: 12px;
+  }
+  .memory-bench__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--alfred-border);
+  }
+  .memory-bench__label {
+    color: var(--alfred-accent);
+    letter-spacing: 0.16em;
+    font-size: 12px;
+  }
+  .memory-bench__note {
+    color: var(--alfred-mute);
+    font-size: 13px;
+  }
+  .memory-bench__stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+    padding: 20px 0 4px;
+  }
+  .memory-bench__stat {
+    display: grid;
+    gap: 6px;
+  }
+  .memory-bench__num {
+    color: var(--alfred-text-bright);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+  .memory-bench__to {
+    color: var(--alfred-accent);
+    font-weight: 600;
+    font-size: 15px;
+    padding: 0 2px;
+  }
+  .memory-bench__cap {
+    color: var(--alfred-text);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .memory-bench__body {
+    margin: 16px 0 0;
+    color: var(--alfred-text);
+    font-size: 14px;
+    line-height: 1.65;
+  }
+  .memory-bench__body code {
+    font-size: 0.92em;
+  }
+  @media (max-width: 720px) {
+    .memory-bench__stats { grid-template-columns: 1fr; gap: 16px; }
+  }
   @media (max-width: 880px) {
     .memory-grid { grid-template-columns: 1fr; }
   }

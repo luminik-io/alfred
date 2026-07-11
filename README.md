@@ -268,6 +268,16 @@ separate step, run by a different agent than the one who wrote the code.
   store; the operational ledger and review queue live in local FleetBrain.
   Redis Agent Memory remains an opt-in scale battery. See
   [`docs/MEMORY_PROVIDERS.md`](docs/MEMORY_PROVIDERS.md).
+- **Measured, not asserted.** A reproducible A/B ran the same suite (10 tasks
+  that re-tempt a repo convention the fleet already learned, plus 2 controls)
+  through the `claude` CLI twice, changing only whether memory was on. It
+  measures one thing: whether the agent repeats a mistake the fleet already
+  learned about. Without memory it repeated a known mistake on 8 of the 10
+  convention tasks (80%); with memory, 0 of 10 (0%). Overall task success across
+  all 12 tasks went from 8.3% (1/12) to 91.7% (11/12), and the memory arm used
+  fewer tokens (240,235 vs 294,652). Engine: `claude` CLI. Caveat: synthetic
+  fixture, N=10 (+2 controls), single engine run. Method and repro in
+  [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md#harder-fixture-result-engineclaude-n10).
 
 ### Reliability and safety
 
