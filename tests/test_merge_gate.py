@@ -59,6 +59,12 @@ def test_github_approved_still_requires_configured_current_head_approvals():
     )
     assert evaluate_gate(stale, min_approvals=1).mergeable is False
 
+    missing_commit = _snapshot(
+        review_decision="APPROVED",
+        reviews=(Review("operator", "APPROVED", "2026-07-11T10:00:00Z", ""),),
+    )
+    assert evaluate_gate(missing_commit, min_approvals=1).mergeable is False
+
     two_current = _snapshot(
         review_decision="APPROVED",
         reviews=(

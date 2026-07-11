@@ -217,6 +217,8 @@ def _approval_condition(snapshot: GateSnapshot, min_approvals: int) -> Condition
         1
         for review in effective.values()
         if (review.state or "").upper() == "APPROVED"
+        # Missing commit_id is unverifiable, even when reviewDecision says
+        # APPROVED. Exact-head proof is a hard gate, so fail closed.
         and bool(snapshot.head_sha)
         and review.commit_id == snapshot.head_sha
     )
