@@ -138,7 +138,7 @@ The spend ledger (`state.py:SpendState`) is the per-agent per-day file the cap c
 
 Slack is a conversational surface for the fleet, not an approval mechanism for arbitrary code execution. A trusted user can do three things from chat, and the listener routes each one differently:
 
-1. **Run a control or query command.** A message that *leads with a known verb* (`status`, `runs`, `pause <codename>`, `resume <codename>`, `help`) is handled by `slack_control.SlackControlHandler`. Read commands shell out to `alfred status --json`; mutating commands run the `alfred` CLI through an explicit argv with `shell=False` after the codename passes a strict charset check. Free-form prose never triggers an action.
+1. **Run a control or query command.** A message that *leads with a known verb* (`status`, `runs`, `pause <codename>`, `resume <codename>`, `help`) is handled by `slack_surface.control.SlackControlHandler`. Read commands shell out to `alfred status --json`; mutating commands run the `alfred` CLI through an explicit argv with `shell=False` after the codename passes a strict charset check. Free-form prose never triggers an action.
 2. **Plan and ship work.** A message *without* a leading verb is refined into a saved draft and scored for readiness. Only the configured approver can cross the (off-by-default) bridge into a labeled GitHub issue, which the fleet picks up through every existing gate.
 3. **Watch progress without leaving the thread.** Once the bridge files an issue, the originating thread is registered. The `alfred slack-thread-sync` sweep (or the listener's idle loop) reads the issue and its linked PR read-only and posts only the new lifecycle states back into that thread.
 
@@ -148,10 +148,10 @@ Code: `lib/slack_surface/listener.py` (`SlackPlanningListener`), `lib/slack_surf
 sequenceDiagram
     actor op as Trusted operator
     participant slack as Slack
-    participant listener as slack_listener
-    participant ctrl as slack_control
+    participant listener as slack_surface.listener
+    participant ctrl as slack_surface.control
     participant pa as planning-assistant
-    participant bridge as slack_issue_bridge
+    participant bridge as slack_surface.bridge
     participant gh as GitHub
     participant fleet as autonomous fleet
     participant sync as slack-thread-sync
@@ -184,7 +184,7 @@ sequenceDiagram
 
 Three safety properties are worth stating plainly because the code enforces them:
 
-- **Control commands need an explicit leading verb and a trusted user.** `slack_control` only acts when the first token is a known verb; everything else falls through to planning intake. `pause`/`resume` accept exactly one codename, validated against `[A-Za-z0-9._-]` (never leading `-`) before it reaches the argv, so a chat message can never inject a flag or a second command. Queries are read-only. Trust is gated by the listener and re-checked in the handler.
+- **Control commands need an explicit leading verb and a trusted user.** `slack_surface.control` only acts when the first token is a known verb; everything else falls through to planning intake. `pause`/`resume` accept exactly one codename, validated against `[A-Za-z0-9._-]` (never leading `-`) before it reaches the argv, so a chat message can never inject a flag or a second command. Queries are read-only. Trust is gated by the listener and re-checked in the handler.
 - **The bridge is off by default.** `ALFRED_BRIDGE_ENABLED` is unset on a fresh install, so every approval is a no-op refine until the configured approver enables it and sets an `ALFRED_BRIDGE_REPOS` allowlist. An empty allowlist refuses to file anywhere.
 - **The bridge never executes code.** `SlackIssueBridge.convert` only calls `gh issue create`. It opens no worktree, pushes no branch, spawns no agent. The worst a bug in the bridge can do is file an unwanted issue, which still cannot ship without passing the same claim, spend, review, and merge gates as any other issue. Five gates must all pass before an issue is created: configured approver, feature enabled, explicit approval token (`ship it` / `create issue` / `file issue` / `/ship`, or a `white_check_mark` reaction), saved readiness at or above `ALFRED_BRIDGE_MIN_READINESS_SCORE` with no blocking findings, and every target repo on the allowlist. The conversion is idempotent: a converted draft is stamped so it can never double-create.
 
@@ -273,8 +273,8 @@ flowchart TB
     end
 
     subgraph slack["slack (optional)"]
-        listener["slack_listener (Socket Mode)"]
-        bridge["slack_issue_bridge (off by default)"]
+        listener["slack_surface.listener (Socket Mode)"]
+        bridge["slack_surface.bridge (off by default)"]
     end
 
     gh["GitHub"]

@@ -95,7 +95,7 @@ title (`billing-v2` for "Bundle: billing-v2 rollout"), and builds a
 ### 2. request_approval(plan) -> ApprovalEnvelope
 
 The architect posts `plan.plan_markdown` to the configured Slack channel via
-`slack_format.firing_thread_root`. The returned `message_ts` is the
+`slack_surface.posting.firing_thread_root`. The returned `message_ts` is the
 anchor the approval gate polls. If Slack is unreachable (no bot token,
 channel unset, transport down), the envelope is `None` and the architect halts
 after the plan no matter what `ARCHITECT_AUTO_EXECUTE` says, never silently
@@ -327,9 +327,9 @@ alfred labels bootstrap my-org/specs
 | `ARCHITECT_APPROVAL_TIMEOUT_S` | `86400` | Wall-clock seconds the gate will wait for a reaction. |
 | `ARCHITECT_APPROVAL_MODE` | `slack-or-file` | Approval surface when `ARCHITECT_AUTO_EXECUTE=approval-gate`. Values: `slack-or-file` (Slack reactions plus Alfred client approve/decline), `slack` (Slack only), `file` (Alfred client/file marker only). |
 | `ARCHITECT_REPORT_FEEDBACK_TIMEOUT_S` | `60` | Seconds the architect waits after posting a report so trusted Slack replies can be captured as follow-up context. Set `0` to skip the wait. |
-| `ARCHITECT_SLACK_CHANNEL` | empty | Channel to post the plan and report to. When empty, falls back to the framework's default channel (`slack_format._home_channel`). |
+| `ARCHITECT_SLACK_CHANNEL` | empty | Channel to post the plan and report to. When empty, falls back to the framework's default channel (`slack_surface.posting._home_channel`). |
 
-The Slack approval gate also reads these (from `slack_approval`):
+The Slack approval gate also reads these (from `slack_surface.approval`):
 
 | Variable | Purpose |
 |----------|---------|

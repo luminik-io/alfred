@@ -22,8 +22,8 @@ flowchart TB
     end
 
     subgraph slack["slack (optional)"]
-        listener["slack_listener (Socket Mode)"]
-        bridge["slack_issue_bridge (off by default)"]
+        listener["slack_surface.listener (Socket Mode)"]
+        bridge["slack_surface.bridge (off by default)"]
     end
 
     gh["GitHub"]
