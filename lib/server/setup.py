@@ -951,15 +951,14 @@ def _capability_base(
 def _code_graph_capability(
     code_memory: dict[str, Any], *, graphify: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    if graphify and bool(graphify.get("enabled")):
-        installed = bool(graphify.get("installed"))
+    if graphify and bool(graphify.get("enabled")) and bool(graphify.get("installed")):
         capability = _capability_base(
             "code_graph",
             title="Code graph memory",
             category="memory",
             recommended=True,
-            state="ready" if installed else "installable",
-            installed=installed,
+            state="ready",
+            installed=True,
             enabled=True,
             detail=str(graphify.get("how_it_helps") or graphify.get("what") or ""),
             detected={
@@ -967,7 +966,7 @@ def _code_graph_capability(
                 "status": graphify.get("status"),
                 "docs": graphify.get("docs"),
             },
-            install_hint="" if installed else str(graphify.get("install_hint") or ""),
+            install_hint="",
         )
         capability["source"] = _GRAPHIFY_SOURCE
         return capability

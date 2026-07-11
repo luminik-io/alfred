@@ -965,6 +965,42 @@ def test_capability_plane_reports_enabled_graphify_instead_of_disabled_alternati
     assert code_graph["source"]["source"] == "graphifyy"
 
 
+def test_capability_plane_does_not_override_ready_engine_with_missing_graphify(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        setup_mod.batteries,
+        "manifest",
+        lambda _env: {
+            "batteries": [
+                {
+                    "id": "graphify",
+                    "enabled": True,
+                    "installed": False,
+                    "status": "missing",
+                    "install_hint": "pipx install graphifyy",
+                }
+            ]
+        },
+    )
+    code_memory = {
+        "enabled": True,
+        "autofetch": False,
+        "binary": {"resolved": True},
+        "index_present": True,
+        "detail": "Code memory is ready.",
+    }
+
+    payload = setup_mod.capability_status(code_memory, launcher_env={"ALFRED_HOME": "/tmp/x"})
+    code_graph = next(item for item in payload["capabilities"] if item["key"] == "code_graph")
+
+    assert code_graph["state"] == "ready"
+    assert code_graph["enabled"] is True
+    assert code_graph["installed"] is True
+    assert code_graph["detected"]["index_present"] is True
+    assert code_graph["source"]["source"] == "DeusData/codebase-memory-mcp"
+
+
 def test_capability_plane_reports_builtin_context_governor_with_headroom_detected(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
