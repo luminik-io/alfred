@@ -44,13 +44,19 @@ export function isSetupComplete(status: SetupStatus | null | undefined): boolean
   const reposSelected = (status.repos?.count ?? 0) > 0;
 
   // A deployed, scheduled fleet is the signal that setup actually ran. When the
-  // server reports install state, require both an agents.conf and at least one
-  // scheduled run; when it does not report install state at all, fall back to
-  // the core gates rather than yanking a working returning user into onboarding.
+  // server reports the fleet inventory, require both an agents.conf and at least
+  // one scheduled run. When it does not report install state at all, OR reports
+  // an install object from an older runtime that predates the fleet-inventory
+  // fields, fall back to the core gates rather than yanking a working returning
+  // user into onboarding on a missing field.
   const install = status.install;
-  const fleetDeployed = install
-    ? Boolean(install.agents_conf_present) && (install.scheduled_runs ?? 0) > 0
-    : true;
+  const hasFleetInventory =
+    typeof install?.agents_conf_present === "boolean" &&
+    typeof install?.scheduled_runs === "number";
+  const fleetDeployed =
+    install && hasFleetInventory
+      ? install.agents_conf_present && install.scheduled_runs > 0
+      : true;
 
   return engineReady && githubConnected && reposSelected && fleetDeployed;
 }

@@ -96,4 +96,15 @@ describe("isSetupComplete", () => {
     });
     expect(isSetupComplete(status)).toBe(true);
   });
+
+  it("falls back to the core gates when an older install omits the fleet inventory fields", () => {
+    // An older server reports an install object (with initialized) but predates
+    // the agents_conf_present / scheduled_runs fields. Treating the missing
+    // fields as false would over-gate a working returning user back into
+    // onboarding; the fleet gate is skipped instead.
+    const status = makeStatus({
+      install: { initialized: true } as SetupStatus["install"],
+    });
+    expect(isSetupComplete(status)).toBe(true);
+  });
 });

@@ -108,6 +108,9 @@ def test_serve_materializes_requested_home_state_dir(
     cli = _load_cli_module()
     fresh = tmp_path / "fresh-home"
     monkeypatch.setenv("ALFRED_HOME", str(fresh))
+    # Hydration captures explicitness before defaulting ALFRED_HOME; an operator
+    # who exported it lands here with the flag set.
+    monkeypatch.setattr(cli, "_ALFRED_HOME_EXPLICIT", True)
     monkeypatch.setattr(cli.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0))
 
     args = SimpleNamespace(host=None, port=7012, no_browser=True, log_level=None)
@@ -115,3 +118,24 @@ def test_serve_materializes_requested_home_state_dir(
 
     # The requested home is materialized rather than silently swapped away.
     assert (fresh / "state").is_dir()
+
+
+def test_serve_does_not_scaffold_a_fresh_default_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The first-run regression: a genuinely fresh DEFAULT install (ALFRED_HOME
+    # not exported, so hydration defaulted it) must NOT get its state dir created
+    # by serve, or install_inventory would report it initialized and the desktop
+    # would skip onboarding. Explicitness is captured pre-hydration, so the
+    # injected default reads as not-explicit here.
+    cli = _load_cli_module()
+    default_home = tmp_path / "default-home"
+    monkeypatch.setenv("ALFRED_HOME", str(default_home))
+    monkeypatch.setattr(cli, "_ALFRED_HOME_EXPLICIT", False)
+    monkeypatch.setattr(cli.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0))
+
+    args = SimpleNamespace(host=None, port=7012, no_browser=True, log_level=None)
+    assert cli.cmd_serve(args) == 0
+
+    # No state dir was scaffolded for the non-explicit (defaulted) home.
+    assert not (default_home / "state").exists()

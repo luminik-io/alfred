@@ -135,6 +135,14 @@ from urllib.parse import urlparse
 # own checkout so source commands cannot accidentally import stale deployed
 # libraries just because ALFRED_HOME is set.
 _HERE = Path(__file__).resolve().parent
+
+# Whether the operator exported ``ALFRED_HOME`` themselves, captured BEFORE CLI
+# hydration defaults it to ``~/.alfred``. After hydration the env var is always
+# set, so it can no longer distinguish an explicit home from the default; this
+# flag preserves that pre-hydration truth for the few call sites that must only
+# act on an operator-chosen home (see ``_ensure_requested_home_scaffolding``).
+_ALFRED_HOME_EXPLICIT = bool(os.environ.get("ALFRED_HOME", "").strip())
+
 for candidate in (
     Path(os.environ.get("ALFRED_HOME", "")) / "lib",
     # Processed last, so source checkout lib lands at sys.path[0].
@@ -692,7 +700,11 @@ def _hydrate_cli_env_from_runtime_env() -> None:
     """
 
     os.environ.pop("ALFREDRC", None)
-    if not os.environ.get("ALFRED_HOME", "").strip():
+    # Record whether the operator set ALFRED_HOME themselves BEFORE we default it,
+    # so a later call site can tell an explicit home from the injected default.
+    global _ALFRED_HOME_EXPLICIT
+    _ALFRED_HOME_EXPLICIT = bool(os.environ.get("ALFRED_HOME", "").strip())
+    if not _ALFRED_HOME_EXPLICIT:
         os.environ["ALFRED_HOME"] = str(_home_child(".alfred"))
     for key, value in _read_env_values(_runtime_env_path()).items():
         if key == "ALFREDRC" or key in os.environ:
@@ -904,10 +916,14 @@ def _ensure_requested_home_scaffolding() -> None:
     home to be used for all state/config, even when the code is loaded from the
     deployed install. Create the state directory (rather than silently falling
     back to another home) so the requested home is materialized and honored.
-    Only fires for an explicitly-set home; the default ``~/.alfred`` is left to
-    the installer.
+    Only fires for a home the operator set EXPLICITLY. It must read the
+    pre-hydration flag, not ``ALFRED_HOME`` from the env: CLI hydration has
+    already defaulted the env var to ``~/.alfred``, so scaffolding off the env
+    would create ``~/.alfred/state`` on a genuinely fresh default install and
+    make ``install_inventory`` report it as initialized, trapping a first run
+    out of onboarding.
     """
-    if not os.environ.get("ALFRED_HOME", "").strip():
+    if not _ALFRED_HOME_EXPLICIT:
         return
     with contextlib.suppress(OSError):
         (_alfred_home_path() / "state").mkdir(parents=True, exist_ok=True)
