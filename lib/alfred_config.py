@@ -489,7 +489,7 @@ _VARS: tuple[ConfigVar, ...] = (
     ),
     V(
         "ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS",
-        "csv",
+        "str",
         "",
         "scheduler",
         "External review summaries that must be clean on the exact head, such as greptile,codex.",

@@ -120,6 +120,7 @@ class GateSnapshot:
     merge_state_status: str
     mergeable: str
     checks: tuple[CheckRun, ...]
+    commit_shas: tuple[str, ...] = ()
     external_reviews: tuple[ExternalReviewEvidence, ...] = ()
     errors: tuple[str, ...] = ()
 
@@ -297,9 +298,14 @@ def _external_reviews_condition(snapshot: GateSnapshot, required: Sequence[str])
         body = latest.body if latest else ""
         if provider == "codex":
             reviewed = re.search(r"Reviewed commit:\*\*\s*`([0-9a-f]{7,40})`", body, re.I)
-            exact_head = bool(reviewed and snapshot.head_sha.startswith(reviewed.group(1).lower()))
+            prefix = reviewed.group(1).lower() if reviewed else ""
+            resolved = [sha for sha in snapshot.commit_shas if sha.lower().startswith(prefix)]
+            exact_head = bool(prefix and len(resolved) == 1 and resolved[0] == snapshot.head_sha)
         else:
-            exact_head = bool(snapshot.head_sha) and snapshot.head_sha in body
+            reviewed = re.search(
+                r"Last reviewed commit:.*?/commit/([0-9a-f]{40})", body, re.I | re.S
+            )
+            exact_head = bool(reviewed and reviewed.group(1).lower() == snapshot.head_sha.lower())
         if provider == "codex":
             clean = "didn't find any major issues" in body.lower()
         elif provider == "greptile":
@@ -414,7 +420,7 @@ def collect_snapshot(
             "-R",
             repo,
             "--json",
-            "state,headRefOid,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup",
+            "state,headRefOid,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,commits",
         ],
         _MISSING,
     )
@@ -423,6 +429,9 @@ def collect_snapshot(
         view = {}
 
     review_decision = view.get("reviewDecision") if view.get("reviewDecision") else None
+    commit_shas = tuple(
+        str(item.get("oid") or "") for item in (view.get("commits") or []) if isinstance(item, dict)
+    )
     reviews = _collect_reviews(repo, pr_number, gh_json=gh_json, errors=errors)
 
     checks: list[CheckRun] = []
@@ -447,6 +456,7 @@ def collect_snapshot(
         merge_state_status=str(view.get("mergeStateStatus") or ""),
         mergeable=str(view.get("mergeable") or ""),
         checks=tuple(checks),
+        commit_shas=commit_shas,
         external_reviews=tuple(external_reviews),
         errors=tuple(errors),
     )
@@ -483,7 +493,15 @@ def _collect_external_reviews(
     repo: str, pr_number: int, *, gh_json: GhJson, errors: list[str]
 ) -> list[ExternalReviewEvidence]:
     payload = gh_json(
-        ["gh", "api", f"repos/{repo}/issues/{pr_number}/comments", "--paginate"],
+        [
+            "gh",
+            "api",
+            f"repos/{repo}/issues/{pr_number}/comments",
+            "--paginate",
+            "--slurp",
+            "--jq",
+            "add",
+        ],
         None,
     )
     if not isinstance(payload, list):
@@ -492,8 +510,7 @@ def _collect_external_reviews(
     evidence: list[ExternalReviewEvidence] = []
     for item in payload:
         if not isinstance(item, dict) or not isinstance(item.get("user"), dict):
-            errors.append("received malformed external review comment data")
-            return []
+            continue
         evidence.append(
             ExternalReviewEvidence(
                 author=str(item["user"].get("login") or ""),

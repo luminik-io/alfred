@@ -504,7 +504,7 @@ def main() -> int:
         pr_num = pr["number"]
         pr_author = ((pr.get("author") or {}).get("login")) or ""
 
-        if REQUIRE_APPROVAL:
+        if REQUIRE_APPROVAL or REQUIRED_EXTERNAL_REVIEWS:
             ok, reason, title = _merge_via_gate(repo, pr)
         else:
             ok, reason, title = _merge_via_ship_ready(repo, pr, pr_author)
