@@ -250,12 +250,15 @@ def test_cli_native_dry_run_loads_launcher_env(monkeypatch, tmp_path):
     cli = _load_cli_module()
     captured: dict[str, object] = {}
 
-    def fake_run(cmd, **kwargs):
-        captured["cmd"] = cmd
-        captured["env"] = kwargs["env"]
-        return subprocess.CompletedProcess(cmd, 0)
+    class FakeProcess:
+        def __init__(self, cmd, **kwargs):
+            captured["cmd"] = cmd
+            captured["env"] = kwargs["env"]
 
-    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+        def wait(self, timeout):
+            return 0
+
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
 
     rc = cli.cmd_dry_run(
         argparse.Namespace(codename="senior-dev", native=True, simulate=False, json=False)
@@ -303,12 +306,15 @@ def test_cli_native_dry_run_all_reuses_launcher_env(monkeypatch, tmp_path):
             "CUSTOM_FROM_LAUNCHER": "loaded-once",
         }
 
-    def fake_run(cmd, **kwargs):
-        captured.append(kwargs["env"])
-        return subprocess.CompletedProcess(cmd, 0)
+    class FakeProcess:
+        def __init__(self, _cmd, **kwargs):
+            captured.append(kwargs["env"])
+
+        def wait(self, timeout):
+            return 0
 
     monkeypatch.setattr(cli.agent_runner, "launcher_env", fake_launcher_env)
-    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
 
     rc = cli.cmd_dry_run(
         argparse.Namespace(codename="all", native=True, simulate=False, json=False)
