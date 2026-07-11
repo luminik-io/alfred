@@ -1,5 +1,5 @@
 import { History, MessageSquare, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   Sheet,
@@ -35,8 +35,15 @@ export function RecentThreads({
 }) {
   const [open, setOpen] = useState(false);
 
+  // A delete can shrink the list to only the active chat while the Sheet is
+  // open. Keep it mounted for that close transition so Radix can restore focus
+  // and release its dialog state before the trigger disappears.
+  useEffect(() => {
+    if (threads.length <= 1 && open) setOpen(false);
+  }, [open, threads.length]);
+
   // Nothing to switch to until there is more than the active thread.
-  if (threads.length <= 1) return null;
+  if (threads.length <= 1 && !open) return null;
 
   const resume = (id: string) => {
     onResume(id);
