@@ -330,7 +330,8 @@ chat-recall accuracy does not tell you whether memory changed what the fleet
 The table below is a **template with placeholders**, not a result. Fill it from
 one `alfred benchmark memory --engine <name> --json`. Until a real run fills it,
 leave it marked illustrative - do not paste stub numbers here as if they were a
-result.
+result. A real `--engine claude` run of this template is filled in under
+[Real-engine result](#real-engine-result-v060-engineclaude) below.
 
 ```
 Memory A/B run                     (ILLUSTRATIVE until a real --engine run fills it)
@@ -355,6 +356,67 @@ Memory A/B run                     (ILLUSTRATIVE until a real --engine run fills
 
 Keep the OFF/ON pair together so the delta is legible, always next to N and the
 per-task rows.
+
+### Real-engine result (v0.6.0, engine:claude)
+
+This is a **real** `--engine claude` run of the template above, not the stub. It
+ran the built-in fixture through the live `claude` CLI on both arms and burned
+real quota. The full machine-readable record is committed at
+[`docs/benchmarks/mem-ab-real-v0.6.0.json`](benchmarks/mem-ab-real-v0.6.0.json).
+
+```
+Memory A/B run                     (REAL result: engine:claude, built-in fixture)
+  label:        real-v0.6.0
+  seed repo:    acme-org/widgets   (tests/fixtures/mem-bench/repo)
+  memory backend: fleet-local (in-memory SQLite FleetBrain, recency + literal recall)
+  solver:       engine:claude   (claude CLI 2.1.181)
+  N (tasks that re-tempt a learned mistake): 4   (+1 control task)
+
+  repeated-mistake-rate     memory OFF: 0%     memory ON: 0%     delta: +0 pts
+  task success rate         memory OFF: 60%    memory ON: 80%    delta: +20 pts
+  retrieval precision/recall (ON only):  33.3% / 100%
+  tokens in / turns         memory OFF: 115,896/20   memory ON: 115,200/19
+
+  per-task (mistake repeated?  off / on):
+    tz-naive-datetime       off=no   on=no
+    swallow-exceptions      off=no   on=no
+    mutable-default-arg     off=no   on=no
+    n-plus-one-query        off=no   on=no
+    add-docstring (control) off=no   on=no
+```
+
+How to read it honestly:
+
+- **The headline delta is +0 pts, not the stub's +100.** A capable engine did
+  not re-tempt any of the four known mistakes even on the memory-OFF arm, so the
+  repeated-mistake-rate was already 0% without memory and stayed 0% with it. This
+  is exactly the "a real engine will not be this clean" caveat made concrete: on
+  a small fixture a strong base model can dodge these traps unaided, and when the
+  OFF arm never repeats a mistake there is no repeat left for memory to prevent.
+  The stub's +100 pt ceiling measures the harness, not an engine.
+- **The one signal that did move is task success rate (60% -> 80%).** With memory
+  ON, one extra task (`tz-naive-datetime`) reached its success marker. Read this
+  as a solution-quality nudge on N=4, not a population claim.
+- **Retrieval itself worked.** On the ON arm the right lesson was recalled for
+  all four mistake tasks (recall 100%), with precision 33.3% because the fixture
+  seeds two distractor lessons alongside each relevant one and the local
+  FleetBrain fallback recalls by recency once the literal match is exhausted. So
+  the +0 pt behavioural delta is not a retrieval miss: the lesson reached the
+  prompt, the engine just did not need it to avoid these particular traps.
+- **N = 4 is tiny by design.** Do not extrapolate a 4-task delta either way. This
+  fixture proves the harness produces a real, reproducible engine number; a
+  larger, harder fixture (mistakes a strong model actually re-tempts) is what
+  would surface a memory delta worth quoting. Marker fidelity is the honest limit
+  (see caveats): a task counts as solved only on a literal success-marker match,
+  so a correct-but-differently-spelled fix reads as "not solved", not "mistake".
+
+Reproduce exactly from a repo checkout (burns real quota, no `ALFRED_HOME`
+needed for the engine path):
+
+```
+uv run python bin/alfred-benchmark.py memory --engine claude --label real-v0.6.0 \
+  --json > docs/benchmarks/mem-ab-real-v0.6.0.json
+```
 
 ### Offline-fixture result (stub solver, no engine)
 
