@@ -82,4 +82,44 @@ describe("RecentThreads", () => {
     render(<RecentThreads threads={[THREADS[0]]} onResume={vi.fn()} />);
     expect(screen.queryByRole("button", { name: /recent/i })).not.toBeInTheDocument();
   });
+
+  it("routes focus to the retire target when a resume unmounts the trigger", async () => {
+    // Resuming the only inactive chat makes it active; if the outgoing surface
+    // does not persist, no switchable thread remains and the trigger unmounts
+    // right after Radix would have restored focus to it. The resume close goes
+    // through the retire path so keyboard focus lands on the composer target,
+    // never on the document body.
+    const user = userEvent.setup();
+    const fallback = document.createElement("button");
+    document.body.append(fallback);
+    const onRetireFocus = vi.fn(() => fallback.focus());
+    const view = render(
+      <RecentThreads
+        threads={THREADS}
+        onResume={vi.fn()}
+        onDelete={vi.fn()}
+        onRetireFocus={onRetireFocus}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /recent/i }));
+    await user.click(screen.getByRole("button", { name: /^older chat/i }));
+
+    // The resumed thread becomes the only (active) entry: trigger unmounts.
+    view.rerender(
+      <RecentThreads
+        threads={[{ ...THREADS[1], active: true }]}
+        onResume={vi.fn()}
+        onDelete={vi.fn()}
+        onRetireFocus={onRetireFocus}
+      />,
+    );
+
+    await waitFor(() => expect(onRetireFocus).toHaveBeenCalled());
+    expect(fallback).toHaveFocus();
+    expect(document.activeElement).not.toBe(document.body);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /recent/i })).not.toBeInTheDocument(),
+    );
+    fallback.remove();
+  });
 });

@@ -61,6 +61,14 @@ export function RecentThreads({
 
   const resume = (id: string) => {
     onResume(id);
+    // Resuming can leave no switchable thread (the resumed row becomes active,
+    // and the outgoing surface may not persist), which unmounts the trigger
+    // right after Radix restores focus to it and strands keyboard focus on the
+    // body. Route this close through the retire path so focus lands on the
+    // composer deterministically, which is also where a person continues after
+    // resuming a conversation. Escape/outside-click closes keep the default
+    // focus-return to the trigger.
+    if (onRetireFocus) setRetiring(true);
     setOpen(false);
   };
 
