@@ -141,12 +141,146 @@ def test_recovery_hook_that_cannot_heal_falls_through_to_preserve(monkeypatch, t
 def test_make_push_recovery_hook_disabled_returns_none(monkeypatch, tmp_path):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     monkeypatch.setenv("ALFRED_RECOVERY_MAX_ATTEMPTS", "0")
-    hook = lucius._make_push_recovery_hook("frontend", 7, "fid-9", tmp_path, "senior-dev/7", None)
+    hook = lucius._make_push_recovery_hook(
+        "frontend", 7, "fid-9", tmp_path, "senior-dev/7", None, None
+    )
     assert hook is None
 
 
 def test_make_push_recovery_hook_enabled_returns_callable(monkeypatch, tmp_path):
     lucius = load_bin_module("senior-dev.py", monkeypatch)
     monkeypatch.setenv("ALFRED_RECOVERY_MAX_ATTEMPTS", "1")
-    hook = lucius._make_push_recovery_hook("frontend", 7, "fid-9", tmp_path, "senior-dev/7", None)
+    hook = lucius._make_push_recovery_hook(
+        "frontend", 7, "fid-9", tmp_path, "senior-dev/7", None, None
+    )
     assert callable(hook)
+
+
+class _FakeSpend:
+    """Minimal SpendState stub capturing increment kwargs."""
+
+    def __init__(self):
+        self.calls: list[dict] = []
+
+    def increment(self, **kw):
+        self.calls.append(kw)
+
+
+def _engine_result(**over):
+    base = {"subtype": "success", "num_turns": 3, "cost_usd": 0.12}
+    base.update(over)
+    return SimpleNamespace(**base)
+
+
+def test_recovery_turn_requires_committed_fix_and_charges_spend(monkeypatch, tmp_path):
+    """A recovery turn that leaves the tree dirty is a failed attempt, but its
+    turns and cost are still charged to the ledger."""
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
+    monkeypatch.setenv("ALFRED_RECOVERY_MAX_ATTEMPTS", "1")
+    monkeypatch.setattr(
+        lucius, "invoke_agent_engine", lambda *a, **kw: (_engine_result(), "claude")
+    )
+    monkeypatch.setattr(lucius, "codex_sandbox_for_agent", lambda *a, **kw: "workspace-write")
+    monkeypatch.setattr(lucius, "local_repo_dir", lambda repo: repo)
+    # Dirty worktree: the fix was edited but not committed.
+    monkeypatch.setattr(lucius, "_worktree_status", lambda _wt: "?? fix.py")
+
+    spend = _FakeSpend()
+    retried: list[int] = []
+    hook = lucius._make_push_recovery_hook(
+        "frontend", 7, "fid-9", tmp_path, "senior-dev/7", None, spend
+    )
+    recovered = hook("eslint hook failed", "pre_push", lambda: retried.append(1) or True)
+
+    assert recovered is False
+    # Dirty tree short-circuits before the push retry.
+    assert retried == []
+    # The paid turn is still charged.
+    assert spend.calls == [{"turns_today": 3, "cost_usd_today": 0.12}]
+
+
+def test_recovery_turn_with_clean_tree_retries_and_charges_spend(monkeypatch, tmp_path):
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
+    monkeypatch.setenv("ALFRED_RECOVERY_MAX_ATTEMPTS", "1")
+    monkeypatch.setattr(
+        lucius, "invoke_agent_engine", lambda *a, **kw: (_engine_result(), "claude")
+    )
+    monkeypatch.setattr(lucius, "codex_sandbox_for_agent", lambda *a, **kw: "workspace-write")
+    monkeypatch.setattr(lucius, "local_repo_dir", lambda repo: repo)
+    # Clean worktree: the fix was committed.
+    monkeypatch.setattr(lucius, "_worktree_status", lambda _wt: "")
+    monkeypatch.setattr(lucius, "slack_post", lambda *a, **kw: None)
+
+    spend = _FakeSpend()
+    retried: list[int] = []
+    hook = lucius._make_push_recovery_hook(
+        "frontend", 7, "fid-9", tmp_path, "senior-dev/7", None, spend
+    )
+    recovered = hook("eslint hook failed", "pre_push", lambda: retried.append(1) or True)
+
+    assert recovered is True
+    assert retried == [1]
+    assert spend.calls == [{"turns_today": 3, "cost_usd_today": 0.12}]
+
+
+def test_failed_recovery_preserves_latest_gate_not_stale_one(monkeypatch, tmp_path):
+    """When a recovery turn moves the failure to a different gate and still fails,
+    the preserve message and release outcome reflect the current blocker."""
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
+
+    # First push run fails pre-push; the recovery retry fails workflow validation.
+    pre_push_results = iter(
+        [
+            lucius.PrePushResult(ok=False, command="npm run lint", stderr="eslint: 2 errors"),
+            lucius.PrePushResult(ok=True, command="npm run lint", stdout="clean"),
+        ]
+    )
+    monkeypatch.setattr(lucius, "run_pre_push_checks", lambda _r, _w: next(pre_push_results))
+    workflow_results = iter(
+        [
+            SimpleNamespace(
+                ok=False,
+                stdout="",
+                stderr="workflow syntax error",
+                reason="actionlint_failed",
+                files=[".github/workflows/ci.yml"],
+            ),
+        ]
+    )
+    monkeypatch.setattr(
+        lucius, "validate_changed_workflows", lambda *_a, **_kw: next(workflow_results)
+    )
+    monkeypatch.setattr(lucius, "create_recovery_ref", lambda _wt, *, branch: "refs/recovery/x")
+    released: list[dict] = []
+    posts: list[str] = []
+    monkeypatch.setattr(
+        lucius,
+        "release_issue",
+        lambda repo, issue_num, **kw: released.append({"issue": issue_num, **kw}),
+    )
+    monkeypatch.setattr(lucius, "slack_post", lambda message, **_kw: posts.append(message))
+
+    # The hook "heals" the first (pre-push) failure, so the retry re-runs the
+    # push path which now passes pre-push but fails workflow validation.
+    ok = lucius._push_or_preserve(
+        "frontend",
+        7,
+        "fid-9",
+        tmp_path,
+        "senior-dev/7",
+        "push-failed",
+        recover=lambda failure_text, kind, retry: retry(),
+    )
+
+    assert ok is False
+    # Released and warned against the CURRENT blocker (workflow), not pre-push.
+    assert released == [
+        {
+            "issue": 7,
+            "codename": "senior-dev",
+            "firing_id": "fid-9",
+            "outcome": "workflow-validation-failed",
+        }
+    ]
+    assert posts and "WORKFLOW-VALIDATION-FAILED" in posts[0]
+    assert ".github/workflows/ci.yml" in posts[0]
