@@ -279,5 +279,125 @@ def test_revision_leaving_uncommitted_edits_is_salvaged_and_committed(senior_dev
     assert any(a[:2] == ["git", "add"] for a in calls)
     commit_calls = [a for a in calls if a[:2] == ["git", "commit"]]
     assert commit_calls, "uncommitted revision edits must be committed"
-    # The salvage commit carries the revision-scoped firing id, not the plain one.
-    assert "fid-revise" in " ".join(commit_calls[0])
+    # The salvage commit uses the PREFIX revision id (revise-fid), not a suffix
+    # (fid-revise) that git log --grep on the build id would substring-match.
+    joined = " ".join(commit_calls[0])
+    assert "revise-fid" in joined
+    assert "fid-revise" not in joined
+
+
+def test_salvage_commit_failure_resets_worktree(senior_dev, monkeypatch):
+    # If the salvage git add/commit fails, the tree must be reset to HEAD rather
+    # than left dirty for the push.
+    monkeypatch.setenv("ALFRED_RUBRIC_GATE", "1")
+    monkeypatch.setenv("ALFRED_RUBRIC_MAX_ITERATIONS", "1")
+    monkeypatch.setattr(
+        senior_dev,
+        "build_rubric_grader",
+        lambda **_k: (
+            lambda _p: json.dumps(
+                {
+                    "result": "needs_revision",
+                    "explanation": "gap",
+                    "criteria": [{"name": "c", "passed": False, "gap": "x"}],
+                }
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        senior_dev,
+        "invoke_agent_engine",
+        lambda *a, **k: (type("R", (), {"num_turns": 1, "cost_usd": 0.0})(), "codex"),
+    )
+
+    calls: list[list[str]] = []
+    diffs = iter(["diff before", "diff after"])
+    status_results = iter([" M lib/foo.py"])  # dirty on the revision
+
+    def _fake_run(args, **_kw):
+        calls.append(list(args))
+        if "status" in args:
+            return type(
+                "R", (), {"stdout": next(status_results, ""), "returncode": 0, "stderr": ""}
+            )()
+        if "diff" in args:
+            return type("R", (), {"stdout": next(diffs), "returncode": 0, "stderr": ""})()
+        if "commit" in args:
+            return type("R", (), {"stdout": "", "returncode": 1, "stderr": "commit failed"})()
+        # git add, git reset
+        return type("R", (), {"stdout": "", "returncode": 0, "stderr": ""})()
+
+    monkeypatch.setattr(senior_dev, "run", _fake_run)
+
+    events = _Events()
+    senior_dev._run_rubric_gate(
+        "api",
+        _ISSUE_WITH_CRITERIA,
+        Path("/tmp/wt"),
+        "HEAD~1",
+        "feat/x",
+        "fid",
+        "codex",
+        _Spend(),
+        events,
+    )
+    # A failed salvage must hard-reset, not leave the tree dirty.
+    assert any(a[:3] == ["git", "reset", "--hard"] for a in calls)
+    assert any(t == "rubric_revision_salvage_failed" for t, _ in events.emitted)
+
+
+def test_revision_exception_still_settles_worktree(senior_dev, monkeypatch):
+    # If the revision engine raises AFTER writing files, the finally-block settle
+    # must still run so the worktree does not stay dirty.
+    monkeypatch.setenv("ALFRED_RUBRIC_GATE", "1")
+    monkeypatch.setenv("ALFRED_RUBRIC_MAX_ITERATIONS", "1")
+    monkeypatch.setattr(
+        senior_dev,
+        "build_rubric_grader",
+        lambda **_k: (
+            lambda _p: json.dumps(
+                {
+                    "result": "needs_revision",
+                    "explanation": "gap",
+                    "criteria": [{"name": "c", "passed": False, "gap": "x"}],
+                }
+            )
+        ),
+    )
+
+    def _raise(*_a, **_k):
+        raise RuntimeError("engine died mid-run")
+
+    monkeypatch.setattr(senior_dev, "invoke_agent_engine", _raise)
+
+    calls: list[list[str]] = []
+    diffs = iter(["diff before", "diff after"])
+    status_results = iter([" M lib/foo.py"])  # engine left the tree dirty
+
+    def _fake_run(args, **_kw):
+        calls.append(list(args))
+        if "status" in args:
+            return type(
+                "R", (), {"stdout": next(status_results, ""), "returncode": 0, "stderr": ""}
+            )()
+        if "diff" in args:
+            return type("R", (), {"stdout": next(diffs), "returncode": 0, "stderr": ""})()
+        return type("R", (), {"stdout": "", "returncode": 0, "stderr": ""})()
+
+    monkeypatch.setattr(senior_dev, "run", _fake_run)
+
+    events = _Events()
+    senior_dev._run_rubric_gate(
+        "api",
+        _ISSUE_WITH_CRITERIA,
+        Path("/tmp/wt"),
+        "HEAD~1",
+        "feat/x",
+        "fid",
+        "codex",
+        _Spend(),
+        events,
+    )
+    # The engine raised, but settle still committed the leftover edits.
+    assert any(a[:2] == ["git", "commit"] for a in calls)
+    assert any(t == "rubric_revision_failed" for t, _ in events.emitted)

@@ -478,38 +478,59 @@ def _rubric_gate_max_revisions() -> int:
     return max(1, min(10, value))
 
 
-def _commit_uncommitted_revision(
+def _revision_firing_id(firing_id: str) -> str:
+    """Firing id for a revision commit's trailer.
+
+    A PREFIX, not a suffix: the build-commit lookup greps the literal
+    ``Agent-Firing-Id: <firing_id>``, and a suffix (``<firing_id>-revise``)
+    would still match that as a substring. A prefix (``revise-<firing_id>``)
+    means the literal build-commit pattern never appears in the revision
+    trailer, so the original firing id keeps uniquely identifying the build
+    commit under ``git log --grep``.
+    """
+    return f"revise-{firing_id}"
+
+
+def _settle_revision_worktree(
     repo: str, issue_num: int, wt: Path, firing_id: str, events: EventLog
 ) -> None:
-    """Commit any uncommitted edits a revision run left in the worktree.
+    """Guarantee a clean worktree after a revision attempt.
 
     The revision prompt asks the implementer to commit, but a run can edit files
-    and stop short. Left uncommitted, those edits are invisible to the committed
-    ``base_ref...HEAD`` diff the grader reads AND leave the tree dirty for the
-    push. This stages and commits them under a revision-scoped trailer (same id
-    as the revision prompt) so the graded diff matches what ships and the tree is
-    clean. A no-op when the worktree is already clean.
+    and stop short (or the engine can raise after writing). Left uncommitted,
+    those edits are invisible to the committed ``base_ref...HEAD`` diff the
+    grader reads AND leave the tree dirty for the push. This stages and commits
+    them under the revision trailer so the graded diff matches what the PR ships.
+    If staging or committing fails, it hard-resets to ``HEAD`` so the tree is
+    clean for the push (discarding only the uncommitted revision edits; the build
+    commit is preserved) rather than leaving a dirty tree that could break
+    pre-push or ship a partial change. A no-op when the worktree is already
+    clean. Called from a ``finally`` so it runs even when the revision raised.
     """
     if not _worktree_status(wt):
         return
     add = run(["git", "add", "-A"], cwd=str(wt), timeout=30)
-    if add.returncode != 0:
-        events.emit("rubric_revision_salvage_failed", reason=short(add.stderr or add.stdout, 200))
-        return
-    trailer = commit_trailer(
-        AGENT,
-        f"{firing_id}-revise",
-        extra={"issue": f"{GH_ORG}/{repo}#{issue_num}"},
-    )
-    commit = run(
-        ["git", "commit", "-m", "fix: address rubric grader feedback", "-m", trailer],
-        cwd=str(wt),
-        timeout=30,
-    )
-    if commit.returncode != 0:
-        events.emit(
-            "rubric_revision_salvage_failed", reason=short(commit.stderr or commit.stdout, 200)
+    if add.returncode == 0:
+        trailer = commit_trailer(
+            AGENT,
+            _revision_firing_id(firing_id),
+            extra={"issue": f"{GH_ORG}/{repo}#{issue_num}"},
         )
+        commit = run(
+            ["git", "commit", "-m", "fix: address rubric grader feedback", "-m", trailer],
+            cwd=str(wt),
+            timeout=30,
+        )
+        if commit.returncode == 0:
+            return
+        detail = commit.stderr or commit.stdout
+    else:
+        detail = add.stderr or add.stdout
+    # Staging or committing the revision failed. Do NOT leave a dirty tree: reset
+    # to the clean committed build state so the push ships exactly what was built
+    # and graded, and pre-push cannot trip on leftover edits.
+    events.emit("rubric_revision_salvage_failed", reason=short(detail, 200))
+    run(["git", "reset", "--hard", "HEAD"], cwd=str(wt), timeout=30)
 
 
 def _revision_prompt(
@@ -522,13 +543,13 @@ def _revision_prompt(
     as guidance to act on, never as instructions that can widen scope.
 
     The revision commit is anchored to a REVISION-scoped firing id
-    (``<firing_id>-revise``) so the original firing id keeps uniquely
-    identifying the build commit and a ``git log --grep`` for it does not also
-    match the revision commit.
+    (``revise-<firing_id>``, a prefix so the build-commit ``git log --grep``
+    does not substring-match it) so the original firing id keeps uniquely
+    identifying the build commit.
     """
     trailer = commit_trailer(
         AGENT,
-        f"{firing_id}-revise",
+        _revision_firing_id(firing_id),
         extra={"issue": f"{GH_ORG}/{repo}#{issue['number']}"},
     )
     issue_payload = format_untrusted_issue_payload(issue)
@@ -624,15 +645,18 @@ def _run_rubric_gate(
                 codex_add_dirs=[(WORKSPACE / local_repo_dir(repo) / ".git").resolve()],
             )
         except Exception as exc:
+            # The engine may have written files before raising, so fall through
+            # to the finally-block settle rather than returning early with a
+            # possibly-dirty tree.
             events.emit("rubric_revision_failed", reason=short(str(exc), 200))
-            return diff_holder["diff"]
-        spend.increment(turns_today=result.num_turns, cost_usd_today=result.cost_usd)
-        # A revision that edited files but did not commit would otherwise leave
-        # the worktree dirty (breaking the later push / pre-push) AND be invisible
-        # to the committed base_ref...HEAD diff the grader reads. Salvage any
-        # uncommitted edits onto the branch under the revision-scoped trailer so
-        # what the grader sees is exactly what the PR ships, and the tree is clean.
-        _commit_uncommitted_revision(repo, int(issue["number"]), wt, firing_id, events)
+        else:
+            spend.increment(turns_today=result.num_turns, cost_usd_today=result.cost_usd)
+        finally:
+            # Always leave a clean worktree: commit the revision's edits (so the
+            # graded diff matches what the PR ships) or reset if that fails. Runs
+            # on the success, exception, AND commit-failure paths so the tree is
+            # never left dirty for the push.
+            _settle_revision_worktree(repo, int(issue["number"]), wt, firing_id, events)
         diff_holder["diff"] = run(
             ["git", "diff", f"{base_ref}...HEAD"], cwd=str(wt), timeout=30
         ).stdout
