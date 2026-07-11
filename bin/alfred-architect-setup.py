@@ -432,6 +432,7 @@ def step_claude_oauth(
             ok(f"{TOKEN_ENV} configured")
         else:
             warn(f"`alfred setup-token` exited {rc}. Re-run it before enabling architect.")
+            raise SystemExit(rc or 1)
     else:
         warn("Skipped token setup.")
 

@@ -97,6 +97,24 @@ def test_oauth_step_reports_timeout_without_crashing(tmp_path, monkeypatch, caps
     assert "timed out waiting for approval" in capsys.readouterr().err
 
 
+def test_oauth_step_exits_when_token_handoff_fails(tmp_path, monkeypatch, capsys):
+    mod = _load_module(monkeypatch, tmp_path)
+    state = mod.ArchitectSetupState(
+        repo_root=REPO,
+        alfred_home=tmp_path,
+        env_file=tmp_path / ".env",
+        env={},
+    )
+    monkeypatch.setattr(mod, "ask_yes_no", lambda *_args: True)
+    monkeypatch.setattr(mod, "_run_setup_token", lambda _script: 42)
+
+    with pytest.raises(SystemExit) as exc:
+        mod.step_claude_oauth(state, non_interactive=False, skip_token_setup=False)
+
+    assert exc.value.code == 42
+    assert "exited 42" in capsys.readouterr().err
+
+
 def test_setup_token_helper_reaps_child_on_parent_signal(tmp_path, monkeypatch):
     mod = _load_module(monkeypatch, tmp_path)
     handlers = {}
