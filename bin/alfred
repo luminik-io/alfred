@@ -2683,8 +2683,16 @@ def cmd_pr(args: argparse.Namespace) -> int:
         print(f"alfred pr: {exc}", file=sys.stderr)
         return 2
 
+    required_external_reviews = tuple(
+        item.strip().lower()
+        for item in os.environ.get("ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS", "").split(",")
+        if item.strip()
+    )
     _snapshot, decision = merge_gate.gate_pull_request(
-        repo, args.number, min_approvals=min_approvals
+        repo,
+        args.number,
+        min_approvals=min_approvals,
+        required_external_reviews=required_external_reviews,
     )
 
     payload = {

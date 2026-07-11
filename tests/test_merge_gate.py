@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "lib"))
 import merge_gate  # noqa: E402
 from merge_gate import (  # noqa: E402
     CheckRun,
+    ExternalReviewEvidence,
     GateSnapshot,
     Review,
     ReviewThread,
@@ -139,6 +140,43 @@ def test_api_error_fails_closed():
     assert decision.failing()[0].key == "api"
     # Fail-closed short-circuits: no partial condition list is trusted.
     assert len(decision.conditions) == 1
+
+
+def test_required_external_reviews_must_be_clean_and_exact_head():
+    head = "a" * 40
+    snap = _snapshot(
+        external_reviews=(
+            ExternalReviewEvidence(
+                "greptile-apps[bot]",
+                f"Confidence Score: 5/5\nNo blocking issues\ncommit/{head}",
+                "2026-07-11T10:00:00Z",
+            ),
+            ExternalReviewEvidence(
+                "chatgpt-codex-connector[bot]",
+                "Codex Review: Didn't find any major issues.\n\n**Reviewed commit:** `aaaaaaaaaa`",
+                "2026-07-11T10:01:00Z",
+            ),
+        )
+    )
+    assert evaluate_gate(snap, required_external_reviews=("greptile", "codex")).mergeable
+
+    stale = _snapshot(external_reviews=snap.external_reviews[:-1])
+    decision = evaluate_gate(stale, required_external_reviews=("greptile", "codex"))
+    assert decision.mergeable is False
+    assert "codex" in decision.short_reason()
+
+
+def test_required_external_reviews_reject_spoofed_bot_login():
+    snap = _snapshot(
+        external_reviews=(
+            ExternalReviewEvidence(
+                "not-greptile-apps[bot]",
+                f"Confidence Score: 5/5\nNo blocking issues\ncommit/{'a' * 40}",
+                "2026-07-11T10:00:00Z",
+            ),
+        )
+    )
+    assert not evaluate_gate(snap, required_external_reviews=("greptile",)).mergeable
 
 
 def test_unknown_review_decision_fails_closed():

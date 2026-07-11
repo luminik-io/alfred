@@ -105,6 +105,11 @@ def _env_flag(name: str, *, default: bool) -> bool:
 # NOTE: these are read from the plain environment. If the typed config registry
 # (lib/alfred_config.py) lands later, migrate these two keys into it.
 REQUIRE_APPROVAL = _env_flag("ALFRED_MERGE_REQUIRE_APPROVAL", default=True)
+REQUIRED_EXTERNAL_REVIEWS = tuple(
+    item.strip().lower()
+    for item in os.environ.get("ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS", "").split(",")
+    if item.strip()
+)
 try:
     MIN_APPROVALS: int | None = parse_min_approvals(
         os.environ.get("ALFRED_MERGE_MIN_APPROVALS", str(MIN_APPROVALS_DEFAULT))
@@ -427,8 +432,16 @@ def _merge_via_gate(repo: str, pr: dict) -> tuple[bool, str, str]:
     if MIN_APPROVALS is None:
         return False, f"invalid merge-gate config: {MIN_APPROVALS_ERROR}", title
     slug = f"{GH_ORG}/{repo}"
-    snapshot = collect_snapshot(slug, pr_num)
-    decision = evaluate_gate(snapshot, min_approvals=MIN_APPROVALS)
+    snapshot = (
+        collect_snapshot(slug, pr_num, collect_external_reviews=True)
+        if REQUIRED_EXTERNAL_REVIEWS
+        else collect_snapshot(slug, pr_num)
+    )
+    decision = evaluate_gate(
+        snapshot,
+        min_approvals=MIN_APPROVALS,
+        required_external_reviews=REQUIRED_EXTERNAL_REVIEWS,
+    )
     if not decision.mergeable:
         return False, decision.short_reason(), title
     ok, msg = guarded_squash_merge(slug, pr_num, decision.head_sha, delete_branch=True)
