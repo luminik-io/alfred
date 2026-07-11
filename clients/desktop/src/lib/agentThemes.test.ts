@@ -6,6 +6,7 @@ import {
   type WorkflowRole,
 } from "./agentRoster";
 import {
+  buildThemedRoster,
   editableAgents,
   isRosterThemeId,
   PRESET_ROSTER_THEME_IDS,
@@ -148,6 +149,119 @@ describe("resolveThemedIdentity", () => {
       expect(id.name.length).toBeGreaterThan(0);
       expect(id.roleLabel.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("legacy-install role resolution", () => {
+  // A machine installed before the role-slug rename has Batman-cast codenames in
+  // agents.conf (``lucius``, ``robin``, ``rasalghul``, ...). The theme layer must
+  // re-skin them by ROLE, not fall through to the raw titleized codename.
+  it("re-skins a legacy Batman-cast codename under a preset", () => {
+    const superman = resolveThemedIdentity({ codename: "lucius" }, "justice-league");
+    expect(superman.role).toBe("senior-dev");
+    expect(superman.name).toBe("Superman");
+
+    const optimus = resolveThemedIdentity({ codename: "batman" }, "transformers");
+    expect(optimus.role).toBe("architect");
+    expect(optimus.name).toBe("Optimus Prime");
+
+    const curie = resolveThemedIdentity({ codename: "rasalghul" }, "scientists");
+    expect(curie.role).toBe("reviewer");
+    expect(curie.name).toBe("Curie");
+  });
+
+  it("keeps a legacy codename's base persona under the default theme", () => {
+    const id = resolveThemedIdentity({ codename: "lucius" }, "batman");
+    expect(id.name).toBe("Lucius");
+    expect(id.roleLabel).toBe("Senior developer");
+  });
+});
+
+describe("buildThemedRoster", () => {
+  it("gives every agent a distinct name when several share a role", () => {
+    // Two legacy triage agents + two legacy planner agents: naive role naming
+    // would collide (two "The Flash", two "Green Arrow"). The roster pass must
+    // hand out distinct names.
+    const roster = buildThemedRoster(
+      [
+        { codename: "robin", roleTitle: "Triage lead" },
+        { codename: "gordon-triage", roleTitle: "Bug triage" },
+        { codename: "drake", roleTitle: "Issue planner" },
+        { codename: "planner-two", roleTitle: "Release planner" },
+      ],
+      "justice-league",
+    );
+    const names = [...roster.values()].map((identity) => identity.name);
+    expect(new Set(names).size).toBe(names.length);
+    // The first triage agent (sorted by codename) takes the role's primary name.
+    expect(roster.get("gordon-triage")?.role).toBe("triage");
+    expect(roster.get("robin")?.role).toBe("triage");
+  });
+
+  it("never repeats a display name across the full default fleet in any theme", () => {
+    const sources = Object.keys(rosterThemeFor("batman").nameByCodename).map((codename) => ({
+      codename,
+    }));
+    for (const themeId of ROSTER_THEME_IDS) {
+      const roster = buildThemedRoster(sources, themeId);
+      const names = [...roster.values()].map((identity) => identity.name);
+      expect(names.length).toBeGreaterThan(0);
+      expect(new Set(names).size).toBe(names.length);
+    }
+  });
+
+  it("preserves the exact canonical name for known slug codenames", () => {
+    const roster = buildThemedRoster(
+      [{ codename: "architect" }, { codename: "senior-dev" }],
+      "programmers",
+    );
+    expect(roster.get("architect")?.name).toBe("Turing");
+    expect(roster.get("senior-dev")?.name).toBe("Torvalds");
+  });
+
+  it("falls back to a numeric suffix once every themed name is used", () => {
+    // More triage agents than the theme has names: the tail overflows to a
+    // suffix but every name stays unique.
+    const sources = Array.from({ length: 30 }, (_unused, index) => ({
+      codename: `triage-${String(index).padStart(2, "0")}`,
+      roleTitle: "Bug triage",
+    }));
+    const roster = buildThemedRoster(sources, "batman");
+    const names = [...roster.values()].map((identity) => identity.name);
+    expect(names.length).toBe(30);
+    expect(new Set(names).size).toBe(30);
+  });
+});
+
+describe("built-in themes", () => {
+  it("ships the four new global themes as selectable presets", () => {
+    for (const themeId of [
+      "programmers",
+      "scientists",
+      "mathematicians",
+      "philosophers",
+    ] as const) {
+      expect(PRESET_ROSTER_THEME_IDS).toContain(themeId);
+      expect(isRosterThemeId(themeId)).toBe(true);
+      const theme = rosterThemeFor(themeId);
+      const names = Object.values(theme.nameByCodename);
+      // Every name is non-blank and distinct within the theme.
+      expect(names.length).toBeGreaterThanOrEqual(12);
+      expect(new Set(names.map((name) => name.toLowerCase())).size).toBe(names.length);
+    }
+  });
+
+  it("includes globally diverse figures, Indian ones among them", () => {
+    const scientists = Object.values(rosterThemeFor("scientists").nameByCodename);
+    expect(scientists).toEqual(expect.arrayContaining(["Raman", "Kalam", "Bose"]));
+    const maths = Object.values(rosterThemeFor("mathematicians").nameByCodename);
+    expect(maths).toEqual(
+      expect.arrayContaining(["Ramanujan", "Aryabhata", "Bhaskara", "Brahmagupta"]),
+    );
+    const philosophers = Object.values(rosterThemeFor("philosophers").nameByCodename);
+    expect(philosophers).toEqual(
+      expect.arrayContaining(["Chanakya", "Adi Shankara", "Vivekananda"]),
+    );
   });
 });
 

@@ -2178,13 +2178,14 @@ def _roster_theme_store_path(home: Path) -> Path:
 
 
 def _roster_theme_label(theme: str) -> str:
-    labels = {
-        "batman": "Batman",
-        "transformers": "Transformers",
-        "justice-league": "Justice League",
-        "custom": "Custom",
-    }
-    return labels.get(theme, theme.replace("-", " ").title())
+    # Labels come from the shared roster manifest so a newly added theme is named
+    # correctly here without a second hardcoded list to keep in sync.
+    try:
+        from roster_theme_store import theme_label
+
+        return theme_label(theme)
+    except Exception:
+        return theme.replace("-", " ").title() or "Batman"
 
 
 def _roster_theme_detail(theme: dict[str, Any]) -> str:

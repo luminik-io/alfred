@@ -34,6 +34,17 @@ export type RosterTheme = {
   // map) fall back to their own runtime name or a titleized codename, never to
   // another agent's persona, so two agents can never collide on one name.
   nameByCodename: Record<string, string>;
+  // Ordered pool of themed names per canonical role. An agent whose codename is
+  // NOT a known fleet slug (a legacy Batman-cast codename, or a custom agent) is
+  // named by its derived ROLE from this pool, so theme application is correct for
+  // ANY install and not just the canonical slugs. When several agents share a
+  // role, the batch resolver (buildThemedRoster) walks the pool to give each a
+  // DISTINCT name. Built from the manifest by grouping agents by role.
+  namePoolByRole: Partial<Record<WorkflowRole, readonly string[]>>;
+  // Every themed name in manifest order, used as the overflow pool when a role's
+  // own pool is exhausted, so a duplicate agent still gets a real themed name
+  // before falling back to a numeric suffix.
+  namePool: readonly string[];
   // Per-codename role label override (only the `custom` theme uses this). The
   // operator authors a role label PER AGENT, so it must not bleed onto every
   // other agent that happens to share the same canonical role. Resolution
@@ -73,6 +84,23 @@ function manifestNameByCodename(themeId: PresetRosterThemeId): Record<string, st
   );
 }
 
+// Group the theme's manifest names by canonical role, preserving manifest order,
+// so a role with several agents (ops, ship) carries an ordered pool the batch
+// resolver can hand out one distinct name at a time.
+function manifestNamePoolByRole(
+  themeId: PresetRosterThemeId,
+): Partial<Record<WorkflowRole, string[]>> {
+  const pools: Partial<Record<WorkflowRole, string[]>> = {};
+  for (const agent of ROSTER_MANIFEST.agents) {
+    (pools[agent.role] ??= []).push(agent.names[themeId]);
+  }
+  return pools;
+}
+
+function manifestNamePool(themeId: PresetRosterThemeId): string[] {
+  return ROSTER_MANIFEST.agents.map((agent) => agent.names[themeId]);
+}
+
 function buildPresetTheme(themeId: PresetRosterThemeId): RosterTheme {
   const meta = manifestThemeMeta(themeId);
   return {
@@ -81,6 +109,8 @@ function buildPresetTheme(themeId: PresetRosterThemeId): RosterTheme {
     blurb: meta.blurb,
     roleLabels: ROLE_LABELS_DEFAULT,
     nameByCodename: manifestNameByCodename(themeId),
+    namePoolByRole: manifestNamePoolByRole(themeId),
+    namePool: manifestNamePool(themeId),
   };
 }
 
@@ -145,6 +175,12 @@ function buildCustomTheme(custom: CustomRosterNames): RosterTheme {
     blurb: CUSTOM_THEME_META.blurb,
     roleLabels: { ...ROLE_LABELS_DEFAULT },
     nameByCodename,
+    // A custom theme names agents per-codename; an agent the operator has NOT
+    // named falls back to its role pool. Inherit the Batman base pools so an
+    // un-named agent still gets a real name (its base persona) rather than a bare
+    // codename, matching how nameByCodename overlays the base names.
+    namePoolByRole: BASE_THEME.namePoolByRole,
+    namePool: BASE_THEME.namePool,
     roleLabelByCodename,
   };
 }
@@ -218,11 +254,126 @@ export function resolveThemedIdentity(
   const theme = rosterThemeFor(themeId, custom);
   const role = deriveAgentRole(source);
   const short = normalizeCodename(source.codename);
-  const name = theme.nameByCodename[short] || titleizeCodename(source.codename);
+  // Name resolution, in order:
+  //   1. an exact per-codename name (the canonical fleet slug, or an operator's
+  //      custom name), then
+  //   2. the theme's name for the agent's derived ROLE, so a legacy Batman-cast
+  //      codename (``lucius``) is re-skinned by role instead of showing its raw
+  //      titleized codename, then
+  //   3. a titleized codename so an agent we cannot place is never blank.
+  // The role pool's FIRST entry is the role's primary persona; the batch resolver
+  // (buildThemedRoster) is what walks the pool to keep duplicate-role agents
+  // distinct. A single lookup has no roster context, so it takes the primary.
+  const name =
+    theme.nameByCodename[short] ||
+    theme.namePoolByRole[role]?.[0] ||
+    titleizeCodename(source.codename);
   // A per-codename custom role label wins over the role-wide label, so an
   // operator's "architect = Lead detective" does not relabel every architect.
   const roleLabel = theme.roleLabelByCodename?.[short] ?? theme.roleLabels[role];
   return { role, name, roleLabel };
+}
+
+/**
+ * Resolve themed identities for a WHOLE roster at once, guaranteeing every agent
+ * a DISTINCT display name (the product rule: no repeated names in a roster).
+ *
+ * Two phases, both deterministic and stable across reloads:
+ *   1. Agents with an exact per-codename name (a canonical fleet slug, or an
+ *      operator-named codename under the custom theme) take that name. These are
+ *      already distinct by construction and preserve today's exact rendering.
+ *   2. Every remaining agent (legacy Batman-cast codenames, custom agents) is
+ *      grouped by its derived role and, within a role, sorted by codename so the
+ *      allocation never depends on roster order. Each is handed the next UNUSED
+ *      name from its role pool; when that pool is exhausted it draws from the
+ *      theme's flat pool, and only then falls back to a "Name 2" numeric suffix.
+ *
+ * The returned map is keyed by the NORMALIZED (short, lowercased) codename.
+ */
+export function buildThemedRoster(
+  sources: readonly RoleSource[],
+  themeId: RosterThemeId,
+  custom: CustomRosterNames = EMPTY_CUSTOM_NAMES,
+): Map<string, ThemedIdentity> {
+  const theme = rosterThemeFor(themeId, custom);
+
+  // Dedupe by normalized codename (keep the first source for each), so the same
+  // agent reported twice does not consume two pool slots.
+  const byCodename = new Map<string, RoleSource>();
+  for (const source of sources) {
+    const short = normalizeCodename(source.codename);
+    if (short && !byCodename.has(short)) {
+      byCodename.set(short, source);
+    }
+  }
+
+  const roleOf = new Map<string, WorkflowRole>();
+  for (const [short, source] of byCodename) {
+    roleOf.set(short, deriveAgentRole(source));
+  }
+
+  const result = new Map<string, ThemedIdentity>();
+  const used = new Set<string>();
+  const claim = (name: string) => used.add(name.toLowerCase());
+
+  const roleLabelFor = (short: string, role: WorkflowRole): string =>
+    theme.roleLabelByCodename?.[short] ?? theme.roleLabels[role];
+
+  // Phase 1: exact per-codename names.
+  for (const [short] of byCodename) {
+    const exact = theme.nameByCodename[short];
+    if (exact) {
+      const role = roleOf.get(short)!;
+      result.set(short, { role, name: exact, roleLabel: roleLabelFor(short, role) });
+      claim(exact);
+    }
+  }
+
+  // Phase 2: remaining agents, grouped by role, sorted by codename, allocated a
+  // distinct pool name each.
+  const remainingByRole = new Map<WorkflowRole, string[]>();
+  for (const [short] of byCodename) {
+    if (result.has(short)) continue;
+    const role = roleOf.get(short)!;
+    const bucket = remainingByRole.get(role);
+    if (bucket) {
+      bucket.push(short);
+    } else {
+      remainingByRole.set(role, [short]);
+    }
+  }
+
+  for (const [role, shorts] of remainingByRole) {
+    shorts.sort();
+    for (const short of shorts) {
+      const name = allocateRoleName(short, role, theme, used);
+      result.set(short, { role, name, roleLabel: roleLabelFor(short, role) });
+      claim(name);
+    }
+  }
+
+  return result;
+}
+
+/** Pick the next unused themed name for a role, then overflow to a suffix. */
+function allocateRoleName(
+  short: string,
+  role: WorkflowRole,
+  theme: RosterTheme,
+  used: Set<string>,
+): string {
+  const isFree = (name: string) => !used.has(name.toLowerCase());
+  const pool = theme.namePoolByRole[role] ?? [];
+  const fromRole = pool.find(isFree);
+  if (fromRole) return fromRole;
+  const fromFlat = theme.namePool.find(isFree);
+  if (fromFlat) return fromFlat;
+  // Every real name is taken: suffix the role's primary persona (or the titleized
+  // codename when the theme has no pool for this role) until it is unique.
+  const base = pool[0] ?? theme.namePool[0] ?? titleizeCodename(short);
+  let n = 2;
+  while (!isFree(`${base} ${n}`)) n += 1;
+  return `${base} ${n}`;
 }
 
 // The known fleet codenames the custom-theme editor lets the operator rename,

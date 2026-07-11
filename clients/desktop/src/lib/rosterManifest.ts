@@ -1,7 +1,14 @@
 import rosterManifestJson from "../../../../lib/roster_manifest.json";
 import type { WorkflowRole } from "./agentRoster";
 
-export type PresetRosterThemeId = "batman" | "transformers" | "justice-league";
+export type PresetRosterThemeId =
+  | "batman"
+  | "transformers"
+  | "justice-league"
+  | "programmers"
+  | "scientists"
+  | "mathematicians"
+  | "philosophers";
 
 export type RosterManifestAgent = {
   codename: string;

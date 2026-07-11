@@ -1,4 +1,4 @@
-import { isKnownFleetCodename } from "./agentRoster";
+import { isKnownFleetCodename, type RoleSource } from "./agentRoster";
 import {
   type CustomRosterNames,
   DEFAULT_ROSTER_THEME,
@@ -6,6 +6,7 @@ import {
   normalizeCodename,
   resolveThemedIdentity,
   type RosterThemeId,
+  type ThemedIdentity,
 } from "./agentThemes";
 import type { FleetControlRow } from "./fleetControl";
 import type { WorkflowNodeInput } from "./workflowGraph";
@@ -23,6 +24,17 @@ export type AgentProfile = {
   themeAccent: string;
 };
 
+// The RoleSource an agent's row + schedule imply. Shared with the batch resolver
+// (buildThemedRoster) so a roster-wide unique-name pass and a single agentProfile
+// call derive the SAME role/name for a given agent.
+export function roleSourceForRow(row: FleetControlRow, schedule?: ScheduledRun): RoleSource {
+  return {
+    codename: row.codename,
+    roleTitle: row.summary?.role_title || schedule?.role_title || schedule?.role,
+    purpose: row.summary?.purpose || schedule?.purpose,
+  };
+}
+
 // Resolve an agent's display profile under the active roster theme. The themed
 // name + role label come from the theme mapping (keyed off the agent's derived
 // role, never a literal name list); the runtime's own reported display name /
@@ -34,15 +46,22 @@ export function agentProfile(
   themeId: RosterThemeId = DEFAULT_ROSTER_THEME,
   customNames: CustomRosterNames = EMPTY_CUSTOM_NAMES,
 ): AgentProfile {
-  const identity = resolveThemedIdentity(
-    {
-      codename: row.codename,
-      roleTitle: row.summary?.role_title || schedule?.role_title || schedule?.role,
-      purpose: row.summary?.purpose || schedule?.purpose,
-    },
-    themeId,
-    customNames,
-  );
+  const identity = resolveThemedIdentity(roleSourceForRow(row, schedule), themeId, customNames);
+  return agentProfileFromIdentity(row, schedule, identity, themeId, customNames);
+}
+
+// Build the display profile from a PRE-RESOLVED themed identity. The roster view
+// resolves the whole fleet at once (buildThemedRoster) to guarantee distinct
+// names, then feeds each agent's identity here so the runtime-label precedence
+// rules below apply identically whether the identity came from the batch pass or
+// a single resolveThemedIdentity lookup.
+export function agentProfileFromIdentity(
+  row: FleetControlRow,
+  schedule: ScheduledRun | undefined,
+  identity: ThemedIdentity,
+  themeId: RosterThemeId = DEFAULT_ROSTER_THEME,
+  customNames: CustomRosterNames = EMPTY_CUSTOM_NAMES,
+): AgentProfile {
   // Name/label resolution has to honor two things at once:
   //   1. A non-Batman preset must actually re-skin the KNOWN fleet. The runtime
   //      reports a `display_name`/`role_title` for every default agent, and those
