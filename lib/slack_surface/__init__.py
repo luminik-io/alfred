@@ -36,6 +36,7 @@ _FACADE: dict[str, str] = {
     "APPROVAL_TIMEOUT": "approval",
     "APPROVAL_TRANSPORT_DOWN": "approval",
     # posting
+    "SlackPoster": "posting",
     "SlackThreadPoster": "posting",
     "build_chat_postmessage_payload": "posting",
     "escape_mrkdwn": "posting",
@@ -80,7 +81,6 @@ _FACADE: dict[str, str] = {
     "SlackPlanningListener": "listener",
     "SlackInputEvent": "listener",
     "ListenerResult": "listener",
-    "SlackPoster": "listener",
     "parse_slack_payload": "listener",
     "run_socket_mode": "listener",
 }
