@@ -176,3 +176,117 @@ def test_non_alfred_checkout_is_refused(tmp_path):
     result = _run(home, stub_bin, checkout)
     assert result.returncode != 0
     assert "not an Alfred checkout" in result.stderr
+
+
+def test_codex_only_succeeds_with_claude_guidance(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    stub_bin = _make_stub_bin(tmp_path / "bin", claude=False)
+    _write_stub(stub_bin, "codex", "exit 0\n")
+    checkout = tmp_path / "alfred"
+
+    result = _run(home, stub_bin, checkout)
+    assert result.returncode == 0, result.stderr
+    # codex is a valid fleet engine, so the install proceeds...
+    assert (checkout / ".git").is_dir()
+    # ...but the operator is told plainly that the demo needs Claude Code.
+    assert "'alfred demo' needs Claude Code" in result.stderr
+    assert "@anthropic-ai/claude-code" in result.stderr
+
+
+def test_unrelated_git_checkout_is_refused(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    stub_bin = _make_stub_bin(tmp_path / "bin")
+    checkout = tmp_path / "alfred"
+    # A git repo already at the target path that is not Alfred (no bin/alfred).
+    (checkout / ".git").mkdir(parents=True)
+
+    result = _run(home, stub_bin, checkout)
+    assert result.returncode != 0
+    assert "does not look like Alfred" in result.stderr
+
+
+def test_old_python_fails_preflight(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    stub_bin = _make_stub_bin(tmp_path / "bin", python=False)
+    _write_stub(stub_bin, "python3", 'echo "Python 3.9.6"\n')
+    checkout = tmp_path / "alfred"
+
+    result = _run(home, stub_bin, checkout)
+    assert result.returncode != 0
+    assert "Alfred needs Python 3.11+" in result.stderr
+    # It must stop at preflight, before cloning.
+    assert not (checkout / ".git").exists()
+
+
+def test_failed_update_does_not_report_success(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    stub_bin = _make_stub_bin(tmp_path / "bin")
+    # git stub whose `git -C ... pull` fails (local changes / no network).
+    _write_stub(
+        stub_bin,
+        "git",
+        'case "$1" in\n'
+        '  --version) echo "git version 2.44.0" ;;\n'
+        "  -C) exit 1 ;;\n"
+        "  *) exit 0 ;;\n"
+        "esac\n",
+    )
+    checkout = tmp_path / "alfred"
+    (checkout / ".git").mkdir(parents=True)
+    (checkout / "bin").mkdir()
+    (checkout / "bin" / "alfred").write_text("#!/usr/bin/env python3\n")
+
+    result = _run(home, stub_bin, checkout)
+    assert result.returncode != 0
+    assert "could not update" in result.stderr
+    # No success banner on a failed update.
+    assert "Alfred is on your machine" not in result.stdout
+
+
+def test_rerun_with_ref_switches_checkout(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    stub_bin = _make_stub_bin(tmp_path / "bin")
+    checkout = tmp_path / "alfred"
+    (checkout / ".git").mkdir(parents=True)
+    (checkout / "bin").mkdir()
+    (checkout / "bin" / "alfred").write_text("#!/usr/bin/env python3\n")
+
+    env = {
+        "HOME": str(home),
+        "PATH": str(stub_bin),
+        "ALFRED_CHECKOUT": str(checkout),
+        "ALFRED_REPO_URL": "https://example.invalid/alfred.git",
+        "ALFRED_REPO_REF": "v0.6.0",
+    }
+    result = subprocess.run(
+        [_SH, str(_SCRIPT)], env=env, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+    assert "checked out v0.6.0" in result.stdout
+
+
+def test_run_install_zero_stays_demo_only(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    stub_bin = _make_stub_bin(tmp_path / "bin")
+    checkout = tmp_path / "alfred"
+
+    env = {
+        "HOME": str(home),
+        "PATH": str(stub_bin),
+        "ALFRED_CHECKOUT": str(checkout),
+        "ALFRED_REPO_URL": "https://example.invalid/alfred.git",
+        "ALFRED_RUN_INSTALL": "0",
+    }
+    result = subprocess.run(
+        [_SH, str(_SCRIPT)], env=env, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+    # ALFRED_RUN_INSTALL=0 must not trigger the full-install lane at all.
+    assert "Running install.sh" not in result.stdout
+    assert "install.sh not found" not in result.stderr

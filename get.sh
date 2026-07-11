@@ -133,18 +133,19 @@ else
       elif [ "$py_major" -gt 3 ]; then
         ok "$python_bin $py_ver"
       else
-        warn "$python_bin is $py_ver; Alfred targets Python 3.11+. Install 3.11 before the full install (the demo may still run)."
+        die "$python_bin is $py_ver; Alfred needs Python 3.11+. macOS: 'brew install python@3.11'. Debian/Ubuntu: 'sudo apt-get install -y python3.11' (or 'uv python install 3.11'). Then re-run."
       fi
       ;;
   esac
 fi
 
-# claude or codex: at least one coding CLI is required for the demo.
+# claude or codex: at least one coding CLI is required. The demo runs on
+# claude specifically, so a codex-only host still installs (codex is a valid
+# fleet engine) but is told plainly that 'alfred demo' needs Claude Code.
 if have claude; then
   ok "claude CLI on PATH"
 elif have codex; then
-  ok "codex CLI on PATH"
-  note "The demo prefers claude; codex works as the fleet engine."
+  warn "codex CLI found, but no claude. The fleet can run on codex, but 'alfred demo' needs Claude Code. Install it: 'npm install -g @anthropic-ai/claude-code', then run 'claude' once to sign in."
 else
   die "No coding CLI found. Alfred drives 'claude' (recommended) or 'codex'. Install Claude Code: 'npm install -g @anthropic-ai/claude-code', then run 'claude' once to sign in."
 fi
@@ -161,11 +162,29 @@ fi
 # --------------------------------------------------------------------------
 step "Fetching alfred-os into $CHECKOUT"
 if [ -d "$CHECKOUT/.git" ]; then
+  # A git checkout at the target is only reused when it actually looks like
+  # Alfred; an unrelated repo parked at ~/alfred must not get a false
+  # "install complete" and demo instructions that point at the wrong project.
+  if [ ! -e "$CHECKOUT/bin/alfred" ]; then
+    die "$CHECKOUT is a git checkout but does not look like Alfred (no bin/alfred). Move it aside or set ALFRED_CHECKOUT to a different path."
+  fi
   ok "existing checkout found, updating"
-  if git -C "$CHECKOUT" pull --ff-only >/dev/null 2>&1; then
+  if [ -n "$REPO_REF" ]; then
+    # A re-run with ALFRED_REPO_REF set must actually land on that ref, not
+    # silently stay on whatever the checkout had before.
+    note "switching to $REPO_REF"
+    if git -C "$CHECKOUT" fetch --depth 1 origin "$REPO_REF" >/dev/null 2>&1 \
+      && git -C "$CHECKOUT" checkout -q FETCH_HEAD >/dev/null 2>&1; then
+      ok "checked out $REPO_REF in $CHECKOUT"
+    else
+      die "could not switch $CHECKOUT to $REPO_REF. Check the ref name and any local changes (git -C $CHECKOUT status), or remove the checkout and re-run."
+    fi
+  elif git -C "$CHECKOUT" pull --ff-only >/dev/null 2>&1; then
     ok "updated $CHECKOUT"
   else
-    warn "could not fast-forward $CHECKOUT (local changes?); leaving it as-is"
+    # A failed update must not fall through to the success banner: the
+    # advertised re-run behavior is an updated checkout.
+    die "could not update $CHECKOUT (local changes, detached HEAD, or no network). Resolve it (git -C $CHECKOUT status), or if you previously installed a tag, re-run with ALFRED_REPO_REF set. The existing checkout is untouched."
   fi
 elif [ -e "$CHECKOUT" ] && [ -n "$(ls -A "$CHECKOUT" 2>/dev/null)" ]; then
   die "$CHECKOUT already exists and is not an Alfred checkout. Move it aside or set ALFRED_CHECKOUT to an empty path."
@@ -185,10 +204,11 @@ fi
 # --------------------------------------------------------------------------
 # The demo needs nothing more than the clone above. Installing the full fleet
 # (packages, npm, venv) is opt-in because it touches the system and may prompt
-# for sudo, which is unfriendly inside a piped `curl | sh`.
-if [ -n "${ALFRED_RUN_INSTALL:-}" ]; then
+# for sudo, which is unfriendly inside a piped `curl | sh`. Only the exact
+# documented value enables it, so ALFRED_RUN_INSTALL=0 stays demo-only.
+if [ "${ALFRED_RUN_INSTALL:-}" = "1" ]; then
   if [ -f "$CHECKOUT/install.sh" ]; then
-    step "Running install.sh (ALFRED_RUN_INSTALL is set)"
+    step "Running install.sh (ALFRED_RUN_INSTALL=1)"
     if have bash; then
       ( cd "$CHECKOUT" && ALFRED_NONINTERACTIVE="${ALFRED_NONINTERACTIVE:-1}" bash install.sh --non-interactive )
     else
