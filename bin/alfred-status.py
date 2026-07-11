@@ -483,6 +483,7 @@ def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnap
     stdout_path = Path(f"/tmp/{record.log_stem}.stdout")
     stderr_path = Path(f"/tmp/{record.log_stem}.stderr")
     noop_marker = STATE_ROOT / record.codename / "last-noop"
+    runtime_noop_marker = Path(os.environ.get("TMPDIR", "/tmp")) / f"{record.log_stem}.noop"
     last_fired = _iso(stdout_path.stat().st_mtime) if stdout_path.exists() else None
 
     events_dir = STATE_ROOT / record.codename / "events"
@@ -500,7 +501,9 @@ def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnap
 
     last_stderr_tail = None
     freshness_markers = [
-        path.stat().st_mtime for path in (stdout_path, noop_marker) if path.exists()
+        path.stat().st_mtime
+        for path in (stdout_path, noop_marker, runtime_noop_marker)
+        if path.exists()
     ]
     stderr_is_fresh = stderr_path.exists() and (
         not freshness_markers or stderr_path.stat().st_mtime > max(freshness_markers)

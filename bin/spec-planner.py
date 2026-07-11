@@ -127,7 +127,11 @@ def main() -> int:
             marker.parent.mkdir(parents=True, exist_ok=True)
             marker.touch()
         except OSError:
-            pass
+            try:
+                label = os.environ.get("LAUNCHD_LABEL", f"alfred.{CODENAME}")
+                (Path(os.environ.get("TMPDIR", "/tmp")) / f"{label}.noop").touch()
+            except OSError:
+                pass
         return 0
 
     spec = PreflightSpec(
