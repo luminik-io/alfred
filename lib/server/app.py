@@ -10,7 +10,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import static_ui, views
@@ -41,6 +42,16 @@ def create_app(reader: FleetReader) -> FastAPI:
 
     if STATIC_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    # Render the shared mutation-token gate's rejection once. The
+    # ``require_mutation_token`` dependency raises ``MutationForbidden``; this
+    # handler emits the exact ``403 {"error": "forbidden"}`` body every mutating
+    # route used to inline, so declaring the dependency is behaviorally
+    # identical to the old per-route check.
+    async def _mutation_forbidden(_request: Request, _exc: Exception) -> JSONResponse:
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+
+    app.add_exception_handler(views.MutationForbidden, _mutation_forbidden)
 
     # Attach the reader to app.state so view functions can pull it without a
     # global. Keeps create_app the only place wiring happens.
