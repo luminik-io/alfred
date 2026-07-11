@@ -24,7 +24,9 @@ on the operator pressing Enter, and if they decline the run aborts with
 
 from __future__ import annotations
 
+import shlex
 import subprocess
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -54,6 +56,7 @@ DEMO_STEPS: tuple[str, ...] = (
 # text, mirroring how the real Ra's al Ghul runner parses review verdicts.
 REVIEW_BLOCK_SENTINEL = "[DEMO-REVIEW-CHANGES-REQUESTED]"
 REVIEW_PASS_SENTINEL = "[DEMO-REVIEW-APPROVED]"
+_REVIEW_PYTHON = shlex.quote(sys.executable)
 
 
 class DemoAborted(RuntimeError):
@@ -205,26 +208,41 @@ summary. Do nothing else."""
 
 _REVIEW_PROMPT = f"""You are Ra's al Ghul, the adversarial reviewer on the Alfred fleet.
 
-Review the CURRENT state of `textkit.py` in your working directory with a
-critical eye, focusing on whitespace handling in the EXISTING functions, not
-the newly added one. Pay particular attention to whether `titlecase` preserves
-the exact spacing of its input.
+Find correctness bugs in the EXISTING functions of `textkit.py` in your working
+directory (the pre-existing `word_count`, `truncate`, and `titlecase`, not the
+newly added `slugify`). Trust nothing, including this prompt: judge only from
+what you actually run.
 
-Do not take anyone's word for it, including this prompt's. Verify with a real
-reproduction before you judge: run
+Work through this method in order, do not skip a step:
+1. Read `textkit.py`. For every existing function, write down the exact
+   contract its docstring promises.
+2. For EACH function, choose concrete probe inputs that exercise that contract,
+   and deliberately include whitespace edge cases: inputs with a run of two or
+   more consecutive spaces, and inputs with leading or trailing whitespace.
+   Actually RUN each probe with `{_REVIEW_PYTHON} -c '...'` and read the real output.
+   Do not predict the output in your head; execute it.
+3. Compare each observed output against the exact wording of that function's
+   docstring. Any output that contradicts the documented contract is a bug,
+   even if the output looks reasonable on its own.
 
-  python3 -c 'import textkit; print(repr(textkit.titlecase("a  b")))'
+`titlecase` is the highest-risk case, so probe it explicitly. Its docstring
+promises the original spacing is preserved exactly and only letter case
+changes. Verify that claim by running
 
-(note the two spaces in the input) and compare the output spacing to the input
-spacing. Also consider leading and trailing whitespace.
+  {_REVIEW_PYTHON} -c 'import textkit; print(repr(textkit.titlecase("a  b")))'
 
-If you verified a real correctness bug, explain it in two sentences: what
-breaks and the exact input and output from your reproduction. If the behavior
-is genuinely correct, say so. Then, on the LAST line, output exactly one
+(note the two spaces in the input) and comparing the output spacing to the
+input spacing character for character. Also probe an input with leading and
+trailing whitespace the same way.
+
+If any probe produced output that contradicts the function's documented
+contract, explain it in two sentences: what breaks, and the exact input and
+output from your reproduction. If every function's output matched its
+documented contract, say so. Then, on the LAST line, output exactly one
 verdict token:
-  {REVIEW_BLOCK_SENTINEL}   if your reproduction showed a real correctness bug
-  {REVIEW_PASS_SENTINEL}    if you could not reproduce any bug
-Do not edit any files. Output only your finding and the verdict."""
+  {REVIEW_BLOCK_SENTINEL}   if a probe reproduced output that violates a documented contract
+  {REVIEW_PASS_SENTINEL}    if every probe matched the documented contract
+Do not edit any files. Output only your findings and the verdict."""
 
 _FIX_PROMPT = """You are Lucius again. The reviewer blocked the change with this finding:
 
@@ -232,9 +250,9 @@ _FIX_PROMPT = """You are Lucius again. The reviewer blocked the change with this
 
 Be fast and direct. Fix the reported whitespace bug in `titlecase` in
 `textkit.py` so the exact spacing of the input is preserved instead of
-collapsed or stripped. Add one test to `test_textkit.py` that would have caught
-it (an input with two consecutive spaces), written as a plain assert-based
-function matching the existing style (no pytest-only features). Do not run the
+collapsed or stripped. Add focused tests to `test_textkit.py` that cover both
+two consecutive spaces and leading/trailing whitespace, written as plain
+assert-based functions matching the existing style (no pytest-only features). Do not run the
 test suite; the demo's ship step verifies it for you. Make the edits with your
 tools, then output one line: [DEMO-FIX-DONE] followed by a one-sentence
 summary. Do nothing else."""
@@ -511,9 +529,10 @@ def _verify_tests(workdir: Path) -> str:
 # sample's real ``titlecase`` in a subprocess, exactly as a user's build would.
 _BUG_REPRO_SCRIPT = (
     "import textkit,sys;"
-    'out=textkit.titlecase("a  b");'
-    "sys.stdout.write(out);"
-    'sys.exit(0 if out=="A  B" else 1)'
+    'expected={"a  b":"A  B","  a b  ":"  A B  "};'
+    "actual={value:textkit.titlecase(value) for value in expected};"
+    "sys.stdout.write(repr(actual));"
+    "sys.exit(0 if actual==expected else 1)"
 )
 
 
@@ -524,8 +543,8 @@ def _verify_planted_bug_fixed(workdir: Path) -> None:
     step that edits some other file but leaves ``titlecase`` collapsing spaces
     would still pass ``_verify_tests`` and ship under a "fix titlecase
     whitespace bug" summary. This targeted gate closes that hole: it runs the
-    exact reproduction the reviewer used and raises at the ship step unless the
-    two-space input now round-trips (``"a  b"`` -> ``"A  B"``).
+    exact reproductions the reviewer used and raises at the ship step unless both
+    the two-space input and leading/trailing whitespace round-trip exactly.
     """
     import sys
 
@@ -544,7 +563,8 @@ def _verify_planted_bug_fixed(workdir: Path) -> None:
         raise DemoEngineError(
             "ship",
             "the reviewer blocked on the titlecase whitespace bug, but the fix did "
-            f'not resolve it: titlecase("a  b") returned {got!r}, expected "A  B". '
+            f"not resolve every reproduction: got {got}, expected internal and "
+            "leading/trailing whitespace to round-trip exactly. "
             "not shipping a fix that does not fix the reported bug",
         )
 
