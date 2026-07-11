@@ -149,15 +149,13 @@ export function useAskThread({
   baseUrl: string;
   selectedRepos: string[];
 }) {
-  // Whether a live engine is reachable. The conversational engine runs
-  // server-side in `alfred serve`, so BOTH the native Tauri window and the
-  // hosted browser shell start able to converse (`supportsConversation`); only
-  // a bare non-served page (dev preview with no backend) starts false. It flips
-  // to false the first time the server reports no engine so we stop attempting
-  // the streaming path. Previously this was gated on `supportsNativeActions`
-  // (Tauri-only), which left the browser Ask stuck on the offline draft
-  // fallback even though the server had a live engine.
-  const [hasEngine, setHasEngine] = useState(supportsConversation());
+  // Whether this surface can reach the server-backed conversation endpoint.
+  // Engine reachability itself is dynamic: a user can log in, install an engine,
+  // or restart the runtime while this view stays mounted. We therefore probe on
+  // every new turn and degrade only that turn when the server reports no live
+  // session. Latching one 503 here used to strand Ask on the offline draft path
+  // until the entire view was remounted.
+  const canConverse = supportsConversation();
 
   // Rehydrate the most recent conversation so a closed window picks back up
   // where it left off. Best-effort: a missing or malformed store reads empty.
@@ -357,7 +355,6 @@ export function useAskThread({
             context_repos: contextReposForPlanning(result, selectedRepos),
           });
           if (!isCurrent()) return true;
-          setHasEngine(false);
           // The no-engine path has no live model to weave questions into prose,
           // so fold any open questions into the reply itself (the inline card is
           // an offer, not a form, and no longer lists them).
@@ -374,7 +371,7 @@ export function useAskThread({
 
       // No live engine (browser preview, or server reports none): go straight to
       // the reliable draft endpoint, no streaming attempt.
-      if (!hasEngine) {
+      if (!canConverse) {
         await runDraftFallback().finally(() => {
           finishIfCurrent();
         });
@@ -474,7 +471,7 @@ export function useAskThread({
         finishIfCurrent();
       }
     },
-    [baseUrl, commitTurn, hasEngine, result, selectedRepos],
+    [baseUrl, canConverse, commitTurn, result, selectedRepos],
   );
 
   // Stop the in-flight generation. The partial assistant reply stays on screen

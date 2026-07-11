@@ -174,6 +174,44 @@ describe("Ask adapter: onNew streaming + message conversion", () => {
     expect(streamMock).not.toHaveBeenCalled();
   });
 
+  it("retries the live engine after one unavailable turn", async () => {
+    draftMock.mockResolvedValue({
+      draft_id: "compose-20260603-120000-first-turn",
+      saved_path: "/state/planning-drafts/compose-20260603-120000-first-turn.json",
+      title: "First turn fallback",
+      readiness: { ok: false, score: 0 },
+      questions: [],
+      findings: [],
+      summary: "",
+      spec_body: "",
+      revision_count: 0,
+      draft: converseResponse().draft,
+    });
+    streamMock
+      .mockRejectedValueOnce(
+        new ApiError(
+          "No live engine is available.",
+          'alfred serve returned 503: {"error":"live_session_unavailable"}',
+        ),
+      )
+      .mockResolvedValueOnce(
+        converseResponse({ reply: "Claude Code and Codex are ready now." }),
+      );
+    const user = userEvent.setup();
+    renderChat();
+
+    await send(user, "Which engines are installed?");
+    await waitFor(() => expect(draftMock).toHaveBeenCalledTimes(1));
+
+    await send(user, "Try the live engines again");
+
+    await waitFor(() => expect(streamMock).toHaveBeenCalledTimes(2));
+    expect(
+      await screen.findByText(/claude code and codex are ready now/i),
+    ).toBeInTheDocument();
+    expect(draftMock).toHaveBeenCalledTimes(1);
+  });
+
   it("renders the user turn and the assistant turn as distinct bubbles", async () => {
     streamMock.mockImplementation(async () => converseResponse());
     const user = userEvent.setup();
