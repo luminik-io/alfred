@@ -1025,12 +1025,18 @@ def test_ready_code_memory_wins_while_graphify_is_not_usable(
         lambda _env: {"batteries": [{"id": "graphify", "enabled": True, "installed": False}]},
     )
     code_memory = {
-        "enabled": True,
+        "enabled": False,
         "binary": {"resolved": True},
         "index_present": True,
         "detail": "Code memory is ready.",
     }
-    payload = setup_mod.capability_status(code_memory, launcher_env={"ALFRED_HOME": "/tmp/x"})
+    payload = setup_mod.capability_status(
+        code_memory,
+        launcher_env={
+            "ALFRED_HOME": "/tmp/x",
+            "ALFRED_GRAPHIFY_FALLBACK": "code-memory",
+        },
+    )
     code_graph = next(item for item in payload["capabilities"] if item["key"] == "code_graph")
     assert code_graph["state"] == "ready"
     assert code_graph["source"]["source"] == "DeusData/codebase-memory-mcp"

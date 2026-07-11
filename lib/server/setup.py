@@ -818,6 +818,7 @@ def capability_status(
             graph_path = Path.cwd() / graph_path
         graphify["graph_present"] = graph_path.is_file()
         graphify["graph_path"] = str(graph_path)
+        graphify["fallback"] = runtime_env.get("ALFRED_GRAPHIFY_FALLBACK", "")
     capabilities = [
         _code_graph_capability(code_memory, graphify=graphify),
         _context_compression_capability(runtime_env),
@@ -961,8 +962,9 @@ def _code_graph_capability(
     code_memory: dict[str, Any], *, graphify: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     code_binary = code_memory.get("binary") or {}
+    fallback_enabled = bool(graphify and graphify.get("fallback") == "code-memory")
     code_ready = (
-        bool(code_memory.get("enabled"))
+        (bool(code_memory.get("enabled")) or fallback_enabled)
         and bool(code_binary.get("resolved"))
         and bool(code_memory.get("index_present"))
     )
@@ -970,6 +972,9 @@ def _code_graph_capability(
         installed = bool(graphify.get("installed"))
         graph_present = bool(graphify.get("graph_present"))
         if code_ready and not (installed and graph_present):
+            if fallback_enabled and not code_memory.get("enabled"):
+                code_memory = dict(code_memory)
+                code_memory["enabled"] = True
             graphify = None
         else:
             state = (
@@ -994,7 +999,13 @@ def _code_graph_capability(
                 "graph_path": graphify.get("graph_path"),
                 "graph_present": graph_present,
             },
-            install_hint="" if installed else str(graphify.get("install_hint") or ""),
+            install_hint=(
+                ""
+                if installed and graph_present
+                else str(
+                    graphify.get("install_hint") or "Run `graphify <repo>` to build the graph."
+                )
+            ),
         )
         capability["source"] = _GRAPHIFY_SOURCE
         return capability
