@@ -1463,10 +1463,21 @@ def test_maybe_offer_setup_token_exits_with_timeout_status(tmp_path, init_mod, m
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     monkeypatch.setattr("builtins.input", lambda _prompt: "y")
 
-    def time_out(command, **kwargs):
-        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+    class FakeProcess:
+        pid = 777
 
-    monkeypatch.setattr(init_mod.subprocess, "run", time_out)
+        def __init__(self, command, **_kwargs):
+            self.command = command
+            self.calls = 0
+
+        def wait(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise subprocess.TimeoutExpired(self.command, timeout)
+            return -15
+
+    monkeypatch.setattr(init_mod.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(init_mod.os, "killpg", lambda *_args: None)
 
     with pytest.raises(SystemExit) as exc:
         init_mod._maybe_offer_setup_token(non_interactive=False)

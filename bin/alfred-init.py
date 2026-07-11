@@ -46,6 +46,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import urllib.error
@@ -54,6 +55,7 @@ import urllib.request
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 # The battery manifest is the one source of truth shared with `alfred batteries`
 # and the desktop picker, so the wizard never keeps a second, drifting copy of
@@ -226,6 +228,30 @@ MEMORY_AUTO_PROMOTE_CONTROL_ENVS = (
 _TRUTHY_CONSENT = {"1", "true", "yes", "on"}
 DEFAULT_TELEMETRY_URL = "https://alfred-proof-telemetry.luminik.workers.dev/ingest"
 SETUP_TOKEN_COMMAND_TIMEOUT_S = 3600
+
+
+def _run_setup_token(script: Path) -> int:
+    process = subprocess.Popen(
+        [sys.executable, str(script)],
+        start_new_session=True,
+    )
+    try:
+        return process.wait(timeout=SETUP_TOKEN_COMMAND_TIMEOUT_S)
+    except (subprocess.TimeoutExpired, KeyboardInterrupt):
+        _terminate_process_group(process)
+        raise
+
+
+def _terminate_process_group(process: subprocess.Popen[Any]) -> None:
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        process.wait(timeout=2)
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGKILL)
+    process.wait()
 
 
 def default_telemetry_url() -> str:
@@ -1490,11 +1516,7 @@ def _maybe_offer_setup_token(*, non_interactive: bool) -> None:
     if answer in ("", "y", "yes"):
         script = Path(__file__).resolve().parent / "alfred-setup-token.py"
         try:
-            rc = subprocess.run(
-                [sys.executable, str(script)],
-                check=False,
-                timeout=SETUP_TOKEN_COMMAND_TIMEOUT_S,
-            ).returncode
+            rc = _run_setup_token(script)
         except subprocess.TimeoutExpired:
             warn(
                 "`alfred setup-token` timed out waiting for approval. "

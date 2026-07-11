@@ -74,10 +74,21 @@ def test_oauth_step_reports_timeout_without_crashing(tmp_path, monkeypatch, caps
     )
     monkeypatch.setattr(mod, "ask_yes_no", lambda *_args: True)
 
-    def time_out(command, **kwargs):
-        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+    class FakeProcess:
+        pid = 778
 
-    monkeypatch.setattr(mod.subprocess, "run", time_out)
+        def __init__(self, command, **_kwargs):
+            self.command = command
+            self.calls = 0
+
+        def wait(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise subprocess.TimeoutExpired(self.command, timeout)
+            return -15
+
+    monkeypatch.setattr(mod.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(mod.os, "killpg", lambda *_args: None)
 
     with pytest.raises(SystemExit) as exc:
         mod.step_claude_oauth(state, non_interactive=False, skip_token_setup=False)

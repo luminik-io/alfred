@@ -18,6 +18,7 @@ import json
 import os
 import re
 import shlex
+import signal
 import subprocess
 import sys
 import urllib.error
@@ -39,6 +40,31 @@ ARCHITECT_TIMEOUT_ENV = "ARCHITECT_APPROVAL_TIMEOUT_S"
 ARCHITECT_ROLLOUT_ORDER_ENV = "ARCHITECT_ROLLOUT_ORDER"
 DEFAULT_ROLLOUT_ORDER = "backend,frontend,mobile,agents,data-acquisition"
 SETUP_TOKEN_COMMAND_TIMEOUT_S = 3600
+
+
+def _run_setup_token(script: Path) -> int:
+    process = subprocess.Popen(
+        [sys.executable, str(script)],
+        start_new_session=True,
+    )
+    try:
+        return process.wait(timeout=SETUP_TOKEN_COMMAND_TIMEOUT_S)
+    except (subprocess.TimeoutExpired, KeyboardInterrupt):
+        _terminate_process_group(process)
+        raise
+
+
+def _terminate_process_group(process: subprocess.Popen[Any]) -> None:
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        process.wait(timeout=2)
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGKILL)
+    process.wait()
+
 
 MODE_HALT = "0"
 MODE_APPROVAL_GATE = "approval-gate"
@@ -382,11 +408,7 @@ def step_claude_oauth(
     if ask_yes_no("Run `alfred setup-token` now?", True):
         script = Path(__file__).resolve().parent / "alfred-setup-token.py"
         try:
-            rc = subprocess.run(
-                [sys.executable, str(script)],
-                check=False,
-                timeout=SETUP_TOKEN_COMMAND_TIMEOUT_S,
-            ).returncode
+            rc = _run_setup_token(script)
         except subprocess.TimeoutExpired:
             warn(
                 "`alfred setup-token` timed out waiting for approval. "

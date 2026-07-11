@@ -261,14 +261,9 @@ def _run_subcommand(
     timeout: float | None,
     env: dict[str, str] | None = None,
 ) -> int:
-    if timeout is None:
-        if env is not None:
-            return subprocess.run(cmd, check=False, timeout=None, env=env).returncode
-        return subprocess.run(cmd, check=False, timeout=None).returncode
-
     process = subprocess.Popen(cmd, env=env, start_new_session=True)
     try:
-        return process.wait(timeout=timeout)
+        return process.wait() if timeout is None else process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         _terminate_process_group(process)
         print(

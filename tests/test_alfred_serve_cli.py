@@ -46,13 +46,17 @@ def test_serve_forwards_supported_server_args(tmp_path, monkeypatch):
     cli = load_cli_module()
     calls = []
 
-    def fake_run(command, check, timeout):
-        calls.append((command, check, timeout))
-        return SimpleNamespace(returncode=0)
+    class FakeProcess:
+        def __init__(self, command, **_kwargs):
+            self.command = command
+
+        def wait(self, timeout=None):
+            calls.append((self.command, False, timeout))
+            return 0
 
     monkeypatch.delenv("ALFRED_HOME", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
 
     assert (
         cli.main(
@@ -98,12 +102,16 @@ def test_serve_uses_managed_alfred_venv_when_present(tmp_path, monkeypatch):
     venv_python.chmod(0o755)
     calls = []
 
-    def fake_run(command, check, timeout):
-        calls.append((command, check, timeout))
-        return SimpleNamespace(returncode=0)
+    class FakeProcess:
+        def __init__(self, command, **_kwargs):
+            self.command = command
+
+        def wait(self, timeout=None):
+            calls.append((self.command, False, timeout))
+            return 0
 
     monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
-    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
 
     assert cli.main(["serve", "--no-browser"]) == 0
 
@@ -177,11 +185,15 @@ def test_code_memory_serve_is_unbounded(monkeypatch):
     cli = load_cli_module()
     calls = []
 
-    def fake_run(command, check, timeout):
-        calls.append((command, timeout))
-        return SimpleNamespace(returncode=0)
+    class FakeProcess:
+        def __init__(self, command, **_kwargs):
+            self.command = command
 
-    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+        def wait(self, timeout=None):
+            calls.append((self.command, timeout))
+            return 0
+
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
 
     args = SimpleNamespace(code_memory_args=["serve"])
     assert cli.cmd_code_memory(args) == 0
