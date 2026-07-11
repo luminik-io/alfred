@@ -254,6 +254,36 @@ ALFRED_INIT_BANNER_RE = re.compile(
 )
 ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
+# Forwarded flags whose values are secrets (setup-token forwards --token,
+# architect setup forwards --slack-bot-token). Timeout diagnostics must never
+# echo these values into stderr or captured logs.
+_SECRET_ARG_FLAGS = frozenset({"--token", "--slack-bot-token"})
+_SECRET_ARG_PLACEHOLDER = "[redacted]"
+
+
+def _redact_secret_args(cmd: list[str]) -> list[str]:
+    """Return ``cmd`` with values of secret flags replaced for safe logging.
+
+    Handles both ``--flag value`` and ``--flag=value`` forms.
+    """
+    redacted: list[str] = []
+    skip_next = False
+    for arg in cmd:
+        if skip_next:
+            redacted.append(_SECRET_ARG_PLACEHOLDER)
+            skip_next = False
+            continue
+        flag, eq, _value = arg.partition("=")
+        if flag in _SECRET_ARG_FLAGS:
+            if eq:
+                redacted.append(f"{flag}={_SECRET_ARG_PLACEHOLDER}")
+            else:
+                redacted.append(arg)
+                skip_next = True
+            continue
+        redacted.append(arg)
+    return redacted
+
 
 def _run_subcommand(
     cmd: list[str],
@@ -276,7 +306,7 @@ def _run_subcommand(
     except subprocess.TimeoutExpired:
         _terminate_process_group(process)
         print(
-            f"alfred: command timed out after {timeout:g}s: {shlex.join(cmd)}",
+            f"alfred: command timed out after {timeout:g}s: {shlex.join(_redact_secret_args(cmd))}",
             file=sys.stderr,
         )
         return 124

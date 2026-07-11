@@ -156,6 +156,59 @@ def test_bounded_subcommand_returns_timeout_status(monkeypatch, capsys):
     assert signals == [(123, cli.signal.SIGTERM), (123, cli.signal.SIGKILL)]
 
 
+def test_bounded_subcommand_timeout_redacts_secret_args(monkeypatch, capsys):
+    cli = load_cli_module()
+
+    class FakeProcess:
+        pid = 123
+
+        def __init__(self, command, **_kwargs):
+            self.command = command
+            self.calls = 0
+
+        def wait(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise cli.subprocess.TimeoutExpired(self.command, timeout)
+            return -15
+
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(cli.os, "killpg", lambda pid, sig: None)
+
+    cmd = [
+        "alfred-setup-token.py",
+        "--token",
+        "xoxb-super-secret",
+        "--slack-bot-token=xoxb-other-secret",
+        "--force",
+    ]
+    assert cli._run_subcommand(cmd, timeout=2) == 124
+    err = capsys.readouterr().err
+    assert "xoxb-super-secret" not in err
+    assert "xoxb-other-secret" not in err
+    assert "--token" in err
+    assert "--slack-bot-token=[redacted]" in err
+    assert "--force" in err
+
+
+def test_redact_secret_args_preserves_non_secret_arguments():
+    cli = load_cli_module()
+
+    cmd = ["script.py", "--token", "s3cret", "--mode", "fast", "--slack-bot-token=abc"]
+    assert cli._redact_secret_args(cmd) == [
+        "script.py",
+        "--token",
+        "[redacted]",
+        "--mode",
+        "fast",
+        "--slack-bot-token=[redacted]",
+    ]
+    assert cmd[2] == "s3cret"
+
+
 def test_bounded_subcommand_cleans_process_group_on_interrupt(monkeypatch):
     cli = load_cli_module()
 
