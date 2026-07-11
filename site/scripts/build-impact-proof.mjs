@@ -140,6 +140,7 @@ const summary = {
 // (not 0) when there are no merged PRs in the window.
 const selfProof = buildSelfProof({
   agentTotal: cumulative.count,
+  agentTotalIncomplete: cumulative.capped,
   firstAgentMergedAt: cumulative.firstMergedAt,
   agentWindow: agentPrs.length,
   mergedWindow: sortedPrs.length,
@@ -265,15 +266,50 @@ async function searchGitHub(query) {
   return out;
 }
 
+async function searchGitHubCounted(query) {
+  // Like searchGitHub, but also returns the search's reported total so callers
+  // can detect when GitHub truncated the paged nodes (issueCount > nodes.length).
+  const out = [];
+  let issueCount = 0;
+  let cursor = null;
+  do {
+    const data = await graphQL(
+      `query ImpactProofCount($query: String!, $cursor: String) {
+        search(type: ISSUE, query: $query, first: 100, after: $cursor) {
+          issueCount
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            __typename
+            ... on PullRequest {
+              number
+              mergedAt
+              headRefName
+              author { login }
+              labels(first: 30) { nodes { name } }
+            }
+          }
+        }
+      }`,
+      { query, cursor },
+    );
+    const search = data.search;
+    issueCount = search.issueCount;
+    out.push(...search.nodes.filter(Boolean));
+    cursor = search.pageInfo.hasNextPage ? search.pageInfo.endCursor : null;
+  } while (cursor);
+  return { nodes: out, issueCount };
+}
+
 async function fetchAgentCumulative() {
   // One search per provenance label (GitHub search ANDs multiple `label:`
   // qualifiers, so an OR is expressed as separate queries unioned by number).
   // agent:authored is set on PR open and persists through merge, so it covers
   // the bulk; the other labels catch any PR labelled only on merge.
   const seen = new Map();
+  let capped = false;
   for (const label of AGENT_SHIPPED_LABELS) {
     const query = `repo:${REPO} is:pr is:merged label:"${label}"`;
-    const nodes = await searchGitHub(query);
+    const { nodes, issueCount } = await searchGitHubCounted(query);
     for (const node of nodes) {
       if (
         node.__typename !== "PullRequest" ||
@@ -284,11 +320,21 @@ async function fetchAgentCumulative() {
       }
       seen.set(node.number, node.mergedAt);
     }
+    // GitHub search returns at most ~1000 nodes even when more match. When the
+    // reported total exceeds what we could page, the union is a floor, not the
+    // exact all-time count, so mark it capped and let the headline render "N+"
+    // rather than silently publishing an undercount.
+    if (issueCount > nodes.length) {
+      capped = true;
+    }
   }
   const dates = [...seen.values()].sort();
   return {
     count: seen.size,
-    firstMergedAt: dates.length > 0 ? dates[0] : null,
+    // A most-recent-first cap hides the earliest merge, so only trust the first
+    // date when the enumeration was complete.
+    firstMergedAt: !capped && dates.length > 0 ? dates[0] : null,
+    capped,
   };
 }
 

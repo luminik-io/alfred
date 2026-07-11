@@ -149,6 +149,33 @@ test("cumulative headline is singular for exactly one PR", () => {
   assert.doesNotMatch(proof.headline, /PRs so far/);
 });
 
+test("a capped cumulative count renders as a floor, never a silent undercount", () => {
+  const proof = buildSelfProof({
+    agentTotal: 1000,
+    agentTotalIncomplete: true,
+    agentWindow: 4,
+    mergedWindow: 20,
+    windowDays: 30,
+  });
+  assert.equal(proof.agent_shipped_total, 1000);
+  assert.equal(proof.agent_shipped_total_incomplete, true);
+  assert.match(proof.headline, /merged 1000\+ agent-attributed PRs so far/);
+  assert.match(readmeSelfProofText(proof), /1000\+ agent-attributed PRs in this repo so far/);
+});
+
+test("a fully unavailable cumulative count never claims none", () => {
+  const proof = buildSelfProof({
+    agentTotal: 0,
+    agentTotalIncomplete: true,
+    agentWindow: 0,
+    mergedWindow: 0,
+    windowDays: 30,
+  });
+  assert.match(proof.headline, /temporarily unavailable/);
+  assert.doesNotMatch(proof.headline, /No agent-attributed PRs merged yet/);
+  assert.match(readmeSelfProofText(proof), /temporarily unavailable/);
+});
+
 test("window keeps fractional shares precise", () => {
   const proof = buildSelfProof({
     agentTotal: 5,

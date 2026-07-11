@@ -648,6 +648,19 @@ def render_self_proof(data: dict[str, Any]) -> str:
         f"- {repo}: page-capped query; excluded from the share"
         for repo in (data.get("capped") or [])[:6]
     )
+    # Cumulative queries run separately from the window ones, so a failure or a
+    # search cap there shows up under cumulative.* rather than the top-level
+    # lists. Surface it too, otherwise the headline could quote an incomplete
+    # "N+" or "unavailable" count with no visible reason.
+    cumulative = data.get("cumulative") or {}
+    warnings.extend(
+        f"- {repo}: cumulative GitHub query unavailable"
+        for repo in (cumulative.get("errors") or [])[:6]
+    )
+    warnings.extend(
+        f"- {repo}: cumulative query hit the search cap; total reported as a floor"
+        for repo in (cumulative.get("capped") or [])[:6]
+    )
     if warnings:
         lines.append("")
         lines.append("*Query warnings*")

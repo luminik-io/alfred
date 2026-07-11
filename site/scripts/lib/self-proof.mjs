@@ -138,6 +138,8 @@ function windowCopy(agentMerged, totalMerged, sharePct, days) {
  *
  * @param {object} args
  * @param {number} args.agentTotal cumulative all-time agent-attributed merged PRs
+ * @param {boolean} [args.agentTotalIncomplete] true when the count is a floor
+ *   (a GitHub search cap hid older PRs), so it renders as "N+"
  * @param {number} args.agentWindow agent-attributed merged PRs in the window
  * @param {number} args.mergedWindow all merged PRs in the window
  * @param {number} args.windowDays window size in days
@@ -146,6 +148,7 @@ function windowCopy(agentMerged, totalMerged, sharePct, days) {
  */
 export function buildSelfProof({
   agentTotal,
+  agentTotalIncomplete = false,
   agentWindow,
   mergedWindow,
   windowDays,
@@ -159,9 +162,15 @@ export function buildSelfProof({
   let headline;
   let sentence;
   if (agentTotal > 0) {
-    const noun = agentTotal === 1 ? "PR" : "PRs";
-    sentence = `${agentTotal} agent-attributed ${noun} merged so far.`;
-    headline = `Alfred agents have merged ${agentTotal} agent-attributed ${noun} so far.`;
+    // A capped enumeration is a lower bound, rendered "N+", never a silent
+    // undercount presented as exact.
+    const noun = agentTotal === 1 && !agentTotalIncomplete ? "PR" : "PRs";
+    const count = agentTotalIncomplete ? `${agentTotal}+` : String(agentTotal);
+    sentence = `${count} agent-attributed ${noun} merged so far.`;
+    headline = `Alfred agents have merged ${count} agent-attributed ${noun} so far.`;
+  } else if (agentTotalIncomplete) {
+    sentence = "Agent-attributed PR count is temporarily unavailable.";
+    headline = "Agent-attributed PR count is temporarily unavailable.";
   } else {
     sentence = "No agent-attributed PRs merged yet.";
     headline = "No agent-attributed PRs merged yet.";
@@ -170,6 +179,7 @@ export function buildSelfProof({
   return {
     // Cumulative headline metric.
     agent_shipped_total: agentTotal,
+    agent_shipped_total_incomplete: agentTotalIncomplete,
     first_agent_merged_at: firstAgentMergedAt,
     headline,
     sentence,
@@ -224,12 +234,17 @@ export const SELF_PROOF_MARKER_CLOSE = "<!-- /SELF_PROOF -->";
  */
 export function readmeSelfProofText(selfProof) {
   const total = selfProof.agent_shipped_total ?? 0;
+  const incomplete = selfProof.agent_shipped_total_incomplete ?? false;
   const days = selfProof.window_days;
   if (total <= 0) {
+    if (incomplete) {
+      return "Agent-attributed PR count for Alfred's own repo is temporarily unavailable";
+    }
     return "No agent-attributed PRs in Alfred's own repo yet";
   }
-  const noun = total === 1 ? "PR" : "PRs";
-  let text = `Alfred agents have merged ${total} agent-attributed ${noun} in this repo so far`;
+  const noun = total === 1 && !incomplete ? "PR" : "PRs";
+  const count = incomplete ? `${total}+` : String(total);
+  let text = `Alfred agents have merged ${count} agent-attributed ${noun} in this repo so far`;
   if ((selfProof.agent_shipped ?? 0) > 0) {
     text += `, ${selfProof.agent_shipped} in the last ${days} days`;
   }

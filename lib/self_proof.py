@@ -68,6 +68,11 @@ DEFAULT_WINDOW_DAYS = 7
 # merging 500+ PRs in a single day trips the ``capped`` flag and is excluded
 # from the aggregate rather than silently undercounted.
 _PER_WINDOW_LIMIT = 500
+# All-time cumulative queries fetch one label's full merged history in a single
+# call, so the cap sits at GitHub search's own ~1000-result ceiling rather than
+# the per-day window limit. A repo that trips it is counted as a floor ("N+"),
+# not dropped to zero.
+_CUMULATIVE_LIMIT = 1000
 
 # Alfred's provenance labels, kept in lockstep with shipped_board.py and the
 # shipped summary so the self-proof numerator matches what the rest of the
@@ -424,10 +429,17 @@ def _fetch_repo_cumulative(
     Queries once per provenance label (``--label`` ANDs, so an OR across labels
     is expressed as separate queries unioned by PR number) and keeps only PRs
     that pass :func:`pr_is_agent_shipped`, so a mislabelled dependabot bump can
-    never inflate the cumulative count. ``errored`` is True when any query
-    failed; ``capped`` is True when any label query returned as many rows as the
-    limit (the tail is unknowable, so the count is not exact and the repo is
-    excluded from the cumulative aggregate). Pure per-repo work, concurrency-safe.
+    never inflate the cumulative count.
+
+    ``errored`` is True when any label query failed. ``capped`` is True when any
+    label query returned as many rows as the limit: GitHub's search backing
+    ``--label`` tops out around 1000 results, so beyond that the OLDER tail is
+    unseen. Crucially, a capped repo is NOT dropped to zero (that would let the
+    public headline read "No agent-attributed PRs merged yet" for a repo with
+    hundreds of agent PRs). Instead the observed, de-duplicated count is returned
+    as a FLOOR and the caller renders it as "N+"; ``first_agent_merged_at`` is
+    withheld when incomplete because the earliest merge is exactly what a
+    most-recent-first cap hides. Pure per-repo work, concurrency-safe.
     """
     seen: dict[int, dict] = {}
     errored = False
@@ -469,12 +481,12 @@ def _fetch_repo_cumulative(
         if merged and (first_merged is None or merged < first_merged):
             first_merged = merged
 
-    unusable = errored or capped
+    incomplete = errored or capped
     return {
         "repo": repo,
-        "agent_shipped_total": 0 if unusable else agent_shipped,
+        "agent_shipped_total": agent_shipped,
         "first_agent_merged_at": None
-        if unusable or first_merged is None
+        if incomplete or first_merged is None
         else first_merged.astimezone(UTC).isoformat(),
         "errored": errored,
         "capped": capped,
@@ -486,6 +498,7 @@ def compute_self_proof(
     *,
     days: int = DEFAULT_WINDOW_DAYS,
     limit: int = _PER_WINDOW_LIMIT,
+    cumulative_limit: int = _CUMULATIVE_LIMIT,
     now: datetime | None = None,
     gh_json: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -509,8 +522,8 @@ def compute_self_proof(
           },
           "cumulative": {
             "agent_shipped_total": 128, "first_agent_merged_at": "...ISO...",
-            "repos_with_agent_work": 2, "per_repo": [...], "errors": [],
-            "capped": []
+            "incomplete": false, "repos_with_agent_work": 2,
+            "per_repo": [...], "errors": [], "capped": []
           },
           "errors": ["owner/flaky"],
           "capped": ["owner/firehose"],
@@ -598,7 +611,7 @@ def compute_self_proof(
         "repos_with_agent_work": repos_with_agent_work,
     }
 
-    cumulative = _compute_cumulative(repos, limit=limit, gh_json=fetch)
+    cumulative = _compute_cumulative(repos, limit=cumulative_limit, gh_json=fetch)
 
     return {
         "generated_at": now.astimezone(UTC).isoformat(),
@@ -624,10 +637,14 @@ def _compute_cumulative(
 ) -> dict[str, Any]:
     """Aggregate all-time agent-attributed merged PRs across ``repos``.
 
-    A repo whose cumulative query errored or page-capped is excluded from the
-    total (its exact count is unknowable), mirroring the window aggregate's
-    honesty. Returns the cumulative agent count, the earliest agent-PR merge
-    date, per-repo rows, and the excluded repo lists.
+    Every repo's observed count contributes to the total, including a capped or
+    errored repo whose count is a lower bound rather than an exact figure: a
+    floor with the count marked ``incomplete`` is more honest than dropping a
+    real repo to zero and publishing "No agent-attributed PRs merged yet". The
+    ``incomplete`` flag and the per-repo ``errors`` / ``capped`` lists let the
+    caller render the total as "N+" and surface a warning. ``first_agent_merged_at``
+    is only reported when every counted repo returned complete data, because a
+    most-recent-first cap hides exactly the earliest merge.
     """
     per_repo: list[dict[str, Any]] = []
     errors: list[str] = []
@@ -660,17 +677,18 @@ def _compute_cumulative(
                 capped.append(repo)
             per_repo.append(row)
 
-    def _usable(row: dict[str, Any]) -> bool:
-        return not row["errored"] and not row["capped"]
-
-    agent_total = sum(r["agent_shipped_total"] for r in per_repo if _usable(r))
-    first_dates = [
-        r["first_agent_merged_at"] for r in per_repo if _usable(r) and r["first_agent_merged_at"]
-    ]
-    repos_with_agent_work = sum(1 for r in per_repo if _usable(r) and r["agent_shipped_total"] > 0)
+    # Count every repo's observed agent PRs; a capped/errored repo contributes a
+    # floor, never a silent zero.
+    agent_total = sum(r["agent_shipped_total"] for r in per_repo)
+    incomplete = bool(errors or capped)
+    first_dates = [r["first_agent_merged_at"] for r in per_repo if r["first_agent_merged_at"]]
+    repos_with_agent_work = sum(1 for r in per_repo if r["agent_shipped_total"] > 0)
     return {
         "agent_shipped_total": agent_total,
-        "first_agent_merged_at": min(first_dates) if first_dates else None,
+        "first_agent_merged_at": None
+        if incomplete
+        else (min(first_dates) if first_dates else None),
+        "incomplete": incomplete,
         "repos_with_agent_work": repos_with_agent_work,
         "per_repo": per_repo,
         "errors": sorted(set(errors)),
@@ -679,20 +697,33 @@ def _compute_cumulative(
 
 
 def _cumulative_headline(cumulative: dict[str, Any]) -> str:
-    """A re-quotable cumulative one-liner. Honest: a real 0 says so plainly."""
+    """A re-quotable cumulative one-liner, honest on empty and incomplete data.
+
+    A clean 0 says so plainly. A count that could not be fully enumerated (a gh
+    error or a search cap) renders as a floor ("N+"), and a zero observed under
+    an error says the count is unavailable rather than falsely claiming none.
+    """
     total = int(cumulative.get("agent_shipped_total") or 0)
+    incomplete = bool(cumulative.get("incomplete"))
     if total <= 0:
+        if incomplete:
+            return "Agent-attributed PR count is temporarily unavailable."
         return "No agent-attributed PRs merged yet."
-    noun = "PR" if total == 1 else "PRs"
-    return f"Alfred agents have merged {total} agent-attributed {noun} so far."
+    noun = "PR" if total == 1 and not incomplete else "PRs"
+    count = f"{total}+" if incomplete else str(total)
+    return f"Alfred agents have merged {count} agent-attributed {noun} so far."
 
 
 def _cumulative_sentence(cumulative: dict[str, Any]) -> str:
     total = int(cumulative.get("agent_shipped_total") or 0)
+    incomplete = bool(cumulative.get("incomplete"))
     if total <= 0:
+        if incomplete:
+            return "Agent-attributed PR count is temporarily unavailable."
         return "No agent-attributed PRs merged yet."
-    noun = "PR" if total == 1 else "PRs"
-    return f"{total} agent-attributed {noun} merged so far."
+    noun = "PR" if total == 1 and not incomplete else "PRs"
+    count = f"{total}+" if incomplete else str(total)
+    return f"{count} agent-attributed {noun} merged so far."
 
 
 def _repo_word(count: int) -> str:

@@ -42,6 +42,7 @@ interface ProofData {
   };
   self_proof?: {
     agent_shipped_total?: number;
+    agent_shipped_total_incomplete?: boolean;
     first_agent_merged_at?: string | null;
     window_days: number;
     agent_shipped: number;
@@ -72,12 +73,16 @@ const fmt = (n: number) => n.toLocaleString("en-US");
 // honest copy, never a fabricated number.
 const selfProof = proof.self_proof;
 const cumulativeTotal = selfProof?.agent_shipped_total ?? 0;
+const cumulativeIncomplete = selfProof?.agent_shipped_total_incomplete ?? false;
 const hasSelfProof =
   !!selfProof && (cumulativeTotal > 0 || selfProof.merged_total > 0);
 const hasCumulative = hasSelfProof && cumulativeTotal > 0;
 // Big number leads with the cumulative all-time count; only shown when there is
-// real cumulative traction so an idle repo never advertises a bare "0".
-const selfProofDisplayValue = hasCumulative ? fmt(cumulativeTotal) : null;
+// real cumulative traction so an idle repo never advertises a bare "0". A
+// capped enumeration renders as a floor ("N+"), never a silent undercount.
+const selfProofDisplayValue = hasCumulative
+  ? `${fmt(cumulativeTotal)}${cumulativeIncomplete ? "+" : ""}`
+  : null;
 const cumulativeNoun = cumulativeTotal === 1 ? "PR" : "PRs";
 const selfProofLabel = hasCumulative
   ? `agent-attributed ${cumulativeNoun} merged so far`

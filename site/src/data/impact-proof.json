@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-11T15:39:42.539Z",
+  "generated_at": "2026-07-11T15:59:00.202Z",
   "source": {
     "repo": "luminik-io/alfred",
     "url": "https://github.com/luminik-io/alfred",
@@ -7,8 +7,8 @@
   },
   "window": {
     "days": 30,
-    "from": "2026-06-11T15:39:42.539Z",
-    "to": "2026-07-11T15:39:42.539Z"
+    "from": "2026-06-11T15:59:00.202Z",
+    "to": "2026-07-11T15:59:00.202Z"
   },
   "summary": {
     "prs_merged": 3,
@@ -19,26 +19,27 @@
     "lines_removed": 27,
     "files_changed": 6,
     "repo_activity": {
-      "prs_merged": 275,
+      "prs_merged": 277,
       "issues_opened": 9,
       "issues_closed": 11,
-      "lines_added": 264433,
-      "lines_removed": 56138,
-      "files_changed": 3739
+      "lines_added": 268148,
+      "lines_removed": 59308,
+      "files_changed": 3761
     }
   },
   "self_proof": {
     "agent_shipped_total": 3,
+    "agent_shipped_total_incomplete": false,
     "first_agent_merged_at": "2026-07-10T06:49:20Z",
     "headline": "Alfred agents have merged 3 agent-attributed PRs so far.",
     "sentence": "3 agent-attributed PRs merged so far.",
     "window_days": 30,
     "agent_shipped": 3,
-    "merged_total": 275,
+    "merged_total": 277,
     "share_pct": 1.1,
     "repos_counted": 1,
     "repo_word": "repo",
-    "window_headline": "3 of 275 merged PRs (1.1%) in the last 30 days.",
+    "window_headline": "3 of 277 merged PRs (1.1%) in the last 30 days.",
     "window_sentence": "1.1% in the last 30 days."
   },
   "trend": [

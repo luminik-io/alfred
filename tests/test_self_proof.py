@@ -397,9 +397,10 @@ def test_fetch_uses_merged_search_qualifier_and_limit():
         seen_args.append(list(args))
         return []
 
-    sp.compute_self_proof(["acme/api"], days=7, now=NOW, gh_json=gh, limit=42)
+    sp.compute_self_proof(["acme/api"], days=7, now=NOW, gh_json=gh, limit=42, cumulative_limit=99)
     assert seen_args, "expected gh queries"
-    # Window queries are date-scoped via --search; cumulative queries use --label.
+    # Window queries are date-scoped via --search and carry the window limit;
+    # cumulative queries use --label and carry the (higher) cumulative limit.
     window_calls = [args for args in seen_args if "--search" in args]
     label_calls = [args for args in seen_args if "--label" in args]
     assert window_calls, "expected date-windowed queries"
@@ -408,7 +409,7 @@ def test_fetch_uses_merged_search_qualifier_and_limit():
         assert "merged:>=" in args[args.index("--search") + 1]
         assert args[args.index("--limit") + 1] == "42"
     for args in label_calls:
-        assert args[args.index("--limit") + 1] == "42"
+        assert args[args.index("--limit") + 1] == "99"
 
 
 def test_cumulative_counts_all_time_not_just_window():
@@ -448,14 +449,34 @@ def test_cumulative_excludes_mislabelled_bot_pr():
     assert result["cumulative"]["agent_shipped_total"] == 1
 
 
-def test_cumulative_capped_repo_excluded():
-    # A label query hitting the page cap makes the count inexact, so the repo is
-    # excluded from the cumulative aggregate rather than quoting a floor.
+def test_cumulative_capped_repo_reports_floor_not_zero():
+    # A label query hitting the search cap makes the count a lower bound, not
+    # exact. The repo must NOT drop to zero (that would let the public headline
+    # read "No agent-attributed PRs merged yet" for a busy repo); it reports the
+    # observed floor, flags incomplete, and the headline renders "N+".
     rows = [_pr(i, merged_day=28, labels=["agent:authored"]) for i in range(1, 6)]
     gh = _gh_for({"acme/api": rows})
-    result = sp.compute_self_proof(["acme/api"], days=7, now=NOW, gh_json=gh, limit=5)
-    assert result["cumulative"]["capped"] == ["acme/api"]
-    assert result["cumulative"]["agent_shipped_total"] == 0
+    result = sp.compute_self_proof(["acme/api"], days=7, now=NOW, gh_json=gh, cumulative_limit=5)
+    cum = result["cumulative"]
+    assert cum["capped"] == ["acme/api"]
+    assert cum["incomplete"] is True
+    assert cum["agent_shipped_total"] == 5
+    # The earliest merge is withheld under a cap (it hides the oldest PRs).
+    assert cum["first_agent_merged_at"] is None
+    assert "5+ agent-attributed PRs so far" in result["headline"]
+    assert "5+ agent-attributed PRs merged so far" in result["sentence"]
+
+
+def test_cumulative_errored_repo_does_not_claim_none():
+    # If the cumulative query fails entirely and nothing is observed, the
+    # headline must say the count is unavailable, never a fabricated "none".
+    gh = _gh_for({"acme/api": None})
+    result = sp.compute_self_proof(["acme/api"], days=7, now=NOW, gh_json=gh)
+    cum = result["cumulative"]
+    assert cum["errors"] == ["acme/api"]
+    assert cum["incomplete"] is True
+    assert cum["agent_shipped_total"] == 0
+    assert result["headline"] == "Agent-attributed PR count is temporarily unavailable."
 
 
 # --------------------------------------------------------------------------
