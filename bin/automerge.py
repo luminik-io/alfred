@@ -429,8 +429,10 @@ def _merge_via_gate(repo: str, pr: dict) -> tuple[bool, str, str]:
     """
     pr_num = pr["number"]
     title = pr.get("title", "")
-    if MIN_APPROVALS is None:
+    if REQUIRE_APPROVAL and MIN_APPROVALS is None:
         return False, f"invalid merge-gate config: {MIN_APPROVALS_ERROR}", title
+    effective_min_approvals = MIN_APPROVALS if REQUIRE_APPROVAL else 0
+    assert effective_min_approvals is not None
     slug = f"{GH_ORG}/{repo}"
     snapshot = (
         collect_snapshot(slug, pr_num, collect_external_reviews=True)
@@ -439,7 +441,7 @@ def _merge_via_gate(repo: str, pr: dict) -> tuple[bool, str, str]:
     )
     decision = evaluate_gate(
         snapshot,
-        min_approvals=MIN_APPROVALS,
+        min_approvals=effective_min_approvals,
         required_external_reviews=REQUIRED_EXTERNAL_REVIEWS,
     )
     if not decision.mergeable:

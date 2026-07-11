@@ -2648,7 +2648,10 @@ def _battery_run_install(args: argparse.Namespace, battery: Any) -> int:
 
 def _pr_min_approvals() -> int:
     import merge_gate
+    from envflags import truthy
 
+    if not truthy(os.environ.get("ALFRED_MERGE_REQUIRE_APPROVAL", "1")):
+        return 0
     return merge_gate.parse_min_approvals(os.environ.get("ALFRED_MERGE_MIN_APPROVALS"))
 
 

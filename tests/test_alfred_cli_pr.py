@@ -74,6 +74,23 @@ def test_pr_check_failing_returns_one(cli_module, monkeypatch, capsys):
     assert "NOT MERGEABLE" in out
 
 
+def test_pr_check_honors_disabled_human_approval(cli_module, monkeypatch, capsys):
+    monkeypatch.setenv("ALFRED_MERGE_REQUIRE_APPROVAL", "0")
+    seen = {}
+
+    def _gate(repo, number, **kwargs):
+        seen["min_approvals"] = kwargs["min_approvals"]
+        snap = _mergeable_snapshot(review_decision=None, reviews=())
+        return snap, merge_gate.evaluate_gate(snap, min_approvals=kwargs["min_approvals"])
+
+    monkeypatch.setattr(merge_gate, "gate_pull_request", _gate)
+
+    rc = cli_module.main(["pr", "check", "7", "--repo", "acme/widget"])
+
+    assert rc == 0
+    assert seen["min_approvals"] == 0
+
+
 def test_pr_check_json_output(cli_module, monkeypatch, capsys):
     monkeypatch.setattr(
         merge_gate,
