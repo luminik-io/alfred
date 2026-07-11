@@ -932,3 +932,22 @@ def test_cli_agents_does_not_disable_default_agents_when_gate_file_exists(tmp_pa
     }
     assert "yes" in lines["architect"].split()
     assert "yes" in lines["senior-dev"].split()
+
+
+def test_cli_agents_keeps_renamed_spec_planner_opt_in(tmp_path):
+    alfred = tmp_path / "alfred"
+    launchd = alfred / "launchd"
+    launchd.mkdir(parents=True)
+    (launchd / "agents.conf").write_text(
+        "alfred.story-planner\tspec-planner.py\tinterval:3600\tno\t\tSpec planner\n"
+    )
+    env = {
+        "ALFRED_HOME": str(alfred),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+    }
+
+    res = _run_cli("agents", env_extra=env)
+
+    assert res.returncode == 0, res.stderr
+    row = next(line for line in res.stdout.splitlines() if line.startswith("story-planner"))
+    assert row.split()[4] == "no"

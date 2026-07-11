@@ -326,8 +326,9 @@ DEFAULT_AGENT_CATALOG: dict[str, dict[str, str]] = {
 }
 
 
-def _default_enabled(codename: str) -> bool:
-    return codename not in OPT_IN_AGENTS
+def _default_enabled(codename: str, script: str = "") -> bool:
+    implementation = Path(script).stem if script else codename
+    return implementation not in OPT_IN_AGENTS
 
 
 def _agents_conf_path() -> Path:
@@ -441,7 +442,10 @@ def cmd_agents(_args: argparse.Namespace) -> int:
     rows = []
     for a in agents:
         codename = _codename_from_label(a["label"])
-        enabled = agent_runner.is_agent_enabled(codename, default=_default_enabled(codename))
+        enabled = agent_runner.is_agent_enabled(
+            codename,
+            default=_default_enabled(codename, a["script"]),
+        )
         if (pause_dir / codename).exists():
             loaded = "paused"
         elif a["disabled"] == "yes":
