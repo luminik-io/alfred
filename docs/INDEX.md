@@ -28,6 +28,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`AGENTS.md`](AGENTS.md): the default engineering roles, the stable runtime identity, and the display-name themes layered on top.
 - [`ARCHITECT.md`](ARCHITECT.md): the `architect` role (Batman in the default theme) for features spanning more than one repo. It reads a parent issue, drafts the rollout for operator approval, and files scoped child issues across the named repos.
 - [`STATE_MACHINE.md`](STATE_MACHINE.md): issue claim lifecycle and stale-claim recovery.
+- [`MERGE_GATE.md`](MERGE_GATE.md): the GitHub-native merge gate. Alfred merges a PR only when GitHub reports it approved (required approval count from branch protection), all review threads resolved, mergeable and clean, and checks green, using a SHA-guarded squash. The two config knobs and the `alfred pr check` / `alfred pr merge` commands.
 - [`VERIFICATION.md`](VERIFICATION.md): the `## Verification evidence` block on every agent PR. Test-check summary, diff summary, engine self-assessment against the issue's acceptance criteria, and optional opt-in before/after screenshots, with an honest "not captured" for anything that could not run.
 - [`STATE_AND_MEMORY.md`](STATE_AND_MEMORY.md): what Alfred remembers between firings, where every state file lives, and the local fleet-brain memory layer.
 - [`FLEET_BRAIN.md`](FLEET_BRAIN.md): local memory schema, reviewable lesson candidates, failure history, CLI, and read-only MCP bridge.

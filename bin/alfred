@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""``alfred`` — operator CLI for the alfred-os fleet.
+"""``alfred``: operator CLI for the alfred-os fleet.
 
 A small, dependency-free entry point covering the operator's day-to-day
 verbs. Heavy logic lives in ``lib/agent_runner.py``; this file is just
@@ -50,6 +50,12 @@ Subcommands today:
                               approval waits.
   alfred doctor               Run host preflight checks for the configured
                               fleet without burning engine turns.
+  alfred pr check <number>    Report whether a PR passes the GitHub-native
+                              merge gate (approved on GitHub, threads resolved,
+                              mergeable + clean, no failing checks). Read-only.
+  alfred pr merge <number>    Merge a PR only if it passes that same gate,
+                              using a SHA-guarded squash. Pass --repo for a
+                              specific repo. See docs/MERGE_GATE.md.
   alfred metrics              Weekly per-agent firings/cost/turns/tool-use
                               roll-up across spend, transcripts, and Codex
                               artifacts.
@@ -105,7 +111,7 @@ default-enabled, while opt-in agents such as the architect default to disabled
 until explicitly enabled.
 
 Pure stdlib. The operator reads this file when something breaks; keep
-it that way — no external deps.
+it that way, with no external dependencies.
 """
 
 from __future__ import annotations
@@ -1391,7 +1397,7 @@ def _resume_one(codename: str, label: str) -> int:
     if unit_path is None or not unit_path.exists():
         where = unit_path if unit_path is not None else "(no scheduler on this host)"
         print(
-            f"  {codename}: no unit file at {where} — run `bash deploy.sh` first", file=sys.stderr
+            f"  {codename}: no unit file at {where}; run `bash deploy.sh` first", file=sys.stderr
         )
         return 1
     if scheduler.unit_loaded(label):
@@ -2541,6 +2547,88 @@ def _battery_run_install(args: argparse.Namespace, battery: Any) -> int:
     return subprocess.run(command, check=False).returncode
 
 
+def _pr_min_approvals() -> int:
+    import merge_gate
+
+    return merge_gate.parse_min_approvals(os.environ.get("ALFRED_MERGE_MIN_APPROVALS"))
+
+
+def _default_pr_repo() -> str:
+    """Resolve the current checkout's repo under the configured GitHub org."""
+    gh_org = os.environ.get("GH_ORG", "").strip()
+    if not gh_org:
+        raise ValueError("GH_ORG is unset; pass --repo owner/name")
+    result = subprocess.run(
+        ["git", "remote", "get-url", "origin"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        raise ValueError("cannot infer the current repo; pass --repo owner/name")
+    repo_name = result.stdout.strip().rstrip("/").removesuffix(".git").rsplit("/", 1)[-1]
+    if not repo_name or repo_name == result.stdout.strip():
+        raise ValueError("cannot infer the current repo; pass --repo owner/name")
+    return f"{gh_org}/{repo_name}"
+
+
+def cmd_pr(args: argparse.Namespace) -> int:
+    """Run the GitHub-native merge gate for one PR (check or merge)."""
+    import merge_gate
+
+    try:
+        repo = _full_repo_arg(args.repo) if args.repo else _default_pr_repo()
+        min_approvals = _pr_min_approvals()
+    except ValueError as exc:
+        print(f"alfred pr: {exc}", file=sys.stderr)
+        return 2
+
+    _snapshot, decision = merge_gate.gate_pull_request(
+        repo, args.number, min_approvals=min_approvals
+    )
+
+    payload = {
+        "repo": repo,
+        "number": args.number,
+        "headSha": decision.head_sha,
+        "mergeable": decision.mergeable,
+        "conditions": [
+            {"key": c.key, "label": c.label, "passed": c.passed, "detail": c.detail}
+            for c in decision.conditions
+        ],
+    }
+    if not args.json:
+        print(f"PR {repo}#{args.number} (head {decision.head_sha[:12] or '?'}):")
+        print(decision.render())
+
+    if args.pr_command == "check":
+        if args.json:
+            print(json.dumps(payload, indent=2))
+        return 0 if decision.mergeable else 1
+
+    # merge
+    if not decision.mergeable:
+        if args.json:
+            print(json.dumps({**payload, "merged": False}, indent=2))
+        else:
+            print("Not merging: the gate did not pass.", file=sys.stderr)
+        return 1
+    ok, msg = merge_gate.guarded_squash_merge(
+        repo, args.number, decision.head_sha, delete_branch=not args.no_delete_branch
+    )
+    if ok:
+        if args.json:
+            print(json.dumps({**payload, "merged": True}, indent=2))
+        else:
+            print(f"Merged {repo}#{args.number} (squash, head-guarded {decision.head_sha[:12]}).")
+        return 0
+    if args.json:
+        print(json.dumps({**payload, "merged": False, "error": msg}, indent=2))
+    print(f"alfred pr merge: {msg}", file=sys.stderr)
+    return 1
+
+
 def cmd_github_poll(args: argparse.Namespace) -> int:
     script = _HERE / "fleet-github-poll.py"
     cmd = [sys.executable, str(script)]
@@ -3546,6 +3634,30 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_labels_check.add_argument("--all", action="store_true", help="use configured repo lists")
     p_labels_check.add_argument("--force", action="store_true", help=argparse.SUPPRESS)
     p_labels_check.set_defaults(func=cmd_labels, check=True)
+
+    p_pr = sub.add_parser("pr", help="run the GitHub-native merge gate on a pull request")
+    pr_sub = p_pr.add_subparsers(dest="pr_command", required=True)
+    p_pr_check = pr_sub.add_parser(
+        "check", help="report whether a PR passes the merge gate (does not merge)"
+    )
+    p_pr_check.add_argument("number", type=int, help="pull request number")
+    p_pr_check.add_argument(
+        "--repo", help="repo slug or owner/repo (defaults to GH_ORG/current checkout)"
+    )
+    p_pr_check.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+    p_pr_check.set_defaults(func=cmd_pr)
+    p_pr_merge = pr_sub.add_parser(
+        "merge", help="merge a PR only if it passes the gate (SHA-guarded squash)"
+    )
+    p_pr_merge.add_argument("number", type=int, help="pull request number")
+    p_pr_merge.add_argument(
+        "--repo", help="repo slug or owner/repo (defaults to GH_ORG/current checkout)"
+    )
+    p_pr_merge.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+    p_pr_merge.add_argument(
+        "--no-delete-branch", action="store_true", help="keep the head branch after merging"
+    )
+    p_pr_merge.set_defaults(func=cmd_pr)
 
     p_engine = sub.add_parser("engine", aliases=["provider"], help="manage per-agent engines")
     engine_sub = p_engine.add_subparsers(dest="engine_command", required=True)

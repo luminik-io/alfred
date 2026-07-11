@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 """automerge - auto-squash agent:authored PRs that are clean.
 
-Criteria for merge:
+Two gate modes select which PRs are safe to merge:
+
+Default (ALFRED_MERGE_REQUIRE_APPROVAL on) - the GitHub-native merge gate. A
+PR merges only when GitHub itself reports it approved (reviewDecision APPROVED,
+or at least ALFRED_MERGE_MIN_APPROVALS approving reviews on repos without
+branch protection), with zero unresolved review threads, a CLEAN and MERGEABLE
+state, and no failing checks. The merge is a SHA-guarded squash, so a race
+between the check and the merge fails closed. See lib/merge_gate.py and
+docs/MERGE_GATE.md.
+
+Prior mode (ALFRED_MERGE_REQUIRE_APPROVAL off) - the review-agent ship-ready
+flow:
 1. Label includes 'agent:authored'.
 2. PR is at least MIN_AGE_SECONDS old (window for human intercept).
 3. CI status is success (or no CI configured).
@@ -14,6 +25,9 @@ Criteria for merge:
 Out of scope: any PR not labeled agent:authored. Human PRs untouched.
 
 Configuration:
+  ALFRED_MERGE_REQUIRE_APPROVAL  use the GitHub-native gate (default on)
+  ALFRED_MERGE_MIN_APPROVALS     approvals required only when the repo has no
+                                 branch-protection review rule (default 1)
   ALFRED_AUTOMERGE_REPOS     comma-separated repo slugs to watch
   ALFRED_AUTOMERGE_REVIEW_AGENT  codename of review agent (default: reviewer)
                                  - PR comments starting with "<Codename> - review"
@@ -50,6 +64,13 @@ from agent_runner import (
     slack_post,
     with_lock,
 )
+from merge_gate import (
+    MIN_APPROVALS_DEFAULT,
+    collect_snapshot,
+    evaluate_gate,
+    guarded_squash_merge,
+    parse_min_approvals,
+)
 
 AGENT = os.environ.get("AGENT_CODENAME", "automerge")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
@@ -66,6 +87,31 @@ WATCH_REPOS = [
     r.strip() for r in os.environ.get("ALFRED_AUTOMERGE_REPOS", "").split(",") if r.strip()
 ]
 MIN_AGE_SECONDS = int(os.environ.get("ALFRED_AUTOMERGE_MIN_AGE_MIN", "30")) * 60
+
+
+def _env_flag(name: str, *, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+# GitHub-native merge gate. When on (the default), the sweeper only merges a PR
+# that GitHub itself reports as approved, thread-clean, mergeable, and green,
+# using a SHA-guarded squash. When off, the sweeper keeps its prior review-agent
+# ship-ready behaviour. See docs/MERGE_GATE.md.
+#
+# NOTE: these are read from the plain environment. If the typed config registry
+# (lib/alfred_config.py) lands later, migrate these two keys into it.
+REQUIRE_APPROVAL = _env_flag("ALFRED_MERGE_REQUIRE_APPROVAL", default=True)
+try:
+    MIN_APPROVALS: int | None = parse_min_approvals(
+        os.environ.get("ALFRED_MERGE_MIN_APPROVALS", str(MIN_APPROVALS_DEFAULT))
+    )
+    MIN_APPROVALS_ERROR = ""
+except ValueError as exc:
+    MIN_APPROVALS = None
+    MIN_APPROVALS_ERROR = str(exc)
 
 P0_KEYWORDS = re.compile(r"\b(P0|blocking|critical|🛑|⛔)", re.IGNORECASE)
 SHIP_READY_YES = re.compile(r"^Ship-ready:\s*yes\b", re.IGNORECASE | re.MULTILINE)
@@ -370,6 +416,51 @@ def is_mergeable(
     return True, "all clean"
 
 
+def _merge_via_gate(repo: str, pr: dict) -> tuple[bool, str, str]:
+    """Merge one PR through the GitHub-native gate with a SHA-guarded squash.
+
+    Returns ``(merged, reason, title)``. Fails closed on any gate failure.
+    """
+    pr_num = pr["number"]
+    title = pr.get("title", "")
+    if MIN_APPROVALS is None:
+        return False, f"invalid merge-gate config: {MIN_APPROVALS_ERROR}", title
+    slug = f"{GH_ORG}/{repo}"
+    snapshot = collect_snapshot(slug, pr_num)
+    decision = evaluate_gate(snapshot, min_approvals=MIN_APPROVALS)
+    if not decision.mergeable:
+        return False, decision.short_reason(), title
+    ok, msg = guarded_squash_merge(slug, pr_num, decision.head_sha, delete_branch=True)
+    if ok:
+        return True, "merged", title
+    return False, f"merge failed: {msg}", title
+
+
+def _merge_via_ship_ready(repo: str, pr: dict, pr_author: str) -> tuple[bool, str, str]:
+    """Prior behaviour: merge when the review agent said Ship-ready: yes."""
+    pr_num = pr["number"]
+    title = pr.get("title", "")
+    ok, reason = is_mergeable(repo, pr_num, pr_author=pr_author)
+    if not ok:
+        return False, reason, title
+    res = run(
+        [
+            "gh",
+            "pr",
+            "merge",
+            str(pr_num),
+            "-R",
+            f"{GH_ORG}/{repo}",
+            "--squash",
+            "--delete-branch",
+        ],
+        timeout=60,
+    )
+    if res.returncode == 0:
+        return True, "merged", title
+    return False, f"merge failed: {res.stderr.strip()[:200]}", title
+
+
 def main() -> int:
     with_lock(AGENT)
 
@@ -398,27 +489,14 @@ def main() -> int:
     for repo, pr in cands:
         pr_num = pr["number"]
         pr_author = ((pr.get("author") or {}).get("login")) or ""
-        ok, reason = is_mergeable(repo, pr_num, pr_author=pr_author)
-        if not ok:
-            skipped.append((repo, pr_num, reason))
-            continue
 
-        # Squash-merge
-        res = run(
-            [
-                "gh",
-                "pr",
-                "merge",
-                str(pr_num),
-                "-R",
-                f"{GH_ORG}/{repo}",
-                "--squash",
-                "--delete-branch",
-            ],
-            timeout=60,
-        )
-        if res.returncode == 0:
-            merged.append((repo, pr_num, pr["title"]))
+        if REQUIRE_APPROVAL:
+            ok, reason, title = _merge_via_gate(repo, pr)
+        else:
+            ok, reason, title = _merge_via_ship_ready(repo, pr, pr_author)
+
+        if ok:
+            merged.append((repo, pr_num, title))
             # Close out the lifecycle on every issue this PR resolves.
             for issue_num in linked_issue_numbers(pr):
                 try:
@@ -434,7 +512,7 @@ def main() -> int:
                         file=sys.stderr,
                     )
         else:
-            skipped.append((repo, pr_num, f"merge failed: {res.stderr.strip()[:200]}"))
+            skipped.append((repo, pr_num, reason))
 
     spend.increment(firings_today=1)
 
