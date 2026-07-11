@@ -66,6 +66,7 @@ from agent_runner import (
     release_issue,
     remove_worktree,
     render_verdict_markdown,
+    resolve_grader_engine,
     reuse_or_make_worktree,
     run,
     run_recovery,
@@ -477,6 +478,40 @@ def _rubric_gate_max_revisions() -> int:
     return max(1, min(10, value))
 
 
+def _commit_uncommitted_revision(
+    repo: str, issue_num: int, wt: Path, firing_id: str, events: EventLog
+) -> None:
+    """Commit any uncommitted edits a revision run left in the worktree.
+
+    The revision prompt asks the implementer to commit, but a run can edit files
+    and stop short. Left uncommitted, those edits are invisible to the committed
+    ``base_ref...HEAD`` diff the grader reads AND leave the tree dirty for the
+    push. This stages and commits them under a revision-scoped trailer (same id
+    as the revision prompt) so the graded diff matches what ships and the tree is
+    clean. A no-op when the worktree is already clean.
+    """
+    if not _worktree_status(wt):
+        return
+    add = run(["git", "add", "-A"], cwd=str(wt), timeout=30)
+    if add.returncode != 0:
+        events.emit("rubric_revision_salvage_failed", reason=short(add.stderr or add.stdout, 200))
+        return
+    trailer = commit_trailer(
+        AGENT,
+        f"{firing_id}-revise",
+        extra={"issue": f"{GH_ORG}/{repo}#{issue_num}"},
+    )
+    commit = run(
+        ["git", "commit", "-m", "fix: address rubric grader feedback", "-m", trailer],
+        cwd=str(wt),
+        timeout=30,
+    )
+    if commit.returncode != 0:
+        events.emit(
+            "rubric_revision_salvage_failed", reason=short(commit.stderr or commit.stdout, 200)
+        )
+
+
 def _revision_prompt(
     repo: str, issue: dict, wt: Path, branch: str, firing_id: str, feedback: str
 ) -> str:
@@ -485,10 +520,15 @@ def _revision_prompt(
     Reuses the same untrusted-issue framing as the build prompt and adds the
     grader's structured gaps. Feedback is model-authored text, so it is framed
     as guidance to act on, never as instructions that can widen scope.
+
+    The revision commit is anchored to a REVISION-scoped firing id
+    (``<firing_id>-revise``) so the original firing id keeps uniquely
+    identifying the build commit and a ``git log --grep`` for it does not also
+    match the revision commit.
     """
     trailer = commit_trailer(
         AGENT,
-        firing_id,
+        f"{firing_id}-revise",
         extra={"issue": f"{GH_ORG}/{repo}#{issue['number']}"},
     )
     issue_payload = format_untrusted_issue_payload(issue)
@@ -549,8 +589,11 @@ def _run_rubric_gate(
         return None
 
     rubric = derive_rubric(issue.get("body") or "")
+    grader_engine = resolve_grader_engine(
+        os.environ.get("ALFRED_RUBRIC_GRADER_ENGINE", "").strip() or None
+    )
     grader_fn = build_rubric_grader(
-        grader_engine=os.environ.get("ALFRED_RUBRIC_GRADER_ENGINE", "").strip() or None,
+        grader_engine=grader_engine,
         agent=AGENT,
         firing_id=firing_id,
         workdir=wt,
@@ -584,6 +627,12 @@ def _run_rubric_gate(
             events.emit("rubric_revision_failed", reason=short(str(exc), 200))
             return diff_holder["diff"]
         spend.increment(turns_today=result.num_turns, cost_usd_today=result.cost_usd)
+        # A revision that edited files but did not commit would otherwise leave
+        # the worktree dirty (breaking the later push / pre-push) AND be invisible
+        # to the committed base_ref...HEAD diff the grader reads. Salvage any
+        # uncommitted edits onto the branch under the revision-scoped trailer so
+        # what the grader sees is exactly what the PR ships, and the tree is clean.
+        _commit_uncommitted_revision(repo, int(issue["number"]), wt, firing_id, events)
         diff_holder["diff"] = run(
             ["git", "diff", f"{base_ref}...HEAD"], cwd=str(wt), timeout=30
         ).stdout
@@ -603,7 +652,8 @@ def _run_rubric_gate(
         revisions=len(verdicts) - 1,
         criteria=len(rubric),
         terminal_reason=final.terminal_reason,
-        engine=engine_used,
+        grader_engine=grader_engine,
+        build_engine=engine_used,
     )
     return verdicts
 

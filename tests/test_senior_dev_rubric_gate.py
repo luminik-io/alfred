@@ -129,9 +129,18 @@ def test_gate_grades_then_revises_once_when_needs_revision(senior_dev, monkeypat
 
     monkeypatch.setattr(senior_dev, "build_rubric_grader", _grader)
 
-    # Stub the diff read and the implementer re-dispatch.
+    # Stub git: two diff reads (initial + post-revision), a clean worktree so no
+    # salvage commit runs.
     diffs = iter(["diff v1 non-empty", "diff v2 non-empty"])
-    monkeypatch.setattr(senior_dev, "run", lambda *a, **k: type("R", (), {"stdout": next(diffs)})())
+
+    def _fake_run(args, **_kw):
+        if "status" in args:
+            return type("R", (), {"stdout": "", "returncode": 0, "stderr": ""})()
+        if "diff" in args:
+            return type("R", (), {"stdout": next(diffs), "returncode": 0, "stderr": ""})()
+        return type("R", (), {"stdout": "", "returncode": 0, "stderr": ""})()
+
+    monkeypatch.setattr(senior_dev, "run", _fake_run)
 
     revise_calls = []
 
@@ -202,3 +211,73 @@ def test_gate_empty_diff_skips_grading(senior_dev, monkeypatch):
         _Events(),
     )
     assert out is None
+
+
+def test_revision_leaving_uncommitted_edits_is_salvaged_and_committed(senior_dev, monkeypatch):
+    # A revision run that edits but does not commit must not leave the tree dirty
+    # or hide its edits from the graded committed diff: the gate salvages them
+    # into a commit under the revision-scoped trailer.
+    monkeypatch.setenv("ALFRED_RUBRIC_GATE", "1")
+    monkeypatch.setenv("ALFRED_RUBRIC_MAX_ITERATIONS", "1")
+
+    grades = iter(
+        [
+            json.dumps(
+                {
+                    "result": "needs_revision",
+                    "explanation": "gap",
+                    "criteria": [{"name": "c", "passed": False, "gap": "fix it"}],
+                }
+            ),
+            json.dumps(
+                {
+                    "result": "satisfied",
+                    "explanation": "ok",
+                    "criteria": [{"name": "c", "passed": True, "gap": None}],
+                }
+            ),
+        ]
+    )
+    monkeypatch.setattr(senior_dev, "build_rubric_grader", lambda **_k: lambda _p: next(grades))
+    monkeypatch.setattr(
+        senior_dev,
+        "invoke_agent_engine",
+        lambda *a, **k: (type("R", (), {"num_turns": 1, "cost_usd": 0.0})(), "codex"),
+    )
+
+    calls: list[list[str]] = []
+    diffs = iter(["diff before", "diff after salvage"])
+    # First status (in _revise) reports a DIRTY tree; the add + commit then run.
+    status_results = iter([" M lib/foo.py"])  # dirty once, clean thereafter
+
+    def _fake_run(args, **_kw):
+        calls.append(list(args))
+        if "status" in args:
+            return type(
+                "R", (), {"stdout": next(status_results, ""), "returncode": 0, "stderr": ""}
+            )()
+        if "diff" in args:
+            return type("R", (), {"stdout": next(diffs), "returncode": 0, "stderr": ""})()
+        # git add / git commit
+        return type("R", (), {"stdout": "", "returncode": 0, "stderr": ""})()
+
+    monkeypatch.setattr(senior_dev, "run", _fake_run)
+
+    verdicts = senior_dev._run_rubric_gate(
+        "api",
+        _ISSUE_WITH_CRITERIA,
+        Path("/tmp/wt"),
+        "HEAD~1",
+        "feat/x",
+        "fid",
+        "codex",
+        _Spend(),
+        _Events(),
+    )
+    assert [v.result for v in verdicts] == ["needs_revision", "satisfied"]
+    # The salvage staged and committed the uncommitted revision edits.
+    assert any(a[:2] == ["git", "add"] for a in calls)
+    commit_calls = [a for a in calls if a[:2] == ["git", "commit"]]
+    assert commit_calls, "uncommitted revision edits must be committed"
+    # The salvage commit carries the revision-scoped firing id, not the plain one.
+    assert "fid-revise" in " ".join(commit_calls[0])
