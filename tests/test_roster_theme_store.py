@@ -348,3 +348,34 @@ def test_new_builtin_themes_reskin_on_slack() -> None:
     state = RosterThemeState(theme="mathematicians", custom_names={}, custom_roles={})
     assert state.themed_name_for("architect") == "Gauss"
     assert state.themed_name_for("senior-dev") == "Euler"
+
+
+def test_legacy_same_role_codenames_stay_distinct() -> None:
+    # Two legacy Batman-cast codenames that share a role (both ``ops``) must each
+    # resolve to their OWN themed persona, never both collapse onto the role
+    # pool's first name. ``Fleet doctor`` and ``Agent cleanup`` are distinct ops
+    # agents in the manifest.
+    jl = RosterThemeState(theme="justice-league", custom_names={}, custom_roles={})
+    fleet_doctor = jl.themed_name_for("fleetdoctor")
+    agent_cleanup = jl.themed_name_for("agentcleanup")
+    assert fleet_doctor == "Doctor Fate"
+    assert agent_cleanup == "Atom"
+    assert fleet_doctor != agent_cleanup
+
+    # Same guarantee under the default theme (each keeps its own base persona).
+    batman = RosterThemeState(theme="batman", custom_names={}, custom_roles={})
+    assert batman.themed_name_for("fleetdoctor") == "Fleet doctor"
+    assert batman.themed_name_for("agentcleanup") == "Agent cleanup"
+    assert batman.themed_name_for("fleetdoctor") != batman.themed_name_for("agentcleanup")
+
+
+def test_default_theme_pairs_legacy_name_with_role_label() -> None:
+    # Under the default Batman theme a known legacy codename returns a themed
+    # name, so its role label must resolve too (via the derived role) rather than
+    # leaving the agent with a name and no role on Slack.
+    batman = RosterThemeState(theme="batman", custom_names={}, custom_roles={})
+    assert batman.themed_name_for("lucius") == "Lucius"
+    assert batman.themed_role_label_for("lucius") == "Senior developer"
+    # An unknown codename still returns ``None`` so the caller keeps the shipped
+    # env-role fallback.
+    assert batman.themed_role_label_for("release-captain") is None
