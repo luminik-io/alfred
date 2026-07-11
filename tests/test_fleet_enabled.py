@@ -743,6 +743,24 @@ def test_status_uses_runtime_gate_for_renamed_opt_in_agents(monkeypatch):
     assert status._record_disabled(record) is True
 
 
+def test_status_checks_themed_and_implementation_noop_markers():
+    status = _load_status_module()
+    record = status.AgentRecord(
+        label="alfred.story-planner",
+        codename="story-planner",
+        script="spec-planner.py",
+        schedule="hourly",
+        log_stem="custom.spec-planner",
+        role="Spec planner",
+        disabled=False,
+    )
+
+    assert status._runtime_noop_markers(record) == {
+        Path("/tmp/alfred.story-planner.noop"),
+        Path("/tmp/alfred.spec-planner.noop"),
+    }
+
+
 def test_cli_status_uses_custom_agent_manifest_engine_default(tmp_path):
     alfred = tmp_path / "alfred"
     custom_dir = alfred / "state" / "custom-agents"
