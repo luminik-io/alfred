@@ -9,11 +9,9 @@ this module. The reviewers are whoever GitHub says approved the PR.
 A PR is mergeable-by-alfred only when ALL of the following hold:
 
 1. The PR is open.
-2. GitHub's ``reviewDecision`` is ``APPROVED``. GitHub aggregates the required
-   approval count from branch protection, so on a protected repo this single
-   field encodes the operator's policy. On a repo WITHOUT branch protection
-   ``reviewDecision`` is null; there we fall back to counting approving reviews
-   (latest review per reviewer wins) and require at least ``min_approvals``.
+2. GitHub does not report a blocking review decision, and at least
+   ``min_approvals`` distinct approvals target the exact current head. Branch
+   protection remains an independent, potentially stricter policy.
 3. There are zero unresolved review threads, from any author.
 4. ``mergeStateStatus`` is ``CLEAN`` and ``mergeable`` is ``MERGEABLE``. This
    encodes required status checks and the absence of any blocking state.
@@ -157,7 +155,7 @@ class GateDecision:
 
 
 def parse_min_approvals(raw: str | None) -> int:
-    """Parse the fallback approval threshold, rejecting unsafe values."""
+    """Parse the always-on exact-head approval threshold."""
     value = str(MIN_APPROVALS_DEFAULT) if raw is None else raw.strip()
     try:
         parsed = int(value)

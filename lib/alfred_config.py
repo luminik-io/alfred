@@ -487,7 +487,7 @@ _VARS: tuple[ConfigVar, ...] = (
         "int",
         "1",
         "scheduler",
-        "Approving reviews required when GitHub branch protection does not decide it.",
+        "Distinct exact-head approving reviews Alfred always requires; branch protection may require more.",
         operator=True,
     ),
     V("ALFRED_MEMORY_ANCHOR_RECALL", "bool", "0", "memory", "Enable anchor-based recall."),

@@ -4,10 +4,11 @@
 Two gate modes select which PRs are safe to merge:
 
 Default (ALFRED_MERGE_REQUIRE_APPROVAL on) - the GitHub-native merge gate. A
-PR merges only when GitHub itself reports it approved (reviewDecision APPROVED,
-or at least ALFRED_MERGE_MIN_APPROVALS approving reviews on repos without
-branch protection), with zero unresolved review threads, a CLEAN and MERGEABLE
-state, and no failing checks. The merge is a SHA-guarded squash, so a race
+PR merges only when GitHub has no blocking review decision and at least
+ALFRED_MERGE_MIN_APPROVALS distinct approvals target the exact current head.
+Branch protection remains an independent, potentially stricter policy. The PR
+must also have zero unresolved review threads, a CLEAN and MERGEABLE state, and
+no failing checks. The merge is a SHA-guarded squash, so a race
 between the check and the merge fails closed. See lib/merge_gate.py and
 docs/MERGE_GATE.md.
 
@@ -26,8 +27,8 @@ Out of scope: any PR not labeled agent:authored. Human PRs untouched.
 
 Configuration:
   ALFRED_MERGE_REQUIRE_APPROVAL  use the GitHub-native gate (default on)
-  ALFRED_MERGE_MIN_APPROVALS     approvals required only when the repo has no
-                                 branch-protection review rule (default 1)
+  ALFRED_MERGE_MIN_APPROVALS     distinct exact-head approvals Alfred always
+                                 requires (default 1)
   ALFRED_AUTOMERGE_REPOS     comma-separated repo slugs to watch
   ALFRED_AUTOMERGE_REVIEW_AGENT  codename of review agent (default: reviewer)
                                  - PR comments starting with "<Codename> - review"
