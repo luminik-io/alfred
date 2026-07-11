@@ -355,7 +355,7 @@ def test_close_issue_surfaces_gh_failure(monkeypatch):
 
 
 def test_slack_parses_queue_and_hold_verbs():
-    from slack_control import parse_control_command
+    from slack_surface.control import parse_control_command
 
     cmd = parse_control_command("queue https://github.com/org/repo/issues/4")
     assert cmd is not None and cmd.verb == "queue"
@@ -377,7 +377,7 @@ def _queue_handler(monkeypatch):
     Returns ``(handler, calls)``. The stub never shells out to gh, so these
     tests exercise only the operator gate and verb routing in ``_run_queue``.
     """
-    import slack_control
+    import slack_surface.control as slack_control
 
     calls: list = []
 
@@ -426,7 +426,7 @@ def test_slack_queue_arm_allowed_for_operator(monkeypatch):
 
 def test_slack_assign_rejected_for_non_operator(monkeypatch):
     import issue_assignment
-    import slack_control
+    import slack_surface.control as slack_control
 
     def _must_not_run(*args, **kwargs):
         raise AssertionError("assign must not run for a non-operator")
@@ -447,7 +447,7 @@ def test_slack_assign_rejected_for_non_operator(monkeypatch):
 
 def test_slack_assign_allowed_for_operator(monkeypatch):
     import issue_assignment
-    import slack_control
+    import slack_surface.control as slack_control
 
     calls: list[tuple[str, int]] = []
 
@@ -472,7 +472,7 @@ def test_slack_assign_allowed_for_operator(monkeypatch):
 
 
 def test_slack_queue_failure_hides_raw_gh_error(monkeypatch):
-    import slack_control
+    import slack_surface.control as slack_control
 
     def fake_set_issue_pickup(repo, number, *, hold):
         return False, "fatal: gh token expired; HTTP 401 at github.com/api"

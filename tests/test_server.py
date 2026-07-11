@@ -1991,7 +1991,7 @@ def test_file_plan_issue_files_ready_draft_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import server.setup as setup_mod
-    import slack_issue_bridge
+    import slack_surface.bridge as slack_issue_bridge
 
     state = tmp_path / "state"
     state.mkdir()

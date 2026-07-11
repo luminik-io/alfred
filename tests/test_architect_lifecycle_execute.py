@@ -49,7 +49,13 @@ def _isolated_sys_path(tmp_path, monkeypatch):
     ):
         monkeypatch.delenv(k, raising=False)
     for mod in list(sys.modules):
-        if mod in ("architect_lifecycle", "batman", "labels", "slack_approval", "slack_format"):
+        if mod in (
+            "architect_lifecycle",
+            "batman",
+            "labels",
+            "slack_surface.approval",
+            "slack_surface.posting",
+        ):
             del sys.modules[mod]
     libdir = str(REPO / "lib")
     if libdir not in sys.path:
@@ -311,7 +317,7 @@ def test_approval_timeout_returns_no_execute():
         ArchitectLifecycle,
         ArchitectLifecycleConfig,
     )
-    from slack_approval import APPROVAL_TIMEOUT
+    from slack_surface.approval import APPROVAL_TIMEOUT
 
     gh = FakeGitHubClient()
     reporter = FakeReporter()
@@ -345,7 +351,7 @@ def test_approval_timeout_returns_no_execute():
 
 def test_in_app_approval_marker_grants_without_slack_poll(tmp_path: Path):
     from architect_lifecycle import EXEC_OK, ArchitectLifecycle, ArchitectLifecycleConfig
-    from slack_approval import APPROVAL_TIMEOUT
+    from slack_surface.approval import APPROVAL_TIMEOUT
 
     gh = FakeGitHubClient()
     reporter = FakeReporter()
@@ -479,7 +485,7 @@ def test_file_approval_mode_consumes_rejection_marker_without_slack(tmp_path: Pa
 
 def test_operator_rejection_returns_rejected_by_operator():
     from architect_lifecycle import EXEC_REJECTED, ArchitectLifecycle, ArchitectLifecycleConfig
-    from slack_approval import APPROVAL_REJECTED
+    from slack_surface.approval import APPROVAL_REJECTED
 
     gh = FakeGitHubClient()
     reporter = FakeReporter()
@@ -513,7 +519,7 @@ def test_operator_rejection_returns_rejected_by_operator():
 
 def test_approval_granted_then_happy_path_files_all_children():
     from architect_lifecycle import EXEC_OK, ArchitectLifecycle, ArchitectLifecycleConfig
-    from slack_approval import APPROVAL_GRANTED
+    from slack_surface.approval import APPROVAL_GRANTED
 
     gh = FakeGitHubClient()
     reporter = FakeReporter()
@@ -566,7 +572,7 @@ def test_approval_granted_then_happy_path_files_all_children():
 
 def test_approval_thread_feedback_is_appended_to_child_issues():
     from architect_lifecycle import EXEC_OK, ArchitectLifecycle, ArchitectLifecycleConfig
-    from slack_approval import APPROVAL_GRANTED
+    from slack_surface.approval import APPROVAL_GRANTED
 
     gh = FakeGitHubClient()
     gate = FakeGate(
@@ -624,7 +630,7 @@ def test_approval_thread_feedback_is_appended_to_child_issues():
 
 def test_approval_repo_feedback_changes_child_issue_scope():
     from architect_lifecycle import EXEC_OK, ArchitectLifecycle, ArchitectLifecycleConfig
-    from slack_approval import APPROVAL_GRANTED
+    from slack_surface.approval import APPROVAL_GRANTED
 
     gh = FakeGitHubClient()
     gate = FakeGate(
@@ -738,7 +744,7 @@ def test_execute_uses_approved_execution_plan_without_reapplying_scope_feedback(
 
 def test_approval_feedback_with_open_question_blocks_execution():
     from architect_lifecycle import EXEC_NEEDS_SCOPE, ArchitectLifecycle, ArchitectLifecycleConfig
-    from slack_approval import APPROVAL_GRANTED
+    from slack_surface.approval import APPROVAL_GRANTED
 
     gh = FakeGitHubClient()
     gate = FakeGate(
@@ -921,7 +927,7 @@ def test_slack_reporter_default_followups_are_visible_to_plans(tmp_path, monkeyp
 
 def test_slack_reporter_registers_plan_thread(tmp_path, monkeypatch):
     from architect_lifecycle import SlackReporter, parse_parent_issue
-    from slack_thread_registry import SlackThreadRegistry
+    from slack_surface.threads import SlackThreadRegistry
 
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
 
