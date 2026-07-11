@@ -482,6 +482,7 @@ def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnap
 
     stdout_path = Path(f"/tmp/{record.log_stem}.stdout")
     stderr_path = Path(f"/tmp/{record.log_stem}.stderr")
+    noop_marker = STATE_ROOT / record.codename / "last-noop"
     last_fired = _iso(stdout_path.stat().st_mtime) if stdout_path.exists() else None
 
     events_dir = STATE_ROOT / record.codename / "events"
@@ -498,12 +499,13 @@ def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnap
     approval_wait = _approval_wait_status(record.codename)
 
     last_stderr_tail = None
-    if (
-        not disabled
-        and stderr_path.exists()
-        and stdout_path.exists()
-        and stderr_path.stat().st_mtime > stdout_path.stat().st_mtime
-    ):
+    freshness_markers = [
+        path.stat().st_mtime for path in (stdout_path, noop_marker) if path.exists()
+    ]
+    stderr_is_fresh = stderr_path.exists() and (
+        not freshness_markers or stderr_path.stat().st_mtime > max(freshness_markers)
+    )
+    if stderr_is_fresh:
         try:
             stderr_text = stderr_path.read_text(errors="replace")
             if not _only_expected_disabled_skips(stderr_text):

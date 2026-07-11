@@ -15,7 +15,7 @@ Wiring:
     bot token is configured, falling back to the webhook ``slack_post``
     otherwise.
   - Honours the fleet enable file: if ``architect`` is not enabled there,
-    the runner exits early with a one-line stderr note.
+    the runner exits early with a one-line stdout notice.
 """
 
 from __future__ import annotations

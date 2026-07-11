@@ -122,6 +122,9 @@ def main() -> int:
     # spec directory the planner can read. Fresh installs stay quiet until
     # ``alfred enable spec-planner`` flips the gate.
     if not is_agent_enabled(CODENAME, default=False):
+        marker = Path(ALFRED_HOME) / "state" / CODENAME / "last-noop"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()
         return 0
 
     spec = PreflightSpec(

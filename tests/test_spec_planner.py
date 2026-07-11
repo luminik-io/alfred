@@ -401,16 +401,18 @@ def _load_runner():
     return mod
 
 
-def test_runner_exits_quietly_when_disabled(monkeypatch, capsys):
+def test_runner_exits_quietly_when_disabled(monkeypatch, capsys, tmp_path):
     runner = _load_runner()
     monkeypatch.setattr(runner, "doctor_mode", lambda: False)
     monkeypatch.setattr(runner, "is_agent_enabled", lambda *_a, **_k: False)
+    monkeypatch.setattr(runner, "ALFRED_HOME", tmp_path)
 
     rc = runner.main()
     assert rc == 0
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == ""
+    assert (tmp_path / "state" / "spec-planner" / "last-noop").exists()
 
 
 def test_runner_reports_idle_when_no_scan_repos(monkeypatch, capsys, tmp_path):
