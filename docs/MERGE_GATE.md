@@ -10,11 +10,10 @@ The reviewers are whoever GitHub says approved the PR.
 A PR is mergeable by Alfred only when all of these hold:
 
 1. The PR is open.
-2. GitHub's `reviewDecision` is `APPROVED`. GitHub aggregates the required
-   approval count from branch protection, so on a protected repo this single
-   field already encodes your policy: if you require two approving reviews from
-   a code-owners team, `reviewDecision` only becomes `APPROVED` once that is
-   met.
+2. GitHub does not report `CHANGES_REQUESTED` or `REVIEW_REQUIRED`, and Alfred
+   counts at least `ALFRED_MERGE_MIN_APPROVALS` distinct approvals on the exact
+   current head. On a protected repo, GitHub independently enforces any stricter
+   branch rule or code-owner requirement.
 3. There are zero unresolved review threads, from any author.
 4. `mergeStateStatus` is `CLEAN` and `mergeable` is `MERGEABLE`. This is
    GitHub's own summary that required status checks passed and nothing is
@@ -27,19 +26,17 @@ not recognise makes it return "not mergeable" rather than guess.
 
 ## Where the approval count comes from
 
-The required number of approvals comes from GitHub branch protection first, not
-from Alfred. Set your rule once on the repo (Settings, Branches, branch
-protection, "Require a pull request before merging" with the approval count and
-any code-owners requirement). GitHub then reports `reviewDecision: APPROVED`
-only when that rule is satisfied, and the gate trusts that single field.
+The effective approval policy is the stricter of GitHub branch protection and
+Alfred's threshold. GitHub's `reviewDecision` enforces protected-branch rules;
+Alfred always counts current-head approving reviews and requires at least
+`ALFRED_MERGE_MIN_APPROVALS` (default 1). This second check is required because
+unprotected repositories can report `APPROVED` after one stale approval.
 
-On a repo with no branch-protection review rule, `reviewDecision` is null. There
-the gate falls back to counting current-head approving reviews itself and
-requires at least `ALFRED_MERGE_MIN_APPROVALS` (default 1). The count uses the
-latest review per reviewer, so a reviewer who requested changes and later
-approved counts as one approval only when that approval targets the PR's current
-head. A comment-only review never overrides an earlier approval. If any
-reviewer's latest standing review requests changes, the gate blocks.
+The count uses the latest decisive review per reviewer. A reviewer who requested
+changes and later approved counts once, and only when that approval targets the
+PR's exact current head. A comment-only review never overrides an earlier
+approval. If any reviewer's latest standing review requests changes, the gate
+blocks.
 
 ## The merge is SHA-guarded
 
@@ -54,7 +51,7 @@ unreviewed changes.
 | Environment variable | Default | Effect |
 | --- | --- | --- |
 | `ALFRED_MERGE_REQUIRE_APPROVAL` | on | When on, the automerge sweeper only merges PRs that pass this gate. When off, the sweeper keeps its prior review-agent ship-ready behaviour. |
-| `ALFRED_MERGE_MIN_APPROVALS` | 1 | Current-head approvals required only on a repo with no branch-protection review rule. Must be an integer of at least 1; invalid values fail closed. Ignored when GitHub already drives `reviewDecision`. |
+| `ALFRED_MERGE_MIN_APPROVALS` | 1 | Distinct current-head approvals Alfred always requires. Must be an integer of at least 1; invalid values fail closed. GitHub branch protection may impose a stricter rule. |
 
 ## Command line
 

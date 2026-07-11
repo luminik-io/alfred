@@ -9,11 +9,9 @@ this module. The reviewers are whoever GitHub says approved the PR.
 A PR is mergeable-by-alfred only when ALL of the following hold:
 
 1. The PR is open.
-2. GitHub's ``reviewDecision`` is ``APPROVED``. GitHub aggregates the required
-   approval count from branch protection, so on a protected repo this single
-   field encodes the operator's policy. On a repo WITHOUT branch protection
-   ``reviewDecision`` is null; there we fall back to counting approving reviews
-   (latest review per reviewer wins) and require at least ``min_approvals``.
+2. GitHub does not report a blocking review decision, and at least
+   ``min_approvals`` distinct approvals target the exact current head. Branch
+   protection remains an independent, potentially stricter policy.
 3. There are zero unresolved review threads, from any author.
 4. ``mergeStateStatus`` is ``CLEAN`` and ``mergeable`` is ``MERGEABLE``. This
    encodes required status checks and the absence of any blocking state.
@@ -157,7 +155,7 @@ class GateDecision:
 
 
 def parse_min_approvals(raw: str | None) -> int:
-    """Parse the fallback approval threshold, rejecting unsafe values."""
+    """Parse the always-on exact-head approval threshold."""
     value = str(MIN_APPROVALS_DEFAULT) if raw is None else raw.strip()
     try:
         parsed = int(value)
@@ -192,35 +190,33 @@ def _approval_condition(snapshot: GateSnapshot, min_approvals: int) -> Condition
     label = "Approved on GitHub"
     decision = (snapshot.review_decision or "").upper()
 
-    if decision == "APPROVED":
-        return Condition(
-            "approved",
-            label,
-            True,
-            "GitHub reviewDecision is APPROVED (required approvals satisfied)",
-        )
     if decision == "CHANGES_REQUESTED":
         return Condition("approved", label, False, "changes requested by a reviewer")
     if decision == "REVIEW_REQUIRED":
         return Condition("approved", label, False, "review required but not yet approved")
-    if decision:
+    if decision and decision != "APPROVED":
         # Unknown, non-empty decision: fail closed rather than guess.
         return Condition("approved", label, False, f"unrecognised reviewDecision '{decision}'")
 
-    # decision is empty/null: the repo has no branch-protection review rule.
-    # Fall back to counting approving reviews.
+    # Always count current-head approvals. On protected repos GitHub's
+    # reviewDecision independently enforces the branch rule, while this count
+    # enforces Alfred's threshold and exact-head policy. On unprotected repos
+    # reviewDecision may become APPROVED after one stale approval, so it is not
+    # sufficient by itself.
     effective = _effective_reviews(snapshot.reviews)
     if any((review.state or "").upper() == "CHANGES_REQUESTED" for review in effective.values()):
         return Condition(
             "approved",
             label,
             False,
-            "changes requested by a reviewer (no branch protection)",
+            "changes requested by a reviewer",
         )
     approvals = sum(
         1
         for review in effective.values()
         if (review.state or "").upper() == "APPROVED"
+        # Missing commit_id is unverifiable, even when reviewDecision says
+        # APPROVED. Exact-head proof is a hard gate, so fail closed.
         and bool(snapshot.head_sha)
         and review.commit_id == snapshot.head_sha
     )
@@ -229,15 +225,15 @@ def _approval_condition(snapshot: GateSnapshot, min_approvals: int) -> Condition
             "approved",
             label,
             True,
-            f"{approvals} current-head approving review(s), no branch protection "
-            f"(need {min_approvals})",
+            f"{approvals} current-head approving review(s), need {min_approvals}"
+            + ("; GitHub reviewDecision APPROVED" if decision == "APPROVED" else ""),
         )
     return Condition(
         "approved",
         label,
         False,
-        f"{approvals} current-head approving review(s), need {min_approvals} "
-        f"(repo has no required-review branch protection)",
+        f"{approvals} current-head approving review(s), need {min_approvals}"
+        + ("; GitHub reviewDecision APPROVED" if decision == "APPROVED" else ""),
     )
 
 
@@ -372,11 +368,7 @@ def collect_snapshot(
         view = {}
 
     review_decision = view.get("reviewDecision") if view.get("reviewDecision") else None
-    reviews = (
-        _collect_reviews(repo, pr_number, gh_json=gh_json, errors=errors)
-        if review_decision is None
-        else []
-    )
+    reviews = _collect_reviews(repo, pr_number, gh_json=gh_json, errors=errors)
 
     checks: list[CheckRun] = []
     for entry in view.get("statusCheckRollup") or []:
@@ -412,6 +404,19 @@ _REVIEW_THREADS_QUERY = (
     "}"
 )
 
+_REVIEWS_QUERY = (
+    "query($owner:String!,$name:String!,$num:Int!,$endCursor:String){"
+    " repository(owner:$owner,name:$name){"
+    "  pullRequest(number:$num){"
+    "   reviews(first:100,after:$endCursor){"
+    "    nodes{author{login} state submittedAt commit{oid}}"
+    "    pageInfo{hasNextPage endCursor}"
+    "   }"
+    "  }"
+    " }"
+    "}"
+)
+
 
 def _collect_reviews(
     repo: str,
@@ -421,44 +426,71 @@ def _collect_reviews(
     errors: list[str],
 ) -> list[Review]:
     """Fetch every review, including the reviewed commit, for fallback gating."""
-    _MISSING = object()
-    pages = gh_json(
-        [
+    owner, _, name = repo.partition("/")
+    if not owner or not name:
+        errors.append(f"invalid repo slug '{repo}'")
+        return []
+    reviews: list[Review] = []
+    cursor: str | None = None
+    seen_cursors: set[str] = set()
+    while True:
+        _MISSING = object()
+        cmd = [
             "gh",
             "api",
-            "--paginate",
-            "--slurp",
-            f"/repos/{repo}/pulls/{pr_number}/reviews",
-        ],
-        _MISSING,
-    )
-    if (
-        pages is _MISSING
-        or not isinstance(pages, list)
-        or any(not isinstance(page, list) for page in pages)
-    ):
-        errors.append("could not read reviews from GitHub")
-        return []
-
-    reviews: list[Review] = []
-    for page in pages:
-        for item in page:
+            "graphql",
+            "-f",
+            f"query={_REVIEWS_QUERY}",
+            "-F",
+            f"owner={owner}",
+            "-F",
+            f"name={name}",
+            "-F",
+            f"num={pr_number}",
+            "--jq",
+            ".data.repository.pullRequest.reviews",
+        ]
+        if cursor is not None:
+            cmd[cmd.index("--jq") : cmd.index("--jq")] = ["-F", f"endCursor={cursor}"]
+        page = gh_json(cmd, _MISSING)
+        if page is _MISSING or not isinstance(page, dict):
+            errors.append("could not read reviews from GitHub")
+            return []
+        nodes = page.get("nodes")
+        page_info = page.get("pageInfo")
+        if not isinstance(nodes, list) or not isinstance(page_info, dict):
+            errors.append("received malformed review page from GitHub")
+            return []
+        for item in nodes:
             if not isinstance(item, dict):
                 errors.append("received malformed review data from GitHub")
                 return []
-            user = item.get("user") or {}
-            if not isinstance(user, dict):
+            author = item.get("author") or {}
+            commit = item.get("commit") or {}
+            if not isinstance(author, dict) or not isinstance(commit, dict):
                 errors.append("received malformed review data from GitHub")
                 return []
             reviews.append(
                 Review(
-                    author=str(user.get("login") or ""),
+                    author=str(author.get("login") or ""),
                     state=str(item.get("state") or ""),
-                    submitted_at=str(item.get("submitted_at") or ""),
-                    commit_id=str(item.get("commit_id") or ""),
+                    submitted_at=str(item.get("submittedAt") or ""),
+                    commit_id=str(commit.get("oid") or ""),
                 )
             )
-    return reviews
+        if page_info.get("hasNextPage") is False:
+            return reviews
+        next_cursor = page_info.get("endCursor")
+        if (
+            page_info.get("hasNextPage") is not True
+            or not isinstance(next_cursor, str)
+            or not next_cursor
+            or next_cursor in seen_cursors
+        ):
+            errors.append("review pagination was incomplete")
+            return []
+        seen_cursors.add(next_cursor)
+        cursor = next_cursor
 
 
 def _collect_review_threads(

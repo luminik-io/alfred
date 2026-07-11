@@ -280,7 +280,7 @@ are experimental, deep-tuning, or set by Alfred itself at runtime.
 | Variable | Type | Default | Scope | Description |
 | --- | --- | --- | --- | --- |
 | `ALFRED_MERGE_REQUIRE_APPROVAL` | bool | `1` | operator | Automerge only merges PRs an operator approved on GitHub (fail-closed gate). |
-| `ALFRED_MERGE_MIN_APPROVALS` | int | `1` | operator | Approving reviews required when GitHub branch protection does not decide it. |
+| `ALFRED_MERGE_MIN_APPROVALS` | int | `1` | operator | Distinct exact-head approving reviews Alfred always requires; branch protection may require more. |
 | `ALFRED_RECOVERY_MAX_ATTEMPTS` | int | `1` | operator | Bounded recovery turns to fix a failed push/CI/merge-gate step before HOLD (0 disables). |
 | `ALFRED_LAUNCH_DIR` | path | `~/Library/LaunchAgents` | internal | Directory launchd plists are installed into. |
 | `ALFRED_LAUNCHD_LABEL_PREFIX` | str | `alfred` | internal | Reverse-DNS label prefix for launchd plists. |
