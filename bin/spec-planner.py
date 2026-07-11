@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import os
 import sys
+from contextlib import suppress
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -66,6 +67,7 @@ from agent_runner import (  # noqa: E402
     is_agent_enabled,
     load_prompt,
     preflight,
+    runtime_noop_marker_path,
     slack_post,
     with_lock,
 )
@@ -127,11 +129,8 @@ def main() -> int:
             marker.parent.mkdir(parents=True, exist_ok=True)
             marker.touch()
         except OSError:
-            try:
-                label = os.environ.get("LAUNCHD_LABEL", f"alfred.{CODENAME}")
-                (Path(os.environ.get("TMPDIR", "/tmp")) / f"{label}.noop").touch()
-            except OSError:
-                pass
+            with suppress(OSError):
+                runtime_noop_marker_path(CODENAME).touch()
         return 0
 
     spec = PreflightSpec(

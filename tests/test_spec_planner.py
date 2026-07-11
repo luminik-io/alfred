@@ -420,15 +420,15 @@ def test_runner_disabled_noop_survives_unwritable_state(monkeypatch, capsys, tmp
     monkeypatch.setattr(runner, "doctor_mode", lambda: False)
     monkeypatch.setattr(runner, "is_agent_enabled", lambda *_a, **_k: False)
     monkeypatch.setattr(runner, "ALFRED_HOME", tmp_path)
-    monkeypatch.setenv("TMPDIR", str(tmp_path))
-    monkeypatch.setenv("LAUNCHD_LABEL", "alfred.spec-planner")
+    runtime_marker = tmp_path / "alfred.spec-planner.noop"
+    monkeypatch.setattr(runner, "runtime_noop_marker_path", lambda _codename: runtime_marker)
     monkeypatch.setattr(runner.Path, "mkdir", lambda *_a, **_k: (_ for _ in ()).throw(OSError()))
 
     assert runner.main() == 0
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == ""
-    assert (tmp_path / "alfred.spec-planner.noop").exists()
+    assert runtime_marker.exists()
 
 
 def test_runner_reports_idle_when_no_scan_repos(monkeypatch, capsys, tmp_path):

@@ -566,6 +566,16 @@ def with_lock(name: str) -> AgentLock:
 PAUSE_MARKER_DIR = STATE_ROOT / "_paused"
 
 
+def runtime_noop_marker_path(codename: str) -> Path:
+    """Return the host-wide marker for a quiet, successful no-op firing.
+
+    This path deliberately depends only on the agent codename. Scheduler labels,
+    log stems, and ``TMPDIR`` can differ between a launched job and an operator's
+    status shell, while ``/tmp`` is already the fleet's shared runtime directory.
+    """
+    return Path("/tmp") / f"alfred.{codename}.noop"
+
+
 def agent_pause_marker_path(codename: str) -> Path:
     """Resolve the operator-managed pause marker file for ``codename``."""
     return PAUSE_MARKER_DIR / codename
