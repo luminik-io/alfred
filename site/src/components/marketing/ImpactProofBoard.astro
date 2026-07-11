@@ -41,6 +41,8 @@ interface ProofData {
     };
   };
   self_proof?: {
+    agent_shipped_total?: number;
+    first_agent_merged_at?: string | null;
     window_days: number;
     agent_shipped: number;
     merged_total: number;
@@ -49,6 +51,8 @@ interface ProofData {
     repo_word?: string;
     headline?: string;
     sentence?: string;
+    window_headline?: string;
+    window_sentence?: string;
   };
   trend: Array<{ week: string; prs_merged: number }>;
   prs: ProofPr[];
@@ -62,34 +66,28 @@ interface Props {
 const { proof } = Astro.props;
 const fmt = (n: number) => n.toLocaleString("en-US");
 
-// Self-proof: the share of merged PRs shipped by Alfred agents. Rendered when
-// the emitter supplied real merged-PR data. A zero-attribution window should be
-// visible with honest copy, not hidden behind a missing percentage.
+// Self-proof: the CUMULATIVE count of merged PRs shipped by Alfred agents, with
+// the rolling window kept as a secondary line. Rendered when the emitter
+// supplied any merged-PR signal. A zero-attribution repo stays visible with
+// honest copy, never a fabricated number.
 const selfProof = proof.self_proof;
+const cumulativeTotal = selfProof?.agent_shipped_total ?? 0;
 const hasSelfProof =
-  !!selfProof &&
-  selfProof.merged_total > 0;
-const hasSelfProofShare =
-  hasSelfProof &&
-  selfProof!.agent_shipped > 0 &&
-  selfProof!.share_pct !== null &&
-  selfProof!.share_pct !== undefined;
-const selfProofValue = hasSelfProofShare
-  ? `${Number.isInteger(selfProof!.share_pct) ? selfProof!.share_pct : (selfProof!.share_pct as number).toFixed(1)}%`
-  : null;
-const selfProofDisplayValue = hasSelfProofShare
-  ? selfProofValue
-  : selfProof
-    ? fmt(selfProof.agent_shipped)
-    : null;
-const selfProofLabel = hasSelfProofShare
-  ? "of merged PRs shipped by Alfred agents"
-  : selfProof?.headline || "No public agent-attributed PRs yet";
-const selfProofDetail = hasSelfProofShare
-  ? `${fmt(selfProof!.agent_shipped)} of ${fmt(selfProof!.merged_total)} merged PRs, last ${selfProof!.window_days} days`
-  : selfProof
-    ? selfProof.sentence || `No public agent-attributed PRs among ${fmt(selfProof.merged_total)} merged PRs in the last ${selfProof.window_days} days.`
-    : "";
+  !!selfProof && (cumulativeTotal > 0 || selfProof.merged_total > 0);
+const hasCumulative = hasSelfProof && cumulativeTotal > 0;
+// Big number leads with the cumulative all-time count; only shown when there is
+// real cumulative traction so an idle repo never advertises a bare "0".
+const selfProofDisplayValue = hasCumulative ? fmt(cumulativeTotal) : null;
+const cumulativeNoun = cumulativeTotal === 1 ? "PR" : "PRs";
+const selfProofLabel = hasCumulative
+  ? `agent-attributed ${cumulativeNoun} merged so far`
+  : selfProof?.sentence || "No agent-attributed PRs merged yet";
+// Secondary line: the rolling window.
+const selfProofDetail =
+  selfProof?.window_sentence ||
+  (selfProof && selfProof.merged_total > 0
+    ? `${fmt(selfProof.agent_shipped)} in the last ${selfProof.window_days} days`
+    : "");
 const maxTrend = Math.max(...proof.trend.map((item) => item.prs_merged), 1);
 const windowLabel = `Last ${proof.window.days} days`;
 const hasAlfredRows =
@@ -155,12 +153,16 @@ const metrics = [
 
   {hasSelfProof ? (
     <div class="proof-selfproof" aria-label="Public Alfred attribution proof">
-      <span class="proof-selfproof__value">{selfProofDisplayValue}</span>
+      {selfProofDisplayValue ? (
+        <span class="proof-selfproof__value">{selfProofDisplayValue}</span>
+      ) : null}
       <div class="proof-selfproof__body">
         <span class="proof-selfproof__label">{selfProofLabel}</span>
-        <span class="proof-selfproof__detail m-mono">
-          {selfProofDetail}
-        </span>
+        {selfProofDetail ? (
+          <span class="proof-selfproof__detail m-mono">
+            {selfProofDetail}
+          </span>
+        ) : null}
       </div>
     </div>
   ) : null}

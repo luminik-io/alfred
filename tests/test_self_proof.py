@@ -181,8 +181,13 @@ def test_share_and_aggregate_across_repos():
     assert agg["share_pct"] == 60.0
     assert agg["repos_counted"] == 2
     assert agg["repos_with_agent_work"] == 2
-    assert "shipped 3 of 5 merged PRs (60%)" in result["headline"]
-    assert "60% of merged PRs" in result["sentence"]
+    # The rolling window survives as the secondary window_* copy.
+    assert "shipped 3 of 5 merged PRs (60%)" in result["window_headline"]
+    assert "60% of merged PRs" in result["window_sentence"]
+    # The headline is now the cumulative all-time count.
+    assert result["cumulative"]["agent_shipped_total"] == 3
+    assert "3 agent-attributed PRs so far" in result["headline"]
+    assert "3 agent-attributed PRs merged so far" in result["sentence"]
 
 
 def test_branch_only_prs_stay_in_denominator_not_numerator():
@@ -217,9 +222,12 @@ def test_zero_agent_prs_avoid_headline_zero_percent():
     assert result["aggregate"]["merged_total"] == 2
     assert result["aggregate"]["agent_shipped"] == 0
     assert result["aggregate"]["share_pct"] == 0
-    assert "No public agent-attributed PRs among 2 merged PRs" in result["headline"]
-    assert "0%" not in result["headline"]
-    assert "0%" not in result["sentence"]
+    assert "No public agent-attributed PRs among 2 merged PRs" in result["window_headline"]
+    assert "0%" not in result["window_headline"]
+    assert "0%" not in result["window_sentence"]
+    # No agent PRs anywhere: cumulative is an honest 0, not a fabricated number.
+    assert result["cumulative"]["agent_shipped_total"] == 0
+    assert result["headline"] == "No agent-attributed PRs merged yet."
 
 
 def test_prs_outside_window_are_excluded():
@@ -248,8 +256,11 @@ def test_empty_window_reports_none_not_zero_percent():
     assert row["share_pct"] is None
     assert row["no_data"] is True
     assert result["aggregate"]["share_pct"] is None
-    assert "No merged PRs" in result["headline"]
-    assert "No merged PRs" in result["sentence"]
+    assert "No merged PRs" in result["window_headline"]
+    assert "No merged PRs" in result["window_sentence"]
+    # Cumulative is likewise honest on a genuinely empty repo.
+    assert result["cumulative"]["agent_shipped_total"] == 0
+    assert result["headline"] == "No agent-attributed PRs merged yet."
 
 
 def test_failed_repo_is_recorded_not_counted():
@@ -388,10 +399,63 @@ def test_fetch_uses_merged_search_qualifier_and_limit():
 
     sp.compute_self_proof(["acme/api"], days=7, now=NOW, gh_json=gh, limit=42)
     assert seen_args, "expected gh queries"
-    for args in seen_args:
-        assert "--search" in args
+    # Window queries are date-scoped via --search; cumulative queries use --label.
+    window_calls = [args for args in seen_args if "--search" in args]
+    label_calls = [args for args in seen_args if "--label" in args]
+    assert window_calls, "expected date-windowed queries"
+    assert label_calls, "expected per-label cumulative queries"
+    for args in window_calls:
         assert "merged:>=" in args[args.index("--search") + 1]
         assert args[args.index("--limit") + 1] == "42"
+    for args in label_calls:
+        assert args[args.index("--limit") + 1] == "42"
+
+
+def test_cumulative_counts_all_time_not_just_window():
+    # A repo with agent PRs both inside and outside the 7-day window. The
+    # cumulative count includes all of them; the window count only the recent.
+    gh = _gh_for(
+        {
+            "acme/api": [
+                _pr(1, merged_day=28, labels=["agent:authored"]),
+                _pr(2, merged_day=10, labels=["agent:authored"]),
+                _pr(3, merged_day=5, labels=["agent:authored"]),
+                _pr(4, merged_day=28, branch="feature/human"),
+            ]
+        }
+    )
+    result = sp.compute_self_proof(["acme/api"], days=7, now=NOW, gh_json=gh)
+    # Window (last 7 days) sees only PR #1.
+    assert result["aggregate"]["agent_shipped"] == 1
+    # Cumulative sees all three labelled PRs, the human PR excluded.
+    assert result["cumulative"]["agent_shipped_total"] == 3
+    assert result["cumulative"]["first_agent_merged_at"] == _iso(5)
+    assert "3 agent-attributed PRs so far" in result["headline"]
+
+
+def test_cumulative_excludes_mislabelled_bot_pr():
+    # A dependabot PR carrying a synced agent:authored label must not inflate
+    # the cumulative count, mirroring the window numerator's honesty rule.
+    gh = _gh_for(
+        {
+            "acme/api": [
+                _pr(1, merged_day=28, labels=["agent:authored"]),
+                _pr(2, merged_day=20, labels=["agent:authored"], author="dependabot[bot]"),
+            ]
+        }
+    )
+    result = sp.compute_self_proof(["acme/api"], days=7, now=NOW, gh_json=gh)
+    assert result["cumulative"]["agent_shipped_total"] == 1
+
+
+def test_cumulative_capped_repo_excluded():
+    # A label query hitting the page cap makes the count inexact, so the repo is
+    # excluded from the cumulative aggregate rather than quoting a floor.
+    rows = [_pr(i, merged_day=28, labels=["agent:authored"]) for i in range(1, 6)]
+    gh = _gh_for({"acme/api": rows})
+    result = sp.compute_self_proof(["acme/api"], days=7, now=NOW, gh_json=gh, limit=5)
+    assert result["cumulative"]["capped"] == ["acme/api"]
+    assert result["cumulative"]["agent_shipped_total"] == 0
 
 
 # --------------------------------------------------------------------------

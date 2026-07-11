@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-06T18:47:14.762Z",
+  "generated_at": "2026-07-11T15:39:42.539Z",
   "source": {
     "repo": "luminik-io/alfred",
     "url": "https://github.com/luminik-io/alfred",
@@ -7,37 +7,146 @@
   },
   "window": {
     "days": 30,
-    "from": "2026-06-06T18:47:14.762Z",
-    "to": "2026-07-06T18:47:14.762Z"
+    "from": "2026-06-11T15:39:42.539Z",
+    "to": "2026-07-11T15:39:42.539Z"
   },
   "summary": {
-    "prs_merged": 0,
-    "issues_opened": 0,
-    "issues_closed": 0,
-    "issues_triaged": 0,
-    "lines_added": 0,
-    "lines_removed": 0,
-    "files_changed": 0,
+    "prs_merged": 3,
+    "issues_opened": 7,
+    "issues_closed": 2,
+    "issues_triaged": 7,
+    "lines_added": 414,
+    "lines_removed": 27,
+    "files_changed": 6,
     "repo_activity": {
-      "prs_merged": 212,
+      "prs_merged": 275,
       "issues_opened": 9,
-      "issues_closed": 16,
-      "lines_added": 211948,
-      "lines_removed": 48270,
-      "files_changed": 3019
+      "issues_closed": 11,
+      "lines_added": 264433,
+      "lines_removed": 56138,
+      "files_changed": 3739
     }
   },
   "self_proof": {
+    "agent_shipped_total": 3,
+    "first_agent_merged_at": "2026-07-10T06:49:20Z",
+    "headline": "Alfred agents have merged 3 agent-attributed PRs so far.",
+    "sentence": "3 agent-attributed PRs merged so far.",
     "window_days": 30,
-    "agent_shipped": 0,
-    "merged_total": 212,
-    "share_pct": 0,
+    "agent_shipped": 3,
+    "merged_total": 275,
+    "share_pct": 1.1,
     "repos_counted": 1,
     "repo_word": "repo",
-    "headline": "No public agent-attributed PRs among 212 merged PRs in the last 30 days yet.",
-    "sentence": "No public agent-attributed PRs among 212 merged PRs in the last 30 days yet."
+    "window_headline": "3 of 275 merged PRs (1.1%) in the last 30 days.",
+    "window_sentence": "1.1% in the last 30 days."
   },
-  "trend": [],
-  "prs": [],
-  "issues": []
+  "trend": [
+    {
+      "week": "2026-W28",
+      "prs_merged": 3
+    }
+  ],
+  "prs": [
+    {
+      "number": 471,
+      "title": "fix(connector-sync): parse fallback connector lists",
+      "url": "https://github.com/luminik-io/alfred/pull/471",
+      "merged_at": "2026-07-10T13:36:00Z",
+      "lines_added": 184,
+      "lines_removed": 20,
+      "files_changed": 2,
+      "agent_authored": true,
+      "agent_evidence": [
+        "label:agent:authored",
+        "branch:senior-dev/470-1783666243"
+      ]
+    },
+    {
+      "number": 472,
+      "title": "test(e2e-runner): add coverage for Huntress main - pin smoke runner outcomes",
+      "url": "https://github.com/luminik-io/alfred/pull/472",
+      "merged_at": "2026-07-10T10:05:07Z",
+      "lines_added": 193,
+      "lines_removed": 0,
+      "files_changed": 1,
+      "agent_authored": true,
+      "agent_evidence": [
+        "label:agent:authored",
+        "branch:test-engineer/coverage-1783674343"
+      ]
+    },
+    {
+      "number": 469,
+      "title": "test(env): isolate runner env in pytest",
+      "url": "https://github.com/luminik-io/alfred/pull/469",
+      "merged_at": "2026-07-10T06:49:20Z",
+      "lines_added": 37,
+      "lines_removed": 7,
+      "files_changed": 3,
+      "agent_authored": true,
+      "agent_evidence": [
+        "label:agent:authored",
+        "branch:senior-dev/468-1783655267"
+      ]
+    }
+  ],
+  "issues": [
+    {
+      "number": 499,
+      "title": "Collapse duplicate truthy env-flag helpers into one shared helper",
+      "url": "https://github.com/luminik-io/alfred/issues/499",
+      "state": "OPEN",
+      "created_at": "2026-07-11T12:06:30Z",
+      "closed_at": null
+    },
+    {
+      "number": 498,
+      "title": "Add timeouts to subprocess.run calls that lack them",
+      "url": "https://github.com/luminik-io/alfred/issues/498",
+      "state": "OPEN",
+      "created_at": "2026-07-11T12:06:28Z",
+      "closed_at": null
+    },
+    {
+      "number": 489,
+      "title": "feat(alfred): format fleet_open_bundles for planning agents per docs/FLEET_BRAIN",
+      "url": "https://github.com/luminik-io/alfred/issues/489",
+      "state": "OPEN",
+      "created_at": "2026-07-11T04:52:30Z",
+      "closed_at": null
+    },
+    {
+      "number": 488,
+      "title": "feat(alfred): add fleet-brain doctor integration per docs/FLEET_BRAIN",
+      "url": "https://github.com/luminik-io/alfred/issues/488",
+      "state": "OPEN",
+      "created_at": "2026-07-11T04:51:48Z",
+      "closed_at": null
+    },
+    {
+      "number": 486,
+      "title": "fix(alfred): require backlog and active spec links for spec-planner bundles",
+      "url": "https://github.com/luminik-io/alfred/issues/486",
+      "state": "OPEN",
+      "created_at": "2026-07-11T02:40:35Z",
+      "closed_at": null
+    },
+    {
+      "number": 470,
+      "title": "bug: `bin/connector-sync.py` stdlib YAML fallback raises `ValueError` for the documented `connectors:` list-of-mappings config when PyYAML is unavailable.",
+      "url": "https://github.com/luminik-io/alfred/issues/470",
+      "state": "CLOSED",
+      "created_at": "2026-07-10T05:05:41Z",
+      "closed_at": "2026-07-10T13:36:01Z"
+    },
+    {
+      "number": 468,
+      "title": "bug: baseline pytest fails before any changes, for example `tests/test_spec_planner.py::test_runner_exits_quietly_when_disabled` emits `TEST-ENGINEER` output instead of `SPEC-PLANNER`.",
+      "url": "https://github.com/luminik-io/alfred/issues/468",
+      "state": "CLOSED",
+      "created_at": "2026-07-10T00:49:57Z",
+      "closed_at": "2026-07-10T06:49:21Z"
+    }
+  ]
 }

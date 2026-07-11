@@ -116,46 +116,98 @@ test("branch is display-only evidence, never a qualifier", () => {
   assert.equal(isAgentShipped(branchOnly, opts), false);
 });
 
-test("buildSelfProof computes the share and honest headline", () => {
-  const proof = buildSelfProof(9, 12, 7);
+test("buildSelfProof leads with the cumulative all-time count", () => {
+  const proof = buildSelfProof({
+    agentTotal: 128,
+    agentWindow: 9,
+    mergedWindow: 12,
+    windowDays: 7,
+    firstAgentMergedAt: "2026-01-02T00:00:00Z",
+  });
+  // Cumulative is the headline.
+  assert.equal(proof.agent_shipped_total, 128);
+  assert.equal(proof.first_agent_merged_at, "2026-01-02T00:00:00Z");
+  assert.match(proof.headline, /merged 128 agent-attributed PRs so far/);
+  assert.match(proof.sentence, /128 agent-attributed PRs merged so far/);
+  // Rolling window survives as a secondary stat.
   assert.equal(proof.agent_shipped, 9);
   assert.equal(proof.merged_total, 12);
   assert.equal(proof.share_pct, 75);
   assert.equal(proof.repos_counted, 1);
-  assert.match(proof.headline, /9 of 12 merged PRs \(75%\)/);
-  assert.match(proof.sentence, /75% of merged PRs/);
+  assert.match(proof.window_headline, /9 of 12 merged PRs \(75%\)/);
+  assert.match(proof.window_sentence, /75% in the last 7 days/);
 });
 
-test("buildSelfProof keeps fractional shares precise", () => {
-  const proof = buildSelfProof(2, 3, 7);
+test("cumulative headline is singular for exactly one PR", () => {
+  const proof = buildSelfProof({
+    agentTotal: 1,
+    agentWindow: 1,
+    mergedWindow: 4,
+    windowDays: 30,
+  });
+  assert.match(proof.headline, /merged 1 agent-attributed PR so far/);
+  assert.doesNotMatch(proof.headline, /PRs so far/);
+});
+
+test("window keeps fractional shares precise", () => {
+  const proof = buildSelfProof({
+    agentTotal: 5,
+    agentWindow: 2,
+    mergedWindow: 3,
+    windowDays: 7,
+  });
   assert.equal(proof.share_pct, 66.7);
 });
 
-test("empty window yields null share, not a real 0%", () => {
-  const proof = buildSelfProof(0, 0, 30);
+test("empty everything yields a real 0 cumulative and null window share", () => {
+  const proof = buildSelfProof({
+    agentTotal: 0,
+    agentWindow: 0,
+    mergedWindow: 0,
+    windowDays: 30,
+  });
+  assert.equal(proof.agent_shipped_total, 0);
   assert.equal(proof.share_pct, null);
   assert.equal(proof.merged_total, 0);
   assert.equal(proof.repos_counted, 0);
-  assert.match(proof.headline, /No merged PRs/);
-  assert.match(proof.sentence, /No merged PRs/);
+  assert.match(proof.headline, /No agent-attributed PRs merged yet/);
+  assert.match(proof.window_headline, /No merged PRs/);
 });
 
-test("nonempty window with no attributed agent PRs avoids headline 0% copy", () => {
-  const proof = buildSelfProof(0, 12, 30);
+test("cumulative traction shows even when the window is empty (the whole point)", () => {
+  // Fleet paused this month: window is empty, but the all-time count stands.
+  const proof = buildSelfProof({
+    agentTotal: 42,
+    agentWindow: 0,
+    mergedWindow: 0,
+    windowDays: 30,
+  });
+  assert.match(proof.headline, /merged 42 agent-attributed PRs so far/);
+  assert.doesNotMatch(proof.headline, /\b0\b/);
+  assert.equal(proof.share_pct, null);
+});
+
+test("nonempty window with no attributed agent PRs avoids window 0% copy", () => {
+  const proof = buildSelfProof({
+    agentTotal: 7,
+    agentWindow: 0,
+    mergedWindow: 12,
+    windowDays: 30,
+  });
   assert.equal(proof.share_pct, 0);
   assert.equal(proof.merged_total, 12);
-  assert.match(proof.headline, /No public agent-attributed PRs among 12 merged PRs/);
-  assert.doesNotMatch(proof.headline, /0%/);
-  assert.match(readmeSelfProofText(proof), /No public agent-attributed PRs/);
-  assert.doesNotMatch(readmeSelfProofText(proof), /0%/);
+  assert.match(proof.window_headline, /No agent-attributed PRs among 12 merged PRs/);
+  assert.doesNotMatch(proof.window_headline, /0%/);
 });
 
-test("noDataSelfProof is a null-share seed, publishable without a refresh", () => {
+test("noDataSelfProof is a zero-cumulative, null-share seed", () => {
   const seed = noDataSelfProof(30);
+  assert.equal(seed.agent_shipped_total, 0);
   assert.equal(seed.share_pct, null);
   assert.equal(seed.agent_shipped, 0);
   assert.equal(seed.merged_total, 0);
   assert.equal(seed.repos_counted, 0);
+  assert.match(seed.headline, /No agent-attributed PRs merged yet/);
 });
 
 test("the JS numerator matches the Python rule on a mixed population", () => {
@@ -168,7 +220,12 @@ test("the JS numerator matches the Python rule on a mixed population", () => {
   ];
   const agent = population.filter((p) => isAgentShipped(p, opts)).length;
   assert.equal(agent, 1);
-  const proof = buildSelfProof(agent, population.length, 7);
+  const proof = buildSelfProof({
+    agentTotal: agent,
+    agentWindow: agent,
+    mergedWindow: population.length,
+    windowDays: 7,
+  });
   assert.equal(proof.share_pct, 33.3);
 });
 
@@ -184,14 +241,19 @@ const README_FIXTURE = [
   "## Next section",
 ].join("\n");
 
-test("updateReadmeSelfProof rewrites the marker text from real data", () => {
-  const proof = buildSelfProof(9, 12, 30);
+test("updateReadmeSelfProof rewrites the marker text from cumulative data", () => {
+  const proof = buildSelfProof({
+    agentTotal: 128,
+    agentWindow: 9,
+    mergedWindow: 12,
+    windowDays: 30,
+  });
   const { content, updated, found } = updateReadmeSelfProof(README_FIXTURE, proof);
   assert.equal(found, true);
   assert.equal(updated, true);
   assert.match(
     content,
-    /75% of Alfred's own merged PRs in the last 30 days were shipped by Alfred agents/,
+    /Alfred agents have merged 128 agent-attributed PRs in this repo so far, 9 in the last 30 days/,
   );
   // Markers are preserved so the next refresh finds them again.
   assert.ok(content.includes(SELF_PROOF_MARKER_OPEN));
@@ -201,34 +263,54 @@ test("updateReadmeSelfProof rewrites the marker text from real data", () => {
   assert.ok(content.includes("## Next section"));
 });
 
+test("readme text omits the window clause when the window has no agent work", () => {
+  const proof = buildSelfProof({
+    agentTotal: 42,
+    agentWindow: 0,
+    mergedWindow: 0,
+    windowDays: 30,
+  });
+  const text = readmeSelfProofText(proof);
+  assert.match(text, /Alfred agents have merged 42 agent-attributed PRs in this repo so far/);
+  assert.doesNotMatch(text, /in the last 30 days/);
+});
+
 test("updateReadmeSelfProof is idempotent", () => {
-  const proof = buildSelfProof(1, 4, 30);
+  const proof = buildSelfProof({
+    agentTotal: 5,
+    agentWindow: 1,
+    mergedWindow: 4,
+    windowDays: 30,
+  });
   const once = updateReadmeSelfProof(README_FIXTURE, proof).content;
   const twice = updateReadmeSelfProof(once, proof);
   assert.equal(twice.updated, false);
   assert.equal(twice.content, once);
 });
 
-test("empty-window marker text is honest, not a fabricated 0%", () => {
+test("no-cumulative marker text is honest, not a fabricated number", () => {
   const proof = noDataSelfProof(30);
   const text = readmeSelfProofText(proof);
-  assert.match(text, /No merged PRs in Alfred's own repo in the last 30 days yet/);
-  assert.doesNotMatch(text, /0%/);
+  assert.match(text, /No agent-attributed PRs in Alfred's own repo yet/);
+  assert.doesNotMatch(text, /\b0\b/);
 });
 
 test("updateReadmeSelfProof reports found=false when markers are absent", () => {
-  const { content, updated, found } = updateReadmeSelfProof("# no markers here", buildSelfProof(1, 2, 30));
+  const { content, updated, found } = updateReadmeSelfProof(
+    "# no markers here",
+    buildSelfProof({ agentTotal: 1, agentWindow: 1, mergedWindow: 2, windowDays: 30 }),
+  );
   assert.equal(found, false);
   assert.equal(updated, false);
   assert.equal(content, "# no markers here");
 });
 
 test("the committed README seed text matches the no-data generator output", () => {
-  // Guards the wiring: the marker text the emitter would write for an empty
-  // window must equal what the committed README seed shows, so a real refresh
-  // with no data is a clean no-op rather than a surprise diff.
+  // Guards the wiring: the marker text the emitter would write with no
+  // cumulative traction must equal what the committed README seed shows, so a
+  // real refresh with no data is a clean no-op rather than a surprise diff.
   assert.equal(
     readmeSelfProofText(noDataSelfProof(30)),
-    "No merged PRs in Alfred's own repo in the last 30 days yet",
+    "No agent-attributed PRs in Alfred's own repo yet",
   );
 });

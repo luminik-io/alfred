@@ -286,13 +286,14 @@ alfred telemetry off      # opt out (or set ALFRED_TELEMETRY_ENABLED=0)
 alfred telemetry status   # see local state
 ```
 
-The Impact page also carries a **self-proof** stat: the share of merged PRs, in
-a configured repo set over a rolling window, shipped by Alfred agents. It is
-computed from GitHub attribution, never fabricated. An empty window reports "no
-merged PRs yet" rather than a 0% share. Alfred's own public repo proof line is
-generated the same way:
+The Impact page also carries a **self-proof** stat: the cumulative, all-time
+count of merged PRs shipped by Alfred agents, with the rolling 30-day window
+kept as a secondary line. It is computed from GitHub attribution, never
+fabricated. The cumulative total is the truthful measure of total impact, so it
+does not read as 0 when the fleet is paused or the window happens to be empty.
+Alfred's own public repo proof line is generated the same way:
 
-<!-- SELF_PROOF -->No public agent-attributed PRs in Alfred's own repo in the last 30 days yet<!-- /SELF_PROOF -->.
+<!-- SELF_PROOF -->Alfred agents have merged 3 agent-attributed PRs in this repo so far, 3 in the last 30 days<!-- /SELF_PROOF -->.
 
 The line between the markers is refreshed from live GitHub data by
 `npm run proof:update` in [`site/`](site/), never hand-typed. If the repo has

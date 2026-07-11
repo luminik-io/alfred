@@ -600,12 +600,20 @@ def compute_self_proof_stat(
 def render_self_proof(data: dict[str, Any]) -> str:
     """Human-readable self-proof report for the terminal / Slack."""
     aggregate = data.get("aggregate") or {}
+    days = data.get("window_days", DEFAULT_WINDOW_DAYS)
     lines = [
-        f"*Alfred self-proof - last {data.get('window_days', DEFAULT_WINDOW_DAYS)} days*",
+        "*Alfred self-proof*",
         data.get("headline", ""),
-        "",
-        "*By repo*",
     ]
+    window_line = data.get("window_headline")
+    if window_line:
+        lines.append(f"Rolling window: {window_line}")
+    lines.extend(
+        [
+            "",
+            f"*By repo (last {days} days)*",
+        ]
+    )
     per_repo = data.get("per_repo") or []
     if not per_repo:
         lines.append("- (no repos configured)")
