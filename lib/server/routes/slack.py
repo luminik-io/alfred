@@ -6,7 +6,7 @@ import json
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from slack_trust import (
+from slack.trust import (
     SlackTrustStore,
     env_trusted_user_ids,
     normalize_slack_user_id,

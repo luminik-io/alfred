@@ -28,22 +28,22 @@ LIB = REPO / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
-from slack_converse import (  # noqa: E402
+from slack.converse import (  # noqa: E402
     SlackConverseConfig,
     SlackConverseOutcome,
 )
-from slack_intent import (  # noqa: E402
+from slack.intent import (  # noqa: E402
     ConversationContext,
     RepoCatalog,
     ambient_enabled,
     ambient_engages,
     looks_like_followup_reference,
 )
-from slack_listener import (  # noqa: E402
+from slack.listener import (  # noqa: E402
     SlackPlanningListener,
     _status_query_plan,
 )
-from slack_thread_registry import SlackThreadRegistry  # noqa: E402
+from slack.threads import SlackThreadRegistry  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Shared test doubles

@@ -44,8 +44,8 @@ from planning_assistant import (
 # direct import in the router) keeps the existing test monkeypatch of
 # ``server.views.SlackControlHandler`` effective. No code in this module uses it
 # directly, hence the noqa.
-from slack_control import SlackControlHandler  # noqa: F401
-from slack_trust import (
+from slack.control import SlackControlHandler  # noqa: F401
+from slack.trust import (
     normalize_slack_user_id,
     operator_user_id_from_env,
 )
@@ -2004,7 +2004,7 @@ def _file_planning_draft_issue(state_root: Path, plan_id: str) -> dict[str, Any]
     repos must be allowlisted, and an existing ``bridge.issue_url`` or bundle
     URL map makes the operation idempotent.
     """
-    from slack_issue_bridge import BridgeConfig, SlackIssueBridge
+    from slack.bridge import BridgeConfig, SlackIssueBridge
 
     import server.setup as setup_mod
 

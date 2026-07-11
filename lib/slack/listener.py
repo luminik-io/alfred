@@ -25,7 +25,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 from issue_summary import default_engine_invoke, summarize_issue
 from planning_assistant import (
@@ -39,28 +39,24 @@ from planning_assistant import (
     render_post_pr_feedback_ack,
     render_post_pr_followup_block,
 )
-from slack_approval import (
+from spec_helper import IssueDraft
+
+from slack.approval import (
     ThreadFeedback,
     default_slack_client,
     operator_user_id_from_env,
     resolve_bot_token,
     trusted_feedback_user_ids_from_env,
 )
-from slack_control import SlackControlHandler, is_control_message, parse_control_command
-from slack_converse import (
+from slack.bridge import SlackIssueBridge, build_issue_body
+from slack.control import SlackControlHandler, is_control_message, parse_control_command
+from slack.converse import (
     SlackConverseConfig,
     gather_thread_context,
     run_slack_converse,
 )
-from slack_converse_offers import CONVERSE_OFFER_SIGNATURE_KEY, SlackConverseOfferStore
-from slack_format import (
-    escape_mrkdwn,
-    github_issue_link,
-    github_url_link,
-    themed_agent_name,
-    themed_agent_role,
-)
-from slack_intent import (
+from slack.dedup import SeenEventStore
+from slack.intent import (
     ACTION_ASSIGN,
     ACTION_DRY_RUN_AGENT,
     ACTION_HOLD,
@@ -84,18 +80,26 @@ from slack_intent import (
     resolve_assignment_agent,
     resolve_issue,
 )
-from slack_issue_bridge import SlackIssueBridge, build_issue_body
-from slack_memory_candidates import (
+from slack.memory import (
+    CONVERSE_OFFER_SIGNATURE_KEY,
+    SlackConverseOfferStore,
     SlackMemoryCandidateProposer,
     _append_memory_candidate_ids,
 )
-from slack_memory_candidates import (
+from slack.memory import (
     _short_plain as _short_plain,
 )
-from slack_thread_registry import SlackThreadRecord, SlackThreadRegistry
-from slack_thread_status import SlackThreadStatusTracker
-from slack_trust import SlackTrustStore, normalize_slack_user_id
-from spec_helper import IssueDraft
+from slack.posting import (
+    SlackPoster,
+    SlackThreadPoster,
+    escape_mrkdwn,
+    github_issue_link,
+    github_url_link,
+    themed_agent_name,
+    themed_agent_role,
+)
+from slack.threads import SlackThreadRecord, SlackThreadRegistry, SlackThreadStatusTracker
+from slack.trust import SlackTrustStore, normalize_slack_user_id
 
 ENV_APP_TOKEN = "SLACK_APP_TOKEN"
 ENV_ALT_APP_TOKEN = "ALFRED_SLACK_APP_TOKEN"
@@ -172,10 +176,6 @@ def conversational_reply(text: str) -> str | None:
     if _THANKS_RE.match(cleaned):
         return "Anytime. Tell me what is next whenever you are ready."
     return None
-
-
-class SlackPoster(Protocol):
-    def chat_postMessage(self, **kwargs: Any) -> Any: ...
 
 
 PlanAnswerer = Callable[[SlackThreadRecord, str, str], str | None]
@@ -313,37 +313,6 @@ class ListenerResult:
     # record with it: without this the first offer's signature would be dropped
     # and the next reply would re-show the identical offer. Empty otherwise.
     converse_offer_signature: str = ""
-
-
-class SeenEventStore:
-    def __init__(self, root: Path) -> None:
-        self.root = root
-
-    def mark_seen(self, event_id: str) -> bool:
-        if not event_id:
-            return False
-        self.root.mkdir(parents=True, exist_ok=True)
-        path = self.root / f"{_safe_event_id(event_id)}.seen"
-        try:
-            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        except FileExistsError:
-            return True
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(_utc_now() + "\n")
-        return False
-
-    def has_seen(self, event_id: str) -> bool:
-        """True iff ``event_id`` was already marked, WITHOUT marking it now.
-
-        Lets a caller test for a prior delivery and defer the mark until it knows
-        the current delivery will actually be handled, so an ignored delivery
-        (e.g. the plain ``message`` copy of an @mention that the ambient path
-        drops in favour of the ``app_mention`` copy) never consumes the key and
-        strand the delivery that should handle it.
-        """
-        if not event_id:
-            return False
-        return (self.root / f"{_safe_event_id(event_id)}.seen").exists()
 
 
 class SlackPlanningListener:
@@ -517,7 +486,7 @@ class SlackPlanningListener:
         """An approval reaction on a registered draft thread can create an issue.
 
         Reactions on non-draft threads (plan/report/pr) carry no approval
-        authority here: the reaction approval gate in ``slack_approval`` owns
+        authority here: the reaction approval gate in ``slack.approval`` owns
         plan execution. This path bridges a *draft* into a queued issue, and
         resolves the workspace owner's confirm/cancel on a *conversational_action*
         card surfaced by the intent router.
@@ -1865,24 +1834,11 @@ class SlackPlanningListener:
         Unlike :meth:`_post_thread_ack` this surfaces the response so the
         caller can register the posted message's ts (needed to resolve a later
         confirm reaction). Best-effort: returns ``None`` when there is no
-        poster or the API call fails.
+        poster or the API call fails. Delegates to the ``slack.posting`` seam.
         """
-        if self.poster is None or not text.strip():
-            return None
-        kwargs: dict[str, Any] = {"channel": channel, "text": text}
-        if blocks:
-            kwargs["blocks"] = blocks
-        if thread_ts:
-            kwargs["thread_ts"] = thread_ts
-        try:
-            resp = self.poster.chat_postMessage(**kwargs)
-        except Exception:
-            return None
-        # The Slack SDK returns a ``SlackResponse`` (dict-like, supports
-        # ``.get``/``["ts"]``) in production; tests may inject a plain dict.
-        # Accept either via the mapping interface the caller uses; reject only a
-        # missing or non-mapping response so the card ts still registers.
-        return resp if hasattr(resp, "get") else None
+        return SlackThreadPoster(self.poster).post_message(
+            channel, text, blocks=blocks, thread_ts=thread_ts
+        )
 
     def _handle_draft_revision(
         self,
@@ -2181,7 +2137,7 @@ class SlackPlanningListener:
         the listener's optional idle-loop hook. ``fetcher`` defaults to the
         read-only ``gh``-backed fetcher.
         """
-        from slack_thread_status import default_issue_state_fetcher
+        from slack.threads import default_issue_state_fetcher
 
         return self.status_tracker.sweep(fetcher=fetcher or default_issue_state_fetcher)
 
@@ -2321,12 +2277,7 @@ class SlackPlanningListener:
         return path
 
     def _post_thread_ack(self, channel: str, thread_ts: str, text: str) -> None:
-        if self.poster is None or not text.strip():
-            return
-        try:
-            self.poster.chat_postMessage(channel=channel, thread_ts=thread_ts, text=text)
-        except Exception:
-            return
+        SlackThreadPoster(self.poster).post_thread_ack(channel, thread_ts, text)
 
     def _trusted_user_ids(self) -> set[str]:
         if self._static_trusted_user_ids is not None:
@@ -2426,7 +2377,7 @@ def draft_from_slack_text(text: str) -> IssueDraft:
 
 
 # Reaction vocabulary for the conversational-action confirmation gate. These
-# mirror ``slack_approval.SlackApproval`` defaults so the workspace owner uses
+# mirror ``slack.approval.SlackApproval`` defaults so the workspace owner uses
 # the same gestures everywhere: a check / thumbs-up confirms, an x / thumbs-down
 # cancels.
 _CONFIRM_REACTIONS: frozenset[str] = frozenset({"white_check_mark", "thumbsup", "+1"})

@@ -28,7 +28,7 @@ def _isolated_alfred_home(tmp_path, monkeypatch):
             "architect_lifecycle",
             "batman",
             "architect_runner",
-            "slack_format",
+            "slack.posting",
         ):
             del sys.modules[mod]
     sys.path.insert(0, str(REPO / "lib"))
@@ -248,7 +248,7 @@ def test_lifecycle_prints_awaiting_approval_sentinel(monkeypatch, capsys):
     runner = _load_runner()
     monkeypatch.setitem(
         sys.modules,
-        "slack_approval",
+        "slack.approval",
         SimpleNamespace(
             SlackApproval=lambda *_args, **_kwargs: object(),
             default_slack_client=lambda: object(),

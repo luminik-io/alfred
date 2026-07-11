@@ -14,7 +14,7 @@ from typing import Any, Protocol, TextIO, cast
 
 import labels as label_constants
 from architect_lifecycle import parse_parent_issue
-from slack_approval import default_slack_client
+from slack.approval import default_slack_client
 
 from .paths import CLAUDE_BIN, decode_env_value
 

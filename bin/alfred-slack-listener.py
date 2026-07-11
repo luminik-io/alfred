@@ -13,7 +13,7 @@ for candidate in (_HERE.parent / "lib",):
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
-from slack_listener import SlackPlanningListener, run_socket_mode  # noqa: E402
+from slack.listener import SlackPlanningListener, run_socket_mode  # noqa: E402
 
 
 class _NullPoster:

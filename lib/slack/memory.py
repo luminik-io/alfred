@@ -21,10 +21,13 @@ import os
 import re
 import sys
 from collections.abc import Callable, Iterable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from spec_helper import IssueDraft
+
+from slack.threads import SlackThreadRegistry
 
 
 class SlackMemoryCandidateProposer:
@@ -239,3 +242,54 @@ def _short_plain(value: str, limit: int) -> str:
     if limit <= 3:
         return cleaned[: max(0, limit)]
     return cleaned[: limit - 3].rstrip() + "..."
+
+
+CONVERSE_OFFER_SIGNATURE_KEY = "converse_offer_signature"
+
+
+class SlackConverseOfferStore:
+    """Read/write the converse offer fingerprint on a thread registry record."""
+
+    def __init__(self, registry: SlackThreadRegistry) -> None:
+        self._registry = registry
+
+    def read(self, channel: str, thread_ts: str) -> str:
+        """Read the file-affordance fingerprint this thread last showed.
+
+        Best-effort: an unregistered thread, a missing key, or any read error
+        returns an empty string, which makes the runner treat the affordance as
+        new and show the offer once (the safe default). It never raises.
+        """
+        try:
+            record = self._registry.lookup(channel, thread_ts)
+        except Exception:
+            return ""
+        if record is None:
+            return ""
+        value = record.metadata.get(CONVERSE_OFFER_SIGNATURE_KEY)
+        return value if isinstance(value, str) else ""
+
+    def store(self, channel: str, thread_ts: str, signature: str) -> None:
+        """Persist the affordance fingerprint onto an EXISTING thread record.
+
+        Merged into the record's metadata so no other thread state is lost. When
+        the thread has no record yet (a brand-new top-level mention), this is a
+        no-op: the record is created later by the listener, which seeds the
+        signature from the carried result. Best-effort: any read or write failure
+        is swallowed; the only cost is the next turn may re-show the offer once.
+        """
+        try:
+            record = self._registry.lookup(channel, thread_ts)
+        except Exception:
+            return
+        if record is None:
+            return
+        current = record.metadata.get(CONVERSE_OFFER_SIGNATURE_KEY)
+        if isinstance(current, str) and current == signature:
+            return
+        metadata = dict(record.metadata)
+        metadata[CONVERSE_OFFER_SIGNATURE_KEY] = signature
+        try:
+            self._registry.register(replace(record, metadata=metadata))
+        except Exception:
+            return

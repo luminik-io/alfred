@@ -64,7 +64,7 @@ from agent_runner import (  # noqa: E402
 )
 from agent_runner.config import agent_engine  # noqa: E402
 from agent_runner.paths import config_value  # noqa: E402
-from slack_format import firing_thread_root  # noqa: E402
+from slack.posting import firing_thread_root  # noqa: E402
 
 AGENT = "fleet-doctor"
 

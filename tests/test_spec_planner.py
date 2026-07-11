@@ -36,7 +36,7 @@ def _isolated_alfred_home(tmp_path, monkeypatch):
             "spec_planner",
             "spec_planner_runner",
             "labels",
-            "slack_format",
+            "slack.posting",
         ):
             del sys.modules[mod]
     sys.path.insert(0, str(REPO / "lib"))

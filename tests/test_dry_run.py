@@ -249,7 +249,7 @@ def test_slack_post_prefers_app_when_home_channel_declared(monkeypatch):
     """With an explicit ``SLACK_HOME_CHANNEL``, ``slack_post`` sends via the
     app and never touches the webhook."""
     import agent_runner as ar
-    import slack_format
+    import slack.posting as slack_format
 
     monkeypatch.delenv("ALFRED_DRY_RUN", raising=False)
     monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.example.test/x")
@@ -275,7 +275,7 @@ def test_slack_post_keeps_webhook_channel_when_not_opted_in(monkeypatch):
     """A webhook is configured but no home channel / opt-in: the app path
     must NOT silently take over the webhook's bound channel."""
     import agent_runner as ar
-    import slack_format
+    import slack.posting as slack_format
 
     monkeypatch.delenv("ALFRED_DRY_RUN", raising=False)
     monkeypatch.delenv("SLACK_HOME_CHANNEL", raising=False)
@@ -296,7 +296,7 @@ def test_slack_post_native_preferred_skips_webhook_resolution(monkeypatch):
     """When native sends are preferred and the app posts, the webhook resolver
     (which can block on an 8s AWS lookup) must not be called at all."""
     import agent_runner as ar
-    import slack_format
+    import slack.posting as slack_format
     from agent_runner import notify as _notify
 
     monkeypatch.delenv("ALFRED_DRY_RUN", raising=False)
@@ -314,7 +314,7 @@ def test_slack_post_opt_in_flag_prefers_app_over_webhook(monkeypatch):
     """``ALFRED_SLACK_NATIVE_SENDS=1`` opts an install into app sends even
     when a webhook is present."""
     import agent_runner as ar
-    import slack_format
+    import slack.posting as slack_format
 
     monkeypatch.delenv("ALFRED_DRY_RUN", raising=False)
     monkeypatch.delenv("SLACK_HOME_CHANNEL", raising=False)
@@ -331,7 +331,7 @@ def test_slack_post_falls_back_to_webhook_when_app_declines(monkeypatch):
     """App preferred (home channel set) but post_flat returns False -> the
     legacy webhook still fires."""
     import agent_runner as ar
-    import slack_format
+    import slack.posting as slack_format
 
     monkeypatch.delenv("ALFRED_DRY_RUN", raising=False)
     monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.example.test/x")

@@ -10,15 +10,15 @@ LIB = REPO / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
-from slack_issue_bridge import (  # noqa: E402
+from slack.bridge import (  # noqa: E402
     BridgeConfig,
     SlackIssueBridge,
     build_issue_body,
     contains_approval_token,
     default_issue_creator,
 )
-from slack_listener import SlackPlanningListener  # noqa: E402
-from slack_thread_registry import SlackThreadRegistry  # noqa: E402
+from slack.listener import SlackPlanningListener  # noqa: E402
+from slack.threads import SlackThreadRegistry  # noqa: E402
 
 ALLOWED_REPO = "acme-org/api"
 OTHER_REPO = "acme-org/web"

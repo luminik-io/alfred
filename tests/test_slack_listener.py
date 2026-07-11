@@ -11,7 +11,7 @@ LIB = REPO / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
-from slack_listener import (  # noqa: E402
+from slack.listener import (  # noqa: E402
     SlackPlanningListener,
     _assignment_agent_display,
     _clean_slack_text,
@@ -22,7 +22,7 @@ from slack_listener import (  # noqa: E402
     draft_from_slack_text,
     render_bridge_outcome_ack,
 )
-from slack_thread_registry import SlackThreadRecord, SlackThreadRegistry  # noqa: E402
+from slack.threads import SlackThreadRecord, SlackThreadRegistry  # noqa: E402
 
 
 class Poster:
@@ -1423,7 +1423,7 @@ def _reaction(
 
 
 def _intent_catalog():
-    from slack_intent import RepoCatalog
+    from slack.intent import RepoCatalog
 
     return RepoCatalog.build(
         {"acme-frontend": "frontend", "acme-backend": "backend"},
@@ -1988,7 +1988,7 @@ def test_ship_it_skips_status_question_when_seeding(tmp_path: Path) -> None:
 
 
 def test_looks_like_status_or_answer_precision() -> None:
-    from slack_listener import _looks_like_status_or_answer
+    from slack.listener import _looks_like_status_or_answer
 
     # Read-only status / diagnostic questions are status turns.
     for text in (
@@ -2012,7 +2012,7 @@ def test_looks_like_status_or_answer_precision() -> None:
 
 
 def test_repos_from_text_trims_trailing_sentence_punctuation() -> None:
-    from slack_listener import _repos_from_text
+    from slack.listener import _repos_from_text
 
     # A sentence period swept into the token must be trimmed before validation.
     assert _repos_from_text("please fix octo/app.") == ["octo/app"]
@@ -2196,7 +2196,7 @@ def test_duplicate_mention_delivery_is_processed_once(tmp_path: Path) -> None:
         )
         return SimpleNamespace(handled=True, answered=True, intent="conversation", streamed=False)
 
-    from slack_converse import SlackConverseConfig
+    from slack.converse import SlackConverseConfig
 
     listener = SlackPlanningListener(
         registry=registry,
@@ -2255,7 +2255,7 @@ def test_duplicate_api_sent_message_without_client_msg_id_is_deduped(tmp_path: P
         )
         return SimpleNamespace(handled=True, answered=True, intent="conversation", streamed=False)
 
-    from slack_converse import SlackConverseConfig
+    from slack.converse import SlackConverseConfig
 
     listener = SlackPlanningListener(
         registry=registry,
@@ -2306,7 +2306,7 @@ def test_distinct_api_sent_messages_are_not_collapsed(tmp_path: Path) -> None:
         converse_calls.append(kwargs)
         return SimpleNamespace(handled=True, answered=True, intent="conversation", streamed=False)
 
-    from slack_converse import SlackConverseConfig
+    from slack.converse import SlackConverseConfig
 
     listener = SlackPlanningListener(
         registry=registry,
@@ -2365,7 +2365,7 @@ def test_ignored_message_copy_does_not_strand_the_app_mention(tmp_path: Path) ->
         )
         return SimpleNamespace(handled=True, answered=True, intent="conversation", streamed=False)
 
-    from slack_converse import SlackConverseConfig
+    from slack.converse import SlackConverseConfig
 
     listener = SlackPlanningListener(
         registry=registry,
@@ -3788,7 +3788,7 @@ def test_mutating_intent_posts_card_and_does_not_execute(tmp_path: Path, monkeyp
     assert "acme-io/acme-frontend#12" in card["text"]
     assert card.get("blocks")
     # And a pending record is registered keyed on the card ts.
-    from slack_thread_registry import SlackThreadRegistry
+    from slack.threads import SlackThreadRegistry
 
     registry = SlackThreadRegistry(tmp_path / "slack-threads")
     record = registry.lookup("D9", poster.card_ts())
@@ -3824,7 +3824,7 @@ def test_confirmation_card_registers_with_slack_response_object(
     result = listener.handle_payload(_intent_dm("can you queue acme-io/acme-frontend#12 for me"))
     assert result.action == "intent_confirmation_posted"
 
-    from slack_thread_registry import SlackThreadRegistry
+    from slack.threads import SlackThreadRegistry
 
     registry = SlackThreadRegistry(tmp_path / "slack-threads")
     record = registry.lookup("D9", poster.card_ts())
@@ -4109,7 +4109,7 @@ def test_converse_degraded_finalization_is_surfaced(tmp_path: Path) -> None:
     # When the converse outcome reports finalized=False (the reconciled answer
     # never landed on Slack), the listener must consume that signal rather than
     # report a clean answer: it logs and marks the result detail as degraded.
-    from slack_converse import SlackConverseConfig
+    from slack.converse import SlackConverseConfig
 
     def runner(**_kwargs: object) -> object:
         return SimpleNamespace(
@@ -4140,7 +4140,7 @@ def test_converse_degraded_finalization_is_surfaced(tmp_path: Path) -> None:
 
 
 def test_converse_clean_finalization_has_no_degraded_marker(tmp_path: Path) -> None:
-    from slack_converse import SlackConverseConfig
+    from slack.converse import SlackConverseConfig
 
     def runner(**_kwargs: object) -> object:
         return SimpleNamespace(
@@ -4174,8 +4174,8 @@ def test_converse_offer_signature_round_trips_across_turns(tmp_path: Path) -> No
     # The listener must persist the affordance fingerprint a converse turn showed
     # and feed it back on the next turn so the "reply `ship it`" boilerplate is
     # not repeated (the operator's "repeating same messages" complaint).
-    from slack_converse import SlackConverseConfig
-    from slack_thread_registry import SlackThreadRecord
+    from slack.converse import SlackConverseConfig
+    from slack.threads import SlackThreadRecord
 
     seen_priors: list[str] = []
 
@@ -4232,7 +4232,7 @@ def test_first_turn_offer_signature_persists_on_new_top_level_thread(tmp_path: P
     # root is registered AFTER the converse turn runs. The first offer's signature
     # must still be persisted (seeded onto the new record) so the next reply in the
     # thread dedupes and does not re-show the identical "reply `ship it`" offer.
-    from slack_converse import SlackConverseConfig
+    from slack.converse import SlackConverseConfig
 
     def runner(**kwargs: object) -> object:
         return SimpleNamespace(
@@ -4275,8 +4275,8 @@ def test_degraded_delivery_does_not_persist_offer_signature(tmp_path: Path) -> N
     # Slack), the runner carries the PRIOR signature forward, so the listener must
     # not advance the stored signature. Here there was no prior offer, so the
     # record must not gain a non-empty signature the user never saw.
-    from slack_converse import SlackConverseConfig
-    from slack_thread_registry import SlackThreadRecord
+    from slack.converse import SlackConverseConfig
+    from slack.threads import SlackThreadRecord
 
     def runner(**kwargs: object) -> object:
         # The runner gates the returned signature on delivery: a degraded turn
@@ -4321,7 +4321,7 @@ def test_degraded_delivery_does_not_persist_offer_signature(tmp_path: Path) -> N
 
 
 def test_client_is_connected_probes_defensively() -> None:
-    from slack_listener import _client_is_connected
+    from slack.listener import _client_is_connected
 
     assert _client_is_connected(SimpleNamespace(is_connected=lambda: True)) is True
     assert _client_is_connected(SimpleNamespace(is_connected=lambda: False)) is False
@@ -4336,7 +4336,7 @@ def test_client_is_connected_probes_defensively() -> None:
 
 
 def test_reconnect_socket_mode_resets_backoff_on_success() -> None:
-    from slack_listener import _reconnect_socket_mode
+    from slack.listener import _reconnect_socket_mode
 
     waits: list[float] = []
     connects = {"n": 0}
@@ -4355,7 +4355,7 @@ def test_reconnect_socket_mode_resets_backoff_on_success() -> None:
 
 
 def test_reconnect_socket_mode_doubles_backoff_on_failure_capped() -> None:
-    from slack_listener import _reconnect_socket_mode
+    from slack.listener import _reconnect_socket_mode
 
     def connect() -> None:
         raise RuntimeError("still unreachable")
@@ -4376,7 +4376,7 @@ def test_reconnect_socket_mode_doubles_backoff_on_failure_capped() -> None:
 
 
 def test_env_float_listener_rejects_non_finite(monkeypatch) -> None:
-    from slack_listener import _env_float_listener
+    from slack.listener import _env_float_listener
 
     for bad in ("nan", "inf", "-inf", "Infinity"):
         monkeypatch.setenv("ALFRED_TEST_BACKOFF", bad)
@@ -4386,7 +4386,7 @@ def test_env_float_listener_rejects_non_finite(monkeypatch) -> None:
 
 
 def test_reconnect_base_backoff_floored_positive(monkeypatch) -> None:
-    from slack_listener import _reconnect_base_backoff_s
+    from slack.listener import _reconnect_base_backoff_s
 
     monkeypatch.setenv("ALFRED_SLACK_RECONNECT_BASE_BACKOFF_S", "0")
     # A zero base would never grow when doubled; it is floored to a small positive.
@@ -4394,7 +4394,7 @@ def test_reconnect_base_backoff_floored_positive(monkeypatch) -> None:
 
 
 def test_reconnect_clamps_base_to_max_and_grows_from_tiny() -> None:
-    from slack_listener import _reconnect_socket_mode
+    from slack.listener import _reconnect_socket_mode
 
     # base larger than max must not reset above the ceiling.
     ok_client = SimpleNamespace(connect=lambda: None)
@@ -4417,7 +4417,7 @@ def test_reconnect_clamps_base_to_max_and_grows_from_tiny() -> None:
 
 
 def test_reconnect_prefers_fresh_endpoint() -> None:
-    from slack_listener import _reconnect_socket_mode
+    from slack.listener import _reconnect_socket_mode
 
     calls: list[str] = []
     client = SimpleNamespace(
