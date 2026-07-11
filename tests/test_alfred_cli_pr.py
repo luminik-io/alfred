@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
@@ -102,6 +103,26 @@ def test_pr_check_resolves_repo_from_gh_org(cli_module, monkeypatch, capsys):
     assert seen["repo"] == "acme/widget"
 
 
+def test_pr_check_defaults_to_current_checkout_under_gh_org(cli_module, monkeypatch, capsys):
+    seen = {}
+    monkeypatch.setattr(
+        cli_module.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0], 0, stdout="git@github.com:other-owner/widget.git\n", stderr=""
+        ),
+    )
+
+    def _collect(repo, number, **kw):
+        seen["repo"] = repo
+        return _mergeable_snapshot()
+
+    monkeypatch.setattr(merge_gate, "collect_snapshot", _collect)
+    rc = cli_module.main(["pr", "check", "7"])
+    assert rc == 0
+    assert seen["repo"] == "acme/widget"
+
+
 def test_pr_merge_gate_pass_calls_guarded_merge(cli_module, monkeypatch, capsys):
     monkeypatch.setattr(
         merge_gate,
@@ -128,7 +149,9 @@ def test_pr_merge_gate_fail_does_not_merge(cli_module, monkeypatch, capsys):
     monkeypatch.setattr(
         merge_gate,
         "collect_snapshot",
-        lambda repo, number, **kw: _mergeable_snapshot(review_threads=(ReviewThread(False, "y.py", "reviewer"),)),
+        lambda repo, number, **kw: _mergeable_snapshot(
+            review_threads=(ReviewThread(False, "y.py", "reviewer"),)
+        ),
     )
     called = {"n": 0}
 
@@ -160,10 +183,70 @@ def test_pr_merge_no_delete_branch_flag(cli_module, monkeypatch, capsys):
     assert calls["delete_branch"] is False
 
 
+def test_pr_merge_json_emits_one_parseable_document(cli_module, monkeypatch, capsys):
+    monkeypatch.setattr(
+        merge_gate,
+        "collect_snapshot",
+        lambda repo, number, **kw: _mergeable_snapshot(),
+    )
+    monkeypatch.setattr(
+        merge_gate,
+        "guarded_squash_merge",
+        lambda *args, **kwargs: (True, "merged"),
+    )
+    rc = cli_module.main(["pr", "merge", "7", "--repo", "acme/widget", "--json"])
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert rc == 0
+    assert payload["merged"] is True
+    assert "Merged " not in captured.out
+
+
+def test_pr_merge_defaults_to_current_checkout_under_gh_org(cli_module, monkeypatch, capsys):
+    monkeypatch.setattr(
+        cli_module.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0], 0, stdout="https://github.com/other-owner/widget.git\n", stderr=""
+        ),
+    )
+    monkeypatch.setattr(
+        merge_gate,
+        "collect_snapshot",
+        lambda repo, number, **kw: _mergeable_snapshot(),
+    )
+    calls = {}
+
+    def _merge(repo, number, head_sha, **kwargs):
+        calls["repo"] = repo
+        return True, "merged"
+
+    monkeypatch.setattr(merge_gate, "guarded_squash_merge", _merge)
+    rc = cli_module.main(["pr", "merge", "7"])
+    assert rc == 0
+    assert calls["repo"] == "acme/widget"
+
+
 def test_pr_min_approvals_reads_env(cli_module, monkeypatch):
     monkeypatch.setenv("ALFRED_MERGE_MIN_APPROVALS", "3")
     assert cli_module._pr_min_approvals() == 3
-    monkeypatch.setenv("ALFRED_MERGE_MIN_APPROVALS", "0")
-    assert cli_module._pr_min_approvals() == 1
-    monkeypatch.setenv("ALFRED_MERGE_MIN_APPROVALS", "junk")
-    assert cli_module._pr_min_approvals() == 1
+    for raw in ("0", "junk"):
+        monkeypatch.setenv("ALFRED_MERGE_MIN_APPROVALS", raw)
+        with pytest.raises(ValueError):
+            cli_module._pr_min_approvals()
+
+
+def test_pr_command_rejects_invalid_min_approvals_before_gate(cli_module, monkeypatch, capsys):
+    monkeypatch.setenv("ALFRED_MERGE_MIN_APPROVALS", "two")
+    called = {"count": 0}
+
+    def _collect(*args, **kwargs):
+        called["count"] += 1
+        return _mergeable_snapshot()
+
+    monkeypatch.setattr(merge_gate, "collect_snapshot", _collect)
+    rc = cli_module.main(["pr", "check", "7", "--repo", "acme/widget"])
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert called["count"] == 0
+    assert "integer >= 1" in captured.err

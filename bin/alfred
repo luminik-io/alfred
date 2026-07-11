@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""``alfred`` — operator CLI for the alfred-os fleet.
+"""``alfred``: operator CLI for the alfred-os fleet.
 
 A small, dependency-free entry point covering the operator's day-to-day
 verbs. Heavy logic lives in ``lib/agent_runner.py``; this file is just
@@ -111,7 +111,7 @@ default-enabled, while opt-in agents such as the architect default to disabled
 until explicitly enabled.
 
 Pure stdlib. The operator reads this file when something breaks; keep
-it that way — no external deps.
+it that way, with no external dependencies.
 """
 
 from __future__ import annotations
@@ -1397,7 +1397,7 @@ def _resume_one(codename: str, label: str) -> int:
     if unit_path is None or not unit_path.exists():
         where = unit_path if unit_path is not None else "(no scheduler on this host)"
         print(
-            f"  {codename}: no unit file at {where} — run `bash deploy.sh` first", file=sys.stderr
+            f"  {codename}: no unit file at {where}; run `bash deploy.sh` first", file=sys.stderr
         )
         return 1
     if scheduler.unit_loaded(label):
@@ -2548,11 +2548,29 @@ def _battery_run_install(args: argparse.Namespace, battery: Any) -> int:
 
 
 def _pr_min_approvals() -> int:
-    try:
-        value = int(os.environ.get("ALFRED_MERGE_MIN_APPROVALS", "1"))
-    except ValueError:
-        return 1
-    return value if value >= 1 else 1
+    import merge_gate
+
+    return merge_gate.parse_min_approvals(os.environ.get("ALFRED_MERGE_MIN_APPROVALS"))
+
+
+def _default_pr_repo() -> str:
+    """Resolve the current checkout's repo under the configured GitHub org."""
+    gh_org = os.environ.get("GH_ORG", "").strip()
+    if not gh_org:
+        raise ValueError("GH_ORG is unset; pass --repo owner/name")
+    result = subprocess.run(
+        ["git", "remote", "get-url", "origin"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        raise ValueError("cannot infer the current repo; pass --repo owner/name")
+    repo_name = result.stdout.strip().rstrip("/").removesuffix(".git").rsplit("/", 1)[-1]
+    if not repo_name or repo_name == result.stdout.strip():
+        raise ValueError("cannot infer the current repo; pass --repo owner/name")
+    return f"{gh_org}/{repo_name}"
 
 
 def cmd_pr(args: argparse.Namespace) -> int:
@@ -2560,51 +2578,53 @@ def cmd_pr(args: argparse.Namespace) -> int:
     import merge_gate
 
     try:
-        repo = _full_repo_arg(args.repo) if args.repo else None
+        repo = _full_repo_arg(args.repo) if args.repo else _default_pr_repo()
+        min_approvals = _pr_min_approvals()
     except ValueError as exc:
         print(f"alfred pr: {exc}", file=sys.stderr)
         return 2
-    if not repo:
-        print(
-            "alfred pr: --repo is required (owner/name or a slug with GH_ORG set)",
-            file=sys.stderr,
-        )
-        return 2
 
     _snapshot, decision = merge_gate.gate_pull_request(
-        repo, args.number, min_approvals=_pr_min_approvals()
+        repo, args.number, min_approvals=min_approvals
     )
 
-    if args.json:
-        payload = {
-            "repo": repo,
-            "number": args.number,
-            "headSha": decision.head_sha,
-            "mergeable": decision.mergeable,
-            "conditions": [
-                {"key": c.key, "label": c.label, "passed": c.passed, "detail": c.detail}
-                for c in decision.conditions
-            ],
-        }
-        print(json.dumps(payload, indent=2))
-    else:
+    payload = {
+        "repo": repo,
+        "number": args.number,
+        "headSha": decision.head_sha,
+        "mergeable": decision.mergeable,
+        "conditions": [
+            {"key": c.key, "label": c.label, "passed": c.passed, "detail": c.detail}
+            for c in decision.conditions
+        ],
+    }
+    if not args.json:
         print(f"PR {repo}#{args.number} (head {decision.head_sha[:12] or '?'}):")
         print(decision.render())
 
     if args.pr_command == "check":
+        if args.json:
+            print(json.dumps(payload, indent=2))
         return 0 if decision.mergeable else 1
 
     # merge
     if not decision.mergeable:
-        if not args.json:
+        if args.json:
+            print(json.dumps({**payload, "merged": False}, indent=2))
+        else:
             print("Not merging: the gate did not pass.", file=sys.stderr)
         return 1
     ok, msg = merge_gate.guarded_squash_merge(
         repo, args.number, decision.head_sha, delete_branch=not args.no_delete_branch
     )
     if ok:
-        print(f"Merged {repo}#{args.number} (squash, head-guarded {decision.head_sha[:12]}).")
+        if args.json:
+            print(json.dumps({**payload, "merged": True}, indent=2))
+        else:
+            print(f"Merged {repo}#{args.number} (squash, head-guarded {decision.head_sha[:12]}).")
         return 0
+    if args.json:
+        print(json.dumps({**payload, "merged": False, "error": msg}, indent=2))
     print(f"alfred pr merge: {msg}", file=sys.stderr)
     return 1
 
@@ -3621,14 +3641,18 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
         "check", help="report whether a PR passes the merge gate (does not merge)"
     )
     p_pr_check.add_argument("number", type=int, help="pull request number")
-    p_pr_check.add_argument("--repo", help="repo slug or owner/repo (defaults to GH_ORG/<slug>)")
+    p_pr_check.add_argument(
+        "--repo", help="repo slug or owner/repo (defaults to GH_ORG/current checkout)"
+    )
     p_pr_check.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     p_pr_check.set_defaults(func=cmd_pr)
     p_pr_merge = pr_sub.add_parser(
         "merge", help="merge a PR only if it passes the gate (SHA-guarded squash)"
     )
     p_pr_merge.add_argument("number", type=int, help="pull request number")
-    p_pr_merge.add_argument("--repo", help="repo slug or owner/repo (defaults to GH_ORG/<slug>)")
+    p_pr_merge.add_argument(
+        "--repo", help="repo slug or owner/repo (defaults to GH_ORG/current checkout)"
+    )
     p_pr_merge.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     p_pr_merge.add_argument(
         "--no-delete-branch", action="store_true", help="keep the head branch after merging"

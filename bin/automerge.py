@@ -69,6 +69,7 @@ from merge_gate import (
     collect_snapshot,
     evaluate_gate,
     guarded_squash_merge,
+    parse_min_approvals,
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "automerge")
@@ -104,11 +105,13 @@ def _env_flag(name: str, *, default: bool) -> bool:
 # (lib/alfred_config.py) lands later, migrate these two keys into it.
 REQUIRE_APPROVAL = _env_flag("ALFRED_MERGE_REQUIRE_APPROVAL", default=True)
 try:
-    MIN_APPROVALS = int(os.environ.get("ALFRED_MERGE_MIN_APPROVALS", str(MIN_APPROVALS_DEFAULT)))
-except ValueError:
-    MIN_APPROVALS = MIN_APPROVALS_DEFAULT
-if MIN_APPROVALS < 1:
-    MIN_APPROVALS = 1
+    MIN_APPROVALS: int | None = parse_min_approvals(
+        os.environ.get("ALFRED_MERGE_MIN_APPROVALS", str(MIN_APPROVALS_DEFAULT))
+    )
+    MIN_APPROVALS_ERROR = ""
+except ValueError as exc:
+    MIN_APPROVALS = None
+    MIN_APPROVALS_ERROR = str(exc)
 
 P0_KEYWORDS = re.compile(r"\b(P0|blocking|critical|🛑|⛔)", re.IGNORECASE)
 SHIP_READY_YES = re.compile(r"^Ship-ready:\s*yes\b", re.IGNORECASE | re.MULTILINE)
@@ -420,6 +423,8 @@ def _merge_via_gate(repo: str, pr: dict) -> tuple[bool, str, str]:
     """
     pr_num = pr["number"]
     title = pr.get("title", "")
+    if MIN_APPROVALS is None:
+        return False, f"invalid merge-gate config: {MIN_APPROVALS_ERROR}", title
     slug = f"{GH_ORG}/{repo}"
     snapshot = collect_snapshot(slug, pr_num)
     decision = evaluate_gate(snapshot, min_approvals=MIN_APPROVALS)

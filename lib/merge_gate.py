@@ -86,6 +86,7 @@ class Review:
     author: str
     state: str
     submitted_at: str
+    commit_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -155,14 +156,26 @@ class GateDecision:
         return "\n".join(lines)
 
 
-def _effective_reviews(reviews: Iterable[Review]) -> dict[str, str]:
+def parse_min_approvals(raw: str | None) -> int:
+    """Parse the fallback approval threshold, rejecting unsafe values."""
+    value = str(MIN_APPROVALS_DEFAULT) if raw is None else raw.strip()
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise ValueError("ALFRED_MERGE_MIN_APPROVALS must be an integer >= 1") from exc
+    if parsed < 1:
+        raise ValueError("ALFRED_MERGE_MIN_APPROVALS must be an integer >= 1")
+    return parsed
+
+
+def _effective_reviews(reviews: Iterable[Review]) -> dict[str, Review]:
     """Return the latest decisive review state per reviewer.
 
     Reviews are ordered by submission time; the last decisive one per author
     wins, so a reviewer who requested changes and then approved counts as an
     approval. Comment-only reviews are ignored.
     """
-    latest: dict[str, str] = {}
+    latest: dict[str, Review] = {}
     ordered = sorted(reviews, key=lambda r: r.submitted_at or "")
     for r in ordered:
         state = (r.state or "").upper()
@@ -171,7 +184,7 @@ def _effective_reviews(reviews: Iterable[Review]) -> dict[str, str]:
         author = (r.author or "").lower()
         if not author:
             continue
-        latest[author] = state
+        latest[author] = r
     return latest
 
 
@@ -189,39 +202,41 @@ def _approval_condition(snapshot: GateSnapshot, min_approvals: int) -> Condition
     if decision == "CHANGES_REQUESTED":
         return Condition("approved", label, False, "changes requested by a reviewer")
     if decision == "REVIEW_REQUIRED":
-        return Condition(
-            "approved", label, False, "review required but not yet approved"
-        )
+        return Condition("approved", label, False, "review required but not yet approved")
     if decision:
         # Unknown, non-empty decision: fail closed rather than guess.
-        return Condition(
-            "approved", label, False, f"unrecognised reviewDecision '{decision}'"
-        )
+        return Condition("approved", label, False, f"unrecognised reviewDecision '{decision}'")
 
     # decision is empty/null: the repo has no branch-protection review rule.
     # Fall back to counting approving reviews.
     effective = _effective_reviews(snapshot.reviews)
-    if "CHANGES_REQUESTED" in effective.values():
+    if any((review.state or "").upper() == "CHANGES_REQUESTED" for review in effective.values()):
         return Condition(
             "approved",
             label,
             False,
             "changes requested by a reviewer (no branch protection)",
         )
-    approvals = sum(1 for s in effective.values() if s == "APPROVED")
+    approvals = sum(
+        1
+        for review in effective.values()
+        if (review.state or "").upper() == "APPROVED"
+        and bool(snapshot.head_sha)
+        and review.commit_id == snapshot.head_sha
+    )
     if approvals >= min_approvals:
         return Condition(
             "approved",
             label,
             True,
-            f"{approvals} approving review(s), no branch protection "
+            f"{approvals} current-head approving review(s), no branch protection "
             f"(need {min_approvals})",
         )
     return Condition(
         "approved",
         label,
         False,
-        f"{approvals} approving review(s), need {min_approvals} "
+        f"{approvals} current-head approving review(s), need {min_approvals} "
         f"(repo has no required-review branch protection)",
     )
 
@@ -277,7 +292,6 @@ def evaluate_gate(
         )
 
     conditions: list[Condition] = []
-
     state = (snapshot.state or "").upper()
     conditions.append(
         Condition(
@@ -349,7 +363,7 @@ def collect_snapshot(
             "-R",
             repo,
             "--json",
-            "state,headRefOid,reviewDecision,mergeable,mergeStateStatus,reviews,statusCheckRollup",
+            "state,headRefOid,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup",
         ],
         _MISSING,
     )
@@ -357,17 +371,12 @@ def collect_snapshot(
         errors.append("could not read PR from GitHub")
         view = {}
 
-    reviews: list[Review] = []
-    for r in view.get("reviews") or []:
-        if not isinstance(r, dict):
-            continue
-        reviews.append(
-            Review(
-                author=((r.get("author") or {}).get("login") or ""),
-                state=(r.get("state") or ""),
-                submitted_at=(r.get("submittedAt") or ""),
-            )
-        )
+    review_decision = view.get("reviewDecision") if view.get("reviewDecision") else None
+    reviews = (
+        _collect_reviews(repo, pr_number, gh_json=gh_json, errors=errors)
+        if review_decision is None
+        else []
+    )
 
     checks: list[CheckRun] = []
     for entry in view.get("statusCheckRollup") or []:
@@ -380,7 +389,7 @@ def collect_snapshot(
     return GateSnapshot(
         state=str(view.get("state") or ""),
         head_sha=str(view.get("headRefOid") or ""),
-        review_decision=(view.get("reviewDecision") if view.get("reviewDecision") else None),
+        review_decision=review_decision,
         reviews=tuple(reviews),
         review_threads=tuple(threads),
         merge_state_status=str(view.get("mergeStateStatus") or ""),
@@ -391,16 +400,65 @@ def collect_snapshot(
 
 
 _REVIEW_THREADS_QUERY = (
-    "query($owner:String!,$name:String!,$num:Int!){"
+    "query($owner:String!,$name:String!,$num:Int!,$endCursor:String){"
     " repository(owner:$owner,name:$name){"
     "  pullRequest(number:$num){"
-    "   reviewThreads(first:100){"
+    "   reviewThreads(first:100,after:$endCursor){"
     "    nodes{isResolved path comments(first:1){nodes{author{login}}}}"
+    "    pageInfo{hasNextPage endCursor}"
     "   }"
     "  }"
     " }"
     "}"
 )
+
+
+def _collect_reviews(
+    repo: str,
+    pr_number: int,
+    *,
+    gh_json: GhJson,
+    errors: list[str],
+) -> list[Review]:
+    """Fetch every review, including the reviewed commit, for fallback gating."""
+    _MISSING = object()
+    pages = gh_json(
+        [
+            "gh",
+            "api",
+            "--paginate",
+            "--slurp",
+            f"/repos/{repo}/pulls/{pr_number}/reviews",
+        ],
+        _MISSING,
+    )
+    if (
+        pages is _MISSING
+        or not isinstance(pages, list)
+        or any(not isinstance(page, list) for page in pages)
+    ):
+        errors.append("could not read reviews from GitHub")
+        return []
+
+    reviews: list[Review] = []
+    for page in pages:
+        for item in page:
+            if not isinstance(item, dict):
+                errors.append("received malformed review data from GitHub")
+                return []
+            user = item.get("user") or {}
+            if not isinstance(user, dict):
+                errors.append("received malformed review data from GitHub")
+                return []
+            reviews.append(
+                Review(
+                    author=str(user.get("login") or ""),
+                    state=str(item.get("state") or ""),
+                    submitted_at=str(item.get("submitted_at") or ""),
+                    commit_id=str(item.get("commit_id") or ""),
+                )
+            )
+    return reviews
 
 
 def _collect_review_threads(
@@ -414,9 +472,11 @@ def _collect_review_threads(
     if not owner or not name:
         errors.append(f"invalid repo slug '{repo}'")
         return []
-    _MISSING = object()
-    nodes = gh_json(
-        [
+    threads: list[ReviewThread] = []
+    cursor: str | None = None
+    while True:
+        _MISSING = object()
+        cmd = [
             "gh",
             "api",
             "graphql",
@@ -429,29 +489,63 @@ def _collect_review_threads(
             "-F",
             f"num={pr_number}",
             "--jq",
-            ".data.repository.pullRequest.reviewThreads.nodes",
-        ],
-        _MISSING,
-    )
-    if nodes is _MISSING or not isinstance(nodes, list):
-        errors.append("could not read review threads from GitHub")
-        return []
-    threads: list[ReviewThread] = []
-    for node in nodes:
-        if not isinstance(node, dict):
-            continue
-        comments = ((node.get("comments") or {}).get("nodes")) or []
-        author = ""
-        if comments and isinstance(comments[0], dict):
-            author = (comments[0].get("author") or {}).get("login") or ""
-        threads.append(
-            ReviewThread(
-                is_resolved=bool(node.get("isResolved")),
-                path=str(node.get("path") or ""),
-                author=str(author),
+            ".data.repository.pullRequest.reviewThreads",
+        ]
+        if cursor is not None:
+            cmd[cmd.index("--jq") : cmd.index("--jq")] = ["-F", f"endCursor={cursor}"]
+        page = gh_json(cmd, _MISSING)
+        if page is _MISSING or not isinstance(page, dict):
+            errors.append("could not read review threads from GitHub")
+            return []
+        nodes = page.get("nodes")
+        page_info = page.get("pageInfo")
+        if not isinstance(nodes, list) or not isinstance(page_info, dict):
+            errors.append("received malformed review-thread page from GitHub")
+            return []
+        for node in nodes:
+            if not isinstance(node, dict):
+                errors.append("received malformed review-thread data from GitHub")
+                return []
+            comments_connection = node.get("comments") or {}
+            if not isinstance(comments_connection, dict):
+                errors.append("received malformed review-thread data from GitHub")
+                return []
+            comments = comments_connection.get("nodes") or []
+            if not isinstance(comments, list):
+                errors.append("received malformed review-thread data from GitHub")
+                return []
+            author = ""
+            if comments:
+                first_comment = comments[0]
+                if not isinstance(first_comment, dict):
+                    errors.append("received malformed review-thread data from GitHub")
+                    return []
+                author_data = first_comment.get("author") or {}
+                if not isinstance(author_data, dict):
+                    errors.append("received malformed review-thread data from GitHub")
+                    return []
+                author = str(author_data.get("login") or "")
+            threads.append(
+                ReviewThread(
+                    is_resolved=bool(node.get("isResolved")),
+                    path=str(node.get("path") or ""),
+                    author=str(author),
+                )
             )
-        )
-    return threads
+        if page_info.get("hasNextPage") is False:
+            return threads
+        next_cursor = page_info.get("endCursor")
+        if (
+            page_info.get("hasNextPage") is not True
+            or not isinstance(next_cursor, str)
+            or not next_cursor
+        ):
+            errors.append("review-thread pagination was incomplete")
+            return []
+        if next_cursor == cursor:
+            errors.append("review-thread pagination cursor did not advance")
+            return []
+        cursor = next_cursor
 
 
 def guarded_squash_merge(

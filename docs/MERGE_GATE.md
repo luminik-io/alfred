@@ -34,10 +34,11 @@ any code-owners requirement). GitHub then reports `reviewDecision: APPROVED`
 only when that rule is satisfied, and the gate trusts that single field.
 
 On a repo with no branch-protection review rule, `reviewDecision` is null. There
-the gate falls back to counting approving reviews itself and requires at least
-`ALFRED_MERGE_MIN_APPROVALS` (default 1). The count uses the latest review per
-reviewer, so a reviewer who requested changes and later approved counts as one
-approval, and a comment-only review never overrides an earlier approval. If any
+the gate falls back to counting current-head approving reviews itself and
+requires at least `ALFRED_MERGE_MIN_APPROVALS` (default 1). The count uses the
+latest review per reviewer, so a reviewer who requested changes and later
+approved counts as one approval only when that approval targets the PR's current
+head. A comment-only review never overrides an earlier approval. If any
 reviewer's latest standing review requests changes, the gate blocks.
 
 ## The merge is SHA-guarded
@@ -53,7 +54,7 @@ unreviewed changes.
 | Environment variable | Default | Effect |
 | --- | --- | --- |
 | `ALFRED_MERGE_REQUIRE_APPROVAL` | on | When on, the automerge sweeper only merges PRs that pass this gate. When off, the sweeper keeps its prior review-agent ship-ready behaviour. |
-| `ALFRED_MERGE_MIN_APPROVALS` | 1 | Approvals required only on a repo with no branch-protection review rule. Ignored when GitHub already drives `reviewDecision`. |
+| `ALFRED_MERGE_MIN_APPROVALS` | 1 | Current-head approvals required only on a repo with no branch-protection review rule. Must be an integer of at least 1; invalid values fail closed. Ignored when GitHub already drives `reviewDecision`. |
 
 ## Command line
 
@@ -69,4 +70,5 @@ exits non-zero when the PR is not mergeable. Add `--json` for machine-readable
 output. `alfred pr merge` runs the same check and merges only if every condition
 passes, using the SHA-guarded squash. Pass `--no-delete-branch` to keep the head
 branch. `--repo` accepts a full `owner/name` slug, or a bare repo name when
-`GH_ORG` is set.
+`GH_ORG` is set. When `--repo` is omitted, Alfred uses the current checkout's
+origin repo name under `GH_ORG`.

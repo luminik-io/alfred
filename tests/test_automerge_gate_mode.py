@@ -37,11 +37,26 @@ def test_require_approval_can_be_disabled(monkeypatch):
     assert automerge.REQUIRE_APPROVAL is False
 
 
-def test_min_approvals_reads_env_and_floors_at_one(monkeypatch):
+def test_min_approvals_reads_env_and_rejects_invalid_values(monkeypatch):
     automerge = load_automerge(monkeypatch, {"ALFRED_MERGE_MIN_APPROVALS": "0"})
-    assert automerge.MIN_APPROVALS == 1
+    assert automerge.MIN_APPROVALS is None
+    assert "integer >= 1" in automerge.MIN_APPROVALS_ERROR
+    automerge = load_automerge(monkeypatch, {"ALFRED_MERGE_MIN_APPROVALS": "two"})
+    assert automerge.MIN_APPROVALS is None
     automerge = load_automerge(monkeypatch, {"ALFRED_MERGE_MIN_APPROVALS": "2"})
     assert automerge.MIN_APPROVALS == 2
+
+
+def test_invalid_min_approvals_blocks_gate_without_github_calls(monkeypatch):
+    automerge = load_automerge(monkeypatch, {"ALFRED_MERGE_MIN_APPROVALS": "two"})
+    monkeypatch.setattr(
+        automerge,
+        "collect_snapshot",
+        lambda *args, **kwargs: pytest.fail("GitHub must not be called"),
+    )
+    ok, reason, _title = automerge._merge_via_gate("widget", {"number": 12, "title": "T"})
+    assert ok is False
+    assert "invalid merge-gate config" in reason
 
 
 def test_merge_via_gate_merges_when_gate_passes(monkeypatch):

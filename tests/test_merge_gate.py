@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
 
@@ -131,7 +133,7 @@ def test_no_branch_protection_counts_approvals():
     # reviewDecision is None -> count approving reviews against min_approvals.
     snap = _snapshot(
         review_decision=None,
-        reviews=(Review("operator", "APPROVED", "2026-07-11T10:00:00Z"),),
+        reviews=(Review("operator", "APPROVED", "2026-07-11T10:00:00Z", "a" * 40),),
     )
     assert evaluate_gate(snap, min_approvals=1).mergeable is True
     assert evaluate_gate(snap, min_approvals=2).mergeable is False
@@ -142,8 +144,8 @@ def test_no_branch_protection_re_review_latest_wins():
     snap = _snapshot(
         review_decision=None,
         reviews=(
-            Review("operator", "CHANGES_REQUESTED", "2026-07-11T09:00:00Z"),
-            Review("operator", "APPROVED", "2026-07-11T11:00:00Z"),
+            Review("operator", "CHANGES_REQUESTED", "2026-07-11T09:00:00Z", "a" * 40),
+            Review("operator", "APPROVED", "2026-07-11T11:00:00Z", "a" * 40),
         ),
     )
     assert evaluate_gate(snap, min_approvals=1).mergeable is True
@@ -154,7 +156,7 @@ def test_no_branch_protection_comment_does_not_override_approval():
     snap = _snapshot(
         review_decision=None,
         reviews=(
-            Review("operator", "APPROVED", "2026-07-11T09:00:00Z"),
+            Review("operator", "APPROVED", "2026-07-11T09:00:00Z", "a" * 40),
             Review("operator", "COMMENTED", "2026-07-11T12:00:00Z"),
         ),
     )
@@ -178,8 +180,8 @@ def test_no_branch_protection_two_distinct_approvers():
     snap = _snapshot(
         review_decision=None,
         reviews=(
-            Review("alice", "APPROVED", "2026-07-11T09:00:00Z"),
-            Review("bob", "APPROVED", "2026-07-11T10:00:00Z"),
+            Review("alice", "APPROVED", "2026-07-11T09:00:00Z", "a" * 40),
+            Review("bob", "APPROVED", "2026-07-11T10:00:00Z", "a" * 40),
         ),
     )
     assert evaluate_gate(snap, min_approvals=2).mergeable is True
@@ -187,11 +189,21 @@ def test_no_branch_protection_two_distinct_approvers():
     snap_one = _snapshot(
         review_decision=None,
         reviews=(
-            Review("alice", "APPROVED", "2026-07-11T09:00:00Z"),
-            Review("alice", "APPROVED", "2026-07-11T10:00:00Z"),
+            Review("alice", "APPROVED", "2026-07-11T09:00:00Z", "a" * 40),
+            Review("alice", "APPROVED", "2026-07-11T10:00:00Z", "a" * 40),
         ),
     )
     assert evaluate_gate(snap_one, min_approvals=2).mergeable is False
+
+
+def test_no_branch_protection_rejects_approval_for_stale_head():
+    snap = _snapshot(
+        review_decision=None,
+        reviews=(Review("alice", "APPROVED", "2026-07-11T09:00:00Z", "b" * 40),),
+    )
+    decision = evaluate_gate(snap, min_approvals=1)
+    assert decision.mergeable is False
+    assert "0 current-head approving review" in decision.short_reason()
 
 
 # --------------------------------------------------------------------------
@@ -199,10 +211,17 @@ def test_no_branch_protection_two_distinct_approvers():
 # --------------------------------------------------------------------------
 
 
-def _fake_gh_json(view_payload, threads_payload):
+def _fake_gh_json(view_payload, threads_payload, reviews_payload=None):
     def _runner(cmd, default):
+        if cmd[-1].endswith("/reviews"):
+            return reviews_payload if reviews_payload is not None else [[]]
         if "graphql" in cmd:
-            return threads_payload if threads_payload is not None else default
+            if threads_payload is None:
+                return default
+            return {
+                "nodes": threads_payload,
+                "pageInfo": {"hasNextPage": False, "endCursor": None},
+            }
         return view_payload if view_payload is not None else default
 
     return _runner
@@ -216,20 +235,35 @@ def test_collect_snapshot_builds_from_gh():
         "mergeable": "MERGEABLE",
         "mergeStateStatus": "CLEAN",
         "reviews": [
-            {"author": {"login": "operator"}, "state": "APPROVED", "submittedAt": "2026-07-11T10:00:00Z"}
+            {
+                "author": {"login": "operator"},
+                "state": "APPROVED",
+                "submittedAt": "2026-07-11T10:00:00Z",
+            }
         ],
         "statusCheckRollup": [
-            {"__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS"},
+            {
+                "__typename": "CheckRun",
+                "name": "ci",
+                "status": "COMPLETED",
+                "conclusion": "SUCCESS",
+            },
             {"__typename": "StatusContext", "context": "legacy", "state": "SUCCESS"},
         ],
     }
-    threads = [{"isResolved": True, "path": "a.py", "comments": {"nodes": [{"author": {"login": "operator"}}]}}]
+    threads = [
+        {
+            "isResolved": True,
+            "path": "a.py",
+            "comments": {"nodes": [{"author": {"login": "operator"}}]},
+        }
+    ]
     snap = collect_snapshot("acme/repo", 7, gh_json=_fake_gh_json(view, threads))
     assert snap.errors == ()
     assert snap.state == "OPEN"
     assert snap.head_sha == "b" * 40
     assert snap.review_decision == "APPROVED"
-    assert len(snap.reviews) == 1
+    assert snap.reviews == ()
     assert len(snap.checks) == 2
     assert evaluate_gate(snap).mergeable is True
 
@@ -254,14 +288,119 @@ def test_collect_snapshot_null_review_decision_becomes_none():
         "reviewDecision": "",
         "mergeable": "MERGEABLE",
         "mergeStateStatus": "CLEAN",
-        "reviews": [
-            {"author": {"login": "alice"}, "state": "APPROVED", "submittedAt": "2026-07-11T10:00:00Z"}
-        ],
         "statusCheckRollup": [],
     }
-    snap = collect_snapshot("acme/repo", 7, gh_json=_fake_gh_json(view, []))
+    review_pages = [
+        [
+            {
+                "user": {"login": "alice"},
+                "state": "APPROVED",
+                "submitted_at": "2026-07-11T10:00:00Z",
+                "commit_id": "d" * 40,
+            }
+        ]
+    ]
+    snap = collect_snapshot("acme/repo", 7, gh_json=_fake_gh_json(view, [], review_pages))
     assert snap.review_decision is None
     assert evaluate_gate(snap, min_approvals=1).mergeable is True
+
+
+def test_collect_snapshot_reads_current_head_approval_from_later_review_page():
+    view = {
+        "state": "OPEN",
+        "headRefOid": "d" * 40,
+        "reviewDecision": None,
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "statusCheckRollup": [],
+    }
+    review_pages = [
+        [
+            {
+                "user": {"login": "alice"},
+                "state": "APPROVED",
+                "submitted_at": "2026-07-11T09:00:00Z",
+                "commit_id": "c" * 40,
+            }
+        ],
+        [
+            {
+                "user": {"login": "alice"},
+                "state": "APPROVED",
+                "submitted_at": "2026-07-11T10:00:00Z",
+                "commit_id": "d" * 40,
+            }
+        ],
+    ]
+    snap = collect_snapshot("acme/repo", 7, gh_json=_fake_gh_json(view, [], review_pages))
+    assert len(snap.reviews) == 2
+    assert evaluate_gate(snap, min_approvals=1).mergeable is True
+
+
+def test_collect_snapshot_paginates_all_review_threads():
+    view = {
+        "state": "OPEN",
+        "headRefOid": "e" * 40,
+        "reviewDecision": "APPROVED",
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "statusCheckRollup": [],
+    }
+    calls = []
+
+    def _runner(cmd, default):
+        if "graphql" not in cmd:
+            return view
+        calls.append(cmd)
+        if any(arg == "endCursor=cursor-1" for arg in cmd):
+            return {
+                "nodes": [
+                    {
+                        "isResolved": False,
+                        "path": "late.py",
+                        "comments": {"nodes": [{"author": {"login": "reviewer"}}]},
+                    }
+                ],
+                "pageInfo": {"hasNextPage": False, "endCursor": "cursor-2"},
+            }
+        return {
+            "nodes": [{"isResolved": True, "path": "early.py", "comments": {"nodes": []}}],
+            "pageInfo": {"hasNextPage": True, "endCursor": "cursor-1"},
+        }
+
+    snap = collect_snapshot("acme/repo", 7, gh_json=_runner)
+    assert snap.errors == ()
+    assert len(calls) == 2
+    assert len(snap.review_threads) == 2
+    assert evaluate_gate(snap).mergeable is False
+
+
+def test_collect_snapshot_fails_closed_on_incomplete_thread_pagination():
+    view = {
+        "state": "OPEN",
+        "headRefOid": "e" * 40,
+        "reviewDecision": "APPROVED",
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "statusCheckRollup": [],
+    }
+
+    def _runner(cmd, default):
+        if "graphql" not in cmd:
+            return view
+        return {"nodes": [], "pageInfo": {"hasNextPage": True, "endCursor": None}}
+
+    snap = collect_snapshot("acme/repo", 7, gh_json=_runner)
+    assert any("pagination" in error for error in snap.errors)
+    assert evaluate_gate(snap).mergeable is False
+
+
+def test_parse_min_approvals_rejects_invalid_values():
+    assert merge_gate.parse_min_approvals(None) == 1
+    assert merge_gate.parse_min_approvals("3") == 3
+    for raw in ("", "0", "-2", "two"):
+        with pytest.raises(ValueError, match="integer >= 1"):
+            merge_gate.parse_min_approvals(raw)
 
 
 def test_collect_snapshot_pending_check_is_not_failing():
@@ -341,8 +480,6 @@ def test_gate_pull_request_end_to_end():
         "reviews": [],
         "statusCheckRollup": [],
     }
-    snap, decision = merge_gate.gate_pull_request(
-        "acme/repo", 7, gh_json=_fake_gh_json(view, [])
-    )
+    snap, decision = merge_gate.gate_pull_request("acme/repo", 7, gh_json=_fake_gh_json(view, []))
     assert decision.mergeable is True
     assert snap.head_sha == "a" * 40
