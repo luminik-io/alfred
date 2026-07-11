@@ -253,6 +253,7 @@ SUPPORT_SCHEDULER_SCRIPTS = {"proof-telemetry.py"}
 _SCHEDULER_COMMAND_TIMEOUT_S = 15
 _NATIVE_DRY_RUN_TIMEOUT_S = 300
 _DELEGATED_COMMAND_TIMEOUT_S = 600
+_BENCHMARK_COMMAND_TIMEOUT_S = 8 * 60 * 60
 _INSTALL_COMMAND_TIMEOUT_S = 600
 _INTERACTIVE_COMMAND_TIMEOUT_S = 3600
 # Non-engine budget the demo child may legitimately spend after its four
@@ -1902,7 +1903,7 @@ def cmd_benchmark(args: argparse.Namespace) -> int:
     forwarded = args.benchmark_args or []
     return _run_subcommand(
         [sys.executable, str(script), *forwarded],
-        timeout=_DELEGATED_COMMAND_TIMEOUT_S,
+        timeout=_BENCHMARK_COMMAND_TIMEOUT_S,
     )
 
 

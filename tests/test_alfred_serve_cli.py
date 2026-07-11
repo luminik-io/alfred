@@ -285,3 +285,19 @@ def test_code_memory_serve_is_unbounded(monkeypatch):
     args = SimpleNamespace(code_memory_args=["serve"])
     assert cli.cmd_code_memory(args) == 0
     assert calls == [([str(ROOT / "bin/code-memory-mcp"), "serve"], None)]
+
+
+def test_benchmark_wrapper_allows_full_bounded_ab_run(monkeypatch):
+    cli = load_cli_module()
+    calls = []
+    monkeypatch.setattr(
+        cli,
+        "_run_subcommand",
+        lambda command, *, timeout, env=None: calls.append((command, timeout, env)) or 0,
+    )
+
+    args = SimpleNamespace(benchmark_args=["memory", "--engine", "claude"])
+    assert cli.cmd_benchmark(args) == 0
+
+    assert calls[0][1] == 8 * 60 * 60
+    assert calls[0][1] > cli._DELEGATED_COMMAND_TIMEOUT_S
