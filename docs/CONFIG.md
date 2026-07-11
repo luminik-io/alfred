@@ -76,7 +76,7 @@ are experimental, deep-tuning, or set by Alfred itself at runtime.
 | `ALFRED_MEMORY_CONSOLIDATE` | bool | `0` | internal | Arm destructive memory consolidation (opt-in). |
 | `ALFRED_MEMORY_CONSOLIDATE_SEMANTIC` | bool | `0` | internal | Arm semantic (embedding-based) consolidation. |
 | `ALFRED_MEMORY_CONSOLIDATE_SIM_THRESHOLD` | float |  | internal | Similarity threshold above which memories consolidate. |
-| `ALFRED_MEMORY_REFLECTION_MODE` | enum (candidate/off/auto) | `candidate` | internal | Reflection write mode. |
+| `ALFRED_MEMORY_REFLECTION_MODE` | enum (direct/candidate/off) | `candidate` | internal | Reflection write mode. |
 | `ALFRED_PLANNING_MEMORY` | bool | `1` | internal | Use memory during planning; disable to turn off. |
 | `ALFRED_PLANNING_MEMORY_CANDIDATES` | bool | `1` | internal | Surface planning memory candidates; disable to turn off. |
 | `ALFRED_MEMORY_SQLITE_DB` | path |  | operator | SQLite memory database path. |
@@ -113,8 +113,8 @@ are experimental, deep-tuning, or set by Alfred itself at runtime.
 | `ALFRED_AMS_FORGETTING` | bool |  | internal | Toggle AMS forgetting/eviction. |
 | `ALFRED_AMS_COMPACTION_INTERVAL_S` | int |  | internal | AMS compaction interval in seconds. |
 | `ALFRED_AMS_UVX_SPEC` | str |  | internal | uvx spec used to launch the AMS server. |
-| `ALFRED_CODE_MEMORY_MCP` | bool | `0` | operator | Expose the code-memory MCP server. |
-| `ALFRED_CODE_MEMORY_AUTOFETCH` | bool | `0` | operator | Auto-fetch code memory before a firing. |
+| `ALFRED_CODE_MEMORY_MCP` | bool | `1` | operator | Expose the code-memory MCP server (on by default when the binary is installed; set 0 to disable). |
+| `ALFRED_CODE_MEMORY_AUTOFETCH` | bool | `1` | operator | Auto-fetch code memory before a firing (on by default; set 0 to disable). |
 | `ALFRED_CODE_MEMORY_BIN` | path |  | operator | Path override for the code-memory binary. |
 | `ALFRED_CODE_MEMORY_REPO` | str | `DeusData/codebase-memory-mcp` | operator | Repo slug providing the code-memory index source. |
 | `ALFRED_CODE_MEMORY_REPOS` | list |  | operator | Comma-separated repos the code-memory index covers. |

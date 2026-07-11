@@ -534,7 +534,7 @@ _VARS: tuple[ConfigVar, ...] = (
         "candidate",
         "memory",
         "Reflection write mode.",
-        choices=("candidate", "off", "auto"),
+        choices=("direct", "candidate", "off"),
     ),
     V(
         "ALFRED_MEMORY_REFLECTIONS_JSON",
@@ -800,17 +800,17 @@ _VARS: tuple[ConfigVar, ...] = (
     V(
         "ALFRED_CODE_MEMORY_MCP",
         "bool",
-        "0",
+        "1",
         "memory",
-        "Expose the code-memory MCP server.",
+        "Expose the code-memory MCP server (on by default when the binary is installed; set 0 to disable).",
         operator=True,
     ),
     V(
         "ALFRED_CODE_MEMORY_AUTOFETCH",
         "bool",
-        "0",
+        "1",
         "memory",
-        "Auto-fetch code memory before a firing.",
+        "Auto-fetch code memory before a firing (on by default; set 0 to disable).",
         operator=True,
     ),
     V(
