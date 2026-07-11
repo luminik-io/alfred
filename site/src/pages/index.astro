@@ -311,16 +311,16 @@ const heroRuntimeLines = [
       <div class="memory-bench">
         <div class="memory-bench__head">
           <span class="m-mono memory-bench__label">MEMORY A/B</span>
-          <span class="memory-bench__note">Synthetic fixture, N=10, single engine run</span>
+          <span class="memory-bench__note">Synthetic fixture, N=10 (+2 controls), single engine run</span>
         </div>
         <div class="memory-bench__stats">
           <div class="memory-bench__stat">
             <span class="memory-bench__num">80% <span class="memory-bench__to">to</span> 0%</span>
-            <span class="memory-bench__cap">repeated-mistake rate, memory off then on</span>
+            <span class="memory-bench__cap">repeated-mistake rate over 10 convention tasks, memory off then on</span>
           </div>
           <div class="memory-bench__stat">
             <span class="memory-bench__num">8.3% <span class="memory-bench__to">to</span> 91.7%</span>
-            <span class="memory-bench__cap">task success, memory off then on</span>
+            <span class="memory-bench__cap">task success across all 12 tasks, memory off then on</span>
           </div>
           <div class="memory-bench__stat">
             <span class="memory-bench__num">240k vs 295k</span>
@@ -328,9 +328,10 @@ const heroRuntimeLines = [
           </div>
         </div>
         <p class="memory-bench__body">
-          The same ten repo-convention tasks ran twice through the <code>claude</code>
-          CLI, changing only whether memory was on. It measures one thing: whether an
-          agent repeats a mistake the fleet already learned about.
+          The same suite of ten repo-convention tasks plus two controls ran twice
+          through the <code>claude</code> CLI, changing only whether memory was on. It
+          measures one thing: whether an agent repeats a mistake the fleet already
+          learned about.
           <a class="m-link" href="https://github.com/luminik-io/alfred/blob/main/docs/BENCHMARKS.md#harder-fixture-result-engineclaude-n10">Method and repro</a>.
         </p>
       </div>
