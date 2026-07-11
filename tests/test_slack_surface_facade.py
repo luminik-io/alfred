@@ -12,6 +12,7 @@ REMOVED_FLAT_MODULE = re.compile(
     r"(?<!test_)(?<!slack_surface[./])\bslack_(?:approval|control|trust|listener|format|intent|converse|"
     r"issue_bridge|thread_status|memory_candidates)\b"
 )
+SLACK_SURFACE_PATH = re.compile(r"\blib/slack_surface/[a-z_]+\.py\b")
 
 
 def test_slack_poster_facade_does_not_load_listener() -> None:
@@ -40,3 +41,17 @@ def test_public_docs_do_not_reference_removed_flat_slack_modules() -> None:
             if REMOVED_FLAT_MODULE.search(path.read_text(encoding="utf-8")):
                 offenders.append(str(path.relative_to(ROOT)))
     assert offenders == []
+
+
+def test_documented_slack_surface_module_paths_exist() -> None:
+    roots = (*ROOT.glob("*.md"), ROOT / "docs", ROOT / "site" / "src" / "content" / "docs")
+    missing: list[str] = []
+    for root in roots:
+        paths = [root] if root.is_file() else [*root.rglob("*.md"), *root.rglob("*.mdx")]
+        for path in paths:
+            text = path.read_text(encoding="utf-8")
+            for match in SLACK_SURFACE_PATH.finditer(text):
+                module_path = match.group(0)
+                if not (ROOT / module_path).is_file():
+                    missing.append(f"{path.relative_to(ROOT)}: {module_path}")
+    assert missing == []
