@@ -1914,12 +1914,10 @@ body {
   white-space: nowrap;
 }
 
-@media (min-width: 760px) {
-  .agents-deck__grid {
-    grid-template-columns: minmax(210px, 0.82fr) minmax(0, 1.38fr);
-  }
-}
-
+/* The list view is a single full-width surface: the agent detail opens as a
+   slide-over drawer (see .agent-drawer), so the list no longer reserves a second
+   column for a permanent inspector. The rail fills the whole deck width and the
+   list inside it flows as a responsive card grid (see .agents-deck__list). */
 .agents-deck__rail,
 .agent-inspector,
 .agents-deck__empty {
@@ -1960,12 +1958,16 @@ body {
 
 .agents-deck__list {
   display: grid;
+  /* A responsive card grid: each row is an agent card, and the columns fill the
+     full deck width (3-4 across on a wide window, 1 on mobile) so the roster no
+     longer wastes the right side of the screen. Clicking a card opens the detail
+     drawer, so the list never needs to reserve width for an inspector. */
+  grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
   min-height: 0;
   align-content: start;
   gap: 0.5rem;
-  /* Bound the scroll height (mirrors the cinematic constellation) so a long
-     roster scrolls within the rail beside the inspector instead of expanding
-     the page on short windows or large fleets. */
+  /* Bound the scroll height so a long roster scrolls within the rail instead of
+     expanding the page on short windows or large fleets. */
   max-height: min(72svh, 660px);
   overflow-y: auto;
   padding-right: 0.125rem;
@@ -1973,11 +1975,16 @@ body {
 
 .agents-deck__row {
   --agent-accent: var(--primary);
+  /* An agent card: an accent rail down the left, the name + role + purpose in
+     the body, and the status badge + cadence on a meta line below. The whole
+     card is a button that opens the detail drawer. Laid out as a card (not a
+     wide row) so a grid of them fills the deck (see .agents-deck__list). */
   display: grid;
   width: 100%;
-  grid-template-columns: 0.35rem minmax(0, 1fr) auto;
-  gap: 0.75rem;
-  align-items: center;
+  height: 100%;
+  grid-template-columns: 0.35rem minmax(0, 1fr);
+  gap: 0.4rem 0.75rem;
+  align-content: start;
   border: 1px solid color-mix(in oklch, var(--agent-accent), var(--border) 84%);
   border-radius: 0;
   background: color-mix(in oklch, var(--card), var(--background) 8%);
@@ -1998,7 +2005,7 @@ body {
 }
 
 .agents-deck__row:hover {
-  transform: translateX(2px);
+  transform: translateY(-2px);
 }
 
 .agents-deck__row[data-selected="true"] {
@@ -2008,11 +2015,18 @@ body {
 }
 
 .agents-deck__row-mark {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  align-self: stretch;
   width: 0.35rem;
-  height: 2.5rem;
+  min-height: 2.5rem;
   border-radius: 999px;
   background: var(--agent-accent);
   opacity: 0.65;
+}
+
+.agents-deck__row > .min-w-0 {
+  grid-column: 2;
 }
 
 .agents-deck__row-title,
@@ -2504,9 +2518,13 @@ body {
 }
 
 .agents-deck__row-meta {
+  grid-column: 2;
   display: grid;
-  justify-items: end;
-  gap: 0.25rem;
+  grid-auto-flow: column;
+  align-items: center;
+  justify-content: space-between;
+  justify-items: start;
+  gap: 0.5rem;
   color: var(--muted-foreground);
   font-size: 0.72rem;
   white-space: nowrap;
@@ -2648,30 +2666,6 @@ body {
 
 .agents-deck__empty {
   padding: 0.5rem;
-}
-
-@media (max-width: 760px) {
-  .agents-deck__row {
-    grid-template-columns: 0.35rem minmax(0, 1fr);
-  }
-
-  .agents-deck__row-meta {
-    grid-column: 2;
-    justify-items: start;
-  }
-}
-
-@media (max-width: 920px) {
-  .agents-deck__row {
-    grid-template-columns: 0.35rem minmax(0, 1fr);
-  }
-
-  .agents-deck__row-meta {
-    grid-column: 2;
-    grid-auto-flow: column;
-    justify-content: space-between;
-    justify-items: start;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
