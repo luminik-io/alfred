@@ -181,6 +181,40 @@ def test_bounded_subcommand_cleans_process_group_on_interrupt(monkeypatch):
     assert signals == [(321, cli.signal.SIGTERM), (321, cli.signal.SIGKILL)]
 
 
+def test_persistent_subcommand_cleans_process_group_on_sigterm(monkeypatch):
+    cli = load_cli_module()
+    handlers = {}
+
+    def fake_signal(signum, handler):
+        previous = handlers.get(signum, cli.signal.SIG_DFL)
+        handlers[signum] = handler
+        return previous
+
+    class FakeProcess:
+        pid = 432
+
+        def __init__(self, _command, **_kwargs):
+            self.calls = 0
+
+        def wait(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                handlers[cli.signal.SIGTERM](cli.signal.SIGTERM, None)
+            return -15
+
+    signals = []
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(cli.signal, "signal", fake_signal)
+    monkeypatch.setattr(cli.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+
+    with pytest.raises(SystemExit) as exc:
+        cli._run_subcommand(["persistent-service"], timeout=None)
+
+    assert exc.value.code == 128 + cli.signal.SIGTERM
+    assert signals == [(432, cli.signal.SIGTERM), (432, cli.signal.SIGKILL)]
+    assert handlers[cli.signal.SIGTERM] == cli.signal.SIG_DFL
+
+
 def test_code_memory_serve_is_unbounded(monkeypatch):
     cli = load_cli_module()
     calls = []
