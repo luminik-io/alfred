@@ -333,6 +333,21 @@ def test_install_fetch_failure_preserves_existing_destination(tmp_path: Path) ->
     assert marker.read_text() == "keep"
 
 
+def test_install_fetch_interrupt_removes_new_partial_destination(tmp_path: Path) -> None:
+    pack = _pack(install="fetch", fetch_cmd="clone {skills_dir}/thing", vendored_path=None)
+
+    def interrupted_runner(_cmd: str, cwd: Path) -> int:
+        (cwd / pack.name).mkdir()
+        (cwd / pack.name / "partial").write_text("incomplete")
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        skill_packs.install_pack(pack, skills_dir=tmp_path, runner=interrupted_runner)
+
+    assert not (tmp_path / pack.name).exists()
+    assert pack.name not in skill_packs.installed_packs([pack], skills_dir=tmp_path)
+
+
 def test_install_fetch_shell_quotes_spaced_skills_dir(tmp_path: Path) -> None:
     """A skills dir with spaces (or metacharacters) must be shell-quoted.
 

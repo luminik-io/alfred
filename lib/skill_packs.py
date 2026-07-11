@@ -312,15 +312,24 @@ def install_pack(
     skills_dir.mkdir(parents=True, exist_ok=True)
     dest_existed = dest.exists()
     run = runner or _default_shell_runner
-    code = run(cmd, skills_dir)
+    try:
+        code = run(cmd, skills_dir)
+    except BaseException:
+        _remove_new_partial_destination(dest, existed_before=dest_existed)
+        raise
     if code != 0:
-        if not dest_existed and dest.exists():
-            if dest.is_dir():
-                shutil.rmtree(dest)
-            else:
-                dest.unlink()
+        _remove_new_partial_destination(dest, existed_before=dest_existed)
         raise RuntimeError(f"fetch for {pack.name!r} failed (exit {code}): {cmd}")
     return InstallResult(pack.name, pack.install, dest, fetched=cmd)
+
+
+def _remove_new_partial_destination(dest: Path, *, existed_before: bool) -> None:
+    if existed_before or not dest.exists():
+        return
+    if dest.is_dir():
+        shutil.rmtree(dest)
+    else:
+        dest.unlink()
 
 
 def _default_shell_runner(cmd: str, cwd: Path) -> int:
