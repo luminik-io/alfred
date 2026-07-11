@@ -49,7 +49,13 @@ def _isolated_sys_path(tmp_path, monkeypatch):
     ):
         monkeypatch.delenv(k, raising=False)
     for mod in list(sys.modules):
-        if mod in ("architect_lifecycle", "batman", "labels", "slack_surface.approval", "slack_surface.posting"):
+        if mod in (
+            "architect_lifecycle",
+            "batman",
+            "labels",
+            "slack_surface.approval",
+            "slack_surface.posting",
+        ):
             del sys.modules[mod]
     libdir = str(REPO / "lib")
     if libdir not in sys.path:
