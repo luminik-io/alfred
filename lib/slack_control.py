@@ -65,6 +65,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import alfred_config
 from planning_actions import convert_followup_to_draft, mark_followup_handled
 from server.reader import (
     FilesystemReader,
@@ -1264,8 +1265,7 @@ def _agent_cli_success_title(verb: str) -> str:
 
 def _discover_run_codenames(alfred_bin: str) -> frozenset[str]:
     codenames = set(_DEFAULT_RUN_CODENAMES)
-    for raw in os.environ.get("ALFRED_SLACK_RUN_CODENAMES", "").split(","):
-        candidate = raw.strip()
+    for candidate in alfred_config.get_list("ALFRED_SLACK_RUN_CODENAMES"):
         if is_valid_codename(candidate):
             codenames.add(candidate)
     for path in _agents_conf_candidates(alfred_bin):

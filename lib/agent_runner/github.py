@@ -41,6 +41,7 @@ import urllib.parse
 from datetime import UTC, datetime
 from pathlib import Path
 
+import alfred_config
 import labels as label_constants
 
 from .config import dry_run_log, is_dry_run
@@ -1091,12 +1092,7 @@ def _parse_claim_comment(body: str) -> dict:
 
 def _claim_window_hours() -> int:
     """How long an unreleased claim comment should block a fresh claim."""
-    raw = os.environ.get("ALFRED_CLAIM_MAX_AGE_HOURS", "4")
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return 4
-    return max(value, 1)
+    return max(alfred_config.get_int("ALFRED_CLAIM_MAX_AGE_HOURS"), 1)
 
 
 def _parse_github_ts(value: str | None) -> float | None:

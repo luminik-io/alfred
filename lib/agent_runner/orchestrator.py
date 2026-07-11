@@ -32,6 +32,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import alfred_config
+
 from .config import _env_present, _env_value_enabled
 from .disk import disk_pressure_status
 from .notify import slack_post
@@ -385,10 +387,7 @@ _PREFLIGHT_SLACK_STATE_NAME = "last-slack-preflight-post.json"
 
 
 def _preflight_slack_min_minutes() -> int:
-    try:
-        return int(os.environ.get("ALFRED_PREFLIGHT_SLACK_MIN_MINUTES", "60"))
-    except ValueError:
-        return 60
+    return alfred_config.get_int("ALFRED_PREFLIGHT_SLACK_MIN_MINUTES")
 
 
 def _preflight_error_signature(misses: list[str]) -> str:
@@ -463,10 +462,7 @@ _DISK_SLACK_STATE_NAME = "last-slack-disk-warning.json"
 
 
 def _disk_slack_min_hours() -> int:
-    try:
-        return max(1, int(os.environ.get("ALFRED_DISK_SLACK_MIN_HOURS", "6")))
-    except ValueError:
-        return 6
+    return max(1, alfred_config.get_int("ALFRED_DISK_SLACK_MIN_HOURS"))
 
 
 def _disk_slack_state_path(agent: str) -> Path:
