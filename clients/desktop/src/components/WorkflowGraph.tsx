@@ -9,6 +9,7 @@ import {
   ReactFlow,
   type ReactFlowProps,
   useReactFlow,
+  useNodesInitialized,
   useStore,
 } from "@xyflow/react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -189,13 +190,14 @@ function prefersReducedMotion(): boolean {
  * fit. The explicit fit-to-view button (Controls) still reaches the full graph.
  */
 function FitToContainer({ signature }: { signature: string }) {
-  const { getNodes, getNodesBounds, setViewport, fitView } = useReactFlow();
+  const { getNodes, getNodesBounds, setViewport } = useReactFlow();
+  const nodesInitialized = useNodesInitialized();
   const width = useStore((state) => state.width);
   const height = useStore((state) => state.height);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
-    if (!width || !height) {
+    if (!width || !height || !nodesInitialized) {
       return;
     }
     let cancelled = false;
@@ -211,13 +213,6 @@ function FitToContainer({ signature }: { signature: string }) {
           attempts += 1;
           if (attempts < MAX_INITIAL_FRAME_ATTEMPTS) {
             frame();
-          } else {
-            // Bounds never became usable within the retry budget (a very slow
-            // mount, or a store that adopted nodes before measuring them). Fall
-            // back to React Flow's own fit so the canvas is always framed rather
-            // than left at its default viewport; minZoom in FIT_OPTIONS still
-            // holds the readable floor.
-            void fitView(FIT_OPTIONS);
           }
           return;
         }
@@ -231,7 +226,15 @@ function FitToContainer({ signature }: { signature: string }) {
       cancelled = true;
       clearTimeout(timer.current);
     };
-  }, [width, height, signature, getNodes, getNodesBounds, setViewport, fitView]);
+  }, [
+    width,
+    height,
+    nodesInitialized,
+    signature,
+    getNodes,
+    getNodesBounds,
+    setViewport,
+  ]);
 
   return null;
 }
