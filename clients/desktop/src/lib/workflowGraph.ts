@@ -36,6 +36,7 @@ const EDGE_SEP = 18;
 // it. Lane labels are derived from the laid-out agent positions, not laid out
 // by dagre, so we place them by hand above the band.
 const LANE_LABEL_LIFT = 78;
+const LANE_LABEL_HEIGHT = 16;
 
 /**
  * The display fields a node needs, derived by the caller from the live row. The
@@ -159,6 +160,29 @@ export function initialWorkflowViewport(
       ? (viewport.height - scaledHeight) / 2 - content.y * zoom
       : gutterY - content.y * zoom;
   return { x, y, zoom };
+}
+
+/** Bounds from the declared layout, independent of React Flow DOM measurement. */
+export function declaredWorkflowBounds(nodes: Node[]): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  if (!nodes.length) return { x: 0, y: 0, width: 0, height: 0 };
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const node of nodes) {
+    const width = node.width ?? (node.type === "lane" ? 0 : NODE_WIDTH);
+    const height = node.height ?? (node.type === "lane" ? LANE_LABEL_HEIGHT : NODE_HEIGHT);
+    minX = Math.min(minX, node.position.x);
+    minY = Math.min(minY, node.position.y);
+    maxX = Math.max(maxX, node.position.x + width);
+    maxY = Math.max(maxY, node.position.y + height);
+  }
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
 /**

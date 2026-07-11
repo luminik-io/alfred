@@ -4,6 +4,7 @@ import type { WorkflowRole } from "./agentRoster";
 import {
   buildWorkflowGraph,
   clampWorkflowZoom,
+  declaredWorkflowBounds,
   fitToViewZoom,
   initialWorkflowViewport,
   WORKFLOW_ZOOM,
@@ -111,6 +112,17 @@ describe("buildWorkflowGraph", () => {
     const selected = nodes.find((n) => n.id === "reviewer");
     expect((selected?.data as { selected: boolean }).selected).toBe(true);
     expect(edges.find((e) => e.id === "senior-dev->reviewer")?.animated).toBe(true);
+  });
+
+  it("derives stable fallback bounds from the declared graph layout", () => {
+    const { nodes } = buildWorkflowGraph(ROSTER, null);
+    const bounds = declaredWorkflowBounds(nodes);
+
+    expect(bounds.width).toBeGreaterThan(0);
+    expect(bounds.height).toBeGreaterThan(0);
+    expect(bounds.y).toBeLessThan(
+      Math.min(...nodes.filter((node) => node.type === "agent").map((node) => node.position.y)),
+    );
   });
 });
 

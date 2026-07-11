@@ -18,6 +18,7 @@ import { Maximize2, Minimize2 } from "lucide-react";
 import {
   type AgentNodeData,
   buildWorkflowGraph,
+  declaredWorkflowBounds,
   initialWorkflowViewport,
   type LaneNodeData,
   WORKFLOW_ZOOM,
@@ -189,12 +190,24 @@ function prefersReducedMotion(): boolean {
  * at its leftmost lanes at every breakpoint, instead of shrinking node text to
  * fit. The explicit fit-to-view button (Controls) still reaches the full graph.
  */
-function FitToContainer({ signature }: { signature: string }) {
-  const { getNodes, getNodesBounds, setViewport, fitView } = useReactFlow();
+function FitToContainer({
+  signature,
+  fallbackBounds,
+}: {
+  signature: string;
+  fallbackBounds: { x: number; y: number; width: number; height: number };
+}) {
+  const { getNodes, getNodesBounds, setViewport } = useReactFlow();
   const nodesInitialized = useNodesInitialized();
   const width = useStore((state) => state.width);
   const height = useStore((state) => state.height);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const {
+    x: fallbackX,
+    y: fallbackY,
+    width: fallbackWidth,
+    height: fallbackHeight,
+  } = fallbackBounds;
 
   useEffect(() => {
     if (!width || !height || !nodesInitialized) {
@@ -213,14 +226,12 @@ function FitToContainer({ signature }: { signature: string }) {
           attempts += 1;
           if (attempts < MAX_INITIAL_FRAME_ATTEMPTS) {
             frame();
-          } else {
-            // nodesInitialized said the nodes are measured, yet the bounds
-            // stayed unusable through the whole retry budget (an edge React
-            // Flow state, e.g. adopted nodes with zero-size measurements).
-            // Never leave the canvas at React Flow's raw default viewport:
-            // fall back to its own fit, whose FIT_OPTIONS minZoom still holds
-            // the readable floor.
-            void fitView(FIT_OPTIONS);
+          } else if (fallbackWidth > 0 && fallbackHeight > 0) {
+            const target = initialWorkflowViewport(
+              { x: fallbackX, y: fallbackY, width: fallbackWidth, height: fallbackHeight },
+              { width, height },
+            );
+            void setViewport(target, { duration: prefersReducedMotion() ? 0 : 240 });
           }
           return;
         }
@@ -242,7 +253,10 @@ function FitToContainer({ signature }: { signature: string }) {
     getNodes,
     getNodesBounds,
     setViewport,
-    fitView,
+    fallbackX,
+    fallbackY,
+    fallbackWidth,
+    fallbackHeight,
   ]);
 
   return null;
@@ -263,6 +277,7 @@ export function WorkflowGraph({
     () => buildWorkflowGraph(agents, selectedCodename),
     [agents, selectedCodename],
   );
+  const fallbackBounds = declaredWorkflowBounds(nodes);
 
   // Re-fit whenever the set of agents changes (not on mere selection), so a
   // roster that loads or changes size still frames cleanly.
@@ -352,7 +367,7 @@ export function WorkflowGraph({
           }
         }}
       >
-        <FitToContainer signature={signature} />
+        <FitToContainer signature={signature} fallbackBounds={fallbackBounds} />
         <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
         <Controls showInteractive={false} position="bottom-left" />
         <MiniMap
