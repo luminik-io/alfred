@@ -45,7 +45,7 @@ def test_serve_forwards_supported_server_args(tmp_path, monkeypatch):
     calls = []
 
     def fake_run(command, check, timeout):
-        calls.append((command, check))
+        calls.append((command, check, timeout))
         return SimpleNamespace(returncode=0)
 
     monkeypatch.delenv("ALFRED_HOME", raising=False)
@@ -82,6 +82,7 @@ def test_serve_forwards_supported_server_args(tmp_path, monkeypatch):
                 "debug",
             ],
             False,
+            None,
         )
     ]
 
@@ -96,7 +97,7 @@ def test_serve_uses_managed_alfred_venv_when_present(tmp_path, monkeypatch):
     calls = []
 
     def fake_run(command, check, timeout):
-        calls.append((command, check))
+        calls.append((command, check, timeout))
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
@@ -112,5 +113,18 @@ def test_serve_uses_managed_alfred_venv_when_present(tmp_path, monkeypatch):
                 "--no-browser",
             ],
             False,
+            None,
         )
     ]
+
+
+def test_bounded_subcommand_returns_timeout_status(monkeypatch, capsys):
+    cli = load_cli_module()
+
+    def fake_run(command, check, timeout):
+        raise cli.subprocess.TimeoutExpired(command, timeout)
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    assert cli._run_subcommand(["slow-command"], timeout=2) == 124
+    assert "timed out after 2s" in capsys.readouterr().err

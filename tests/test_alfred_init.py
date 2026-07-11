@@ -1454,6 +1454,27 @@ def test_maybe_offer_setup_token_accepts_runtime_env_file_token(
     assert "Run `alfred setup-token` now?" not in captured.out
 
 
+def test_maybe_offer_setup_token_reports_timeout_without_crashing(
+    tmp_path, init_mod, monkeypatch, capsys
+):
+    import subprocess
+
+    alfred_home = tmp_path / ".alfred"
+    alfred_home.mkdir()
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
+
+    def time_out(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr(init_mod.subprocess, "run", time_out)
+
+    init_mod._maybe_offer_setup_token(non_interactive=False)
+
+    assert "timed out waiting for approval" in capsys.readouterr().err
+
+
 def test_upsert_env_file_idempotent(tmp_path, init_mod):
     rc = tmp_path / ".env"
     rc.write_text("# pre-existing\nGH_ORG=acme\n")

@@ -318,12 +318,15 @@ def _default_shell_runner(cmd: str, cwd: Path) -> int:
     """Real shell runner for fetch packs. Only used outside tests."""
     import subprocess
 
-    return subprocess.run(
-        cmd,
-        shell=True,
-        cwd=str(cwd),
-        timeout=FETCH_PACK_TIMEOUT_S,
-    ).returncode
+    try:
+        return subprocess.run(
+            cmd,
+            shell=True,
+            cwd=str(cwd),
+            timeout=FETCH_PACK_TIMEOUT_S,
+        ).returncode
+    except subprocess.TimeoutExpired:
+        return 124
 
 
 def installed_packs(packs: Sequence[Pack], *, skills_dir: Path | None = None) -> set[str]:

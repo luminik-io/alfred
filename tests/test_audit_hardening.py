@@ -27,8 +27,6 @@ def _python_sources_under(*roots: str) -> list[Path]:
             if path.suffix != ".py" and root != "bin":
                 continue
             text = path.read_text(encoding="utf-8", errors="ignore")
-            if "subprocess.run" not in text:
-                continue
             try:
                 ast.parse(text, filename=str(path))
             except SyntaxError:
@@ -41,16 +39,32 @@ def test_subprocess_run_calls_in_lib_and_bin_have_timeouts() -> None:
     offenders: list[str] = []
     for path in _python_sources_under("lib", "bin"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        module_aliases = {
+            alias.asname or alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+            if alias.name == "subprocess"
+        }
+        run_aliases = {
+            alias.asname or alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module == "subprocess"
+            for alias in node.names
+            if alias.name == "run"
+        }
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
             func = node.func
-            if not (
+            attribute_call = (
                 isinstance(func, ast.Attribute)
                 and func.attr == "run"
                 and isinstance(func.value, ast.Name)
-                and func.value.id == "subprocess"
-            ):
+                and func.value.id in module_aliases
+            )
+            direct_call = isinstance(func, ast.Name) and func.id in run_aliases
+            if not (attribute_call or direct_call):
                 continue
             if not any(keyword.arg == "timeout" for keyword in node.keywords):
                 rel = path.relative_to(ROOT)

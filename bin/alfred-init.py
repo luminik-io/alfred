@@ -1489,11 +1489,18 @@ def _maybe_offer_setup_token(*, non_interactive: bool) -> None:
     answer = input("  Run `alfred setup-token` now? [Y/n] ").strip().lower()
     if answer in ("", "y", "yes"):
         script = Path(__file__).resolve().parent / "alfred-setup-token.py"
-        rc = subprocess.run(
-            [sys.executable, str(script)],
-            check=False,
-            timeout=SETUP_TOKEN_COMMAND_TIMEOUT_S,
-        ).returncode
+        try:
+            rc = subprocess.run(
+                [sys.executable, str(script)],
+                check=False,
+                timeout=SETUP_TOKEN_COMMAND_TIMEOUT_S,
+            ).returncode
+        except subprocess.TimeoutExpired:
+            warn(
+                "`alfred setup-token` timed out waiting for approval. "
+                "Re-run it when you are ready to finish authentication."
+            )
+            return
         if rc != 0:
             warn(f"`alfred setup-token` exited {rc}. You can re-run it any time.")
     else:

@@ -381,11 +381,18 @@ def step_claude_oauth(
         return
     if ask_yes_no("Run `alfred setup-token` now?", True):
         script = Path(__file__).resolve().parent / "alfred-setup-token.py"
-        rc = subprocess.run(
-            [sys.executable, str(script)],
-            check=False,
-            timeout=SETUP_TOKEN_COMMAND_TIMEOUT_S,
-        ).returncode
+        try:
+            rc = subprocess.run(
+                [sys.executable, str(script)],
+                check=False,
+                timeout=SETUP_TOKEN_COMMAND_TIMEOUT_S,
+            ).returncode
+        except subprocess.TimeoutExpired:
+            warn(
+                "`alfred setup-token` timed out waiting for approval. "
+                "Re-run it before enabling architect."
+            )
+            return
         if rc == 0:
             state.config = read_env_file(state.env_file)
             ok(f"{TOKEN_ENV} configured")

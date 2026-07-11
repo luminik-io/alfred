@@ -6,6 +6,7 @@ the suite is deterministic and CI-safe. Vendored installs use a tmp skills dir.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -17,6 +18,16 @@ if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
 import skill_packs  # noqa: E402
+
+
+def test_default_shell_runner_returns_timeout_status(tmp_path, monkeypatch) -> None:
+    def time_out(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr(subprocess, "run", time_out)
+
+    assert skill_packs._default_shell_runner("slow-command", tmp_path) == 124
+
 
 # --------------------------------------------------------------------------
 # Manifest parsing

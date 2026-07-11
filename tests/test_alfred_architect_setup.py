@@ -64,6 +64,26 @@ def test_read_env_file_parses_exports_and_quotes(tmp_path, monkeypatch):
     assert out["ARCHITECT_SLACK_CHANNEL"] == "alfred"
 
 
+def test_oauth_step_reports_timeout_without_crashing(tmp_path, monkeypatch, capsys):
+    mod = _load_module(monkeypatch, tmp_path)
+    state = mod.ArchitectSetupState(
+        repo_root=REPO,
+        alfred_home=tmp_path,
+        env_file=tmp_path / ".env",
+        env={},
+    )
+    monkeypatch.setattr(mod, "ask_yes_no", lambda *_args: True)
+
+    def time_out(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr(mod.subprocess, "run", time_out)
+
+    mod.step_claude_oauth(state, non_interactive=False, skip_token_setup=False)
+
+    assert "timed out waiting for approval" in capsys.readouterr().err
+
+
 def test_upsert_architect_block_is_idempotent_and_preserves_other_blocks(tmp_path, monkeypatch):
     mod = _load_module(monkeypatch, tmp_path)
     env_file = tmp_path / ".env"
