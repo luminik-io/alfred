@@ -190,7 +190,7 @@ function prefersReducedMotion(): boolean {
  * fit. The explicit fit-to-view button (Controls) still reaches the full graph.
  */
 function FitToContainer({ signature }: { signature: string }) {
-  const { getNodes, getNodesBounds, setViewport } = useReactFlow();
+  const { getNodes, getNodesBounds, setViewport, fitView } = useReactFlow();
   const nodesInitialized = useNodesInitialized();
   const width = useStore((state) => state.width);
   const height = useStore((state) => state.height);
@@ -213,6 +213,14 @@ function FitToContainer({ signature }: { signature: string }) {
           attempts += 1;
           if (attempts < MAX_INITIAL_FRAME_ATTEMPTS) {
             frame();
+          } else {
+            // nodesInitialized said the nodes are measured, yet the bounds
+            // stayed unusable through the whole retry budget (an edge React
+            // Flow state, e.g. adopted nodes with zero-size measurements).
+            // Never leave the canvas at React Flow's raw default viewport:
+            // fall back to its own fit, whose FIT_OPTIONS minZoom still holds
+            // the readable floor.
+            void fitView(FIT_OPTIONS);
           }
           return;
         }
@@ -234,6 +242,7 @@ function FitToContainer({ signature }: { signature: string }) {
     getNodes,
     getNodesBounds,
     setViewport,
+    fitView,
   ]);
 
   return null;
