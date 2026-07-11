@@ -42,6 +42,7 @@ from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any
 
+import batteries
 import skill_packs
 from envflags import FALSY_VALUES
 
@@ -155,6 +156,11 @@ _CAPABILITY_SOURCES: dict[str, dict[str, str]] = {
         "url": "https://github.com/garrytan/gstack",
         "license": "MIT",
     },
+}
+_GRAPHIFY_SOURCE = {
+    "source": "graphifyy",
+    "url": "https://pypi.org/project/graphifyy/",
+    "license": "MIT",
 }
 
 
@@ -798,8 +804,24 @@ def capability_status(
 
     runtime_env = launcher_env or _runtime_config_env()
     code_memory = code_memory or code_memory_status()
+    battery_rows_value = batteries.manifest(runtime_env).get("batteries", [])
+    battery_rows = battery_rows_value if isinstance(battery_rows_value, list) else []
+    graphify = next(
+        (row for row in battery_rows if isinstance(row, dict) and row.get("id") == "graphify"),
+        None,
+    )
+    if graphify is not None:
+        graphify = dict(graphify)
+        graph_path = Path(
+            runtime_env.get("ALFRED_GRAPHIFY_GRAPH") or "graphify-out/graph.json"
+        ).expanduser()
+        # Relative graphs are resolved per firing worktree by agent_runner.
+        # The setup server has no single target repo, so it cannot prove them ready.
+        graphify["graph_present"] = graph_path.is_absolute() and graph_path.is_file()
+        graphify["graph_path"] = str(graph_path)
+        graphify["fallback"] = runtime_env.get("ALFRED_GRAPHIFY_FALLBACK", "")
     capabilities = [
-        _code_graph_capability(code_memory),
+        _code_graph_capability(code_memory, graphify=graphify),
         _context_compression_capability(runtime_env),
         _engineering_skills_capability(runtime_env),
     ]
@@ -937,7 +959,58 @@ def _capability_base(
     }
 
 
-def _code_graph_capability(code_memory: dict[str, Any]) -> dict[str, Any]:
+def _code_graph_capability(
+    code_memory: dict[str, Any], *, graphify: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    code_binary = code_memory.get("binary") or {}
+    fallback_enabled = bool(graphify and graphify.get("fallback") == "code-memory")
+    code_ready = (
+        (bool(code_memory.get("enabled")) or fallback_enabled)
+        and bool(code_binary.get("resolved"))
+        and bool(code_memory.get("index_present"))
+    )
+    if graphify and bool(graphify.get("enabled")):
+        installed = bool(graphify.get("installed"))
+        graph_present = bool(graphify.get("graph_present"))
+        if code_ready and not (installed and graph_present):
+            if fallback_enabled and not code_memory.get("enabled"):
+                code_memory = dict(code_memory)
+                code_memory["enabled"] = True
+            graphify = None
+        else:
+            state = (
+                "ready"
+                if installed and graph_present
+                else ("needs_index" if installed else "installable")
+            )
+    if graphify and bool(graphify.get("enabled")):
+        capability = _capability_base(
+            "code_graph",
+            title="Code graph memory",
+            category="memory",
+            recommended=True,
+            state=state,
+            installed=installed,
+            enabled=True,
+            detail=str(graphify.get("how_it_helps") or graphify.get("what") or ""),
+            detected={
+                "engine": "graphify",
+                "status": graphify.get("status"),
+                "docs": graphify.get("docs"),
+                "graph_path": graphify.get("graph_path"),
+                "graph_present": graph_present,
+            },
+            install_hint=(
+                ""
+                if installed and graph_present
+                else str(
+                    graphify.get("install_hint") or "Run `graphify <repo>` to build the graph."
+                )
+            ),
+        )
+        capability["source"] = _GRAPHIFY_SOURCE
+        return capability
+
     binary = code_memory.get("binary") or {}
     enabled = bool(code_memory.get("enabled"))
     installed = bool(binary.get("resolved"))
@@ -1889,12 +1962,14 @@ def _code_graph_readiness_check(
     )
     if disabled:
         row["state"] = "disabled"
-    return row | {
-        "detected": {
-            "capability_state": capability_state,
-            "enabled": bool(capability.get("enabled")),
-        },
+    detected: dict[str, Any] = {
+        "capability_state": capability_state,
+        "enabled": bool(capability.get("enabled")),
     }
+    engine = (capability.get("detected") or {}).get("engine")
+    if engine:
+        detected["engine"] = engine
+    return row | {"detected": detected}
 
 
 def _context_compression_readiness_check(capability_plane: dict[str, Any]) -> dict[str, Any]:

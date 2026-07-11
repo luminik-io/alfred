@@ -210,6 +210,14 @@ function readinessRepairFor(check: SetupFirstRunCheck): ReadinessRepair | null {
   if (check.key === "code_graph") {
     const state = codeGraphCapabilityState(check);
     if (state === "installable") {
+      if (codeGraphEngine(check) === "graphify") {
+        return {
+          request: { action: "battery_enable", target: "graphify", refreshAfter: true },
+          label: "Install Graphify",
+          busyLabel: "Installing Graphify",
+          busyKey: "battery_enable:graphify",
+        };
+      }
       return {
         request: { action: "code_memory_status", refreshAfter: true },
         label: "Install code memory",
@@ -218,6 +226,9 @@ function readinessRepairFor(check: SetupFirstRunCheck): ReadinessRepair | null {
       };
     }
     if (state === "needs_index") {
+      if (codeGraphEngine(check) === "graphify") {
+        return null;
+      }
       return {
         request: { action: "code_memory_index", refreshAfter: true },
         label: "Index code memory",
@@ -247,4 +258,15 @@ function codeGraphCapabilityState(check: SetupFirstRunCheck): string {
     }
   }
   return check.state;
+}
+
+function codeGraphEngine(check: SetupFirstRunCheck): string {
+  const detected = check.detected;
+  if (detected && typeof detected === "object" && !Array.isArray(detected)) {
+    const engine = (detected as Record<string, unknown>).engine;
+    if (typeof engine === "string") {
+      return engine;
+    }
+  }
+  return "";
 }

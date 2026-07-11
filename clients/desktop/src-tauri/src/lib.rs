@@ -2138,6 +2138,20 @@ fn build_alfred_action(
                 "--json".to_string(),
             ],
         )),
+        "battery_enable" => {
+            let battery_id = validate_battery_id(
+                target.ok_or_else(|| "battery enable needs a battery id".to_string())?,
+            )?;
+            Ok((
+                "alfred".to_string(),
+                vec![
+                    "batteries".to_string(),
+                    "enable".to_string(),
+                    battery_id,
+                    "--yes".to_string(),
+                ],
+            ))
+        }
         "code_memory_status" => Ok((
             "alfred".to_string(),
             vec!["code-memory".to_string(), "doctor".to_string()],
@@ -2435,6 +2449,10 @@ fn validate_codename(value: &str) -> Result<String, String> {
 /// which deliberately require a single named agent.
 fn validate_fleet_target(value: &str) -> Result<String, String> {
     validate_codename(value)
+}
+
+fn validate_battery_id(value: &str) -> Result<String, String> {
+    validate_codename(value).map_err(|_| "battery id contains unsupported characters".to_string())
 }
 
 fn validate_schedule_cadence(value: &str) -> Result<String, String> {
@@ -3556,6 +3574,18 @@ done"#;
 
     #[test]
     fn memory_native_actions_build_fixed_commands() {
+        let (_, battery_args) = build_alfred_action("battery_enable", Some("graphify"), None)
+            .expect("battery enable accepts a validated battery id");
+        assert_eq!(
+            battery_args,
+            vec![
+                "batteries".to_string(),
+                "enable".to_string(),
+                "graphify".to_string(),
+                "--yes".to_string(),
+            ]
+        );
+
         let (_, code_memory_args) = build_alfred_action("code_memory_status", None, None)
             .expect("code-memory status has no target");
         assert_eq!(
@@ -3569,6 +3599,8 @@ done"#;
             code_memory_index_args,
             vec!["code-memory".to_string(), "index".to_string(),]
         );
+
+        assert!(build_alfred_action("battery_enable", Some("--help"), None).is_err());
 
         let (_, skills_args) = build_alfred_action("skills_install_starter", None, None)
             .expect("starter skills install has no target");
