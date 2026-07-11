@@ -2027,7 +2027,7 @@ def install_inventory(
             "Scheduled fleet",
             bool(conf_path and conf_path.is_file()),
             (
-                f"{len(scheduled_runs)} enabled scheduled run"
+                f"{len(scheduled_runs)} configured scheduled run"
                 f"{'' if len(scheduled_runs) == 1 else 's'} in agents.conf"
                 if conf_path and conf_path.is_file()
                 else "No deployed agents.conf found yet"

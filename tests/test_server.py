@@ -19,6 +19,7 @@ LIB = REPO_ROOT / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
+import compose_converse as cc  # noqa: E402
 import server.views as server_views  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from fleet_brain import Lesson  # noqa: E402
@@ -2612,6 +2613,42 @@ def test_compose_converse_absent_plain_falls_back_to_env_default(
     assert "Plain mode is on" in capture["intake_guidance"]
 
 
+def test_converse_grounding_includes_live_engine_inventory(monkeypatch) -> None:
+    from server import setup as setup_mod
+
+    monkeypatch.delenv("ALFRED_CONVERSE_OPERATIONAL_GROUNDING", raising=False)
+    monkeypatch.setattr(
+        setup_mod,
+        "engine_clis",
+        lambda: [
+            {"name": "claude", "installed": True, "path": "/bin/claude"},
+            {"name": "codex", "installed": True, "path": "/bin/codex"},
+        ],
+    )
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(reader=None)))
+
+    grounding = server_views._converse_operational_grounding(
+        request,
+        conversation_engine="hybrid",
+    )
+
+    assert "Installed and available to Alfred: Claude Code, Codex." in grounding
+    assert "hybrid (Claude Code first, Codex fallback)" in grounding
+
+
+def test_converse_grounding_respects_operational_grounding_off_switch(monkeypatch) -> None:
+    monkeypatch.setenv("ALFRED_CONVERSE_OPERATIONAL_GROUNDING", "0")
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(reader=None)))
+
+    assert (
+        server_views._converse_operational_grounding(
+            request,
+            conversation_engine="hybrid",
+        )
+        == ""
+    )
+
+
 def test_compose_converse_degrades_when_no_engine_configured(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2619,6 +2656,8 @@ def test_compose_converse_degrades_when_no_engine_configured(
     # clear 503 (the client falls back to the one-shot form) instead of faking.
     monkeypatch.delenv("ALFRED_COMPOSE_CONVERSE_ENGINE", raising=False)
     monkeypatch.delenv("ALFRED_PLANNING_ASSISTANT_ENGINE", raising=False)
+    monkeypatch.delenv("ALFRED_ENGINE", raising=False)
+    monkeypatch.setattr(cc, "_available_engine_clis", dict)
     state = tmp_path / "state"
     state.mkdir()
     client = TestClient(create_app(FilesystemReader(state_root=state)))
@@ -2639,6 +2678,8 @@ def test_compose_converse_stream_degrades_with_sse_error_when_no_engine_configur
     # Ask stream should not create a red resource error before falling back.
     monkeypatch.delenv("ALFRED_COMPOSE_CONVERSE_ENGINE", raising=False)
     monkeypatch.delenv("ALFRED_PLANNING_ASSISTANT_ENGINE", raising=False)
+    monkeypatch.delenv("ALFRED_ENGINE", raising=False)
+    monkeypatch.setattr(cc, "_available_engine_clis", dict)
     state = tmp_path / "state"
     state.mkdir()
     client = TestClient(create_app(FilesystemReader(state_root=state)))

@@ -590,6 +590,11 @@ def test_read_only_info_request_detects_live_ask_repro() -> None:
     assert cc.looks_like_read_only_info_request(
         "Confirm the current Alfred setup status. Do not change files or open pull requests."
     )
+    assert cc.looks_like_read_only_info_request(
+        "In one short sentence, tell me which installed coding engines you can use right now. "
+        "Do not start a plan."
+    )
+    assert cc.looks_like_read_only_info_request("Briefly, list the installed engines.")
 
 
 def test_read_only_info_request_rejects_real_build_request_with_no_action_clause() -> None:
@@ -694,6 +699,36 @@ def test_parse_turn_status_plus_chained_work_preserves_model_draft() -> None:
     assert turn.draft.acceptance_criteria == [
         "Retry logging appears in the fleet status run output."
     ]
+
+
+def test_parse_turn_explicit_no_plan_engine_question_scrubs_model_plan() -> None:
+    raw = json.dumps(
+        {
+            "intent": "build",
+            "reply": "I saved a starter plan that is ready to review.",
+            "draft": {
+                "title": "Report installed engines",
+                "acceptance_criteria": ["List Claude and Codex."],
+            },
+            "readiness": {"score": 90, "ready": True, "missing": []},
+            "done": True,
+        }
+    )
+
+    turn = cc.parse_turn(
+        raw,
+        base_draft=_empty_draft(),
+        last_user_message=(
+            "In one short sentence, tell me which installed coding engines you can use right now. "
+            "Do not start a plan."
+        ),
+    )
+
+    assert turn is not None
+    assert turn.intent == cc.INTENT_CONVERSATION
+    assert turn.reply == cc.READ_ONLY_OVERRIDE_REPLY
+    assert turn.draft == _empty_draft()
+    assert turn.done is False
 
 
 # --- classify_message_intent: shared no-engine backstop ---------------------

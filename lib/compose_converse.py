@@ -1053,6 +1053,14 @@ _READ_ONLY_COMMAND_VERBS = (
 
 _READ_ONLY_COMMAND_PREFIXES = ("alfred", "please", "just")
 
+_READ_ONLY_FORMAT_PREFIXES = (
+    ("in", "one", "short", "sentence"),
+    ("in", "a", "short", "sentence"),
+    ("in", "one", "sentence"),
+    ("in", "a", "sentence"),
+    ("briefly",),
+)
+
 _READ_ONLY_SHOW_VERBS = ("show", "display")
 
 _READ_ONLY_MODAL_OPENERS = ("can", "could", "would", "will")
@@ -1163,6 +1171,8 @@ _READ_ONLY_STATUS_WORDS = frozenset(
         "backlog",
         "config",
         "configuration",
+        "engine",
+        "engines",
         "health",
         "install",
         "installation",
@@ -1204,6 +1214,8 @@ _READ_ONLY_SUBJECT_WORDS = frozenset(
         "backlog",
         "config",
         "configuration",
+        "engine",
+        "engines",
         "fleet",
         "health",
         "install",
@@ -1271,12 +1283,16 @@ _EXPLICIT_READ_ONLY_PHRASES = (
     "don't file",
     "do not open",
     "don't open",
+    "do not start a plan",
+    "don't start a plan",
+    "no plan",
     "no changes",
     "read only",
     "read-only",
     "without changing",
     "without opening",
     "without filing",
+    "without starting a plan",
 )
 
 
@@ -1410,6 +1426,10 @@ def looks_like_read_only_info_request(text: str) -> bool:
         return False
 
     command_index = 0
+    for prefix in _READ_ONLY_FORMAT_PREFIXES:
+        if tuple(tokens[: len(prefix)]) == prefix:
+            command_index = len(prefix)
+            break
     while command_index < len(tokens) and tokens[command_index] in _READ_ONLY_COMMAND_PREFIXES:
         command_index += 1
     if command_index >= len(tokens):
@@ -1589,8 +1609,52 @@ def draft_from_payload(payload: Any) -> IssueDraft:
 
 
 def converse_engine_from_env() -> str:
-    """Resolve the engine driving the interrogator, or "" when none is set."""
-    return (os.environ.get(ENGINE_ENV) or os.environ.get(FALLBACK_ENGINE_ENV) or "").strip()
+    """Resolve the engine driving the interrogator.
+
+    Explicit conversational and fleet-wide choices win. A batteries-included
+    desktop install then uses whichever subscription CLI is already available.
+    When both are present, hybrid starts with Claude and the invocation below
+    opts into provider failover, because binary presence does not prove either
+    CLI is authenticated or has quota. Hosts without either CLI retain the
+    deterministic no-engine path.
+    """
+
+    detected = _available_engine_clis()
+    for name, path in detected.items():
+        env_name = f"{name.upper()}_BIN"
+        if path and not os.environ.get(env_name, "").strip():
+            os.environ[env_name] = path
+
+    configured = (
+        os.environ.get(ENGINE_ENV)
+        or os.environ.get(FALLBACK_ENGINE_ENV)
+        or os.environ.get("ALFRED_ENGINE")
+        or ""
+    ).strip()
+    if configured:
+        return configured
+
+    claude_ready = "claude" in detected
+    codex_ready = "codex" in detected
+    if claude_ready and codex_ready:
+        return "hybrid"
+    if claude_ready:
+        return "claude"
+    if codex_ready:
+        return "codex"
+    return ""
+
+
+def _available_engine_clis() -> dict[str, str]:
+    """Return subscription CLIs resolved by the canonical setup detector."""
+
+    from server.setup import engine_clis
+
+    return {
+        str(item.get("name") or "").strip().lower(): str(item.get("path") or "").strip()
+        for item in engine_clis()
+        if item.get("installed")
+    }
 
 
 def converse_firing_id() -> str:
@@ -1653,6 +1717,7 @@ def _build_summarizer(
                 claude_model=model,
                 codex_model=model,
                 codex_timeout=CONDENSER_TIMEOUT,
+                hybrid_fallback_on_provider_failure=True,
             )
         except Exception:
             return ""
@@ -1832,6 +1897,7 @@ def _invoke_converse(
             timeout=timeout,
             claude_max_turns=DEFAULT_MAX_TURNS,
             codex_timeout=timeout,
+            hybrid_fallback_on_provider_failure=True,
         )
     except Exception:
         return None

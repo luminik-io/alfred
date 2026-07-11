@@ -100,6 +100,24 @@ from .transcripts import (
 # The per-firing wall-clock ``timeout`` becomes the real ceiling.
 _CLAUDE_UNLIMITED_TURNS: int = 999
 
+
+def _runtime_cli_bin(env_name: str, imported_default: str) -> str:
+    """Resolve a CLI at invocation time so setup detection can supply its path."""
+
+    return os.environ.get(env_name, "").strip() or imported_default
+
+
+def _claude_subprocess_env() -> dict[str, str]:
+    """Give headless Claude the standard auth directory without shell inheritance."""
+
+    env = dict(os.environ)
+    if not env.get("CLAUDE_CONFIG_DIR", "").strip():
+        home = env.get("HOME", "").strip()
+        if home:
+            env["CLAUDE_CONFIG_DIR"] = str(Path(home).expanduser() / ".claude")
+    return env
+
+
 # Headless fleet agents run unattended under launchd, so a Claude Code
 # desktop/push notification on every firing is pure noise (and on macOS it
 # stacks up banners no one reads). We pass these settings via the CLI's
@@ -726,7 +744,7 @@ def claude_invoke(
     # independent Path.exists() checks).
     memory_script = _memory_mcp_script()
     cmd = [
-        CLAUDE_BIN,
+        _runtime_cli_bin("CLAUDE_BIN", CLAUDE_BIN),
         "-p",
         prompt,
         "--allowedTools",
@@ -752,7 +770,13 @@ def claude_invoke(
     if resume_session:
         cmd.extend(["--resume", resume_session])
 
-    res = run(cmd, cwd=str(workdir), timeout=timeout, capture=True)
+    res = run(
+        cmd,
+        cwd=str(workdir),
+        timeout=timeout,
+        capture=True,
+        env=_claude_subprocess_env(),
+    )
 
     if res.returncode == 124:
         return ClaudeResult(
@@ -851,7 +875,7 @@ def claude_invoke_streaming(
 
     memory_script = _memory_mcp_script()
     cmd = [
-        CLAUDE_BIN,
+        _runtime_cli_bin("CLAUDE_BIN", CLAUDE_BIN),
         "-p",
         prompt,
         "--allowedTools",
@@ -883,6 +907,7 @@ def claude_invoke_streaming(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env=_claude_subprocess_env(),
         )
     except FileNotFoundError as exc:
         return ClaudeResult(
@@ -1146,7 +1171,7 @@ def codex_invoke(
 
     paths = codex_artifact_paths(agent, firing_id)
     cmd = [
-        CODEX_BIN,
+        _runtime_cli_bin("CODEX_BIN", CODEX_BIN),
         "exec",
         "--skip-git-repo-check",
         "--cd",
@@ -1637,6 +1662,7 @@ def invoke_agent_engine(
     claude_fn: Callable[..., ClaudeResult] | None = None,
     codex_fn: Callable[..., ClaudeResult] | None = None,
     on_fallback: Callable[[ClaudeResult], None] | None = None,
+    hybrid_fallback_on_provider_failure: bool = False,
     memory_repo: str | None = None,
     memory_query: str | None = None,
     memory_limit: int = 3,
@@ -1649,9 +1675,12 @@ def invoke_agent_engine(
 
     Returns ``(result, engine_used)`` where ``engine_used`` is one of
     ``"claude"``, ``"codex"``, or ``"codex-fallback"``. The
-    ``on_fallback`` callback fires only when hybrid mode falls back
-    after a Claude capability failure; useful for posting a
-    one-line Slack warning.
+    ``on_fallback`` fires when hybrid mode falls back. Capability failures
+    always qualify. Interactive callers that auto-select from installed CLIs
+    can set ``hybrid_fallback_on_provider_failure`` so a provider-local auth,
+    quota, budget, or exhausted-transient failure tries Codex instead of
+    treating binary presence as proof that Claude is usable. Scheduled agents
+    keep the stricter default and surface those failures directly.
 
     ``role`` is the firing's agent role (feature-dev, pr-review, planner, ...).
     It is an OPTIONAL override: when omitted (as every production caller does
@@ -1831,12 +1860,16 @@ def invoke_agent_engine(
         else:
             result = _resilient_invoke("claude", _invoke_claude)
             engine_used = "claude"
-            # The fallback fires ONLY on a capability failure: Claude ran and
-            # returned cleanly but produced nothing useful. Transient failures
-            # were already retried on Claude above and never reach here; fatal
-            # failures (auth/budget/schema) are surfaced honestly, never papered
-            # over by burning the second engine.
-            if mode == "hybrid" and classify_result(result) is FailureClass.CAPABILITY:
+            failure_class = classify_result(result)
+            provider_local_failure = failure_class is FailureClass.TRANSIENT or result.subtype in {
+                "error_authentication",
+                "error_budget",
+                "error_quota_exhausted",
+            }
+            should_fallback = failure_class is FailureClass.CAPABILITY or (
+                hybrid_fallback_on_provider_failure and provider_local_failure
+            )
+            if mode == "hybrid" and should_fallback:
                 trigger_subtype = result.subtype
                 if on_fallback:
                     on_fallback(result)

@@ -36,7 +36,7 @@ function inventory(overrides: Partial<SetupInstallInventory> = {}): SetupInstall
         key: "agents",
         label: "Scheduled fleet",
         ok: true,
-        detail: "2 enabled scheduled runs in agents.conf",
+        detail: "2 configured scheduled runs in agents.conf",
         path: "/tmp/alfred-home/launchd/agents.conf",
       },
       {

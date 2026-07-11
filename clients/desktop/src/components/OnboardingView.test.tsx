@@ -68,7 +68,7 @@ function makeInstall(overrides: Partial<NonNullable<SetupStatus["install"]>> = {
         key: "agents",
         label: "Scheduled fleet",
         ok: true,
-        detail: "3 enabled scheduled runs in agents.conf",
+        detail: "3 configured scheduled runs in agents.conf",
         path: "/tmp/alfred-home/launchd/agents.conf",
       },
       {
@@ -255,7 +255,7 @@ describe("OnboardingView seven-step takeover", () => {
     expect(screen.queryByText(/^first run$/i)).not.toBeInTheDocument();
     expect(await screen.findByText(/found an alfred setup on this mac/i)).toBeInTheDocument();
     expect(screen.getAllByText("/tmp/alfred-home").length).toBeGreaterThan(0);
-    expect(screen.getByText(/3 enabled scheduled runs in agents\.conf/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 configured scheduled runs in agents\.conf/i)).toBeInTheDocument();
     expect(screen.getByText(/optional\. not configured yet/i)).toBeInTheDocument();
     expect(screen.getByText(/ready to use/i)).toBeInTheDocument();
   });

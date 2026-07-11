@@ -101,6 +101,7 @@ def test_install_inventory_reports_existing_config_without_secret_values(
 
     by_key = {item["key"]: item for item in inventory["items"]}
     assert by_key["agents"]["ok"] is True
+    assert by_key["agents"]["detail"] == "1 configured scheduled run in agents.conf"
     assert by_key["repos"]["ok"] is True
     assert by_key["slack"]["ok"] is True
     assert by_key["token"]["ok"] is True

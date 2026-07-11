@@ -181,6 +181,45 @@ def test_grounding_enabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     assert cg.operational_grounding_enabled() is True
 
 
+def test_engine_grounding_separates_installed_clis_from_turn_route() -> None:
+    text = cg.build_engine_grounding(
+        [
+            {"name": "claude", "installed": True, "path": "/bin/claude"},
+            {"name": "codex", "installed": True, "path": "/bin/codex"},
+        ],
+        conversation_engine="hybrid",
+    )
+
+    assert "Installed and available to Alfred: Claude Code, Codex." in text
+    assert "hybrid (Claude Code first, Codex fallback)" in text
+    assert "Scheduled roles may choose either installed engine independently." in text
+    assert "Opus" not in text
+
+
+def test_engine_grounding_omits_unavailable_and_duplicate_clis() -> None:
+    text = cg.build_engine_grounding(
+        [
+            {"name": "claude", "installed": True},
+            {"name": "claude", "installed": True},
+            {"name": "codex", "installed": False},
+        ],
+        conversation_engine="claude",
+    )
+
+    assert "Installed and available to Alfred: Claude Code." in text
+    assert "Codex" not in text
+
+
+def test_engine_grounding_is_empty_without_installed_clis() -> None:
+    assert (
+        cg.build_engine_grounding(
+            [{"name": "codex", "installed": False}],
+            conversation_engine="",
+        )
+        == ""
+    )
+
+
 # ---------------------------------------------------------------------------
 # build_repo_grounding path containment (py/path-injection)
 # ---------------------------------------------------------------------------

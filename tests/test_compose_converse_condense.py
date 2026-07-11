@@ -39,6 +39,79 @@ _VALID_TURN_JSON = (
 )
 
 
+def test_converse_engine_prefers_explicit_configuration(monkeypatch) -> None:
+    monkeypatch.setenv(cc.ENGINE_ENV, "codex")
+    monkeypatch.setenv("ALFRED_ENGINE", "claude")
+    monkeypatch.setenv("CLAUDE_BIN", "")
+    monkeypatch.setenv("CODEX_BIN", "")
+    monkeypatch.setattr(
+        cc,
+        "_available_engine_clis",
+        lambda: {"claude": "/bin/claude", "codex": "/bin/codex"},
+    )
+
+    assert cc.converse_engine_from_env() == "codex"
+    assert cc.os.environ["CLAUDE_BIN"] == "/bin/claude"
+    assert cc.os.environ["CODEX_BIN"] == "/bin/codex"
+
+
+def test_converse_engine_hydrates_cli_paths_before_using_fleet_choice(monkeypatch) -> None:
+    monkeypatch.delenv(cc.ENGINE_ENV, raising=False)
+    monkeypatch.delenv(cc.FALLBACK_ENGINE_ENV, raising=False)
+    monkeypatch.setenv("ALFRED_ENGINE", "codex")
+    monkeypatch.setenv("CLAUDE_BIN", "")
+    monkeypatch.setenv("CODEX_BIN", "")
+    monkeypatch.setattr(
+        cc,
+        "_available_engine_clis",
+        lambda: {"claude": "/bin/claude", "codex": "/bin/codex"},
+    )
+
+    assert cc.converse_engine_from_env() == "codex"
+    assert cc.os.environ["CLAUDE_BIN"] == "/bin/claude"
+    assert cc.os.environ["CODEX_BIN"] == "/bin/codex"
+
+
+def test_converse_engine_detects_installed_subscription_clis(monkeypatch) -> None:
+    monkeypatch.delenv(cc.ENGINE_ENV, raising=False)
+    monkeypatch.delenv(cc.FALLBACK_ENGINE_ENV, raising=False)
+    monkeypatch.delenv("ALFRED_ENGINE", raising=False)
+    # Register the invocation-path variables with monkeypatch before the
+    # production resolver seeds them, so teardown cannot leak fake CLI paths
+    # into later subprocess tests in the full suite.
+    monkeypatch.setenv("CLAUDE_BIN", "")
+    monkeypatch.setenv("CODEX_BIN", "")
+
+    monkeypatch.setattr(
+        cc,
+        "_available_engine_clis",
+        lambda: {"claude": "/bin/claude", "codex": "/bin/codex"},
+    )
+    assert cc.converse_engine_from_env() == "hybrid"
+    assert cc.os.environ["CLAUDE_BIN"] == "/bin/claude"
+    assert cc.os.environ["CODEX_BIN"] == "/bin/codex"
+
+    monkeypatch.setattr(cc, "_available_engine_clis", lambda: {"codex": "/bin/codex"})
+    assert cc.converse_engine_from_env() == "codex"
+
+    monkeypatch.setattr(cc, "_available_engine_clis", dict)
+    assert cc.converse_engine_from_env() == ""
+
+
+def test_converse_engine_honors_configured_binary_override(monkeypatch) -> None:
+    import server.setup as setup
+
+    monkeypatch.delenv(cc.ENGINE_ENV, raising=False)
+    monkeypatch.delenv(cc.FALLBACK_ENGINE_ENV, raising=False)
+    monkeypatch.delenv("ALFRED_ENGINE", raising=False)
+    monkeypatch.setenv("CLAUDE_BIN", "/opt/alfred/bin/claude")
+    monkeypatch.delenv("CODEX_BIN", raising=False)
+    monkeypatch.setattr(setup.shutil, "which", lambda *_args, **_kwargs: None)
+
+    assert cc.converse_engine_from_env() == "claude"
+    assert cc.os.environ["CLAUDE_BIN"] == "/opt/alfred/bin/claude"
+
+
 def _messages(n: int) -> list[cc.ConverseMessage]:
     msgs = [cc.ConverseMessage(role="user", content="TASK: add a dark mode toggle")]
     for i in range(1, n):
@@ -56,7 +129,14 @@ class _EngineSpy:
 
     def __call__(self, prompt: str, **kwargs: Any) -> tuple[_Result, str]:
         agent = kwargs.get("agent")
-        self.calls.append({"prompt": prompt, "agent": agent, "firing_id": kwargs.get("firing_id")})
+        self.calls.append(
+            {
+                "prompt": prompt,
+                "agent": agent,
+                "firing_id": kwargs.get("firing_id"),
+                "provider_failover": kwargs.get("hybrid_fallback_on_provider_failure"),
+            }
+        )
         if agent == cc.CONDENSER_AGENT:
             return _Result(success=True, result_text="COMPACT SUMMARY of older turns"), "claude"
         # Pop the next scripted interrogator result.
@@ -97,6 +177,7 @@ def test_short_conversation_runs_once_without_condensing() -> None:
     assert turn.reply == "Got it."
     assert spy.condenser_calls == []  # no summarizer call
     assert len(spy.interrogator_calls) == 1
+    assert spy.interrogator_calls[0]["provider_failover"] is True
     assert records == []
 
 

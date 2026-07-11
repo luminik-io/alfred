@@ -654,7 +654,7 @@ def _converse_memory_grounding(
     )
 
 
-def _converse_operational_grounding(request: Request) -> str:
+def _converse_operational_grounding(request: Request, *, conversation_engine: str) -> str:
     """Build the live fleet snapshot for a desktop Ask converse turn.
 
     Reads the same ``request.app.state.reader`` the Fleet view uses so the
@@ -663,15 +663,35 @@ def _converse_operational_grounding(request: Request) -> str:
     Slack surface. Best-effort: a missing reader or a read failure degrades to an
     empty string so the turn still answers from the repo grounding.
     """
-    reader = getattr(request.app.state, "reader", None)
-    if reader is None:
-        return ""
     try:
-        from converse_grounding import build_operational_grounding
-
-        return build_operational_grounding(reader)
+        from converse_grounding import (
+            build_engine_grounding,
+            build_operational_grounding,
+            operational_grounding_enabled,
+        )
     except Exception:
         return ""
+    if not operational_grounding_enabled():
+        return ""
+
+    sections: list[str] = []
+    try:
+        from server import setup as setup_mod
+
+        sections.append(
+            build_engine_grounding(
+                setup_mod.engine_clis(),
+                conversation_engine=conversation_engine,
+            )
+        )
+    except Exception:
+        pass
+    try:
+        reader = getattr(request.app.state, "reader", None)
+        sections.append(build_operational_grounding(reader))
+    except Exception:
+        pass
+    return "\n\n".join(section for section in sections if section)
 
 
 def _selected_setup_repos_payload() -> dict[str, Any]:
@@ -1010,7 +1030,10 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
     # the flag. This lets a non-developer flip jargon-free coaching on/off in
     # the app without restarting the runtime.
     intake_guidance = cc.intake_guidance_for(_resolve_intake_profile_name(body))
-    operational_grounding = _converse_operational_grounding(request)
+    operational_grounding = _converse_operational_grounding(
+        request,
+        conversation_engine=engine,
+    )
 
     try:
         from agent_runner.metadata import load_prompt
@@ -1143,7 +1166,10 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
     # the flag. This lets a non-developer flip jargon-free coaching on/off in
     # the app without restarting the runtime.
     intake_guidance = cc.intake_guidance_for(_resolve_intake_profile_name(body))
-    operational_grounding = _converse_operational_grounding(request)
+    operational_grounding = _converse_operational_grounding(
+        request,
+        conversation_engine=engine,
+    )
 
     try:
         from agent_runner.metadata import load_prompt
