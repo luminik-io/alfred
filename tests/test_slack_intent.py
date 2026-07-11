@@ -22,9 +22,9 @@ LIB = REPO / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
-import slack_intent as si  # noqa: E402
+import slack_surface.intent as si  # noqa: E402
 from roster_theme_store import RosterThemeStore  # noqa: E402
-from slack_intent import (  # noqa: E402
+from slack_surface.intent import (  # noqa: E402
     ACTION_ASSIGN,
     ACTION_DRY_RUN_AGENT,
     ACTION_HOLD,

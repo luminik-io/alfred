@@ -75,6 +75,14 @@ try:
 except Exception:  # pragma: no cover - defensive; ships with this one
     _engine = None  # type: ignore[assignment]
 
+# tool_offload writes oversized tool output to a firing-scoped file and leaves an
+# inline preview + re-readable path (instead of pure truncation). Stdlib-only
+# sibling; guarded so a partial deploy without it degrades to plain compaction.
+try:
+    import tool_offload as _offload
+except Exception:  # pragma: no cover - defensive; ships with this one
+    _offload = None  # type: ignore[assignment]
+
 # Branches the fleet must never push to directly (locked guardrail).
 PROTECTED_BRANCHES = {"main", "master", "production", "release", "prod"}
 
@@ -589,14 +597,40 @@ def _handle_posttooluse(payload: dict) -> int:
         result = _compactor.compact_output(text, tool_name=tool_name, exit_code=exit_code)
     if not result.applied:
         return 0  # disabled, unknown status, teed on failure, or no gain: leave raw
+    # The compactor confirmed this output is large enough to shrink AND passed the
+    # confirmed-success valve. Instead of shipping only the truncated head+tail,
+    # save the FULL output to a firing-scoped file and inline a preview + the
+    # absolute path so the agent can re-read the exact omitted slice. Offload is a
+    # best-effort enhancement: any failure keeps the compactor's own text.
+    updated = result.text
+    if _offload is not None and _offload.offload_enabled():
+        firing_id = _firing_id(payload)
+        offloaded = _offload.offload(text, firing_id=firing_id)
+        if offloaded.applied:
+            updated = offloaded.text
     out = {
         "hookSpecificOutput": {
             "hookEventName": "PostToolUse",
-            "updatedToolOutput": result.text,
+            "updatedToolOutput": updated,
         }
     }
     print(json.dumps(out))
     return 0
+
+
+def _firing_id(payload: dict) -> str | None:
+    """Resolve a firing-scoped id for offload paths.
+
+    Prefer ``ALFRED_FIRING_ID`` (exported by the runner into the firing's
+    subprocess env) so offloads land under the same firing dir the fleet cleans
+    up; fall back to the Claude Code ``session_id`` on the hook payload (unique
+    per firing) when the runner did not export one.
+    """
+    exported = (os.environ.get("ALFRED_FIRING_ID") or "").strip()
+    if exported:
+        return exported
+    session = payload.get("session_id")
+    return session if isinstance(session, str) and session.strip() else None
 
 
 def main(argv: list[str] | None = None) -> int:

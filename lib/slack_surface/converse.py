@@ -55,6 +55,8 @@ from compose_converse import (
     ConverseTurn,
 )
 
+from slack_surface.posting import SlackPoster
+
 # Environment knobs. All optional; unset means the feature is off (or a safe
 # default), so dropping this module into the listener changes nothing until an
 # operator opts in.
@@ -112,14 +114,15 @@ MAX_TOTAL_BACKOFF_SECONDS = 30.0
 PLACEHOLDER = "_Alfred is thinking…_"
 
 
-class StreamingSlackClient(Protocol):
+class StreamingSlackClient(SlackPoster, Protocol):
     """The Slack Web API subset the streaming poster needs.
 
-    ``slack_sdk.WebClient`` satisfies this natively; tests pass a fake with the
-    same method names. ``conversations_replies`` is optional (thread context is
-    best-effort and degrades to no context when it is absent)."""
-
-    def chat_postMessage(self, **kwargs: Any) -> Any: ...
+    Extends the package-wide :class:`slack_surface.posting.SlackPoster` (which supplies
+    ``chat_postMessage``) with the streaming ``chat_update`` verb, so the
+    ``chat_postMessage`` shim lives in exactly one place. ``slack_sdk.WebClient``
+    satisfies this natively; tests pass a fake with the same method names.
+    ``conversations_replies`` is optional (thread context is best-effort and
+    degrades to no context when it is absent)."""
 
     def chat_update(self, **kwargs: Any) -> Any: ...
 
@@ -1180,7 +1183,7 @@ def _env_flag(name: str, *, default: bool = False) -> bool:
 
     Returns ``default`` when unset/blank, ``True`` for ``1/true/yes/on`` and
     ``False`` for ``0/false/no/off`` (case-insensitive). Any other non-blank
-    value falls back to ``default``. Mirrors ``slack_intent._env_flag`` so the
+    value falls back to ``default``. Mirrors ``slack_surface.intent._env_flag`` so the
     converse enable flag and the intent-router flag read env the same way.
     """
     raw = (os.environ.get(name) or "").strip().lower()

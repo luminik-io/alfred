@@ -652,13 +652,14 @@ def test_invoke_agent_engine_grader_failure_does_not_break_run():
 def test_rubric_max_iterations_env_parse(monkeypatch):
     import agent_runner.process as proc
 
-    assert proc._rubric_max_iterations() == 3  # default
+    monkeypatch.delenv("ALFRED_RUBRIC_MAX_ITERATIONS", raising=False)
+    assert proc._rubric_max_iterations() == 1  # default: revise at most once
     monkeypatch.setenv("ALFRED_RUBRIC_MAX_ITERATIONS", "5")
     assert proc._rubric_max_iterations() == 5
     monkeypatch.setenv("ALFRED_RUBRIC_MAX_ITERATIONS", "999")
     assert proc._rubric_max_iterations() == 10  # clamped to ceiling
     monkeypatch.setenv("ALFRED_RUBRIC_MAX_ITERATIONS", "not-a-number")
-    assert proc._rubric_max_iterations() == 3  # bad value -> default
+    assert proc._rubric_max_iterations() == 1  # bad value -> default
 
 
 def test_resolve_rubric_precedence(monkeypatch):
@@ -715,7 +716,7 @@ def test_default_grader_uses_selected_claude_engine_not_the_run_engine(monkeypat
     monkeypatch.setattr(proc, "claude_invoke", fake_claude_invoke)
     monkeypatch.setattr(proc, "codex_invoke", fake_codex_invoke)
 
-    grader = proc._default_rubric_grader(
+    grader = proc.build_rubric_grader(
         grader_engine="claude",
         agent="batman",
         firing_id="f1",
@@ -745,7 +746,7 @@ def test_default_grader_defaults_to_codex(monkeypatch):
     monkeypatch.setattr(proc, "codex_invoke", fake_codex_invoke)
     monkeypatch.setattr(proc, "claude_invoke", fake_claude_invoke)
 
-    grader = proc._default_rubric_grader(
+    grader = proc.build_rubric_grader(
         grader_engine=None,
         agent="batman",
         firing_id="f1",
@@ -777,7 +778,7 @@ def test_claude_grader_does_not_receive_primary_codex_model(monkeypatch):
     monkeypatch.setattr(proc, "claude_invoke", fake_claude_invoke)
     monkeypatch.setattr(proc, "codex_invoke", fake_codex_invoke)
 
-    grader = proc._default_rubric_grader(
+    grader = proc.build_rubric_grader(
         grader_engine="claude",
         agent="batman",
         firing_id="f1",
@@ -807,7 +808,7 @@ def test_codex_grader_forwards_matching_codex_model(monkeypatch):
 
     monkeypatch.setattr(proc, "codex_invoke", fake_codex_invoke)
 
-    grader = proc._default_rubric_grader(
+    grader = proc.build_rubric_grader(
         grader_engine="codex",
         agent="batman",
         firing_id="f1",
@@ -834,7 +835,7 @@ def test_default_codex_grader_without_model_passes_none(monkeypatch):
 
     monkeypatch.setattr(proc, "codex_invoke", fake_codex_invoke)
 
-    grader = proc._default_rubric_grader(
+    grader = proc.build_rubric_grader(
         grader_engine="codex",
         agent="batman",
         firing_id="f1",
@@ -924,7 +925,7 @@ def test_default_grader_retries_transient_rate_limit(monkeypatch):
     monkeypatch.setenv("ALFRED_LLM_BACKOFF_BASE_S", "0")
     monkeypatch.setenv("ALFRED_LLM_BACKOFF_MAX_S", "0")
 
-    grader = proc._default_rubric_grader(
+    grader = proc.build_rubric_grader(
         grader_engine="codex",
         agent="batman",
         firing_id="f1",
@@ -951,7 +952,7 @@ def test_default_grader_transient_exhaustion_yields_empty_for_grader_error(monke
     monkeypatch.setenv("ALFRED_LLM_BACKOFF_BASE_S", "0")
     monkeypatch.setenv("ALFRED_LLM_BACKOFF_MAX_S", "0")
 
-    grader = proc._default_rubric_grader(
+    grader = proc.build_rubric_grader(
         grader_engine="codex",
         agent="batman",
         firing_id="f1",
@@ -1005,7 +1006,7 @@ def test_default_grader_retries_error_api(monkeypatch):
     monkeypatch.setenv("ALFRED_LLM_BACKOFF_BASE_S", "0")
     monkeypatch.setenv("ALFRED_LLM_BACKOFF_MAX_S", "0")
 
-    grader = proc._default_rubric_grader(
+    grader = proc.build_rubric_grader(
         grader_engine="codex",
         agent="batman",
         firing_id="f1",
@@ -1134,3 +1135,202 @@ def test_successful_primary_run_is_still_graded(monkeypatch):
     )
     assert len(grader_calls) == 1
     assert out.raw["rubric_verdict"]["result"] == "satisfied"
+
+
+# --------------------------------------------------------------------------
+# derive_rubric(): acceptance criteria vs generic fallback, bounded
+# --------------------------------------------------------------------------
+
+
+def test_derive_rubric_uses_issue_acceptance_criteria():
+    body = (
+        "Do a thing.\n\n"
+        "## Acceptance criteria\n"
+        "- [ ] The endpoint returns 200 on success\n"
+        "- [ ] Errors return a typed problem body\n"
+        "- [ ] A unit test covers the happy path\n\n"
+        "## Notes\n"
+        "- not a criterion\n"
+    )
+    got = rb.derive_rubric(body)
+    assert got == [
+        "The endpoint returns 200 on success",
+        "Errors return a typed problem body",
+        "A unit test covers the happy path",
+    ]
+    # A criterion under "## Notes" (after the acceptance section) is excluded.
+    assert "not a criterion" not in got
+
+
+def test_derive_rubric_falls_back_to_generic_when_no_criteria():
+    got = rb.derive_rubric("Just a prose issue with no checkboxes at all.")
+    assert got == list(rb.GENERIC_ENGINEERING_RUBRIC)
+    assert 1 <= len(got) <= rb.MAX_DERIVED_CRITERIA
+
+
+def test_derive_rubric_bounds_to_max_derived_criteria():
+    injected = [f"criterion {i}" for i in range(20)]
+    got = rb.derive_rubric("", acceptance_criteria=injected)
+    assert len(got) == rb.MAX_DERIVED_CRITERIA
+    assert got[0] == "criterion 0"
+
+
+def test_derive_rubric_accepts_injected_criteria_directly():
+    got = rb.derive_rubric("body ignored", acceptance_criteria=["a", "  ", "b"])
+    assert got == ["a", "b"]  # blanks dropped, no extraction attempted
+
+
+# --------------------------------------------------------------------------
+# grade_revise_loop(): built-artifact grade then bounded revise-and-regrade
+# --------------------------------------------------------------------------
+
+
+def _verdict_json(result: str, *, name: str = "c1", passed: bool | None = None, gap=None) -> str:
+    if passed is None:
+        passed = result == "satisfied"
+    return json.dumps(
+        {
+            "result": result,
+            "explanation": f"{result} explanation",
+            "criteria": [{"name": name, "passed": passed, "gap": gap}],
+        }
+    )
+
+
+def test_grade_revise_loop_satisfied_first_pass_never_revises():
+    revise_calls: list[str] = []
+
+    def revise_fn(feedback: str) -> str:
+        revise_calls.append(feedback)
+        return "should not be reached"
+
+    verdicts = rb.grade_revise_loop(
+        initial_artifact="diff --git a b",
+        rubric=["c1"],
+        grader_fn=lambda _p: _verdict_json("satisfied"),
+        revise_fn=revise_fn,
+        max_iterations=1,
+    )
+    assert [v.result for v in verdicts] == ["satisfied"]
+    assert revise_calls == []  # satisfied build is shipped as-is
+
+
+def test_grade_revise_loop_revises_exactly_once_then_regrades():
+    # First grade -> needs_revision, after one revision -> satisfied.
+    grades = iter(
+        [
+            _verdict_json("needs_revision", passed=False, gap="add a test"),
+            _verdict_json("satisfied"),
+        ]
+    )
+    revise_calls: list[str] = []
+
+    def grader_fn(_prompt: str) -> str:
+        return next(grades)
+
+    def revise_fn(feedback: str) -> str:
+        revise_calls.append(feedback)
+        return "diff after revision"
+
+    verdicts = rb.grade_revise_loop(
+        initial_artifact="diff before",
+        rubric=["c1"],
+        grader_fn=grader_fn,
+        revise_fn=revise_fn,
+        max_iterations=1,
+    )
+    assert [v.result for v in verdicts] == ["needs_revision", "satisfied"]
+    assert len(revise_calls) == 1  # re-dispatched exactly once
+    assert "add a test" in revise_calls[0]  # gap threaded into feedback
+
+
+def test_grade_revise_loop_bounded_by_max_iterations():
+    # Always needs_revision: with max_iterations=1 exactly ONE revision runs.
+    revise_calls: list[str] = []
+
+    def revise_fn(feedback: str) -> str:
+        revise_calls.append(feedback)
+        return "still incomplete"
+
+    verdicts = rb.grade_revise_loop(
+        initial_artifact="diff",
+        rubric=["c1"],
+        grader_fn=lambda _p: _verdict_json("needs_revision", passed=False, gap="nope"),
+        revise_fn=revise_fn,
+        max_iterations=1,
+    )
+    # initial grade + one regrade after the single allowed revision.
+    assert [v.result for v in verdicts] == ["needs_revision", "needs_revision"]
+    assert len(revise_calls) == 1
+
+
+def test_grade_revise_loop_max_iterations_zero_grades_only():
+    verdicts = rb.grade_revise_loop(
+        initial_artifact="diff",
+        rubric=["c1"],
+        grader_fn=lambda _p: _verdict_json("needs_revision", passed=False, gap="x"),
+        revise_fn=lambda _f: pytest.fail("revise must not run with max_iterations=0"),
+        max_iterations=0,
+    )
+    assert [v.result for v in verdicts] == ["needs_revision"]
+
+
+def test_grade_revise_loop_malformed_grader_fails_open_no_revision():
+    # A malformed grader response degrades to a terminal grader_error (failed):
+    # the loop must NOT trigger a revision, and the caller proceeds to open the
+    # PR with the verdict recorded (fail-open-to-proceed).
+    def revise_fn(_feedback: str) -> str:
+        pytest.fail("a grader_error must not trigger a revision")
+
+    verdicts = rb.grade_revise_loop(
+        initial_artifact="diff",
+        rubric=["c1"],
+        grader_fn=lambda _p: "not json at all",
+        revise_fn=revise_fn,
+        max_iterations=3,
+    )
+    assert len(verdicts) == 1
+    assert verdicts[0].result == "failed"
+    assert verdicts[0].terminal_reason == "grader_error"
+
+
+# --------------------------------------------------------------------------
+# render_verdict_markdown(): honest PR-body block, failed criteria shown
+# --------------------------------------------------------------------------
+
+
+def test_render_verdict_markdown_shows_failed_criteria_plainly():
+    verdicts = [
+        rb.GraderVerdict(
+            result="needs_revision",
+            explanation="one gap left",
+            criteria=[
+                rb.CriterionEval(name="tests pass", passed=True),
+                rb.CriterionEval(name="docs updated", passed=False, gap="README not touched"),
+            ],
+        )
+    ]
+    md = rb.render_verdict_markdown(verdicts)
+    assert "## Rubric grade" in md
+    assert "needs revision" in md
+    assert "**fail**" in md  # the failed criterion is not hidden
+    assert "README not touched" in md
+    assert "tests pass" in md
+
+
+def test_render_verdict_markdown_empty_trajectory_is_blank():
+    assert rb.render_verdict_markdown([]) == ""
+
+
+def test_render_verdict_markdown_reports_revision_count():
+    verdicts = [
+        rb.GraderVerdict(result="needs_revision", explanation="a", criteria=[]),
+        rb.GraderVerdict(
+            result="satisfied",
+            explanation="now good",
+            criteria=[rb.CriterionEval(name="c1", passed=True)],
+        ),
+    ]
+    md = rb.render_verdict_markdown(verdicts)
+    assert "re-dispatched 1 time" in md
+    assert "satisfied" in md

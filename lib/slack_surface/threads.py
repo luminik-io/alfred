@@ -1,35 +1,8 @@
-"""Post fleet progress back to the Slack thread that filed an issue.
+"""Persistent registry for Slack threads Alfred can safely react to.
 
-When the Slack issue bridge converts an approved planning draft into a
-labeled GitHub issue (``slack_issue_bridge.py``), the originating thread
-goes quiet: the fleet picks the issue up, opens a PR, CI runs, the PR
-merges -- all invisible to the person who asked for the work in Slack.
-
-This module closes that loop. It keeps a small per-thread tracker record::
-
-    {channel, thread_ts, repo, issue_number, last_state, ...}
-
-and a sweep (``alfred slack-thread-sync``, plus an optional idle-loop hook
-in the listener) that, for each tracked thread, queries the issue and its
-linked PR through ``gh`` and posts **only the delta** since the last sweep.
-No new GitHub state is created here -- the module is strictly read-only on
-the fleet side and write-only into the Slack thread it already owns.
-
-SAFETY MODEL
-============
-
-* Read-only on GitHub. The only ``gh`` calls are ``issue view`` and
-  ``pr list``/``pr view`` (all read verbs). It never edits a label, claims
-  an issue, comments on GitHub, or runs code.
-* Trust-scoped. A tracker record is only ever created from the bridge's
-  own conversion path, which is already gated on a trusted user and the
-  explicit-approval bridge. The sweep never reacts to arbitrary input.
-* Idempotent. Each thread advances through an ordered lifecycle and a
-  state is posted at most once; re-running the sweep with no GitHub change
-  posts nothing.
-
-The actual ``gh`` invocation is injected (``issue_state_fetcher``) so tests
-exercise the full delta machinery without the network.
+The listener only treats a thread as actionable when Alfred previously
+registered the root message. That keeps channel chatter from becoming
+implicit instructions while still letting users refine plans in Slack.
 """
 
 from __future__ import annotations
@@ -43,9 +16,156 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-# Ordered lifecycle. A thread only ever moves forward through these states;
-# the index is used to compute which states are newly reached since the last
-# sweep so we never re-announce or announce out of order.
+
+@dataclass(frozen=True)
+class SlackThreadRecord:
+    kind: str
+    channel: str
+    thread_ts: str
+    codename: str = ""
+    firing_id: str = ""
+    title: str = ""
+    status: str = "open"
+    parent_repo: str = ""
+    parent_issue: int | None = None
+    plan_path: str = ""
+    draft_path: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+def default_registry_root() -> Path:
+    home = (os.environ.get("ALFRED_HOME") or "").strip()
+    if home:
+        return Path(home).expanduser() / "state" / "slack-threads"
+    return Path.home() / ".alfred" / "state" / "slack-threads"
+
+
+class SlackThreadRegistry:
+    def __init__(self, root: Path | None = None) -> None:
+        self.root = root or default_registry_root()
+
+    def register(self, record: SlackThreadRecord) -> SlackThreadRecord:
+        now = _utc_now()
+        existing = self.lookup(record.channel, record.thread_ts)
+        created = record.created_at or (existing.created_at if existing else now)
+        out = SlackThreadRecord(
+            kind=record.kind,
+            channel=record.channel,
+            thread_ts=record.thread_ts,
+            codename=record.codename,
+            firing_id=record.firing_id,
+            title=record.title,
+            status=record.status or "open",
+            parent_repo=record.parent_repo,
+            parent_issue=record.parent_issue,
+            plan_path=record.plan_path,
+            draft_path=record.draft_path,
+            created_at=created,
+            updated_at=now,
+            metadata=dict(record.metadata or {}),
+        )
+        self.root.mkdir(parents=True, exist_ok=True)
+        path = self._path(out.channel, out.thread_ts)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(asdict(out), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        tmp.replace(path)
+        return out
+
+    def lookup(self, channel: str, thread_ts: str) -> SlackThreadRecord | None:
+        path = self._path(channel, thread_ts)
+        if not path.exists():
+            return None
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(raw, dict):
+            return None
+        return _record_from_dict(raw)
+
+    def append_feedback(
+        self,
+        record: SlackThreadRecord,
+        *,
+        author: str,
+        text: str,
+        ts: str,
+    ) -> Path:
+        path = self.root / "feedback" / f"{_safe_key(record.channel, record.thread_ts)}.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "author": author,
+            "text": text,
+            "ts": ts,
+            "captured_at": _utc_now(),
+            "kind": record.kind,
+            "channel": record.channel,
+            "thread_ts": record.thread_ts,
+        }
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, sort_keys=True) + "\n")
+        return path
+
+    def mark_status(self, record: SlackThreadRecord, status: str) -> SlackThreadRecord:
+        return self.register(
+            SlackThreadRecord(
+                kind=record.kind,
+                channel=record.channel,
+                thread_ts=record.thread_ts,
+                codename=record.codename,
+                firing_id=record.firing_id,
+                title=record.title,
+                status=status,
+                parent_repo=record.parent_repo,
+                parent_issue=record.parent_issue,
+                plan_path=record.plan_path,
+                draft_path=record.draft_path,
+                created_at=record.created_at,
+                metadata=record.metadata,
+            )
+        )
+
+    def _path(self, channel: str, thread_ts: str) -> Path:
+        return self.root / f"{_safe_key(channel, thread_ts)}.json"
+
+
+def _record_from_dict(raw: dict[str, Any]) -> SlackThreadRecord:
+    parent_issue = raw.get("parent_issue")
+    if parent_issue is not None:
+        try:
+            parent_issue = int(parent_issue)
+        except (TypeError, ValueError):
+            parent_issue = None
+    metadata = raw.get("metadata")
+    return SlackThreadRecord(
+        kind=str(raw.get("kind") or ""),
+        channel=str(raw.get("channel") or ""),
+        thread_ts=str(raw.get("thread_ts") or ""),
+        codename=str(raw.get("codename") or ""),
+        firing_id=str(raw.get("firing_id") or ""),
+        title=str(raw.get("title") or ""),
+        status=str(raw.get("status") or "open"),
+        parent_repo=str(raw.get("parent_repo") or ""),
+        parent_issue=parent_issue,
+        plan_path=str(raw.get("plan_path") or ""),
+        draft_path=str(raw.get("draft_path") or ""),
+        created_at=str(raw.get("created_at") or ""),
+        updated_at=str(raw.get("updated_at") or ""),
+        metadata=metadata if isinstance(metadata, dict) else {},
+    )
+
+
+def _safe_key(channel: str, thread_ts: str) -> str:
+    raw = f"{channel}-{thread_ts}"
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", raw).strip("_") or "thread"
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 STATE_FILED = "filed"
 STATE_CLAIMED = "claimed"
 STATE_PR_OPEN = "pr_open"
@@ -308,7 +428,7 @@ class SlackThreadStatusTracker:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return None
-        return _record_from_dict(raw)
+        return _status_record_from_dict(raw)
 
     def _load_all(self) -> list[ThreadStatusRecord]:
         if not self.root.exists():
@@ -615,7 +735,7 @@ def _default_gh_json(cmd: list[str], default: Any = None) -> Any:
 # ---------------------------------------------------------------------------
 
 
-def _record_from_dict(raw: dict[str, Any]) -> ThreadStatusRecord | None:
+def _status_record_from_dict(raw: dict[str, Any]) -> ThreadStatusRecord | None:
     if not isinstance(raw, dict):
         return None
     issue_number = _safe_int(raw.get("issue_number"))
@@ -648,15 +768,6 @@ def _safe_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
-
-
-def _safe_key(channel: str, thread_ts: str) -> str:
-    raw = f"{channel}-{thread_ts}"
-    return re.sub(r"[^A-Za-z0-9_.-]+", "_", raw).strip("_") or "thread"
-
-
-def _utc_now() -> str:
-    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 __all__ = [

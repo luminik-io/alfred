@@ -277,7 +277,7 @@ def _run_lifecycle_body(
     file_only_approval = config.approval_mode == APPROVAL_MODE_FILE
     if config.gate_enabled and not file_only_approval:
         try:
-            from slack_approval import (
+            from slack_surface.approval import (
                 SlackApproval,
                 default_slack_client,
                 operator_user_id_from_env,

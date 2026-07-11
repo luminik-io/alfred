@@ -1,0 +1,254 @@
+[
+  {
+    "task_id": "http-client-wrapper",
+    "kind": "feature",
+    "title": "Fetch a user record over HTTP",
+    "prompt": "In repo/service.py, implement fetch_user(uid) that returns the parsed JSON body from a GET to https://api.acme.internal/users/{uid}. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+    "mistake_id": "raw-requests",
+    "repeats_known_mistake": true,
+    "relevant_lesson_ids": [
+      "L-http"
+    ],
+    "recall_query": "outbound HTTP",
+    "lesson_signal": "acme_http.fetch",
+    "mistake_markers": [
+      "requests\\.get",
+      "import requests"
+    ],
+    "success_markers": [
+      "acme_http\\.fetch"
+    ],
+    "mistaken_solution": "import requests\ndef fetch_user(uid):\n    return requests.get(f'https://api.acme.internal/users/{uid}').json()",
+    "correct_solution": "import acme_http\ndef fetch_user(uid):\n    return acme_http.fetch(f'https://api.acme.internal/users/{uid}').json()"
+  },
+  {
+    "task_id": "project-error-type",
+    "kind": "fix",
+    "title": "Reject a non-positive charge",
+    "prompt": "In repo/service.py, implement charge(amount) that raises an error when amount is not positive, then records the charge. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+    "mistake_id": "bare-valueerror",
+    "repeats_known_mistake": true,
+    "relevant_lesson_ids": [
+      "L-err"
+    ],
+    "recall_query": "input validation errors",
+    "lesson_signal": "AcmeValidationError",
+    "mistake_markers": [
+      "raise ValueError",
+      "raise RuntimeError"
+    ],
+    "success_markers": [
+      "AcmeValidationError"
+    ],
+    "mistaken_solution": "def charge(amount):\n    if amount <= 0:\n        raise ValueError('amount must be positive')\n    _record(amount)",
+    "correct_solution": "from acme.errors import AcmeValidationError\ndef charge(amount):\n    if amount <= 0:\n        raise AcmeValidationError('amount must be positive')\n    _record(amount)"
+  },
+  {
+    "task_id": "structured-logger",
+    "kind": "feature",
+    "title": "Log when a worker starts",
+    "prompt": "In repo/service.py, add a module-level logger and have worker() log an 'order processed' message. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+    "mistake_id": "stdlib-logger",
+    "repeats_known_mistake": true,
+    "relevant_lesson_ids": [
+      "L-log"
+    ],
+    "recall_query": "structured logging",
+    "lesson_signal": "acme_log.get_logger",
+    "mistake_markers": [
+      "logging\\.getLogger",
+      "print\\("
+    ],
+    "success_markers": [
+      "acme_log\\.get_logger"
+    ],
+    "mistaken_solution": "import logging\nlogger = logging.getLogger(__name__)\ndef worker():\n    logger.info('order processed')",
+    "correct_solution": "import acme_log\nlogger = acme_log.get_logger(__name__)\ndef worker():\n    logger.info('order processed')"
+  },
+  {
+    "task_id": "config-access",
+    "kind": "feature",
+    "title": "Read a configured timeout",
+    "prompt": "In repo/service.py, implement timeout_seconds() returning the configured ACME_TIMEOUT value as an int. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+    "mistake_id": "raw-environ",
+    "repeats_known_mistake": true,
+    "relevant_lesson_ids": [
+      "L-cfg"
+    ],
+    "recall_query": "runtime configuration",
+    "lesson_signal": "acme_config.get",
+    "mistake_markers": [
+      "os\\.environ",
+      "os\\.getenv"
+    ],
+    "success_markers": [
+      "acme_config\\.get"
+    ],
+    "mistaken_solution": "import os\ndef timeout_seconds():\n    return int(os.environ['ACME_TIMEOUT'])",
+    "correct_solution": "import acme_config\ndef timeout_seconds():\n    return acme_config.get('ACME_TIMEOUT', cast=int)"
+  },
+  {
+    "task_id": "id-generation",
+    "kind": "feature",
+    "title": "Mint an order id",
+    "prompt": "In repo/service.py, implement new_order_id() that returns a unique id string for a new order. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+    "mistake_id": "raw-uuid4",
+    "repeats_known_mistake": true,
+    "relevant_lesson_ids": [
+      "L-id"
+    ],
+    "recall_query": "identifier generation",
+    "lesson_signal": "acme_ids.new_id",
+    "mistake_markers": [
+      "uuid4",
+      "uuid\\.uuid1"
+    ],
+    "success_markers": [
+      "acme_ids\\.new_id"
+    ],
+    "mistaken_solution": "import uuid\ndef new_order_id():\n    return str(uuid.uuid4())",
+    "correct_solution": "import acme_ids\ndef new_order_id():\n    return acme_ids.new_id('ord')"
+  },
+  {
+    "task_id": "current-time",
+    "kind": "feature",
+    "title": "Timestamp an audit record",
+    "prompt": "In repo/service.py, implement created_at() returning the current timestamp for a new audit record. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+    "mistake_id": "raw-datetime-now",
+    "repeats_known_mistake": true,
+    "relevant_lesson_ids": [
+      "L-clock"
+    ],
+    "recall_query": "current time",
+    "lesson_signal": "acme_clock.now",
+    "mistake_markers": [
+      "datetime\\.now\\(",
+      "datetime\\.utcnow"
+    ],
+    "success_markers": [
+      "acme_clock\\.now"
+    ],
+    "mistaken_solution": "from datetime import datetime\ndef created_at():\n    return datetime.now()",
+    "correct_solution": "import acme_clock\ndef created_at():\n    return acme_clock.now()"
+  },
+  {
+    "task_id": "response-serialization",
+    "kind": "feature",
+    "title": "Serialize a response dict",
+    "prompt": "In repo/service.py, implement render(payload) that returns the response dict serialized as a JSON string. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+    "mistake_id": "stdlib-json-dumps",
+    "repeats_known_mistake": true,
+    "relevant_lesson_ids": [
+      "L-json"
+    ],
+    "recall_query": "response serialization",
+    "lesson_signal": "acme_json.dumps",
+    "mistake_markers": [
+      "\\bjson\\.dumps"
+    ],
+    "success_markers": [
+      "acme_json\\.dumps"
+    ],
+    "mistaken_solution": "import json\ndef render(payload):\n    return json.dumps(payload)",
+    "correct_solution": "import acme_json\ndef render(payload):\n    return acme_json.dumps(payload)"
+  },
+  {
+    "task_id": "db-write-uow",
+    "kind": "feature",
+    "title": "Persist a widget durably",
+    "prompt": "In repo/service.py, implement save_widget(session, widget) that persists the widget so the write is durable. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+    "mistake_id": "raw-session-commit",
+    "repeats_known_mistake": true,
+    "relevant_lesson_ids": [
+      "L-uow"
+    ],
+    "recall_query": "database writes",
+    "lesson_signal": "unit_of_work",
+    "mistake_markers": [
+      "\\.commit\\(\\)"
+    ],
+    "success_markers": [
+      "unit_of_work"
+    ],
+    "mistaken_solution": "def save_widget(session, widget):\n    session.add(widget)\n    session.commit()",
+    "correct_solution": "import acme_db\ndef save_widget(session, widget):\n    with acme_db.unit_of_work() as uow:\n        uow.add(widget)"
+  },
+  {
+    "task_id": "shell-exec",
+    "kind": "feature",
+    "title": "Run the backup command",
+    "prompt": "In repo/service.py, implement run_backup(path) that runs the 'acme-backup' shell command with path as an argument. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+    "mistake_id": "raw-subprocess",
+    "repeats_known_mistake": true,
+    "relevant_lesson_ids": [
+      "L-shell"
+    ],
+    "recall_query": "shelling out",
+    "lesson_signal": "acme_shell.run",
+    "mistake_markers": [
+      "subprocess\\.run",
+      "subprocess\\.call",
+      "os\\.system"
+    ],
+    "success_markers": [
+      "acme_shell\\.run"
+    ],
+    "mistaken_solution": "import subprocess\ndef run_backup(path):\n    subprocess.run(['acme-backup', path])",
+    "correct_solution": "import acme_shell\ndef run_backup(path):\n    acme_shell.run(['acme-backup', path])"
+  },
+  {
+    "task_id": "precondition-check",
+    "kind": "fix",
+    "title": "Guard a self-transfer",
+    "prompt": "In repo/service.py, implement transfer(src, dst, amount) that first checks src and dst are different, then moves the amount. End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+    "mistake_id": "bare-assert",
+    "repeats_known_mistake": true,
+    "relevant_lesson_ids": [
+      "L-req"
+    ],
+    "recall_query": "preconditions",
+    "lesson_signal": "acme_validate.require",
+    "mistake_markers": [
+      "\\bassert\\b"
+    ],
+    "success_markers": [
+      "acme_validate\\.require"
+    ],
+    "mistaken_solution": "def transfer(src, dst, amount):\n    assert src != dst, 'cannot transfer to self'\n    _move(src, dst, amount)",
+    "correct_solution": "import acme_validate\ndef transfer(src, dst, amount):\n    acme_validate.require(src != dst, 'cannot transfer to self')\n    _move(src, dst, amount)"
+  },
+  {
+    "task_id": "add-docstring",
+    "kind": "test",
+    "title": "Document a small helper",
+    "prompt": "In repo/service.py, add a one-line docstring to normalize(text). End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+    "mistake_id": "none",
+    "repeats_known_mistake": false,
+    "relevant_lesson_ids": [],
+    "recall_query": "docstring",
+    "lesson_signal": "",
+    "mistake_markers": [],
+    "success_markers": [
+      "Strip and lowercase"
+    ],
+    "mistaken_solution": "def normalize(text):\n    \"\"\"Strip and lowercase the text.\"\"\"\n    return text.strip().lower()",
+    "correct_solution": "def normalize(text):\n    \"\"\"Strip and lowercase the text.\"\"\"\n    return text.strip().lower()"
+  },
+  {
+    "task_id": "add-type-hint",
+    "kind": "test",
+    "title": "Annotate a return type",
+    "prompt": "In repo/service.py, add a return type hint to is_even(n). End your reply with only the final Python code for the change (including any imports), with no surrounding explanation and no mention of alternatives you did not use.",
+    "mistake_id": "none",
+    "repeats_known_mistake": false,
+    "relevant_lesson_ids": [],
+    "recall_query": "type hint",
+    "lesson_signal": "",
+    "mistake_markers": [],
+    "success_markers": [
+      "-> bool"
+    ],
+    "mistaken_solution": "def is_even(n) -> bool:\n    return n % 2 == 0",
+    "correct_solution": "def is_even(n) -> bool:\n    return n % 2 == 0"
+  }
+]

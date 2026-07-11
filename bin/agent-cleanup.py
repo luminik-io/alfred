@@ -764,6 +764,36 @@ if TRANSCRIPTS_ROOT.exists():
             except OSError:
                 pass
 
+
+# Expire offloaded tool-output firing directories (state/firings/<id>/tool-output).
+# These hold the FULL copies the compaction hook saved so an agent could re-read a
+# truncated slice; once the firing is long done they are pure reclaimable bulk.
+def _env_days(name: str, default: int) -> int:
+    """Forgiving int parse: a typo in a retention var must not stop cleanup."""
+    raw = (os.environ.get(name) or "").strip()
+    try:
+        return int(raw) if raw else default
+    except ValueError:
+        print(f"[cleanup] ignoring malformed {name}={raw!r}; using {default}", file=sys.stderr)
+        return default
+
+
+FIRINGS_RETENTION_DAYS = _env_days("ALFRED_FIRINGS_RETENTION_DAYS", 30)
+if EMERGENCY:
+    EMERGENCY_FIRINGS_RETENTION_DAYS = _env_days("ALFRED_EMERGENCY_FIRINGS_RETENTION_DAYS", 1)
+    FIRINGS_RETENTION_DAYS = min(FIRINGS_RETENTION_DAYS, EMERGENCY_FIRINGS_RETENTION_DAYS)
+firings_removed = 0
+firings_freed_mb = 0.0
+try:
+    import tool_offload
+
+    firings_removed, firings_freed_mb = tool_offload.sweep_expired(
+        FIRINGS_RETENTION_DAYS * ONE_DAY,
+        now=NOW,
+    )
+except Exception as exc:  # never let cleanup crash on the offload sweep
+    print(f"[cleanup] firings sweep skipped: {exc}", file=sys.stderr)
+
 # Force-unlock dead or stale-identity agent locks. Keep healthy locks under
 # 4h, and give freshly-created locks a brief mkdir-before-pid-write grace.
 LOCK_MAX_AGE = 4 * 3600
@@ -876,6 +906,10 @@ print(f"[cleanup] spend files: {spend_removed} removed (>{SPEND_RETENTION_DAYS}d
 print(f"[cleanup] event logs: {events_removed} removed (>{EVENTS_RETENTION_DAYS}d)")
 print(
     f"[cleanup] transcripts: {transcript_removed} removed ({transcript_freed_mb:.1f} MB freed, >{TRANSCRIPT_RETENTION_DAYS}d)"
+)
+print(
+    f"[cleanup] tool-output offloads: {firings_removed} firings removed "
+    f"({firings_freed_mb:.1f} MB freed, >{FIRINGS_RETENTION_DAYS}d)"
 )
 print(f"[cleanup] stuck locks: {locks_unlocked} force-released (>{LOCK_MAX_AGE // 3600}h)")
 if RECLAIM_DEV_CACHES:

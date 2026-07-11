@@ -95,56 +95,122 @@ export function formatShare(value) {
 }
 
 /**
- * Build the self_proof block: the share of merged PRs shipped by Alfred agents.
+ * The rolling-window copy, kept as a SECONDARY stat under the cumulative
+ * headline. Honest on empty data: never quotes a fabricated 0% share.
  *
- * share_pct is null (never 0) when there are no merged PRs, so the page renders
- * a "no data yet" state instead of a fabricated 0% share. Use noDataSelfProof()
- * for a committed seed so a skipped pre-deploy refresh cannot publish a real 0%.
- *
- * @param {number} agentMerged agent-shipped merged PRs (label-attributed)
+ * @param {number} agentMerged agent-shipped merged PRs in the window
  * @param {number} totalMerged all merged PRs in the window
+ * @param {number|null} sharePct window share, null when there is no data
  * @param {number} days window size
- * @returns {object}
+ * @returns {{headline: string, sentence: string}}
  */
-export function buildSelfProof(agentMerged, totalMerged, days) {
-  const sharePct =
-    totalMerged > 0 ? Math.round((1000 * agentMerged) / totalMerged) / 10 : null;
-  let sentence;
-  let headline;
+function windowCopy(agentMerged, totalMerged, sharePct, days) {
   if (sharePct === null) {
-    sentence = `No merged PRs to measure in the last ${days} days yet.`;
-    headline = `No merged PRs in the last ${days} days yet.`;
-  } else if (agentMerged <= 0) {
-    sentence = `No public agent-attributed PRs among ${totalMerged} merged PRs in the last ${days} days yet.`;
-    headline = `No public agent-attributed PRs among ${totalMerged} merged PRs in the last ${days} days yet.`;
-  } else {
-    sentence = `${formatShare(sharePct)}% of merged PRs in the last ${days} days were shipped by Alfred agents.`;
-    headline = `Alfred agents shipped ${agentMerged} of ${totalMerged} merged PRs (${formatShare(
-      sharePct,
-    )}%) in the last ${days} days.`;
+    return {
+      headline: `No merged PRs in the last ${days} days.`,
+      sentence: `No merged PRs to measure in the last ${days} days.`,
+    };
+  }
+  if (agentMerged <= 0) {
+    const text = `No agent-attributed PRs among ${totalMerged} merged PRs in the last ${days} days.`;
+    return { headline: text, sentence: text };
   }
   return {
-    window_days: days,
-    agent_shipped: agentMerged,
-    merged_total: totalMerged,
-    share_pct: sharePct,
-    repos_counted: totalMerged > 0 ? 1 : 0,
-    repo_word: "repo",
-    headline,
-    sentence,
+    headline: `${agentMerged} of ${totalMerged} merged PRs (${formatShare(
+      sharePct,
+    )}%) in the last ${days} days.`,
+    sentence: `${formatShare(sharePct)}% in the last ${days} days.`,
   };
 }
 
 /**
- * A no-data self_proof block for the committed seed. share_pct is null and the
- * counts are zero, so the Impact page shows "no data yet" rather than a real
- * percentage if a pre-deploy refresh is ever skipped.
+ * Build the self_proof block. The HEADLINE metric is CUMULATIVE: the all-time
+ * count of merged PRs attributed to Alfred agents in the repo, so the proof
+ * reflects total impact and does not read as 0 when the fleet is paused or the
+ * rolling window happens to be empty. The rolling window survives as a
+ * secondary stat (window_headline / window_sentence).
+ *
+ * Honesty is preserved: agentTotal is a real count (0 stays 0, never faked
+ * upward), the window share_pct is null (never 0) when there are no merged PRs
+ * in the window, and an all-zero repo renders a plain "no agent-attributed PRs
+ * yet" line rather than a fabricated number. Use noDataSelfProof() for a
+ * committed seed so a skipped pre-deploy refresh cannot publish stale traction.
+ *
+ * @param {object} args
+ * @param {number} args.agentTotal cumulative all-time agent-attributed merged PRs
+ * @param {boolean} [args.agentTotalIncomplete] true when the count is a floor
+ *   (a GitHub search cap hid older PRs), so it renders as "N+"
+ * @param {number} args.agentWindow agent-attributed merged PRs in the window
+ * @param {number} args.mergedWindow all merged PRs in the window
+ * @param {number} args.windowDays window size in days
+ * @param {string|null} [args.firstAgentMergedAt] ISO date of the first agent PR
+ * @returns {object}
+ */
+export function buildSelfProof({
+  agentTotal,
+  agentTotalIncomplete = false,
+  agentWindow,
+  mergedWindow,
+  windowDays,
+  firstAgentMergedAt = null,
+}) {
+  const days = windowDays;
+  const sharePct =
+    mergedWindow > 0 ? Math.round((1000 * agentWindow) / mergedWindow) / 10 : null;
+  const window = windowCopy(agentWindow, mergedWindow, sharePct, days);
+
+  let headline;
+  let sentence;
+  if (agentTotal > 0) {
+    // A capped enumeration is a lower bound, rendered "N+", never a silent
+    // undercount presented as exact.
+    const noun = agentTotal === 1 && !agentTotalIncomplete ? "PR" : "PRs";
+    const count = agentTotalIncomplete ? `${agentTotal}+` : String(agentTotal);
+    sentence = `${count} agent-attributed ${noun} merged so far.`;
+    headline = `Alfred agents have merged ${count} agent-attributed ${noun} so far.`;
+  } else if (agentTotalIncomplete) {
+    sentence = "Agent-attributed PR count is temporarily unavailable.";
+    headline = "Agent-attributed PR count is temporarily unavailable.";
+  } else {
+    sentence = "No agent-attributed PRs merged yet.";
+    headline = "No agent-attributed PRs merged yet.";
+  }
+
+  return {
+    // Cumulative headline metric.
+    agent_shipped_total: agentTotal,
+    agent_shipped_total_incomplete: agentTotalIncomplete,
+    first_agent_merged_at: firstAgentMergedAt,
+    headline,
+    sentence,
+    // Rolling window, kept as a secondary stat.
+    window_days: days,
+    agent_shipped: agentWindow,
+    merged_total: mergedWindow,
+    share_pct: sharePct,
+    repos_counted: mergedWindow > 0 ? 1 : 0,
+    repo_word: "repo",
+    window_headline: window.headline,
+    window_sentence: window.sentence,
+  };
+}
+
+/**
+ * A no-data self_proof block for the committed seed. The cumulative count is
+ * zero and the window share_pct is null, so the Impact page shows "no
+ * agent-attributed PRs yet" rather than a real number if a pre-deploy refresh
+ * is ever skipped.
  *
  * @param {number} days window size the live build will use
  * @returns {object}
  */
 export function noDataSelfProof(days) {
-  return buildSelfProof(0, 0, days);
+  return buildSelfProof({
+    agentTotal: 0,
+    agentWindow: 0,
+    mergedWindow: 0,
+    windowDays: days,
+  });
 }
 
 // The README carries a live self-proof line between these markers. The proof
@@ -158,25 +224,31 @@ export const SELF_PROOF_MARKER_CLOSE = "<!-- /SELF_PROOF -->";
 /**
  * The README sentence for a self_proof block, honest on empty data.
  *
- * With merged PRs: "N% of Alfred's own merged PRs in the last D days were
- * shipped by Alfred agents". Empty window: a plain "no merged PRs yet" line, so
- * a refreshed-but-idle repo never advertises a fabricated 0%.
+ * Leads with the CUMULATIVE count ("Alfred agents have merged N agent-attributed
+ * PRs in this repo so far") and appends the rolling window as a secondary clause
+ * when it carries agent work. An all-zero repo says so plainly, so a
+ * refreshed-but-idle repo never advertises a fabricated number.
  *
  * @param {object} selfProof a block from buildSelfProof / noDataSelfProof
  * @returns {string}
  */
 export function readmeSelfProofText(selfProof) {
+  const total = selfProof.agent_shipped_total ?? 0;
+  const incomplete = selfProof.agent_shipped_total_incomplete ?? false;
   const days = selfProof.window_days;
-  if (selfProof.share_pct === null || selfProof.merged_total <= 0) {
-    return `No merged PRs in Alfred's own repo in the last ${days} days yet`;
+  if (total <= 0) {
+    if (incomplete) {
+      return "Agent-attributed PR count for Alfred's own repo is temporarily unavailable";
+    }
+    return "No agent-attributed PRs in Alfred's own repo yet";
   }
-  if (selfProof.agent_shipped <= 0) {
-    return `No public agent-attributed PRs in Alfred's own repo in the last ${days} days yet`;
+  const noun = total === 1 && !incomplete ? "PR" : "PRs";
+  const count = incomplete ? `${total}+` : String(total);
+  let text = `Alfred agents have merged ${count} agent-attributed ${noun} in this repo so far`;
+  if ((selfProof.agent_shipped ?? 0) > 0) {
+    text += `, ${selfProof.agent_shipped} in the last ${days} days`;
   }
-  return (
-    `${formatShare(selfProof.share_pct)}% of Alfred's own merged PRs in the ` +
-    `last ${days} days were shipped by Alfred agents`
-  );
+  return text;
 }
 
 /**

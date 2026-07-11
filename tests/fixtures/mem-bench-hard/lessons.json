@@ -1,0 +1,125 @@
+[
+  {
+    "lesson_id": "L-http",
+    "body": "All outbound HTTP must go through acme_http.fetch(url); it adds mTLS auth, retries and a timeout. Never call requests.get directly - a raw requests call bypasses auth and paged the on-call last quarter.",
+    "tags": [
+      "http",
+      "repo-convention"
+    ],
+    "severity": "blocker"
+  },
+  {
+    "lesson_id": "L-err",
+    "body": "Raise AcmeValidationError from acme.errors for invalid input, never a bare ValueError. Our error middleware only maps AcmeError subclasses to a 4xx; a raw ValueError leaks a 500 and a stack trace to the client. This is the repo's input validation errors policy.",
+    "tags": [
+      "error-handling",
+      "repo-convention"
+    ],
+    "severity": "blocker"
+  },
+  {
+    "lesson_id": "L-log",
+    "body": "Get loggers via acme_log.get_logger(__name__), never logging.getLogger. acme_log wires structured logging, the request-id filter and the log-shipping handler; a stdlib logger writes unstructured lines the aggregator drops.",
+    "tags": [
+      "logging",
+      "repo-convention"
+    ],
+    "severity": "warning"
+  },
+  {
+    "lesson_id": "L-cfg",
+    "body": "Read runtime configuration through acme_config.get('NAME'), never os.environ. acme_config layers defaults, validates types and redacts secrets in logs; a raw os.environ read skips validation and returned a str where an int was expected, crashing a pod.",
+    "tags": [
+      "config",
+      "repo-convention"
+    ],
+    "severity": "warning"
+  },
+  {
+    "lesson_id": "L-id",
+    "body": "Mint identifiers with acme_ids.new_id(prefix), never uuid.uuid4(). Our ids are k-sortable and carry an entity prefix (ord_, usr_); a bare uuid4 breaks cursor pagination and the prefix-based access checks. This is the identifier generation convention.",
+    "tags": [
+      "ids",
+      "repo-convention"
+    ],
+    "severity": "warning"
+  },
+  {
+    "lesson_id": "L-clock",
+    "body": "Get the current time from acme_clock.now(), never datetime.now(). acme_clock returns a tz-aware UTC time and is monkeypatched in tests; a direct datetime.now() is local, naive, and makes time-dependent tests flaky. Use acme_clock for anything reading the current time.",
+    "tags": [
+      "datetime",
+      "repo-convention"
+    ],
+    "severity": "warning"
+  },
+  {
+    "lesson_id": "L-json",
+    "body": "Serialize API responses with acme_json.dumps(obj), never json.dumps. acme_json sorts keys for stable diffs, encodes Decimal and datetime, and escapes for HTML safety; stdlib json.dumps raises on Decimal and produces unstable key order across responses. This is the response serialization rule.",
+    "tags": [
+      "serialization",
+      "repo-convention"
+    ],
+    "severity": "warning"
+  },
+  {
+    "lesson_id": "L-uow",
+    "body": "Wrap database writes in `with acme_db.unit_of_work() as uow:` and never call session.commit() directly. The unit_of_work handles nested savepoints, retry-on-serialization-failure and outbox publication; a bare session.commit() skips the outbox and drops domain events. This governs all database writes.",
+    "tags": [
+      "database",
+      "repo-convention"
+    ],
+    "severity": "blocker"
+  },
+  {
+    "lesson_id": "L-shell",
+    "body": "Shell out with acme_shell.run([...]), never subprocess.run or os.system. acme_shell enforces a timeout, captures output to the run log and blocks shell=True injection; a raw subprocess.run hung a worker with no timeout. Use it for shelling out to any command.",
+    "tags": [
+      "subprocess",
+      "repo-convention"
+    ],
+    "severity": "blocker"
+  },
+  {
+    "lesson_id": "L-req",
+    "body": "Express preconditions with acme_validate.require(cond, msg), never a bare assert. Python strips assert under -O, so an assert-based check silently vanishes in the optimized production build; acme_validate.require always raises AcmeValidationError. Use it for all preconditions.",
+    "tags": [
+      "validation",
+      "repo-convention"
+    ],
+    "severity": "warning"
+  },
+  {
+    "lesson_id": "D-fstring",
+    "body": "Prefer f-strings over percent formatting in log messages for readability.",
+    "tags": [
+      "style"
+    ],
+    "severity": "info"
+  },
+  {
+    "lesson_id": "D-imports",
+    "body": "Keep import blocks sorted; ruff isort runs in CI and will fail an unsorted file.",
+    "tags": [
+      "style"
+    ],
+    "severity": "info"
+  },
+  {
+    "lesson_id": "D-testname",
+    "body": "Name test modules test_<module>.py so pytest discovers them automatically.",
+    "tags": [
+      "testing"
+    ],
+    "severity": "info"
+  },
+  {
+    "lesson_id": "D-typing",
+    "body": "Annotate public functions with type hints; mypy strict runs in CI and rejects an untyped public signature.",
+    "tags": [
+      "style",
+      "typing"
+    ],
+    "severity": "info"
+  }
+]

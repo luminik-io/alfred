@@ -284,12 +284,15 @@ the N it was measured over and the per-task breakdown behind it.
 
 ### Reproducibility
 
-1. **Pick or write a fixture.** The built-in fixture lives at
-   `tests/fixtures/mem-bench/` and has three parts: `lessons.json` (the lessons
-   the fleet "learned", including distractors), `tasks.json` (the paired tasks
-   with their mistake/success markers and the relevant lesson id), and `repo/`
-   (a tiny deterministic sample repo an engine can edit). Point at your own with
-   `--fixture DIR`.
+1. **Pick or write a fixture.** Two fixtures ship in-tree, each with three
+   parts: `lessons.json` (the lessons the fleet "learned", including
+   distractors), `tasks.json` (the paired tasks with their mistake/success
+   markers and the relevant lesson id), and `repo/` (a tiny deterministic
+   sample repo an engine can edit). The default `tests/fixtures/mem-bench/`
+   (N=4) re-tempts generic Python gotchas and proves the harness; the harder
+   `tests/fixtures/mem-bench-hard/` (N=10) plants repo-specific conventions a
+   model cannot guess without memory and is the headline fixture. Point at
+   either with `--fixture DIR`, or at your own.
 2. **Capture a baseline** with `--engine <name> --label before --json`.
 3. **Change something** - the memory provider, the recall limit, a prompt.
 4. **Re-run** with `--label after --json` and compare. Same suite, same seed
@@ -402,9 +405,9 @@ How to read it honestly:
   the behavioural delta is paired with verified delivery of the relevant lesson
   to every memory-ON prompt.
 - **N = 4 is tiny by design.** Do not extrapolate a 4-task delta either way. This
-  fixture proves the harness produces a real, reproducible engine number; a
-  larger, harder fixture is still needed before generalizing the delta. Marker
-  fidelity is the honest limit
+  fixture proves the harness produces a real, reproducible engine number; the
+  [harder fixture below](#harder-fixture-result-engineclaude-n10) is the
+  headline-grade run. Marker fidelity is the honest limit
   (see caveats): a task counts as solved only on a literal success-marker match,
   so a correct-but-differently-spelled fix reads as "not solved", not "mistake".
 
@@ -414,6 +417,85 @@ needed for the engine path):
 ```
 uv run python bin/alfred-benchmark.py memory --engine claude --label real-v0.6.0 \
   --json > docs/benchmarks/mem-ab-real-v0.6.0.json
+```
+
+### Harder fixture result (engine:claude, N=10)
+
+The base fixture above re-tempts generic Python gotchas, which a capable model
+often avoids without memory; its value is proving the harness on a real engine.
+The **harder fixture** (`tests/fixtures/mem-bench-hard/`) is built so memory is
+the *only* way to get the convention right: every task's correct behaviour is a
+**repo-specific convention that is unguessable from the repo** - route work
+through the team's internal `acme_*` platform helpers (HTTP, logging, config,
+ids, clock, JSON, DB unit-of-work, shell, preconditions) and the project error
+type, instead of the stdlib or `requests` default any model would reach for.
+The helpers live in a separately-installed platform package, the fixture repo
+never names them (a unit test enforces that mechanically), and the rule exists
+only in the seeded lessons. Each task also demands a code-only final reply so
+the deterministic markers grade code, not commentary about alternatives.
+
+This is a **real** `--engine claude` run, both arms, real quota. The full
+machine-readable record is committed at
+[`docs/benchmarks/mem-ab-hard-real-v0.6.1.json`](benchmarks/mem-ab-hard-real-v0.6.1.json).
+
+```
+Memory A/B run                     (REAL result: engine:claude, harder fixture)
+  label:        real-hard-v0.6.1
+  seed repo:    acme-org/widgets   (tests/fixtures/mem-bench-hard/repo)
+  memory backend: fleet-local (in-memory SQLite FleetBrain, recency + literal recall)
+  solver:       engine:claude   (claude CLI 2.1.181)
+  N (tasks that re-tempt a learned mistake): 10   (+2 control tasks)
+
+  repeated-mistake-rate     memory OFF: 80%    memory ON: 0%     delta: +80 pts
+  task success rate         memory OFF: 8.3%   memory ON: 91.7%  delta: +83.3 pts
+  retrieval precision/recall (ON only):  33.3% / 100%
+  tokens in / turns         memory OFF: 294,652/59   memory ON: 240,235/34
+
+  per-task (mistake repeated?  off / on):
+    http-client-wrapper     off=no   on=no
+    project-error-type      off=yes  on=no
+    structured-logger       off=yes  on=no
+    config-access           off=yes  on=no
+    id-generation           off=yes  on=no
+    current-time            off=yes  on=no
+    response-serialization  off=yes  on=no
+    db-write-uow            off=yes  on=no
+    shell-exec              off=yes  on=no
+    precondition-check      off=yes  on=no
+    add-docstring (control) off=no   on=no
+    add-type-hint (control) off=no   on=no
+```
+
+How to read it honestly:
+
+- **The headline is +80 pts over N=10.** Without memory the engine reached for
+  the obvious default on eight of ten tasks (`ValueError`, `logging.getLogger`,
+  `os.environ`, `uuid.uuid4`, `datetime.now`, `json.dumps`, `session.commit()`,
+  `subprocess.run`) - exactly the planted mistakes. With the seeded lessons
+  recalled and injected, it used the mandated internal helper on all ten.
+- **The two OFF-arm "no" rows are not wins for the no-memory arm.** On
+  `http-client-wrapper` and `precondition-check` the OFF engine avoided the
+  specific planted pattern (for example, a different HTTP client than
+  `requests.get`) but still missed the required convention, so it failed the
+  task; OFF task success is 1/12. A "mistake not repeated" row only counts as
+  good when the task also succeeds.
+- **Memory ON was also cheaper on this run**: 240k tokens / 34 turns vs
+  295k / 59, because the injected lesson removed exploration. Cost figures are
+  one run's measurement, not a guarantee.
+- **Retrieval: recall 100%, precision 33.3%.** The right lesson reached every
+  ON-arm prompt; precision reflects the four distractor lessons the fixture
+  seeds and the local FleetBrain's recency backfill in the top-3.
+- **N = 10 is still a fixture, not a population.** It is materially larger and
+  harder than the base run, and the planted conventions are the kind real repos
+  have, but do not quote the delta without the N and the per-task rows.
+
+Reproduce exactly from a repo checkout (burns real quota; roughly 10 minutes,
+24 engine firings):
+
+```
+uv run python bin/alfred-benchmark.py memory --engine claude \
+  --fixture tests/fixtures/mem-bench-hard --label real-hard-v0.6.1 \
+  --json > docs/benchmarks/mem-ab-hard-real-v0.6.1.json
 ```
 
 ### Offline-fixture result (stub solver, no engine)

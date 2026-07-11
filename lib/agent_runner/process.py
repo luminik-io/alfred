@@ -109,14 +109,32 @@ def _runtime_cli_bin(env_name: str, imported_default: str) -> str:
     return os.environ.get(env_name, "").strip() or imported_default
 
 
-def _claude_subprocess_env() -> dict[str, str]:
-    """Give headless Claude the standard auth directory without shell inheritance."""
+def _claude_subprocess_env(
+    *,
+    model: str | None = None,
+    engine: str | None = None,
+    firing_id: str | None = None,
+) -> dict[str, str]:
+    """Give headless Claude the standard auth directory without shell inheritance.
+
+    Also exports the ACTIVE model/engine and firing id so the PostToolUse
+    compaction hook (``lib/alfred_hooks.py`` -> ``model_context`` / ``tool_offload``)
+    can size its byte budget to the firing's real model and scope offloaded tool
+    output to the firing's own directory. The model passed to ``--model`` is a CLI
+    argument, not an inherited env var, so we surface it here explicitly.
+    """
 
     env = dict(os.environ)
     if not env.get("CLAUDE_CONFIG_DIR", "").strip():
         home = env.get("HOME", "").strip()
         if home:
             env["CLAUDE_CONFIG_DIR"] = str(Path(home).expanduser() / ".claude")
+    if model and model.strip():
+        env["ALFRED_ACTIVE_MODEL"] = model.strip()
+    if engine and engine.strip():
+        env["ALFRED_ACTIVE_ENGINE"] = engine.strip()
+    if firing_id and firing_id.strip():
+        env["ALFRED_FIRING_ID"] = firing_id.strip()
     return env
 
 
@@ -777,7 +795,7 @@ def claude_invoke(
         cwd=str(workdir),
         timeout=timeout,
         capture=True,
-        env=_claude_subprocess_env(),
+        env=_claude_subprocess_env(model=model, engine="claude"),
     )
 
     if res.returncode == 124:
@@ -909,7 +927,7 @@ def claude_invoke_streaming(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            env=_claude_subprocess_env(),
+            env=_claude_subprocess_env(model=model, engine="claude", firing_id=firing_id),
         )
     except FileNotFoundError as exc:
         return ClaudeResult(
@@ -1454,14 +1472,14 @@ def _resolve_rubric(rubric: str | None) -> str | None:
 
 
 def _rubric_max_iterations() -> int:
-    """Read the rubric loop bound from ``ALFRED_RUBRIC_MAX_ITERATIONS``.
+    """Read the rubric REVISION bound from ``ALFRED_RUBRIC_MAX_ITERATIONS``.
 
-    Defaults to 3 (the deepagents RubricMiddleware range is 2-3), clamped to
-    ``[1, 10]``. Only the primitive loop in ``rubric.py`` consumes this;
-    ``invoke_agent_engine`` grades once per run and leaves iteration to a
-    caller-driven loop.
+    Defaults to 1 (re-dispatch the implementer at most once on
+    ``needs_revision``), clamped to ``[1, 10]``. Consumed by the senior-dev
+    grade-then-revise gate; ``invoke_agent_engine`` grades once per run and
+    leaves iteration to that caller-driven loop.
     """
-    return env_int("ALFRED_RUBRIC_MAX_ITERATIONS", 3, minimum=1, maximum=10)
+    return env_int("ALFRED_RUBRIC_MAX_ITERATIONS", 1, minimum=1, maximum=10)
 
 
 #: Grader engines the gate knows how to run. Only these two are cheap+local
@@ -1534,7 +1552,7 @@ def _grader_status_for_subtype(subtype: str) -> int:
     return 503  # error_timeout / error_api / any other transient -> server_error shape
 
 
-def _default_rubric_grader(
+def build_rubric_grader(
     *,
     grader_engine: str | None,
     agent: str,
@@ -1934,7 +1952,7 @@ def invoke_agent_engine(
                     "criteria": [],
                 }
             else:
-                grader_fn = rubric_grader_fn or _default_rubric_grader(
+                grader_fn = rubric_grader_fn or build_rubric_grader(
                     grader_engine=(
                         rubric_grader_engine
                         or os.environ.get("ALFRED_RUBRIC_GRADER_ENGINE", "").strip()

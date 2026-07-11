@@ -76,6 +76,13 @@ const prs = await searchGitHub(prQuery);
 const issuesOpened = await searchGitHub(openedIssueQuery);
 const issuesClosed = await searchGitHub(closedIssueQuery);
 
+// Cumulative all-time agent-attributed merged PRs. Queried per provenance label
+// and de-duplicated by PR number, so the count survives a paused fleet or an
+// empty rolling window: it is the repo's total agent impact, not a 30-day
+// slice. Excluded authors (dependabot and friends carrying a mislabelled
+// agent:authored) are dropped, matching the window numerator's honesty rule.
+const cumulative = await fetchAgentCumulative();
+
 const sortedPrs = prs
   .filter(
     (item) =>
@@ -125,13 +132,20 @@ const summary = {
   },
 };
 
-// Self-proof stat: the share of merged PRs shipped by Alfred agents. This is
-// summary.prs_merged / summary.repo_activity.prs_merged over the same window,
-// surfaced as a first-class, re-quotable field so the Impact page can render
-// "X% of Alfred's own merged PRs were shipped by Alfred agents" without
-// re-deriving it. Honest on an empty window: share_pct is null (not 0), so the
-// page shows "no data yet" rather than a fabricated 0%.
-const selfProof = buildSelfProof(agentPrs.length, sortedPrs.length, DAYS);
+// Self-proof stat. The HEADLINE is CUMULATIVE (all-time agent-attributed merged
+// PRs); the rolling 30-day window is kept as a secondary stat. Surfaced as a
+// first-class, re-quotable field so the Impact page and README render "N
+// agent-attributed PRs merged so far" without re-deriving it. Honest on empty
+// data: the cumulative count is a real count and the window share_pct is null
+// (not 0) when there are no merged PRs in the window.
+const selfProof = buildSelfProof({
+  agentTotal: cumulative.count,
+  agentTotalIncomplete: cumulative.capped,
+  firstAgentMergedAt: cumulative.firstMergedAt,
+  agentWindow: agentPrs.length,
+  mergedWindow: sortedPrs.length,
+  windowDays: DAYS,
+});
 
 const proof = {
   generated_at: now.toISOString(),
@@ -175,7 +189,9 @@ const proof = {
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, `${JSON.stringify(proof, null, 2)}\n`);
 console.log(
-  `Wrote ${OUT}: ${summary.prs_merged} agent PRs, ${summary.issues_opened} agent issues, ${summary.repo_activity.prs_merged} total public PRs.`,
+  `Wrote ${OUT}: ${cumulative.count} agent-attributed PRs merged so far, ` +
+    `${summary.prs_merged} in the last ${DAYS} days, ` +
+    `${summary.repo_activity.prs_merged} total public PRs in window.`,
 );
 
 // Refresh the README self-proof line from the same data. This is what makes
@@ -248,6 +264,78 @@ async function searchGitHub(query) {
     cursor = search.pageInfo.hasNextPage ? search.pageInfo.endCursor : null;
   } while (cursor);
   return out;
+}
+
+async function searchGitHubCounted(query) {
+  // Like searchGitHub, but also returns the search's reported total so callers
+  // can detect when GitHub truncated the paged nodes (issueCount > nodes.length).
+  const out = [];
+  let issueCount = 0;
+  let cursor = null;
+  do {
+    const data = await graphQL(
+      `query ImpactProofCount($query: String!, $cursor: String) {
+        search(type: ISSUE, query: $query, first: 100, after: $cursor) {
+          issueCount
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            __typename
+            ... on PullRequest {
+              number
+              mergedAt
+              headRefName
+              author { login }
+              labels(first: 30) { nodes { name } }
+            }
+          }
+        }
+      }`,
+      { query, cursor },
+    );
+    const search = data.search;
+    issueCount = search.issueCount;
+    out.push(...search.nodes.filter(Boolean));
+    cursor = search.pageInfo.hasNextPage ? search.pageInfo.endCursor : null;
+  } while (cursor);
+  return { nodes: out, issueCount };
+}
+
+async function fetchAgentCumulative() {
+  // One search per provenance label (GitHub search ANDs multiple `label:`
+  // qualifiers, so an OR is expressed as separate queries unioned by number).
+  // agent:authored is set on PR open and persists through merge, so it covers
+  // the bulk; the other labels catch any PR labelled only on merge.
+  const seen = new Map();
+  let capped = false;
+  for (const label of AGENT_SHIPPED_LABELS) {
+    const query = `repo:${REPO} is:pr is:merged label:"${label}"`;
+    const { nodes, issueCount } = await searchGitHubCounted(query);
+    for (const node of nodes) {
+      if (
+        node.__typename !== "PullRequest" ||
+        !node.mergedAt ||
+        !isAgentMarked(node)
+      ) {
+        continue;
+      }
+      seen.set(node.number, node.mergedAt);
+    }
+    // GitHub search returns at most ~1000 nodes even when more match. When the
+    // reported total exceeds what we could page, the union is a floor, not the
+    // exact all-time count, so mark it capped and let the headline render "N+"
+    // rather than silently publishing an undercount.
+    if (issueCount > nodes.length) {
+      capped = true;
+    }
+  }
+  const dates = [...seen.values()].sort();
+  return {
+    count: seen.size,
+    // A most-recent-first cap hides the earliest merge, so only trust the first
+    // date when the enumeration was complete.
+    firstMergedAt: !capped && dates.length > 0 ? dates[0] : null,
+    capped,
+  };
 }
 
 async function graphQL(query, variables) {
