@@ -59,6 +59,9 @@ export type RecentThread = {
   title: string;
   updatedAt: number;
   active: boolean;
+  // Number of message turns (user + assistant) in the conversation, shown as a
+  // second line in the history panel so threads are easy to tell apart.
+  messageCount: number;
 };
 
 // Args/result shape on the draft tool-call part the converter emits. The
@@ -560,6 +563,26 @@ export function useAskThread({
     setRecent(loadConversations());
   }, [conversationId, turns, result]);
 
+  const activateStoredConversation = useCallback((target: PersistedConversation) => {
+    const restoredTurns = target.turns.map(fromPersistedTurn);
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setConversationId(target.id);
+    setTurns(restoredTurns);
+    setResult(
+      target.draftId && target.draft
+        ? ({ draft_id: target.draftId, draft: target.draft } as unknown as ConverseResponse)
+        : null,
+    );
+    setError(null);
+    busyRef.current = false;
+    setBusy(false);
+    setFileNotices({});
+    fileBusyIdRef.current = null;
+    setFileBusyId(null);
+    lastUserTextRef.current = lastUserTextOf(restoredTurns);
+  }, []);
+
   // Resume a stored conversation by id, making it the active thread.
   const resumeConversation = useCallback(
     (id: string) => {
@@ -590,25 +613,42 @@ export function useAskThread({
           turns: settled.map(toPersistedTurn),
         });
       }
-      abortRef.current?.abort();
-      abortRef.current = null;
-      setConversationId(target.id);
-      setTurns(target.turns.map(fromPersistedTurn));
-      setResult(
-        target.draftId && target.draft
-          ? ({ draft_id: target.draftId, draft: target.draft } as unknown as ConverseResponse)
-          : null,
-      );
-      setError(null);
-      busyRef.current = false;
-    setBusy(false);
-      setFileNotices({});
-      fileBusyIdRef.current = null;
-    setFileBusyId(null);
-      lastUserTextRef.current = lastUserTextOf(target.turns.map(fromPersistedTurn));
+      activateStoredConversation(target);
       setRecent(loadConversations());
     },
-    [conversationId, turns, result],
+    [activateStoredConversation, conversationId, turns, result],
+  );
+
+  // Drop one stored conversation from the history panel. Deleting the active
+  // thread clears the surface to a fresh empty chat (there is nothing to keep
+  // showing once its history is gone); deleting any other thread only prunes it
+  // from the list and leaves the current conversation untouched.
+  const deleteThread = useCallback(
+    (id: string) => {
+      deleteConversation(id);
+      const remaining = loadConversations();
+      if (id === conversationId) {
+        const next = remaining[0];
+        if (next) {
+          activateStoredConversation(next);
+        } else {
+          abortRef.current?.abort();
+          abortRef.current = null;
+          setConversationId(newConversationId());
+          setTurns([]);
+          setResult(null);
+          setError(null);
+          busyRef.current = false;
+          setBusy(false);
+          setFileNotices({});
+          fileBusyIdRef.current = null;
+          setFileBusyId(null);
+          lastUserTextRef.current = "";
+        }
+      }
+      setRecent(remaining);
+    },
+    [activateStoredConversation, conversationId],
   );
 
   // Drop every stored conversation and start clean.
@@ -729,6 +769,7 @@ export function useAskThread({
         title: c.title || conversationTitle(c.turns),
         updatedAt: c.updatedAt,
         active: c.id === conversationId,
+        messageCount: c.turns.filter((t) => t.kind === "message").length,
       })),
     [recent, conversationId],
   );
@@ -748,6 +789,7 @@ export function useAskThread({
     stop,
     newChat,
     resumeConversation,
+    deleteThread,
     clearAll,
     fileIssue,
     canRetry: !busy && lastUserTextRef.current.length > 0 && turns.length > 0,
