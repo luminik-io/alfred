@@ -46,15 +46,21 @@ from pathlib import Path
 # or from ``$ALFRED_HOME/bin``.
 _HERE = Path(__file__).resolve().parent
 _ALFRED_HOME = os.environ.get("ALFRED_HOME", "")
-for candidate in (
+_LIB_CANDIDATES = (
     _HERE.parent / "lib",
     # Skip the ALFRED_HOME fallback when unset: ``Path("") / "lib"`` resolves
     # to the relative ``./lib``, which could shadow the real modules from an
     # unrelated working directory.
     *([Path(_ALFRED_HOME) / "lib"] if _ALFRED_HOME else []),
-):
-    if candidate.exists() and str(candidate) not in sys.path:
-        sys.path.insert(0, str(candidate))
+)
+# Insert in reverse so the source checkout (first candidate) ends up at index 0
+# and cannot be shadowed by a stale deployed runtime under ALFRED_HOME.
+for candidate in reversed(_LIB_CANDIDATES):
+    if candidate.exists():
+        path = str(candidate)
+        while path in sys.path:
+            sys.path.remove(path)
+        sys.path.insert(0, path)
 
 from benchmark import (  # noqa: E402
     DEFAULT_SUITE,

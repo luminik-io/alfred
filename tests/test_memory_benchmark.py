@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -236,6 +237,34 @@ def test_stub_ab_headline_memory_prevents_repeats():
     assert report.success_rate_delta == pytest.approx(0.8)
 
 
+def test_real_engine_solver_isolates_every_attempt(tmp_path: Path, monkeypatch):
+    source = tmp_path / "repo"
+    source.mkdir()
+    (source / "fixture.py").write_text("ORIGINAL\n", encoding="utf-8")
+    seen: list[Path] = []
+
+    def fake_run(command, *, cwd, **kwargs):
+        attempt = Path(cwd)
+        seen.append(attempt)
+        assert attempt != source
+        assert (attempt / "fixture.py").read_text(encoding="utf-8") == "ORIGINAL\n"
+        assert not (attempt / "prior-attempt.txt").exists()
+        (attempt / "prior-attempt.txt").write_text("mutated", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(mb.subprocess, "run", fake_run)
+    solver = mb.make_cli_engine_solver(cwd=source)
+    task = _task()
+
+    solver(task, "lesson", mb.ARM_ON)
+    solver(task, "", mb.ARM_OFF)
+
+    assert len(seen) == 2
+    assert seen[0] != seen[1]
+    assert not (source / "prior-attempt.txt").exists()
+    assert all(not path.exists() for path in seen)
+
+
 def test_stub_ab_retrieval_and_off_arm_recalls_nothing():
     fixture = mb.load_fixture(FIXTURE_DIR)
     report = mb.run_memory_ab(fixture, solver=mb.make_stub_solver())
@@ -297,6 +326,16 @@ def test_cli_memory_stub_table(capsys):
     assert "N=4" in out
     assert "ILLUSTRATIVE" in out
     assert "memory OFF" in out and "memory ON" in out
+
+
+def test_cli_prioritizes_checkout_lib_over_deployed_runtime(tmp_path: Path, monkeypatch):
+    runtime = tmp_path / "runtime"
+    (runtime / "lib").mkdir(parents=True)
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+
+    _load_cli()
+
+    assert sys.path[0] == str(REPO_ROOT / "lib")
 
 
 def test_cli_memory_stub_json(capsys):

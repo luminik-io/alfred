@@ -330,7 +330,8 @@ chat-recall accuracy does not tell you whether memory changed what the fleet
 The table below is a **template with placeholders**, not a result. Fill it from
 one `alfred benchmark memory --engine <name> --json`. Until a real run fills it,
 leave it marked illustrative - do not paste stub numbers here as if they were a
-result.
+result. A real `--engine claude` run of this template is filled in under
+[Real-engine result](#real-engine-result-v060-engineclaude) below.
 
 ```
 Memory A/B run                     (ILLUSTRATIVE until a real --engine run fills it)
@@ -355,6 +356,65 @@ Memory A/B run                     (ILLUSTRATIVE until a real --engine run fills
 
 Keep the OFF/ON pair together so the delta is legible, always next to N and the
 per-task rows.
+
+### Real-engine result (v0.6.0, engine:claude)
+
+This is a **real** `--engine claude` run of the template above, not the stub. It
+ran the built-in fixture through the live `claude` CLI on both arms and burned
+real quota. The full machine-readable record is committed at
+[`docs/benchmarks/mem-ab-real-v0.6.0.json`](benchmarks/mem-ab-real-v0.6.0.json).
+
+```
+Memory A/B run                     (REAL result: engine:claude, built-in fixture)
+  label:        real-v0.6.0
+  seed repo:    acme-org/widgets   (tests/fixtures/mem-bench/repo)
+  memory backend: fleet-local (in-memory SQLite FleetBrain, recency + literal recall)
+  solver:       engine:claude   (claude CLI 2.1.181)
+  N (tasks that re-tempt a learned mistake): 4   (+1 control task)
+
+  repeated-mistake-rate     memory OFF: 50%    memory ON: 0%     delta: +50 pts
+  task success rate         memory OFF: 40%    memory ON: 80%    delta: +40 pts
+  retrieval precision/recall (ON only):  33.3% / 100%
+  tokens in / turns         memory OFF: 117,585/17   memory ON: 109,537/19
+
+  per-task (mistake repeated?  off / on):
+    tz-naive-datetime       off=yes  on=no
+    swallow-exceptions      off=no   on=no
+    mutable-default-arg     off=yes  on=no
+    n-plus-one-query        off=no   on=no
+    add-docstring (control) off=no   on=no
+```
+
+How to read it honestly:
+
+- **The headline moved by +50 pts on this run.** The isolated memory-OFF arm
+  repeated two of four known mistakes (`tz-naive-datetime` and
+  `mutable-default-arg`); the memory-ON arm repeated none. Every attempt ran in a
+  fresh temporary copy of the fixture, so neither arm inherited files written by
+  an earlier task. This is a real result for N=4, not a population claim.
+- **Task success moved from 40% to 80%.** Both repeated mistakes also missed their
+  success markers in the OFF arm. With memory ON, all four mistake tasks reached
+  their success markers; the docstring control missed in both arms.
+- **Retrieval itself worked.** On the ON arm the right lesson was recalled for
+  all four mistake tasks (recall 100%), with precision 33.3% because the fixture
+  seeds two distractor lessons alongside each relevant one and the local
+  FleetBrain fallback recalls by recency once the literal match is exhausted. So
+  the behavioural delta is paired with verified delivery of the relevant lesson
+  to every memory-ON prompt.
+- **N = 4 is tiny by design.** Do not extrapolate a 4-task delta either way. This
+  fixture proves the harness produces a real, reproducible engine number; a
+  larger, harder fixture is still needed before generalizing the delta. Marker
+  fidelity is the honest limit
+  (see caveats): a task counts as solved only on a literal success-marker match,
+  so a correct-but-differently-spelled fix reads as "not solved", not "mistake".
+
+Reproduce exactly from a repo checkout (burns real quota, no `ALFRED_HOME`
+needed for the engine path):
+
+```
+uv run python bin/alfred-benchmark.py memory --engine claude --label real-v0.6.0 \
+  --json > docs/benchmarks/mem-ab-real-v0.6.0.json
+```
 
 ### Offline-fixture result (stub solver, no engine)
 
