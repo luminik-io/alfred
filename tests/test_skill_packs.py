@@ -459,8 +459,14 @@ def test_install_fetch_reinstall_failure_preserves_broken_symlink(tmp_path: Path
     dest = tmp_path / pack.name
     dest.symlink_to(missing_target, target_is_directory=True)
 
+    def failed_reinstall(_cmd: str, _cwd: Path) -> int:
+        dest.unlink()
+        dest.mkdir()
+        (dest / "partial").write_text("new")
+        return 42
+
     with pytest.raises(RuntimeError, match="exit 42"):
-        skill_packs.install_pack(pack, skills_dir=tmp_path, runner=lambda _cmd, _cwd: 42)
+        skill_packs.install_pack(pack, skills_dir=tmp_path, runner=failed_reinstall)
 
     assert dest.is_symlink()
     assert dest.readlink() == missing_target
