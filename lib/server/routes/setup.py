@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from urllib.parse import parse_qs, urlparse
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
@@ -64,7 +64,11 @@ async def api_setup_repos(request: Request) -> JSONResponse:
     return JSONResponse(views._jsonable(payload))
 
 
-@router.post("/api/setup/repos", response_class=JSONResponse)
+@router.post(
+    "/api/setup/repos",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_setup_select_repos(request: Request) -> JSONResponse:
     """Persist the repos Alfred may work in.
 
@@ -75,8 +79,6 @@ async def api_setup_select_repos(request: Request) -> JSONResponse:
     queue scope exists yet; replacing an existing queue scope requires the
     dedicated ``replace_queue_repos`` flag.
     """
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     body, error_response = await views._read_json_body(request)
     if error_response is not None:
         return error_response
@@ -136,7 +138,11 @@ async def api_setup_batteries(request: Request) -> JSONResponse:
     return JSONResponse(views._jsonable(payload))
 
 
-@router.post("/api/setup/batteries", response_class=JSONResponse)
+@router.post(
+    "/api/setup/batteries",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_setup_set_battery(request: Request) -> JSONResponse:
     """Enable or disable one opt-in battery.
 
@@ -146,8 +152,6 @@ async def api_setup_set_battery(request: Request) -> JSONResponse:
     starts a daemon (Redis / Postgres). The manifest tells the client what still
     needs installing so the choice stays explicit.
     """
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     body, error_response = await views._read_json_body(request)
     if error_response is not None:
         return error_response
@@ -186,11 +190,13 @@ async def api_setup_playbooks(request: Request) -> JSONResponse:
     return JSONResponse({"playbooks": rows})
 
 
-@router.post("/api/setup/playbook", response_class=JSONResponse)
+@router.post(
+    "/api/setup/playbook",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_setup_compose_playbook(request: Request) -> JSONResponse:
     """Compose a starter playbook into a saved request draft."""
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     body, error_response = await views._read_json_body(request)
     if error_response is not None:
         return error_response
@@ -203,11 +209,13 @@ async def api_setup_compose_playbook(request: Request) -> JSONResponse:
     return views._compose_playbook_draft(request, playbook, body.get("repos"))
 
 
-@router.post("/api/setup/demo", response_class=JSONResponse)
+@router.post(
+    "/api/setup/demo",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_setup_seed_demo(request: Request) -> JSONResponse:
     """Seed local demo cards so an empty board teaches the workflow."""
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     from server import setup as setup_mod
 
     try:
@@ -218,11 +226,13 @@ async def api_setup_seed_demo(request: Request) -> JSONResponse:
     return JSONResponse(views._jsonable(result))
 
 
-@router.post("/api/setup/demo/clear", response_class=JSONResponse)
+@router.post(
+    "/api/setup/demo/clear",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_setup_clear_demo(request: Request) -> JSONResponse:
     """Remove seeded demo cards. Token-gated and idempotent."""
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     from server import setup as setup_mod
 
     result = setup_mod.clear_demo(views._state_root(request))

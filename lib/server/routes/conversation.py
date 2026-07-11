@@ -4,19 +4,21 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from slack_trust import SlackTrustStore, operator_user_id_from_env
+from slack_surface.trust import SlackTrustStore, operator_user_id_from_env
 
 from server import views
 
 router = APIRouter()
 
 
-@router.post("/api/conversation/control", response_class=JSONResponse)
+@router.post(
+    "/api/conversation/control",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_conversation_control(request: Request) -> JSONResponse:
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     try:
         body = json.loads((await request.body()).decode("utf-8") or "{}")
     except (json.JSONDecodeError, UnicodeDecodeError):

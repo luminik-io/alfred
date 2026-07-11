@@ -1472,14 +1472,14 @@ def _resolve_rubric(rubric: str | None) -> str | None:
 
 
 def _rubric_max_iterations() -> int:
-    """Read the rubric loop bound from ``ALFRED_RUBRIC_MAX_ITERATIONS``.
+    """Read the rubric REVISION bound from ``ALFRED_RUBRIC_MAX_ITERATIONS``.
 
-    Defaults to 3 (the deepagents RubricMiddleware range is 2-3), clamped to
-    ``[1, 10]``. Only the primitive loop in ``rubric.py`` consumes this;
-    ``invoke_agent_engine`` grades once per run and leaves iteration to a
-    caller-driven loop.
+    Defaults to 1 (re-dispatch the implementer at most once on
+    ``needs_revision``), clamped to ``[1, 10]``. Consumed by the senior-dev
+    grade-then-revise gate; ``invoke_agent_engine`` grades once per run and
+    leaves iteration to that caller-driven loop.
     """
-    return env_int("ALFRED_RUBRIC_MAX_ITERATIONS", 3, minimum=1, maximum=10)
+    return env_int("ALFRED_RUBRIC_MAX_ITERATIONS", 1, minimum=1, maximum=10)
 
 
 #: Grader engines the gate knows how to run. Only these two are cheap+local
@@ -1552,7 +1552,7 @@ def _grader_status_for_subtype(subtype: str) -> int:
     return 503  # error_timeout / error_api / any other transient -> server_error shape
 
 
-def _default_rubric_grader(
+def build_rubric_grader(
     *,
     grader_engine: str | None,
     agent: str,
@@ -1952,7 +1952,7 @@ def invoke_agent_engine(
                     "criteria": [],
                 }
             else:
-                grader_fn = rubric_grader_fn or _default_rubric_grader(
+                grader_fn = rubric_grader_fn or build_rubric_grader(
                     grader_engine=(
                         rubric_grader_engine
                         or os.environ.get("ALFRED_RUBRIC_GRADER_ENGINE", "").strip()

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
 from server import views
@@ -44,17 +44,29 @@ async def api_memory_candidates(
     return JSONResponse({"rows": [views._candidate_to_api(row) for row in rows]})
 
 
-@router.post("/api/memory/candidates/{candidate_id}/promote", response_class=JSONResponse)
+@router.post(
+    "/api/memory/candidates/{candidate_id}/promote",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_promote_memory_candidate(request: Request, candidate_id: str) -> JSONResponse:
     return await views._api_memory_candidate_action(request, candidate_id, action="promote")
 
 
-@router.post("/api/memory/candidates/{candidate_id}/reject", response_class=JSONResponse)
+@router.post(
+    "/api/memory/candidates/{candidate_id}/reject",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_reject_memory_candidate(request: Request, candidate_id: str) -> JSONResponse:
     return await views._api_memory_candidate_action(request, candidate_id, action="reject")
 
 
-@router.post("/api/memory/candidates/{candidate_id}/retire", response_class=JSONResponse)
+@router.post(
+    "/api/memory/candidates/{candidate_id}/retire",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_retire_memory_candidate(request: Request, candidate_id: str) -> JSONResponse:
     # Undo an auto-remembered lesson: forget it from AMS recall and retire
     # the row. The ``candidate_id`` may be the raw id or the

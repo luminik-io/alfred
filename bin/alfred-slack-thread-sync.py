@@ -22,8 +22,8 @@ for candidate in (_HERE.parent / "lib",):
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
-from slack_approval import default_slack_client, resolve_bot_token  # noqa: E402
-from slack_thread_status import (  # noqa: E402
+from slack_surface.approval import default_slack_client, resolve_bot_token  # noqa: E402
+from slack_surface.threads import (  # noqa: E402
     SlackThreadStatusTracker,
     default_issue_state_fetcher,
     default_status_root,

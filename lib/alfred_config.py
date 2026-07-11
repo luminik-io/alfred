@@ -490,6 +490,14 @@ _VARS: tuple[ConfigVar, ...] = (
         "Approving reviews required when GitHub branch protection does not decide it.",
         operator=True,
     ),
+    V(
+        "ALFRED_RECOVERY_MAX_ATTEMPTS",
+        "int",
+        "1",
+        "scheduler",
+        "Bounded recovery turns to fix a failed push/CI/merge-gate step before HOLD (0 disables).",
+        operator=True,
+    ),
     V("ALFRED_MEMORY_ANCHOR_RECALL", "bool", "0", "memory", "Enable anchor-based recall."),
     V("ALFRED_MEMORY_TYPED_RECALL", "bool", "0", "memory", "Enable typed (category-aware) recall."),
     V("ALFRED_MEMORY_DELTA", "bool", "0", "memory", "Enable delta memory tracking."),
@@ -2255,6 +2263,14 @@ _VARS: tuple[ConfigVar, ...] = (
     ),
     # Rubric grader
     V(
+        "ALFRED_RUBRIC_GATE",
+        "bool",
+        "0",
+        "agents",
+        "Grade the build against an issue-derived rubric and revise before opening a PR.",
+        operator=True,
+    ),
+    V(
         "ALFRED_RUBRIC",
         "str",
         None,
@@ -2265,9 +2281,10 @@ _VARS: tuple[ConfigVar, ...] = (
     V(
         "ALFRED_RUBRIC_MAX_ITERATIONS",
         "int",
-        "3",
+        "1",
         "agents",
-        "Max rubric improvement iterations (1..10).",
+        "Max rubric revision passes before opening the PR (1..10).",
+        operator=True,
     ),
     # Planning assistant
     V(

@@ -44,13 +44,14 @@ from planning_assistant import (
 # direct import in the router) keeps the existing test monkeypatch of
 # ``server.views.SlackControlHandler`` effective. No code in this module uses it
 # directly, hence the noqa.
-from slack_control import SlackControlHandler  # noqa: F401
-from slack_trust import (
+from slack_surface.control import SlackControlHandler  # noqa: F401
+from slack_surface.trust import (
     normalize_slack_user_id,
     operator_user_id_from_env,
 )
 from spec_helper import IssueDraft, assess_issue_draft
 
+from server import runtime_facade
 from server.reader import FilesystemReader, PlanDraft
 
 logger = logging.getLogger(__name__)
@@ -134,6 +135,38 @@ def _authorized_mutation(request: Request) -> bool:
     if not presented:
         return False
     return hmac.compare_digest(presented, expected)
+
+
+class MutationForbidden(Exception):
+    """The same-origin + per-launch-token gate rejected a state-mutating call.
+
+    Raised by :func:`require_mutation_token` and rendered as
+    ``403 {"error": "forbidden"}`` by the handler registered in
+    :func:`server.app.create_app`. Carrying the 403 in one place keeps every
+    mutating route declaring the gate instead of re-emitting the response.
+    """
+
+
+def _mutation_authorized(request: Request) -> bool:
+    """True when a state-mutating request is same-origin AND carries the token.
+
+    The single predicate behind the CSRF gate: a mutating call must be
+    same-origin (no cross-site form post) and present the per-launch token.
+    """
+    return _same_origin_post(request) and _authorized_mutation(request)
+
+
+def require_mutation_token(request: Request) -> None:
+    """FastAPI dependency gating a state-mutating route on same-origin + token.
+
+    Routes declare ``dependencies=[Depends(require_mutation_token)]`` instead of
+    re-checking ``_same_origin_post``/``_authorized_mutation`` and re-emitting an
+    inline 403. Raises :class:`MutationForbidden` (rendered as
+    ``403 {"error": "forbidden"}``) when the gate fails; returns ``None`` when the
+    call is authorized so the handler runs.
+    """
+    if not _mutation_authorized(request):
+        raise MutationForbidden
 
 
 # Origins the packaged Tauri webview presents. A built .app loads its bundle
@@ -424,8 +457,9 @@ async def _api_memory_candidate_action(
     *,
     action: str,
 ) -> JSONResponse:
-    if not _same_origin_post(request) or not _authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
+    # The three memory-review routes that call this helper declare
+    # ``Depends(require_mutation_token)``, so the same-origin + token gate has
+    # already run by the time execution reaches here.
     # Normalize a lesson recall id (``lesson:memory_candidate:<id>``) to the bare
     # candidate id BEFORE validation: /api/memory/lessons hands the client that
     # recall id, and ``_MEMORY_ID_RE`` rejects the colons in it, so without this
@@ -846,9 +880,8 @@ def _run_theme_builder_converse(request: Request, body: dict[str, Any]) -> JSONR
             status_code=503,
         )
 
-    try:
-        from agent_runner.metadata import load_prompt
-    except Exception:  # pragma: no cover - load_prompt is always importable
+    loader = runtime_facade.prompt_loader()
+    if loader is None:  # pragma: no cover - loader is always importable
         return JSONResponse(
             {"error": "theme builder prompt loader unavailable"},
             status_code=503,
@@ -857,7 +890,7 @@ def _run_theme_builder_converse(request: Request, body: dict[str, Any]) -> JSONR
     try:
         system_prompt = tb.render_system_prompt(
             prompt_path=_theme_builder_prompt_path(),
-            loader=load_prompt,
+            loader=loader,
         )
     except OSError:
         return JSONResponse(
@@ -949,9 +982,8 @@ def _run_onboarding_converse(request: Request, body: dict[str, Any]) -> JSONResp
             status_code=503,
         )
 
-    try:
-        from agent_runner.metadata import load_prompt
-    except Exception:  # pragma: no cover - load_prompt is always importable
+    loader = runtime_facade.prompt_loader()
+    if loader is None:  # pragma: no cover - loader is always importable
         return JSONResponse(
             {"error": "onboarding prompt loader unavailable"},
             status_code=503,
@@ -960,7 +992,7 @@ def _run_onboarding_converse(request: Request, body: dict[str, Any]) -> JSONResp
     try:
         system_prompt = ob.render_system_prompt(
             prompt_path=_onboarding_prompt_path(),
-            loader=load_prompt,
+            loader=loader,
         )
     except OSError:
         return JSONResponse(
@@ -1056,9 +1088,8 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
         conversation_engine=engine,
     )
 
-    try:
-        from agent_runner.metadata import load_prompt
-    except Exception:  # pragma: no cover - load_prompt is always importable
+    loader = runtime_facade.prompt_loader()
+    if loader is None:  # pragma: no cover - loader is always importable
         return JSONResponse(
             {"error": "compose interrogator prompt loader unavailable"},
             status_code=503,
@@ -1070,7 +1101,7 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
             repo_grounding=repo_grounding,
             code_map=code_map,
             intake_guidance=intake_guidance,
-            loader=load_prompt,
+            loader=loader,
             operational_grounding=operational_grounding,
         )
     except OSError:
@@ -1192,9 +1223,8 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
         conversation_engine=engine,
     )
 
-    try:
-        from agent_runner.metadata import load_prompt
-    except Exception:  # pragma: no cover - load_prompt is always importable
+    loader = runtime_facade.prompt_loader()
+    if loader is None:  # pragma: no cover - loader is always importable
         return JSONResponse(
             {"error": "compose interrogator prompt loader unavailable"},
             status_code=503,
@@ -1207,7 +1237,7 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
             repo_grounding=repo_grounding,
             code_map=code_map,
             intake_guidance=intake_guidance,
-            loader=load_prompt,
+            loader=loader,
             operational_grounding=operational_grounding,
         )
     except OSError:
@@ -1458,22 +1488,11 @@ def _save_converse_draft(
 
 
 def _compose_workspace_root() -> Path:
-    try:
-        from agent_runner.paths import WORKSPACE
-
-        return Path(WORKSPACE)
-    except Exception:  # pragma: no cover - defensive
-        base = os.environ.get("WORKSPACE_ROOT") or os.path.expanduser("~/code")
-        return Path(base) / "product"
+    return runtime_facade.workspace_root()
 
 
 def _compose_repo_to_local() -> dict[str, str]:
-    try:
-        from agent_runner.github import GH_REPO_TO_LOCAL
-
-        return dict(GH_REPO_TO_LOCAL)
-    except Exception:  # pragma: no cover - defensive
-        return {}
+    return runtime_facade.repo_to_local()
 
 
 def _compose_code_map_path() -> Path:
@@ -2004,7 +2023,7 @@ def _file_planning_draft_issue(state_root: Path, plan_id: str) -> dict[str, Any]
     repos must be allowlisted, and an existing ``bridge.issue_url`` or bundle
     URL map makes the operation idempotent.
     """
-    from slack_issue_bridge import BridgeConfig, SlackIssueBridge
+    from slack_surface.bridge import BridgeConfig, SlackIssueBridge
 
     import server.setup as setup_mod
 

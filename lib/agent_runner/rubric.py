@@ -25,16 +25,22 @@ Design contract:
 Public surface:
 
 * :class:`CriterionEval` / :class:`GraderVerdict`: the structured verdict.
+* :func:`derive_rubric`: build the acceptance rubric from an issue body.
 * :func:`grade`: one-shot grade of a transcript against a rubric.
-* :func:`run_rubric_loop`: the bounded revise-and-regrade loop.
+* :func:`run_rubric_loop`: the bounded revise-and-regrade loop that also
+  produces the first artifact.
+* :func:`grade_revise_loop`: the bounded revise-and-regrade loop for an
+  artifact the BUILD step already produced (what the senior-dev gate uses).
+* :func:`render_verdict_markdown`: honest PR-body rendering of a verdict
+  trajectory, failed criteria shown plainly.
 
 What this module does NOT own:
 
 * Invoking a real grader engine -> the caller wires a ``grader_fn`` (e.g.
   around ``invoke_agent_engine`` / ``codex_invoke``); see
-  ``process.py``'s opt-in ``rubric`` wiring.
-* Deciding whether to actually open the PR -> the runner (a follow-up wires
-  the verdict into the PR-open decision).
+  ``process.py``'s ``build_rubric_grader``.
+* Producing the diff or re-dispatching the implementer -> the caller wires a
+  ``revise_fn``; see ``bin/senior-dev.py``'s ``ALFRED_RUBRIC_GATE`` wiring.
 """
 
 from __future__ import annotations
@@ -92,6 +98,64 @@ def _normalize_rubric(rubric: Rubric) -> list[str]:
     else:
         items = [str(c).strip() for c in rubric if str(c).strip()]
     return items[:MAX_CRITERIA]
+
+
+# --------------------------------------------------------------------------
+# Rubric derivation (from the issue/plan at firing start)
+# --------------------------------------------------------------------------
+
+#: Hard ceiling on how many criteria a DERIVED rubric carries. Kept small (the
+#: grade should be a quick, focused judgement, not a checklist audit) and well
+#: under :data:`MAX_CRITERIA`.
+MAX_DERIVED_CRITERIA: int = 6
+
+#: The fallback rubric used when an issue body carries no acceptance criteria.
+#: These are the generic "what does a good change look like" bars every
+#: implementer run is held to; each is phrased so the grader can pass or fail it
+#: from the diff alone.
+GENERIC_ENGINEERING_RUBRIC: tuple[str, ...] = (
+    "Tests pass: the change keeps the project's tests and pre-push checks green.",
+    "Scope matches the issue: the change does what the issue asked, nothing more.",
+    "No unrelated changes: the diff touches only files this issue needs.",
+    "Docs updated when the change is user-facing (trivially met when it is not).",
+)
+
+
+def derive_rubric(
+    issue_body: str,
+    *,
+    acceptance_criteria: Sequence[str] | None = None,
+) -> list[str]:
+    """Derive a small acceptance rubric for a firing from its issue body.
+
+    Source of truth, in order:
+
+    * The issue's own acceptance criteria when present (an explicit
+      ``## Acceptance criteria`` section, else the first checkbox list in the
+      body), extracted by ``verification_evidence.extract_acceptance_criteria``.
+    * Otherwise the :data:`GENERIC_ENGINEERING_RUBRIC` (tests pass, scope
+      matches, no unrelated changes, docs updated if user-facing).
+
+    The result is bounded to :data:`MAX_DERIVED_CRITERIA` and always has at
+    least one criterion, so the gate never grades against an empty rubric.
+    ``acceptance_criteria`` may be passed directly (tests, or a caller that
+    already extracted them); when ``None`` they are extracted from
+    ``issue_body`` here.
+    """
+    criteria = acceptance_criteria
+    if criteria is None:
+        try:
+            # Lazy import keeps this module's import graph pure: the extractor
+            # lives in the top-level lib and is only needed at derivation time.
+            from verification_evidence import extract_acceptance_criteria
+
+            criteria = extract_acceptance_criteria(issue_body or "")
+        except Exception:
+            criteria = []
+    cleaned = [str(c).strip() for c in (criteria or []) if str(c).strip()]
+    if cleaned:
+        return cleaned[:MAX_DERIVED_CRITERIA]
+    return list(GENERIC_ENGINEERING_RUBRIC)
 
 
 # --------------------------------------------------------------------------
@@ -550,3 +614,110 @@ def _call_run_fn(run_fn: Callable[..., str], feedback: str | None) -> str:
     if feedback is None or not _run_fn_accepts_feedback(run_fn):
         return run_fn()
     return run_fn(feedback=feedback)
+
+
+# --------------------------------------------------------------------------
+# Grade-then-revise loop for an ALREADY-BUILT artifact
+# --------------------------------------------------------------------------
+
+
+def grade_revise_loop(
+    *,
+    initial_artifact: str,
+    rubric: Rubric,
+    grader_fn: Callable[[str], str],
+    revise_fn: Callable[[str], str],
+    max_iterations: int = 1,
+) -> list[GraderVerdict]:
+    """Grade an already-built artifact, then revise-and-regrade, bounded.
+
+    Unlike :func:`run_rubric_loop` (which produces the FIRST artifact itself),
+    this starts from ``initial_artifact`` because the BUILD step already ran.
+    It grades once, then while the verdict is a non-terminal ``needs_revision``
+    and revisions remain, calls ``revise_fn(feedback)`` to get a fresh artifact
+    (the implementer re-dispatched with the gaps appended) and regrades.
+
+    Terminal verdicts stop the loop immediately:
+
+    * ``satisfied`` -> done, the rubric is met.
+    * ``failed`` / ``grader_error`` -> a broken or untrusted grader can never
+      trigger an endless revise cycle; the loop stops and the caller proceeds
+      to open the PR with the verdict recorded (fail-open-to-proceed).
+
+    ``max_iterations`` bounds the number of REVISION passes (``0`` = grade
+    only, default ``1`` = re-dispatch the implementer at most once). The caller
+    is expected to proceed to PR creation regardless of the final verdict and
+    surface it honestly; this loop never blocks a PR.
+
+    Returns the ordered verdict trajectory (always at least one entry: the
+    initial grade). ``len(verdicts) - 1`` is the number of revisions that ran.
+    """
+    verdicts: list[GraderVerdict] = []
+    artifact = initial_artifact
+    verdict = grade(artifact, rubric, grader_fn=grader_fn)
+    verdicts.append(verdict)
+
+    bound = max(0, int(max_iterations))
+    used = 0
+    while used < bound and verdict.result == "needs_revision" and not verdict.is_terminal:
+        feedback = _feedback_from(verdict)
+        artifact = revise_fn(feedback)
+        used += 1
+        verdict = grade(artifact, rubric, grader_fn=grader_fn)
+        verdicts.append(verdict)
+
+    return verdicts
+
+
+# --------------------------------------------------------------------------
+# PR-body rendering (honest: failed criteria shown plainly)
+# --------------------------------------------------------------------------
+
+_RESULT_LABELS: dict[str, str] = {
+    "satisfied": "satisfied",
+    "needs_revision": "needs revision",
+    "failed": "failed",
+}
+
+
+def render_verdict_markdown(verdicts: Sequence[GraderVerdict]) -> str:
+    """Render a verdict trajectory as an honest Markdown block for a PR body.
+
+    Shows the FINAL headline verdict, how many revision passes ran, and a
+    per-criterion pass/fail table with the gap text for every failed criterion.
+    Nothing is hidden: a ``needs_revision`` or ``failed`` final verdict is shown
+    as plainly as a ``satisfied`` one. Returns ``""`` for an empty trajectory.
+    """
+    if not verdicts:
+        return ""
+    final = verdicts[-1]
+    revisions = len(verdicts) - 1
+    headline = _RESULT_LABELS.get(final.result, final.result)
+    if final.terminal_reason == "grader_error":
+        headline = "grader error (could not be graded)"
+    elif final.terminal_reason == "max_iterations_reached":
+        headline = f"{headline} (stopped after {revisions} revision pass(es))"
+
+    lines = ["## Rubric grade", ""]
+    lines.append(f"Final verdict: **{headline}**.")
+    if revisions:
+        lines.append("")
+        lines.append(
+            f"The implementer was re-dispatched {revisions} time(s) to address grader feedback."
+        )
+    if final.explanation.strip():
+        lines.append("")
+        lines.append(f"> {final.explanation.strip()}")
+    if final.criteria:
+        lines += ["", "| Criterion | Verdict | Gap |", "| --- | --- | --- |"]
+        for crit in final.criteria:
+            mark = "pass" if crit.passed else "**fail**"
+            gap = "" if crit.passed else (crit.gap or "unmet").replace("|", "\\|")
+            name = crit.name.replace("|", "\\|")
+            lines.append(f"| {name} | {mark} | {gap} |")
+    lines += [
+        "",
+        "_Automated self-grade against a rubric derived from the issue. Advisory, "
+        "not a merge gate._",
+    ]
+    return "\n".join(lines)

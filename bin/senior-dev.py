@@ -10,6 +10,7 @@ import shlex
 import sys
 import time
 import tomllib
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -25,15 +26,19 @@ from agent_runner import (
     EventLog,
     PreflightFailed,
     PreflightSpec,
+    RecoveryCategory,
     SpendState,
     agent_engine,
     agent_repos,
+    build_recovery_prompt,
+    build_rubric_grader,
     claim_issue,
     claude_invoke_streaming,
     codex_invoke,
     codex_sandbox_for_agent,
     commit_trailer,
     create_recovery_ref,
+    derive_rubric,
     doctor_mode,
     doctor_requested,
     dry_run_log,
@@ -43,6 +48,7 @@ from agent_runner import (
     gh_issue_edit,
     gh_json,
     gh_pr_create,
+    grade_revise_loop,
     invoke_agent_engine,
     is_dry_run,
     is_globally_blocked,
@@ -56,10 +62,14 @@ from agent_runner import (
     preflight,
     push_current_branch,
     push_remote_and_pr_head,
+    recovery_enabled,
     release_issue,
     remove_worktree,
+    render_verdict_markdown,
+    resolve_grader_engine,
     reuse_or_make_worktree,
     run,
+    run_recovery,
     set_dry_run,
     set_global_block,
     short,
@@ -67,6 +77,7 @@ from agent_runner import (
     with_lock,
     worktree_risk_reason,
 )
+from alfred_config import get_bool, get_int
 from dependencies import issue_dependencies
 from verification_evidence import (
     EVIDENCE_DIR_NAME,
@@ -132,6 +143,19 @@ DAILY_TURN_CAP = int(os.environ.get("ALFRED_SENIOR_DEV_TURN_CAP", "5000"))
 PRE_PUSH_TIMEOUT_SECONDS = int(os.environ.get("ALFRED_PRE_PUSH_TIMEOUT_S", "900"))
 SENIOR_DEV_WORKTREE_BASE_REF = "origin/main"
 SENIOR_DEV_PR_BASE_BRANCH = "main"
+
+# Bounds for a single auto-recovery engine turn. Recovery is a targeted repair
+# (fix the lint/conflict/CI cause and re-push), not a fresh implementation, so
+# the turn and wall-clock caps are deliberately tighter than the main firing.
+# The attempt COUNT is the operator knob (ALFRED_RECOVERY_MAX_ATTEMPTS); these
+# per-turn bounds stay fixed.
+RECOVERY_MAX_TURNS = 12
+RECOVERY_TIMEOUT_SECONDS = 900
+
+# Signature of the auto-recovery hook _push_or_preserve calls on a failed step:
+# (failure_text, kind, retry) -> pushed. ``retry`` re-runs the push path and
+# returns whether it now succeeds.
+RecoveryHook = Callable[[str, str, Callable[[], bool]], bool]
 NODE_LOCKFILES = (
     "package-lock.json",
     "npm-shrinkwrap.json",
@@ -441,6 +465,230 @@ def _build_self_assessment(
     if spend is not None:
         spend.increment(turns_today=result.num_turns, cost_usd_today=result.cost_usd)
     return parse_assessment_response(result.result_text or "", criteria)
+
+
+def _rubric_gate_max_revisions() -> int:
+    """Revision bound for the gate, from ``ALFRED_RUBRIC_MAX_ITERATIONS``.
+
+    Default 1 (re-dispatch the implementer at most once), clamped to
+    ``[1, 10]`` to match the registry contract.
+    """
+    raw = get_int("ALFRED_RUBRIC_MAX_ITERATIONS")
+    value = raw if raw is not None else 1
+    return max(1, min(10, value))
+
+
+def _revision_firing_id(firing_id: str) -> str:
+    """Firing id for a revision commit's trailer.
+
+    A PREFIX, not a suffix: the build-commit lookup greps the literal
+    ``Agent-Firing-Id: <firing_id>``, and a suffix (``<firing_id>-revise``)
+    would still match that as a substring. A prefix (``revise-<firing_id>``)
+    means the literal build-commit pattern never appears in the revision
+    trailer, so the original firing id keeps uniquely identifying the build
+    commit under ``git log --grep``.
+    """
+    return f"revise-{firing_id}"
+
+
+def _settle_revision_worktree(
+    repo: str, issue_num: int, wt: Path, firing_id: str, events: EventLog
+) -> None:
+    """Guarantee a clean worktree after a revision attempt.
+
+    The revision prompt asks the implementer to commit, but a run can edit files
+    and stop short (or the engine can raise after writing). Left uncommitted,
+    those edits are invisible to the committed ``base_ref...HEAD`` diff the
+    grader reads AND leave the tree dirty for the push. This stages and commits
+    them under the revision trailer so the graded diff matches what the PR ships.
+    If staging or committing fails, it discards the uncommitted revision output
+    so the tree is clean for the push (the build commit is preserved) rather than
+    leaving a dirty tree that could break pre-push or ship a partial change. A
+    no-op when the worktree is already clean. Called from a ``finally`` so it
+    runs even when the revision raised.
+    """
+    if not _worktree_status(wt):
+        return
+    add = run(["git", "add", "-A"], cwd=str(wt), timeout=30)
+    if add.returncode == 0:
+        trailer = commit_trailer(
+            AGENT,
+            _revision_firing_id(firing_id),
+            extra={"issue": f"{GH_ORG}/{repo}#{issue_num}"},
+        )
+        commit = run(
+            ["git", "commit", "-m", "fix: address rubric grader feedback", "-m", trailer],
+            cwd=str(wt),
+            timeout=30,
+        )
+        if commit.returncode == 0:
+            return
+        detail = commit.stderr or commit.stdout
+    else:
+        detail = add.stderr or add.stdout
+    # Staging or committing the revision failed. Do NOT leave a dirty tree: reset
+    # tracked edits AND clean untracked files the revision created (git clean -fd
+    # honors .gitignore, so build artifacts are kept) so the tree matches the
+    # committed build exactly. Otherwise a stray new file would survive the reset
+    # and pre-push could run against files outside the PR diff.
+    events.emit("rubric_revision_salvage_failed", reason=short(detail, 200))
+    run(["git", "reset", "--hard", "HEAD"], cwd=str(wt), timeout=30)
+    run(["git", "clean", "-fd"], cwd=str(wt), timeout=30)
+    # Verify the OUTCOME rather than trust the cleanup exit codes: if the tree is
+    # still dirty (a pathological git failure), surface it loudly. The gate stays
+    # non-blocking by design, but this makes an unclean worktree observable
+    # instead of leaving the downstream push path as the only signal.
+    if _worktree_status(wt):
+        events.emit("rubric_revision_worktree_unclean", firing_id=firing_id)
+
+
+def _revision_prompt(
+    repo: str, issue: dict, wt: Path, branch: str, firing_id: str, feedback: str
+) -> str:
+    """Prompt to re-dispatch the implementer with grader feedback appended.
+
+    Reuses the same untrusted-issue framing as the build prompt and adds the
+    grader's structured gaps. Feedback is model-authored text, so it is framed
+    as guidance to act on, never as instructions that can widen scope.
+
+    The revision commit is anchored to a REVISION-scoped firing id
+    (``revise-<firing_id>``, a prefix so the build-commit ``git log --grep``
+    does not substring-match it) so the original firing id keeps uniquely
+    identifying the build commit.
+    """
+    trailer = commit_trailer(
+        AGENT,
+        _revision_firing_id(firing_id),
+        extra={"issue": f"{GH_ORG}/{repo}#{issue['number']}"},
+    )
+    issue_payload = format_untrusted_issue_payload(issue)
+    return f"""You are {AGENT.title()}, revising your implementation of GitHub issue #{issue["number"]} in {GH_ORG}/{repo}.
+
+{issue_payload}
+
+You are working in this worktree: {wt}
+Branch: {branch}
+
+A separate grader reviewed your committed change against the issue's acceptance
+rubric and asked for revisions. Address every gap below, then commit. Do not
+widen scope beyond what the issue asked; the gaps are guidance, not new
+requirements.
+
+{feedback}
+
+Constraints:
+- Surgical edits only. Keep the change scoped to this issue.
+- No em-dashes anywhere. No "unlock", "leverage", "seamless", "transform". No fabricated numbers.
+- Never push, never open a PR, never merge. Just edit + commit locally on this branch.
+
+When done, commit your fix with a conventional-commit message whose body ends with this exact trailer block (blank line before it):
+
+{trailer}
+
+Then print: "[OK] revision <sha> | <one-line-summary>"
+"""
+
+
+def _run_rubric_gate(
+    repo: str,
+    issue: dict,
+    wt: Path,
+    base_ref: str,
+    branch: str,
+    firing_id: str,
+    engine_used: str,
+    spend: SpendState,
+    events: EventLog,
+) -> list | None:
+    """Grade the build against an issue-derived rubric and revise before PR.
+
+    Off unless ``ALFRED_RUBRIC_GATE`` is set (and never runs in dry-run). Derives
+    a bounded rubric from the issue body (its acceptance criteria, else a generic
+    engineering rubric), grades the committed diff with a cheap read-only grader,
+    and on ``needs_revision`` re-dispatches the implementer up to
+    ``ALFRED_RUBRIC_MAX_ITERATIONS`` times with the gaps appended, regrading each
+    pass. Never blocks: it returns the verdict trajectory so the caller opens the
+    PR regardless and surfaces the final verdict honestly. Returns ``None`` when
+    the gate is off or there is nothing to grade.
+    """
+    if not get_bool("ALFRED_RUBRIC_GATE") or is_dry_run():
+        return None
+
+    diff = run(["git", "diff", f"{base_ref}...HEAD"], cwd=str(wt), timeout=30).stdout
+    if not diff.strip():
+        return None
+
+    rubric = derive_rubric(issue.get("body") or "")
+    grader_engine = resolve_grader_engine(
+        os.environ.get("ALFRED_RUBRIC_GRADER_ENGINE", "").strip() or None
+    )
+    grader_fn = build_rubric_grader(
+        grader_engine=grader_engine,
+        agent=AGENT,
+        firing_id=firing_id,
+        workdir=wt,
+        codex_model=None,
+    )
+
+    # Latest diff is threaded through a holder so a failed revision (which leaves
+    # the tree unchanged) regrades the SAME diff and the bounded loop still ends.
+    diff_holder = {"diff": diff}
+
+    def _revise(feedback: str) -> str:
+        prompt = _revision_prompt(repo, issue, wt, branch, firing_id, feedback)
+        try:
+            result, _engine = invoke_agent_engine(
+                prompt,
+                engine=SENIOR_DEV_ENGINE,
+                claude_fn=claude_invoke_streaming,
+                codex_fn=codex_invoke,
+                workdir=wt,
+                claude_allowed_tools="Read,Edit,Write,Bash,Grep",
+                agent=AGENT,
+                firing_id=f"{firing_id}-revise",
+                claude_max_turns=optional_env_int("ALFRED_SENIOR_DEV_MAX_TURNS", minimum=40),
+                timeout=1800,
+                codex_timeout=1800,
+                codex_sandbox=codex_sandbox_for_agent(AGENT, default="workspace-write"),
+                codex_bypass_approvals_and_sandbox=True,
+                codex_add_dirs=[(WORKSPACE / local_repo_dir(repo) / ".git").resolve()],
+            )
+        except Exception as exc:
+            # The engine may have written files before raising, so fall through
+            # to the finally-block settle rather than returning early with a
+            # possibly-dirty tree.
+            events.emit("rubric_revision_failed", reason=short(str(exc), 200))
+        else:
+            spend.increment(turns_today=result.num_turns, cost_usd_today=result.cost_usd)
+        finally:
+            # Always leave a clean worktree: commit the revision's edits (so the
+            # graded diff matches what the PR ships) or reset if that fails. Runs
+            # on the success, exception, AND commit-failure paths so the tree is
+            # never left dirty for the push.
+            _settle_revision_worktree(repo, int(issue["number"]), wt, firing_id, events)
+        diff_holder["diff"] = run(
+            ["git", "diff", f"{base_ref}...HEAD"], cwd=str(wt), timeout=30
+        ).stdout
+        return diff_holder["diff"]
+
+    verdicts = grade_revise_loop(
+        initial_artifact=diff,
+        rubric=rubric,
+        grader_fn=grader_fn,
+        revise_fn=_revise,
+        max_iterations=_rubric_gate_max_revisions(),
+    )
+    final = verdicts[-1]
+    events.emit(
+        "rubric_graded",
+        result=final.result,
+        revisions=len(verdicts) - 1,
+        criteria=len(rubric),
+        terminal_reason=final.terminal_reason,
+        grader_engine=grader_engine,
+        build_engine=engine_used,
+    )
+    return verdicts
 
 
 def _base_screenshot_worktree(wt: Path, base_ref: str, firing_id: str) -> Path | None:
@@ -1213,6 +1461,101 @@ def _preserve_or_remove_worktree(repo: str, wt: Path, branch: str, reason: str) 
     return f"preserved worktree because {risk} after {reason}; branch={branch}{ref_part}"
 
 
+def _make_push_recovery_hook(
+    repo: str,
+    issue_num: int,
+    firing_id: str,
+    wt: Path,
+    branch: str,
+    events: EventLog | None,
+    spend: SpendState | None = None,
+) -> RecoveryHook | None:
+    """Build the bounded auto-recovery hook for the primary push step.
+
+    Returns ``None`` when recovery is disabled (``ALFRED_RECOVERY_MAX_ATTEMPTS=0``)
+    so the push path keeps its exact non-recovery behaviour. Otherwise returns a
+    hook that classifies the captured failure text and, for a recoverable class,
+    spawns up to N bounded engine turns (same engine CLI, workdir = the firing
+    worktree) that fix the cause and re-push, before the caller falls back to
+    preserve/HOLD. The distinct recovery events feed proof/telemetry so
+    self-healed runs are countable.
+
+    Each recovery turn's turns and cost are charged to ``spend`` when given, so a
+    self-healing pass is visible to ``turns_today`` / ``cost_usd_today`` and the
+    daily turn cap rather than being invisible paid work.
+    """
+    if not recovery_enabled():
+        return None
+
+    def _emit(event_type: str, **payload: object) -> None:
+        if events is not None:
+            events.emit(event_type, **payload)
+
+    def _hook(failure_text: str, kind: str, retry: Callable[[], bool]) -> bool:
+        def _attempt(attempt_index: int, category: RecoveryCategory) -> bool:
+            if is_dry_run():
+                dry_run_log(
+                    "recovery",
+                    f"would run recovery turn {attempt_index} for {category} on {branch}",
+                )
+                return False
+            prompt = build_recovery_prompt(
+                category,
+                failure_text,
+                branch=branch,
+                base_ref=SENIOR_DEV_WORKTREE_BASE_REF,
+            )
+            result, _engine_used = invoke_agent_engine(
+                prompt,
+                engine=SENIOR_DEV_ENGINE,
+                claude_fn=claude_invoke_streaming,
+                codex_fn=codex_invoke,
+                workdir=wt,
+                claude_allowed_tools="Read,Edit,Write,Bash,Grep",
+                agent=AGENT,
+                firing_id=firing_id,
+                claude_max_turns=RECOVERY_MAX_TURNS,
+                timeout=RECOVERY_TIMEOUT_SECONDS,
+                codex_timeout=RECOVERY_TIMEOUT_SECONDS,
+                codex_sandbox=codex_sandbox_for_agent(AGENT, default="workspace-write"),
+                codex_bypass_approvals_and_sandbox=True,
+                codex_add_dirs=[(WORKSPACE / local_repo_dir(repo) / ".git").resolve()],
+            )
+            # Charge the recovery turn to the ledger even on failure: the turns
+            # and cost were spent regardless of whether the fix landed.
+            if spend is not None:
+                spend.increment(
+                    turns_today=result.num_turns,
+                    cost_usd_today=result.cost_usd,
+                )
+            if result.subtype != "success":
+                return False
+            # A recovery fix that is not committed is worthless: the push ships
+            # the old HEAD and the local repair is lost when the worktree is
+            # removed. Require a clean tree (everything committed) before we
+            # trust the retry, so a turn that edited files but forgot to commit
+            # counts as a failed attempt rather than a false success.
+            if _worktree_status(wt).strip():
+                return False
+            # The turn fixed and committed the branch (and may already have
+            # pushed); re-run the push path to confirm every gate now passes and
+            # the push lands.
+            return retry()
+
+        recovery_outcome = run_recovery(failure_text, attempt_fn=_attempt, on_event=_emit)
+        if recovery_outcome.recovered:
+            msg = (
+                f"[{AGENT.upper()}-RECOVERED] #{issue_num} self-healed "
+                f"{recovery_outcome.category} at push step after "
+                f"{recovery_outcome.attempts_made} recovery turn(s); branch={branch}"
+            )
+            print(msg)
+            slack_post(msg)
+        return recovery_outcome.recovered
+
+    return _hook
+
+
 def _push_or_preserve(
     repo: str,
     issue_num: int,
@@ -1226,94 +1569,112 @@ def _push_or_preserve(
     run_workflow_validation: bool | None = None,
     events: EventLog | None = None,
     pre_push_out: list[PrePushResult] | None = None,
+    recover: RecoveryHook | None = None,
 ) -> bool:
     """Push the current branch, preserving local work and releasing for retry on failure.
 
     When ``pre_push_out`` is a list, the :class:`PrePushResult` from the check
     run is appended so the PR-create path can turn it into verification
     evidence instead of discarding it.
+
+    When ``recover`` is provided, a failed pre-push / workflow / push step is
+    handed to the bounded auto-recovery hook BEFORE the preserve/HOLD fallback:
+    the hook classifies the captured failure text and, for a recoverable class,
+    spawns up to N bounded engine turns that fix the cause and re-run this same
+    push path. A hook that returns ``True`` means the branch is now pushed. When
+    ``recover`` is ``None`` (the default) the behaviour is byte-identical to the
+    pre-recovery push path.
     """
     if run_workflow_validation is None:
         run_workflow_validation = run_checks
-    if run_checks:
-        pre_push = run_pre_push_checks(repo, wt)
-        if pre_push_out is not None:
-            pre_push_out.append(pre_push)
-        if not pre_push.ok:
-            recovery_ref = create_recovery_ref(wt, branch=branch)
-            if release_on_failure:
-                release_issue(
-                    repo,
-                    issue_num,
-                    codename=AGENT,
-                    firing_id=firing_id,
-                    outcome="pre-push-checks-failed",
-                )
-            detail = short(
-                pre_push.stderr or pre_push.stdout or pre_push.reason or "pre-push checks failed",
-                300,
-            )
-            command = pre_push.command or "dependency lockfile drift check"
-            ref_part = f", recovery_ref={recovery_ref}" if recovery_ref else ""
-            msg = (
-                f"[{AGENT.upper()}-PRE-PUSH-FAILED] preserved local work for #{issue_num}; "
-                f"branch={branch}{ref_part}; command={command!r}. {detail}"
-            )
-            print(msg)
-            slack_post(msg, severity="warn")
-            return False
 
-    if run_workflow_validation:
-        workflow_validation = validate_changed_workflows(wt, base=SENIOR_DEV_WORKTREE_BASE_REF)
-        if not workflow_validation.ok:
-            recovery_ref = create_recovery_ref(wt, branch=branch)
-            if release_on_failure:
-                release_issue(
-                    repo,
-                    issue_num,
-                    codename=AGENT,
-                    firing_id=firing_id,
-                    outcome="workflow-validation-failed",
+    # Captured detail from the most recent failing gate, used to render the
+    # exact preserve message the historical branches produced.
+    captured: dict[str, str] = {}
+
+    def _do_push() -> tuple[bool, str, str, str]:
+        """Run the pre-push gates and push once.
+
+        Returns ``(ok, failure_text, release_outcome, kind)``. ``kind`` is one
+        of ``"pre_push"`` / ``"workflow"`` / ``"push"`` / ``"ok"`` and selects
+        both the recovery classification input and the preserve message.
+        """
+        if run_checks:
+            pre_push = run_pre_push_checks(repo, wt)
+            if pre_push_out is not None:
+                # Keep only the latest run so a recovered second pass surfaces
+                # the passing check output as evidence, not the failing first.
+                pre_push_out.clear()
+                pre_push_out.append(pre_push)
+            if not pre_push.ok:
+                captured["command"] = pre_push.command or "dependency lockfile drift check"
+                text = (
+                    pre_push.stderr
+                    or pre_push.stdout
+                    or pre_push.reason
+                    or "pre-push checks failed"
                 )
-            detail = short(
-                workflow_validation.stderr
-                or workflow_validation.stdout
-                or workflow_validation.reason
-                or "workflow validation failed",
-                300,
-            )
-            ref_part = f", recovery_ref={recovery_ref}" if recovery_ref else ""
-            files = ", ".join(workflow_validation.files) or "(unknown workflow)"
-            msg = (
-                f"[{AGENT.upper()}-WORKFLOW-VALIDATION-FAILED] preserved local work "
-                f"for #{issue_num}; branch={branch}{ref_part}; files={files}. {detail}"
-            )
-            print(msg)
-            slack_post(msg, severity="warn")
-            return False
-    # Every pre-push gate that ran has now passed. Record it as a real step so
-    # the timeline shows the firing actually exercised the repo's lint/compile
-    # /test command (or, when run_checks is off, only workflow validation).
-    if events is not None and (run_checks or run_workflow_validation):
-        events.emit(
-            "pre_push_checks_passed",
-            repo=f"{GH_ORG}/{repo}",
-            branch=branch,
-            ran_pre_push=run_checks,
-            ran_workflow_validation=run_workflow_validation,
-            detail=f"{GH_ORG}/{repo} {branch}",
-        )
-    push_remote, _ = push_remote_and_pr_head(wt, repo, branch)
-    push_res = push_current_branch(wt, branch, remote=push_remote)
-    if push_res.returncode == 0:
-        if events is not None:
+                return False, text, "pre-push-checks-failed", "pre_push"
+
+        if run_workflow_validation:
+            workflow_validation = validate_changed_workflows(wt, base=SENIOR_DEV_WORKTREE_BASE_REF)
+            if not workflow_validation.ok:
+                captured["files"] = ", ".join(workflow_validation.files) or "(unknown workflow)"
+                text = (
+                    workflow_validation.stderr
+                    or workflow_validation.stdout
+                    or workflow_validation.reason
+                    or "workflow validation failed"
+                )
+                return False, text, "workflow-validation-failed", "workflow"
+
+        # Every pre-push gate that ran has now passed. Record it as a real step
+        # so the timeline shows the firing actually exercised the repo's
+        # lint/compile/test command (or, when run_checks is off, only workflow
+        # validation).
+        if events is not None and (run_checks or run_workflow_validation):
             events.emit(
-                "branch_pushed",
+                "pre_push_checks_passed",
                 repo=f"{GH_ORG}/{repo}",
                 branch=branch,
+                ran_pre_push=run_checks,
+                ran_workflow_validation=run_workflow_validation,
                 detail=f"{GH_ORG}/{repo} {branch}",
             )
+        push_remote, _ = push_remote_and_pr_head(wt, repo, branch)
+        push_res = push_current_branch(wt, branch, remote=push_remote)
+        if push_res.returncode == 0:
+            if events is not None:
+                events.emit(
+                    "branch_pushed",
+                    repo=f"{GH_ORG}/{repo}",
+                    branch=branch,
+                    detail=f"{GH_ORG}/{repo} {branch}",
+                )
+            return True, "", "", "ok"
+        return False, push_res.stderr or push_res.stdout or "", outcome, "push"
+
+    last = _do_push()
+    if last[0]:
         return True
+
+    # Bounded auto-recovery before the preserve/HOLD fallback. ``retry`` re-runs
+    # this same push path and records its full result, so if a recovery turn
+    # changes the tree and the retry then fails on a DIFFERENT gate, the preserve
+    # message and release outcome below reflect the current blocker, not the
+    # stale original one.
+    if recover is not None:
+
+        def _retry() -> bool:
+            nonlocal last
+            last = _do_push()
+            return last[0]
+
+        if recover(last[1], last[3], _retry):
+            return True
+
+    _ok, failure_text, release_outcome, kind = last
+
     recovery_ref = create_recovery_ref(wt, branch=branch)
     if release_on_failure:
         release_issue(
@@ -1321,14 +1682,27 @@ def _push_or_preserve(
             issue_num,
             codename=AGENT,
             firing_id=firing_id,
-            outcome=outcome,
+            outcome=release_outcome,
         )
-    detail = short(push_res.stderr or push_res.stdout, 300)
     ref_part = f", recovery_ref={recovery_ref}" if recovery_ref else ""
-    msg = (
-        f"[{AGENT.upper()}-PUSH-FAILED] preserved local work for #{issue_num}; "
-        f"branch={branch}{ref_part}. {detail}"
-    )
+    detail = short(failure_text, 300)
+    if kind == "pre_push":
+        command = captured.get("command", "dependency lockfile drift check")
+        msg = (
+            f"[{AGENT.upper()}-PRE-PUSH-FAILED] preserved local work for #{issue_num}; "
+            f"branch={branch}{ref_part}; command={command!r}. {detail}"
+        )
+    elif kind == "workflow":
+        files = captured.get("files", "(unknown workflow)")
+        msg = (
+            f"[{AGENT.upper()}-WORKFLOW-VALIDATION-FAILED] preserved local work "
+            f"for #{issue_num}; branch={branch}{ref_part}; files={files}. {detail}"
+        )
+    else:
+        msg = (
+            f"[{AGENT.upper()}-PUSH-FAILED] preserved local work for #{issue_num}; "
+            f"branch={branch}{ref_part}. {detail}"
+        )
     print(msg)
     slack_post(msg, severity="warn")
     return False
@@ -1728,7 +2102,30 @@ Generated by Alfred
             slack_post(msg, severity="warn")
             return 0
 
-        # Push + open PR
+        # Rubric grade-then-revise gate (off unless ALFRED_RUBRIC_GATE). Runs
+        # after the build committed and BEFORE the push, so any revision commit
+        # is part of the PR. Never blocks: whatever the final verdict, we open
+        # the PR and surface it honestly in the body. A gate failure degrades to
+        # no rubric section rather than derailing a ready change.
+        rubric_verdicts = None
+        try:
+            rubric_verdicts = _run_rubric_gate(
+                repo,
+                issue,
+                wt,
+                base_ref,
+                branch,
+                events.firing_id,
+                engine_used,
+                spend,
+                events,
+            )
+        except Exception as exc:
+            events.emit("rubric_gate_error", reason=short(str(exc), 200))
+
+        # Push + open PR. A failed push/pre-push step gets one bounded
+        # auto-recovery pass (fix lint/conflict/CI cause and re-push) before the
+        # preserve/HOLD fallback.
         pre_push_holder: list[PrePushResult] = []
         if not _push_or_preserve(
             repo,
@@ -1739,6 +2136,9 @@ Generated by Alfred
             "push-failed",
             events=events,
             pre_push_out=pre_push_holder,
+            recover=_make_push_recovery_hook(
+                repo, issue_num, events.firing_id, wt, branch, events, spend
+            ),
         ):
             spend.increment(failures_today=1, consecutive_failures=1)
             return 0
@@ -1766,12 +2166,17 @@ Generated by Alfred
         )
         evidence_section = f"\n{evidence_block}\n" if evidence_block else ""
 
+        # Rubric grade (only when the gate ran). Shown honestly: a failing final
+        # verdict is rendered as plainly as a passing one, never hidden.
+        rubric_block = render_verdict_markdown(rubric_verdicts) if rubric_verdicts else ""
+        rubric_section = f"\n{rubric_block}\n" if rubric_block else ""
+
         body_file = Path(f"/tmp/{AGENT}-prbody-{issue_num}.md")
         body_file.write_text(f"""## Summary
 {commit_body[:2000]}
 
 {issue_closing_line(issue_num)}
-{evidence_section}
+{evidence_section}{rubric_section}
 ## Test plan
 - [ ] CI passes (lint, type-check, build, tests)
 - [ ] Reviewer feedback addressed

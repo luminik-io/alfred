@@ -6,7 +6,7 @@ import json
 import logging
 from dataclasses import replace
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from planning_assistant import (
     PlanningAssistantResult,
@@ -49,10 +49,12 @@ async def api_plan_detail(request: Request, plan_id: str) -> JSONResponse:
     return JSONResponse(views._jsonable(plan))
 
 
-@router.post("/api/plans/{plan_id}/convert-followup", response_class=JSONResponse)
+@router.post(
+    "/api/plans/{plan_id}/convert-followup",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_convert_followup(request: Request, plan_id: str) -> JSONResponse:
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     plan = request.app.state.reader.get_plan(plan_id)
     if plan is None:
         return JSONResponse({"error": "plan not found"}, status_code=404)
@@ -68,10 +70,12 @@ async def api_convert_followup(request: Request, plan_id: str) -> JSONResponse:
     )
 
 
-@router.post("/api/plans/{plan_id}/mark-handled", response_class=JSONResponse)
+@router.post(
+    "/api/plans/{plan_id}/mark-handled",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_mark_followup_handled(request: Request, plan_id: str) -> JSONResponse:
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     plan = request.app.state.reader.get_plan(plan_id)
     if plan is None:
         return JSONResponse({"error": "plan not found"}, status_code=404)
@@ -81,11 +85,13 @@ async def api_mark_followup_handled(request: Request, plan_id: str) -> JSONRespo
     return JSONResponse({"archived_path": str(archived_path)})
 
 
-@router.post("/api/plans/{plan_id}/discard", response_class=JSONResponse)
+@router.post(
+    "/api/plans/{plan_id}/discard",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_discard_plan(request: Request, plan_id: str) -> JSONResponse:
     """Discard a local planning draft by archiving, never hard-deleting it."""
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     draft_id = views._safe_planning_draft_id(plan_id)
     if draft_id is None:
         return JSONResponse({"error": "plan not found"}, status_code=404)
@@ -103,7 +109,11 @@ async def api_discard_plan(request: Request, plan_id: str) -> JSONResponse:
     return JSONResponse(result)
 
 
-@router.post("/api/plans/{plan_id}/decision", response_class=JSONResponse)
+@router.post(
+    "/api/plans/{plan_id}/decision",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_plan_decision(request: Request, plan_id: str) -> JSONResponse:
     """Record an in-app go/no-go on a genuine architect plan.
 
@@ -115,8 +125,6 @@ async def api_plan_decision(request: Request, plan_id: str) -> JSONResponse:
     drive-by localhost page cannot arm or stop work on the operator's
     behalf.
     """
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     body, error_response = await views._read_json_body(request)
     if error_response is not None:
         return error_response
@@ -153,7 +161,11 @@ async def api_plan_decision(request: Request, plan_id: str) -> JSONResponse:
     )
 
 
-@router.post("/api/plans/{plan_id}/file-issue", response_class=JSONResponse)
+@router.post(
+    "/api/plans/{plan_id}/file-issue",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_file_plan_issue(request: Request, plan_id: str) -> JSONResponse:
     """File labeled GitHub issue work from a ready local planning draft.
 
@@ -164,8 +176,6 @@ async def api_file_plan_issue(request: Request, plan_id: str) -> JSONResponse:
     same-origin and token-gated like other local mutations, and it is
     idempotent via the saved draft's ``bridge.issue_url`` field.
     """
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     try:
         result = await run_in_threadpool(
             views._file_planning_draft_issue,
@@ -195,10 +205,12 @@ async def api_file_plan_issue(request: Request, plan_id: str) -> JSONResponse:
     return JSONResponse(result)
 
 
-@router.post("/api/plans/draft", response_class=JSONResponse)
+@router.post(
+    "/api/plans/draft",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_compose_draft(request: Request) -> JSONResponse:
-    if not views._same_origin_post(request) or not views._authorized_mutation(request):
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     try:
         body = json.loads((await request.body()).decode("utf-8") or "{}")
     except (json.JSONDecodeError, UnicodeDecodeError):
