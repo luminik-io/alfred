@@ -263,9 +263,7 @@ def test_rerun_with_ref_switches_checkout(tmp_path):
         "ALFRED_REPO_URL": "https://example.invalid/alfred.git",
         "ALFRED_REPO_REF": "v0.6.0",
     }
-    result = subprocess.run(
-        [_SH, str(_SCRIPT)], env=env, capture_output=True, text=True
-    )
+    result = subprocess.run([_SH, str(_SCRIPT)], env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert "checked out v0.6.0" in result.stdout
 
@@ -283,9 +281,7 @@ def test_run_install_zero_stays_demo_only(tmp_path):
         "ALFRED_REPO_URL": "https://example.invalid/alfred.git",
         "ALFRED_RUN_INSTALL": "0",
     }
-    result = subprocess.run(
-        [_SH, str(_SCRIPT)], env=env, capture_output=True, text=True
-    )
+    result = subprocess.run([_SH, str(_SCRIPT)], env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     # ALFRED_RUN_INSTALL=0 must not trigger the full-install lane at all.
     assert "Running install.sh" not in result.stdout
