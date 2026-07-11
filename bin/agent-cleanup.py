@@ -930,6 +930,7 @@ total_freed_mb = (
     + wt_freed_mb
     + extra_stats["freed_mb"]
     + transcript_freed_mb
+    + firings_freed_mb
     + dev_cache_freed_mb
     + dock_freed_mb
 )

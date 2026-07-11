@@ -91,6 +91,12 @@ def test_cleanup_preflight_has_no_runtime_env_requirement(cleanup):
     assert cleanup.PREFLIGHT.check_disk is False
 
 
+def test_total_reclaimed_includes_tool_offload_bytes():
+    source = CLEANUP.read_text(encoding="utf-8")
+    total = source.split("total_freed_mb = (", 1)[1].split(")", 1)[0]
+    assert "+ firings_freed_mb" in total
+
+
 def _exec_cleanup(
     tmp_path,
     monkeypatch,

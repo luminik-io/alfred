@@ -64,10 +64,50 @@ def test_firing_id_is_sanitised(tmp_path: Path) -> None:
     assert str(path).startswith(str(firings_root))
 
 
+def test_dot_firing_ids_cannot_escape_firings_root(tmp_path: Path) -> None:
+    firings_root = (tmp_path / "state" / "firings").resolve()
+    for firing_id in (".", ".."):
+        result = to.offload(_big(), firing_id=firing_id, env=_env(tmp_path))
+        path = Path(result.path or "").resolve()
+        assert firings_root in path.parents
+        assert path.parent == firings_root / "unknown" / "tool-output"
+
+
 def test_missing_firing_id_uses_unknown_bucket(tmp_path: Path) -> None:
     result = to.offload(_big(), firing_id=None, env=_env(tmp_path))
     assert result.applied
     assert "unknown" in (result.path or "")
+
+
+def test_unknown_bucket_symlink_cannot_escape_firings_root(tmp_path: Path) -> None:
+    firings_root = tmp_path / "state" / "firings"
+    outside = tmp_path / "outside"
+    firings_root.mkdir(parents=True)
+    outside.mkdir()
+    (firings_root / "unknown").symlink_to(outside, target_is_directory=True)
+
+    result = to.offload(_big(), firing_id="..", env=_env(tmp_path))
+
+    assert result.applied is False
+    assert result.reason == "unsafe_path"
+    assert result.path is None
+    assert not (outside / "tool-output").exists()
+
+
+def test_firing_symlink_escape_is_rejected_instead_of_rebucketed(tmp_path: Path) -> None:
+    firings_root = tmp_path / "state" / "firings"
+    outside = tmp_path / "outside"
+    firings_root.mkdir(parents=True)
+    outside.mkdir()
+    (firings_root / "fire-1").symlink_to(outside, target_is_directory=True)
+
+    result = to.offload(_big(), firing_id="fire-1", env=_env(tmp_path))
+
+    assert result.applied is False
+    assert result.reason == "unsafe_path"
+    assert result.path is None
+    assert not (firings_root / "unknown").exists()
+    assert not (outside / "tool-output").exists()
 
 
 # --------------------------------------------------------------------------
