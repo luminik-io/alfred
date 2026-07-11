@@ -71,6 +71,42 @@ def test_default_shell_runner_cleans_process_group_on_interrupt(tmp_path, monkey
     ]
 
 
+def test_default_shell_runner_cleans_process_group_on_parent_signal(tmp_path, monkeypatch) -> None:
+    handlers = {}
+
+    class FakeProcess:
+        pid = 655
+
+        def __init__(self, _command, **_kwargs):
+            self.calls = 0
+
+        def wait(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                handlers[skill_packs.signal.SIGTERM](skill_packs.signal.SIGTERM, None)
+            return -15
+
+    def fake_signal(signum, handler):
+        previous = handlers.get(signum, skill_packs.signal.SIG_DFL)
+        handlers[signum] = handler
+        return previous
+
+    signals = []
+    monkeypatch.setattr(subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(skill_packs.signal, "signal", fake_signal)
+    monkeypatch.setattr(skill_packs.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+
+    with pytest.raises(SystemExit) as exc:
+        skill_packs._default_shell_runner("terminate-me", tmp_path)
+
+    assert exc.value.code == 128 + skill_packs.signal.SIGTERM
+    assert signals == [
+        (655, skill_packs.signal.SIGTERM),
+        (655, skill_packs.signal.SIGKILL),
+    ]
+    assert handlers[skill_packs.signal.SIGTERM] == skill_packs.signal.SIG_DFL
+
+
 # --------------------------------------------------------------------------
 # Manifest parsing
 # --------------------------------------------------------------------------
@@ -318,6 +354,27 @@ def test_install_fetch_failure_removes_new_partial_destination(tmp_path: Path) -
         skill_packs.install_pack(pack, skills_dir=tmp_path, runner=partial_runner)
 
     assert not (tmp_path / pack.name).exists()
+
+
+def test_install_fetch_failure_removes_new_symlinks_published_from_destination(
+    tmp_path: Path,
+) -> None:
+    pack = _pack(install="fetch", fetch_cmd="clone {skills_dir}/thing", vendored_path=None)
+    existing = tmp_path / "existing"
+    existing.symlink_to(tmp_path / "preexisting-target")
+
+    def partial_runner(_cmd: str, cwd: Path) -> int:
+        dest = cwd / pack.name
+        (dest / "skills" / "review").mkdir(parents=True)
+        (cwd / "review").symlink_to(dest / "skills" / "review", target_is_directory=True)
+        return 124
+
+    with pytest.raises(RuntimeError, match="exit 124"):
+        skill_packs.install_pack(pack, skills_dir=tmp_path, runner=partial_runner)
+
+    assert not (tmp_path / pack.name).exists()
+    assert not (tmp_path / "review").is_symlink()
+    assert existing.is_symlink()
 
 
 def test_install_fetch_failure_preserves_existing_destination(tmp_path: Path) -> None:

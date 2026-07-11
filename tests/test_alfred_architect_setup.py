@@ -97,6 +97,43 @@ def test_oauth_step_reports_timeout_without_crashing(tmp_path, monkeypatch, caps
     assert "timed out waiting for approval" in capsys.readouterr().err
 
 
+def test_setup_token_helper_reaps_child_on_parent_signal(tmp_path, monkeypatch):
+    mod = _load_module(monkeypatch, tmp_path)
+    handlers = {}
+
+    class FakeProcess:
+        pid = 780
+
+        def __init__(self, _command, **_kwargs):
+            self.calls = 0
+
+        def wait(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                handlers[mod.signal.SIGTERM](mod.signal.SIGTERM, None)
+            return -15
+
+    def fake_signal(signum, handler):
+        previous = handlers.get(signum, mod.signal.SIG_DFL)
+        handlers[signum] = handler
+        return previous
+
+    signals = []
+    monkeypatch.setattr(mod.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(mod.signal, "signal", fake_signal)
+    monkeypatch.setattr(mod.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+
+    with pytest.raises(SystemExit) as exc:
+        mod._run_setup_token(tmp_path / "setup-token.py")
+
+    assert exc.value.code == 128 + mod.signal.SIGTERM
+    assert signals == [
+        (780, mod.signal.SIGTERM),
+        (780, mod.signal.SIGKILL),
+    ]
+    assert handlers[mod.signal.SIGTERM] == mod.signal.SIG_DFL
+
+
 def test_upsert_architect_block_is_idempotent_and_preserves_other_blocks(tmp_path, monkeypatch):
     mod = _load_module(monkeypatch, tmp_path)
     env_file = tmp_path / ".env"

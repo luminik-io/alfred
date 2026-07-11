@@ -235,11 +235,23 @@ def _run_setup_token(script: Path) -> int:
         [sys.executable, str(script)],
         start_new_session=True,
     )
+
+    def _terminate_on_signal(signum: int, _frame: Any) -> None:
+        _terminate_process_group(process)
+        raise SystemExit(128 + signum)
+
+    previous_handlers = {
+        signum: signal.signal(signum, _terminate_on_signal)
+        for signum in (signal.SIGTERM, signal.SIGHUP)
+    }
     try:
         return process.wait(timeout=SETUP_TOKEN_COMMAND_TIMEOUT_S)
     except (subprocess.TimeoutExpired, KeyboardInterrupt):
         _terminate_process_group(process)
         raise
+    finally:
+        for signum, previous in previous_handlers.items():
+            signal.signal(signum, previous)
 
 
 def _terminate_process_group(process: subprocess.Popen[Any]) -> None:

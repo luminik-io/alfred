@@ -311,20 +311,50 @@ def install_pack(
         return InstallResult(pack.name, pack.install, dest, fetched=cmd, dry_run=True)
     skills_dir.mkdir(parents=True, exist_ok=True)
     dest_existed = dest.exists()
+    entries_before = {entry.name for entry in skills_dir.iterdir()}
     run = runner or _default_shell_runner
     try:
         code = run(cmd, skills_dir)
     except BaseException:
-        _remove_new_partial_destination(dest, existed_before=dest_existed)
+        _remove_new_partial_install(
+            dest,
+            skills_dir=skills_dir,
+            entries_before=entries_before,
+            dest_existed=dest_existed,
+        )
         raise
     if code != 0:
-        _remove_new_partial_destination(dest, existed_before=dest_existed)
+        _remove_new_partial_install(
+            dest,
+            skills_dir=skills_dir,
+            entries_before=entries_before,
+            dest_existed=dest_existed,
+        )
         raise RuntimeError(f"fetch for {pack.name!r} failed (exit {code}): {cmd}")
     return InstallResult(pack.name, pack.install, dest, fetched=cmd)
 
 
-def _remove_new_partial_destination(dest: Path, *, existed_before: bool) -> None:
-    if existed_before or not dest.exists():
+def _remove_new_partial_install(
+    dest: Path,
+    *,
+    skills_dir: Path,
+    entries_before: set[str],
+    dest_existed: bool,
+) -> None:
+    """Roll back paths a failed fetch published from its new destination."""
+    if not dest_existed:
+        dest_path = Path(os.path.abspath(dest))
+        for entry in skills_dir.iterdir():
+            if entry.name in entries_before or not entry.is_symlink():
+                continue
+            target = Path(os.readlink(entry))
+            if not target.is_absolute():
+                target = entry.parent / target
+            target_path = Path(os.path.abspath(target))
+            if target_path == dest_path or dest_path in target_path.parents:
+                entry.unlink()
+
+    if dest_existed or not dest.exists():
         return
     if dest.is_dir():
         shutil.rmtree(dest)
@@ -335,6 +365,15 @@ def _remove_new_partial_destination(dest: Path, *, existed_before: bool) -> None
 def _default_shell_runner(cmd: str, cwd: Path) -> int:
     """Real shell runner for fetch packs. Only used outside tests."""
     process = subprocess.Popen(cmd, shell=True, cwd=str(cwd), start_new_session=True)
+
+    def _terminate_on_signal(signum: int, _frame) -> None:
+        _terminate_process_group(process)
+        raise SystemExit(128 + signum)
+
+    previous_handlers = {
+        signum: signal.signal(signum, _terminate_on_signal)
+        for signum in (signal.SIGTERM, signal.SIGHUP)
+    }
     try:
         return process.wait(timeout=FETCH_PACK_TIMEOUT_S)
     except subprocess.TimeoutExpired:
@@ -343,6 +382,9 @@ def _default_shell_runner(cmd: str, cwd: Path) -> int:
     except KeyboardInterrupt:
         _terminate_process_group(process)
         raise
+    finally:
+        for signum, previous in previous_handlers.items():
+            signal.signal(signum, previous)
 
 
 def _terminate_process_group(process) -> None:
