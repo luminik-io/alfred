@@ -39,6 +39,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+import model_context
+
 __all__ = [
     "DEFAULT_MAX_BYTES_PER_FIRING",
     "OffloadResult",
@@ -57,6 +59,14 @@ DEFAULT_MAX_BYTES_PER_FIRING = 50_000_000
 # Preview edges kept inline alongside the saved-path pointer.
 _DEFAULT_PREVIEW_HEAD_LINES = 20
 _DEFAULT_PREVIEW_TAIL_LINES = 20
+# The preview must never keep fewer edge lines than this while byte-trimming.
+_MIN_PREVIEW_EDGE_LINES = 1
+
+# Bounded retries for the O_EXCL index-claim loop: two concurrent hook processes
+# can race for the same next index, so each claim is an atomic exclusive create
+# and a loser simply tries the next index. The cap only exists so a pathological
+# filesystem can never spin the hook forever.
+_MAX_CLAIM_ATTEMPTS = 1000
 
 # A firing id becomes a single path component; keep it filesystem-safe.
 _SAFE_ID_RE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -157,33 +167,76 @@ def _preview_lines(env: Mapping[str, str]) -> tuple[int, int]:
     return head, tail
 
 
-def _pointer_text(full_text: str, path: Path, head_lines: int, tail_lines: int) -> str:
-    """Head/tail preview around a saved-path pointer, or the whole text if small.
+def _preview_byte_cap(env: Mapping[str, str]) -> int:
+    """The byte budget the inline preview must honour.
+
+    The offload preview REPLACES the compactor's budgeted head+tail output, so it
+    must never exceed the same compaction byte budget - otherwise a few multi-MB
+    lines would ride back into the model's context nearly in full. This mirrors
+    ``tool_compactor._compact_config``: the explicit
+    ``ALFRED_OUTPUT_COMPACTOR_MAX_BYTES`` override wins, else the model-derived
+    default.
+    """
+    _, derived_max = model_context.derived_compaction_bytes(env)
+    return max(256, _env_int(env, "ALFRED_OUTPUT_COMPACTOR_MAX_BYTES", derived_max))
+
+
+def _render(head: list[str], tail: list[str], marker: str) -> str:
+    body = "\n".join(head)
+    if tail:
+        return body + marker + "\n".join(tail)
+    return body + marker
+
+
+def _pointer_text(
+    full_text: str,
+    path: Path,
+    head_lines: int,
+    tail_lines: int,
+    max_bytes: int,
+) -> str:
+    """Head/tail preview around a saved-path pointer, within a byte budget.
 
     When the output is short enough that head+tail would cover it, the pointer is
     still appended (so the agent knows the full copy exists) but no content is
-    omitted.
+    omitted. The preview is then trimmed to ``max_bytes``: tail lines are dropped
+    first, then head lines, and as a last resort a single oversized line is
+    hard-truncated - so a log made of a few very long lines can never blow the
+    compaction byte budget the preview replaces.
     """
     lines = full_text.split("\n")
     total = len(lines)
     if total <= head_lines + tail_lines:
-        head, tail, omitted = lines, [], 0
+        head, tail = lines, []
     else:
         head = lines[:head_lines]
         tail = lines[-tail_lines:]
-        omitted = total - head_lines - tail_lines
-    marker = (
-        f"\n[ALFRED_TOOL_OFFLOAD omitted_lines={omitted} bytes={len(full_text.encode('utf-8'))}]\n"
-        f"Full output saved to {path}\n"
-        "Re-read that file (or a line range of it) to recover the omitted content.\n"
-        "[/ALFRED_TOOL_OFFLOAD]\n"
-    )
-    body = "\n".join(head)
-    if tail:
-        body = body + marker + "\n".join(tail)
-    else:
-        body = body + marker
-    return body
+
+    def marker(omitted: int) -> str:
+        return (
+            f"\n[ALFRED_TOOL_OFFLOAD omitted_lines={omitted} "
+            f"bytes={len(full_text.encode('utf-8'))}]\n"
+            f"Full output saved to {path}\n"
+            "Re-read that file (or a line range of it) to recover the omitted content.\n"
+            "[/ALFRED_TOOL_OFFLOAD]\n"
+        )
+
+    text = _render(head, tail, marker(total - len(head) - len(tail)))
+    # Byte budget: drop tail lines (then head lines) until the preview fits.
+    while (
+        len(text.encode("utf-8")) > max_bytes and (len(head) + len(tail)) > _MIN_PREVIEW_EDGE_LINES
+    ):
+        if len(tail) > 0:
+            tail = tail[1:]
+        else:
+            head = head[:-1]
+        text = _render(head, tail, marker(total - len(head) - len(tail)))
+    if len(text.encode("utf-8")) > max_bytes and head:
+        # A single pathological line still exceeds the budget: hard-truncate it.
+        keep = max(0, max_bytes - len(marker(total - 1).encode("utf-8")))
+        head = [head[0].encode("utf-8")[:keep].decode("utf-8", errors="ignore")]
+        text = _render(head, [], marker(total - 1))
+    return text
 
 
 def offload(
@@ -216,19 +269,38 @@ def offload(
     except OSError:
         return OffloadResult(False, full_text, None, 0, 0, "mkdir_failed")
 
-    # Enforce the per-firing disk bound BEFORE writing.
+    # Enforce the per-firing disk bound BEFORE writing. Two concurrent hook
+    # processes can both pass this check (bounded-approximation TOCTOU), so the
+    # bound can overshoot by at most one output; it can never run away.
     if _dir_total_bytes(directory) + len(payload) > max_bytes:
         return OffloadResult(False, full_text, None, 0, 0, "disk_bound_exceeded")
 
+    # Claim an index ATOMICALLY (O_CREAT | O_EXCL) so two concurrent hook
+    # processes offloading for the same firing can never write the same <n>.txt:
+    # the loser of a claim race simply advances to the next index.
     index = _next_index(directory)
-    path = (directory / f"{index}.txt").resolve()
-    try:
-        path.write_bytes(payload)
-    except OSError:
-        return OffloadResult(False, full_text, None, index, 0, "write_failed")
+    path: Path | None = None
+    for _ in range(_MAX_CLAIM_ATTEMPTS):
+        candidate = directory / f"{index}.txt"
+        try:
+            fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        except FileExistsError:
+            index += 1
+            continue
+        except OSError:
+            return OffloadResult(False, full_text, None, index, 0, "write_failed")
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(payload)
+        except OSError:
+            return OffloadResult(False, full_text, None, index, 0, "write_failed")
+        path = candidate.resolve()
+        break
+    if path is None:
+        return OffloadResult(False, full_text, None, index, 0, "claim_exhausted")
 
     head_lines, tail_lines = _preview_lines(resolved)
-    text = _pointer_text(full_text, path, head_lines, tail_lines)
+    text = _pointer_text(full_text, path, head_lines, tail_lines, _preview_byte_cap(resolved))
     return OffloadResult(True, text, str(path), index, len(payload), "offloaded")
 
 
@@ -238,11 +310,15 @@ def sweep_expired(
     now: float,
     env: Mapping[str, str] | None = None,
 ) -> tuple[int, float]:
-    """Remove firing offload directories whose mtime is older than the cutoff.
+    """Remove expired ``tool-output`` offload directories under state/firings.
 
-    Returns ``(dirs_removed, mb_freed)``. Best-effort: any per-entry IO error is
-    swallowed so the cleanup pass never crashes on a partially-written tree. This
-    is the hook the existing firing cleanup (``bin/agent-cleanup.py``) calls.
+    Returns ``(dirs_removed, mb_freed)``. Offload only OWNS the ``tool-output``
+    subdirectory of each firing dir, so only that subtree is removed; the parent
+    ``state/firings/<id>`` directory is rmdir'd afterwards ONLY when it is empty,
+    so any sibling firing-scoped state another feature stores there survives this
+    sweep untouched. Best-effort: any per-entry IO error is swallowed so the
+    cleanup pass never crashes on a partially-written tree. This is the hook the
+    existing firing cleanup (``bin/agent-cleanup.py``) calls.
     """
     resolved = _resolve(env)
     root = _firings_root(resolved)
@@ -255,13 +331,19 @@ def sweep_expired(
     for firing_dir in entries:
         if not firing_dir.is_dir():
             continue
+        offload_dir = firing_dir / "tool-output"
+        if not offload_dir.is_dir():
+            continue
         try:
-            age = now - firing_dir.stat().st_mtime
+            age = now - offload_dir.stat().st_mtime
         except OSError:
             continue
         if age <= max_age_seconds:
             continue
-        freed_bytes += _dir_total_bytes(firing_dir / "tool-output")
-        shutil.rmtree(firing_dir, ignore_errors=True)
+        freed_bytes += _dir_total_bytes(offload_dir)
+        shutil.rmtree(offload_dir, ignore_errors=True)
         removed += 1
+        # Reap the firing dir only when nothing else lives in it.
+        with contextlib.suppress(OSError):
+            firing_dir.rmdir()
     return removed, freed_bytes / (1024 * 1024)

@@ -150,16 +150,24 @@ $ALFRED_HOME/state/firings/<firing_id>/tool-output/<n>.txt
 ```
 
 The `<firing_id>` is `ALFRED_FIRING_ID` (exported by the runner) or the Claude
-Code session id. Offload is a **best-effort enhancement**: it only runs on output
-the confirmed-success valve already cleared for compaction, and any failure (disk
-bound breached, unwritable path) falls straight back to the compactor's own
-head+tail output - the token win is never lost, and an error is never hidden.
+Code session id. Each file's index is claimed atomically (`O_CREAT | O_EXCL`),
+so two concurrent hook processes offloading for the same firing can never
+overwrite each other's output. The inline preview honours the **same compaction
+byte budget it replaces** (the `ALFRED_OUTPUT_COMPACTOR_MAX_BYTES` override, else
+the model-derived default), so a log made of a few very long lines can never ride
+back into the context nearly in full. Offload is a **best-effort enhancement**:
+it only runs on output the confirmed-success valve already cleared for
+compaction, and any failure (disk bound breached, unwritable path) falls straight
+back to the compactor's own head+tail output - the token win is never lost, and
+an error is never hidden.
 
 Total offloaded disk **per firing is bounded** (`ALFRED_TOOL_OFFLOAD_MAX_BYTES`,
 default ~50MB); once a firing's directory would exceed the bound, further outputs
-skip offload. Old firing directories are swept by the existing daily cleanup
-(`bin/agent-cleanup.py`, retention `ALFRED_FIRINGS_RETENTION_DAYS`, default 30d;
-1d under emergency disk pressure).
+skip offload. Expired `tool-output/` subtrees are swept by the existing daily
+cleanup (`bin/agent-cleanup.py`, retention `ALFRED_FIRINGS_RETENTION_DAYS`,
+default 30d; 1d under emergency disk pressure). The sweep removes only the
+`tool-output/` directory offload owns; the parent `state/firings/<id>/` dir is
+reaped only when empty, so sibling firing-scoped state survives.
 
 | Variable | Default | What it does |
 |---|---|---|

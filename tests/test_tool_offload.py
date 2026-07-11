@@ -138,20 +138,86 @@ def test_sweep_removes_aged_firing_dirs_and_keeps_fresh(tmp_path: Path) -> None:
     to.offload(_big(), firing_id="old", env=env)
     to.offload(_big(), firing_id="fresh", env=env)
 
-    old_dir = to.firing_offload_dir("old", env).parent
+    old_offload = to.firing_offload_dir("old", env)
+    old_firing = old_offload.parent
     ten_days_ago = time.time() - 10 * 86400
     import os
 
-    os.utime(old_dir, (ten_days_ago, ten_days_ago))
+    os.utime(old_offload, (ten_days_ago, ten_days_ago))
 
     removed, mb_freed = to.sweep_expired(5 * 86400, now=time.time(), env=env)
     assert removed == 1
     assert mb_freed >= 0.0
-    assert not old_dir.exists()
+    # The offload subtree is gone AND the now-empty firing dir is reaped.
+    assert not old_offload.exists()
+    assert not old_firing.exists()
     assert to.firing_offload_dir("fresh", env).parent.exists()
+
+
+def test_sweep_preserves_sibling_firing_state(tmp_path: Path) -> None:
+    # Offload only owns tool-output/: any sibling firing-scoped state another
+    # feature stores under state/firings/<id>/ must survive the sweep.
+    env = _env(tmp_path)
+    to.offload(_big(), firing_id="fire-1", env=env)
+    offload_dir = to.firing_offload_dir("fire-1", env)
+    firing_dir = offload_dir.parent
+    sibling = firing_dir / "metadata.json"
+    sibling.write_text("{}", encoding="utf-8")
+
+    ten_days_ago = time.time() - 10 * 86400
+    import os
+
+    os.utime(offload_dir, (ten_days_ago, ten_days_ago))
+
+    removed, _ = to.sweep_expired(5 * 86400, now=time.time(), env=env)
+    assert removed == 1
+    assert not offload_dir.exists()
+    assert sibling.exists()  # sibling state untouched
+    assert firing_dir.exists()  # non-empty firing dir is NOT reaped
 
 
 def test_sweep_missing_root_is_noop(tmp_path: Path) -> None:
     removed, mb = to.sweep_expired(1.0, now=time.time(), env=_env(tmp_path))
     assert removed == 0
     assert mb == 0.0
+
+
+# --------------------------------------------------------------------------
+# Concurrency + preview byte cap
+# --------------------------------------------------------------------------
+def test_offload_never_overwrites_a_concurrently_claimed_index(tmp_path: Path) -> None:
+    # Simulate the loser of a claim race: another hook process already created
+    # 1.txt after our _next_index scan would have returned 1. The O_EXCL claim
+    # loop must advance to 2.txt and leave the first output intact.
+    env = _env(tmp_path)
+    directory = to.firing_offload_dir("fire-1", env)
+    directory.mkdir(parents=True)
+    (directory / "1.txt").write_text("first process output", encoding="utf-8")
+
+    result = to.offload(_big(), firing_id="fire-1", env=env)
+    assert result.applied
+    assert result.index == 2
+    assert (directory / "1.txt").read_text(encoding="utf-8") == "first process output"
+
+
+def test_preview_respects_compaction_byte_budget_on_long_lines(tmp_path: Path) -> None:
+    # A few multi-hundred-KB lines defeat a line-count-only preview. The preview
+    # must honour the compaction byte budget it replaces.
+    env = _env(tmp_path, ALFRED_OUTPUT_COMPACTOR_MAX_BYTES="4000")
+    full = "\n".join("x" * 200_000 for _ in range(5))
+    result = to.offload(full, firing_id="fire-1", env=env)
+    assert result.applied
+    assert len(result.text.encode("utf-8")) <= 4000
+    assert "Full output saved to" in result.text
+    # The saved file still holds the full output.
+    assert Path(result.path or "").read_text(encoding="utf-8") == full
+
+
+def test_preview_byte_cap_defaults_to_model_derived_budget(tmp_path: Path) -> None:
+    # No explicit compactor override: the cap is the model-derived max (8000 for
+    # the conservative 200K default window).
+    env = _env(tmp_path)
+    full = "\n".join("y" * 100_000 for _ in range(4))
+    result = to.offload(full, firing_id="fire-1", env=env)
+    assert result.applied
+    assert len(result.text.encode("utf-8")) <= 8000

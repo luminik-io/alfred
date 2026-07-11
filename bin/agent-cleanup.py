@@ -764,14 +764,23 @@ if TRANSCRIPTS_ROOT.exists():
             except OSError:
                 pass
 
+
 # Expire offloaded tool-output firing directories (state/firings/<id>/tool-output).
 # These hold the FULL copies the compaction hook saved so an agent could re-read a
 # truncated slice; once the firing is long done they are pure reclaimable bulk.
-FIRINGS_RETENTION_DAYS = int(os.environ.get("ALFRED_FIRINGS_RETENTION_DAYS", "30"))
+def _env_days(name: str, default: int) -> int:
+    """Forgiving int parse: a typo in a retention var must not stop cleanup."""
+    raw = (os.environ.get(name) or "").strip()
+    try:
+        return int(raw) if raw else default
+    except ValueError:
+        print(f"[cleanup] ignoring malformed {name}={raw!r}; using {default}", file=sys.stderr)
+        return default
+
+
+FIRINGS_RETENTION_DAYS = _env_days("ALFRED_FIRINGS_RETENTION_DAYS", 30)
 if EMERGENCY:
-    EMERGENCY_FIRINGS_RETENTION_DAYS = int(
-        os.environ.get("ALFRED_EMERGENCY_FIRINGS_RETENTION_DAYS", "1")
-    )
+    EMERGENCY_FIRINGS_RETENTION_DAYS = _env_days("ALFRED_EMERGENCY_FIRINGS_RETENTION_DAYS", 1)
     FIRINGS_RETENTION_DAYS = min(FIRINGS_RETENTION_DAYS, EMERGENCY_FIRINGS_RETENTION_DAYS)
 firings_removed = 0
 firings_freed_mb = 0.0

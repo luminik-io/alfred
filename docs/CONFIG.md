@@ -182,9 +182,9 @@ are experimental, deep-tuning, or set by Alfred itself at runtime.
 | `ALFRED_COMPACTION_MODEL` | str |  | internal | Override the model used to derive compaction thresholds. |
 | `ALFRED_COMPACTION_CONTEXT_TOKENS` | int |  | internal | Override the active model's context window (tokens) for threshold derivation. |
 | `ALFRED_TOOL_OFFLOAD` | bool | `1` | internal | Offload oversized tool output to a firing-scoped file; opt out with 0. |
-| `ALFRED_TOOL_OFFLOAD_MAX_BYTES` | int |  | internal | Per-firing disk bound for offloaded tool output (default ~50MB). |
-| `ALFRED_TOOL_OFFLOAD_PREVIEW_HEAD_LINES` | int |  | internal | Head lines kept inline alongside the offloaded-output pointer. |
-| `ALFRED_TOOL_OFFLOAD_PREVIEW_TAIL_LINES` | int |  | internal | Tail lines kept inline alongside the offloaded-output pointer. |
+| `ALFRED_TOOL_OFFLOAD_MAX_BYTES` | int | `50000000` | internal | Per-firing disk bound for offloaded tool output (~50MB). |
+| `ALFRED_TOOL_OFFLOAD_PREVIEW_HEAD_LINES` | int | `20` | internal | Head lines kept inline alongside the offloaded-output pointer. |
+| `ALFRED_TOOL_OFFLOAD_PREVIEW_TAIL_LINES` | int | `20` | internal | Tail lines kept inline alongside the offloaded-output pointer. |
 | `ALFRED_TOOL_DIGEST` | bool | `1` | internal | Digest verbose tool schemas; opt out with 0. |
 | `ALFRED_TOOL_DIGEST_MIN_CHARS` | int |  | internal | Below this size, tool output passes through un-digested. |
 | `ALFRED_SKILLS_INJECT` | bool | `1` | internal | Inject skill headers into the prompt; on by default. |
