@@ -64,6 +64,15 @@ def test_firing_id_is_sanitised(tmp_path: Path) -> None:
     assert str(path).startswith(str(firings_root))
 
 
+def test_dot_firing_ids_cannot_escape_firings_root(tmp_path: Path) -> None:
+    firings_root = (tmp_path / "state" / "firings").resolve()
+    for firing_id in (".", ".."):
+        result = to.offload(_big(), firing_id=firing_id, env=_env(tmp_path))
+        path = Path(result.path or "").resolve()
+        assert firings_root in path.parents
+        assert path.parent == firings_root / "unknown" / "tool-output"
+
+
 def test_missing_firing_id_uses_unknown_bucket(tmp_path: Path) -> None:
     result = to.offload(_big(), firing_id=None, env=_env(tmp_path))
     assert result.applied
