@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 REMOVED_FLAT_MODULE = re.compile(
-    r"\bslack_(?:approval|control|trust|listener|format|intent|converse|"
+    r"(?<!test_)(?<!slack_surface[./])\bslack_(?:approval|control|trust|listener|format|intent|converse|"
     r"issue_bridge|thread_status|memory_candidates)\b"
 )
 
@@ -32,7 +32,7 @@ assert 'slack_surface.listener' not in sys.modules
 
 
 def test_public_docs_do_not_reference_removed_flat_slack_modules() -> None:
-    roots = (ROOT / "README.md", ROOT / "docs", ROOT / "site" / "src" / "content" / "docs")
+    roots = (*ROOT.glob("*.md"), ROOT / "docs", ROOT / "site" / "src" / "content" / "docs")
     offenders: list[str] = []
     for root in roots:
         paths = [root] if root.is_file() else [*root.rglob("*.md"), *root.rglob("*.mdx")]
