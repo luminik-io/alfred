@@ -287,6 +287,36 @@ def test_code_memory_serve_is_unbounded(monkeypatch):
     assert calls == [([str(ROOT / "bin/code-memory-mcp"), "serve"], None)]
 
 
+@pytest.mark.parametrize(
+    ("forwarded", "expected_timeout"),
+    [
+        ([], None),
+        (["serve"], None),
+        (["tools"], 600),
+        (["export"], 600),
+    ],
+)
+def test_memory_mcp_only_leaves_server_unbounded(monkeypatch, forwarded, expected_timeout):
+    cli = load_cli_module()
+    calls = []
+    monkeypatch.setattr(
+        cli,
+        "_run_subcommand",
+        lambda command, *, timeout, env=None: calls.append((command, timeout)) or 0,
+    )
+
+    args = SimpleNamespace(mcp_args=forwarded)
+    assert cli.cmd_mcp(args) == 0
+
+    expected_args = forwarded or ["serve"]
+    assert calls == [
+        (
+            [sys.executable, str(ROOT / "bin/alfred-mcp.py"), *expected_args],
+            expected_timeout,
+        )
+    ]
+
+
 @pytest.mark.parametrize("command", ["index", "refresh"])
 def test_code_memory_rebuilds_get_large_repo_budget(monkeypatch, command):
     cli = load_cli_module()

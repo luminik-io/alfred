@@ -2756,9 +2756,10 @@ def cmd_github_poll(args: argparse.Namespace) -> int:
 def cmd_mcp(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-mcp.py"
     forwarded = args.mcp_args or ["serve"]
+    timeout = None if forwarded[0] == "serve" else _DELEGATED_COMMAND_TIMEOUT_S
     return _run_subcommand(
         [sys.executable, str(script), *forwarded],
-        timeout=None,
+        timeout=timeout,
     )
 
 
