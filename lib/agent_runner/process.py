@@ -100,6 +100,13 @@ from .transcripts import (
 # The per-firing wall-clock ``timeout`` becomes the real ceiling.
 _CLAUDE_UNLIMITED_TURNS: int = 999
 
+
+def _runtime_cli_bin(env_name: str, imported_default: str) -> str:
+    """Resolve a CLI at invocation time so setup detection can supply its path."""
+
+    return os.environ.get(env_name, "").strip() or imported_default
+
+
 # Headless fleet agents run unattended under launchd, so a Claude Code
 # desktop/push notification on every firing is pure noise (and on macOS it
 # stacks up banners no one reads). We pass these settings via the CLI's
@@ -726,7 +733,7 @@ def claude_invoke(
     # independent Path.exists() checks).
     memory_script = _memory_mcp_script()
     cmd = [
-        CLAUDE_BIN,
+        _runtime_cli_bin("CLAUDE_BIN", CLAUDE_BIN),
         "-p",
         prompt,
         "--allowedTools",
@@ -851,7 +858,7 @@ def claude_invoke_streaming(
 
     memory_script = _memory_mcp_script()
     cmd = [
-        CLAUDE_BIN,
+        _runtime_cli_bin("CLAUDE_BIN", CLAUDE_BIN),
         "-p",
         prompt,
         "--allowedTools",
@@ -1146,7 +1153,7 @@ def codex_invoke(
 
     paths = codex_artifact_paths(agent, firing_id)
     cmd = [
-        CODEX_BIN,
+        _runtime_cli_bin("CODEX_BIN", CODEX_BIN),
         "exec",
         "--skip-git-repo-check",
         "--cd",

@@ -2621,7 +2621,7 @@ def test_compose_converse_degrades_when_no_engine_configured(
     monkeypatch.delenv("ALFRED_COMPOSE_CONVERSE_ENGINE", raising=False)
     monkeypatch.delenv("ALFRED_PLANNING_ASSISTANT_ENGINE", raising=False)
     monkeypatch.delenv("ALFRED_ENGINE", raising=False)
-    monkeypatch.setattr(cc, "_available_engine_clis", set)
+    monkeypatch.setattr(cc, "_available_engine_clis", dict)
     state = tmp_path / "state"
     state.mkdir()
     client = TestClient(create_app(FilesystemReader(state_root=state)))
@@ -2643,7 +2643,7 @@ def test_compose_converse_stream_degrades_with_sse_error_when_no_engine_configur
     monkeypatch.delenv("ALFRED_COMPOSE_CONVERSE_ENGINE", raising=False)
     monkeypatch.delenv("ALFRED_PLANNING_ASSISTANT_ENGINE", raising=False)
     monkeypatch.delenv("ALFRED_ENGINE", raising=False)
-    monkeypatch.setattr(cc, "_available_engine_clis", set)
+    monkeypatch.setattr(cc, "_available_engine_clis", dict)
     state = tmp_path / "state"
     state.mkdir()
     client = TestClient(create_app(FilesystemReader(state_root=state)))

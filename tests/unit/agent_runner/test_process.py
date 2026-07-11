@@ -19,6 +19,14 @@ def test_run_returns_124_on_timeout(fresh_agent_runner):
     assert "TIMEOUT" in res.stderr
 
 
+def test_runtime_cli_bin_honors_post_import_override(fresh_agent_runner, monkeypatch):
+    import agent_runner.process as proc
+
+    monkeypatch.setenv("CLAUDE_BIN", "/opt/alfred/bin/claude")
+
+    assert proc._runtime_cli_bin("CLAUDE_BIN", "claude") == "/opt/alfred/bin/claude"
+
+
 def test_gh_json_returns_default_on_nonzero(fresh_agent_runner, monkeypatch):
     """gh_json swallows failures and returns the caller's default."""
     ar = fresh_agent_runner

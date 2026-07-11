@@ -1607,6 +1607,9 @@ def converse_engine_from_env() -> str:
         return configured
 
     detected = _available_engine_clis()
+    for name, path in detected.items():
+        if path:
+            os.environ.setdefault(f"{name.upper()}_BIN", path)
     claude_ready = "claude" in detected
     codex_ready = "codex" in detected
     if claude_ready and codex_ready:
@@ -1618,13 +1621,13 @@ def converse_engine_from_env() -> str:
     return ""
 
 
-def _available_engine_clis() -> set[str]:
+def _available_engine_clis() -> dict[str, str]:
     """Return subscription CLIs resolved by the canonical setup detector."""
 
     from server.setup import engine_clis
 
     return {
-        str(item.get("name") or "").strip().lower()
+        str(item.get("name") or "").strip().lower(): str(item.get("path") or "").strip()
         for item in engine_clis()
         if item.get("installed")
     }
