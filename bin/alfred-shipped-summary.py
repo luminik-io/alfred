@@ -600,12 +600,20 @@ def compute_self_proof_stat(
 def render_self_proof(data: dict[str, Any]) -> str:
     """Human-readable self-proof report for the terminal / Slack."""
     aggregate = data.get("aggregate") or {}
+    days = data.get("window_days", DEFAULT_WINDOW_DAYS)
     lines = [
-        f"*Alfred self-proof - last {data.get('window_days', DEFAULT_WINDOW_DAYS)} days*",
+        "*Alfred self-proof*",
         data.get("headline", ""),
-        "",
-        "*By repo*",
     ]
+    window_line = data.get("window_headline")
+    if window_line:
+        lines.append(f"Rolling window: {window_line}")
+    lines.extend(
+        [
+            "",
+            f"*By repo (last {days} days)*",
+        ]
+    )
     per_repo = data.get("per_repo") or []
     if not per_repo:
         lines.append("- (no repos configured)")
@@ -639,6 +647,19 @@ def render_self_proof(data: dict[str, Any]) -> str:
     warnings.extend(
         f"- {repo}: page-capped query; excluded from the share"
         for repo in (data.get("capped") or [])[:6]
+    )
+    # Cumulative queries run separately from the window ones, so a failure or a
+    # search cap there shows up under cumulative.* rather than the top-level
+    # lists. Surface it too, otherwise the headline could quote an incomplete
+    # "N+" or "unavailable" count with no visible reason.
+    cumulative = data.get("cumulative") or {}
+    warnings.extend(
+        f"- {repo}: cumulative GitHub query unavailable"
+        for repo in (cumulative.get("errors") or [])[:6]
+    )
+    warnings.extend(
+        f"- {repo}: cumulative query hit the search cap; total reported as a floor"
+        for repo in (cumulative.get("capped") or [])[:6]
     )
     if warnings:
         lines.append("")
