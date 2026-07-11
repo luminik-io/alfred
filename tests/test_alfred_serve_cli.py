@@ -287,6 +287,68 @@ def test_code_memory_serve_is_unbounded(monkeypatch):
     assert calls == [([str(ROOT / "bin/code-memory-mcp"), "serve"], None)]
 
 
+@pytest.mark.parametrize(
+    ("forwarded", "db_path", "expected_args", "expected_timeout"),
+    [
+        ([], None, ["serve"], None),
+        (["serve"], None, ["serve"], None),
+        (
+            ["serve", "--db", "/tmp/fleet.db"],
+            None,
+            ["serve", "--db", "/tmp/fleet.db"],
+            None,
+        ),
+        (["serve"], "/tmp/fleet.db", ["serve", "--db", "/tmp/fleet.db"], None),
+        (
+            ["--db", "/tmp/fleet.db", "serve"],
+            None,
+            ["serve", "--db", "/tmp/fleet.db"],
+            None,
+        ),
+        (["tools"], None, ["tools"], 600),
+        (["export"], None, ["export"], 600),
+    ],
+)
+def test_memory_mcp_only_leaves_server_unbounded(
+    monkeypatch, forwarded, db_path, expected_args, expected_timeout
+):
+    cli = load_cli_module()
+    calls = []
+    monkeypatch.setattr(
+        cli,
+        "_run_subcommand",
+        lambda command, *, timeout, env=None: calls.append((command, timeout)) or 0,
+    )
+
+    args = SimpleNamespace(mcp_args=forwarded, mcp_db=db_path)
+    assert cli.cmd_mcp(args) == 0
+
+    assert calls == [
+        (
+            [sys.executable, str(ROOT / "bin/alfred-mcp.py"), *expected_args],
+            expected_timeout,
+        )
+    ]
+
+
+def test_memory_mcp_parser_accepts_db_before_serve(monkeypatch):
+    cli = load_cli_module()
+    calls = []
+    monkeypatch.setattr(
+        cli,
+        "_run_subcommand",
+        lambda command, *, timeout, env=None: calls.append((command, timeout)) or 0,
+    )
+
+    assert cli.main(["mcp", "--db", "/tmp/fleet.db", "serve"]) == 0
+    assert calls == [
+        (
+            [sys.executable, str(ROOT / "bin/alfred-mcp.py"), "serve", "--db", "/tmp/fleet.db"],
+            None,
+        )
+    ]
+
+
 @pytest.mark.parametrize("command", ["index", "refresh"])
 def test_code_memory_rebuilds_get_large_repo_budget(monkeypatch, command):
     cli = load_cli_module()

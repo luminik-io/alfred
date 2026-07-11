@@ -2756,9 +2756,18 @@ def cmd_github_poll(args: argparse.Namespace) -> int:
 def cmd_mcp(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-mcp.py"
     forwarded = args.mcp_args or ["serve"]
+    if "serve" in forwarded:
+        serve_index = forwarded.index("serve")
+        if serve_index:
+            forwarded = ["serve", *forwarded[:serve_index], *forwarded[serve_index + 1 :]]
+        timeout = None
+    else:
+        timeout = _DELEGATED_COMMAND_TIMEOUT_S
+    if db_path := getattr(args, "mcp_db", None):
+        forwarded = [*forwarded, "--db", db_path]
     return _run_subcommand(
         [sys.executable, str(script), *forwarded],
-        timeout=None,
+        timeout=timeout,
     )
 
 
@@ -4111,6 +4120,7 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_github_poll.set_defaults(func=cmd_github_poll)
 
     p_mcp = sub.add_parser("mcp", help="serve read-only Alfred MCP tools")
+    p_mcp.add_argument("--db", dest="mcp_db", help="path to the SQLite brain file")
     p_mcp.add_argument("mcp_args", nargs=argparse.REMAINDER)
     p_mcp.set_defaults(func=cmd_mcp)
 
