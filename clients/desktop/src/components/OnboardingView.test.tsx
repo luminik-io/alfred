@@ -892,7 +892,16 @@ describe("OnboardingView seven-step takeover", () => {
       env_path: "/home/.alfred/.env",
       keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
     });
-    renderOnboarding();
+    const onRunLocalAction = vi.fn(async () => ({
+      command: ["alfred", "code-memory", "index"],
+      stdout: "",
+      stderr: "",
+      status: 0,
+      success: true,
+      pid: 1,
+      message: "Code graph indexed.",
+    }));
+    renderOnboarding({ onRunLocalAction });
     const user = userEvent.setup();
 
     // Forward flow auto-advances Tools + GitHub (both detected) onto Repositories.
@@ -912,8 +921,14 @@ describe("OnboardingView seven-step takeover", () => {
     await waitFor(() =>
       expect(save).toHaveBeenCalledWith("http://127.0.0.1:7010", ["octocat/web"]),
     );
+    expect(onRunLocalAction).toHaveBeenCalledWith({
+      action: "code_memory_index",
+      refreshAfter: true,
+    });
     await waitFor(() =>
-      expect(screen.getByText(/saved 1 repository alfred can work in/i)).toBeInTheDocument(),
+      expect(
+        screen.getByText(/saved 1 repository alfred can work in and built the code graph/i),
+      ).toBeInTheDocument(),
     );
   });
 
@@ -1266,6 +1281,36 @@ describe("OnboardingView conversational setup actions", () => {
   async function approveStep(user: ReturnType<typeof userEvent.setup>, buttonName: RegExp) {
     await user.click(await screen.findByRole("button", { name: buttonName }));
   }
+
+  it("indexes selected repositories after a conversational save", async () => {
+    const save = vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
+      ok: true,
+      repos: ["octocat/web"],
+      env_path: "/home/.alfred/.env",
+      keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+    });
+    vi.spyOn(apiSetup, "onboardingConverse")
+      .mockResolvedValueOnce({
+        reply: "I can save that repository.",
+        action: { tool: "set_repos", args: { repos: ["octocat/web"] } },
+        done: false,
+      })
+      .mockResolvedValueOnce({ reply: "The code graph is ready.", action: null, done: false });
+    const onRunLocalAction = vi.fn(async () => makeNativeResult());
+    renderOnboarding({ onRunLocalAction });
+    const user = userEvent.setup();
+
+    await enterChatAndSend(user, "use octocat/web");
+    await approveStep(user, /save repositories/i);
+
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith("http://127.0.0.1:7010", ["octocat/web"]),
+    );
+    expect(onRunLocalAction).toHaveBeenCalledWith({
+      action: "code_memory_index",
+      refreshAfter: true,
+    });
+  });
 
   it("carries a native Slack skip back into conversational completion", async () => {
     vi.spyOn(apiSetup, "onboardingConverse")

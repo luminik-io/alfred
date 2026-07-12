@@ -514,6 +514,24 @@ export function OnboardingView({
   const reposSelected = (status?.repos.count ?? 0) > 0;
   const slackConfigured = Boolean(status?.install?.slack_configured);
 
+  const indexSelectedRepos = useCallback(
+    async (repos: string[]): Promise<boolean> => {
+      if (!repos.length || !canRun) return false;
+      const result = await onRunLocalAction({
+        action: "code_memory_index",
+        refreshAfter: true,
+      });
+      if (!result?.success) {
+        throw new Error(
+          result?.message ||
+            "Repositories were saved, but Alfred could not build their code graph.",
+        );
+      }
+      return true;
+    },
+    [canRun, onRunLocalAction],
+  );
+
   // Execute one onboarding action REQUESTED by the conversational guide. The
   // executor lives in useOnboardingActions so both paths share one source of
   // truth; every branch runs the SAME handler the stepped flow already uses.
@@ -526,6 +544,7 @@ export function OnboardingView({
     refreshStatus,
     startGithubAuthLogin,
     onRunLocalAction,
+    onReposSaved: indexSelectedRepos,
     onSaveCustomNames,
     onBatteriesDecision: useCallback(() => setBatteriesTouched(true), []),
     onSlackDecision: useCallback(() => setSlackTouched(true), []),
@@ -882,8 +901,10 @@ export function OnboardingView({
                 canMutate={canMutate}
                 githubConnected={githubConnected}
                 selectedCount={status?.repos.count ?? 0}
-                onSaved={async () => {
+                onSaved={async (repos) => {
+                  const indexed = await indexSelectedRepos(repos);
                   await refreshStatus();
+                  return indexed;
                 }}
                 setNotice={setNotice}
               />
