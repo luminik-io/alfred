@@ -16,7 +16,7 @@ MAX_BODY_LINES = 180
 
 _HOME_PATH = re.compile(
     r"(?:/(?:" + "Users" + r"|home)/|[A-Za-z]:[/\\]" + "Users" + r"[/\\])"
-    r"(?P<account>[^/\\\s]+)[/\\]",
+    r"(?P<account>[^/\\\s),.;:]+)(?=[/\\\s),.;:]|$)",
     re.IGNORECASE,
 )
 _GENERIC_ACCOUNTS = frozenset({"example", "runner", "shared", "user", "username"})

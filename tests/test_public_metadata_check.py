@@ -22,6 +22,18 @@ def test_operator_home_path_is_rejected() -> None:
     assert CHECK.metadata_findings("fix: setup", f"Failure at {path}") == ["local filesystem path"]
 
 
+def test_bare_private_home_paths_are_rejected() -> None:
+    paths = [
+        "/home/alice",
+        "/" + "Users" + "/bob",
+        "C:/" + "Users" + "/carol",
+    ]
+    for path in paths:
+        assert CHECK.metadata_findings("fix: setup", f"Failure at {path}") == [
+            "local filesystem path"
+        ]
+
+
 def test_forward_slash_windows_home_path_is_rejected() -> None:
     path = "C:/" + "Users" + "/alice/work/private-repo/test.py"
     assert CHECK.metadata_findings("fix: setup", f"Failure at {path}") == ["local filesystem path"]
@@ -32,6 +44,7 @@ def test_generic_home_examples_are_allowed() -> None:
         "/home/user/.local/bin",
         "/home/runner/work/project",
         "/" + "Users" + "/Shared/tool",
+        "/home/user",
     ]
     assert CHECK.metadata_findings("docs: examples", "\n".join(examples)) == []
 
