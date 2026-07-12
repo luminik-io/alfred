@@ -79,15 +79,17 @@ _BROAD_EXCEPTION_NAMES = {"Exception", "BaseException"}
 def _names_broad_exception(expr: ast.expr) -> bool:
     """True when ``expr`` names a catch-everything exception type.
 
-    Matches the plain ``Exception`` / ``BaseException`` names and their
-    qualified spellings (``builtins.Exception``): an attribute whose final
-    segment is one of the broad names is treated as broad, since any module
-    attribute called ``Exception`` is in practice a re-export of the builtin.
+    Matches the plain ``Exception`` / ``BaseException`` names, their qualified
+    spellings (``builtins.Exception``; any module attribute called
+    ``Exception`` is in practice a re-export of the builtin), and union
+    expressions naming either (``except Exception | ValueError:``).
     """
     if isinstance(expr, ast.Name):
         return expr.id in _BROAD_EXCEPTION_NAMES
     if isinstance(expr, ast.Attribute):
         return expr.attr in _BROAD_EXCEPTION_NAMES
+    if isinstance(expr, ast.BinOp):
+        return _names_broad_exception(expr.left) or _names_broad_exception(expr.right)
     return False
 
 
