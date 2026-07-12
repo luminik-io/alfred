@@ -25,18 +25,47 @@ def _load_senior_dev(monkeypatch, tmp_path: Path):
 
 def test_already_implemented_can_close_when_base_contains_the_work(monkeypatch, tmp_path) -> None:
     senior_dev = _load_senior_dev(monkeypatch, tmp_path)
-    assert senior_dev._can_close_as_already_implemented(
-        "[ALREADY-IMPLEMENTED] src/example.py:12", 0
+    assert (
+        senior_dev._already_implemented_disposition(
+            "[ALREADY-IMPLEMENTED] src/example.py:12", [], "acme/repo#42"
+        )
+        == "shipped-on-base"
     )
 
 
-def test_recovery_commit_cannot_be_reported_as_already_shipped(monkeypatch, tmp_path) -> None:
+def test_matching_recovery_commit_continues_to_pr_path(monkeypatch, tmp_path) -> None:
     senior_dev = _load_senior_dev(monkeypatch, tmp_path)
-    assert not senior_dev._can_close_as_already_implemented(
-        "[ALREADY-IMPLEMENTED] src/example.py:12", 1
+    disposition = senior_dev._already_implemented_disposition(
+        "[ALREADY-IMPLEMENTED] src/example.py:12",
+        ["fix: setup\n\nIssue: acme/repo#42"],
+        "acme/repo#42",
     )
+    assert disposition == "recover-current-issue"
+
+
+def test_unrelated_recovery_commit_is_quarantined(monkeypatch, tmp_path) -> None:
+    senior_dev = _load_senior_dev(monkeypatch, tmp_path)
+    disposition = senior_dev._already_implemented_disposition(
+        "[ALREADY-IMPLEMENTED] src/example.py:12",
+        ["fix: other issue\n\nIssue: acme/repo#41"],
+        "acme/repo#42",
+    )
+    assert disposition == "stale-ahead-work"
+
+
+def test_mixed_recovery_commits_are_quarantined(monkeypatch, tmp_path) -> None:
+    senior_dev = _load_senior_dev(monkeypatch, tmp_path)
+    disposition = senior_dev._already_implemented_disposition(
+        "[ALREADY-IMPLEMENTED] src/example.py:12",
+        ["Issue: acme/repo#42", "Issue: acme/repo#41"],
+        "acme/repo#42",
+    )
+    assert disposition == "stale-ahead-work"
 
 
 def test_unmarked_zero_commit_result_is_not_already_implemented(monkeypatch, tmp_path) -> None:
     senior_dev = _load_senior_dev(monkeypatch, tmp_path)
-    assert not senior_dev._can_close_as_already_implemented("[OK] no changes", 0)
+    assert (
+        senior_dev._already_implemented_disposition("[OK] no changes", [], "acme/repo#42")
+        == "not-marked"
+    )

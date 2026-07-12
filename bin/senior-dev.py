@@ -1198,9 +1198,18 @@ If you hit an error you cannot resolve:
 """
 
 
-def _can_close_as_already_implemented(result_text: str, commit_count: int) -> bool:
-    """True only when the marker describes code already present on the base ref."""
-    return "[ALREADY-IMPLEMENTED]" in result_text and commit_count == 0
+def _already_implemented_disposition(
+    result_text: str, commit_messages: list[str], issue_ref: str
+) -> str:
+    """Classify an already-implemented result against unpublished commit evidence."""
+    if "[ALREADY-IMPLEMENTED]" not in result_text:
+        return "not-marked"
+    if not commit_messages:
+        return "shipped-on-base"
+    expected = f"Issue: {issue_ref}"
+    if all(expected in message.splitlines() for message in commit_messages):
+        return "recover-current-issue"
+    return "stale-ahead-work"
 
 
 def release_wip_salvage(repo: str, issue_num: int, firing_id: str, pr_url: str | None) -> None:
@@ -1972,8 +1981,28 @@ def main() -> int:
             ["git", "rev-list", f"{base_ref}..HEAD"], cwd=str(wt), timeout=10
         ).stdout.strip()
         commit_count = len([lbl for lbl in new_commits.splitlines() if lbl.strip()])
+        commit_messages: list[str] = []
+        if "[ALREADY-IMPLEMENTED]" in result.result_text and commit_count:
+            messages_result = run(
+                ["git", "log", f"{base_ref}..HEAD", "--format=%B%x00"],
+                cwd=str(wt),
+                timeout=10,
+            )
+            if messages_result.returncode == 0:
+                commit_messages = [
+                    message.strip()
+                    for message in messages_result.stdout.split("\x00")
+                    if message.strip()
+                ]
+            if len(commit_messages) != commit_count:
+                commit_messages = [""] * commit_count
+        already_disposition = _already_implemented_disposition(
+            result.result_text,
+            commit_messages,
+            f"{GH_ORG}/{repo}#{issue_num}",
+        )
 
-        if _can_close_as_already_implemented(result.result_text, commit_count):
+        if already_disposition == "shipped-on-base":
             gh_issue_comment(
                 repo,
                 issue_num,
@@ -1997,7 +2026,7 @@ def main() -> int:
             slack_post(msg)
             return 0
 
-        if "[ALREADY-IMPLEMENTED]" in result.result_text:
+        if already_disposition == "recover-current-issue":
             # A reused worktree can contain a commit from an interrupted firing.
             # That is recoverable unpublished work, not proof the default branch
             # already ships the issue. Continue through push and PR creation.
@@ -2010,6 +2039,36 @@ def main() -> int:
                 f"[{AGENT.upper()}-RECOVERY] #{issue_num} has {commit_count} "
                 "unpublished commit(s); ignoring already-implemented marker"
             )
+
+        if already_disposition == "stale-ahead-work":
+            recovery_ref = create_recovery_ref(wt, branch=branch)
+            events.emit(
+                "already_implemented_stale_work_quarantined",
+                commit_count=commit_count,
+                recovery_ref=recovery_ref or "",
+            )
+            gh_issue_comment(
+                repo,
+                issue_num,
+                f"{AGENT.title()} found unpublished commits that do not belong to this issue. "
+                "The work was quarantined and the issue was released for a fresh retry.",
+            )
+            release_issue(
+                repo,
+                issue_num,
+                codename=AGENT,
+                firing_id=events.firing_id,
+                outcome="stale-recovery-work",
+            )
+            remove_worktree(local_repo_dir(repo), wt)
+            spend.increment(failures_today=1, consecutive_failures=1)
+            msg = (
+                f"[{AGENT.upper()}-STALE-RECOVERY] #{issue_num} quarantined "
+                f"{commit_count} unrelated unpublished commit(s)"
+            )
+            print(msg)
+            slack_post(msg, severity="warn")
+            return 0
 
         if commit_count == 0:
             # Salvage: check for unstaged changes and push as draft WIP PR
