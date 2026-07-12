@@ -73,24 +73,38 @@ def test_subprocess_run_calls_in_lib_and_bin_have_timeouts() -> None:
     assert offenders == []
 
 
+_BROAD_EXCEPTION_NAMES = {"Exception", "BaseException"}
+
+
+def _names_broad_exception(expr: ast.expr) -> bool:
+    """True when ``expr`` names a catch-everything exception type.
+
+    Matches the plain ``Exception`` / ``BaseException`` names and their
+    qualified spellings (``builtins.Exception``): an attribute whose final
+    segment is one of the broad names is treated as broad, since any module
+    attribute called ``Exception`` is in practice a re-export of the builtin.
+    """
+    if isinstance(expr, ast.Name):
+        return expr.id in _BROAD_EXCEPTION_NAMES
+    if isinstance(expr, ast.Attribute):
+        return expr.attr in _BROAD_EXCEPTION_NAMES
+    return False
+
+
 def _is_broad_handler(node: ast.ExceptHandler) -> bool:
     """True for handler types that catch everything.
 
     Covers the spelled-out forms too, so they cannot slip past the guard:
-    bare ``except:``, ``except Exception:``, ``except BaseException:``, and any
-    tuple form naming either (``except (Exception,):``).
+    bare ``except:``, ``except Exception:``, ``except BaseException:``,
+    qualified forms (``except builtins.Exception:``), and any tuple form
+    naming one of those (``except (Exception,):``).
     """
     handler_type = node.type
     if handler_type is None:
         return True
-    if isinstance(handler_type, ast.Name):
-        return handler_type.id in {"Exception", "BaseException"}
     if isinstance(handler_type, ast.Tuple):
-        return any(
-            isinstance(element, ast.Name) and element.id in {"Exception", "BaseException"}
-            for element in handler_type.elts
-        )
-    return False
+        return any(_names_broad_exception(element) for element in handler_type.elts)
+    return _names_broad_exception(handler_type)
 
 
 def test_no_silent_broad_except_pass_in_lib() -> None:
