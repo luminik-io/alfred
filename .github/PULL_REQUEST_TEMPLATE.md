@@ -26,6 +26,7 @@
 - [ ] `bash bin/doctor.sh`: passes locally
 - [ ] `ruff check .`: no new violations
 - [ ] `bash bin/scrub-check.sh`: clean
+- [ ] PR title and description contain no local paths, private repo names, or raw command output
 - [ ] (If shell change) `shellcheck <file>`: clean
 
 ## Screenshots / output
