@@ -2370,7 +2370,7 @@ def test_seed_prompt_templates_copies_shared_compose_prompt(init_mod, tmp_path):
     assert prompt.read_text() == "custom compose prompt\n"
 
 
-def test_write_fleet_enable_state_uses_canonical_role_ids(init_mod, tmp_path):
+def test_write_fleet_enable_state_uses_configured_runtime_ids(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
         env_file=tmp_path / ".env",
@@ -2385,13 +2385,11 @@ def test_write_fleet_enable_state_uses_canonical_role_ids(init_mod, tmp_path):
     gate_path.parent.mkdir(parents=True)
     gate_path.write_text("release-captain\n")
     written = init_mod.write_fleet_enable_state(state)
-    assert written == ["architect", "spec-planner"]
+    assert written == ["batman", "damian"]
     gate = gate_path.read_text()
-    assert "architect" in gate
-    assert "spec-planner" in gate
+    assert "batman" in gate
+    assert "damian" in gate
     assert "release-captain" in gate
-    assert "batman" not in gate.lower()
-    assert "damian" not in gate.lower()
 
 
 # ---------------------------------------------------------------------------
