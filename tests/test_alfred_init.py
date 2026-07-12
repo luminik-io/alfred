@@ -2230,9 +2230,7 @@ def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
     (alfred_home / "state" / "codex" / "fox").mkdir(parents=True)
     (alfred_home / "state" / "codex" / "fox" / "run.jsonl").write_text("{}\n")
     (alfred_home / "state" / "memory-outbox").mkdir()
-    (alfred_home / "state" / "memory-outbox" / "fox.jsonl").write_text(
-        '{"lesson":"old"}\n'
-    )
+    (alfred_home / "state" / "memory-outbox" / "fox.jsonl").write_text('{"lesson":"old"}\n')
     (alfred_home / "state" / "roster-theme").mkdir()
     (alfred_home / "state" / "roster-theme" / "roster-theme.json").write_text(
         json.dumps(
@@ -2314,11 +2312,7 @@ def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
     transcript = (alfred_home / "state" / "transcripts" / "senior-dev" / "run.jsonl").read_text()
     assert '{"source":"canonical"}\n' in transcript
     preserved_transcript = (
-        alfred_home
-        / "state"
-        / "transcripts"
-        / "senior-dev"
-        / "run.pre-stable-identity.jsonl"
+        alfred_home / "state" / "transcripts" / "senior-dev" / "run.pre-stable-identity.jsonl"
     )
     assert preserved_transcript.read_text() == '{"source":"old"}\n'
     assert not (alfred_home / "state" / "transcripts" / "fox").exists()
@@ -2327,9 +2321,7 @@ def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
     assert (alfred_home / "state" / "memory-outbox" / "senior-dev.jsonl").read_text() == (
         '{"lesson":"old"}\n'
     )
-    roster = json.loads(
-        (alfred_home / "state" / "roster-theme" / "roster-theme.json").read_text()
-    )
+    roster = json.loads((alfred_home / "state" / "roster-theme" / "roster-theme.json").read_text())
     assert roster["custom_names"] == {"senior-dev": "Canonical"}
     assert roster["custom_roles"] == {"senior-dev": "Builder"}
     enabled = (alfred_home / "state" / "fleet" / "enabled.txt").read_text()

@@ -195,6 +195,7 @@ _CODENAME_ROLE: dict[str, str] = {
     str(agent["codename"]): str(agent["role"]) for agent in _MANIFEST_AGENTS
 }
 
+
 def role_for_codename(codename: str) -> str | None:
     """Canonical role-slug for a codename, or ``None`` when it cannot be placed.
 

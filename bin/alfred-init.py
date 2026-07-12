@@ -504,9 +504,7 @@ def _stream_backup_path(target: Path) -> Path:
     candidate = target.with_name(f"{target.stem}.pre-stable-identity{target.suffix}")
     index = 2
     while candidate.exists() or candidate.is_symlink():
-        candidate = target.with_name(
-            f"{target.stem}.pre-stable-identity-{index}{target.suffix}"
-        )
+        candidate = target.with_name(f"{target.stem}.pre-stable-identity-{index}{target.suffix}")
         index += 1
     return candidate
 
@@ -2413,7 +2411,9 @@ def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:
         existing_managed_env,
     )
     migrated_env = {
-        key: value for key, value in existing_managed_env.items() if key not in existing_managed_keys
+        key: value
+        for key, value in existing_managed_env.items()
+        if key not in existing_managed_keys
     }
     target = state.repo_root / "launchd" / "agents.conf"
     target.parent.mkdir(parents=True, exist_ok=True)
