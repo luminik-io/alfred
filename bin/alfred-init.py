@@ -682,9 +682,10 @@ def migrate_legacy_role_identities(
     state: WizardState,
     aliases: dict[str, str],
     managed_env: dict[str, str],
-) -> None:
+) -> frozenset[str]:
     """Re-key pre-stable built-in state, then remove obsolete alias artifacts."""
     state_root = state.alfred_home / "state"
+    migrated_env_keys: set[str] = set()
     for role, old_id in aliases.items():
         canonical_id = runtime_id_for_role(role)
         if old_id == canonical_id:
@@ -695,8 +696,11 @@ def migrate_legacy_role_identities(
         for suffix in ("REPOS", "AWS_PROFILE"):
             old_key = f"ALFRED_{old_slug}_{suffix}"
             canonical_key = f"ALFRED_{canonical_slug}_{suffix}"
-            if old_key in managed_env and canonical_key not in managed_env:
+            if old_key in managed_env:
+                # The alias identifies the active pre-cutover agent, so its
+                # scope wins over stale canonical residue from a partial repair.
                 managed_env[canonical_key] = managed_env[old_key]
+                migrated_env_keys.add(canonical_key)
 
         identity_parents = [
             state_root / "codenames",
@@ -725,6 +729,7 @@ def migrate_legacy_role_identities(
 
     _replace_enabled_aliases(state_root / "fleet" / "enabled.txt", aliases)
     _migrate_roster_theme(state_root / "roster-theme" / "roster-theme.json", aliases)
+    return frozenset(migrated_env_keys)
 
 
 # ---------------------------------------------------------------------------
@@ -2404,24 +2409,20 @@ def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:
         sys.exit(1)
 
     existing_managed_env = read_managed_env_file(state.env_file)
-    existing_managed_keys = frozenset(existing_managed_env)
-    migrate_legacy_role_identities(
+    migrated_keys = migrate_legacy_role_identities(
         state,
         legacy_role_aliases(state.env_file),
         existing_managed_env,
     )
-    migrated_env = {
-        key: value
-        for key, value in existing_managed_env.items()
-        if key not in existing_managed_keys
-    }
     target = state.repo_root / "launchd" / "agents.conf"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(conf)
     ok(f"wrote {target}")
-    env_kvs = env_assignments_for(state)
-    for key, value in migrated_env.items():
-        env_kvs.setdefault(key, value)
+    env_kvs = _merge_generated_env(
+        {key: existing_managed_env[key] for key in migrated_keys},
+        env_assignments_for(state),
+        migrated_keys,
+    )
     upsert_env_file(state.env_file, env_kvs)
     ok(f"updated {state.env_file} with {len(env_kvs)} keys")
     created_prompts = seed_prompt_templates(state)
@@ -2469,7 +2470,7 @@ def seed_runtime_roster(state: WizardState, *, agents_arg: str | None) -> int:
     ok(f"Enabled full runtime roster ({len(state.enabled_roles)} agents).")
     existing_managed_env = read_managed_env_file(state.env_file)
     legacy_aliases = legacy_role_aliases(state.env_file)
-    migrate_legacy_role_identities(state, legacy_aliases, existing_managed_env)
+    migrated_keys = migrate_legacy_role_identities(state, legacy_aliases, existing_managed_env)
     legacy_identity_keys = legacy_codename_managed_env_keys(state.env_file)
     existing_managed_env = {
         key: value for key, value in existing_managed_env.items() if key not in legacy_identity_keys
@@ -2500,8 +2501,11 @@ def seed_runtime_roster(state: WizardState, *, agents_arg: str | None) -> int:
     target.write_text(conf)
     ok(f"wrote {target}")
 
-    env_kvs = existing_managed_env
-    env_kvs.update(env_assignments_for(state))
+    env_kvs = _merge_generated_env(
+        existing_managed_env,
+        env_assignments_for(state),
+        migrated_keys,
+    )
     upsert_env_file(state.env_file, env_kvs)
     ok(f"updated {state.env_file} with {len(env_kvs)} fleet key(s)")
 
@@ -2516,6 +2520,20 @@ def seed_runtime_roster(state: WizardState, *, agents_arg: str | None) -> int:
     write_fleet_enable_state(state)
     ok("repo-scoped agents will stay idle until onboarding saves repositories")
     return 0
+
+
+def _merge_generated_env(
+    existing: dict[str, str],
+    generated: dict[str, str],
+    migrated_keys: frozenset[str],
+) -> dict[str, str]:
+    """Merge setup output without clearing a newly migrated non-empty scope."""
+    merged = dict(existing)
+    for key, value in generated.items():
+        if key in migrated_keys and not value.strip() and merged.get(key, "").strip():
+            continue
+        merged[key] = value
+    return merged
 
 
 def step_10_labels(state: WizardState, *, skip: bool = False) -> None:

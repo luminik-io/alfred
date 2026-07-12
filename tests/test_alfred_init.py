@@ -2199,6 +2199,8 @@ def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
                 "ALFRED_PLANNER_REPOS=api",
                 "AGENT_CODENAME_PLANNER=planner",
                 "AGENT_CODENAME_FEATURE_DEV=fox",
+                "ALFRED_SENIOR_DEV_REPOS=stale-api",
+                "ALFRED_SENIOR_DEV_AWS_PROFILE=stale-profile",
                 "ALFRED_FOX_REPOS=legacy-api",
                 "ALFRED_FOX_AWS_PROFILE=legacy-profile",
                 "",
@@ -2327,6 +2329,23 @@ def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
     enabled = (alfred_home / "state" / "fleet" / "enabled.txt").read_text()
     assert "\nsenior-dev\n" in enabled
     assert "\nfox\n" not in enabled
+
+
+def test_generated_env_cannot_clear_newly_migrated_scope(init_mod):
+    merged = init_mod._merge_generated_env(
+        {
+            "ALFRED_SENIOR_DEV_REPOS": "legacy-api",
+            "ALFRED_SENIOR_DEV_AWS_PROFILE": "legacy-profile",
+        },
+        {
+            "ALFRED_SENIOR_DEV_REPOS": "",
+            "ALFRED_SENIOR_DEV_AWS_PROFILE": "new-profile",
+        },
+        frozenset({"ALFRED_SENIOR_DEV_REPOS", "ALFRED_SENIOR_DEV_AWS_PROFILE"}),
+    )
+
+    assert merged["ALFRED_SENIOR_DEV_REPOS"] == "legacy-api"
+    assert merged["ALFRED_SENIOR_DEV_AWS_PROFILE"] == "new-profile"
 
 
 def test_starter_roles_and_agents_arg(init_mod):
