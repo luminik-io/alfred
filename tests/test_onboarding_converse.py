@@ -181,6 +181,22 @@ def test_set_batteries_is_in_the_scoped_allowlist() -> None:
     assert "set_batteries" in ob.ONBOARDING_ACTIONS
 
 
+def test_optional_decision_actions_are_scoped_and_argless() -> None:
+    for tool in ("skip_batteries", "open_slack_setup", "skip_slack"):
+        turn = ob.parse_turn(
+            _json(
+                {
+                    "reply": "Noted.",
+                    "action": {"tool": tool, "args": {"webhook_url": "secret"}},
+                }
+            )
+        )
+        assert turn is not None
+        assert turn.action is not None
+        assert turn.action.tool == tool
+        assert turn.action.args == {}
+
+
 def test_parse_turn_set_batteries_validates_and_bounds_ids() -> None:
     turn = ob.parse_turn(
         '{"reply": "Turning those on.", "action": {"tool": "set_batteries", '

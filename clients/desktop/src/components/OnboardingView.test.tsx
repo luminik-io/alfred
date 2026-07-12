@@ -1267,6 +1267,22 @@ describe("OnboardingView conversational setup actions", () => {
     await user.click(await screen.findByRole("button", { name: buttonName }));
   }
 
+  it("routes Slack chat setup to the existing native Slack step", async () => {
+    vi.spyOn(apiSetup, "onboardingConverse").mockResolvedValue({
+      reply: "Let's set up Slack locally.",
+      action: { tool: "open_slack_setup", args: {} },
+      done: false,
+    });
+    renderOnboarding();
+    const user = userEvent.setup();
+
+    await enterChatAndSend(user, "set up Slack");
+    await approveStep(user, /open slack setup/i);
+
+    expect(await screen.findByText(/want approvals and questions in slack/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/slack user id/i)).toBeInTheDocument();
+  });
+
   it("reports a successful GitHub device flow to the model (Codex P2 fresh status)", async () => {
     // GitHub starts disconnected; the device flow succeeds and the poll lands on a
     // connected status. The executor must report success from the FRESH verdict,

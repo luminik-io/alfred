@@ -54,6 +54,7 @@ type OnboardingActionDeps = {
   startGithubAuthLogin: () => Promise<boolean>;
   onRunLocalAction: (request: NativeActionRequest) => Promise<NativeCommandResult | null>;
   onSaveCustomNames: (next: CustomRosterNames) => Promise<void>;
+  onOpenSlackSetup: () => void;
   onFinishSetup: () => void;
 };
 
@@ -75,6 +76,7 @@ export function useOnboardingActions({
   startGithubAuthLogin,
   onRunLocalAction,
   onSaveCustomNames,
+  onOpenSlackSetup,
   onFinishSetup,
 }: OnboardingActionDeps): (action: OnboardingAction) => Promise<OnboardingActionResult> {
   return useCallback(
@@ -214,6 +216,15 @@ export function useOnboardingActions({
               note: `Turned on ${enabledNow.join(", ")}. Some may still need a package or a service; the Batteries step shows what.${tail}`,
             };
           }
+          case "skip_batteries":
+            return { ok: true, note: "Keeping the built-in batteries only." };
+          case "open_slack_setup":
+            // Slack credentials never enter this action or the transcript. Move
+            // to the existing token-gated local step, which owns Slack setup.
+            onOpenSlackSetup();
+            return { ok: true, note: "Opened the native Slack setup step." };
+          case "skip_slack":
+            return { ok: true, note: "Skipping Slack for now. You can add it later." };
           case "set_schedule": {
             // Persist the cadence through the SAME native primitive the Fleet view
             // uses (`alfred schedule set` / `pause`), never a fake acknowledgement.
@@ -309,6 +320,7 @@ export function useOnboardingActions({
       connected,
       githubConnected,
       onFinishSetup,
+      onOpenSlackSetup,
       onRunLocalAction,
       onSaveCustomNames,
       refreshStatus,

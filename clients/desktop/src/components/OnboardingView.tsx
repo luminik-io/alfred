@@ -525,6 +525,11 @@ export function OnboardingView({
     startGithubAuthLogin,
     onRunLocalAction,
     onSaveCustomNames,
+    onOpenSlackSetup: useCallback(() => {
+      setNotice(null);
+      setStepKey("slack");
+      setMode("stepped");
+    }, []),
     onFinishSetup: useCallback(() => setRequestDone(true), []),
   });
 
@@ -775,6 +780,7 @@ export function OnboardingView({
           <div className="alfred-onboarding-shell__panel motion-fade">
             <OnboardingConversePanel
               baseUrl={baseUrl}
+              slackConfigured={Boolean(status?.install?.slack_configured)}
               onRunAction={runOnboardingAction}
               onDone={() => {
                 setRequestDone(true);
