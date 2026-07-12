@@ -16,7 +16,7 @@ MAX_BODY_LINES = 180
 
 _HOME_PATH = re.compile(
     r"(?:/(?:" + "Users" + r"|home)/|[A-Za-z]:[/\\]" + "Users" + r"[/\\])"
-    r"(?P<account>[^/\\\s),.;:]+)(?=[/\\\s),.;:]|$)",
+    r"(?P<account>[^/\\\s),;:]+)(?=[/\\\s),;:]|$)",
     re.IGNORECASE,
 )
 _GENERIC_ACCOUNTS = frozenset({"example", "runner", "shared", "user", "username"})
@@ -37,7 +37,7 @@ _RAW_OUTPUT = (
 
 def _contains_private_home_path(text: str) -> bool:
     for match in _HOME_PATH.finditer(text):
-        account = match.group("account").strip("<>").lower()
+        account = match.group("account").rstrip(".").strip("<>").lower()
         if account not in _GENERIC_ACCOUNTS:
             return True
     return False

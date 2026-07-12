@@ -34,6 +34,17 @@ def test_bare_private_home_paths_are_rejected() -> None:
         ]
 
 
+def test_dotted_private_accounts_are_rejected() -> None:
+    paths = [
+        "/home/user.name/private-repo",
+        "C:/" + "Users" + "/user.name/log.txt",
+    ]
+    for path in paths:
+        assert CHECK.metadata_findings("fix: setup", f"Failure at {path}") == [
+            "local filesystem path"
+        ]
+
+
 def test_forward_slash_windows_home_path_is_rejected() -> None:
     path = "C:/" + "Users" + "/alice/work/private-repo/test.py"
     assert CHECK.metadata_findings("fix: setup", f"Failure at {path}") == ["local filesystem path"]
@@ -45,6 +56,7 @@ def test_generic_home_examples_are_allowed() -> None:
         "/home/runner/work/project",
         "/" + "Users" + "/Shared/tool",
         "/home/user",
+        "Install under /home/user.",
     ]
     assert CHECK.metadata_findings("docs: examples", "\n".join(examples)) == []
 
