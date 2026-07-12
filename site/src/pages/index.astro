@@ -31,6 +31,11 @@ import NativeClientShowcase from "../components/marketing/NativeClientShowcase.a
 import DownloadTracker from "../components/marketing/DownloadTracker.astro";
 import productProof from "../data/luminik-product-proof.json";
 
+// Assets under public/ must carry the configured base path
+// (ALFRED_OS_SITE_BASE) so a prefixed deploy still resolves them.
+const withBase = (path: string) =>
+  `${import.meta.env.BASE_URL}/${path.replace(/^\//, "")}`.replace(/\/{2,}/g, "/");
+
 type JobState = "live" | "warn" | "idle" | "info";
 
 const jobs: { title: string; body: string; log: string[]; state: JobState }[] = [
@@ -222,8 +227,8 @@ const heroRuntimeLines = [
         lede="About a minute, nothing staged: you ask a question and get an answer, describe a change and a plan shows up to approve, a request gets scoped in Slack, agents build and review it, and real pull requests land, all on your own machine."
       />
       <div class="tour-video">
-        <video controls playsinline preload="none" poster="/media/alfred-tour-poster.png">
-          <source src="/media/alfred-tour.mp4" type="video/mp4" />
+        <video controls playsinline preload="none" poster={withBase("media/alfred-tour-poster.png")}>
+          <source src={withBase("media/alfred-tour.mp4")} type="video/mp4" />
         </video>
       </div>
     </div>
