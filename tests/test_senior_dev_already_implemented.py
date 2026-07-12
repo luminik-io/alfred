@@ -7,7 +7,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _load_senior_dev():
+def _load_senior_dev(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred-home"))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_REPOS", "")
     bin_dir = str(ROOT / "bin")
     if bin_dir not in sys.path:
         sys.path.insert(0, bin_dir)
@@ -20,23 +23,20 @@ def _load_senior_dev():
     return module
 
 
-def test_already_implemented_can_close_when_base_contains_the_work(monkeypatch) -> None:
-    monkeypatch.setenv("ALFRED_SENIOR_DEV_REPOS", "")
-    senior_dev = _load_senior_dev()
+def test_already_implemented_can_close_when_base_contains_the_work(monkeypatch, tmp_path) -> None:
+    senior_dev = _load_senior_dev(monkeypatch, tmp_path)
     assert senior_dev._can_close_as_already_implemented(
         "[ALREADY-IMPLEMENTED] src/example.py:12", 0
     )
 
 
-def test_recovery_commit_cannot_be_reported_as_already_shipped(monkeypatch) -> None:
-    monkeypatch.setenv("ALFRED_SENIOR_DEV_REPOS", "")
-    senior_dev = _load_senior_dev()
+def test_recovery_commit_cannot_be_reported_as_already_shipped(monkeypatch, tmp_path) -> None:
+    senior_dev = _load_senior_dev(monkeypatch, tmp_path)
     assert not senior_dev._can_close_as_already_implemented(
         "[ALREADY-IMPLEMENTED] src/example.py:12", 1
     )
 
 
-def test_unmarked_zero_commit_result_is_not_already_implemented(monkeypatch) -> None:
-    monkeypatch.setenv("ALFRED_SENIOR_DEV_REPOS", "")
-    senior_dev = _load_senior_dev()
+def test_unmarked_zero_commit_result_is_not_already_implemented(monkeypatch, tmp_path) -> None:
+    senior_dev = _load_senior_dev(monkeypatch, tmp_path)
     assert not senior_dev._can_close_as_already_implemented("[OK] no changes", 0)
