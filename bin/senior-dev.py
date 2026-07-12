@@ -77,6 +77,7 @@ from agent_runner import (
     with_lock,
     worktree_risk_reason,
 )
+from agent_runner.recovery_identity import already_implemented_disposition
 from alfred_config import get_bool, get_int
 from dependencies import issue_dependencies
 from verification_evidence import (
@@ -1967,8 +1968,9 @@ def main() -> int:
             ["git", "rev-list", f"{base_ref}..HEAD"], cwd=str(wt), timeout=10
         ).stdout.strip()
         commit_count = len([lbl for lbl in new_commits.splitlines() if lbl.strip()])
+        already_disposition = already_implemented_disposition(result.result_text, commit_count)
 
-        if "[ALREADY-IMPLEMENTED]" in result.result_text:
+        if already_disposition == "shipped-on-base":
             gh_issue_comment(
                 repo,
                 issue_num,
@@ -1990,6 +1992,36 @@ def main() -> int:
             msg = f"✅ {AGENT.title()} #{issue_num} already implemented - closed without PR. turns={result.num_turns}"
             print(msg)
             slack_post(msg)
+            return 0
+
+        if already_disposition == "quarantine-ahead-work":
+            recovery_ref = create_recovery_ref(wt, branch=branch)
+            events.emit(
+                "already_implemented_stale_work_quarantined",
+                commit_count=commit_count,
+                recovery_ref=recovery_ref or "",
+            )
+            gh_issue_comment(
+                repo,
+                issue_num,
+                f"{AGENT.title()} found unpublished commits that do not belong to this issue. "
+                "The work was quarantined and the issue was released for a fresh retry.",
+            )
+            release_issue(
+                repo,
+                issue_num,
+                codename=AGENT,
+                firing_id=events.firing_id,
+                outcome="quarantined-ahead-work",
+            )
+            remove_worktree(local_repo_dir(repo), wt)
+            spend.increment(failures_today=1, consecutive_failures=1)
+            msg = (
+                f"[{AGENT.upper()}-STALE-RECOVERY] #{issue_num} quarantined "
+                f"{commit_count} unrelated unpublished commit(s)"
+            )
+            print(msg)
+            slack_post(msg, severity="warn")
             return 0
 
         if commit_count == 0:
