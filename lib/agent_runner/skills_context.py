@@ -30,12 +30,15 @@ prompt assembly by :mod:`agent_runner.process`, gated by ``ALFRED_SKILLS_INJECT`
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from envflags import FALSY_VALUES
+
+_LOG = logging.getLogger(__name__)
 
 __all__ = [
     "MAX_SKILL_FILE_SIZE",
@@ -241,7 +244,7 @@ def _default_skill_dirs() -> list[Path]:
         dirs.append(skill_packs.default_skills_dir())
         dirs.append(skill_packs.skills_root() / "first_party")
     except Exception:
-        pass
+        _LOG.debug("skill_packs unavailable; no first-party skill dirs", exc_info=True)
     return dirs
 
 

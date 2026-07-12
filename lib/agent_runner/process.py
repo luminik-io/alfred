@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import secrets
 import shutil
@@ -94,6 +95,8 @@ from .transcripts import (
     codex_artifact_paths,
     transcript_path,
 )
+
+_LOG = logging.getLogger(__name__)
 
 # Claude Code's ``-p`` (non-interactive) mode applies a hidden 40-turn
 # default when ``--max-turns`` is omitted. That default is far too tight
@@ -1320,7 +1323,7 @@ def codex_invoke(
                     reason=tail[-200:] or "codex usage limit reached",
                 )
             except Exception:
-                pass
+                _LOG.debug("failed to persist codex quota-exhausted state", exc_info=True)
             return ClaudeResult(
                 success=False,
                 subtype="error_quota_exhausted",

@@ -32,6 +32,8 @@ original in-process-only behaviour, byte-identical to before.
 from __future__ import annotations
 
 import contextlib
+import hashlib
+import logging
 import math
 import os
 from collections import OrderedDict
@@ -41,6 +43,8 @@ from datetime import UTC, datetime
 from typing import Any, Protocol, runtime_checkable
 
 from envflags import truthy
+
+_LOG = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------
 # Config knobs (env-driven, conservative defaults)
@@ -389,7 +393,14 @@ def reuse_count(lesson: Any, *, codename: str | None = None, repo: str | None = 
         try:
             return int(store.get_reuse_count(key))
         except Exception:
-            pass
+            # Log a fingerprint, not the key itself: a body-backed key carries
+            # the full normalized lesson text, which must not land in logs.
+            digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
+            _LOG.debug(
+                "reuse-count store read failed for key sha256:%s; using in-memory cache",
+                digest,
+                exc_info=True,
+            )
     return _REUSE_COUNTS.get(key, 0)
 
 
