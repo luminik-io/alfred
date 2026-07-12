@@ -585,7 +585,9 @@ def _merge_legacy_file(source: Path, target: Path) -> None:
             if source.name.startswith("spend-"):
                 merged = _merge_spend_payloads(current_payload, old_payload)
             else:
-                merged = {**current_payload, **old_payload}
+                # The canonical file is the active identity and therefore the
+                # newer authority when both objects define the same field.
+                merged = {**old_payload, **current_payload}
             _write_json_atomic(target, merged)
             source.unlink()
             return

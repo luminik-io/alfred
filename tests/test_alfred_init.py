@@ -2219,9 +2219,15 @@ def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
     (alfred_home / "state" / "engines" / "fox").write_text("codex\n")
     (alfred_home / "state" / "fox").mkdir()
     (alfred_home / "state" / "fox" / "spend-2026-07-12.json").write_text('{"firings_today": 3}\n')
+    (alfred_home / "state" / "fox" / "checkpoint.json").write_text(
+        '{"cursor":"old","old_only":1}\n'
+    )
     (alfred_home / "state" / "senior-dev").mkdir()
     (alfred_home / "state" / "senior-dev" / "spend-2026-07-12.json").write_text(
         '{"firings_today": 2}\n'
+    )
+    (alfred_home / "state" / "senior-dev" / "checkpoint.json").write_text(
+        '{"cursor":"new","new_only":2}\n'
     )
     (alfred_home / "state" / "transcripts" / "fox").mkdir(parents=True)
     (alfred_home / "state" / "transcripts" / "fox" / "run.jsonl").write_text('{"source":"old"}\n')
@@ -2310,6 +2316,8 @@ def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
     assert not (alfred_home / "state" / "engines" / "fox").exists()
     spend = json.loads((alfred_home / "state" / "senior-dev" / "spend-2026-07-12.json").read_text())
     assert spend["firings_today"] == 5
+    checkpoint = json.loads((alfred_home / "state" / "senior-dev" / "checkpoint.json").read_text())
+    assert checkpoint == {"cursor": "new", "new_only": 2, "old_only": 1}
     assert not (alfred_home / "state" / "fox").exists()
     transcript = (alfred_home / "state" / "transcripts" / "senior-dev" / "run.jsonl").read_text()
     assert '{"source":"canonical"}\n' in transcript
