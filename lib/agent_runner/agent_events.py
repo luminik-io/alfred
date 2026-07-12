@@ -81,7 +81,6 @@ class EventType(enum.StrEnum):
     PR_OPENED = "pr_opened"
     WORKTREE_CREATED = "worktree_created"
     REPO_ALREADY_IMPLEMENTED = "repo_already_implemented"
-    ALREADY_IMPLEMENTED_MARKER_IGNORED = "already_implemented_marker_ignored"
     ALREADY_IMPLEMENTED_STALE_WORK_QUARANTINED = "already_implemented_stale_work_quarantined"
     REPO_KILLED = "repo_killed"
     REPO_SMOKE = "repo_smoke"

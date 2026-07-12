@@ -77,6 +77,7 @@ from agent_runner import (
     with_lock,
     worktree_risk_reason,
 )
+from agent_runner.recovery_identity import already_implemented_disposition
 from alfred_config import get_bool, get_int
 from dependencies import issue_dependencies
 from verification_evidence import (
@@ -1198,20 +1199,6 @@ If you hit an error you cannot resolve:
 """
 
 
-def _already_implemented_disposition(
-    result_text: str, commit_messages: list[str], issue_ref: str
-) -> str:
-    """Classify an already-implemented result against unpublished commit evidence."""
-    if "[ALREADY-IMPLEMENTED]" not in result_text:
-        return "not-marked"
-    if not commit_messages:
-        return "shipped-on-base"
-    expected = f"Issue: {issue_ref}"
-    if all(expected in message.splitlines() for message in commit_messages):
-        return "recover-current-issue"
-    return "stale-ahead-work"
-
-
 def release_wip_salvage(repo: str, issue_num: int, firing_id: str, pr_url: str | None) -> None:
     if pr_url:
         release_issue(
@@ -1981,26 +1968,7 @@ def main() -> int:
             ["git", "rev-list", f"{base_ref}..HEAD"], cwd=str(wt), timeout=10
         ).stdout.strip()
         commit_count = len([lbl for lbl in new_commits.splitlines() if lbl.strip()])
-        commit_messages: list[str] = []
-        if "[ALREADY-IMPLEMENTED]" in result.result_text and commit_count:
-            messages_result = run(
-                ["git", "log", f"{base_ref}..HEAD", "--format=%B%x00"],
-                cwd=str(wt),
-                timeout=10,
-            )
-            if messages_result.returncode == 0:
-                commit_messages = [
-                    message.strip()
-                    for message in messages_result.stdout.split("\x00")
-                    if message.strip()
-                ]
-            if len(commit_messages) != commit_count:
-                commit_messages = [""] * commit_count
-        already_disposition = _already_implemented_disposition(
-            result.result_text,
-            commit_messages,
-            f"{GH_ORG}/{repo}#{issue_num}",
-        )
+        already_disposition = already_implemented_disposition(result.result_text, commit_count)
 
         if already_disposition == "shipped-on-base":
             gh_issue_comment(
@@ -2026,21 +1994,7 @@ def main() -> int:
             slack_post(msg)
             return 0
 
-        if already_disposition == "recover-current-issue":
-            # A reused worktree can contain a commit from an interrupted firing.
-            # That is recoverable unpublished work, not proof the default branch
-            # already ships the issue. Continue through push and PR creation.
-            events.emit(
-                "already_implemented_marker_ignored",
-                reason="worktree-ahead-of-base",
-                commit_count=commit_count,
-            )
-            print(
-                f"[{AGENT.upper()}-RECOVERY] #{issue_num} has {commit_count} "
-                "unpublished commit(s); ignoring already-implemented marker"
-            )
-
-        if already_disposition == "stale-ahead-work":
+        if already_disposition == "quarantine-ahead-work":
             recovery_ref = create_recovery_ref(wt, branch=branch)
             events.emit(
                 "already_implemented_stale_work_quarantined",
@@ -2058,7 +2012,7 @@ def main() -> int:
                 issue_num,
                 codename=AGENT,
                 firing_id=events.firing_id,
-                outcome="stale-recovery-work",
+                outcome="quarantined-ahead-work",
             )
             remove_worktree(local_repo_dir(repo), wt)
             spend.increment(failures_today=1, consecutive_failures=1)
