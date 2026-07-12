@@ -101,3 +101,27 @@ def test_oversized_description_is_rejected() -> None:
 def test_existing_private_identifier_scrub_applies_to_pr_metadata() -> None:
     private_repo = "luminik-" + "orchestrator"
     assert CHECK._existing_scrub_rejects("fix: setup", f"Validated in {private_repo}") is True
+
+
+def test_clean_commit_messages_are_allowed() -> None:
+    commits = "fix: tighten metadata detection\n\nfix: catch pytest failure summaries\n"
+    assert CHECK.commit_findings(commits) == []
+
+
+def test_commit_message_with_local_path_is_rejected() -> None:
+    path = "/" + "Users" + "/developer/work/private-repo/test.py"
+    assert CHECK.commit_findings(f"fix: setup\n\nReproduced at {path}\n") == [
+        "local filesystem path in a commit message"
+    ]
+
+
+def test_commit_message_with_raw_output_is_rejected() -> None:
+    commits = "fix: setup\n\nFAILED tests/test_api.py::test_case - AssertionError\n"
+    assert CHECK.commit_findings(commits) == [
+        "raw command, test, compiler, or stack output in a commit message"
+    ]
+
+
+def test_commit_scrub_catches_private_identifier() -> None:
+    private_repo = "luminik-" + "orchestrator"
+    assert CHECK._scrub_rejects_text(f"fix: validated in {private_repo}\n") is True

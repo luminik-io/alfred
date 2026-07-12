@@ -27,6 +27,7 @@
 - [ ] `ruff check .`: no new violations
 - [ ] `bash bin/scrub-check.sh`: clean
 - [ ] PR title and description contain no local paths, private repo names, or raw command output
+      <!-- A squash merge copies this title and body into the permanent commit message, so the Public PR metadata check scans them (and every commit message) to keep private text out of history. -->
 - [ ] (If shell change) `shellcheck <file>`: clean
 
 ## Screenshots / output
