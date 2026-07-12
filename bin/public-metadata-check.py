@@ -15,11 +15,19 @@ MAX_BODY_CHARS = 12_000
 MAX_BODY_LINES = 180
 
 _HOME_PATH = re.compile(
-    r"(?:/(?:" + "Users" + r"|home)/[^/\s]+/|[A-Za-z]:\\" + "Users" + r"\\[^\\\s]+\\)"
+    r"(?:/(?:" + "Users" + r"|home)/|[A-Za-z]:[/\\]" + "Users" + r"[/\\])"
+    r"(?P<account>[^/\\\s]+)[/\\]",
+    re.IGNORECASE,
+)
+_GENERIC_ACCOUNTS = frozenset({"example", "runner", "shared", "user", "username"})
+_LOCAL_WORKSPACE_PATH = re.compile(
+    r"(?:/(?:tmp|workspace)(?:/|\b)|/private/tmp/|/var/folders/|"
+    r"[A-Za-z]:[/\\](?:temp|tmp)[/\\])",
+    re.IGNORECASE,
 )
 _RAW_OUTPUT = (
     re.compile(r"\.{20,}\s*\[\s*\d{1,3}%\]"),
-    re.compile(r"(?m)^\s*(?:FAIL|ERROR)\s+\S"),
+    re.compile(r"(?m)^\s*(?:FAIL|ERROR)(?::\s*|\s+(?:tests?/|src/|\S+::))"),
     re.compile(r"(?m)^\s*[^\n:]+:\d+:\d+:\s+error\s+TS\d+"),
     re.compile(r"(?m)^\s*test result:\s+(?:ok|FAILED)\."),
     re.compile(r"(?m)^\s*running\s+\d+\s+tests?\s*$"),
@@ -27,12 +35,20 @@ _RAW_OUTPUT = (
 )
 
 
+def _contains_private_home_path(text: str) -> bool:
+    for match in _HOME_PATH.finditer(text):
+        account = match.group("account").strip("<>").lower()
+        if account not in _GENERIC_ACCOUNTS:
+            return True
+    return False
+
+
 def metadata_findings(title: str, body: str) -> list[str]:
     """Return public-safe finding labels without repeating matched content."""
     text = f"{title}\n{body}"
     findings: list[str] = []
-    if _HOME_PATH.search(text):
-        findings.append("local home-directory path")
+    if _contains_private_home_path(text) or _LOCAL_WORKSPACE_PATH.search(text):
+        findings.append("local filesystem path")
     if len(body) > MAX_BODY_CHARS or len(body.splitlines()) > MAX_BODY_LINES:
         findings.append("oversized PR description")
     if any(pattern.search(text) for pattern in _RAW_OUTPUT):

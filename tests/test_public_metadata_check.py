@@ -19,9 +19,28 @@ def test_concise_summary_is_clean() -> None:
 
 def test_operator_home_path_is_rejected() -> None:
     path = "/" + "Users" + "/developer/work/private-repo/test.py"
-    assert CHECK.metadata_findings("fix: setup", f"Failure at {path}") == [
-        "local home-directory path"
+    assert CHECK.metadata_findings("fix: setup", f"Failure at {path}") == ["local filesystem path"]
+
+
+def test_forward_slash_windows_home_path_is_rejected() -> None:
+    path = "C:/" + "Users" + "/alice/work/private-repo/test.py"
+    assert CHECK.metadata_findings("fix: setup", f"Failure at {path}") == ["local filesystem path"]
+
+
+def test_generic_home_examples_are_allowed() -> None:
+    examples = [
+        "/home/user/.local/bin",
+        "/home/runner/work/project",
+        "/" + "Users" + "/Shared/tool",
     ]
+    assert CHECK.metadata_findings("docs: examples", "\n".join(examples)) == []
+
+
+def test_workspace_and_temporary_paths_are_rejected() -> None:
+    for path in ("/workspace/alfred/test.py", "/tmp/run.log"):
+        assert CHECK.metadata_findings("fix: setup", f"Failure at {path}") == [
+            "local filesystem path"
+        ]
 
 
 def test_raw_test_progress_is_rejected() -> None:
@@ -29,6 +48,17 @@ def test_raw_test_progress_is_rejected() -> None:
     assert CHECK.metadata_findings("fix: setup", body) == [
         "raw command, test, compiler, or stack output"
     ]
+
+
+def test_colon_prefixed_failure_output_is_rejected() -> None:
+    for line in ("ERROR: command failed", "FAIL: tests/test_api.py::test_case"):
+        assert CHECK.metadata_findings("fix: setup", line) == [
+            "raw command, test, compiler, or stack output"
+        ]
+
+
+def test_error_handling_prose_is_allowed() -> None:
+    assert CHECK.metadata_findings("refactor: errors", "ERROR handling is now centralized") == []
 
 
 def test_oversized_description_is_rejected() -> None:
