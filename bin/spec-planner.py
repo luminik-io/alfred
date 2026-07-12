@@ -19,8 +19,9 @@ Wiring:
   - Loads the operator-customizable prompt at
     ``${ALFRED_HOME}/prompts/<codename>.md`` (seeded by ``alfred-init``
     from ``prompts/spec-bundle-planner.md``).
-  - Honours the fleet enable file: ``spec-planner`` ships opt-in (like the
-    architect) so the runner exits early until the operator enables it.
+  - Honours the fleet enable file. A full-fleet install enables
+    ``spec-planner``, while the runner stays idle until repo and spec scope
+    are configured.
 
 This file is the runner skeleton: preflight, build the candidate plan
 via ``lib/spec_planner.py``, dispatch the LLM to actually file the
@@ -119,10 +120,9 @@ def main() -> int:
         print(f"[{CODENAME.upper()}-DOCTOR-OK]")
         return 0
 
-    # The spec-bundle planner is opt-in: it files multi-repo bundles, which
-    # only makes sense once the operator has at least two repos wired and a
-    # spec directory the planner can read. Fresh installs stay quiet until
-    # ``alfred enable spec-planner`` flips the gate.
+    # The full fleet enables this role, but filing multi-repo bundles only
+    # makes sense once at least two repos and a readable spec directory are
+    # configured. Until then the runner remains a safe no-op.
     if not is_agent_enabled(CODENAME, default=False):
         marker = Path(ALFRED_HOME) / "state" / CODENAME / "last-noop"
         try:

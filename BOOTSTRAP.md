@@ -140,11 +140,10 @@ This configures the full engineering fleet, seeds prompts into
 Slack later by re-running the wizard or setting `SLACK_WEBHOOK_URL` in
 `$ALFRED_HOME/.env`.
 
-The full fleet is installed up front, but high-impact work still has explicit
-gates. The architect role is present, visible, and runner-gated until
-`alfred enable architect` and its approval mode are configured. E2e-runner and
-ops-watch load with the rest of the fleet; they self-idle until a staging target
-URL or ECS cluster is present.
+The full fleet is installed and enabled up front, but high-impact work still has
+explicit gates. The architect self-idles until its parent repo is configured,
+and child issue creation obeys the selected approval mode. E2e-runner and
+ops-watch also self-idle until a staging target URL or ECS cluster is present.
 
 The repo owner must match `GH_ORG`; the runtime stores bare repo names and
 builds `GH_ORG/repo` during agent firings.

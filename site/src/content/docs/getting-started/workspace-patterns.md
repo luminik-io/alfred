@@ -95,7 +95,7 @@ Configure it with the rest of the fleet:
   --slack-webhook skip
 ```
 
-Then set `ARCHITECT_PARENT_REPO`, choose `ARCHITECT_AUTO_EXECUTE=approval-gate` when
-you want approved child filing, run `alfred labels bootstrap my-org/specs` for
-the parent repo if it sits outside `--repos`, and arm the runner gate with
-`alfred enable architect` when parent-plan work is ready.
+Then set `ARCHITECT_PARENT_REPO`, choose `ARCHITECT_AUTO_EXECUTE=approval-gate`
+when you want approved child filing, and run `alfred labels bootstrap
+my-org/specs` for the parent repo if it sits outside `--repos`. The full-fleet
+setup already enables the architect; it remains idle until this scope exists.

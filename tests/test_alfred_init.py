@@ -1963,9 +1963,8 @@ def test_pick_agents_keeps_configured_agents(init_mod, tmp_path):
     assert state.enabled_roles == ["bug_triage"]
 
 
-def test_pick_agents_lists_gated_marker(init_mod, tmp_path, capsys):
-    """Gated roles need a visible marker so operators can tell at a glance
-    which full-fleet agents need a follow-up `alfred enable` to fire."""
+def test_pick_agents_lists_scope_idle_marker(init_mod, tmp_path, capsys):
+    """Scope-gated roles are visibly distinguished from always-active roles."""
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
         env_file=tmp_path / ".env",
@@ -1980,13 +1979,13 @@ def test_pick_agents_lists_gated_marker(init_mod, tmp_path, capsys):
     ]
     init_mod.step_5_pick_agents(state, available, agents_arg=None, non_interactive=True)
     out = capsys.readouterr().out
-    assert "(gated)" in out, "Expected `(gated)` marker in the agent picker output"
+    assert "(scope-idle)" in out
     # Marker must sit on Batman's line and NOT on a starter line.
     batman_line = next(
-        (line for line in out.splitlines() if "architect" in line and "(gated)" in line),
+        (line for line in out.splitlines() if "architect" in line and "(scope-idle)" in line),
         "",
     )
-    assert batman_line, "Expected the (gated) marker on Batman's row specifically"
+    assert batman_line, "Expected the scope-idle marker on Batman's row"
     starter_lines = [
         line
         for line in out.splitlines()
@@ -1994,7 +1993,7 @@ def test_pick_agents_lists_gated_marker(init_mod, tmp_path, capsys):
     ]
     assert starter_lines, "Expected at least one starter agent row in the output"
     for line in starter_lines:
-        assert "(gated)" not in line, f"Starter agent row should not carry (gated): {line!r}"
+        assert "(scope-idle)" not in line
 
 
 def test_pick_agents_full_fleet_includes_batman_for_multi_repo(
@@ -2371,16 +2370,28 @@ def test_seed_prompt_templates_copies_shared_compose_prompt(init_mod, tmp_path):
     assert prompt.read_text() == "custom compose prompt\n"
 
 
-def test_write_opt_in_gate_does_not_arm_batman_during_setup(init_mod, tmp_path):
+def test_write_fleet_enable_state_uses_canonical_role_ids(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
         env_file=tmp_path / ".env",
         repo_root=tmp_path / "repo",
     )
-    state.enabled_roles = ["cross_repo_coordinator"]
-    written = init_mod.write_opt_in_gate(state)
-    assert written == []
-    assert not (tmp_path / "alfred" / "state" / "fleet" / "enabled.txt").exists()
+    state.enabled_roles = ["cross_repo_coordinator", "spec_planner"]
+    state.role_to_codename = {
+        "cross_repo_coordinator": "batman",
+        "spec_planner": "damian",
+    }
+    gate_path = tmp_path / "alfred" / "state" / "fleet" / "enabled.txt"
+    gate_path.parent.mkdir(parents=True)
+    gate_path.write_text("Batman\nrelease-captain\n")
+    written = init_mod.write_fleet_enable_state(state)
+    assert written == ["architect", "spec-planner"]
+    gate = gate_path.read_text()
+    assert "architect" in gate
+    assert "spec-planner" in gate
+    assert "release-captain" in gate
+    assert "batman" not in gate
+    assert "damian" not in gate
 
 
 # ---------------------------------------------------------------------------

@@ -626,7 +626,7 @@ while IFS=$'\t' read -r label script_name; do
     printf "🟡 in flight\n"
     pass=$((pass + 1))
   elif echo "$output" | grep -qE "\[[A-Za-z0-9_-]+-DISABLED\]"; then
-    # Opt-in agent that hasn't been enabled via `alfred enable <name>`.
+    # Scope-gated or manually-disabled agent that is not currently enabled.
     # Disabled agents don't run, so a missing preflight is by design.
     printf "⚪ disabled\n"
     pass=$((pass + 1))

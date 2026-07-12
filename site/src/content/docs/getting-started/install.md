@@ -101,11 +101,11 @@ writes `launchd/agents.conf`, writes the shared scheduler manifest, updates
 adopts a pre-marker AMS service only when it exactly matches Alfred's generated
 unit; custom or operator-owned units stay untouched.
 
-The `architect` role is included in the full fleet and shows as Batman in the
-default theme. It only acts on approved `agent:large-feature` parent issues after
-`alfred architect setup` writes the parent planning repo, approval channel, trusted
-operator settings, and `ARCHITECT_AUTO_EXECUTE=approval-gate`; then explicitly arm
-the runner with `alfred enable architect`.
+The `architect` role is enabled in the full fleet and shows as Batman in the
+default theme. It stays idle until `alfred architect setup` writes the parent
+planning repo, approval channel, trusted operator settings, and
+`ARCHITECT_AUTO_EXECUTE=approval-gate`. It only acts on approved
+`agent:large-feature` parent issues.
 
 For a framework-only install with no agents configured, run `bash deploy.sh &&
 ./bin/alfred doctor`; doctor should report `0 passed, 0 failed`.

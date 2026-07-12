@@ -250,6 +250,15 @@ def test_batman_base_uses_canonical_scheduled_codenames() -> None:
     assert "shipped-summary-weekly" in BASE_THEME_NAMES
 
 
+def test_canonical_codename_for_keeps_theme_names_out_of_runtime_state() -> None:
+    from roster_theme_store import canonical_codename_for
+
+    assert canonical_codename_for("Batman") == "architect"
+    assert canonical_codename_for("Damian") == "spec-planner"
+    assert canonical_codename_for("alfred.Lucius") == "senior-dev"
+    assert canonical_codename_for("release-captain") == "release-captain"
+
+
 def test_themed_display_name_resolves_preset_identity() -> None:
     state = RosterThemeState(theme="transformers", custom_names={}, custom_roles={})
     # The role slug is the identity key; the preset supplies the display name.

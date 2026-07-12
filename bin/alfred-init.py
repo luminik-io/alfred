@@ -18,7 +18,7 @@ Wizard order (each step is idempotent, re-running won't duplicate):
     6. Codenames:      per-role codename (default = default theme display name).
     7. Repos:          per-agent repo selection out of `gh repo list`.
     8. Schedule:       sensible defaults; press 'a' to customize.
-    9. Generate config: agents.conf, env, starter prompts, opt-in gate.
+    9. Generate config: agents.conf, env, starter prompts, fleet enable state.
    10. GitHub labels:  create standard labels on selected repos.
    11. Deploy:         `bash deploy.sh`.
    12. Doctor:         `alfred doctor`.
@@ -59,12 +59,12 @@ from typing import Any
 
 # The battery manifest is the one source of truth shared with `alfred batteries`
 # and the desktop picker, so the wizard never keeps a second, drifting copy of
-# the opt-in list. It is pure stdlib like this file; importing it adds no
-# external dependency, it just points every surface at the same manifest.
+# the opt-in battery list. Both imports are pure stdlib modules from this repo.
 _LIB_DIR = Path(__file__).resolve().parent.parent / "lib"
 if _LIB_DIR.is_dir() and str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 import batteries  # noqa: E402
+from roster_theme_store import canonical_codename_for  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Constants, the canonical role catalog.
@@ -199,7 +199,7 @@ STARTER_ROLES = (
     "memory_harvest",
     "memory_auto_promote",
 )
-OPT_IN_ROLES = {"cross_repo_coordinator"}
+SCOPE_GATED_ROLES = {"cross_repo_coordinator", "spec_planner"}
 ROLE_REPO_ENV_KEYS = {
     "agent_cleanup": ("ALFRED_CLAIM_SWEEP_REPOS",),
     "automerge": ("ALFRED_AUTOMERGE_REPOS",),
@@ -1212,15 +1212,42 @@ def seed_prompt_templates(state: WizardState) -> list[Path]:
     return created
 
 
-def write_opt_in_gate(state: WizardState) -> list[str]:
-    """Leave runner-gated agents disabled during fleet generation.
+def write_fleet_enable_state(state: WizardState) -> list[str]:
+    """Enable every selected built-in role while preserving custom entries.
 
-    The full-fleet install should make architect visible, seed its prompt and
-    env, and render its scheduler row, but it must not arm cross-repo execution
-    as a side effect of accepting defaults. Operators opt in explicitly with
-    ``alfred enable <codename>`` after reviewing the cross-repo gate.
+    Architect and spec-planner are safe to schedule in a full-fleet install:
+    each runner stays idle until its repo/spec scope exists. Persist stable
+    codenames even when an older config supplied themed display names.
     """
-    return []
+    selected: list[str] = []
+    for role in state.enabled_roles:
+        if role not in SCOPE_GATED_ROLES:
+            continue
+        canonical = canonical_codename_for(state.codename_for(role))
+        if canonical:
+            selected.append(canonical)
+    if not selected:
+        return []
+
+    path = state.alfred_home / "state" / "fleet" / "enabled.txt"
+    existing: list[str] = []
+    if path.exists():
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            line = raw.partition("#")[0].strip()
+            canonical = canonical_codename_for(line)
+            if canonical:
+                existing.append(canonical)
+
+    enabled = sorted(set(existing) | set(selected))
+    header = (
+        "# Fleet enable list, managed by `alfred enable/disable <agent>`.\n"
+        "# Stable role codenames only; themes change display names, never runtime IDs.\n"
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(header + "\n".join(enabled) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return sorted(set(selected))
 
 
 # ---------------------------------------------------------------------------
@@ -1758,13 +1785,13 @@ def step_5_pick_agents(
     print("  Available agents (Enter = full fleet):")
     print("    [full]     enabled by the default full-fleet setup")
     print("    [starter]  explicit small setup for lab installs only")
-    print("    (gated)    selected by full fleet, but still protected by an approval gate")
+    print("    (scope-idle) enabled by full fleet; no-op until required scope is configured")
     starter = set(starter_roles(available))
     for role in available:
         codename, desc, _, _ = AGENT_CATALOG[role]
         marker = "[starter]" if role in starter else "[full]   "
-        suffix = " (gated)" if role in OPT_IN_ROLES else ""
-        print(f"    {marker} {codename:<20s}{suffix:<10s} {desc}")
+        suffix = " (scope-idle)" if role in SCOPE_GATED_ROLES else ""
+        print(f"    {marker} {codename:<20s}{suffix:<14s} {desc}")
     print()
     if non_interactive:
         state.enabled_roles = recommended_roles(available)
@@ -2110,9 +2137,9 @@ def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:
         )
     else:
         ok("prompt templates already present or not needed")
-    opt_in = write_opt_in_gate(state)
-    if opt_in:
-        ok(f"enabled opt-in agent(s): {', '.join(opt_in)}")
+    scope_gated = write_fleet_enable_state(state)
+    if scope_gated:
+        ok(f"enabled scope-gated agent(s): {', '.join(scope_gated)}")
     print()
     print("--- agents.conf ---")
     print(conf)
@@ -2195,7 +2222,7 @@ def seed_runtime_roster(state: WizardState, *, agents_arg: str | None) -> int:
     else:
         ok("prompt templates already present or not needed")
 
-    write_opt_in_gate(state)
+    write_fleet_enable_state(state)
     ok("repo-scoped agents will stay idle until onboarding saves repositories")
     return 0
 
@@ -2300,7 +2327,7 @@ def step_12_smoke(state: WizardState) -> None:
     print()
     print("  Operator commands:")
     print("    alfred agents:         configured agents + runner-gate state")
-    print("    alfred enable <agent> , add an opt-in codename to the runner gate")
+    print("    alfred enable <agent> , add a role codename to the runner gate")
     print("    alfred disable <agent>, remove a codename from the runner gate")
     print("    alfred doctor:         preflight configured Python agents")
     print()

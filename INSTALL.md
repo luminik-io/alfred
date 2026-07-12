@@ -219,8 +219,9 @@ teams that want that level of automation.
 | 5+ repos with mostly-independent work | Yes for cross-repo features. The architect no-ops on runs that find nothing cross-cutting, so the cost is the run itself. |
 | Strict approval gates required before any cross-repo work lands | Yes. The architect's `ARCHITECT_AUTO_EXECUTE=approval-gate` is the cleanest checkpoint pattern Alfred ships. |
 
-The architect role is present in the full-fleet config from the start and stays
-protected by the runner gate until you arm it with `alfred enable architect`.
+The full-fleet setup enables the architect from the start. It remains idle until
+`ARCHITECT_PARENT_REPO` is configured, and child issue creation still requires
+the execution mode and approval policy you choose.
 
 The e2e-runner and ops-watch roles are present in the full-fleet config too. They
 load with the rest of the scheduler and self-idle until

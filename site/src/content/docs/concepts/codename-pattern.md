@@ -13,7 +13,7 @@ One role, one job:
 
 | Role slug | Default theme name | Single job |
 |---|---|---|
-| `architect` | Batman | Architect public `agent:large-feature` parent issues. Waits for approval, then drives the approved rollout into scoped child issues. Runner-gated in OSS. |
+| `architect` | Batman | Architect public `agent:large-feature` parent issues. Enabled by a full install, scope-idle until its parent repo exists, and approval-gated before it drives a rollout into scoped child issues. |
 | `senior-dev` | Lucius | Pick the oldest `agent:implement` issue, claim it, ask the configured engine to implement, push a branch, open a PR. |
 | `planner` | Drake | Read specs + roadmap + code-reality grep, file the next well-scoped `agent:implement` issue. |
 | `test-engineer` | Bane | Pick the lowest-coverage actively-changed file, write tests, open a PR. |

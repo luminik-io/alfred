@@ -103,8 +103,8 @@ def test_check_enabled_agents_lists_codenames():
     fd = _load_doctor()
     result = fd.check_enabled_agents()
     assert result.severity == "green"
-    assert "batman" in result.message
-    assert "lucius" in result.message
+    assert "architect" in result.message
+    assert "senior-dev" in result.message
 
 
 def test_check_paused_agents_yellow_for_marker():

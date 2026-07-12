@@ -73,6 +73,17 @@ def test_read_enabled_codenames_skips_blank_and_comments():
     assert out == ["architect", "senior-dev"]
 
 
+def test_read_enabled_codenames_migrates_themed_names_to_role_ids():
+    import agent_runner as ar
+
+    ar.FLEET_ENABLED_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ar.FLEET_ENABLED_FILE.write_text("Batman\nDamian\n")
+
+    assert ar.list_enabled_agents() == ["architect", "spec-planner"]
+    assert ar.is_agent_enabled("architect", default=False) is True
+    assert ar.is_agent_enabled("spec-planner", default=False) is True
+
+
 def test_enable_agent_round_trip():
     import agent_runner as ar
 
@@ -90,6 +101,15 @@ def test_enable_agent_idempotent():
     out = ar.enable_agent("architect")
     # Single occurrence even when called twice.
     assert out.count("architect") == 1
+
+
+def test_enable_and_disable_accept_themed_display_names_but_store_role_ids():
+    import agent_runner as ar
+
+    assert ar.enable_agent("Batman") == ["architect"]
+    assert "architect" in ar.FLEET_ENABLED_FILE.read_text()
+    assert "Batman" not in ar.FLEET_ENABLED_FILE.read_text()
+    assert ar.disable_agent("Batman") == []
 
 
 def test_disable_agent_idempotent_when_not_present():

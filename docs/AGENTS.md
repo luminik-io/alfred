@@ -19,7 +19,7 @@ flowchart LR
     architect["architect<br/><i>Batman in default theme</i><br/>approval-gated"]
     senior_dev["senior-dev<br/><i>Lucius in default theme</i><br/>every 20m"]
     planner["planner<br/><i>Drake in default theme</i><br/>every 2h"]
-    spec_planner["spec-planner<br/><i>spec-planner in default theme</i><br/>opt-in"]
+    spec_planner["spec-planner<br/><i>Damian in default theme</i><br/>scope-idle"]
     test_engineer["test-engineer<br/><i>Bane in default theme</i><br/>every 4h"]
     reviewer["reviewer<br/><i>Ra's al Ghul in default theme</i><br/>every 30m"]
     fixer["fixer<br/><i>Nightwing in default theme</i><br/>every 45m"]
@@ -79,7 +79,7 @@ put.
 | `architect` (`bin/architect.py`) | Batman | every 1 h, approval-gated | `ARCHITECT_PARENT_REPO` | Coordinates multi-repo features. Drafts the rollout from parent issues, waits for Slack or Alfred client approval, files child `agent:implement` issues, and reports status so implementation can move in parallel. |
 | `senior-dev` (`bin/senior-dev.py`) | Lucius | every 20 min | `ALFRED_SENIOR_DEV_REPOS` | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs `claude -p` with the issue body + repo context, pushes a PR labelled `agent:authored`. |
 | `planner` (`bin/planner.py`) | Drake | every 2 h | all in-scope repos | Reads specs / roadmap / `IMMEDIATE_NEXT_STEPS` / cross-repo open-issue list / code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in rolling 24 h. |
-| `spec-planner` (`bin/spec-planner.py`) | spec-planner | daily 09:00, opt-in | `ALFRED_SPEC_PLANNER_REPOS` | Reads `ALFRED_SPEC_PLANNER_SPEC_DIR` end-to-end, identifies multi-repo features, files `agent:bundle:<slug>` siblings across affected repos. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to the planner. Prompt seeded from `prompts/spec-bundle-planner.md`. |
+| `spec-planner` (`bin/spec-planner.py`) | Damian | daily 09:00, scope-idle | `ALFRED_SPEC_PLANNER_REPOS` | Reads `ALFRED_SPEC_PLANNER_SPEC_DIR` end-to-end, identifies multi-repo features, files `agent:bundle:<slug>` siblings across affected repos. The full fleet enables it, but it no-ops until repo and spec scope exist. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to the planner. Prompt seeded from `prompts/spec-bundle-planner.md`. |
 | `test-engineer` (`bin/test-engineer.py`) | Bane | every 4 h | `ALFRED_TEST_ENGINEER_REPOS` (round-robin) | Picks the lowest-coverage actively-changed file. Writes tests. Opens PR. |
 | `reviewer` (`bin/reviewer.py`) | Ra's al Ghul | every 30 min | all in-scope repos | Multi-axis review (correctness, security, perf, maintainability) on every fresh PR. Posts as comment. |
 | `fixer` (`bin/fixer.py`) | Nightwing | every 45 min | all `agent:authored` PRs | Lands fixes for P0 / P1 reviewer comments (CodeRabbit, Codex, the reviewer) on agent-authored PRs. |

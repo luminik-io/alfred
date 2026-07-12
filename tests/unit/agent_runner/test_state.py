@@ -53,9 +53,9 @@ def test_enable_disable_agent(fresh_agent_runner):
     assert ar.list_enabled_agents() == []
     ar.enable_agent("lucius")
     ar.enable_agent("nightwing")
-    assert sorted(ar.list_enabled_agents()) == ["lucius", "nightwing"]
+    assert sorted(ar.list_enabled_agents()) == ["fixer", "senior-dev"]
     ar.disable_agent("lucius")
-    assert ar.list_enabled_agents() == ["nightwing"]
+    assert ar.list_enabled_agents() == ["fixer"]
 
 
 def test_maybe_set_global_block_only_for_provider_limit(fresh_agent_runner):
