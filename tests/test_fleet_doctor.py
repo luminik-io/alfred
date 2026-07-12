@@ -107,6 +107,30 @@ def test_check_enabled_agents_lists_codenames():
     assert "lucius" in result.message
 
 
+def test_configured_engine_agents_unions_roster_with_scope_gate(tmp_path, monkeypatch):
+    fd = _load_doctor()
+    home = tmp_path / "alfred"
+    conf = home / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        "alfred.senior-dev\tsenior-dev.py\tinterval:1200\t0\tsenior-dev\tsenior-dev\n"
+        "alfred.reviewer\treviewer.py\tinterval:1800\t0\treviewer\treviewer\n"
+    )
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setattr(
+        fd,
+        "list_enabled_agents",
+        lambda: ["architect", "spec-planner", "reviewer"],
+    )
+
+    assert fd._configured_engine_agents() == [
+        "senior-dev",
+        "reviewer",
+        "architect",
+        "spec-planner",
+    ]
+
+
 def test_check_paused_agents_yellow_for_marker():
     import agent_runner as ar
 
