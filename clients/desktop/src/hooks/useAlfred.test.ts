@@ -221,8 +221,8 @@ describe("useAlfred refresh race", () => {
     loadSnapshotMock.mockReturnValueOnce(slow.promise);
     loadSnapshotMock.mockReturnValueOnce(fast.promise);
 
-    let callA: Promise<void>;
-    let callB: Promise<void>;
+    let callA: Promise<boolean>;
+    let callB: Promise<boolean>;
     act(() => {
       callA = result.current.refresh(DEFAULT_BASE_URL);
       callB = result.current.refresh(DEFAULT_BASE_URL);
@@ -363,22 +363,171 @@ describe("useAlfred post-action refresh ordering", () => {
     expect(result.current.baseUrl).toBe(customUrl);
 
     loadSnapshotMock.mockClear();
+    await act(async () => {
+      await result.current.installCore();
+    });
+    expect(installAlfredCoreMock).toHaveBeenCalledWith(7123);
+    expect(startLocalRuntimeMock).toHaveBeenCalledWith(7123);
+    expect(loadSnapshotMock).toHaveBeenCalledWith(customUrl);
+  });
+
+  it("polls until a newly started runtime is reachable", async () => {
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("senior-dev")]));
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    loadSnapshotMock.mockRejectedValueOnce(new Error("not ready"));
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("senior-dev")]));
+
     vi.useFakeTimers();
     try {
-      await act(async () => {
-        await result.current.installCore();
+      let start: Promise<void>;
+      act(() => {
+        start = result.current.startRuntime();
       });
-      expect(installAlfredCoreMock).toHaveBeenCalledWith(7123);
       await act(async () => {
-        vi.advanceTimersByTime(900);
-        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(300);
+        await start;
       });
 
-      expect(startLocalRuntimeMock).toHaveBeenCalledWith(7123);
-      expect(loadSnapshotMock).toHaveBeenCalledWith(customUrl);
+      expect(loadSnapshotMock).toHaveBeenCalledTimes(3);
+      expect(result.current.error).toBeNull();
+      expect(result.current.snapshot).not.toBeNull();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("does not poll when the native runtime command fails", async () => {
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("senior-dev")]));
+    startLocalRuntimeMock.mockResolvedValueOnce({
+      ...nativeResult(),
+      success: false,
+      status: 1,
+      message: "runtime did not start",
+    });
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+    loadSnapshotMock.mockClear();
+
+    await act(async () => {
+      await result.current.startRuntime();
+    });
+
+    expect(loadSnapshotMock).not.toHaveBeenCalled();
+  });
+
+  it("probes the started local runtime instead of a reachable custom server", async () => {
+    const customUrl = "http://alfred.example.test:9000";
+    const runtimeUrl = "http://127.0.0.1:9000";
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("senior-dev")]));
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    // The custom server always answers; the newly started local runtime never
+    // does. Probing baseUrl would "succeed" instantly without verifying it.
+    loadSnapshotMock.mockImplementation(async (url: string) => {
+      if (url === customUrl) return snapshot([agent("architect")]);
+      throw new Error("connection refused");
+    });
+    await act(async () => {
+      await result.current.refresh(customUrl);
+    });
+    expect(result.current.baseUrl).toBe(customUrl);
+
+    vi.useFakeTimers();
+    try {
+      let startP: Promise<void>;
+      act(() => {
+        startP = result.current.startRuntime();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4000);
+        await startP;
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(startLocalRuntimeMock).toHaveBeenCalledWith(9000);
+    const probed = loadSnapshotMock.mock.calls.map(([url]) => url);
+    expect(probed).toContain(runtimeUrl);
+    // The unverified runtime is reported honestly, not as started.
+    expect(result.current.nativeResult?.success).toBe(false);
+    expect(result.current.nativeResult?.message).toMatch(/not answering yet/i);
+    // The user's custom server connection is left alone.
+    expect(result.current.baseUrl).toBe(customUrl);
+  });
+
+  it("reports an unreachable runtime honestly instead of claiming it started", async () => {
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("senior-dev")]));
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    // installCore + the native start both succeed, but the runtime never
+    // answers: every readiness probe rejects for the full retry window.
+    loadSnapshotMock.mockRejectedValue(new Error("connection refused"));
+
+    vi.useFakeTimers();
+    try {
+      let installP: Promise<void>;
+      act(() => {
+        installP = result.current.installCore();
+      });
+      await act(async () => {
+        // 10 attempts * 300ms readiness window, with headroom.
+        await vi.advanceTimersByTimeAsync(4000);
+        await installP;
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(result.current.nativeResult?.success).toBe(false);
+    expect(result.current.nativeResult?.message).toMatch(/not answering yet/i);
+    expect(result.current.nativeResult?.message).not.toMatch(/the local runtime started\.?$/i);
+  });
+
+  it("does not revert a custom server the user connects while the runtime is probed", async () => {
+    const customUrl = "http://127.0.0.1:7123";
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("senior-dev")]));
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+    expect(result.current.baseUrl).toBe(DEFAULT_BASE_URL);
+
+    // The first local probe fails (runtime not ready yet); a later probe would
+    // succeed and, without the fix, revert baseUrl to the local URL. The user
+    // connects a custom server before that later probe runs.
+    let localProbes = 0;
+    loadSnapshotMock.mockImplementation(async (url: string) => {
+      if (url === customUrl) return snapshot([agent("architect")]);
+      localProbes += 1;
+      if (localProbes === 1) throw new Error("connection refused");
+      return snapshot([agent("senior-dev")]);
+    });
+
+    vi.useFakeTimers();
+    try {
+      let startP: Promise<void>;
+      act(() => {
+        startP = result.current.startRuntime();
+      });
+      // The user connects a custom server; it commits and becomes the target.
+      await act(async () => {
+        await result.current.refresh(customUrl);
+      });
+      // Drain the remaining readiness window: the loop should bail, not probe
+      // the local URL again.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4000);
+        await startP;
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(result.current.baseUrl).toBe(customUrl);
+    expect(rememberBaseUrlMock).toHaveBeenLastCalledWith(customUrl);
   });
 
   it("refreshes after a pause and reflects the post-action snapshot", async () => {
