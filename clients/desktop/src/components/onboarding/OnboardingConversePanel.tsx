@@ -124,6 +124,14 @@ export function OnboardingConversePanel({
     if (el) el.scrollTop = el.scrollHeight;
   }, [bubbles, busy]);
 
+  useEffect(() => {
+    // Setup status can finish loading after chat mounts. Only promote known
+    // completed decisions so an older false status cannot erase a choice made
+    // during this conversation.
+    if (batteriesDecisionHandled) decisionsRef.current.batteries = true;
+    if (slackConfigured) decisionsRef.current.slack = true;
+  }, [batteriesDecisionHandled, slackConfigured]);
+
   useEffect(() => () => abortRef.current?.abort(), []);
 
   // Append a VISIBLE chat bubble: it renders AND joins the model transcript. The
@@ -162,7 +170,6 @@ export function OnboardingConversePanel({
         const note = `${missing.join(". ")}. Choose an option before finishing setup.`;
         appendBubble({ role: "assistant", content: note });
         threadModelNote(`[setup] finish_setup did not complete: ${note}`);
-        await runTurnRef.current(controller);
         return;
       }
       // The step runs through the shared handler, never in this panel.
@@ -171,7 +178,7 @@ export function OnboardingConversePanel({
       if (result.ok && (action.tool === "set_batteries" || action.tool === "skip_batteries")) {
         decisionsRef.current.batteries = true;
       }
-      if (result.ok && (action.tool === "open_slack_setup" || action.tool === "skip_slack")) {
+      if (result.ok && action.tool === "skip_slack") {
         decisionsRef.current.slack = true;
       }
       // The person sees a plain confirmation bubble.

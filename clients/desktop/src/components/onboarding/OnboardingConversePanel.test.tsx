@@ -162,7 +162,7 @@ describe("OnboardingConversePanel", () => {
     expect(converse).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects early finish until batteries and Slack have explicit decisions", async () => {
+  it("rejects early finish without recursively asking the model again", async () => {
     const onDone = vi.fn();
     const onRunAction = vi.fn(async () => ({ ok: true, note: "Setup is done." }));
     const converse = vi
@@ -173,8 +173,7 @@ describe("OnboardingConversePanel", () => {
           action: { tool: "finish_setup", args: {} },
           done: true,
         }),
-      )
-      .mockResolvedValueOnce(turn({ reply: "Would you like any optional batteries?" }));
+      );
 
     render(
       <OnboardingConversePanel
@@ -189,10 +188,74 @@ describe("OnboardingConversePanel", () => {
     await sendMessage("finish");
     await userEvent.setup().click(await screen.findByRole("button", { name: /finish setup/i }));
 
-    await waitFor(() => expect(converse).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(converse).toHaveBeenCalledTimes(1));
     expect(onRunAction).not.toHaveBeenCalled();
     expect(onDone).not.toHaveBeenCalled();
     expect(screen.getByText(/batteries still need a decision/i)).toBeInTheDocument();
+  });
+
+  it("does not count opening Slack setup as a completed Slack decision", async () => {
+    const onDone = vi.fn();
+    const onRunAction = vi.fn(async (action) => ({ ok: true, note: `${action.tool} done` }));
+    vi.spyOn(api, "onboardingConverse")
+      .mockResolvedValueOnce(
+        turn({ reply: "Open Slack?", action: { tool: "open_slack_setup", args: {} } }),
+      )
+      .mockResolvedValueOnce(
+        turn({ reply: "Ready.", action: { tool: "finish_setup", args: {} }, done: true }),
+      );
+
+    render(
+      <OnboardingConversePanel
+        baseUrl="http://127.0.0.1:7010"
+        batteriesDecisionHandled
+        slackConfigured={false}
+        onRunAction={onRunAction}
+        onDone={onDone}
+        onUseStepped={vi.fn()}
+      />,
+    );
+
+    await sendMessage("set up Slack");
+    await userEvent.setup().click(await screen.findByRole("button", { name: /open slack setup/i }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: /finish setup/i }));
+
+    expect(onDone).not.toHaveBeenCalled();
+    expect(screen.getByText(/slack still needs a decision/i)).toBeInTheDocument();
+  });
+
+  it("uses setup decisions that become available after chat mounts", async () => {
+    const onDone = vi.fn();
+    const onRunAction = vi.fn(async () => ({ ok: true, note: "Setup is done." }));
+    vi.spyOn(api, "onboardingConverse").mockResolvedValue(
+      turn({ reply: "Ready.", action: { tool: "finish_setup", args: {} }, done: true }),
+    );
+
+    const view = render(
+      <OnboardingConversePanel
+        baseUrl="http://127.0.0.1:7010"
+        batteriesDecisionHandled={false}
+        slackConfigured={false}
+        onRunAction={onRunAction}
+        onDone={onDone}
+        onUseStepped={vi.fn()}
+      />,
+    );
+    view.rerender(
+      <OnboardingConversePanel
+        baseUrl="http://127.0.0.1:7010"
+        batteriesDecisionHandled
+        slackConfigured
+        onRunAction={onRunAction}
+        onDone={onDone}
+        onUseStepped={vi.fn()}
+      />,
+    );
+
+    await sendMessage("finish");
+    await userEvent.setup().click(await screen.findByRole("button", { name: /finish setup/i }));
+
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
   });
 
   it("allows finish after batteries and Slack are explicitly skipped", async () => {
