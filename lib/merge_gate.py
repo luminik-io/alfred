@@ -336,43 +336,6 @@ def _external_reviews_condition(snapshot: GateSnapshot, required: Sequence[str])
     )
 
 
-def evaluate_external_review_gate(
-    snapshot: GateSnapshot,
-    *,
-    required_external_reviews: Sequence[str] = ("greptile", "codex"),
-) -> GateDecision:
-    """Evaluate the non-circular status check enforced by branch protection.
-
-    This deliberately excludes CI and merge-state conditions because the
-    resulting commit status is itself part of those conditions. It is suitable
-    for a required GitHub status that is recalculated whenever review evidence
-    or the pull request head changes.
-    """
-    if snapshot.errors:
-        detail = snapshot.errors[0]
-        extra = f" (+{len(snapshot.errors) - 1} more)" if len(snapshot.errors) > 1 else ""
-        return GateDecision(
-            False,
-            snapshot.head_sha,
-            [Condition("api", "GitHub data collected", False, f"{detail}{extra}")],
-        )
-
-    state = (snapshot.state or "").upper()
-    conditions = [
-        Condition(
-            "open",
-            "Pull request is open",
-            state == "OPEN",
-            "open" if state == "OPEN" else f"state is {state or 'UNKNOWN'}",
-        ),
-        _threads_condition(snapshot),
-        _external_reviews_condition(snapshot, required_external_reviews),
-    ]
-    return GateDecision(
-        all(condition.passed for condition in conditions), snapshot.head_sha, conditions
-    )
-
-
 def evaluate_gate(
     snapshot: GateSnapshot,
     *,
