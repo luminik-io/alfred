@@ -417,6 +417,48 @@ describe("useAlfred post-action refresh ordering", () => {
     expect(loadSnapshotMock).not.toHaveBeenCalled();
   });
 
+  it("probes the started local runtime instead of a reachable custom server", async () => {
+    const customUrl = "http://alfred.example.test:9000";
+    const runtimeUrl = "http://127.0.0.1:9000";
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("senior-dev")]));
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    // The custom server always answers; the newly started local runtime never
+    // does. Probing baseUrl would "succeed" instantly without verifying it.
+    loadSnapshotMock.mockImplementation(async (url: string) => {
+      if (url === customUrl) return snapshot([agent("architect")]);
+      throw new Error("connection refused");
+    });
+    await act(async () => {
+      await result.current.refresh(customUrl);
+    });
+    expect(result.current.baseUrl).toBe(customUrl);
+
+    vi.useFakeTimers();
+    try {
+      let startP: Promise<void>;
+      act(() => {
+        startP = result.current.startRuntime();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4000);
+        await startP;
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(startLocalRuntimeMock).toHaveBeenCalledWith(9000);
+    const probed = loadSnapshotMock.mock.calls.map(([url]) => url);
+    expect(probed).toContain(runtimeUrl);
+    // The unverified runtime is reported honestly, not as started.
+    expect(result.current.nativeResult?.success).toBe(false);
+    expect(result.current.nativeResult?.message).toMatch(/not answering yet/i);
+    // The user's custom server connection is left alone.
+    expect(result.current.baseUrl).toBe(customUrl);
+  });
+
   it("reports an unreachable runtime honestly instead of claiming it started", async () => {
     loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("senior-dev")]));
     const { result } = renderHook(() => useAlfred());

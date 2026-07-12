@@ -103,6 +103,14 @@ function runtimePortFromBaseUrl(raw: string): number {
   return 7010;
 }
 
+// The address the just-started local runtime actually listens on. Readiness
+// probes must target this, not the current baseUrl: when baseUrl points at a
+// reachable custom server, probing baseUrl would succeed without the newly
+// started local process ever answering.
+function localRuntimeUrl(port: number): string {
+  return `http://127.0.0.1:${port}`;
+}
+
 export function useAlfred() {
   const [baseUrl, setBaseUrl] = useState(initialBaseUrl);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -149,6 +157,36 @@ export function useAlfred() {
   // than re-committing the stale local runtime URL on a later attempt.
   const refreshTargetRef = useRef<string | null>(null);
 
+  // Reachability check for a runtime we just started. Unlike a user refresh it
+  // never claims a request slot, so it cannot cancel an in-flight user refresh,
+  // and it adopts the runtime as the connection only when the user is still
+  // pointed at it. A probe that reaches a runtime the user has since navigated
+  // away from reports success without reverting their newer choice.
+  const probeRuntimeReady = useCallback(
+    async (nextBaseUrl: string): Promise<boolean> => {
+      const targetBaseUrl = clientBaseUrl(nextBaseUrl);
+      try {
+        const next = await loadSnapshot(targetBaseUrl);
+        if (refreshTargetRef.current !== null && refreshTargetRef.current !== targetBaseUrl) {
+          return true;
+        }
+        const id = ++reqRef.current;
+        setSnapshot(next);
+        setBaseUrl(targetBaseUrl);
+        rememberBaseUrl(targetBaseUrl);
+        setError(null);
+        setErrorRaw(null);
+        if (id === reqRef.current) {
+          setLoading(false);
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [],
+  );
+
   const refresh = useCallback(
     async (nextBaseUrl = baseUrl): Promise<boolean> => {
       const targetBaseUrl = clientBaseUrl(nextBaseUrl);
@@ -181,27 +219,23 @@ export function useAlfred() {
   );
 
   const waitForRuntimeReady = useCallback(
-    async (nextBaseUrl: string): Promise<boolean> => {
-      const target = clientBaseUrl(nextBaseUrl);
+    async (runtimeUrl: string): Promise<boolean> => {
       for (let attempt = 0; attempt < RUNTIME_READY_ATTEMPTS; attempt += 1) {
         if (attempt > 0) {
           await new Promise<void>((resolve) => {
             window.setTimeout(resolve, RUNTIME_READY_DELAY_MS);
           });
         }
-        // The user connected a different server since the last probe. Stop
-        // before issuing another request so we cannot re-commit the now-stale
-        // local runtime URL over their newer selection.
-        if (refreshTargetRef.current !== null && refreshTargetRef.current !== target) {
-          return false;
-        }
-        if (await refresh(nextBaseUrl)) {
+        // Probe the runtime we started without adopting it as the user's
+        // selection. A successful probe connects only when they have not
+        // switched to a different server in the meantime.
+        if (await probeRuntimeReady(runtimeUrl)) {
           return true;
         }
       }
       return false;
     },
-    [refresh],
+    [probeRuntimeReady],
   );
 
   // Board fetch, independent of the core snapshot. Keeps the last good board
@@ -610,14 +644,18 @@ export function useAlfred() {
     setNativeErrorRaw(null);
     setNativeResult(null);
     try {
-      const result = await startLocalRuntime(runtimePortFromBaseUrl(baseUrl));
+      const runtimePort = runtimePortFromBaseUrl(baseUrl);
+      const result = await startLocalRuntime(runtimePort);
       setNativeResult(result);
       if (result.success) {
-        const ready = await waitForRuntimeReady(baseUrl);
-        // The process launched but never answered. Only correct the notice when
-        // the probe is still aimed at this runtime; if the user switched servers
-        // mid-probe, leave their new connection state alone.
-        if (!ready && refreshTargetRef.current === clientBaseUrl(baseUrl)) {
+        // Probe the runtime we just started, not baseUrl: a reachable custom
+        // server at baseUrl would answer without verifying the new process.
+        const runtimeUrl = localRuntimeUrl(runtimePort);
+        const ready = await waitForRuntimeReady(runtimeUrl);
+        // The process launched but never answered within the readiness window.
+        // Report that honestly instead of leaving the "started" notice implying
+        // it connected.
+        if (!ready) {
           setNativeResult({
             ...result,
             success: false,
@@ -654,11 +692,13 @@ export function useAlfred() {
           : runtime.message || "Alfred core installed, but the local runtime did not start.",
       });
       if (runtime.success) {
-        const ready = await waitForRuntimeReady(baseUrl);
-        // The runtime process started but never answered. Only correct the
-        // notice when the probe is still aimed at this runtime; if the user
-        // switched servers mid-probe, leave their new connection state alone.
-        if (!ready && refreshTargetRef.current === clientBaseUrl(baseUrl)) {
+        // Probe the runtime we just started, not baseUrl: a reachable custom
+        // server at baseUrl would answer without verifying the new process.
+        const runtimeUrl = localRuntimeUrl(runtimePort);
+        const ready = await waitForRuntimeReady(runtimeUrl);
+        // The runtime process started but never answered within the readiness
+        // window. Report that honestly instead of implying it connected.
+        if (!ready) {
           setNativeResult({
             ...runtime,
             success: false,
