@@ -27,7 +27,12 @@ _LOCAL_WORKSPACE_PATH = re.compile(
 )
 _RAW_OUTPUT = (
     re.compile(r"\.{20,}\s*\[\s*\d{1,3}%\]"),
-    re.compile(r"(?m)^\s*(?:FAIL|FAILED|ERROR)(?::\s*|\s+(?:tests?/|src/|\S+::))"),
+    re.compile(
+        r"(?m)^\s*(?:FAIL|FAILED|ERROR)(?:"
+        r"\s+(?:tests?/|src/|\S+::)|"
+        r":\s*(?:tests?/|src/|\S+::|command failed\b|exit(?:ed)?\b|.*(?:Error|Exception)\b)"
+        r")"
+    ),
     re.compile(r"(?m)^\s*[^\n:]+:\d+:\d+:\s+error\s+TS\d+"),
     re.compile(r"(?m)^\s*test result:\s+(?:ok|FAILED)\."),
     re.compile(r"(?m)^\s*running\s+\d+\s+tests?\s*$"),

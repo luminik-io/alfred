@@ -91,6 +91,7 @@ def test_pytest_failed_summary_is_rejected() -> None:
 
 def test_error_handling_prose_is_allowed() -> None:
     assert CHECK.metadata_findings("refactor: errors", "ERROR handling is now centralized") == []
+    assert CHECK.metadata_findings("refactor: errors", "ERROR: handling is now centralized") == []
 
 
 def test_oversized_description_is_rejected() -> None:
