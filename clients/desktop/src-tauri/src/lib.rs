@@ -1648,6 +1648,7 @@ fn is_core_dir(path: &Path) -> bool {
         && path.join("bin").join("alfred").is_file()
         && path.join("bin").join("alfred-init.py").is_file()
         && path.join("lib").is_dir()
+        && path.join("skills").join("packs.toml").is_file()
 }
 
 fn program_on_cli_path(program: &str) -> bool {
@@ -2617,6 +2618,7 @@ mod tests {
         touch(&root.join("bin").join("alfred"));
         touch(&root.join("bin").join("alfred-init.py"));
         fs::create_dir_all(root.join("lib")).expect("lib dir should be created");
+        touch(&root.join("skills").join("packs.toml"));
     }
 
     #[test]
@@ -2626,6 +2628,11 @@ mod tests {
 
         assert!(is_core_dir(&root));
 
+        fs::remove_file(root.join("skills").join("packs.toml"))
+            .expect("skills manifest should be removed");
+        assert!(!is_core_dir(&root));
+
+        touch(&root.join("skills").join("packs.toml"));
         fs::remove_file(root.join("deploy.sh")).expect("deploy script should be removed");
         assert!(!is_core_dir(&root));
         let _ = fs::remove_dir_all(root);

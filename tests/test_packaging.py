@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import tomllib
@@ -15,6 +16,15 @@ def test_wheel_maps_lib_modules_to_top_level_imports():
 
     assert wheel["only-include"] == ["lib"]
     assert wheel["sources"] == ["lib"]
+
+
+def test_desktop_bundle_contains_required_core_resources():
+    config = json.loads(Path("clients/desktop/src-tauri/tauri.conf.json").read_text())
+    resources = config["bundle"]["resources"]
+
+    assert resources["../../../skills"] == "alfred-core/skills"
+    for required in ("bin", "lib", "prompts", "skills"):
+        assert Path(required).exists(), f"desktop core resource is missing: {required}"
 
 
 def test_wheel_smoke_import_and_console_script(tmp_path):
