@@ -94,8 +94,8 @@ export function FleetControlView({
   const rows = buildFleetRows(agents, service);
   const scheduleByCodename = useMemo(() => scheduleMap(schedule || []), [schedule]);
   // Resolve the WHOLE roster's themed names in one pass so no two agents ever
-  // share a display name (the product rule), even on a legacy install where
-  // several agents derive the same role. Keyed by normalized codename.
+  // share a display name (the product rule), even when several custom agents
+  // derive the same role. Keyed by normalized codename.
   const themedRoster = useMemo(
     () =>
       buildThemedRoster(

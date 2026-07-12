@@ -40,8 +40,13 @@ const SERVICE = parseFleetServiceState(
   statusResult(
     JSON.stringify({
       agents: [
-        { agent: "lucius", loaded: true, paused: false, paused_since: null },
-        { agent: "bane", loaded: false, paused: true, paused_since: "2026-05-30T09:00:00Z" },
+        { agent: "senior-dev", loaded: true, paused: false, paused_since: null },
+        {
+          agent: "test-engineer",
+          loaded: false,
+          paused: true,
+          paused_since: "2026-05-30T09:00:00Z",
+        },
       ],
     }),
   ),
@@ -57,8 +62,8 @@ const SCHEDULE: ScheduledRun[] = [
     raw_schedule: "interval:600",
   },
   {
-    codename: "bane",
-    role: "Reviewer",
+    codename: "test-engineer",
+    role: "Test coverage",
     kind: "cron-daily",
     cadence: "daily at 08:00",
     next_fire_at: "2026-06-08T08:00:00+02:00",
@@ -69,7 +74,7 @@ const SCHEDULE: ScheduledRun[] = [
 function renderView(onRunLocalAction = vi.fn(), schedule: ScheduledRun[] = SCHEDULE) {
   render(
     <FleetControlView
-      agents={[agent("lucius"), agent("bane")]}
+      agents={[agent("senior-dev"), agent("test-engineer")]}
       schedule={schedule}
       service={SERVICE}
       nativeBusy={null}
@@ -141,7 +146,10 @@ describe("FleetControlView", () => {
   it("defaults selection to an llm-error agent before a running agent", async () => {
     render(
       <FleetControlView
-        agents={[agent("lucius", { status: "live" }), agent("bane", { status: "llm-error" })]}
+        agents={[
+          agent("senior-dev", { status: "live" }),
+          agent("test-engineer", { status: "llm-error" }),
+        ]}
         schedule={SCHEDULE}
         service={SERVICE}
         nativeBusy={null}
@@ -164,8 +172,8 @@ describe("FleetControlView", () => {
     render(
       <FleetControlView
         agents={[
-          agent("lucius", { paused: false, loaded: true }),
-          agent("bane", {
+          agent("senior-dev", { paused: false, loaded: true }),
+          agent("test-engineer", {
             paused: true,
             loaded: false,
             paused_since: "2026-05-30T09:00:00Z",
@@ -192,7 +200,7 @@ describe("FleetControlView", () => {
     render(
       <FleetControlView
         agents={[
-          agent("lucius", {
+          agent("senior-dev", {
             display_name: "Lucius",
             role_title: "Senior Developer",
             purpose: "Ships scoped implementation issues as pull requests.",
@@ -216,7 +224,7 @@ describe("FleetControlView", () => {
     expect(
       screen.getAllByText("Ships scoped implementation issues as pull requests.").length,
     ).toBeGreaterThan(0);
-    expect(screen.getByTitle("Runtime codename: lucius")).toHaveTextContent("lucius");
+    expect(screen.getByTitle("Runtime codename: senior-dev")).toHaveTextContent("senior-dev");
   });
 
   it("runs dry-run immediately without confirmation", async () => {
@@ -234,14 +242,14 @@ describe("FleetControlView", () => {
     const user = userEvent.setup();
     await openDrawer(user, "lucius");
 
-    await user.click(screen.getByRole("combobox", { name: /schedule lucius/i }));
+    await user.click(screen.getByRole("combobox", { name: /schedule senior-dev/i }));
     await user.click(screen.getByRole("option", { name: /every 20 min/i }));
-    await user.click(screen.getByRole("button", { name: /set lucius schedule/i }));
+    await user.click(screen.getByRole("button", { name: /set senior-dev schedule/i }));
 
     expect(onRun).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "schedule",
-        target: "lucius",
+        target: "senior-dev",
         cadence: "20m",
         refreshAfter: true,
       }),
@@ -260,7 +268,7 @@ describe("FleetControlView", () => {
 
     await user.click(screen.getByRole("button", { name: /yes, pause/i }));
     expect(onRun).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "pause", target: "lucius", refreshAfter: true }),
+      expect.objectContaining({ action: "pause", target: "senior-dev", refreshAfter: true }),
     );
   });
 
@@ -295,7 +303,7 @@ describe("FleetControlView", () => {
     const onViewLogs = vi.fn();
     render(
       <FleetControlView
-        agents={[agent("lucius")]}
+        agents={[agent("senior-dev")]}
         schedule={[]}
         service={{}}
         nativeBusy={null}
@@ -306,6 +314,6 @@ describe("FleetControlView", () => {
     const user = userEvent.setup();
     await openDrawer(user, "lucius");
     await user.click(screen.getByRole("button", { name: /^Logs$/i }));
-    expect(onViewLogs).toHaveBeenCalledWith("lucius");
+    expect(onViewLogs).toHaveBeenCalledWith("senior-dev");
   });
 });

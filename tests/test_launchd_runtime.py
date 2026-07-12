@@ -236,12 +236,12 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "telemetry_enabled": "0",
         "token": "process-token",
         "backup_profile": "backup-profile",
-        "feature_codename": "oracle",
+        "feature_codename": None,
         "architect_parent": "org/plans",
         "e2e_target": "https://new.example.test",
         "ops_cluster": "new-cluster",
         "ops_sentry_org": "new-org",
-        "oracle_repos": "org/runtime",
+        "oracle_repos": "org/stale",
     }
 
 

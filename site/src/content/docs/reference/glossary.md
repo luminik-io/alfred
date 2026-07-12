@@ -109,8 +109,9 @@ in depth.
 - **Ra's al Ghul**: Code-review agent that posts a multi-axis review
   (correctness, security, performance, maintainability) on every fresh
   `agent:authored` PR. See also: [The agent fleet](/concepts/fleet/).
-- **role runner**: A Python script under `bin/` that implements one agent
-  role; codenames map to role runners via `AGENT_CODENAME`.
+- **role runner**: A Python script under `bin/` that implements one agent role.
+  Its built-in runtime identity and scheduler label use the same immutable role
+  slug; custom runtime agents have their own explicit ids.
   See also: [The agent fleet](/concepts/fleet/).
 - **sentinel string**: Bracketed marker like `[OK]`, `[BLOCKED]`, or
   `[SILENT]` that an agent prints to stdout to signal its exit path.

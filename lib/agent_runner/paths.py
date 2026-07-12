@@ -38,7 +38,6 @@ from envflags import FALSY_VALUES, TRUTHY_VALUES
 # --------------------------------------------------------------------------
 HOME: Path = Path(os.path.expanduser("~"))
 _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
-_CODENAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 _REPO_SCOPE_ENV_KEYS = {
     "ARCHITECT_ROLLOUT_ORDER",
     "ARCHITECT_PARENT_REPO",
@@ -62,13 +61,14 @@ _REPO_SCOPE_ENV_KEYS = {
 }
 _SETUP_SPECIAL_PROMPT_ENV_KEYS = {
     "ALFRED_E2E_RUNNER_TARGET_URL",
+    "ALFRED_E2E_RUNNER_AWS_PROFILE",
     "ALFRED_OPS_WATCH_ECS_CLUSTER",
     "ALFRED_OPS_WATCH_SENTRY_ORG",
+    "ALFRED_OPS_WATCH_AWS_PROFILE",
 }
 _SETUP_MANAGED_RUNTIME_ENV_KEYS = (
     _REPO_SCOPE_ENV_KEYS
     | {
-        "AGENT_CODENAME_*",
         "ALFRED_MORNING_BRIEF_AGENTS",
         "ALFRED_TELEMETRY_*",
     }
@@ -297,7 +297,7 @@ def launcher_env() -> dict[str, str]:
     scheduled fleet will enforce after a restart.
     """
 
-    env = dict(os.environ)
+    env = {key: value for key, value in os.environ.items() if not key.startswith("AGENT_CODENAME_")}
     env.pop("ALFREDRC", None)
     if not env.get("ALFRED_HOME", "").strip():
         env.pop("ALFRED_HOME", None)
@@ -319,6 +319,7 @@ def launcher_env() -> dict[str, str]:
         no_clobber=True,
         clobber_keys=setup_managed_keys,
         preserve_keys=preserve_keys,
+        skip_keys={"AGENT_CODENAME_*"},
     )
     if not env.get("WORKSPACE_ROOT", "").strip():
         env["WORKSPACE_ROOT"] = os.path.expanduser("~/code")
@@ -326,7 +327,7 @@ def launcher_env() -> dict[str, str]:
 
 
 def setup_managed_runtime_env_keys(runtime_env_path: Path) -> set[str]:
-    """Static setup-owned keys plus custom codename keys from the managed block."""
+    """Return setup-owned runtime keys declared by the managed block."""
 
     return _SETUP_MANAGED_RUNTIME_ENV_KEYS | _managed_runtime_env_keys(runtime_env_path)
 
@@ -352,7 +353,7 @@ def _managed_runtime_env_keys(path: Path) -> set[str]:
             line = line.removeprefix("export ").strip()
         if "=" not in line:
             break
-        key, _, raw_value = line.partition("=")
+        key, _, _raw_value = line.partition("=")
         key = key.strip()
         if not _ENV_KEY_RE.match(key):
             break
@@ -360,12 +361,6 @@ def _managed_runtime_env_keys(path: Path) -> set[str]:
             keys.add(key)
         if _env_key_matches(key, _SETUP_MANAGED_RUNTIME_ENV_KEYS):
             keys.add(key)
-        if key.startswith("AGENT_CODENAME_"):
-            value = decode_env_value(_strip_inline_comment(raw_value).strip()).strip()
-            if _CODENAME_RE.match(value):
-                slug = value.upper().replace("-", "_")
-                keys.add(f"ALFRED_{slug}_REPOS")
-                keys.add(f"ALFRED_{slug}_AWS_PROFILE")
     return keys
 
 

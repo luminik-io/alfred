@@ -80,20 +80,20 @@ RUNTIME_REPO_SCOPE_ENV_KEYS = (
 RUNTIME_SETUP_MANAGED_ENV_KEYS = (
     *RUNTIME_REPO_SCOPE_ENV_KEYS,
     "ARCHITECT_PARENT_REPO",
+    "ALFRED_E2E_RUNNER_AWS_PROFILE",
+    "ALFRED_OPS_WATCH_AWS_PROFILE",
 )
 _ALFRED_INIT_MANAGED_SCOPE_PATTERNS = frozenset(
     (
         *_REPO_ENV_KEYS,
         *RUNTIME_SETUP_MANAGED_ENV_KEYS,
         "ARCHITECT_ROLLOUT_ORDER",
-        "AGENT_CODENAME_*",
         "ALFRED_MORNING_BRIEF_AGENTS",
     )
 )
 
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
-_CODENAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 _REPO_LOCAL_MAP_KEY_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=")
 _REPO_LOCAL_MAP_COMMA_BOUNDARY_RE = re.compile(
     r",\s*(?=[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=(?:/|~|\.{1,2}/))"
@@ -207,7 +207,7 @@ def _setup_config_value(key: str, default: str = "") -> str:
 
 
 def _runtime_config_env() -> dict[str, str]:
-    env = dict(os.environ)
+    env = {key: value for key, value in os.environ.items() if not key.startswith("AGENT_CODENAME_")}
     raw_home = env.get("ALFRED_HOME", "").strip()
     if raw_home:
         runtime_home = _safe_expand_path(raw_home) or Path(raw_home)
@@ -231,6 +231,7 @@ def _runtime_config_env() -> dict[str, str]:
         protected.update(key for key in _REPO_ENV_KEYS if key in os.environ)
         protected.update(key for key in RUNTIME_SETUP_MANAGED_ENV_KEYS if key in os.environ)
     _load_launcher_env_file(runtime_env_path, env, protected_keys=protected)
+    env = {key: value for key, value in env.items() if not key.startswith("AGENT_CODENAME_")}
     return env
 
 
@@ -256,18 +257,12 @@ def _alfred_init_managed_scope_patterns(path: Path) -> frozenset[str]:
             line = line.removeprefix("export ").strip()
         if "=" not in line:
             break
-        key, _, raw_value = line.partition("=")
+        key, _, _raw_value = line.partition("=")
         key = key.strip()
         if not _ENV_KEY_RE.match(key):
             break
         if key in {GH_ORG_ENV, REPO_LOCAL_MAP_ENV}:
             patterns.add(key)
-        if key.startswith("AGENT_CODENAME_"):
-            codename = decode_env_value(_strip_inline_comment(raw_value).strip()).strip()
-            if _CODENAME_RE.match(codename):
-                slug = codename.upper().replace("-", "_")
-                patterns.add(f"ALFRED_{slug}_REPOS")
-                patterns.add(f"ALFRED_{slug}_AWS_PROFILE")
     return frozenset(patterns) if in_managed_block else frozenset()
 
 

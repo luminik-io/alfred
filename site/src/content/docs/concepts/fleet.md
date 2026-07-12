@@ -114,7 +114,7 @@ These ship with plain-English names because they are fleet infrastructure, not r
 | **fleet-recap** | reporting | 07:30 + 22:00 | Aggregates per-agent spend, firings, and success rate. Posts to Slack. |
 | **curator** | content-quality | weekly | Opt-in. Fires the [slop detector](https://github.com/luminik-io/alfred/blob/main/docs/SLOP_DETECTOR.md) against `ALFRED_SLOP_TARGET_PATH`, posts findings to Slack. Read-only. Standalone CLI also available as `alfred slop-detect`. |
 
-## Adding a codename for your own role
+## Adding a custom runtime agent
 
 Use `alfred agent add` for a prompted custom runtime agent:
 

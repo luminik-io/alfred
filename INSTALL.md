@@ -38,7 +38,7 @@ cd ~/code/alfred
 bash install.sh
 gh auth login                     # GitHub auth
 claude auth login                 # Claude Code auth
-./bin/alfred-init.py              # choose agents, repos, codenames, Slack
+./bin/alfred-init.py              # choose agents, repos, Slack, and schedules
 ```
 
 macOS Homebrew path, if you prefer package-manager installs:
@@ -49,7 +49,7 @@ brew install alfred-os
 alfred-install
 gh auth login                     # GitHub auth
 claude auth login                 # Claude Code auth
-alfred-init                       # choose agents, repos, codenames, Slack
+alfred-init                       # choose agents, repos, Slack, and schedules
 ```
 
 The Homebrew formula installs the latest tagged release and puts the operator
@@ -177,7 +177,7 @@ For a full walkthrough of creating the Slack app + webhook, read [`docs/SLACK_SE
 
 ### 6. Configure the fleet
 
-Run the wizard to choose agents, repos, codenames, Slack settings, and schedules:
+Run the wizard to choose agents, repos, Slack settings, and schedules:
 
 ```sh
 ./bin/alfred-init.py
@@ -195,7 +195,7 @@ repo to every agent.
 
 - Writes `launchd/agents.conf`, the shared scheduler manifest, and updates
   `$ALFRED_HOME/.env`.
-- Copies prompt templates from `prompts/` into `~/.alfred/prompts/<codename>.md`
+- Copies prompt templates from `prompts/` into `~/.alfred/prompts/<role-slug>.md`
   without overwriting your edits.
 - Creates the standard GitHub labels on the selected repos, including
   `agent:implement`, `agent:authored`, lifecycle labels, bug-triage labels, and

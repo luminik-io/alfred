@@ -50,12 +50,14 @@ with their plain-English labels.
 
 ## Themes
 
-A theme is a named set of display names, one per role. Alfred ships three:
+A theme is a named set of display names, one per role. Alfred ships seven presets:
 
 - **Batman** (default): the Gotham cast above.
 - **Transformers**: Optimus Prime leads the architecture, Ironhide is the senior
   developer, Ratchet reviews, and so on.
 - **Justice League**: the architect leads and the League ships the pipeline.
+- **Programmers**, **Scientists**, **Mathematicians**, and **Philosophers**:
+  globally recognizable figures mapped onto the same runtime roles.
 
 You can also author a **custom** theme: your own name for every role. Custom
 themes are stored on the host so every surface honors them, not just the machine
@@ -79,6 +81,10 @@ everywhere at once:
   and anywhere an agent is named.
 - **The CLI** resolves the same names when it prints agent activity.
 
+Operator commands use exact runtime ids. Run `alfred pause senior-dev`, not
+`alfred pause lucius`; a display name never selects an agent or changes command
+routing. Custom runtime agents use the explicit id supplied to `alfred agent add`.
+
 The stable role-slug is always available underneath. Pull request titles,
 worktree paths, and log filenames keep the role, so a themed name never leaks
 into a place the machine depends on.
@@ -93,8 +99,8 @@ theme inside Desktop and Slack.
 Two ways to set your team's names:
 
 1. **Pick a preset.** In the desktop app's Setup step or the Agents roster
-   picker, choose Batman, Transformers, or Justice League. That is one write to
-   the theme store.
+   picker, choose any shipped roster preset. That is one write to the theme
+   store.
 2. **Build a custom theme by chatting.** The desktop app has a conversational
    theme builder: describe the vibe you want ("name them after Greek gods") and
    Alfred proposes a full role-to-name mapping you can tweak and save. See the

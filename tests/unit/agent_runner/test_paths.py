@@ -274,7 +274,7 @@ def test_launcher_env_scrubs_setup_managed_scope_when_runtime_env_omits_it(
     assert "ALFRED_SPEC_PLANNER_REPOS" not in env
 
 
-def test_launcher_env_scrubs_custom_codename_repo_scope_from_managed_block(
+def test_launcher_env_ignores_removed_role_identity_alias(
     fresh_agent_runner, monkeypatch, tmp_path
 ):
     import agent_runner.paths as paths_mod
@@ -296,9 +296,9 @@ def test_launcher_env_scrubs_custom_codename_repo_scope_from_managed_block(
 
     env = paths_mod.launcher_env()
 
-    assert env["AGENT_CODENAME_FEATURE_DEV"] == "oracle"
-    assert env["ALFRED_ORACLE_REPOS"] == "org/runtime"
-    assert env["ALFRED_ORACLE_AWS_PROFILE"] == "runtime-profile"
+    assert "AGENT_CODENAME_FEATURE_DEV" not in env
+    assert env["ALFRED_ORACLE_REPOS"] == "org/stale"
+    assert env["ALFRED_ORACLE_AWS_PROFILE"] == "stale-profile"
 
 
 def test_launcher_env_scrubs_special_prompt_envs_from_managed_block(
@@ -312,23 +312,29 @@ def test_launcher_env_scrubs_special_prompt_envs_from_managed_block(
         "# alfred-init, generated below this line. Safe to re-run.\n"
         "ARCHITECT_PARENT_REPO=org/plans\n"
         "ALFRED_E2E_RUNNER_TARGET_URL=https://new.example.test\n"
+        "ALFRED_E2E_RUNNER_AWS_PROFILE=new-e2e-profile\n"
         "ALFRED_OPS_WATCH_ECS_CLUSTER=new-cluster\n"
-        "ALFRED_OPS_WATCH_SENTRY_ORG=new-org\n",
+        "ALFRED_OPS_WATCH_SENTRY_ORG=new-org\n"
+        "ALFRED_OPS_WATCH_AWS_PROFILE=new-ops-profile\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("ALFRED_HOME", str(runtime))
     monkeypatch.setenv("ARCHITECT_PARENT_REPO", "org/stale-plans")
     monkeypatch.setenv("ALFRED_E2E_RUNNER_TARGET_URL", "https://old.example.test")
+    monkeypatch.setenv("ALFRED_E2E_RUNNER_AWS_PROFILE", "old-e2e-profile")
     monkeypatch.setenv("ALFRED_OPS_WATCH_ECS_CLUSTER", "old-cluster")
     monkeypatch.setenv("ALFRED_OPS_WATCH_SENTRY_ORG", "old-org")
+    monkeypatch.setenv("ALFRED_OPS_WATCH_AWS_PROFILE", "old-ops-profile")
 
     env = paths_mod.launcher_env()
 
     assert env["ARCHITECT_PARENT_REPO"] == "org/plans"
     assert env["ALFRED_E2E_RUNNER_TARGET_URL"] == "https://new.example.test"
+    assert env["ALFRED_E2E_RUNNER_AWS_PROFILE"] == "new-e2e-profile"
     assert env["ALFRED_OPS_WATCH_ECS_CLUSTER"] == "new-cluster"
     assert env["ALFRED_OPS_WATCH_SENTRY_ORG"] == "new-org"
+    assert env["ALFRED_OPS_WATCH_AWS_PROFILE"] == "new-ops-profile"
 
 
 def test_launcher_env_preserves_process_owned_aws_profile(
@@ -348,7 +354,7 @@ def test_launcher_env_preserves_process_owned_aws_profile(
     assert env["ALFRED_BACKUP_AWS_PROFILE"] == "backup-profile"
 
 
-def test_launcher_env_does_not_scrub_appended_token_after_managed_block(
+def test_launcher_env_does_not_infer_scope_from_removed_role_alias(
     fresh_agent_runner, monkeypatch, tmp_path
 ):
     import agent_runner.paths as paths_mod
@@ -369,7 +375,8 @@ def test_launcher_env_does_not_scrub_appended_token_after_managed_block(
 
     env = paths_mod.launcher_env()
 
-    assert env["ALFRED_ORACLE_REPOS"] == "org/runtime"
+    assert "AGENT_CODENAME_FEATURE_DEV" not in env
+    assert env["ALFRED_ORACLE_REPOS"] == "org/stale"
     assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "process-token"
 
 

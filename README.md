@@ -177,7 +177,7 @@ brew install alfred-os
 alfred-install
 gh auth login                     # GitHub
 claude auth login                 # Claude Code auth
-alfred-init                       # choose repos, team names, schedule, Slack
+alfred-init                       # choose agents, repos, schedule, and Slack
 ```
 
 Working from `main` or on Linux, use the source checkout instead:
@@ -188,7 +188,7 @@ cd ~/code/alfred
 bash install.sh
 gh auth login
 claude auth login
-./bin/alfred-init.py              # choose repos, team names, schedule, Slack
+./bin/alfred-init.py              # choose agents, repos, schedule, and Slack
 ```
 
 For an unattended install an AI coding tool can drive, pass an explicit repo

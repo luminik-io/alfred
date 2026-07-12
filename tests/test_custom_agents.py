@@ -274,6 +274,26 @@ def test_custom_agent_store_load_drops_existing_reserved_names(tmp_path: Path) -
         store.conf_rows(strict=True)
 
 
+@pytest.mark.parametrize("codename", ["batman", "lucius", "drake", "rasalghul"])
+def test_theme_persona_names_are_available_to_custom_runtime_agents(
+    tmp_path: Path,
+    codename: str,
+) -> None:
+    store = CustomAgentStore.from_state_root(tmp_path / "state")
+
+    agent = store.upsert(
+        {
+            "codename": codename,
+            "display_name": codename.title(),
+            "role_title": "Custom operator role",
+            "purpose": "Demonstrate that display themes do not reserve runtime identities.",
+            "prompt": "Inspect the configured repositories and summarize the next action.",
+        }
+    )
+
+    assert agent.codename == codename
+
+
 def test_custom_agent_store_upsert_preserves_malformed_manifest(tmp_path: Path) -> None:
     state = tmp_path / "state"
     manifest = state / "custom-agents" / "custom-agents.json"

@@ -309,7 +309,7 @@ def test_agent_launch_scrubs_setup_managed_scope_when_runtime_env_omits_it(
     assert "SPEC=unset" in proc.stdout
 
 
-def test_agent_launch_scrubs_custom_codename_scope_from_managed_block(
+def test_agent_launch_ignores_removed_role_identity_alias(
     tmp_path: Path, alfred_home: Path
 ) -> None:
     (alfred_home / ".env").write_text(
@@ -340,9 +340,9 @@ def test_agent_launch_scrubs_custom_codename_scope_from_managed_block(
     )
 
     assert proc.returncode == 0, proc.stderr
-    assert "CODENAME=oracle" in proc.stdout
-    assert "REPOS=org/runtime" in proc.stdout
-    assert "AWS=runtime-profile" in proc.stdout
+    assert "CODENAME=unset" in proc.stdout
+    assert "REPOS=org/stale" in proc.stdout
+    assert "AWS=stale-profile" in proc.stdout
 
 
 def test_agent_launch_scrubs_special_prompt_envs_from_managed_block(
@@ -352,8 +352,10 @@ def test_agent_launch_scrubs_special_prompt_envs_from_managed_block(
         "# alfred-init, generated below this line. Safe to re-run.\n"
         "ARCHITECT_PARENT_REPO=org/plans\n"
         "ALFRED_E2E_RUNNER_TARGET_URL=https://new.example.test\n"
+        "ALFRED_E2E_RUNNER_AWS_PROFILE=new-e2e-profile\n"
         "ALFRED_OPS_WATCH_ECS_CLUSTER=new-cluster\n"
-        "ALFRED_OPS_WATCH_SENTRY_ORG=new-org\n",
+        "ALFRED_OPS_WATCH_SENTRY_ORG=new-org\n"
+        "ALFRED_OPS_WATCH_AWS_PROFILE=new-ops-profile\n",
         encoding="utf-8",
     )
     target = tmp_path / "echo-special-prompts.sh"
@@ -361,8 +363,10 @@ def test_agent_launch_scrubs_special_prompt_envs_from_managed_block(
         "#!/usr/bin/env bash\n"
         'echo "ARCHITECT=${ARCHITECT_PARENT_REPO:-unset}"\n'
         'echo "E2E=${ALFRED_E2E_RUNNER_TARGET_URL:-unset}"\n'
+        'echo "E2E_AWS=${ALFRED_E2E_RUNNER_AWS_PROFILE:-unset}"\n'
         'echo "ECS=${ALFRED_OPS_WATCH_ECS_CLUSTER:-unset}"\n'
-        'echo "SENTRY=${ALFRED_OPS_WATCH_SENTRY_ORG:-unset}"\n',
+        'echo "SENTRY=${ALFRED_OPS_WATCH_SENTRY_ORG:-unset}"\n'
+        'echo "OPS_AWS=${ALFRED_OPS_WATCH_AWS_PROFILE:-unset}"\n',
         encoding="utf-8",
     )
     _make_executable(target)
@@ -373,16 +377,20 @@ def test_agent_launch_scrubs_special_prompt_envs_from_managed_block(
         extra_env={
             "ARCHITECT_PARENT_REPO": "org/stale-plans",
             "ALFRED_E2E_RUNNER_TARGET_URL": "https://old.example.test",
+            "ALFRED_E2E_RUNNER_AWS_PROFILE": "old-e2e-profile",
             "ALFRED_OPS_WATCH_ECS_CLUSTER": "old-cluster",
             "ALFRED_OPS_WATCH_SENTRY_ORG": "old-org",
+            "ALFRED_OPS_WATCH_AWS_PROFILE": "old-ops-profile",
         },
     )
 
     assert proc.returncode == 0, proc.stderr
     assert "ARCHITECT=org/plans" in proc.stdout
     assert "E2E=https://new.example.test" in proc.stdout
+    assert "E2E_AWS=new-e2e-profile" in proc.stdout
     assert "ECS=new-cluster" in proc.stdout
     assert "SENTRY=new-org" in proc.stdout
+    assert "OPS_AWS=new-ops-profile" in proc.stdout
 
 
 def test_agent_launch_preserves_process_owned_aws_profile(
@@ -406,7 +414,7 @@ def test_agent_launch_preserves_process_owned_aws_profile(
     assert "PROFILE=backup-profile" in proc.stdout
 
 
-def test_agent_launch_does_not_scrub_appended_token_after_managed_block(
+def test_agent_launch_does_not_infer_scope_from_removed_role_alias(
     tmp_path: Path, alfred_home: Path
 ) -> None:
     (alfred_home / ".env").write_text(
@@ -435,11 +443,11 @@ def test_agent_launch_does_not_scrub_appended_token_after_managed_block(
     )
 
     assert proc.returncode == 0, proc.stderr
-    assert "REPOS=org/runtime" in proc.stdout
+    assert "REPOS=org/stale" in proc.stdout
     assert "TOKEN=process-token" in proc.stdout
 
 
-def test_agent_launch_expands_alfred_home_before_scanning_managed_block(
+def test_agent_launch_expands_alfred_home_without_loading_removed_role_alias(
     tmp_path: Path,
 ) -> None:
     home = tmp_path / "home"
@@ -473,8 +481,8 @@ def test_agent_launch_expands_alfred_home_before_scanning_managed_block(
 
     assert proc.returncode == 0, proc.stderr
     assert f"HOME_VAR={runtime}" in proc.stdout
-    assert "CODENAME=oracle" in proc.stdout
-    assert "REPOS=org/runtime" in proc.stdout
+    assert "CODENAME=unset" in proc.stdout
+    assert "REPOS=org/stale" in proc.stdout
 
 
 def test_agent_launch_preserves_code_memory_process_controls(

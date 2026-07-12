@@ -190,90 +190,21 @@ PRESET_DISPLAY_NAMES: dict[str, dict[str, str]] = {
     if theme_id != _BASE_THEME_ID
 }
 
-# The canonical role per known fleet codename (the role-slug identity), and a
-# second table keyed by the SLUGIFIED Batman display name so a legacy install
-# (whose codenames are the Batman-cast names, e.g. ``lucius``, ``rasalghul``)
-# still resolves to a canonical role and gets re-themed. Both are derived from the
-# manifest, so they never drift from it.
+# The canonical role per known fleet codename (the immutable role-slug identity).
 _CODENAME_ROLE: dict[str, str] = {
     str(agent["codename"]): str(agent["role"]) for agent in _MANIFEST_AGENTS
 }
 
-
-def _slugify_name(name: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", str(name).lower())
-
-
-_LEGACY_NAME_ROLE: dict[str, str] = {
-    _slugify_name(str(agent["names"][_BASE_THEME_ID])): str(agent["role"])
-    for agent in _MANIFEST_AGENTS
-}
-
-# The slugified base-theme (Batman) display name -> canonical codename. A legacy
-# install predating the role-slug rename carries the Batman-cast names as its
-# codenames (``lucius``, ``fleetdoctor``); each such name is unique to ONE
-# manifest agent, so this recovers that agent's exact identity. Resolving through
-# it lets two legacy agents that share a role (e.g. two ``ops`` agents) each keep
-# their OWN themed persona instead of both collapsing onto the role pool's first
-# name.
-_LEGACY_NAME_CODENAME: dict[str, str] = {
-    _slugify_name(str(agent["names"][_BASE_THEME_ID])): str(agent["codename"])
-    for agent in _MANIFEST_AGENTS
-}
-
-# Ordered themed-name pool per role per theme (the base ``batman`` theme included),
-# grouped from the manifest in agent order. Used to name an agent by its ROLE when
-# its codename is not a known slug, so theme application is correct for ANY install
-# rather than only the canonical slugs.
-_NAME_POOL_BY_ROLE: dict[str, dict[str, list[str]]] = {}
-for _theme_id in PRESET_THEME_IDS:
-    _pool: dict[str, list[str]] = {}
-    for _agent in _MANIFEST_AGENTS:
-        _pool.setdefault(str(_agent["role"]), []).append(str(_agent["names"][_theme_id]))
-    _NAME_POOL_BY_ROLE[_theme_id] = _pool
-
-
 def role_for_codename(codename: str) -> str | None:
     """Canonical role-slug for a codename, or ``None`` when it cannot be placed.
 
-    Resolves a canonical fleet slug (``senior-dev``) directly, and a legacy
-    Batman-cast codename (``lucius`` -> ``senior-dev``) via the slugified-name
-    table, so both a fresh install and one that predates the role-slug rename map
-    onto the same role.
+    Built-in roles use immutable runtime ids. Display names from a roster theme
+    never resolve as runtime identities.
     """
     short = _normalize_codename(codename)
     if not short:
         return None
-    return _CODENAME_ROLE.get(short) or _LEGACY_NAME_ROLE.get(short)
-
-
-def _resolve_known_codename(codename: str) -> str | None:
-    """Canonical fleet codename for a slug OR a legacy Batman-cast codename.
-
-    Returns the codename itself when it is already a known fleet slug, the
-    canonical codename a legacy Batman-cast codename maps to (``lucius`` ->
-    ``senior-dev``) so it resolves to that agent's EXACT themed persona, or
-    ``None`` for a codename outside the known fleet. Unlike a role lookup this
-    keeps two legacy agents that share a role distinct, since each Batman-cast
-    name belongs to exactly one manifest agent.
-    """
-    short = _normalize_codename(codename)
-    if not short:
-        return None
-    if short in _CODENAME_ROLE:
-        return short
-    return _LEGACY_NAME_CODENAME.get(short)
-
-
-def _themed_name_by_role(theme_id: str, role: str) -> str | None:
-    """The theme's primary (pool-first) display name for a role, or ``None``."""
-    pool = _NAME_POOL_BY_ROLE.get(theme_id, {}).get(role)
-    if pool:
-        return pool[0]
-    # A preset with no dedicated pool for this role (should not happen for a
-    # manifest role) falls back to the base theme's pool so the name is themed.
-    base_pool = _NAME_POOL_BY_ROLE.get(_BASE_THEME_ID, {}).get(role)
-    return base_pool[0] if base_pool else None
+    return _CODENAME_ROLE.get(short)
 
 
 @dataclass(frozen=True)
@@ -413,36 +344,16 @@ class RosterThemeState:
         preset ``ROLE_LABELS_DEFAULT`` with no per-codename override), so a
         preset resolves to the base theme role for the codename. ``custom``
         keeps its own per-agent overlay. Under the default ``batman`` theme a
-        canonical slug returns ``None`` (the caller's own ``BASE_THEME_ROLES``
-        lookup, keyed by slug, already supplies the label, and the shipped
-        ``codename_with_role`` path is preserved), but a known LEGACY Batman-cast
-        codename gets its role label here via its derived role: the caller's
-        slug-keyed lookup would miss it, leaving the base persona
-        ``themed_name_for`` returns for it without a role. An unknown codename
-        resolves to ``None`` so the caller keeps the shipped env-role behavior.
+        canonical slug returns ``None`` because the caller's own
+        ``BASE_THEME_ROLES`` lookup already supplies the label. Unknown runtime
+        ids return ``None`` so the caller can use their configured role metadata.
         """
         if self.theme == CUSTOM_THEME_ID:
-            label = self.custom_role_label_for(codename)
-            return label or self._role_label_by_role(codename)
+            return self.custom_role_label_for(codename)
         if self.theme in PRESET_DISPLAY_NAMES:
             short = _normalize_codename(codename) or ""
-            return BASE_THEME_ROLES.get(short) or self._role_label_by_role(codename)
-        short = _normalize_codename(codename) or ""
-        if short in BASE_THEME_ROLES:
-            return None
-        return self._role_label_by_role(codename)
-
-    def _role_label_by_role(self, codename: str) -> str | None:
-        """Role label for a codename via its derived role, or ``None``.
-
-        Pairs with :meth:`_role_themed_name` so a legacy codename renders its
-        themed name AND a matching role label (``Lucius (Senior developer)``)
-        instead of the raw slug and env role.
-        """
-        role = role_for_codename(codename)
-        if role is None:
-            return None
-        return _ROLE_LABELS_DEFAULT.get(role)
+            return BASE_THEME_ROLES.get(short)
+        return None
 
     def themed_name_for(self, codename: str) -> str | None:
         """Display name for a codename under the ACTIVE theme, base name included.
@@ -468,41 +379,13 @@ class RosterThemeState:
         a name.
         """
         if self.theme == CUSTOM_THEME_ID:
-            name = self.custom_display_name_for(codename)
-            if name:
-                return name
-            # A legacy codename the operator never named still gets a base-theme
-            # persona by ROLE rather than falling through to its raw slug.
-            return self._role_themed_name(codename, _BASE_THEME_ID)
+            return self.custom_display_name_for(codename)
         short = _normalize_codename(codename) or ""
         preset = PRESET_DISPLAY_NAMES.get(self.theme)
         if preset is not None:
-            return preset.get(short) or self._role_themed_name(codename, self.theme)
+            return preset.get(short)
         # The default ``batman`` theme: the base name IS the themed name.
-        return BASE_THEME_NAMES.get(short) or self._role_themed_name(codename, _BASE_THEME_ID)
-
-    def _role_themed_name(self, codename: str, theme_id: str) -> str | None:
-        """Name a codename by its derived ROLE under ``theme_id``, or ``None``.
-
-        The fallback that makes theme application correct for a legacy install: a
-        Batman-cast codename (``lucius``) is not a known slug, so the per-codename
-        maps miss it. It is first resolved to its EXACT manifest agent so it keeps
-        that agent's own themed persona (two legacy agents sharing a role stay
-        distinct); only a codename that resolves to a role but not a specific
-        agent falls back to the role pool's primary name.
-        """
-        resolved = _resolve_known_codename(codename)
-        if resolved is not None:
-            if theme_id == _BASE_THEME_ID:
-                named = BASE_THEME_NAMES.get(resolved)
-            else:
-                named = PRESET_DISPLAY_NAMES.get(theme_id, {}).get(resolved)
-            if named:
-                return named
-        role = role_for_codename(codename)
-        if role is None:
-            return None
-        return _themed_name_by_role(theme_id, role)
+        return BASE_THEME_NAMES.get(short)
 
 
 def default_theme_state() -> RosterThemeState:

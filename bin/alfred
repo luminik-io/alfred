@@ -1412,7 +1412,7 @@ def _record_map() -> dict[str, dict[str, str]]:
 
 
 def _resolve_label(name: str) -> str | None:
-    """Accept a role slug, active-theme display name, or full label."""
+    """Resolve an exact runtime id or full scheduler label."""
     mapping = _label_map()
     if name in mapping:
         return mapping[name]
@@ -1652,38 +1652,8 @@ def cmd_dry_run(
         os.environ.update(previous_env)
 
 
-def _agent_name_key(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
-
-
-def _active_theme_agent_aliases() -> dict[str, str]:
-    try:
-        from roster_theme_store import BASE_THEME_NAMES, RosterThemeStore
-    except Exception:
-        return {}
-    try:
-        alfred_home = os.environ.get("ALFRED_HOME", "").strip()
-        state_root = (
-            Path(alfred_home).expanduser() / "state" if alfred_home else agent_runner.STATE_ROOT
-        )
-        state = RosterThemeStore.from_state_root(state_root).load()
-    except Exception:
-        return {}
-    out: dict[str, str] = {}
-    for codename in BASE_THEME_NAMES:
-        themed_name = state.themed_name_for(codename)
-        if themed_name:
-            out[_agent_name_key(themed_name)] = codename
-    return out
-
-
 def _normalize_agent_name(agent: str) -> str:
-    raw = agent.strip()
-    slug = raw.lower()
-    if slug in DEFAULT_AGENT_CATALOG:
-        return slug
-    themed = _active_theme_agent_aliases().get(_agent_name_key(raw))
-    return themed or slug
+    return agent.strip().lower()
 
 
 def _engine_state_file(agent: str) -> Path:

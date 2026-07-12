@@ -35,7 +35,7 @@ export type RosterTheme = {
   // another agent's persona, so two agents can never collide on one name.
   nameByCodename: Record<string, string>;
   // Ordered pool of themed names per canonical role. An agent whose codename is
-  // NOT a known fleet slug (a legacy Batman-cast codename, or a custom agent) is
+  // NOT a known fleet slug (a custom agent) is
   // named by its derived ROLE from this pool, so theme application is correct for
   // ANY install and not just the canonical slugs. When several agents share a
   // role, the batch resolver (buildThemedRoster) walks the pool to give each a
@@ -257,9 +257,7 @@ export function resolveThemedIdentity(
   // Name resolution, in order:
   //   1. an exact per-codename name (the canonical fleet slug, or an operator's
   //      custom name), then
-  //   2. the theme's name for the agent's derived ROLE, so a legacy Batman-cast
-  //      codename (``lucius``) is re-skinned by role instead of showing its raw
-  //      titleized codename, then
+  //   2. the theme's name for a custom agent's reported role, then
   //   3. a titleized codename so an agent we cannot place is never blank.
   // The role pool's FIRST entry is the role's primary persona; the batch resolver
   // (buildThemedRoster) is what walks the pool to keep duplicate-role agents
@@ -282,7 +280,7 @@ export function resolveThemedIdentity(
  *   1. Agents with an exact per-codename name (a canonical fleet slug, or an
  *      operator-named codename under the custom theme) take that name. These are
  *      already distinct by construction and preserve today's exact rendering.
- *   2. Every remaining agent (legacy Batman-cast codenames, custom agents) is
+ *   2. Every remaining custom agent is
  *      grouped by its derived role and, within a role, sorted by codename so the
  *      allocation never depends on roster order. Each is handed the next UNUSED
  *      name from its role pool; when that pool is exhausted it draws from the
