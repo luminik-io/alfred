@@ -144,11 +144,16 @@ export function useAlfred() {
   // *after* the post-pause refresh and re-show the agent as running. Each call
   // claims an id; only the latest id is allowed to commit its result.
   const reqRef = useRef(0);
+  // The endpoint the most recent refresh aimed at. A readiness probe watches
+  // this so it can stop the moment the user connects a different server, rather
+  // than re-committing the stale local runtime URL on a later attempt.
+  const refreshTargetRef = useRef<string | null>(null);
 
   const refresh = useCallback(
     async (nextBaseUrl = baseUrl): Promise<boolean> => {
       const targetBaseUrl = clientBaseUrl(nextBaseUrl);
       const id = ++reqRef.current;
+      refreshTargetRef.current = targetBaseUrl;
       setLoading(true);
       setError(null);
       setErrorRaw(null);
@@ -177,11 +182,18 @@ export function useAlfred() {
 
   const waitForRuntimeReady = useCallback(
     async (nextBaseUrl: string): Promise<boolean> => {
+      const target = clientBaseUrl(nextBaseUrl);
       for (let attempt = 0; attempt < RUNTIME_READY_ATTEMPTS; attempt += 1) {
         if (attempt > 0) {
           await new Promise<void>((resolve) => {
             window.setTimeout(resolve, RUNTIME_READY_DELAY_MS);
           });
+        }
+        // The user connected a different server since the last probe. Stop
+        // before issuing another request so we cannot re-commit the now-stale
+        // local runtime URL over their newer selection.
+        if (refreshTargetRef.current !== null && refreshTargetRef.current !== target) {
+          return false;
         }
         if (await refresh(nextBaseUrl)) {
           return true;
@@ -601,7 +613,17 @@ export function useAlfred() {
       const result = await startLocalRuntime(runtimePortFromBaseUrl(baseUrl));
       setNativeResult(result);
       if (result.success) {
-        await waitForRuntimeReady(baseUrl);
+        const ready = await waitForRuntimeReady(baseUrl);
+        // The process launched but never answered. Only correct the notice when
+        // the probe is still aimed at this runtime; if the user switched servers
+        // mid-probe, leave their new connection state alone.
+        if (!ready && refreshTargetRef.current === clientBaseUrl(baseUrl)) {
+          setNativeResult({
+            ...result,
+            success: false,
+            message: "The local runtime started but is not answering yet. It will connect on its own once ready.",
+          });
+        }
       }
     } catch (err) {
       setNativeError(err instanceof Error ? err.message : String(err));
@@ -632,7 +654,18 @@ export function useAlfred() {
           : runtime.message || "Alfred core installed, but the local runtime did not start.",
       });
       if (runtime.success) {
-        await waitForRuntimeReady(baseUrl);
+        const ready = await waitForRuntimeReady(baseUrl);
+        // The runtime process started but never answered. Only correct the
+        // notice when the probe is still aimed at this runtime; if the user
+        // switched servers mid-probe, leave their new connection state alone.
+        if (!ready && refreshTargetRef.current === clientBaseUrl(baseUrl)) {
+          setNativeResult({
+            ...runtime,
+            success: false,
+            message:
+              "Alfred core installed and the runtime started, but it is not answering yet. It will connect on its own once ready.",
+          });
+        }
       }
     } catch (err) {
       setNativeError(err instanceof Error ? err.message : String(err));

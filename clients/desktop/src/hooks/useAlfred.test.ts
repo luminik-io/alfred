@@ -417,6 +417,77 @@ describe("useAlfred post-action refresh ordering", () => {
     expect(loadSnapshotMock).not.toHaveBeenCalled();
   });
 
+  it("reports an unreachable runtime honestly instead of claiming it started", async () => {
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("senior-dev")]));
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    // installCore + the native start both succeed, but the runtime never
+    // answers: every readiness probe rejects for the full retry window.
+    loadSnapshotMock.mockRejectedValue(new Error("connection refused"));
+
+    vi.useFakeTimers();
+    try {
+      let installP: Promise<void>;
+      act(() => {
+        installP = result.current.installCore();
+      });
+      await act(async () => {
+        // 10 attempts * 300ms readiness window, with headroom.
+        await vi.advanceTimersByTimeAsync(4000);
+        await installP;
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(result.current.nativeResult?.success).toBe(false);
+    expect(result.current.nativeResult?.message).toMatch(/not answering yet/i);
+    expect(result.current.nativeResult?.message).not.toMatch(/the local runtime started\.?$/i);
+  });
+
+  it("does not revert a custom server the user connects while the runtime is probed", async () => {
+    const customUrl = "http://127.0.0.1:7123";
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("senior-dev")]));
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+    expect(result.current.baseUrl).toBe(DEFAULT_BASE_URL);
+
+    // The first local probe fails (runtime not ready yet); a later probe would
+    // succeed and, without the fix, revert baseUrl to the local URL. The user
+    // connects a custom server before that later probe runs.
+    let localProbes = 0;
+    loadSnapshotMock.mockImplementation(async (url: string) => {
+      if (url === customUrl) return snapshot([agent("architect")]);
+      localProbes += 1;
+      if (localProbes === 1) throw new Error("connection refused");
+      return snapshot([agent("senior-dev")]);
+    });
+
+    vi.useFakeTimers();
+    try {
+      let startP: Promise<void>;
+      act(() => {
+        startP = result.current.startRuntime();
+      });
+      // The user connects a custom server; it commits and becomes the target.
+      await act(async () => {
+        await result.current.refresh(customUrl);
+      });
+      // Drain the remaining readiness window: the loop should bail, not probe
+      // the local URL again.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4000);
+        await startP;
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(result.current.baseUrl).toBe(customUrl);
+    expect(rememberBaseUrlMock).toHaveBeenLastCalledWith(customUrl);
+  });
+
   it("refreshes after a pause and reflects the post-action snapshot", async () => {
     // Mount snapshot: senior-dev running. After pause, refresh returns paused.
     loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("senior-dev", { paused: false })]));
