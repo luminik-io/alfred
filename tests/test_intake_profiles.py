@@ -208,7 +208,7 @@ def test_plain_plan_line_scrubs_jargon_from_free_text(monkeypatch) -> None:
 
 def test_plain_summary_hides_operator_note_bookkeeping(monkeypatch) -> None:
     monkeypatch.setenv(ENV_INTAKE_PROFILE, "plain")
-    # A free-form note lands in open_questions as an "Operator note:" line in
+    # A free-form note lands in operator_notes as an "Operator note:" line in
     # the structured draft; the user should never see that bookkeeping.
     result = refine_issue_draft(_ready_draft(), ["please make it feel friendlier"])
 

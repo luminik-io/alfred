@@ -165,11 +165,41 @@ def test_refine_issue_draft_preserves_mixed_freeform_notes() -> None:
     )
 
     assert "the plan can be revised" in result.draft.acceptance_criteria[-1]
-    assert "Operator note: Use friendlier language" in result.draft.open_questions
+    # A free-form note lands in ``operator_notes``, NOT ``open_questions``, so it
+    # never trips the open-questions readiness blocker.
+    assert "Operator note: Use friendlier language" in result.draft.operator_notes
+    assert "Operator note" not in result.draft.open_questions
     assert any(
         "Add acceptance criterion: the plan can be revised" in item for item in result.amendments
     )
     assert "Capture operator note: Use friendlier language for operators." in result.amendments
+
+
+def test_capturing_a_note_does_not_reopen_cleared_open_questions() -> None:
+    # Live regression (#540): a ready draft with cleared open questions reached
+    # 94/100; capturing a plain note must not re-open the cleared questions or
+    # drop the score. Before the fix the note was appended to ``open_questions``,
+    # which re-tripped the ``open_questions_unresolved`` blocker (94 -> 72).
+    ready = replace(
+        _draft(),
+        acceptance_criteria=["An approved draft produces exactly one labeled issue."],
+        test_plan="Run the Slack bridge pytest suite and inspect the filed issue.",
+        open_questions="none",
+    )
+    baseline = refine_issue_draft(ready, [])
+    assert baseline.readiness.ok is True
+
+    after_note = refine_issue_draft(ready, ["let's prioritize the mobile path"])
+
+    # The note is captured, but readiness is byte-for-byte unchanged: same score,
+    # same ok flag, no re-opened open-questions blocker, open_questions untouched.
+    assert after_note.readiness.ok is True
+    assert after_note.readiness.score == baseline.readiness.score
+    assert not any(
+        finding.code == "open_questions_unresolved" for finding in after_note.readiness.findings
+    )
+    assert after_note.draft.open_questions == baseline.draft.open_questions
+    assert "prioritize the mobile path" in after_note.draft.operator_notes
 
 
 def test_refine_issue_draft_handles_plural_repo_commands() -> None:

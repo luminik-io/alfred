@@ -50,6 +50,11 @@ class IssueDraft:
     out_of_scope: str = ""
     rollout: str = ""
     open_questions: str = ""
+    # Free-form operator asides captured during refinement. These are context
+    # for the implementer, NOT open questions: they never gate readiness and
+    # never re-open cleared open questions. Kept separate from ``open_questions``
+    # so capturing a note can never revert a cleared readiness state.
+    operator_notes: str = ""
 
 
 @dataclass(frozen=True)
@@ -313,6 +318,8 @@ def render_issue_body(draft: IssueDraft) -> str:
         "## Open Questions",
         draft.open_questions.strip() or "None.",
     ]
+    if draft.operator_notes.strip():
+        sections.extend(["## Operator Notes", draft.operator_notes.strip()])
     return "\n\n".join(sections).strip() + "\n"
 
 

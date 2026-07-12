@@ -14,6 +14,7 @@ from slack_surface.bridge import (  # noqa: E402
     BridgeConfig,
     SlackIssueBridge,
     build_issue_body,
+    classify_affirmation,
     contains_approval_token,
     default_issue_creator,
 )
@@ -178,6 +179,84 @@ def test_ambiguous_text_is_not_approval() -> None:
     assert not contains_approval_token("can we ship it next week?", phrases)
     assert not contains_approval_token("acceptance: ship it to staging first", phrases)
     assert not contains_approval_token("going to refine this more", phrases)
+
+
+# ---------------------------------------------------------------------------
+# Plain-language affirmation classification
+# ---------------------------------------------------------------------------
+
+
+def test_explicit_file_verbs_file_regardless_of_readiness() -> None:
+    # An explicit file verb expresses clear intent; it files whether or not the
+    # draft is already ready (the bridge readiness gate still has the final say).
+    for phrase in (
+        "file it",
+        "file the issue",
+        "file it as an issue",
+        "ship it",
+        "yes file it",
+    ):
+        for ready in (True, False):
+            verdict = classify_affirmation(phrase, ready=ready)
+            assert verdict is not None, (phrase, ready)
+            assert verdict.files is True, (phrase, ready)
+            assert verdict.runs is False, (phrase, ready)
+
+
+def test_bare_affirmations_file_only_when_ready() -> None:
+    # A bare affirmation is honored only on a ready-for-review draft; on a
+    # not-ready draft it is ambiguous, so the caller keeps refining.
+    for phrase in ("go ahead", "do it", "approved", "sounds good", "proceed"):
+        ready_verdict = classify_affirmation(phrase, ready=True)
+        assert ready_verdict is not None and ready_verdict.files is True, phrase
+        assert ready_verdict.runs is False, phrase
+        not_ready = classify_affirmation(phrase, ready=False)
+        assert not_ready is not None and not_ready.files is False, phrase
+
+
+def test_run_intent_is_detected_and_files() -> None:
+    # "run it" (and compounds) file AND ask to start the build.
+    for phrase in (
+        "run it",
+        "file it as an issue and run it",
+        "go ahead and run it",
+        "ship it and run it",
+        "start the build",
+    ):
+        verdict = classify_affirmation(phrase, ready=True)
+        assert verdict is not None, phrase
+        assert verdict.files is True, phrase
+        assert verdict.runs is True, phrase
+
+
+def test_run_intent_on_bare_affirmation_needs_readiness_to_file() -> None:
+    # "go ahead and run it" on a NOT-ready draft: run intent is seen, but a bare
+    # affirmation does not file a thin draft.
+    verdict = classify_affirmation("go ahead and run it", ready=False)
+    assert verdict is not None
+    assert verdict.files is False
+    assert verdict.runs is True
+
+
+def test_refinement_prose_is_not_an_affirmation() -> None:
+    # Mixed scope prose and questions must never read as an affirmation, so a
+    # steering reply keeps refining instead of accidentally filing.
+    for phrase in (
+        "go ahead and add repo: acme-org/web",
+        "let's go with two repos",
+        "can we ship it next week?",
+        "acceptance: also confirm the label is applied",
+        "run the tests locally and confirm",
+        "what happens if the repo is empty?",
+    ):
+        for ready in (True, False):
+            assert classify_affirmation(phrase, ready=ready) is None, (phrase, ready)
+
+
+def test_affirmation_ignores_leading_mention_and_punctuation() -> None:
+    # In a channel the approval reply @-mentions the bot; it must still classify.
+    verdict = classify_affirmation("<@UALFRED> go ahead!", ready=True)
+    assert verdict is not None and verdict.files is True and verdict.runs is False
 
 
 # ---------------------------------------------------------------------------
@@ -552,6 +631,221 @@ def test_non_approval_reaction_does_not_create(tmp_path: Path) -> None:
 
     assert result.handled is False
     assert creator.calls == []
+
+
+# ---------------------------------------------------------------------------
+# Plain-language affirmation -> action (listener integration)
+# ---------------------------------------------------------------------------
+
+
+class RecordingControl:
+    """Fake control handler recording ``run`` kicks; reports a clean success."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str | None]] = []
+
+    def handle(self, text, *, trusted, actor_user_id=None):
+        from slack_surface.control import ControlResult
+
+        self.calls.append((text, actor_user_id))
+        return ControlResult(True, "run", text=f"ran {text}")
+
+
+def test_plain_affirmation_go_ahead_files_ready_draft(tmp_path: Path) -> None:
+    creator = RecordingCreator()
+    listener, poster, _registry = _make_listener(tmp_path, creator=creator)
+    _seed_draft(listener, tmp_path)
+
+    result = listener.handle_payload(_reply("go ahead", event_id="aff001"))
+
+    assert result.action == "issue_created"
+    assert len(creator.calls) == 1
+    assert creator.calls[0]["labels"] == ["agent:implement"]
+    assert "https://github.com/acme-org/api/issues/42" in poster.messages[-1]["text"]
+
+
+def test_plain_affirmation_file_it_files_ready_draft(tmp_path: Path) -> None:
+    creator = RecordingCreator()
+    listener, _poster, _registry = _make_listener(tmp_path, creator=creator)
+    _seed_draft(listener, tmp_path)
+
+    result = listener.handle_payload(_reply("file it as an issue", event_id="aff002"))
+
+    assert result.action == "issue_created"
+    assert len(creator.calls) == 1
+
+
+def test_affirmation_with_run_intent_files_and_kicks_implementer(tmp_path: Path) -> None:
+    creator = RecordingCreator()
+    control = RecordingControl()
+    poster = Poster()
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    bridge = SlackIssueBridge(config=_config(), issue_creator=creator)
+    previous = os.environ.get("ALFRED_OPERATOR_SLACK_USER_ID")
+    os.environ["ALFRED_OPERATOR_SLACK_USER_ID"] = "U1"
+    try:
+        listener = SlackPlanningListener(
+            registry=registry,
+            state_root=tmp_path,
+            poster=poster,
+            trusted_user_ids=("U1",),
+            bridge=bridge,
+            control_handler=control,
+        )
+    finally:
+        if previous is None:
+            os.environ.pop("ALFRED_OPERATOR_SLACK_USER_ID", None)
+        else:
+            os.environ["ALFRED_OPERATOR_SLACK_USER_ID"] = previous
+    _seed_draft(listener, tmp_path)
+
+    result = listener.handle_payload(_reply("file it as an issue and run it", event_id="aff003"))
+
+    assert result.action == "issue_created_and_run"
+    assert len(creator.calls) == 1
+    # The implementer was kicked through the operator-gated run control path.
+    assert control.calls == [("run senior-dev", "U1")]
+    assert "Build started" in poster.messages[-1]["text"]
+
+
+def test_affirmation_run_intent_falls_back_when_kick_unavailable(tmp_path: Path) -> None:
+    creator = RecordingCreator()
+
+    class RejectingControl:
+        def handle(self, text, *, trusted, actor_user_id=None):
+            from slack_surface.control import ControlResult
+
+            return ControlResult(True, "run_failed", text="no scheduler")
+
+    poster = Poster()
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    bridge = SlackIssueBridge(config=_config(), issue_creator=creator)
+    previous = os.environ.get("ALFRED_OPERATOR_SLACK_USER_ID")
+    os.environ["ALFRED_OPERATOR_SLACK_USER_ID"] = "U1"
+    try:
+        listener = SlackPlanningListener(
+            registry=registry,
+            state_root=tmp_path,
+            poster=poster,
+            trusted_user_ids=("U1",),
+            bridge=bridge,
+            control_handler=RejectingControl(),
+        )
+    finally:
+        if previous is None:
+            os.environ.pop("ALFRED_OPERATOR_SLACK_USER_ID", None)
+        else:
+            os.environ["ALFRED_OPERATOR_SLACK_USER_ID"] = previous
+    _seed_draft(listener, tmp_path)
+
+    result = listener.handle_payload(_reply("ship it and run it", event_id="aff004"))
+
+    # The issue is still filed; the run falls back to the fleet-pickup message.
+    assert result.action == "issue_created"
+    assert len(creator.calls) == 1
+    assert "fleet will pick this up" in poster.messages[-1]["text"]
+    assert "alfred run senior-dev" in poster.messages[-1]["text"]
+
+
+def test_bare_affirmation_on_not_ready_draft_does_not_file(tmp_path: Path) -> None:
+    creator = RecordingCreator()
+    listener, _poster, _registry = _make_listener(tmp_path, creator=creator)
+    # A thin draft: no acceptance / test, so readiness is not ok.
+    result = listener.handle_payload(
+        {
+            "event_id": "EvThin",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": "<@UALFRED> Investigate the flaky onboarding redirect",
+                "ts": "1716480010.000001",
+            },
+        }
+    )
+    assert result.action == "draft_created"
+    assert result.readiness_ok is False
+
+    revised = listener.handle_payload(_reply("go ahead", event_id="aff005"))
+
+    # A bare affirmation on a not-ready draft keeps refining; nothing is filed.
+    assert revised.action == "draft_revised"
+    assert creator.calls == []
+
+
+def test_explicit_file_it_on_not_ready_draft_gets_needs_scope(tmp_path: Path) -> None:
+    creator = RecordingCreator()
+    listener, poster, _registry = _make_listener(tmp_path, creator=creator)
+    result = listener.handle_payload(
+        {
+            "event_id": "EvThin2",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": "<@UALFRED> Investigate the flaky onboarding redirect",
+                "ts": "1716480010.000001",
+            },
+        }
+    )
+    assert result.readiness_ok is False
+
+    # An explicit file verb routes to the bridge, which refuses-with-guidance.
+    revised = listener.handle_payload(_reply("file it as an issue", event_id="aff006"))
+
+    assert revised.action == "approval_no_issue"
+    assert creator.calls == []
+    assert "still needs scope" in poster.messages[-1]["text"].lower()
+
+
+def test_capturing_a_note_leaves_readiness_unchanged(tmp_path: Path) -> None:
+    creator = RecordingCreator()
+    listener, _poster, _registry = _make_listener(tmp_path, creator=creator)
+    draft_path = _seed_draft(listener, tmp_path)
+    before = json.loads(Path(draft_path).read_text(encoding="utf-8"))
+    assert before["readiness"]["ok"] is True
+    baseline_score = before["readiness"]["score"]
+
+    # A plain note is captured without re-opening cleared open questions.
+    result = listener.handle_payload(
+        _reply("let's prioritize the mobile path first", event_id="note001")
+    )
+
+    assert result.action == "draft_revised"
+    assert result.readiness_ok is True
+    after = json.loads(Path(draft_path).read_text(encoding="utf-8"))
+    assert after["readiness"]["ok"] is True
+    assert after["readiness"]["score"] == baseline_score
+    assert after["draft"]["open_questions"] == before["draft"]["open_questions"]
+    assert "prioritize the mobile path" in after["draft"]["operator_notes"]
+    assert creator.calls == []
+
+
+def test_plain_language_cancel_discards_draft(tmp_path: Path) -> None:
+    creator = RecordingCreator()
+    listener, poster, registry = _make_listener(tmp_path, creator=creator)
+    _seed_draft(listener, tmp_path)
+
+    result = listener.handle_payload(_reply("discard the draft", event_id="cancel001"))
+
+    assert result.action == "draft_cancelled"
+    assert creator.calls == []
+    assert "discarded" in poster.messages[-1]["text"].lower()
+    record = registry.lookup("C1", "1716480010.000001")
+    assert record is not None
+    assert record.status == "cancelled"
+
+
+def test_draft_revision_footer_documents_action_phrases(tmp_path: Path) -> None:
+    creator = RecordingCreator()
+    listener, poster, _registry = _make_listener(tmp_path, creator=creator)
+    _seed_draft(listener, tmp_path)
+
+    listener.handle_payload(_reply("acceptance: also verify the label sticks", event_id="foot001"))
+
+    footer = poster.messages[-1]["text"]
+    assert "say `go ahead` and Alfred files it" in footer
+    assert "add `and run it` to start the build now" in footer
 
 
 # ---------------------------------------------------------------------------

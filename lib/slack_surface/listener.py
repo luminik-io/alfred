@@ -48,7 +48,11 @@ from slack_surface.approval import (
     resolve_bot_token,
     trusted_feedback_user_ids_from_env,
 )
-from slack_surface.bridge import SlackIssueBridge, build_issue_body
+from slack_surface.bridge import (
+    SlackIssueBridge,
+    build_issue_body,
+    classify_affirmation,
+)
 from slack_surface.control import SlackControlHandler, is_control_message, parse_control_command
 from slack_surface.converse import (
     SlackConverseConfig,
@@ -1846,13 +1850,32 @@ class SlackPlanningListener:
         record: SlackThreadRecord,
         feedback: ThreadFeedback,
     ) -> ListenerResult:
-        # Explicit, unambiguous approval text turns the saved draft into a
-        # queued GitHub issue. Anything else is normal refinement. The user
-        # is already trust-gated in handle_payload; the bridge re-checks.
-        if self.bridge.is_approval(text=feedback.text):
-            return self._attempt_issue_conversion(event, record)
-
         payload_path = Path(record.draft_path).expanduser() if record.draft_path else None
+
+        # A plain-language "cancel" / "discard the draft" abandons the draft
+        # instead of being captured as an operator note (a dead-end).
+        if _is_draft_cancel(feedback.text):
+            return self._cancel_draft(event, record)
+
+        # Explicit approval text or a plain-language affirmation turns the saved
+        # draft into a queued GitHub issue. ``is_approval`` catches the strict
+        # tokens ("ship it", check-mark reaction); ``classify_affirmation`` adds
+        # the natural-language path ("go ahead", "file it", "file it as an issue
+        # and run it") gated on the draft's saved readiness. When the operator
+        # also asked to run, we kick the implementer after filing. Anything else
+        # is normal refinement. The user is trust-gated in handle_payload; the
+        # bridge re-checks trust, operator authority, and readiness.
+        verdict = classify_affirmation(
+            feedback.text,
+            ready=self._saved_draft_ready(record, payload_path),
+        )
+        if (verdict is not None and verdict.files) or self.bridge.is_approval(text=feedback.text):
+            return self._attempt_issue_conversion(
+                event,
+                record,
+                run_requested=bool(verdict is not None and verdict.runs),
+            )
+
         if payload_path is None:
             return self._ack_unavailable_draft(event, record, "saved draft path is unavailable")
 
@@ -1919,14 +1942,22 @@ class SlackPlanningListener:
         self,
         event: SlackInputEvent,
         record: SlackThreadRecord,
+        *,
+        run_requested: bool = False,
     ) -> ListenerResult:
         """Bridge an approved draft to labeled GitHub issue work.
 
-        SAFETY: this never runs code. It only asks the bridge to create
-        labeled GitHub issues, which the autonomous fleet later claims through
-        all existing gates. The approving user is trust-gated in
-        ``handle_payload``; the bridge also requires the configured operator for
-        Slack-origin issue filing.
+        The bridge creates a labeled ``agent:implement`` GitHub issue, which the
+        autonomous fleet later claims through all existing gates. The approving
+        user is trust-gated in ``handle_payload``; the bridge also requires the
+        configured operator for Slack-origin issue filing.
+
+        When ``run_requested`` is set (the operator's reply carried run intent,
+        e.g. "run it" / "and run it"), we additionally kick the implementer
+        agent after the issue is filed. That kick reuses the same operator-gated
+        control path the ``run`` command already uses; the ``agent:implement``
+        label is the durable queue signal, so if a direct kick is unavailable
+        the issue is still picked up on the fleet's next pass.
         """
         payload_path = Path(record.draft_path).expanduser() if record.draft_path else None
         if payload_path is None:
@@ -1955,15 +1986,17 @@ class SlackPlanningListener:
                 self._record_conversion(payload_path, payload, record, outcome)
 
         summary = _issue_summary_for_payload(payload) if outcome.created else ""
-        self._post_thread_ack(
-            event.channel,
-            event.root_ts,
-            render_bridge_outcome_ack(outcome, summary=summary),
-        )
+        ack = render_bridge_outcome_ack(outcome, summary=summary)
+        run_action = ""
+        if outcome.created and run_requested:
+            run_note, run_action = self._kick_implementer(event)
+            if run_note:
+                ack = f"{ack}\n\n{run_note}"
+        self._post_thread_ack(event.channel, event.root_ts, ack)
         if outcome.created:
             return ListenerResult(
                 True,
-                "issue_created",
+                "issue_created_and_run" if run_action == "run" else "issue_created",
                 detail=outcome.detail,
                 draft_path=str(payload_path),
                 thread_kind=record.kind,
@@ -1982,6 +2015,93 @@ class SlackPlanningListener:
             action,
             detail=outcome.detail,
             draft_path=str(payload_path),
+            thread_kind=record.kind,
+        )
+
+    def _kick_implementer(self, event: SlackInputEvent) -> tuple[str, str]:
+        """Best-effort kick of the implementer agent after an issue is filed.
+
+        Reuses the operator-gated ``run <codename>`` control path (the same one
+        `run senior-dev` uses), so the kick honors the exact same operator
+        authority, codename validation, and host-scheduler wiring. Returns a
+        ``(slack_note, control_action)`` pair. The ``agent:implement`` label is
+        the durable queue signal, so when a direct kick is unavailable (no host
+        scheduler, unit not loaded) we fall back to telling the operator the
+        fleet will pick it up on its next pass. Never raises.
+        """
+        try:
+            result = self.control_handler.handle(
+                f"run {IMPLEMENTER_CODENAME}",
+                trusted=True,
+                actor_user_id=event.user,
+            )
+        except Exception as exc:  # a run kick must never break issue filing
+            print(
+                f"[SLACK-LISTENER-WARN] implementer kick failed: {exc}",
+                file=sys.stderr,
+            )
+            result = None
+        if result is not None and result.handled and result.action == "run":
+            return (
+                f"*Build started:* kicked `{IMPLEMENTER_CODENAME}` for the new issue.",
+                "run",
+            )
+        return (
+            f"The fleet will pick this up on its next pass "
+            f"(or run `alfred run {IMPLEMENTER_CODENAME}` to start it now).",
+            "queued",
+        )
+
+    def _saved_draft_ready(
+        self,
+        record: SlackThreadRecord,
+        payload_path: Path | None,
+    ) -> bool:
+        """Best-effort read of the draft's saved ready-for-review state.
+
+        Gates whether a BARE affirmation ("go ahead") files: only a draft that
+        already reached ready-for-review acts on one. Explicit file verbs do not
+        need this (the bridge readiness gate has the final say). Prefers the
+        registry record (cheap, already loaded), then the saved payload.
+        """
+        metadata = record.metadata or {}
+        flag = metadata.get("readiness_ok")
+        if isinstance(flag, bool):
+            return flag
+        if record.status in {"ready", "converted"}:
+            return True
+        if record.status in {"needs_scope", "needs_resolution"}:
+            return False
+        payload = _read_draft_payload(payload_path) if payload_path else None
+        readiness = payload.get("readiness") if isinstance(payload, dict) else None
+        if isinstance(readiness, dict):
+            return bool(readiness.get("ok"))
+        return False
+
+    def _cancel_draft(
+        self,
+        event: SlackInputEvent,
+        record: SlackThreadRecord,
+    ) -> ListenerResult:
+        """Abandon a planning draft on a plain-language cancel / discard reply."""
+        try:
+            self.registry.mark_status(record, "cancelled")
+        except Exception as exc:  # a status write must never break the reply
+            print(
+                f"[SLACK-LISTENER-WARN] could not cancel draft for "
+                f"{record.channel}/{record.thread_ts}: {exc}",
+                file=sys.stderr,
+            )
+        self._post_thread_ack(
+            event.channel,
+            event.root_ts,
+            "*Draft discarded*\n\nNothing was filed and no code ran. "
+            "Start a fresh planning message whenever you want to try again.",
+        )
+        return ListenerResult(
+            True,
+            "draft_cancelled",
+            detail="operator discarded the draft",
             thread_kind=record.kind,
         )
 
@@ -2706,7 +2826,8 @@ def render_draft_ack(result: Any) -> str:
             "*How to steer this:* reply with lines like `repo: owner/repo`, "
             "`desired: ...`, `acceptance: ...`, `test: ...`, `open question: ...`, "
             "or `open questions: none`. Ask normal questions in plain language.",
-            "*Safety:* chat edits the draft only. Implementation still needs the normal approval gate.",
+            "*When ready:* say `go ahead` and Alfred files the issue; add "
+            "`and run it` to start the build now. Chat only edits the draft until then.",
         ]
     )
     return "\n".join(lines)
@@ -2736,7 +2857,8 @@ def render_draft_revision_ack(result: Any) -> str:
         [
             "",
             "*Next:* keep replying in this thread to shape the draft. "
-            "Creating issues or running agents still needs an explicit operator action.",
+            "When it looks right, say `go ahead` and Alfred files it; add "
+            "`and run it` to start the build now.",
         ]
     )
     return "\n".join(lines)
@@ -3161,6 +3283,47 @@ def _title_from_text(text: str) -> str:
     cleaned = _strip_mentions(text)
     first = re.split(r"[\n.!?]", cleaned, maxsplit=1)[0].strip()
     return first[:90] or "Untitled Alfred work"
+
+
+# The codename that claims ``agent:implement`` issues (single-repo
+# implementation work). A "... and run it" affirmation kicks this agent after
+# filing; see ``issue_assignment`` for the routing that pairs the label to it.
+IMPLEMENTER_CODENAME = "senior-dev"
+
+# Whole-message cancel / discard replies that abandon a planning draft instead
+# of being captured as an operator note. Matched against the normalized whole
+# message so mixed prose ("discard the docs repo from scope") never cancels.
+_DRAFT_CANCEL_PHRASES: frozenset[str] = frozenset(
+    {
+        "cancel",
+        "cancel it",
+        "cancel this",
+        "cancel the draft",
+        "discard",
+        "discard it",
+        "discard this",
+        "discard the draft",
+        "drop it",
+        "drop the draft",
+        "scrap it",
+        "scrap this",
+        "scrap the draft",
+        "abandon it",
+        "abandon this",
+        "abandon the draft",
+        "never mind",
+        "nevermind",
+        "forget it",
+        "forget this",
+    }
+)
+
+
+def _is_draft_cancel(text: str) -> bool:
+    """True iff the whole reply is a plain-language cancel / discard command."""
+    core = re.sub(r"[^\w ]+", " ", _strip_mentions(text).lower())
+    core = " ".join(core.split())
+    return core in _DRAFT_CANCEL_PHRASES
 
 
 # A Slack user mention is either bare ("<@U0AEG9M3ZDH>") or carries a display
