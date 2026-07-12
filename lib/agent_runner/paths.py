@@ -66,26 +66,34 @@ _SETUP_SPECIAL_PROMPT_ENV_KEYS = {
     "ALFRED_OPS_WATCH_SENTRY_ORG",
     "ALFRED_OPS_WATCH_AWS_PROFILE",
 }
+_BUILT_IN_RUNTIME_IDS = frozenset(
+    {
+        "senior-dev",
+        "planner",
+        "test-engineer",
+        "reviewer",
+        "fixer",
+        "triage",
+        "architect",
+        "spec-planner",
+        "e2e-runner",
+        "ops-watch",
+        "automerge",
+        "agent-cleanup",
+        "memory-harvest",
+        "memory-auto-promote",
+        "code-map-refresh",
+        "agent-morning-brief",
+        "fleet-doctor",
+        "fleet-recap-morning",
+        "fleet-recap-evening",
+        "shipped-summary-daily",
+        "shipped-summary-weekly",
+    }
+)
 _BUILT_IN_ROLE_AWS_PROFILE_ENV_KEYS = {
-    "ALFRED_SENIOR_DEV_AWS_PROFILE",
-    "ALFRED_PLANNER_AWS_PROFILE",
-    "ALFRED_TEST_ENGINEER_AWS_PROFILE",
-    "ALFRED_REVIEWER_AWS_PROFILE",
-    "ALFRED_FIXER_AWS_PROFILE",
-    "ALFRED_TRIAGE_AWS_PROFILE",
-    "ALFRED_ARCHITECT_AWS_PROFILE",
-    "ALFRED_SPEC_PLANNER_AWS_PROFILE",
-    "ALFRED_AUTOMERGE_AWS_PROFILE",
-    "ALFRED_AGENT_CLEANUP_AWS_PROFILE",
-    "ALFRED_MEMORY_HARVEST_AWS_PROFILE",
-    "ALFRED_MEMORY_AUTO_PROMOTE_AWS_PROFILE",
-    "ALFRED_CODE_MAP_REFRESH_AWS_PROFILE",
-    "ALFRED_AGENT_MORNING_BRIEF_AWS_PROFILE",
-    "ALFRED_FLEET_DOCTOR_AWS_PROFILE",
-    "ALFRED_FLEET_RECAP_MORNING_AWS_PROFILE",
-    "ALFRED_FLEET_RECAP_EVENING_AWS_PROFILE",
-    "ALFRED_SHIPPED_SUMMARY_DAILY_AWS_PROFILE",
-    "ALFRED_SHIPPED_SUMMARY_WEEKLY_AWS_PROFILE",
+    f"ALFRED_{runtime_id.upper().replace('-', '_')}_AWS_PROFILE"
+    for runtime_id in _BUILT_IN_RUNTIME_IDS
 }
 _SETUP_MANAGED_RUNTIME_ENV_KEYS = (
     _REPO_SCOPE_ENV_KEYS
