@@ -345,6 +345,31 @@ def test_agent_launch_ignores_removed_role_identity_alias(
     assert "AWS=stale-profile" in proc.stdout
 
 
+def test_agent_launch_reloads_canonical_role_profile_from_managed_env(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "ALFRED_SENIOR_DEV_AWS_PROFILE=managed-profile\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-profile.sh"
+    target.write_text(
+        '#!/usr/bin/env bash\necho "PROFILE=${ALFRED_SENIOR_DEV_AWS_PROFILE:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={"ALFRED_SENIOR_DEV_AWS_PROFILE": "stale-profile"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "PROFILE=managed-profile" in proc.stdout
+
+
 def test_agent_launch_scrubs_special_prompt_envs_from_managed_block(
     tmp_path: Path, alfred_home: Path
 ) -> None:

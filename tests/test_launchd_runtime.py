@@ -151,6 +151,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "ALFRED_E2E_RUNNER_TARGET_URL=https://new.example.test\n"
         "ALFRED_OPS_WATCH_ECS_CLUSTER=new-cluster\n"
         "ALFRED_OPS_WATCH_SENTRY_ORG=new-org\n"
+        "ALFRED_SENIOR_DEV_AWS_PROFILE=managed-profile\n"
         "ALFRED_ORACLE_REPOS=org/runtime\n"
         "CLAUDE_CODE_OAUTH_TOKEN=file-token\n"
     )
@@ -170,6 +171,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "  'code_map_max': os.environ.get('ALFRED_CODE_MAP_MAX_FILES'),\n"
         "  'memory_mcp': os.environ.get('ALFRED_CODE_MEMORY_MCP'),\n"
         "  'senior_repos': os.environ.get('ALFRED_SENIOR_DEV_REPOS'),\n"
+        "  'senior_profile': os.environ.get('ALFRED_SENIOR_DEV_AWS_PROFILE'),\n"
         "  'spec_repos': os.environ.get('ALFRED_SPEC_PLANNER_REPOS'),\n"
         "  'auto_promote': os.environ.get('ALFRED_AUTO_PROMOTE'),\n"
         "  'auto_promote_kill': os.environ.get('ALFRED_AUTO_PROMOTE_KILL'),\n"
@@ -199,6 +201,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
             "ALFRED_CODE_MAP_MAX_FILES": "77",
             "ALFRED_CODE_MEMORY_MCP": "0",
             "ALFRED_SENIOR_DEV_REPOS": "org/stale",
+            "ALFRED_SENIOR_DEV_AWS_PROFILE": "stale-profile",
             "ALFRED_SPEC_PLANNER_REPOS": "org/stale",
             "ALFRED_AUTO_PROMOTE": "1",
             "ALFRED_AUTO_PROMOTE_KILL": "0",
@@ -229,6 +232,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "code_map_max": "77",
         "memory_mcp": "0",
         "senior_repos": None,
+        "senior_profile": "managed-profile",
         "spec_repos": None,
         "auto_promote": "0",
         "auto_promote_kill": "1",

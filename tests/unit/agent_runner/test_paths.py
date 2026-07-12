@@ -301,6 +301,27 @@ def test_launcher_env_ignores_removed_role_identity_alias(
     assert env["ALFRED_ORACLE_AWS_PROFILE"] == "stale-profile"
 
 
+def test_launcher_env_reloads_canonical_role_profile_from_managed_env(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "ALFRED_SENIOR_DEV_AWS_PROFILE=managed-profile\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_AWS_PROFILE", "stale-profile")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_SENIOR_DEV_AWS_PROFILE"] == "managed-profile"
+
+
 def test_launcher_env_scrubs_special_prompt_envs_from_managed_block(
     fresh_agent_runner, monkeypatch, tmp_path
 ):

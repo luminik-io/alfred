@@ -560,7 +560,7 @@ def _merge_spend_payloads(current: dict[str, Any], old: dict[str, Any]) -> dict[
     sessions = current.get("last_session_id_per_target")
     old_sessions = old.get("last_session_id_per_target")
     if isinstance(sessions, dict) and isinstance(old_sessions, dict):
-        merged["last_session_id_per_target"] = {**sessions, **old_sessions}
+        merged["last_session_id_per_target"] = {**old_sessions, **sessions}
     return merged
 
 
