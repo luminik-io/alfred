@@ -133,20 +133,6 @@ def main() -> int:
                 runtime_noop_marker_path(CODENAME).touch()
         return 0
 
-    spec = PreflightSpec(
-        agent=CODENAME,
-        env_vars=["ALFRED_HOME", "WORKSPACE_ROOT", "GH_ORG"],
-        bins=["gh", "git"],
-        require_gh_auth=True,
-    )
-    try:
-        preflight(spec)
-    except Exception as e:
-        print(f"[{CODENAME.upper()}-PREFLIGHT-FAIL] {e}", file=sys.stderr)
-        return 0
-
-    with_lock(CODENAME)
-
     config = PlannerConfig.from_env()
     if not config.scan_repos:
         print(
@@ -162,6 +148,20 @@ def main() -> int:
             "(set ALFRED_SPEC_PLANNER_SPEC_DIR to a markdown spec dir relative to WORKSPACE_ROOT)",
         )
         return 0
+
+    spec = PreflightSpec(
+        agent=CODENAME,
+        env_vars=["ALFRED_HOME", "WORKSPACE_ROOT", "GH_ORG"],
+        bins=["gh", "git"],
+        require_gh_auth=True,
+    )
+    try:
+        preflight(spec)
+    except Exception as e:
+        print(f"[{CODENAME.upper()}-PREFLIGHT-FAIL] {e}", file=sys.stderr)
+        return 0
+
+    with_lock(CODENAME)
 
     planner = _build_planner(config)
     plan = planner.build_plan(spec_dir)
