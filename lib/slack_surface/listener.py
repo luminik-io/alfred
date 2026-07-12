@@ -1897,6 +1897,12 @@ class SlackPlanningListener:
                 )
                 return self._ack_unavailable_draft(event, record, "saved draft is unavailable")
 
+            # A discard that persisted after this handler read its record snapshot
+            # is visible here (same per-path lock). Do not refine a discarded
+            # draft: refining would rewrite the payload and could resurrect it.
+            if _draft_is_cancelled(payload):
+                return self._ack_cancelled_draft(event, record)
+
             refined = refine_issue_draft(
                 draft,
                 [feedback.text],
@@ -1985,6 +1991,15 @@ class SlackPlanningListener:
                     file=sys.stderr,
                 )
                 return self._ack_unavailable_draft(event, record, "saved draft is unavailable")
+
+            # Race-safe cancellation gate. The ``record.status`` check above is a
+            # fast path on a possibly-stale snapshot; the authoritative signal is
+            # the ``cancelled`` marker persisted into the draft payload under this
+            # same per-path lock. A discard that landed after this handler read
+            # its record snapshot is still visible here, so a concurrent discard
+            # can never lose to an approval that files an already-discarded draft.
+            if _draft_is_cancelled(payload):
+                return self._ack_cancelled_draft(event, record)
 
             already_converted = _draft_already_converted(payload) or record.status == "converted"
             outcome = self.bridge.convert(
@@ -2116,15 +2131,31 @@ class SlackPlanningListener:
     ) -> ListenerResult:
         """Abandon a planning draft on a plain-language cancel / discard reply.
 
-        The cancel is only claimed once the ``cancelled`` status actually
-        persists. If the status write fails, the record can stay ``ready`` and a
-        later approval reply or reaction would still file it, so telling the
-        operator it was discarded would be a lie: instead surface the failure so
-        they know the draft is NOT terminal and can retry.
+        The cancel is only claimed once it actually persists. Cancellation is
+        written into the DRAFT PAYLOAD under the same per-path lock the
+        conversion and refine paths take, so it is race-safe: a discard that
+        lands after an approval handler read its (stale ``ready``) record
+        snapshot is still seen by that handler when it reads the payload under
+        the lock, so an already-discarded draft can never be filed.
+
+        The PAYLOAD marker is the authoritative terminal signal. If it cannot be
+        written, the draft is NOT terminal, so we surface the failure rather than
+        lie that it was discarded. The registry record status is a cheap
+        fast-path hint written best-effort AFTER the marker lands; a failure to
+        update it does not make the draft fileable (conversion refuses on the
+        payload marker regardless), so it is logged, not reported as a failure.
+        A draft with no payload path falls back to the registry status alone.
         """
+        payload_path = Path(record.draft_path).expanduser() if record.draft_path else None
         try:
-            self.registry.mark_status(record, "cancelled")
-        except Exception as exc:  # persist failed: do NOT claim the draft is gone
+            if payload_path is not None:
+                with _draft_revision_lock(payload_path):
+                    _mark_draft_cancelled(payload_path)
+            else:
+                # No payload to mark authoritatively; the registry status is the
+                # only terminal signal, so a failure here IS fatal (re-raised).
+                self.registry.mark_status(record, "cancelled")
+        except Exception as exc:  # authoritative persist failed: do NOT claim gone
             print(
                 f"[SLACK-LISTENER-WARN] could not cancel draft for "
                 f"{record.channel}/{record.thread_ts}: {exc}",
@@ -2142,6 +2173,17 @@ class SlackPlanningListener:
                 detail=f"could not persist cancelled status: {exc}",
                 thread_kind=record.kind,
             )
+        if payload_path is not None:
+            # Best-effort fast-path hint; the payload marker already makes the
+            # draft terminal, so a registry write failure is logged, not fatal.
+            try:
+                self.registry.mark_status(record, "cancelled")
+            except Exception as exc:
+                print(
+                    f"[SLACK-LISTENER-WARN] draft {record.channel}/{record.thread_ts} "
+                    f"payload marked cancelled but registry status update failed: {exc}",
+                    file=sys.stderr,
+                )
         self._post_thread_ack(
             event.channel,
             event.root_ts,
@@ -3721,6 +3763,36 @@ def _read_feedback_texts(path: Path | None) -> tuple[str, ...]:
 def _draft_already_converted(payload: dict[str, Any]) -> bool:
     bridge = payload.get("bridge")
     return isinstance(bridge, dict) and bool(bridge.get("converted"))
+
+
+def _draft_is_cancelled(payload: dict[str, Any] | None) -> bool:
+    """True when the saved draft payload was discarded (race-safe terminal mark).
+
+    This is the authoritative cancellation signal, read under the per-path draft
+    lock, so a discard is visible to any conversion/refine handler that read a
+    stale ``ready`` registry snapshot before the discard persisted.
+    """
+    return isinstance(payload, dict) and bool(payload.get("cancelled"))
+
+
+def _mark_draft_cancelled(path: Path) -> None:
+    """Stamp the saved draft as discarded, atomically. Raises on write failure.
+
+    Callers hold the per-path draft-revision lock so this serializes against the
+    conversion and refine writers on the same lock. A missing/unreadable payload
+    is treated as "already gone" (nothing to mark); a write failure propagates so
+    the caller can report the discard did not persist rather than claim success.
+    """
+    payload = _read_draft_payload(path)
+    if payload is None:
+        return
+    updated = dict(payload)
+    updated["cancelled"] = True
+    updated["cancelled_at"] = _utc_now()
+    updated["updated_at"] = updated["cancelled_at"]
+    tmp = path.with_name(f"{path.name}.tmp")
+    tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.replace(path)
 
 
 def _write_converted_draft_payload(

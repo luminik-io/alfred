@@ -869,29 +869,81 @@ def test_reaction_after_cancel_does_not_file(tmp_path: Path) -> None:
     assert "discarded" in poster.messages[-1]["text"].lower()
 
 
-def test_cancel_persist_failure_is_reported_honestly(tmp_path: Path) -> None:
-    # If the cancelled status cannot be persisted, the operator must NOT be told
-    # the draft was discarded: the record stays fileable, so a later approval
+def test_cancel_persist_failure_is_reported_honestly(tmp_path: Path, monkeypatch) -> None:
+    # If the authoritative payload marker cannot be persisted, the operator must
+    # NOT be told the draft was discarded: it stays fileable, so a later approval
     # would still file it (Greptile P1: Discard Status Not Persisted).
+    from slack_surface import listener as listener_mod
+
     creator = RecordingCreator()
-    listener, poster, registry = _make_listener(tmp_path, creator=creator)
+    listener, poster, _registry = _make_listener(tmp_path, creator=creator)
     _seed_draft(listener, tmp_path)
 
-    def _boom(*_args, **_kwargs):
+    def _boom(_path):
         raise OSError("disk full")
 
-    registry.mark_status = _boom  # type: ignore[method-assign]
+    monkeypatch.setattr(listener_mod, "_mark_draft_cancelled", _boom)
 
     result = listener.handle_payload(_reply("discard the draft", event_id="cancel006"))
 
     assert result.action == "draft_cancel_failed"
     assert "could not discard" in poster.messages[-1]["text"].lower()
-    # The record is still active, and an approval can still reach the bridge.
-    record = registry.lookup("C1", "1716480010.000001")
-    assert record is not None
-    assert record.status != "cancelled"
+    # The draft is still fileable: an approval still reaches the bridge and files.
     approval = listener.handle_payload(_reply("ship it", event_id="cancel007"))
     assert approval.action == "issue_created"
+
+
+def test_stale_ready_snapshot_does_not_file_discarded_draft(tmp_path: Path) -> None:
+    # Race: a discard persists into the draft payload AFTER an approval handler
+    # captured a stale "ready" record snapshot. The registry record still reads
+    # ready, but the payload carries the authoritative cancelled marker, so the
+    # conversion (which reads the payload under the per-path lock) must refuse
+    # instead of filing an already-discarded draft (Greptile P1).
+    creator = RecordingCreator()
+    listener, poster, registry = _make_listener(tmp_path, creator=creator)
+    draft_path = _seed_draft(listener, tmp_path)
+    payload = json.loads(Path(draft_path).read_text(encoding="utf-8"))
+    payload["cancelled"] = True
+    Path(draft_path).write_text(json.dumps(payload), encoding="utf-8")
+    record = registry.lookup("C1", "1716480010.000001")
+    assert record is not None and record.status != "cancelled"  # stale snapshot
+
+    result = listener.handle_payload(_reply("ship it", event_id="race001"))
+
+    assert creator.calls == []
+    assert result.action == "draft_cancelled_noop"
+    assert "discarded" in poster.messages[-1]["text"].lower()
+
+
+def test_refine_does_not_resurrect_discarded_draft(tmp_path: Path) -> None:
+    # A refinement reply on a payload already marked cancelled must not rewrite
+    # (and thereby resurrect) the draft; it is terminal.
+    creator = RecordingCreator()
+    listener, _poster, _registry = _make_listener(tmp_path, creator=creator)
+    draft_path = _seed_draft(listener, tmp_path)
+    payload = json.loads(Path(draft_path).read_text(encoding="utf-8"))
+    payload["cancelled"] = True
+    Path(draft_path).write_text(json.dumps(payload), encoding="utf-8")
+
+    result = listener.handle_payload(_reply("acceptance: add another check", event_id="race002"))
+
+    assert result.action == "draft_cancelled_noop"
+    after = json.loads(Path(draft_path).read_text(encoding="utf-8"))
+    assert after.get("cancelled") is True
+    assert not any("add another check" in item for item in after["draft"]["acceptance_criteria"])
+
+
+def test_cancel_persists_marker_into_draft_payload(tmp_path: Path) -> None:
+    # The cancel writes the authoritative marker into the payload, not only the
+    # registry record, so the conversion gate can see it under the lock.
+    creator = RecordingCreator()
+    listener, _poster, _registry = _make_listener(tmp_path, creator=creator)
+    draft_path = _seed_draft(listener, tmp_path)
+
+    listener.handle_payload(_reply("discard the draft", event_id="cancel008"))
+
+    payload = json.loads(Path(draft_path).read_text(encoding="utf-8"))
+    assert payload.get("cancelled") is True
 
 
 def test_draft_revision_footer_documents_action_phrases(tmp_path: Path) -> None:
