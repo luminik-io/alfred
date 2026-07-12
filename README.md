@@ -58,17 +58,16 @@ stops the run honestly. Full walkthrough in [`docs/DEMO.md`](docs/DEMO.md).
 
 ## Watch the tour
 
-The clip below is about a minute of Alfred working on this repo, with nothing
-staged. It answers a question about the code, turns a change you describe into a
-plan you can approve, and scopes the same kind of request from a Slack thread.
-Then its agents build the change, review each other's work, and open a real pull
-request.
+The clip below is about a minute of Alfred working on this repo. It answers a
+question about the code, turns a change you describe into a plan you approve, and
+scopes the same kind of request from a Slack thread. Its agents then build the
+change, review it, and open a pull request.
 
 <p align="center">
   <a href="docs/media/alfred-tour.mp4"><img src="docs/media/alfred-tour.webp" alt="Alfred product tour: asking a question, shaping a plan from a change request, scoping a request in Slack, a fleet-authored pull request, the agent roster and workflow graph, a live roster re-skin, what Alfred has learned, the work board, and a merged pull request in the terminal" width="820"></a>
 </p>
 
-<p align="center"><em><a href="docs/media/alfred-tour.mp4">Watch the full tour (MP4, 55s)</a>. Every frame is live local state from a running <code>alfred serve</code>.</em></p>
+<p align="center"><em><a href="docs/media/alfred-tour.mp4">Watch the full tour (MP4, 55s)</a>, recorded from <code>alfred serve</code>.</em></p>
 
 ## What it is
 
@@ -81,11 +80,6 @@ service.
 
 Alfred never merges its own work by default. A drafted plan waits behind an
 approval gate until you approve it, so unapproved work does not ship.
-
-It is roughly what you would end up building yourself after wiring cron,
-`claude`, and `gh` together and then fixing everything that broke: the retries,
-the review step, a memory of what earlier runs learned, and an approval gate so
-nothing merges without you.
 
 ```mermaid
 flowchart LR
@@ -119,11 +113,10 @@ file for the fleet to build, review, and ship.*
 
 ### The fleet runs on this repo
 
-Everything above runs against this repo, `luminik-io/alfred`. Alfred's own fleet
-plans, writes, and reviews changes here, and opens pull requests like
+Alfred runs its own fleet on this repo, `luminik-io/alfred`. It plans, writes,
+and reviews changes here and opens pull requests like
 [`#528`](https://github.com/luminik-io/alfred/pull/528), a test it wrote and
-opened on its own with the checks passing. The screenshots below are from those
-runs.
+opened with checks passing. The screenshots below are from those runs.
 
 <table>
   <tr>
