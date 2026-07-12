@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+"""Reject private or noisy text before a public PR body becomes commit metadata."""
+
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+MAX_BODY_CHARS = 12_000
+MAX_BODY_LINES = 180
+
+_HOME_PATH = re.compile(
+    r"(?:/(?:" + "Users" + r"|home)/|[A-Za-z]:[/\\]" + "Users" + r"[/\\])"
+    r"(?P<account>[^/\\\s),;:]+)(?=[/\\\s),;:]|$)",
+    re.IGNORECASE,
+)
+_GENERIC_ACCOUNTS = frozenset({"example", "runner", "shared", "user", "username"})
+_LOCAL_WORKSPACE_PATH = re.compile(
+    r"(?:/(?:tmp|workspace)(?:/|\b)|/private/tmp/|/var/folders/|"
+    r"[A-Za-z]:[/\\](?:temp|tmp)[/\\])",
+    re.IGNORECASE,
+)
+_RAW_OUTPUT = (
+    re.compile(r"\.{20,}\s*\[\s*\d{1,3}%\]"),
+    re.compile(
+        r"(?m)^\s*(?:FAIL|FAILED|ERROR)(?:"
+        r"\s+(?:tests?/|src/|\S+::)|"
+        r":\s*(?:tests?/|src/|\S+::|command failed\b|exit(?:ed)?\b|.*(?:Error|Exception)\b)"
+        r")"
+    ),
+    re.compile(r"(?m)^\s*[^\n:]+:\d+:\d+:\s+error\s+TS\d+"),
+    re.compile(r"(?m)^\s*test result:\s+(?:ok|FAILED)\."),
+    re.compile(r"(?m)^\s*running\s+\d+\s+tests?\s*$"),
+    re.compile(r"(?m)^\s*Traceback \(most recent call last\):\s*$"),
+)
+
+
+def _contains_private_home_path(text: str) -> bool:
+    for match in _HOME_PATH.finditer(text):
+        account = match.group("account").rstrip(".").strip("<>").lower()
+        if account not in _GENERIC_ACCOUNTS:
+            return True
+    return False
+
+
+def metadata_findings(title: str, body: str) -> list[str]:
+    """Return public-safe finding labels without repeating matched content."""
+    text = f"{title}\n{body}"
+    findings: list[str] = []
+    if _contains_private_home_path(text) or _LOCAL_WORKSPACE_PATH.search(text):
+        findings.append("local filesystem path")
+    if len(body) > MAX_BODY_CHARS or len(body.splitlines()) > MAX_BODY_LINES:
+        findings.append("oversized PR description")
+    if any(pattern.search(text) for pattern in _RAW_OUTPUT):
+        findings.append("raw command, test, compiler, or stack output")
+    return findings
+
+
+def commit_findings(commits: str) -> list[str]:
+    """Return public-safe finding labels for the PR's commit messages.
+
+    Commit messages become permanent history whether the PR is squash-merged
+    (title and body seed the squash commit) or merged as individual commits,
+    so they run the same path and raw-output heuristics as the body. Length
+    limits do not apply here because commit subjects and trailers are short by
+    convention.
+    """
+    findings: list[str] = []
+    if not commits.strip():
+        return findings
+    if _contains_private_home_path(commits) or _LOCAL_WORKSPACE_PATH.search(commits):
+        findings.append("local filesystem path in a commit message")
+    if any(pattern.search(commits) for pattern in _RAW_OUTPUT):
+        findings.append("raw command, test, compiler, or stack output in a commit message")
+    return findings
+
+
+def _scrub_rejects_text(text: str) -> bool:
+    """Run the repository scrub against arbitrary metadata without printing it."""
+    fd, raw_path = tempfile.mkstemp(prefix=".public-pr-metadata-", suffix=".md", dir=ROOT)
+    path = Path(raw_path)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        result = subprocess.run(
+            ["bash", str(ROOT / "bin" / "scrub-check.sh")],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        return result.returncode != 0
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def _existing_scrub_rejects(title: str, body: str) -> bool:
+    """Run the repository scrub against PR title and body."""
+    return _scrub_rejects_text(f"# {title}\n\n{body}\n")
+
+
+def main() -> int:
+    title = os.environ.get("PR_TITLE", "")
+    body = os.environ.get("PR_BODY", "")
+    commits = os.environ.get("PR_COMMITS", "")
+    if not title.strip():
+        print("public-metadata-check: PR_TITLE is required", file=sys.stderr)
+        return 2
+
+    findings = metadata_findings(title, body)
+    findings.extend(commit_findings(commits))
+    if _existing_scrub_rejects(title, body):
+        findings.append("blocked private identifier or secret")
+    if commits.strip() and _scrub_rejects_text(commits):
+        findings.append("blocked private identifier or secret in a commit message")
+    findings = list(dict.fromkeys(findings))
+    if findings:
+        for finding in findings:
+            print(f"::error::Public PR metadata contains {finding}", file=sys.stderr)
+        print("public-metadata-check: failed", file=sys.stderr)
+        return 1
+    print("public-metadata-check: clean")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

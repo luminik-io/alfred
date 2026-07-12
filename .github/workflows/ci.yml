@@ -3,6 +3,7 @@ name: CI
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
   workflow_dispatch:
@@ -109,6 +110,36 @@ jobs:
       - uses: actions/checkout@v7
       - name: Refuse known-private patterns
         run: bash bin/scrub-check.sh
+
+  public-metadata:
+    name: Public PR metadata
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # A squash merge turns the PR title and body into the permanent commit
+    # subject and message, so scanning them protects history. Every commit
+    # message on the branch is scanned too, in case the PR is not squashed.
+    env:
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      PR_BODY: ${{ github.event.pull_request.body }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Collect PR commit messages
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          {
+            echo "PR_COMMITS<<PR_COMMITS_EOF"
+            git log --format=%B "$BASE_SHA..$HEAD_SHA"
+            echo "PR_COMMITS_EOF"
+          } >> "$GITHUB_ENV"
+      - name: Refuse private or raw PR metadata
+        run: python bin/public-metadata-check.py
 
   site-emitter:
     name: Site proof emitter (node:test)
