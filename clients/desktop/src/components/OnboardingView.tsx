@@ -233,6 +233,7 @@ export function OnboardingView({
   // Steps the user explicitly skipped (Dev persona). A skipped step is no longer
   // the blocker for "what's next" but is not marked done either.
   const [skipped, setSkipped] = useState<Set<OnboardingStepKey>>(new Set());
+  const [batteriesTouched, setBatteriesTouched] = useState(false);
   // True once the user added a Slack approver, so the optional Slack step reads
   // as done in the rail (the server exposes no approver flag on SetupStatus).
   const [slackTouched, setSlackTouched] = useState(false);
@@ -526,6 +527,7 @@ export function OnboardingView({
     startGithubAuthLogin,
     onRunLocalAction,
     onSaveCustomNames,
+    onBatteriesDecision: useCallback(() => setBatteriesTouched(true), []),
     onOpenSlackSetup: useCallback(() => {
       setNotice(null);
       setStepKey("slack");
@@ -665,11 +667,13 @@ export function OnboardingView({
   }, []);
 
   const advance = useCallback(() => {
+    if (stepKey === "batteries") setBatteriesTouched(true);
     if (nextKey) goToStep(nextKey);
-  }, [goToStep, nextKey]);
+  }, [goToStep, nextKey, stepKey]);
 
   const skipStep = useCallback(
     (key: OnboardingStepKey) => {
+      if (key === "batteries") setBatteriesTouched(true);
       setSkipped((prev) => {
         const next = new Set(prev);
         next.add(key);
@@ -781,7 +785,7 @@ export function OnboardingView({
           <div className="alfred-onboarding-shell__panel motion-fade">
             <OnboardingConversePanel
               baseUrl={baseUrl}
-              batteriesDecisionHandled={stepSatisfied("batteries")}
+              batteriesDecisionHandled={batteriesTouched}
               slackDecisionHandled={stepSatisfied("slack")}
               onRunAction={runOnboardingAction}
               onDone={() => {
@@ -878,6 +882,7 @@ export function OnboardingView({
                 githubConnected={githubConnected}
                 selectedCount={status?.repos.count ?? 0}
                 onSaved={async () => {
+                  setBatteriesTouched(true);
                   await refreshStatus();
                 }}
                 setNotice={setNotice}

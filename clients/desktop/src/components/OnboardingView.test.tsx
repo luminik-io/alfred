@@ -1270,6 +1270,11 @@ describe("OnboardingView conversational setup actions", () => {
   it("carries a native Slack skip back into conversational completion", async () => {
     vi.spyOn(apiSetup, "onboardingConverse")
       .mockResolvedValueOnce({
+        reply: "Keep the built-in batteries?",
+        action: { tool: "skip_batteries", args: {} },
+        done: false,
+      })
+      .mockResolvedValueOnce({
         reply: "Let's set up Slack locally.",
         action: { tool: "open_slack_setup", args: {} },
         done: false,
@@ -1283,7 +1288,8 @@ describe("OnboardingView conversational setup actions", () => {
     renderOnboarding({ onSwitch });
     const user = userEvent.setup();
 
-    await enterChatAndSend(user, "set up Slack");
+    await enterChatAndSend(user, "set up the optional services");
+    await approveStep(user, /skip batteries/i);
     await approveStep(user, /open slack setup/i);
 
     expect(await screen.findByText(/want approvals and questions in slack/i)).toBeInTheDocument();

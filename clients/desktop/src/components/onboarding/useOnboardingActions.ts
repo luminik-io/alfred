@@ -54,6 +54,7 @@ type OnboardingActionDeps = {
   startGithubAuthLogin: () => Promise<boolean>;
   onRunLocalAction: (request: NativeActionRequest) => Promise<NativeCommandResult | null>;
   onSaveCustomNames: (next: CustomRosterNames) => Promise<void>;
+  onBatteriesDecision: () => void;
   onOpenSlackSetup: () => void;
   onFinishSetup: () => void;
 };
@@ -76,6 +77,7 @@ export function useOnboardingActions({
   startGithubAuthLogin,
   onRunLocalAction,
   onSaveCustomNames,
+  onBatteriesDecision,
   onOpenSlackSetup,
   onFinishSetup,
 }: OnboardingActionDeps): (action: OnboardingAction) => Promise<OnboardingActionResult> {
@@ -210,6 +212,7 @@ export function useOnboardingActions({
                 note: "I could not turn those on. Open the Batteries step to pick them, or run `alfred batteries`.",
               };
             }
+            onBatteriesDecision();
             const tail = failed.length ? ` I could not turn on: ${failed.join(", ")}.` : "";
             return {
               ok: true,
@@ -217,6 +220,7 @@ export function useOnboardingActions({
             };
           }
           case "skip_batteries":
+            onBatteriesDecision();
             return { ok: true, note: "Keeping the built-in batteries only." };
           case "open_slack_setup":
             // Slack credentials never enter this action or the transcript. Move
@@ -320,6 +324,7 @@ export function useOnboardingActions({
       connected,
       githubConnected,
       onFinishSetup,
+      onBatteriesDecision,
       onOpenSlackSetup,
       onRunLocalAction,
       onSaveCustomNames,
