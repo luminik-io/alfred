@@ -83,6 +83,7 @@ function converseResponse(overrides: Partial<ConverseResponse> = {}): ConverseRe
       out_of_scope: "",
       rollout: "",
       open_questions: "",
+      operator_notes: "",
     },
     ...overrides,
   };
@@ -649,6 +650,7 @@ describe("Ask plan card enrichment", () => {
           out_of_scope: "",
           rollout: "",
           open_questions: "",
+          operator_notes: "",
         },
       }),
     );
@@ -692,6 +694,7 @@ describe("Ask plan card enrichment", () => {
           out_of_scope: "",
           rollout: "",
           open_questions: "",
+          operator_notes: "",
         },
       }),
     );
@@ -731,6 +734,7 @@ describe("Ask plan card enrichment", () => {
           out_of_scope: "",
           rollout: "",
           open_questions: "",
+          operator_notes: "",
         },
       }),
     );
@@ -761,6 +765,7 @@ describe("Ask plan card enrichment", () => {
           out_of_scope: "",
           rollout: "",
           open_questions: "",
+          operator_notes: "",
         },
       }),
     );
@@ -794,6 +799,7 @@ describe("Ask plan card enrichment", () => {
           out_of_scope: "",
           rollout: "",
           open_questions: "",
+          operator_notes: "",
         },
       }),
     );
@@ -834,6 +840,7 @@ describe("Ask plan card enrichment", () => {
           out_of_scope: "",
           rollout: "",
           open_questions: "",
+          operator_notes: "",
         },
       }),
     );
@@ -873,6 +880,7 @@ describe("Ask plan card enrichment", () => {
           out_of_scope: "",
           rollout: "",
           open_questions: "",
+          operator_notes: "",
         },
       }),
     );

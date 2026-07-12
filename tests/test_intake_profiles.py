@@ -208,7 +208,7 @@ def test_plain_plan_line_scrubs_jargon_from_free_text(monkeypatch) -> None:
 
 def test_plain_summary_hides_operator_note_bookkeeping(monkeypatch) -> None:
     monkeypatch.setenv(ENV_INTAKE_PROFILE, "plain")
-    # A free-form note lands in open_questions as an "Operator note:" line in
+    # A free-form note lands in operator_notes as an "Operator note:" line in
     # the structured draft; the user should never see that bookkeeping.
     result = refine_issue_draft(_ready_draft(), ["please make it feel friendlier"])
 
@@ -228,6 +228,19 @@ def test_plain_refiner_prompt_uses_friendly_persona(monkeypatch) -> None:
     # Still returns the structured JSON contract so the draft stays buildable.
     assert "Return JSON only" in prompt
     assert "acceptance_criteria" in prompt
+
+
+def test_refiner_prompt_preserves_operator_notes_as_context() -> None:
+    draft = IssueDraft(
+        title="Brighten the welcome screen",
+        operator_notes="Operator note: preserve keyboard navigation.",
+    )
+
+    technical = TechnicalIntakeProfile().refiner_prompt(draft, [])
+    plain = PlainIntakeProfile().refiner_prompt(draft, [])
+
+    assert "preserve keyboard navigation" in technical
+    assert "preserve keyboard navigation" in plain
 
 
 def test_render_user_facing_summary_follows_active_profile(monkeypatch) -> None:

@@ -879,3 +879,17 @@ def test_communication_verbs_stay_questions():
 
     assert q("Can you explain how review works?")
     assert q("Could you describe the approval gate?")
+
+
+def test_operator_notes_round_trip_through_payload() -> None:
+    # Regression: operator_notes must survive the hand-written compose draft
+    # serializer round-trip instead of being silently dropped.
+    draft = IssueDraft(
+        title="Add export",
+        problem="Operators need a CSV export.",
+        operator_notes="Operator note: prioritize the mobile path first.",
+    )
+    payload = cc._draft_to_dict(draft)
+    assert payload["operator_notes"] == "Operator note: prioritize the mobile path first."
+    restored = cc.draft_from_payload(payload)
+    assert restored.operator_notes == "Operator note: prioritize the mobile path first."

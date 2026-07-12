@@ -67,6 +67,7 @@ function draftResponse(overrides: Partial<ComposeDraftResponse> = {}): ComposeDr
       out_of_scope: "",
       rollout: "",
       open_questions: "",
+      operator_notes: "",
     },
     ...overrides,
   };

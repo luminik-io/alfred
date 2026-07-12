@@ -143,6 +143,33 @@ def test_issue_readiness_renders_github_ready_issue() -> None:
     assert "- [ ] A plan with unresolved questions" in result.issue_body
 
 
+def test_operator_notes_render_as_context_not_open_questions() -> None:
+    from spec_helper import IssueDraft, assess_issue_draft, render_issue_body
+
+    draft = IssueDraft(
+        title="Add Slack plan revision flow",
+        problem=(
+            "Operators need to discuss a plan before implementation so Alfred "
+            "does not ship the wrong workflow."
+        ),
+        desired_behavior="Batman keeps implementation paused until the plan is right.",
+        repos=["luminik-io/alfred"],
+        acceptance_criteria=["A plan with unresolved questions is marked needs-scope."],
+        test_plan="Run the architect plan unit tests and inspect the Slack payload.",
+        open_questions="none",
+        operator_notes="Operator note: prioritize the mobile path first.",
+    )
+    result = assess_issue_draft(draft)
+    body = render_issue_body(draft)
+
+    # The note renders as its own section (context for the implementer), never
+    # under Open Questions, and never trips the readiness open-questions gate.
+    assert "## Operator Notes" in body
+    assert "prioritize the mobile path" in body
+    assert "## Open Questions\n\nnone" in body
+    assert not any(f.code == "open_questions_unresolved" for f in result.findings)
+
+
 def test_issue_readiness_does_not_add_todo_for_optional_blanks() -> None:
     from spec_helper import IssueDraft, assess_issue_draft
 

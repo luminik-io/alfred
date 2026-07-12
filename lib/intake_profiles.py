@@ -88,6 +88,7 @@ def _draft_payload(draft: IssueDraft) -> dict[str, object]:
             "out_of_scope": draft.out_of_scope,
             "rollout": draft.rollout,
             "open_questions": draft.open_questions,
+            "operator_notes": draft.operator_notes,
         },
     }
 

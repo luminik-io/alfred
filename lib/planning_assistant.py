@@ -225,6 +225,11 @@ def render_development_spec(
     acceptance = draft.acceptance_criteria or ["TODO"]
     repo_lines = "\n".join(f"- `{repo}`" for repo in repos)
     acceptance_lines = "\n".join(f"- [ ] {item}" for item in acceptance)
+    operator_notes_block = (
+        f"\n## Operator Notes\n\n{draft.operator_notes.strip()}\n"
+        if draft.operator_notes.strip()
+        else ""
+    )
     questions = "\n".join(f"- {question}" for question in readiness.questions) or "- None."
     findings = (
         "\n".join(
@@ -274,7 +279,7 @@ def render_development_spec(
 ## Open Questions
 
 {draft.open_questions.strip() or "None."}
-
+{operator_notes_block}
 {memory_block}
 
 ## Alfred Readiness
@@ -610,10 +615,16 @@ def _apply_deterministic_feedback(draft: IssueDraft, messages: tuple[str, ...]) 
                 continue
             current = _apply_action(current, action)
     if freeform:
+        # Free-form prose is captured as an operator NOTE, not an open question.
+        # Writing it into ``open_questions`` (the old behavior) re-tripped the
+        # ``open_questions_unresolved`` readiness blocker and silently reverted a
+        # cleared readiness state (e.g. 94 -> 72) every time a note was captured.
+        # Notes live in their own field so capturing one is side-effect-free:
+        # readiness only reads ``open_questions``.
         notes = _append_paragraphs(
-            current.open_questions, [f"Operator note: {item}" for item in freeform]
+            current.operator_notes, [f"Operator note: {item}" for item in freeform]
         )
-        current = replace(current, open_questions=notes)
+        current = replace(current, operator_notes=notes)
     return current
 
 

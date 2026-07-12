@@ -800,6 +800,7 @@ def _compose_playbook_draft(
         out_of_scope=str(spec.get("out_of_scope") or "").strip(),
         rollout=str(spec.get("rollout") or "").strip(),
         open_questions=str(spec.get("open_questions") or "").strip(),
+        operator_notes=str(spec.get("operator_notes") or "").strip(),
     )
     memory_provider = _planning_memory_provider(request)
     assistant_result: PlanningAssistantResult = refine_issue_draft(
@@ -1377,6 +1378,7 @@ def _converse_turn_payload(turn: Any, *, draft_id: str, saved_path: Path | None)
             "out_of_scope": turn.draft.out_of_scope,
             "rollout": turn.draft.rollout,
             "open_questions": turn.draft.open_questions,
+            "operator_notes": turn.draft.operator_notes,
         },
     }
 
@@ -1793,6 +1795,7 @@ def _compose_question_reply(draft_id: str | None) -> dict[str, Any]:
             "out_of_scope": "",
             "rollout": "",
             "open_questions": "",
+            "operator_notes": "",
         },
     }
 
@@ -1883,6 +1886,7 @@ def _draft_from_payload(payload: dict[str, Any]) -> IssueDraft:
         out_of_scope=str(payload.get("out_of_scope") or "").strip(),
         rollout=str(payload.get("rollout") or "").strip(),
         open_questions=str(payload.get("open_questions") or "").strip(),
+        operator_notes=str(payload.get("operator_notes") or "").strip(),
     )
 
 

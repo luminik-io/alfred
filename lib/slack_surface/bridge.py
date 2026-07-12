@@ -200,6 +200,196 @@ def _approval_candidate_lines(text: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Plain-language affirmation -> action (pure, no side effects)
+# ---------------------------------------------------------------------------
+#
+# ``is_approval`` above is deliberately strict: it only fires on a small set of
+# action tokens (``ship it``, ``/ship`` ...) or a check-mark reaction. That kept
+# refinement prose from filing by accident, but it also left the operator with
+# NO plain-language way to say "yes, file it" -- a ready-for-review draft that
+# reached 94/100 could not be filed by replying "go ahead" or "file it as an
+# issue and run it"; those replies fell through to refinement and were captured
+# as notes while nothing was filed. ``classify_affirmation`` closes that gap: it
+# recognizes plain affirmations (gated on readiness) and explicit file/run
+# verbs, returning what the operator asked for. The bridge's own readiness,
+# trust, and operator gates still have the final say before anything is created.
+
+
+@dataclass(frozen=True)
+class AffirmationVerdict:
+    """What a plain-language draft reply asked Alfred to do.
+
+    ``files`` is True when the reply should file the draft as an issue.
+    ``runs`` is True when the reply also asked to start the build (a run verb
+    like "run it" or "and run it"). ``runs`` is only meaningful alongside
+    ``files``: Alfred never runs without first filing.
+    """
+
+    files: bool
+    runs: bool
+
+
+# Bare affirmations. These only mean "file it" when the draft is already
+# ready-for-review; on a not-ready draft they are ambiguous, so the caller keeps
+# refining. An explicit file verb (below) does not need readiness -- the bridge
+# still gates it, so an explicit "file it" on a thin draft gets an honest
+# "needs scope" refusal rather than being silently swallowed as a note.
+_WEAK_AFFIRMATION_CORES: frozenset[str] = frozenset(
+    {
+        "go ahead",
+        "go for it",
+        "do it",
+        "yes",
+        "yep",
+        "yeah",
+        "yup",
+        "approved",
+        "approve",
+        "sounds good",
+        "looks good",
+        "lgtm",
+        "proceed",
+        "make it so",
+        "send it",
+    }
+)
+
+# Explicit file verbs. These express clear filing intent regardless of the
+# current readiness score (the bridge readiness gate still decides the outcome).
+_STRONG_FILE_CORES: frozenset[str] = frozenset(
+    {
+        "file it",
+        "file this",
+        "file that",
+        "file the issue",
+        "file the draft",
+        "file it as an issue",
+        "file this as an issue",
+        "file as an issue",
+        "create the issue",
+        "create issue",
+        "make the issue",
+        "open the issue",
+        "raise the issue",
+        "ship it",
+        "file issue",
+    }
+)
+
+# Whole-message run commands. When the entire reply is one of these (no file
+# verb), it means "file it and start the build now".
+_RUN_COMMAND_CORES: frozenset[str] = frozenset(
+    {
+        "run it",
+        "run this",
+        "run that",
+        "run now",
+        "run the build",
+        "run the implementer",
+        "run the issue",
+        "start the build",
+        "start building",
+        "build it",
+        "build it now",
+        "kick it off",
+        "kick off",
+    }
+)
+
+# Head/tail filler stripped so "yes, file it please" reduces to "file it".
+_AFFIRMATION_HEAD_FILLERS: tuple[str, ...] = (
+    "yes",
+    "yep",
+    "yeah",
+    "yup",
+    "ok",
+    "okay",
+    "sure",
+    "please",
+    "alright",
+    "then",
+    "so",
+    "great",
+)
+_AFFIRMATION_TAIL_FILLERS: tuple[str, ...] = ("please", "now", "thanks", "thank you")
+
+# A trailing CLEAN run command ("... and run it", "..., run the build"). Anchored
+# to the end of the reply and matched against a fixed run vocabulary so it only
+# strips a real run command, never arbitrary prose. This is deliberately strict:
+# "yes, and run the migration tests before PR" and "yes build it as a modal" must
+# NOT reduce to a bare "yes" (which would then file a ready draft); the trailing
+# text is not a clean run command, so nothing is stripped and the whole message
+# fails to match any affirmation phrase.
+_RUN_TAIL_RE = re.compile(
+    r"\s*(?:,|;|and|then|&)?\s*(?:"
+    r"run\s+(?:it|this|that|now)"
+    r"|run\s+the\s+(?:build|implementer|issue|fleet)"
+    r"|start\s+building|start\s+the\s+build"
+    r"|build\s+it(?:\s+now)?"
+    r"|kick\s+(?:it\s+)?off"
+    r")\s*$"
+)
+
+
+def _strip_affirmation_fillers(core: str) -> str:
+    words = core.split()
+    changed = True
+    while changed and words:
+        changed = False
+        for filler in _AFFIRMATION_HEAD_FILLERS:
+            parts = filler.split()
+            if words[: len(parts)] == parts:
+                words = words[len(parts) :]
+                changed = True
+                break
+    changed = True
+    while changed and words:
+        changed = False
+        for filler in _AFFIRMATION_TAIL_FILLERS:
+            parts = filler.split()
+            if len(words) >= len(parts) and words[-len(parts) :] == parts:
+                words = words[: -len(parts)]
+                changed = True
+                break
+    return " ".join(words)
+
+
+def classify_affirmation(text: str, *, ready: bool) -> AffirmationVerdict | None:
+    """Classify a plain-language draft reply into a file/run intent.
+
+    Returns ``None`` when the reply is not an affirmation (so the caller keeps
+    refining the draft). Otherwise returns an :class:`AffirmationVerdict`:
+
+    * an explicit file verb ("file it", "file it as an issue", "ship it") ->
+      ``files=True`` regardless of ``ready`` (the bridge still gates the score);
+    * a bare affirmation ("go ahead", "do it", "approved") -> ``files=ready``,
+      so it only files a draft that already reached ready-for-review;
+    * a whole-message run command ("run it", "start the build") -> file + run.
+
+    ``runs`` is set whenever the reply carries run intent ("run it", "and run
+    it"), so "file it as an issue and run it" files AND asks to start the build.
+    Matching is against the whole normalized message, so mixed scope/prose (e.g.
+    "go ahead and add repo: x") never reads as an affirmation.
+    """
+    core = _normalize_phrase(_strip_mentions(text))
+    if not core:
+        return None
+    # Strip only a CLEAN trailing run command; ``runs`` is set iff one was found,
+    # so run intent never rests on arbitrary "run ..." prose elsewhere in the
+    # reply. A whole-message run command ("run it") strips to an empty core.
+    file_core = _RUN_TAIL_RE.sub("", core).strip()
+    runs = file_core != core or core in _RUN_COMMAND_CORES
+    candidates = {file_core, _strip_affirmation_fillers(file_core)}
+    if candidates & _STRONG_FILE_CORES:
+        return AffirmationVerdict(files=True, runs=runs)
+    if candidates & _WEAK_AFFIRMATION_CORES:
+        return AffirmationVerdict(files=ready, runs=runs)
+    if not file_core and core in _RUN_COMMAND_CORES:
+        return AffirmationVerdict(files=True, runs=True)
+    return None
+
+
+# ---------------------------------------------------------------------------
 # The bridge
 # ---------------------------------------------------------------------------
 
@@ -606,11 +796,13 @@ __all__ = [
     "ENV_LABEL",
     "ENV_MIN_READINESS_SCORE",
     "ENV_REPOS",
+    "AffirmationVerdict",
     "BridgeConfig",
     "BridgeOutcome",
     "IssueCreator",
     "SlackIssueBridge",
     "build_issue_body",
+    "classify_affirmation",
     "contains_approval_token",
     "default_issue_creator",
 ]

@@ -1586,6 +1586,7 @@ def _draft_to_dict(draft: IssueDraft) -> dict[str, Any]:
         "out_of_scope": draft.out_of_scope,
         "rollout": draft.rollout,
         "open_questions": draft.open_questions,
+        "operator_notes": draft.operator_notes,
     }
 
 
@@ -1605,6 +1606,7 @@ def draft_from_payload(payload: Any) -> IssueDraft:
         out_of_scope=str(payload.get("out_of_scope") or "").strip(),
         rollout=str(payload.get("rollout") or "").strip(),
         open_questions=str(payload.get("open_questions") or "").strip(),
+        operator_notes=str(payload.get("operator_notes") or "").strip(),
     )
 
 

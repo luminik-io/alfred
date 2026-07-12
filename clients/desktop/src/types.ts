@@ -436,6 +436,7 @@ export type ComposeDraftFields = {
   out_of_scope: string;
   rollout: string;
   open_questions: string;
+  operator_notes: string;
 };
 
 export type ComposeFinding = {

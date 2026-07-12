@@ -76,6 +76,7 @@ function converseResponse(overrides: Partial<ConverseResponse> = {}): ConverseRe
       out_of_scope: "",
       rollout: "",
       open_questions: "",
+      operator_notes: "",
     },
     ...overrides,
   };
@@ -163,6 +164,7 @@ describe("ComposeView (conversational)", () => {
           out_of_scope: "",
           rollout: "",
           open_questions: "",
+          operator_notes: "",
         },
       }),
     );
@@ -279,6 +281,7 @@ describe("ComposeView (conversational)", () => {
           out_of_scope: "",
           rollout: "",
           open_questions: "",
+          operator_notes: "",
         },
       }),
     );
