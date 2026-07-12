@@ -45,6 +45,20 @@ function makeStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
   };
 }
 
+function makeIndexedStatus(): SetupStatus {
+  const status = makeStatus();
+  if (!status.code_memory) throw new Error("test setup requires code-memory status");
+  return {
+    ...status,
+    code_memory: {
+      ...status.code_memory,
+      index_present: true,
+      repos: { configured: ["octocat/web"], count: 1 },
+      detail: "Code graph is ready.",
+    },
+  };
+}
+
 function makeInstall(overrides: Partial<NonNullable<SetupStatus["install"]>> = {}): NonNullable<SetupStatus["install"]> {
   const base: NonNullable<SetupStatus["install"]> = {
     alfred_home: "/tmp/alfred-home",
@@ -886,6 +900,7 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("loads, picks, and saves repositories leading with name + description", async () => {
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeIndexedStatus());
     const save = vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
       ok: true,
       repos: ["octocat/web"],
@@ -930,6 +945,52 @@ describe("OnboardingView seven-step takeover", () => {
         screen.getByText(/saved 1 repository alfred can work in and built the code graph/i),
       ).toBeInTheDocument(),
     );
+  });
+
+  it("does not report repository setup complete when the index command builds no graph", async () => {
+    vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
+      ok: true,
+      repos: ["octocat/web"],
+      env_path: "/home/.alfred/.env",
+      keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+    });
+    const onRunLocalAction = vi.fn(async () => ({
+      command: ["alfred", "code-memory", "index"],
+      stdout: "",
+      stderr: "",
+      status: 0,
+      success: true,
+      pid: 1,
+      message: "No local repositories found.",
+    }));
+    renderOnboarding({ onRunLocalAction });
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /get started/i }));
+    await user.click(await screen.findByRole("button", { name: /load my repositories/i }));
+    await user.click(await screen.findByRole("checkbox", { name: /octocat\/web/i }));
+    await user.click(screen.getByRole("button", { name: /save 1 repository/i }));
+
+    expect(await screen.findByText(/no code graph was built/i)).toBeInTheDocument();
+    expect(screen.queryByText(/built the code graph/i)).not.toBeInTheDocument();
+  });
+
+  it("surfaces that browser-only repository saves cannot build the required graph", async () => {
+    vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
+      ok: true,
+      repos: ["octocat/web"],
+      env_path: "/home/.alfred/.env",
+      keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+    });
+    renderOnboarding({ canRun: false });
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /get started/i }));
+    await user.click(await screen.findByRole("button", { name: /load my repositories/i }));
+    await user.click(await screen.findByRole("checkbox", { name: /octocat\/web/i }));
+    await user.click(screen.getByRole("button", { name: /save 1 repository/i }));
+
+    expect(await screen.findByText(/indexing requires the alfred desktop app/i)).toBeInTheDocument();
   });
 
   it("blocks the repo step until GitHub is connected", async () => {
@@ -1283,6 +1344,7 @@ describe("OnboardingView conversational setup actions", () => {
   }
 
   it("indexes selected repositories after a conversational save", async () => {
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeIndexedStatus());
     const save = vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
       ok: true,
       repos: ["octocat/web"],
@@ -1310,6 +1372,39 @@ describe("OnboardingView conversational setup actions", () => {
       action: "code_memory_index",
       refreshAfter: true,
     });
+  });
+
+  it("threads a failed graph verification back into the onboarding conversation", async () => {
+    vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
+      ok: true,
+      repos: ["octocat/web"],
+      env_path: "/home/.alfred/.env",
+      keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+    });
+    let secondTurnMessages: { role: string; content: string }[] = [];
+    vi.spyOn(apiSetup, "onboardingConverse")
+      .mockResolvedValueOnce({
+        reply: "I can save that repository.",
+        action: { tool: "set_repos", args: { repos: ["octocat/web"] } },
+        done: false,
+      })
+      .mockImplementationOnce(async (_base, request) => {
+        secondTurnMessages = request.messages;
+        return { reply: "Let's fix indexing.", action: null, done: false };
+      });
+    const onRunLocalAction = vi.fn(async () => makeNativeResult());
+    renderOnboarding({ onRunLocalAction });
+    const user = userEvent.setup();
+
+    await enterChatAndSend(user, "use octocat/web");
+    await approveStep(user, /save repositories/i);
+
+    await waitFor(() => expect(secondTurnMessages.length).toBeGreaterThan(0));
+    const outcome = secondTurnMessages.find((message) =>
+      message.content.includes("[setup] set_repos"),
+    );
+    expect(outcome?.content).toContain("did not complete");
+    expect(outcome?.content).toContain("no code graph was built");
   });
 
   it("carries a native Slack skip back into conversational completion", async () => {

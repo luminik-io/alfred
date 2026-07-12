@@ -516,7 +516,12 @@ export function OnboardingView({
 
   const indexSelectedRepos = useCallback(
     async (repos: string[]): Promise<boolean> => {
-      if (!repos.length || !canRun) return false;
+      if (!repos.length) return false;
+      if (!canRun) {
+        throw new Error(
+          "Repositories were saved, but code-graph indexing requires the Alfred desktop app.",
+        );
+      }
       const result = await onRunLocalAction({
         action: "code_memory_index",
         refreshAfter: true,
@@ -527,9 +532,15 @@ export function OnboardingView({
             "Repositories were saved, but Alfred could not build their code graph.",
         );
       }
+      const fresh = await refreshStatus();
+      if (!fresh?.code_memory?.index_present) {
+        throw new Error(
+          "Repositories were saved, but no code graph was built. Clone the selected repositories locally, then retry indexing.",
+        );
+      }
       return true;
     },
-    [canRun, onRunLocalAction],
+    [canRun, onRunLocalAction, refreshStatus],
   );
 
   // Execute one onboarding action REQUESTED by the conversational guide. The
