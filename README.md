@@ -35,7 +35,7 @@ to your terminal:
   <img src="docs/images/demo.gif" alt="alfred demo: plan, approve, build, review catches a planted bug, fix, ship" width="760">
 </p>
 
-<p align="center"><em>One real run, captured live and unedited: plan to shipped in 82 seconds.</em></p>
+<p align="center"><em>Plan to shipped in 82 seconds.</em></p>
 
 The same run as a text transcript, for the terminal-shy:
 
@@ -51,10 +51,10 @@ verify        diff applies, sample tests pass
 done          change committed with a PR-style summary
 ```
 
-Four real, sequential model calls, so it runs at real latency, typically a
-minute and a half to two minutes, not a canned script. It never fakes success:
-a missing CLI, a failed call, an unchanged worktree, or a failing test suite
-stops the run honestly. Full walkthrough in [`docs/DEMO.md`](docs/DEMO.md).
+Four sequential model calls, so it runs at real latency, typically a minute and
+a half to two minutes. It never fakes success: a missing CLI, a failed call, an
+unchanged worktree, or a failing test stops the run and says so. Full
+walkthrough in [`docs/DEMO.md`](docs/DEMO.md).
 
 ## Watch the tour
 
@@ -67,7 +67,7 @@ change, review it, and open a pull request.
   <a href="docs/media/alfred-tour.mp4"><img src="docs/media/alfred-tour.webp" alt="Alfred product tour: asking a question, shaping a plan from a change request, scoping a request in Slack, a fleet-authored pull request, the agent roster and workflow graph, a live roster re-skin, what Alfred has learned, the work board, and a merged pull request in the terminal" width="820"></a>
 </p>
 
-<p align="center"><em><a href="docs/media/alfred-tour.mp4">Watch the full tour (MP4, 55s)</a>, recorded from <code>alfred serve</code>.</em></p>
+<p align="center"><em><a href="docs/media/alfred-tour.mp4">Watch the full tour (MP4, 56s)</a>, recorded from <code>alfred serve</code>.</em></p>
 
 ## What it is
 

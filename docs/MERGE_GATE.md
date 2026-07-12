@@ -4,9 +4,8 @@ Alfred merges a pull request only when GitHub itself says it is ready. There is
 one predicate, in [`lib/merge_gate.py`](../lib/merge_gate.py), and it reads
 GitHub's own machinery. By default the reviewers are whoever GitHub says
 approved the PR, with no reviewer names or review products hard-coded. When you
-require named external reviews (Alfred's own repository runs with
-`greptile,codex`), the gate also checks those specific bots by their exact
-GitHub identities and looks for their exact clean-verdict text.
+configure named external reviews, the gate also checks those specific bots by
+their exact GitHub identities and looks for their exact clean-verdict text.
 
 ## The gate
 
@@ -23,9 +22,9 @@ A PR is mergeable by Alfred only when all of these hold:
    blocking the merge. `UNSTABLE`, `BLOCKED`, `DIRTY`, `BEHIND`, and `UNKNOWN`
    all fail the gate.
 5. No check run is in a failing conclusion.
-6. Every external review named in `ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS` (empty
-   by default) has posted a clean verdict on the exact current head. Alfred's own
-   repository sets this to `greptile,codex`.
+6. Every external review named in `ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS` has
+   posted a clean verdict on the exact current head. This is empty by default, so
+   the gate relies on GitHub's own review settings unless you set it.
 
 The gate fails closed. Any API error, any missing field, or any value it does
 not recognise makes it return "not mergeable" rather than guess.
@@ -58,7 +57,7 @@ unreviewed changes.
 | --- | --- | --- |
 | `ALFRED_MERGE_REQUIRE_APPROVAL` | on | Require exact-head GitHub approvals. When off with external reviews configured, Alfred still uses every native gate but does not require a separate human approval. |
 | `ALFRED_MERGE_MIN_APPROVALS` | 1 | Distinct current-head approvals Alfred always requires. Must be an integer of at least 1; invalid values fail closed. GitHub branch protection may impose a stricter rule. |
-| `ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS` | empty | Comma-separated external review summaries that must be clean on the exact head. Set `greptile,codex` for Alfred's own repository policy. |
+| `ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS` | empty | Comma-separated external review summaries that must be clean on the exact head. Empty means GitHub's native review settings only. |
 
 ## Command line
 
