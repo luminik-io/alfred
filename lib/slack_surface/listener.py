@@ -2114,14 +2114,33 @@ class SlackPlanningListener:
         event: SlackInputEvent,
         record: SlackThreadRecord,
     ) -> ListenerResult:
-        """Abandon a planning draft on a plain-language cancel / discard reply."""
+        """Abandon a planning draft on a plain-language cancel / discard reply.
+
+        The cancel is only claimed once the ``cancelled`` status actually
+        persists. If the status write fails, the record can stay ``ready`` and a
+        later approval reply or reaction would still file it, so telling the
+        operator it was discarded would be a lie: instead surface the failure so
+        they know the draft is NOT terminal and can retry.
+        """
         try:
             self.registry.mark_status(record, "cancelled")
-        except Exception as exc:  # a status write must never break the reply
+        except Exception as exc:  # persist failed: do NOT claim the draft is gone
             print(
                 f"[SLACK-LISTENER-WARN] could not cancel draft for "
                 f"{record.channel}/{record.thread_ts}: {exc}",
                 file=sys.stderr,
+            )
+            self._post_thread_ack(
+                event.channel,
+                event.root_ts,
+                "*Could not discard the draft*\n\nI hit an error saving that, so "
+                "the draft is still active. Please try again in a moment.",
+            )
+            return ListenerResult(
+                True,
+                "draft_cancel_failed",
+                detail=f"could not persist cancelled status: {exc}",
+                thread_kind=record.kind,
             )
         self._post_thread_ack(
             event.channel,
