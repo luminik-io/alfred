@@ -142,9 +142,9 @@ def main() -> int:
         return 0
 
     spec_dir = _resolve_spec_dir(config)
-    if spec_dir is None:
+    if spec_dir is None or not spec_dir.is_dir():
         print(
-            f"[{CODENAME.upper()}-IDLE] no spec directory configured "
+            f"[{CODENAME.upper()}-IDLE] no readable spec directory configured "
             "(set ALFRED_SPEC_PLANNER_SPEC_DIR to a markdown spec dir relative to WORKSPACE_ROOT)",
         )
         return 0
