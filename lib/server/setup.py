@@ -915,13 +915,16 @@ def set_battery(battery_id: str, *, enabled: bool) -> dict[str, Any]:
             os.environ[key] = value
         else:
             os.environ.pop(key, None)
+    manifest = battery_manifest()
+    row = next(item for item in manifest["batteries"] if item["id"] == battery_id)
     return {
         "ok": True,
         "battery": battery_id,
-        "enabled": enabled,
+        "configured": enabled,
+        "enabled": row["enabled"],
         "env_path": str(env_path),
         "keys": list(values),
-        "manifest": battery_manifest(),
+        "manifest": manifest,
     }
 
 

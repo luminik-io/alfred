@@ -164,6 +164,18 @@ def test_status_included_available_enabled(monkeypatch: pytest.MonkeyPatch) -> N
     )
 
 
+def test_manifest_separates_configured_from_operational(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(batteries, "_find_spec", lambda _name: False)
+    payload = batteries.manifest({"ALFRED_MEMORY_SQLITE_DENSE": "1"})
+    row = {item["id"]: item for item in payload["batteries"]}["dense-embeddings"]
+
+    assert row["configured"] is True
+    assert row["enabled"] is False
+    assert row["status"] == batteries.STATUS_NOT_INSTALLED
+
+
 def test_headroom_enabled_only_for_headroom_engine() -> None:
     headroom = batteries.battery_by_id("headroom-compression")
     assert headroom is not None

@@ -652,6 +652,8 @@ def disable_values(battery: Battery, env: Mapping[str, str] | None = None) -> di
 # Serialization (one shape for the CLI --json and the GUI endpoint)
 # --------------------------------------------------------------------------- #
 def to_dict(battery: Battery, env: Mapping[str, str]) -> dict[str, object]:
+    status = battery_status(battery, env)
+    configured = is_enabled(battery, env)
     return {
         "id": battery.id,
         "name": battery.name,
@@ -660,8 +662,9 @@ def to_dict(battery: Battery, env: Mapping[str, str]) -> dict[str, object]:
         "how_it_helps": battery.how_it_helps,
         "builtin": battery.builtin,
         "default_on": battery.default_on,
-        "status": battery_status(battery, env),
-        "enabled": is_enabled(battery, env),
+        "status": status,
+        "configured": configured,
+        "enabled": status in {STATUS_INCLUDED, STATUS_ENABLED},
         "installed": is_installed(battery, env),
         "requires_daemon": battery.requires_daemon,
         "service": battery.service,

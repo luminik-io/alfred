@@ -810,6 +810,7 @@ export type SetupBattery = {
   builtin: boolean;
   default_on: boolean;
   status: "included" | "enabled" | "available" | "not_installed" | string;
+  configured: boolean;
   enabled: boolean;
   installed: boolean;
   requires_daemon: boolean;
@@ -837,6 +838,7 @@ export type SetupBatteryManifest = {
 export type SetupBatterySaveResponse = {
   ok: boolean;
   battery: string;
+  configured: boolean;
   enabled: boolean;
   env_path: string;
   keys: string[];

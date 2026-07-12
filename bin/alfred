@@ -2609,8 +2609,9 @@ def _battery_run_install(args: argparse.Namespace, battery: Any) -> int:
     printable = " ".join(shlex.quote(part) for part in command)
 
     if getattr(args, "print_command", False):
-        print(f"alfred: run this to finish installing {battery.id}:")
-        print(f"        {printable}")
+        battery_id = shlex.quote(battery.id)
+        print(f"alfred: run this to install and enable {battery.id}:")
+        print(f"        {printable} && alfred batteries enable {battery_id} --yes")
         return 0
 
     if not getattr(args, "yes", False):

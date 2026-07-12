@@ -896,6 +896,7 @@ export function OnboardingView({
                 baseUrl={baseUrl}
                 canMutate={canMutate}
                 canRun={canRun}
+                connected={connected}
                 onRunLocalAction={onRunLocalAction}
                 onSaved={async () => {
                   setBatteriesTouched(true);

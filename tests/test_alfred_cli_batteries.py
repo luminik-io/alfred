@@ -38,3 +38,18 @@ def test_failed_install_does_not_write_enabled_flag(
 
     env_path = tmp_path / ".alfred" / ".env"
     assert not env_path.exists() or "ALFRED_MEMORY_SQLITE_DENSE=1" not in env_path.read_text()
+
+
+def test_print_command_includes_follow_up_enable_without_mutating_config(
+    cli, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import batteries
+
+    monkeypatch.setattr(batteries, "is_installed", lambda _battery, _env: False)
+
+    assert cli.main(["batteries", "enable", "dense-embeddings", "--print-command"]) == 0
+
+    output = capsys.readouterr().out
+    assert "&& alfred batteries enable dense-embeddings --yes" in output
+    env_path = tmp_path / ".alfred" / ".env"
+    assert not env_path.exists() or "ALFRED_MEMORY_SQLITE_DENSE=1" not in env_path.read_text()

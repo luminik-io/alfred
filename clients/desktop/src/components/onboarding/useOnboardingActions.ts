@@ -188,6 +188,12 @@ export function useOnboardingActions({
                 note: "I cannot change batteries in this read-only preview. Use the Batteries step to pick them.",
               };
             }
+            if (canRun && !connected) {
+              return {
+                ok: false,
+                note: "Connect to the Alfred runtime before installing batteries.",
+              };
+            }
             const ids = Array.isArray(action.args.batteries)
               ? action.args.batteries.filter((id): id is string => typeof id === "string")
               : [];

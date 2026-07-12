@@ -47,6 +47,7 @@ export function BatteryPickerStep({
   baseUrl,
   canMutate,
   canRun = false,
+  connected = true,
   onRunLocalAction,
   onSaved,
   setNotice,
@@ -54,6 +55,7 @@ export function BatteryPickerStep({
   baseUrl: string;
   canMutate: boolean;
   canRun?: boolean;
+  connected?: boolean;
   onRunLocalAction?: (
     request: NativeActionRequest,
   ) => Promise<NativeCommandResult | null>;
@@ -85,6 +87,9 @@ export function BatteryPickerStep({
   const toggle = async (battery: SetupBattery, next: boolean) => {
     setPending(battery.id);
     try {
+      if (next && canRun && !connected) {
+        throw new Error("Connect to the Alfred runtime before installing a battery.");
+      }
       if (next && canRun) {
         const nativeResult = await onRunLocalAction?.({
           action: "battery_enable",
@@ -214,7 +219,7 @@ export function BatteryPickerStep({
                 </div>
                 <Switch
                   checked={battery.enabled}
-                  disabled={!canMutate || busy}
+                  disabled={!canMutate || busy || (canRun && !connected)}
                   onCheckedChange={(next) => void toggle(battery, next)}
                   aria-label={`${battery.enabled ? "Disable" : "Enable"} ${battery.name}`}
                 />

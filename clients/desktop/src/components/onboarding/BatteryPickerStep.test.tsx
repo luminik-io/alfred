@@ -20,6 +20,7 @@ function battery(overrides: Partial<SetupBattery>): SetupBattery {
     builtin: false,
     default_on: false,
     status: "available",
+    configured: false,
     enabled: false,
     installed: true,
     requires_daemon: false,
@@ -75,6 +76,7 @@ describe("BatteryPickerStep", () => {
       .mockResolvedValue({
         ok: true,
         battery: "dense-embeddings",
+        configured: true,
         enabled: true,
         env_path: "/home/.alfred/.env",
         keys: ["ALFRED_MEMORY_SQLITE_DENSE"],
@@ -109,6 +111,7 @@ describe("BatteryPickerStep", () => {
     const save = vi.spyOn(api, "saveSetupBattery").mockResolvedValue({
       ok: true,
       battery: "dense-embeddings",
+      configured: true,
       enabled: true,
       env_path: "/home/.alfred/.env",
       keys: ["ALFRED_MEMORY_SQLITE_DENSE"],
@@ -169,6 +172,25 @@ describe("BatteryPickerStep", () => {
     );
   });
 
+  it("disables native installs while the runtime is disconnected", async () => {
+    vi.spyOn(api, "loadSetupBatteries").mockResolvedValue(manifest([battery({})]));
+
+    render(
+      <BatteryPickerStep
+        baseUrl="http://127.0.0.1:7010"
+        canMutate
+        canRun
+        connected={false}
+        onRunLocalAction={vi.fn(async () => null)}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByRole("switch", { name: /enable dense embeddings/i }),
+    ).toBeDisabled();
+  });
+
   it("surfaces the requirement for a battery that still needs a daemon", async () => {
     vi.spyOn(api, "loadSetupBatteries").mockResolvedValue(
       manifest([
@@ -176,7 +198,8 @@ describe("BatteryPickerStep", () => {
           id: "redis-ams",
           name: "Redis Agent Memory Server",
           status: "not_installed",
-          enabled: true,
+          configured: true,
+          enabled: false,
           installed: false,
           requires_daemon: true,
           service: "Redis",
