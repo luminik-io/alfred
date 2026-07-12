@@ -55,6 +55,7 @@
       "../../../launchd/render.sh": "alfred-core/launchd/render.sh",
       "../../../lib": "alfred-core/lib",
       "../../../prompts": "alfred-core/prompts",
+      "../../../skills": "alfred-core/skills",
       "../../../systemd/_template.service": "alfred-core/systemd/_template.service",
       "../../../systemd/_template.timer": "alfred-core/systemd/_template.timer",
       "../../../systemd/render.sh": "alfred-core/systemd/render.sh"
