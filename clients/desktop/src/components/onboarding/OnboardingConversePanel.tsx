@@ -56,6 +56,9 @@ const ACTION_APPROVE_LABEL: Record<OnboardingActionTool, string> = {
   propose_theme: "Preview team",
   save_theme: "Save team names",
   set_batteries: "Turn on batteries",
+  skip_batteries: "Skip batteries",
+  open_slack_setup: "Open Slack setup",
+  skip_slack: "Skip Slack",
   set_schedule: "Set schedule",
   finish_setup: "Finish setup",
 };
@@ -77,11 +80,15 @@ export type OnboardingActionResult = {
 
 export function OnboardingConversePanel({
   baseUrl,
+  batteriesDecisionHandled = false,
+  slackDecisionHandled = false,
   onRunAction,
   onDone,
   onUseStepped,
 }: {
   baseUrl: string;
+  batteriesDecisionHandled?: boolean;
+  slackDecisionHandled?: boolean;
   // Execute one requested action through the shared setup handlers and return a
   // plain result note. The panel never writes config itself.
   onRunAction: (action: OnboardingAction) => Promise<OnboardingActionResult>;
@@ -100,6 +107,12 @@ export function OnboardingConversePanel({
   // approve. While set, the composer is replaced by an Approve/Skip affordance;
   // nothing runs until the user clicks. Read-only actions never land here.
   const [pendingAction, setPendingAction] = useState<OnboardingAction | null>(null);
+  // Refs make the deterministic decision gate synchronous across recursive
+  // model turns. React state could leave the next turn reading the prior value.
+  const decisionsRef = useRef({
+    batteries: batteriesDecisionHandled,
+    slack: slackDecisionHandled,
+  });
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   // The running transcript sent to the server. This is the MODEL-facing history
@@ -113,6 +126,14 @@ export function OnboardingConversePanel({
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [bubbles, busy]);
+
+  useEffect(() => {
+    // Setup status can finish loading after chat mounts. Only promote known
+    // completed decisions so an older false status cannot erase a choice made
+    // during this conversation.
+    if (batteriesDecisionHandled) decisionsRef.current.batteries = true;
+    if (slackDecisionHandled) decisionsRef.current.slack = true;
+  }, [batteriesDecisionHandled, slackDecisionHandled]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -143,15 +164,32 @@ export function OnboardingConversePanel({
   // The caller is responsible for the approval gate: this always executes.
   const executeAction = useCallback(
     async (action: OnboardingAction, done: boolean, controller: AbortController): Promise<void> => {
+      const decisions = decisionsRef.current;
+      if (action.tool === "finish_setup" && (!decisions.batteries || !decisions.slack)) {
+        const missing = [
+          !decisions.batteries ? "Batteries still need a decision" : null,
+          !decisions.slack ? "Slack still needs a decision" : null,
+        ].filter(Boolean);
+        const note = `${missing.join(". ")}. Choose an option before finishing setup.`;
+        appendBubble({ role: "assistant", content: note });
+        threadModelNote(`[setup] finish_setup did not complete: ${note}`);
+        return;
+      }
       // The step runs through the shared handler, never in this panel.
       const result = await onRunAction(action);
       if (controller.signal.aborted) return;
+      if (result.ok && (action.tool === "set_batteries" || action.tool === "skip_batteries")) {
+        decisionsRef.current.batteries = true;
+      }
+      if (result.ok && action.tool === "skip_slack") {
+        decisionsRef.current.slack = true;
+      }
       // The person sees a plain confirmation bubble.
       appendBubble({ role: "assistant", content: result.note });
       // The terminal turn carries the finish_setup action AND done. Because the
       // server only sets done on that action, honor done AFTER running it, then
       // route out rather than continuing the chat.
-      if (done) {
+      if (done && result.ok) {
         onDone();
         return;
       }

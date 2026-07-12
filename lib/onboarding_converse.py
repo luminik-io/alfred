@@ -87,6 +87,9 @@ ONBOARDING_ACTIONS: frozenset[str] = frozenset(
         "propose_theme",
         "save_theme",
         "set_batteries",
+        "skip_batteries",
+        "open_slack_setup",
+        "skip_slack",
         "set_schedule",
         "finish_setup",
     }
@@ -344,7 +347,16 @@ _ARG_VALIDATORS: dict[str, Callable[[dict[str, Any]], dict[str, Any] | None]] = 
 
 # Actions that carry no args: the client already knows how to run them (fetch
 # status, kick the device flow, generate). An empty args dict is fine.
-_ARGLESS_ACTIONS: frozenset[str] = frozenset({"check_engine", "connect_github", "finish_setup"})
+_ARGLESS_ACTIONS: frozenset[str] = frozenset(
+    {
+        "check_engine",
+        "connect_github",
+        "skip_batteries",
+        "open_slack_setup",
+        "skip_slack",
+        "finish_setup",
+    }
+)
 
 
 def _action_from_obj(raw_action: Any) -> cc.ConverseAction | None:

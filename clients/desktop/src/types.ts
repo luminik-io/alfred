@@ -560,6 +560,9 @@ export type OnboardingActionTool =
   | "propose_theme"
   | "save_theme"
   | "set_batteries"
+  | "skip_batteries"
+  | "open_slack_setup"
+  | "skip_slack"
   | "set_schedule"
   | "finish_setup";
 

@@ -13,6 +13,8 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Fixed
 
+- Conversational desktop onboarding now requires an explicit Batteries choice and a handled Slack choice before finishing. Slack setup opens the existing local, token-gated step so secrets and webhook URLs stay out of the model transcript.
+
 ## [0.6.0] - 2026-07-10
 
 The largest release since the desktop app shipped. Alfred is now something you

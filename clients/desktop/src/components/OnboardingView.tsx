@@ -233,6 +233,7 @@ export function OnboardingView({
   // Steps the user explicitly skipped (Dev persona). A skipped step is no longer
   // the blocker for "what's next" but is not marked done either.
   const [skipped, setSkipped] = useState<Set<OnboardingStepKey>>(new Set());
+  const [batteriesTouched, setBatteriesTouched] = useState(false);
   // True once the user added a Slack approver, so the optional Slack step reads
   // as done in the rail (the server exposes no approver flag on SetupStatus).
   const [slackTouched, setSlackTouched] = useState(false);
@@ -511,6 +512,7 @@ export function OnboardingView({
   const capabilityActionableCount = status?.capability_plane?.summary.actionable ?? 0;
   const toolsReady = engineReady && capabilityActionableCount === 0;
   const reposSelected = (status?.repos.count ?? 0) > 0;
+  const slackConfigured = Boolean(status?.install?.slack_configured);
 
   // Execute one onboarding action REQUESTED by the conversational guide. The
   // executor lives in useOnboardingActions so both paths share one source of
@@ -525,6 +527,13 @@ export function OnboardingView({
     startGithubAuthLogin,
     onRunLocalAction,
     onSaveCustomNames,
+    onBatteriesDecision: useCallback(() => setBatteriesTouched(true), []),
+    onSlackDecision: useCallback(() => setSlackTouched(true), []),
+    onOpenSlackSetup: useCallback(() => {
+      setNotice(null);
+      setStepKey("slack");
+      setMode("stepped");
+    }, []),
     onFinishSetup: useCallback(() => setRequestDone(true), []),
   });
 
@@ -577,11 +586,10 @@ export function OnboardingView({
             reachedIndex > ONBOARDING_STEP_ORDER.indexOf("team") || installInitialized
           );
         case "slack":
-          // Slack is optional and the server exposes no "approver added" flag on
-          // SetupStatus, so it reads satisfied only when the user explicitly
-          // skipped it or added an approver (tracked locally as slackTouched). We
-          // never invent a "Slack done" signal the server did not send.
-          return skipped.has("slack") || slackTouched;
+          // Server configuration and local decisions are both authoritative.
+          // The latter cover a skip or approver addition before a refreshed
+          // setup snapshot is available.
+          return slackConfigured || skipped.has("slack") || slackTouched;
         case "request":
           return requestDone;
         default:
@@ -594,6 +602,7 @@ export function OnboardingView({
       reachedIndex,
       reposSelected,
       requestDone,
+      slackConfigured,
       skipped,
       slackTouched,
       toolsReady,
@@ -659,11 +668,13 @@ export function OnboardingView({
   }, []);
 
   const advance = useCallback(() => {
+    if (stepKey === "batteries") setBatteriesTouched(true);
     if (nextKey) goToStep(nextKey);
-  }, [goToStep, nextKey]);
+  }, [goToStep, nextKey, stepKey]);
 
   const skipStep = useCallback(
     (key: OnboardingStepKey) => {
+      if (key === "batteries") setBatteriesTouched(true);
       setSkipped((prev) => {
         const next = new Set(prev);
         next.add(key);
@@ -775,6 +786,8 @@ export function OnboardingView({
           <div className="alfred-onboarding-shell__panel motion-fade">
             <OnboardingConversePanel
               baseUrl={baseUrl}
+              batteriesDecisionHandled={batteriesTouched}
+              slackDecisionHandled={stepSatisfied("slack")}
               onRunAction={runOnboardingAction}
               onDone={() => {
                 setRequestDone(true);
@@ -883,6 +896,7 @@ export function OnboardingView({
                 baseUrl={baseUrl}
                 canMutate={canMutate}
                 onSaved={async () => {
+                  setBatteriesTouched(true);
                   await refreshStatus();
                 }}
                 setNotice={setNotice}

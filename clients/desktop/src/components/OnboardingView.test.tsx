@@ -1267,6 +1267,75 @@ describe("OnboardingView conversational setup actions", () => {
     await user.click(await screen.findByRole("button", { name: buttonName }));
   }
 
+  it("carries a native Slack skip back into conversational completion", async () => {
+    vi.spyOn(apiSetup, "onboardingConverse")
+      .mockResolvedValueOnce({
+        reply: "Keep the built-in batteries?",
+        action: { tool: "skip_batteries", args: {} },
+        done: false,
+      })
+      .mockResolvedValueOnce({
+        reply: "Let's set up Slack locally.",
+        action: { tool: "open_slack_setup", args: {} },
+        done: false,
+      })
+      .mockResolvedValueOnce({
+        reply: "Setup is ready.",
+        action: { tool: "finish_setup", args: {} },
+        done: true,
+      });
+    const onSwitch = vi.fn();
+    renderOnboarding({ onSwitch });
+    const user = userEvent.setup();
+
+    await enterChatAndSend(user, "set up the optional services");
+    await approveStep(user, /skip batteries/i);
+    await approveStep(user, /open slack setup/i);
+
+    expect(await screen.findByText(/want approvals and questions in slack/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/slack user id/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /skip for now/i }));
+    await user.click(screen.getByRole("button", { name: /^welcome$/i }));
+    await enterChatAndSend(user, "finish setup");
+    await approveStep(user, /finish setup/i);
+
+    await waitFor(() => expect(onSwitch).toHaveBeenCalledWith("home"));
+  });
+
+  it("persists chat battery and Slack skips across a panel remount", async () => {
+    vi.spyOn(apiSetup, "onboardingConverse")
+      .mockResolvedValueOnce({
+        reply: "Keep the built-in batteries?",
+        action: { tool: "skip_batteries", args: {} },
+        done: false,
+      })
+      .mockResolvedValueOnce({
+        reply: "Skip Slack?",
+        action: { tool: "skip_slack", args: {} },
+        done: false,
+      })
+      .mockResolvedValueOnce({ reply: "Both choices are saved.", action: null, done: false })
+      .mockResolvedValueOnce({
+        reply: "Setup is ready.",
+        action: { tool: "finish_setup", args: {} },
+        done: true,
+      });
+    const onSwitch = vi.fn();
+    renderOnboarding({ onSwitch });
+    const user = userEvent.setup();
+
+    await enterChatAndSend(user, "keep the defaults");
+    await approveStep(user, /skip batteries/i);
+    await approveStep(user, /skip slack/i);
+    await user.click(await screen.findByRole("button", { name: /set up step by step/i }));
+    await user.click(screen.getByRole("button", { name: /^welcome$/i }));
+    await enterChatAndSend(user, "finish setup");
+    await approveStep(user, /finish setup/i);
+
+    await waitFor(() => expect(onSwitch).toHaveBeenCalledWith("home"));
+  });
+
   it("reports a successful GitHub device flow to the model (Codex P2 fresh status)", async () => {
     // GitHub starts disconnected; the device flow succeeds and the poll lands on a
     // connected status. The executor must report success from the FRESH verdict,

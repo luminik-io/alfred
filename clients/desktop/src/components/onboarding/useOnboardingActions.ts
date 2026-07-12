@@ -54,6 +54,9 @@ type OnboardingActionDeps = {
   startGithubAuthLogin: () => Promise<boolean>;
   onRunLocalAction: (request: NativeActionRequest) => Promise<NativeCommandResult | null>;
   onSaveCustomNames: (next: CustomRosterNames) => Promise<void>;
+  onBatteriesDecision: () => void;
+  onSlackDecision: () => void;
+  onOpenSlackSetup: () => void;
   onFinishSetup: () => void;
 };
 
@@ -75,6 +78,9 @@ export function useOnboardingActions({
   startGithubAuthLogin,
   onRunLocalAction,
   onSaveCustomNames,
+  onBatteriesDecision,
+  onSlackDecision,
+  onOpenSlackSetup,
   onFinishSetup,
 }: OnboardingActionDeps): (action: OnboardingAction) => Promise<OnboardingActionResult> {
   return useCallback(
@@ -208,12 +214,24 @@ export function useOnboardingActions({
                 note: "I could not turn those on. Open the Batteries step to pick them, or run `alfred batteries`.",
               };
             }
+            onBatteriesDecision();
             const tail = failed.length ? ` I could not turn on: ${failed.join(", ")}.` : "";
             return {
               ok: true,
               note: `Turned on ${enabledNow.join(", ")}. Some may still need a package or a service; the Batteries step shows what.${tail}`,
             };
           }
+          case "skip_batteries":
+            onBatteriesDecision();
+            return { ok: true, note: "Keeping the built-in batteries only." };
+          case "open_slack_setup":
+            // Slack credentials never enter this action or the transcript. Move
+            // to the existing token-gated local step, which owns Slack setup.
+            onOpenSlackSetup();
+            return { ok: true, note: "Opened the native Slack setup step." };
+          case "skip_slack":
+            onSlackDecision();
+            return { ok: true, note: "Skipping Slack for now. You can add it later." };
           case "set_schedule": {
             // Persist the cadence through the SAME native primitive the Fleet view
             // uses (`alfred schedule set` / `pause`), never a fake acknowledgement.
@@ -309,6 +327,9 @@ export function useOnboardingActions({
       connected,
       githubConnected,
       onFinishSetup,
+      onBatteriesDecision,
+      onOpenSlackSetup,
+      onSlackDecision,
       onRunLocalAction,
       onSaveCustomNames,
       refreshStatus,
