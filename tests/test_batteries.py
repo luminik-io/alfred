@@ -157,6 +157,11 @@ def test_status_included_available_enabled(monkeypatch: pytest.MonkeyPatch) -> N
     # not installed and not enabled -> not_installed
     monkeypatch.setattr(batteries, "_find_spec", lambda name: False)
     assert batteries.battery_status(dense, {}) == batteries.STATUS_NOT_INSTALLED
+    # A flag alone is not a healthy enabled battery. Failed installs must stay
+    # visible as not-installed instead of presenting a false "on" state.
+    assert batteries.battery_status(dense, {"ALFRED_MEMORY_SQLITE_DENSE": "1"}) == (
+        batteries.STATUS_NOT_INSTALLED
+    )
 
 
 def test_headroom_enabled_only_for_headroom_engine() -> None:

@@ -895,6 +895,8 @@ export function OnboardingView({
               <BatteryPickerStep
                 baseUrl={baseUrl}
                 canMutate={canMutate}
+                canRun={canRun}
+                onRunLocalAction={onRunLocalAction}
                 onSaved={async () => {
                   setBatteriesTouched(true);
                   await refreshStatus();

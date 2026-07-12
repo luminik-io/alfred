@@ -178,10 +178,10 @@ export function useOnboardingActions({
             return { ok: true, note: "Saved your team names." };
           }
           case "set_batteries": {
-            // Optional enhancements. Turning a battery on writes its env flag
-            // through the same setup-save path the picker uses; it never installs
-            // a pip extra or starts a daemon, so the person still finishes any
-            // install themselves. Unknown ids and built-ins are refused.
+            // Optional enhancements. Native setup runs the battery CLI first so
+            // local dependencies install transactionally, then mirrors the flag
+            // through the live setup API. External daemons remain explicit.
+            // Unknown ids and built-ins are refused.
             if (!canMutate) {
               return {
                 ok: false,
@@ -201,6 +201,14 @@ export function useOnboardingActions({
             const failed: string[] = [];
             for (const id of ids) {
               try {
+                if (canRun) {
+                  const result = await onRunLocalAction({
+                    action: "battery_enable",
+                    target: id,
+                    refreshAfter: true,
+                  });
+                  if (!result?.success) throw new Error("battery install failed");
+                }
                 await saveSetupBattery(baseUrl, id, true);
                 enabledNow.push(id);
               } catch {
@@ -218,7 +226,7 @@ export function useOnboardingActions({
             const tail = failed.length ? ` I could not turn on: ${failed.join(", ")}.` : "";
             return {
               ok: true,
-              note: `Turned on ${enabledNow.join(", ")}. Some may still need a package or a service; the Batteries step shows what.${tail}`,
+              note: `Installed or configured ${enabledNow.join(", ")}. External services remain marked until they are reachable.${tail}`,
             };
           }
           case "skip_batteries":

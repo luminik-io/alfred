@@ -600,9 +600,10 @@ def is_installed(battery: Battery, env: Mapping[str, str]) -> bool:
 def battery_status(battery: Battery, env: Mapping[str, str]) -> str:
     if battery.builtin:
         return STATUS_INCLUDED
-    if is_enabled(battery, env):
+    installed = is_installed(battery, env)
+    if is_enabled(battery, env) and installed:
         return STATUS_ENABLED
-    if is_installed(battery, env):
+    if installed:
         return STATUS_AVAILABLE
     return STATUS_NOT_INSTALLED
 

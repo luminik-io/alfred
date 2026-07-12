@@ -104,6 +104,55 @@ describe("BatteryPickerStep", () => {
     );
   });
 
+  it("installs a local battery before mirroring its enabled state", async () => {
+    vi.spyOn(api, "loadSetupBatteries").mockResolvedValue(manifest([battery({})]));
+    const save = vi.spyOn(api, "saveSetupBattery").mockResolvedValue({
+      ok: true,
+      battery: "dense-embeddings",
+      enabled: true,
+      env_path: "/home/.alfred/.env",
+      keys: ["ALFRED_MEMORY_SQLITE_DENSE"],
+      manifest: manifest([battery({ enabled: true, installed: true, status: "enabled" })]),
+    });
+    const onRunLocalAction = vi.fn(async () => ({
+      command: ["alfred", "batteries", "enable", "dense-embeddings", "--yes"],
+      stdout: "",
+      stderr: "",
+      status: 0,
+      success: true,
+      pid: 1,
+      message: "installed",
+    }));
+
+    render(
+      <BatteryPickerStep
+        baseUrl="http://127.0.0.1:7010"
+        canMutate
+        canRun
+        onRunLocalAction={onRunLocalAction}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("switch", { name: /enable dense embeddings/i }),
+    );
+
+    await waitFor(() =>
+      expect(onRunLocalAction).toHaveBeenCalledWith({
+        action: "battery_enable",
+        target: "dense-embeddings",
+        refreshAfter: true,
+      }),
+    );
+    expect(save).toHaveBeenCalledWith(
+      "http://127.0.0.1:7010",
+      "dense-embeddings",
+      true,
+    );
+  });
+
   it("disables toggles in a read-only preview", async () => {
     vi.spyOn(api, "loadSetupBatteries").mockResolvedValue(manifest([battery({})]));
 
@@ -126,7 +175,9 @@ describe("BatteryPickerStep", () => {
         battery({
           id: "redis-ams",
           name: "Redis Agent Memory Server",
-          status: "available",
+          status: "not_installed",
+          enabled: true,
+          installed: false,
           requires_daemon: true,
           service: "Redis",
           install_kind: "daemon",
@@ -140,5 +191,6 @@ describe("BatteryPickerStep", () => {
     );
 
     await waitFor(() => expect(screen.getByText(/needs Redis/i)).toBeInTheDocument());
+    expect(screen.getByText(/needs install/i)).toBeInTheDocument();
   });
 });

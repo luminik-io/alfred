@@ -2518,7 +2518,6 @@ def cmd_batteries(args: argparse.Namespace) -> int:
         battery_by_id,
         disable_values,
         enable_values,
-        is_enabled,
         is_installed,
         load_env,
         manifest,
@@ -2558,8 +2557,25 @@ def cmd_batteries(args: argparse.Namespace) -> int:
                 f"primary memory store. Run `alfred batteries disable {others[0]}` first."
             )
             return 1
+    if (
+        enabling
+        and not battery.requires_daemon
+        and battery.install_kind in {"pip-extra", "autofetch"}
+        and not is_installed(battery, current_env)
+    ):
+        install_result = _battery_run_install(args, battery)
+        if install_result != 0:
+            return install_result
+        if getattr(args, "print_command", False):
+            return 0
+        if not is_installed(battery, load_env()):
+            print(f"alfred: {battery.id} was not enabled because its install is incomplete.")
+            return 1
+
     # Compose the chain onto the current env so a custom or existing chain is
-    # preserved rather than clobbered.
+    # preserved rather than clobbered. Installable batteries reach this write
+    # only after their dependency is present, so a failed install cannot leave
+    # a false enabled flag behind.
     values = (
         enable_values(battery, current_env) if enabling else disable_values(battery, current_env)
     )
@@ -2573,12 +2589,6 @@ def cmd_batteries(args: argparse.Namespace) -> int:
         )
         print(f"        {battery.install_hint}")
         return 0
-
-    if enabling and battery.install_kind in {"pip-extra", "autofetch"}:
-        env = load_env()
-        if is_enabled(battery, env) and is_installed(battery, env):
-            return 0
-        return _battery_run_install(args, battery)
     return 0
 
 

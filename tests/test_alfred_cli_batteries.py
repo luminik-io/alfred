@@ -1,0 +1,40 @@
+"""Transaction tests for ``alfred batteries`` installs."""
+
+from __future__ import annotations
+
+import importlib.util
+import sys
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+BIN = ROOT / "bin" / "alfred"
+sys.path.insert(0, str(ROOT / "lib"))
+
+
+@pytest.fixture()
+def cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / ".alfred"))
+    loader = SourceFileLoader("alfred_cli_batteries", str(BIN))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[loader.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_failed_install_does_not_write_enabled_flag(
+    cli, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import batteries
+
+    monkeypatch.setattr(batteries, "is_installed", lambda _battery, _env: False)
+    monkeypatch.setattr(cli, "_battery_run_install", lambda _args, _battery: 1)
+
+    assert cli.main(["batteries", "enable", "dense-embeddings", "--yes"]) == 1
+
+    env_path = tmp_path / ".alfred" / ".env"
+    assert not env_path.exists() or "ALFRED_MEMORY_SQLITE_DENSE=1" not in env_path.read_text()
