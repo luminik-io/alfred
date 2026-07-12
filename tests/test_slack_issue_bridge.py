@@ -856,6 +856,19 @@ def test_reply_after_cancel_does_not_file(tmp_path: Path) -> None:
     assert "discarded" in poster.messages[-1]["text"].lower()
 
 
+def test_reaction_after_cancel_does_not_file(tmp_path: Path) -> None:
+    creator = RecordingCreator()
+    listener, poster, _registry = _make_listener(tmp_path, creator=creator)
+    _seed_draft(listener, tmp_path)
+    listener.handle_payload(_reply("discard the draft", event_id="cancel004"))
+
+    result = listener.handle_payload(_reaction("white_check_mark", event_id="cancel005"))
+
+    assert result.action == "draft_cancelled_noop"
+    assert creator.calls == []
+    assert "discarded" in poster.messages[-1]["text"].lower()
+
+
 def test_draft_revision_footer_documents_action_phrases(tmp_path: Path) -> None:
     creator = RecordingCreator()
     listener, poster, _registry = _make_listener(tmp_path, creator=creator)

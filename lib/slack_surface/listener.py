@@ -1857,18 +1857,7 @@ class SlackPlanningListener:
         # "go ahead" after "discard the draft" would still file, because the
         # thread record stays ``kind="draft"``.
         if record.status == "cancelled":
-            self._post_thread_ack(
-                event.channel,
-                event.root_ts,
-                "*This draft was discarded*\n\nNothing will be filed here. "
-                "Start a fresh planning message to plan new work.",
-            )
-            return ListenerResult(
-                True,
-                "draft_cancelled_noop",
-                detail="reply on a discarded draft",
-                thread_kind=record.kind,
-            )
+            return self._ack_cancelled_draft(event, record)
 
         # A plain-language "cancel" / "discard the draft" abandons the draft
         # instead of being captured as an operator note (a dead-end).
@@ -1977,6 +1966,12 @@ class SlackPlanningListener:
         label is the durable queue signal, so if a direct kick is unavailable
         the issue is still picked up on the fleet's next pass.
         """
+        # Conversion is the shared chokepoint for both text approvals and
+        # approval reactions. Keep cancellation terminal here as well as in the
+        # text-revision path so no future caller can file a discarded draft.
+        if record.status == "cancelled":
+            return self._ack_cancelled_draft(event, record)
+
         payload_path = Path(record.draft_path).expanduser() if record.draft_path else None
         if payload_path is None:
             return self._ack_unavailable_draft(event, record, "saved draft path is unavailable")
@@ -2033,6 +2028,24 @@ class SlackPlanningListener:
             action,
             detail=outcome.detail,
             draft_path=str(payload_path),
+            thread_kind=record.kind,
+        )
+
+    def _ack_cancelled_draft(
+        self,
+        event: SlackInputEvent,
+        record: SlackThreadRecord,
+    ) -> ListenerResult:
+        self._post_thread_ack(
+            event.channel,
+            event.root_ts,
+            "*This draft was discarded*\n\nNothing will be filed here. "
+            "Start a fresh planning message to plan new work.",
+        )
+        return ListenerResult(
+            True,
+            "draft_cancelled_noop",
+            detail="action on a discarded draft",
             thread_kind=record.kind,
         )
 
