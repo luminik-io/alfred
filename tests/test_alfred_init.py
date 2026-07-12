@@ -946,6 +946,22 @@ def test_env_assignments_repos_key_follows_overridden_codename(init_mod, tmp_pat
     assert "ALFRED_SENIOR_DEV_REPOS" not in out
 
 
+def test_env_assignments_renamed_spec_planner_uses_canonical_repo_key(init_mod, tmp_path):
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("spec_planner",),
+        codenames={"spec_planner": "damian"},
+        repos={"spec_planner": ["acme/api", "acme/web"]},
+    )
+
+    out = init_mod.env_assignments_for(state)
+
+    assert out["AGENT_CODENAME_SPEC_PLANNER"] == "damian"
+    assert out["ALFRED_SPEC_PLANNER_REPOS"] == "api,web"
+    assert "ALFRED_DAMIAN_REPOS" not in out
+
+
 def test_env_assignments_architect_requires_explicit_parent_repo(init_mod, tmp_path):
     state = _state_with(
         init_mod,
