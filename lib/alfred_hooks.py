@@ -52,11 +52,14 @@ seam for a manual debugging run with ``ALFRED_AGENT_HOOKS=0``.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shlex
 import subprocess
 import sys
+
+_LOG = logging.getLogger(__name__)
 
 # tool_compactor is a stdlib-only sibling shipped alongside this file, so it is
 # importable on the same hook-path sys.path (lib/) with no venv. Keep the import
@@ -425,7 +428,9 @@ def _is_dangerous_rm_target(target: str, cwd: str | None = None) -> bool:
                 if tgt.startswith(base + os.sep):
                     return False
             except Exception:
-                pass
+                _LOG.debug(
+                    "realpath containment check failed; treating %s as dangerous", t, exc_info=True
+                )
         return True
     return False
 

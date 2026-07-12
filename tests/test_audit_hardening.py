@@ -73,6 +73,34 @@ def test_subprocess_run_calls_in_lib_and_bin_have_timeouts() -> None:
     assert offenders == []
 
 
+def test_no_silent_broad_except_pass_in_lib() -> None:
+    """Every broad ``except Exception`` must at least log before swallowing.
+
+    The 2026-07-11 engineering audit flagged 7 silent ``except Exception: pass``
+    sites as invisible failure points. Those now emit a ``_LOG.debug`` line;
+    this guard keeps new silent broad handlers from creeping back in. Narrow
+    handlers (``except OSError: pass`` and friends) stay allowed: swallowing a
+    specific, anticipated error is a deliberate decision, and forcing noise
+    there would only train people to ignore the log.
+    """
+    offenders: list[str] = []
+    for path in _python_sources_under("lib"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ExceptHandler):
+                continue
+            if not (isinstance(node.type, ast.Name) and node.type.id == "Exception"):
+                continue
+            if len(node.body) == 1 and isinstance(node.body[0], ast.Pass):
+                rel = path.relative_to(ROOT)
+                offenders.append(f"{rel}:{node.lineno}")
+
+    assert offenders == [], (
+        "broad `except Exception:` handlers must log (e.g. _LOG.debug) instead "
+        f"of silently passing; offenders: {offenders}"
+    )
+
+
 def load_bin_module(name: str, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("ALFRED_HOME", str(ROOT))
     sys.path.insert(0, str(ROOT / "lib"))

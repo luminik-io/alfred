@@ -741,12 +741,12 @@ def _converse_operational_grounding(request: Request, *, conversation_engine: st
             )
         )
     except Exception:
-        pass
+        logger.debug("engine grounding section skipped", exc_info=True)
     try:
         reader = getattr(request.app.state, "reader", None)
         sections.append(build_operational_grounding(reader))
     except Exception:
-        pass
+        logger.debug("operational grounding section skipped", exc_info=True)
     return "\n\n".join(section for section in sections if section)
 
 

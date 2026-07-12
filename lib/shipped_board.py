@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -29,6 +30,8 @@ from typing import Any
 
 from agent_runner.paths import config_value
 from envflags import truthy
+
+logger = logging.getLogger(__name__)
 
 # Directories where the ``gh`` binary commonly lives. The fleet's cron plists
 # already render these into PATH, but the local server is hand-submitted via
@@ -470,7 +473,7 @@ def _demo_cards() -> dict[str, list[dict]]:
 
         return load_demo_cards()
     except Exception:  # pragma: no cover - defensive: demo store is optional
-        pass
+        logger.debug("demo card store unavailable; falling back to state file", exc_info=True)
     base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
     path = os.path.join(base, "state", _DEMO_FILENAME)
     try:
