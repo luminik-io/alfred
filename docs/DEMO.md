@@ -8,6 +8,12 @@ loop once, on a throwaway repo, and asks nothing of you except a working
 alfred demo
 ```
 
+<p align="center">
+  <img src="images/demo.gif" alt="alfred demo in the terminal: it plans a change, waits for approval, builds it, reviews it and catches a planted bug, applies the fix, runs the tests, and ends on a pull-request summary" width="760">
+</p>
+
+<p align="center"><em>One run on a throwaway repo: plan, approve, build, review that catches a planted bug, fix, ship. Nothing is faked; a missing CLI, a failed call, or a failing test stops the run and says so.</em></p>
+
 From a source checkout:
 
 ```sh

@@ -14,6 +14,17 @@ level of a capable teammate. Only when you clearly ask for work to be built does
 Alfred shift into planning, and even then it offers a plan in plain language
 first and waits for your go-ahead before anything is filed or run.
 
+The desktop Ask box is one of those surfaces, in light and dark. Ask a question
+and Alfred answers; describe a change and it shapes a plan you can file for the
+fleet to build.
+
+<table>
+  <tr>
+    <td width="50%"><img src="images/ask-light.png" alt="The desktop Ask surface in light theme, with a prompt reading Ask Alfred anything and a text box for a question or a change request"><br><sub><em>Ask, light.</em></sub></td>
+    <td width="50%"><img src="images/ask-dark.png" alt="The desktop Ask surface in dark theme, with a prompt reading Ask Alfred anything and a text box for a question or a change request"><br><sub><em>Ask, dark.</em></sub></td>
+  </tr>
+</table>
+
 This page covers talking to Alfred once it is set up. There is also a
 conversational *setup* path, where Alfred asks you setup questions and proposes
 each step under an approval gate. That is a separate flow with its own action

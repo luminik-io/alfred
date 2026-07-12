@@ -58,16 +58,16 @@ stops the run honestly. Full walkthrough in [`docs/DEMO.md`](docs/DEMO.md).
 
 ## Watch the tour
 
-A short tour of the whole surface: the decide inbox, asking Alfred a question,
-the agent workflow graph, a live roster re-skin, what the fleet has learned, and
-the work board showing real merged pull requests. Every screen is live local
-state, nothing mocked.
+See it work. About a minute, nothing staged: you ask a question and get an
+answer, describe a change and a plan shows up to approve, a request gets scoped
+in Slack, agents build and review it, and real pull requests land, all on your
+own machine.
 
 <p align="center">
-  <a href="docs/media/alfred-tour.mp4"><img src="docs/media/alfred-tour.webp" alt="Alfred product tour: the decide inbox, asking a question, the workflow graph, a live roster theme switch, learnings, and the work board with real merged PRs" width="820"></a>
+  <a href="docs/media/alfred-tour.mp4"><img src="docs/media/alfred-tour.webp" alt="Alfred product tour: asking a question, shaping a plan from a change request, scoping a request in Slack, a fleet-authored pull request, the agent roster and workflow graph, a live roster re-skin, what Alfred has learned, the work board, and a merged pull request in the terminal" width="820"></a>
 </p>
 
-<p align="center"><em><a href="docs/media/alfred-tour.mp4">Watch the full tour (MP4, 55s)</a>. Recorded against a live <code>alfred serve</code>.</em></p>
+<p align="center"><em><a href="docs/media/alfred-tour.mp4">Watch the full tour (MP4, 55s)</a>. Every frame is live local state from a running <code>alfred serve</code>.</em></p>
 
 ## What it is
 
@@ -103,8 +103,12 @@ flowchart LR
 ## Screenshots
 
 Alfred's desktop app, and the same UI served in a browser via `alfred serve`,
-runs entirely on your machine and is theme-aware. More, including light and dark
-for every screen, in [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
+runs entirely on your machine and is theme-aware. The rest of the screens sit
+with the docs they belong to: the Ask surface in
+[`CONVERSATION.md`](docs/CONVERSATION.md), guided setup in
+[`ONBOARDING.md`](docs/ONBOARDING.md), what Alfred remembers in
+[`STATE_AND_MEMORY.md`](docs/STATE_AND_MEMORY.md), and a Slack thread in
+[`SLACK_SETUP.md`](docs/SLACK_SETUP.md).
 
 ![Ask Alfred anything](docs/images/ask-dark.png)
 
@@ -129,6 +133,10 @@ a test the fleet wrote and opened autonomously, checks green.
     <td width="50%"><img src="docs/images/real/pr-528.png" alt="gh pr view of luminik-io/alfred pull request 528: merged, +20 -0, one file, all checks passing, written by the fleet"><br><sub><em>A real pull request the fleet wrote and opened on its own repo, checks green.</em></sub></td>
   </tr>
 </table>
+
+<p align="center"><img src="docs/images/real/pr-503.png" alt="The GitHub page for pull request 503 on luminik-io/alfred: fix(process): require subprocess timeouts, merged into main from a fleet branch, closing seed issue 498, with a clean review and green checks" width="820"></p>
+
+<p align="center"><em>From a one-line seed issue to a merged pull request: <a href="https://github.com/luminik-io/alfred/pull/503"><code>#503</code></a> added the missing subprocess timeouts across the runtime, opened by the fleet off issue <a href="https://github.com/luminik-io/alfred/issues/498"><code>#498</code></a> and driven to a clean review and green checks.</em></p>
 
 ## Quick start
 

@@ -6,6 +6,16 @@ optional Slack bot token. This doc covers both paths.
 
 If you already have a webhook URL, the framework needs `SLACK_WEBHOOK_URL` in your environment (or in AWS Secrets Manager; see below). Skip to [§ Wiring it up](#wiring-it-up).
 
+Once it is wired up, Alfred lives in your channel: agents post what they did, and
+you can start work by mentioning Alfred and refine the plan in the thread before
+anything is built.
+
+<p align="center">
+  <img src="images/real/slack-thread.png" alt="The Alfred channel in the Slack desktop app: agent reports posted by the fleet on the left, and a thread on the right where Alfred turns a plain-English request into a scoped plan with a readiness score before building" width="820">
+</p>
+
+<p align="center"><em>Alfred in Slack: agents report as they work, and a request in the thread becomes a scoped plan you approve before any code is written.</em></p>
+
 ## At the end
 
 - A Slack app named `<your-fleet>-bot` in the workspace where you want the channel.
