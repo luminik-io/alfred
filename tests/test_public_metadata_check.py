@@ -70,6 +70,13 @@ def test_colon_prefixed_failure_output_is_rejected() -> None:
         ]
 
 
+def test_pytest_failed_summary_is_rejected() -> None:
+    line = "FAILED tests/test_api.py::test_case - AssertionError"
+    assert CHECK.metadata_findings("fix: setup", line) == [
+        "raw command, test, compiler, or stack output"
+    ]
+
+
 def test_error_handling_prose_is_allowed() -> None:
     assert CHECK.metadata_findings("refactor: errors", "ERROR handling is now centralized") == []
 
