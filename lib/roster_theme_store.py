@@ -265,19 +265,6 @@ def _resolve_known_codename(codename: str) -> str | None:
     return _LEGACY_NAME_CODENAME.get(short)
 
 
-def canonical_codename_for(codename: Any) -> str | None:
-    """Return the stable fleet codename for a role slug or themed display name.
-
-    Unknown but valid codenames are preserved for custom agents. Preset names
-    such as ``Batman`` and ``Damian`` resolve to ``architect`` and
-    ``spec-planner`` so presentation identity never leaks into runtime state.
-    """
-    short = _normalize_codename(codename)
-    if short is None:
-        return None
-    return _resolve_known_codename(short) or short
-
-
 def _themed_name_by_role(theme_id: str, role: str) -> str | None:
     """The theme's primary (pool-first) display name for a role, or ``None``."""
     pool = _NAME_POOL_BY_ROLE.get(theme_id, {}).get(role)
@@ -710,7 +697,6 @@ __all__ = [
     "RosterThemeError",
     "RosterThemeState",
     "RosterThemeStore",
-    "canonical_codename_for",
     "default_theme_state",
     "role_for_codename",
     "roster_contract_agents",

@@ -64,7 +64,6 @@ _LIB_DIR = Path(__file__).resolve().parent.parent / "lib"
 if _LIB_DIR.is_dir() and str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 import batteries  # noqa: E402
-from roster_theme_store import canonical_codename_for  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Constants, the canonical role catalog.
@@ -1216,16 +1215,14 @@ def write_fleet_enable_state(state: WizardState) -> list[str]:
     """Enable every selected built-in role while preserving custom entries.
 
     Architect and spec-planner are safe to schedule in a full-fleet install:
-    each runner stays idle until its repo/spec scope exists. Persist stable
-    codenames even when an older config supplied themed display names.
+    each runner stays idle until its repo/spec scope exists. Runtime state uses
+    role IDs from the catalog, never display names from the active theme.
     """
     selected: list[str] = []
     for role in state.enabled_roles:
         if role not in SCOPE_GATED_ROLES:
             continue
-        canonical = canonical_codename_for(state.codename_for(role))
-        if canonical:
-            selected.append(canonical)
+        selected.append(AGENT_CATALOG[role][0])
     if not selected:
         return []
 
@@ -1234,9 +1231,8 @@ def write_fleet_enable_state(state: WizardState) -> list[str]:
     if path.exists():
         for raw in path.read_text(encoding="utf-8").splitlines():
             line = raw.partition("#")[0].strip()
-            canonical = canonical_codename_for(line)
-            if canonical:
-                existing.append(canonical)
+            if line:
+                existing.append(line)
 
     enabled = sorted(set(existing) | set(selected))
     header = (

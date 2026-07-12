@@ -73,15 +73,15 @@ def test_read_enabled_codenames_skips_blank_and_comments():
     assert out == ["architect", "senior-dev"]
 
 
-def test_read_enabled_codenames_migrates_themed_names_to_role_ids():
+def test_read_enabled_codenames_preserves_custom_names_that_match_theme_names():
     import agent_runner as ar
 
     ar.FLEET_ENABLED_FILE.parent.mkdir(parents=True, exist_ok=True)
-    ar.FLEET_ENABLED_FILE.write_text("Batman\nDamian\n")
+    ar.FLEET_ENABLED_FILE.write_text("batman\nnightwing\n")
 
-    assert ar.list_enabled_agents() == ["architect", "spec-planner"]
-    assert ar.is_agent_enabled("architect", default=False) is True
-    assert ar.is_agent_enabled("spec-planner", default=False) is True
+    assert ar.list_enabled_agents() == ["batman", "nightwing"]
+    assert ar.is_agent_enabled("batman", default=False) is True
+    assert ar.is_agent_enabled("nightwing", default=False) is True
 
 
 def test_enable_agent_round_trip():
@@ -103,13 +103,12 @@ def test_enable_agent_idempotent():
     assert out.count("architect") == 1
 
 
-def test_enable_and_disable_accept_themed_display_names_but_store_role_ids():
+def test_enable_and_disable_preserve_custom_names_that_match_theme_names():
     import agent_runner as ar
 
-    assert ar.enable_agent("Batman") == ["architect"]
-    assert "architect" in ar.FLEET_ENABLED_FILE.read_text()
-    assert "Batman" not in ar.FLEET_ENABLED_FILE.read_text()
-    assert ar.disable_agent("Batman") == []
+    assert ar.enable_agent("nightwing") == ["nightwing"]
+    assert "nightwing" in ar.FLEET_ENABLED_FILE.read_text()
+    assert ar.disable_agent("nightwing") == []
 
 
 def test_disable_agent_idempotent_when_not_present():

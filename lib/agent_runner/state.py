@@ -40,7 +40,6 @@ from pathlib import Path
 from typing import Any
 
 import alfred_config
-from roster_theme_store import canonical_codename_for
 
 from . import process as _process
 from .agent_events import (  # noqa: F401  (re-exported for callers)
@@ -805,9 +804,8 @@ def _read_enabled_codenames() -> list[str]:
             continue
         if "#" in line:
             line = line.split("#", 1)[0].strip()
-        canonical = canonical_codename_for(line)
-        if canonical:
-            out.append(canonical)
+        if line:
+            out.append(line)
     seen: set[str] = set()
     deduped: list[str] = []
     for c in out:
@@ -825,8 +823,7 @@ def is_agent_enabled(codename: str, *, default: bool = True) -> bool:
     """
     if not FLEET_ENABLED_FILE.exists():
         return default
-    canonical = canonical_codename_for(codename)
-    return bool(canonical and canonical in _read_enabled_codenames()) or default
+    return codename in _read_enabled_codenames() or default
 
 
 def list_enabled_agents() -> list[str]:
@@ -836,13 +833,7 @@ def list_enabled_agents() -> list[str]:
 
 def _write_enabled_codenames(codenames: list[str]) -> None:
     """Persist a list of codenames to ``FLEET_ENABLED_FILE`` atomically."""
-    deduped = sorted(
-        {
-            canonical
-            for codename in codenames
-            if (canonical := canonical_codename_for(codename)) is not None
-        }
-    )
+    deduped = sorted({c.strip() for c in codenames if c and c.strip()})
     header = (
         "# Fleet enable list, managed by `alfred enable/disable <agent>`.\n"
         "# One codename per line. Blank lines and `#`-comments are ignored.\n"
@@ -857,11 +848,11 @@ def enable_agent(codename: str) -> list[str]:
 
     Returns the new sorted list of enabled codenames.
     """
-    canonical = canonical_codename_for(codename)
-    if canonical is None:
+    codename = codename.strip()
+    if not codename:
         raise ValueError("enable_agent: codename must be non-empty")
     current = set(_read_enabled_codenames())
-    current.add(canonical)
+    current.add(codename)
     out = sorted(current)
     _write_enabled_codenames(out)
     return out
@@ -872,11 +863,11 @@ def disable_agent(codename: str) -> list[str]:
 
     Returns the new sorted list of enabled codenames.
     """
-    canonical = canonical_codename_for(codename)
-    if canonical is None:
+    codename = codename.strip()
+    if not codename:
         raise ValueError("disable_agent: codename must be non-empty")
     current = set(_read_enabled_codenames())
-    current.discard(canonical)
+    current.discard(codename)
     out = sorted(current)
     _write_enabled_codenames(out)
     return out

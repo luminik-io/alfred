@@ -2383,15 +2383,15 @@ def test_write_fleet_enable_state_uses_canonical_role_ids(init_mod, tmp_path):
     }
     gate_path = tmp_path / "alfred" / "state" / "fleet" / "enabled.txt"
     gate_path.parent.mkdir(parents=True)
-    gate_path.write_text("Batman\nrelease-captain\n")
+    gate_path.write_text("release-captain\n")
     written = init_mod.write_fleet_enable_state(state)
     assert written == ["architect", "spec-planner"]
     gate = gate_path.read_text()
     assert "architect" in gate
     assert "spec-planner" in gate
     assert "release-captain" in gate
-    assert "batman" not in gate
-    assert "damian" not in gate
+    assert "batman" not in gate.lower()
+    assert "damian" not in gate.lower()
 
 
 # ---------------------------------------------------------------------------
