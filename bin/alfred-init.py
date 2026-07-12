@@ -540,6 +540,11 @@ def _merge_spend_payloads(current: dict[str, Any], old: dict[str, Any]) -> dict[
         "successes_today",
         "failures_today",
         "reviews_posted",
+        "fixes_landed",
+        "merged_today",
+        "hits_today",
+        "prs_opened_today",
+        "triaged_today",
     }
     for key in cumulative:
         current_value = current.get(key)

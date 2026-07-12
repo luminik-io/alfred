@@ -2219,7 +2219,8 @@ def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
     (alfred_home / "state" / "engines" / "fox").write_text("codex\n")
     (alfred_home / "state" / "fox").mkdir()
     (alfred_home / "state" / "fox" / "spend-2026-07-12.json").write_text(
-        '{"firings_today":3,"last_session_id_per_target":'
+        '{"firings_today":3,"fixes_landed":2,"merged_today":1,"hits_today":4,'
+        '"prs_opened_today":2,"triaged_today":3,"last_session_id_per_target":'
         '{"shared":"legacy-session","legacy-only":"legacy-session"}}\n'
     )
     (alfred_home / "state" / "fox" / "checkpoint.json").write_text(
@@ -2227,7 +2228,8 @@ def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
     )
     (alfred_home / "state" / "senior-dev").mkdir()
     (alfred_home / "state" / "senior-dev" / "spend-2026-07-12.json").write_text(
-        '{"firings_today":2,"last_session_id_per_target":'
+        '{"firings_today":2,"fixes_landed":1,"merged_today":2,"hits_today":3,'
+        '"prs_opened_today":4,"triaged_today":5,"last_session_id_per_target":'
         '{"shared":"canonical-session","canonical-only":"canonical-session"}}\n'
     )
     (alfred_home / "state" / "senior-dev" / "checkpoint.json").write_text(
@@ -2320,6 +2322,11 @@ def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
     assert not (alfred_home / "state" / "engines" / "fox").exists()
     spend = json.loads((alfred_home / "state" / "senior-dev" / "spend-2026-07-12.json").read_text())
     assert spend["firings_today"] == 5
+    assert spend["fixes_landed"] == 3
+    assert spend["merged_today"] == 3
+    assert spend["hits_today"] == 7
+    assert spend["prs_opened_today"] == 6
+    assert spend["triaged_today"] == 8
     assert spend["last_session_id_per_target"] == {
         "shared": "canonical-session",
         "legacy-only": "legacy-session",
