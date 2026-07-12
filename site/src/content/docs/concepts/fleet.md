@@ -28,7 +28,7 @@ flowchart LR
     architect["architect<br/><i>Batman · approval-gated</i>"]
     seniorDev["senior-dev<br/><i>Lucius · every 20m</i>"]
     planner["planner<br/><i>Drake · every 2h</i>"]
-    specPlanner["spec-planner<br/><i>Damian · opt-in</i>"]
+    specPlanner["spec-planner<br/><i>Damian · scope-idle</i>"]
     testEngineer["test-engineer<br/><i>Bane · every 4h</i>"]
     reviewer["reviewer<br/><i>Ra's al Ghul · every 30m</i>"]
     fixer["fixer<br/><i>Nightwing · every 45m</i>"]
@@ -65,7 +65,7 @@ Batman is the default-theme name for the `architect` role. The role leads a whol
 
 This is what makes Alfred different from single-repo coding agents. A backend service change that needs a frontend page, a mobile screen, and a data-infra job becomes one architect plan with four children, instead of four manual context-rebuilds in a chat window.
 
-The architect role is part of the public fleet and runs on the same local schedule model as the other agents, but execution is deliberately gated. A fresh full install configures it and keeps it behind `alfred enable architect`. `ARCHITECT_PARENT_REPO` selects the repo where the role reads `agent:large-feature` parent issues; the default `ARCHITECT_AUTO_EXECUTE=0` halts after the plan. Set `ARCHITECT_AUTO_EXECUTE=approval-gate` when you want the architect to file child issues only after Slack or Alfred client approval, or `1` only for fleets that intentionally skip the gate.
+The architect role is part of the public fleet and runs on the same local schedule model as the other agents, but execution is deliberately gated. A fresh full install configures and enables it; without `ARCHITECT_PARENT_REPO` it safely idles. That setting selects the repo where the role reads `agent:large-feature` parent issues. The default `ARCHITECT_AUTO_EXECUTE=0` halts after the plan. Set `ARCHITECT_AUTO_EXECUTE=approval-gate` when you want the architect to file child issues only after Slack or Alfred client approval, or `1` only for fleets that intentionally skip the gate.
 
 See [Worked example: Batman across three repos](/guides/multi-repo-worked-example/) for an end-to-end walkthrough from large-feature issue to merged children.
 
@@ -80,10 +80,11 @@ and the planner scopes smaller single-repo requests. A fresh install configures 
 full roster by default. Use `--agents starter` only when you deliberately want a
 small lab roster.
 
-High-impact agents are visible without being accidentally armed. The architect stays
-behind the runner gate until `alfred enable architect` and then still obeys
-`ARCHITECT_AUTO_EXECUTE`. The E2E and ops-watch roles load with the fleet and self-idle
-until their staging target URL or ECS cluster exists.
+Scope-dependent agents are enabled without being given work they cannot safely
+perform. The architect and spec-planner self-idle until their required repo or
+spec scope exists, and the architect still obeys `ARCHITECT_AUTO_EXECUTE`. The
+E2E and ops-watch roles also self-idle until their staging target URL or ECS
+cluster exists.
 
 ### Specialist agents
 
@@ -92,7 +93,7 @@ until their staging target URL or ECS cluster exists.
 | `architect` | Batman | every 1 h, approval-gated | Leads multi-repo features. Drafts the rollout, waits for Slack or Alfred client approval, files child `agent:implement` issues, and reports status so implementation can move in parallel. See [docs/ARCHITECT.md](https://github.com/luminik-io/alfred/blob/main/docs/ARCHITECT.md). |
 | `senior-dev` | Lucius | every 20 min | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs the configured engine with the issue body + repo context, pushes a PR labelled `agent:authored`. |
 | `planner` | Drake | every 2 h | Reads specs, roadmap, cross-repo open-issue list, and a code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in a rolling 24 h. |
-| `spec-planner` | Damian | daily 09:00, opt-in | Walks `ALFRED_SPEC_PLANNER_SPEC_DIR`, identifies multi-repo features, and files `agent:bundle:<slug>` siblings across the affected repos. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to the planner. |
+| `spec-planner` | Damian | daily 09:00, scope-idle | Walks `ALFRED_SPEC_PLANNER_SPEC_DIR`, identifies multi-repo features, and files `agent:bundle:<slug>` siblings across the affected repos. The full fleet enables it, but it no-ops until repo and spec scope exist. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to the planner. |
 | `test-engineer` | Bane | every 4 h | Picks the lowest-coverage actively-changed file, writes tests, opens a PR. Never touches non-test files. |
 | `reviewer` | Ra's al Ghul | every 30 min | Multi-axis review (correctness, security, performance, maintainability) on every fresh PR. Posts as a comment. |
 | `fixer` | Nightwing | every 45 min | Lands fixes for P0/P1 reviewer comments (CodeRabbit, Codex, the reviewer role) on `agent:authored` PRs. |

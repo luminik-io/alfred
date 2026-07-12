@@ -89,8 +89,9 @@ How to revert or disable the change if it breaks.
    specs whose acceptance criteria touch two or more configured repos, and
    files the matching `agent:bundle:<slug>` sibling issues. All-or-nothing per
    bundle: if any sibling-create fails, the previously-created siblings are
-   rolled back so Architect never picks up a half-filed bundle. spec-planner is
-   opt-in and capped at three bundles per firing.
+   rolled back so Architect never picks up a half-filed bundle. The full fleet
+   enables spec-planner, which self-idles until repo and spec scope exist and is
+   capped at three bundles per firing.
 3. **Architect plans multi-repo work.** Labelled `agent:large-feature` parent
    issues in `ARCHITECT_PARENT_REPO` become rollout plans across the configured
    repos. Approved parent plans can file child `agent:implement` issues. Plans

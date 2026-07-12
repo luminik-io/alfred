@@ -53,7 +53,7 @@ ENGINE_AWARE_AGENTS = {
     "test-engineer",
     "triage",
 }
-FLEET_OPT_IN_SCRIPTS = {"architect.py", "spec-planner.py"}
+FLEET_SCOPE_GATED_SCRIPTS = {"architect.py", "spec-planner.py"}
 
 DEFAULT_AGENT_NAMES = [
     "agent-cleanup",
@@ -453,7 +453,7 @@ def _record_engine(record: AgentRecord) -> str | None:
 
 
 def _only_expected_disabled_skips(text: str) -> bool:
-    """Return true when a stderr tail contains only legacy disabled-role notices."""
+    """Return true when a stderr tail contains only scope-gate notices."""
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     return bool(lines) and all(
         line.startswith("[") and "-SKIP] " in line and " not enabled in fleet file;" in line
@@ -463,7 +463,7 @@ def _only_expected_disabled_skips(text: str) -> bool:
 
 def _record_disabled(record: AgentRecord) -> bool:
     return record.disabled or (
-        record.script in FLEET_OPT_IN_SCRIPTS
+        record.script in FLEET_SCOPE_GATED_SCRIPTS
         and not agent_runner.is_agent_enabled(record.codename, default=False)
     )
 

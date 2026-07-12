@@ -19,8 +19,9 @@ Wiring:
   - Loads the operator-customizable prompt at
     ``${ALFRED_HOME}/prompts/<codename>.md`` (seeded by ``alfred-init``
     from ``prompts/spec-bundle-planner.md``).
-  - Honours the fleet enable file: ``spec-planner`` ships opt-in (like the
-    architect) so the runner exits early until the operator enables it.
+  - Honours the fleet enable file. A full-fleet install enables
+    ``spec-planner``, while the runner stays idle until repo and spec scope
+    are configured.
 
 This file is the runner skeleton: preflight, build the candidate plan
 via ``lib/spec_planner.py``, dispatch the LLM to actually file the
@@ -119,10 +120,9 @@ def main() -> int:
         print(f"[{CODENAME.upper()}-DOCTOR-OK]")
         return 0
 
-    # The spec-bundle planner is opt-in: it files multi-repo bundles, which
-    # only makes sense once the operator has at least two repos wired and a
-    # spec directory the planner can read. Fresh installs stay quiet until
-    # ``alfred enable spec-planner`` flips the gate.
+    # The full fleet enables this role, but filing multi-repo bundles only
+    # makes sense once at least two repos and a readable spec directory are
+    # configured. Until then the runner remains a safe no-op.
     if not is_agent_enabled(CODENAME, default=False):
         marker = Path(ALFRED_HOME) / "state" / CODENAME / "last-noop"
         try:
@@ -131,6 +131,22 @@ def main() -> int:
         except OSError:
             with suppress(OSError):
                 runtime_noop_marker_path(CODENAME).touch()
+        return 0
+
+    config = PlannerConfig.from_env()
+    if not config.scan_repos:
+        print(
+            f"[{CODENAME.upper()}-IDLE] no repos configured "
+            "(set ALFRED_SPEC_PLANNER_REPOS=your-org/your-backend,your-org/your-frontend)",
+        )
+        return 0
+
+    spec_dir = _resolve_spec_dir(config)
+    if spec_dir is None or not spec_dir.is_dir():
+        print(
+            f"[{CODENAME.upper()}-IDLE] no readable spec directory configured "
+            "(set ALFRED_SPEC_PLANNER_SPEC_DIR to a markdown spec dir relative to WORKSPACE_ROOT)",
+        )
         return 0
 
     spec = PreflightSpec(
@@ -146,22 +162,6 @@ def main() -> int:
         return 0
 
     with_lock(CODENAME)
-
-    config = PlannerConfig.from_env()
-    if not config.scan_repos:
-        print(
-            f"[{CODENAME.upper()}-IDLE] no repos configured "
-            "(set ALFRED_SPEC_PLANNER_REPOS=your-org/your-backend,your-org/your-frontend)",
-        )
-        return 0
-
-    spec_dir = _resolve_spec_dir(config)
-    if spec_dir is None:
-        print(
-            f"[{CODENAME.upper()}-IDLE] no spec directory configured "
-            "(set ALFRED_SPEC_PLANNER_SPEC_DIR to a markdown spec dir relative to WORKSPACE_ROOT)",
-        )
-        return 0
 
     planner = _build_planner(config)
     plan = planner.build_plan(spec_dir)

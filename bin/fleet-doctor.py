@@ -369,17 +369,11 @@ def check_engine_auth_streak(
 def _configured_engine_agents() -> list[str]:
     """Best-effort list of agent codenames the fleet is configured to run.
 
-    Prefers the runner gate (``list_enabled_agents``); falls back to the
-    agents.conf roster so a host that has not written a gate file still gets
-    checked. Empty list means "cannot determine" -> the caller degrades to a
-    fleet-wide default-engine assumption rather than skipping the check.
+    ``agents.conf`` is the configured roster. The fleet enable file adds
+    scope-gated and custom roles; it is not a complete roster because stable
+    agents use their runner defaults. Empty means "cannot determine", so the
+    caller degrades to a fleet-wide default-engine assumption.
     """
-    try:
-        enabled = list_enabled_agents()
-    except Exception:
-        enabled = []
-    if enabled:
-        return enabled
     codenames: list[str] = []
     for conf in (
         Path(os.environ.get("ALFRED_HOME", "")) / "launchd" / "agents.conf",
@@ -399,7 +393,11 @@ def _configured_engine_agents() -> list[str]:
                 codenames.append(label.rsplit(".", 1)[-1])
         if codenames:
             break
-    return codenames
+    try:
+        enabled = list_enabled_agents()
+    except Exception:
+        enabled = []
+    return list(dict.fromkeys([*codenames, *enabled]))
 
 
 def check_claude_credential(

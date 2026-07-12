@@ -435,14 +435,54 @@ def test_runner_reports_idle_when_no_scan_repos(monkeypatch, capsys, tmp_path):
     runner = _load_runner()
     monkeypatch.setattr(runner, "doctor_mode", lambda: False)
     monkeypatch.setattr(runner, "is_agent_enabled", lambda *_a, **_k: True)
-    monkeypatch.setattr(runner, "preflight", lambda *_a, **_k: None)
     monkeypatch.setattr(runner, "with_lock", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        runner,
+        "preflight",
+        lambda *_a, **_k: pytest.fail("preflight must not run without repo scope"),
+    )
     monkeypatch.delenv("ALFRED_SPEC_PLANNER_REPOS", raising=False)
 
     rc = runner.main()
     assert rc == 0
     out = capsys.readouterr().out
     assert "[SPEC-PLANNER-IDLE]" in out
+
+
+def test_runner_reports_idle_before_preflight_when_spec_dir_missing(monkeypatch, capsys, tmp_path):
+    runner = _load_runner()
+    monkeypatch.setattr(runner, "doctor_mode", lambda: False)
+    monkeypatch.setattr(runner, "is_agent_enabled", lambda *_a, **_k: True)
+    monkeypatch.setattr(runner, "with_lock", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        runner,
+        "preflight",
+        lambda *_a, **_k: pytest.fail("preflight must not run without spec scope"),
+    )
+    monkeypatch.setenv("ALFRED_SPEC_PLANNER_REPOS", "backend,frontend")
+    monkeypatch.delenv("ALFRED_SPEC_PLANNER_SPEC_DIR", raising=False)
+
+    assert runner.main() == 0
+    assert "no readable spec directory configured" in capsys.readouterr().out
+
+
+def test_runner_reports_idle_before_preflight_when_spec_dir_does_not_exist(
+    monkeypatch, capsys, tmp_path
+):
+    runner = _load_runner()
+    monkeypatch.setattr(runner, "doctor_mode", lambda: False)
+    monkeypatch.setattr(runner, "is_agent_enabled", lambda *_a, **_k: True)
+    monkeypatch.setattr(runner, "with_lock", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        runner,
+        "preflight",
+        lambda *_a, **_k: pytest.fail("preflight must not run without a real spec directory"),
+    )
+    monkeypatch.setenv("ALFRED_SPEC_PLANNER_REPOS", "backend,frontend")
+    monkeypatch.setenv("ALFRED_SPEC_PLANNER_SPEC_DIR", str(tmp_path / "not-created"))
+
+    assert runner.main() == 0
+    assert "no readable spec directory configured" in capsys.readouterr().out
 
 
 def test_runner_emits_noop_when_no_candidates(monkeypatch, capsys, tmp_path):

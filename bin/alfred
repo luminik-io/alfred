@@ -106,9 +106,9 @@ Subcommands today:
 
 The runner-level fleet gate file lives at
 ``$ALFRED_HOME/state/fleet/enabled.txt``. Listed codenames are enabled.
-Missing codenames fall back to each runner's default: stable agents are
-default-enabled, while opt-in agents such as the architect default to disabled
-until explicitly enabled.
+Missing codenames fall back to each runner's default. A full-fleet setup writes
+the scope-gated architect and spec-planner roles here; those runners then stay
+idle until their required repo and spec scope exists.
 
 Pure stdlib. The operator reads this file when something breaks; keep
 it that way, with no external dependencies.
@@ -579,8 +579,8 @@ def cmd_agents(_args: argparse.Namespace) -> int:
     if not agent_runner.FLEET_ENABLED_FILE.exists():
         print(
             f"\nFleet gate file missing ({agent_runner.FLEET_ENABLED_FILE}); "
-            "default-enabled agents are shown as enabled, while opt-in agents "
-            "such as `architect` stay disabled until `alfred enable <role-slug>`."
+            "default-enabled agents are shown as enabled. Run the full-fleet setup "
+            "to seed scope-gated roles, or use `alfred enable <role-slug>`."
         )
     return 0
 
@@ -603,7 +603,7 @@ def cmd_enabled_agents(_args: argparse.Namespace) -> int:
     if not agent_runner.FLEET_ENABLED_FILE.exists():
         print(
             f"alfred: fleet gate file missing ({agent_runner.FLEET_ENABLED_FILE}); "
-            "listed opt-in gates are empty, so each runner falls back to its default."
+            "no explicit role gates exist, so each runner falls back to its default."
         )
         return 0
     enabled = agent_runner.list_enabled_agents()

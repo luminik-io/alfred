@@ -53,7 +53,7 @@ Rules:
   available.
 - Keep the `architect` role configured even for a one-repo install. It shows as
   Batman in the default theme, only acts when cross-repo or parent-plan work
-  exists, and remains runner-gated until `alfred enable architect`.
+  exists, and stays idle until its parent planning repo is configured.
 - If SPECS_REPO is set, clone it under the workspace for context, but do not assign Lucius/Nightwing write loops to it unless I explicitly ask.
 - Before running any command that loads scheduled agents, show me the command and ask for confirmation.
 - If an interactive browser auth step is needed, stop and tell me exactly what to run.

@@ -78,7 +78,7 @@ Rules:
   available.
 - Keep the `architect` role configured even for a one-repo install. It shows as
   Batman in the default theme, only acts when cross-repo or parent-plan work
-  exists, and remains runner-gated until `alfred enable architect`.
+  exists, and stays idle until its parent planning repo is configured.
 - If SPECS_REPO is set, clone it under the workspace for context, but do not assign Lucius/Nightwing write loops to it unless I explicitly ask.
 - Before running any command that loads scheduled agents, show me the command and ask for confirmation.
 - If an interactive browser auth step is needed, stop and tell me exactly what to run.
@@ -288,12 +288,11 @@ export REPOS="my-org/api,my-org/web,my-org/mobile"
   --slack-webhook skip
 ```
 
-The `architect` role is configured by that full-fleet install. It shows as
-Batman in the default theme and remains protected by the runner gate until you
-arm it:
+The `architect` role is configured and enabled by that full-fleet install. It
+shows as Batman in the default theme and stays idle until its parent planning
+repo and execution policy are configured:
 
 ```sh
-alfred enable architect
 # For executable parent plans, set ARCHITECT_PARENT_REPO=my-org/specs.
 # Set ARCHITECT_AUTO_EXECUTE=approval-gate when you want approved child filing.
 alfred labels bootstrap my-org/specs

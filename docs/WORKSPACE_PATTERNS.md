@@ -179,10 +179,10 @@ The full-fleet setup configures it from the start:
   --slack-webhook skip
 ```
 
-For parent-plan execution, set the runner gate explicitly and redeploy:
+For parent-plan execution, configure the parent repo and approval policy, then
+redeploy. The full-fleet setup already enables the architect:
 
 ```sh
-alfred enable architect
 # Add or verify ARCHITECT_PARENT_REPO=my-org/specs in $ALFRED_HOME/.env.
 # Set ARCHITECT_AUTO_EXECUTE=approval-gate when you want approved child filing.
 alfred labels bootstrap my-org/specs
