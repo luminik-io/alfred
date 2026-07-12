@@ -73,31 +73,51 @@ def test_subprocess_run_calls_in_lib_and_bin_have_timeouts() -> None:
     assert offenders == []
 
 
+def _is_broad_handler(node: ast.ExceptHandler) -> bool:
+    """True for handler types that catch everything.
+
+    Covers the spelled-out forms too, so they cannot slip past the guard:
+    bare ``except:``, ``except Exception:``, ``except BaseException:``, and any
+    tuple form naming either (``except (Exception,):``).
+    """
+    handler_type = node.type
+    if handler_type is None:
+        return True
+    if isinstance(handler_type, ast.Name):
+        return handler_type.id in {"Exception", "BaseException"}
+    if isinstance(handler_type, ast.Tuple):
+        return any(
+            isinstance(element, ast.Name) and element.id in {"Exception", "BaseException"}
+            for element in handler_type.elts
+        )
+    return False
+
+
 def test_no_silent_broad_except_pass_in_lib() -> None:
-    """Every broad ``except Exception`` must at least log before swallowing.
+    """Every broad exception handler must at least log before swallowing.
 
     The 2026-07-11 engineering audit flagged 7 silent ``except Exception: pass``
     sites as invisible failure points. Those now emit a ``_LOG.debug`` line;
-    this guard keeps new silent broad handlers from creeping back in. Narrow
-    handlers (``except OSError: pass`` and friends) stay allowed: swallowing a
-    specific, anticipated error is a deliberate decision, and forcing noise
-    there would only train people to ignore the log.
+    this guard keeps new silent broad handlers (in any spelling, including bare
+    ``except:`` and tuple forms) from creeping back in. Narrow handlers
+    (``except OSError: pass`` and friends) stay allowed: swallowing a specific,
+    anticipated error is a deliberate decision, and forcing noise there would
+    only train people to ignore the log.
     """
     offenders: list[str] = []
     for path in _python_sources_under("lib"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
-            if not isinstance(node, ast.ExceptHandler):
-                continue
-            if not (isinstance(node.type, ast.Name) and node.type.id == "Exception"):
+            if not isinstance(node, ast.ExceptHandler) or not _is_broad_handler(node):
                 continue
             if len(node.body) == 1 and isinstance(node.body[0], ast.Pass):
                 rel = path.relative_to(ROOT)
                 offenders.append(f"{rel}:{node.lineno}")
 
     assert offenders == [], (
-        "broad `except Exception:` handlers must log (e.g. _LOG.debug) instead "
-        f"of silently passing; offenders: {offenders}"
+        "broad exception handlers (bare except / Exception / BaseException, "
+        "including tuple forms) must log (e.g. _LOG.debug) instead of silently "
+        f"passing; offenders: {offenders}"
     )
 
 
