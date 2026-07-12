@@ -19,6 +19,7 @@ from merge_gate import (  # noqa: E402
     Review,
     ReviewThread,
     collect_snapshot,
+    evaluate_external_review_gate,
     evaluate_gate,
     guarded_squash_merge,
 )
@@ -180,6 +181,59 @@ def test_required_external_reviews_reject_spoofed_bot_login():
         )
     )
     assert not evaluate_gate(snap, required_external_reviews=("greptile",)).mergeable
+
+
+def test_external_review_status_gate_excludes_ci_and_merge_state():
+    head = "a" * 40
+    snap = _snapshot(
+        merge_state_status="UNSTABLE",
+        mergeable="UNKNOWN",
+        checks=(CheckRun("External review gate", ""),),
+        external_reviews=(
+            ExternalReviewEvidence(
+                "greptile-apps[bot]",
+                "Confidence Score: 5/5\nNo blocking issues",
+                "2026-07-11T10:00:00Z",
+                head,
+            ),
+            ExternalReviewEvidence(
+                "chatgpt-codex-connector[bot]",
+                "Didn't find any major issues.",
+                "2026-07-11T10:01:00Z",
+                head,
+            ),
+        ),
+    )
+    decision = evaluate_external_review_gate(snap)
+    assert decision.mergeable
+    assert {condition.key for condition in decision.conditions} == {
+        "open",
+        "threads",
+        "external_reviews",
+    }
+
+
+def test_external_review_status_gate_fails_for_open_thread_or_stale_review():
+    snap = _snapshot(
+        review_threads=(ReviewThread(False, "lib/x.py", "reviewer"),),
+        external_reviews=(
+            ExternalReviewEvidence(
+                "greptile-apps[bot]",
+                "Confidence Score: 5/5\nNo blocking issues",
+                "2026-07-11T10:00:00Z",
+                "b" * 40,
+            ),
+        ),
+    )
+    decision = evaluate_external_review_gate(snap)
+    assert not decision.mergeable
+    assert {condition.key for condition in decision.failing()} == {"threads", "external_reviews"}
+
+
+def test_external_review_status_gate_fails_closed_on_collection_error():
+    decision = evaluate_external_review_gate(_snapshot(errors=("GitHub unavailable",)))
+    assert not decision.mergeable
+    assert [condition.key for condition in decision.conditions] == ["api"]
 
 
 def test_codex_resolved_commit_must_equal_head_after_force_push():
