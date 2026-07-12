@@ -3577,9 +3577,11 @@ def test_draft_from_payload_filters_invalid_repo_slugs() -> None:
         {
             "title": "Add CSV export",
             "repos": ["acme/frontend", "acme/..", "../acme", "acme/frontend"],
+            "operator_notes": "Prioritize keyboard access.",
         }
     )
     assert draft.repos == ["acme/frontend"]
+    assert draft.operator_notes == "Prioritize keyboard access."
 
 
 # ---------------------------------------------------------------------------

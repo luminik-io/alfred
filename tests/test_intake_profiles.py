@@ -230,6 +230,19 @@ def test_plain_refiner_prompt_uses_friendly_persona(monkeypatch) -> None:
     assert "acceptance_criteria" in prompt
 
 
+def test_refiner_prompt_preserves_operator_notes_as_context() -> None:
+    draft = IssueDraft(
+        title="Brighten the welcome screen",
+        operator_notes="Operator note: preserve keyboard navigation.",
+    )
+
+    technical = TechnicalIntakeProfile().refiner_prompt(draft, [])
+    plain = PlainIntakeProfile().refiner_prompt(draft, [])
+
+    assert "preserve keyboard navigation" in technical
+    assert "preserve keyboard navigation" in plain
+
+
 def test_render_user_facing_summary_follows_active_profile(monkeypatch) -> None:
     # Render once under technical, then re-render the same result under plain.
     monkeypatch.delenv(ENV_INTAKE_PROFILE, raising=False)

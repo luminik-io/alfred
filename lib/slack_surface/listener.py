@@ -1852,6 +1852,24 @@ class SlackPlanningListener:
     ) -> ListenerResult:
         payload_path = Path(record.draft_path).expanduser() if record.draft_path else None
 
+        # A discarded draft is terminal: later replies must not re-enter the
+        # affirmation/approval path and file it. Without this guard, replying
+        # "go ahead" after "discard the draft" would still file, because the
+        # thread record stays ``kind="draft"``.
+        if record.status == "cancelled":
+            self._post_thread_ack(
+                event.channel,
+                event.root_ts,
+                "*This draft was discarded*\n\nNothing will be filed here. "
+                "Start a fresh planning message to plan new work.",
+            )
+            return ListenerResult(
+                True,
+                "draft_cancelled_noop",
+                detail="reply on a discarded draft",
+                thread_kind=record.kind,
+            )
+
         # A plain-language "cancel" / "discard the draft" abandons the draft
         # instead of being captured as an operator note (a dead-end).
         if _is_draft_cancel(feedback.text):

@@ -248,6 +248,12 @@ def test_refinement_prose_is_not_an_affirmation() -> None:
         "acceptance: also confirm the label is applied",
         "run the tests locally and confirm",
         "what happens if the repo is empty?",
+        # A bare affirmation followed by non-clean run prose must NOT reduce to a
+        # bare "yes" and file a ready draft.
+        "yes, and run the migration tests before PR",
+        "yes build it as a modal instead",
+        "do it after you run the linter",
+        "yes, and run",
     ):
         for ready in (True, False):
             assert classify_affirmation(phrase, ready=ready) is None, (phrase, ready)
@@ -834,6 +840,20 @@ def test_plain_language_cancel_discards_draft(tmp_path: Path) -> None:
     record = registry.lookup("C1", "1716480010.000001")
     assert record is not None
     assert record.status == "cancelled"
+
+
+def test_reply_after_cancel_does_not_file(tmp_path: Path) -> None:
+    # A discarded draft is terminal: a later "go ahead" must not re-file it.
+    creator = RecordingCreator()
+    listener, poster, _registry = _make_listener(tmp_path, creator=creator)
+    _seed_draft(listener, tmp_path)
+    listener.handle_payload(_reply("discard the draft", event_id="cancel002"))
+
+    result = listener.handle_payload(_reply("go ahead", event_id="cancel003"))
+
+    assert result.action == "draft_cancelled_noop"
+    assert creator.calls == []
+    assert "discarded" in poster.messages[-1]["text"].lower()
 
 
 def test_draft_revision_footer_documents_action_phrases(tmp_path: Path) -> None:

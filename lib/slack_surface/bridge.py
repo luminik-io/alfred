@@ -313,23 +313,21 @@ _AFFIRMATION_HEAD_FILLERS: tuple[str, ...] = (
 )
 _AFFIRMATION_TAIL_FILLERS: tuple[str, ...] = ("please", "now", "thanks", "thank you")
 
-# A trailing run clause ("... and run it", "..., run the build"). Removed from a
-# reply so the file core is matched cleanly while the run intent is remembered.
-_RUN_CLAUSE_RE = re.compile(
+# A trailing CLEAN run command ("... and run it", "..., run the build"). Anchored
+# to the end of the reply and matched against a fixed run vocabulary so it only
+# strips a real run command, never arbitrary prose. This is deliberately strict:
+# "yes, and run the migration tests before PR" and "yes build it as a modal" must
+# NOT reduce to a bare "yes" (which would then file a ready draft); the trailing
+# text is not a clean run command, so nothing is stripped and the whole message
+# fails to match any affirmation phrase.
+_RUN_TAIL_RE = re.compile(
     r"\s*(?:,|;|and|then|&)?\s*(?:"
-    r"run(?:\s+(?:it|this|that|now|the\s+\w+))?"
+    r"run\s+(?:it|this|that|now)"
+    r"|run\s+the\s+(?:build|implementer|issue|fleet)"
     r"|start\s+building|start\s+the\s+build"
     r"|build\s+it(?:\s+now)?"
     r"|kick\s+(?:it\s+)?off"
-    r")\b.*$"
-)
-
-# Run intent anywhere in the reply. Deliberately narrow so a note like "run the
-# tests locally" does not read as "run the implementer".
-_RUN_INTENT_RE = re.compile(
-    r"\b(?:and\s+run|then\s+run|run\s+it|run\s+this|run\s+that|run\s+now"
-    r"|run\s+the\s+(?:build|implementer|issue|fleet)"
-    r"|start\s+building|start\s+the\s+build|build\s+it|kick\s+(?:it\s+)?off)\b"
+    r")\s*$"
 )
 
 
@@ -376,8 +374,11 @@ def classify_affirmation(text: str, *, ready: bool) -> AffirmationVerdict | None
     core = _normalize_phrase(_strip_mentions(text))
     if not core:
         return None
-    runs = bool(_RUN_INTENT_RE.search(core))
-    file_core = _RUN_CLAUSE_RE.sub("", core).strip()
+    # Strip only a CLEAN trailing run command; ``runs`` is set iff one was found,
+    # so run intent never rests on arbitrary "run ..." prose elsewhere in the
+    # reply. A whole-message run command ("run it") strips to an empty core.
+    file_core = _RUN_TAIL_RE.sub("", core).strip()
+    runs = file_core != core or core in _RUN_COMMAND_CORES
     candidates = {file_core, _strip_affirmation_fillers(file_core)}
     if candidates & _STRONG_FILE_CORES:
         return AffirmationVerdict(files=True, runs=runs)
