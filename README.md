@@ -60,8 +60,7 @@ stops the run honestly. Full walkthrough in [`docs/DEMO.md`](docs/DEMO.md).
 
 See it work. About a minute, nothing staged: you ask a question and get an
 answer, describe a change and a plan shows up to approve, a request gets scoped
-in Slack, agents build and review it, and real pull requests land, all on your
-own machine.
+in Slack, agents build and review it, and real pull requests land.
 
 <p align="center">
   <a href="docs/media/alfred-tour.mp4"><img src="docs/media/alfred-tour.webp" alt="Alfred product tour: asking a question, shaping a plan from a change request, scoping a request in Slack, a fleet-authored pull request, the agent roster and workflow graph, a live roster re-skin, what Alfred has learned, the work board, and a merged pull request in the terminal" width="820"></a>
