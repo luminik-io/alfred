@@ -1198,6 +1198,11 @@ If you hit an error you cannot resolve:
 """
 
 
+def _can_close_as_already_implemented(result_text: str, commit_count: int) -> bool:
+    """True only when the marker describes code already present on the base ref."""
+    return "[ALREADY-IMPLEMENTED]" in result_text and commit_count == 0
+
+
 def release_wip_salvage(repo: str, issue_num: int, firing_id: str, pr_url: str | None) -> None:
     if pr_url:
         release_issue(
@@ -1968,7 +1973,7 @@ def main() -> int:
         ).stdout.strip()
         commit_count = len([lbl for lbl in new_commits.splitlines() if lbl.strip()])
 
-        if "[ALREADY-IMPLEMENTED]" in result.result_text:
+        if _can_close_as_already_implemented(result.result_text, commit_count):
             gh_issue_comment(
                 repo,
                 issue_num,
@@ -1991,6 +1996,20 @@ def main() -> int:
             print(msg)
             slack_post(msg)
             return 0
+
+        if "[ALREADY-IMPLEMENTED]" in result.result_text:
+            # A reused worktree can contain a commit from an interrupted firing.
+            # That is recoverable unpublished work, not proof the default branch
+            # already ships the issue. Continue through push and PR creation.
+            events.emit(
+                "already_implemented_marker_ignored",
+                reason="worktree-ahead-of-base",
+                commit_count=commit_count,
+            )
+            print(
+                f"[{AGENT.upper()}-RECOVERY] #{issue_num} has {commit_count} "
+                "unpublished commit(s); ignoring already-implemented marker"
+            )
 
         if commit_count == 0:
             # Salvage: check for unstaged changes and push as draft WIP PR
