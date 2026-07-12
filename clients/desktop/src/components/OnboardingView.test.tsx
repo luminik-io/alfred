@@ -53,7 +53,12 @@ function makeIndexedStatus(): SetupStatus {
     code_memory: {
       ...status.code_memory,
       index_present: true,
-      repos: { configured: ["octocat/web"], count: 1 },
+      repos: {
+        configured: ["web"],
+        configured_existing: ["web"],
+        selected: ["web"],
+        count: 1,
+      },
       detail: "Code graph is ready.",
     },
   };
@@ -972,6 +977,43 @@ describe("OnboardingView seven-step takeover", () => {
     await user.click(screen.getByRole("button", { name: /save 1 repository/i }));
 
     expect(await screen.findByText(/no code graph was built/i)).toBeInTheDocument();
+    expect(screen.queryByText(/built the code graph/i)).not.toBeInTheDocument();
+  });
+
+  it("does not accept an old graph that excludes the newly selected repository", async () => {
+    const staleStatus = makeIndexedStatus();
+    if (!staleStatus.code_memory?.repos) throw new Error("test setup requires repo scope");
+    staleStatus.code_memory.repos = {
+      configured: ["unrelated"],
+      configured_existing: ["unrelated"],
+      selected: ["unrelated"],
+      count: 1,
+    };
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(staleStatus);
+    vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
+      ok: true,
+      repos: ["octocat/web"],
+      env_path: "/home/.alfred/.env",
+      keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+    });
+    const onRunLocalAction = vi.fn(async () => ({
+      command: ["alfred", "code-memory", "index"],
+      stdout: "",
+      stderr: "",
+      status: 0,
+      success: true,
+      pid: 1,
+      message: "Code graph indexed.",
+    }));
+    renderOnboarding({ onRunLocalAction });
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /get started/i }));
+    await user.click(await screen.findByRole("button", { name: /load my repositories/i }));
+    await user.click(await screen.findByRole("checkbox", { name: /octocat\/web/i }));
+    await user.click(screen.getByRole("button", { name: /save 1 repository/i }));
+
+    expect(await screen.findByText(/did not cover every selected repository/i)).toBeInTheDocument();
     expect(screen.queryByText(/built the code graph/i)).not.toBeInTheDocument();
   });
 

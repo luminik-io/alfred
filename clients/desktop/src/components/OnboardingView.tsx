@@ -514,6 +514,18 @@ export function OnboardingView({
   const reposSelected = (status?.repos.count ?? 0) > 0;
   const slackConfigured = Boolean(status?.install?.slack_configured);
 
+  const codeMemoryCoversRepos = useCallback((fresh: SetupStatus, repos: string[]): boolean => {
+    const indexedRepos = new Set(
+      (fresh.code_memory?.repos?.selected ?? []).map((repo) => repo.trim().toLowerCase()),
+    );
+    return repos.every((repo) => {
+      const slug = repo.trim().toLowerCase();
+      const slugParts = slug.split("/");
+      const localName = slugParts[slugParts.length - 1] || slug;
+      return indexedRepos.has(slug) || indexedRepos.has(localName);
+    });
+  }, []);
+
   const indexSelectedRepos = useCallback(
     async (repos: string[]): Promise<boolean> => {
       if (!repos.length) return false;
@@ -538,9 +550,14 @@ export function OnboardingView({
           "Repositories were saved, but no code graph was built. Clone the selected repositories locally, then retry indexing.",
         );
       }
+      if (!codeMemoryCoversRepos(fresh, repos)) {
+        throw new Error(
+          "Repositories were saved, but the code graph did not cover every selected repository. Clone or map the selected repositories locally, then retry indexing.",
+        );
+      }
       return true;
     },
-    [canRun, onRunLocalAction, refreshStatus],
+    [canRun, codeMemoryCoversRepos, onRunLocalAction, refreshStatus],
   );
 
   // Execute one onboarding action REQUESTED by the conversational guide. The
