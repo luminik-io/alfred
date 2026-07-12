@@ -16,6 +16,30 @@ use tauri::path::BaseDirectory;
 use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::{AppHandle, Emitter, Manager};
 
+const BUILT_IN_RUNTIME_IDS: &[&str] = &[
+    "senior-dev",
+    "planner",
+    "test-engineer",
+    "reviewer",
+    "fixer",
+    "triage",
+    "architect",
+    "spec-planner",
+    "e2e-runner",
+    "ops-watch",
+    "automerge",
+    "agent-cleanup",
+    "memory-harvest",
+    "memory-auto-promote",
+    "code-map-refresh",
+    "agent-morning-brief",
+    "fleet-doctor",
+    "fleet-recap-morning",
+    "fleet-recap-evening",
+    "shipped-summary-daily",
+    "shipped-summary-weekly",
+];
+
 #[derive(Serialize)]
 struct NativeCommandResult {
     command: Vec<String>,
@@ -579,6 +603,19 @@ fn setup_managed_runtime_static_key(key: &str) -> bool {
             | "ALFRED_OPS_WATCH_SENTRY_ORG"
             | "ALFRED_OPS_WATCH_AWS_PROFILE"
     ) || key.starts_with("ALFRED_TELEMETRY_")
+        || built_in_role_aws_profile_key(key)
+}
+
+fn built_in_role_aws_profile_key(key: &str) -> bool {
+    let Some(slug) = key
+        .strip_prefix("ALFRED_")
+        .and_then(|value| value.strip_suffix("_AWS_PROFILE"))
+    else {
+        return false;
+    };
+    BUILT_IN_RUNTIME_IDS
+        .iter()
+        .any(|runtime_id| runtime_id.to_ascii_uppercase().replace('-', "_") == slug)
 }
 
 fn load_config_file(
@@ -3997,6 +4034,41 @@ done"#;
         restore_var("ALFRED_OPS_WATCH_ECS_CLUSTER", prev_ops_cluster);
         restore_var("ALFRED_OPS_WATCH_SENTRY_ORG", prev_ops_sentry);
         restore_var("ALFRED_OPS_WATCH_AWS_PROFILE", prev_ops_aws);
+    }
+
+    #[test]
+    fn native_subprocess_env_reloads_canonical_role_profile_from_managed_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_profile = std::env::var("ALFRED_SENIOR_DEV_AWS_PROFILE").ok();
+
+        let root = temp_root("alfred-canonical-role-profile");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(
+            runtime.join(".env"),
+            "# alfred-init, generated below this line. Safe to re-run.\n\
+             ALFRED_SENIOR_DEV_AWS_PROFILE=managed-profile\n",
+        )
+        .expect("write runtime env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::set_var("ALFRED_SENIOR_DEV_AWS_PROFILE", "stale-profile");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("ALFRED_SENIOR_DEV_AWS_PROFILE"),
+            Some(&"managed-profile".to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_SENIOR_DEV_AWS_PROFILE", prev_profile);
     }
 
     #[test]
