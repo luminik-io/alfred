@@ -62,6 +62,8 @@ import type {
 } from "../types";
 
 const POLL_INTERVAL_MS = 60_000;
+const RUNTIME_READY_ATTEMPTS = 10;
+const RUNTIME_READY_DELAY_MS = 300;
 type ShippedRefreshOptions = { demo?: boolean };
 
 export type UseAlfred = ReturnType<typeof useAlfred>;
@@ -144,7 +146,7 @@ export function useAlfred() {
   const reqRef = useRef(0);
 
   const refresh = useCallback(
-    async (nextBaseUrl = baseUrl) => {
+    async (nextBaseUrl = baseUrl): Promise<boolean> => {
       const targetBaseUrl = clientBaseUrl(nextBaseUrl);
       const id = ++reqRef.current;
       setLoading(true);
@@ -152,14 +154,16 @@ export function useAlfred() {
       setErrorRaw(null);
       try {
         const next = await loadSnapshot(targetBaseUrl);
-        if (id !== reqRef.current) return;
+        if (id !== reqRef.current) return false;
         setSnapshot(next);
         setBaseUrl(targetBaseUrl);
         rememberBaseUrl(targetBaseUrl);
+        return true;
       } catch (err) {
-        if (id !== reqRef.current) return;
+        if (id !== reqRef.current) return false;
         setError(err instanceof Error ? err.message : String(err));
         setErrorRaw(errorDetail(err));
+        return false;
       } finally {
         // Only the latest request owns the loading flag; a superseded poll
         // resolving late must not flip the spinner off mid-refresh.
@@ -169,6 +173,23 @@ export function useAlfred() {
       }
     },
     [baseUrl],
+  );
+
+  const waitForRuntimeReady = useCallback(
+    async (nextBaseUrl: string): Promise<boolean> => {
+      for (let attempt = 0; attempt < RUNTIME_READY_ATTEMPTS; attempt += 1) {
+        if (attempt > 0) {
+          await new Promise<void>((resolve) => {
+            window.setTimeout(resolve, RUNTIME_READY_DELAY_MS);
+          });
+        }
+        if (await refresh(nextBaseUrl)) {
+          return true;
+        }
+      }
+      return false;
+    },
+    [refresh],
   );
 
   // Board fetch, independent of the core snapshot. Keeps the last good board
@@ -579,14 +600,16 @@ export function useAlfred() {
     try {
       const result = await startLocalRuntime(runtimePortFromBaseUrl(baseUrl));
       setNativeResult(result);
-      window.setTimeout(() => void refresh(baseUrl), 900);
+      if (result.success) {
+        await waitForRuntimeReady(baseUrl);
+      }
     } catch (err) {
       setNativeError(err instanceof Error ? err.message : String(err));
       setNativeErrorRaw(errorDetail(err));
     } finally {
       setNativeBusy(null);
     }
-  }, [baseUrl, refresh]);
+  }, [baseUrl, waitForRuntimeReady]);
 
   const installCore = useCallback(async () => {
     setNativeBusy("core:install");
@@ -608,14 +631,16 @@ export function useAlfred() {
           ? "Alfred core installed and the local runtime started."
           : runtime.message || "Alfred core installed, but the local runtime did not start.",
       });
-      window.setTimeout(() => void refresh(baseUrl), 900);
+      if (runtime.success) {
+        await waitForRuntimeReady(baseUrl);
+      }
     } catch (err) {
       setNativeError(err instanceof Error ? err.message : String(err));
       setNativeErrorRaw(errorDetail(err));
     } finally {
       setNativeBusy(null);
     }
-  }, [baseUrl, refresh]);
+  }, [baseUrl, waitForRuntimeReady]);
 
   const clearNativeResult = useCallback(() => {
     setNativeResult(null);

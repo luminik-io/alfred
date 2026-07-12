@@ -221,8 +221,8 @@ describe("useAlfred refresh race", () => {
     loadSnapshotMock.mockReturnValueOnce(slow.promise);
     loadSnapshotMock.mockReturnValueOnce(fast.promise);
 
-    let callA: Promise<void>;
-    let callB: Promise<void>;
+    let callA: Promise<boolean>;
+    let callB: Promise<boolean>;
     act(() => {
       callA = result.current.refresh(DEFAULT_BASE_URL);
       callB = result.current.refresh(DEFAULT_BASE_URL);
@@ -363,22 +363,58 @@ describe("useAlfred post-action refresh ordering", () => {
     expect(result.current.baseUrl).toBe(customUrl);
 
     loadSnapshotMock.mockClear();
+    await act(async () => {
+      await result.current.installCore();
+    });
+    expect(installAlfredCoreMock).toHaveBeenCalledWith(7123);
+    expect(startLocalRuntimeMock).toHaveBeenCalledWith(7123);
+    expect(loadSnapshotMock).toHaveBeenCalledWith(customUrl);
+  });
+
+  it("polls until a newly started runtime is reachable", async () => {
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("senior-dev")]));
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    loadSnapshotMock.mockRejectedValueOnce(new Error("not ready"));
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("senior-dev")]));
+
     vi.useFakeTimers();
     try {
-      await act(async () => {
-        await result.current.installCore();
+      let start: Promise<void>;
+      act(() => {
+        start = result.current.startRuntime();
       });
-      expect(installAlfredCoreMock).toHaveBeenCalledWith(7123);
       await act(async () => {
-        vi.advanceTimersByTime(900);
-        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(300);
+        await start;
       });
 
-      expect(startLocalRuntimeMock).toHaveBeenCalledWith(7123);
-      expect(loadSnapshotMock).toHaveBeenCalledWith(customUrl);
+      expect(loadSnapshotMock).toHaveBeenCalledTimes(3);
+      expect(result.current.error).toBeNull();
+      expect(result.current.snapshot).not.toBeNull();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("does not poll when the native runtime command fails", async () => {
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("senior-dev")]));
+    startLocalRuntimeMock.mockResolvedValueOnce({
+      ...nativeResult(),
+      success: false,
+      status: 1,
+      message: "runtime did not start",
+    });
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+    loadSnapshotMock.mockClear();
+
+    await act(async () => {
+      await result.current.startRuntime();
+    });
+
+    expect(loadSnapshotMock).not.toHaveBeenCalled();
   });
 
   it("refreshes after a pause and reflects the post-action snapshot", async () => {
