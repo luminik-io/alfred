@@ -4,7 +4,7 @@
 Run after `git clone` + `bash install.sh`. install.sh handles dependency
 install (brew, gh, claude, aws, python, node, runtime dirs, $ALFRED_HOME/.env
 template). alfred-init handles configuration: auth checks, Slack webhook
-provisioning, agent selection, codename + repo + schedule wiring,
+provisioning, agent selection, repo + schedule wiring,
 agents.conf generation, deploy, doctor, smoke test.
 
 Wizard order (each step is idempotent, re-running won't duplicate):
@@ -15,14 +15,13 @@ Wizard order (each step is idempotent, re-running won't duplicate):
                          (env or AWS Secrets Manager).
     4. AWS (optional):  per-agent IAM profiles for agents that use cloud APIs.
     5. Pick agents:    multi-select discovered from bin/*.py.
-    6. Codenames:      per-role codename (default = default theme display name).
-    7. Repos:          per-agent repo selection out of `gh repo list`.
-    8. Schedule:       sensible defaults; press 'a' to customize.
-    9. Generate config: agents.conf, env, starter prompts, fleet enable state.
-   10. GitHub labels:  create standard labels on selected repos.
-   11. Deploy:         `bash deploy.sh`.
-   12. Doctor:         `alfred doctor`.
-   13. Smoke test:     final Slack post + summary.
+    6. Repos:          per-agent repo selection out of `gh repo list`.
+    7. Schedule:       sensible defaults; press 'a' to customize.
+    8. Generate config: agents.conf, env, starter prompts, fleet enable state.
+    9. GitHub labels:  create standard labels on selected repos.
+   10. Deploy:         `bash deploy.sh`.
+   11. Doctor:         `alfred doctor`.
+   12. Smoke test:     final Slack post + summary.
 
 Override paths:
     ALFRED_NONINTERACTIVE=1   accept defaults everywhere
@@ -49,6 +48,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -189,6 +189,12 @@ AGENT_CATALOG: dict[str, tuple[str, str, bool, str]] = {
 CODENAME_TO_ROLE: dict[str, str] = {
     default: role for role, (default, _, _, _) in AGENT_CATALOG.items()
 }
+
+
+def runtime_id_for_role(role: str) -> str:
+    """Return the immutable runtime identity for a built-in role."""
+    return AGENT_CATALOG[role][0]
+
 
 STARTER_ROLES = (
     "planner",
@@ -341,7 +347,6 @@ SPECIAL_PROMPTS = {
     ],
 }
 
-CODENAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 REPO_LOCAL_MAP_KEY_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=")
 REPO_LOCAL_MAP_COMMA_BOUNDARY_RE = re.compile(
     r",\s*(?=[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=(?:/|~|\.{1,2}/))"
@@ -379,6 +384,7 @@ def alfred_init_managed_env_keys() -> frozenset[str]:
     }
     for role, (default_codename, _, _, _) in AGENT_CATALOG.items():
         default_slug = default_codename.upper().replace("-", "_")
+        # Tombstone only: rerunning setup removes pre-role-identity aliases.
         keys.add(f"AGENT_CODENAME_{role.upper()}")
         keys.add(f"ALFRED_{default_slug}_REPOS")
         keys.add(f"ALFRED_{default_slug}_AWS_PROFILE")
@@ -390,6 +396,347 @@ def alfred_init_managed_env_keys() -> frozenset[str]:
 
 
 ALFRED_INIT_MANAGED_ENV_KEYS = alfred_init_managed_env_keys()
+
+_SHARED_STATE_NAMES = frozenset(
+    {
+        "codenames",
+        "codex",
+        "code-memory",
+        "custom-agents",
+        "engines",
+        "fleet",
+        "followups",
+        "planning-drafts",
+        "plan-revisions",
+        "read-ledger",
+        "roster-theme",
+        "shipped",
+        "slack-listener",
+        "slack-threads",
+        "slack-thread-status",
+        "transcripts",
+    }
+)
+
+
+def legacy_role_aliases(path: Path) -> dict[str, str]:
+    """Return built-in role aliases stored by a pre-stable-identity install."""
+    if not path.exists():
+        return {}
+    raw = path.read_text()
+    marker = ALFRED_ENV_BANNER_RE.search(raw)
+    if marker is None:
+        return {}
+
+    aliases: dict[str, str] = {}
+    role_by_key = {f"AGENT_CODENAME_{role.upper()}": role for role in AGENT_CATALOG}
+    cursor = _line_after_match(raw, marker)
+    for line in raw[cursor:].splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            break
+        key = env_assignment_key(stripped)
+        role = role_by_key.get(key or "")
+        if role is None:
+            continue
+        _, _, raw_value = stripped.partition("=")
+        try:
+            tokens = shlex.split(raw_value, comments=True)
+        except ValueError:
+            tokens = []
+        runtime_id = tokens[0].strip() if tokens else ""
+        if re.fullmatch(r"[a-z][a-z0-9-]*", runtime_id):
+            aliases[role] = runtime_id
+    return aliases
+
+
+def legacy_codename_managed_env_keys(path: Path) -> frozenset[str]:
+    """Return obsolete mutable-role keys that a repair install must delete."""
+    keys: set[str] = set()
+    for role, runtime_id in legacy_role_aliases(path).items():
+        keys.add(f"AGENT_CODENAME_{role.upper()}")
+        if runtime_id != runtime_id_for_role(role):
+            slug = runtime_id.upper().replace("-", "_")
+            keys.add(f"ALFRED_{slug}_REPOS")
+            keys.add(f"ALFRED_{slug}_AWS_PROFILE")
+    return frozenset(keys)
+
+
+def _merge_legacy_tree(source: Path, target: Path) -> None:
+    """Move an obsolete identity tree into its canonical path, then remove it."""
+    if not source.exists() and not source.is_symlink():
+        return
+    if source.is_symlink():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists() or target.is_symlink():
+            target.replace(_backup_path(target))
+        source.replace(target)
+        return
+    if not target.exists() and not target.is_symlink():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        source.replace(target)
+        return
+    if target.is_symlink():
+        _replace_with_backup(source, target)
+        return
+    if source.is_dir() and target.is_dir():
+        for child in source.iterdir():
+            _merge_legacy_tree(child, target / child.name)
+        with contextlib.suppress(OSError):
+            source.rmdir()
+        return
+    if source.is_file() and target.is_file():
+        _merge_legacy_file(source, target)
+        return
+    _replace_with_backup(source, target)
+
+
+def _backup_path(target: Path) -> Path:
+    candidate = target.with_name(f"{target.name}.pre-stable-identity")
+    index = 2
+    while candidate.exists() or candidate.is_symlink():
+        candidate = target.with_name(f"{target.name}.pre-stable-identity-{index}")
+        index += 1
+    return candidate
+
+
+def _stream_backup_path(target: Path) -> Path:
+    candidate = target.with_name(f"{target.stem}.pre-stable-identity{target.suffix}")
+    index = 2
+    while candidate.exists() or candidate.is_symlink():
+        candidate = target.with_name(f"{target.stem}.pre-stable-identity-{index}{target.suffix}")
+        index += 1
+    return candidate
+
+
+def _replace_with_backup(source: Path, target: Path) -> None:
+    """Make the old active file canonical without discarding a target collision."""
+    backup = _backup_path(target)
+    target.replace(backup)
+    source.replace(target)
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, raw_tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    tmp = Path(raw_tmp)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        tmp.replace(path)
+    finally:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+
+
+def _merge_spend_payloads(current: dict[str, Any], old: dict[str, Any]) -> dict[str, Any]:
+    merged = {**current, **old}
+    cumulative = {
+        "firings_today",
+        "turns_today",
+        "cost_usd_today",
+        "successes_today",
+        "failures_today",
+        "reviews_posted",
+        "fixes_landed",
+        "merged_today",
+        "hits_today",
+        "prs_opened_today",
+        "triaged_today",
+    }
+    for key in cumulative:
+        current_value = current.get(key)
+        old_value = old.get(key)
+        if isinstance(current_value, (int, float)) and isinstance(old_value, (int, float)):
+            merged[key] = current_value + old_value
+    for key in ("consecutive_failures",):
+        values = [value for value in (current.get(key), old.get(key)) if isinstance(value, int)]
+        if values:
+            merged[key] = max(values)
+    blocked = [
+        value
+        for value in (current.get("blocked_until"), old.get("blocked_until"))
+        if isinstance(value, str) and value
+    ]
+    if blocked:
+        merged["blocked_until"] = max(blocked)
+    sessions = current.get("last_session_id_per_target")
+    old_sessions = old.get("last_session_id_per_target")
+    if isinstance(sessions, dict) and isinstance(old_sessions, dict):
+        merged["last_session_id_per_target"] = {**old_sessions, **sessions}
+    return merged
+
+
+def _merge_legacy_file(source: Path, target: Path) -> None:
+    try:
+        source_bytes = source.read_bytes()
+        target_bytes = target.read_bytes()
+    except OSError:
+        _replace_with_backup(source, target)
+        return
+    if source_bytes == target_bytes:
+        source.unlink()
+        return
+
+    if source.suffix == ".json" and target.suffix == ".json":
+        try:
+            old_payload = json.loads(source_bytes)
+            current_payload = json.loads(target_bytes)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            old_payload = current_payload = None
+        if isinstance(old_payload, dict) and isinstance(current_payload, dict):
+            if source.name.startswith("spend-"):
+                merged = _merge_spend_payloads(current_payload, old_payload)
+            else:
+                # The canonical file is the active identity and therefore the
+                # newer authority when both objects define the same field.
+                merged = {**old_payload, **current_payload}
+            _write_json_atomic(target, merged)
+            source.unlink()
+            return
+
+    if source.suffix == ".jsonl" and target.suffix == ".jsonl":
+        # Equal filenames can still represent different firings. Keep both
+        # streams independently parseable instead of concatenating identities.
+        source.replace(_stream_backup_path(target))
+        return
+
+    _replace_with_backup(source, target)
+
+
+def _replace_enabled_aliases(path: Path, aliases: dict[str, str]) -> None:
+    if not path.exists() or not aliases:
+        return
+    replacements = {
+        old: runtime_id_for_role(role)
+        for role, old in aliases.items()
+        if old != runtime_id_for_role(role)
+    }
+    if not replacements:
+        return
+    lines: list[str] = []
+    changed = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        value, separator, comment = line.partition("#")
+        stripped = value.strip()
+        replacement = replacements.get(stripped)
+        if replacement is not None:
+            prefix = value[: len(value) - len(value.lstrip())]
+            suffix = f"#{comment}" if separator else ""
+            line = f"{prefix}{replacement}{suffix}"
+            changed = True
+        lines.append(line)
+    if changed:
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _migrate_roster_theme(path: Path, aliases: dict[str, str]) -> None:
+    if not path.exists() or not aliases:
+        return
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(payload, dict):
+        return
+    replacements = {
+        old: runtime_id_for_role(role)
+        for role, old in aliases.items()
+        if old != runtime_id_for_role(role)
+    }
+    changed = False
+    for map_name in ("custom_names", "custom_roles"):
+        values = payload.get(map_name)
+        if not isinstance(values, dict):
+            continue
+        for old_id, canonical_id in replacements.items():
+            if old_id not in values:
+                continue
+            if canonical_id not in values:
+                values[canonical_id] = values[old_id]
+            del values[old_id]
+            changed = True
+    if changed:
+        _write_json_atomic(path, payload)
+
+
+def _migrate_legacy_worktrees(home: Path, old_id: str, canonical_id: str) -> None:
+    root = home / "worktrees"
+    if not root.is_dir():
+        return
+    for source in sorted(root.glob(f"eng-{old_id}-*")):
+        if not source.is_dir() or source.is_symlink():
+            continue
+        target = source.with_name(source.name.replace(f"eng-{old_id}-", f"eng-{canonical_id}-", 1))
+        if target.exists() or target.is_symlink():
+            target = _backup_path(target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        result = subprocess.run(
+            ["git", "-C", str(source), "worktree", "move", str(source), str(target)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "unknown git error").strip()
+            raise RuntimeError(f"could not migrate recovery worktree {source}: {detail}")
+
+
+def migrate_legacy_role_identities(
+    state: WizardState,
+    aliases: dict[str, str],
+    managed_env: dict[str, str],
+) -> frozenset[str]:
+    """Re-key pre-stable built-in state, then remove obsolete alias artifacts."""
+    state_root = state.alfred_home / "state"
+    migrated_env_keys: set[str] = set()
+    for role, old_id in aliases.items():
+        canonical_id = runtime_id_for_role(role)
+        if old_id == canonical_id:
+            continue
+
+        old_slug = old_id.upper().replace("-", "_")
+        canonical_slug = canonical_id.upper().replace("-", "_")
+        for suffix in ("REPOS", "AWS_PROFILE"):
+            old_key = f"ALFRED_{old_slug}_{suffix}"
+            canonical_key = f"ALFRED_{canonical_slug}_{suffix}"
+            if old_key in managed_env:
+                # The alias identifies the active pre-cutover agent, so its
+                # scope wins over stale canonical residue from a partial repair.
+                managed_env[canonical_key] = managed_env[old_key]
+                migrated_env_keys.add(canonical_key)
+
+        identity_parents = [
+            state_root / "codenames",
+            state_root / "transcripts",
+            state_root / "codex",
+        ]
+        if old_id not in _SHARED_STATE_NAMES:
+            identity_parents.append(state_root)
+        for parent in identity_parents:
+            _merge_legacy_tree(parent / old_id, parent / canonical_id)
+        for parent in (state_root / "_paused", state_root / "engines"):
+            _merge_legacy_tree(parent / old_id, parent / canonical_id)
+        _merge_legacy_tree(
+            state_root / "memory-outbox" / f"{old_id}.jsonl",
+            state_root / "memory-outbox" / f"{canonical_id}.jsonl",
+        )
+        _merge_legacy_tree(
+            state.alfred_home / "prompts" / f"{old_id}.md",
+            state.alfred_home / "prompts" / f"{canonical_id}.md",
+        )
+        _merge_legacy_tree(
+            state.alfred_home / "agents" / f"{old_id}.toml",
+            state.alfred_home / "agents" / f"{canonical_id}.toml",
+        )
+        _migrate_legacy_worktrees(state.alfred_home, old_id, canonical_id)
+
+    _replace_enabled_aliases(state_root / "fleet" / "enabled.txt", aliases)
+    _migrate_roster_theme(state_root / "roster-theme" / "roster-theme.json", aliases)
+    return frozenset(migrated_env_keys)
 
 
 # ---------------------------------------------------------------------------
@@ -491,7 +838,6 @@ class WizardState:
     use_aws: bool = False
     aws_agent_profiles: dict[str, str] = field(default_factory=dict)  # codename -> profile
     enabled_roles: list[str] = field(default_factory=list)  # role keys
-    role_to_codename: dict[str, str] = field(default_factory=dict)  # role -> codename
     role_to_repos: dict[str, list[str]] = field(default_factory=dict)  # role -> [org/repo]
     role_to_schedule: dict[str, str] = field(default_factory=dict)  # role -> schedule
     role_to_extras: dict[str, dict[str, str]] = field(default_factory=dict)  # role -> {ENV: value}
@@ -500,18 +846,6 @@ class WizardState:
     telemetry_url: str = field(default_factory=default_telemetry_url)
     telemetry_token: str = ""  # optional shared ingest token (X-Ingest-Token)
     batteries: list[str] = field(default_factory=list)  # opt-in battery ids to enable
-
-    def codename_for(self, role: str) -> str:
-        return self.role_to_codename.get(role, AGENT_CATALOG[role][0])
-
-
-def hydrate_codenames_from_env(state: WizardState, env: dict[str, str]) -> None:
-    """Load persisted role codenames before noninteractive default filling."""
-    for role in state.enabled_roles:
-        key = f"AGENT_CODENAME_{role.upper()}"
-        codename = env.get(key, "").strip()
-        if codename and CODENAME_RE.match(codename):
-            state.role_to_codename.setdefault(role, codename)
 
 
 # ---------------------------------------------------------------------------
@@ -654,7 +988,7 @@ def read_managed_env_file(path: Path) -> dict[str, str]:
             _managed_env_assignment_lines(
                 raw,
                 managed,
-                ALFRED_INIT_MANAGED_ENV_KEYS,
+                ALFRED_INIT_MANAGED_ENV_KEYS | legacy_codename_managed_env_keys(path),
             )
         )
     )
@@ -678,7 +1012,9 @@ def upsert_env_file(path: Path, kvs: dict[str, str]) -> None:
         kvs,
         ALFRED_ENV_BANNER,
         ALFRED_ENV_BANNER_RE,
-        managed_keys=ALFRED_INIT_MANAGED_ENV_KEYS | frozenset(kvs),
+        managed_keys=(
+            ALFRED_INIT_MANAGED_ENV_KEYS | legacy_codename_managed_env_keys(path) | frozenset(kvs)
+        ),
     )
 
 
@@ -804,10 +1140,8 @@ def discover_agents(bin_dir: Path) -> list[str]:
     """Return the role-keys from AGENT_CATALOG whose runners exist in bin/.
 
     A runner is "present" when the role script in AGENT_CATALOG exists.
-    Custom codenames change the launchd label and AGENT_CODENAME, not the
-    stable role script. Order is the
-    canonical AGENT_CATALOG order, operators see them in the same order
-    every run.
+    Built-in runtime IDs and script names are immutable role slugs. Themes
+    change only the display layer. Order follows ``AGENT_CATALOG``.
     """
     if not bin_dir.is_dir():
         return []
@@ -1160,13 +1494,13 @@ def selected_repo_union(state: WizardState) -> list[str]:
 def label_setup_repos(state: WizardState) -> list[str]:
     repos = selected_repo_union(state)
     seen = set(repos)
-    batman_parent = (
+    architect_parent = (
         state.role_to_extras.get("cross_repo_coordinator", {})
         .get("ARCHITECT_PARENT_REPO", "")
         .strip()
     )
-    if batman_parent and batman_parent not in seen:
-        repos.append(batman_parent)
+    if architect_parent and architect_parent not in seen:
+        repos.append(architect_parent)
     return repos
 
 
@@ -1178,7 +1512,7 @@ def role_uses_repos(role: str) -> bool:
 def morning_brief_agents(state: WizardState) -> list[str]:
     """Default codenames included in the scheduled morning brief."""
     return [
-        state.codename_for(role)
+        runtime_id_for_role(role)
         for role in state.enabled_roles
         if role not in MORNING_BRIEF_EXCLUDED_ROLES
     ]
@@ -1204,7 +1538,7 @@ def seed_prompt_templates(state: WizardState) -> list[Path]:
         if not template_name:
             continue
         src = template_root / template_name
-        dest = prompt_root / f"{state.codename_for(role)}.md"
+        dest = prompt_root / f"{runtime_id_for_role(role)}.md"
         if not src.exists() or dest.exists():
             continue
         shutil.copyfile(src, dest)
@@ -1217,13 +1551,13 @@ def write_fleet_enable_state(state: WizardState) -> list[str]:
 
     Architect and spec-planner are safe to schedule in a full-fleet install:
     each runner stays idle until its repo/spec scope exists. Persist the same
-    runtime codenames that ``render_agents_conf`` places in scheduler labels.
+    role IDs that ``render_agents_conf`` places in scheduler labels.
     """
     selected: list[str] = []
     for role in state.enabled_roles:
         if role not in SCOPE_GATED_ROLES:
             continue
-        selected.append(state.codename_for(role))
+        selected.append(runtime_id_for_role(role))
     if not selected:
         return []
 
@@ -1238,7 +1572,7 @@ def write_fleet_enable_state(state: WizardState) -> list[str]:
     enabled = sorted(set(existing) | set(selected))
     header = (
         "# Fleet enable list, managed by `alfred enable/disable <agent>`.\n"
-        "# Configured runtime codenames; display themes do not edit this file.\n"
+        "# Built-in role IDs plus operator-defined custom-agent IDs.\n"
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
@@ -1267,7 +1601,7 @@ def render_agents_conf(state: WizardState) -> str:
         "",
     ]
     for role in state.enabled_roles:
-        codename = state.codename_for(role)
+        codename = runtime_id_for_role(role)
         default_codename, desc, _, _ = AGENT_CATALOG[role]
         schedule = state.role_to_schedule.get(role, AGENT_CATALOG[role][3])
         # Paired schedule rows share one implementation + log stem.
@@ -1278,8 +1612,7 @@ def render_agents_conf(state: WizardState) -> str:
             script = f"{default_codename}.sh"
             log_stem = "alfred.shipped-summary"
         else:
-            # Script names are stable role implementations. Custom codenames
-            # change the launchd label and AGENT_CODENAME, not the file name.
+            # Script names and scheduler labels share one immutable role ID.
             script = f"{default_codename}.py"
             log_stem = f"alfred.{codename}"
         label = f"alfred.{codename}"
@@ -1333,15 +1666,8 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
         out["SLACK_WEBHOOK_SECRET_ID"] = "alfred/slack-webhook"
         out["SLACK_WEBHOOK_SECRET_REGION"] = state.aws_region
     for role in state.enabled_roles:
-        codename = state.codename_for(role)
-        # Derive the per-agent env-key slug from the ACTUAL chosen codename, not
-        # the catalog default. A role's codename floats via AGENT_CODENAME_<ROLE>
-        # overrides; the runner reads ALFRED_<CHOSEN>_REPOS at boot. Keying the
-        # write off the default codename would write ALFRED_<DEFAULT>_REPOS while
-        # the runner reads ALFRED_<CHOSEN>_REPOS, so an overridden agent would
-        # boot with empty repos and silently idle ([AGENT-IDLE]).
+        codename = runtime_id_for_role(role)
         codename_slug = codename.upper().replace("-", "_")
-        out[f"AGENT_CODENAME_{role.upper()}"] = codename
         repos = state.role_to_repos.get(role, [])
         if repos:
             runtime_repos = repo_runtime_values(repos)
@@ -1735,8 +2061,8 @@ def step_4_aws(state: WizardState, *, non_interactive: bool) -> None:
     # codename) so this list cannot drift from the canonical identity the way a
     # hard-coded theme-name list ("huntress", "gordon") did after the rename.
     aws_consumer_roles = ("smoke_runner", "ops_morning")
-    aws_consumers = [state.codename_for(role) for role in aws_consumer_roles]
-    enabled_codenames = {state.codename_for(r) for r in state.enabled_roles}
+    aws_consumers = [runtime_id_for_role(role) for role in aws_consumer_roles]
+    enabled_codenames = {runtime_id_for_role(r) for r in state.enabled_roles}
     for codename in aws_consumers:
         # Only prompt if this agent is enabled.
         if codename not in enabled_codenames:
@@ -1802,44 +2128,6 @@ def step_5_pick_agents(
     ok(f"{len(state.enabled_roles)} agents enabled.")
 
 
-def step_6_codenames(state: WizardState, *, non_interactive: bool) -> None:
-    step("Codenames")
-    used: set[str] = set()
-    for role in state.enabled_roles:
-        default, desc, _, _ = AGENT_CATALOG[role]
-        # Honor --config role_codename overrides without re-prompting.
-        if role in state.role_to_codename:
-            preset = state.role_to_codename[role]
-            if preset in used:
-                fail(
-                    f"--config role_codename collision: {preset!r} reused. "
-                    "Fix the config or drop the duplicate."
-                )
-                sys.exit(1)
-            used.add(preset)
-            continue
-        while True:
-            chosen = ask(
-                f"Codename for {desc.split(' (')[0]}?", default, non_interactive=non_interactive
-            )
-            if not CODENAME_RE.match(chosen):
-                fail("Codename must match ^[a-z][a-z0-9-]*$")
-                if non_interactive:
-                    chosen = default
-                    break
-                continue
-            if chosen in used:
-                fail("Codename already used in this fleet.")
-                if non_interactive:
-                    chosen = default
-                    break
-                continue
-            break
-        state.role_to_codename[role] = chosen
-        used.add(chosen)
-    ok(f"Codenames assigned for {len(state.enabled_roles)} agents.")
-
-
 def step_7_repos(
     state: WizardState, *, repos_arg: str | None = None, non_interactive: bool
 ) -> None:
@@ -1871,7 +2159,7 @@ def step_7_repos(
                 sys.exit(1)
 
         for role in repo_roles:
-            codename = state.codename_for(role)
+            codename = runtime_id_for_role(role)
             # Honor --config role_repos (per-agent scoping) over the broader
             # --repos / "repos" / non-interactive default-all behaviour.
             if role in state.role_to_repos:
@@ -1906,11 +2194,10 @@ def step_7_repos(
                     state.role_to_repos[role] = selected
                     break
                 fail("Select at least one repo, or type 'none' to leave this agent idle.")
-    # Special prompts (Huntress staging URL, Gordon ECS cluster, etc.)
+    # Role-specific setup prompts (staging URL, ECS cluster, etc.).
     managed_defaults = read_managed_env_file(state.env_file)
     for role in state.enabled_roles:
-        codename = state.codename_for(role)
-        # Match by default theme display name even if operator renamed the codename.
+        codename = runtime_id_for_role(role)
         canonical = AGENT_CATALOG[role][0]
         prompts = SPECIAL_PROMPTS.get(canonical, [])
         if not prompts:
@@ -1978,7 +2265,7 @@ def step_8_schedule(state: WizardState, *, non_interactive: bool) -> None:
         ok("Sensible defaults assigned.")
         return
     for role in state.enabled_roles:
-        codename = state.codename_for(role)
+        codename = runtime_id_for_role(role)
         current = state.role_to_schedule[role]
         new = ask(f"Schedule for {codename}", current)
         state.role_to_schedule[role] = new
@@ -2120,11 +2407,29 @@ def step_8c_batteries(state: WizardState, *, non_interactive: bool) -> None:
 def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:
     step("Generate config")
     conf = render_agents_conf(state)
+    print()
+    print("--- agents.conf ---")
+    print(conf)
+    print("-------------------")
+    if not non_interactive and not ask_yes_no("Looks good?", True):
+        warn("Re-run alfred-init to revise. Existing config left in place.")
+        sys.exit(1)
+
+    existing_managed_env = read_managed_env_file(state.env_file)
+    migrated_keys = migrate_legacy_role_identities(
+        state,
+        legacy_role_aliases(state.env_file),
+        existing_managed_env,
+    )
     target = state.repo_root / "launchd" / "agents.conf"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(conf)
     ok(f"wrote {target}")
-    env_kvs = env_assignments_for(state)
+    env_kvs = _merge_generated_env(
+        {key: existing_managed_env[key] for key in migrated_keys},
+        env_assignments_for(state),
+        migrated_keys,
+    )
     upsert_env_file(state.env_file, env_kvs)
     ok(f"updated {state.env_file} with {len(env_kvs)} keys")
     created_prompts = seed_prompt_templates(state)
@@ -2137,13 +2442,6 @@ def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:
     scope_gated = write_fleet_enable_state(state)
     if scope_gated:
         ok(f"enabled scope-gated agent(s): {', '.join(scope_gated)}")
-    print()
-    print("--- agents.conf ---")
-    print(conf)
-    print("-------------------")
-    if not non_interactive and not ask_yes_no("Looks good?", True):
-        warn("Re-run alfred-init to revise. Existing config left in place.")
-        sys.exit(1)
 
 
 def seed_runtime_roster(state: WizardState, *, agents_arg: str | None) -> int:
@@ -2178,8 +2476,12 @@ def seed_runtime_roster(state: WizardState, *, agents_arg: str | None) -> int:
 
     ok(f"Enabled full runtime roster ({len(state.enabled_roles)} agents).")
     existing_managed_env = read_managed_env_file(state.env_file)
-    hydrate_codenames_from_env(state, existing_managed_env)
-    step_6_codenames(state, non_interactive=True)
+    legacy_aliases = legacy_role_aliases(state.env_file)
+    migrated_keys = migrate_legacy_role_identities(state, legacy_aliases, existing_managed_env)
+    legacy_identity_keys = legacy_codename_managed_env_keys(state.env_file)
+    existing_managed_env = {
+        key: value for key, value in existing_managed_env.items() if key not in legacy_identity_keys
+    }
     for role in state.enabled_roles:
         state.role_to_repos.setdefault(role, [])
     step_8_schedule(state, non_interactive=True)
@@ -2206,8 +2508,11 @@ def seed_runtime_roster(state: WizardState, *, agents_arg: str | None) -> int:
     target.write_text(conf)
     ok(f"wrote {target}")
 
-    env_kvs = existing_managed_env
-    env_kvs.update(env_assignments_for(state))
+    env_kvs = _merge_generated_env(
+        existing_managed_env,
+        env_assignments_for(state),
+        migrated_keys,
+    )
     upsert_env_file(state.env_file, env_kvs)
     ok(f"updated {state.env_file} with {len(env_kvs)} fleet key(s)")
 
@@ -2222,6 +2527,20 @@ def seed_runtime_roster(state: WizardState, *, agents_arg: str | None) -> int:
     write_fleet_enable_state(state)
     ok("repo-scoped agents will stay idle until onboarding saves repositories")
     return 0
+
+
+def _merge_generated_env(
+    existing: dict[str, str],
+    generated: dict[str, str],
+    migrated_keys: frozenset[str],
+) -> dict[str, str]:
+    """Merge setup output without clearing a newly migrated non-empty scope."""
+    merged = dict(existing)
+    for key, value in generated.items():
+        if key in migrated_keys and not value.strip() and merged.get(key, "").strip():
+            continue
+        merged[key] = value
+    return merged
 
 
 def step_10_labels(state: WizardState, *, skip: bool = False) -> None:
@@ -2312,7 +2631,7 @@ def step_12_smoke(state: WizardState) -> None:
         print(f"  Slack: {masked}")
     print("  Agents:")
     for role in state.enabled_roles:
-        codename = state.codename_for(role)
+        codename = runtime_id_for_role(role)
         desc = AGENT_CATALOG[role][1]
         sched = state.role_to_schedule.get(role, AGENT_CATALOG[role][3])
         repos = state.role_to_repos.get(role, [])
@@ -2409,7 +2728,7 @@ def _resolve_role_key(key: str) -> str | None:
     Returns ``None`` if the key matches neither a known role nor a
     known default codename. Lookup is case-insensitive on both sides
     so a JSON config can use whichever surface the operator finds
-    natural (``"feature_dev"`` or ``"lucius"``).
+    natural (``"feature_dev"`` or ``"senior-dev"``).
     """
     k = key.lower()
     for role in AGENT_CATALOG:
@@ -2441,12 +2760,9 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
       (bare ``"my-repo"`` resolves through ``GH_ORG``; ``"org/repo"``
       is treated as a full slug). Agents not listed fall through to
       ``repos`` / ``--repos`` / interactive prompts.
-    - ``role_codename`` (dict[str, str]): override the default codename
-      for a role. Key is the role-key (``"feature_dev"``) or default
-      codename (``"lucius"``); value is the new codename.
     - ``role_schedule`` (dict[str, str]): override the default
       schedule for an agent. Key resolves the same way as
-      ``role_codename``; value is in ``agents.conf`` schedule format
+      ``role_repos``; value is in ``agents.conf`` schedule format
       (``"interval:1200"``, ``"cron:7:30"``, ``"cron:1:7:30"``).
     - ``role_extras`` (dict[str, dict[str, str]]): per-agent env values
       normally collected by interactive prompts, such as
@@ -2502,20 +2818,12 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
                     f"--config role_repos[{raw_key!r}]: expected list or str, "
                     f"got {type(raw_repos).__name__}; ignored"
                 )
-    if "role_codename" in cfg and isinstance(cfg["role_codename"], dict):
-        for raw_key, raw_codename in cfg["role_codename"].items():
-            role = _resolve_role_key(str(raw_key))
-            if role is None:
-                warn(f"--config role_codename: unknown agent {raw_key!r}; ignored")
-                continue
-            codename = str(raw_codename)
-            if not CODENAME_RE.match(codename):
-                warn(
-                    f"--config role_codename[{raw_key!r}]: codename {codename!r} "
-                    "must match ^[a-z][a-z0-9-]*$; ignored"
-                )
-                continue
-            state.role_to_codename[role] = codename
+    if "role_codename" in cfg:
+        fail(
+            "--config role_codename was removed. Use roster themes for display names "
+            "or `alfred agent add` for a new runtime agent."
+        )
+        raise SystemExit(2)
     if "role_schedule" in cfg and isinstance(cfg["role_schedule"], dict):
         for raw_key, raw_schedule in cfg["role_schedule"].items():
             role = _resolve_role_key(str(raw_key))
@@ -2588,7 +2896,6 @@ def main(argv: Iterable[str] | None = None) -> int:
     available = discover_agents(repo_root / "bin")
     step_5_pick_agents(state, available, agents_arg=args.agents, non_interactive=non_interactive)
     step_4_aws(state, non_interactive=non_interactive)  # after pick_agents so we know who needs AWS
-    step_6_codenames(state, non_interactive=non_interactive)
     config_repos = None
     if "__all__" in state.role_to_repos:
         config_repos = ",".join(state.role_to_repos.pop("__all__"))

@@ -178,9 +178,26 @@ PY
   esac
 }
 
-setup_runtime_static_config_key() {
+setup_runtime_role_profile_key() {
+  local slug
   case "$1" in
-    AGENT_CODENAME_*|ARCHITECT_ROLLOUT_ORDER|ARCHITECT_PARENT_REPO|ALFRED_QUEUE_REPOS|ALFRED_SHIPPED_REPOS|ALFRED_BRIDGE_REPOS|ALFRED_SENIOR_DEV_REPOS|ALFRED_PLANNER_REPOS|ALFRED_SPEC_PLANNER_REPOS|ALFRED_TEST_ENGINEER_REPOS|ALFRED_REVIEWER_REPOS|ALFRED_FIXER_REPOS|ALFRED_TRIAGE_REPOS|ALFRED_CLAIM_SWEEP_REPOS|ALFRED_AUTOMERGE_REPOS|ALFRED_CODE_MAP_REPOS|ALFRED_CODE_MEMORY_REPOS|ALFRED_MORNING_BRIEF_REPOS|ALFRED_SHIPPED_SUMMARY_DAILY_REPOS|ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS|ALFRED_MORNING_BRIEF_AGENTS|ALFRED_E2E_RUNNER_TARGET_URL|ALFRED_OPS_WATCH_ECS_CLUSTER|ALFRED_OPS_WATCH_SENTRY_ORG|ALFRED_TELEMETRY_*)
+    ALFRED_*_AWS_PROFILE)
+      slug="${1#ALFRED_}"
+      slug="${slug%_AWS_PROFILE}"
+      case "$slug" in
+        SENIOR_DEV|PLANNER|TEST_ENGINEER|REVIEWER|FIXER|TRIAGE|ARCHITECT|SPEC_PLANNER|E2E_RUNNER|OPS_WATCH|AUTOMERGE|AGENT_CLEANUP|MEMORY_HARVEST|MEMORY_AUTO_PROMOTE|CODE_MAP_REFRESH|AGENT_MORNING_BRIEF|FLEET_DOCTOR|FLEET_RECAP_MORNING|FLEET_RECAP_EVENING|SHIPPED_SUMMARY_DAILY|SHIPPED_SUMMARY_WEEKLY)
+          return 0
+          ;;
+      esac
+      ;;
+  esac
+  return 1
+}
+
+setup_runtime_static_config_key() {
+  setup_runtime_role_profile_key "$1" && return 0
+  case "$1" in
+    ARCHITECT_ROLLOUT_ORDER|ARCHITECT_PARENT_REPO|ALFRED_QUEUE_REPOS|ALFRED_SHIPPED_REPOS|ALFRED_BRIDGE_REPOS|ALFRED_SENIOR_DEV_REPOS|ALFRED_PLANNER_REPOS|ALFRED_SPEC_PLANNER_REPOS|ALFRED_TEST_ENGINEER_REPOS|ALFRED_REVIEWER_REPOS|ALFRED_FIXER_REPOS|ALFRED_TRIAGE_REPOS|ALFRED_CLAIM_SWEEP_REPOS|ALFRED_AUTOMERGE_REPOS|ALFRED_CODE_MAP_REPOS|ALFRED_CODE_MEMORY_REPOS|ALFRED_MORNING_BRIEF_REPOS|ALFRED_SHIPPED_SUMMARY_DAILY_REPOS|ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS|ALFRED_MORNING_BRIEF_AGENTS|ALFRED_E2E_RUNNER_TARGET_URL|ALFRED_E2E_RUNNER_AWS_PROFILE|ALFRED_OPS_WATCH_ECS_CLUSTER|ALFRED_OPS_WATCH_SENTRY_ORG|ALFRED_OPS_WATCH_AWS_PROFILE|ALFRED_TELEMETRY_*)
       return 0
       ;;
     *)
@@ -212,6 +229,9 @@ load_env_file() {
       ''|[0-9]*|*[!A-Za-z0-9_]*)
         continue
         ;;
+      AGENT_CODENAME_*)
+        continue
+        ;;
     esac
     quote_style="$(env_value_quote_style "$value")"
     value="$(decode_env_value "$value")"
@@ -232,10 +252,11 @@ load_env_file() {
     fi
     export "$key=$value"
   done < "$file"
+  return 0
 }
 
 setup_managed_env_keys_from_file() {
-  local runtime_home="${ALFRED_HOME:-$HOME/.alfred}" file line key value slug in_managed_block=0
+  local runtime_home="${ALFRED_HOME:-$HOME/.alfred}" file line key in_managed_block=0
   runtime_home="$(expand_user_path "$runtime_home")"
   file="$runtime_home/.env"
   [ -f "$file" ] || return 0
@@ -254,7 +275,6 @@ setup_managed_env_keys_from_file() {
       export\ *) line="${line#export }" ;;
     esac
     key="${line%%=*}"
-    value="${line#*=}"
     key="$(trim_env_value "$key")"
     case "$key" in
       ''|[0-9]*|*[!A-Za-z0-9_]*)
@@ -264,17 +284,6 @@ setup_managed_env_keys_from_file() {
     case "$key" in
       GH_ORG|ALFRED_REPO_LOCAL_MAP) printf '%s\n' "$key" ;;
       *) setup_runtime_static_config_key "$key" && printf '%s\n' "$key" ;;
-    esac
-    case "$key" in
-      AGENT_CODENAME_*)
-        value="$(trim_env_value "$(strip_inline_comment "$value")")"
-        value="$(decode_env_value "$value")"
-        if [[ "$value" =~ ^[a-z][a-z0-9-]*$ ]]; then
-          slug="$(printf '%s' "$value" | tr '[:lower:]' '[:upper:]' | tr '-' '_')"
-          printf 'ALFRED_%s_REPOS\n' "$slug"
-          printf 'ALFRED_%s_AWS_PROFILE\n' "$slug"
-        fi
-        ;;
     esac
   done < "$file"
 }
@@ -296,6 +305,9 @@ setup_runtime_config_key() {
 scrub_setup_runtime_env() {
   local key
   while IFS= read -r key; do
+    case "$key" in
+      AGENT_CODENAME_*) unset "$key"; continue ;;
+    esac
     if setup_runtime_config_key "$key"; then
       if runtime_stop_control_active "$key" "${!key:-}"; then
         continue

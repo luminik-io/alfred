@@ -49,31 +49,23 @@ def test_label_catalogue_includes_lifecycle_architect_and_operator_labels(cli_mo
     assert "Batman" not in descriptions["agent:plan-pending-approval"]
 
 
-def test_resolve_label_uses_active_roster_theme_names(
+def test_resolve_label_accepts_only_runtime_ids_or_full_labels(
     cli_module, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Scheduler labels key on role slugs. Human names resolve through the active
-    # roster theme, so changing themes changes what the CLI accepts.
+    # Roster themes are display-only and cannot steer runtime commands.
     monkeypatch.setattr(
         cli_module,
         "_label_map",
         lambda: {"senior-dev": "alfred.senior-dev", "planner": "alfred.planner"},
     )
-    assert cli_module._resolve_label("lucius") == "alfred.senior-dev"
-    assert cli_module._resolve_label("drake") == "alfred.planner"
+    assert cli_module._resolve_label("lucius") is None
+    assert cli_module._resolve_label("drake") is None
     assert cli_module._resolve_label("senior-dev") == "alfred.senior-dev"
     assert cli_module._resolve_label("alfred.senior-dev") == "alfred.senior-dev"
     assert cli_module._resolve_label("nonesuch") is None
     assert cli_module._resolve_label("batman") is None
 
-    theme_dir = Path(os.environ["ALFRED_HOME"]) / "state" / "roster-theme"
-    theme_dir.mkdir(parents=True)
-    (theme_dir / "roster-theme.json").write_text(
-        json.dumps({"version": 1, "theme": "transformers", "custom_names": {}, "custom_roles": {}}),
-        encoding="utf-8",
-    )
-    assert cli_module._resolve_label("ironhide") == "alfred.senior-dev"
-    assert cli_module._resolve_label("lucius") is None
+    assert cli_module._resolve_label("ironhide") is None
 
 
 def test_agents_conf_path_falls_back_to_checkout_when_runtime_missing(

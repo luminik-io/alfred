@@ -116,7 +116,7 @@ The runtime caches the webhook at `$ALFRED_HOME/state/slack-webhook.cache` with 
 
 ## 4. Configure the fleet
 
-Run the public wizard. It chooses which agents are enabled, which repos they watch, their codenames, schedules, Slack config, and optional AWS profile settings.
+Run the public wizard. It chooses which agents are enabled, which repos they watch, schedules, Slack config, and optional AWS profile settings. Built-in runtime identities are immutable role slugs; roster themes control display names.
 
 ```sh
 ./bin/alfred-init.py

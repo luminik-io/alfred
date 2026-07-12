@@ -51,7 +51,7 @@ cd ~/code/alfred
 bash install.sh
 gh auth login                     # GitHub
 claude auth login                 # Claude Code auth
-./bin/alfred-init.py              # choose repos, team names, schedule, Slack
+./bin/alfred-init.py              # choose agents, repos, schedule, and Slack
 ```
 
 macOS Homebrew path, if you prefer package-manager installs:
@@ -62,7 +62,7 @@ brew install alfred-os
 alfred-install
 gh auth login                     # GitHub
 claude auth login                 # Claude Code auth
-alfred-init                       # choose repos, team names, schedule, Slack
+alfred-init                       # choose agents, repos, schedule, and Slack
 ```
 
 The Homebrew formula installs the latest tagged release and puts the Alfred

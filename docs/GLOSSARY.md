@@ -127,11 +127,12 @@ the machine uses. See [Identity and themes](IDENTITY_AND_THEMES.md).
   and merge gates all key off the role; the display name is a theme layer on top.
   See also: [Identity and themes](IDENTITY_AND_THEMES.md).
 - **role runner**: A Python script under `bin/` that implements one agent
-  role; the runtime codename maps to a role runner via `AGENT_CODENAME`.
+  role. Its built-in runtime identity and scheduler label use the same immutable
+  role slug; custom runtime agents have their own explicit ids.
   See also: [Agents](AGENTS.md).
 - **roster theme**: The named set of display names applied to the roles, one
-  name per role. Ships as `batman` (default), `transformers`, and
-  `justice-league`, plus an operator-authored `custom` theme. Stored under
+  name per role. Ships with seven presets (`batman` by default) plus an
+  operator-authored `custom` theme. Stored under
   `$ALFRED_HOME/state/roster-theme/` and honored by Slack, the desktop app, and
   the CLI alike. See also: [Identity and themes](IDENTITY_AND_THEMES.md).
 - **sentinel string**: Bracketed marker like `[OK]`, `[BLOCKED]`, or

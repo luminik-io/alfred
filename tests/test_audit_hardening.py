@@ -595,7 +595,7 @@ def test_drake_daily_cap_query_limit_tracks_configured_cap(monkeypatch):
     assert cmd[cmd.index("--limit") + 1] == "250"
 
 
-def test_drake_prompt_uses_load_prompt_substitution(monkeypatch, tmp_path):
+def test_planner_prompt_uses_stable_feature_dev_identity(monkeypatch, tmp_path):
     monkeypatch.setenv("GH_ORG", "luminik")
     drake = load_bin_module("planner.py", monkeypatch)
     prompt = tmp_path / "planner.md"
@@ -608,7 +608,7 @@ def test_drake_prompt_uses_load_prompt_substitution(monkeypatch, tmp_path):
 
     text = drake.build_prompt()
 
-    assert text == "Planner luminik backend,frontend Custom-Lucius\nstate-context"
+    assert text == "Planner luminik backend,frontend Senior-Dev\nstate-context"
 
 
 def test_senior_dev_build_prompt_includes_operator_prompt(monkeypatch, tmp_path):

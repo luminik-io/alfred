@@ -10,9 +10,8 @@ import {
 } from "./agentThemes";
 
 // The roster theme is the named display-name set applied to the agent roster:
-// Batman by default, plus Transformers, Justice League, and the operator's own
-// custom roster. It is independent of the visual theme (useTheme: palette +
-// light/dark).
+// Batman by default, plus the other shipped presets and the operator's own custom
+// roster. It is independent of the visual theme (useTheme: palette + light/dark).
 //
 // Persistence is server-first, localStorage-fallback: when connected, the
 // runtime's `/api/roster-theme` is the source of truth so the choice (and any

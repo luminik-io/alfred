@@ -903,7 +903,27 @@ def _known_agent_codenames(*, state_root: Path | None = None) -> frozenset[str]:
     return frozenset(
         set(_KNOWN_AGENT_CODENAMES)
         | set(_active_theme_agent_aliases_by_codename(state_root=state_root))
+        | set(_custom_agent_codenames(state_root=state_root))
     )
+
+
+def _custom_agent_codenames(*, state_root: Path | None = None) -> frozenset[str]:
+    try:
+        from custom_agents import CustomAgentStore
+    except Exception:
+        return frozenset()
+    try:
+        raw_home = os.environ.get("ALFRED_HOME", "").strip()
+        root = (
+            state_root
+            if state_root is not None
+            else Path(raw_home).expanduser() / "state"
+            if raw_home
+            else Path.home() / ".alfred" / "state"
+        )
+        return frozenset(agent.codename for agent in CustomAgentStore.from_state_root(root).load())
+    except Exception:
+        return frozenset()
 
 
 def _display_name_alias_variants(value: str) -> tuple[str, ...]:

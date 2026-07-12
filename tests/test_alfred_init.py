@@ -17,6 +17,7 @@ Run via `pytest tests/test_alfred_init.py`.
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -110,7 +111,6 @@ def _state_with(
     gh_org="acme",
     slack_url="",
     repos=None,
-    codenames=None,
     schedules=None,
 ):
     alfred_home = tmp_path / "alfred"
@@ -123,8 +123,6 @@ def _state_with(
         slack_webhook=slack_url,
     )
     state.enabled_roles = list(roles)
-    if codenames:
-        state.role_to_codename.update(codenames)
     if repos:
         state.role_to_repos.update(repos)
     if schedules:
@@ -182,12 +180,11 @@ def test_render_agents_conf_schedules_memory_learning_jobs(init_mod, tmp_path):
     )
 
 
-def test_render_agents_conf_custom_codename(init_mod, tmp_path):
-    state = _state_with(
-        init_mod, tmp_path, roles=("feature_dev",), codenames={"feature_dev": "robin-hood"}
-    )
+def test_render_agents_conf_uses_immutable_role_id(init_mod, tmp_path):
+    state = _state_with(init_mod, tmp_path, roles=("feature_dev",))
     text = init_mod.render_agents_conf(state)
-    assert "alfred.robin-hood\tsenior-dev.py" in text
+    assert "alfred.senior-dev\tsenior-dev.py" in text
+    assert "robin-hood" not in text
 
 
 def test_render_agents_conf_schedules_batman_without_parent_repo(init_mod, tmp_path):
@@ -464,7 +461,7 @@ def test_opt_in_produces_both_schedule_and_env(init_mod, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_env_assignments_includes_codenames_and_repos(init_mod, tmp_path):
+def test_env_assignments_includes_canonical_repos_without_identity_aliases(init_mod, tmp_path):
     state = _state_with(
         init_mod,
         tmp_path,
@@ -476,7 +473,7 @@ def test_env_assignments_includes_codenames_and_repos(init_mod, tmp_path):
     assert out["ALFRED_QUEUE_REPOS"] == "acme/foo,acme/bar"
     assert out["ALFRED_SHIPPED_REPOS"] == "acme/foo,acme/bar"
     assert out["ALFRED_BRIDGE_REPOS"] == "acme/foo,acme/bar"
-    assert out["AGENT_CODENAME_FEATURE_DEV"] == "senior-dev"
+    assert not any(key.startswith("AGENT_CODENAME_") for key in out)
     assert out["ALFRED_SENIOR_DEV_REPOS"] == "foo,bar"
 
 
@@ -924,42 +921,18 @@ def test_env_assignments_does_not_infer_source_checkout_for_unrelated_same_name_
     assert "ALFRED_REPO_LOCAL_MAP" not in out
 
 
-def test_env_assignments_repos_key_follows_overridden_codename(init_mod, tmp_path):
-    # An operator can override a role's codename (role_to_codename / the
-    # AGENT_CODENAME_<ROLE> config). The runner reads its repo scope from
-    # ALFRED_<RESOLVED_CODENAME>_REPOS (agent_runner.agent_repos keys off the
-    # resolved AGENT_CODENAME). So the wizard MUST write the repo scope to that
-    # same overridden-codename key, not the catalog default; keying the write to
-    # the default would leave the renamed agent with no repos and it would idle.
-    state = _state_with(
-        init_mod,
-        tmp_path,
-        roles=("feature_dev",),
-        codenames={"feature_dev": "oracle"},
-        repos={"feature_dev": ["acme/foo"]},
-    )
-    out = init_mod.env_assignments_for(state)
-    assert out["AGENT_CODENAME_FEATURE_DEV"] == "oracle"
-    # Written to the chosen-codename key the runner will read.
-    assert out["ALFRED_ORACLE_REPOS"] == "foo"
-    # NOT written to the catalog-default key (that would strand the agent).
-    assert "ALFRED_SENIOR_DEV_REPOS" not in out
-
-
-def test_env_assignments_renamed_spec_planner_uses_canonical_repo_key(init_mod, tmp_path):
+def test_env_assignments_spec_planner_uses_role_repo_key(init_mod, tmp_path):
     state = _state_with(
         init_mod,
         tmp_path,
         roles=("spec_planner",),
-        codenames={"spec_planner": "damian"},
         repos={"spec_planner": ["acme/api", "acme/web"]},
     )
 
     out = init_mod.env_assignments_for(state)
 
-    assert out["AGENT_CODENAME_SPEC_PLANNER"] == "damian"
     assert out["ALFRED_SPEC_PLANNER_REPOS"] == "api,web"
-    assert "ALFRED_DAMIAN_REPOS" not in out
+    assert not any(key.startswith("AGENT_CODENAME_") for key in out)
 
 
 def test_env_assignments_architect_requires_explicit_parent_repo(init_mod, tmp_path):
@@ -970,7 +943,6 @@ def test_env_assignments_architect_requires_explicit_parent_repo(init_mod, tmp_p
         repos={"cross_repo_coordinator": ["acme/api", "acme/web"]},
     )
     out = init_mod.env_assignments_for(state)
-    assert out["AGENT_CODENAME_CROSS_REPO_COORDINATOR"] == "architect"
     assert "ARCHITECT_PARENT_REPO" not in out
     assert out["ARCHITECT_ROLLOUT_ORDER"] == "api,web"
 
@@ -1730,21 +1702,6 @@ def test_slack_webhook_regex_rejects_other(init_mod):
 
 
 # ---------------------------------------------------------------------------
-# codename regex
-# ---------------------------------------------------------------------------
-
-
-def test_codename_regex(init_mod):
-    assert init_mod.CODENAME_RE.match("senior-dev")
-    assert init_mod.CODENAME_RE.match("agent-cleanup")
-    assert init_mod.CODENAME_RE.match("a1")
-    assert not init_mod.CODENAME_RE.match("Lucius")
-    assert not init_mod.CODENAME_RE.match("1lucius")
-    assert not init_mod.CODENAME_RE.match("with space")
-    assert not init_mod.CODENAME_RE.match("with_underscore")
-
-
-# ---------------------------------------------------------------------------
 # load_config
 # ---------------------------------------------------------------------------
 
@@ -1803,7 +1760,7 @@ def test_apply_config_overrides_role_repos_by_codename_and_role_key(init_mod, tm
     assert state.role_to_repos["test_coverage"] == ["acme/api"]
 
 
-def test_apply_config_overrides_role_codename_and_schedule(init_mod, tmp_path):
+def test_apply_config_overrides_role_schedule(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
         env_file=tmp_path / ".env",
@@ -1812,11 +1769,9 @@ def test_apply_config_overrides_role_codename_and_schedule(init_mod, tmp_path):
     init_mod.apply_config_overrides(
         state,
         {
-            "role_codename": {"feature_dev": "implementer"},
             "role_schedule": {"senior-dev": "interval:1800", "planner": "cron:7:30"},
         },
     )
-    assert state.role_to_codename["feature_dev"] == "implementer"
     assert state.role_to_schedule["feature_dev"] == "interval:1800"
     assert state.role_to_schedule["planner"] == "cron:7:30"
 
@@ -1858,32 +1813,30 @@ def test_apply_config_overrides_ignores_unknown_agent_keys(init_mod, tmp_path, c
         state,
         {
             "role_repos": {"not-a-real-agent": ["acme/api"]},
-            "role_codename": {"also-not-real": "ghost"},
             "role_schedule": {"phantom": "interval:60"},
             "role_extras": {"ghost": {"ENV": "value"}},
         },
     )
     assert "not-a-real-agent" not in state.role_to_repos
-    assert "also-not-real" not in state.role_to_codename
-    # All three warnings should hit stderr.
+    # All unknown role surfaces should hit stderr.
     err = capsys.readouterr().err
     assert "not-a-real-agent" in err
-    assert "also-not-real" in err
     assert "phantom" in err
     assert "ghost" in err
 
 
-def test_apply_config_overrides_rejects_invalid_codename(init_mod, tmp_path, capsys):
+def test_apply_config_overrides_rejects_removed_role_codename(init_mod, tmp_path, capsys):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
         env_file=tmp_path / ".env",
         repo_root=tmp_path,
     )
-    init_mod.apply_config_overrides(
-        state, {"role_codename": {"feature_dev": "Bad Name With Spaces"}}
-    )
-    assert "feature_dev" not in state.role_to_codename
-    assert "Bad Name With Spaces" in capsys.readouterr().err
+    with pytest.raises(SystemExit, match="2"):
+        init_mod.apply_config_overrides(state, {"role_codename": {"feature_dev": "oracle"}})
+    err = capsys.readouterr().err
+    assert "role_codename was removed" in err
+    assert "roster themes" in err
+    assert "alfred agent add" in err
 
 
 def test_step_7_repos_preserves_role_repos_from_config(init_mod, tmp_path):
@@ -1921,32 +1874,6 @@ def test_step_7_repos_allows_batman_parent_repo_only_noninteractive(
     init_mod.step_7_repos(state, repos_arg=None, non_interactive=True)
 
     assert "cross_repo_coordinator" not in state.role_to_repos
-
-
-def test_step_6_codenames_preserves_config_overrides(init_mod, tmp_path):
-    state = init_mod.WizardState(
-        alfred_home=tmp_path / "alfred",
-        env_file=tmp_path / ".env",
-        repo_root=tmp_path,
-    )
-    state.enabled_roles = ["feature_dev", "planner"]
-    state.role_to_codename["feature_dev"] = "implementer"
-    init_mod.step_6_codenames(state, non_interactive=True)
-    assert state.role_to_codename["feature_dev"] == "implementer"
-    assert state.role_to_codename["planner"] == "planner"  # default fill
-
-
-def test_step_6_codenames_fails_on_config_collision(init_mod, tmp_path):
-    state = init_mod.WizardState(
-        alfred_home=tmp_path / "alfred",
-        env_file=tmp_path / ".env",
-        repo_root=tmp_path,
-    )
-    state.enabled_roles = ["feature_dev", "planner"]
-    state.role_to_codename["feature_dev"] = "planner"
-    state.role_to_codename["planner"] = "planner"  # collision with feature_dev
-    with pytest.raises(SystemExit):
-        init_mod.step_6_codenames(state, non_interactive=True)
 
 
 def test_step_8_schedule_preserves_config_overrides(init_mod, tmp_path):
@@ -2102,7 +2029,20 @@ def test_noninteractive_single_repo_starter_main(monkeypatch, tmp_path, init_mod
     alfred_home = tmp_path / "alfred"
     alfred_home.mkdir()
     env_file = alfred_home / ".env"
-    env_file.write_text("GH_ORG=acme\n")
+    env_file.write_text(
+        "\n".join(
+            [
+                "GH_ORG=acme",
+                init_mod.ALFRED_ENV_BANNER,
+                "AGENT_CODENAME_FEATURE_DEV=fox",
+                "ALFRED_FOX_REPOS=palette",
+                "ALFRED_FOX_AWS_PROFILE=existing-profile",
+                "",
+            ]
+        )
+    )
+    (alfred_home / "state" / "_paused").mkdir(parents=True)
+    (alfred_home / "state" / "_paused" / "fox").write_text("operator pause\n")
     monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
     monkeypatch.delenv("GH_ORG", raising=False)
     monkeypatch.delenv("ALFRED_NONINTERACTIVE", raising=False)
@@ -2155,10 +2095,14 @@ def test_noninteractive_single_repo_starter_main(monkeypatch, tmp_path, init_mod
     assert "ALFRED_SENIOR_DEV_REPOS=palette\n" in generated_rc
     assert "ALFRED_PLANNER_REPOS=palette\n" in generated_rc
     assert "ALFRED_REVIEWER_REPOS=palette\n" in generated_rc
+    assert "ALFRED_SENIOR_DEV_AWS_PROFILE=existing-profile\n" in generated_rc
+    assert "ALFRED_FOX_AWS_PROFILE" not in generated_rc
     assert "acme/palette" in set(label_repos)
     assert (alfred_home / "prompts" / "senior-dev.md").exists()
     assert (alfred_home / "prompts" / "planner.md").exists()
     assert (alfred_home / "prompts" / "reviewer.md").exists()
+    assert (alfred_home / "state" / "_paused" / "senior-dev").exists()
+    assert not (alfred_home / "state" / "_paused" / "fox").exists()
     assert any(cmd[0] == "bash" and cmd[1].endswith("deploy.sh") for cmd in subprocesses)
     assert any(cmd[0] == "bash" and cmd[1].endswith("doctor.sh") for cmd in subprocesses)
 
@@ -2220,8 +2164,7 @@ def test_seed_runtime_roster_writes_runtime_config_without_auth(monkeypatch, tmp
     assert not (repo_root / "launchd" / "agents.conf").exists()
 
     env_text = env_file.read_text()
-    assert "AGENT_CODENAME_FEATURE_DEV=senior-dev\n" in env_text
-    assert "AGENT_CODENAME_CROSS_REPO_COORDINATOR=architect\n" in env_text
+    assert "AGENT_CODENAME_" not in env_text
     assert "ALFRED_SENIOR_DEV_REPOS" not in env_text
     assert "ALFRED_TELEMETRY_URL" not in env_text
     assert (alfred_home / "prompts" / "senior-dev.md").exists()
@@ -2253,12 +2196,68 @@ def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
                 "SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T000/B000/token",
                 "ALFRED_TELEMETRY_ENABLED=1",
                 "ALFRED_TELEMETRY_URL=https://telemetry.example/ingest",
-                "ALFRED_SENIOR_DEV_REPOS=api",
                 "ALFRED_PLANNER_REPOS=api",
+                "AGENT_CODENAME_PLANNER=planner",
                 "AGENT_CODENAME_FEATURE_DEV=fox",
+                "ALFRED_SENIOR_DEV_REPOS=stale-api",
+                "ALFRED_SENIOR_DEV_AWS_PROFILE=stale-profile",
+                "ALFRED_FOX_REPOS=legacy-api",
+                "ALFRED_FOX_AWS_PROFILE=legacy-profile",
                 "",
             ]
         )
+    )
+    (alfred_home / "prompts").mkdir()
+    (alfred_home / "prompts" / "fox.md").write_text("custom senior prompt\n")
+    (alfred_home / "prompts" / "senior-dev.md").write_text("partial canonical prompt\n")
+    (alfred_home / "agents").mkdir()
+    (alfred_home / "agents" / "fox.toml").write_text('[pre_push]\napi = "old-check"\n')
+    (alfred_home / "agents" / "senior-dev.toml").write_text('[pre_push]\napi = "partial-check"\n')
+    (alfred_home / "state" / "_paused").mkdir(parents=True)
+    (alfred_home / "state" / "_paused" / "fox").write_text("operator pause\n")
+    (alfred_home / "state" / "engines").mkdir()
+    (alfred_home / "state" / "engines" / "fox").write_text("codex\n")
+    (alfred_home / "state" / "fox").mkdir()
+    (alfred_home / "state" / "fox" / "spend-2026-07-12.json").write_text(
+        '{"firings_today":3,"fixes_landed":2,"merged_today":1,"hits_today":4,'
+        '"prs_opened_today":2,"triaged_today":3,"last_session_id_per_target":'
+        '{"shared":"legacy-session","legacy-only":"legacy-session"}}\n'
+    )
+    (alfred_home / "state" / "fox" / "checkpoint.json").write_text(
+        '{"cursor":"old","old_only":1}\n'
+    )
+    (alfred_home / "state" / "senior-dev").mkdir()
+    (alfred_home / "state" / "senior-dev" / "spend-2026-07-12.json").write_text(
+        '{"firings_today":2,"fixes_landed":1,"merged_today":2,"hits_today":3,'
+        '"prs_opened_today":4,"triaged_today":5,"last_session_id_per_target":'
+        '{"shared":"canonical-session","canonical-only":"canonical-session"}}\n'
+    )
+    (alfred_home / "state" / "senior-dev" / "checkpoint.json").write_text(
+        '{"cursor":"new","new_only":2}\n'
+    )
+    (alfred_home / "state" / "transcripts" / "fox").mkdir(parents=True)
+    (alfred_home / "state" / "transcripts" / "fox" / "run.jsonl").write_text('{"source":"old"}\n')
+    (alfred_home / "state" / "transcripts" / "senior-dev").mkdir()
+    (alfred_home / "state" / "transcripts" / "senior-dev" / "run.jsonl").write_text(
+        '{"source":"canonical"}\n'
+    )
+    (alfred_home / "state" / "codex" / "fox").mkdir(parents=True)
+    (alfred_home / "state" / "codex" / "fox" / "run.jsonl").write_text("{}\n")
+    (alfred_home / "state" / "memory-outbox").mkdir()
+    (alfred_home / "state" / "memory-outbox" / "fox.jsonl").write_text('{"lesson":"old"}\n')
+    (alfred_home / "state" / "roster-theme").mkdir()
+    (alfred_home / "state" / "roster-theme" / "roster-theme.json").write_text(
+        json.dumps(
+            {
+                "theme": "custom",
+                "custom_names": {"fox": "Maya", "senior-dev": "Canonical"},
+                "custom_roles": {"fox": "Builder"},
+            }
+        )
+    )
+    (alfred_home / "state" / "fleet").mkdir()
+    (alfred_home / "state" / "fleet" / "enabled.txt").write_text(
+        "# enabled roles\nfox # custom alias\narchitect\n"
     )
     monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
     monkeypatch.delenv("ALFRED_NONINTERACTIVE", raising=False)
@@ -2293,17 +2292,84 @@ def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
     assert "SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T000/B000/token\n" in env_text
     assert "ALFRED_TELEMETRY_ENABLED=1\n" in env_text
     assert "ALFRED_TELEMETRY_URL=https://telemetry.example/ingest\n" in env_text
-    assert "ALFRED_SENIOR_DEV_REPOS=api\n" in env_text
+    assert "ALFRED_SENIOR_DEV_REPOS=legacy-api\n" in env_text
+    assert "ALFRED_SENIOR_DEV_AWS_PROFILE=legacy-profile\n" in env_text
     assert "ALFRED_PLANNER_REPOS=api\n" in env_text
-    assert "AGENT_CODENAME_FEATURE_DEV=fox\n" in env_text
-    assert "AGENT_CODENAME_CROSS_REPO_COORDINATOR=architect\n" in env_text
+    assert "AGENT_CODENAME_" not in env_text
+    assert "ALFRED_FOX_REPOS" not in env_text
+    assert "ALFRED_FOX_AWS_PROFILE" not in env_text
 
     conf = (alfred_home / "launchd" / "agents.conf").read_text()
-    assert "alfred.fox\tsenior-dev.py" in conf
-    assert "alfred.senior-dev\tsenior-dev.py" not in conf
+    assert "alfred.senior-dev\tsenior-dev.py" in conf
+    assert "alfred.fox\t" not in conf
     assert "alfred.proof-telemetry\tproof-telemetry.py" in conf
-    assert (alfred_home / "prompts" / "fox.md").exists()
-    assert not (alfred_home / "prompts" / "senior-dev.md").exists()
+    assert (alfred_home / "prompts" / "senior-dev.md").exists()
+    assert (alfred_home / "prompts" / "senior-dev.md").read_text() == "custom senior prompt\n"
+    assert (
+        alfred_home / "prompts" / "senior-dev.md.pre-stable-identity"
+    ).read_text() == "partial canonical prompt\n"
+    assert not (alfred_home / "prompts" / "fox.md").exists()
+    assert (alfred_home / "agents" / "senior-dev.toml").read_text() == (
+        '[pre_push]\napi = "old-check"\n'
+    )
+    assert (
+        alfred_home / "agents" / "senior-dev.toml.pre-stable-identity"
+    ).read_text() == '[pre_push]\napi = "partial-check"\n'
+    assert not (alfred_home / "agents" / "fox.toml").exists()
+    assert (alfred_home / "state" / "_paused" / "senior-dev").exists()
+    assert not (alfred_home / "state" / "_paused" / "fox").exists()
+    assert (alfred_home / "state" / "engines" / "senior-dev").read_text() == "codex\n"
+    assert not (alfred_home / "state" / "engines" / "fox").exists()
+    spend = json.loads((alfred_home / "state" / "senior-dev" / "spend-2026-07-12.json").read_text())
+    assert spend["firings_today"] == 5
+    assert spend["fixes_landed"] == 3
+    assert spend["merged_today"] == 3
+    assert spend["hits_today"] == 7
+    assert spend["prs_opened_today"] == 6
+    assert spend["triaged_today"] == 8
+    assert spend["last_session_id_per_target"] == {
+        "shared": "canonical-session",
+        "legacy-only": "legacy-session",
+        "canonical-only": "canonical-session",
+    }
+    checkpoint = json.loads((alfred_home / "state" / "senior-dev" / "checkpoint.json").read_text())
+    assert checkpoint == {"cursor": "new", "new_only": 2, "old_only": 1}
+    assert not (alfred_home / "state" / "fox").exists()
+    transcript = (alfred_home / "state" / "transcripts" / "senior-dev" / "run.jsonl").read_text()
+    assert '{"source":"canonical"}\n' in transcript
+    preserved_transcript = (
+        alfred_home / "state" / "transcripts" / "senior-dev" / "run.pre-stable-identity.jsonl"
+    )
+    assert preserved_transcript.read_text() == '{"source":"old"}\n'
+    assert not (alfred_home / "state" / "transcripts" / "fox").exists()
+    assert (alfred_home / "state" / "codex" / "senior-dev" / "run.jsonl").exists()
+    assert not (alfred_home / "state" / "codex" / "fox").exists()
+    assert (alfred_home / "state" / "memory-outbox" / "senior-dev.jsonl").read_text() == (
+        '{"lesson":"old"}\n'
+    )
+    roster = json.loads((alfred_home / "state" / "roster-theme" / "roster-theme.json").read_text())
+    assert roster["custom_names"] == {"senior-dev": "Canonical"}
+    assert roster["custom_roles"] == {"senior-dev": "Builder"}
+    enabled = (alfred_home / "state" / "fleet" / "enabled.txt").read_text()
+    assert "\nsenior-dev\n" in enabled
+    assert "\nfox\n" not in enabled
+
+
+def test_generated_env_cannot_clear_newly_migrated_scope(init_mod):
+    merged = init_mod._merge_generated_env(
+        {
+            "ALFRED_SENIOR_DEV_REPOS": "legacy-api",
+            "ALFRED_SENIOR_DEV_AWS_PROFILE": "legacy-profile",
+        },
+        {
+            "ALFRED_SENIOR_DEV_REPOS": "",
+            "ALFRED_SENIOR_DEV_AWS_PROFILE": "new-profile",
+        },
+        frozenset({"ALFRED_SENIOR_DEV_REPOS", "ALFRED_SENIOR_DEV_AWS_PROFILE"}),
+    )
+
+    assert merged["ALFRED_SENIOR_DEV_REPOS"] == "legacy-api"
+    assert merged["ALFRED_SENIOR_DEV_AWS_PROFILE"] == "new-profile"
 
 
 def test_starter_roles_and_agents_arg(init_mod):
@@ -2348,6 +2414,79 @@ def test_starter_roles_and_agents_arg(init_mod):
     ]
 
 
+def test_identity_migration_does_not_move_shared_state_namespace(init_mod, tmp_path):
+    alfred_home = tmp_path / "alfred"
+    shared = alfred_home / "state" / "transcripts"
+    shared.mkdir(parents=True)
+    (shared / "shared-index.json").write_text("{}\n")
+    state = init_mod.WizardState(
+        alfred_home=alfred_home,
+        env_file=alfred_home / ".env",
+        repo_root=tmp_path / "repo",
+    )
+
+    init_mod.migrate_legacy_role_identities(
+        state,
+        {"feature_dev": "transcripts"},
+        {},
+    )
+
+    assert (shared / "shared-index.json").exists()
+    assert not (alfred_home / "state" / "senior-dev" / "shared-index.json").exists()
+
+
+def test_identity_migration_moves_recovery_worktree_with_git(init_mod, tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "commit.gpgsign", "false"], cwd=repo, check=True)
+    (repo / "README.md").write_text("base\n")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "-c", "core.hooksPath=/dev/null", "commit", "-m", "base"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+
+    alfred_home = tmp_path / "alfred"
+    old_worktree = alfred_home / "worktrees" / "eng-fox-repo-42-1"
+    old_worktree.parent.mkdir(parents=True)
+    subprocess.run(
+        ["git", "worktree", "add", "-b", "fox/42", str(old_worktree)],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    (old_worktree / "recovery.txt").write_text("uncommitted recovery\n")
+    state = init_mod.WizardState(
+        alfred_home=alfred_home,
+        env_file=alfred_home / ".env",
+        repo_root=tmp_path / "alfred-repo",
+    )
+
+    init_mod.migrate_legacy_role_identities(state, {"feature_dev": "fox"}, {})
+
+    moved = alfred_home / "worktrees" / "eng-senior-dev-repo-42-1"
+    assert moved.is_dir()
+    assert (moved / "recovery.txt").read_text() == "uncommitted recovery\n"
+    assert not old_worktree.exists()
+    listed = subprocess.run(
+        ["git", "worktree", "list", "--porcelain"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert str(moved) in listed
+
+
 def test_seed_prompt_templates_does_not_overwrite(init_mod, tmp_path):
     repo_root = tmp_path / "repo"
     (repo_root / "prompts").mkdir(parents=True)
@@ -2386,25 +2525,21 @@ def test_seed_prompt_templates_copies_shared_compose_prompt(init_mod, tmp_path):
     assert prompt.read_text() == "custom compose prompt\n"
 
 
-def test_write_fleet_enable_state_uses_configured_runtime_ids(init_mod, tmp_path):
+def test_write_fleet_enable_state_uses_immutable_role_ids(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
         env_file=tmp_path / ".env",
         repo_root=tmp_path / "repo",
     )
     state.enabled_roles = ["cross_repo_coordinator", "spec_planner"]
-    state.role_to_codename = {
-        "cross_repo_coordinator": "batman",
-        "spec_planner": "damian",
-    }
     gate_path = tmp_path / "alfred" / "state" / "fleet" / "enabled.txt"
     gate_path.parent.mkdir(parents=True)
     gate_path.write_text("release-captain\n")
     written = init_mod.write_fleet_enable_state(state)
-    assert written == ["batman", "damian"]
+    assert written == ["architect", "spec-planner"]
     gate = gate_path.read_text()
-    assert "batman" in gate
-    assert "damian" in gate
+    assert "architect" in gate
+    assert "spec-planner" in gate
     assert "release-captain" in gate
 
 

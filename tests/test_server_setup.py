@@ -1037,7 +1037,7 @@ def test_generated_runtime_scope_preserves_process_only_custom_repo_scope(
     assert env["ALFRED_EXPERIMENTAL_REPOS"] == "external/only"
 
 
-def test_generated_runtime_scope_scrubs_custom_codename_repo_scope(
+def test_generated_runtime_scope_ignores_removed_role_identity_alias(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1060,7 +1060,8 @@ def test_generated_runtime_scope_scrubs_custom_codename_repo_scope(
 
     env = setup_mod._runtime_config_env()
 
-    assert "ALFRED_SHERLOCK_REPOS" not in env
+    assert "AGENT_CODENAME_FEATURE_DEV" not in env
+    assert env["ALFRED_SHERLOCK_REPOS"] == "old/repo"
 
 
 def test_selected_repos_honors_empty_runtime_board_scope(

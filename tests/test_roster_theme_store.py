@@ -303,32 +303,21 @@ def test_themed_name_for_unknown_codename_is_none() -> None:
         assert state.themed_name_for("release-captain") is None
 
 
-def test_legacy_codename_reskinned_by_role() -> None:
-    # A machine installed before the role-slug rename has Batman-cast codenames
-    # (``lucius``) in agents.conf. Those are not canonical slugs, so the
-    # per-codename maps miss them, but the theme layer must still re-skin them by
-    # ROLE so Slack matches the desktop.
-    jl = RosterThemeState(theme="justice-league", custom_names={}, custom_roles={})
-    assert jl.themed_name_for("lucius") == "Superman"
-    assert jl.themed_role_label_for("lucius") == "Senior developer"
-
-    sci = RosterThemeState(theme="scientists", custom_names={}, custom_roles={})
-    assert sci.themed_name_for("rasalghul") == "Curie"
-
-    # The default theme keeps the legacy agent's base persona rather than the raw
-    # slug.
-    default_state = RosterThemeState(theme="batman", custom_names={}, custom_roles={})
-    assert default_state.themed_name_for("lucius") == "Lucius"
-
-
-def test_role_for_codename_maps_slugs_and_legacy_names() -> None:
+def test_role_for_codename_maps_only_immutable_builtin_ids() -> None:
     from roster_theme_store import role_for_codename
 
     assert role_for_codename("senior-dev") == "senior-dev"
-    assert role_for_codename("lucius") == "senior-dev"
-    assert role_for_codename("Ra's al Ghul".replace(" ", "").replace("'", "").lower()) == "reviewer"
     assert role_for_codename("fleet.local.architect") == "architect"
+    assert role_for_codename("lucius") is None
+    assert role_for_codename("rasalghul") is None
     assert role_for_codename("totally-unknown") is None
+
+
+def test_themed_names_do_not_alias_runtime_ids() -> None:
+    for theme in ("batman", "justice-league", "scientists", "custom"):
+        state = RosterThemeState(theme=theme, custom_names={}, custom_roles={})
+        assert state.themed_name_for("lucius") is None
+        assert state.themed_role_label_for("lucius") is None
 
 
 def test_new_builtin_themes_present_and_unique() -> None:
@@ -348,34 +337,3 @@ def test_new_builtin_themes_reskin_on_slack() -> None:
     state = RosterThemeState(theme="mathematicians", custom_names={}, custom_roles={})
     assert state.themed_name_for("architect") == "Gauss"
     assert state.themed_name_for("senior-dev") == "Euler"
-
-
-def test_legacy_same_role_codenames_stay_distinct() -> None:
-    # Two legacy Batman-cast codenames that share a role (both ``ops``) must each
-    # resolve to their OWN themed persona, never both collapse onto the role
-    # pool's first name. ``Fleet doctor`` and ``Agent cleanup`` are distinct ops
-    # agents in the manifest.
-    jl = RosterThemeState(theme="justice-league", custom_names={}, custom_roles={})
-    fleet_doctor = jl.themed_name_for("fleetdoctor")
-    agent_cleanup = jl.themed_name_for("agentcleanup")
-    assert fleet_doctor == "Doctor Fate"
-    assert agent_cleanup == "Atom"
-    assert fleet_doctor != agent_cleanup
-
-    # Same guarantee under the default theme (each keeps its own base persona).
-    batman = RosterThemeState(theme="batman", custom_names={}, custom_roles={})
-    assert batman.themed_name_for("fleetdoctor") == "Fleet doctor"
-    assert batman.themed_name_for("agentcleanup") == "Agent cleanup"
-    assert batman.themed_name_for("fleetdoctor") != batman.themed_name_for("agentcleanup")
-
-
-def test_default_theme_pairs_legacy_name_with_role_label() -> None:
-    # Under the default Batman theme a known legacy codename returns a themed
-    # name, so its role label must resolve too (via the derived role) rather than
-    # leaving the agent with a name and no role on Slack.
-    batman = RosterThemeState(theme="batman", custom_names={}, custom_roles={})
-    assert batman.themed_name_for("lucius") == "Lucius"
-    assert batman.themed_role_label_for("lucius") == "Senior developer"
-    # An unknown codename still returns ``None`` so the caller keeps the shipped
-    # env-role fallback.
-    assert batman.themed_role_label_for("release-captain") is None

@@ -197,9 +197,7 @@ def build_prompt() -> str:
             PROMPT_PATH,
             extra_vars={
                 "AGENT_CODENAME": AGENT.title(),
-                "FEATURE_DEV_CODENAME": os.environ.get(
-                    "AGENT_CODENAME_FEATURE_DEV", "senior-dev"
-                ).title(),
+                "FEATURE_DEV_CODENAME": "Senior-Dev",
                 "GH_ORG": GH_ORG,
                 "ALFRED_HOME": str(ALFRED_HOME),
                 "PLANNER_REPOS": ",".join(PLANNER_REPOS),

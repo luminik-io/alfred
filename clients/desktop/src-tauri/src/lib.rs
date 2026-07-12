@@ -16,6 +16,30 @@ use tauri::path::BaseDirectory;
 use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::{AppHandle, Emitter, Manager};
 
+const BUILT_IN_RUNTIME_IDS: &[&str] = &[
+    "senior-dev",
+    "planner",
+    "test-engineer",
+    "reviewer",
+    "fixer",
+    "triage",
+    "architect",
+    "spec-planner",
+    "e2e-runner",
+    "ops-watch",
+    "automerge",
+    "agent-cleanup",
+    "memory-harvest",
+    "memory-auto-promote",
+    "code-map-refresh",
+    "agent-morning-brief",
+    "fleet-doctor",
+    "fleet-recap-morning",
+    "fleet-recap-evening",
+    "shipped-summary-daily",
+    "shipped-summary-weekly",
+];
+
 #[derive(Serialize)]
 struct NativeCommandResult {
     command: Vec<String>,
@@ -437,7 +461,9 @@ fn config_value(key: &str) -> Option<String> {
 }
 
 fn merged_alfred_env() -> HashMap<String, String> {
-    let mut env: HashMap<String, String> = std::env::vars().collect();
+    let mut env: HashMap<String, String> = std::env::vars()
+        .filter(|(key, _)| !key.starts_with("AGENT_CODENAME_"))
+        .collect();
     env.remove("ALFREDRC");
     if env
         .get("ALFRED_HOME")
@@ -501,8 +527,10 @@ fn setup_managed_runtime_env_keys(runtime_env_path: &Path) -> HashSet<String> {
         "ALFRED_SHIPPED_SUMMARY_DAILY_REPOS".to_string(),
         "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS".to_string(),
         "ALFRED_E2E_RUNNER_TARGET_URL".to_string(),
+        "ALFRED_E2E_RUNNER_AWS_PROFILE".to_string(),
         "ALFRED_OPS_WATCH_ECS_CLUSTER".to_string(),
         "ALFRED_OPS_WATCH_SENTRY_ORG".to_string(),
+        "ALFRED_OPS_WATCH_AWS_PROFILE".to_string(),
     ]);
     keys
 }
@@ -528,7 +556,7 @@ fn managed_runtime_env_keys(path: &Path) -> HashSet<String> {
         if let Some(rest) = line.strip_prefix("export ") {
             line = rest.trim();
         }
-        let Some((name, value)) = line.split_once('=') else {
+        let Some((name, _value)) = line.split_once('=') else {
             break;
         };
         let key = name.trim();
@@ -537,16 +565,6 @@ fn managed_runtime_env_keys(path: &Path) -> HashSet<String> {
         }
         if setup_managed_runtime_static_key(key) {
             keys.insert(key.to_string());
-        }
-        if key.starts_with("AGENT_CODENAME_") {
-            let codename = decode_config_value(strip_inline_comment(value).trim(), None)
-                .trim()
-                .to_string();
-            if valid_runtime_codename(&codename) {
-                let slug = codename.to_ascii_uppercase().replace('-', "_");
-                keys.insert(format!("ALFRED_{slug}_REPOS"));
-                keys.insert(format!("ALFRED_{slug}_AWS_PROFILE"));
-            }
         }
     }
     keys
@@ -580,19 +598,24 @@ fn setup_managed_runtime_static_key(key: &str) -> bool {
             | "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS"
             | "ALFRED_MORNING_BRIEF_AGENTS"
             | "ALFRED_E2E_RUNNER_TARGET_URL"
+            | "ALFRED_E2E_RUNNER_AWS_PROFILE"
             | "ALFRED_OPS_WATCH_ECS_CLUSTER"
             | "ALFRED_OPS_WATCH_SENTRY_ORG"
-    ) || key.starts_with("AGENT_CODENAME_")
-        || key.starts_with("ALFRED_TELEMETRY_")
+            | "ALFRED_OPS_WATCH_AWS_PROFILE"
+    ) || key.starts_with("ALFRED_TELEMETRY_")
+        || built_in_role_aws_profile_key(key)
 }
 
-fn valid_runtime_codename(value: &str) -> bool {
-    let mut chars = value.chars();
-    let Some(first) = chars.next() else {
+fn built_in_role_aws_profile_key(key: &str) -> bool {
+    let Some(slug) = key
+        .strip_prefix("ALFRED_")
+        .and_then(|value| value.strip_suffix("_AWS_PROFILE"))
+    else {
         return false;
     };
-    first.is_ascii_lowercase()
-        && chars.all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
+    BUILT_IN_RUNTIME_IDS
+        .iter()
+        .any(|runtime_id| runtime_id.to_ascii_uppercase().replace('-', "_") == slug)
 }
 
 fn load_config_file(
@@ -620,6 +643,9 @@ fn load_config_file(
         };
         let key = name.trim();
         if !is_valid_env_key(key) {
+            continue;
+        }
+        if key.starts_with("AGENT_CODENAME_") {
             continue;
         }
         let clean = decode_config_value(strip_inline_comment(value), home)
@@ -3942,8 +3968,10 @@ done"#;
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
         let prev_architect_parent = std::env::var("ARCHITECT_PARENT_REPO").ok();
         let prev_e2e_target = std::env::var("ALFRED_E2E_RUNNER_TARGET_URL").ok();
+        let prev_e2e_aws = std::env::var("ALFRED_E2E_RUNNER_AWS_PROFILE").ok();
         let prev_ops_cluster = std::env::var("ALFRED_OPS_WATCH_ECS_CLUSTER").ok();
         let prev_ops_sentry = std::env::var("ALFRED_OPS_WATCH_SENTRY_ORG").ok();
+        let prev_ops_aws = std::env::var("ALFRED_OPS_WATCH_AWS_PROFILE").ok();
 
         let root = temp_root("alfred-runtime-env-special-prompts");
         let home = root.join("home");
@@ -3955,8 +3983,10 @@ done"#;
             "# alfred-init, generated below this line. Safe to re-run.\n\
              ARCHITECT_PARENT_REPO=org/plans\n\
              ALFRED_E2E_RUNNER_TARGET_URL=https://new.example.test\n\
+             ALFRED_E2E_RUNNER_AWS_PROFILE=new-e2e-profile\n\
              ALFRED_OPS_WATCH_ECS_CLUSTER=new-cluster\n\
-             ALFRED_OPS_WATCH_SENTRY_ORG=new-org\n",
+             ALFRED_OPS_WATCH_SENTRY_ORG=new-org\n\
+             ALFRED_OPS_WATCH_AWS_PROFILE=new-ops-profile\n",
         )
         .expect("write runtime env");
 
@@ -3964,8 +3994,10 @@ done"#;
         std::env::set_var("ALFRED_HOME", &runtime);
         std::env::set_var("ARCHITECT_PARENT_REPO", "org/stale-plans");
         std::env::set_var("ALFRED_E2E_RUNNER_TARGET_URL", "https://old.example.test");
+        std::env::set_var("ALFRED_E2E_RUNNER_AWS_PROFILE", "old-e2e-profile");
         std::env::set_var("ALFRED_OPS_WATCH_ECS_CLUSTER", "old-cluster");
         std::env::set_var("ALFRED_OPS_WATCH_SENTRY_ORG", "old-org");
+        std::env::set_var("ALFRED_OPS_WATCH_AWS_PROFILE", "old-ops-profile");
 
         let env = merged_alfred_env();
         assert_eq!(
@@ -3977,6 +4009,10 @@ done"#;
             Some(&"https://new.example.test".to_string())
         );
         assert_eq!(
+            env.get("ALFRED_E2E_RUNNER_AWS_PROFILE"),
+            Some(&"new-e2e-profile".to_string())
+        );
+        assert_eq!(
             env.get("ALFRED_OPS_WATCH_ECS_CLUSTER"),
             Some(&"new-cluster".to_string())
         );
@@ -3984,18 +4020,59 @@ done"#;
             env.get("ALFRED_OPS_WATCH_SENTRY_ORG"),
             Some(&"new-org".to_string())
         );
+        assert_eq!(
+            env.get("ALFRED_OPS_WATCH_AWS_PROFILE"),
+            Some(&"new-ops-profile".to_string())
+        );
 
         let _ = std::fs::remove_dir_all(&root);
         restore_var("HOME", prev_home);
         restore_var("ALFRED_HOME", prev_alfred);
         restore_var("ARCHITECT_PARENT_REPO", prev_architect_parent);
         restore_var("ALFRED_E2E_RUNNER_TARGET_URL", prev_e2e_target);
+        restore_var("ALFRED_E2E_RUNNER_AWS_PROFILE", prev_e2e_aws);
         restore_var("ALFRED_OPS_WATCH_ECS_CLUSTER", prev_ops_cluster);
         restore_var("ALFRED_OPS_WATCH_SENTRY_ORG", prev_ops_sentry);
+        restore_var("ALFRED_OPS_WATCH_AWS_PROFILE", prev_ops_aws);
     }
 
     #[test]
-    fn native_subprocess_env_scrubs_custom_codename_scope_from_managed_block() {
+    fn native_subprocess_env_reloads_canonical_role_profile_from_managed_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_profile = std::env::var("ALFRED_SENIOR_DEV_AWS_PROFILE").ok();
+
+        let root = temp_root("alfred-canonical-role-profile");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(
+            runtime.join(".env"),
+            "# alfred-init, generated below this line. Safe to re-run.\n\
+             ALFRED_SENIOR_DEV_AWS_PROFILE=managed-profile\n",
+        )
+        .expect("write runtime env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::set_var("ALFRED_SENIOR_DEV_AWS_PROFILE", "stale-profile");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("ALFRED_SENIOR_DEV_AWS_PROFILE"),
+            Some(&"managed-profile".to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_SENIOR_DEV_AWS_PROFILE", prev_profile);
+    }
+
+    #[test]
+    fn native_subprocess_env_ignores_removed_role_identity_alias() {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_home = std::env::var("HOME").ok();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
@@ -4024,17 +4101,14 @@ done"#;
         std::env::set_var("ALFRED_ORACLE_AWS_PROFILE", "stale-profile");
 
         let env = merged_alfred_env();
-        assert_eq!(
-            env.get("AGENT_CODENAME_FEATURE_DEV"),
-            Some(&"oracle".to_string())
-        );
+        assert!(!env.contains_key("AGENT_CODENAME_FEATURE_DEV"));
         assert_eq!(
             env.get("ALFRED_ORACLE_REPOS"),
-            Some(&"org/runtime".to_string())
+            Some(&"org/stale".to_string())
         );
         assert_eq!(
             env.get("ALFRED_ORACLE_AWS_PROFILE"),
-            Some(&"runtime-profile".to_string())
+            Some(&"stale-profile".to_string())
         );
 
         let _ = std::fs::remove_dir_all(&root);
@@ -4076,7 +4150,7 @@ done"#;
     }
 
     #[test]
-    fn native_subprocess_env_does_not_scrub_appended_token_after_managed_block() {
+    fn native_subprocess_env_does_not_infer_scope_from_removed_role_alias() {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_home = std::env::var("HOME").ok();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
@@ -4103,9 +4177,10 @@ done"#;
         std::env::set_var("CLAUDE_CODE_OAUTH_TOKEN", "process-token");
 
         let env = merged_alfred_env();
+        assert!(!env.contains_key("AGENT_CODENAME_FEATURE_DEV"));
         assert_eq!(
             env.get("ALFRED_ORACLE_REPOS"),
-            Some(&"org/runtime".to_string())
+            Some(&"org/stale".to_string())
         );
         assert_eq!(
             env.get("CLAUDE_CODE_OAUTH_TOKEN"),

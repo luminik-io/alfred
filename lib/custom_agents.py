@@ -80,18 +80,6 @@ RESERVED_CODENAMES = frozenset(
         "spec-planner",
         "test-engineer",
         "triage",
-        # Legacy Batman-cast codenames, kept reserved so a custom agent can
-        # never collide with an operator still using the old identity.
-        "bane",
-        "batman",
-        "damian",
-        "drake",
-        "gordon",
-        "huntress",
-        "lucius",
-        "nightwing",
-        "rasalghul",
-        "robin",
         # Ops / cron runners (slug unchanged).
         "agent-cleanup",
         "agent-morning-brief",

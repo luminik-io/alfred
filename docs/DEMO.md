@@ -113,5 +113,5 @@ only).
 The demo is a taste of one run on a toy repo. The real fleet runs unattended
 against your own repos, opens real pull requests on GitHub, and holds work at
 the approval rules you configure. Start with [`../INSTALL.md`](../INSTALL.md),
-then use Alfred Desktop or `alfred-init` to choose repos, team names, schedule,
-and Slack.
+then use Alfred Desktop to choose repos, roster names, and schedule, or use
+`alfred-init` to configure agents, repos, schedule, and Slack.

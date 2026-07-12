@@ -23,6 +23,7 @@ if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
 import slack_surface.intent as si  # noqa: E402
+from custom_agents import CustomAgentStore  # noqa: E402
 from roster_theme_store import RosterThemeStore  # noqa: E402
 from slack_surface.intent import (  # noqa: E402
     ACTION_ASSIGN,
@@ -515,6 +516,22 @@ def test_resolve_agent_codename_uses_current_theme_names(
     assert resolve_agent_codename("pause Lucius") == ""
     assert resolve_agent_codename("dry-run Huntress") == ""
     assert resolve_agent_codename("dry-run Lucius", model_agent="lucius") == ""
+
+
+def test_exact_custom_agent_id_wins_over_active_theme_alias(monkeypatch, tmp_path: Path) -> None:
+    _save_roster_theme(monkeypatch, tmp_path, theme="batman")
+    CustomAgentStore.from_state_root(tmp_path / "state").upsert(
+        {
+            "codename": "lucius",
+            "display_name": "Lucius custom",
+            "role_title": "Custom operator",
+            "purpose": "Exercise exact runtime ID routing.",
+            "prompt": "Inspect the configured repositories.",
+        }
+    )
+
+    assert resolve_agent_codename("pause Lucius") == "lucius"
+    assert resolve_agent_codename("dry-run anything", model_agent="lucius") == "lucius"
 
 
 def test_resolve_agent_codename_uses_manifest_only_theme_names(

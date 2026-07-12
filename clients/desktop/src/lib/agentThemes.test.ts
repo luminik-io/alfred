@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   deriveAgentRole,
+  isKnownFleetCodename,
   scheduleRoleLabelForEditor,
   type WorkflowRole,
 } from "./agentRoster";
@@ -152,39 +153,31 @@ describe("resolveThemedIdentity", () => {
   });
 });
 
-describe("legacy-install role resolution", () => {
-  // A machine installed before the role-slug rename has Batman-cast codenames in
-  // agents.conf (``lucius``, ``robin``, ``rasalghul``, ...). The theme layer must
-  // re-skin them by ROLE, not fall through to the raw titleized codename.
-  it("re-skins a legacy Batman-cast codename under a preset", () => {
-    const superman = resolveThemedIdentity({ codename: "lucius" }, "justice-league");
-    expect(superman.role).toBe("senior-dev");
-    expect(superman.name).toBe("Superman");
-
-    const optimus = resolveThemedIdentity({ codename: "batman" }, "transformers");
-    expect(optimus.role).toBe("architect");
-    expect(optimus.name).toBe("Optimus Prime");
-
-    const curie = resolveThemedIdentity({ codename: "rasalghul" }, "scientists");
-    expect(curie.role).toBe("reviewer");
-    expect(curie.name).toBe("Curie");
+describe("stable runtime identities", () => {
+  it("does not treat themed display names as built-in runtime ids", () => {
+    expect(isKnownFleetCodename("lucius")).toBe(false);
+    expect(isKnownFleetCodename("batman")).toBe(false);
+    expect(isKnownFleetCodename("rasalghul")).toBe(false);
+    expect(deriveAgentRole({ codename: "lucius" })).toBe("ops");
   });
 
-  it("keeps a legacy codename's base persona under the default theme", () => {
-    const id = resolveThemedIdentity({ codename: "lucius" }, "batman");
-    expect(id.name).toBe("Lucius");
-    expect(id.roleLabel).toBe("Senior developer");
+  it("uses explicit metadata to place a custom runtime agent", () => {
+    const identity = resolveThemedIdentity(
+      { codename: "release-captain", roleTitle: "Release coordinator" },
+      "justice-league",
+    );
+    expect(identity.role).toBe("ship");
   });
 });
 
 describe("buildThemedRoster", () => {
   it("gives every agent a distinct name when several share a role", () => {
-    // Two legacy triage agents + two legacy planner agents: naive role naming
+    // Two custom triage agents + two custom planner agents: naive role naming
     // would collide (two "The Flash", two "Green Arrow"). The roster pass must
     // hand out distinct names.
     const roster = buildThemedRoster(
       [
-        { codename: "robin", roleTitle: "Triage lead" },
+        { codename: "triage-one", roleTitle: "Bug triage" },
         { codename: "gordon-triage", roleTitle: "Bug triage" },
         { codename: "drake", roleTitle: "Issue planner" },
         { codename: "planner-two", roleTitle: "Release planner" },
@@ -195,7 +188,7 @@ describe("buildThemedRoster", () => {
     expect(new Set(names).size).toBe(names.length);
     // The first triage agent (sorted by codename) takes the role's primary name.
     expect(roster.get("gordon-triage")?.role).toBe("triage");
-    expect(roster.get("robin")?.role).toBe("triage");
+    expect(roster.get("triage-one")?.role).toBe("triage");
   });
 
   it("never repeats a display name across the full default fleet in any theme", () => {
