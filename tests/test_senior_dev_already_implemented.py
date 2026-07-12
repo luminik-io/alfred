@@ -11,7 +11,10 @@ def _load_senior_dev(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred-home"))
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspace"))
     monkeypatch.setenv("ALFRED_SENIOR_DEV_REPOS", "")
+    lib_dir = str(ROOT / "lib")
     bin_dir = str(ROOT / "bin")
+    if lib_dir not in sys.path:
+        sys.path.insert(0, lib_dir)
     if bin_dir not in sys.path:
         sys.path.insert(0, bin_dir)
     spec = importlib.util.spec_from_file_location(
@@ -20,6 +23,7 @@ def _load_senior_dev(monkeypatch, tmp_path: Path):
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    assert Path(sys.modules["labels"].__file__).resolve().is_relative_to(ROOT / "lib")
     return module
 
 
