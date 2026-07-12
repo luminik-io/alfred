@@ -115,7 +115,9 @@ describe("BatteryPickerStep", () => {
       enabled: true,
       env_path: "/home/.alfred/.env",
       keys: ["ALFRED_MEMORY_SQLITE_DENSE"],
-      manifest: manifest([battery({ enabled: true, installed: true, status: "enabled" })]),
+      manifest: manifest([
+        battery({ configured: true, enabled: true, installed: true, status: "enabled" }),
+      ]),
     });
     const onRunLocalAction = vi.fn(async () => ({
       command: ["alfred", "batteries", "enable", "dense-embeddings", "--yes"],
@@ -215,5 +217,6 @@ describe("BatteryPickerStep", () => {
 
     await waitFor(() => expect(screen.getByText(/needs Redis/i)).toBeInTheDocument());
     expect(screen.getByText(/needs install/i)).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: /disable redis agent memory server/i })).toBeChecked();
   });
 });

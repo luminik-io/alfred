@@ -190,7 +190,7 @@ export function BatteryPickerStep({
                 key={battery.id}
                 className={cn(
                   "grid grid-cols-[1fr_auto] items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors",
-                  battery.enabled
+                  battery.configured
                     ? "border-primary/25 bg-primary/5"
                     : "border-border/70 bg-background/55",
                 )}
@@ -218,10 +218,10 @@ export function BatteryPickerStep({
                   </span>
                 </div>
                 <Switch
-                  checked={battery.enabled}
+                  checked={battery.configured}
                   disabled={!canMutate || busy || (canRun && !connected)}
                   onCheckedChange={(next) => void toggle(battery, next)}
-                  aria-label={`${battery.enabled ? "Disable" : "Enable"} ${battery.name}`}
+                  aria-label={`${battery.configured ? "Disable" : "Enable"} ${battery.name}`}
                 />
               </div>
             );

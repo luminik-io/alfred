@@ -967,7 +967,7 @@ def _code_graph_capability(
         and bool(code_binary.get("resolved"))
         and bool(code_memory.get("index_present"))
     )
-    if graphify and bool(graphify.get("enabled")):
+    if graphify and bool(graphify.get("configured")):
         installed = bool(graphify.get("installed"))
         graph_present = bool(graphify.get("graph_present"))
         if code_ready and not (installed and graph_present):
@@ -986,7 +986,7 @@ def _code_graph_capability(
                 if installed and graph_present
                 else ("needs_index" if installed else "installable")
             )
-    if graphify and bool(graphify.get("enabled")):
+    if graphify and bool(graphify.get("configured")):
         capability = _capability_base(
             "code_graph",
             title="Code graph memory",
