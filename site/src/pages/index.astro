@@ -214,6 +214,21 @@ const heroRuntimeLines = [
     </div>
   </section>
 
+  <section class="m-section" id="tour">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="THE TOUR"
+        title="Watch the whole surface in under a minute."
+        lede="The decide inbox, asking Alfred a question, the agent workflow graph, a live roster re-skin, what the fleet learned, and the work board with real merged pull requests. Every frame is live local state, nothing mocked."
+      />
+      <div class="tour-video">
+        <video controls playsinline preload="none" poster="/media/alfred-tour-poster.png">
+          <source src="/media/alfred-tour.mp4" type="video/mp4" />
+        </video>
+      </div>
+    </div>
+  </section>
+
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
@@ -472,6 +487,19 @@ const heroRuntimeLines = [
 </MarketingLayout>
 
 <style>
+  .tour-video {
+    margin-top: 28px;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid var(--alfred-border, rgba(255, 255, 255, 0.08));
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+    background: #07090f;
+  }
+  .tour-video video {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
   .hero-proof {
     display: grid;
     gap: 10px;

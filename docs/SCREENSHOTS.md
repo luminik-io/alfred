@@ -4,6 +4,34 @@ Alfred's desktop app (and the same UI served in a browser via `alfred serve`)
 runs entirely on your machine. It is theme-aware, so every screen is shown here
 in both light and dark.
 
+## The tour
+
+A short recording of the whole surface end to end: the decide inbox, asking a
+question, the agent workflow graph, a live roster re-skin, the learnings view,
+and the work board with real merged pull requests.
+
+<p align="center">
+  <a href="media/alfred-tour.mp4"><img src="media/alfred-tour.webp" alt="Alfred product tour" width="820"></a>
+</p>
+
+[Watch the full tour (MP4, 55s)](media/alfred-tour.mp4). Every frame is live
+local state from a running `alfred serve`, nothing mocked.
+
+## Real work, on camera
+
+Alfred runs its own fleet against this repo, `luminik-io/alfred`. These frames
+are from that live setup: the fleet plans, builds, reviews, and opens pull
+requests on its own codebase, including merged work like
+[`#528`](https://github.com/luminik-io/alfred/pull/528).
+
+| Ask explains the loop | Work board, runs in flight |
+|---|---|
+| ![Ask explains the loop](images/real/ask-explains-the-loop.png) | ![Work board with runs in flight](images/real/work-board-live.png) |
+
+| Workflow graph mid-run | A pull request the fleet opened |
+|---|---|
+| ![Workflow graph mid-run](images/real/workflow-graph-firing.png) | ![The fleet-authored pull request](images/real/pr-528.png) |
+
 ## Ask: from a question to a plan to a pull request
 
 The Ask surface is where a plain-English request becomes real work. Ask a

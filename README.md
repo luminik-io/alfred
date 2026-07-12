@@ -56,6 +56,19 @@ minute and a half to two minutes, not a canned script. It never fakes success:
 a missing CLI, a failed call, an unchanged worktree, or a failing test suite
 stops the run honestly. Full walkthrough in [`docs/DEMO.md`](docs/DEMO.md).
 
+## Watch the tour
+
+A short tour of the whole surface: the decide inbox, asking Alfred a question,
+the agent workflow graph, a live roster re-skin, what the fleet has learned, and
+the work board showing real merged pull requests. Every screen is live local
+state, nothing mocked.
+
+<p align="center">
+  <a href="docs/media/alfred-tour.mp4"><img src="docs/media/alfred-tour.webp" alt="Alfred product tour: the decide inbox, asking a question, the workflow graph, a live roster theme switch, learnings, and the work board with real merged PRs" width="820"></a>
+</p>
+
+<p align="center"><em><a href="docs/media/alfred-tour.mp4">Watch the full tour (MP4, 55s)</a>. Recorded against a live <code>alfred serve</code>.</em></p>
+
 ## What it is
 
 Alfred is an open-source runtime that gives your local coding CLIs a small,
@@ -97,6 +110,25 @@ for every screen, in [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
 
 *Ask a question or describe a change; Alfred answers, or shapes a plan you can
 file for the fleet to build, review, and ship.*
+
+### Real work, on camera
+
+Not a mockup. Alfred runs its own fleet against this repo, `luminik-io/alfred`.
+While the tour above was recorded, the work board showed real pull requests in
+flight and shipped, and the fleet's own merged work includes PRs like
+[`#528`](https://github.com/luminik-io/alfred/pull/528),
+a test the fleet wrote and opened autonomously, checks green.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/real/ask-explains-the-loop.png" alt="Ask Alfred how a request becomes a merged pull request; it explains the plan, approve, build, review, merge loop"><br><sub><em>Ask how work gets done and Alfred explains its own plan, review, and merge loop.</em></sub></td>
+    <td width="50%"><img src="docs/images/real/work-board-live.png" alt="The work board with three runs in the Working now column and four shipped pull requests on the right"><br><sub><em>The work board: runs in flight in <code>Working now</code>, shipped pull requests alongside.</em></sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/real/workflow-graph-firing.png" alt="The agent workflow graph with the Planner node marked Working now during a firing"><br><sub><em>The workflow graph mid-run, with a planning agent working.</em></sub></td>
+    <td width="50%"><img src="docs/images/real/pr-528.png" alt="gh pr view of luminik-io/alfred pull request 528: merged, +20 -0, one file, all checks passing, written by the fleet"><br><sub><em>A real pull request the fleet wrote and opened on its own repo, checks green.</em></sub></td>
+  </tr>
+</table>
 
 ## Quick start
 
