@@ -55,6 +55,7 @@ type OnboardingActionDeps = {
   onRunLocalAction: (request: NativeActionRequest) => Promise<NativeCommandResult | null>;
   onSaveCustomNames: (next: CustomRosterNames) => Promise<void>;
   onBatteriesDecision: () => void;
+  onSlackDecision: () => void;
   onOpenSlackSetup: () => void;
   onFinishSetup: () => void;
 };
@@ -78,6 +79,7 @@ export function useOnboardingActions({
   onRunLocalAction,
   onSaveCustomNames,
   onBatteriesDecision,
+  onSlackDecision,
   onOpenSlackSetup,
   onFinishSetup,
 }: OnboardingActionDeps): (action: OnboardingAction) => Promise<OnboardingActionResult> {
@@ -228,6 +230,7 @@ export function useOnboardingActions({
             onOpenSlackSetup();
             return { ok: true, note: "Opened the native Slack setup step." };
           case "skip_slack":
+            onSlackDecision();
             return { ok: true, note: "Skipping Slack for now. You can add it later." };
           case "set_schedule": {
             // Persist the cadence through the SAME native primitive the Fleet view
@@ -326,6 +329,7 @@ export function useOnboardingActions({
       onFinishSetup,
       onBatteriesDecision,
       onOpenSlackSetup,
+      onSlackDecision,
       onRunLocalAction,
       onSaveCustomNames,
       refreshStatus,

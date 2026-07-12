@@ -528,6 +528,7 @@ export function OnboardingView({
     onRunLocalAction,
     onSaveCustomNames,
     onBatteriesDecision: useCallback(() => setBatteriesTouched(true), []),
+    onSlackDecision: useCallback(() => setSlackTouched(true), []),
     onOpenSlackSetup: useCallback(() => {
       setNotice(null);
       setStepKey("slack");
@@ -882,7 +883,6 @@ export function OnboardingView({
                 githubConnected={githubConnected}
                 selectedCount={status?.repos.count ?? 0}
                 onSaved={async () => {
-                  setBatteriesTouched(true);
                   await refreshStatus();
                 }}
                 setNotice={setNotice}
@@ -896,6 +896,7 @@ export function OnboardingView({
                 baseUrl={baseUrl}
                 canMutate={canMutate}
                 onSaved={async () => {
+                  setBatteriesTouched(true);
                   await refreshStatus();
                 }}
                 setNotice={setNotice}
