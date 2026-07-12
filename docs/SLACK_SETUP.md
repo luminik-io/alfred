@@ -11,10 +11,10 @@ you can start work by mentioning Alfred and refine the plan in the thread before
 anything is built.
 
 <p align="center">
-  <img src="images/real/slack-thread.png" alt="The Alfred channel in the Slack desktop app: agent reports posted by the fleet on the left, and a thread on the right where Alfred turns a plain-English request into a scoped plan with a readiness score before building" width="820">
+  <img src="images/real/slack-plan-scoped.png" alt="A thread in the Alfred Slack channel: a plain-English request to add unit tests, which Alfred turns into a scoped plan with a readiness score, then waits for a go-ahead before building" width="820">
 </p>
 
-<p align="center"><em>Alfred in Slack: agents report as they work, and a request in the thread becomes a scoped plan you approve before any code is written.</em></p>
+<p align="center"><em>Ask Alfred for a change in plain English and it writes back a plan with a readiness score. You shape it in the thread, and it builds only after you say go ahead.</em></p>
 
 ## At the end
 
