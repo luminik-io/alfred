@@ -39,7 +39,8 @@ jobs:
         run: |
           case "$EVENT_NAME" in
             schedule)
-              prs="$(gh pr list --repo "$REPO" --state open --limit 100 --json number --jq '[.[].number]')"
+              prs="$(gh api "repos/$REPO/pulls?state=open&per_page=100" \
+                --paginate --slurp --jq '[.[][] | .number]')"
               ;;
             workflow_dispatch)
               prs="$(jq -cn --argjson pr "$INPUT_PR" '[$pr]')"
@@ -56,6 +57,9 @@ jobs:
   evaluate:
     needs: select
     if: needs.select.outputs.prs != '[]'
+    concurrency:
+      group: external-review-gate-${{ github.repository }}-${{ matrix.pr }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:

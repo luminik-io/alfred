@@ -20,7 +20,8 @@ def test_workflow_rechecks_every_review_evidence_event():
     assert "types: [opened, reopened, synchronize, ready_for_review]" in text
     assert "types: [created, edited, deleted]" in text
     assert 'cron: "*/5 * * * *"' in text
-    assert "gh pr list" in text
+    assert "pulls?state=open&per_page=100" in text
+    assert "--paginate --slurp" in text
 
 
 def test_workflow_publishes_one_stable_required_context_to_exact_head():
@@ -29,4 +30,6 @@ def test_workflow_publishes_one_stable_required_context_to_exact_head():
     assert 'head_sha="$(gh pr view' in text
     assert '[ "$evaluated_sha" = "$head_sha" ]' in text
     assert '[ "$current" = "$STATE" ]' in text
+    assert "group: external-review-gate-${{ github.repository }}-${{ matrix.pr }}" in text
+    assert "cancel-in-progress: true" in text
     assert '"repos/$REPO/statuses/$SHA"' in text
