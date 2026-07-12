@@ -138,7 +138,7 @@ describe("OnboardingConversePanel", () => {
       <OnboardingConversePanel
         baseUrl="http://127.0.0.1:7010"
         batteriesDecisionHandled
-        slackConfigured
+        slackDecisionHandled
         onRunAction={onRunAction}
         onDone={onDone}
         onUseStepped={vi.fn()}
@@ -178,7 +178,7 @@ describe("OnboardingConversePanel", () => {
     render(
       <OnboardingConversePanel
         baseUrl="http://127.0.0.1:7010"
-        slackConfigured={false}
+        slackDecisionHandled={false}
         onRunAction={onRunAction}
         onDone={onDone}
         onUseStepped={vi.fn()}
@@ -209,7 +209,7 @@ describe("OnboardingConversePanel", () => {
       <OnboardingConversePanel
         baseUrl="http://127.0.0.1:7010"
         batteriesDecisionHandled
-        slackConfigured={false}
+        slackDecisionHandled={false}
         onRunAction={onRunAction}
         onDone={onDone}
         onUseStepped={vi.fn()}
@@ -235,7 +235,7 @@ describe("OnboardingConversePanel", () => {
       <OnboardingConversePanel
         baseUrl="http://127.0.0.1:7010"
         batteriesDecisionHandled={false}
-        slackConfigured={false}
+        slackDecisionHandled={false}
         onRunAction={onRunAction}
         onDone={onDone}
         onUseStepped={vi.fn()}
@@ -245,7 +245,7 @@ describe("OnboardingConversePanel", () => {
       <OnboardingConversePanel
         baseUrl="http://127.0.0.1:7010"
         batteriesDecisionHandled
-        slackConfigured
+        slackDecisionHandled
         onRunAction={onRunAction}
         onDone={onDone}
         onUseStepped={vi.fn()}
@@ -275,7 +275,7 @@ describe("OnboardingConversePanel", () => {
     render(
       <OnboardingConversePanel
         baseUrl="http://127.0.0.1:7010"
-        slackConfigured={false}
+        slackDecisionHandled={false}
         onRunAction={onRunAction}
         onDone={onDone}
         onUseStepped={vi.fn()}

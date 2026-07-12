@@ -511,6 +511,7 @@ export function OnboardingView({
   const capabilityActionableCount = status?.capability_plane?.summary.actionable ?? 0;
   const toolsReady = engineReady && capabilityActionableCount === 0;
   const reposSelected = (status?.repos.count ?? 0) > 0;
+  const slackConfigured = Boolean(status?.install?.slack_configured);
 
   // Execute one onboarding action REQUESTED by the conversational guide. The
   // executor lives in useOnboardingActions so both paths share one source of
@@ -582,11 +583,10 @@ export function OnboardingView({
             reachedIndex > ONBOARDING_STEP_ORDER.indexOf("team") || installInitialized
           );
         case "slack":
-          // Slack is optional and the server exposes no "approver added" flag on
-          // SetupStatus, so it reads satisfied only when the user explicitly
-          // skipped it or added an approver (tracked locally as slackTouched). We
-          // never invent a "Slack done" signal the server did not send.
-          return skipped.has("slack") || slackTouched;
+          // Server configuration and local decisions are both authoritative.
+          // The latter cover a skip or approver addition before a refreshed
+          // setup snapshot is available.
+          return slackConfigured || skipped.has("slack") || slackTouched;
         case "request":
           return requestDone;
         default:
@@ -599,6 +599,7 @@ export function OnboardingView({
       reachedIndex,
       reposSelected,
       requestDone,
+      slackConfigured,
       skipped,
       slackTouched,
       toolsReady,
@@ -780,7 +781,8 @@ export function OnboardingView({
           <div className="alfred-onboarding-shell__panel motion-fade">
             <OnboardingConversePanel
               baseUrl={baseUrl}
-              slackConfigured={Boolean(status?.install?.slack_configured)}
+              batteriesDecisionHandled={stepSatisfied("batteries")}
+              slackDecisionHandled={stepSatisfied("slack")}
               onRunAction={runOnboardingAction}
               onDone={() => {
                 setRequestDone(true);

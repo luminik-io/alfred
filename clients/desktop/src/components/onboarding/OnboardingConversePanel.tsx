@@ -81,14 +81,14 @@ export type OnboardingActionResult = {
 export function OnboardingConversePanel({
   baseUrl,
   batteriesDecisionHandled = false,
-  slackConfigured = false,
+  slackDecisionHandled = false,
   onRunAction,
   onDone,
   onUseStepped,
 }: {
   baseUrl: string;
   batteriesDecisionHandled?: boolean;
-  slackConfigured?: boolean;
+  slackDecisionHandled?: boolean;
   // Execute one requested action through the shared setup handlers and return a
   // plain result note. The panel never writes config itself.
   onRunAction: (action: OnboardingAction) => Promise<OnboardingActionResult>;
@@ -109,7 +109,10 @@ export function OnboardingConversePanel({
   const [pendingAction, setPendingAction] = useState<OnboardingAction | null>(null);
   // Refs make the deterministic decision gate synchronous across recursive
   // model turns. React state could leave the next turn reading the prior value.
-  const decisionsRef = useRef({ batteries: batteriesDecisionHandled, slack: slackConfigured });
+  const decisionsRef = useRef({
+    batteries: batteriesDecisionHandled,
+    slack: slackDecisionHandled,
+  });
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   // The running transcript sent to the server. This is the MODEL-facing history
@@ -129,8 +132,8 @@ export function OnboardingConversePanel({
     // completed decisions so an older false status cannot erase a choice made
     // during this conversation.
     if (batteriesDecisionHandled) decisionsRef.current.batteries = true;
-    if (slackConfigured) decisionsRef.current.slack = true;
-  }, [batteriesDecisionHandled, slackConfigured]);
+    if (slackDecisionHandled) decisionsRef.current.slack = true;
+  }, [batteriesDecisionHandled, slackDecisionHandled]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 

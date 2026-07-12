@@ -1267,13 +1267,20 @@ describe("OnboardingView conversational setup actions", () => {
     await user.click(await screen.findByRole("button", { name: buttonName }));
   }
 
-  it("routes Slack chat setup to the existing native Slack step", async () => {
-    vi.spyOn(apiSetup, "onboardingConverse").mockResolvedValue({
-      reply: "Let's set up Slack locally.",
-      action: { tool: "open_slack_setup", args: {} },
-      done: false,
-    });
-    renderOnboarding();
+  it("carries a native Slack skip back into conversational completion", async () => {
+    vi.spyOn(apiSetup, "onboardingConverse")
+      .mockResolvedValueOnce({
+        reply: "Let's set up Slack locally.",
+        action: { tool: "open_slack_setup", args: {} },
+        done: false,
+      })
+      .mockResolvedValueOnce({
+        reply: "Setup is ready.",
+        action: { tool: "finish_setup", args: {} },
+        done: true,
+      });
+    const onSwitch = vi.fn();
+    renderOnboarding({ onSwitch });
     const user = userEvent.setup();
 
     await enterChatAndSend(user, "set up Slack");
@@ -1281,6 +1288,13 @@ describe("OnboardingView conversational setup actions", () => {
 
     expect(await screen.findByText(/want approvals and questions in slack/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/slack user id/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /skip for now/i }));
+    await user.click(screen.getByRole("button", { name: /^welcome$/i }));
+    await enterChatAndSend(user, "finish setup");
+    await approveStep(user, /finish setup/i);
+
+    await waitFor(() => expect(onSwitch).toHaveBeenCalledWith("home"));
   });
 
   it("reports a successful GitHub device flow to the model (Codex P2 fresh status)", async () => {
