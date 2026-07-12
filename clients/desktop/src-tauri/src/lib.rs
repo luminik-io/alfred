@@ -1592,7 +1592,9 @@ fn core_install_plan_missing_message() -> String {
     format!(
         "Alfred Desktop could not find bundled runtime resources, a valid \
          ALFRED_DESKTOP_CORE_DIR, or all required Alfred CLI commands on PATH: {}. \
-         Upgrade or reinstall the alfred-os CLI package, then run Install or repair again.",
+         A core bundle must include install.sh, deploy.sh, bin/alfred, \
+         bin/alfred-init.py, lib/, and skills/packs.toml. Upgrade or reinstall \
+         the alfred-os CLI package, then run Install or repair again.",
         REQUIRED_CLI_INSTALL_TOOLS.join(", ")
     )
 }
@@ -2682,6 +2684,7 @@ mod tests {
         assert!(message.contains("alfred-install"));
         assert!(message.contains("alfred-init"));
         assert!(message.contains("alfred-deploy"));
+        assert!(message.contains("skills/packs.toml"));
         assert!(message.contains("Upgrade or reinstall"));
     }
 
