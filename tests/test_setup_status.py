@@ -274,7 +274,7 @@ def test_bootstrap_status_first_run_uses_singular_blocker_headline(
     assert by_key["repo_local_paths"]["detail"] == "1 selected repo needs local path mapping."
 
 
-def test_bootstrap_status_first_run_local_path_source_matches_found_checkout(
+def test_bootstrap_status_first_run_blocks_invalid_explicit_local_map(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _stub_common(monkeypatch)
@@ -302,19 +302,20 @@ def test_bootstrap_status_first_run_local_path_source_matches_found_checkout(
     first_run = setup_mod.bootstrap_status()["first_run"]
     by_key = {check["key"]: check for check in first_run["checks"]}
 
-    assert first_run["ready"] is True
+    assert first_run["ready"] is False
+    assert first_run["summary"]["blockers"] == ["repo_local_paths"]
     assert by_key["repo_local_paths"]["detected"] == [
         {
             "repo": "octocat/web",
-            "path": str(workspace / "web"),
-            "source": "workspace",
-            "exists": True,
-            "is_git_repo": True,
-            "github_remote_name": "origin",
-            "github_remote_repo": "octocat/web",
-            "identity_matches": True,
-            "ready": True,
-            "reason": None,
+            "path": str(tmp_path / "missing-web"),
+            "source": "map",
+            "exists": False,
+            "is_git_repo": False,
+            "github_remote_name": None,
+            "github_remote_repo": None,
+            "identity_matches": False,
+            "ready": False,
+            "reason": "missing",
         }
     ]
 

@@ -577,8 +577,6 @@ export function OnboardingView({
 
   const indexSelectedRepos = useCallback(
     async (repos: string[], repoCheckouts: SetupRepoCheckout[]): Promise<RepoSaveOutcome> => {
-      if (!repos.length) return { indexed: false };
-
       // The repository POST has already committed by the time this callback
       // runs. Reconcile that required setup state before optional graph work can
       // return or fail, then retain the confirmed selection even if the status
@@ -600,6 +598,7 @@ export function OnboardingView({
       };
       await refreshStatus();
       retainSavedRepoScope();
+      if (!repos.length) return { indexed: false };
       if (!shouldIndexCodeMemory) return { indexed: false };
       if (!canRun) {
         return {

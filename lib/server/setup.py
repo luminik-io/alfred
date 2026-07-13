@@ -1904,7 +1904,8 @@ def _selected_repo_local_paths(repos: list[str], env: dict[str, str]) -> list[di
         for key in (slug, local_name):
             if key in repo_map:
                 candidates.append((_code_memory_configured_repo_path(env, key, repo_map), "map"))
-        candidates.append((workspace / local_name, "workspace"))
+        if not candidates:
+            candidates.append((workspace / local_name, "workspace"))
         unique: list[tuple[Path, str]] = []
         seen: set[str] = set()
         for path, source in candidates:

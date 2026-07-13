@@ -1187,6 +1187,7 @@ describe("OnboardingView seven-step takeover", () => {
 
     expect(save).toHaveBeenCalledWith("http://127.0.0.1:7010", [], []);
     expect(await screen.findByText(/cleared repository scope/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^continue$/i })).toBeDisabled();
   });
 
   it("surfaces a graph failure without blocking the saved repository scope", async () => {
