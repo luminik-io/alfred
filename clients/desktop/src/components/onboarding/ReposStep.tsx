@@ -153,6 +153,9 @@ export function ReposStep({
   const missingPaths = selectedRepos.filter((repo) => !paths.get(repo.toLowerCase())?.trim());
   const canSave =
     canMutate &&
+    loaded &&
+    !loading &&
+    !error &&
     (selectedRepos.length > 0 || selectedCount > 0) &&
     missingPaths.length === 0 &&
     !saving;

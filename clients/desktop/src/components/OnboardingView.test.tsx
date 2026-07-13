@@ -1190,6 +1190,33 @@ describe("OnboardingView seven-step takeover", () => {
     expect(screen.getByRole("button", { name: /^continue$/i })).toBeDisabled();
   });
 
+  it("cannot clear an existing scope before the repository list loads", async () => {
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: {
+          selected: ["octocat/web"],
+          count: 1,
+          keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+          repo_checkouts: [VERIFIED_CHECKOUT],
+        },
+      }),
+    );
+    const repos = deferred<SetupReposResponse>();
+    vi.spyOn(apiSetup, "loadSetupRepos").mockReturnValue(repos.promise);
+    renderOnboarding();
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^repositories$/i);
+
+    expect(screen.getByRole("button", { name: /clear repository scope/i })).toBeDisabled();
+    repos.resolve({
+      ...REPOS,
+      selected: ["octocat/web"],
+      repo_checkouts: [VERIFIED_CHECKOUT],
+    });
+    expect(await screen.findByRole("checkbox", { name: /octocat\/web/i })).toBeChecked();
+  });
+
   it("surfaces a graph failure without blocking the saved repository scope", async () => {
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeStatus());
     vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
