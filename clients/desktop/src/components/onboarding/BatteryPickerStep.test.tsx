@@ -20,6 +20,7 @@ function battery(overrides: Partial<SetupBattery>): SetupBattery {
     builtin: false,
     default_on: false,
     status: "available",
+    configured: false,
     enabled: false,
     installed: true,
     requires_daemon: false,
@@ -75,6 +76,7 @@ describe("BatteryPickerStep", () => {
       .mockResolvedValue({
         ok: true,
         battery: "dense-embeddings",
+        configured: true,
         enabled: true,
         env_path: "/home/.alfred/.env",
         keys: ["ALFRED_MEMORY_SQLITE_DENSE"],
@@ -104,6 +106,100 @@ describe("BatteryPickerStep", () => {
     );
   });
 
+  it("installs a local battery before mirroring its enabled state", async () => {
+    vi.spyOn(api, "loadSetupBatteries").mockResolvedValue(manifest([battery({})]));
+    const save = vi.spyOn(api, "saveSetupBattery").mockResolvedValue({
+      ok: true,
+      battery: "dense-embeddings",
+      configured: true,
+      enabled: true,
+      env_path: "/home/.alfred/.env",
+      keys: ["ALFRED_MEMORY_SQLITE_DENSE"],
+      manifest: manifest([
+        battery({ configured: true, enabled: true, installed: true, status: "enabled" }),
+      ]),
+    });
+    const onRunLocalAction = vi.fn(async () => ({
+      command: ["alfred", "batteries", "enable", "dense-embeddings", "--yes"],
+      stdout: "",
+      stderr: "",
+      status: 0,
+      success: true,
+      pid: 1,
+      message: "installed",
+    }));
+
+    render(
+      <BatteryPickerStep
+        baseUrl="http://127.0.0.1:7010"
+        canMutate
+        canRun
+        onRunLocalAction={onRunLocalAction}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("switch", { name: /enable dense embeddings/i }),
+    );
+
+    await waitFor(() =>
+      expect(onRunLocalAction).toHaveBeenCalledWith({
+        action: "battery_install",
+        target: "dense-embeddings",
+        refreshAfter: false,
+      }),
+    );
+    expect(save).toHaveBeenCalledWith(
+      "http://127.0.0.1:7010",
+      "dense-embeddings",
+      true,
+    );
+  });
+
+  it("does not enable native configuration before the API write succeeds", async () => {
+    vi.spyOn(api, "loadSetupBatteries").mockResolvedValue(manifest([battery({})]));
+    vi.spyOn(api, "saveSetupBattery").mockRejectedValue(new Error("runtime unavailable"));
+    const onRunLocalAction = vi.fn(async () => ({
+      command: ["alfred", "batteries", "install", "dense-embeddings", "--yes"],
+      stdout: "",
+      stderr: "",
+      status: 0,
+      success: true,
+      pid: 1,
+      message: "installed without enabling",
+    }));
+    const setNotice = vi.fn();
+
+    render(
+      <BatteryPickerStep
+        baseUrl="http://127.0.0.1:7010"
+        canMutate
+        canRun
+        onRunLocalAction={onRunLocalAction}
+        setNotice={setNotice}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("switch", { name: /enable dense embeddings/i }),
+    );
+
+    await waitFor(() =>
+      expect(setNotice).toHaveBeenCalledWith(
+        expect.objectContaining({ tone: "error", message: "runtime unavailable" }),
+      ),
+    );
+    expect(onRunLocalAction).toHaveBeenCalledWith({
+      action: "battery_install",
+      target: "dense-embeddings",
+      refreshAfter: false,
+    });
+    expect(screen.getByRole("switch", { name: /enable dense embeddings/i })).not.toBeChecked();
+  });
+
   it("disables toggles in a read-only preview", async () => {
     vi.spyOn(api, "loadSetupBatteries").mockResolvedValue(manifest([battery({})]));
 
@@ -120,13 +216,35 @@ describe("BatteryPickerStep", () => {
     );
   });
 
+  it("disables native installs while the runtime is disconnected", async () => {
+    vi.spyOn(api, "loadSetupBatteries").mockResolvedValue(manifest([battery({})]));
+
+    render(
+      <BatteryPickerStep
+        baseUrl="http://127.0.0.1:7010"
+        canMutate
+        canRun
+        connected={false}
+        onRunLocalAction={vi.fn(async () => null)}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByRole("switch", { name: /enable dense embeddings/i }),
+    ).toBeDisabled();
+  });
+
   it("surfaces the requirement for a battery that still needs a daemon", async () => {
     vi.spyOn(api, "loadSetupBatteries").mockResolvedValue(
       manifest([
         battery({
           id: "redis-ams",
           name: "Redis Agent Memory Server",
-          status: "available",
+          status: "not_installed",
+          configured: true,
+          enabled: false,
+          installed: false,
           requires_daemon: true,
           service: "Redis",
           install_kind: "daemon",
@@ -140,5 +258,7 @@ describe("BatteryPickerStep", () => {
     );
 
     await waitFor(() => expect(screen.getByText(/needs Redis/i)).toBeInTheDocument());
+    expect(screen.getByText(/needs install/i)).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: /disable redis agent memory server/i })).toBeChecked();
   });
 });

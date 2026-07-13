@@ -2167,15 +2167,20 @@ fn build_alfred_action(
                 "--json".to_string(),
             ],
         )),
-        "battery_enable" => {
+        "battery_install" | "battery_enable" => {
             let battery_id = validate_battery_id(
-                target.ok_or_else(|| "battery enable needs a battery id".to_string())?,
+                target.ok_or_else(|| "battery action needs a battery id".to_string())?,
             )?;
+            let verb = if action == "battery_install" {
+                "install"
+            } else {
+                "enable"
+            };
             Ok((
                 "alfred".to_string(),
                 vec![
                     "batteries".to_string(),
-                    "enable".to_string(),
+                    verb.to_string(),
                     battery_id,
                     "--yes".to_string(),
                 ],
@@ -3610,6 +3615,18 @@ done"#;
 
     #[test]
     fn memory_native_actions_build_fixed_commands() {
+        let (_, install_args) = build_alfred_action("battery_install", Some("graphify"), None)
+            .expect("battery install accepts a validated battery id");
+        assert_eq!(
+            install_args,
+            vec![
+                "batteries".to_string(),
+                "install".to_string(),
+                "graphify".to_string(),
+                "--yes".to_string(),
+            ]
+        );
+
         let (_, battery_args) = build_alfred_action("battery_enable", Some("graphify"), None)
             .expect("battery enable accepts a validated battery id");
         assert_eq!(
@@ -3637,6 +3654,7 @@ done"#;
         );
 
         assert!(build_alfred_action("battery_enable", Some("--help"), None).is_err());
+        assert!(build_alfred_action("battery_install", Some("--help"), None).is_err());
 
         let (_, skills_args) = build_alfred_action("skills_install_starter", None, None)
             .expect("starter skills install has no target");

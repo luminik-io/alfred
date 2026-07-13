@@ -2506,7 +2506,7 @@ def _print_battery_list(payload: dict[str, Any]) -> None:
 
 
 def cmd_batteries(args: argparse.Namespace) -> int:
-    """List batteries, or enable/disable one opt-in battery.
+    """List, install, enable, or disable one opt-in battery.
 
     Enabling writes the battery's env flag(s) to ``$ALFRED_HOME/.env``. For a
     battery with a pip extra or an autofetch binary, we ask before running the
@@ -2518,7 +2518,6 @@ def cmd_batteries(args: argparse.Namespace) -> int:
         battery_by_id,
         disable_values,
         enable_values,
-        is_enabled,
         is_installed,
         load_env,
         manifest,
@@ -2547,6 +2546,7 @@ def cmd_batteries(args: argparse.Namespace) -> int:
 
     env_path = _runtime_env_path()
     enabling = action == "enable"
+    installing = action == "install"
     current_env = load_env()
     # Enabling a second primary memory store (Redis vs pgvector) would compose
     # two primaries into the chain; refuse it with a clear message instead.
@@ -2558,11 +2558,54 @@ def cmd_batteries(args: argparse.Namespace) -> int:
                 f"primary memory store. Run `alfred batteries disable {others[0]}` first."
             )
             return 1
+    if (
+        (enabling or installing)
+        and not battery.requires_daemon
+        and battery.install_kind in {"pip-extra", "autofetch"}
+        and not is_installed(battery, current_env)
+    ):
+        install_overrides = enable_values(battery, current_env)
+        install_env = {**os.environ, **current_env, **install_overrides}
+        install_result = _battery_run_install(
+            args,
+            battery,
+            install_env=install_env,
+            install_overrides=install_overrides,
+            enable_after=enabling,
+        )
+        if install_result != 0:
+            return install_result
+        if getattr(args, "print_command", False):
+            return 0
+        if not is_installed(battery, load_env()):
+            verb = "enabled" if enabling else "installed"
+            print(f"alfred: {battery.id} was not {verb} because its install is incomplete.")
+            return 1
+
+    # Native onboarding prepares dependencies first, then lets the live setup
+    # API perform the one durable configuration write. This keeps an API failure
+    # from leaving the battery enabled while the UI reports failure.
+    if installing:
+        if battery.requires_daemon:
+            print(
+                f"alfred: {battery.id} needs {battery.service} running; Alfred does not start it."
+            )
+            print(f"        {battery.install_hint}")
+        else:
+            print(f"alfred: {battery.id} is installed. Configuration was not changed.")
+        return 0
+
     # Compose the chain onto the current env so a custom or existing chain is
-    # preserved rather than clobbered.
+    # preserved rather than clobbered. Installable batteries reach this write
+    # only after their dependency is present, so a failed install cannot leave
+    # a false enabled flag behind.
     values = (
         enable_values(battery, current_env) if enabling else disable_values(battery, current_env)
     )
+    if getattr(args, "print_command", False):
+        print(f"alfred: run this to {action} {battery.id}:")
+        print(f"        alfred batteries {action} {shlex.quote(battery.id)} --yes")
+        return 0
     write_env(env_path, values)
     verb = "enabled" if enabling else "disabled"
     print(f"alfred: {verb} {battery.id}. Wrote {', '.join(values)} to {env_path}")
@@ -2573,16 +2616,17 @@ def cmd_batteries(args: argparse.Namespace) -> int:
         )
         print(f"        {battery.install_hint}")
         return 0
-
-    if enabling and battery.install_kind in {"pip-extra", "autofetch"}:
-        env = load_env()
-        if is_enabled(battery, env) and is_installed(battery, env):
-            return 0
-        return _battery_run_install(args, battery)
     return 0
 
 
-def _battery_run_install(args: argparse.Namespace, battery: Any) -> int:
+def _battery_run_install(
+    args: argparse.Namespace,
+    battery: Any,
+    *,
+    install_env: dict[str, str] | None = None,
+    install_overrides: dict[str, str] | None = None,
+    enable_after: bool = True,
+) -> int:
     """Prompt for consent and run a battery's install, or print the command."""
     if battery.pip_extra:
         command = [sys.executable, "-m", "pip", "install", f"alfred-os[{battery.pip_extra}]"]
@@ -2596,11 +2640,20 @@ def _battery_run_install(args: argparse.Namespace, battery: Any) -> int:
             command[0] = str(launcher)
     else:
         return 0
-    printable = " ".join(shlex.quote(part) for part in command)
+    printable_command = command
+    if install_overrides:
+        assignments = [f"{key}={value}" for key, value in sorted(install_overrides.items())]
+        printable_command = ["env", *assignments, *command]
+    printable = " ".join(shlex.quote(part) for part in printable_command)
 
     if getattr(args, "print_command", False):
-        print(f"alfred: run this to finish installing {battery.id}:")
-        print(f"        {printable}")
+        if enable_after:
+            battery_id = shlex.quote(battery.id)
+            print(f"alfred: run this to install and enable {battery.id}:")
+            print(f"        {printable} && alfred batteries enable {battery_id} --yes")
+        else:
+            print(f"alfred: run this to install {battery.id} without enabling it:")
+            print(f"        {printable}")
         return 0
 
     if not getattr(args, "yes", False):
@@ -2613,7 +2666,7 @@ def _battery_run_install(args: argparse.Namespace, battery: Any) -> int:
             print(f"alfred: skipped. Run it yourself later:\n        {printable}")
             return 0
     print(f"alfred: running {printable}")
-    return _run_subcommand(command, timeout=_INSTALL_COMMAND_TIMEOUT_S)
+    return _run_subcommand(command, timeout=_INSTALL_COMMAND_TIMEOUT_S, env=install_env)
 
 
 def _pr_min_approvals() -> int:
@@ -4068,14 +4121,14 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_batteries_list = batteries_sub.add_parser("list", help="list all batteries with status")
     p_batteries_list.add_argument("--json", action="store_true")
     p_batteries_list.set_defaults(func=cmd_batteries, battery_action="list")
-    for verb in ("enable", "disable"):
+    for verb in ("install", "enable", "disable"):
         p_verb = batteries_sub.add_parser(verb, help=f"{verb} one opt-in battery by id")
         p_verb.add_argument("battery_id", help="battery id, e.g. dense-embeddings")
         p_verb.add_argument("--yes", action="store_true", help="run any install without prompting")
         p_verb.add_argument(
             "--print-command",
             action="store_true",
-            help="print the install command instead of running it",
+            help="print the command without installing or changing configuration",
         )
         p_verb.add_argument("--json", action="store_true")
         p_verb.set_defaults(func=cmd_batteries, battery_action=verb)

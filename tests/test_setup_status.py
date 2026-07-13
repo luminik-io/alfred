@@ -941,6 +941,7 @@ def test_capability_plane_reports_enabled_graphify_instead_of_disabled_alternati
             "batteries": [
                 {
                     "id": "graphify",
+                    "configured": True,
                     "enabled": True,
                     "installed": True,
                     "status": "enabled",
@@ -981,7 +982,8 @@ def test_capability_plane_reports_enabled_missing_graphify_as_installable(
             "batteries": [
                 {
                     "id": "graphify",
-                    "enabled": True,
+                    "configured": True,
+                    "enabled": False,
                     "installed": False,
                     "status": "missing",
                     "install_hint": "pipx install graphifyy",
@@ -1022,7 +1024,11 @@ def test_ready_code_memory_wins_while_graphify_is_not_usable(
     monkeypatch.setattr(
         setup_mod.batteries,
         "manifest",
-        lambda _env: {"batteries": [{"id": "graphify", "enabled": True, "installed": False}]},
+        lambda _env: {
+            "batteries": [
+                {"id": "graphify", "configured": True, "enabled": False, "installed": False}
+            ]
+        },
     )
     code_memory = {
         "enabled": False,
@@ -1055,7 +1061,11 @@ def test_relative_graph_is_not_probed_against_setup_server_cwd(
     monkeypatch.setattr(
         setup_mod.batteries,
         "manifest",
-        lambda _env: {"batteries": [{"id": "graphify", "enabled": True, "installed": True}]},
+        lambda _env: {
+            "batteries": [
+                {"id": "graphify", "configured": True, "enabled": False, "installed": True}
+            ]
+        },
     )
     payload = setup_mod.capability_status(
         {"enabled": False, "binary": {"resolved": False}, "index_present": False},

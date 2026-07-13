@@ -178,14 +178,20 @@ export function useOnboardingActions({
             return { ok: true, note: "Saved your team names." };
           }
           case "set_batteries": {
-            // Optional enhancements. Turning a battery on writes its env flag
-            // through the same setup-save path the picker uses; it never installs
-            // a pip extra or starts a daemon, so the person still finishes any
-            // install themselves. Unknown ids and built-ins are refused.
+            // Optional enhancements. Native setup prepares local dependencies,
+            // then the live setup API performs the only configuration write.
+            // External daemons remain explicit.
+            // Unknown ids and built-ins are refused.
             if (!canMutate) {
               return {
                 ok: false,
                 note: "I cannot change batteries in this read-only preview. Use the Batteries step to pick them.",
+              };
+            }
+            if (canRun && !connected) {
+              return {
+                ok: false,
+                note: "Connect to the Alfred runtime before installing batteries.",
               };
             }
             const ids = Array.isArray(action.args.batteries)
@@ -201,6 +207,14 @@ export function useOnboardingActions({
             const failed: string[] = [];
             for (const id of ids) {
               try {
+                if (canRun) {
+                  const result = await onRunLocalAction({
+                    action: "battery_install",
+                    target: id,
+                    refreshAfter: false,
+                  });
+                  if (!result?.success) throw new Error("battery install failed");
+                }
                 await saveSetupBattery(baseUrl, id, true);
                 enabledNow.push(id);
               } catch {
@@ -218,7 +232,7 @@ export function useOnboardingActions({
             const tail = failed.length ? ` I could not turn on: ${failed.join(", ")}.` : "";
             return {
               ok: true,
-              note: `Turned on ${enabledNow.join(", ")}. Some may still need a package or a service; the Batteries step shows what.${tail}`,
+              note: `Installed or configured ${enabledNow.join(", ")}. External services remain marked until they are reachable.${tail}`,
             };
           }
           case "skip_batteries":

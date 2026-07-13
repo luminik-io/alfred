@@ -3,7 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { errorDetail } from "../../api/client";
 import { loadSetupBatteries, saveSetupBattery } from "../../api/setup";
-import type { SetupBattery, SetupBatteryManifest } from "../../types";
+import type { NativeCommandResult, SetupBattery, SetupBatteryManifest } from "../../types";
+import type { NativeActionRequest } from "../../lib/uiTypes";
 import { Badge, Button, Card, CardContent, Switch } from "../ui";
 import { cn } from "@/lib/utils";
 import type { OnboardingNotice } from "./types";
@@ -36,19 +37,28 @@ function statusBadge(battery: SetupBattery): { label: string; variant: "secondar
 /**
  * Optional batteries step. Reads the shared manifest (GET /api/setup/batteries),
  * shows the always-on built-ins as "included, no setup", and lets the person
- * toggle each opt-in enhancement. A toggle writes the battery's real env flag
- * (POST /api/setup/batteries); it never installs a pip extra or starts a daemon,
- * so the requirement badge and hint stay visible. Alfred works fully with zero
- * batteries, so this whole step is skippable.
+ * toggle each opt-in enhancement. Native onboarding runs the real battery CLI,
+ * which installs local dependencies before enabling them; external daemons stay
+ * explicitly marked until reachable. Browser-only setup can still persist the
+ * configuration and shows the remaining requirement. Alfred works fully with
+ * zero optional batteries, so this whole step is skippable.
  */
 export function BatteryPickerStep({
   baseUrl,
   canMutate,
+  canRun = false,
+  connected = true,
+  onRunLocalAction,
   onSaved,
   setNotice,
 }: {
   baseUrl: string;
   canMutate: boolean;
+  canRun?: boolean;
+  connected?: boolean;
+  onRunLocalAction?: (
+    request: NativeActionRequest,
+  ) => Promise<NativeCommandResult | null>;
   onSaved?: () => Promise<void>;
   setNotice: (notice: OnboardingNotice) => void;
 }) {
@@ -77,12 +87,29 @@ export function BatteryPickerStep({
   const toggle = async (battery: SetupBattery, next: boolean) => {
     setPending(battery.id);
     try {
+      if (next && canRun && !connected) {
+        throw new Error("Connect to the Alfred runtime before installing a battery.");
+      }
+      if (next && canRun) {
+        const nativeResult = await onRunLocalAction?.({
+          action: "battery_install",
+          target: battery.id,
+          refreshAfter: false,
+        });
+        if (!nativeResult?.success) {
+          throw new Error(nativeResult?.message || `Could not install ${battery.name}.`);
+        }
+      }
+      // The native CLI only prepares the dependency. The live API owns the one
+      // durable configuration write, so a failed request cannot leave the UI and
+      // persisted state disagreeing about whether the battery is enabled.
       const result = await saveSetupBattery(baseUrl, battery.id, next);
       setManifest(result.manifest);
       const verb = next ? "on" : "off";
+      const current = result.manifest.batteries.find((row) => row.id === battery.id);
       const tail =
-        next && battery.status === "not_installed"
-          ? ` Finish the install: ${battery.install_hint}`
+        next && current?.status === "not_installed"
+          ? ` Configuration saved; it still needs ${current.service || current.install_hint}.`
           : "";
       setNotice({ tone: "ok", message: `Turned ${battery.name} ${verb}.${tail}` });
       await onSaved?.();
@@ -163,7 +190,7 @@ export function BatteryPickerStep({
                 key={battery.id}
                 className={cn(
                   "grid grid-cols-[1fr_auto] items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors",
-                  battery.enabled
+                  battery.configured
                     ? "border-primary/25 bg-primary/5"
                     : "border-border/70 bg-background/55",
                 )}
@@ -185,16 +212,16 @@ export function BatteryPickerStep({
                   <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
                     <CircleDashed size={12} aria-hidden="true" />
                     <span>{requirementLabel(battery)}</span>
-                    {!battery.enabled && battery.status === "not_installed" ? (
+                    {battery.status === "not_installed" ? (
                       <span className="text-muted-foreground/80">· {battery.install_hint}</span>
                     ) : null}
                   </span>
                 </div>
                 <Switch
-                  checked={battery.enabled}
-                  disabled={!canMutate || busy}
+                  checked={battery.configured}
+                  disabled={!canMutate || busy || (canRun && !connected)}
                   onCheckedChange={(next) => void toggle(battery, next)}
-                  aria-label={`${battery.enabled ? "Disable" : "Enable"} ${battery.name}`}
+                  aria-label={`${battery.configured ? "Disable" : "Enable"} ${battery.name}`}
                 />
               </div>
             );

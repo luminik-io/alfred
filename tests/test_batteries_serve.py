@@ -173,7 +173,9 @@ def test_post_battery_enables_with_auth(alfred_home: Path, tmp_path: Path) -> No
     assert body["ok"] is True
     assert body["battery"] == "dense-embeddings"
     row = {r["id"]: r for r in body["manifest"]["batteries"]}["dense-embeddings"]
-    assert row["status"] == "enabled"
+    assert row["configured"] is True
+    assert row["enabled"] is False
+    assert row["status"] == "not_installed"
 
 
 def test_post_battery_rejects_builtin(alfred_home: Path, tmp_path: Path) -> None:
