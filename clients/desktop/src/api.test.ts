@@ -35,7 +35,7 @@ import {
   supportsNativeActions,
 } from "./api";
 import type { ConverseRequest } from "./types";
-import { saveSetupRepos } from "./api/setup";
+import { loadSetupRepos, saveSetupRepos } from "./api/setup";
 
 // In jsdom (no __TAURI_INTERNALS__) the api layer goes through global fetch, so
 // we can drive every endpoint's outcome by stubbing fetch per URL.
@@ -785,6 +785,19 @@ describe("error humanization", () => {
       name: "SetupRepoCheckoutValidationError",
       rows: [row],
     });
+  });
+
+  it("rejects an incompatible repository response instead of crashing the UI", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ repos: [], selected: [] }), { status: 200 }),
+      ),
+    );
+
+    await expect(loadSetupRepos(DEFAULT_BASE_URL)).rejects.toThrow(
+      /runtime is incompatible.*reinstall alfred/i,
+    );
   });
 });
 

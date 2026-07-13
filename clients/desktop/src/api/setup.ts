@@ -70,11 +70,17 @@ export async function loadSetupRepos(
   baseUrl: string,
   limit = 100,
 ): Promise<SetupReposResponse> {
-  return withTimeout(
+  const response = await withTimeout(
     readAlfredJson<SetupReposResponse>(baseUrl, `/api/setup/repos?limit=${limit}`),
     20000,
     "/api/setup/repos",
   );
+  if (!Array.isArray(response.repo_checkouts)) {
+    throw new Error(
+      "This Alfred runtime is incompatible with the desktop app. Reinstall Alfred to continue.",
+    );
+  }
+  return response;
 }
 
 export async function saveSetupRepos(
