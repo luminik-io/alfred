@@ -35,6 +35,7 @@ import {
   supportsNativeActions,
 } from "./api";
 import type { ConverseRequest } from "./types";
+import { saveSetupRepos } from "./api/setup";
 
 // In jsdom (no __TAURI_INTERNALS__) the api layer goes through global fetch, so
 // we can drive every endpoint's outcome by stubbing fetch per URL.
@@ -746,6 +747,43 @@ describe("error humanization", () => {
       );
       expect(errorDetail(err)).toMatch(/400/);
     }
+  });
+
+  it("preserves structured checkout failures from the setup endpoint", async () => {
+    const row = {
+      repo: "acme/frontend",
+      path: "/workspace/backend",
+      source: "map",
+      exists: true,
+      is_git_repo: true,
+      origin_repo: "acme/backend",
+      identity_matches: false,
+      ready: false,
+      reason: "origin_mismatch" as const,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            error: "repo checkout validation failed",
+            repo_checkouts: [row],
+          }),
+          { status: 400 },
+        ),
+      ),
+    );
+
+    await expect(
+      saveSetupRepos(
+        DEFAULT_BASE_URL,
+        ["acme/frontend"],
+        [{ repo: "acme/frontend", path: "/workspace/backend" }],
+      ),
+    ).rejects.toMatchObject({
+      name: "SetupRepoCheckoutValidationError",
+      rows: [row],
+    });
   });
 });
 

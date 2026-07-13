@@ -19,14 +19,14 @@ import { loadSetupStatus } from "../api/setup";
 import { pollGithubAuthStatus } from "../lib/githubAuth";
 import { type CustomRosterNames, type RosterThemeId } from "../lib/agentThemes";
 import type { NativeActionRequest, TabKey } from "../lib/uiTypes";
-import type { NativeCommandResult, SetupStatus } from "../types";
+import type { NativeCommandResult, SetupRepoCheckout, SetupStatus } from "../types";
 import { BatteryPickerStep } from "./onboarding/BatteryPickerStep";
 import { EngineStep } from "./onboarding/EngineStep";
 import { OnboardingConversePanel } from "./onboarding/OnboardingConversePanel";
 import { FirstRequestStep } from "./onboarding/FirstRequestStep";
 import { GitHubStep } from "./onboarding/GitHubStep";
 import { OnboardingRail } from "./onboarding/OnboardingRail";
-import { ReposStep } from "./onboarding/ReposStep";
+import { ReposStep, type RepoSaveOutcome } from "./onboarding/ReposStep";
 import { RosterThemeStep } from "./onboarding/RosterThemeStep";
 import { SlackStep } from "./onboarding/SlackStep";
 import { StepFrame } from "./onboarding/StepFrame";
@@ -168,7 +168,6 @@ export function OnboardingView({
   connected,
   canRun,
   nativeBusy,
-  nativeResult,
   rosterTheme,
   customNames,
   rosterSaveError,
@@ -189,7 +188,6 @@ export function OnboardingView({
   connected: boolean;
   canRun: boolean;
   nativeBusy: string | null;
-  nativeResult: NativeCommandResult | null;
   rosterTheme: RosterThemeId;
   customNames: CustomRosterNames;
   rosterSaveError: string | null;
@@ -536,7 +534,7 @@ export function OnboardingView({
   }, [refreshStatus]);
 
   const githubConnected = Boolean(status?.github.ok);
-  const engineReady = Boolean(status?.engine_ready) || Boolean(nativeResult?.success);
+  const engineReady = Boolean(status?.engine_ready);
   // Code graph indexing depends on the repository selection later in onboarding,
   // so recommended capability repairs cannot gate the engine step itself.
   const toolsReady = engineReady;
@@ -553,7 +551,10 @@ export function OnboardingView({
     );
   }, []);
 
-  const reposReady = reposSelected;
+  const reposReady =
+    reposSelected &&
+    (status?.repos.repo_checkouts.length ?? 0) === (status?.repos.count ?? 0) &&
+    Boolean(status?.repos.repo_checkouts.every((checkout) => checkout.ready));
   const codeGraphCapability = status?.capability_plane?.capabilities.find(
     (capability) => capability.key === "code_graph",
   );
@@ -562,8 +563,8 @@ export function OnboardingView({
     Boolean(status?.code_memory?.enabled) && codeGraphEngine !== "graphify";
 
   const indexSelectedRepos = useCallback(
-    async (repos: string[]): Promise<boolean> => {
-      if (!repos.length) return false;
+    async (repos: string[], repoCheckouts: SetupRepoCheckout[]): Promise<RepoSaveOutcome> => {
+      if (!repos.length) return { indexed: false };
 
       // The repository POST has already committed by the time this callback
       // runs. Reconcile that required setup state before optional graph work can
@@ -578,6 +579,7 @@ export function OnboardingView({
                   ...current.repos,
                   selected: [...repos],
                   count: repos.length,
+                  repo_checkouts: [...repoCheckouts],
                 },
               }
             : current,
@@ -585,35 +587,38 @@ export function OnboardingView({
       };
       await refreshStatus();
       retainSavedRepoScope();
-      if (!shouldIndexCodeMemory) return false;
+      if (!shouldIndexCodeMemory) return { indexed: false };
       if (!canRun) {
-        throw new Error(
-          "Repositories were saved, but code-graph indexing requires the Alfred desktop app.",
-        );
+        return {
+          indexed: false,
+          warning: "Repository setup is complete. Open the desktop app to build the code graph.",
+        };
       }
       const result = await onRunLocalAction({
         action: "code_memory_index",
         refreshAfter: true,
       });
       if (!result?.success) {
-        throw new Error(
-          result?.message ||
-            "Repositories were saved, but Alfred could not build their code graph.",
-        );
+        return {
+          indexed: false,
+          warning: result?.message || "Repository setup is complete, but the code graph build failed.",
+        };
       }
       const fresh = await refreshStatus();
       retainSavedRepoScope();
       if (!fresh?.code_memory?.index_present) {
-        throw new Error(
-          "Repositories were saved, but no code graph was built. Clone the selected repositories locally, then retry indexing.",
-        );
+        return {
+          indexed: false,
+          warning: "Repository setup is complete, but no code graph was produced. Retry indexing.",
+        };
       }
       if (!codeMemoryCoversRepos(fresh, repos)) {
-        throw new Error(
-          "Repositories were saved, but the code graph did not cover every selected repository. Clone or map the selected repositories locally, then retry indexing.",
-        );
+        return {
+          indexed: false,
+          warning: "Repository setup is complete, but the code graph does not cover every selected repository. Retry indexing.",
+        };
       }
-      return true;
+      return { indexed: true };
     },
     [canRun, codeMemoryCoversRepos, onRunLocalAction, refreshStatus, shouldIndexCodeMemory],
   );
@@ -630,7 +635,6 @@ export function OnboardingView({
     refreshStatus,
     startGithubAuthLogin,
     onRunLocalAction,
-    onReposSaved: indexSelectedRepos,
     onSaveCustomNames,
     onBatteriesDecision: useCallback(() => {
       setBatteriesTouched(true);
@@ -643,6 +647,11 @@ export function OnboardingView({
     onOpenSlackSetup: useCallback(() => {
       setNotice(null);
       setStepKey("slack");
+      setMode("stepped");
+    }, []),
+    onOpenRepoSetup: useCallback(() => {
+      setNotice(null);
+      setStepKey("repos");
       setMode("stepped");
     }, []),
   });
@@ -992,12 +1001,11 @@ export function OnboardingView({
               <ReposStep
                 baseUrl={baseUrl}
                 canMutate={canMutate}
+                canRun={canRun}
                 githubConnected={githubConnected}
                 selectedCount={status?.repos.count ?? 0}
-                onSaved={async (repos) => {
-                  const indexed = await indexSelectedRepos(repos);
-                  await refreshStatus();
-                  return indexed;
+                onSaved={async (repos, repoCheckouts) => {
+                  return indexSelectedRepos(repos, repoCheckouts);
                 }}
                 setNotice={setNotice}
               />

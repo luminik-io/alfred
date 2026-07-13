@@ -8,10 +8,48 @@ import type {
   SetupPlaybookComposeResponse,
   SetupPlaybooksResponse,
   SetupReposResponse,
+  SetupRepoCheckout,
+  SetupRepoCheckoutInput,
   SetupSelectReposResponse,
   SetupStatus,
 } from "../types";
-import { readAlfredJson, withTimeout, writeAlfredJson } from "./client";
+import { errorDetail, isTauri, readAlfredJson, withTimeout, writeAlfredJson } from "./client";
+
+export class SetupRepoCheckoutValidationError extends Error {
+  readonly rows: SetupRepoCheckout[];
+  readonly detail: string | null;
+
+  constructor(rows: SetupRepoCheckout[], detail: string | null = null) {
+    super("One or more checkout folders could not be verified.");
+    this.name = "SetupRepoCheckoutValidationError";
+    this.rows = rows;
+    this.detail = detail;
+  }
+}
+
+function checkoutRowsFromError(err: unknown): SetupRepoCheckout[] | null {
+  const detail = errorDetail(err);
+  const start = detail?.indexOf("{") ?? -1;
+  if (!detail || start < 0) return null;
+  try {
+    const payload = JSON.parse(detail.slice(start)) as { repo_checkouts?: unknown };
+    if (!Array.isArray(payload.repo_checkouts)) return null;
+    const rows = payload.repo_checkouts as SetupRepoCheckout[];
+    return rows.every(
+      (row) =>
+        row &&
+        typeof row === "object" &&
+        typeof row.repo === "string" &&
+        typeof row.path === "string" &&
+        typeof row.ready === "boolean" &&
+        (row.reason === null || typeof row.reason === "string"),
+    )
+      ? rows
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 // The upcoming scheduled agent runs parsed from agents.conf. Read-only; the
 // conversational onboarding's set_schedule uses it to learn which agents to
@@ -42,8 +80,31 @@ export async function loadSetupRepos(
 export async function saveSetupRepos(
   baseUrl: string,
   repos: string[],
+  repoCheckouts: SetupRepoCheckoutInput[],
 ): Promise<SetupSelectReposResponse> {
-  return writeAlfredJson(baseUrl, "/api/setup/repos", { repos, queue_repos: repos });
+  try {
+    return await writeAlfredJson(baseUrl, "/api/setup/repos", {
+      repos,
+      queue_repos: repos,
+      repo_checkouts: repoCheckouts,
+    });
+  } catch (err) {
+    const rows = checkoutRowsFromError(err);
+    if (rows) throw new SetupRepoCheckoutValidationError(rows, errorDetail(err));
+    throw err;
+  }
+}
+
+export async function pickSetupRepoFolder(defaultPath?: string): Promise<string | null> {
+  if (!isTauri()) return null;
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const selected = await open({
+    directory: true,
+    multiple: false,
+    defaultPath: defaultPath?.trim() || undefined,
+    title: "Choose the local repository checkout",
+  });
+  return typeof selected === "string" ? selected : null;
 }
 
 export async function loadSetupBatteries(baseUrl: string): Promise<SetupBatteryManifest> {
