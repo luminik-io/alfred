@@ -227,9 +227,10 @@ export function OnboardingView({
   // chat is an alternative entry from Welcome; the person can drop back to
   // stepped at any point (and the engine-unavailable fallback does so too).
   const [mode, setMode] = useState<"stepped" | "chat">("stepped");
-  // True once the first request / demo landed, so the rail shows the journey
-  // complete even though the user has already been routed to Home / Ask.
+  // Keep real requests and disposable demo state separate so clearing a sample
+  // cannot leave the final Inbox gate unlocked.
   const [requestDone, setRequestDone] = useState(false);
+  const [demoDone, setDemoDone] = useState(false);
   // Steps the user explicitly skipped (Dev persona). A skipped step is no longer
   // the blocker for "what's next" but is not marked done either.
   const [skipped, setSkipped] = useState<Set<OnboardingStepKey>>(new Set());
@@ -248,6 +249,9 @@ export function OnboardingView({
       next.add(key);
       return next;
     });
+  }, []);
+  const markSetupComplete = useCallback(() => {
+    setCompletedSteps(new Set(ONBOARDING_STEP_ORDER.filter((key) => key !== "request")));
   }, []);
   const [githubAuthFlow, setGithubAuthFlow] = useState<GithubAuthFlow>(IDLE_GITHUB_AUTH_FLOW);
   // The step the auto-advance effect last moved past, so a detected gh/engine
@@ -667,7 +671,7 @@ export function OnboardingView({
           // setup snapshot is available.
           return slackConfigured || skipped.has("slack") || slackTouched;
         case "request":
-          return requestDone || Boolean(status?.demo.present);
+          return requestDone || demoDone || Boolean(status?.demo.present);
         default:
           return false;
       }
@@ -678,6 +682,7 @@ export function OnboardingView({
       installInitialized,
       reposReady,
       requestDone,
+      demoDone,
       slackConfigured,
       skipped,
       slackTouched,
@@ -739,7 +744,7 @@ export function OnboardingView({
           ? reposReady
           : true;
   const requiredSetupReady = Boolean(status?.first_run?.ready);
-  const firstJobComplete = requestDone || Boolean(status?.demo.present);
+  const firstJobComplete = requestDone || demoDone || Boolean(status?.demo.present);
 
   const goToStep = useCallback((key: OnboardingStepKey, options?: { manual?: boolean }) => {
     if (options?.manual) {
@@ -877,6 +882,7 @@ export function OnboardingView({
               slackDecisionHandled={stepSatisfied("slack")}
               onRunAction={runOnboardingAction}
               onDone={() => {
+                markSetupComplete();
                 setStepKey("request");
                 setMode("stepped");
               }}
@@ -1041,8 +1047,9 @@ export function OnboardingView({
                 demoPresent={Boolean(status?.demo.present)}
                 setNotice={setNotice}
                 onSwitch={onSwitch}
-                onComplete={() => {
-                  setRequestDone(true);
+                onComplete={(kind) => {
+                  if (kind === "request") setRequestDone(true);
+                  if (kind === "demo") setDemoDone(true);
                   markStepComplete("request");
                 }}
                 onSeedDemo={async () => {
@@ -1052,6 +1059,7 @@ export function OnboardingView({
                 onClearDemo={async () => {
                   await onRefreshBoard?.({ demo: false });
                   await refreshStatus();
+                  setDemoDone(false);
                 }}
               />
             </StepFrame>

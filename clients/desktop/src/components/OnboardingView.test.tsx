@@ -1386,6 +1386,7 @@ describe("OnboardingView seven-step takeover", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /show me a sample first/i })).toBeInTheDocument(),
     );
+    expect(screen.getByRole("button", { name: /go to inbox/i })).toBeDisabled();
   });
 
   it("shows the clear-sample exit when the server already reports demo present", async () => {
@@ -1692,6 +1693,7 @@ describe("OnboardingView conversational setup actions", () => {
     await approveStep(user, /finish setup/i);
 
     expect(await screen.findByText(/pick something for alfred to do first/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/onboarding steps complete/i)).toHaveTextContent(/7 of 8/i);
     expect(onSwitch).not.toHaveBeenCalled();
   });
 
