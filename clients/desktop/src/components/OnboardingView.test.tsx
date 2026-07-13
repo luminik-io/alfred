@@ -50,7 +50,7 @@ function makeIndexedStatus(): SetupStatus {
   if (!status.code_memory) throw new Error("test setup requires code-memory status");
   return {
     ...status,
-    graph_coverage: {
+    code_memory_coverage: {
       ready: true,
       covered: ["octocat/web"],
       missing: [],
@@ -957,7 +957,16 @@ describe("OnboardingView seven-step takeover", () => {
     );
   });
 
-  it("does not report repository setup complete when the index command builds no graph", async () => {
+  it("surfaces a graph failure without blocking the saved repository scope", async () => {
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: {
+          selected: ["octocat/web"],
+          count: 1,
+          keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+        },
+      }),
+    );
     vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
       ok: true,
       repos: ["octocat/web"],
@@ -983,12 +992,12 @@ describe("OnboardingView seven-step takeover", () => {
 
     expect(await screen.findByText(/no code graph was built/i)).toBeInTheDocument();
     expect(screen.queryByText(/built the code graph/i)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^continue$/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^continue$/i })).toBeEnabled();
   });
 
   it("does not accept a same-basename graph for a different repository", async () => {
     const staleStatus = makeIndexedStatus();
-    staleStatus.graph_coverage = {
+    staleStatus.code_memory_coverage = {
       ready: false,
       covered: ["other/web"],
       missing: ["octocat/web"],
@@ -1019,6 +1028,58 @@ describe("OnboardingView seven-step takeover", () => {
 
     expect(await screen.findByText(/did not cover every selected repository/i)).toBeInTheDocument();
     expect(screen.queryByText(/built the code graph/i)).not.toBeInTheDocument();
+  });
+
+  it("saves repositories without invoking code memory when Graphify is selected", async () => {
+    const graphifyStatus = makeStatus({
+      capability_plane: {
+        version: 1,
+        summary: { ready: 1, actionable: 0, disabled: 0, total: 1 },
+        capabilities: [
+          {
+            key: "code_graph",
+            title: "Code graph memory",
+            category: "memory",
+            recommended: true,
+            state: "ready",
+            installed: true,
+            enabled: true,
+            detail: "Graphify is ready.",
+            detected: { engine: "graphify", graph_present: true },
+            install_hint: "",
+            source: { source: "graphifyy" },
+          },
+        ],
+      },
+    });
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(graphifyStatus);
+    vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
+      ok: true,
+      repos: ["octocat/web"],
+      env_path: "/home/.alfred/.env",
+      keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+    });
+    const onRunLocalAction = vi.fn(async () => ({
+      command: ["alfred", "code-memory", "index"],
+      stdout: "",
+      stderr: "",
+      status: 0,
+      success: true,
+      pid: 1,
+      message: "Code graph indexed.",
+    }));
+    renderOnboarding({ onRunLocalAction });
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /get started/i }));
+    await user.click(await screen.findByRole("button", { name: /load my repositories/i }));
+    await user.click(await screen.findByRole("checkbox", { name: /octocat\/web/i }));
+    await user.click(screen.getByRole("button", { name: /save 1 repository/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/saved 1 repository alfred can work in\./i)).toBeInTheDocument(),
+    );
+    expect(onRunLocalAction).not.toHaveBeenCalled();
   });
 
   it("surfaces that browser-only repository saves cannot build the required graph", async () => {

@@ -58,7 +58,7 @@ def _git_repo_with_origin(path: Path, slug: str) -> None:
     )
 
 
-def test_code_graph_coverage_requires_exact_github_identity(tmp_path: Path) -> None:
+def test_code_memory_coverage_requires_exact_github_identity(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     repo = workspace / "web"
     _git_repo_with_origin(repo, "octocat/web")
@@ -73,12 +73,12 @@ def test_code_graph_coverage_requires_exact_github_identity(tmp_path: Path) -> N
         "repos": {"selected": ["web"]},
     }
 
-    matching = setup_mod._code_graph_coverage(["octocat/web"], code_memory, env)
-    wrong_owner = setup_mod._code_graph_coverage(["other/web"], code_memory, env)
-    disabled = setup_mod._code_graph_coverage(
+    matching = setup_mod._code_memory_coverage(["octocat/web"], code_memory, env)
+    wrong_owner = setup_mod._code_memory_coverage(["other/web"], code_memory, env)
+    disabled = setup_mod._code_memory_coverage(
         ["octocat/web"], {**code_memory, "enabled": False}, env
     )
-    missing_binary = setup_mod._code_graph_coverage(
+    missing_binary = setup_mod._code_memory_coverage(
         ["octocat/web"], {**code_memory, "binary": {"resolved": False}}, env
     )
 
@@ -112,6 +112,12 @@ def test_bootstrap_status_reports_code_memory_defaults(
     assert code_memory["repo"] == "DeusData/codebase-memory-mcp"
     assert code_memory["index_dir"] == str(tmp_path / ".alfred" / "state" / "code-memory")
     assert code_memory["index_present"] is False
+    assert payload["code_memory_coverage"] == {
+        "ready": False,
+        "covered": [],
+        "missing": [],
+        "detected": [],
+    }
 
 
 def test_bootstrap_status_includes_ready_first_run_checklist(

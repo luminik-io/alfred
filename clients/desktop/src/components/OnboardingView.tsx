@@ -516,21 +516,26 @@ export function OnboardingView({
 
   const codeMemoryCoversRepos = useCallback((fresh: SetupStatus, repos: string[]): boolean => {
     const covered = new Set(
-      (fresh.graph_coverage?.covered ?? []).map((repo) => repo.trim().toLowerCase()),
+      (fresh.code_memory_coverage?.covered ?? []).map((repo) => repo.trim().toLowerCase()),
     );
     return (
-      Boolean(fresh.graph_coverage?.ready) &&
+      Boolean(fresh.code_memory_coverage?.ready) &&
       repos.every((repo) => covered.has(repo.trim().toLowerCase()))
     );
   }, []);
 
-  const reposReady = status
-    ? reposSelected && codeMemoryCoversRepos(status, status.repos.selected)
-    : false;
+  const reposReady = reposSelected;
+  const codeGraphCapability = status?.capability_plane?.capabilities.find(
+    (capability) => capability.key === "code_graph",
+  );
+  const codeGraphEngine = String(codeGraphCapability?.detected?.engine || "code-memory");
+  const shouldIndexCodeMemory =
+    Boolean(status?.code_memory?.enabled) && codeGraphEngine !== "graphify";
 
   const indexSelectedRepos = useCallback(
     async (repos: string[]): Promise<boolean> => {
       if (!repos.length) return false;
+      if (!shouldIndexCodeMemory) return false;
       if (!canRun) {
         throw new Error(
           "Repositories were saved, but code-graph indexing requires the Alfred desktop app.",
@@ -559,7 +564,7 @@ export function OnboardingView({
       }
       return true;
     },
-    [canRun, codeMemoryCoversRepos, onRunLocalAction, refreshStatus],
+    [canRun, codeMemoryCoversRepos, onRunLocalAction, refreshStatus, shouldIndexCodeMemory],
   );
 
   // Execute one onboarding action REQUESTED by the conversational guide. The

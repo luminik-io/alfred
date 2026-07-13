@@ -760,7 +760,7 @@ export type SetupStatus = {
   engines: SetupEngine[];
   engine_ready: boolean;
   code_memory?: SetupCodeMemory;
-  graph_coverage?: {
+  code_memory_coverage?: {
     ready: boolean;
     covered: string[];
     missing: string[];

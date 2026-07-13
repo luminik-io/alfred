@@ -1642,7 +1642,7 @@ def bootstrap_status() -> dict[str, Any]:
     queue_covers_selected = bool(repos) and not queue_missing
     any_engine = any(e["installed"] for e in engines)
     code_memory = code_memory_status(runtime_env)
-    graph_coverage = _code_graph_coverage(repos, code_memory, runtime_env)
+    code_memory_coverage = _code_memory_coverage(repos, code_memory, runtime_env)
     capability_plane = capability_status(code_memory, launcher_env=runtime_env)
     install = install_inventory(repos=repos, env=runtime_env)
     first_run = first_run_readiness_status(
@@ -1661,7 +1661,7 @@ def bootstrap_status() -> dict[str, Any]:
         "engines": engines,
         "engine_ready": any_engine,
         "code_memory": code_memory,
-        "graph_coverage": graph_coverage,
+        "code_memory_coverage": code_memory_coverage,
         "capability_plane": capability_plane,
         "repos": {
             "selected": repos,
@@ -1923,7 +1923,7 @@ def _local_repo_origin_slug(path: Path) -> str:
     return _github_slug_from_remote_url(proc.stdout)
 
 
-def _code_graph_coverage(
+def _code_memory_coverage(
     repos: list[str], code_memory: dict[str, Any], env: dict[str, str]
 ) -> dict[str, Any]:
     """Prove graph scope against exact GitHub identities, not repo basenames."""
