@@ -92,6 +92,7 @@ export async function saveSetupRepos(
     return await writeAlfredJson(baseUrl, "/api/setup/repos", {
       repos,
       queue_repos: repos,
+      replace_queue_repos: repos.length === 0,
       repo_checkouts: repoCheckouts,
     });
   } catch (err) {

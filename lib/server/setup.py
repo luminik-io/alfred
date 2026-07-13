@@ -564,8 +564,7 @@ def persist_selected_repos(
     )
     if checkout_rows is not None:
         values[REPO_LOCAL_MAP_ENV] = _format_repo_local_map(checkout_rows)
-    if owner:
-        values = {GH_ORG_ENV: owner, **values}
+    values = {GH_ORG_ENV: owner or "", **values}
     env_path = write_env_values(values)
     for key in values:
         # Mirror into the live process so the new scope is effective now. An

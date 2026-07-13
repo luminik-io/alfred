@@ -787,6 +787,27 @@ describe("error humanization", () => {
     });
   });
 
+  it("explicitly replaces the queue scope when clearing repositories", async () => {
+    let capturedInit: RequestInit | undefined;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      capturedInit = init;
+      return new Response(
+        JSON.stringify({ ok: true, repos: [], selected: [], repo_checkouts: [] }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await saveSetupRepos(DEFAULT_BASE_URL, [], []);
+
+    expect(JSON.parse(String(capturedInit?.body))).toMatchObject({
+      repos: [],
+      queue_repos: [],
+      replace_queue_repos: true,
+      repo_checkouts: [],
+    });
+  });
+
   it("rejects an incompatible repository response instead of crashing the UI", async () => {
     vi.stubGlobal(
       "fetch",

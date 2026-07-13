@@ -62,9 +62,7 @@ def _git_repo_with_origin(path: Path, slug: str) -> None:
 
 def test_github_slug_accepts_ssh_over_443_remote() -> None:
     assert (
-        setup_mod._github_slug_from_remote_url(
-            "ssh://git@ssh.github.com:443/octocat/example.git"
-        )
+        setup_mod._github_slug_from_remote_url("ssh://git@ssh.github.com:443/octocat/example.git")
         == "octocat/example"
     )
 
@@ -1518,6 +1516,46 @@ def test_persist_selected_repos_replaces_queue_scope_when_explicitly_requested(
     assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
     assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
     assert os.environ["ALFRED_QUEUE_REPOS"] == "acme/web"
+
+
+def test_persist_selected_repos_clear_resets_queue_and_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv("GH_ORG", "acme")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "acme/web")
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "acme/web")
+    monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "acme/web")
+    monkeypatch.setenv(setup_mod.REPO_LOCAL_MAP_ENV, "acme/web=/workspace/web")
+    home.mkdir(parents=True)
+
+    setup_mod.persist_selected_repos(
+        [],
+        queue_repos=[],
+        replace_queue_repos=True,
+        repo_checkouts=[],
+    )
+
+    env_text = (home / ".env").read_text(encoding="utf-8")
+    assert "GH_ORG=\n" in env_text
+    assert "ALFRED_QUEUE_REPOS=\n" in env_text
+    assert "ALFRED_SHIPPED_REPOS=\n" in env_text
+    assert "ALFRED_BRIDGE_REPOS=\n" in env_text
+    assert f"{setup_mod.REPO_LOCAL_MAP_ENV}=\n" in env_text
+    assert "GH_ORG" not in os.environ
+    assert "ALFRED_QUEUE_REPOS" not in os.environ
+
+    setup_mod.persist_selected_repos(
+        ["Other/API"],
+        queue_repos=["Other/API"],
+        replace_queue_repos=True,
+    )
+
+    assert os.environ["GH_ORG"] == "other"
+    assert os.environ["ALFRED_QUEUE_REPOS"] == "other/api"
 
 
 def test_persist_selected_repos_preserves_existing_queue_scope_on_guided_save(
