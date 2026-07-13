@@ -515,16 +515,18 @@ export function OnboardingView({
   const slackConfigured = Boolean(status?.install?.slack_configured);
 
   const codeMemoryCoversRepos = useCallback((fresh: SetupStatus, repos: string[]): boolean => {
-    const indexedRepos = new Set(
-      (fresh.code_memory?.repos?.selected ?? []).map((repo) => repo.trim().toLowerCase()),
+    const covered = new Set(
+      (fresh.graph_coverage?.covered ?? []).map((repo) => repo.trim().toLowerCase()),
     );
-    return repos.every((repo) => {
-      const slug = repo.trim().toLowerCase();
-      const slugParts = slug.split("/");
-      const localName = slugParts[slugParts.length - 1] || slug;
-      return indexedRepos.has(slug) || indexedRepos.has(localName);
-    });
+    return (
+      Boolean(fresh.graph_coverage?.ready) &&
+      repos.every((repo) => covered.has(repo.trim().toLowerCase()))
+    );
   }, []);
+
+  const reposReady = status
+    ? reposSelected && codeMemoryCoversRepos(status, status.repos.selected)
+    : false;
 
   const indexSelectedRepos = useCallback(
     async (repos: string[]): Promise<boolean> => {
@@ -615,7 +617,7 @@ export function OnboardingView({
         case "github":
           return githubConnected;
         case "repos":
-          return reposSelected;
+          return reposReady;
         case "batteries":
           // Batteries are optional; Alfred works with zero of them. The step
           // reads satisfied once the user moves past it or skips it. We never
@@ -647,7 +649,7 @@ export function OnboardingView({
       githubConnected,
       installInitialized,
       reachedIndex,
-      reposSelected,
+      reposReady,
       requestDone,
       slackConfigured,
       skipped,
@@ -705,6 +707,7 @@ export function OnboardingView({
 
   const previousKey = ONBOARDING_STEP_ORDER[currentIndex - 1] ?? null;
   const nextKey = ONBOARDING_STEP_ORDER[currentIndex + 1] ?? null;
+  const canAdvance = stepKey !== "repos" || reposReady;
 
   const goToStep = useCallback((key: OnboardingStepKey, options?: { manual?: boolean }) => {
     if (options?.manual) {
@@ -715,9 +718,10 @@ export function OnboardingView({
   }, []);
 
   const advance = useCallback(() => {
+    if (!canAdvance) return;
     if (stepKey === "batteries") setBatteriesTouched(true);
     if (nextKey) goToStep(nextKey);
-  }, [goToStep, nextKey, stepKey]);
+  }, [canAdvance, goToStep, nextKey, stepKey]);
 
   const skipStep = useCallback(
     (key: OnboardingStepKey) => {
@@ -764,12 +768,12 @@ export function OnboardingView({
       ) {
         return;
       }
-      if (nextKey) {
+      if (nextKey && canAdvance) {
         event.preventDefault();
         advance();
       }
     },
-    [advance, nextKey],
+    [advance, canAdvance, nextKey],
   );
 
   const meta = STEP_META[stepKey];
@@ -984,7 +988,7 @@ export function OnboardingView({
               <FirstRequestStep
                 baseUrl={baseUrl}
                 canMutate={canMutate}
-                reposReady={reposSelected}
+                reposReady={reposReady}
                 demoPresent={Boolean(status?.demo.present)}
                 setNotice={setNotice}
                 onSwitch={onSwitch}
@@ -1025,7 +1029,13 @@ export function OnboardingView({
               </Button>
             ) : null}
             {nextKey ? (
-              <Button type="button" size="sm" className="btn-primary-glow" onClick={advance}>
+              <Button
+                type="button"
+                size="sm"
+                className="btn-primary-glow"
+                onClick={advance}
+                disabled={!canAdvance}
+              >
                 <span>Continue</span>
                 <ArrowRight size={15} aria-hidden="true" />
               </Button>

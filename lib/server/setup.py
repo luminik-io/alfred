@@ -1642,6 +1642,7 @@ def bootstrap_status() -> dict[str, Any]:
     queue_covers_selected = bool(repos) and not queue_missing
     any_engine = any(e["installed"] for e in engines)
     code_memory = code_memory_status(runtime_env)
+    graph_coverage = _code_graph_coverage(repos, code_memory, runtime_env)
     capability_plane = capability_status(code_memory, launcher_env=runtime_env)
     install = install_inventory(repos=repos, env=runtime_env)
     first_run = first_run_readiness_status(
@@ -1660,6 +1661,7 @@ def bootstrap_status() -> dict[str, Any]:
         "engines": engines,
         "engine_ready": any_engine,
         "code_memory": code_memory,
+        "graph_coverage": graph_coverage,
         "capability_plane": capability_plane,
         "repos": {
             "selected": repos,
@@ -1883,6 +1885,83 @@ def _selected_repo_local_paths(repos: list[str], env: dict[str, str]) -> list[di
             }
         )
     return out
+
+
+def _github_slug_from_remote_url(raw: str) -> str:
+    url = raw.strip()
+    if not url:
+        return ""
+    if url.startswith("git@github.com:"):
+        path = url.split(":", 1)[1]
+    else:
+        try:
+            parsed = urllib.parse.urlsplit(url)
+        except ValueError:
+            return ""
+        if parsed.hostname != "github.com":
+            return ""
+        path = parsed.path.lstrip("/")
+    parts = [part for part in path.removesuffix(".git").strip("/").split("/") if part]
+    if len(parts) < 2:
+        return ""
+    return f"{parts[-2]}/{parts[-1]}"
+
+
+def _local_repo_origin_slug(path: Path) -> str:
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(path), "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if proc.returncode != 0:
+        return ""
+    return _github_slug_from_remote_url(proc.stdout)
+
+
+def _code_graph_coverage(
+    repos: list[str], code_memory: dict[str, Any], env: dict[str, str]
+) -> dict[str, Any]:
+    """Prove graph scope against exact GitHub identities, not repo basenames."""
+
+    indexed = {
+        str(name).strip().lower()
+        for name in (code_memory.get("repos") or {}).get("selected", [])
+        if str(name).strip()
+    }
+    index_present = bool(code_memory.get("index_present"))
+    covered: list[str] = []
+    detected: list[dict[str, Any]] = []
+    for row in _selected_repo_local_paths(repos, env):
+        slug = str(row["repo"]).strip().lower()
+        local_name = slug.rsplit("/", 1)[-1]
+        path = Path(str(row["path"]))
+        origin_slug = _local_repo_origin_slug(path) if row["exists"] else ""
+        scope_selected = slug in indexed or local_name in indexed
+        identity_matches = origin_slug.lower() == slug
+        ready = index_present and bool(row["exists"]) and scope_selected and identity_matches
+        if ready:
+            covered.append(slug)
+        detected.append(
+            {
+                **row,
+                "origin_repo": origin_slug or None,
+                "scope_selected": scope_selected,
+                "identity_matches": identity_matches,
+                "covered": ready,
+            }
+        )
+    missing = [repo for repo in repos if repo.strip().lower() not in set(covered)]
+    return {
+        "ready": bool(repos) and not missing,
+        "covered": covered,
+        "missing": missing,
+        "detected": detected,
+    }
 
 
 def _first_existing_git_repo_candidate(

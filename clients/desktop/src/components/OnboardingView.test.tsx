@@ -50,6 +50,11 @@ function makeIndexedStatus(): SetupStatus {
   if (!status.code_memory) throw new Error("test setup requires code-memory status");
   return {
     ...status,
+    graph_coverage: {
+      ready: true,
+      covered: ["octocat/web"],
+      missing: [],
+    },
     code_memory: {
       ...status.code_memory,
       index_present: true,
@@ -978,16 +983,15 @@ describe("OnboardingView seven-step takeover", () => {
 
     expect(await screen.findByText(/no code graph was built/i)).toBeInTheDocument();
     expect(screen.queryByText(/built the code graph/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^continue$/i })).toBeDisabled();
   });
 
-  it("does not accept an old graph that excludes the newly selected repository", async () => {
+  it("does not accept a same-basename graph for a different repository", async () => {
     const staleStatus = makeIndexedStatus();
-    if (!staleStatus.code_memory?.repos) throw new Error("test setup requires repo scope");
-    staleStatus.code_memory.repos = {
-      configured: ["unrelated"],
-      configured_existing: ["unrelated"],
-      selected: ["unrelated"],
-      count: 1,
+    staleStatus.graph_coverage = {
+      ready: false,
+      covered: ["other/web"],
+      missing: ["octocat/web"],
     };
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(staleStatus);
     vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
