@@ -80,6 +80,22 @@ function makeSetupStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
     engine_ready: true,
     repos: { selected: ["acme-org/api"], count: 1, keys: [] },
     demo: { present: false },
+    first_run: {
+      version: 1,
+      ready: true,
+      status: "ready",
+      headline: "Ready for the first real run.",
+      summary: {
+        required_ready: 7,
+        required_total: 7,
+        recommended_ready: 0,
+        recommended_total: 0,
+        optional_ready: 0,
+        optional_total: 0,
+        blockers: [],
+      },
+      checks: [],
+    },
     install: {
       agents_conf_present: true,
       scheduled_runs: 3,
@@ -159,31 +175,52 @@ describe("App initial route gating", () => {
   it("lands on onboarding when connected but setup is not complete", async () => {
     useAlfredMock.mockReturnValue(baseAlfredReturn({ snapshot: makeSnapshot(), error: null }));
     loadSetupStatusMock.mockResolvedValue(
-      makeSetupStatus({ engine_ready: false, repos: { selected: [], count: 0, keys: [] } }),
+      makeSetupStatus({
+        first_run: {
+          ...makeSetupStatus().first_run,
+          ready: false,
+          status: "needs_action",
+          headline: "1 required setup item needs action.",
+          summary: {
+            ...makeSetupStatus().first_run.summary,
+            required_ready: 6,
+            blockers: ["engine"],
+          },
+        },
+      }),
     );
     await renderApp();
     expect(await screen.findByTestId("onboarding-screen")).toBeInTheDocument();
     expect(screen.queryByTestId("inbox-screen")).not.toBeInTheDocument();
   });
 
-  it("lands on onboarding when repo scope is present but the fleet was never deployed", async () => {
-    // Regression: a machine can report engine + GitHub + a selected repo (repo
-    // scope is often inherited from the shell environment) while never having run
-    // setup, so it has no agents.conf and zero scheduled agents. That install
-    // must land on the onboarding takeover, not on an empty Inbox.
+  it("lands on onboarding when canonical readiness reports a local checkout blocker", async () => {
     useAlfredMock.mockReturnValue(baseAlfredReturn({ snapshot: makeSnapshot(), error: null }));
     loadSetupStatusMock.mockResolvedValue(
       makeSetupStatus({
-        install: {
-          agents_conf_present: false,
-          scheduled_runs: 0,
-          initialized: true,
-        } as SetupStatus["install"],
+        first_run: {
+          ...makeSetupStatus().first_run,
+          ready: false,
+          status: "needs_action",
+          headline: "1 required setup item needs action.",
+          summary: {
+            ...makeSetupStatus().first_run.summary,
+            required_ready: 6,
+            blockers: ["repo_local_paths"],
+          },
+        },
       }),
     );
     await renderApp();
     expect(await screen.findByTestId("onboarding-screen")).toBeInTheDocument();
     expect(screen.queryByTestId("inbox-screen")).not.toBeInTheDocument();
+  });
+
+  it("lands on onboarding when canonical setup status cannot be read", async () => {
+    useAlfredMock.mockReturnValue(baseAlfredReturn({ snapshot: makeSnapshot(), error: null }));
+    loadSetupStatusMock.mockRejectedValue(new Error("runtime warming up"));
+    await renderApp();
+    expect(await screen.findByTestId("onboarding-screen")).toBeInTheDocument();
   });
 
   it("lands on the Inbox when connected and setup is complete", async () => {

@@ -15,6 +15,22 @@ import type {
 } from "../types";
 
 function makeStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
+  const firstRun: SetupStatus["first_run"] = {
+    version: 1,
+    ready: false,
+    status: "needs_action",
+    headline: "Setup needs action.",
+    summary: {
+      required_ready: 0,
+      required_total: 7,
+      recommended_ready: 0,
+      recommended_total: 0,
+      optional_ready: 0,
+      optional_total: 0,
+      blockers: ["engine", "github", "repos"],
+    },
+    checks: [],
+  };
   return {
     github: { ok: true, account: "octocat", detail: "Signed in to GitHub as octocat." },
     engines: [
@@ -43,6 +59,7 @@ function makeStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
     demo: { present: false },
     ready: false,
     ...overrides,
+    first_run: overrides.first_run ?? firstRun,
   };
 }
 
@@ -1409,6 +1426,26 @@ describe("OnboardingView seven-step takeover", () => {
       screen.queryByRole("button", { name: /show me a sample first/i }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /go to inbox/i })).toBeEnabled();
+  });
+
+  it("relocks the Inbox after clearing server-reported demo state even when refresh fails", async () => {
+    vi.spyOn(apiSetup, "clearSetupDemo").mockResolvedValue({ cleared: true });
+    const onRefreshBoard = vi.fn(async () => {
+      throw new Error("board refresh failed");
+    });
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      makeReadyStatus({ demo: { present: true } }),
+    );
+    renderOnboarding({ onRefreshBoard });
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^first request$/i);
+    await user.click(await screen.findByRole("button", { name: /clear sample data/i }));
+
+    await waitFor(() => expect(onRefreshBoard).toHaveBeenCalledWith({ demo: false }));
+    expect(screen.getByRole("button", { name: /go to inbox/i })).toBeDisabled();
+    expect(screen.getByText(/cleared the sample data/i)).toBeInTheDocument();
+    expect(screen.queryByText(/could not clear the sample/i)).not.toBeInTheDocument();
   });
 
   it("does not let Enter bypass a missing required engine", async () => {

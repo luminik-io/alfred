@@ -231,6 +231,7 @@ export function OnboardingView({
   // cannot leave the final Inbox gate unlocked.
   const [requestDone, setRequestDone] = useState(false);
   const [demoDone, setDemoDone] = useState(false);
+  const [demoCleared, setDemoCleared] = useState(false);
   // Steps the user explicitly skipped (Dev persona). A skipped step is no longer
   // the blocker for "what's next" but is not marked done either.
   const [skipped, setSkipped] = useState<Set<OnboardingStepKey>>(new Set());
@@ -329,6 +330,7 @@ export function OnboardingView({
     if (wasConnected !== connected) {
       connectionGenerationRef.current += 1;
       githubAuthRequestSeq.current += 1;
+      setDemoCleared(false);
     }
     connectedRef.current = connected;
     if (!connected) {
@@ -393,6 +395,16 @@ export function OnboardingView({
       }
     }
   }, [baseUrl, connected]);
+
+  useEffect(() => {
+    setDemoCleared(false);
+  }, [baseUrl]);
+
+  useEffect(() => {
+    if (demoCleared && status && !status.demo.present) {
+      setDemoCleared(false);
+    }
+  }, [demoCleared, status]);
 
   // Returns the FRESH GitHub-connected verdict once the device flow settles, so a
   // caller (the conversational connect_github executor) can report the real
@@ -671,7 +683,7 @@ export function OnboardingView({
           // setup snapshot is available.
           return slackConfigured || skipped.has("slack") || slackTouched;
         case "request":
-          return requestDone || demoDone || Boolean(status?.demo.present);
+          return requestDone || demoDone || (!demoCleared && Boolean(status?.demo.present));
         default:
           return false;
       }
@@ -683,6 +695,7 @@ export function OnboardingView({
       reposReady,
       requestDone,
       demoDone,
+      demoCleared,
       slackConfigured,
       skipped,
       slackTouched,
@@ -743,8 +756,8 @@ export function OnboardingView({
         : stepKey === "repos"
           ? reposReady
           : true;
-  const requiredSetupReady = Boolean(status?.first_run?.ready);
-  const firstJobComplete = requestDone || demoDone || Boolean(status?.demo.present);
+  const requiredSetupReady = status?.first_run?.ready === true;
+  const firstJobComplete = requestDone || demoDone || (!demoCleared && Boolean(status?.demo.present));
 
   const goToStep = useCallback((key: OnboardingStepKey, options?: { manual?: boolean }) => {
     if (options?.manual) {
@@ -1044,7 +1057,7 @@ export function OnboardingView({
                 baseUrl={baseUrl}
                 canMutate={canMutate}
                 setupReady={requiredSetupReady}
-                demoPresent={Boolean(status?.demo.present)}
+                demoPresent={!demoCleared && Boolean(status?.demo.present)}
                 setNotice={setNotice}
                 onSwitch={onSwitch}
                 onComplete={(kind) => {
@@ -1053,13 +1066,19 @@ export function OnboardingView({
                   markStepComplete("request");
                 }}
                 onSeedDemo={async () => {
-                  await onRefreshBoard?.({ demo: true });
-                  await refreshStatus();
+                  setDemoCleared(false);
+                  await Promise.allSettled([
+                    Promise.resolve().then(() => onRefreshBoard?.({ demo: true })),
+                    refreshStatus(),
+                  ]);
                 }}
                 onClearDemo={async () => {
-                  await onRefreshBoard?.({ demo: false });
-                  await refreshStatus();
+                  setDemoCleared(true);
                   setDemoDone(false);
+                  await Promise.allSettled([
+                    Promise.resolve().then(() => onRefreshBoard?.({ demo: false })),
+                    refreshStatus(),
+                  ]);
                 }}
               />
             </StepFrame>
