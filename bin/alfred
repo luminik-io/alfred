@@ -2563,7 +2563,14 @@ def cmd_batteries(args: argparse.Namespace) -> int:
         and battery.install_kind in {"pip-extra", "autofetch"}
         and not is_installed(battery, current_env)
     ):
-        install_result = _battery_run_install(args, battery)
+        install_overrides = enable_values(battery, current_env)
+        install_env = {**os.environ, **current_env, **install_overrides}
+        install_result = _battery_run_install(
+            args,
+            battery,
+            install_env=install_env,
+            install_overrides=install_overrides,
+        )
         if install_result != 0:
             return install_result
         if getattr(args, "print_command", False):
@@ -2592,7 +2599,13 @@ def cmd_batteries(args: argparse.Namespace) -> int:
     return 0
 
 
-def _battery_run_install(args: argparse.Namespace, battery: Any) -> int:
+def _battery_run_install(
+    args: argparse.Namespace,
+    battery: Any,
+    *,
+    install_env: dict[str, str] | None = None,
+    install_overrides: dict[str, str] | None = None,
+) -> int:
     """Prompt for consent and run a battery's install, or print the command."""
     if battery.pip_extra:
         command = [sys.executable, "-m", "pip", "install", f"alfred-os[{battery.pip_extra}]"]
@@ -2606,7 +2619,11 @@ def _battery_run_install(args: argparse.Namespace, battery: Any) -> int:
             command[0] = str(launcher)
     else:
         return 0
-    printable = " ".join(shlex.quote(part) for part in command)
+    printable_command = command
+    if install_overrides:
+        assignments = [f"{key}={value}" for key, value in sorted(install_overrides.items())]
+        printable_command = ["env", *assignments, *command]
+    printable = " ".join(shlex.quote(part) for part in printable_command)
 
     if getattr(args, "print_command", False):
         battery_id = shlex.quote(battery.id)
@@ -2624,7 +2641,7 @@ def _battery_run_install(args: argparse.Namespace, battery: Any) -> int:
             print(f"alfred: skipped. Run it yourself later:\n        {printable}")
             return 0
     print(f"alfred: running {printable}")
-    return _run_subcommand(command, timeout=_INSTALL_COMMAND_TIMEOUT_S)
+    return _run_subcommand(command, timeout=_INSTALL_COMMAND_TIMEOUT_S, env=install_env)
 
 
 def _pr_min_approvals() -> int:
