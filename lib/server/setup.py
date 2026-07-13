@@ -2012,7 +2012,7 @@ def _github_slug_from_remote_url(raw: str) -> str:
             parsed = urllib.parse.urlsplit(url)
         except ValueError:
             return ""
-        if (parsed.hostname or "").casefold() != "github.com":
+        if (parsed.hostname or "").casefold() not in {"github.com", "ssh.github.com"}:
             return ""
         path = parsed.path.lstrip("/")
     parts = [part for part in path.removesuffix(".git").strip("/").split("/") if part]

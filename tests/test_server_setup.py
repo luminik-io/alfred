@@ -60,6 +60,15 @@ def _git_repo_with_origin(path: Path, slug: str) -> None:
     )
 
 
+def test_github_slug_accepts_ssh_over_443_remote() -> None:
+    assert (
+        setup_mod._github_slug_from_remote_url(
+            "ssh://git@ssh.github.com:443/octocat/example.git"
+        )
+        == "octocat/example"
+    )
+
+
 def test_install_inventory_reports_existing_config_without_secret_values(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
