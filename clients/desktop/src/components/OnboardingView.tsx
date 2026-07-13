@@ -551,10 +551,11 @@ export function OnboardingView({
     );
   }, []);
 
+  const repoCheckouts = status?.repos.repo_checkouts ?? [];
   const reposReady =
     reposSelected &&
-    (status?.repos.repo_checkouts.length ?? 0) === (status?.repos.count ?? 0) &&
-    Boolean(status?.repos.repo_checkouts.every((checkout) => checkout.ready));
+    repoCheckouts.length === (status?.repos.count ?? 0) &&
+    repoCheckouts.every((checkout) => checkout.ready);
   const codeGraphCapability = status?.capability_plane?.capabilities.find(
     (capability) => capability.key === "code_graph",
   );

@@ -306,6 +306,24 @@ afterEach(() => {
 });
 
 describe("OnboardingView seven-step takeover", () => {
+  it("fails closed when the runtime omits checkout readiness", async () => {
+    const malformed = makeStatus({
+      repos: {
+        selected: ["octocat/web"],
+        count: 1,
+        keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+        repo_checkouts: [],
+      },
+    });
+    delete (malformed.repos as Partial<SetupStatus["repos"]>).repo_checkouts;
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(malformed);
+
+    renderOnboarding();
+
+    expect(await screen.findByText(/wake up to shipped work you can trust/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /get started/i })).toBeInTheDocument();
+  });
+
   it("opens on the welcome step with the mental model and no-terminal framing", async () => {
     renderOnboarding();
     expect(
