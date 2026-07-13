@@ -85,6 +85,33 @@ def test_autofetch_print_command_includes_prospective_env(
     assert "&& alfred batteries enable code-memory-mcp --yes" in output
 
 
+def test_daemon_enable_print_command_does_not_mutate_config(
+    cli, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env_path = tmp_path / ".alfred" / ".env"
+
+    assert cli.main(["batteries", "enable", "redis-ams", "--print-command"]) == 0
+
+    output = capsys.readouterr().out
+    assert "alfred batteries enable redis-ams --yes" in output
+    assert not env_path.exists()
+
+
+def test_disable_print_command_does_not_mutate_config(
+    cli, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env_path = tmp_path / ".alfred" / ".env"
+    env_path.parent.mkdir(parents=True)
+    original = "ALFRED_CODE_MEMORY_MCP=1\nALFRED_CODE_MEMORY_AUTOFETCH=1\n"
+    env_path.write_text(original, encoding="utf-8")
+
+    assert cli.main(["batteries", "disable", "code-memory-mcp", "--print-command"]) == 0
+
+    output = capsys.readouterr().out
+    assert "alfred batteries disable code-memory-mcp --yes" in output
+    assert env_path.read_text(encoding="utf-8") == original
+
+
 def test_print_command_includes_follow_up_enable_without_mutating_config(
     cli, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

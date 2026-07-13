@@ -2586,6 +2586,10 @@ def cmd_batteries(args: argparse.Namespace) -> int:
     values = (
         enable_values(battery, current_env) if enabling else disable_values(battery, current_env)
     )
+    if getattr(args, "print_command", False):
+        print(f"alfred: run this to {action} {battery.id}:")
+        print(f"        alfred batteries {action} {shlex.quote(battery.id)} --yes")
+        return 0
     write_env(env_path, values)
     verb = "enabled" if enabling else "disabled"
     print(f"alfred: {verb} {battery.id}. Wrote {', '.join(values)} to {env_path}")
@@ -4103,7 +4107,7 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
         p_verb.add_argument(
             "--print-command",
             action="store_true",
-            help="print the install command instead of running it",
+            help="print the command without installing or changing configuration",
         )
         p_verb.add_argument("--json", action="store_true")
         p_verb.set_defaults(func=cmd_batteries, battery_action=verb)
