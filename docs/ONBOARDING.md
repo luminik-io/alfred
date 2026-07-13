@@ -12,6 +12,16 @@ Both paths run the same underlying setup handlers, so they can never drift.
 Whatever you can do by chatting, you can do by stepping, and the config that
 lands is identical.
 
+The Setup screen is the same in light and dark; it checks your machine, connects
+GitHub, picks your repositories and team, and ends on a result you can see.
+
+<table>
+  <tr>
+    <td width="50%"><img src="images/setup-light.png" alt="The Alfred Setup screen in light theme: guided steps for the engine check, GitHub, repositories, team names, and schedule"><br><sub><em>Setup, light.</em></sub></td>
+    <td width="50%"><img src="images/setup-dark.png" alt="The Alfred Setup screen in dark theme: the same guided steps for the engine check, GitHub, repositories, team names, and schedule"><br><sub><em>Setup, dark.</em></sub></td>
+  </tr>
+</table>
+
 ## The conversational path
 
 The desktop app's Setup screen can hold a conversation. You say something like

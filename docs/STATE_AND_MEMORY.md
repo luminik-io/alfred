@@ -13,6 +13,16 @@ GitHub and local config.
 
 This page maps the local state files, the fleet-brain database, and the contract each part carries.
 
+The desktop app surfaces the lesson store directly. The Learnings view shows
+what Alfred picked up on its own, with the run or conversation each lesson came
+from, so you can keep or drop any one of them.
+
+<p align="center">
+  <img src="images/real/learnings-remembers.png" alt="The Learnings view in the Alfred desktop app: a heading reading What Alfred remembers, an explanation that Alfred keeps lessons on its own, and lesson cards showing where each lesson came from with keep and dismiss controls" width="820">
+</p>
+
+<p align="center"><em>What Alfred remembers, in the desktop app: lessons it kept from its own runs, each traceable to where it learned it.</em></p>
+
 ## The state tree
 
 ```

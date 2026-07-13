@@ -35,7 +35,7 @@ to your terminal:
   <img src="docs/images/demo.gif" alt="alfred demo: plan, approve, build, review catches a planted bug, fix, ship" width="760">
 </p>
 
-<p align="center"><em>One real run, captured live and unedited: plan to shipped in 82 seconds.</em></p>
+<p align="center"><em>Plan to shipped in 82 seconds.</em></p>
 
 The same run as a text transcript, for the terminal-shy:
 
@@ -51,10 +51,23 @@ verify        diff applies, sample tests pass
 done          change committed with a PR-style summary
 ```
 
-Four real, sequential model calls, so it runs at real latency, typically a
-minute and a half to two minutes, not a canned script. It never fakes success:
-a missing CLI, a failed call, an unchanged worktree, or a failing test suite
-stops the run honestly. Full walkthrough in [`docs/DEMO.md`](docs/DEMO.md).
+Four sequential model calls, so it runs at real latency, typically a minute and
+a half to two minutes. It never fakes success: a missing CLI, a failed call, an
+unchanged worktree, or a failing test stops the run and says so. Full
+walkthrough in [`docs/DEMO.md`](docs/DEMO.md).
+
+## Watch the tour
+
+The clip below is about a minute of Alfred working on this repo. It answers a
+question about the code, turns a change you describe into a plan you approve, and
+scopes the same kind of request from a Slack thread. Its agents then build the
+change, review it, and open a pull request.
+
+<p align="center">
+  <a href="docs/media/alfred-tour.mp4"><img src="docs/media/alfred-tour.webp" alt="Alfred product tour: asking a question, shaping a plan from a change request, scoping a request in Slack, a fleet-authored pull request, the agent roster and workflow graph, a live roster re-skin, what Alfred has learned, the work board, and a merged pull request in the terminal" width="820"></a>
+</p>
+
+<p align="center"><em><a href="docs/media/alfred-tour.mp4">Watch the full tour (MP4, 56s)</a>, recorded from <code>alfred serve</code>.</em></p>
 
 ## What it is
 
@@ -67,10 +80,6 @@ service.
 
 Alfred never merges its own work by default. A drafted plan waits behind an
 approval gate until you approve it, so unapproved work does not ship.
-
-Put plainly: it is the reliability, review, memory, and approval scaffolding you
-would eventually build around cron plus `claude` plus `gh`, already built and
-audited.
 
 ```mermaid
 flowchart LR
@@ -90,13 +99,50 @@ flowchart LR
 ## Screenshots
 
 Alfred's desktop app, and the same UI served in a browser via `alfred serve`,
-runs entirely on your machine and is theme-aware. More, including light and dark
-for every screen, in [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
+runs entirely on your machine and is theme-aware. The rest of the screens sit
+with the docs they belong to: the Ask surface in
+[`CONVERSATION.md`](docs/CONVERSATION.md), guided setup in
+[`ONBOARDING.md`](docs/ONBOARDING.md), what Alfred remembers in
+[`STATE_AND_MEMORY.md`](docs/STATE_AND_MEMORY.md), and a Slack thread in
+[`SLACK_SETUP.md`](docs/SLACK_SETUP.md).
 
 ![Ask Alfred anything](docs/images/ask-dark.png)
 
 *Ask a question or describe a change; Alfred answers, or shapes a plan you can
 file for the fleet to build, review, and ship.*
+
+### The fleet runs on this repo
+
+Alfred runs its own fleet on this repo, `luminik-io/alfred`. It plans, writes,
+and reviews changes here and opens pull requests like
+[`#528`](https://github.com/luminik-io/alfred/pull/528), a test it wrote and
+opened with checks passing. The screenshots below are from those runs.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/real/ask-explains-the-loop.png" alt="Ask Alfred how a request becomes a merged pull request; it explains the plan, approve, build, review, merge loop"><br><sub><em>Ask how work gets done and Alfred explains its own plan, review, and merge loop.</em></sub></td>
+    <td width="50%"><img src="docs/images/real/work-board-live.png" alt="The work board with three runs in the Working now column and four shipped pull requests on the right"><br><sub><em>The work board: runs in flight in <code>Working now</code>, shipped pull requests alongside.</em></sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/real/workflow-graph-firing.png" alt="The agent workflow graph with the Planner node marked Working now during a firing"><br><sub><em>The workflow graph mid-run, with a planning agent working.</em></sub></td>
+    <td width="50%"><img src="docs/images/real/pr-528.png" alt="gh pr view of luminik-io/alfred pull request 528: merged, +20 -0, one file, all checks passing, written by the fleet"><br><sub><em>A real pull request the fleet wrote and opened on its own repo, checks green.</em></sub></td>
+  </tr>
+</table>
+
+<p align="center"><img src="docs/images/real/pr-503.png" alt="The GitHub page for pull request 503 on luminik-io/alfred: fix(process): require subprocess timeouts, merged into main from a fleet branch, closing seed issue 498, with a clean review and green checks" width="820"></p>
+
+<p align="center"><em>From a one-line seed issue to a merged pull request: <a href="https://github.com/luminik-io/alfred/pull/503"><code>#503</code></a> added the missing subprocess timeouts across the runtime, opened by the fleet off issue <a href="https://github.com/luminik-io/alfred/issues/498"><code>#498</code></a> and driven to a clean review and green checks.</em></p>
+
+Alfred reports back in Slack as it works. Here is one night on this repo: the
+planner filing scoped issues, the roster of agents that ran, the pull requests
+they opened and merged, and the lessons the memory system kept for next time.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/real/slack-fleet-overnight.png" alt="A Slack digest from Alfred: the planner reporting two filed issues, an overnight roster of the senior-dev, test-engineer, reviewer, fixer, and triage agents with their run counts, and three pull requests they opened and merged"><br><sub><em>An overnight run: the planner files scoped issues, and the agent roster opens and merges the pull requests that follow.</em></sub></td>
+    <td width="50%"><img src="docs/images/real/slack-shipped-digest.png" alt="A Slack digest from Alfred: a shipped summary of pull requests merged that day with line counts, a fleet recap of firings, and the memory system queuing lessons from repeated failures and promoting one into recall"><br><sub><em>The daily summary: what merged, how the fleet ran, and the lessons the memory system saved for next time.</em></sub></td>
+  </tr>
+</table>
 
 ## Quick start
 

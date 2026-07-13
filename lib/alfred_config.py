@@ -492,7 +492,7 @@ _VARS: tuple[ConfigVar, ...] = (
         "str",
         "",
         "scheduler",
-        "External review summaries that must be clean on the exact head, such as greptile,codex.",
+        "External review summaries that must be clean on the exact head. Empty means GitHub's native review settings only.",
         operator=True,
     ),
     V(
