@@ -92,17 +92,17 @@ export function BatteryPickerStep({
       }
       if (next && canRun) {
         const nativeResult = await onRunLocalAction?.({
-          action: "battery_enable",
+          action: "battery_install",
           target: battery.id,
-          refreshAfter: true,
+          refreshAfter: false,
         });
         if (!nativeResult?.success) {
           throw new Error(nativeResult?.message || `Could not install ${battery.name}.`);
         }
       }
-      // The native CLI performs the install and writes the durable env file.
-      // This idempotent API write mirrors the result into the running server so
-      // the manifest and subsequent agent calls see it without a restart.
+      // The native CLI only prepares the dependency. The live API owns the one
+      // durable configuration write, so a failed request cannot leave the UI and
+      // persisted state disagreeing about whether the battery is enabled.
       const result = await saveSetupBattery(baseUrl, battery.id, next);
       setManifest(result.manifest);
       const verb = next ? "on" : "off";

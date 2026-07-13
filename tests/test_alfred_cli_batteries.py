@@ -40,6 +40,21 @@ def test_failed_install_does_not_write_enabled_flag(
     assert not env_path.exists() or "ALFRED_MEMORY_SQLITE_DENSE=1" not in env_path.read_text()
 
 
+def test_install_prepares_dependency_without_enabling(
+    cli, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import batteries
+
+    installed_checks = iter([False, True])
+    monkeypatch.setattr(batteries, "is_installed", lambda _battery, _env: next(installed_checks))
+    monkeypatch.setattr(cli, "_battery_run_install", lambda _args, _battery, **_kwargs: 0)
+
+    assert cli.main(["batteries", "install", "dense-embeddings", "--yes"]) == 0
+
+    env_path = tmp_path / ".alfred" / ".env"
+    assert not env_path.exists() or "ALFRED_MEMORY_SQLITE_DENSE=1" not in env_path.read_text()
+
+
 def test_reenable_autofetch_battery_uses_prospective_env(
     cli, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

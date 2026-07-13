@@ -146,9 +146,9 @@ describe("BatteryPickerStep", () => {
 
     await waitFor(() =>
       expect(onRunLocalAction).toHaveBeenCalledWith({
-        action: "battery_enable",
+        action: "battery_install",
         target: "dense-embeddings",
-        refreshAfter: true,
+        refreshAfter: false,
       }),
     );
     expect(save).toHaveBeenCalledWith(
@@ -156,6 +156,48 @@ describe("BatteryPickerStep", () => {
       "dense-embeddings",
       true,
     );
+  });
+
+  it("does not enable native configuration before the API write succeeds", async () => {
+    vi.spyOn(api, "loadSetupBatteries").mockResolvedValue(manifest([battery({})]));
+    vi.spyOn(api, "saveSetupBattery").mockRejectedValue(new Error("runtime unavailable"));
+    const onRunLocalAction = vi.fn(async () => ({
+      command: ["alfred", "batteries", "install", "dense-embeddings", "--yes"],
+      stdout: "",
+      stderr: "",
+      status: 0,
+      success: true,
+      pid: 1,
+      message: "installed without enabling",
+    }));
+    const setNotice = vi.fn();
+
+    render(
+      <BatteryPickerStep
+        baseUrl="http://127.0.0.1:7010"
+        canMutate
+        canRun
+        onRunLocalAction={onRunLocalAction}
+        setNotice={setNotice}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("switch", { name: /enable dense embeddings/i }),
+    );
+
+    await waitFor(() =>
+      expect(setNotice).toHaveBeenCalledWith(
+        expect.objectContaining({ tone: "error", message: "runtime unavailable" }),
+      ),
+    );
+    expect(onRunLocalAction).toHaveBeenCalledWith({
+      action: "battery_install",
+      target: "dense-embeddings",
+      refreshAfter: false,
+    });
+    expect(screen.getByRole("switch", { name: /enable dense embeddings/i })).not.toBeChecked();
   });
 
   it("disables toggles in a read-only preview", async () => {

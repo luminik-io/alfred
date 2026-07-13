@@ -178,9 +178,9 @@ export function useOnboardingActions({
             return { ok: true, note: "Saved your team names." };
           }
           case "set_batteries": {
-            // Optional enhancements. Native setup runs the battery CLI first so
-            // local dependencies install transactionally, then mirrors the flag
-            // through the live setup API. External daemons remain explicit.
+            // Optional enhancements. Native setup prepares local dependencies,
+            // then the live setup API performs the only configuration write.
+            // External daemons remain explicit.
             // Unknown ids and built-ins are refused.
             if (!canMutate) {
               return {
@@ -209,9 +209,9 @@ export function useOnboardingActions({
               try {
                 if (canRun) {
                   const result = await onRunLocalAction({
-                    action: "battery_enable",
+                    action: "battery_install",
                     target: id,
-                    refreshAfter: true,
+                    refreshAfter: false,
                   });
                   if (!result?.success) throw new Error("battery install failed");
                 }

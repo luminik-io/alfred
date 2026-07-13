@@ -1009,6 +1009,7 @@ export type NativeAction =
   | "auth_status"
   | "github_auth_login"
   | "brain_doctor"
+  | "battery_install"
   | "battery_enable"
   | "code_memory_status"
   | "code_memory_index"
