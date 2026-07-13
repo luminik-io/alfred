@@ -24,17 +24,19 @@ function repoShortName(slug: string): string {
 
 function checkoutMessage(checkout: SetupRepoCheckout | undefined): string | null {
   if (!checkout) return null;
-  if (checkout.ready) return "GitHub origin verified";
+  if (checkout.ready) return "GitHub repository verified";
   switch (checkout.reason) {
     case "missing":
       return "Folder not found";
     case "not_git_repo":
       return "This folder is not a Git checkout";
-    case "missing_github_origin":
-      return "This checkout has no GitHub origin";
-    case "origin_mismatch":
-      return checkout.origin_repo
-        ? `Origin is ${checkout.origin_repo}, not ${checkout.repo}`
+    case "missing_github_remote":
+      return "This checkout has no GitHub remote";
+    case "remote_mismatch":
+      return checkout.github_remote_repo
+        ? `${checkout.github_remote_name || "Remote"} points to ${
+            checkout.github_remote_repo
+          }, not ${checkout.repo}`
         : "This checkout belongs to another repository";
     default:
       return null;
@@ -149,7 +151,11 @@ export function ReposStep({
     return Array.from(picked).map((slug) => names.get(slug) || slug);
   }, [picked, repos]);
   const missingPaths = selectedRepos.filter((repo) => !paths.get(repo.toLowerCase())?.trim());
-  const canSave = canMutate && selectedRepos.length > 0 && missingPaths.length === 0 && !saving;
+  const canSave =
+    canMutate &&
+    (selectedRepos.length > 0 || selectedCount > 0) &&
+    missingPaths.length === 0 &&
+    !saving;
 
   const save = async () => {
     if (!canSave) return;
@@ -173,9 +179,11 @@ export function ReposStep({
       setIndexWarning(outcome.warning || null);
       setNotice({
         tone: "ok",
-        message: `Saved and verified ${result.repos.length} ${
-          result.repos.length === 1 ? "repository" : "repositories"
-        }${outcome.indexed ? ", then built the code graph" : ""}.`,
+        message: result.repos.length
+          ? `Saved and verified ${result.repos.length} ${
+              result.repos.length === 1 ? "repository" : "repositories"
+            }${outcome.indexed ? ", then built the code graph" : ""}.`
+          : "Cleared repository scope.",
       });
     } catch (err) {
       if (err instanceof SetupRepoCheckoutValidationError) {
@@ -308,7 +316,7 @@ export function ReposStep({
                           title="Choose checkout folder"
                           aria-label={`Choose checkout folder for ${repo.name_with_owner}`}
                           onClick={() => void chooseCheckout(repo.name_with_owner)}
-                          disabled={!canMutate}
+                          disabled={!canRun}
                         >
                           <FolderOpen size={15} aria-hidden="true" />
                         </Button>
@@ -353,7 +361,13 @@ export function ReposStep({
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" onClick={() => void save()} disabled={!canSave}>
           <CheckCircle2 size={15} aria-hidden="true" />
-          <span>{saving ? "Verifying" : `Save ${selectedRepos.length || ""} selected`}</span>
+          <span>
+            {saving
+              ? "Verifying"
+              : selectedRepos.length
+                ? `Save ${selectedRepos.length} selected`
+                : "Clear repository scope"}
+          </span>
         </Button>
         <Button variant="outline" type="button" onClick={() => void load()} disabled={loading}>
           <RefreshCw size={14} aria-hidden="true" className={loading ? "animate-spin" : undefined} />

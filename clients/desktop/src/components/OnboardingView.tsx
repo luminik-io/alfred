@@ -266,6 +266,7 @@ export function OnboardingView({
   const connectionGenerationRef = useRef(0);
   const githubAuthRequestSeq = useRef(0);
   const githubAuthFlowRequestSeq = useRef<number | null>(null);
+  const previousNativeBusy = useRef(nativeBusy);
 
   const setInterruptedGithubAuthFlow = useCallback((message: string, requestId?: number) => {
     setStatusLoading(false);
@@ -532,6 +533,14 @@ export function OnboardingView({
   useEffect(() => {
     void refreshStatus();
   }, [refreshStatus]);
+
+  useEffect(() => {
+    const previous = previousNativeBusy.current;
+    previousNativeBusy.current = nativeBusy;
+    if (previous && nativeBusy === null && connected) {
+      void refreshStatus();
+    }
+  }, [connected, nativeBusy, refreshStatus]);
 
   const githubConnected = Boolean(status?.github.ok);
   const engineReady = Boolean(status?.engine_ready);

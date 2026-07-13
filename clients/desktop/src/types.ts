@@ -804,10 +804,11 @@ export type SetupRepoCheckout = SetupRepoCheckoutInput & {
   source: "map" | "workspace" | string;
   exists: boolean;
   is_git_repo: boolean;
-  origin_repo: string | null;
+  github_remote_name: string | null;
+  github_remote_repo: string | null;
   identity_matches: boolean;
   ready: boolean;
-  reason: "missing" | "not_git_repo" | "missing_github_origin" | "origin_mismatch" | null;
+  reason: "missing" | "not_git_repo" | "missing_github_remote" | "remote_mismatch" | null;
 };
 
 export type SetupReposResponse = {

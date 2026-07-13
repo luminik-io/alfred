@@ -1923,16 +1923,18 @@ def _inspect_repo_checkout(slug: str, path: Path, source: str) -> dict[str, Any]
     except OSError:
         exists = False
     is_git_repo = exists and _is_code_memory_git_repo(path)
-    origin_repo = _local_repo_origin_slug(path) if is_git_repo else ""
-    identity_matches = bool(origin_repo) and origin_repo.casefold() == slug.casefold()
+    github_remote_name, github_remote_repo = (
+        _local_repo_github_remote(path, expected_slug=slug) if is_git_repo else ("", "")
+    )
+    identity_matches = bool(github_remote_repo) and github_remote_repo.casefold() == slug.casefold()
     if not exists:
         reason = "missing"
     elif not is_git_repo:
         reason = "not_git_repo"
-    elif not origin_repo:
-        reason = "missing_github_origin"
+    elif not github_remote_repo:
+        reason = "missing_github_remote"
     elif not identity_matches:
-        reason = "origin_mismatch"
+        reason = "remote_mismatch"
     else:
         reason = None
     return {
@@ -1941,7 +1943,8 @@ def _inspect_repo_checkout(slug: str, path: Path, source: str) -> dict[str, Any]
         "source": source,
         "exists": exists,
         "is_git_repo": is_git_repo,
-        "origin_repo": origin_repo or None,
+        "github_remote_name": github_remote_name or None,
+        "github_remote_repo": github_remote_repo or None,
         "identity_matches": identity_matches,
         "ready": reason is None,
         "reason": reason,
@@ -2017,20 +2020,41 @@ def _github_slug_from_remote_url(raw: str) -> str:
     return f"{parts[-2]}/{parts[-1]}"
 
 
-def _local_repo_origin_slug(path: Path) -> str:
+def _local_repo_github_remote(path: Path, *, expected_slug: str) -> tuple[str, str]:
+    """Return the best GitHub remote, preferring an exact repository match."""
+
     try:
         proc = subprocess.run(
-            ["git", "-C", str(path), "remote", "get-url", "origin"],
+            ["git", "-C", str(path), "remote", "-v"],
             capture_output=True,
             text=True,
             timeout=5,
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
-        return ""
+        return "", ""
     if proc.returncode != 0:
-        return ""
-    return _github_slug_from_remote_url(proc.stdout)
+        return "", ""
+
+    remotes: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for line in proc.stdout.splitlines():
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        name, remote_slug = parts[0], _github_slug_from_remote_url(parts[1])
+        candidate = (name, remote_slug)
+        if remote_slug and candidate not in seen:
+            remotes.append(candidate)
+            seen.add(candidate)
+    if not remotes:
+        return "", ""
+
+    expected = expected_slug.casefold()
+    exact = next((remote for remote in remotes if remote[1].casefold() == expected), None)
+    if exact:
+        return exact
+    return next((remote for remote in remotes if remote[0] == "origin"), remotes[0])
 
 
 def _code_memory_coverage(
@@ -2055,7 +2079,7 @@ def _code_memory_coverage(
     for row in resolved if resolved is not None else _selected_repo_local_paths(repos, env):
         slug = str(row["repo"]).strip().lower()
         local_name = slug.rsplit("/", 1)[-1]
-        origin_slug = str(row.get("origin_repo") or "")
+        github_remote_repo = str(row.get("github_remote_repo") or "")
         scope_selected = slug in indexed or local_name in indexed
         identity_matches = bool(row.get("identity_matches"))
         ready = (
@@ -2070,7 +2094,7 @@ def _code_memory_coverage(
         detected.append(
             {
                 **row,
-                "origin_repo": origin_slug or None,
+                "github_remote_repo": github_remote_repo or None,
                 "scope_selected": scope_selected,
                 "identity_matches": identity_matches,
                 "covered": ready,

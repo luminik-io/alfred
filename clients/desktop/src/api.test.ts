@@ -756,10 +756,11 @@ describe("error humanization", () => {
       source: "map",
       exists: true,
       is_git_repo: true,
-      origin_repo: "acme/backend",
+      github_remote_name: "origin",
+      github_remote_repo: "acme/backend",
       identity_matches: false,
       ready: false,
-      reason: "origin_mismatch" as const,
+      reason: "remote_mismatch" as const,
     };
     vi.stubGlobal(
       "fetch",

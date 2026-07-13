@@ -133,10 +133,10 @@ You can only build a platform's installers on that platform: build the macOS
 artifacts on macOS and the Linux artifacts on Linux. The
 [release workflow](#releases) does both on the matching CI runners.
 
-Linux builds need the WebKitGTK system libraries
-(`libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`,
-`patchelf`, plus `build-essential` and `file`). The release workflow installs
-them; install them yourself for a local Linux build.
+Linux builds need the WebKitGTK and native dialog system libraries
+(`libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`,
+`librsvg2-dev`, `patchelf`, plus `build-essential` and `file`). The release
+workflow installs them; install them yourself for a local Linux build.
 
 ## First launch and install
 

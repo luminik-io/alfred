@@ -2510,10 +2510,11 @@ def test_setup_repo_selection_returns_structured_checkout_failures(
         "source": "map",
         "exists": True,
         "is_git_repo": True,
-        "origin_repo": "acme/backend",
+        "github_remote_name": "origin",
+        "github_remote_repo": "acme/backend",
         "identity_matches": False,
         "ready": False,
-        "reason": "origin_mismatch",
+        "reason": "remote_mismatch",
     }
 
     def reject_selection(*_args, **_kwargs):
