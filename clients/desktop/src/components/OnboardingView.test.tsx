@@ -958,15 +958,7 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("surfaces a graph failure without blocking the saved repository scope", async () => {
-    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
-      makeStatus({
-        repos: {
-          selected: ["octocat/web"],
-          count: 1,
-          keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
-        },
-      }),
-    );
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeStatus());
     vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
       ok: true,
       repos: ["octocat/web"],
@@ -1082,7 +1074,7 @@ describe("OnboardingView seven-step takeover", () => {
     expect(onRunLocalAction).not.toHaveBeenCalled();
   });
 
-  it("surfaces that browser-only repository saves cannot build the required graph", async () => {
+  it("keeps a browser-only repository save complete when graph indexing cannot run", async () => {
     vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
       ok: true,
       repos: ["octocat/web"],
@@ -1098,6 +1090,7 @@ describe("OnboardingView seven-step takeover", () => {
     await user.click(screen.getByRole("button", { name: /save 1 repository/i }));
 
     expect(await screen.findByText(/indexing requires the alfred desktop app/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^continue$/i })).toBeEnabled();
   });
 
   it("blocks the repo step until GitHub is connected", async () => {

@@ -535,6 +535,27 @@ export function OnboardingView({
   const indexSelectedRepos = useCallback(
     async (repos: string[]): Promise<boolean> => {
       if (!repos.length) return false;
+
+      // The repository POST has already committed by the time this callback
+      // runs. Reconcile that required setup state before optional graph work can
+      // return or fail, then retain the confirmed selection even if the status
+      // endpoint briefly returns a pre-write snapshot.
+      const retainSavedRepoScope = () => {
+        setStatus((current) =>
+          current
+            ? {
+                ...current,
+                repos: {
+                  ...current.repos,
+                  selected: [...repos],
+                  count: repos.length,
+                },
+              }
+            : current,
+        );
+      };
+      await refreshStatus();
+      retainSavedRepoScope();
       if (!shouldIndexCodeMemory) return false;
       if (!canRun) {
         throw new Error(
@@ -552,6 +573,7 @@ export function OnboardingView({
         );
       }
       const fresh = await refreshStatus();
+      retainSavedRepoScope();
       if (!fresh?.code_memory?.index_present) {
         throw new Error(
           "Repositories were saved, but no code graph was built. Clone the selected repositories locally, then retry indexing.",
