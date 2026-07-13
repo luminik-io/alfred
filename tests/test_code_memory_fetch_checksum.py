@@ -784,6 +784,84 @@ def test_index_invokes_upstream_cli_index_repository(tmp_path: Path) -> None:
     assert f'"repo_path":"{repo}"' in text
 
 
+def test_index_fails_when_no_repository_is_in_scope(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    fake_bin = tmp_path / "codebase-memory-mcp"
+    fake_bin.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    fake_bin.chmod(0o755)
+    env = _launcher_env(
+        tmp_path,
+        ALFRED_CODE_MEMORY_BIN=str(fake_bin),
+        ALFRED_CODE_MEMORY_AUTOFETCH="0",
+        ALFRED_CODE_MEMORY_REPOS="missing",
+        ALFRED_CODE_MAP_REPOS="",
+        WORKSPACE_ROOT=str(workspace),
+        WORKSPACE_SUBDIR="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "index"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode != 0
+    assert "no in-scope repos found" in res.stderr
+
+
+def test_index_fails_when_binary_is_unavailable(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    (workspace / "api" / ".git").mkdir(parents=True)
+    env = _launcher_env(
+        tmp_path,
+        ALFRED_CODE_MEMORY_BIN=str(tmp_path / "missing-code-memory"),
+        ALFRED_CODE_MEMORY_AUTOFETCH="0",
+        ALFRED_CODE_MEMORY_REPOS="api",
+        ALFRED_CODE_MAP_REPOS="",
+        WORKSPACE_ROOT=str(workspace),
+        WORKSPACE_SUBDIR="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "index"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode != 0
+    assert "binary unavailable; cannot index" in res.stderr
+
+
+def test_index_fails_when_upstream_indexing_fails(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    (workspace / "api" / ".git").mkdir(parents=True)
+    fake_bin = tmp_path / "codebase-memory-mcp"
+    fake_bin.write_text("#!/bin/sh\nexit 7\n", encoding="utf-8")
+    fake_bin.chmod(0o755)
+    env = _launcher_env(
+        tmp_path,
+        ALFRED_CODE_MEMORY_BIN=str(fake_bin),
+        ALFRED_CODE_MEMORY_AUTOFETCH="0",
+        ALFRED_CODE_MEMORY_REPOS="api",
+        ALFRED_CODE_MAP_REPOS="",
+        WORKSPACE_ROOT=str(workspace),
+        WORKSPACE_SUBDIR="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "index"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode != 0
+    assert "auto-index failed" in res.stderr
+
+
 def test_serve_runs_upstream_stdio_server_with_code_memory_home(tmp_path: Path) -> None:
     code_home = tmp_path / "code-memory-home"
     log = tmp_path / "serve.log"

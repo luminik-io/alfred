@@ -514,6 +514,81 @@ export function OnboardingView({
   const reposSelected = (status?.repos.count ?? 0) > 0;
   const slackConfigured = Boolean(status?.install?.slack_configured);
 
+  const codeMemoryCoversRepos = useCallback((fresh: SetupStatus, repos: string[]): boolean => {
+    const covered = new Set(
+      (fresh.code_memory_coverage?.covered ?? []).map((repo) => repo.trim().toLowerCase()),
+    );
+    return (
+      Boolean(fresh.code_memory_coverage?.ready) &&
+      repos.every((repo) => covered.has(repo.trim().toLowerCase()))
+    );
+  }, []);
+
+  const reposReady = reposSelected;
+  const codeGraphCapability = status?.capability_plane?.capabilities.find(
+    (capability) => capability.key === "code_graph",
+  );
+  const codeGraphEngine = String(codeGraphCapability?.detected?.engine || "code-memory");
+  const shouldIndexCodeMemory =
+    Boolean(status?.code_memory?.enabled) && codeGraphEngine !== "graphify";
+
+  const indexSelectedRepos = useCallback(
+    async (repos: string[]): Promise<boolean> => {
+      if (!repos.length) return false;
+
+      // The repository POST has already committed by the time this callback
+      // runs. Reconcile that required setup state before optional graph work can
+      // return or fail, then retain the confirmed selection even if the status
+      // endpoint briefly returns a pre-write snapshot.
+      const retainSavedRepoScope = () => {
+        setStatus((current) =>
+          current
+            ? {
+                ...current,
+                repos: {
+                  ...current.repos,
+                  selected: [...repos],
+                  count: repos.length,
+                },
+              }
+            : current,
+        );
+      };
+      await refreshStatus();
+      retainSavedRepoScope();
+      if (!shouldIndexCodeMemory) return false;
+      if (!canRun) {
+        throw new Error(
+          "Repositories were saved, but code-graph indexing requires the Alfred desktop app.",
+        );
+      }
+      const result = await onRunLocalAction({
+        action: "code_memory_index",
+        refreshAfter: true,
+      });
+      if (!result?.success) {
+        throw new Error(
+          result?.message ||
+            "Repositories were saved, but Alfred could not build their code graph.",
+        );
+      }
+      const fresh = await refreshStatus();
+      retainSavedRepoScope();
+      if (!fresh?.code_memory?.index_present) {
+        throw new Error(
+          "Repositories were saved, but no code graph was built. Clone the selected repositories locally, then retry indexing.",
+        );
+      }
+      if (!codeMemoryCoversRepos(fresh, repos)) {
+        throw new Error(
+          "Repositories were saved, but the code graph did not cover every selected repository. Clone or map the selected repositories locally, then retry indexing.",
+        );
+      }
+      return true;
+    },
+    [canRun, codeMemoryCoversRepos, onRunLocalAction, refreshStatus, shouldIndexCodeMemory],
+  );
+
   // Execute one onboarding action REQUESTED by the conversational guide. The
   // executor lives in useOnboardingActions so both paths share one source of
   // truth; every branch runs the SAME handler the stepped flow already uses.
@@ -526,6 +601,7 @@ export function OnboardingView({
     refreshStatus,
     startGithubAuthLogin,
     onRunLocalAction,
+    onReposSaved: indexSelectedRepos,
     onSaveCustomNames,
     onBatteriesDecision: useCallback(() => setBatteriesTouched(true), []),
     onSlackDecision: useCallback(() => setSlackTouched(true), []),
@@ -568,7 +644,7 @@ export function OnboardingView({
         case "github":
           return githubConnected;
         case "repos":
-          return reposSelected;
+          return reposReady;
         case "batteries":
           // Batteries are optional; Alfred works with zero of them. The step
           // reads satisfied once the user moves past it or skips it. We never
@@ -600,7 +676,7 @@ export function OnboardingView({
       githubConnected,
       installInitialized,
       reachedIndex,
-      reposSelected,
+      reposReady,
       requestDone,
       slackConfigured,
       skipped,
@@ -658,6 +734,7 @@ export function OnboardingView({
 
   const previousKey = ONBOARDING_STEP_ORDER[currentIndex - 1] ?? null;
   const nextKey = ONBOARDING_STEP_ORDER[currentIndex + 1] ?? null;
+  const canAdvance = stepKey !== "repos" || reposReady;
 
   const goToStep = useCallback((key: OnboardingStepKey, options?: { manual?: boolean }) => {
     if (options?.manual) {
@@ -668,9 +745,10 @@ export function OnboardingView({
   }, []);
 
   const advance = useCallback(() => {
+    if (!canAdvance) return;
     if (stepKey === "batteries") setBatteriesTouched(true);
     if (nextKey) goToStep(nextKey);
-  }, [goToStep, nextKey, stepKey]);
+  }, [canAdvance, goToStep, nextKey, stepKey]);
 
   const skipStep = useCallback(
     (key: OnboardingStepKey) => {
@@ -717,12 +795,12 @@ export function OnboardingView({
       ) {
         return;
       }
-      if (nextKey) {
+      if (nextKey && canAdvance) {
         event.preventDefault();
         advance();
       }
     },
-    [advance, nextKey],
+    [advance, canAdvance, nextKey],
   );
 
   const meta = STEP_META[stepKey];
@@ -882,8 +960,10 @@ export function OnboardingView({
                 canMutate={canMutate}
                 githubConnected={githubConnected}
                 selectedCount={status?.repos.count ?? 0}
-                onSaved={async () => {
+                onSaved={async (repos) => {
+                  const indexed = await indexSelectedRepos(repos);
                   await refreshStatus();
+                  return indexed;
                 }}
                 setNotice={setNotice}
               />
@@ -938,7 +1018,7 @@ export function OnboardingView({
               <FirstRequestStep
                 baseUrl={baseUrl}
                 canMutate={canMutate}
-                reposReady={reposSelected}
+                reposReady={reposReady}
                 demoPresent={Boolean(status?.demo.present)}
                 setNotice={setNotice}
                 onSwitch={onSwitch}
@@ -979,7 +1059,13 @@ export function OnboardingView({
               </Button>
             ) : null}
             {nextKey ? (
-              <Button type="button" size="sm" className="btn-primary-glow" onClick={advance}>
+              <Button
+                type="button"
+                size="sm"
+                className="btn-primary-glow"
+                onClick={advance}
+                disabled={!canAdvance}
+              >
                 <span>Continue</span>
                 <ArrowRight size={15} aria-hidden="true" />
               </Button>

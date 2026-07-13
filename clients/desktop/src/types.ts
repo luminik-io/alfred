@@ -760,6 +760,11 @@ export type SetupStatus = {
   engines: SetupEngine[];
   engine_ready: boolean;
   code_memory?: SetupCodeMemory;
+  code_memory_coverage?: {
+    ready: boolean;
+    covered: string[];
+    missing: string[];
+  };
   capability_plane?: SetupCapabilityPlane;
   repos: { selected: string[]; count: number; keys: string[] };
   queue?: {

@@ -31,7 +31,7 @@ export function ReposStep({
   canMutate: boolean;
   githubConnected: boolean;
   selectedCount: number;
-  onSaved: () => Promise<void>;
+  onSaved: (repos: string[]) => Promise<boolean>;
   setNotice: (notice: OnboardingNotice) => void;
 }) {
   const [repos, setRepos] = useState<SetupRepo[]>([]);
@@ -76,13 +76,13 @@ export function ReposStep({
       const selected = Array.from(picked).map((slug) => visible.get(slug) || slug);
       const result = await saveSetupRepos(baseUrl, selected);
       setSavedRepos(result.repos);
+      const indexed = await onSaved(result.repos);
       setNotice({
         tone: "ok",
         message: `Saved ${result.repos.length} ${
           result.repos.length === 1 ? "repository" : "repositories"
-        } Alfred can work in.`,
+        } Alfred can work in${indexed ? " and built the code graph" : ""}.`,
       });
-      await onSaved();
     } catch (err) {
       setNotice({
         tone: "error",

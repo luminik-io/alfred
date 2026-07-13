@@ -49,6 +49,48 @@ def _isolate_launcher_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
 
 
+def _git_repo_with_origin(path: Path, slug: str) -> None:
+    path.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(path)], check=True)
+    subprocess.run(
+        ["git", "-C", str(path), "remote", "add", "origin", f"https://github.com/{slug}.git"],
+        check=True,
+    )
+
+
+def test_code_memory_coverage_requires_exact_github_identity(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    repo = workspace / "web"
+    _git_repo_with_origin(repo, "octocat/web")
+    env = {
+        "WORKSPACE_ROOT": str(workspace),
+        "WORKSPACE_SUBDIR": "",
+    }
+    code_memory = {
+        "enabled": True,
+        "binary": {"resolved": True},
+        "index_present": True,
+        "repos": {"selected": ["web"]},
+    }
+
+    matching = setup_mod._code_memory_coverage(["octocat/web"], code_memory, env)
+    wrong_owner = setup_mod._code_memory_coverage(["other/web"], code_memory, env)
+    disabled = setup_mod._code_memory_coverage(
+        ["octocat/web"], {**code_memory, "enabled": False}, env
+    )
+    missing_binary = setup_mod._code_memory_coverage(
+        ["octocat/web"], {**code_memory, "binary": {"resolved": False}}, env
+    )
+
+    assert matching["ready"] is True
+    assert matching["covered"] == ["octocat/web"]
+    assert wrong_owner["ready"] is False
+    assert wrong_owner["covered"] == []
+    assert wrong_owner["missing"] == ["other/web"]
+    assert disabled["ready"] is False
+    assert missing_binary["ready"] is False
+
+
 def test_bootstrap_status_reports_code_memory_defaults(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -70,6 +112,12 @@ def test_bootstrap_status_reports_code_memory_defaults(
     assert code_memory["repo"] == "DeusData/codebase-memory-mcp"
     assert code_memory["index_dir"] == str(tmp_path / ".alfred" / "state" / "code-memory")
     assert code_memory["index_present"] is False
+    assert payload["code_memory_coverage"] == {
+        "ready": False,
+        "covered": [],
+        "missing": [],
+        "detected": [],
+    }
 
 
 def test_bootstrap_status_includes_ready_first_run_checklist(

@@ -26,7 +26,8 @@
 # executable; a mismatch deletes the download and fails closed, so an
 # unverified binary is never run. Fetching is opt-out with
 # ALFRED_CODE_MEMORY_AUTOFETCH=0; in that case a missing binary is a clean
-# no-op (exit 0) so attaching the MCP server is always safe.
+# no-op for the attached MCP server. Explicit index and refresh actions fail so
+# callers cannot mistake a missing provider for a completed graph build.
 
 set -uo pipefail
 ORIGINAL_ENV_KEYS="$(env | awk -F= '{print $1}')"
@@ -725,23 +726,28 @@ scope_repo_summary() {
 }
 
 run_index() {
-  local bin="$1" mode="$2" repo had=0
+  local bin="$1" mode="$2" repo repos had=0 failed=0
   mkdir -p "$CODE_MEMORY_HOME"
+  repos="$(scope_repos)"
   while IFS= read -r repo; do
     [ -n "$repo" ] || continue
     had=1
     log "${mode}: $repo"
     # Upstream v0.8.x exposes indexing as an MCP CLI tool. It stores the graph
     # under "$HOME/.cache/codebase-memory-mcp", so pin HOME to Alfred's
-    # configured code-memory home before invoking it. Failures are logged, not
-    # fatal, so one bad repo never blocks the others.
-    HOME="$CODE_MEMORY_HOME" "$bin" cli index_repository \
-      "{\"repo_path\":$(json_string "$repo")}" \
-      || log "${mode} failed for $repo (continuing)"
-  done < <(scope_repos)
+    # configured code-memory home before invoking it. Try every scoped repo,
+    # then fail the action if any index operation failed.
+    if ! HOME="$CODE_MEMORY_HOME" "$bin" cli index_repository \
+      "{\"repo_path\":$(json_string "$repo")}"; then
+      log "${mode} failed for $repo"
+      failed=1
+    fi
+  done <<< "$repos"
   if [ "$had" -eq 0 ]; then
     log "no in-scope repos found under $WORKSPACE (set ALFRED_CODE_MEMORY_REPOS or add git repos)"
+    return 1
   fi
+  return "$failed"
 }
 
 json_string() {
@@ -772,12 +778,12 @@ case "$CMD" in
     HOME="$CODE_MEMORY_HOME" exec "$BIN" "$@"
     ;;
   index)
-    BIN="$(resolve_binary)" || { log "binary unavailable; cannot index"; exit 0; }
-    run_index "$BIN" "auto-index"
+    BIN="$(resolve_binary)" || { log "binary unavailable; cannot index"; exit 1; }
+    run_index "$BIN" "auto-index" || exit $?
     ;;
   refresh)
-    BIN="$(resolve_binary)" || { log "binary unavailable; cannot refresh"; exit 0; }
-    run_index "$BIN" "refresh"
+    BIN="$(resolve_binary)" || { log "binary unavailable; cannot refresh"; exit 1; }
+    run_index "$BIN" "refresh" || exit $?
     ;;
   doctor)
     if BIN="$(resolve_binary)"; then

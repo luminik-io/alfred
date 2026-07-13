@@ -45,6 +45,30 @@ function makeStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
   };
 }
 
+function makeIndexedStatus(): SetupStatus {
+  const status = makeStatus();
+  if (!status.code_memory) throw new Error("test setup requires code-memory status");
+  return {
+    ...status,
+    code_memory_coverage: {
+      ready: true,
+      covered: ["octocat/web"],
+      missing: [],
+    },
+    code_memory: {
+      ...status.code_memory,
+      index_present: true,
+      repos: {
+        configured: ["web"],
+        configured_existing: ["web"],
+        selected: ["web"],
+        count: 1,
+      },
+      detail: "Code graph is ready.",
+    },
+  };
+}
+
 function makeInstall(overrides: Partial<NonNullable<SetupStatus["install"]>> = {}): NonNullable<SetupStatus["install"]> {
   const base: NonNullable<SetupStatus["install"]> = {
     alfred_home: "/tmp/alfred-home",
@@ -886,13 +910,23 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("loads, picks, and saves repositories leading with name + description", async () => {
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeIndexedStatus());
     const save = vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
       ok: true,
       repos: ["octocat/web"],
       env_path: "/home/.alfred/.env",
       keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
     });
-    renderOnboarding();
+    const onRunLocalAction = vi.fn(async () => ({
+      command: ["alfred", "code-memory", "index"],
+      stdout: "",
+      stderr: "",
+      status: 0,
+      success: true,
+      pid: 1,
+      message: "Code graph indexed.",
+    }));
+    renderOnboarding({ onRunLocalAction });
     const user = userEvent.setup();
 
     // Forward flow auto-advances Tools + GitHub (both detected) onto Repositories.
@@ -912,9 +946,151 @@ describe("OnboardingView seven-step takeover", () => {
     await waitFor(() =>
       expect(save).toHaveBeenCalledWith("http://127.0.0.1:7010", ["octocat/web"]),
     );
+    expect(onRunLocalAction).toHaveBeenCalledWith({
+      action: "code_memory_index",
+      refreshAfter: true,
+    });
     await waitFor(() =>
-      expect(screen.getByText(/saved 1 repository alfred can work in/i)).toBeInTheDocument(),
+      expect(
+        screen.getByText(/saved 1 repository alfred can work in and built the code graph/i),
+      ).toBeInTheDocument(),
     );
+  });
+
+  it("surfaces a graph failure without blocking the saved repository scope", async () => {
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeStatus());
+    vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
+      ok: true,
+      repos: ["octocat/web"],
+      env_path: "/home/.alfred/.env",
+      keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+    });
+    const onRunLocalAction = vi.fn(async () => ({
+      command: ["alfred", "code-memory", "index"],
+      stdout: "",
+      stderr: "",
+      status: 0,
+      success: true,
+      pid: 1,
+      message: "No local repositories found.",
+    }));
+    renderOnboarding({ onRunLocalAction });
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /get started/i }));
+    await user.click(await screen.findByRole("button", { name: /load my repositories/i }));
+    await user.click(await screen.findByRole("checkbox", { name: /octocat\/web/i }));
+    await user.click(screen.getByRole("button", { name: /save 1 repository/i }));
+
+    expect(await screen.findByText(/no code graph was built/i)).toBeInTheDocument();
+    expect(screen.queryByText(/built the code graph/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^continue$/i })).toBeEnabled();
+  });
+
+  it("does not accept a same-basename graph for a different repository", async () => {
+    const staleStatus = makeIndexedStatus();
+    staleStatus.code_memory_coverage = {
+      ready: false,
+      covered: ["other/web"],
+      missing: ["octocat/web"],
+    };
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(staleStatus);
+    vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
+      ok: true,
+      repos: ["octocat/web"],
+      env_path: "/home/.alfred/.env",
+      keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+    });
+    const onRunLocalAction = vi.fn(async () => ({
+      command: ["alfred", "code-memory", "index"],
+      stdout: "",
+      stderr: "",
+      status: 0,
+      success: true,
+      pid: 1,
+      message: "Code graph indexed.",
+    }));
+    renderOnboarding({ onRunLocalAction });
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /get started/i }));
+    await user.click(await screen.findByRole("button", { name: /load my repositories/i }));
+    await user.click(await screen.findByRole("checkbox", { name: /octocat\/web/i }));
+    await user.click(screen.getByRole("button", { name: /save 1 repository/i }));
+
+    expect(await screen.findByText(/did not cover every selected repository/i)).toBeInTheDocument();
+    expect(screen.queryByText(/built the code graph/i)).not.toBeInTheDocument();
+  });
+
+  it("saves repositories without invoking code memory when Graphify is selected", async () => {
+    const graphifyStatus = makeStatus({
+      capability_plane: {
+        version: 1,
+        summary: { ready: 1, actionable: 0, disabled: 0, total: 1 },
+        capabilities: [
+          {
+            key: "code_graph",
+            title: "Code graph memory",
+            category: "memory",
+            recommended: true,
+            state: "ready",
+            installed: true,
+            enabled: true,
+            detail: "Graphify is ready.",
+            detected: { engine: "graphify", graph_present: true },
+            install_hint: "",
+            source: { source: "graphifyy" },
+          },
+        ],
+      },
+    });
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(graphifyStatus);
+    vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
+      ok: true,
+      repos: ["octocat/web"],
+      env_path: "/home/.alfred/.env",
+      keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+    });
+    const onRunLocalAction = vi.fn(async () => ({
+      command: ["alfred", "code-memory", "index"],
+      stdout: "",
+      stderr: "",
+      status: 0,
+      success: true,
+      pid: 1,
+      message: "Code graph indexed.",
+    }));
+    renderOnboarding({ onRunLocalAction });
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /get started/i }));
+    await user.click(await screen.findByRole("button", { name: /load my repositories/i }));
+    await user.click(await screen.findByRole("checkbox", { name: /octocat\/web/i }));
+    await user.click(screen.getByRole("button", { name: /save 1 repository/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/saved 1 repository alfred can work in\./i)).toBeInTheDocument(),
+    );
+    expect(onRunLocalAction).not.toHaveBeenCalled();
+  });
+
+  it("keeps a browser-only repository save complete when graph indexing cannot run", async () => {
+    vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
+      ok: true,
+      repos: ["octocat/web"],
+      env_path: "/home/.alfred/.env",
+      keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+    });
+    renderOnboarding({ canRun: false });
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /get started/i }));
+    await user.click(await screen.findByRole("button", { name: /load my repositories/i }));
+    await user.click(await screen.findByRole("checkbox", { name: /octocat\/web/i }));
+    await user.click(screen.getByRole("button", { name: /save 1 repository/i }));
+
+    expect(await screen.findByText(/indexing requires the alfred desktop app/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^continue$/i })).toBeEnabled();
   });
 
   it("blocks the repo step until GitHub is connected", async () => {
@@ -1266,6 +1442,70 @@ describe("OnboardingView conversational setup actions", () => {
   async function approveStep(user: ReturnType<typeof userEvent.setup>, buttonName: RegExp) {
     await user.click(await screen.findByRole("button", { name: buttonName }));
   }
+
+  it("indexes selected repositories after a conversational save", async () => {
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeIndexedStatus());
+    const save = vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
+      ok: true,
+      repos: ["octocat/web"],
+      env_path: "/home/.alfred/.env",
+      keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+    });
+    vi.spyOn(apiSetup, "onboardingConverse")
+      .mockResolvedValueOnce({
+        reply: "I can save that repository.",
+        action: { tool: "set_repos", args: { repos: ["octocat/web"] } },
+        done: false,
+      })
+      .mockResolvedValueOnce({ reply: "The code graph is ready.", action: null, done: false });
+    const onRunLocalAction = vi.fn(async () => makeNativeResult());
+    renderOnboarding({ onRunLocalAction });
+    const user = userEvent.setup();
+
+    await enterChatAndSend(user, "use octocat/web");
+    await approveStep(user, /save repositories/i);
+
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith("http://127.0.0.1:7010", ["octocat/web"]),
+    );
+    expect(onRunLocalAction).toHaveBeenCalledWith({
+      action: "code_memory_index",
+      refreshAfter: true,
+    });
+  });
+
+  it("threads a failed graph verification back into the onboarding conversation", async () => {
+    vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
+      ok: true,
+      repos: ["octocat/web"],
+      env_path: "/home/.alfred/.env",
+      keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+    });
+    let secondTurnMessages: { role: string; content: string }[] = [];
+    vi.spyOn(apiSetup, "onboardingConverse")
+      .mockResolvedValueOnce({
+        reply: "I can save that repository.",
+        action: { tool: "set_repos", args: { repos: ["octocat/web"] } },
+        done: false,
+      })
+      .mockImplementationOnce(async (_base, request) => {
+        secondTurnMessages = request.messages;
+        return { reply: "Let's fix indexing.", action: null, done: false };
+      });
+    const onRunLocalAction = vi.fn(async () => makeNativeResult());
+    renderOnboarding({ onRunLocalAction });
+    const user = userEvent.setup();
+
+    await enterChatAndSend(user, "use octocat/web");
+    await approveStep(user, /save repositories/i);
+
+    await waitFor(() => expect(secondTurnMessages.length).toBeGreaterThan(0));
+    const outcome = secondTurnMessages.find((message) =>
+      message.content.includes("[setup] set_repos"),
+    );
+    expect(outcome?.content).toContain("did not complete");
+    expect(outcome?.content).toContain("no code graph was built");
+  });
 
   it("carries a native Slack skip back into conversational completion", async () => {
     vi.spyOn(apiSetup, "onboardingConverse")

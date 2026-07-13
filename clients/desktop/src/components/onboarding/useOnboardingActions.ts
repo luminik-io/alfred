@@ -54,6 +54,7 @@ type OnboardingActionDeps = {
   startGithubAuthLogin: () => Promise<boolean>;
   onRunLocalAction: (request: NativeActionRequest) => Promise<NativeCommandResult | null>;
   onSaveCustomNames: (next: CustomRosterNames) => Promise<void>;
+  onReposSaved: (repos: string[]) => Promise<boolean>;
   onBatteriesDecision: () => void;
   onSlackDecision: () => void;
   onOpenSlackSetup: () => void;
@@ -78,6 +79,7 @@ export function useOnboardingActions({
   startGithubAuthLogin,
   onRunLocalAction,
   onSaveCustomNames,
+  onReposSaved,
   onBatteriesDecision,
   onSlackDecision,
   onOpenSlackSetup,
@@ -143,8 +145,14 @@ export function useOnboardingActions({
               };
             }
             await saveSetupRepos(baseUrl, repos);
+            const indexed = await onReposSaved(repos);
             await refreshStatus();
-            return { ok: true, note: `Alfred will work in ${repos.join(", ")}.` };
+            return {
+              ok: true,
+              note: `Alfred will work in ${repos.join(", ")}${
+                indexed ? ", and their code graph is ready" : ""
+              }.`,
+            };
           }
           case "pick_agents": {
             // The fleet is fixed; picking agents is a display preference the
@@ -345,6 +353,7 @@ export function useOnboardingActions({
       onOpenSlackSetup,
       onSlackDecision,
       onRunLocalAction,
+      onReposSaved,
       onSaveCustomNames,
       refreshStatus,
       startGithubAuthLogin,
