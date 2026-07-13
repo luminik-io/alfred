@@ -147,19 +147,16 @@ function App() {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [tab, fleetTab, setupMode]);
 
-  // First-run routing. On boot, land the user in the ONBOARDING takeover unless
-  // the local Alfred setup is actually complete. Two cases route to onboarding:
+  // First-run routing. On boot, land the user in onboarding unless the runtime's
+  // canonical first-run contract says every required setup item is ready.
   //
   //   1. No `alfred serve` reachable (fresh machine, runtime not up): the initial
   //      load settles with a connection error and no snapshot. Route to the
   //      wizard so the user has an obvious next step instead of an empty Home
   //      behind an error banner.
-  //   2. Runtime reachable but setup NOT complete (fresh/re-install: no engine
-  //      detected, GitHub not connected, or no repository selected). We fetch the
-  //      real server setup state (/api/setup/status) once and route to onboarding
-  //      when isSetupComplete() is false. This is based on substantive
-  //      completion, not the mere presence of a runtime directory, so a
-  //      half-initialised install still lands in onboarding.
+  //   2. Runtime reachable but canonical setup readiness is false. This includes
+  //      engine, GitHub, repository, local checkout, queue, scheduler, and desktop
+  //      authorization blockers reported by `/api/setup/status`.
   //
   // A returning user with a completed setup boots straight to the Inbox. The
   // decision fires exactly once per launch: once we route (or confirm complete)
@@ -210,8 +207,7 @@ function App() {
           // Complete setup: leave the default route (Inbox) untouched.
         })
         .catch(() => {
-          // If we cannot read setup state, do not force onboarding on a user who
-          // is otherwise connected; leave them on the default route.
+          if (mountedRef.current) routeToOnboarding();
         });
     }
   }, [loading, error, snapshot, baseUrl, routeToOnboarding]);

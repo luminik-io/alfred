@@ -227,9 +227,11 @@ export function OnboardingView({
   // chat is an alternative entry from Welcome; the person can drop back to
   // stepped at any point (and the engine-unavailable fallback does so too).
   const [mode, setMode] = useState<"stepped" | "chat">("stepped");
-  // True once the first request / demo landed, so the rail shows the journey
-  // complete even though the user has already been routed to Home / Ask.
+  // Keep real requests and disposable demo state separate so clearing a sample
+  // cannot leave the final Inbox gate unlocked.
   const [requestDone, setRequestDone] = useState(false);
+  const [demoDone, setDemoDone] = useState(false);
+  const [demoCleared, setDemoCleared] = useState(false);
   // Steps the user explicitly skipped (Dev persona). A skipped step is no longer
   // the blocker for "what's next" but is not marked done either.
   const [skipped, setSkipped] = useState<Set<OnboardingStepKey>>(new Set());
@@ -237,6 +239,21 @@ export function OnboardingView({
   // True once the user added a Slack approver, so the optional Slack step reads
   // as done in the rail (the server exposes no approver flag on SetupStatus).
   const [slackTouched, setSlackTouched] = useState(false);
+  // Selecting a rail destination records nothing; completing or skipping that
+  // step records exactly that step. This keeps progress honest while allowing
+  // the operator to inspect the flow in any order.
+  const [completedSteps, setCompletedSteps] = useState<Set<OnboardingStepKey>>(new Set());
+  const markStepComplete = useCallback((key: OnboardingStepKey) => {
+    setCompletedSteps((previous) => {
+      if (previous.has(key)) return previous;
+      const next = new Set(previous);
+      next.add(key);
+      return next;
+    });
+  }, []);
+  const markSetupComplete = useCallback(() => {
+    setCompletedSteps(new Set(ONBOARDING_STEP_ORDER.filter((key) => key !== "request")));
+  }, []);
   const [githubAuthFlow, setGithubAuthFlow] = useState<GithubAuthFlow>(IDLE_GITHUB_AUTH_FLOW);
   // The step the auto-advance effect last moved past, so a detected gh/engine
   // only auto-advances once and never fights a manual Back.
@@ -313,6 +330,7 @@ export function OnboardingView({
     if (wasConnected !== connected) {
       connectionGenerationRef.current += 1;
       githubAuthRequestSeq.current += 1;
+      setDemoCleared(false);
     }
     connectedRef.current = connected;
     if (!connected) {
@@ -377,6 +395,16 @@ export function OnboardingView({
       }
     }
   }, [baseUrl, connected]);
+
+  useEffect(() => {
+    setDemoCleared(false);
+  }, [baseUrl]);
+
+  useEffect(() => {
+    if (demoCleared && status && !status.demo.present) {
+      setDemoCleared(false);
+    }
+  }, [demoCleared, status]);
 
   // Returns the FRESH GitHub-connected verdict once the device flow settles, so a
   // caller (the conversational connect_github executor) can report the real
@@ -509,8 +537,9 @@ export function OnboardingView({
 
   const githubConnected = Boolean(status?.github.ok);
   const engineReady = Boolean(status?.engine_ready) || Boolean(nativeResult?.success);
-  const capabilityActionableCount = status?.capability_plane?.summary.actionable ?? 0;
-  const toolsReady = engineReady && capabilityActionableCount === 0;
+  // Code graph indexing depends on the repository selection later in onboarding,
+  // so recommended capability repairs cannot gate the engine step itself.
+  const toolsReady = engineReady;
   const reposSelected = (status?.repos.count ?? 0) > 0;
   const slackConfigured = Boolean(status?.install?.slack_configured);
 
@@ -603,28 +632,22 @@ export function OnboardingView({
     onRunLocalAction,
     onReposSaved: indexSelectedRepos,
     onSaveCustomNames,
-    onBatteriesDecision: useCallback(() => setBatteriesTouched(true), []),
-    onSlackDecision: useCallback(() => setSlackTouched(true), []),
+    onBatteriesDecision: useCallback(() => {
+      setBatteriesTouched(true);
+      markStepComplete("batteries");
+    }, [markStepComplete]),
+    onSlackDecision: useCallback(() => {
+      setSlackTouched(true);
+      markStepComplete("slack");
+    }, [markStepComplete]),
     onOpenSlackSetup: useCallback(() => {
       setNotice(null);
       setStepKey("slack");
       setMode("stepped");
     }, []),
-    onFinishSetup: useCallback(() => setRequestDone(true), []),
   });
 
   const currentIndex = ONBOARDING_STEP_ORDER.indexOf(stepKey);
-
-  // The furthest step the user has actually reached. The rail's "done" state and
-  // the "N of M done" count are anchored to this cursor, never to a background
-  // signal that happens to be satisfied for a step the user has not seen yet. So
-  // a fresh launch where Claude Code, gh, and repos are all already detected
-  // still opens on Welcome with 0 done, instead of a rail that makes first-run
-  // feel skipped. The mark only ever moves forward.
-  const [reachedIndex, setReachedIndex] = useState(0);
-  useEffect(() => {
-    setReachedIndex((prev) => Math.max(prev, currentIndex));
-  }, [currentIndex]);
 
   // An existing local runtime was detected on this Mac. When true, the setup
   // inventory already proves several steps are in place, so the rail must not
@@ -637,8 +660,7 @@ export function OnboardingView({
     (key: OnboardingStepKey): boolean => {
       switch (key) {
         case "welcome":
-          // Welcome is satisfied the moment the user steps off it (or finishes).
-          return reachedIndex > 0 || requestDone;
+          return true;
         case "engine":
           return toolsReady;
         case "github":
@@ -649,58 +671,50 @@ export function OnboardingView({
           // Batteries are optional; Alfred works with zero of them. The step
           // reads satisfied once the user moves past it or skips it. We never
           // require a battery to be enabled to continue.
-          return (
-            reachedIndex > ONBOARDING_STEP_ORDER.indexOf("batteries") ||
-            skipped.has("batteries") ||
-            installInitialized
-          );
+          return batteriesTouched || skipped.has("batteries") || installInitialized;
         case "team":
           // The shipped Batman roster is already valid. Keeping the default is a
           // complete state only after the operator continues past Team, OR when
           // an existing install proves a roster is already configured.
-          return (
-            reachedIndex > ONBOARDING_STEP_ORDER.indexOf("team") || installInitialized
-          );
+          return true;
         case "slack":
           // Server configuration and local decisions are both authoritative.
           // The latter cover a skip or approver addition before a refreshed
           // setup snapshot is available.
           return slackConfigured || skipped.has("slack") || slackTouched;
         case "request":
-          return requestDone;
+          return requestDone || demoDone || (!demoCleared && Boolean(status?.demo.present));
         default:
           return false;
       }
     },
     [
+      batteriesTouched,
       githubConnected,
       installInitialized,
-      reachedIndex,
       reposReady,
       requestDone,
+      demoDone,
+      demoCleared,
       slackConfigured,
       skipped,
       slackTouched,
+      status?.demo.present,
       toolsReady,
     ],
   );
 
-  // Per-step completion for the rail. A step is "done" when its readiness signal
-  // is satisfied AND either the user has reached it (its index is at or below the
-  // furthest-reached cursor) OR an existing install was detected. On a fresh
-  // first run the cursor keeps the count honest so a pre-detected engine / gh /
-  // repo the user has not walked up to does not read as done. But when the
-  // runtime already exists, a proven-complete step must show done so the rail
-  // never contradicts the "ready to use" inventory (the "0 of 7" vs "ready"
-  // contradiction). Steps with no inventory-backed signal (welcome) still rely
-  // on the cursor, so they are never invented as done.
+  // Existing installs can prove durable setup directly from inventory. Fresh
+  // installs require an explicit completion event so pre-detected tools do not
+  // make untouched steps look complete. Persisted demo state is durable
+  // first-job proof and therefore survives a remount.
   const stepComplete = useCallback(
     (key: OnboardingStepKey): boolean => {
-      const index = ONBOARDING_STEP_ORDER.indexOf(key);
-      if (!installInitialized && index > reachedIndex) return false;
-      return stepSatisfied(key);
+      if (key === "request" && stepSatisfied(key)) return true;
+      if (installInitialized && key !== "welcome") return stepSatisfied(key);
+      return completedSteps.has(key) && stepSatisfied(key);
     },
-    [installInitialized, reachedIndex, stepSatisfied],
+    [completedSteps, installInitialized, stepSatisfied],
   );
 
   const steps = useMemo<StepMeta[]>(
@@ -734,7 +748,16 @@ export function OnboardingView({
 
   const previousKey = ONBOARDING_STEP_ORDER[currentIndex - 1] ?? null;
   const nextKey = ONBOARDING_STEP_ORDER[currentIndex + 1] ?? null;
-  const canAdvance = stepKey !== "repos" || reposReady;
+  const canAdvance =
+    stepKey === "engine"
+      ? engineReady
+      : stepKey === "github"
+        ? githubConnected
+        : stepKey === "repos"
+          ? reposReady
+          : true;
+  const requiredSetupReady = status?.first_run?.ready === true;
+  const firstJobComplete = requestDone || demoDone || (!demoCleared && Boolean(status?.demo.present));
 
   const goToStep = useCallback((key: OnboardingStepKey, options?: { manual?: boolean }) => {
     if (options?.manual) {
@@ -747,8 +770,9 @@ export function OnboardingView({
   const advance = useCallback(() => {
     if (!canAdvance) return;
     if (stepKey === "batteries") setBatteriesTouched(true);
+    markStepComplete(stepKey);
     if (nextKey) goToStep(nextKey);
-  }, [canAdvance, goToStep, nextKey, stepKey]);
+  }, [canAdvance, goToStep, markStepComplete, nextKey, stepKey]);
 
   const skipStep = useCallback(
     (key: OnboardingStepKey) => {
@@ -758,11 +782,12 @@ export function OnboardingView({
         next.add(key);
         return next;
       });
+      markStepComplete(key);
       const idx = ONBOARDING_STEP_ORDER.indexOf(key);
       const following = ONBOARDING_STEP_ORDER[idx + 1] ?? null;
       if (following) goToStep(following);
     },
-    [goToStep],
+    [goToStep, markStepComplete],
   );
 
   // Auto-advance once when a step's detection lands while the user is sitting on
@@ -771,12 +796,14 @@ export function OnboardingView({
     if (manualSteps.current.has(stepKey)) return;
     if (stepKey === "engine" && toolsReady && !autoAdvancedFrom.current.has("engine")) {
       autoAdvancedFrom.current.add("engine");
+      markStepComplete("engine");
       goToStep("github");
     } else if (stepKey === "github" && githubConnected && !autoAdvancedFrom.current.has("github")) {
       autoAdvancedFrom.current.add("github");
+      markStepComplete("github");
       goToStep("repos");
     }
-  }, [stepKey, toolsReady, githubConnected, goToStep]);
+  }, [stepKey, toolsReady, githubConnected, goToStep, markStepComplete]);
 
   // Enter advances when the focus is not in a text field (so typing a server URL
   // or Slack id never triggers a jump). The step bodies own their own submits.
@@ -868,8 +895,9 @@ export function OnboardingView({
               slackDecisionHandled={stepSatisfied("slack")}
               onRunAction={runOnboardingAction}
               onDone={() => {
-                setRequestDone(true);
-                onSwitch?.("home");
+                markSetupComplete();
+                setStepKey("request");
+                setMode("stepped");
               }}
               onUseStepped={() => setMode("stepped")}
             />
@@ -914,9 +942,15 @@ export function OnboardingView({
               canRun={canRun}
               nativeBusy={nativeBusy}
               onInstallCore={onInstallCore}
-              onGetStarted={() => goToStep("engine")}
+              onGetStarted={() => {
+                markStepComplete("welcome");
+                goToStep("engine");
+              }}
               onChatSetup={() => setMode("chat")}
-              onDevShortcut={() => goToStep("github")}
+              onDevShortcut={() => {
+                markStepComplete("welcome");
+                goToStep("github");
+              }}
             />
           ) : null}
 
@@ -977,11 +1011,12 @@ export function OnboardingView({
                 canMutate={canMutate}
                 canRun={canRun}
                 connected={connected}
-                onRunLocalAction={onRunLocalAction}
-                onSaved={async () => {
-                  setBatteriesTouched(true);
-                  await refreshStatus();
-                }}
+              onRunLocalAction={onRunLocalAction}
+              onSaved={async () => {
+                setBatteriesTouched(true);
+                markStepComplete("batteries");
+                await refreshStatus();
+              }}
                 setNotice={setNotice}
               />
             </StepFrame>
@@ -1007,7 +1042,10 @@ export function OnboardingView({
                 connected={connected}
                 canMutate={canMutate}
                 onSkip={() => skipStep("slack")}
-                onApproverAdded={() => setSlackTouched(true)}
+                onApproverAdded={() => {
+                  setSlackTouched(true);
+                  markStepComplete("slack");
+                }}
                 setNotice={setNotice}
               />
             </StepFrame>
@@ -1018,18 +1056,29 @@ export function OnboardingView({
               <FirstRequestStep
                 baseUrl={baseUrl}
                 canMutate={canMutate}
-                reposReady={reposReady}
-                demoPresent={Boolean(status?.demo.present)}
+                setupReady={requiredSetupReady}
+                demoPresent={!demoCleared && Boolean(status?.demo.present)}
                 setNotice={setNotice}
                 onSwitch={onSwitch}
-                onComplete={() => setRequestDone(true)}
+                onComplete={(kind) => {
+                  if (kind === "request") setRequestDone(true);
+                  if (kind === "demo") setDemoDone(true);
+                  markStepComplete("request");
+                }}
                 onSeedDemo={async () => {
-                  await onRefreshBoard?.({ demo: true });
-                  await refreshStatus();
+                  setDemoCleared(false);
+                  await Promise.allSettled([
+                    Promise.resolve().then(() => onRefreshBoard?.({ demo: true })),
+                    refreshStatus(),
+                  ]);
                 }}
                 onClearDemo={async () => {
-                  await onRefreshBoard?.({ demo: false });
-                  await refreshStatus();
+                  setDemoCleared(true);
+                  setDemoDone(false);
+                  await Promise.allSettled([
+                    Promise.resolve().then(() => onRefreshBoard?.({ demo: false })),
+                    refreshStatus(),
+                  ]);
                 }}
               />
             </StepFrame>
@@ -1075,6 +1124,7 @@ export function OnboardingView({
                 size="sm"
                 className="btn-primary-glow"
                 onClick={() => onSwitch?.("home")}
+                disabled={!requiredSetupReady || !firstJobComplete}
               >
                 <span>Go to Inbox</span>
                 <ArrowRight size={15} aria-hidden="true" />

@@ -58,7 +58,6 @@ type OnboardingActionDeps = {
   onBatteriesDecision: () => void;
   onSlackDecision: () => void;
   onOpenSlackSetup: () => void;
-  onFinishSetup: () => void;
 };
 
 /**
@@ -83,7 +82,6 @@ export function useOnboardingActions({
   onBatteriesDecision,
   onSlackDecision,
   onOpenSlackSetup,
-  onFinishSetup,
 }: OnboardingActionDeps): (action: OnboardingAction) => Promise<OnboardingActionResult> {
   return useCallback(
     async (action: OnboardingAction): Promise<OnboardingActionResult> => {
@@ -325,11 +323,18 @@ export function useOnboardingActions({
             return { ok: true, note: `Alfred will sweep for work ${cadence}.` };
           }
           case "finish_setup": {
-            await refreshStatus();
-            onFinishSetup();
+            const fresh = await refreshStatus();
+            if (!fresh?.first_run?.ready) {
+              return {
+                ok: false,
+                note:
+                  fresh?.first_run?.headline ||
+                  "Finish the required setup checks before completing setup.",
+              };
+            }
             return {
               ok: true,
-              note: "Setup is done. Give Alfred its first job whenever you are ready.",
+              note: "Setup is ready. Choose Alfred's first job next.",
             };
           }
           default:
@@ -348,7 +353,6 @@ export function useOnboardingActions({
       canRun,
       connected,
       githubConnected,
-      onFinishSetup,
       onBatteriesDecision,
       onOpenSlackSetup,
       onSlackDecision,

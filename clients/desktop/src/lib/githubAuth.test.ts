@@ -14,6 +14,22 @@ function setupStatus(ok: boolean): SetupStatus {
     engine_ready: true,
     repos: { selected: [], count: 0, keys: [] },
     demo: { present: false },
+    first_run: {
+      version: 1,
+      ready: ok,
+      status: ok ? "ready" : "needs_action",
+      headline: ok ? "Ready." : "Needs action.",
+      summary: {
+        required_ready: ok ? 1 : 0,
+        required_total: 1,
+        recommended_ready: 0,
+        recommended_total: 0,
+        optional_ready: 0,
+        optional_total: 0,
+        blockers: ok ? [] : ["github"],
+      },
+      checks: [],
+    },
     ready: ok,
   };
 }

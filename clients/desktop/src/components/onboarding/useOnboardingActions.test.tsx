@@ -2,6 +2,7 @@ import { renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as api from "../../api/setup";
+import type { SetupStatus } from "../../types";
 import { useOnboardingActions } from "./useOnboardingActions";
 
 afterEach(() => {
@@ -21,11 +22,11 @@ describe("useOnboardingActions", () => {
         refreshStatus: vi.fn(async () => null),
         startGithubAuthLogin: vi.fn(async () => false),
         onRunLocalAction,
+        onReposSaved: vi.fn(async () => false),
         onSaveCustomNames: vi.fn(async () => undefined),
         onBatteriesDecision: vi.fn(),
         onSlackDecision: vi.fn(),
         onOpenSlackSetup: vi.fn(),
-        onFinishSetup: vi.fn(),
       }),
     );
 
@@ -63,11 +64,11 @@ describe("useOnboardingActions", () => {
         refreshStatus: vi.fn(async () => null),
         startGithubAuthLogin: vi.fn(async () => false),
         onRunLocalAction,
+        onReposSaved: vi.fn(async () => false),
         onSaveCustomNames: vi.fn(async () => undefined),
         onBatteriesDecision,
         onSlackDecision: vi.fn(),
         onOpenSlackSetup: vi.fn(),
-        onFinishSetup: vi.fn(),
       }),
     );
 
@@ -88,5 +89,74 @@ describe("useOnboardingActions", () => {
     );
     expect(outcome.ok).toBe(false);
     expect(onBatteriesDecision).not.toHaveBeenCalled();
+  });
+
+  it("does not finish conversational setup while required setup is missing", async () => {
+    const refreshStatus = vi.fn(async () =>
+      ({
+        engine_ready: false,
+        github: { ok: false },
+        repos: { count: 0 },
+        first_run: {
+          ready: false,
+          headline: "3 required setup items need action.",
+        },
+      }) as SetupStatus,
+    );
+    const { result } = renderHook(() =>
+      useOnboardingActions({
+        baseUrl: "http://127.0.0.1:7010",
+        canMutate: true,
+        canRun: true,
+        connected: true,
+        githubConnected: false,
+        refreshStatus,
+        startGithubAuthLogin: vi.fn(async () => false),
+        onRunLocalAction: vi.fn(async () => null),
+        onReposSaved: vi.fn(async () => false),
+        onSaveCustomNames: vi.fn(async () => undefined),
+        onBatteriesDecision: vi.fn(),
+        onSlackDecision: vi.fn(),
+        onOpenSlackSetup: vi.fn(),
+      }),
+    );
+
+    await expect(result.current({ tool: "finish_setup", args: {} })).resolves.toEqual({
+      ok: false,
+      note: "3 required setup items need action.",
+    });
+  });
+
+  it("finishes conversational setup only when required setup is ready", async () => {
+    const refreshStatus = vi.fn(async () =>
+      ({
+        engine_ready: true,
+        github: { ok: true },
+        repos: { count: 1 },
+        first_run: { ready: true },
+      }) as SetupStatus,
+    );
+    const { result } = renderHook(() =>
+      useOnboardingActions({
+        baseUrl: "http://127.0.0.1:7010",
+        canMutate: true,
+        canRun: true,
+        connected: true,
+        githubConnected: true,
+        refreshStatus,
+        startGithubAuthLogin: vi.fn(async () => true),
+        onRunLocalAction: vi.fn(async () => null),
+        onReposSaved: vi.fn(async () => true),
+        onSaveCustomNames: vi.fn(async () => undefined),
+        onBatteriesDecision: vi.fn(),
+        onSlackDecision: vi.fn(),
+        onOpenSlackSetup: vi.fn(),
+      }),
+    );
+
+    await expect(result.current({ tool: "finish_setup", args: {} })).resolves.toEqual({
+      ok: true,
+      note: "Setup is ready. Choose Alfred's first job next.",
+    });
   });
 });

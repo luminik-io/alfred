@@ -30,7 +30,7 @@ import type { OnboardingNotice } from "./types";
 export function FirstRequestStep({
   baseUrl,
   canMutate,
-  reposReady,
+  setupReady,
   demoPresent,
   setNotice,
   onSwitch,
@@ -40,7 +40,7 @@ export function FirstRequestStep({
 }: {
   baseUrl: string;
   canMutate: boolean;
-  reposReady: boolean;
+  setupReady: boolean;
   // Server truth from SetupStatus.demo.present, so the "Clear sample data"
   // exit survives a remount (open Inbox, reload, navigate back) instead of
   // depending only on the in-component seed flag, which resets to false.
@@ -176,10 +176,9 @@ export function FirstRequestStep({
 
       <div className="grid gap-2">
         <p className="text-sm font-medium text-foreground">Pick something for Alfred to do first</p>
-        {!reposReady ? (
+        {!setupReady ? (
           <p className="text-sm text-muted-foreground">
-            Choosing a repository first lets these run on your real project. You can still seed a
-            sample below without one.
+            Finish Tools, GitHub, and Repositories before starting the first job.
           </p>
         ) : null}
         {playbooks.map((playbook) => (
@@ -198,7 +197,7 @@ export function FirstRequestStep({
                   variant="outline"
                   type="button"
                   onClick={() => void pick(playbook.key)}
-                  disabled={!canMutate || busyKey !== null}
+                  disabled={!canMutate || !setupReady || busyKey !== null}
                 >
                   <Sparkles size={14} aria-hidden="true" />
                   <span>{busyKey === playbook.key ? "Drafting" : "Use this"}</span>
@@ -231,7 +230,12 @@ export function FirstRequestStep({
                   <Trash2 size={15} aria-hidden="true" />
                   <span>{clearBusy ? "Clearing" : "Clear sample data"}</span>
                 </Button>
-                <Button variant="ghost" type="button" onClick={() => onSwitch?.("home")}>
+                <Button
+                  variant="ghost"
+                  type="button"
+                  onClick={() => onSwitch?.("home")}
+                  disabled={!setupReady}
+                >
                   <span>Open Inbox</span>
                   <ArrowRight size={15} aria-hidden="true" />
                 </Button>
@@ -247,12 +251,17 @@ export function FirstRequestStep({
                 <Button
                   type="button"
                   onClick={() => void seedDemo()}
-                  disabled={!canMutate || demoBusy}
+                  disabled={!canMutate || !setupReady || demoBusy}
                 >
                   <PlayCircle size={15} aria-hidden="true" />
                   <span>{demoBusy ? "Seeding" : "Show me a sample first"}</span>
                 </Button>
-                <Button variant="ghost" type="button" onClick={() => onSwitch?.("compose")}>
+                <Button
+                  variant="ghost"
+                  type="button"
+                  onClick={() => onSwitch?.("compose")}
+                  disabled={!setupReady}
+                >
                   <span>Write a brief in Ask</span>
                   <ArrowRight size={15} aria-hidden="true" />
                 </Button>

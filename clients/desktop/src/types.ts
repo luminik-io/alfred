@@ -775,7 +775,7 @@ export type SetupStatus = {
   };
   demo: { present: boolean };
   install?: SetupInstallInventory;
-  first_run?: SetupFirstRunReadiness;
+  first_run: SetupFirstRunReadiness;
   ready: boolean;
   error?: string;
 };
