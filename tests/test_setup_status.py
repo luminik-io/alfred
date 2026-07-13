@@ -67,18 +67,28 @@ def test_code_graph_coverage_requires_exact_github_identity(tmp_path: Path) -> N
         "WORKSPACE_SUBDIR": "",
     }
     code_memory = {
+        "enabled": True,
+        "binary": {"resolved": True},
         "index_present": True,
         "repos": {"selected": ["web"]},
     }
 
     matching = setup_mod._code_graph_coverage(["octocat/web"], code_memory, env)
     wrong_owner = setup_mod._code_graph_coverage(["other/web"], code_memory, env)
+    disabled = setup_mod._code_graph_coverage(
+        ["octocat/web"], {**code_memory, "enabled": False}, env
+    )
+    missing_binary = setup_mod._code_graph_coverage(
+        ["octocat/web"], {**code_memory, "binary": {"resolved": False}}, env
+    )
 
     assert matching["ready"] is True
     assert matching["covered"] == ["octocat/web"]
     assert wrong_owner["ready"] is False
     assert wrong_owner["covered"] == []
     assert wrong_owner["missing"] == ["other/web"]
+    assert disabled["ready"] is False
+    assert missing_binary["ready"] is False
 
 
 def test_bootstrap_status_reports_code_memory_defaults(

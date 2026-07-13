@@ -26,7 +26,8 @@
 # executable; a mismatch deletes the download and fails closed, so an
 # unverified binary is never run. Fetching is opt-out with
 # ALFRED_CODE_MEMORY_AUTOFETCH=0; in that case a missing binary is a clean
-# no-op (exit 0) so attaching the MCP server is always safe.
+# no-op for the attached MCP server. Explicit index and refresh actions fail so
+# callers cannot mistake a missing provider for a completed graph build.
 
 set -uo pipefail
 ORIGINAL_ENV_KEYS="$(env | awk -F= '{print $1}')"
@@ -777,11 +778,11 @@ case "$CMD" in
     HOME="$CODE_MEMORY_HOME" exec "$BIN" "$@"
     ;;
   index)
-    BIN="$(resolve_binary)" || { log "binary unavailable; cannot index"; exit 0; }
+    BIN="$(resolve_binary)" || { log "binary unavailable; cannot index"; exit 1; }
     run_index "$BIN" "auto-index" || exit $?
     ;;
   refresh)
-    BIN="$(resolve_binary)" || { log "binary unavailable; cannot refresh"; exit 0; }
+    BIN="$(resolve_binary)" || { log "binary unavailable; cannot refresh"; exit 1; }
     run_index "$BIN" "refresh" || exit $?
     ;;
   doctor)

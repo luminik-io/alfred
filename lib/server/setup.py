@@ -1933,6 +1933,8 @@ def _code_graph_coverage(
         for name in (code_memory.get("repos") or {}).get("selected", [])
         if str(name).strip()
     }
+    binary = code_memory.get("binary") or {}
+    provider_ready = bool(code_memory.get("enabled")) and bool(binary.get("resolved"))
     index_present = bool(code_memory.get("index_present"))
     covered: list[str] = []
     detected: list[dict[str, Any]] = []
@@ -1943,7 +1945,13 @@ def _code_graph_coverage(
         origin_slug = _local_repo_origin_slug(path) if row["exists"] else ""
         scope_selected = slug in indexed or local_name in indexed
         identity_matches = origin_slug.lower() == slug
-        ready = index_present and bool(row["exists"]) and scope_selected and identity_matches
+        ready = (
+            provider_ready
+            and index_present
+            and bool(row["exists"])
+            and scope_selected
+            and identity_matches
+        )
         if ready:
             covered.append(slug)
         detected.append(

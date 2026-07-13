@@ -811,6 +811,30 @@ def test_index_fails_when_no_repository_is_in_scope(tmp_path: Path) -> None:
     assert "no in-scope repos found" in res.stderr
 
 
+def test_index_fails_when_binary_is_unavailable(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    (workspace / "api" / ".git").mkdir(parents=True)
+    env = _launcher_env(
+        tmp_path,
+        ALFRED_CODE_MEMORY_BIN=str(tmp_path / "missing-code-memory"),
+        ALFRED_CODE_MEMORY_AUTOFETCH="0",
+        ALFRED_CODE_MEMORY_REPOS="api",
+        ALFRED_CODE_MAP_REPOS="",
+        WORKSPACE_ROOT=str(workspace),
+        WORKSPACE_SUBDIR="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "index"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode != 0
+    assert "binary unavailable; cannot index" in res.stderr
+
+
 def test_index_fails_when_upstream_indexing_fails(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     (workspace / "api" / ".git").mkdir(parents=True)
