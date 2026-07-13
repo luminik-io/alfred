@@ -9,6 +9,7 @@ import { OnboardingView } from "./OnboardingView";
 import type {
   SetupPlaybooksResponse,
   SetupReposResponse,
+  SetupBatteryManifest,
   SetupStatus,
   TrustedSlackUsersResponse,
 } from "../types";
@@ -67,6 +68,33 @@ function makeIndexedStatus(): SetupStatus {
       detail: "Code graph is ready.",
     },
   };
+}
+
+function makeReadyStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
+  return makeStatus({
+    repos: {
+      selected: ["octocat/web"],
+      count: 1,
+      keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+    },
+    first_run: {
+      version: 1,
+      ready: true,
+      status: "ready",
+      headline: "Ready for the first real run.",
+      summary: {
+        required_ready: 7,
+        required_total: 7,
+        recommended_ready: 0,
+        recommended_total: 0,
+        optional_ready: 0,
+        optional_total: 0,
+        blockers: [],
+      },
+      checks: [],
+    },
+    ...overrides,
+  });
 }
 
 function makeInstall(overrides: Partial<NonNullable<SetupStatus["install"]>> = {}): NonNullable<SetupStatus["install"]> {
@@ -671,7 +699,7 @@ describe("OnboardingView seven-step takeover", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps the user on Tools when local capabilities need attention", async () => {
+  it("shows recommended capability repairs without blocking repository setup", async () => {
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         github: { ok: true, account: "octocat", detail: "Signed in to GitHub as octocat." },
@@ -714,10 +742,14 @@ describe("OnboardingView seven-step takeover", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /get started/i }));
 
+    expect(
+      await screen.findByRole("button", { name: /load my repositories/i }),
+    ).toBeInTheDocument();
+    await gotoStep(user, /^tools$/i);
     expect(await screen.findByText(/local capabilities/i)).toBeInTheDocument();
     expect(screen.getByText(/1 of 2 ready, 1 to finish/i)).toBeInTheDocument();
     expect(screen.getByText(/^needs attention$/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /load my repositories/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^continue$/i })).toBeEnabled();
   });
 
   it("starts native GitHub web sign-in and polls until setup reports connected", async () => {
@@ -1106,6 +1138,68 @@ describe("OnboardingView seven-step takeover", () => {
     expect(screen.getByText(/connect github first/i)).toBeInTheDocument();
   });
 
+  it("keeps first-job actions and the final exit locked until required setup is ready", async () => {
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        engine_ready: false,
+        github: { ok: false, account: null, detail: "Not signed in to GitHub." },
+      }),
+    );
+    renderOnboarding();
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^first request$/i);
+    expect(await screen.findByText(/finish tools, github, and repositories/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/onboarding steps complete/i)).toHaveTextContent(/0 of 8/i);
+    expect(screen.getAllByRole("button", { name: /use this/i })[0]).toBeDisabled();
+    expect(screen.getByRole("button", { name: /show me a sample first/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /write a brief in ask/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /go to inbox/i })).toBeDisabled();
+  });
+
+  it("honors server first-run blockers after engine, GitHub, and repos are ready", async () => {
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      makeReadyStatus({
+        first_run: {
+          version: 1,
+          ready: false,
+          status: "needs_action",
+          headline: "2 required setup items need action.",
+          summary: {
+            required_ready: 5,
+            required_total: 7,
+            recommended_ready: 0,
+            recommended_total: 0,
+            optional_ready: 0,
+            optional_total: 0,
+            blockers: ["queue_coverage", "repo_local_paths"],
+          },
+          checks: [],
+        },
+      }),
+    );
+    renderOnboarding();
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^first request$/i);
+    expect(screen.getAllByRole("button", { name: /use this/i })[0]).toBeDisabled();
+    expect(screen.getByRole("button", { name: /show me a sample first/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /go to inbox/i })).toBeDisabled();
+  });
+
+  it("requires a first job before the onboarding footer exits to Inbox", async () => {
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeReadyStatus());
+    vi.spyOn(apiSetup, "seedSetupDemo").mockResolvedValue({ seeded: true });
+    renderOnboarding();
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^first request$/i);
+    const finish = await screen.findByRole("button", { name: /go to inbox/i });
+    expect(finish).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: /show me a sample first/i }));
+    await waitFor(() => expect(finish).toBeEnabled());
+  });
+
   it("lets the user choose the agent naming theme before Slack", async () => {
     const onRosterThemeChange = vi.fn();
     const onEditCustomTheme = vi.fn();
@@ -1121,9 +1215,7 @@ describe("OnboardingView seven-step takeover", () => {
     expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
       /^team$/i,
     );
-    expect(
-      within(stepper).getByLabelText("4 of 8 onboarding steps complete"),
-    ).toBeInTheDocument();
+    expect(within(stepper).getByLabelText("0 of 8 onboarding steps complete")).toBeInTheDocument();
     expect(screen.getByText(/active roster/i)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /transformers/i })).toBeInTheDocument();
     expect(screen.getByText("Optimus Prime")).toBeInTheDocument();
@@ -1137,6 +1229,65 @@ describe("OnboardingView seven-step takeover", () => {
     await user.click(screen.getByRole("combobox", { name: /roster theme/i }));
     await user.click(await screen.findByRole("option", { name: /justice league/i }));
     expect(onRosterThemeChange).toHaveBeenCalledWith("justice-league");
+
+    // Completing a rail-selected step records that step, not a fabricated
+    // linear prefix and not a permanently frozen zero.
+    await user.click(screen.getByRole("button", { name: /^continue$/i }));
+    expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+      /^slack$/i,
+    );
+    expect(within(stepper).getByLabelText("1 of 8 onboarding steps complete")).toBeInTheDocument();
+  });
+
+  it("records a battery configured inside a rail-selected step", async () => {
+    const manifest: SetupBatteryManifest = {
+      version: 1,
+      summary: { total: 1 },
+      batteries: [
+        {
+          id: "dense-embeddings",
+          name: "Dense embeddings",
+          category: "memory",
+          what: "A vector recall arm.",
+          how_it_helps: "Finds relevant lessons across different wording.",
+          builtin: false,
+          default_on: false,
+          status: "available",
+          configured: false,
+          enabled: false,
+          installed: true,
+          requires_daemon: false,
+          service: "Ollama",
+          install_kind: "pip-extra",
+          install_hint: "Install the vector extra.",
+          pip_extra: "vector",
+          env_keys: ["ALFRED_MEMORY_SQLITE_DENSE"],
+          docs: "docs/MEMORY_PROVIDERS.md",
+        },
+      ],
+    };
+    vi.spyOn(apiSetup, "loadSetupBatteries").mockResolvedValue(manifest);
+    vi.spyOn(apiSetup, "saveSetupBattery").mockResolvedValue({
+      ok: true,
+      battery: "dense-embeddings",
+      configured: true,
+      enabled: true,
+      env_path: "/home/.alfred/.env",
+      keys: ["ALFRED_MEMORY_SQLITE_DENSE"],
+      manifest: {
+        ...manifest,
+        batteries: [{ ...manifest.batteries[0], configured: true, enabled: true }],
+      },
+    });
+    renderOnboarding({ canRun: false });
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^batteries$/i);
+    await user.click(await screen.findByRole("switch", { name: /enable dense embeddings/i }));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/onboarding steps complete/i)).toHaveTextContent(/1 of 8/i),
+    );
   });
 
   it("treats Slack as optional and skippable, advancing to the first request", async () => {
@@ -1168,6 +1319,7 @@ describe("OnboardingView seven-step takeover", () => {
     await user.click(screen.getByRole("button", { name: /^trust$/i }));
     await waitFor(() => expect(add).toHaveBeenCalledWith("http://127.0.0.1:7010", "U999"));
     await waitFor(() => expect(screen.getByText("U999")).toBeInTheDocument());
+    expect(screen.getByLabelText(/onboarding steps complete/i)).toHaveTextContent(/1 of 8/i);
   });
 
   it("composes a starter spec into a real first request and lands on Ask", async () => {
@@ -1181,6 +1333,7 @@ describe("OnboardingView seven-step takeover", () => {
       readiness: { ok: false, score: 0.4 },
     });
     const onSwitch = vi.fn();
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeReadyStatus());
     renderOnboarding({ onSwitch });
     const user = userEvent.setup();
 
@@ -1199,6 +1352,7 @@ describe("OnboardingView seven-step takeover", () => {
     const seed = vi.spyOn(apiSetup, "seedSetupDemo").mockResolvedValue({ seeded: true });
     const onSwitch = vi.fn();
     const onRefreshBoard = vi.fn(async () => undefined);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeReadyStatus());
     renderOnboarding({ onSwitch, onRefreshBoard });
     const user = userEvent.setup();
 
@@ -1216,6 +1370,7 @@ describe("OnboardingView seven-step takeover", () => {
     vi.spyOn(apiSetup, "seedSetupDemo").mockResolvedValue({ seeded: true });
     const clear = vi.spyOn(apiSetup, "clearSetupDemo").mockResolvedValue({ cleared: true });
     const onRefreshBoard = vi.fn(async () => undefined);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeReadyStatus());
     renderOnboarding({ onRefreshBoard });
     const user = userEvent.setup();
 
@@ -1239,7 +1394,7 @@ describe("OnboardingView seven-step takeover", () => {
     // the server still reports demo.present, so the step must derive the
     // "Clear sample data" exit from server truth rather than strand the user.
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
-      makeStatus({ demo: { present: true } }),
+      makeReadyStatus({ demo: { present: true } }),
     );
     renderOnboarding();
     const user = userEvent.setup();
@@ -1252,11 +1407,10 @@ describe("OnboardingView seven-step takeover", () => {
     expect(
       screen.queryByRole("button", { name: /show me a sample first/i }),
     ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /go to inbox/i })).toBeEnabled();
   });
 
-  it("Enter advances to the next step when focus is not in a field", async () => {
-    // Engine + GitHub both not detected so neither step auto-advances and the
-    // Enter-driven move from Tools to GitHub is observable.
+  it("does not let Enter bypass a missing required engine", async () => {
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         engine_ready: false,
@@ -1268,14 +1422,10 @@ describe("OnboardingView seven-step takeover", () => {
     // Land on Tools via the rail.
     await gotoStep(user, /^tools$/i);
     expect(screen.getByRole("button", { name: /check my tools/i })).toBeInTheDocument();
-    // Press Enter on the takeover section (not a field) to continue to GitHub.
-    // The section carries a heading, an element with no input semantics, so the
-    // handler treats it as a continue.
     const section = screen.getByLabelText(/set up alfred/i);
     fireEvent.keyDown(section, { key: "Enter" });
-    await waitFor(() =>
-      expect(screen.getAllByText(/connect github/i).length).toBeGreaterThan(0),
-    );
+    expect(screen.getByRole("button", { name: /check my tools/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^continue$/i })).toBeDisabled();
   });
 
   it("opens the advanced setup handoff from the header", async () => {
@@ -1508,6 +1658,7 @@ describe("OnboardingView conversational setup actions", () => {
   });
 
   it("carries a native Slack skip back into conversational completion", async () => {
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeReadyStatus());
     vi.spyOn(apiSetup, "onboardingConverse")
       .mockResolvedValueOnce({
         reply: "Keep the built-in batteries?",
@@ -1540,10 +1691,12 @@ describe("OnboardingView conversational setup actions", () => {
     await enterChatAndSend(user, "finish setup");
     await approveStep(user, /finish setup/i);
 
-    await waitFor(() => expect(onSwitch).toHaveBeenCalledWith("home"));
+    expect(await screen.findByText(/pick something for alfred to do first/i)).toBeInTheDocument();
+    expect(onSwitch).not.toHaveBeenCalled();
   });
 
   it("persists chat battery and Slack skips across a panel remount", async () => {
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeReadyStatus());
     vi.spyOn(apiSetup, "onboardingConverse")
       .mockResolvedValueOnce({
         reply: "Keep the built-in batteries?",
@@ -1569,11 +1722,13 @@ describe("OnboardingView conversational setup actions", () => {
     await approveStep(user, /skip batteries/i);
     await approveStep(user, /skip slack/i);
     await user.click(await screen.findByRole("button", { name: /set up step by step/i }));
+    expect(screen.getByLabelText(/onboarding steps complete/i)).toHaveTextContent(/2 of 8/i);
     await user.click(screen.getByRole("button", { name: /^welcome$/i }));
     await enterChatAndSend(user, "finish setup");
     await approveStep(user, /finish setup/i);
 
-    await waitFor(() => expect(onSwitch).toHaveBeenCalledWith("home"));
+    expect(await screen.findByText(/pick something for alfred to do first/i)).toBeInTheDocument();
+    expect(onSwitch).not.toHaveBeenCalled();
   });
 
   it("reports a successful GitHub device flow to the model (Codex P2 fresh status)", async () => {
