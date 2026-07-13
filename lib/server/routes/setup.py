@@ -37,8 +37,24 @@ async def api_setup_status(request: Request) -> JSONResponse:
                 "github": {"ok": False, "account": None, "detail": views._GENERIC_ERROR},
                 "engines": [],
                 "engine_ready": False,
-                "repos": {"selected": [], "count": 0, "keys": []},
+                "repos": {"selected": [], "count": 0, "keys": [], "repo_checkouts": []},
                 "demo": {"present": False},
+                "first_run": {
+                    "version": 1,
+                    "ready": False,
+                    "status": "needs_action",
+                    "headline": "Setup status is unavailable.",
+                    "summary": {
+                        "required_ready": 0,
+                        "required_total": 0,
+                        "recommended_ready": 0,
+                        "recommended_total": 0,
+                        "optional_ready": 0,
+                        "optional_total": 0,
+                        "blockers": ["setup_status"],
+                    },
+                    "checks": [],
+                },
                 "ready": False,
                 "error": views._GENERIC_ERROR,
             }
@@ -60,7 +76,9 @@ async def api_setup_repos(request: Request) -> JSONResponse:
         payload = await run_in_threadpool(setup_mod.list_owner_repos, limit)
     except Exception:
         logger.exception("api_setup_repos: failed to list owner repos")
-        return JSONResponse({"repos": [], "selected": [], "error": views._GENERIC_ERROR})
+        return JSONResponse(
+            {"repos": [], "selected": [], "repo_checkouts": [], "error": views._GENERIC_ERROR}
+        )
     return JSONResponse(views._jsonable(payload))
 
 
@@ -72,7 +90,8 @@ async def api_setup_repos(request: Request) -> JSONResponse:
 async def api_setup_select_repos(request: Request) -> JSONResponse:
     """Persist the repos Alfred may work in.
 
-    Body: ``{"repos": ["owner/repo", ...], "queue_repos": [...]}``. Writes
+    Body: ``{"repos": ["owner/repo", ...], "queue_repos": [...],
+    "repo_checkouts": [{"repo": "owner/repo", "path": "/absolute/path"}]}``. Writes
     the board allowlist keys to ``$ALFRED_HOME/.env`` and mirrors them into
     the live process so the new scope is effective without a restart. The
     queue mutation allowlist is initialized from ``queue_repos`` only when no
@@ -100,15 +119,44 @@ async def api_setup_select_repos(request: Request) -> JSONResponse:
             {"error": "replace_queue_repos must be a boolean"},
             status_code=400,
         )
+    raw_repo_checkouts = body.get("repo_checkouts")
+    if not isinstance(raw_repo_checkouts, list):
+        return JSONResponse(
+            {"error": "repo_checkouts must be a list of repo/path objects"},
+            status_code=400,
+        )
+    if len(raw_repo_checkouts) > 200 or any(
+        not isinstance(entry, dict) for entry in raw_repo_checkouts
+    ):
+        return JSONResponse(
+            {"error": "repo_checkouts must contain at most 200 repo/path objects"},
+            status_code=400,
+        )
     from server import setup as setup_mod
 
     try:
-        result = setup_mod.persist_selected_repos(
-            raw_repos,
-            queue_repos=raw_queue_repos,
-            replace_queue_repos=replace_queue_repos,
+        result = await run_in_threadpool(
+            lambda: setup_mod.persist_selected_repos(
+                raw_repos,
+                queue_repos=raw_queue_repos,
+                replace_queue_repos=replace_queue_repos,
+                repo_checkouts=raw_repo_checkouts,
+            )
         )
-    except (OSError, ValueError):
+    except setup_mod.RepoCheckoutValidationError as exc:
+        return JSONResponse(
+            {
+                "error": "repo checkout validation failed",
+                "repo_checkouts": views._jsonable(exc.rows),
+            },
+            status_code=400,
+        )
+    except ValueError:
+        return JSONResponse(
+            {"error": "invalid repository selection"},
+            status_code=400,
+        )
+    except OSError:
         logger.exception("api_setup_select_repos: failed to persist repo selection")
         return JSONResponse(
             {"error": "could not persist repo selection"},

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -26,6 +27,7 @@ def restore_repo_env_keys() -> None:
         setup_mod.QUEUE_REPOS_ENV,
         setup_mod.SHIPPED_REPOS_ENV,
         setup_mod.BRIDGE_REPOS_ENV,
+        setup_mod.REPO_LOCAL_MAP_ENV,
         *setup_mod.RUNTIME_SETUP_MANAGED_ENV_KEYS,
     )
     saved = {key: os.environ.get(key) for key in keys}
@@ -47,6 +49,15 @@ def repo_save_keys(*prefix: str) -> list[str]:
         setup_mod.BRIDGE_REPOS_ENV,
         *setup_mod.RUNTIME_REPO_SCOPE_ENV_KEYS,
     ]
+
+
+def _git_repo_with_origin(path: Path, slug: str) -> None:
+    path.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(path)], check=True)
+    subprocess.run(
+        ["git", "-C", str(path), "remote", "add", "origin", f"git@github.com:{slug}.git"],
+        check=True,
+    )
 
 
 def test_install_inventory_reports_existing_config_without_secret_values(
@@ -755,6 +766,67 @@ def test_persist_selected_repos_board_only_save_does_not_create_queue_scope(
     assert os.environ["GH_ORG"] == "acme"
     assert os.environ["ALFRED_SENIOR_DEV_REPOS"] == "Web"
     assert os.environ["ARCHITECT_ROLLOUT_ORDER"] == "Web"
+
+
+def test_persist_selected_repos_atomically_saves_verified_checkout_map(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    checkout = tmp_path / "workspace with commas, too" / "web"
+    _git_repo_with_origin(checkout, "Acme/Web")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    home.mkdir(parents=True)
+
+    result = setup_mod.persist_selected_repos(
+        ["Acme/Web"],
+        queue_repos=["Acme/Web"],
+        repo_checkouts=[{"repo": "Acme/Web", "path": str(checkout)}],
+    )
+
+    assert result["repo_checkouts"] == [
+        {
+            "repo": "acme/web",
+            "path": str(checkout),
+            "source": "map",
+            "exists": True,
+            "is_git_repo": True,
+            "origin_repo": "Acme/Web",
+            "identity_matches": True,
+            "ready": True,
+            "reason": None,
+        }
+    ]
+    env_text = (home / ".env").read_text(encoding="utf-8")
+    encoded = setup_mod._format_repo_local_map(result["repo_checkouts"])
+    assert f"ALFRED_REPO_LOCAL_MAP={encoded}" in env_text
+    assert "%20" in encoded
+    assert "%2C" in encoded
+    assert os.environ[setup_mod.REPO_LOCAL_MAP_ENV] == encoded
+
+
+def test_persist_selected_repos_rejects_wrong_origin_without_partial_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    checkout = tmp_path / "workspace" / "web"
+    _git_repo_with_origin(checkout, "Other/Web")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    home.mkdir(parents=True)
+
+    with pytest.raises(setup_mod.RepoCheckoutValidationError) as exc_info:
+        setup_mod.persist_selected_repos(
+            ["Acme/Web"],
+            queue_repos=["Acme/Web"],
+            repo_checkouts=[{"repo": "Acme/Web", "path": str(checkout)}],
+        )
+
+    assert exc_info.value.rows[0]["reason"] == "origin_mismatch"
+    assert exc_info.value.rows[0]["origin_repo"] == "Other/Web"
+    assert not (home / ".env").exists()
 
 
 def test_persist_selected_repos_does_not_sync_to_rc_that_omits_custom_home(

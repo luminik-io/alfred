@@ -127,7 +127,7 @@ def test_bootstrap_status_includes_ready_first_run_checklist(
     _isolate_launcher_env(monkeypatch, tmp_path)
     monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
     workspace = tmp_path / "workspace"
-    (workspace / "web" / ".git").mkdir(parents=True)
+    _git_repo_with_origin(workspace / "web", "octocat/web")
     monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
     monkeypatch.setenv("WORKSPACE_SUBDIR", "")
     monkeypatch.setenv("ALFRED_QUEUE_REPOS", "octocat/web")
@@ -157,8 +157,13 @@ def test_bootstrap_status_includes_ready_first_run_checklist(
         {
             "repo": "octocat/web",
             "path": str(workspace / "web"),
-            "exists": True,
             "source": "workspace",
+            "exists": True,
+            "is_git_repo": True,
+            "origin_repo": "octocat/web",
+            "identity_matches": True,
+            "ready": True,
+            "reason": None,
         }
     ]
     assert by_key["architect_parent_repo"]["state"] == "optional"
@@ -223,8 +228,13 @@ def test_bootstrap_status_first_run_blocks_missing_queue_and_local_paths(
         {
             "repo": "octocat/web",
             "path": str(workspace / "web"),
-            "exists": False,
             "source": "workspace",
+            "exists": False,
+            "is_git_repo": False,
+            "origin_repo": None,
+            "identity_matches": False,
+            "ready": False,
+            "reason": "missing",
         }
     ]
 
@@ -269,7 +279,7 @@ def test_bootstrap_status_first_run_local_path_source_matches_found_checkout(
     _isolate_launcher_env(monkeypatch, tmp_path)
     monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
     workspace = tmp_path / "workspace"
-    (workspace / "web" / ".git").mkdir(parents=True)
+    _git_repo_with_origin(workspace / "web", "octocat/web")
     monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
     monkeypatch.setenv("WORKSPACE_SUBDIR", "")
     monkeypatch.setenv("ALFRED_QUEUE_REPOS", "octocat/web")
@@ -295,8 +305,13 @@ def test_bootstrap_status_first_run_local_path_source_matches_found_checkout(
         {
             "repo": "octocat/web",
             "path": str(workspace / "web"),
-            "exists": True,
             "source": "workspace",
+            "exists": True,
+            "is_git_repo": True,
+            "origin_repo": "octocat/web",
+            "identity_matches": True,
+            "ready": True,
+            "reason": None,
         }
     ]
 

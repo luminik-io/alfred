@@ -99,6 +99,15 @@ _REPO_LOCAL_MAP_COMMA_BOUNDARY_RE = re.compile(
     r",\s*(?=[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=(?:/|~|\.{1,2}/))"
 )
 
+
+class RepoCheckoutValidationError(ValueError):
+    """Selected repositories do not all resolve to matching GitHub checkouts."""
+
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        super().__init__("repo checkout validation failed")
+        self.rows = rows
+
+
 # Engine CLIs Alfred rides. Detected by presence on PATH only (no version
 # spawn): the golden path needs at least one of these signed-in subscription
 # CLIs, never an API key paste.
@@ -525,6 +534,7 @@ def persist_selected_repos(
     *,
     queue_repos: list[str] | None = None,
     replace_queue_repos: bool = False,
+    repo_checkouts: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Persist the chosen repo allowlist and mirror it into the live process.
 
@@ -542,6 +552,9 @@ def persist_selected_repos(
     owner = _repo_scope_owner(clean)
     runtime_env = _runtime_config_env()
     _validate_repo_scope_owner(owner, runtime_env)
+    checkout_rows: list[dict[str, Any]] | None = None
+    if repo_checkouts is not None:
+        checkout_rows = _validate_repo_checkouts(clean, repo_checkouts, runtime_env)
     values = _repo_scope_values_for_save(
         clean,
         queue_repos=clean_queue,
@@ -549,6 +562,8 @@ def persist_selected_repos(
         runtime_env=runtime_env,
         runtime_repos=_repo_local_names(case_preserved),
     )
+    if checkout_rows is not None:
+        values[REPO_LOCAL_MAP_ENV] = _format_repo_local_map(checkout_rows)
     if owner:
         values = {GH_ORG_ENV: owner, **values}
     env_path = write_env_values(values)
@@ -560,11 +575,14 @@ def persist_selected_repos(
             os.environ[key] = values[key]
         else:
             os.environ.pop(key, None)
-    return {
+    result = {
         "repos": clean,
         "env_path": str(env_path),
         "keys": list(values),
     }
+    if checkout_rows is not None:
+        result["repo_checkouts"] = checkout_rows
+    return result
 
 
 def _repo_scope_values_for_save(
@@ -1644,8 +1662,11 @@ def bootstrap_status() -> dict[str, Any]:
     queue_missing = sorted(set(repos) - queue_repos)
     queue_covers_selected = bool(repos) and not queue_missing
     any_engine = any(e["installed"] for e in engines)
+    repo_checkouts = _selected_repo_local_paths(repos, runtime_env)
     code_memory = code_memory_status(runtime_env)
-    code_memory_coverage = _code_memory_coverage(repos, code_memory, runtime_env)
+    code_memory_coverage = _code_memory_coverage(
+        repos, code_memory, runtime_env, resolved=repo_checkouts
+    )
     capability_plane = capability_status(code_memory, launcher_env=runtime_env)
     install = install_inventory(repos=repos, env=runtime_env)
     first_run = first_run_readiness_status(
@@ -1658,6 +1679,7 @@ def bootstrap_status() -> dict[str, Any]:
         code_memory=code_memory,
         capability_plane=capability_plane,
         runtime_env=runtime_env,
+        repo_checkouts=repo_checkouts,
     )
     return {
         "github": gh,
@@ -1670,6 +1692,7 @@ def bootstrap_status() -> dict[str, Any]:
             "selected": repos,
             "count": len(repos),
             "keys": list(_REPO_ENV_KEYS),
+            "repo_checkouts": repo_checkouts,
         },
         "queue": {
             "ready": bool(queue_repos),
@@ -1699,6 +1722,7 @@ def first_run_readiness_status(
     code_memory: dict[str, Any],
     capability_plane: dict[str, Any],
     runtime_env: dict[str, str],
+    repo_checkouts: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Roll setup probes into a user-facing go/no-go for the first real run."""
 
@@ -1707,7 +1731,7 @@ def first_run_readiness_status(
         _engine_readiness_check(engines),
         _repo_scope_readiness_check(repos),
         _queue_readiness_check(repos, queue_repos, queue_missing),
-        _repo_local_paths_readiness_check(repos, runtime_env),
+        _repo_local_paths_readiness_check(repos, runtime_env, resolved=repo_checkouts),
         _scheduled_fleet_readiness_check(install),
         _desktop_token_readiness_check(install),
         _code_graph_readiness_check(capability_plane, code_memory),
@@ -1839,9 +1863,14 @@ def _queue_readiness_check(
     )
 
 
-def _repo_local_paths_readiness_check(repos: list[str], env: dict[str, str]) -> dict[str, Any]:
-    resolved = _selected_repo_local_paths(repos, env)
-    missing = [row["repo"] for row in resolved if not row["exists"]]
+def _repo_local_paths_readiness_check(
+    repos: list[str],
+    env: dict[str, str],
+    *,
+    resolved: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    detected = resolved if resolved is not None else _selected_repo_local_paths(repos, env)
+    missing = [row["repo"] for row in detected if not row["ready"]]
     ready = bool(repos) and not missing
     if not repos:
         detail = "Local checkout verification waits for a selected repository."
@@ -1852,7 +1881,7 @@ def _repo_local_paths_readiness_check(repos: list[str], env: dict[str, str]) -> 
             else f"{len(missing)} selected repos need local path mapping."
         )
     else:
-        detail = f"Found local checkouts for {len(resolved)} selected repo{'' if len(resolved) == 1 else 's'}."
+        detail = f"Verified local checkouts for {len(detected)} selected repo{'' if len(detected) == 1 else 's'}."
     return _readiness_check(
         "repo_local_paths",
         "Local repo paths",
@@ -1860,11 +1889,9 @@ def _repo_local_paths_readiness_check(repos: list[str], env: dict[str, str]) -> 
         tier="required",
         ready=ready,
         detail=detail,
-        action=(
-            "Clone the missing repo locally or set ALFRED_REPO_LOCAL_MAP with repo=path entries."
-        ),
-        path=", ".join(row["path"] for row in resolved if row["exists"]) or None,
-    ) | {"detected": resolved}
+        action=("Choose the matching local checkout for every selected repository."),
+        path=", ".join(row["path"] for row in detected if row["ready"]) or None,
+    ) | {"detected": detected}
 
 
 def _selected_repo_local_paths(repos: list[str], env: dict[str, str]) -> list[dict[str, Any]]:
@@ -1878,16 +1905,96 @@ def _selected_repo_local_paths(repos: list[str], env: dict[str, str]) -> list[di
             if key in repo_map:
                 candidates.append((_code_memory_configured_repo_path(env, key, repo_map), "map"))
         candidates.append((workspace / local_name, "workspace"))
-        path, source = _first_existing_git_repo_candidate(candidates) or candidates[0]
-        out.append(
-            {
-                "repo": slug,
-                "path": str(path),
-                "exists": _is_code_memory_git_repo(path),
-                "source": source,
-            }
-        )
+        unique: list[tuple[Path, str]] = []
+        seen: set[str] = set()
+        for path, source in candidates:
+            key = str(path)
+            if key not in seen:
+                unique.append((path, source))
+                seen.add(key)
+        inspected = [_inspect_repo_checkout(slug, path, source) for path, source in unique]
+        out.append(next((row for row in inspected if row["ready"]), inspected[0]))
     return out
+
+
+def _inspect_repo_checkout(slug: str, path: Path, source: str) -> dict[str, Any]:
+    try:
+        exists = path.is_dir()
+    except OSError:
+        exists = False
+    is_git_repo = exists and _is_code_memory_git_repo(path)
+    origin_repo = _local_repo_origin_slug(path) if is_git_repo else ""
+    identity_matches = bool(origin_repo) and origin_repo.casefold() == slug.casefold()
+    if not exists:
+        reason = "missing"
+    elif not is_git_repo:
+        reason = "not_git_repo"
+    elif not origin_repo:
+        reason = "missing_github_origin"
+    elif not identity_matches:
+        reason = "origin_mismatch"
+    else:
+        reason = None
+    return {
+        "repo": slug,
+        "path": str(path),
+        "source": source,
+        "exists": exists,
+        "is_git_repo": is_git_repo,
+        "origin_repo": origin_repo or None,
+        "identity_matches": identity_matches,
+        "ready": reason is None,
+        "reason": reason,
+    }
+
+
+def _normalize_repo_checkout_inputs(
+    repo_checkouts: list[dict[str, str]],
+) -> dict[str, Path]:
+    normalized: dict[str, Path] = {}
+    for entry in repo_checkouts:
+        if not isinstance(entry, dict):
+            raise ValueError("repo_checkouts entries must be objects")
+        repo = str(entry.get("repo") or "").strip()
+        path_value = str(entry.get("path") or "").strip()
+        clean = normalize_repo_slugs([repo])
+        if len(clean) != 1 or not path_value:
+            raise ValueError("repo_checkouts entries require a repo and path")
+        key = clean[0]
+        if key in normalized:
+            raise ValueError("repo_checkouts contains duplicate repositories")
+        path = Path(path_value).expanduser()
+        if not path.is_absolute():
+            raise ValueError("repo checkout paths must be absolute")
+        normalized[key] = path
+    return normalized
+
+
+def _validate_repo_checkouts(
+    repos: list[str], repo_checkouts: list[dict[str, str]], env: dict[str, str]
+) -> list[dict[str, Any]]:
+    supplied = _normalize_repo_checkout_inputs(repo_checkouts)
+    selected = set(repos)
+    if set(supplied) - selected:
+        raise ValueError("repo_checkouts may only contain selected repositories")
+
+    existing = {row["repo"]: row for row in _selected_repo_local_paths(repos, env)}
+    rows: list[dict[str, Any]] = []
+    for slug in repos:
+        if slug in supplied:
+            rows.append(_inspect_repo_checkout(slug, supplied[slug], "map"))
+        else:
+            rows.append(existing[slug])
+    if any(not row["ready"] for row in rows):
+        raise RepoCheckoutValidationError(rows)
+    return rows
+
+
+def _format_repo_local_map(rows: list[dict[str, Any]]) -> str:
+    return " ".join(
+        f"{row['repo']}=url:{urllib.parse.quote(str(row['path']), safe='/')}"
+        for row in sorted(rows, key=lambda item: str(item["repo"]))
+    )
 
 
 def _github_slug_from_remote_url(raw: str) -> str:
@@ -1901,7 +2008,7 @@ def _github_slug_from_remote_url(raw: str) -> str:
             parsed = urllib.parse.urlsplit(url)
         except ValueError:
             return ""
-        if parsed.hostname != "github.com":
+        if (parsed.hostname or "").casefold() != "github.com":
             return ""
         path = parsed.path.lstrip("/")
     parts = [part for part in path.removesuffix(".git").strip("/").split("/") if part]
@@ -1927,7 +2034,11 @@ def _local_repo_origin_slug(path: Path) -> str:
 
 
 def _code_memory_coverage(
-    repos: list[str], code_memory: dict[str, Any], env: dict[str, str]
+    repos: list[str],
+    code_memory: dict[str, Any],
+    env: dict[str, str],
+    *,
+    resolved: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Prove graph scope against exact GitHub identities, not repo basenames."""
 
@@ -1941,13 +2052,12 @@ def _code_memory_coverage(
     index_present = bool(code_memory.get("index_present"))
     covered: list[str] = []
     detected: list[dict[str, Any]] = []
-    for row in _selected_repo_local_paths(repos, env):
+    for row in resolved if resolved is not None else _selected_repo_local_paths(repos, env):
         slug = str(row["repo"]).strip().lower()
         local_name = slug.rsplit("/", 1)[-1]
-        path = Path(str(row["path"]))
-        origin_slug = _local_repo_origin_slug(path) if row["exists"] else ""
+        origin_slug = str(row.get("origin_repo") or "")
         scope_selected = slug in indexed or local_name in indexed
-        identity_matches = origin_slug.lower() == slug
+        identity_matches = bool(row.get("identity_matches"))
         ready = (
             provider_ready
             and index_present
@@ -2483,6 +2593,7 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
         return {
             "repos": [],
             "selected": sorted(selected),
+            "repo_checkouts": [],
             "error": gh["detail"],
         }
     limit = max(1, min(int(limit), 200))
@@ -2491,6 +2602,7 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
         return {
             "repos": [],
             "selected": sorted(selected),
+            "repo_checkouts": [],
             "error": "Could not list your GitHub repos. Check gh auth status.",
         }
     repos: list[dict[str, Any]] = []
@@ -2524,7 +2636,12 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
                 "listed": False,
             }
         )
-    return {"repos": repos, "selected": sorted(selected)}
+    runtime_env = _runtime_config_env()
+    return {
+        "repos": repos,
+        "selected": sorted(selected),
+        "repo_checkouts": _selected_repo_local_paths(sorted(selected), runtime_env),
+    }
 
 
 def _gh_repo_list(limit: int) -> list[dict[str, Any]] | None:

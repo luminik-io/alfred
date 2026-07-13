@@ -2482,6 +2482,63 @@ def test_compose_converse_defaults_single_setup_repo_as_scope(
     assert payload["draft"]["repos"] == ["acme/frontend"]
 
 
+def test_setup_repo_selection_requires_local_checkouts(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/setup/repos",
+        json={"repos": ["acme/frontend"], "queue_repos": ["acme/frontend"]},
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "repo_checkouts must be a list of repo/path objects"}
+
+
+def test_setup_repo_selection_returns_structured_checkout_failures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import server.setup as setup_mod
+
+    state = tmp_path / "state"
+    state.mkdir()
+    row = {
+        "repo": "acme/frontend",
+        "path": "/workspace/backend",
+        "source": "map",
+        "exists": True,
+        "is_git_repo": True,
+        "origin_repo": "acme/backend",
+        "identity_matches": False,
+        "ready": False,
+        "reason": "origin_mismatch",
+    }
+
+    def reject_selection(*_args, **_kwargs):
+        raise setup_mod.RepoCheckoutValidationError([row])
+
+    monkeypatch.setattr(setup_mod, "persist_selected_repos", reject_selection)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/setup/repos",
+        json={
+            "repos": ["acme/frontend"],
+            "queue_repos": ["acme/frontend"],
+            "repo_checkouts": [{"repo": "acme/frontend", "path": "/workspace/backend"}],
+        },
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": "repo checkout validation failed",
+        "repo_checkouts": [row],
+    }
+
+
 def test_compose_converse_iterates_on_same_draft_id(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
