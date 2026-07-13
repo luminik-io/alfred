@@ -267,6 +267,7 @@ export function OnboardingView({
   const githubAuthRequestSeq = useRef(0);
   const githubAuthFlowRequestSeq = useRef<number | null>(null);
   const previousNativeBusy = useRef(nativeBusy);
+  const nativeStatusRefreshPending = useRef(false);
 
   const setInterruptedGithubAuthFlow = useCallback((message: string, requestId?: number) => {
     setStatusLoading(false);
@@ -531,15 +532,17 @@ export function OnboardingView({
   }, [baseUrl, canRun, connected, interruptStaleGithubAuthRequest, onRunLocalAction]);
 
   useEffect(() => {
+    if (nativeStatusRefreshPending.current) return;
     void refreshStatus();
   }, [refreshStatus]);
 
   useEffect(() => {
     const previous = previousNativeBusy.current;
     previousNativeBusy.current = nativeBusy;
-    if (previous && nativeBusy === null && connected) {
-      void refreshStatus();
-    }
+    if (previous && nativeBusy === null) nativeStatusRefreshPending.current = true;
+    if (!connected || !nativeStatusRefreshPending.current) return;
+    nativeStatusRefreshPending.current = false;
+    void refreshStatus();
   }, [connected, nativeBusy, refreshStatus]);
 
   const githubConnected = Boolean(status?.github.ok);

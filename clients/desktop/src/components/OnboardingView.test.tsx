@@ -602,6 +602,32 @@ describe("OnboardingView seven-step takeover", () => {
     await waitFor(() => expect(loadStatus).toHaveBeenCalledTimes(2));
   });
 
+  it("refreshes canonical setup readiness after a native install reconnects", async () => {
+    const loadStatus = vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeStatus());
+    const props: React.ComponentProps<typeof OnboardingView> = {
+      baseUrl: "http://127.0.0.1:7010",
+      loading: false,
+      connected: false,
+      canRun: true,
+      nativeBusy: "install_core",
+      onConnectServer: vi.fn(),
+      onInstallCore: vi.fn(),
+      onStartRuntime: vi.fn(),
+      onRunLocalAction: vi.fn(async () => null),
+      onOpenConnection: vi.fn(),
+      onSwitch: vi.fn(),
+      onRefreshBoard: vi.fn(async () => undefined),
+      ...defaultRosterProps(),
+    };
+    const view = render(<OnboardingView {...props} />);
+
+    view.rerender(<OnboardingView {...props} nativeBusy={null} />);
+    expect(loadStatus).not.toHaveBeenCalled();
+
+    view.rerender(<OnboardingView {...props} connected nativeBusy={null} />);
+    await waitFor(() => expect(loadStatus).toHaveBeenCalledTimes(1));
+  });
+
   it("surfaces code-memory readiness on the tools step", async () => {
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
