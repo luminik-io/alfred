@@ -4,6 +4,24 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SetupStatus, Snapshot } from "./types";
 
+type AppMenuHandlers = {
+  onNavigate: (destination: string) => void;
+  onCommandPalette: () => void;
+  onRefresh: () => void;
+};
+
+const appMenuMocks = vi.hoisted(() => ({
+  handlers: null as AppMenuHandlers | null,
+  unlisten: vi.fn(),
+}));
+
+vi.mock("./lib/appMenuEvents", () => ({
+  listenAppMenuEvents: (handlers: AppMenuHandlers) => {
+    appMenuMocks.handlers = handlers;
+    return Promise.resolve(appMenuMocks.unlisten);
+  },
+}));
+
 // Mock the api module so App's named `loadSetupStatus` import binds to a mock we
 // control (a plain vi.spyOn would miss the binding App captured at import time,
 // since the App module is cached across the dynamic imports below).
@@ -160,6 +178,7 @@ function baseAlfredReturn(overrides: Record<string, unknown> = {}) {
 }
 
 afterEach(() => {
+  appMenuMocks.handlers = null;
   vi.clearAllMocks();
   window.history.replaceState(null, "", "/");
 });
@@ -179,6 +198,33 @@ describe("App initial route gating", () => {
     expect(screen.queryByTestId("app-shell")).not.toBeInTheDocument();
     expect(screen.queryByTestId("inbox-screen")).not.toBeInTheDocument();
     expect(document.querySelector(".alfred-first-run > [data-tauri-drag-region]")).toBeInTheDocument();
+  });
+
+  it("keeps native refresh locked until first-run onboarding is complete", async () => {
+    const refresh = vi.fn(async () => true);
+    useAlfredMock.mockReturnValue(
+      baseAlfredReturn({ snapshot: null, error: "connection refused", refresh }),
+    );
+    await renderApp();
+    expect(await screen.findByTestId("onboarding-screen")).toBeInTheDocument();
+
+    appMenuMocks.handlers?.onRefresh();
+
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("allows native refresh after setup reaches the ready state", async () => {
+    const refresh = vi.fn(async () => true);
+    useAlfredMock.mockReturnValue(
+      baseAlfredReturn({ snapshot: makeSnapshot(), error: null, refresh }),
+    );
+    loadSetupStatusMock.mockResolvedValue(makeSetupStatus());
+    await renderApp();
+    expect(await screen.findByTestId("inbox-screen")).toBeInTheDocument();
+
+    appMenuMocks.handlers?.onRefresh();
+
+    expect(refresh).toHaveBeenCalledOnce();
   });
 
   it("overlays native action results without adding them to onboarding flow", async () => {

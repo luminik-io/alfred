@@ -35,6 +35,7 @@ import { useDesktopRoute } from "./hooks/useDesktopRoute";
 import { supportsNativeActions } from "./api/client";
 import { loadSetupStatus } from "./api/setup";
 import { isSetupComplete } from "./lib/setupCompletion";
+import { listenAppMenuEvents } from "./lib/appMenuEvents";
 import { FLEET_SUBTABS, PRIMARY_TABS } from "./lib/primaryTabs";
 import {
   type CustomRosterNames,
@@ -143,6 +144,36 @@ function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten = () => {};
+    void listenAppMenuEvents({
+      onNavigate: (destination) => {
+        if (appStage === "ready") goTo(destination);
+      },
+      onCommandPalette: () => {
+        if (appStage === "ready") setPaletteOpen(true);
+      },
+      onRefresh: () => {
+        if (appStage === "ready") void refresh();
+      },
+    })
+      .then((off) => {
+        if (disposed) {
+          off();
+        } else {
+          unlisten = off;
+        }
+      })
+      .catch(() => {
+        // Native menus are secondary navigation. The in-app controls remain usable.
+      });
+    return () => {
+      disposed = true;
+      unlisten();
+    };
+  }, [appStage, goTo, refresh]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
