@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 
 import { errorDetail } from "../../api/client";
-import { loadSchedule, saveSetupBattery, saveSetupRepos } from "../../api/setup";
+import { loadSchedule, saveSetupBattery } from "../../api/setup";
 import type { CustomRosterNames } from "../../lib/agentThemes";
 import type { NativeActionRequest } from "../../lib/uiTypes";
 import type { NativeCommandResult, OnboardingAction, SetupStatus } from "../../types";
@@ -54,10 +54,10 @@ type OnboardingActionDeps = {
   startGithubAuthLogin: () => Promise<boolean>;
   onRunLocalAction: (request: NativeActionRequest) => Promise<NativeCommandResult | null>;
   onSaveCustomNames: (next: CustomRosterNames) => Promise<void>;
-  onReposSaved: (repos: string[]) => Promise<boolean>;
   onBatteriesDecision: () => void;
   onSlackDecision: () => void;
   onOpenSlackSetup: () => void;
+  onOpenRepoSetup: () => void;
 };
 
 /**
@@ -78,10 +78,10 @@ export function useOnboardingActions({
   startGithubAuthLogin,
   onRunLocalAction,
   onSaveCustomNames,
-  onReposSaved,
   onBatteriesDecision,
   onSlackDecision,
   onOpenSlackSetup,
+  onOpenRepoSetup,
 }: OnboardingActionDeps): (action: OnboardingAction) => Promise<OnboardingActionResult> {
   return useCallback(
     async (action: OnboardingAction): Promise<OnboardingActionResult> => {
@@ -142,14 +142,10 @@ export function useOnboardingActions({
                 note: "No valid repo names came through. Which repos should I watch?",
               };
             }
-            await saveSetupRepos(baseUrl, repos);
-            const indexed = await onReposSaved(repos);
-            await refreshStatus();
+            onOpenRepoSetup();
             return {
-              ok: true,
-              note: `Alfred will work in ${repos.join(", ")}${
-                indexed ? ", and their code graph is ready" : ""
-              }.`,
+              ok: false,
+              note: `Choose the local checkout folder for ${repos.join(", ")} in the repository step. Alfred verifies each GitHub origin before saving or indexing.`,
             };
           }
           case "pick_agents": {
@@ -354,10 +350,10 @@ export function useOnboardingActions({
       connected,
       githubConnected,
       onBatteriesDecision,
+      onOpenRepoSetup,
       onOpenSlackSetup,
       onSlackDecision,
       onRunLocalAction,
-      onReposSaved,
       onSaveCustomNames,
       refreshStatus,
       startGithubAuthLogin,

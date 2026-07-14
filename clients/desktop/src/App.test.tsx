@@ -78,7 +78,7 @@ function makeSetupStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
     github: { ok: true, account: "octocat", detail: "Signed in." },
     engines: [{ name: "claude", installed: true, path: "/opt/homebrew/bin/claude" }],
     engine_ready: true,
-    repos: { selected: ["acme-org/api"], count: 1, keys: [] },
+    repos: { selected: ["acme-org/api"], count: 1, keys: [], repo_checkouts: [] },
     demo: { present: false },
     first_run: {
       version: 1,

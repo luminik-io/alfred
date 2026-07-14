@@ -9,10 +9,24 @@ import { OnboardingView } from "./OnboardingView";
 import type {
   SetupPlaybooksResponse,
   SetupReposResponse,
+  SetupRepoCheckout,
   SetupBatteryManifest,
   SetupStatus,
   TrustedSlackUsersResponse,
 } from "../types";
+
+const VERIFIED_CHECKOUT: SetupRepoCheckout = {
+  repo: "octocat/web",
+  path: "/workspace/web",
+  source: "map",
+  exists: true,
+  is_git_repo: true,
+  github_remote_name: "origin",
+  github_remote_repo: "octocat/web",
+  identity_matches: true,
+  ready: true,
+  reason: null,
+};
 
 function makeStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
   const firstRun: SetupStatus["first_run"] = {
@@ -55,7 +69,12 @@ function makeStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
       detail:
         "Code-memory binary is not installed yet; Alfred can fetch the pinned release on first explicit use.",
     },
-    repos: { selected: [], count: 0, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+    repos: {
+      selected: [],
+      count: 0,
+      keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+      repo_checkouts: [],
+    },
     demo: { present: false },
     ready: false,
     ...overrides,
@@ -93,6 +112,7 @@ function makeReadyStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
       selected: ["octocat/web"],
       count: 1,
       keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+      repo_checkouts: [VERIFIED_CHECKOUT],
     },
     first_run: {
       version: 1,
@@ -196,6 +216,7 @@ const REPOS: SetupReposResponse = {
     },
   ],
   selected: [],
+  repo_checkouts: [],
 };
 
 const PLAYBOOKS: SetupPlaybooksResponse = {
@@ -230,7 +251,6 @@ function renderOnboarding(props: Partial<React.ComponentProps<typeof OnboardingV
       connected
       canRun
       nativeBusy={null}
-      nativeResult={null}
       onConnectServer={vi.fn()}
       onInstallCore={vi.fn()}
       onStartRuntime={vi.fn()}
@@ -259,6 +279,15 @@ async function gotoStep(user: ReturnType<typeof userEvent.setup>, railName: RegE
   await user.click(await screen.findByRole("button", { name: railName }));
 }
 
+async function selectWebCheckout(user: ReturnType<typeof userEvent.setup>) {
+  await screen.findByText("octocat/web");
+  await user.click(screen.getByRole("checkbox", { name: /octocat\/web/i }));
+  await user.type(
+    screen.getByRole("textbox", { name: /local checkout for octocat\/web/i }),
+    "/workspace/web",
+  );
+}
+
 beforeEach(() => {
   vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
   vi.spyOn(apiClient, "supportsMutations").mockReturnValue(true);
@@ -278,6 +307,24 @@ afterEach(() => {
 });
 
 describe("OnboardingView seven-step takeover", () => {
+  it("fails closed when the runtime omits checkout readiness", async () => {
+    const malformed = makeStatus({
+      repos: {
+        selected: ["octocat/web"],
+        count: 1,
+        keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+        repo_checkouts: [],
+      },
+    });
+    delete (malformed.repos as Partial<SetupStatus["repos"]>).repo_checkouts;
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(malformed);
+
+    renderOnboarding();
+
+    expect(await screen.findByText(/wake up to shipped work you can trust/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /get started/i })).toBeInTheDocument();
+  });
+
   it("opens on the welcome step with the mental model and no-terminal framing", async () => {
     renderOnboarding();
     expect(
@@ -316,7 +363,12 @@ describe("OnboardingView seven-step takeover", () => {
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         install: makeInstall(),
-        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+        repos: {
+          selected: ["octocat/web"],
+          count: 1,
+          keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+          repo_checkouts: [VERIFIED_CHECKOUT],
+        },
       }),
     );
     renderOnboarding();
@@ -346,6 +398,7 @@ describe("OnboardingView seven-step takeover", () => {
           selected: ["octocat/web"],
           count: 1,
           keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+          repo_checkouts: [VERIFIED_CHECKOUT],
         },
       }),
     );
@@ -372,6 +425,7 @@ describe("OnboardingView seven-step takeover", () => {
           selected: ["octocat/web"],
           count: 1,
           keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+          repo_checkouts: [VERIFIED_CHECKOUT],
         },
       }),
     );
@@ -420,7 +474,6 @@ describe("OnboardingView seven-step takeover", () => {
         connected
         canRun
         nativeBusy={null}
-        nativeResult={null}
         onConnectServer={vi.fn()}
         onInstallCore={vi.fn()}
         onStartRuntime={vi.fn()}
@@ -457,7 +510,6 @@ describe("OnboardingView seven-step takeover", () => {
         connected
         canRun
         nativeBusy={null}
-        nativeResult={null}
         onConnectServer={vi.fn()}
         onInstallCore={vi.fn()}
         onStartRuntime={vi.fn()}
@@ -518,6 +570,62 @@ describe("OnboardingView seven-step takeover", () => {
     await gotoStep(user, /^tools$/i);
     await user.click(screen.getByRole("button", { name: /check my tools/i }));
     expect(onRunLocalAction).toHaveBeenCalledWith({ action: "auth_status", refreshAfter: true });
+  });
+
+  it("refreshes canonical setup readiness when a native tool check finishes", async () => {
+    const loadStatus = vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        engine_ready: false,
+        github: { ok: false, account: null, detail: "Not signed in to GitHub." },
+      }),
+    );
+    const props: React.ComponentProps<typeof OnboardingView> = {
+      baseUrl: "http://127.0.0.1:7010",
+      loading: false,
+      connected: true,
+      canRun: true,
+      nativeBusy: "auth_status",
+      onConnectServer: vi.fn(),
+      onInstallCore: vi.fn(),
+      onStartRuntime: vi.fn(),
+      onRunLocalAction: vi.fn(async () => null),
+      onOpenConnection: vi.fn(),
+      onSwitch: vi.fn(),
+      onRefreshBoard: vi.fn(async () => undefined),
+      ...defaultRosterProps(),
+    };
+    const view = render(<OnboardingView {...props} />);
+    await waitFor(() => expect(loadStatus).toHaveBeenCalledTimes(1));
+
+    view.rerender(<OnboardingView {...props} nativeBusy={null} />);
+
+    await waitFor(() => expect(loadStatus).toHaveBeenCalledTimes(2));
+  });
+
+  it("refreshes canonical setup readiness after a native install reconnects", async () => {
+    const loadStatus = vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeStatus());
+    const props: React.ComponentProps<typeof OnboardingView> = {
+      baseUrl: "http://127.0.0.1:7010",
+      loading: false,
+      connected: false,
+      canRun: true,
+      nativeBusy: "install_core",
+      onConnectServer: vi.fn(),
+      onInstallCore: vi.fn(),
+      onStartRuntime: vi.fn(),
+      onRunLocalAction: vi.fn(async () => null),
+      onOpenConnection: vi.fn(),
+      onSwitch: vi.fn(),
+      onRefreshBoard: vi.fn(async () => undefined),
+      ...defaultRosterProps(),
+    };
+    const view = render(<OnboardingView {...props} />);
+
+    view.rerender(<OnboardingView {...props} nativeBusy={null} />);
+    expect(loadStatus).not.toHaveBeenCalled();
+
+    view.rerender(<OnboardingView {...props} connected nativeBusy={null} />);
+    await waitFor(() => expect(loadStatus).toHaveBeenCalledTimes(1));
   });
 
   it("surfaces code-memory readiness on the tools step", async () => {
@@ -711,9 +819,7 @@ describe("OnboardingView seven-step takeover", () => {
     renderOnboarding();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /get started/i }));
-    expect(
-      await screen.findByRole("button", { name: /load my repositories/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("textbox", { name: /search repositories/i })).toBeInTheDocument();
   });
 
   it("shows recommended capability repairs without blocking repository setup", async () => {
@@ -759,9 +865,7 @@ describe("OnboardingView seven-step takeover", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /get started/i }));
 
-    expect(
-      await screen.findByRole("button", { name: /load my repositories/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("textbox", { name: /search repositories/i })).toBeInTheDocument();
     await gotoStep(user, /^tools$/i);
     expect(await screen.findByText(/local capabilities/i)).toBeInTheDocument();
     expect(screen.getByText(/1 of 2 ready, 1 to finish/i)).toBeInTheDocument();
@@ -963,6 +1067,7 @@ describe("OnboardingView seven-step takeover", () => {
     const save = vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
       ok: true,
       repos: ["octocat/web"],
+      repo_checkouts: [VERIFIED_CHECKOUT],
       env_path: "/home/.alfred/.env",
       keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
     });
@@ -980,8 +1085,7 @@ describe("OnboardingView seven-step takeover", () => {
 
     // Forward flow auto-advances Tools + GitHub (both detected) onto Repositories.
     await user.click(await screen.findByRole("button", { name: /get started/i }));
-    const loadButton = await screen.findByRole("button", { name: /load my repositories/i });
-    await user.click(loadButton);
+    await screen.findByRole("textbox", { name: /search repositories/i });
     // Leads with the short name and the description, with the full slug present.
     await waitFor(() => expect(screen.getByText("web")).toBeInTheDocument());
     expect(screen.getByText(/the marketing site/i)).toBeInTheDocument();
@@ -989,11 +1093,15 @@ describe("OnboardingView seven-step takeover", () => {
     // Private badge on the private repo.
     expect(screen.getByText(/private/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("checkbox", { name: /octocat\/web/i }));
-    await user.click(screen.getByRole("button", { name: /save 1 repository/i }));
+    await selectWebCheckout(user);
+    await user.click(screen.getByRole("button", { name: /save 1 selected/i }));
 
     await waitFor(() =>
-      expect(save).toHaveBeenCalledWith("http://127.0.0.1:7010", ["octocat/web"]),
+      expect(save).toHaveBeenCalledWith(
+        "http://127.0.0.1:7010",
+        ["octocat/web"],
+        [{ repo: "octocat/web", path: "/workspace/web" }],
+      ),
     );
     expect(onRunLocalAction).toHaveBeenCalledWith({
       action: "code_memory_index",
@@ -1001,9 +1109,112 @@ describe("OnboardingView seven-step takeover", () => {
     });
     await waitFor(() =>
       expect(
-        screen.getByText(/saved 1 repository alfred can work in and built the code graph/i),
+        screen.getByText(/saved and verified 1 repository, then built the code graph/i),
       ).toBeInTheDocument(),
     );
+  });
+
+  it("filters repositories and chooses a checkout with the native folder picker", async () => {
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeIndexedStatus());
+    const pickFolder = vi
+      .spyOn(apiSetup, "pickSetupRepoFolder")
+      .mockResolvedValue("/workspace/api");
+    renderOnboarding();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /get started/i }));
+    const search = await screen.findByRole("textbox", { name: /search repositories/i });
+    await user.type(search, "api");
+
+    expect(screen.getByText("octocat/api")).toBeInTheDocument();
+    expect(screen.queryByText("octocat/web")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox", { name: /octocat\/api/i }));
+    await user.click(
+      screen.getByRole("button", { name: /choose checkout folder for octocat\/api/i }),
+    );
+
+    expect(pickFolder).toHaveBeenCalledWith(undefined);
+    expect(screen.getByRole("textbox", { name: /local checkout for octocat\/api/i })).toHaveValue(
+      "/workspace/api",
+    );
+    expect(screen.getByRole("button", { name: /save 1 selected/i })).toBeEnabled();
+  });
+
+  it("keeps path entry available but disables the folder picker outside the native app", async () => {
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeIndexedStatus());
+    renderOnboarding({ canRun: false });
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /get started/i }));
+    await user.click(await screen.findByRole("checkbox", { name: /octocat\/web/i }));
+
+    expect(screen.getByRole("textbox", { name: /local checkout for octocat\/web/i })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: /choose checkout folder for octocat\/web/i }),
+    ).toBeDisabled();
+  });
+
+  it("clears an existing repository scope", async () => {
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: {
+          selected: ["octocat/web"],
+          count: 1,
+          keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+          repo_checkouts: [VERIFIED_CHECKOUT],
+        },
+      }),
+    );
+    vi.spyOn(apiSetup, "loadSetupRepos").mockResolvedValue({
+      ...REPOS,
+      selected: ["octocat/web"],
+      repo_checkouts: [VERIFIED_CHECKOUT],
+    });
+    const save = vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
+      ok: true,
+      repos: [],
+      repo_checkouts: [],
+      env_path: "/home/.alfred/.env",
+      keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+    });
+    renderOnboarding();
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^repositories$/i);
+    await user.click(await screen.findByRole("checkbox", { name: /octocat\/web/i }));
+    await user.click(screen.getByRole("button", { name: /clear repository scope/i }));
+
+    expect(save).toHaveBeenCalledWith("http://127.0.0.1:7010", [], []);
+    expect(await screen.findByText(/cleared repository scope/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^continue$/i })).toBeDisabled();
+  });
+
+  it("cannot clear an existing scope before the repository list loads", async () => {
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: {
+          selected: ["octocat/web"],
+          count: 1,
+          keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+          repo_checkouts: [VERIFIED_CHECKOUT],
+        },
+      }),
+    );
+    const repos = deferred<SetupReposResponse>();
+    vi.spyOn(apiSetup, "loadSetupRepos").mockReturnValue(repos.promise);
+    renderOnboarding();
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^repositories$/i);
+
+    expect(screen.getByRole("button", { name: /clear repository scope/i })).toBeDisabled();
+    repos.resolve({
+      ...REPOS,
+      selected: ["octocat/web"],
+      repo_checkouts: [VERIFIED_CHECKOUT],
+    });
+    expect(await screen.findByRole("checkbox", { name: /octocat\/web/i })).toBeChecked();
   });
 
   it("surfaces a graph failure without blocking the saved repository scope", async () => {
@@ -1011,6 +1222,7 @@ describe("OnboardingView seven-step takeover", () => {
     vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
       ok: true,
       repos: ["octocat/web"],
+      repo_checkouts: [VERIFIED_CHECKOUT],
       env_path: "/home/.alfred/.env",
       keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
     });
@@ -1027,13 +1239,78 @@ describe("OnboardingView seven-step takeover", () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole("button", { name: /get started/i }));
-    await user.click(await screen.findByRole("button", { name: /load my repositories/i }));
-    await user.click(await screen.findByRole("checkbox", { name: /octocat\/web/i }));
-    await user.click(screen.getByRole("button", { name: /save 1 repository/i }));
+    await selectWebCheckout(user);
+    await user.click(screen.getByRole("button", { name: /save 1 selected/i }));
 
-    expect(await screen.findByText(/no code graph was built/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no code graph was produced/i)).toBeInTheDocument();
     expect(screen.queryByText(/built the code graph/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^continue$/i })).toBeEnabled();
+  });
+
+  it("retries code-graph indexing without saving repository scope again", async () => {
+    let graphReady = false;
+    vi.spyOn(apiSetup, "loadSetupStatus").mockImplementation(async () =>
+      graphReady ? makeIndexedStatus() : makeStatus(),
+    );
+    const save = vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
+      ok: true,
+      repos: ["octocat/web"],
+      repo_checkouts: [VERIFIED_CHECKOUT],
+      env_path: "/home/.alfred/.env",
+      keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+    });
+    const onRunLocalAction = vi.fn(async () => {
+      if (onRunLocalAction.mock.calls.length > 1) graphReady = true;
+      return {
+        command: ["alfred", "code-memory", "index"],
+        stdout: "",
+        stderr: "",
+        status: 0,
+        success: true,
+        pid: 1,
+        message: "Code graph indexed.",
+      };
+    });
+    renderOnboarding({ onRunLocalAction });
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /get started/i }));
+    await selectWebCheckout(user);
+    await user.click(screen.getByRole("button", { name: /save 1 selected/i }));
+
+    await user.click(await screen.findByRole("button", { name: /retry code graph/i }));
+
+    await waitFor(() => expect(onRunLocalAction).toHaveBeenCalledTimes(2));
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/code graph now covers/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /retry code graph/i })).not.toBeInTheDocument();
+  });
+
+  it("shows exact GitHub remote mismatches beside the selected checkout", async () => {
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeStatus());
+    vi.spyOn(apiSetup, "saveSetupRepos").mockRejectedValue(
+      new apiSetup.SetupRepoCheckoutValidationError([
+        {
+          ...VERIFIED_CHECKOUT,
+          path: "/workspace/api",
+          github_remote_repo: "octocat/api",
+          identity_matches: false,
+          ready: false,
+          reason: "remote_mismatch",
+        },
+      ]),
+    );
+    renderOnboarding();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /get started/i }));
+    await selectWebCheckout(user);
+    await user.click(screen.getByRole("button", { name: /save 1 selected/i }));
+
+    expect(
+      await screen.findByText(/origin points to octocat\/api, not octocat\/web/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^continue$/i })).toBeDisabled();
   });
 
   it("does not accept a same-basename graph for a different repository", async () => {
@@ -1047,6 +1324,7 @@ describe("OnboardingView seven-step takeover", () => {
     vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
       ok: true,
       repos: ["octocat/web"],
+      repo_checkouts: [VERIFIED_CHECKOUT],
       env_path: "/home/.alfred/.env",
       keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
     });
@@ -1063,11 +1341,10 @@ describe("OnboardingView seven-step takeover", () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole("button", { name: /get started/i }));
-    await user.click(await screen.findByRole("button", { name: /load my repositories/i }));
-    await user.click(await screen.findByRole("checkbox", { name: /octocat\/web/i }));
-    await user.click(screen.getByRole("button", { name: /save 1 repository/i }));
+    await selectWebCheckout(user);
+    await user.click(screen.getByRole("button", { name: /save 1 selected/i }));
 
-    expect(await screen.findByText(/did not cover every selected repository/i)).toBeInTheDocument();
+    expect(await screen.findByText(/does not cover every selected repository/i)).toBeInTheDocument();
     expect(screen.queryByText(/built the code graph/i)).not.toBeInTheDocument();
   });
 
@@ -1097,6 +1374,7 @@ describe("OnboardingView seven-step takeover", () => {
     vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
       ok: true,
       repos: ["octocat/web"],
+      repo_checkouts: [VERIFIED_CHECKOUT],
       env_path: "/home/.alfred/.env",
       keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
     });
@@ -1113,12 +1391,11 @@ describe("OnboardingView seven-step takeover", () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole("button", { name: /get started/i }));
-    await user.click(await screen.findByRole("button", { name: /load my repositories/i }));
-    await user.click(await screen.findByRole("checkbox", { name: /octocat\/web/i }));
-    await user.click(screen.getByRole("button", { name: /save 1 repository/i }));
+    await selectWebCheckout(user);
+    await user.click(screen.getByRole("button", { name: /save 1 selected/i }));
 
     await waitFor(() =>
-      expect(screen.getByText(/saved 1 repository alfred can work in\./i)).toBeInTheDocument(),
+      expect(screen.getByText(/saved and verified 1 repository\./i)).toBeInTheDocument(),
     );
     expect(onRunLocalAction).not.toHaveBeenCalled();
   });
@@ -1127,6 +1404,7 @@ describe("OnboardingView seven-step takeover", () => {
     vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
       ok: true,
       repos: ["octocat/web"],
+      repo_checkouts: [VERIFIED_CHECKOUT],
       env_path: "/home/.alfred/.env",
       keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
     });
@@ -1134,11 +1412,10 @@ describe("OnboardingView seven-step takeover", () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole("button", { name: /get started/i }));
-    await user.click(await screen.findByRole("button", { name: /load my repositories/i }));
-    await user.click(await screen.findByRole("checkbox", { name: /octocat\/web/i }));
-    await user.click(screen.getByRole("button", { name: /save 1 repository/i }));
+    await selectWebCheckout(user);
+    await user.click(screen.getByRole("button", { name: /save 1 selected/i }));
 
-    expect(await screen.findByText(/indexing requires the alfred desktop app/i)).toBeInTheDocument();
+    expect(await screen.findByText(/open the desktop app to build the code graph/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^continue$/i })).toBeEnabled();
   });
 
@@ -1504,9 +1781,7 @@ describe("OnboardingView seven-step takeover", () => {
     renderOnboarding();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /get started/i }));
-    expect(
-      await screen.findByRole("button", { name: /load my repositories/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("textbox", { name: /search repositories/i })).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByLabelText(/onboarding steps complete/i)).toBeInTheDocument(),
     );
@@ -1545,7 +1820,7 @@ describe("OnboardingView seven-step takeover", () => {
     renderOnboarding();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /get started/i }));
-    await screen.findByRole("button", { name: /load my repositories/i });
+    await screen.findByRole("textbox", { name: /search repositories/i });
     const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
     const current = within(stepper).getByRole("button", { current: "step" });
     expect(current).toHaveAccessibleName(/repositories/i);
@@ -1565,7 +1840,12 @@ describe("OnboardingView seven-step takeover", () => {
       makeStatus({
         engine_ready: true,
         github: { ok: true, account: "octocat", detail: "Signed in to GitHub as octocat." },
-        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+        repos: {
+          selected: ["octocat/web"],
+          count: 1,
+          keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
+          repo_checkouts: [],
+        },
       }),
     );
     renderOnboarding();
@@ -1631,21 +1911,19 @@ describe("OnboardingView conversational setup actions", () => {
     await user.click(await screen.findByRole("button", { name: buttonName }));
   }
 
-  it("indexes selected repositories after a conversational save", async () => {
-    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeIndexedStatus());
+  it("hands conversational repository selection to the local checkout step", async () => {
     const save = vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
       ok: true,
       repos: ["octocat/web"],
+      repo_checkouts: [VERIFIED_CHECKOUT],
       env_path: "/home/.alfred/.env",
       keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
     });
-    vi.spyOn(apiSetup, "onboardingConverse")
-      .mockResolvedValueOnce({
-        reply: "I can save that repository.",
-        action: { tool: "set_repos", args: { repos: ["octocat/web"] } },
-        done: false,
-      })
-      .mockResolvedValueOnce({ reply: "The code graph is ready.", action: null, done: false });
+    vi.spyOn(apiSetup, "onboardingConverse").mockResolvedValueOnce({
+      reply: "I can set up that repository.",
+      action: { tool: "set_repos", args: { repos: ["octocat/web"] } },
+      done: false,
+    });
     const onRunLocalAction = vi.fn(async () => makeNativeResult());
     renderOnboarding({ onRunLocalAction });
     const user = userEvent.setup();
@@ -1653,46 +1931,9 @@ describe("OnboardingView conversational setup actions", () => {
     await enterChatAndSend(user, "use octocat/web");
     await approveStep(user, /save repositories/i);
 
-    await waitFor(() =>
-      expect(save).toHaveBeenCalledWith("http://127.0.0.1:7010", ["octocat/web"]),
-    );
-    expect(onRunLocalAction).toHaveBeenCalledWith({
-      action: "code_memory_index",
-      refreshAfter: true,
-    });
-  });
-
-  it("threads a failed graph verification back into the onboarding conversation", async () => {
-    vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
-      ok: true,
-      repos: ["octocat/web"],
-      env_path: "/home/.alfred/.env",
-      keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"],
-    });
-    let secondTurnMessages: { role: string; content: string }[] = [];
-    vi.spyOn(apiSetup, "onboardingConverse")
-      .mockResolvedValueOnce({
-        reply: "I can save that repository.",
-        action: { tool: "set_repos", args: { repos: ["octocat/web"] } },
-        done: false,
-      })
-      .mockImplementationOnce(async (_base, request) => {
-        secondTurnMessages = request.messages;
-        return { reply: "Let's fix indexing.", action: null, done: false };
-      });
-    const onRunLocalAction = vi.fn(async () => makeNativeResult());
-    renderOnboarding({ onRunLocalAction });
-    const user = userEvent.setup();
-
-    await enterChatAndSend(user, "use octocat/web");
-    await approveStep(user, /save repositories/i);
-
-    await waitFor(() => expect(secondTurnMessages.length).toBeGreaterThan(0));
-    const outcome = secondTurnMessages.find((message) =>
-      message.content.includes("[setup] set_repos"),
-    );
-    expect(outcome?.content).toContain("did not complete");
-    expect(outcome?.content).toContain("no code graph was built");
+    expect(await screen.findByRole("textbox", { name: /search repositories/i })).toBeInTheDocument();
+    expect(save).not.toHaveBeenCalled();
+    expect(onRunLocalAction).not.toHaveBeenCalled();
   });
 
   it("carries a native Slack skip back into conversational completion", async () => {

@@ -416,7 +416,6 @@ function App() {
               connected={Boolean(snapshot) && !error}
               canRun={supportsNativeActions()}
               nativeBusy={nativeBusy}
-              nativeResult={nativeResult}
               rosterTheme={rosterTheme}
               customNames={customNames}
               rosterSaveError={rosterSaveError}

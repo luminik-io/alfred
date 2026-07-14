@@ -766,7 +766,12 @@ export type SetupStatus = {
     missing: string[];
   };
   capability_plane?: SetupCapabilityPlane;
-  repos: { selected: string[]; count: number; keys: string[] };
+  repos: {
+    selected: string[];
+    count: number;
+    keys: string[];
+    repo_checkouts: SetupRepoCheckout[];
+  };
   queue?: {
     ready: boolean;
     count: number;
@@ -790,15 +795,33 @@ export type SetupRepo = {
   listed?: boolean;
 };
 
+export type SetupRepoCheckoutInput = {
+  repo: string;
+  path: string;
+};
+
+export type SetupRepoCheckout = SetupRepoCheckoutInput & {
+  source: "map" | "workspace" | string;
+  exists: boolean;
+  is_git_repo: boolean;
+  github_remote_name: string | null;
+  github_remote_repo: string | null;
+  identity_matches: boolean;
+  ready: boolean;
+  reason: "missing" | "not_git_repo" | "missing_github_remote" | "remote_mismatch" | null;
+};
+
 export type SetupReposResponse = {
   repos: SetupRepo[];
   selected: string[];
+  repo_checkouts: SetupRepoCheckout[];
   error?: string;
 };
 
 export type SetupSelectReposResponse = {
   ok: boolean;
   repos: string[];
+  repo_checkouts: SetupRepoCheckout[];
   env_path: string;
   keys: string[];
 };

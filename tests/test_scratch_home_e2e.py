@@ -111,7 +111,19 @@ def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path)
     scheduler_log = tmp_path / "scheduler.log"
     home.mkdir()
     repo.mkdir(parents=True)
-    (repo / ".git").mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/acme/demo.git",
+        ],
+        check=True,
+    )
     fake_bin.mkdir()
 
     _write_executable(
@@ -278,7 +290,11 @@ def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path)
             base_url,
             "/api/setup/repos",
             method="POST",
-            payload={"repos": ["acme/demo"], "queue_repos": ["acme/demo"]},
+            payload={
+                "repos": ["acme/demo"],
+                "queue_repos": ["acme/demo"],
+                "repo_checkouts": [{"repo": "acme/demo", "path": str(repo)}],
+            },
             token=token,
         )
         assert saved["ok"] is True

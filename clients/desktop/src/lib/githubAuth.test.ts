@@ -12,7 +12,7 @@ function setupStatus(ok: boolean): SetupStatus {
     },
     engines: [],
     engine_ready: true,
-    repos: { selected: [], count: 0, keys: [] },
+    repos: { selected: [], count: 0, keys: [], repo_checkouts: [] },
     demo: { present: false },
     first_run: {
       version: 1,

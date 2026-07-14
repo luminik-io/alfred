@@ -12,7 +12,12 @@ function setupStatus(home: string, overrides: Partial<SetupStatus> = {}): SetupS
     github: { ok: true, account: "octocat", detail: "Signed in to GitHub as octocat." },
     engines: [{ name: "claude", installed: true, path: "/opt/homebrew/bin/claude" }],
     engine_ready: true,
-    repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS"] },
+    repos: {
+      selected: ["octocat/web"],
+      count: 1,
+      keys: ["ALFRED_QUEUE_REPOS"],
+      repo_checkouts: [],
+    },
     demo: { present: false },
     ready: true,
     install: {

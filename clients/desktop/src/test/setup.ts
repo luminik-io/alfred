@@ -82,6 +82,10 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
   openUrl: vi.fn(async () => undefined),
 }));
 
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: vi.fn(async () => null),
+}));
+
 afterEach(() => {
   cleanup();
   storage.clear();

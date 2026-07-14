@@ -35,6 +35,7 @@ import {
   supportsNativeActions,
 } from "./api";
 import type { ConverseRequest } from "./types";
+import { loadSetupRepos, saveSetupRepos } from "./api/setup";
 
 // In jsdom (no __TAURI_INTERNALS__) the api layer goes through global fetch, so
 // we can drive every endpoint's outcome by stubbing fetch per URL.
@@ -746,6 +747,78 @@ describe("error humanization", () => {
       );
       expect(errorDetail(err)).toMatch(/400/);
     }
+  });
+
+  it("preserves structured checkout failures from the setup endpoint", async () => {
+    const row = {
+      repo: "acme/frontend",
+      path: "/workspace/backend",
+      source: "map",
+      exists: true,
+      is_git_repo: true,
+      github_remote_name: "origin",
+      github_remote_repo: "acme/backend",
+      identity_matches: false,
+      ready: false,
+      reason: "remote_mismatch" as const,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            error: "repo checkout validation failed",
+            repo_checkouts: [row],
+          }),
+          { status: 400 },
+        ),
+      ),
+    );
+
+    await expect(
+      saveSetupRepos(
+        DEFAULT_BASE_URL,
+        ["acme/frontend"],
+        [{ repo: "acme/frontend", path: "/workspace/backend" }],
+      ),
+    ).rejects.toMatchObject({
+      name: "SetupRepoCheckoutValidationError",
+      rows: [row],
+    });
+  });
+
+  it("explicitly replaces the queue scope when clearing repositories", async () => {
+    let capturedInit: RequestInit | undefined;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      capturedInit = init;
+      return new Response(
+        JSON.stringify({ ok: true, repos: [], selected: [], repo_checkouts: [] }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await saveSetupRepos(DEFAULT_BASE_URL, [], []);
+
+    expect(JSON.parse(String(capturedInit?.body))).toMatchObject({
+      repos: [],
+      queue_repos: [],
+      replace_queue_repos: true,
+      repo_checkouts: [],
+    });
+  });
+
+  it("rejects an incompatible repository response instead of crashing the UI", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ repos: [], selected: [] }), { status: 200 }),
+      ),
+    );
+
+    await expect(loadSetupRepos(DEFAULT_BASE_URL)).rejects.toThrow(
+      /runtime is incompatible.*reinstall alfred/i,
+    );
   });
 });
 
