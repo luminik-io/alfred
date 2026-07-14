@@ -155,7 +155,9 @@ function App() {
       onCommandPalette: () => {
         if (appStage === "ready") setPaletteOpen(true);
       },
-      onRefresh: () => void refresh(),
+      onRefresh: () => {
+        if (appStage === "ready") void refresh();
+      },
     })
       .then((off) => {
         if (disposed) {

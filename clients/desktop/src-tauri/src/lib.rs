@@ -2740,7 +2740,7 @@ fn classify_update(current: &Version, release: GithubRelease) -> Result<UpdateCh
             release.tag_name
         )
     })?;
-    let release_url = validate_release_url(&release.html_url)?;
+    let release_url = validate_release_url(&release.html_url, &release.tag_name)?;
     if latest > *current {
         Ok(UpdateCheck::Available {
             latest,
@@ -2751,10 +2751,19 @@ fn classify_update(current: &Version, release: GithubRelease) -> Result<UpdateCh
     }
 }
 
-fn validate_release_url(raw: &str) -> Result<String, String> {
+fn validate_release_url(raw: &str, tag: &str) -> Result<String, String> {
     let url = Url::parse(raw).map_err(|_| "release URL is invalid".to_string())?;
-    if url.scheme() != "https" || url.host_str() != Some("github.com") {
-        return Err("release URL is not a trusted GitHub URL".to_string());
+    let expected_path = format!("/luminik-io/alfred/releases/tag/{tag}");
+    if url.scheme() != "https"
+        || url.host_str() != Some("github.com")
+        || url.port().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.path() != expected_path
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err("release URL is not an Alfred GitHub release".to_string());
     }
     Ok(url.to_string())
 }
@@ -2993,7 +3002,27 @@ mod tests {
                 &current,
                 release("v0.7.0", "https://example.com/download/alfred"),
             ),
-            Err("release URL is not a trusted GitHub URL".to_string())
+            Err("release URL is not an Alfred GitHub release".to_string())
+        );
+        assert_eq!(
+            classify_update(
+                &current,
+                release(
+                    "v0.7.0",
+                    "https://github.com/another-org/alfred/releases/tag/v0.7.0",
+                ),
+            ),
+            Err("release URL is not an Alfred GitHub release".to_string())
+        );
+        assert_eq!(
+            classify_update(
+                &current,
+                release(
+                    "v0.7.0",
+                    "https://github.com/luminik-io/alfred/releases/tag/v0.8.0",
+                ),
+            ),
+            Err("release URL is not an Alfred GitHub release".to_string())
         );
     }
 
