@@ -1,20 +1,31 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
-use std::{io::Read, io::Write, process::Child};
+use std::{io::Read, process::Child};
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 
 use reqwest::{Method, Url};
-use serde::Serialize;
-use tauri::menu::{Menu, MenuItem};
+use semver::Version;
+use serde::{Deserialize, Serialize};
+use tauri::menu::{AboutMetadataBuilder, Menu, MenuBuilder, MenuItem, SubmenuBuilder};
 use tauri::path::BaseDirectory;
 use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_opener::OpenerExt;
+
+const RELEASES_API_URL: &str = "https://api.github.com/repos/luminik-io/alfred/releases/latest";
+const DOWNLOAD_URL: &str = "https://alfred.luminik.io/download/";
+const DOCS_URL: &str = "https://alfred.luminik.io/";
+const GITHUB_URL: &str = "https://github.com/luminik-io/alfred";
+const REPORT_ISSUE_URL: &str = "https://github.com/luminik-io/alfred/issues/new/choose";
+static UPDATE_CHECK_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
 const BUILT_IN_RUNTIME_IDS: &[&str] = &[
     "senior-dev",
@@ -59,6 +70,19 @@ struct GithubAuthLoginDetails {
     device_code: Option<String>,
     poll_interval_ms: u64,
     timeout_ms: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubRelease {
+    tag_name: String,
+    html_url: String,
+}
+
+#[derive(Debug, PartialEq)]
+enum UpdateCheck {
+    Available { latest: Version, url: String },
+    Current { latest: Version },
+    NoPublishedRelease,
 }
 
 #[tauri::command]
@@ -145,7 +169,7 @@ fn start_alfred_runtime(port: u16) -> Result<NativeCommandResult, String> {
         .spawn()
         .map_err(|err| {
             if err.kind() == std::io::ErrorKind::NotFound {
-                "Alfred core is not installed yet. Install or repair Alfred core from Setup, then start the runtime again.".to_string()
+                "Alfred core is not installed yet. Install or repair Alfred core from Settings, then start the runtime again.".to_string()
             } else {
                 format!("could not start Alfred local runtime: {err}")
             }
@@ -2526,11 +2550,287 @@ fn trim_text(text: &str) -> String {
     trimmed
 }
 
+fn build_app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let version = app.package_info().version.to_string();
+    let about = AboutMetadataBuilder::new()
+        .name(Some("Alfred"))
+        .version(Some(version))
+        .copyright(Some("Copyright (c) DataRavel Inc."))
+        .icon(app.default_window_icon().cloned())
+        .build();
+
+    let check_updates = MenuItem::with_id(
+        app,
+        "app-check-updates",
+        "Check for Updates...",
+        true,
+        None::<&str>,
+    )?;
+    let settings = MenuItem::with_id(
+        app,
+        "app-settings",
+        "Settings...",
+        true,
+        Some("CmdOrCtrl+,"),
+    )?;
+
+    #[cfg(target_os = "macos")]
+    let alfred = SubmenuBuilder::new(app, "Alfred")
+        .about(Some(about))
+        .item(&check_updates)
+        .separator()
+        .item(&settings)
+        .separator()
+        .services()
+        .separator()
+        .hide()
+        .hide_others()
+        .show_all()
+        .separator()
+        .quit()
+        .build()?;
+
+    #[cfg(not(target_os = "macos"))]
+    let alfred = SubmenuBuilder::new(app, "Alfred")
+        .about(Some(about))
+        .item(&check_updates)
+        .separator()
+        .item(&settings)
+        .separator()
+        .quit()
+        .build()?;
+
+    let edit = SubmenuBuilder::new(app, "Edit")
+        .undo()
+        .redo()
+        .separator()
+        .cut()
+        .copy()
+        .paste()
+        .select_all()
+        .build()?;
+
+    let file = SubmenuBuilder::new(app, "File").close_window().build()?;
+
+    let inbox = MenuItem::with_id(app, "app-inbox", "Inbox", true, Some("CmdOrCtrl+1"))?;
+    let ask = MenuItem::with_id(app, "app-ask", "Ask", true, Some("CmdOrCtrl+2"))?;
+    let work = MenuItem::with_id(app, "app-work", "Work", true, Some("CmdOrCtrl+3"))?;
+    let agents = MenuItem::with_id(app, "app-agents", "Agents", true, Some("CmdOrCtrl+4"))?;
+    let command_palette = MenuItem::with_id(
+        app,
+        "app-command-palette",
+        "Command Palette...",
+        true,
+        Some("CmdOrCtrl+K"),
+    )?;
+    let refresh = MenuItem::with_id(app, "app-refresh", "Refresh", true, Some("CmdOrCtrl+R"))?;
+    let view = SubmenuBuilder::new(app, "View")
+        .items(&[&inbox, &ask, &work, &agents])
+        .separator()
+        .item(&command_palette)
+        .item(&refresh)
+        .build()?;
+
+    let window = SubmenuBuilder::new(app, "Window")
+        .minimize()
+        .maximize()
+        .fullscreen()
+        .build()?;
+
+    let docs = MenuItem::with_id(app, "app-docs", "Alfred Help", true, None::<&str>)?;
+    let github = MenuItem::with_id(app, "app-github", "View on GitHub", true, None::<&str>)?;
+    let report_issue = MenuItem::with_id(
+        app,
+        "app-report-issue",
+        "Report an Issue...",
+        true,
+        None::<&str>,
+    )?;
+    let help = SubmenuBuilder::new(app, "Help")
+        .item(&docs)
+        .separator()
+        .item(&github)
+        .item(&report_issue)
+        .build()?;
+
+    MenuBuilder::new(app)
+        .items(&[&alfred, &file, &edit, &view, &window, &help])
+        .build()
+}
+
+fn handle_app_menu_event(app: &AppHandle, id: &str) {
+    match id {
+        "app-inbox" => emit_app_menu_event(app, "app-menu://navigate", "home"),
+        "app-ask" => emit_app_menu_event(app, "app-menu://navigate", "compose"),
+        "app-work" => emit_app_menu_event(app, "app-menu://navigate", "pipeline"),
+        "app-agents" => emit_app_menu_event(app, "app-menu://navigate", "fleet"),
+        "app-settings" => emit_app_menu_event(app, "app-menu://navigate", "settings"),
+        "app-command-palette" => emit_app_menu_event(app, "app-menu://command-palette", ()),
+        "app-refresh" => emit_app_menu_event(app, "app-menu://refresh", ()),
+        "app-check-updates" => start_update_check(app),
+        "app-docs" => open_app_url(app, DOCS_URL),
+        "app-github" => open_app_url(app, GITHUB_URL),
+        "app-report-issue" => open_app_url(app, REPORT_ISSUE_URL),
+        _ => {}
+    }
+}
+
+fn emit_app_menu_event<S: Serialize + Clone>(app: &AppHandle, event: &str, payload: S) {
+    focus_main_window(app);
+    let _ = app.emit(event, payload);
+}
+
+fn open_app_url(app: &AppHandle, url: &str) {
+    if let Err(err) = app.opener().open_url(url, None::<&str>) {
+        app_message(app, format!("Alfred could not open the link: {err}"))
+            .title("Could not open link")
+            .kind(MessageDialogKind::Error)
+            .show(|_| {});
+    }
+}
+
+fn start_update_check(app: &AppHandle) {
+    if UPDATE_CHECK_IN_FLIGHT.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let current = app.package_info().version.clone();
+        let result = fetch_update_check(&current).await;
+        UPDATE_CHECK_IN_FLIGHT.store(false, Ordering::Release);
+        if let Err(err) = &result {
+            eprintln!("alfred: update check failed ({err})");
+        }
+        show_update_result(&app, &current, result);
+    });
+}
+
+async fn fetch_update_check(current: &Version) -> Result<UpdateCheck, String> {
+    let response = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .user_agent(format!("Alfred Desktop/{current}"))
+        .build()
+        .map_err(|err| format!("could not prepare the update check: {err}"))?
+        .get(RELEASES_API_URL)
+        .header("accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|err| format!("could not reach GitHub Releases: {err}"))?;
+
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(UpdateCheck::NoPublishedRelease);
+    }
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|err| format!("could not read the update response: {err}"))?;
+    if !status.is_success() {
+        return Err(format!("GitHub Releases returned {status}"));
+    }
+    let release: GithubRelease = serde_json::from_str(&body)
+        .map_err(|err| format!("GitHub returned an invalid release response: {err}"))?;
+    classify_update(current, release)
+}
+
+fn classify_update(current: &Version, release: GithubRelease) -> Result<UpdateCheck, String> {
+    let latest = Version::parse(release.tag_name.trim().trim_start_matches('v')).map_err(|_| {
+        format!(
+            "latest release tag is not a semantic version: {}",
+            release.tag_name
+        )
+    })?;
+    let release_url = validate_release_url(&release.html_url)?;
+    if latest > *current {
+        Ok(UpdateCheck::Available {
+            latest,
+            url: release_url,
+        })
+    } else {
+        Ok(UpdateCheck::Current { latest })
+    }
+}
+
+fn validate_release_url(raw: &str) -> Result<String, String> {
+    let url = Url::parse(raw).map_err(|_| "release URL is invalid".to_string())?;
+    if url.scheme() != "https" || url.host_str() != Some("github.com") {
+        return Err("release URL is not a trusted GitHub URL".to_string());
+    }
+    Ok(url.to_string())
+}
+
+fn show_update_result(app: &AppHandle, current: &Version, result: Result<UpdateCheck, String>) {
+    match result {
+        Ok(UpdateCheck::Available { latest, url }) => {
+            let app = app.clone();
+            app_message(
+                &app,
+                format!("Alfred {latest} is available. You are running {current}."),
+            )
+            .title("Alfred update available")
+            .buttons(MessageDialogButtons::OkCancelCustom(
+                "Open download page".to_string(),
+                "Not now".to_string(),
+            ))
+            .show(move |open| {
+                if open {
+                    open_app_url(&app, &url);
+                }
+            });
+        }
+        Ok(UpdateCheck::Current { latest }) => {
+            app_message(
+                app,
+                format!("Alfred {latest} is the latest published version."),
+            )
+            .title("Alfred is up to date")
+            .show(|_| {});
+        }
+        Ok(UpdateCheck::NoPublishedRelease) => {
+            app_message(
+                app,
+                format!("No packaged release is published yet. You are running Alfred {current}."),
+            )
+            .title("No published release")
+            .buttons(MessageDialogButtons::OkCustom(
+                "Open download page".to_string(),
+            ))
+            .show({
+                let app = app.clone();
+                move |open| {
+                    if open {
+                        open_app_url(&app, DOWNLOAD_URL);
+                    }
+                }
+            });
+        }
+        Err(err) => {
+            app_message(app, format!("Alfred could not check for updates. {err}"))
+                .title("Update check failed")
+                .kind(MessageDialogKind::Error)
+                .show(|_| {});
+        }
+    }
+}
+
+fn app_message(
+    app: &AppHandle,
+    message: impl Into<String>,
+) -> tauri_plugin_dialog::MessageDialogBuilder<tauri::Wry> {
+    let dialog = app.dialog().message(message);
+    match app.get_webview_window("main") {
+        Some(window) => dialog.parent(&window),
+        None => dialog,
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .menu(build_app_menu)
+        .on_menu_event(|app, event| handle_app_menu_event(app, event.id.as_ref()))
         .invoke_handler(tauri::generate_handler![
             fetch_alfred_json,
             fetch_alfred_json_with_token,
@@ -2600,6 +2900,7 @@ fn focus_main_window(app: &AppHandle) {
 mod tests {
     use super::*;
     use std::fs::{self, File};
+    use std::io::Write;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_root(name: &str) -> PathBuf {
@@ -2618,6 +2919,82 @@ mod tests {
             fs::create_dir_all(parent).expect("test dir should be created");
         }
         File::create(path).expect("test file should be created");
+    }
+
+    fn release(tag: &str, url: &str) -> GithubRelease {
+        GithubRelease {
+            tag_name: tag.to_string(),
+            html_url: url.to_string(),
+        }
+    }
+
+    #[test]
+    fn update_check_detects_newer_semantic_release() {
+        let current = Version::parse("0.6.0").expect("current version should parse");
+
+        assert_eq!(
+            classify_update(
+                &current,
+                release(
+                    "v0.7.0",
+                    "https://github.com/luminik-io/alfred/releases/tag/v0.7.0",
+                ),
+            ),
+            Ok(UpdateCheck::Available {
+                latest: Version::parse("0.7.0").expect("latest version should parse"),
+                url: "https://github.com/luminik-io/alfred/releases/tag/v0.7.0".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn update_check_treats_equal_or_older_release_as_current() {
+        let current = Version::parse("0.6.0").expect("current version should parse");
+
+        assert_eq!(
+            classify_update(
+                &current,
+                release(
+                    "v0.6.0",
+                    "https://github.com/luminik-io/alfred/releases/tag/v0.6.0",
+                ),
+            ),
+            Ok(UpdateCheck::Current {
+                latest: Version::parse("0.6.0").expect("latest version should parse"),
+            })
+        );
+        assert!(matches!(
+            classify_update(
+                &current,
+                release(
+                    "v0.5.3",
+                    "https://github.com/luminik-io/alfred/releases/tag/v0.5.3",
+                ),
+            ),
+            Ok(UpdateCheck::Current { .. })
+        ));
+    }
+
+    #[test]
+    fn update_check_rejects_invalid_tags_and_untrusted_links() {
+        let current = Version::parse("0.6.0").expect("current version should parse");
+
+        assert!(classify_update(
+            &current,
+            release(
+                "latest",
+                "https://github.com/luminik-io/alfred/releases/latest",
+            ),
+        )
+        .expect_err("non-semantic tags must fail")
+        .contains("not a semantic version"));
+        assert_eq!(
+            classify_update(
+                &current,
+                release("v0.7.0", "https://example.com/download/alfred"),
+            ),
+            Err("release URL is not a trusted GitHub URL".to_string())
+        );
     }
 
     fn make_core_dir(root: &Path) {
