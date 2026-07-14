@@ -3,7 +3,7 @@ import {
   RefreshCw,
   Sun,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ConnectionBanner,
@@ -126,6 +126,11 @@ function App() {
   const [appStage, setAppStage] = useState<"checking" | "onboarding" | "ready">(
     "checking",
   );
+  const [onboardingFinishing, setOnboardingFinishing] = useState(false);
+  const onboardingFinishingRef = useRef(false);
+  const setupGateBaseUrlRef = useRef(baseUrl);
+  const setupConfirmedIncompleteRef = useRef(false);
+  const lastSetupProbeSnapshotRef = useRef<typeof snapshot>(null);
 
   // ⌘K / Ctrl+K opens the command palette anywhere.
   useEffect(() => {
@@ -147,8 +152,14 @@ function App() {
   // The AppShell is not mounted until canonical setup readiness is affirmative,
   // so a fresh install never sees navigation for surfaces it cannot use yet.
   useEffect(() => {
-    if (appStage !== "checking") return;
+    if (appStage === "ready") return;
     if (loading) return;
+
+    if (setupGateBaseUrlRef.current !== baseUrl) {
+      setupGateBaseUrlRef.current = baseUrl;
+      setupConfirmedIncompleteRef.current = false;
+      lastSetupProbeSnapshotRef.current = null;
+    }
 
     if (error && !snapshot) {
       setAppStage("onboarding");
@@ -156,12 +167,17 @@ function App() {
     }
 
     if (snapshot && !error) {
+      if (setupConfirmedIncompleteRef.current) return;
+      if (lastSetupProbeSnapshotRef.current === snapshot) return;
+      lastSetupProbeSnapshotRef.current = snapshot;
+
       let cancelled = false;
       void loadSetupStatus(baseUrl)
         .then((status) => {
-          if (!cancelled) {
-            setAppStage(isSetupComplete(status) ? "ready" : "onboarding");
-          }
+          if (cancelled) return;
+          const complete = isSetupComplete(status);
+          setupConfirmedIncompleteRef.current = !complete;
+          setAppStage(complete ? "ready" : "onboarding");
         })
         .catch(() => {
           if (!cancelled) setAppStage("onboarding");
@@ -223,11 +239,21 @@ function App() {
   }, [snapshot?.schedule, snapshot?.status.agents]);
 
   const finishOnboarding = useCallback(
-    (destination: "home" | "compose") => {
-      setTab(destination);
-      setAppStage("ready");
+    async (destination: "home" | "compose") => {
+      if (onboardingFinishingRef.current) return false;
+      onboardingFinishingRef.current = true;
+      setOnboardingFinishing(true);
+      try {
+        if (!(await refresh(baseUrl))) return false;
+        setTab(destination);
+        setAppStage("ready");
+        return true;
+      } finally {
+        onboardingFinishingRef.current = false;
+        setOnboardingFinishing(false);
+      }
     },
-    [setTab],
+    [baseUrl, refresh, setTab],
   );
 
   const customThemeEditor = (
@@ -270,6 +296,7 @@ function App() {
           rosterTheme={rosterTheme}
           customNames={customNames}
           rosterSaveError={rosterSaveError}
+          finishing={onboardingFinishing}
           onConnectServer={(url) => void refresh(url)}
           onInstallCore={installCore}
           onStartRuntime={startRuntime}

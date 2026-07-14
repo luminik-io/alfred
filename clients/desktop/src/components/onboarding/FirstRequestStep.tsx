@@ -29,6 +29,7 @@ import type { OnboardingNotice } from "./types";
 export function FirstRequestStep({
   baseUrl,
   canMutate,
+  finishing,
   setupReady,
   demoPresent,
   setNotice,
@@ -40,14 +41,15 @@ export function FirstRequestStep({
 }: {
   baseUrl: string;
   canMutate: boolean;
+  finishing: boolean;
   setupReady: boolean;
   // Server truth from SetupStatus.demo.present, so the "Clear sample data"
   // exit survives a remount (open Inbox, reload, navigate back) instead of
   // depending only on the in-component seed flag, which resets to false.
   demoPresent: boolean;
   setNotice: (notice: OnboardingNotice) => void;
-  onOpenCompose: () => void;
-  onOpenInbox: () => void;
+  onOpenCompose: () => void | Promise<boolean>;
+  onOpenInbox: () => void | Promise<boolean>;
   // Called after a real request or demo lands so the orchestrator can mark the
   // journey complete and refresh the board.
   onComplete: (kind: "request" | "demo") => void;
@@ -60,6 +62,7 @@ export function FirstRequestStep({
 }) {
   const [playbooks, setPlaybooks] = useState<SetupPlaybook[]>([]);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [requestDrafted, setRequestDrafted] = useState(false);
   const [demoBusy, setDemoBusy] = useState(false);
   // Optimistic local override so the seed/clear toggle flips instantly, before
   // the parent's status refresh resolves. null means "defer to server truth"
@@ -110,8 +113,9 @@ export function FirstRequestStep({
         tone: "ok",
         message: `Drafted your first request: "${result.title}". Refine it in Ask, then save the plan. It runs on the Claude and Codex subscriptions you already pay for, with no per-request bill, and you can watch usage in the sidebar.`,
       });
+      setRequestDrafted(true);
       onComplete("request");
-      onOpenCompose();
+      await onOpenCompose();
     } catch (err) {
       setNotice({ tone: "error", message: errorDetail(err) || "Could not draft from that spec." });
     } finally {
@@ -198,7 +202,9 @@ export function FirstRequestStep({
                   variant="outline"
                   type="button"
                   onClick={() => void pick(playbook.key)}
-                  disabled={!canMutate || !setupReady || busyKey !== null}
+                  disabled={
+                    !canMutate || !setupReady || busyKey !== null || requestDrafted || finishing
+                  }
                 >
                   <Sparkles size={14} aria-hidden="true" />
                   <span>{busyKey === playbook.key ? "Drafting" : "Use this"}</span>
@@ -234,8 +240,8 @@ export function FirstRequestStep({
                 <Button
                   variant="ghost"
                   type="button"
-                  onClick={onOpenInbox}
-                  disabled={!setupReady}
+                  onClick={() => void onOpenInbox()}
+                  disabled={!setupReady || finishing}
                 >
                   <span>Open Inbox</span>
                   <ArrowRight size={15} aria-hidden="true" />
@@ -260,8 +266,8 @@ export function FirstRequestStep({
                 <Button
                   variant="ghost"
                   type="button"
-                  onClick={onOpenCompose}
-                  disabled={!setupReady}
+                  onClick={() => void onOpenCompose()}
+                  disabled={!setupReady || finishing}
                 >
                   <span>Write a brief in Ask</span>
                   <ArrowRight size={15} aria-hidden="true" />

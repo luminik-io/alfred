@@ -169,6 +169,7 @@ export function OnboardingView({
   rosterTheme,
   customNames,
   rosterSaveError,
+  finishing = false,
   onConnectServer,
   onInstallCore,
   onStartRuntime,
@@ -188,6 +189,7 @@ export function OnboardingView({
   rosterTheme: RosterThemeId;
   customNames: CustomRosterNames;
   rosterSaveError: string | null;
+  finishing?: boolean;
   onConnectServer: (url: string) => void;
   onInstallCore: () => void;
   onStartRuntime: () => void;
@@ -201,7 +203,7 @@ export function OnboardingView({
    */
   onSaveCustomNames: (next: CustomRosterNames) => Promise<void>;
   /** Enter the normal app shell after setup, at the requested first surface. */
-  onFinish: (destination: "home" | "compose") => void;
+  onFinish: (destination: "home" | "compose") => void | Promise<boolean>;
   onRefreshBoard?: (options?: { demo?: boolean }) => Promise<void> | void;
 }) {
   // The mutating steps (repo save, Slack approver add) are token-gated HTTP
@@ -1058,6 +1060,7 @@ export function OnboardingView({
                   <FirstRequestStep
                     baseUrl={baseUrl}
                     canMutate={canMutate}
+                    finishing={finishing}
                     setupReady={requiredSetupReady}
                     demoPresent={!demoCleared && Boolean(status?.demo.present)}
                     setNotice={setNotice}
@@ -1093,7 +1096,7 @@ export function OnboardingView({
                 variant="outline"
                 size="sm"
                 type="button"
-                disabled={!previousKey}
+                disabled={!previousKey || finishing}
                 onClick={() => {
                   if (previousKey) goToStep(previousKey, { manual: true });
                 }}
@@ -1106,7 +1109,13 @@ export function OnboardingView({
               </span>
               <div className="flex items-center gap-2">
                 {meta.optional && nextKey ? (
-                  <Button variant="ghost" size="sm" type="button" onClick={() => skipStep(stepKey)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    type="button"
+                    disabled={finishing}
+                    onClick={() => skipStep(stepKey)}
+                  >
                     <span>Skip</span>
                   </Button>
                 ) : null}
@@ -1116,7 +1125,7 @@ export function OnboardingView({
                     size="sm"
                     className="btn-primary-glow"
                     onClick={advance}
-                    disabled={!canAdvance}
+                    disabled={!canAdvance || finishing}
                   >
                     <span>Continue</span>
                     <ArrowRight size={15} aria-hidden="true" />
@@ -1126,10 +1135,10 @@ export function OnboardingView({
                     type="button"
                     size="sm"
                     className="btn-primary-glow"
-                    onClick={() => onFinish("home")}
-                    disabled={!requiredSetupReady || !firstJobComplete}
+                    onClick={() => void onFinish("home")}
+                    disabled={!requiredSetupReady || !firstJobComplete || finishing}
                   >
-                    <span>Go to Inbox</span>
+                    <span>{finishing ? "Opening Inbox" : "Go to Inbox"}</span>
                     <ArrowRight size={15} aria-hidden="true" />
                   </Button>
                 )}

@@ -77,6 +77,7 @@ export function SettingsView({
   const connectionGenerationRef = useRef(0);
   const trustedUsers = trustedSlack?.users || [];
   const canAddTrusted = Boolean(trustedUserId.trim()) && !busyTrustedUser;
+  const cleanConsoleAgent = consoleAgent.trim();
 
   useEffect(() => {
     if (baseUrlRef.current !== baseUrl) {
@@ -430,14 +431,17 @@ export function SettingsView({
               <button
                 className="icon-button"
                 type="button"
-                disabled={!canRun || nativeBusy === `dry_run:${consoleAgent.trim()}`}
-                onClick={() =>
+                disabled={
+                  !canRun || !cleanConsoleAgent || nativeBusy === `dry_run:${cleanConsoleAgent}`
+                }
+                onClick={() => {
+                  if (!cleanConsoleAgent) return;
                   onRunLocalAction({
                     action: "dry_run",
-                    target: consoleAgent.trim(),
+                    target: cleanConsoleAgent,
                     refreshAfter: true,
-                  })
-                }
+                  });
+                }}
               >
                 <Play size={16} aria-hidden="true" />
                 <span>Run dry-run</span>

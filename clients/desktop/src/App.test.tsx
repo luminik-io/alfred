@@ -114,6 +114,7 @@ function makeSetupStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
 
 function baseAlfredReturn(overrides: Record<string, unknown> = {}) {
   const noop = vi.fn();
+  const refresh = vi.fn(async () => true);
   return {
     baseUrl: "http://127.0.0.1:7010",
     snapshot: null,
@@ -142,7 +143,7 @@ function baseAlfredReturn(overrides: Record<string, unknown> = {}) {
     refreshShipped: noop,
     usage: null,
     usageState: "idle",
-    refresh: noop,
+    refresh,
     runFollowupAction: noop,
     runPlanDecision: noop,
     runPlanDiscard: noop,
@@ -275,16 +276,54 @@ describe("App initial route gating", () => {
     expect(screen.queryByTestId("onboarding-screen")).not.toBeInTheDocument();
   });
 
+  it("promotes a returning complete install after the runtime reconnects", async () => {
+    let alfred = baseAlfredReturn({ snapshot: null, error: "connection refused" });
+    useAlfredMock.mockImplementation(() => alfred);
+    loadSetupStatusMock.mockResolvedValue(makeSetupStatus());
+    const { default: App } = await import("./App");
+    const view = render(<App />);
+
+    expect(await screen.findByTestId("onboarding-screen")).toBeInTheDocument();
+
+    alfred = baseAlfredReturn({ snapshot: makeSnapshot(), error: null });
+    view.rerender(<App />);
+
+    expect(await screen.findByTestId("app-shell")).toBeInTheDocument();
+    expect(screen.getByTestId("inbox-screen")).toBeInTheDocument();
+    expect(screen.queryByTestId("onboarding-screen")).not.toBeInTheDocument();
+  });
+
   it("mounts the application shell only after onboarding finishes", async () => {
-    useAlfredMock.mockReturnValue(baseAlfredReturn({ snapshot: null, error: "connection refused" }));
+    let alfred = baseAlfredReturn({ snapshot: null, error: "connection refused" });
+    const refresh = vi.fn(async () => {
+      alfred = baseAlfredReturn({ snapshot: makeSnapshot(), error: null, refresh });
+      return true;
+    });
+    alfred = baseAlfredReturn({ snapshot: null, error: "connection refused", refresh });
+    useAlfredMock.mockImplementation(() => alfred);
     await renderApp();
     expect(await screen.findByTestId("onboarding-screen")).toBeInTheDocument();
     expect(screen.queryByTestId("app-shell")).not.toBeInTheDocument();
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Finish to Inbox" }));
 
+    expect(refresh).toHaveBeenCalledWith("http://127.0.0.1:7010");
     expect(await screen.findByTestId("app-shell")).toBeInTheDocument();
     expect(screen.getByTestId("inbox-screen")).toBeInTheDocument();
     expect(screen.queryByTestId("onboarding-screen")).not.toBeInTheDocument();
+  });
+
+  it("keeps onboarding open when the final runtime refresh fails", async () => {
+    const refresh = vi.fn(async () => false);
+    useAlfredMock.mockReturnValue(
+      baseAlfredReturn({ snapshot: null, error: "connection refused", refresh }),
+    );
+    await renderApp();
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Finish to Inbox" }));
+
+    expect(refresh).toHaveBeenCalledWith("http://127.0.0.1:7010");
+    expect(screen.getByTestId("onboarding-screen")).toBeInTheDocument();
+    expect(screen.queryByTestId("app-shell")).not.toBeInTheDocument();
   });
 });

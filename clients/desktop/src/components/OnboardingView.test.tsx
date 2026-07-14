@@ -1635,6 +1635,37 @@ describe("OnboardingView eight-step takeover", () => {
     await waitFor(() => expect(onFinish).toHaveBeenCalledWith("compose"));
   });
 
+  it("keeps a drafted starter request single-flight while the app opens Ask", async () => {
+    const compose = vi.spyOn(apiSetup, "composeSetupPlaybook").mockResolvedValue({
+      ok: true,
+      playbook: "triage-prs",
+      draft_id: "compose-x",
+      saved_path: "/p.json",
+      title: "Nightly: triage open pull requests",
+      repos: ["octocat/web"],
+      readiness: { ok: false, score: 0.4 },
+    });
+    const finish = deferred<boolean>();
+    const onFinish = vi.fn(() => finish.promise);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeReadyStatus());
+    renderOnboarding({ onFinish });
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^first request$/i);
+    const card = (await screen.findByText(/triage open prs every night/i)).closest(
+      "[data-slot='card']",
+    );
+    const button = within(card as HTMLElement).getByRole("button", { name: /use this/i });
+    await user.click(button);
+
+    await waitFor(() => expect(onFinish).toHaveBeenCalledWith("compose"));
+    expect(button).toBeDisabled();
+    await user.click(button);
+    expect(compose).toHaveBeenCalledTimes(1);
+
+    finish.resolve(true);
+  });
+
   it("seeds a labelled demo lifecycle and lands on a populated Inbox", async () => {
     const seed = vi.spyOn(apiSetup, "seedSetupDemo").mockResolvedValue({ seeded: true });
     const onFinish = vi.fn();

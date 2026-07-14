@@ -155,6 +155,25 @@ describe("SettingsView", () => {
     });
   });
 
+  it("blocks a diagnostics dry-run without an agent codename", async () => {
+    const user = userEvent.setup();
+    const onRunLocalAction = vi.fn();
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(setupStatus("/tmp/alfred-home"));
+
+    render(renderSettings("http://127.0.0.1:7010", { onRunLocalAction }));
+
+    await user.click(screen.getByRole("tab", { name: "Diagnostics" }));
+    const input = await screen.findByLabelText("Dry-run agent");
+    await user.clear(input);
+    await user.type(input, "   ");
+
+    const button = screen.getByRole("button", { name: "Run dry-run" });
+    expect(button).toBeDisabled();
+    await user.click(button);
+    expect(onRunLocalAction).not.toHaveBeenCalled();
+  });
+
   it("clears displayed setup inventory while a new server URL is loading", async () => {
     const newRequest = deferred<SetupStatus>();
     vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
