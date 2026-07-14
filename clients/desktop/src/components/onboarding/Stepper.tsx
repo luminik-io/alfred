@@ -28,10 +28,13 @@ export function Stepper({
   steps,
   activeKey,
   onSelect,
+  lockNavigation = false,
 }: {
   steps: StepperItem[];
   activeKey: OnboardingStepKey;
   onSelect: (key: OnboardingStepKey) => void;
+  /** Keep a fresh native install on Welcome until it chooses a runtime path. */
+  lockNavigation?: boolean;
 }) {
   const total = steps.length;
   const activeIndex = steps.findIndex((step) => step.key === activeKey);
@@ -69,6 +72,7 @@ export function Stepper({
                 type="button"
                 className="alfred-stepper__node"
                 onClick={() => onSelect(step.key)}
+                disabled={lockNavigation && !isActive}
                 aria-current={isActive ? "step" : undefined}
                 // The accessible name is the bare step label so the rail stays
                 // queryable by title; position and status ride on the visually
