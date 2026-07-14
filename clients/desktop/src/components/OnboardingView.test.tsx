@@ -336,7 +336,7 @@ describe("OnboardingView eight-step takeover", () => {
     expect(
       screen.getByText(/runs on the claude max and codex pro subscriptions you already pay for/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/no terminal, no api keys/i)).toBeInTheDocument();
+    expect(screen.getByText(/no api keys/i)).toBeInTheDocument();
     // The persistent stepper shows all eight steps.
     expect(screen.getByRole("button", { name: /^welcome$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^tools$/i })).toBeInTheDocument();
@@ -345,6 +345,13 @@ describe("OnboardingView eight-step takeover", () => {
     expect(screen.getByRole("button", { name: /^team$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^slack$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^first request$/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^set up alfred$/i, level: 1 })).toHaveClass(
+      "sr-only",
+    );
+    const shell = document.querySelector(".alfred-onboarding-shell");
+    expect(shell?.firstElementChild).toBe(
+      screen.getByRole("navigation", { name: /onboarding progress/i }),
+    );
   });
 
   it("starts a full desktop install from the fresh-machine welcome action", async () => {
@@ -372,10 +379,8 @@ describe("OnboardingView eight-step takeover", () => {
     );
     renderOnboarding();
 
-    expect(await screen.findByText(/existing setup/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /review your setup/i })).toBeInTheDocument();
-    expect(screen.queryByText(/^first run$/i)).not.toBeInTheDocument();
     expect(await screen.findByText(/found an alfred setup on this mac/i)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /review your setup/i })).not.toBeInTheDocument();
     expect(screen.getAllByText("/tmp/alfred-home").length).toBeGreaterThan(0);
     expect(screen.getByText(/3 configured scheduled runs in agents\.conf/i)).toBeInTheDocument();
     expect(screen.getByText(/optional\. not configured yet/i)).toBeInTheDocument();
@@ -404,7 +409,7 @@ describe("OnboardingView eight-step takeover", () => {
     renderOnboarding();
 
     // On the welcome step of a detected install, the stepper must not read 0 done.
-    expect(await screen.findByText(/review your setup/i)).toBeInTheDocument();
+    expect(await screen.findByText(/found an alfred setup on this mac/i)).toBeInTheDocument();
     const progress = await screen.findByLabelText(/of 8 onboarding steps complete/i);
     const match = /(\d+) of 8 onboarding steps complete/.exec(progress.getAttribute("aria-label") || "");
     expect(match).not.toBeNull();
@@ -434,24 +439,32 @@ describe("OnboardingView eight-step takeover", () => {
     expect(progress.getAttribute("aria-label")).toMatch(/^0 of 8/);
   });
 
-  it("uses neutral shell copy while setup inventory is loading", async () => {
+  it("keeps the stepper first while setup inventory is loading", async () => {
     const pending = deferred<SetupStatus>();
     vi.spyOn(apiSetup, "loadSetupStatus").mockReturnValue(pending.promise);
     renderOnboarding();
 
-    expect(screen.getByText(/checking setup/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /checking this mac/i })).toBeInTheDocument();
-    expect(screen.queryByText(/^first run$/i)).not.toBeInTheDocument();
+    const shell = document.querySelector(".alfred-onboarding-shell");
+    expect(shell?.firstElementChild).toBe(
+      screen.getByRole("navigation", { name: /onboarding progress/i }),
+    );
+    expect(screen.queryByText(/checking setup/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /checking this mac/i })).not.toBeInTheDocument();
 
     pending.resolve(makeStatus());
-    await waitFor(() => expect(screen.getByText(/first run/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/let's get you set up/i)).toBeInTheDocument());
   });
 
-  it("does not show checking copy when no server is connected", () => {
+  it("keeps the stepper first when no server is connected", () => {
     renderOnboarding({ connected: false });
 
-    expect(screen.getByText(/^first run$/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /set up alfred/i })).toBeInTheDocument();
+    const shell = document.querySelector(".alfred-onboarding-shell");
+    expect(shell?.firstElementChild).toBe(
+      screen.getByRole("navigation", { name: /onboarding progress/i }),
+    );
+    expect(screen.getByRole("heading", { name: /set up alfred/i, level: 1 })).toHaveClass(
+      "sr-only",
+    );
     expect(screen.queryByText(/checking setup/i)).not.toBeInTheDocument();
   });
 

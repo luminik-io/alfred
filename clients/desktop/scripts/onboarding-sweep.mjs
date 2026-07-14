@@ -18,12 +18,23 @@ const THEME_MODE_STORAGE_KEY = "alfred-theme";
 const WIDTHS = [375, 390, 768, 1024, 1280, 1680];
 const THEMES = ["dark", "light"];
 const HEIGHT = 900;
-const STEPS = ["welcome", "engine", "github", "repos", "slack", "request"];
+const STEPS = [
+  "welcome",
+  "engine",
+  "github",
+  "repos",
+  "batteries",
+  "team",
+  "slack",
+  "request",
+];
 const RAIL_LABELS = {
   welcome: "Welcome",
   engine: "Tools",
   github: "GitHub",
   repos: "Repositories",
+  batteries: "Batteries",
+  team: "Team",
   slack: "Slack",
   request: "First request",
 };

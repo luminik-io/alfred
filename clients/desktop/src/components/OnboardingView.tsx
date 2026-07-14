@@ -47,13 +47,14 @@ import { cn } from "@/lib/utils";
  * review. An eight-step journey can be completed without a terminal, ending on a
  * populated Inbox via a real first request or a clearly-labelled demo:
  *
- *   0 Welcome        mental model + two doors (Get started / I have a server)
+ *   0 Welcome        mental model + three guided setup paths
  *   1 Tools          detect Claude / Codex (no API keys)
  *   2 GitHub         reuse the gh sign-in (auto-advance when signed in)
  *   3 Repositories   pick by name + description (private badge)
- *   4 Team           pick roster theme / custom names, with a path to custom agents
- *   5 Slack          optional approvals, clearly skippable
- *   6 First request  a real Request, or a labelled sample
+ *   4 Batteries      choose optional local context and efficiency tools
+ *   5 Team           pick roster theme / custom names, with a path to custom agents
+ *   6 Slack          optional approvals, clearly skippable
+ *   7 First request  a real Request, or a labelled sample
  *
  * The journey lives inside a single glass shell that floats over the ambient
  * base. A persistent, minimal numbered Stepper sits at the top (current / done /
@@ -849,46 +850,17 @@ export function OnboardingView({
   );
 
   const meta = STEP_META[stepKey];
-  const canReadSetupStatus = connected || loading || statusLoading;
-  let shellCopy = {
-    eyebrow: "First run",
-    title: "Set up Alfred",
-    lede: "A few short steps, about two minutes. No terminal, no API keys.",
-  };
-  if (status === null && !statusError && canReadSetupStatus) {
-    shellCopy = {
-      eyebrow: "Checking setup",
-      title: "Checking this Mac",
-      lede: "Reading the local runtime to pick the right setup path for you.",
-    };
-  } else if (installInitialized) {
-    shellCopy = {
-      eyebrow: "Existing setup",
-      title: "Review your setup",
-      lede: "Alfred is already installed on this Mac. Recheck tools, repos, team names, and Slack before you ship more work.",
-    };
-  }
 
   return (
-    <section className="alfred-onboarding" aria-label="Set up Alfred" onKeyDown={onKeyDown}>
+    <section
+      className="alfred-onboarding"
+      aria-labelledby="alfred-onboarding-title"
+      onKeyDown={onKeyDown}
+    >
+      <h1 id="alfred-onboarding-title" className="sr-only">
+        Set up Alfred
+      </h1>
       <div className="alfred-onboarding-shell alfred-glass">
-        <header className="alfred-onboarding-shell__head">
-          <div className="alfred-onboarding-shell__brand" aria-label="Alfred">
-            <span className="alfred-brand-mark size-9 shrink-0" aria-hidden="true">
-              <img
-                src="/brand/alfred-logo-transparent.png"
-                alt=""
-                className="alfred-brand-logo size-9 object-contain"
-              />
-            </span>
-            <div className="min-w-0">
-              <p className="alfred-onboarding-shell__eyebrow">{shellCopy.eyebrow}</p>
-              <h1 className="alfred-onboarding-shell__title">{shellCopy.title}</h1>
-              <p className="alfred-onboarding-shell__lede">{shellCopy.lede}</p>
-            </div>
-          </div>
-        </header>
-
         {mode === "chat" ? (
           // The conversational entry: Alfred drives setup one step at a time via
           // /api/onboarding/converse, executing each requested step through the

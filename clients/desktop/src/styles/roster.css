@@ -192,6 +192,12 @@
   gap: 0.35rem;
 }
 
+@media (max-width: 480px) {
+  .roster-theme-picker__trigger {
+    min-height: 36px;
+  }
+}
+
 /* Conversational surfaces: the theme builder's "Name your team" and onboarding's
    "Set it up by chatting". Both reuse the Ask surface's bubble treatment so every
    chat in the app reads the same, a bordered padded turn pushed to one side and
@@ -615,4 +621,3 @@
   font-size: 0.72rem;
   white-space: nowrap;
 }
-
