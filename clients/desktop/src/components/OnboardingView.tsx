@@ -223,6 +223,7 @@ export function OnboardingView({
   // chat is an alternative entry from Welcome; the person can drop back to
   // stepped at any point (and the engine-unavailable fallback does so too).
   const [mode, setMode] = useState<"stepped" | "chat">("stepped");
+  const [serverShortcutSelected, setServerShortcutSelected] = useState(false);
   // Keep real requests and disposable demo state separate so clearing a sample
   // cannot leave the final Inbox gate unlocked.
   const [requestDone, setRequestDone] = useState(false);
@@ -767,20 +768,26 @@ export function OnboardingView({
 
   const previousKey = ONBOARDING_STEP_ORDER[currentIndex - 1] ?? null;
   const nextKey = ONBOARDING_STEP_ORDER[currentIndex + 1] ?? null;
+  const welcomeRequiresRuntimeChoice = !connected && stepKey === "welcome";
   const canAdvance =
-    stepKey === "engine"
-      ? engineReady
-      : stepKey === "github"
-        ? githubConnected
-        : stepKey === "repos"
-          ? reposReady
-          : true;
+    welcomeRequiresRuntimeChoice
+      ? false
+      : stepKey === "engine"
+        ? engineReady
+        : stepKey === "github"
+          ? githubConnected
+          : stepKey === "repos"
+            ? reposReady
+            : true;
   const requiredSetupReady = status?.first_run?.ready === true;
   const firstJobComplete = requestDone || demoDone || (!demoCleared && Boolean(status?.demo.present));
 
   const goToStep = useCallback((key: OnboardingStepKey, options?: { manual?: boolean }) => {
     if (options?.manual) {
       manualSteps.current.add(key);
+    }
+    if (key !== "github") {
+      setServerShortcutSelected(false);
     }
     setNotice(null);
     setStepKey(key);
@@ -886,6 +893,7 @@ export function OnboardingView({
               steps={stepperItems}
               activeKey={stepKey}
               onSelect={(key) => goToStep(key, { manual: true })}
+              lockNavigation={welcomeRequiresRuntimeChoice}
             />
 
             {statusError ? (
@@ -919,13 +927,21 @@ export function OnboardingView({
                   connected={connected}
                   canRun={canRun}
                   nativeBusy={nativeBusy}
-                  onInstallCore={onInstallCore}
+                  onInstallCore={() => {
+                    setServerShortcutSelected(false);
+                    onInstallCore();
+                  }}
                   onGetStarted={() => {
+                    setServerShortcutSelected(false);
                     markStepComplete("welcome");
                     goToStep("engine");
                   }}
-                  onChatSetup={() => setMode("chat")}
+                  onChatSetup={() => {
+                    setServerShortcutSelected(false);
+                    setMode("chat");
+                  }}
                   onDevShortcut={() => {
+                    setServerShortcutSelected(true);
                     markStepComplete("welcome");
                     goToStep("github");
                   }}
@@ -957,6 +973,7 @@ export function OnboardingView({
                     nativeBusy={nativeBusy}
                     authFlow={githubAuthFlow}
                     statusLoading={statusLoading}
+                    showRuntimeControls={serverShortcutSelected}
                     onConnectServer={onConnectServer}
                     onStartRuntime={onStartRuntime}
                     onStartGithubAuth={startGithubAuthLogin}
@@ -1063,59 +1080,61 @@ export function OnboardingView({
               ) : null}
             </div>
 
-            <footer className="alfred-onboarding-shell__footer" aria-label="Onboarding navigation">
-              <Button
-                variant="outline"
-                size="sm"
-                type="button"
-                disabled={!previousKey || finishing}
-                onClick={() => {
-                  if (previousKey) goToStep(previousKey, { manual: true });
-                }}
-              >
-                <ArrowLeft size={15} aria-hidden="true" />
-                <span>Back</span>
-              </Button>
-              <span className="alfred-onboarding-shell__progress">
-                Step {currentIndex + 1} of {ONBOARDING_STEP_ORDER.length}
-              </span>
-              <div className="flex items-center gap-2">
-                {meta.optional && nextKey ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    type="button"
-                    disabled={finishing}
-                    onClick={() => skipStep(stepKey)}
-                  >
-                    <span>Skip</span>
-                  </Button>
-                ) : null}
-                {nextKey ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="btn-primary-glow"
-                    onClick={advance}
-                    disabled={!canAdvance || finishing}
-                  >
-                    <span>Continue</span>
-                    <ArrowRight size={15} aria-hidden="true" />
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="btn-primary-glow"
-                    onClick={() => void onFinish("home")}
-                    disabled={!requiredSetupReady || !firstJobComplete || finishing}
-                  >
-                    <span>{finishing ? "Opening Inbox" : "Go to Inbox"}</span>
-                    <ArrowRight size={15} aria-hidden="true" />
-                  </Button>
-                )}
-              </div>
-            </footer>
+            {!welcomeRequiresRuntimeChoice ? (
+              <footer className="alfred-onboarding-shell__footer" aria-label="Onboarding navigation">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  disabled={!previousKey || finishing}
+                  onClick={() => {
+                    if (previousKey) goToStep(previousKey, { manual: true });
+                  }}
+                >
+                  <ArrowLeft size={15} aria-hidden="true" />
+                  <span>Back</span>
+                </Button>
+                <span className="alfred-onboarding-shell__progress">
+                  Step {currentIndex + 1} of {ONBOARDING_STEP_ORDER.length}
+                </span>
+                <div className="flex items-center gap-2">
+                  {meta.optional && nextKey ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      type="button"
+                      disabled={finishing}
+                      onClick={() => skipStep(stepKey)}
+                    >
+                      <span>Skip</span>
+                    </Button>
+                  ) : null}
+                  {nextKey ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="btn-primary-glow"
+                      onClick={advance}
+                      disabled={!canAdvance || finishing}
+                    >
+                      <span>Continue</span>
+                      <ArrowRight size={15} aria-hidden="true" />
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="btn-primary-glow"
+                      onClick={() => void onFinish("home")}
+                      disabled={!requiredSetupReady || !firstJobComplete || finishing}
+                    >
+                      <span>{finishing ? "Opening Inbox" : "Go to Inbox"}</span>
+                      <ArrowRight size={15} aria-hidden="true" />
+                    </Button>
+                  )}
+                </div>
+              </footer>
+            ) : null}
           </>
         )}
       </div>

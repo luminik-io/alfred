@@ -219,6 +219,15 @@
   color: var(--foreground);
 }
 
+.alfred-stepper__node:disabled {
+  color: var(--muted-foreground);
+  cursor: default;
+}
+
+.alfred-stepper__node:disabled:hover {
+  color: var(--muted-foreground);
+}
+
 .alfred-stepper__node:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;

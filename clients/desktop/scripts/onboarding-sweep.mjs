@@ -135,6 +135,9 @@ async function applyTheme(page, theme) {
 async function gotoStep(page, label) {
   const re = new RegExp(`^${label}$`, "i");
   const btn = page.getByRole("button", { name: re }).first();
+  if (await btn.isDisabled()) {
+    await page.getByRole("button", { name: /^I have a server running$/i }).click();
+  }
   await btn.click({ timeout: 2000 });
   await page.waitForTimeout(250);
 }

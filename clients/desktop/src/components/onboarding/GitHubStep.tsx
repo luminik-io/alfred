@@ -1,5 +1,5 @@
 import { CheckCircle2, ExternalLink, KeyRound, Loader2, PlayCircle, RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { GithubAuthFlow } from "./types";
 import type { SetupStatus } from "../../types";
@@ -24,6 +24,7 @@ export function GitHubStep({
   nativeBusy,
   authFlow,
   statusLoading,
+  showRuntimeControls,
   onConnectServer,
   onStartRuntime,
   onStartGithubAuth,
@@ -37,15 +38,22 @@ export function GitHubStep({
   nativeBusy: string | null;
   authFlow: GithubAuthFlow;
   statusLoading: boolean;
+  showRuntimeControls: boolean;
   onConnectServer: (url: string) => void;
   onStartRuntime: () => void;
   onStartGithubAuth: () => void;
   onRecheck: () => void;
 }) {
   const [url, setUrl] = useState(baseUrl);
+  const runtimeDetailsRef = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
     setUrl(baseUrl);
   }, [baseUrl]);
+  useEffect(() => {
+    if (showRuntimeControls && runtimeDetailsRef.current) {
+      runtimeDetailsRef.current.open = true;
+    }
+  }, [showRuntimeControls]);
 
   const signedIn = Boolean(github?.ok);
   const loginBusy =
@@ -118,7 +126,7 @@ export function GitHubStep({
 
       <Card size="sm" className="rounded-lg border-border/70 bg-background/55 shadow-none">
         <CardContent className="px-3">
-          <details className="group grid gap-2">
+          <details ref={runtimeDetailsRef} className="group grid gap-2">
             <summary className="cursor-pointer list-none">
               <span className="grid gap-0.5">
                 <strong className="text-sm font-medium">Advanced: terminal fallback</strong>

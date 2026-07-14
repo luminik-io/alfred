@@ -359,10 +359,22 @@ describe("OnboardingView eight-step takeover", () => {
     renderOnboarding({ connected: false, canRun: true, onInstallCore });
     const user = userEvent.setup();
 
+    expect(await screen.findByRole("button", { name: /^tools$/i })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /continue setup/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^continue$/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/onboarding navigation/i)).not.toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: /install alfred/i }));
 
     expect(onInstallCore).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: /continue setup/i })).toBeInTheDocument();
+  });
+
+  it("requires a server path when native installation is unavailable", async () => {
+    renderOnboarding({ connected: false, canRun: false });
+
+    expect(await screen.findByRole("button", { name: /^tools$/i })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /get started/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /install alfred/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /i have a server running/i })).toBeInTheDocument();
   });
 
   it("shows detected existing install inventory on the welcome step", async () => {
@@ -564,6 +576,70 @@ describe("OnboardingView eight-step takeover", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /i have a server running/i }));
     expect(screen.getAllByText(/connect github/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /^tools$/i })).not.toBeDisabled();
+    expect(screen.getByLabelText(/local server url/i)).toBeVisible();
+  });
+
+  it("clears the server shortcut after footer navigation leaves GitHub", async () => {
+    const props: React.ComponentProps<typeof OnboardingView> = {
+      baseUrl: "http://127.0.0.1:7010",
+      loading: false,
+      connected: false,
+      canRun: true,
+      nativeBusy: null,
+      onConnectServer: vi.fn(),
+      onInstallCore: vi.fn(),
+      onStartRuntime: vi.fn(),
+      onRunLocalAction: vi.fn(async () => null),
+      onFinish: vi.fn(),
+      onRefreshBoard: vi.fn(async () => undefined),
+      ...defaultRosterProps(),
+    };
+    const view = render(<OnboardingView {...props} />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /i have a server running/i }));
+    expect(screen.getByLabelText(/local server url/i)).toBeVisible();
+    // Mark this visit as manual so readiness does not auto-advance before the
+    // footer path under test can run.
+    await user.click(screen.getByRole("button", { name: /^github$/i }));
+    view.rerender(<OnboardingView {...props} connected />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /^continue$/i })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: /^continue$/i }));
+    expect(screen.getByRole("textbox", { name: /search repositories/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^back$/i }));
+    expect(screen.getByLabelText(/local server url/i)).not.toBeVisible();
+  });
+
+  it("clears the server shortcut when the user returns to native installation", async () => {
+    const onInstallCore = vi.fn();
+    const props: React.ComponentProps<typeof OnboardingView> = {
+      baseUrl: "http://127.0.0.1:7010",
+      loading: false,
+      connected: false,
+      canRun: true,
+      nativeBusy: null,
+      onConnectServer: vi.fn(),
+      onInstallCore,
+      onStartRuntime: vi.fn(),
+      onRunLocalAction: vi.fn(async () => null),
+      onFinish: vi.fn(),
+      onRefreshBoard: vi.fn(async () => undefined),
+      ...defaultRosterProps(),
+    };
+    const view = render(<OnboardingView {...props} />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /i have a server running/i }));
+    expect(screen.getByLabelText(/local server url/i)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: /^welcome$/i }));
+    await user.click(screen.getByRole("button", { name: /install alfred/i }));
+    expect(onInstallCore).toHaveBeenCalledTimes(1);
+
+    view.rerender(<OnboardingView {...props} connected />);
+    await user.click(screen.getByRole("button", { name: /^github$/i }));
+    expect(screen.getByLabelText(/local server url/i)).not.toBeVisible();
   });
 
   it("detects CLIs via a native auth probe on the tools step", async () => {
