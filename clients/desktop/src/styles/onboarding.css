@@ -133,45 +133,6 @@
     0 24px 64px var(--glass-shadow);
 }
 
-.alfred-onboarding-shell__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.alfred-onboarding-shell__brand {
-  display: flex;
-  min-width: 0;
-  align-items: flex-start;
-  gap: 0.8rem;
-}
-
-.alfred-onboarding-shell__eyebrow {
-  margin: 0 0 0.35rem;
-  font-size: 0.66rem;
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--muted-foreground);
-}
-
-.alfred-onboarding-shell__title {
-  margin: 0;
-  font-family: var(--font-heading);
-  font-size: 1.4rem;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  color: var(--foreground);
-}
-
-.alfred-onboarding-shell__lede {
-  margin: 0.3rem 0 0;
-  max-width: 36rem;
-  font-size: 0.875rem;
-  color: var(--muted-foreground);
-}
-
 /* The persistent progress indicator: numbered nodes joined by thin connectors,
  * with current / done / upcoming states. The one chrome element of the stepper,
  * deliberately quiet. */
@@ -466,11 +427,6 @@
     gap: 1.25rem;
   }
 
-  .alfred-onboarding-shell__head {
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
 }
 
 /* Below the wide-desktop breakpoint only the active step keeps its label; the
@@ -496,6 +452,10 @@
   .alfred-stepper__node {
     min-height: 36px;
     padding-inline: 0.2rem;
+  }
+
+  .alfred-stepper__step.is-active .alfred-stepper__node {
+    min-width: 36px;
   }
 
   /* A collapsed (dot-only) node still needs a 36px square hit area. */
