@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 describe("test browser isolation", () => {
   it("can leave browser-like globals dirty", () => {
     window.localStorage.setItem("alfred-dirty", "yes");
-    window.history.replaceState(null, "", "/?tab=compose#ask");
+    window.history.replaceState(null, "", "/?tab=ask#ask");
     window.__TAURI_INTERNALS__ = {};
     document.title = "dirty";
     document.documentElement.dataset.theme = "dark";

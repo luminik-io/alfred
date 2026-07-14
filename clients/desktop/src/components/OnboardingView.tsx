@@ -6,7 +6,6 @@ import {
   ListChecks,
   MessageCircle,
   Plug,
-  Settings2,
   Sparkles,
   TerminalSquare,
   Users,
@@ -18,14 +17,13 @@ import { errorDetail, supportsMutations } from "../api/client";
 import { loadSetupStatus } from "../api/setup";
 import { pollGithubAuthStatus } from "../lib/githubAuth";
 import { type CustomRosterNames, type RosterThemeId } from "../lib/agentThemes";
-import type { NativeActionRequest, TabKey } from "../lib/uiTypes";
+import type { NativeActionRequest } from "../lib/uiTypes";
 import type { NativeCommandResult, SetupRepoCheckout, SetupStatus } from "../types";
 import { BatteryPickerStep } from "./onboarding/BatteryPickerStep";
 import { EngineStep } from "./onboarding/EngineStep";
 import { OnboardingConversePanel } from "./onboarding/OnboardingConversePanel";
 import { FirstRequestStep } from "./onboarding/FirstRequestStep";
 import { GitHubStep } from "./onboarding/GitHubStep";
-import { OnboardingRail } from "./onboarding/OnboardingRail";
 import { ReposStep, type RepoSaveOutcome } from "./onboarding/ReposStep";
 import { RosterThemeStep } from "./onboarding/RosterThemeStep";
 import { SlackStep } from "./onboarding/SlackStep";
@@ -46,8 +44,8 @@ import { cn } from "@/lib/utils";
 /**
  * The setup takeover (DESIGN_SPEC section 7), built as a clean stepper. It
  * handles both true first-run setup and returning installs that need a quick
- * review. A seven-step journey can be completed without a terminal, ending on a
- * populated Home via a real first request or a clearly-labelled demo:
+ * review. An eight-step journey can be completed without a terminal, ending on a
+ * populated Inbox via a real first request or a clearly-labelled demo:
  *
  *   0 Welcome        mental model + two doors (Get started / I have a server)
  *   1 Tools          detect Claude / Codex (no API keys)
@@ -71,15 +69,15 @@ import { cn } from "@/lib/utils";
  * attaches; the browser preview cannot, so it degrades to a clear read-only note
  * with copy-paste fallback. The read steps work either way.
  *
- * "Advanced setup" (onOpenConnection) hands off to SetupView for the non-takeover
- * connection + diagnostics surface, which onboarding and Settings share.
+ * Runtime repair and server connection stay inside the takeover. The app shell
+ * appears only after setup is complete.
  */
 
 type StepMeta = {
   key: OnboardingStepKey;
   index: number;
   title: string;
-  railTitle: string;
+  stepperTitle: string;
   blurb: string;
   icon: LucideIcon;
   optional: boolean;
@@ -99,7 +97,7 @@ const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
   welcome: {
     key: "welcome",
     title: "Welcome to Alfred",
-    railTitle: "Welcome",
+    stepperTitle: "Welcome",
     blurb: "A local fleet that ships pull requests while you stay in control.",
     icon: Sparkles,
     optional: false,
@@ -107,7 +105,7 @@ const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
   engine: {
     key: "engine",
     title: "Let's find your coding tools.",
-    railTitle: "Tools",
+    stepperTitle: "Tools",
     blurb: "Alfred checks for Claude Code and Codex on this Mac. No keys, no config.",
     icon: TerminalSquare,
     optional: false,
@@ -115,7 +113,7 @@ const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
   github: {
     key: "github",
     title: "Connect GitHub.",
-    railTitle: "GitHub",
+    stepperTitle: "GitHub",
     blurb: "Alfred reuses your existing GitHub sign-in. It only touches the repos you pick next.",
     icon: GitPullRequest,
     optional: false,
@@ -123,7 +121,7 @@ const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
   repos: {
     key: "repos",
     title: "Where should Alfred work?",
-    railTitle: "Repositories",
+    stepperTitle: "Repositories",
     blurb: "Pick the projects Alfred may open pull requests in. You can change this anytime.",
     icon: Plug,
     optional: false,
@@ -131,7 +129,7 @@ const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
   batteries: {
     key: "batteries",
     title: "Add batteries?",
-    railTitle: "Batteries",
+    stepperTitle: "Batteries",
     blurb: "Optional local enhancements: better memory, more token savings, a live code graph. Off by default.",
     icon: BatteryCharging,
     optional: true,
@@ -139,7 +137,7 @@ const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
   team: {
     key: "team",
     title: "Name your team.",
-    railTitle: "Team",
+    stepperTitle: "Team",
     blurb: "Same senior-engineering roles, your names. Purely cosmetic.",
     icon: Users,
     optional: false,
@@ -147,7 +145,7 @@ const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
   slack: {
     key: "slack",
     title: "Want approvals in Slack?",
-    railTitle: "Slack",
+    stepperTitle: "Slack",
     blurb: "Optional. Get questions and approve work from Slack. Skip it and everything happens here.",
     icon: MessageCircle,
     optional: true,
@@ -155,7 +153,7 @@ const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
   request: {
     key: "request",
     title: "Give Alfred its first job.",
-    railTitle: "First request",
+    stepperTitle: "First request",
     blurb: "Type a real task, or watch a sample first.",
     icon: ListChecks,
     optional: false,
@@ -171,6 +169,7 @@ export function OnboardingView({
   rosterTheme,
   customNames,
   rosterSaveError,
+  finishing = false,
   onConnectServer,
   onInstallCore,
   onStartRuntime,
@@ -178,8 +177,7 @@ export function OnboardingView({
   onRosterThemeChange,
   onEditCustomTheme,
   onSaveCustomNames,
-  onOpenConnection,
-  onSwitch,
+  onFinish,
   onRefreshBoard,
 }: {
   baseUrl: string;
@@ -191,6 +189,7 @@ export function OnboardingView({
   rosterTheme: RosterThemeId;
   customNames: CustomRosterNames;
   rosterSaveError: string | null;
+  finishing?: boolean;
   onConnectServer: (url: string) => void;
   onInstallCore: () => void;
   onStartRuntime: () => void;
@@ -203,10 +202,8 @@ export function OnboardingView({
    * reuses it so both paths write the roster identically.
    */
   onSaveCustomNames: (next: CustomRosterNames) => Promise<void>;
-  /** Jump to the full connection + diagnostics surface (the advanced handoff). */
-  onOpenConnection: () => void;
-  /** Navigate to another primary surface (e.g. Inbox, Ask) after an action. */
-  onSwitch?: (tab: TabKey) => void;
+  /** Enter the normal app shell after setup, at the requested first surface. */
+  onFinish: (destination: "home" | "compose") => void | Promise<boolean>;
   onRefreshBoard?: (options?: { demo?: boolean }) => Promise<void> | void;
 }) {
   // The mutating steps (repo save, Slack approver add) are token-gated HTTP
@@ -235,9 +232,9 @@ export function OnboardingView({
   const [skipped, setSkipped] = useState<Set<OnboardingStepKey>>(new Set());
   const [batteriesTouched, setBatteriesTouched] = useState(false);
   // True once the user added a Slack approver, so the optional Slack step reads
-  // as done in the rail (the server exposes no approver flag on SetupStatus).
+  // as done in the stepper (the server exposes no approver flag on SetupStatus).
   const [slackTouched, setSlackTouched] = useState(false);
-  // Selecting a rail destination records nothing; completing or skipping that
+  // Selecting a stepper destination records nothing; completing or skipping that
   // step records exactly that step. This keeps progress honest while allowing
   // the operator to inspect the flow in any order.
   const [completedSteps, setCompletedSteps] = useState<Set<OnboardingStepKey>>(new Set());
@@ -256,7 +253,7 @@ export function OnboardingView({
   // The step the auto-advance effect last moved past, so a detected gh/engine
   // only auto-advances once and never fights a manual Back.
   const autoAdvancedFrom = useRef<Set<OnboardingStepKey>>(new Set());
-  // Steps the user opened deliberately (rail click or Back). Auto-advance is
+  // Steps the user opened deliberately (stepper click or Back). Auto-advance is
   // suppressed for these so revisiting a satisfied step to read it never yanks
   // the user forward; only the natural forward flow auto-advances on detection.
   const manualSteps = useRef<Set<OnboardingStepKey>>(new Set());
@@ -671,7 +668,7 @@ export function OnboardingView({
   const currentIndex = ONBOARDING_STEP_ORDER.indexOf(stepKey);
 
   // An existing local runtime was detected on this Mac. When true, the setup
-  // inventory already proves several steps are in place, so the rail must not
+  // inventory already proves several steps are in place, so the stepper must not
   // contradict it by reporting them as not-done just because the user has not
   // re-walked the wizard.
   const installInitialized = status !== null && Boolean(status.install?.initialized);
@@ -760,7 +757,7 @@ export function OnboardingView({
     () =>
       steps.map((step) => ({
         key: step.key,
-        label: step.railTitle,
+        label: step.stepperTitle,
         state: progressFor(step.key),
         optional: step.optional,
       })),
@@ -872,36 +869,24 @@ export function OnboardingView({
     };
   }
 
-  const completedCount = stepperItems.filter((s) => s.state === "done").length;
-
   return (
     <section className="alfred-onboarding" aria-label="Set up Alfred" onKeyDown={onKeyDown}>
-      {/* Left rail: brand + the value promise + trust + a spend reassurance. It
-          fills the left of the frame so the takeover reads as one composed
-          product intro, not a card floating in a void. Collapses above the main
-          column at narrow widths. */}
-      <OnboardingRail
-        completedCount={completedCount}
-        totalSteps={ONBOARDING_STEP_ORDER.length}
-      />
-
       <div className="alfred-onboarding-shell alfred-glass">
         <header className="alfred-onboarding-shell__head">
-          <div className="min-w-0">
-            <p className="alfred-onboarding-shell__eyebrow">{shellCopy.eyebrow}</p>
-            <h1 className="alfred-onboarding-shell__title">{shellCopy.title}</h1>
-            <p className="alfred-onboarding-shell__lede">{shellCopy.lede}</p>
+          <div className="alfred-onboarding-shell__brand" aria-label="Alfred">
+            <span className="alfred-brand-mark size-9 shrink-0" aria-hidden="true">
+              <img
+                src="/brand/alfred-logo-transparent.png"
+                alt=""
+                className="alfred-brand-logo size-9 object-contain"
+              />
+            </span>
+            <div className="min-w-0">
+              <p className="alfred-onboarding-shell__eyebrow">{shellCopy.eyebrow}</p>
+              <h1 className="alfred-onboarding-shell__title">{shellCopy.title}</h1>
+              <p className="alfred-onboarding-shell__lede">{shellCopy.lede}</p>
+            </div>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            type="button"
-            onClick={onOpenConnection}
-            className="alfred-onboarding-shell__advanced"
-          >
-            <Settings2 size={15} aria-hidden="true" />
-            <span>Advanced setup</span>
-          </Button>
         </header>
 
         {mode === "chat" ? (
@@ -925,233 +910,240 @@ export function OnboardingView({
           </div>
         ) : (
           <>
-        <Stepper
-          steps={stepperItems}
-          activeKey={stepKey}
-          onSelect={(key) => goToStep(key, { manual: true })}
-        />
-
-        {statusError ? (
-          <Card className="rounded-lg border-destructive/30 bg-destructive/10 text-destructive shadow-none">
-            <CardContent className="px-4 text-sm">
-              {statusError} The steps below still show their manual fallback.
-            </CardContent>
-          </Card>
-        ) : null}
-        {notice ? (
-          <Card
-            className={cn(
-              "rounded-lg shadow-none",
-              notice.tone === "ok"
-                ? "border-primary/25 bg-primary/10 text-primary"
-                : "border-destructive/25 bg-destructive/10 text-destructive",
-            )}
-          >
-            <CardContent className="px-4 text-sm">{notice.message}</CardContent>
-          </Card>
-        ) : null}
-
-        <div className="alfred-onboarding-shell__panel motion-fade" key={stepKey}>
-          {stepKey === "welcome" ? (
-            // Welcome is the hero screen, not a labelled step: it skips the
-            // StepFrame icon/title/blurb so the value line is said once here, not
-            // echoed by a step header above it.
-            <WelcomeStep
-              install={status?.install ?? null}
-              queue={status?.queue ?? null}
-              connected={connected}
-              canRun={canRun}
-              nativeBusy={nativeBusy}
-              onInstallCore={onInstallCore}
-              onGetStarted={() => {
-                markStepComplete("welcome");
-                goToStep("engine");
-              }}
-              onChatSetup={() => setMode("chat")}
-              onDevShortcut={() => {
-                markStepComplete("welcome");
-                goToStep("github");
-              }}
+            <Stepper
+              steps={stepperItems}
+              activeKey={stepKey}
+              onSelect={(key) => goToStep(key, { manual: true })}
             />
-          ) : null}
 
-          {stepKey === "engine" ? (
-            <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb}>
-              <EngineStep
-                status={status}
-                engineReady={engineReady}
-                canRun={canRun}
-                nativeBusy={nativeBusy}
-                statusLoading={statusLoading}
-                onRunLocalAction={onRunLocalAction}
-                onRecheck={() => void refreshStatus()}
-              />
-            </StepFrame>
-          ) : null}
-
-          {stepKey === "github" ? (
-            <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb}>
-              <GitHubStep
-                baseUrl={baseUrl}
-                loading={loading}
-                connected={connected}
-                github={status?.github ?? null}
-                canRun={canRun}
-                nativeBusy={nativeBusy}
-                authFlow={githubAuthFlow}
-                statusLoading={statusLoading}
-                onConnectServer={onConnectServer}
-                onStartRuntime={onStartRuntime}
-                onStartGithubAuth={startGithubAuthLogin}
-                onRecheck={() => void refreshStatus()}
-              />
-            </StepFrame>
-          ) : null}
-
-          {stepKey === "repos" ? (
-            <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb}>
-              <ReposStep
-                baseUrl={baseUrl}
-                canMutate={canMutate}
-                canRun={canRun}
-                githubConnected={githubConnected}
-                selectedCount={status?.repos.count ?? 0}
-                onSaved={async (repos, repoCheckouts) => {
-                  return indexSelectedRepos(repos, repoCheckouts);
-                }}
-                setNotice={setNotice}
-              />
-            </StepFrame>
-          ) : null}
-
-          {stepKey === "batteries" ? (
-            <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb} accentLabel="Optional">
-              <BatteryPickerStep
-                baseUrl={baseUrl}
-                canMutate={canMutate}
-                canRun={canRun}
-                connected={connected}
-              onRunLocalAction={onRunLocalAction}
-              onSaved={async () => {
-                setBatteriesTouched(true);
-                markStepComplete("batteries");
-                await refreshStatus();
-              }}
-                setNotice={setNotice}
-              />
-            </StepFrame>
-          ) : null}
-
-          {stepKey === "team" ? (
-            <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb}>
-              <RosterThemeStep
-                customNames={customNames}
-                rosterTheme={rosterTheme}
-                saveError={rosterSaveError}
-                onChange={onRosterThemeChange}
-                onEditCustom={onEditCustomTheme}
-                onOpenCustomAgents={onSwitch ? () => onSwitch("fleet") : undefined}
-              />
-            </StepFrame>
-          ) : null}
-
-          {stepKey === "slack" ? (
-            <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb} accentLabel="Optional">
-              <SlackStep
-                baseUrl={baseUrl}
-                connected={connected}
-                canMutate={canMutate}
-                onSkip={() => skipStep("slack")}
-                onApproverAdded={() => {
-                  setSlackTouched(true);
-                  markStepComplete("slack");
-                }}
-                setNotice={setNotice}
-              />
-            </StepFrame>
-          ) : null}
-
-          {stepKey === "request" ? (
-            <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb} accentLabel="The payoff">
-              <FirstRequestStep
-                baseUrl={baseUrl}
-                canMutate={canMutate}
-                setupReady={requiredSetupReady}
-                demoPresent={!demoCleared && Boolean(status?.demo.present)}
-                setNotice={setNotice}
-                onSwitch={onSwitch}
-                onComplete={(kind) => {
-                  if (kind === "request") setRequestDone(true);
-                  if (kind === "demo") setDemoDone(true);
-                  markStepComplete("request");
-                }}
-                onSeedDemo={async () => {
-                  setDemoCleared(false);
-                  await Promise.allSettled([
-                    Promise.resolve().then(() => onRefreshBoard?.({ demo: true })),
-                    refreshStatus(),
-                  ]);
-                }}
-                onClearDemo={async () => {
-                  setDemoCleared(true);
-                  setDemoDone(false);
-                  await Promise.allSettled([
-                    Promise.resolve().then(() => onRefreshBoard?.({ demo: false })),
-                    refreshStatus(),
-                  ]);
-                }}
-              />
-            </StepFrame>
-          ) : null}
-        </div>
-
-        <footer className="alfred-onboarding-shell__footer" aria-label="Onboarding navigation">
-          <Button
-            variant="outline"
-            size="sm"
-            type="button"
-            disabled={!previousKey}
-            onClick={() => {
-              if (previousKey) goToStep(previousKey, { manual: true });
-            }}
-          >
-            <ArrowLeft size={15} aria-hidden="true" />
-            <span>Back</span>
-          </Button>
-          <span className="alfred-onboarding-shell__progress">
-            Step {currentIndex + 1} of {ONBOARDING_STEP_ORDER.length}
-          </span>
-          <div className="flex items-center gap-2">
-            {meta.optional && nextKey ? (
-              <Button variant="ghost" size="sm" type="button" onClick={() => skipStep(stepKey)}>
-                <span>Skip</span>
-              </Button>
+            {statusError ? (
+              <Card className="rounded-lg border-destructive/30 bg-destructive/10 text-destructive shadow-none">
+                <CardContent className="px-4 text-sm">
+                  {statusError} The steps below still show their manual fallback.
+                </CardContent>
+              </Card>
             ) : null}
-            {nextKey ? (
-              <Button
-                type="button"
-                size="sm"
-                className="btn-primary-glow"
-                onClick={advance}
-                disabled={!canAdvance}
+            {notice ? (
+              <Card
+                className={cn(
+                  "rounded-lg shadow-none",
+                  notice.tone === "ok"
+                    ? "border-primary/25 bg-primary/10 text-primary"
+                    : "border-destructive/25 bg-destructive/10 text-destructive",
+                )}
               >
-                <span>Continue</span>
-                <ArrowRight size={15} aria-hidden="true" />
-              </Button>
-            ) : (
+                <CardContent className="px-4 text-sm">{notice.message}</CardContent>
+              </Card>
+            ) : null}
+
+            <div className="alfred-onboarding-shell__panel motion-fade" key={stepKey}>
+              {stepKey === "welcome" ? (
+                // Welcome is the hero screen, not a labelled step: it skips the
+                // StepFrame icon/title/blurb so the value line is said once here, not
+                // echoed by a step header above it.
+                <WelcomeStep
+                  install={status?.install ?? null}
+                  queue={status?.queue ?? null}
+                  connected={connected}
+                  canRun={canRun}
+                  nativeBusy={nativeBusy}
+                  onInstallCore={onInstallCore}
+                  onGetStarted={() => {
+                    markStepComplete("welcome");
+                    goToStep("engine");
+                  }}
+                  onChatSetup={() => setMode("chat")}
+                  onDevShortcut={() => {
+                    markStepComplete("welcome");
+                    goToStep("github");
+                  }}
+                />
+              ) : null}
+
+              {stepKey === "engine" ? (
+                <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb}>
+                  <EngineStep
+                    status={status}
+                    engineReady={engineReady}
+                    canRun={canRun}
+                    nativeBusy={nativeBusy}
+                    statusLoading={statusLoading}
+                    onRunLocalAction={onRunLocalAction}
+                    onRecheck={() => void refreshStatus()}
+                  />
+                </StepFrame>
+              ) : null}
+
+              {stepKey === "github" ? (
+                <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb}>
+                  <GitHubStep
+                    baseUrl={baseUrl}
+                    loading={loading}
+                    connected={connected}
+                    github={status?.github ?? null}
+                    canRun={canRun}
+                    nativeBusy={nativeBusy}
+                    authFlow={githubAuthFlow}
+                    statusLoading={statusLoading}
+                    onConnectServer={onConnectServer}
+                    onStartRuntime={onStartRuntime}
+                    onStartGithubAuth={startGithubAuthLogin}
+                    onRecheck={() => void refreshStatus()}
+                  />
+                </StepFrame>
+              ) : null}
+
+              {stepKey === "repos" ? (
+                <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb}>
+                  <ReposStep
+                    baseUrl={baseUrl}
+                    canMutate={canMutate}
+                    canRun={canRun}
+                    githubConnected={githubConnected}
+                    selectedCount={status?.repos.count ?? 0}
+                    onSaved={async (repos, repoCheckouts) => {
+                      return indexSelectedRepos(repos, repoCheckouts);
+                    }}
+                    setNotice={setNotice}
+                  />
+                </StepFrame>
+              ) : null}
+
+              {stepKey === "batteries" ? (
+                <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb} accentLabel="Optional">
+                  <BatteryPickerStep
+                    baseUrl={baseUrl}
+                    canMutate={canMutate}
+                    canRun={canRun}
+                    connected={connected}
+                    onRunLocalAction={onRunLocalAction}
+                    onSaved={async () => {
+                      setBatteriesTouched(true);
+                      markStepComplete("batteries");
+                      await refreshStatus();
+                    }}
+                    setNotice={setNotice}
+                  />
+                </StepFrame>
+              ) : null}
+
+              {stepKey === "team" ? (
+                <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb}>
+                  <RosterThemeStep
+                    customNames={customNames}
+                    rosterTheme={rosterTheme}
+                    saveError={rosterSaveError}
+                    onChange={onRosterThemeChange}
+                    onEditCustom={onEditCustomTheme}
+                  />
+                </StepFrame>
+              ) : null}
+
+              {stepKey === "slack" ? (
+                <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb} accentLabel="Optional">
+                  <SlackStep
+                    baseUrl={baseUrl}
+                    connected={connected}
+                    canMutate={canMutate}
+                    onSkip={() => skipStep("slack")}
+                    onApproverAdded={() => {
+                      setSlackTouched(true);
+                      markStepComplete("slack");
+                    }}
+                    setNotice={setNotice}
+                  />
+                </StepFrame>
+              ) : null}
+
+              {stepKey === "request" ? (
+                <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb} accentLabel="The payoff">
+                  <FirstRequestStep
+                    baseUrl={baseUrl}
+                    canMutate={canMutate}
+                    finishing={finishing}
+                    setupReady={requiredSetupReady}
+                    demoPresent={!demoCleared && Boolean(status?.demo.present)}
+                    setNotice={setNotice}
+                    onOpenCompose={() => onFinish("compose")}
+                    onOpenInbox={() => onFinish("home")}
+                    onComplete={(kind) => {
+                      if (kind === "request") setRequestDone(true);
+                      if (kind === "demo") setDemoDone(true);
+                      markStepComplete("request");
+                    }}
+                    onSeedDemo={async () => {
+                      setDemoCleared(false);
+                      await Promise.allSettled([
+                        Promise.resolve().then(() => onRefreshBoard?.({ demo: true })),
+                        refreshStatus(),
+                      ]);
+                    }}
+                    onClearDemo={async () => {
+                      setDemoCleared(true);
+                      setDemoDone(false);
+                      await Promise.allSettled([
+                        Promise.resolve().then(() => onRefreshBoard?.({ demo: false })),
+                        refreshStatus(),
+                      ]);
+                    }}
+                  />
+                </StepFrame>
+              ) : null}
+            </div>
+
+            <footer className="alfred-onboarding-shell__footer" aria-label="Onboarding navigation">
               <Button
-                type="button"
+                variant="outline"
                 size="sm"
-                className="btn-primary-glow"
-                onClick={() => onSwitch?.("home")}
-                disabled={!requiredSetupReady || !firstJobComplete}
+                type="button"
+                disabled={!previousKey || finishing}
+                onClick={() => {
+                  if (previousKey) goToStep(previousKey, { manual: true });
+                }}
               >
-                <span>Go to Inbox</span>
-                <ArrowRight size={15} aria-hidden="true" />
+                <ArrowLeft size={15} aria-hidden="true" />
+                <span>Back</span>
               </Button>
-            )}
-          </div>
-        </footer>
+              <span className="alfred-onboarding-shell__progress">
+                Step {currentIndex + 1} of {ONBOARDING_STEP_ORDER.length}
+              </span>
+              <div className="flex items-center gap-2">
+                {meta.optional && nextKey ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    type="button"
+                    disabled={finishing}
+                    onClick={() => skipStep(stepKey)}
+                  >
+                    <span>Skip</span>
+                  </Button>
+                ) : null}
+                {nextKey ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="btn-primary-glow"
+                    onClick={advance}
+                    disabled={!canAdvance || finishing}
+                  >
+                    <span>Continue</span>
+                    <ArrowRight size={15} aria-hidden="true" />
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="btn-primary-glow"
+                    onClick={() => void onFinish("home")}
+                    disabled={!requiredSetupReady || !firstJobComplete || finishing}
+                  >
+                    <span>{finishing ? "Opening Inbox" : "Go to Inbox"}</span>
+                    <ArrowRight size={15} aria-hidden="true" />
+                  </Button>
+                )}
+              </div>
+            </footer>
           </>
         )}
       </div>

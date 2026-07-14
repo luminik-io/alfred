@@ -9,16 +9,15 @@ const BASE = process.argv[2] || "http://localhost:5310";
 const OUT = process.argv[3] || ".design-review/overhaul";
 const PHASE = process.argv[4] || "before";
 
-// route search string -> friendly name. useDesktopRoute reads ?tab=&sub=.
+// Canonical route search string -> friendly name.
 const SCREENS = [
-  { name: "inbox", search: "?tab=home" },
-  { name: "ask", search: "?tab=compose" },
-  { name: "work", search: "?tab=pipeline" },
-  { name: "agents-roster", search: "?tab=fleet&subtab=fleet" },
-  { name: "agents-activity", search: "?tab=fleet&subtab=logs" },
-  { name: "agents-learnings", search: "?tab=fleet&subtab=lessons" },
-  { name: "setup", search: "?tab=settings&subtab=advanced" },
-  { name: "onboarding", search: "?tab=settings&subtab=guided" },
+  { name: "inbox", search: "?tab=inbox" },
+  { name: "ask", search: "?tab=ask" },
+  { name: "work", search: "?tab=work" },
+  { name: "agents-roster", search: "?tab=agents" },
+  { name: "agents-activity", search: "?tab=agents&subtab=activity" },
+  { name: "agents-learnings", search: "?tab=agents&subtab=lessons" },
+  { name: "settings", search: "?tab=settings" },
 ];
 
 const VIEWPORTS = [

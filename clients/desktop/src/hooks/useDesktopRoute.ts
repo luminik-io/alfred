@@ -1,38 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { OperatorKey, SetupMode, TabKey } from "../lib/uiTypes";
+import type { OperatorKey, TabKey } from "../lib/uiTypes";
 
 export type DesktopRoute = {
   tab: TabKey;
   fleetTab: OperatorKey;
-  setupMode: SetupMode;
 };
 
 const DEFAULT_ROUTE: DesktopRoute = {
   tab: "home",
   fleetTab: "fleet",
-  setupMode: "guided",
 };
 
-const TAB_ALIASES: Record<string, DesktopRoute> = {
-  activity: { ...DEFAULT_ROUTE, tab: "fleet", fleetTab: "logs" },
+const TAB_ROUTES: Record<string, DesktopRoute> = {
   agents: { ...DEFAULT_ROUTE, tab: "fleet" },
   ask: { ...DEFAULT_ROUTE, tab: "compose" },
-  board: { ...DEFAULT_ROUTE, tab: "pipeline" },
-  compose: { ...DEFAULT_ROUTE, tab: "compose" },
-  fleet: { ...DEFAULT_ROUTE, tab: "fleet" },
-  home: { ...DEFAULT_ROUTE, tab: "home" },
   inbox: { ...DEFAULT_ROUTE, tab: "home" },
-  lessons: { ...DEFAULT_ROUTE, tab: "fleet", fleetTab: "lessons" },
-  logs: { ...DEFAULT_ROUTE, tab: "fleet", fleetTab: "logs" },
-  memory: { ...DEFAULT_ROUTE, tab: "fleet", fleetTab: "lessons" },
-  operator: { ...DEFAULT_ROUTE, tab: "fleet" },
-  pipeline: { ...DEFAULT_ROUTE, tab: "pipeline" },
-  plans: { ...DEFAULT_ROUTE, tab: "pipeline" },
-  review: { ...DEFAULT_ROUTE, tab: "home" },
-  roster: { ...DEFAULT_ROUTE, tab: "fleet" },
   settings: { ...DEFAULT_ROUTE, tab: "settings" },
-  setup: { ...DEFAULT_ROUTE, tab: "settings" },
   work: { ...DEFAULT_ROUTE, tab: "pipeline" },
 };
 
@@ -47,10 +31,6 @@ function fleetTabFromToken(value: string | null | undefined): OperatorKey {
   return "fleet";
 }
 
-function setupModeFromToken(value: string | null | undefined): SetupMode {
-  return normalizeToken(value) === "advanced" ? "advanced" : "guided";
-}
-
 export function parseDesktopRoute(
   locationLike: Pick<Location, "hash" | "search"> | null | undefined,
 ): DesktopRoute {
@@ -59,15 +39,11 @@ export function parseDesktopRoute(
   const rawTab =
     normalizeToken(params.get("tab")) ||
     normalizeToken((locationLike.hash || "").replace(/^#/, ""));
-  const base = TAB_ALIASES[rawTab] || DEFAULT_ROUTE;
+  const base = TAB_ROUTES[rawTab] || DEFAULT_ROUTE;
   const subtab = params.get("subtab");
   return {
     tab: base.tab,
     fleetTab: base.tab === "fleet" ? fleetTabFromToken(subtab || base.fleetTab) : base.fleetTab,
-    setupMode:
-      base.tab === "settings"
-        ? setupModeFromToken(subtab || base.setupMode)
-        : base.setupMode,
   };
 }
 
@@ -98,8 +74,7 @@ function applyRouteParams(params: URLSearchParams, route: DesktopRoute): void {
     if (route.fleetTab === "lessons") params.set("subtab", "lessons");
   }
   if (route.tab === "settings") {
-    params.set("tab", "setup");
-    if (route.setupMode === "advanced") params.set("subtab", "advanced");
+    params.set("tab", "settings");
   }
 }
 
@@ -146,7 +121,6 @@ export function useDesktopRoute() {
     setRoute((current) => {
       if (next === "logs") return { ...current, tab: "fleet", fleetTab: "logs" };
       if (next === "lessons") return { ...current, tab: "fleet", fleetTab: "lessons" };
-      if (next === "settings") return { ...current, tab: "settings", setupMode: "guided" };
       return { ...current, tab: next };
     });
   }, []);
@@ -156,17 +130,10 @@ export function useDesktopRoute() {
     setRoute((current) => ({ ...current, tab: "fleet", fleetTab: next }));
   }, []);
 
-  const setSetupMode = useCallback((next: SetupMode) => {
-    historyModeRef.current = "push";
-    setRoute((current) => ({ ...current, tab: "settings", setupMode: next }));
-  }, []);
-
   return {
     fleetTab: route.fleetTab,
     setFleetTab,
-    setSetupMode,
     setTab,
-    setupMode: route.setupMode,
     tab: route.tab,
   };
 }

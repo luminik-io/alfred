@@ -10,7 +10,7 @@ import type { ReactNode } from "react";
 
 import type { Snapshot } from "../../types";
 import type { TabKey } from "../../lib/uiTypes";
-import type { Theme } from "../../lib/useTheme";
+import type { ThemeMode } from "../../lib/useTheme";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import {
@@ -69,7 +69,7 @@ export function AppShell({
   onToggleTheme: () => void;
   snapshot: Snapshot | null;
   tab: TabKey;
-  theme: Theme;
+  theme: ThemeMode;
   unseenCount: number;
 }) {
   return (

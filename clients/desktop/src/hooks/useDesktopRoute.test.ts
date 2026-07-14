@@ -12,57 +12,42 @@ describe("desktop route parsing", () => {
     vi.restoreAllMocks();
   });
 
-  it("maps legacy and product tab names to the same internal surfaces", () => {
+  it("maps product tab names to internal surfaces", () => {
     expect(parseDesktopRoute(loc("?tab=inbox")).tab).toBe("home");
-    expect(parseDesktopRoute(loc("?tab=review")).tab).toBe("home");
     expect(parseDesktopRoute(loc("?tab=ask")).tab).toBe("compose");
     expect(parseDesktopRoute(loc("?tab=work")).tab).toBe("pipeline");
-    expect(parseDesktopRoute(loc("?tab=pipeline")).tab).toBe("pipeline");
+    expect(parseDesktopRoute(loc("?tab=settings")).tab).toBe("settings");
   });
 
   it("keeps lessons and activity as Agents subtabs", () => {
-    expect(parseDesktopRoute(loc("?tab=lessons"))).toMatchObject({
-      tab: "fleet",
-      fleetTab: "lessons",
-    });
     expect(parseDesktopRoute(loc("?tab=agents&subtab=activity"))).toMatchObject({
       tab: "fleet",
       fleetTab: "logs",
     });
-    expect(parseDesktopRoute(loc("?tab=fleet&subtab=memory"))).toMatchObject({
+    expect(parseDesktopRoute(loc("?tab=agents&subtab=lessons"))).toMatchObject({
       tab: "fleet",
       fleetTab: "lessons",
     });
   });
 
-  it("parses setup mode without leaking that subtab to other surfaces", () => {
-    expect(parseDesktopRoute(loc("?tab=setup&subtab=advanced"))).toMatchObject({
-      tab: "settings",
-      setupMode: "advanced",
-    });
-    expect(parseDesktopRoute(loc("?tab=work&subtab=advanced"))).toMatchObject({
-      tab: "pipeline",
-      setupMode: "guided",
-    });
+  it("falls back to Inbox for removed routes", () => {
+    expect(parseDesktopRoute(loc("?tab=setup"))).toMatchObject({ tab: "home" });
+    expect(parseDesktopRoute(loc("?tab=pipeline"))).toMatchObject({ tab: "home" });
   });
 
   it("writes canonical product-facing search params", () => {
-    expect(
-      desktopRouteToSearch({ tab: "home", fleetTab: "fleet", setupMode: "guided" }),
-    ).toBe("?tab=inbox");
-    expect(
-      desktopRouteToSearch({ tab: "pipeline", fleetTab: "fleet", setupMode: "guided" }),
-    ).toBe("?tab=work");
-    expect(
-      desktopRouteToSearch({ tab: "fleet", fleetTab: "lessons", setupMode: "guided" }),
-    ).toBe("?tab=agents&subtab=lessons");
-    expect(
-      desktopRouteToSearch({ tab: "settings", fleetTab: "fleet", setupMode: "advanced" }),
-    ).toBe("?tab=setup&subtab=advanced");
+    expect(desktopRouteToSearch({ tab: "home", fleetTab: "fleet" })).toBe("?tab=inbox");
+    expect(desktopRouteToSearch({ tab: "pipeline", fleetTab: "fleet" })).toBe("?tab=work");
+    expect(desktopRouteToSearch({ tab: "fleet", fleetTab: "lessons" })).toBe(
+      "?tab=agents&subtab=lessons",
+    );
+    expect(desktopRouteToSearch({ tab: "settings", fleetTab: "fleet" })).toBe(
+      "?tab=settings",
+    );
   });
 
-  it("canonicalizes legacy URLs without dropping unrelated query params", async () => {
-    window.history.replaceState(null, "", "/?debug=1&tab=lessons&token=abc");
+  it("canonicalizes the default route without dropping unrelated query params", async () => {
+    window.history.replaceState(null, "", "/?debug=1&tab=removed&token=abc");
     const replaceState = vi.spyOn(window.history, "replaceState");
 
     renderHook(() => useDesktopRoute());
@@ -71,8 +56,8 @@ describe("desktop route parsing", () => {
       const params = new URLSearchParams(window.location.search);
       expect(params.get("debug")).toBe("1");
       expect(params.get("token")).toBe("abc");
-      expect(params.get("tab")).toBe("agents");
-      expect(params.get("subtab")).toBe("lessons");
+      expect(params.get("tab")).toBe("inbox");
+      expect(params.get("subtab")).toBeNull();
     });
     expect(replaceState).toHaveBeenCalled();
   });

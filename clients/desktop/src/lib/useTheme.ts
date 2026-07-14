@@ -7,9 +7,6 @@ import { useCallback, useEffect, useState } from "react";
 export type ThemeName = "alfred" | "linear";
 export type ThemeMode = "dark" | "light";
 
-// Back-compat alias: callers (and the toggle) still talk in light/dark.
-export type Theme = ThemeMode;
-
 export const THEME_NAMES: ThemeName[] = ["alfred", "linear"];
 
 export const THEME_META: Record<ThemeName, { label: string; blurb: string }> = {
@@ -87,9 +84,6 @@ export function useTheme() {
   }, []);
 
   return {
-    // Back-compat: `theme` is the light/dark mode, `setTheme` sets the mode.
-    theme: mode,
-    setTheme: setMode,
     mode,
     setMode,
     themeName,

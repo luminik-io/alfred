@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as apiClient from "../api/client";
 import * as apiSetup from "../api/setup";
 import type { SetupStatus } from "../types";
-import { SetupView } from "./SetupView";
+import { SettingsView } from "./SettingsView";
 
 function setupStatus(home: string, overrides: Partial<SetupStatus> = {}): SetupStatus {
   const base: SetupStatus = {
@@ -102,9 +102,12 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function renderSetup(baseUrl: string, props: Partial<React.ComponentProps<typeof SetupView>> = {}) {
+function renderSettings(
+  baseUrl: string,
+  props: Partial<React.ComponentProps<typeof SettingsView>> = {},
+) {
   return (
-    <SetupView
+    <SettingsView
       baseUrl={baseUrl}
       loading={false}
       connected
@@ -112,6 +115,10 @@ function renderSetup(baseUrl: string, props: Partial<React.ComponentProps<typeof
       trustedSlack={null}
       busyTrustedUser={null}
       nativeBusy={null}
+      themeName="alfred"
+      mode="dark"
+      onSelectTheme={vi.fn()}
+      onSelectMode={vi.fn()}
       onAddTrustedUser={vi.fn()}
       onRemoveTrustedUser={vi.fn()}
       onRunLocalAction={vi.fn()}
@@ -127,14 +134,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("SetupView", () => {
+describe("SettingsView", () => {
   it("defaults diagnostics dry-run to the canonical senior-dev role", async () => {
     const user = userEvent.setup();
     const onRunLocalAction = vi.fn();
     vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(setupStatus("/tmp/alfred-home"));
 
-    render(renderSetup("http://127.0.0.1:7010", { onRunLocalAction }));
+    render(renderSettings("http://127.0.0.1:7010", { onRunLocalAction }));
 
     await user.click(screen.getByRole("tab", { name: "Diagnostics" }));
     const input = await screen.findByLabelText("Dry-run agent");
@@ -148,6 +155,25 @@ describe("SetupView", () => {
     });
   });
 
+  it("blocks a diagnostics dry-run without an agent codename", async () => {
+    const user = userEvent.setup();
+    const onRunLocalAction = vi.fn();
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(setupStatus("/tmp/alfred-home"));
+
+    render(renderSettings("http://127.0.0.1:7010", { onRunLocalAction }));
+
+    await user.click(screen.getByRole("tab", { name: "Diagnostics" }));
+    const input = await screen.findByLabelText("Dry-run agent");
+    await user.clear(input);
+    await user.type(input, "   ");
+
+    const button = screen.getByRole("button", { name: "Run dry-run" });
+    expect(button).toBeDisabled();
+    await user.click(button);
+    expect(onRunLocalAction).not.toHaveBeenCalled();
+  });
+
   it("clears displayed setup inventory while a new server URL is loading", async () => {
     const newRequest = deferred<SetupStatus>();
     vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
@@ -155,10 +181,10 @@ describe("SetupView", () => {
       .mockResolvedValueOnce(setupStatus("/tmp/old-alfred-home"))
       .mockReturnValueOnce(newRequest.promise);
 
-    const view = render(renderSetup("http://127.0.0.1:7010"));
+    const view = render(renderSettings("http://127.0.0.1:7010"));
     expect((await screen.findAllByText("/tmp/old-alfred-home")).length).toBeGreaterThan(0);
 
-    view.rerender(renderSetup("http://127.0.0.1:7011"));
+    view.rerender(renderSettings("http://127.0.0.1:7011"));
 
     await waitFor(() => {
       expect(screen.queryByText("/tmp/old-alfred-home")).not.toBeInTheDocument();
@@ -176,8 +202,8 @@ describe("SetupView", () => {
       .mockReturnValueOnce(oldRequest.promise)
       .mockReturnValueOnce(newRequest.promise);
 
-    const view = render(renderSetup("http://127.0.0.1:7010"));
-    view.rerender(renderSetup("http://127.0.0.1:7011"));
+    const view = render(renderSettings("http://127.0.0.1:7010"));
+    view.rerender(renderSettings("http://127.0.0.1:7011"));
 
     newRequest.resolve(setupStatus("/tmp/new-alfred-home"));
     expect((await screen.findAllByText("/tmp/new-alfred-home")).length).toBeGreaterThan(0);
@@ -196,11 +222,11 @@ describe("SetupView", () => {
       .mockResolvedValue(setupStatus("/tmp/reconnected-alfred-home"));
     vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
 
-    const view = render(renderSetup("http://127.0.0.1:7010"));
+    const view = render(renderSettings("http://127.0.0.1:7010"));
     await waitFor(() => expect(loadStatus).toHaveBeenCalledTimes(1));
 
-    view.rerender(renderSetup("http://127.0.0.1:7010", { connected: false }));
-    view.rerender(renderSetup("http://127.0.0.1:7010", { connected: true }));
+    view.rerender(renderSettings("http://127.0.0.1:7010", { connected: false }));
+    view.rerender(renderSettings("http://127.0.0.1:7010", { connected: true }));
 
     expect((await screen.findAllByText("/tmp/reconnected-alfred-home")).length).toBeGreaterThan(
       0,
@@ -212,7 +238,7 @@ describe("SetupView", () => {
     });
   });
 
-  it("surfaces first-run readiness blockers on the connection setup tab", async () => {
+  it("surfaces first-run readiness blockers on the Runtime tab", async () => {
     const user = userEvent.setup();
     const onRunLocalAction = vi.fn();
     vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
@@ -276,7 +302,7 @@ describe("SetupView", () => {
       }),
     );
 
-    render(renderSetup("http://127.0.0.1:7010", { onRunLocalAction }));
+    render(renderSettings("http://127.0.0.1:7010", { onRunLocalAction }));
 
     expect(await screen.findByText("Ready for first real run")).toBeInTheDocument();
     expect(screen.getByText("1 blocking")).toBeInTheDocument();
@@ -336,7 +362,7 @@ describe("SetupView", () => {
     );
 
     render(
-      renderSetup("http://127.0.0.1:7010", {
+      renderSettings("http://127.0.0.1:7010", {
         nativeBusy: "skills_install_starter:fleet",
       }),
     );
@@ -382,7 +408,7 @@ describe("SetupView", () => {
       }),
     );
 
-    render(renderSetup("http://127.0.0.1:7010"));
+    render(renderSettings("http://127.0.0.1:7010"));
 
     expect(await screen.findByText("Code graph memory")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Index code memory" })).not.toBeInTheDocument();
@@ -428,7 +454,7 @@ describe("SetupView", () => {
       }),
     );
 
-    render(renderSetup("http://127.0.0.1:7010", { onRunLocalAction }));
+    render(renderSettings("http://127.0.0.1:7010", { onRunLocalAction }));
 
     await user.click(await screen.findByRole("button", { name: "Install code memory" }));
     expect(onRunLocalAction).toHaveBeenCalledWith({
@@ -481,7 +507,7 @@ describe("SetupView", () => {
       }),
     );
 
-    render(renderSetup("http://127.0.0.1:7010", { onRunLocalAction }));
+    render(renderSettings("http://127.0.0.1:7010", { onRunLocalAction }));
 
     await user.click(await screen.findByRole("button", { name: "Install Graphify" }));
     expect(onRunLocalAction).toHaveBeenCalledWith({

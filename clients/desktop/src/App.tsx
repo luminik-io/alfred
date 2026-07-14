@@ -5,7 +5,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { AppearancePicker } from "./components/AppearancePicker";
 import {
   ConnectionBanner,
   NativeResultPanel,
@@ -24,7 +23,7 @@ import { ReviewView } from "./components/ReviewView";
 import { CustomThemeEditor } from "./components/CustomThemeEditor";
 import { RosterThemePicker } from "./components/RosterThemePicker";
 import { ThemeBuilderDialog } from "./components/ThemeBuilderDialog";
-import { SetupView } from "./components/SetupView";
+import { SettingsView } from "./components/SettingsView";
 import { Tabs, type TabItem } from "./components/Tabs";
 import {
   Dialog,
@@ -49,8 +48,7 @@ import { useRosterTheme } from "./lib/useRosterTheme";
 import { useTheme } from "./lib/useTheme";
 
 function App() {
-  const { fleetTab, setFleetTab, setSetupMode, setTab, setupMode, tab } =
-    useDesktopRoute();
+  const { fleetTab, setFleetTab, setTab, tab } = useDesktopRoute();
   // A request opened as a lifecycle thread (from Inbox shipped cards).
   const [openThread, setOpenThread] = useState<RequestThreadModel | null>(null);
 
@@ -59,8 +57,7 @@ function App() {
     agent: null,
     nonce: 0,
   });
-  // Navigation router. Legacy callers may still say "logs" or "lessons"; the
-  // route hook maps both into Agents subtabs.
+  // Navigation router. Activity and Lessons are first-class Agents subtabs.
   const goTo = useCallback((key: TabKey) => {
     // Agents opens on the role roster. Lessons and Activity remain subtabs.
     if (key === "fleet") {
@@ -116,8 +113,7 @@ function App() {
     startRuntime,
   } = useAlfred();
 
-  const { theme, toggle: toggleTheme, themeName, setThemeName, mode, setMode } =
-    useTheme();
+  const { toggle: toggleTheme, themeName, setThemeName, mode, setMode } = useTheme();
   const { rosterTheme, customNames, setRosterTheme, saveCustomNames, saveError: rosterSaveError } =
     useRosterTheme(baseUrl);
   const [customThemeEditorOpen, setCustomThemeEditorOpen] = useState(false);
@@ -127,9 +123,14 @@ function App() {
   const [themeBuilderOpen, setThemeBuilderOpen] = useState(false);
   const [themeProposal, setThemeProposal] = useState<CustomRosterNames | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  // The Setup tab splits into Setup (get Alfred running) and Settings (appearance
-  // and preferences), so theme selection no longer crowds the onboarding flow.
-  const [settingsTab, setSettingsTab] = useState<"setup" | "settings">("setup");
+  const [appStage, setAppStage] = useState<"checking" | "onboarding" | "ready">(
+    "checking",
+  );
+  const [onboardingFinishing, setOnboardingFinishing] = useState(false);
+  const onboardingFinishingRef = useRef(false);
+  const setupGateBaseUrlRef = useRef(baseUrl);
+  const setupConfirmedIncompleteRef = useRef(false);
+  const lastSetupProbeSnapshotRef = useRef<typeof snapshot>(null);
 
   // ⌘K / Ctrl+K opens the command palette anywhere.
   useEffect(() => {
@@ -145,72 +146,47 @@ function App() {
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  }, [tab, fleetTab, setupMode]);
+  }, [tab, fleetTab]);
 
-  // First-run routing. On boot, land the user in onboarding unless the runtime's
-  // canonical first-run contract says every required setup item is ready.
-  //
-  //   1. No `alfred serve` reachable (fresh machine, runtime not up): the initial
-  //      load settles with a connection error and no snapshot. Route to the
-  //      wizard so the user has an obvious next step instead of an empty Home
-  //      behind an error banner.
-  //   2. Runtime reachable but canonical setup readiness is false. This includes
-  //      engine, GitHub, repository, local checkout, queue, scheduler, and desktop
-  //      authorization blockers reported by `/api/setup/status`.
-  //
-  // A returning user with a completed setup boots straight to the Inbox. The
-  // decision fires exactly once per launch: once we route (or confirm complete)
-  // we never yank the user out of wherever they navigate next. It is NOT seeded
-  // from the persisted base URL, so a re-install that left a stored URL but an
-  // incomplete setup is still routed to onboarding.
-  const routeToOnboarding = useCallback(() => {
-    setSetupMode("guided");
-    setTab("settings");
-    setSettingsTab("setup");
-  }, [setSetupMode, setTab, setSettingsTab]);
-  // The decision is made exactly once per launch and tracked in a ref, NOT in
-  // state: routing changes the tab, which re-renders and would re-run this
-  // effect. A state guard plus an effect-cleanup cancel would cancel the
-  // in-flight setup-status fetch the moment the guard flipped, so the async
-  // branch could never route. The ref lets the effect no-op on re-run while the
-  // original fetch resolves and routes freely.
-  const firstRunDecided = useRef(false);
-  const mountedRef = useRef(true);
+  // Boot into one of two product states: first-run takeover or the normal app.
+  // The AppShell is not mounted until canonical setup readiness is affirmative,
+  // so a fresh install never sees navigation for surfaces it cannot use yet.
   useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-  useEffect(() => {
-    if (firstRunDecided.current) return;
-    // Wait for the initial load to settle before deciding anything.
+    if (appStage === "ready") return;
     if (loading) return;
 
+    if (setupGateBaseUrlRef.current !== baseUrl) {
+      setupGateBaseUrlRef.current = baseUrl;
+      setupConfirmedIncompleteRef.current = false;
+      lastSetupProbeSnapshotRef.current = null;
+    }
+
     if (error && !snapshot) {
-      // Fresh machine, runtime not up yet: take the user to the wizard.
-      firstRunDecided.current = true;
-      routeToOnboarding();
+      setAppStage("onboarding");
       return;
     }
 
     if (snapshot && !error) {
-      // Runtime reachable: consult the real setup-completion state once. Only an
-      // affirmatively-complete setup skips onboarding and lands on the Inbox.
-      firstRunDecided.current = true;
+      if (setupConfirmedIncompleteRef.current) return;
+      if (lastSetupProbeSnapshotRef.current === snapshot) return;
+      lastSetupProbeSnapshotRef.current = snapshot;
+
+      let cancelled = false;
       void loadSetupStatus(baseUrl)
         .then((status) => {
-          if (!mountedRef.current) return;
-          if (!isSetupComplete(status)) {
-            routeToOnboarding();
-          }
-          // Complete setup: leave the default route (Inbox) untouched.
+          if (cancelled) return;
+          const complete = isSetupComplete(status);
+          setupConfirmedIncompleteRef.current = !complete;
+          setAppStage(complete ? "ready" : "onboarding");
         })
         .catch(() => {
-          if (mountedRef.current) routeToOnboarding();
+          if (!cancelled) setAppStage("onboarding");
         });
+      return () => {
+        cancelled = true;
+      };
     }
-  }, [loading, error, snapshot, baseUrl, routeToOnboarding]);
+  }, [appStage, loading, error, snapshot, baseUrl]);
 
   const commands = useMemo<Command[]>(() => {
     const nav: Command[] = PRIMARY_TABS.map((item) => ({
@@ -225,13 +201,13 @@ function App() {
       { id: "refresh", label: "Refresh agent state", hint: "Action", icon: RefreshCw, run: () => void refresh() },
       {
         id: "theme",
-        label: `Switch to ${theme === "dark" ? "light" : "dark"} theme`,
+        label: `Switch to ${mode === "dark" ? "light" : "dark"} theme`,
         hint: "Appearance",
-        icon: theme === "dark" ? Sun : Moon,
+        icon: mode === "dark" ? Sun : Moon,
         run: toggleTheme,
       },
     ];
-  }, [goTo, refresh, theme, toggleTheme]);
+  }, [goTo, mode, refresh, toggleTheme]);
 
   const customThemeAgents = useMemo(() => {
     const byCodename = new Map<string, EditableAgentSource>();
@@ -262,6 +238,80 @@ function App() {
     return editableAgents(Array.from(byCodename.values()));
   }, [snapshot?.schedule, snapshot?.status.agents]);
 
+  const finishOnboarding = useCallback(
+    async (destination: "home" | "compose") => {
+      if (onboardingFinishingRef.current) return false;
+      onboardingFinishingRef.current = true;
+      setOnboardingFinishing(true);
+      try {
+        if (!(await refresh(baseUrl))) return false;
+        setTab(destination);
+        setAppStage("ready");
+        return true;
+      } finally {
+        onboardingFinishingRef.current = false;
+        setOnboardingFinishing(false);
+      }
+    },
+    [baseUrl, refresh, setTab],
+  );
+
+  const customThemeEditor = (
+    <CustomThemeEditor
+      open={customThemeEditorOpen}
+      value={themeProposal ?? customNames}
+      agents={customThemeAgents}
+      saveError={rosterSaveError}
+      onOpenChange={(next) => {
+        setCustomThemeEditorOpen(next);
+        if (!next) setThemeProposal(null);
+      }}
+      onSave={saveCustomNames}
+    />
+  );
+
+  if (appStage === "checking") {
+    return <StartupGate />;
+  }
+
+  if (appStage === "onboarding") {
+    return (
+      <main className="alfred-first-run">
+        <div className="alfred-app-atmosphere" aria-hidden="true" />
+        <div className="alfred-window-drag-region" data-tauri-drag-region aria-hidden="true" />
+        <div className="alfred-first-run__result">
+          <NativeResultPanel
+            error={nativeError}
+            errorRaw={nativeErrorRaw}
+            result={nativeResult}
+            onDismiss={clearNativeResult}
+          />
+        </div>
+        <OnboardingView
+          baseUrl={baseUrl}
+          loading={loading}
+          connected={Boolean(snapshot) && !error}
+          canRun={supportsNativeActions()}
+          nativeBusy={nativeBusy}
+          rosterTheme={rosterTheme}
+          customNames={customNames}
+          rosterSaveError={rosterSaveError}
+          finishing={onboardingFinishing}
+          onConnectServer={(url) => void refresh(url)}
+          onInstallCore={installCore}
+          onStartRuntime={startRuntime}
+          onRunLocalAction={runLocalAction}
+          onRosterThemeChange={setRosterTheme}
+          onEditCustomTheme={() => setCustomThemeEditorOpen(true)}
+          onSaveCustomNames={saveCustomNames}
+          onFinish={finishOnboarding}
+          onRefreshBoard={(options) => refreshShipped(baseUrl, options)}
+        />
+        {customThemeEditor}
+      </main>
+    );
+  }
+
   return (
     <AppShell
       baseUrl={baseUrl}
@@ -274,7 +324,7 @@ function App() {
       onToggleTheme={toggleTheme}
       snapshot={snapshot}
       tab={tab}
-      theme={theme}
+      theme={mode}
       unseenCount={unseenCount}
     >
 
@@ -339,101 +389,25 @@ function App() {
         />
       ) : null}
       {tab === "settings" ? (
-        <section className="settings-page space-y-4" aria-label="Setup and settings">
-          <div className="space-y-1">
-            <h1 className="font-heading text-2xl font-medium tracking-normal text-foreground">
-              {settingsTab === "settings" ? "Settings" : "Setup"}
-            </h1>
-            <p className="max-w-2xl text-sm text-muted-foreground">
-              {settingsTab === "settings"
-                ? "Tune how Alfred looks and behaves on this Mac."
-                : "Connect local tools, choose repos, and get Alfred running."}
-            </p>
-          </div>
-          <Tabs
-            tabs={
-              [
-                { key: "setup", label: "Setup" },
-                { key: "settings", label: "Settings" },
-              ] as TabItem<"setup" | "settings">[]
-            }
-            active={settingsTab}
-            onChange={setSettingsTab}
-            idBase="settings"
-            ariaLabel="Setup and settings sections"
-          />
-          {settingsTab === "settings" ? (
-            <section className="alfred-page-hero px-4 py-4" aria-label="Appearance">
-              <div className="space-y-1">
-                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Appearance
-                </p>
-                <h2 className="font-heading text-lg font-medium text-foreground">
-                  Theme and mode
-                </h2>
-                <p className="max-w-2xl text-sm text-muted-foreground">
-                  Choose how Alfred looks on this Mac.
-                </p>
-              </div>
-              <div className="mt-3">
-                <AppearancePicker
-                  themeName={themeName}
-                  mode={mode}
-                  onSelectTheme={setThemeName}
-                  onSelectMode={setMode}
-                />
-              </div>
-            </section>
-          ) : setupMode === "advanced" ? (
-            <section className="setup-mode-stack">
-              <button
-                className="secondary-button setup-mode-back"
-                type="button"
-                onClick={() => setSetupMode("guided")}
-              >
-                <span>Back to guided setup</span>
-              </button>
-              <SetupView
-                baseUrl={baseUrl}
-                loading={loading}
-                connected={Boolean(snapshot) && !error}
-                actionNotice={noticeFor("setup")}
-                trustedSlack={snapshot?.trustedSlack || null}
-                busyTrustedUser={busyTrustedUser}
-                nativeBusy={nativeBusy}
-                onAddTrustedUser={addTrustedUser}
-                onRemoveTrustedUser={removeTrustedUser}
-                onRunLocalAction={runLocalAction}
-                onInstallCore={installCore}
-                onStartRuntime={startRuntime}
-                onConnectServer={(url) => void refresh(url)}
-              />
-            </section>
-          ) : (
-            <OnboardingView
-              baseUrl={baseUrl}
-              loading={loading}
-              connected={Boolean(snapshot) && !error}
-              canRun={supportsNativeActions()}
-              nativeBusy={nativeBusy}
-              rosterTheme={rosterTheme}
-              customNames={customNames}
-              rosterSaveError={rosterSaveError}
-              onConnectServer={(url) => void refresh(url)}
-              onInstallCore={installCore}
-              onStartRuntime={startRuntime}
-              onRunLocalAction={runLocalAction}
-              onRosterThemeChange={setRosterTheme}
-              onEditCustomTheme={() => setCustomThemeEditorOpen(true)}
-              onSaveCustomNames={saveCustomNames}
-              onOpenConnection={() => {
-                setSetupMode("advanced");
-              }}
-              onSwitch={goTo}
-              onRefreshBoard={(options) => refreshShipped(baseUrl, options)}
-            />
-          )}
-        </section>
+        <SettingsView
+          baseUrl={baseUrl}
+          loading={loading}
+          connected={Boolean(snapshot) && !error}
+          actionNotice={noticeFor("setup")}
+          trustedSlack={snapshot?.trustedSlack || null}
+          busyTrustedUser={busyTrustedUser}
+          nativeBusy={nativeBusy}
+          themeName={themeName}
+          mode={mode}
+          onSelectTheme={setThemeName}
+          onSelectMode={setMode}
+          onAddTrustedUser={addTrustedUser}
+          onRemoveTrustedUser={removeTrustedUser}
+          onRunLocalAction={runLocalAction}
+          onInstallCore={installCore}
+          onStartRuntime={startRuntime}
+          onConnectServer={(url) => void refresh(url)}
+        />
       ) : null}
 
       {tab === "fleet" ? (
@@ -514,7 +488,7 @@ function App() {
         </section>
       ) : null}
 
-      {/* A request opened as a lifecycle thread from a Home shipped card. */}
+      {/* A request opened as a lifecycle thread from an Inbox shipped card. */}
       {openThread ? (
         <ThreadModal thread={openThread} onClose={() => setOpenThread(null)} onOpenPlan={() => {
           setOpenThread(null);
@@ -544,22 +518,30 @@ function App() {
         }}
       />
 
-      <CustomThemeEditor
-        open={customThemeEditorOpen}
-        // A live proposal from the chat wins as the editable preview; otherwise
-        // the editor opens with the persisted custom names.
-        value={themeProposal ?? customNames}
-        agents={customThemeAgents}
-        saveError={rosterSaveError}
-        onOpenChange={(next) => {
-          setCustomThemeEditorOpen(next);
-          // Drop the one-shot proposal once the editor closes so the next manual
-          // open starts from the persisted names, not a stale proposal.
-          if (!next) setThemeProposal(null);
-        }}
-        onSave={saveCustomNames}
-      />
+      {customThemeEditor}
     </AppShell>
+  );
+}
+
+function StartupGate() {
+  return (
+    <main className="alfred-startup" aria-busy="true">
+      <div className="alfred-app-atmosphere" aria-hidden="true" />
+      <div className="alfred-window-drag-region" data-tauri-drag-region aria-hidden="true" />
+      <div className="alfred-startup__content" role="status">
+        <span className="alfred-brand-mark size-11" aria-hidden="true">
+          <img
+            src="/brand/alfred-logo-transparent.png"
+            alt=""
+            className="alfred-brand-logo size-11 object-contain"
+          />
+        </span>
+        <div>
+          <strong>Alfred</strong>
+          <span>Checking this Mac</span>
+        </div>
+      </div>
+    </main>
   );
 }
 

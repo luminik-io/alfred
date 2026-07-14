@@ -39,7 +39,7 @@ export function buildNeedsYou(snapshot: Snapshot | null): AttentionItem[] {
     return [
       {
         id: "connect",
-        label: "Setup",
+        label: "Settings",
         title: "Connect to the local Alfred server",
         detail: "Start alfred serve so the client can read local state.",
         tone: "warn",
@@ -309,7 +309,7 @@ export function buildCostHealth(snapshot: Snapshot | null): CostHealth {
   for (const firing of firings) {
     if (firing.status === "ok") succeeded += 1;
     // An llm-error is a real failure, not a quiet success. Count it honestly so
-    // the Home rollup never treats an errored run as fine.
+    // the Inbox rollup never treats an errored run as fine.
     if (isErrorStatus(firing.status)) failed += 1;
     const cost = firingCost(firing);
     if (cost !== null) {

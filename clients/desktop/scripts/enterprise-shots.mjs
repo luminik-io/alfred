@@ -45,11 +45,11 @@ const SANITIZE = () => {
 // the persisted roster view, so each surface pins its own `alfred.rosterView`:
 // the roster frame forces the list, the graph frame forces the workflow canvas.
 const SURFACES = [
-  { id: "inbox", q: "tab=home", wait: ".command-center" },
-  { id: "ask", q: "tab=compose", wait: ".ask" },
-  { id: "work", q: "tab=pipeline", wait: ".board-page" },
-  { id: "agents-roster", q: "tab=fleet&subtab=fleet", wait: "[aria-label='Agents'], .agents-deck", rosterView: "list" },
-  { id: "agents-graph", q: "tab=fleet&subtab=fleet", wait: ".workflow-graph", graph: true, rosterView: "workflow" },
+  { id: "inbox", q: "tab=inbox", wait: ".command-center" },
+  { id: "ask", q: "tab=ask", wait: ".ask" },
+  { id: "work", q: "tab=work", wait: ".board-page" },
+  { id: "agents-roster", q: "tab=agents", wait: "[aria-label='Agents'], .agents-deck", rosterView: "list" },
+  { id: "agents-graph", q: "tab=agents", wait: ".workflow-graph", graph: true, rosterView: "workflow" },
 ];
 const WIDTHS = [{ tag: "desktop", w: 1440 }, { tag: "mobile", w: 390 }];
 const THEMES = ["dark", "light"];

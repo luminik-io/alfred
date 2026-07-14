@@ -742,7 +742,7 @@ export function useAlfred() {
 
   // A notice is scoped to the surface that raised it, so a banner from one
   // surface (e.g. promoting a lesson on Memory) never bleeds onto another
-  // (Plans / Board / Setup). Each surface reads its own slice via this helper.
+  // (Plans / Board / Settings). Each surface reads its own slice via this helper.
   const noticeFor = useCallback(
     (domain: NoticeDomain): ActionNotice =>
       actionNotice && actionNotice.domain === domain ? actionNotice : null,
