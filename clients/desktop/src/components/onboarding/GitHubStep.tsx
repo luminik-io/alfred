@@ -10,7 +10,7 @@ import { Button, Card, CardContent, Input, Label } from "../ui";
  * signed in the orchestrator auto-advances; this body shows the green
  * "Signed in as @account" confirmation. In the desktop shell, a native action
  * starts `gh auth login --web` and the UI polls until setup status confirms the
- * sign-in. The terminal fallback remains behind Advanced for browser mode.
+ * sign-in. Browser mode keeps the terminal fallback inside a disclosure.
  *
  * Dev shortcut: paste the server URL + start the runtime, kept from the prior
  * onboarding so a Dev who already runs `alfred serve` connects in one move.

@@ -68,13 +68,13 @@ describe("operator font directive (do not revert)", () => {
 });
 
 describe("primary nav job-shaped IA (do not revert)", () => {
-  it("uses exactly the product labels Inbox / Ask / Work / Agents / Setup", () => {
+  it("uses exactly the product labels Inbox / Ask / Work / Agents / Settings", () => {
     expect(PRIMARY_TABS.map((tab) => tab.label)).toEqual([
       "Inbox",
       "Ask",
       "Work",
       "Agents",
-      "Setup",
+      "Settings",
     ]);
   });
 

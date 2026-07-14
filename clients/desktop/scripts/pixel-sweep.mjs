@@ -24,13 +24,13 @@ const THEME_NAME_STORAGE_KEY = "alfred-theme-name";
 const THEME_MODE_STORAGE_KEY = "alfred-theme";
 
 const ROUTES = [
-  { id: "home", q: "tab=home", ready: "main, [aria-label='Lessons'], .ask, .board-page, .command-center, section" },
-  { id: "ask", q: "tab=compose", ready: ".ask" },
-  { id: "pipeline", q: "tab=pipeline", ready: ".board-page" },
-  { id: "fleet-roster", q: "tab=fleet&subtab=fleet", ready: "[aria-label='Agents']" },
-  { id: "fleet-activity", q: "tab=fleet&subtab=logs", ready: "[aria-label='Agents']" },
-  { id: "lessons", q: "tab=lessons", ready: "[aria-label='Lessons']" },
-  { id: "settings", q: "tab=settings", ready: "section, .setup-view, .onboarding" },
+  { id: "home", q: "tab=inbox", ready: "main, [aria-label='Lessons'], .ask, .board-page, .command-center, section" },
+  { id: "ask", q: "tab=ask", ready: ".ask" },
+  { id: "pipeline", q: "tab=work", ready: ".board-page" },
+  { id: "fleet-roster", q: "tab=agents", ready: "[aria-label='Agents']" },
+  { id: "fleet-activity", q: "tab=agents&subtab=activity", ready: "[aria-label='Agents']" },
+  { id: "lessons", q: "tab=agents&subtab=lessons", ready: "[aria-label='Lessons']" },
+  { id: "settings", q: "tab=settings", ready: "section, .settings-view, .alfred-onboarding" },
 ];
 
 const PROBE = () => {

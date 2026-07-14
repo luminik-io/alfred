@@ -255,8 +255,7 @@ function renderOnboarding(props: Partial<React.ComponentProps<typeof OnboardingV
       onInstallCore={vi.fn()}
       onStartRuntime={vi.fn()}
       onRunLocalAction={vi.fn(async () => null)}
-      onOpenConnection={vi.fn()}
-      onSwitch={vi.fn()}
+      onFinish={vi.fn()}
       onRefreshBoard={vi.fn(async () => undefined)}
       {...defaultRosterProps()}
       {...props}
@@ -274,9 +273,9 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-// The rail buttons are the reliable way to reach a given step from any state.
-async function gotoStep(user: ReturnType<typeof userEvent.setup>, railName: RegExp) {
-  await user.click(await screen.findByRole("button", { name: railName }));
+// The stepper buttons are the reliable way to reach a given step from any state.
+async function gotoStep(user: ReturnType<typeof userEvent.setup>, stepName: RegExp) {
+  await user.click(await screen.findByRole("button", { name: stepName }));
 }
 
 async function selectWebCheckout(user: ReturnType<typeof userEvent.setup>) {
@@ -306,7 +305,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("OnboardingView seven-step takeover", () => {
+describe("OnboardingView eight-step takeover", () => {
   it("fails closed when the runtime omits checkout readiness", async () => {
     const malformed = makeStatus({
       repos: {
@@ -321,24 +320,24 @@ describe("OnboardingView seven-step takeover", () => {
 
     renderOnboarding();
 
-    expect(await screen.findByText(/wake up to shipped work you can trust/i)).toBeInTheDocument();
+    expect(await screen.findByText(/let's get you set up/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /get started/i })).toBeInTheDocument();
   });
 
   it("opens on the welcome step with the mental model and no-terminal framing", async () => {
     renderOnboarding();
     expect(
-      await screen.findByText(/wake up to shipped work you can trust/i),
+      await screen.findByText(/let's get you set up/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/opens pull requests, handles reviews, and reports back/i),
+      screen.getByText(/checks this Mac, connects to GitHub, and ends on a real result/i),
     ).toBeInTheDocument();
     // The trust differentiator is on the first screen, not buried.
     expect(
       screen.getByText(/runs on the claude max and codex pro subscriptions you already pay for/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/no terminal, no api keys/i)).toBeInTheDocument();
-    // The persistent rail shows all seven steps.
+    // The persistent stepper shows all eight steps.
     expect(screen.getByRole("button", { name: /^welcome$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^tools$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^github$/i })).toBeInTheDocument();
@@ -384,10 +383,10 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("marks inventory-proven steps done for a detected install, not 0 of 7", async () => {
-    // The contradiction: an existing install reads "ready to use" while the rail
+    // The contradiction: an existing install reads "ready to use" while the stepper
     // said "0 of 7 done" because completion was gated on the user re-walking the
     // wizard. With an install detected, steps the runtime proves complete
-    // (engine, github, repos, team) must show as done so the rail agrees with
+    // (engine, github, repos, team) must show as done so the stepper agrees with
     // the inventory.
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
@@ -404,7 +403,7 @@ describe("OnboardingView seven-step takeover", () => {
     );
     renderOnboarding();
 
-    // On the welcome step of a detected install, the rail must not read 0 done.
+    // On the welcome step of a detected install, the stepper must not read 0 done.
     expect(await screen.findByText(/review your setup/i)).toBeInTheDocument();
     const progress = await screen.findByLabelText(/of 8 onboarding steps complete/i);
     const match = /(\d+) of 8 onboarding steps complete/.exec(progress.getAttribute("aria-label") || "");
@@ -478,8 +477,7 @@ describe("OnboardingView seven-step takeover", () => {
         onInstallCore={vi.fn()}
         onStartRuntime={vi.fn()}
         onRunLocalAction={vi.fn(async () => null)}
-        onOpenConnection={vi.fn()}
-        onSwitch={vi.fn()}
+        onFinish={vi.fn()}
         onRefreshBoard={vi.fn(async () => undefined)}
         {...defaultRosterProps()}
       />,
@@ -514,8 +512,7 @@ describe("OnboardingView seven-step takeover", () => {
         onInstallCore={vi.fn()}
         onStartRuntime={vi.fn()}
         onRunLocalAction={vi.fn(async () => null)}
-        onOpenConnection={vi.fn()}
-        onSwitch={vi.fn()}
+        onFinish={vi.fn()}
         onRefreshBoard={vi.fn(async () => undefined)}
         {...defaultRosterProps()}
       />,
@@ -589,8 +586,7 @@ describe("OnboardingView seven-step takeover", () => {
       onInstallCore: vi.fn(),
       onStartRuntime: vi.fn(),
       onRunLocalAction: vi.fn(async () => null),
-      onOpenConnection: vi.fn(),
-      onSwitch: vi.fn(),
+      onFinish: vi.fn(),
       onRefreshBoard: vi.fn(async () => undefined),
       ...defaultRosterProps(),
     };
@@ -614,8 +610,7 @@ describe("OnboardingView seven-step takeover", () => {
       onInstallCore: vi.fn(),
       onStartRuntime: vi.fn(),
       onRunLocalAction: vi.fn(async () => null),
-      onOpenConnection: vi.fn(),
-      onSwitch: vi.fn(),
+      onFinish: vi.fn(),
       onRefreshBoard: vi.fn(async () => undefined),
       ...defaultRosterProps(),
     };
@@ -761,13 +756,13 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("handles older code-memory payloads without repo metadata", async () => {
-    const legacyCodeMemory = { ...makeStatus().code_memory! };
-    delete legacyCodeMemory.repos;
+    const incompleteCodeMemory = { ...makeStatus().code_memory! };
+    delete incompleteCodeMemory.repos;
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         github: { ok: false, account: null, detail: "Not signed in to GitHub." },
         code_memory: {
-          ...legacyCodeMemory,
+          ...incompleteCodeMemory,
           binary: {
             resolved: true,
             path: "/opt/alfred/bin/codebase-memory-mcp",
@@ -804,7 +799,7 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("shows 'Signed in' on the GitHub step and never asks for a token paste", async () => {
-    // Opening GitHub deliberately from the rail does not auto-advance away, so a
+    // Opening GitHub deliberately from the stepper does not auto-advance away, so a
     // signed-in user can still read the confirmation.
     renderOnboarding();
     const user = userEvent.setup();
@@ -944,8 +939,7 @@ describe("OnboardingView seven-step takeover", () => {
       onInstallCore: vi.fn(),
       onStartRuntime: vi.fn(),
       onRunLocalAction,
-      onOpenConnection: vi.fn(),
-      onSwitch: vi.fn(),
+      onFinish: vi.fn(),
       onRefreshBoard: vi.fn(async () => undefined),
       ...defaultRosterProps(),
     };
@@ -998,8 +992,7 @@ describe("OnboardingView seven-step takeover", () => {
       onInstallCore: vi.fn(),
       onStartRuntime: vi.fn(),
       onRunLocalAction,
-      onOpenConnection: vi.fn(),
-      onSwitch: vi.fn(),
+      onFinish: vi.fn(),
       onRefreshBoard: vi.fn(async () => undefined),
       ...defaultRosterProps(),
     };
@@ -1524,7 +1517,7 @@ describe("OnboardingView seven-step takeover", () => {
     await user.click(await screen.findByRole("option", { name: /justice league/i }));
     expect(onRosterThemeChange).toHaveBeenCalledWith("justice-league");
 
-    // Completing a rail-selected step records that step, not a fabricated
+    // Completing a stepper-selected step records that step, not a fabricated
     // linear prefix and not a permanently frozen zero.
     await user.click(screen.getByRole("button", { name: /^continue$/i }));
     expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
@@ -1533,7 +1526,7 @@ describe("OnboardingView seven-step takeover", () => {
     expect(within(stepper).getByLabelText("1 of 8 onboarding steps complete")).toBeInTheDocument();
   });
 
-  it("records a battery configured inside a rail-selected step", async () => {
+  it("records a battery configured inside a stepper-selected step", async () => {
     const manifest: SetupBatteryManifest = {
       version: 1,
       summary: { total: 1 },
@@ -1626,9 +1619,9 @@ describe("OnboardingView seven-step takeover", () => {
       repos: ["octocat/web"],
       readiness: { ok: false, score: 0.4 },
     });
-    const onSwitch = vi.fn();
+    const onFinish = vi.fn();
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeReadyStatus());
-    renderOnboarding({ onSwitch });
+    renderOnboarding({ onFinish });
     const user = userEvent.setup();
 
     await gotoStep(user, /^first request$/i);
@@ -1639,15 +1632,15 @@ describe("OnboardingView seven-step takeover", () => {
     await user.click(within(card as HTMLElement).getByRole("button", { name: /use this/i }));
 
     await waitFor(() => expect(compose).toHaveBeenCalledWith("http://127.0.0.1:7010", "triage-prs"));
-    await waitFor(() => expect(onSwitch).toHaveBeenCalledWith("compose"));
+    await waitFor(() => expect(onFinish).toHaveBeenCalledWith("compose"));
   });
 
   it("seeds a labelled demo lifecycle and lands on a populated Inbox", async () => {
     const seed = vi.spyOn(apiSetup, "seedSetupDemo").mockResolvedValue({ seeded: true });
-    const onSwitch = vi.fn();
+    const onFinish = vi.fn();
     const onRefreshBoard = vi.fn(async () => undefined);
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(makeReadyStatus());
-    renderOnboarding({ onSwitch, onRefreshBoard });
+    renderOnboarding({ onFinish, onRefreshBoard });
     const user = userEvent.setup();
 
     await gotoStep(user, /^first request$/i);
@@ -1657,7 +1650,7 @@ describe("OnboardingView seven-step takeover", () => {
     // The sample is not a one-way door: an "Open Inbox" control lands the user on
     // the populated board only when they choose to.
     await user.click(await screen.findByRole("button", { name: /open inbox/i }));
-    await waitFor(() => expect(onSwitch).toHaveBeenCalledWith("home"));
+    await waitFor(() => expect(onFinish).toHaveBeenCalledWith("home"));
   });
 
   it("clears the seeded sample and flips the board back out of demo mode", async () => {
@@ -1734,7 +1727,7 @@ describe("OnboardingView seven-step takeover", () => {
     );
     renderOnboarding();
     const user = userEvent.setup();
-    // Land on Tools via the rail.
+    // Land on Tools via the stepper.
     await gotoStep(user, /^tools$/i);
     expect(screen.getByRole("button", { name: /check my tools/i })).toBeInTheDocument();
     const section = screen.getByLabelText(/set up alfred/i);
@@ -1743,12 +1736,10 @@ describe("OnboardingView seven-step takeover", () => {
     expect(screen.getByRole("button", { name: /^continue$/i })).toBeDisabled();
   });
 
-  it("opens the advanced setup handoff from the header", async () => {
-    const onOpenConnection = vi.fn();
-    renderOnboarding({ onOpenConnection });
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: /advanced setup/i }));
-    expect(onOpenConnection).toHaveBeenCalledTimes(1);
+  it("does not expose application navigation before setup is complete", async () => {
+    renderOnboarding();
+    expect(screen.queryByRole("button", { name: /advanced setup/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: /primary/i })).not.toBeInTheDocument();
   });
 
   it("degrades mutating steps gracefully off-Tauri with a clear note", async () => {
@@ -1772,10 +1763,10 @@ describe("OnboardingView seven-step takeover", () => {
     renderOnboarding();
     expect(await screen.findByText(/manual fallback/i)).toBeInTheDocument();
     // The welcome step still renders.
-    expect(screen.getByText(/wake up to shipped work you can trust/i)).toBeInTheDocument();
+    expect(screen.getByText(/let's get you set up/i)).toBeInTheDocument();
   });
 
-  it("tracks progress in the rail as steps complete", async () => {
+  it("tracks progress in the stepper as steps complete", async () => {
     // gh + engine ready: the forward flow auto-advances through Tools + GitHub,
     // so the progress label reflects real completion.
     renderOnboarding();
@@ -1833,7 +1824,7 @@ describe("OnboardingView seven-step takeover", () => {
   it("opens on Welcome at 0 of 8 done even when tools, gh and repos are pre-detected", async () => {
     // Regression for the broken progress logic: on a fresh launch where Claude
     // Code is installed, gh is already signed in, and repos are already saved,
-    // the rail used to show "3 of 7 done" while the user was still on step 1
+    // the stepper used to show "3 of 7 done" while the user was still on step 1
     // (Welcome). The count must reflect where the user actually is, so a step the
     // user has not reached never reads done even when its signal is satisfied.
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
@@ -1874,7 +1865,7 @@ describe("OnboardingView seven-step takeover", () => {
     expect(screen.getByRole("button", { name: /check my tools/i })).toBeInTheDocument();
     // Back returns to Welcome.
     await user.click(screen.getByRole("button", { name: /^back$/i }));
-    expect(screen.getByText(/wake up to shipped work you can trust/i)).toBeInTheDocument();
+    expect(screen.getByText(/let's get you set up/i)).toBeInTheDocument();
     // Back is disabled on the first step.
     expect(screen.getByRole("button", { name: /^back$/i })).toBeDisabled();
   });
@@ -1954,8 +1945,8 @@ describe("OnboardingView conversational setup actions", () => {
         action: { tool: "finish_setup", args: {} },
         done: true,
       });
-    const onSwitch = vi.fn();
-    renderOnboarding({ onSwitch });
+    const onFinish = vi.fn();
+    renderOnboarding({ onFinish });
     const user = userEvent.setup();
 
     await enterChatAndSend(user, "set up the optional services");
@@ -1972,7 +1963,7 @@ describe("OnboardingView conversational setup actions", () => {
 
     expect(await screen.findByText(/pick something for alfred to do first/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/onboarding steps complete/i)).toHaveTextContent(/7 of 8/i);
-    expect(onSwitch).not.toHaveBeenCalled();
+    expect(onFinish).not.toHaveBeenCalled();
   });
 
   it("persists chat battery and Slack skips across a panel remount", async () => {
@@ -1994,8 +1985,8 @@ describe("OnboardingView conversational setup actions", () => {
         action: { tool: "finish_setup", args: {} },
         done: true,
       });
-    const onSwitch = vi.fn();
-    renderOnboarding({ onSwitch });
+    const onFinish = vi.fn();
+    renderOnboarding({ onFinish });
     const user = userEvent.setup();
 
     await enterChatAndSend(user, "keep the defaults");
@@ -2008,7 +1999,7 @@ describe("OnboardingView conversational setup actions", () => {
     await approveStep(user, /finish setup/i);
 
     expect(await screen.findByText(/pick something for alfred to do first/i)).toBeInTheDocument();
-    expect(onSwitch).not.toHaveBeenCalled();
+    expect(onFinish).not.toHaveBeenCalled();
   });
 
   it("reports a successful GitHub device flow to the model (Codex P2 fresh status)", async () => {

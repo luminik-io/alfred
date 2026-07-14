@@ -15,16 +15,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { errorDetail, supportsNativeActions } from "../api/client";
 import { loadSetupStatus } from "../api/setup";
+import type { ThemeMode, ThemeName } from "../lib/useTheme";
 import type { ActionNotice, NativeActionRequest } from "../lib/uiTypes";
 import type { SetupStatus, TrustedSlackUsersResponse } from "../types";
+import { AppearancePicker } from "./AppearancePicker";
 import { EmptyState, PanelHeader } from "./atoms";
 import { FirstRunReadinessPanel } from "./onboarding/FirstRunReadinessPanel";
 import { InstallInventoryPanel } from "./onboarding/InstallInventoryPanel";
 import { Tabs, type TabItem } from "./Tabs";
 
-type SetupSubtab = "connection" | "collaborators" | "diagnostics";
+type SettingsSection = "appearance" | "runtime" | "collaborators" | "diagnostics";
 
-export function SetupView({
+export function SettingsView({
   baseUrl,
   loading,
   connected,
@@ -32,6 +34,10 @@ export function SetupView({
   trustedSlack,
   busyTrustedUser,
   nativeBusy,
+  themeName,
+  mode,
+  onSelectTheme,
+  onSelectMode,
   onAddTrustedUser,
   onRemoveTrustedUser,
   onRunLocalAction,
@@ -46,6 +52,10 @@ export function SetupView({
   trustedSlack: TrustedSlackUsersResponse | null;
   busyTrustedUser: string | null;
   nativeBusy: string | null;
+  themeName: ThemeName;
+  mode: ThemeMode;
+  onSelectTheme: (theme: ThemeName) => void;
+  onSelectMode: (mode: ThemeMode) => void;
   onAddTrustedUser: (userId: string) => void;
   onRemoveTrustedUser: (userId: string) => void;
   onRunLocalAction: (request: NativeActionRequest) => void | Promise<unknown>;
@@ -57,7 +67,7 @@ export function SetupView({
   const [consoleAgent, setConsoleAgent] = useState("senior-dev");
   const [serverUrl, setServerUrl] = useState(baseUrl);
   const [trustedUserId, setTrustedUserId] = useState("");
-  const [subtab, setSubtab] = useState<SetupSubtab>("connection");
+  const [section, setSection] = useState<SettingsSection>("runtime");
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [setupLoading, setSetupLoading] = useState(false);
@@ -150,25 +160,40 @@ export function SetupView({
     [onRunLocalAction, refreshSetupStatus],
   );
 
-  const tabs: TabItem<SetupSubtab>[] = [
-    { key: "connection", label: "Connection" },
+  const tabs: TabItem<SettingsSection>[] = [
+    { key: "runtime", label: "Runtime" },
+    { key: "appearance", label: "Appearance" },
     { key: "collaborators", label: "Collaborators", badge: trustedUsers.length || null },
     { key: "diagnostics", label: "Diagnostics" },
   ];
 
   return (
-    <section className="panel animate-rise setup-view">
-      <PanelHeader eyebrow="Setup" title="Connect and configure Alfred" />
+    <section className="panel animate-rise settings-view" aria-label="Settings">
+      <PanelHeader eyebrow="Alfred" title="Settings" />
       <Tabs
         tabs={tabs}
-        active={subtab}
-        onChange={setSubtab}
-        idBase="setup"
-        ariaLabel="Setup sections"
+        active={section}
+        onChange={setSection}
+        idBase="settings"
+        ariaLabel="Settings sections"
       />
-      <div id="setup-panel" role="tabpanel" className="subtab-panel">
-        {subtab === "connection" ? (
-          <div className="setup-section">
+      <div id="settings-panel" role="tabpanel" className="subtab-panel">
+        {section === "appearance" ? (
+          <div className="settings-section">
+            <p className="panel-intro">
+              Choose the visual theme and light or dark mode for this Mac.
+            </p>
+            <AppearancePicker
+              themeName={themeName}
+              mode={mode}
+              onSelectTheme={onSelectTheme}
+              onSelectMode={onSelectMode}
+            />
+          </div>
+        ) : null}
+
+        {section === "runtime" ? (
+          <div className="settings-section">
             <p className="panel-intro">
               Install or repair Alfred on this Mac, then connect to the local server it starts.
               Slack stays the collaboration UI, and the CLI remains the inspectable headless path
@@ -188,7 +213,7 @@ export function SetupView({
             />
             {setupError ? (
               <p className="console-note">
-                Setup inventory unavailable: {setupError}
+                Runtime inventory unavailable: {setupError}
               </p>
             ) : null}
             <form
@@ -273,8 +298,8 @@ export function SetupView({
           </div>
         ) : null}
 
-        {subtab === "collaborators" ? (
-          <div className="setup-section">
+        {section === "collaborators" ? (
+          <div className="settings-section">
             <p className="panel-intro">
               Add people who can discuss plans and request drafts in Slack. The final approval gate
               stays with the designated operator.
@@ -341,8 +366,8 @@ export function SetupView({
           </div>
         ) : null}
 
-        {subtab === "diagnostics" ? (
-          <div className="setup-section">
+        {section === "diagnostics" ? (
+          <div className="settings-section">
             <p className="panel-intro">
               Raw runtime probes for power users. Output appears in the result panel at the top of
               the app. Per-agent controls live on Agents; memory checks live in Learnings.

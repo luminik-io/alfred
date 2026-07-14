@@ -291,18 +291,9 @@
   font-size: 0.78rem;
 }
 
-.setup-section {
+.settings-section {
   display: grid;
   gap: 0.85rem;
-}
-
-.setup-mode-stack {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.setup-mode-back {
-  width: fit-content;
 }
 
 .server-connect-form,
@@ -575,4 +566,3 @@
     transition-duration: 1ms !important;
   }
 }
-

@@ -1,14 +1,12 @@
 import type { NativeAction } from "../types";
 
-// Job-shaped IA. Internal keys preserve legacy deep links; labels are product
-// copy and live in primaryTabs.ts.
+// Job-shaped IA. Labels are product copy and live in primaryTabs.ts.
 //   home     -> Inbox: needs you, live activity, shipped PRs
 //   compose  -> Ask: conversational request intake
 //   pipeline -> Work: plans, queue, PR lifecycle, shipped evidence
 //   fleet    -> Agents: roster, schedules, activity, lessons
 //   lessons  -> Lessons: what the fleet learned, rendered inside Agents
-// Internal aliases:
-//   settings -> Setup: onboarding, repos, collaborators, diagnostics
+//   settings -> Settings: runtime, collaborators, diagnostics, appearance
 //   logs     -> the activity tail for one agent, rendered inside Fleet
 export type TabKey =
   | "home"
@@ -22,13 +20,11 @@ export type TabKey =
 // The depth surfaces grouped inside Fleet.
 export type OperatorKey = "fleet" | "logs" | "lessons";
 
-export type SetupMode = "guided" | "advanced";
-
 export type FollowupAction = "convert" | "handled";
 
 // The surface an inline action notice belongs to. A notice is rendered only on
 // its originating surface so e.g. promoting a lesson never flashes a banner on
-// Plans / Board / Setup. `null` notice = nothing to show.
+// Plans / Board / Settings. `null` notice = nothing to show.
 export type NoticeDomain = "plans" | "board" | "memory" | "setup";
 
 export type ActionNotice =

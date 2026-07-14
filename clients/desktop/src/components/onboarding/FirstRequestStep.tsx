@@ -8,7 +8,6 @@ import {
   loadSetupPlaybooks,
   seedSetupDemo,
 } from "../../api/setup";
-import type { TabKey } from "../../lib/uiTypes";
 import type { SetupPlaybook } from "../../types";
 import { Button, Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "../ui";
 import type { OnboardingNotice } from "./types";
@@ -33,7 +32,8 @@ export function FirstRequestStep({
   setupReady,
   demoPresent,
   setNotice,
-  onSwitch,
+  onOpenCompose,
+  onOpenInbox,
   onComplete,
   onSeedDemo,
   onClearDemo,
@@ -46,7 +46,8 @@ export function FirstRequestStep({
   // depending only on the in-component seed flag, which resets to false.
   demoPresent: boolean;
   setNotice: (notice: OnboardingNotice) => void;
-  onSwitch?: (tab: TabKey) => void;
+  onOpenCompose: () => void;
+  onOpenInbox: () => void;
   // Called after a real request or demo lands so the orchestrator can mark the
   // journey complete and refresh the board.
   onComplete: (kind: "request" | "demo") => void;
@@ -110,7 +111,7 @@ export function FirstRequestStep({
         message: `Drafted your first request: "${result.title}". Refine it in Ask, then save the plan. It runs on the Claude and Codex subscriptions you already pay for, with no per-request bill, and you can watch usage in the sidebar.`,
       });
       onComplete("request");
-      onSwitch?.("compose");
+      onOpenCompose();
     } catch (err) {
       setNotice({ tone: "error", message: errorDetail(err) || "Could not draft from that spec." });
     } finally {
@@ -233,7 +234,7 @@ export function FirstRequestStep({
                 <Button
                   variant="ghost"
                   type="button"
-                  onClick={() => onSwitch?.("home")}
+                  onClick={onOpenInbox}
                   disabled={!setupReady}
                 >
                   <span>Open Inbox</span>
@@ -259,7 +260,7 @@ export function FirstRequestStep({
                 <Button
                   variant="ghost"
                   type="button"
-                  onClick={() => onSwitch?.("compose")}
+                  onClick={onOpenCompose}
                   disabled={!setupReady}
                 >
                   <span>Write a brief in Ask</span>

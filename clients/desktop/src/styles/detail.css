@@ -378,7 +378,7 @@
 }
 
 .logs-view,
-.setup-view {
+.settings-view {
   min-height: min(680px, calc(100svh - 8rem));
 }
 
@@ -798,4 +798,3 @@
   display: grid;
   gap: 0.75rem;
 }
-
