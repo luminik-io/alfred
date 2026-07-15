@@ -34,7 +34,6 @@ import {
   type GithubAuthFlow,
   type OnboardingNotice,
   type OnboardingStepKey,
-  type StepProgress,
 } from "./onboarding/types";
 import { useOnboardingActions } from "./onboarding/useOnboardingActions";
 import { WelcomeStep } from "./onboarding/WelcomeStep";
@@ -746,24 +745,15 @@ export function OnboardingView({
     [],
   );
 
-  const progressFor = useCallback(
-    (key: OnboardingStepKey): StepProgress => {
-      if (stepComplete(key)) return "done";
-      if (key === stepKey) return "active";
-      return "todo";
-    },
-    [stepComplete, stepKey],
-  );
-
   const stepperItems = useMemo<StepperItem[]>(
     () =>
       steps.map((step) => ({
         key: step.key,
         label: step.stepperTitle,
-        state: progressFor(step.key),
+        complete: stepComplete(step.key),
         optional: step.optional,
       })),
-    [steps, progressFor],
+    [steps, stepComplete],
   );
 
   const previousKey = ONBOARDING_STEP_ORDER[currentIndex - 1] ?? null;
@@ -815,6 +805,12 @@ export function OnboardingView({
     },
     [goToStep, markStepComplete],
   );
+
+  useEffect(() => {
+    if (connected && serverShortcutSelected) {
+      markStepComplete("welcome");
+    }
+  }, [connected, markStepComplete, serverShortcutSelected]);
 
   // Auto-advance once when a step's detection lands while the user is sitting on
   // it (DESIGN_SPEC: auto-advance on detected gh / engine). Never fights a Back.
@@ -942,7 +938,6 @@ export function OnboardingView({
                   }}
                   onDevShortcut={() => {
                     setServerShortcutSelected(true);
-                    markStepComplete("welcome");
                     goToStep("github");
                   }}
                 />

@@ -1,6 +1,6 @@
 import { Check } from "lucide-react";
 
-import type { OnboardingStepKey, StepProgress } from "./types";
+import type { OnboardingStepKey } from "./types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -18,8 +18,8 @@ export type StepperItem = {
   key: OnboardingStepKey;
   /** Short rail title, e.g. "GitHub". */
   label: string;
-  /** done / active / todo, derived from real readiness by the orchestrator. */
-  state: StepProgress;
+  /** Completion is independent from which step is currently active. */
+  complete: boolean;
   /** Optional steps (Slack) carry a quiet marker. */
   optional?: boolean;
 };
@@ -38,7 +38,7 @@ export function Stepper({
 }) {
   const total = steps.length;
   const activeIndex = steps.findIndex((step) => step.key === activeKey);
-  const completed = steps.filter((step) => step.state === "done").length;
+  const completed = steps.filter((step) => step.complete).length;
 
   return (
     <nav
@@ -49,7 +49,7 @@ export function Stepper({
       <ol className="alfred-stepper__track" role="list">
         {steps.map((step, index) => {
           const isActive = step.key === activeKey;
-          const isDone = step.state === "done";
+          const isDone = step.complete;
           return (
             <li
               key={step.key}
@@ -63,7 +63,7 @@ export function Stepper({
                 <span
                   className={cn(
                     "alfred-stepper__connector",
-                    steps[index - 1].state === "done" && "is-filled",
+                    steps[index - 1].complete && "is-filled",
                   )}
                   aria-hidden="true"
                 />

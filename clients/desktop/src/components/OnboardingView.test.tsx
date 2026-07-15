@@ -580,6 +580,66 @@ describe("OnboardingView eight-step takeover", () => {
     expect(screen.getByLabelText(/local server url/i)).toBeVisible();
   });
 
+  it("restores honest Welcome progress after abandoning the server route", async () => {
+    renderOnboarding({ connected: false });
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /i have a server running/i }));
+    await user.click(screen.getByRole("button", { name: /^back$/i }));
+    await user.click(screen.getByRole("button", { name: /^welcome$/i }));
+
+    const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+    expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+      /welcome/i,
+    );
+    expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
+      /0 of 8/i,
+    );
+    expect(within(stepper).getByRole("button", { name: /^tools$/i })).toBeDisabled();
+    expect(screen.queryByLabelText(/onboarding navigation/i)).not.toBeInTheDocument();
+  });
+
+  it("completes the server route only after connection and keeps Welcome current on revisit", async () => {
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        github: { ok: false, account: null, detail: "Not signed in to GitHub." },
+      }),
+    );
+    const props: React.ComponentProps<typeof OnboardingView> = {
+      baseUrl: "http://127.0.0.1:7010",
+      loading: false,
+      connected: false,
+      canRun: true,
+      nativeBusy: null,
+      onConnectServer: vi.fn(),
+      onInstallCore: vi.fn(),
+      onStartRuntime: vi.fn(),
+      onRunLocalAction: vi.fn(async () => null),
+      onFinish: vi.fn(),
+      onRefreshBoard: vi.fn(async () => undefined),
+      ...defaultRosterProps(),
+    };
+    const view = render(<OnboardingView {...props} />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /i have a server running/i }));
+    expect(screen.getByLabelText(/onboarding steps complete/i)).toHaveTextContent(/0 of 8/i);
+    view.rerender(<OnboardingView {...props} connected />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/onboarding steps complete/i)).toHaveTextContent(/1 of 8/i),
+    );
+
+    await user.click(screen.getByRole("button", { name: /^welcome$/i }));
+    view.rerender(<OnboardingView {...props} />);
+    const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+    expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+      /welcome/i,
+    );
+    expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
+      /1 of 8/i,
+    );
+  });
+
   it("clears the server shortcut after footer navigation leaves GitHub", async () => {
     const props: React.ComponentProps<typeof OnboardingView> = {
       baseUrl: "http://127.0.0.1:7010",
