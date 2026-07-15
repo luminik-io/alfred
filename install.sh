@@ -460,7 +460,7 @@ case "$SCRIPT_DIR" in
 esac
 
 if [[ "$HOMEBREW_FORMULA_INSTALL" == "1" ]]; then
-  DEPLOY_CMD="alfred-deploy --adopt-legacy-ams"
+  DEPLOY_CMD="alfred-deploy"
   DOCTOR_CMD="alfred doctor"
   INIT_CMD="alfred-init"
   SLACK_DOC="https://alfred.luminik.io/guides/slack/"
@@ -468,7 +468,7 @@ if [[ "$HOMEBREW_FORMULA_INSTALL" == "1" ]]; then
   BOOTSTRAP_DOC="https://github.com/luminik-io/alfred/blob/main/BOOTSTRAP.md"
   LINUX_DOC="https://alfred.luminik.io/guides/linux/"
 else
-  DEPLOY_CMD="bash deploy.sh --adopt-legacy-ams"
+  DEPLOY_CMD="bash deploy.sh"
   DOCTOR_CMD="./bin/alfred doctor"
   INIT_CMD="./bin/alfred-init.py"
   SLACK_DOC="docs/SLACK_SETUP.md"

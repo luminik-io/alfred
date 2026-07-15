@@ -87,10 +87,11 @@ def test_deploy_only_starts_ams_when_redis_memory_is_selected() -> None:
     assert "embedded SQLite memory selected; AMS service not installed" in text
     assert "tr '[:upper:]' '[:lower:]'" in text
     assert "ams_service_is_managed" in text
-    assert "--adopt-legacy-ams" in text
-    assert 'cmp -s "$service" "$expected"' in text
-    assert "left unowned alfred-ams.service unchanged" in text
-    assert "left unowned io.luminik.alfred.ams.plist unchanged" in text
+    assert "require_ams_service_ownership" in text
+    assert "adopt_legacy_ams_service" not in text
+    assert "--adopt-legacy-ams" not in text
+    assert "refusing unowned AMS service" in text
+    assert "left unowned" not in text
     assert text.count("if redis_memory_enabled; then") == 2
 
 

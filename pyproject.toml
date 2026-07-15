@@ -1,9 +1,8 @@
 [project]
-# Project/distribution name stays "alfred-os" even though the GitHub repo is
-# now luminik-io/alfred. Renaming the package would break `pip install
-# alfred-os` and the `alfred_os_cli` import path for existing users; the repo
-# URLs below already point at the new slug. Revisit the package rename as a
-# deliberate, separately-versioned change, not as part of the repo-slug sweep.
+# The product and repository are Alfred. The distribution keeps the
+# collision-free `alfred-os` namespace because `alfred` is already owned by
+# unrelated projects on PyPI and Homebrew. The operator-facing CLI remains
+# `alfred`; this package entry point only exposes wheel-specific utilities.
 name = "alfred-os"
 version = "0.6.0"
 description = "A small framework for running a fleet of narrow-specialist Claude Code and Codex agents on one host, isolated by git worktree."

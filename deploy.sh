@@ -19,7 +19,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: ./deploy.sh [--adopt-legacy-ams] [--help]
+Usage: ./deploy.sh [--help]
 
 Deploy Alfred runtime files into ${ALFRED_HOME:-$HOME/.alfred}.
 
@@ -28,30 +28,20 @@ builds the bundled desktop UI when available, links CLI shims into
 $HOME/.local/bin, and renders/reloads launchd or systemd scheduler units when
 a runtime roster exists.
 
-Options:
-  --adopt-legacy-ams  Adopt and remove an unmarked legacy AMS service only when
-                      it exactly matches Alfred's generated service definition.
-
 Environment overrides:
   ALFRED_HOME     Runtime root for this install (default: $HOME/.alfred)
   WORKSPACE_ROOT  Workspace root written into rendered scheduler units
 EOF
 }
 
-ADOPT_LEGACY_AMS=0
-
-if [ "$#" -gt 1 ]; then
-  echo "deploy.sh: too many arguments: $*" >&2
-  usage >&2
-  exit 2
-fi
-
-if [ "$#" -eq 1 ]; then
+if [ "$#" -gt 0 ]; then
   case "$1" in
-    --adopt-legacy-ams)
-      ADOPT_LEGACY_AMS=1
-      ;;
     -h|--help)
+      if [ "$#" -gt 1 ]; then
+        echo "deploy.sh: too many arguments: $*" >&2
+        usage >&2
+        exit 2
+      fi
       usage
       exit 0
       ;;
@@ -450,6 +440,7 @@ install_ams_service_linux() {
   local systemd_user_dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
   local service="$systemd_user_dir/alfred-ams.service"
   mkdir -p "$systemd_user_dir"
+  require_ams_service_ownership "$service"
   render_ams_service_linux > "$service"
   mark_ams_service_managed "$service"
   systemctl --user daemon-reload >/dev/null 2>&1 || true
@@ -487,32 +478,22 @@ WantedBy=default.target
 EOF
 }
 
-adopt_legacy_ams_service() {
-  local service="$1" renderer="$2" expected
-  [ "$ADOPT_LEGACY_AMS" = "1" ] || return 1
-  [ -f "$service" ] || return 1
-  expected="$(mktemp "${TMPDIR:-/tmp}/alfred-ams-service.XXXXXX")"
-  "$renderer" > "$expected"
-  if cmp -s "$service" "$expected"; then
-    rm -f "$expected"
-    mark_ams_service_managed "$service"
-    echo "[alfred-os/deploy] adopted verified legacy AMS service: $service"
-    return 0
+require_ams_service_ownership() {
+  local service="$1"
+  if [ -e "$service" ] && ! ams_service_is_managed "$service"; then
+    echo "[alfred-os/deploy] refusing unowned AMS service at $service" >&2
+    echo "[alfred-os/deploy] remove or relocate that service before deploying Alfred" >&2
+    return 1
   fi
-  rm -f "$expected"
-  return 1
 }
 
 remove_ams_service_linux() {
   local systemd_user_dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
   local service="$systemd_user_dir/alfred-ams.service"
-  if ! ams_service_is_managed "$service" && ! adopt_legacy_ams_service "$service" render_ams_service_linux; then
-    if [ -e "$service" ]; then
-      echo "[alfred-os/deploy] left unowned alfred-ams.service unchanged"
-    else
-      clear_ams_service_marker
-      echo "[alfred-os/deploy] embedded SQLite memory selected; AMS service not installed"
-    fi
+  require_ams_service_ownership "$service"
+  if [ ! -e "$service" ]; then
+    clear_ams_service_marker
+    echo "[alfred-os/deploy] embedded SQLite memory selected; AMS service not installed"
     return 0
   fi
   systemctl --user disable --now alfred-ams.service >/dev/null 2>&1 || true
@@ -533,6 +514,7 @@ install_ams_service_launchd() {
   local uid_value
   mkdir -p "$launch_agents_dir"
   uid_value="$(id -u)"
+  require_ams_service_ownership "$plist"
   render_ams_service_launchd > "$plist"
   mark_ams_service_managed "$plist"
   launchctl bootout "gui/$uid_value" "$plist" >/dev/null 2>&1 || true
@@ -586,13 +568,10 @@ remove_ams_service_launchd() {
   local plist="$launch_agents_dir/io.luminik.alfred.ams.plist"
   local uid_value
   uid_value="$(id -u)"
-  if ! ams_service_is_managed "$plist" && ! adopt_legacy_ams_service "$plist" render_ams_service_launchd; then
-    if [ -e "$plist" ]; then
-      echo "[alfred-os/deploy] left unowned io.luminik.alfred.ams.plist unchanged"
-    else
-      clear_ams_service_marker
-      echo "[alfred-os/deploy] embedded SQLite memory selected; AMS service not installed"
-    fi
+  require_ams_service_ownership "$plist"
+  if [ ! -e "$plist" ]; then
+    clear_ams_service_marker
+    echo "[alfred-os/deploy] embedded SQLite memory selected; AMS service not installed"
     return 0
   fi
   launchctl bootout "gui/$uid_value/io.luminik.alfred.ams" >/dev/null 2>&1 || true
