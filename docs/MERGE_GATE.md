@@ -45,11 +45,12 @@ blocks.
 
 ## The merge is SHA-guarded
 
-When the gate passes, Alfred squash-merges with the head commit captured during
-the check (`gh pr merge --squash --match-head-commit <sha>`). If the PR head
-moved between the check and the merge, for example a new push landed in that
-window, GitHub rejects the merge and the gate fails closed instead of merging
-unreviewed changes.
+When the first gate passes, Alfred immediately collects and evaluates a second
+complete snapshot before the mutation. A same-head review thread, changed
+status, or stale external review therefore blocks the merge. The second head
+must also equal the first head. Alfred then squash-merges with that commit
+(`gh pr merge --squash --match-head-commit <sha>`), so a push in the remaining
+mutation window is rejected by GitHub.
 
 ## Policy knobs
 

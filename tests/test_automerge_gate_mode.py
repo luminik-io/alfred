@@ -117,7 +117,7 @@ def test_external_gate_honors_disabled_human_approval(monkeypatch):
     monkeypatch.setattr(automerge, "collect_snapshot", lambda slug, num, **kw: snap)
     monkeypatch.setattr(
         automerge,
-        "guarded_squash_merge",
+        "rechecked_squash_merge",
         lambda *args, **kwargs: (True, "merged"),
     )
 
@@ -145,17 +145,24 @@ def test_merge_via_gate_merges_when_gate_passes(monkeypatch):
     monkeypatch.setattr(automerge, "collect_snapshot", lambda slug, num: snap)
     captured = {}
 
-    def _guarded(slug, num, head, delete_branch=True):
+    def _guarded(slug, num, head, **kwargs):
         captured["args"] = (slug, num, head)
+        captured["policy"] = (
+            kwargs["min_approvals"],
+            kwargs["required_external_reviews"],
+        )
+        captured["delete_branch"] = kwargs["delete_branch"]
         return True, "merged"
 
-    monkeypatch.setattr(automerge, "guarded_squash_merge", _guarded)
+    monkeypatch.setattr(automerge, "rechecked_squash_merge", _guarded)
     ok, reason, _title = automerge._merge_via_gate("widget", {"number": 12, "title": "T"})
     assert ok is True
     assert reason == "merged"
     # GH_ORG is bound into automerge at agent_runner import time; assert against
     # the value the module actually resolved rather than a hard-coded org.
     assert captured["args"] == (f"{automerge.GH_ORG}/widget", 12, "a" * 40)
+    assert captured["policy"] == (1, ())
+    assert captured["delete_branch"] is True
 
 
 def test_merge_via_gate_skips_when_gate_fails(monkeypatch):
@@ -180,7 +187,7 @@ def test_merge_via_gate_skips_when_gate_fails(monkeypatch):
         called["n"] += 1
         return True, "merged"
 
-    monkeypatch.setattr(automerge, "guarded_squash_merge", _guarded)
+    monkeypatch.setattr(automerge, "rechecked_squash_merge", _guarded)
     ok, reason, _title = automerge._merge_via_gate("widget", {"number": 12, "title": "T"})
     assert ok is False
     assert called["n"] == 0

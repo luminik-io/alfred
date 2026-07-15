@@ -2746,8 +2746,13 @@ def cmd_pr(args: argparse.Namespace) -> int:
         else:
             print("Not merging: the gate did not pass.", file=sys.stderr)
         return 1
-    ok, msg = merge_gate.guarded_squash_merge(
-        repo, args.number, decision.head_sha, delete_branch=not args.no_delete_branch
+    ok, msg = merge_gate.rechecked_squash_merge(
+        repo,
+        args.number,
+        decision.head_sha,
+        min_approvals=min_approvals,
+        required_external_reviews=required_external_reviews,
+        delete_branch=not args.no_delete_branch,
     )
     if ok:
         if args.json:

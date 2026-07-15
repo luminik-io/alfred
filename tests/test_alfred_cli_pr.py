@@ -140,7 +140,7 @@ def test_pr_check_defaults_to_current_checkout_under_gh_org(cli_module, monkeypa
     assert seen["repo"] == "acme/widget"
 
 
-def test_pr_merge_gate_pass_calls_guarded_merge(cli_module, monkeypatch, capsys):
+def test_pr_merge_gate_pass_calls_rechecked_merge(cli_module, monkeypatch, capsys):
     monkeypatch.setattr(
         merge_gate,
         "collect_snapshot",
@@ -153,7 +153,7 @@ def test_pr_merge_gate_pass_calls_guarded_merge(cli_module, monkeypatch, capsys)
         calls["delete_branch"] = kw.get("delete_branch")
         return True, "merged"
 
-    monkeypatch.setattr(merge_gate, "guarded_squash_merge", _merge)
+    monkeypatch.setattr(merge_gate, "rechecked_squash_merge", _merge)
     rc = cli_module.main(["pr", "merge", "7", "--repo", "acme/widget"])
     out = capsys.readouterr().out
     assert rc == 0
@@ -176,7 +176,7 @@ def test_pr_merge_gate_fail_does_not_merge(cli_module, monkeypatch, capsys):
         called["n"] += 1
         return True, "merged"
 
-    monkeypatch.setattr(merge_gate, "guarded_squash_merge", _merge)
+    monkeypatch.setattr(merge_gate, "rechecked_squash_merge", _merge)
     rc = cli_module.main(["pr", "merge", "7", "--repo", "acme/widget"])
     assert rc == 1
     assert called["n"] == 0
@@ -194,7 +194,7 @@ def test_pr_merge_no_delete_branch_flag(cli_module, monkeypatch, capsys):
         calls["delete_branch"] = kw.get("delete_branch")
         return True, "merged"
 
-    monkeypatch.setattr(merge_gate, "guarded_squash_merge", _merge)
+    monkeypatch.setattr(merge_gate, "rechecked_squash_merge", _merge)
     rc = cli_module.main(["pr", "merge", "7", "--repo", "acme/widget", "--no-delete-branch"])
     assert rc == 0
     assert calls["delete_branch"] is False
@@ -208,7 +208,7 @@ def test_pr_merge_json_emits_one_parseable_document(cli_module, monkeypatch, cap
     )
     monkeypatch.setattr(
         merge_gate,
-        "guarded_squash_merge",
+        "rechecked_squash_merge",
         lambda *args, **kwargs: (True, "merged"),
     )
     rc = cli_module.main(["pr", "merge", "7", "--repo", "acme/widget", "--json"])
@@ -238,7 +238,7 @@ def test_pr_merge_defaults_to_current_checkout_under_gh_org(cli_module, monkeypa
         calls["repo"] = repo
         return True, "merged"
 
-    monkeypatch.setattr(merge_gate, "guarded_squash_merge", _merge)
+    monkeypatch.setattr(merge_gate, "rechecked_squash_merge", _merge)
     rc = cli_module.main(["pr", "merge", "7"])
     assert rc == 0
     assert calls["repo"] == "acme/widget"

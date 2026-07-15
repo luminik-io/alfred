@@ -69,9 +69,9 @@ from merge_gate import (
     MIN_APPROVALS_DEFAULT,
     collect_snapshot,
     evaluate_gate,
-    guarded_squash_merge,
     parse_min_approvals,
     parse_require_approval,
+    rechecked_squash_merge,
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "automerge")
@@ -92,9 +92,10 @@ MIN_AGE_SECONDS = int(os.environ.get("ALFRED_AUTOMERGE_MIN_AGE_MIN", "30")) * 60
 
 
 # GitHub-native merge gate. When on (the default), the sweeper only merges a PR
-# that GitHub itself reports as approved, thread-clean, mergeable, and green,
-# using a SHA-guarded squash. When off, the sweeper keeps its prior review-agent
-# ship-ready behaviour. See docs/MERGE_GATE.md.
+# that GitHub itself reports as approved, thread-clean, mergeable, and green.
+# It rechecks the complete gate immediately before a SHA-guarded squash. When
+# off, the sweeper keeps its prior review-agent ship-ready behaviour. See
+# docs/MERGE_GATE.md.
 #
 # NOTE: these are read from the plain environment. If the typed config registry
 # (lib/alfred_config.py) lands later, migrate these two keys into it.
@@ -449,7 +450,14 @@ def _merge_via_gate(repo: str, pr: dict) -> tuple[bool, str, str]:
     )
     if not decision.mergeable:
         return False, decision.short_reason(), title
-    ok, msg = guarded_squash_merge(slug, pr_num, decision.head_sha, delete_branch=True)
+    ok, msg = rechecked_squash_merge(
+        slug,
+        pr_num,
+        decision.head_sha,
+        min_approvals=effective_min_approvals,
+        required_external_reviews=REQUIRED_EXTERNAL_REVIEWS,
+        delete_branch=True,
+    )
     if ok:
         return True, "merged", title
     return False, f"merge failed: {msg}", title

@@ -21,8 +21,10 @@ The design fails closed: any API error, missing field, or unrecognised value
 makes the gate return "not mergeable" rather than guessing.
 
 The evaluation is a pure function over a :class:`GateSnapshot`, so it is fully
-unit-testable without touching the network. Snapshot collection and the
-SHA-guarded merge are thin wrappers over ``gh`` that accept injectable runners.
+unit-testable without touching the network. Snapshot collection and the merge
+are thin wrappers over ``gh`` that accept injectable runners. Every merge
+rechecks the complete gate, requires the head to match the first snapshot, and
+uses GitHub's SHA guard for the final mutation.
 """
 
 from __future__ import annotations
@@ -730,22 +732,38 @@ def _collect_review_threads(
         cursor = next_cursor
 
 
-def guarded_squash_merge(
+def rechecked_squash_merge(
     repo: str,
     pr_number: int,
-    head_sha: str,
+    expected_head_sha: str,
     *,
+    min_approvals: int = MIN_APPROVALS_DEFAULT,
+    required_external_reviews: Sequence[str] = (),
     delete_branch: bool = True,
+    gh_json: GhJson = _default_gh_json,
     runner: Runner = _default_run,
 ) -> tuple[bool, str]:
-    """Squash-merge, guarded on the head SHA captured during the gate snapshot.
+    """Recheck the complete gate, then squash-merge the unchanged head.
 
-    ``gh pr merge --match-head-commit`` makes GitHub reject the merge if the PR
-    head moved between the snapshot and the merge, so a race fails closed
-    instead of merging unreviewed changes.
+    The second snapshot catches same-head review threads or status changes that
+    arrived after the caller's first gate. The expected-head comparison and
+    ``gh pr merge --match-head-commit`` also reject a push anywhere in the
+    check-to-merge window.
     """
-    if not head_sha:
+    if not expected_head_sha:
         return False, "refusing to merge without a verified head SHA"
+    _snapshot, decision = gate_pull_request(
+        repo,
+        pr_number,
+        min_approvals=min_approvals,
+        gh_json=gh_json,
+        required_external_reviews=required_external_reviews,
+    )
+    if decision.head_sha != expected_head_sha:
+        actual = decision.head_sha[:12] or "unknown"
+        return False, f"gate recheck found a new head ({actual}); run the gate again"
+    if not decision.mergeable:
+        return False, f"gate recheck failed: {decision.short_reason()}"
     cmd = [
         "gh",
         "pr",
@@ -755,7 +773,7 @@ def guarded_squash_merge(
         repo,
         "--squash",
         "--match-head-commit",
-        head_sha,
+        expected_head_sha,
     ]
     if delete_branch:
         cmd.append("--delete-branch")

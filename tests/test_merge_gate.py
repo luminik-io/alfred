@@ -20,7 +20,7 @@ from merge_gate import (  # noqa: E402
     ReviewThread,
     collect_snapshot,
     evaluate_gate,
-    guarded_squash_merge,
+    rechecked_squash_merge,
 )
 
 
@@ -780,46 +780,107 @@ def test_collect_snapshot_bad_repo_slug_fails_closed():
 
 
 # --------------------------------------------------------------------------
-# guarded_squash_merge: SHA-guarded merge
+# rechecked_squash_merge: fresh gate plus SHA-guarded merge
 # --------------------------------------------------------------------------
 
 
-def test_guarded_merge_uses_match_head_commit():
+def test_rechecked_merge_uses_match_head_commit(monkeypatch):
     captured = {}
+    head = "f" * 40
+    snap = _snapshot(
+        head_sha=head,
+        reviews=(Review("operator", "APPROVED", "2026-07-11T10:00:00Z", head),),
+    )
+    monkeypatch.setattr(
+        merge_gate,
+        "gate_pull_request",
+        lambda *args, **kwargs: (snap, evaluate_gate(snap)),
+    )
 
     def _runner(cmd):
         captured["cmd"] = cmd
         return subprocess.CompletedProcess(cmd, 0, stdout="merged", stderr="")
 
-    ok, _msg = guarded_squash_merge("acme/repo", 7, "f" * 40, runner=_runner)
+    ok, _msg = rechecked_squash_merge("acme/repo", 7, head, runner=_runner)
     assert ok is True
     cmd = captured["cmd"]
     assert "--squash" in cmd
     assert "--match-head-commit" in cmd
-    assert cmd[cmd.index("--match-head-commit") + 1] == "f" * 40
+    assert cmd[cmd.index("--match-head-commit") + 1] == head
     assert "--delete-branch" in cmd
 
 
-def test_guarded_merge_refuses_without_head_sha():
+def test_rechecked_merge_refuses_without_head_sha():
     called = {"n": 0}
 
     def _runner(cmd):
         called["n"] += 1
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-    ok, msg = guarded_squash_merge("acme/repo", 7, "", runner=_runner)
+    ok, msg = rechecked_squash_merge("acme/repo", 7, "", runner=_runner)
     assert ok is False
     assert called["n"] == 0
     assert "head SHA" in msg
 
 
-def test_guarded_merge_reports_failure():
+def test_rechecked_merge_reports_mutation_failure(monkeypatch):
+    snap = _snapshot()
+    monkeypatch.setattr(
+        merge_gate,
+        "gate_pull_request",
+        lambda *args, **kwargs: (snap, evaluate_gate(snap)),
+    )
+
     def _runner(cmd):
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="head branch was modified")
 
-    ok, msg = guarded_squash_merge("acme/repo", 7, "a" * 40, runner=_runner)
+    ok, msg = rechecked_squash_merge("acme/repo", 7, "a" * 40, runner=_runner)
     assert ok is False
     assert "head branch was modified" in msg
+
+
+def test_rechecked_merge_blocks_late_review_thread(monkeypatch):
+    snap = _snapshot(review_threads=(ReviewThread(False, "x.py", "codex"),))
+    monkeypatch.setattr(
+        merge_gate,
+        "gate_pull_request",
+        lambda *args, **kwargs: (snap, evaluate_gate(snap)),
+    )
+    called = {"n": 0}
+
+    def _runner(cmd):
+        called["n"] += 1
+        return subprocess.CompletedProcess(cmd, 0, stdout="merged", stderr="")
+
+    ok, msg = rechecked_squash_merge("acme/repo", 7, "a" * 40, runner=_runner)
+
+    assert ok is False
+    assert called["n"] == 0
+    assert "unresolved review thread" in msg
+
+
+def test_rechecked_merge_blocks_head_change_even_when_new_head_is_clean(monkeypatch):
+    new_head = "b" * 40
+    snap = _snapshot(
+        head_sha=new_head,
+        reviews=(Review("operator", "APPROVED", "2026-07-11T10:00:00Z", new_head),),
+    )
+    monkeypatch.setattr(
+        merge_gate,
+        "gate_pull_request",
+        lambda *args, **kwargs: (snap, evaluate_gate(snap)),
+    )
+    called = {"n": 0}
+
+    def _runner(cmd):
+        called["n"] += 1
+        return subprocess.CompletedProcess(cmd, 0, stdout="merged", stderr="")
+
+    ok, msg = rechecked_squash_merge("acme/repo", 7, "a" * 40, runner=_runner)
+
+    assert ok is False
+    assert called["n"] == 0
+    assert "new head" in msg
 
 
 def test_gate_pull_request_end_to_end():
