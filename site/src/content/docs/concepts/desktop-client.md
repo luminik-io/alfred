@@ -6,9 +6,9 @@ description: The recommended Tauri Mac/Linux app over alfred serve, with native 
 Alfred Desktop (`clients/desktop`) is a native Mac/Linux full installer and
 control surface for a local install. It is the recommended `client` tier of the
 [layered install](/concepts/layered-install/): the core fleet and CLI still run
-fully standalone without it, but Setup gives local users the cleanest path
-through core install/repair, install detection, auth, repos, full-fleet roster
-seed, roster naming, and repair/status checks.
+fully standalone without it, but first-run onboarding gives local users the
+cleanest path through core install and repair, install detection, auth, repos,
+full-fleet roster seed, roster naming, and repair/status checks.
 
 Slack stays Alfred's collaboration surface. The desktop app is for local trust
 installation and repair: what needs attention, which plans are waiting, why a run failed,
@@ -23,7 +23,7 @@ Design note and run commands: [`docs/DESKTOP_CLIENT.md`](https://github.com/lumi
 ```mermaid
 flowchart TB
     subgraph client["Alfred Desktop (clients/desktop, Tauri)"]
-        ui["React UI tabs:<br/>Inbox / Ask / Work / Agents / Setup"]
+        ui["React UI tabs:<br/>Inbox / Ask / Work / Code / Agents / Settings"]
         native["native command allowlist:<br/>install/repair core, start runtime,<br/>status, agents, auth, memory,<br/>redis, safe dry-run"]
     end
 
@@ -53,8 +53,9 @@ flowchart TB
 | Inbox | The decision queue: repeated failures, blocked plans, follow-ups, memory candidates, recent runs, shipped work, and the Claude/Codex capacity rail. |
 | Ask | Plain-language planning intake backed by the same readiness engine as Slack. |
 | Work | Kanban board, saved plans, Slack follow-ups, local draft actions, and issue queue controls. |
+| Code | Local repository summaries and bounded file impact: dependents, dependencies, contracts, drift, nearby files, and checks. |
 | Agents | Roster, activity feed, latest-run inspector, memory learning queue, and safe per-agent controls. |
-| Setup | Install or repair the local runtime, seed and deploy the full built-in fleet, choose repo scope and roster naming, and run first-run readiness plus fleet/auth/agent/memory/Slack checks in-app. |
+| Settings | Repair the local runtime, change repo scope and roster naming, and run fleet/auth/agent/memory/Slack checks after first-run onboarding. |
 
 ## Boundary
 
@@ -81,10 +82,9 @@ npm install
 npm run tauri dev
 ```
 
-Setup can install or repair core and start this for you. The app uses `7010`
+First-run onboarding can install or repair core and start this for you. The app uses `7010`
 because macOS can reserve `7000` for Control Center.
-Legacy saved `7000` URLs are treated as stale local configuration and rewritten
-to 7010. Setup lets you enter a custom localhost URL when needed.
+Settings lets you enter a custom localhost URL when needed.
 
 ## Native installers
 

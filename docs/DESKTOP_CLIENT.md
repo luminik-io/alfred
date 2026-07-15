@@ -1,6 +1,6 @@
 # Desktop app guide
 
-Alfred Desktop (`clients/desktop`) is the recommended native Mac/Linux full-install, onboarding, and control surface for a local Alfred fleet. The core fleet and CLI still run fully standalone without it, but most local users should start here because Setup can install or repair Alfred core from bundled resources, detect existing installs, seed and deploy the full built-in fleet, install starter engineering skills, attempt the pinned code-memory doctor, start or reconnect the runtime, verify auth, pick repos, choose roster naming, and run curated repair/status checks from one place.
+Alfred Desktop (`clients/desktop`) is the recommended native Mac/Linux full-install, onboarding, and control surface for a local Alfred fleet. The core fleet and CLI still run fully standalone without it, but most local users should start here because first-run onboarding can install or repair Alfred core from bundled resources, detect existing installs, seed and deploy the full built-in fleet, install starter engineering skills, attempt the pinned code-memory doctor, start or reconnect the runtime, verify auth, pick repos, choose roster naming, and run curated repair/status checks from one place. After onboarding, those controls live in Settings.
 
 Slack stays Alfred's collaboration surface. The desktop app is for local installation, onboarding, trust, and repair: what needs attention, which plans are waiting, why a run failed, which memory candidates are ready, and which local actions are safe to run next. It is the friendly installer and control surface for the same local runtime, not a separate scheduler or hosted service.
 
@@ -25,15 +25,16 @@ The client reads and writes through the same local APIs, state files, and CLI co
 
 ## The control surface
 
-The app is a Tauri shell around a React UI. It opens on Inbox and keeps primary navigation to five everyday work surfaces:
+The app is a Tauri shell around a React UI. It opens on Inbox and keeps primary navigation to six everyday work surfaces:
 
 | Tab | What it shows | What it can do |
 |---|---|---|
 | **Inbox** | The decision queue: blocked plans, follow-ups, stale workers, repeated failures, memory candidates, recent runs, and the capacity rail for Claude and Codex subscription headroom (backed by the live `GET /api/usage` endpoint). | Draft work, refresh state, pause or resume scheduled firings through the native allowlist, and jump to the right surface. |
 | **Ask** | Plain-language planning intake backed by the same readiness engine as Slack. | Draft or refine a plan before it is converted into an issue or spec. |
 | **Work** | The Kanban board: Queued / Working now / Shipped, saved plans, Slack follow-ups, and local draft actions. | Queue an issue, hold work, mark work done, convert follow-ups, or inspect saved detail in-app. |
+| **Code** | The local code-map catalog and a bounded impact view for one file: direct dependents, dependencies, symbols, contract surfaces, contract drift, nearby files, and recommended checks. | Select an indexed repository, analyze a file path without sending source away, and inspect the evidence Alfred should use before changing it. |
 | **Agents** | The agent roster, activity feed, latest-run inspector, and memory learning queue. | Pause, resume, run once, dry-run a codename, promote or reject memory candidates, and inspect firing traces. |
-| **Setup** | Guided install, onboarding, and repair: existing install inventory, runtime, auth, repos, engine checks, capability checks, full-fleet roster seed, roster naming, Slack collaborators, and demo data. Onboarding runs either as a chat with Alfred or as the stepped form. | Install or repair Alfred core, start or reconnect the local runtime, run curated checks in-app, scope the fleet to repositories, choose a roster theme, name the team by chatting with the theme builder or set custom display names by hand, and add or remove local trusted Slack collaborators. |
+| **Settings** | Runtime repair and configuration after first-run onboarding: existing install inventory, auth, repos, engine checks, capability checks, roster naming, Slack collaborators, and appearance. | Install or repair Alfred core, start or reconnect the local runtime, run curated checks in-app, change repository scope, choose a roster theme, set custom display names, and manage trusted Slack collaborators. |
 
 Plans carry their origin so the Slack collaboration trail stays visible while the app keeps a clean local draft inbox.
 
@@ -88,9 +89,9 @@ Memory review is reviewable and appears where you are already working:
 
 The app visibly separates promoted lessons from candidates and raw logs.
 
-### Setup in detail
+### Settings and first-run onboarding
 
-Setup is a guided doctor and onboarding flow: discover existing Alfred files, install or repair bundled Alfred core, seed the full built-in runtime roster, deploy the CLI/agents into `~/.alfred`, install starter engineering skills, run the pinned code-memory doctor, start or reconnect the local runtime, verify GitHub auth, Slack bot/webhook, engine CLIs, launchd or systemd timers, watched repos, roster theme or custom display names, memory provider, code-memory graph layer, and browser dependencies for agents that need them. Repo-scoped agents stay idle until repositories are saved, and the `architect` role (Batman in the default theme) stays idle until `ARCHITECT_PARENT_REPO` is configured. Failures tell you what Alfred checked, why it matters, and the smallest next step.
+First-run onboarding takes over the window without the normal sidebar. It discovers existing Alfred files, installs or repairs bundled Alfred core, seeds the full built-in runtime roster, deploys the CLI and agents into `~/.alfred`, installs starter engineering skills, checks code memory, starts or reconnects the runtime, verifies GitHub auth and engine CLIs, selects watched repos, and configures roster names. After onboarding, the same repair and configuration controls live under Settings. Repo-scoped agents stay idle until repositories are saved, and the `architect` role (Batman in the default theme) stays idle until `ARCHITECT_PARENT_REPO` is configured. Failures tell you what Alfred checked, why it matters, and the smallest next step.
 
 Onboarding runs two ways, and they land the same config. You can **chat with Alfred**: it asks a setup question, then proposes the next action (check the engines, connect GitHub, set repos, pick agents, propose or save a theme, set a schedule, finish). Only the engine check auto-proceeds; every other proposed action, including starting the GitHub sign-in and previewing a theme, runs after you click its button, and anything that changes config, such as saving repos, saving a theme, or setting a schedule, waits for that Approve. Or you can **step through the form** with the same fields. Both paths call the same underlying setup handlers, so they cannot drift. When no engine is configured, the chat path falls back to the stepped form. Naming the team has its own small chat, the **theme builder**: describe a vibe and Alfred proposes a full role-to-name mapping you tweak and save through the normal theme editor. Full walkthrough in [`ONBOARDING.md`](ONBOARDING.md).
 
@@ -110,13 +111,13 @@ The Inbox capacity rail shows real Claude and Codex subscription headroom for th
 
 ## Run it locally
 
-Install or repair core from Setup, then let Setup start the runtime. For source development, you can run the same port manually:
+Install or repair core during onboarding or from Settings, then start the runtime there. For source development, you can run the same port manually:
 
 ```sh
 alfred serve --port 7010 --no-browser
 ```
 
-The app uses `7010` because macOS can reserve `7000` for Control Center. Setup lets you point the client at a custom localhost URL when needed, and the app uses that configured URL exactly.
+The app uses `7010` because macOS can reserve `7000` for Control Center. Settings lets you point the client at a custom localhost URL when needed, and the app uses that configured URL exactly.
 
 Then run the desktop shell:
 
@@ -214,7 +215,7 @@ POST /api/conversation/control
 
 `GET /api/usage` is served by `alfred serve` today and backs the capacity rail. It reports your real Claude and Codex subscription headroom for the rolling 5-hour and weekly windows, read from the engines' own local CLI state files on the host.
 
-`GET /api/setup/status` also returns `first_run`, the Setup go/no-go contract for the first real local workflow. Required rows cover GitHub auth, at least one engine CLI, repo scope, queue coverage, local checkout mapping, scheduled fleet deployment, and the Desktop action token. Recommended rows cover code graph memory, Alfred's built-in context governor, and engineering skill packs. Optional rows cover the architect parent repo and Slack collaboration. The Setup tab renders required blockers first and keeps recommended upgrades visible without blocking a basic run.
+`GET /api/setup/status` also returns `first_run`, the onboarding go/no-go contract for the first real local workflow. Required rows cover GitHub auth, at least one engine CLI, repo scope, queue coverage, local checkout mapping, scheduled fleet deployment, and the Desktop action token. Recommended rows cover code graph memory, Alfred's built-in context governor, and engineering skill packs. Optional rows cover the architect parent repo and Slack collaboration. Settings keeps recommended upgrades visible after onboarding without blocking a basic run.
 
 `GET /api/usage/providers` is also served by `alfred serve` (a flat per-engine re-projection of `/api/usage`), and the same usage numbers are available from the command line with `alfred usage`.
 
@@ -254,7 +255,7 @@ Stay on Tauri for Mac and Linux. It keeps the app small, lets the UI reuse the e
 Distribution sequence:
 
 1. `alfred serve` read APIs plus local follow-up action contracts with tests. Done.
-2. Tauri shell with Inbox, Ask, Work, Agents, Setup, safe local follow-up actions, runtime launch, status, pause/resume/run controls, memory checks, candidate promote/reject, Redis status, Redis sync preview, failure-pattern harvest, and dry-run launch. Done.
+2. Tauri shell with Inbox, Ask, Work, Code, Agents, Settings, first-run onboarding, safe local follow-up actions, runtime launch, status, pause/resume/run controls, memory checks, candidate promote/reject, Redis status, Redis sync preview, failure-pattern harvest, and dry-run launch. Done.
 3. Guided install, signed update flow, and broader safe write actions with dry-run previews.
 4. Signed Mac builds and Linux AppImage/deb artifacts. Done.
 

@@ -201,8 +201,8 @@ Code: `clients/desktop/src/` (React UI, `api.ts`, `types.ts`), `clients/desktop/
 ```mermaid
 flowchart TB
     subgraph client["Alfred Desktop (clients/desktop, Tauri)"]
-        ui["React UI tabs:<br/>Inbox / Ask / Work / Agents / Setup"]
-        native["native command allowlist:<br/>start runtime, status, agents,<br/>auth, brain doctor, redis,<br/>safe dry-run"]
+        ui["React UI tabs:<br/>Inbox / Ask / Work / Code / Agents / Settings"]
+        native["native command allowlist:<br/>install/repair core, start runtime,<br/>status, agents, auth, memory,<br/>safe dry-run"]
     end
 
     subgraph core["core fleet (headless)"]

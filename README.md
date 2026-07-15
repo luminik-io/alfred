@@ -347,7 +347,8 @@ separate step, run by a different agent than the one who wrote the code.
 - **`alfred serve`.** A local JSON API on loopback that backs the desktop app and
   is scriptable on its own.
 - **Desktop app.** One React app in two shells, a Tauri native window and the
-  browser via `alfred serve`, with Inbox, Ask, Work, Agents, and Setup surfaces.
+  browser via `alfred serve`, with Inbox, Ask, Work, Code, Agents, and Settings
+  surfaces.
   Inbox carries a live Claude and Codex subscription usage rail (read from the
   engines' own local CLI state, no billing API).
 - **Slack.** The planning and control surface, with trusted commands and

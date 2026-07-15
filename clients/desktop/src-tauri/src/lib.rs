@@ -818,17 +818,19 @@ fn validate_api_path<'a>(
     if trimmed.contains("..") || trimmed.contains('\\') || trimmed.contains("//") {
         return Err("invalid API path".to_string());
     }
-    if !trimmed.chars().all(|ch| {
-        ch.is_ascii_alphanumeric() || matches!(ch, '/' | '?' | '&' | '=' | '.' | '_' | '-' | ':')
-    }) {
-        return Err("invalid API path characters".to_string());
-    }
 
     let (path_part, query) = trimmed
         .split_once('?')
         .map_or((trimmed, None), |(path_part, query)| {
             (path_part, Some(query))
         });
+    if !path_part
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '/' | '.' | '_' | '-' | ':'))
+        || query.is_some_and(|value| !is_valid_api_query(value))
+    {
+        return Err("invalid API path characters".to_string());
+    }
     let allowed = if method == Method::GET {
         is_allowed_read_path(path_part)
     } else if method == Method::POST {
@@ -857,8 +859,36 @@ fn validate_api_path<'a>(
     Ok((path_part.to_string(), query))
 }
 
+fn is_valid_api_query(query: &str) -> bool {
+    let bytes = query.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if byte == b'%' {
+            if index + 2 >= bytes.len()
+                || !bytes[index + 1].is_ascii_hexdigit()
+                || !bytes[index + 2].is_ascii_hexdigit()
+            {
+                return false;
+            }
+            index += 3;
+            continue;
+        }
+        if !(byte.is_ascii_alphanumeric()
+            || matches!(byte, b'&' | b'=' | b'.' | b'_' | b'-' | b':' | b'+' | b'/'))
+        {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
 fn is_allowed_read_path(path: &str) -> bool {
-    if path == "/api/roster-theme" || path == "/api/custom-agents" {
+    if matches!(
+        path,
+        "/api/roster-theme" | "/api/custom-agents" | "/api/code-intelligence"
+    ) {
         return true;
     }
     let allowed = [
@@ -2625,7 +2655,8 @@ fn build_app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let inbox = MenuItem::with_id(app, "app-inbox", "Inbox", true, Some("CmdOrCtrl+1"))?;
     let ask = MenuItem::with_id(app, "app-ask", "Ask", true, Some("CmdOrCtrl+2"))?;
     let work = MenuItem::with_id(app, "app-work", "Work", true, Some("CmdOrCtrl+3"))?;
-    let agents = MenuItem::with_id(app, "app-agents", "Agents", true, Some("CmdOrCtrl+4"))?;
+    let code = MenuItem::with_id(app, "app-code", "Code", true, Some("CmdOrCtrl+4"))?;
+    let agents = MenuItem::with_id(app, "app-agents", "Agents", true, Some("CmdOrCtrl+5"))?;
     let command_palette = MenuItem::with_id(
         app,
         "app-command-palette",
@@ -2635,7 +2666,7 @@ fn build_app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     )?;
     let refresh = MenuItem::with_id(app, "app-refresh", "Refresh", true, Some("CmdOrCtrl+R"))?;
     let view = SubmenuBuilder::new(app, "View")
-        .items(&[&inbox, &ask, &work, &agents])
+        .items(&[&inbox, &ask, &work, &code, &agents])
         .separator()
         .item(&command_palette)
         .item(&refresh)
@@ -2673,6 +2704,7 @@ fn handle_app_menu_event(app: &AppHandle, id: &str) {
         "app-inbox" => emit_app_menu_event(app, "app-menu://navigate", "home"),
         "app-ask" => emit_app_menu_event(app, "app-menu://navigate", "compose"),
         "app-work" => emit_app_menu_event(app, "app-menu://navigate", "pipeline"),
+        "app-code" => emit_app_menu_event(app, "app-menu://navigate", "code"),
         "app-agents" => emit_app_menu_event(app, "app-menu://navigate", "fleet"),
         "app-settings" => emit_app_menu_event(app, "app-menu://navigate", "settings"),
         "app-command-palette" => emit_app_menu_event(app, "app-menu://command-palette", ()),
@@ -3664,6 +3696,21 @@ done"#;
             .expect("schedule path should be accepted for GET");
         assert_eq!(path, "/api/schedule");
         assert_eq!(query, None);
+    }
+
+    #[test]
+    fn get_allowlist_accepts_encoded_code_intelligence_query() {
+        let (path, query) = validate_api_path(
+            "/api/code-intelligence?repo=web&path=src%2Fapi+client.ts",
+            &Method::GET,
+        )
+        .expect("encoded code intelligence queries should be accepted for GET");
+        assert_eq!(path, "/api/code-intelligence");
+        assert_eq!(query, Some("repo=web&path=src%2Fapi+client.ts"));
+
+        let err = validate_api_path("/api/code-intelligence?path=src%2Gapi.ts", &Method::GET)
+            .expect_err("malformed percent encoding must stay blocked");
+        assert!(err.contains("invalid API path characters"));
     }
 
     #[test]

@@ -20,10 +20,10 @@ and control plane:
 2. **`alfred serve`**: a local HTTP API + web dashboard over that
    state. The desktop client defaults to `http://127.0.0.1:7010`.
    Custom runtime URLs are used exactly as configured and can be changed
-   from Setup.
+   from Settings.
 3. **Alfred Desktop (this app)**: the native full-install path and control
-   plane: bundled core resources, menu-bar tray, five primary destinations
-   (Inbox, Ask, Work, Agents, Setup), a command palette, and a narrow set of
+   plane: bundled core resources, menu-bar tray, six primary destinations
+   (Inbox, Ask, Work, Code, Agents, Settings), a command palette, and a narrow set of
    safe local actions. It installs or repairs core, starts `alfred serve`, then
    reads the local API and shells a small allowlist of `alfred` CLI verbs.
 
@@ -31,7 +31,7 @@ You can run the fleet headless with just the CLI. For a normal Mac/Linux local
 install, start with the desktop app; use the CLI/runtime path when you want a
 headless host, source checkout, or fully scripted setup.
 
-The app navigation is five primary destinations, each a full page with its own
+The app navigation is six primary destinations, each a full page with its own
 in-page tabs where it needs depth, never a long scroll and never a slide-over
 drawer. The public control model is documented in
 [`docs/DESKTOP_CLIENT.md`](../../docs/DESKTOP_CLIENT.md).
@@ -49,6 +49,11 @@ embeds a diff or merge UI.
 in-flight PRs, and shipped outcomes in one place. Per-card actions handle
 approve, decline, file issue, queue, hold, and done where the local runtime
 allows it. It shares board state with Inbox's Shipped lane and the Slack board.
+
+**Code** reads Alfred's local code map. Pick an indexed repository and file to
+see direct dependents, dependencies, contract surfaces, contract drift, nearby
+files, and the checks Alfred should run before changing it. The view is bounded
+to useful evidence rather than drawing an unreadable whole-repository graph.
 
 **Ask** is plain-language request intake: describe the work in plain words,
 and Alfred's planning assistant scores how ready it is to run, surfaces the
@@ -76,7 +81,7 @@ dark/light mode toggle.
 
 ## Run locally
 
-The desktop app can install/repair core and start the local API from Setup. If
+The desktop app can install or repair core and start the local API during onboarding or from Settings. If
 you prefer to run the runtime yourself, start it first:
 
 ```sh
@@ -85,7 +90,7 @@ alfred serve --port 7010 --no-browser
 
 The desktop app's Start runtime action uses port 7010 because macOS can reserve
 7000 for Control Center. If your saved runtime URL points somewhere else,
-update it from Setup; the app uses the configured URL exactly.
+update it from Settings; the app uses the configured URL exactly.
 
 Then run the desktop shell:
 

@@ -15,6 +15,7 @@ const DEFAULT_ROUTE: DesktopRoute = {
 const TAB_ROUTES: Record<string, DesktopRoute> = {
   agents: { ...DEFAULT_ROUTE, tab: "fleet" },
   ask: { ...DEFAULT_ROUTE, tab: "compose" },
+  code: { ...DEFAULT_ROUTE, tab: "code" },
   inbox: { ...DEFAULT_ROUTE, tab: "home" },
   settings: { ...DEFAULT_ROUTE, tab: "settings" },
   work: { ...DEFAULT_ROUTE, tab: "pipeline" },
@@ -68,6 +69,7 @@ function applyRouteParams(params: URLSearchParams, route: DesktopRoute): void {
   if (route.tab === "home") params.set("tab", "inbox");
   if (route.tab === "compose") params.set("tab", "ask");
   if (route.tab === "pipeline") params.set("tab", "work");
+  if (route.tab === "code") params.set("tab", "code");
   if (route.tab === "fleet") {
     params.set("tab", "agents");
     if (route.fleetTab === "logs") params.set("subtab", "activity");
