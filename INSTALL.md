@@ -200,9 +200,9 @@ repo to every agent.
 - Creates the standard GitHub labels on the selected repos, including
   `agent:implement`, `agent:authored`, lifecycle labels, bug-triage labels, and
   the architect's `agent:large-feature` label.
-- Runs `bash deploy.sh --adopt-legacy-ams`, then `alfred doctor`. The adoption
-  flag removes a pre-marker AMS service only when it exactly matches Alfred's
-  generated unit; differently configured or operator-owned units are preserved.
+- Runs `bash deploy.sh`, then `alfred doctor`. Deploy removes an AMS service
+  only when Alfred's ownership marker identifies it as managed; unowned units
+  are preserved.
 
 The architect role is included in the full fleet for cross-repo work. Under the
 default theme it appears as Batman. The default mode posts a bundle plan and
@@ -242,9 +242,9 @@ fires. After `alfred-init.py` creates `launchd/agents.conf`, deploy renders
 host scheduler units: launchd plists on macOS, systemd user services/timers on
 Linux.
 
-When repairing an install created before Alfred tracked AMS service ownership,
-use `bash deploy.sh --adopt-legacy-ams`. Plain `bash deploy.sh` never claims or
-removes an unmarked service.
+`bash deploy.sh` never claims or removes an unmarked AMS service. Remove an old
+unowned service yourself before deploying if you want Alfred to manage that
+service path.
 
 `alfred doctor` runs every agent's preflight under `ALFRED_DOCTOR=1` to confirm env vars, CLI binaries, and auth chains resolve before any real firing burns Claude turns. On a clean install with the default `agents.conf` you should see `0 passed, 0 failed`.
 

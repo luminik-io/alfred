@@ -2238,7 +2238,7 @@ def step_10_deploy(state: WizardState) -> None:
     if not deploy_path.exists():
         fail(f"{deploy_path} missing.")
         sys.exit(1)
-    cp = run(["bash", str(deploy_path), "--adopt-legacy-ams"], capture=False, timeout=300)
+    cp = run(["bash", str(deploy_path)], capture=False, timeout=300)
     if cp.returncode != 0:
         fail("deploy.sh failed. Re-run after fixing the cause.")
         sys.exit(1)

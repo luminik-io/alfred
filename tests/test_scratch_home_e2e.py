@@ -231,10 +231,6 @@ def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path)
     assert "left unowned" in unowned_deploy.stdout
     assert stale_ams.read_text(encoding="utf-8") == "operator-owned"
 
-    unowned_adopt = _run(["/bin/bash", str(ROOT / "deploy.sh"), "--adopt-legacy-ams"], env=env)
-    assert "left unowned" in unowned_adopt.stdout
-    assert stale_ams.read_text(encoding="utf-8") == "operator-owned"
-
     sqlite_env = env_path.read_text(encoding="utf-8")
     env_path.write_text(
         sqlite_env.replace(
@@ -248,11 +244,10 @@ def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path)
 
     env_path.write_text(sqlite_env, encoding="utf-8")
     marker.unlink()
-    legacy_adopt = _run(["/bin/bash", str(ROOT / "deploy.sh"), "--adopt-legacy-ams"], env=env)
-    assert "adopted verified legacy AMS service" in legacy_adopt.stdout
-    assert "removed stale" in legacy_adopt.stdout
-    assert not stale_ams.exists()
-    assert not marker.exists()
+    unowned_cleanup = _run(["/bin/bash", str(ROOT / "deploy.sh")], env=env)
+    assert "left unowned" in unowned_cleanup.stdout
+    assert stale_ams.exists()
+    stale_ams.unlink()
 
     alfred = runtime / "bin" / "alfred"
     _run([str(alfred), "skills", "install", "--starter"], env=env)
