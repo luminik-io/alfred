@@ -440,6 +440,7 @@ install_ams_service_linux() {
   local systemd_user_dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
   local service="$systemd_user_dir/alfred-ams.service"
   mkdir -p "$systemd_user_dir"
+  require_ams_service_ownership "$service"
   render_ams_service_linux > "$service"
   mark_ams_service_managed "$service"
   systemctl --user daemon-reload >/dev/null 2>&1 || true
@@ -477,16 +478,22 @@ WantedBy=default.target
 EOF
 }
 
+require_ams_service_ownership() {
+  local service="$1"
+  if [ -e "$service" ] && ! ams_service_is_managed "$service"; then
+    echo "[alfred-os/deploy] refusing unowned AMS service at $service" >&2
+    echo "[alfred-os/deploy] remove or relocate that service before deploying Alfred" >&2
+    return 1
+  fi
+}
+
 remove_ams_service_linux() {
   local systemd_user_dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
   local service="$systemd_user_dir/alfred-ams.service"
-  if ! ams_service_is_managed "$service"; then
-    if [ -e "$service" ]; then
-      echo "[alfred-os/deploy] left unowned alfred-ams.service unchanged"
-    else
-      clear_ams_service_marker
-      echo "[alfred-os/deploy] embedded SQLite memory selected; AMS service not installed"
-    fi
+  require_ams_service_ownership "$service"
+  if [ ! -e "$service" ]; then
+    clear_ams_service_marker
+    echo "[alfred-os/deploy] embedded SQLite memory selected; AMS service not installed"
     return 0
   fi
   systemctl --user disable --now alfred-ams.service >/dev/null 2>&1 || true
@@ -507,6 +514,7 @@ install_ams_service_launchd() {
   local uid_value
   mkdir -p "$launch_agents_dir"
   uid_value="$(id -u)"
+  require_ams_service_ownership "$plist"
   render_ams_service_launchd > "$plist"
   mark_ams_service_managed "$plist"
   launchctl bootout "gui/$uid_value" "$plist" >/dev/null 2>&1 || true
@@ -560,13 +568,10 @@ remove_ams_service_launchd() {
   local plist="$launch_agents_dir/io.luminik.alfred.ams.plist"
   local uid_value
   uid_value="$(id -u)"
-  if ! ams_service_is_managed "$plist"; then
-    if [ -e "$plist" ]; then
-      echo "[alfred-os/deploy] left unowned io.luminik.alfred.ams.plist unchanged"
-    else
-      clear_ams_service_marker
-      echo "[alfred-os/deploy] embedded SQLite memory selected; AMS service not installed"
-    fi
+  require_ams_service_ownership "$plist"
+  if [ ! -e "$plist" ]; then
+    clear_ams_service_marker
+    echo "[alfred-os/deploy] embedded SQLite memory selected; AMS service not installed"
     return 0
   fi
   launchctl bootout "gui/$uid_value/io.luminik.alfred.ams" >/dev/null 2>&1 || true

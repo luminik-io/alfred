@@ -242,9 +242,9 @@ fires. After `alfred-init.py` creates `launchd/agents.conf`, deploy renders
 host scheduler units: launchd plists on macOS, systemd user services/timers on
 Linux.
 
-`bash deploy.sh` never claims or removes an unmarked AMS service. Remove an old
-unowned service yourself before deploying if you want Alfred to manage that
-service path.
+`bash deploy.sh` never claims or removes an unmarked AMS service. If one occupies
+Alfred's reserved service path, deploy stops with a cleanup instruction instead
+of leaving a stale daemon running or overwriting operator-owned configuration.
 
 `alfred doctor` runs every agent's preflight under `ALFRED_DOCTOR=1` to confirm env vars, CLI binaries, and auth chains resolve before any real firing burns Claude turns. On a clean install with the default `agents.conf` you should see `0 passed, 0 failed`.
 

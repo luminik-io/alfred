@@ -110,9 +110,9 @@ planning repo, approval channel, trusted operator settings, and
 For a framework-only install with no agents configured, run `bash deploy.sh &&
 ./bin/alfred doctor`; doctor should report `0 passed, 0 failed`.
 
-Deploy never claims or removes an unmarked AMS service. Remove an old unowned
-service yourself before deploying if you want Alfred to manage that service
-path.
+Deploy never claims or removes an unmarked AMS service. If one occupies Alfred's
+reserved service path, deploy stops with a cleanup instruction instead of
+leaving a stale daemon running or overwriting operator-owned configuration.
 
 ## Install With Claude Code or Codex
 

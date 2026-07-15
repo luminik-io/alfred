@@ -227,9 +227,18 @@ def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path)
     assert "enable gui/" in scheduler_calls or "enable --now" in scheduler_calls
 
     stale_ams.write_text("operator-owned", encoding="utf-8")
-    unowned_deploy = _run(["/bin/bash", str(ROOT / "deploy.sh")], env=env)
-    assert "left unowned" in unowned_deploy.stdout
+    unowned_deploy = subprocess.run(
+        ["/bin/bash", str(ROOT / "deploy.sh")],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert unowned_deploy.returncode != 0
+    assert "refusing unowned AMS service" in unowned_deploy.stderr
     assert stale_ams.read_text(encoding="utf-8") == "operator-owned"
+    stale_ams.unlink()
 
     sqlite_env = env_path.read_text(encoding="utf-8")
     env_path.write_text(
@@ -244,8 +253,16 @@ def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path)
 
     env_path.write_text(sqlite_env, encoding="utf-8")
     marker.unlink()
-    unowned_cleanup = _run(["/bin/bash", str(ROOT / "deploy.sh")], env=env)
-    assert "left unowned" in unowned_cleanup.stdout
+    unowned_cleanup = subprocess.run(
+        ["/bin/bash", str(ROOT / "deploy.sh")],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert unowned_cleanup.returncode != 0
+    assert "refusing unowned AMS service" in unowned_cleanup.stderr
     assert stale_ams.exists()
     stale_ams.unlink()
 
