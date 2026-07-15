@@ -668,8 +668,6 @@ def test_planner_prompt_uses_stable_feature_dev_identity(monkeypatch, tmp_path):
     monkeypatch.setattr(drake, "PROMPT_PATH", prompt)
     monkeypatch.setattr(drake, "PLANNER_REPOS", ["backend", "frontend"])
     monkeypatch.setattr(drake, "_build_state_machine_context", lambda: "\nstate-context")
-    monkeypatch.setenv("AGENT_CODENAME_FEATURE_DEV", "custom-lucius")
-
     text = drake.build_prompt()
 
     assert text == "Planner luminik backend,frontend Senior-Dev\nstate-context"

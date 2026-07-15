@@ -48,7 +48,6 @@ import shutil
 import signal
 import subprocess
 import sys
-import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -382,10 +381,8 @@ def alfred_init_managed_env_keys() -> frozenset[str]:
         *MEMORY_AUTO_PROMOTE_CONTROL_ENVS,
         *batteries.managed_env_keys(),
     }
-    for role, (default_codename, _, _, _) in AGENT_CATALOG.items():
+    for _, (default_codename, _, _, _) in AGENT_CATALOG.items():
         default_slug = default_codename.upper().replace("-", "_")
-        # Tombstone only: rerunning setup removes pre-role-identity aliases.
-        keys.add(f"AGENT_CODENAME_{role.upper()}")
         keys.add(f"ALFRED_{default_slug}_REPOS")
         keys.add(f"ALFRED_{default_slug}_AWS_PROFILE")
     for env_keys in ROLE_REPO_ENV_KEYS.values():
@@ -396,348 +393,6 @@ def alfred_init_managed_env_keys() -> frozenset[str]:
 
 
 ALFRED_INIT_MANAGED_ENV_KEYS = alfred_init_managed_env_keys()
-
-_SHARED_STATE_NAMES = frozenset(
-    {
-        "codenames",
-        "codex",
-        "code-memory",
-        "custom-agents",
-        "engines",
-        "fleet",
-        "followups",
-        "planning-drafts",
-        "plan-revisions",
-        "read-ledger",
-        "roster-theme",
-        "shipped",
-        "slack-listener",
-        "slack-threads",
-        "slack-thread-status",
-        "transcripts",
-    }
-)
-
-
-def legacy_role_aliases(path: Path) -> dict[str, str]:
-    """Return built-in role aliases stored by a pre-stable-identity install."""
-    if not path.exists():
-        return {}
-    raw = path.read_text()
-    marker = ALFRED_ENV_BANNER_RE.search(raw)
-    if marker is None:
-        return {}
-
-    aliases: dict[str, str] = {}
-    role_by_key = {f"AGENT_CODENAME_{role.upper()}": role for role in AGENT_CATALOG}
-    cursor = _line_after_match(raw, marker)
-    for line in raw[cursor:].splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            break
-        key = env_assignment_key(stripped)
-        role = role_by_key.get(key or "")
-        if role is None:
-            continue
-        _, _, raw_value = stripped.partition("=")
-        try:
-            tokens = shlex.split(raw_value, comments=True)
-        except ValueError:
-            tokens = []
-        runtime_id = tokens[0].strip() if tokens else ""
-        if re.fullmatch(r"[a-z][a-z0-9-]*", runtime_id):
-            aliases[role] = runtime_id
-    return aliases
-
-
-def legacy_codename_managed_env_keys(path: Path) -> frozenset[str]:
-    """Return obsolete mutable-role keys that a repair install must delete."""
-    keys: set[str] = set()
-    for role, runtime_id in legacy_role_aliases(path).items():
-        keys.add(f"AGENT_CODENAME_{role.upper()}")
-        if runtime_id != runtime_id_for_role(role):
-            slug = runtime_id.upper().replace("-", "_")
-            keys.add(f"ALFRED_{slug}_REPOS")
-            keys.add(f"ALFRED_{slug}_AWS_PROFILE")
-    return frozenset(keys)
-
-
-def _merge_legacy_tree(source: Path, target: Path) -> None:
-    """Move an obsolete identity tree into its canonical path, then remove it."""
-    if not source.exists() and not source.is_symlink():
-        return
-    if source.is_symlink():
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if target.exists() or target.is_symlink():
-            target.replace(_backup_path(target))
-        source.replace(target)
-        return
-    if not target.exists() and not target.is_symlink():
-        target.parent.mkdir(parents=True, exist_ok=True)
-        source.replace(target)
-        return
-    if target.is_symlink():
-        _replace_with_backup(source, target)
-        return
-    if source.is_dir() and target.is_dir():
-        for child in source.iterdir():
-            _merge_legacy_tree(child, target / child.name)
-        with contextlib.suppress(OSError):
-            source.rmdir()
-        return
-    if source.is_file() and target.is_file():
-        _merge_legacy_file(source, target)
-        return
-    _replace_with_backup(source, target)
-
-
-def _backup_path(target: Path) -> Path:
-    candidate = target.with_name(f"{target.name}.pre-stable-identity")
-    index = 2
-    while candidate.exists() or candidate.is_symlink():
-        candidate = target.with_name(f"{target.name}.pre-stable-identity-{index}")
-        index += 1
-    return candidate
-
-
-def _stream_backup_path(target: Path) -> Path:
-    candidate = target.with_name(f"{target.stem}.pre-stable-identity{target.suffix}")
-    index = 2
-    while candidate.exists() or candidate.is_symlink():
-        candidate = target.with_name(f"{target.stem}.pre-stable-identity-{index}{target.suffix}")
-        index += 1
-    return candidate
-
-
-def _replace_with_backup(source: Path, target: Path) -> None:
-    """Make the old active file canonical without discarding a target collision."""
-    backup = _backup_path(target)
-    target.replace(backup)
-    source.replace(target)
-
-
-def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, raw_tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
-    tmp = Path(raw_tmp)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        tmp.replace(path)
-    finally:
-        with contextlib.suppress(OSError):
-            tmp.unlink()
-
-
-def _merge_spend_payloads(current: dict[str, Any], old: dict[str, Any]) -> dict[str, Any]:
-    merged = {**current, **old}
-    cumulative = {
-        "firings_today",
-        "turns_today",
-        "cost_usd_today",
-        "successes_today",
-        "failures_today",
-        "reviews_posted",
-        "fixes_landed",
-        "merged_today",
-        "hits_today",
-        "prs_opened_today",
-        "triaged_today",
-    }
-    for key in cumulative:
-        current_value = current.get(key)
-        old_value = old.get(key)
-        if isinstance(current_value, (int, float)) and isinstance(old_value, (int, float)):
-            merged[key] = current_value + old_value
-    for key in ("consecutive_failures",):
-        values = [value for value in (current.get(key), old.get(key)) if isinstance(value, int)]
-        if values:
-            merged[key] = max(values)
-    blocked = [
-        value
-        for value in (current.get("blocked_until"), old.get("blocked_until"))
-        if isinstance(value, str) and value
-    ]
-    if blocked:
-        merged["blocked_until"] = max(blocked)
-    sessions = current.get("last_session_id_per_target")
-    old_sessions = old.get("last_session_id_per_target")
-    if isinstance(sessions, dict) and isinstance(old_sessions, dict):
-        merged["last_session_id_per_target"] = {**old_sessions, **sessions}
-    return merged
-
-
-def _merge_legacy_file(source: Path, target: Path) -> None:
-    try:
-        source_bytes = source.read_bytes()
-        target_bytes = target.read_bytes()
-    except OSError:
-        _replace_with_backup(source, target)
-        return
-    if source_bytes == target_bytes:
-        source.unlink()
-        return
-
-    if source.suffix == ".json" and target.suffix == ".json":
-        try:
-            old_payload = json.loads(source_bytes)
-            current_payload = json.loads(target_bytes)
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            old_payload = current_payload = None
-        if isinstance(old_payload, dict) and isinstance(current_payload, dict):
-            if source.name.startswith("spend-"):
-                merged = _merge_spend_payloads(current_payload, old_payload)
-            else:
-                # The canonical file is the active identity and therefore the
-                # newer authority when both objects define the same field.
-                merged = {**old_payload, **current_payload}
-            _write_json_atomic(target, merged)
-            source.unlink()
-            return
-
-    if source.suffix == ".jsonl" and target.suffix == ".jsonl":
-        # Equal filenames can still represent different firings. Keep both
-        # streams independently parseable instead of concatenating identities.
-        source.replace(_stream_backup_path(target))
-        return
-
-    _replace_with_backup(source, target)
-
-
-def _replace_enabled_aliases(path: Path, aliases: dict[str, str]) -> None:
-    if not path.exists() or not aliases:
-        return
-    replacements = {
-        old: runtime_id_for_role(role)
-        for role, old in aliases.items()
-        if old != runtime_id_for_role(role)
-    }
-    if not replacements:
-        return
-    lines: list[str] = []
-    changed = False
-    for line in path.read_text(encoding="utf-8").splitlines():
-        value, separator, comment = line.partition("#")
-        stripped = value.strip()
-        replacement = replacements.get(stripped)
-        if replacement is not None:
-            prefix = value[: len(value) - len(value.lstrip())]
-            suffix = f"#{comment}" if separator else ""
-            line = f"{prefix}{replacement}{suffix}"
-            changed = True
-        lines.append(line)
-    if changed:
-        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
-def _migrate_roster_theme(path: Path, aliases: dict[str, str]) -> None:
-    if not path.exists() or not aliases:
-        return
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return
-    if not isinstance(payload, dict):
-        return
-    replacements = {
-        old: runtime_id_for_role(role)
-        for role, old in aliases.items()
-        if old != runtime_id_for_role(role)
-    }
-    changed = False
-    for map_name in ("custom_names", "custom_roles"):
-        values = payload.get(map_name)
-        if not isinstance(values, dict):
-            continue
-        for old_id, canonical_id in replacements.items():
-            if old_id not in values:
-                continue
-            if canonical_id not in values:
-                values[canonical_id] = values[old_id]
-            del values[old_id]
-            changed = True
-    if changed:
-        _write_json_atomic(path, payload)
-
-
-def _migrate_legacy_worktrees(home: Path, old_id: str, canonical_id: str) -> None:
-    root = home / "worktrees"
-    if not root.is_dir():
-        return
-    for source in sorted(root.glob(f"eng-{old_id}-*")):
-        if not source.is_dir() or source.is_symlink():
-            continue
-        target = source.with_name(source.name.replace(f"eng-{old_id}-", f"eng-{canonical_id}-", 1))
-        if target.exists() or target.is_symlink():
-            target = _backup_path(target)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        result = subprocess.run(
-            ["git", "-C", str(source), "worktree", "move", str(source), str(target)],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-        )
-        if result.returncode != 0:
-            detail = (result.stderr or result.stdout or "unknown git error").strip()
-            raise RuntimeError(f"could not migrate recovery worktree {source}: {detail}")
-
-
-def migrate_legacy_role_identities(
-    state: WizardState,
-    aliases: dict[str, str],
-    managed_env: dict[str, str],
-) -> frozenset[str]:
-    """Re-key pre-stable built-in state, then remove obsolete alias artifacts."""
-    state_root = state.alfred_home / "state"
-    migrated_env_keys: set[str] = set()
-    for role, old_id in aliases.items():
-        canonical_id = runtime_id_for_role(role)
-        if old_id == canonical_id:
-            continue
-
-        old_slug = old_id.upper().replace("-", "_")
-        canonical_slug = canonical_id.upper().replace("-", "_")
-        for suffix in ("REPOS", "AWS_PROFILE"):
-            old_key = f"ALFRED_{old_slug}_{suffix}"
-            canonical_key = f"ALFRED_{canonical_slug}_{suffix}"
-            if old_key in managed_env:
-                # The alias identifies the active pre-cutover agent, so its
-                # scope wins over stale canonical residue from a partial repair.
-                managed_env[canonical_key] = managed_env[old_key]
-                migrated_env_keys.add(canonical_key)
-
-        identity_parents = [
-            state_root / "codenames",
-            state_root / "transcripts",
-            state_root / "codex",
-        ]
-        if old_id not in _SHARED_STATE_NAMES:
-            identity_parents.append(state_root)
-        for parent in identity_parents:
-            _merge_legacy_tree(parent / old_id, parent / canonical_id)
-        for parent in (state_root / "_paused", state_root / "engines"):
-            _merge_legacy_tree(parent / old_id, parent / canonical_id)
-        _merge_legacy_tree(
-            state_root / "memory-outbox" / f"{old_id}.jsonl",
-            state_root / "memory-outbox" / f"{canonical_id}.jsonl",
-        )
-        _merge_legacy_tree(
-            state.alfred_home / "prompts" / f"{old_id}.md",
-            state.alfred_home / "prompts" / f"{canonical_id}.md",
-        )
-        _merge_legacy_tree(
-            state.alfred_home / "agents" / f"{old_id}.toml",
-            state.alfred_home / "agents" / f"{canonical_id}.toml",
-        )
-        _migrate_legacy_worktrees(state.alfred_home, old_id, canonical_id)
-
-    _replace_enabled_aliases(state_root / "fleet" / "enabled.txt", aliases)
-    _migrate_roster_theme(state_root / "roster-theme" / "roster-theme.json", aliases)
-    return frozenset(migrated_env_keys)
-
 
 # ---------------------------------------------------------------------------
 # ANSI helpers (TTY-aware).
@@ -983,12 +638,13 @@ def read_managed_env_file(path: Path) -> dict[str, str]:
     managed = ALFRED_ENV_BANNER_RE.search(raw)
     if not managed:
         return {}
+    reject_removed_role_aliases(path, raw, managed)
     return _parse_env_text(
         "\n".join(
             _managed_env_assignment_lines(
                 raw,
                 managed,
-                ALFRED_INIT_MANAGED_ENV_KEYS | legacy_codename_managed_env_keys(path),
+                ALFRED_INIT_MANAGED_ENV_KEYS,
             )
         )
     )
@@ -1007,14 +663,17 @@ def upsert_env_file(path: Path, kvs: dict[str, str]) -> None:
     Idempotent: rewrites the marker block on every call so re-running
     the wizard doesn't accumulate dupes.
     """
+    if path.exists():
+        raw = path.read_text()
+        managed = ALFRED_ENV_BANNER_RE.search(raw)
+        if managed:
+            reject_removed_role_aliases(path, raw, managed)
     upsert_env_block(
         path,
         kvs,
         ALFRED_ENV_BANNER,
         ALFRED_ENV_BANNER_RE,
-        managed_keys=(
-            ALFRED_INIT_MANAGED_ENV_KEYS | legacy_codename_managed_env_keys(path) | frozenset(kvs)
-        ),
+        managed_keys=ALFRED_INIT_MANAGED_ENV_KEYS | frozenset(kvs),
     )
 
 
@@ -1027,6 +686,22 @@ def env_assignment_key(line: str) -> str | None:
 def _line_after_match(text: str, match: re.Match[str]) -> int:
     line_end = text.find("\n", match.end())
     return len(text) if line_end == -1 else line_end + 1
+
+
+def reject_removed_role_aliases(path: Path, text: str, match: re.Match[str]) -> None:
+    """Stop instead of guessing how to rewrite a retired mutable identity config."""
+    cursor = _line_after_match(text, match)
+    for line in text[cursor:].splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            break
+        key = env_assignment_key(stripped)
+        if key and key.startswith("AGENT_CODENAME_"):
+            fail(
+                f"{path} uses removed mutable role identities. "
+                "Remove the Alfred runtime directory and reinstall; built-in role slugs are fixed."
+            )
+            raise SystemExit(2)
 
 
 def _managed_env_assignment_lines(
@@ -2416,20 +2091,11 @@ def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:
         sys.exit(1)
 
     existing_managed_env = read_managed_env_file(state.env_file)
-    migrated_keys = migrate_legacy_role_identities(
-        state,
-        legacy_role_aliases(state.env_file),
-        existing_managed_env,
-    )
     target = state.repo_root / "launchd" / "agents.conf"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(conf)
     ok(f"wrote {target}")
-    env_kvs = _merge_generated_env(
-        {key: existing_managed_env[key] for key in migrated_keys},
-        env_assignments_for(state),
-        migrated_keys,
-    )
+    env_kvs = {**existing_managed_env, **env_assignments_for(state)}
     upsert_env_file(state.env_file, env_kvs)
     ok(f"updated {state.env_file} with {len(env_kvs)} keys")
     created_prompts = seed_prompt_templates(state)
@@ -2476,12 +2142,6 @@ def seed_runtime_roster(state: WizardState, *, agents_arg: str | None) -> int:
 
     ok(f"Enabled full runtime roster ({len(state.enabled_roles)} agents).")
     existing_managed_env = read_managed_env_file(state.env_file)
-    legacy_aliases = legacy_role_aliases(state.env_file)
-    migrated_keys = migrate_legacy_role_identities(state, legacy_aliases, existing_managed_env)
-    legacy_identity_keys = legacy_codename_managed_env_keys(state.env_file)
-    existing_managed_env = {
-        key: value for key, value in existing_managed_env.items() if key not in legacy_identity_keys
-    }
     for role in state.enabled_roles:
         state.role_to_repos.setdefault(role, [])
     step_8_schedule(state, non_interactive=True)
@@ -2508,11 +2168,7 @@ def seed_runtime_roster(state: WizardState, *, agents_arg: str | None) -> int:
     target.write_text(conf)
     ok(f"wrote {target}")
 
-    env_kvs = _merge_generated_env(
-        existing_managed_env,
-        env_assignments_for(state),
-        migrated_keys,
-    )
+    env_kvs = {**existing_managed_env, **env_assignments_for(state)}
     upsert_env_file(state.env_file, env_kvs)
     ok(f"updated {state.env_file} with {len(env_kvs)} fleet key(s)")
 
@@ -2527,20 +2183,6 @@ def seed_runtime_roster(state: WizardState, *, agents_arg: str | None) -> int:
     write_fleet_enable_state(state)
     ok("repo-scoped agents will stay idle until onboarding saves repositories")
     return 0
-
-
-def _merge_generated_env(
-    existing: dict[str, str],
-    generated: dict[str, str],
-    migrated_keys: frozenset[str],
-) -> dict[str, str]:
-    """Merge setup output without clearing a newly migrated non-empty scope."""
-    merged = dict(existing)
-    for key, value in generated.items():
-        if key in migrated_keys and not value.strip() and merged.get(key, "").strip():
-            continue
-        merged[key] = value
-    return merged
 
 
 def step_10_labels(state: WizardState, *, skip: bool = False) -> None:

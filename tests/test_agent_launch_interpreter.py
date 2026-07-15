@@ -309,42 +309,6 @@ def test_agent_launch_scrubs_setup_managed_scope_when_runtime_env_omits_it(
     assert "SPEC=unset" in proc.stdout
 
 
-def test_agent_launch_ignores_removed_role_identity_alias(
-    tmp_path: Path, alfred_home: Path
-) -> None:
-    (alfred_home / ".env").write_text(
-        "# alfred-init, generated below this line. Safe to re-run.\n"
-        "AGENT_CODENAME_FEATURE_DEV=oracle\n"
-        "ALFRED_ORACLE_REPOS=org/runtime\n"
-        "ALFRED_ORACLE_AWS_PROFILE=runtime-profile\n",
-        encoding="utf-8",
-    )
-    target = tmp_path / "echo-custom-repos.sh"
-    target.write_text(
-        "#!/usr/bin/env bash\n"
-        'echo "CODENAME=${AGENT_CODENAME_FEATURE_DEV:-unset}"\n'
-        'echo "REPOS=${ALFRED_ORACLE_REPOS:-unset}"\n'
-        'echo "AWS=${ALFRED_ORACLE_AWS_PROFILE:-unset}"\n',
-        encoding="utf-8",
-    )
-    _make_executable(target)
-
-    proc = _run_env(
-        target,
-        alfred_home=alfred_home,
-        extra_env={
-            "AGENT_CODENAME_FEATURE_DEV": "old-oracle",
-            "ALFRED_ORACLE_REPOS": "org/stale",
-            "ALFRED_ORACLE_AWS_PROFILE": "stale-profile",
-        },
-    )
-
-    assert proc.returncode == 0, proc.stderr
-    assert "CODENAME=unset" in proc.stdout
-    assert "REPOS=org/stale" in proc.stdout
-    assert "AWS=stale-profile" in proc.stdout
-
-
 def test_agent_launch_reloads_canonical_role_profile_from_managed_env(
     tmp_path: Path, alfred_home: Path
 ) -> None:
@@ -437,77 +401,6 @@ def test_agent_launch_preserves_process_owned_aws_profile(
 
     assert proc.returncode == 0, proc.stderr
     assert "PROFILE=backup-profile" in proc.stdout
-
-
-def test_agent_launch_does_not_infer_scope_from_removed_role_alias(
-    tmp_path: Path, alfred_home: Path
-) -> None:
-    (alfred_home / ".env").write_text(
-        "# alfred-init, generated below this line. Safe to re-run.\n"
-        "AGENT_CODENAME_FEATURE_DEV=oracle\n"
-        "ALFRED_ORACLE_REPOS=org/runtime\n"
-        "CLAUDE_CODE_OAUTH_TOKEN=file-token\n",
-        encoding="utf-8",
-    )
-    target = tmp_path / "echo-custom-repos-token.sh"
-    target.write_text(
-        "#!/usr/bin/env bash\n"
-        'echo "REPOS=${ALFRED_ORACLE_REPOS:-unset}"\n'
-        'echo "TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-unset}"\n',
-        encoding="utf-8",
-    )
-    _make_executable(target)
-
-    proc = _run_env(
-        target,
-        alfred_home=alfred_home,
-        extra_env={
-            "ALFRED_ORACLE_REPOS": "org/stale",
-            "CLAUDE_CODE_OAUTH_TOKEN": "process-token",
-        },
-    )
-
-    assert proc.returncode == 0, proc.stderr
-    assert "REPOS=org/stale" in proc.stdout
-    assert "TOKEN=process-token" in proc.stdout
-
-
-def test_agent_launch_expands_alfred_home_without_loading_removed_role_alias(
-    tmp_path: Path,
-) -> None:
-    home = tmp_path / "home"
-    runtime = home / "runtime"
-    runtime.mkdir(parents=True)
-    (runtime / ".env").write_text(
-        "# alfred-init, generated below this line. Safe to re-run.\n"
-        "AGENT_CODENAME_FEATURE_DEV=oracle\n"
-        "ALFRED_ORACLE_REPOS=org/runtime\n",
-        encoding="utf-8",
-    )
-    target = tmp_path / "echo-managed-block.sh"
-    target.write_text(
-        "#!/usr/bin/env bash\n"
-        'echo "HOME_VAR=${ALFRED_HOME:-unset}"\n'
-        'echo "CODENAME=${AGENT_CODENAME_FEATURE_DEV:-unset}"\n'
-        'echo "REPOS=${ALFRED_ORACLE_REPOS:-unset}"\n',
-        encoding="utf-8",
-    )
-    _make_executable(target)
-
-    proc = _run_env(
-        target,
-        home=home,
-        extra_env={
-            "ALFRED_HOME": "~/runtime",
-            "AGENT_CODENAME_FEATURE_DEV": "old-oracle",
-            "ALFRED_ORACLE_REPOS": "org/stale",
-        },
-    )
-
-    assert proc.returncode == 0, proc.stderr
-    assert f"HOME_VAR={runtime}" in proc.stdout
-    assert "CODENAME=unset" in proc.stdout
-    assert "REPOS=org/stale" in proc.stdout
 
 
 def test_agent_launch_preserves_code_memory_process_controls(

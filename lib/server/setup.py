@@ -216,7 +216,7 @@ def _setup_config_value(key: str, default: str = "") -> str:
 
 
 def _runtime_config_env() -> dict[str, str]:
-    env = {key: value for key, value in os.environ.items() if not key.startswith("AGENT_CODENAME_")}
+    env = dict(os.environ)
     raw_home = env.get("ALFRED_HOME", "").strip()
     if raw_home:
         runtime_home = _safe_expand_path(raw_home) or Path(raw_home)
@@ -240,7 +240,6 @@ def _runtime_config_env() -> dict[str, str]:
         protected.update(key for key in _REPO_ENV_KEYS if key in os.environ)
         protected.update(key for key in RUNTIME_SETUP_MANAGED_ENV_KEYS if key in os.environ)
     _load_launcher_env_file(runtime_env_path, env, protected_keys=protected)
-    env = {key: value for key, value in env.items() if not key.startswith("AGENT_CODENAME_")}
     return env
 
 

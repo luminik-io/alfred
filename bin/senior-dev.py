@@ -104,10 +104,9 @@ from workflow_validation import validate_changed_workflows
 if "--dry-run" in sys.argv:
     set_dry_run(True)
 
-# Codename is operator-overridable. The bin file name keeps the Batman default;
-# the scheduler unit environment can set AGENT_CODENAME to rename the agent at
-# runtime without touching the source. Slack messages use AGENT.title() so a
-# renamed agent renders cleanly.
+# AGENT_CODENAME is the scheduler identity. Built-in roles always receive their
+# stable role slug; custom agents receive the validated slug from their manifest.
+# Human-visible names come from the roster-theme layer.
 AGENT = os.environ.get("AGENT_CODENAME", "senior-dev")
 SENIOR_DEV_ENGINE = agent_engine(AGENT, default="hybrid")
 DEPENDENCY_WARNING_LEDGER = ALFRED_HOME / "state" / AGENT / "dependency-lookup-warnings.json"

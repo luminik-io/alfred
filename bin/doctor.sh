@@ -229,9 +229,6 @@ load_env_file() {
       ''|[0-9]*|*[!A-Za-z0-9_]*)
         continue
         ;;
-      AGENT_CODENAME_*)
-        continue
-        ;;
     esac
     quote_style="$(env_value_quote_style "$value")"
     value="$(decode_env_value "$value")"
@@ -305,9 +302,6 @@ setup_runtime_config_key() {
 scrub_setup_runtime_env() {
   local key
   while IFS= read -r key; do
-    case "$key" in
-      AGENT_CODENAME_*) unset "$key"; continue ;;
-    esac
     if setup_runtime_config_key "$key"; then
       if runtime_stop_control_active "$key" "${!key:-}"; then
         continue

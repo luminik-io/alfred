@@ -146,7 +146,6 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "ALFRED_AUTO_PROMOTE_LLM_JUDGE=treu\n"
         "ALFRED_TELEMETRY_ENABLED=1\n\n"
         "# alfred-init, generated below this line. Safe to re-run.\n"
-        "AGENT_CODENAME_FEATURE_DEV=oracle\n"
         "ARCHITECT_PARENT_REPO=org/plans\n"
         "ALFRED_E2E_RUNNER_TARGET_URL=https://new.example.test\n"
         "ALFRED_OPS_WATCH_ECS_CLUSTER=new-cluster\n"
@@ -179,7 +178,6 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "  'telemetry_enabled': os.environ.get('ALFRED_TELEMETRY_ENABLED'),\n"
         "  'token': os.environ.get('CLAUDE_CODE_OAUTH_TOKEN'),\n"
         "  'backup_profile': os.environ.get('ALFRED_BACKUP_AWS_PROFILE'),\n"
-        "  'feature_codename': os.environ.get('AGENT_CODENAME_FEATURE_DEV'),\n"
         "  'architect_parent': os.environ.get('ARCHITECT_PARENT_REPO'),\n"
         "  'e2e_target': os.environ.get('ALFRED_E2E_RUNNER_TARGET_URL'),\n"
         "  'ops_cluster': os.environ.get('ALFRED_OPS_WATCH_ECS_CLUSTER'),\n"
@@ -209,7 +207,6 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
             "ALFRED_TELEMETRY_ENABLED": "0",
             "CLAUDE_CODE_OAUTH_TOKEN": "process-token",
             "ALFRED_BACKUP_AWS_PROFILE": "backup-profile",
-            "AGENT_CODENAME_FEATURE_DEV": "old-oracle",
             "ARCHITECT_PARENT_REPO": "org/stale-plans",
             "ALFRED_E2E_RUNNER_TARGET_URL": "https://old.example.test",
             "ALFRED_OPS_WATCH_ECS_CLUSTER": "old-cluster",
@@ -240,7 +237,6 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "telemetry_enabled": "0",
         "token": "process-token",
         "backup_profile": "backup-profile",
-        "feature_codename": None,
         "architect_parent": "org/plans",
         "e2e_target": "https://new.example.test",
         "ops_cluster": "new-cluster",

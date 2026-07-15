@@ -327,7 +327,7 @@ def launcher_env() -> dict[str, str]:
     scheduled fleet will enforce after a restart.
     """
 
-    env = {key: value for key, value in os.environ.items() if not key.startswith("AGENT_CODENAME_")}
+    env = dict(os.environ)
     env.pop("ALFREDRC", None)
     if not env.get("ALFRED_HOME", "").strip():
         env.pop("ALFRED_HOME", None)
@@ -349,7 +349,6 @@ def launcher_env() -> dict[str, str]:
         no_clobber=True,
         clobber_keys=setup_managed_keys,
         preserve_keys=preserve_keys,
-        skip_keys={"AGENT_CODENAME_*"},
     )
     if not env.get("WORKSPACE_ROOT", "").strip():
         env["WORKSPACE_ROOT"] = os.path.expanduser("~/code")
