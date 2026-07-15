@@ -193,48 +193,61 @@ export function useOnboardingActions({
             if (canRun && !connected) {
               return {
                 ok: false,
-                note: "Connect to the Alfred runtime before installing tools.",
+                note: "Connect to the Alfred runtime before changing tools.",
               };
             }
-            const ids = Array.isArray(action.args.batteries)
-              ? action.args.batteries.filter((id): id is string => typeof id === "string")
+            const enableIds = Array.isArray(action.args.enable)
+              ? action.args.enable.filter((id): id is string => typeof id === "string")
               : [];
-            if (!ids.length) {
+            const disableIds = Array.isArray(action.args.disable)
+              ? action.args.disable.filter((id): id is string => typeof id === "string")
+              : [];
+            const changes = [
+              ...enableIds.map((id) => ({ id, enabled: true })),
+              ...disableIds.map((id) => ({ id, enabled: false })),
+            ];
+            if (!changes.length) {
               return {
                 ok: false,
-                note: "No tool names came through. Advanced options include dense embeddings, Headroom compression, and Graphify.",
+                note: "No tool changes came through. Open Tools included to review them.",
               };
             }
-            const enabledNow: string[] = [];
+            const changed: Array<{ id: string; enabled: boolean }> = [];
             const failed: string[] = [];
-            for (const id of ids) {
+            for (const change of changes) {
               try {
-                if (canRun) {
+                if (change.enabled && canRun) {
                   const result = await onRunLocalAction({
                     action: "battery_install",
-                    target: id,
+                    target: change.id,
                     refreshAfter: false,
                   });
                   if (!result?.success) throw new Error("battery install failed");
                 }
-                await saveSetupBattery(baseUrl, id, true);
-                enabledNow.push(id);
+                await saveSetupBattery(baseUrl, change.id, change.enabled);
+                changed.push(change);
               } catch {
-                failed.push(id);
+                failed.push(change.id);
               }
             }
             await refreshStatus();
-            if (!enabledNow.length) {
+            if (!changed.length) {
               return {
                 ok: false,
-                note: "I could not turn those on. Open Tools included to review them, or run `alfred batteries`.",
+                note: "I could not change those tools. Open Tools included to review them, or run `alfred batteries`.",
               };
             }
             onBatteriesDecision();
-            const tail = failed.length ? ` I could not turn on: ${failed.join(", ")}.` : "";
+            const enabled = changed.filter((item) => item.enabled).map((item) => item.id);
+            const disabled = changed.filter((item) => !item.enabled).map((item) => item.id);
+            const parts = [
+              enabled.length ? `Turned on ${enabled.join(", ")}.` : "",
+              disabled.length ? `Turned off ${disabled.join(", ")}.` : "",
+              failed.length ? `Could not change ${failed.join(", ")}.` : "",
+            ].filter(Boolean);
             return {
               ok: true,
-              note: `Installed or configured ${enabledNow.join(", ")}. External services remain marked until they are reachable.${tail}`,
+              note: parts.join(" "),
             };
           }
           case "skip_batteries":
