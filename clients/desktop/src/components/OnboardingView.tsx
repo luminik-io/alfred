@@ -863,7 +863,12 @@ export function OnboardingView({
       <h1 id="alfred-onboarding-title" className="sr-only">
         Set up Alfred
       </h1>
-      <div className="alfred-onboarding-shell alfred-glass">
+      <div
+        className={cn(
+          "alfred-onboarding-shell alfred-glass",
+          mode === "stepped" && stepKey === "welcome" && "is-welcome",
+        )}
+      >
         {mode === "chat" ? (
           // The conversational entry: Alfred drives setup one step at a time via
           // /api/onboarding/converse, executing each requested step through the
