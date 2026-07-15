@@ -180,66 +180,79 @@ export function useOnboardingActions({
             return { ok: true, note: "Saved your team names." };
           }
           case "set_batteries": {
-            // Optional enhancements. Native setup prepares local dependencies,
+            // Configurable tools. Native setup prepares local dependencies,
             // then the live setup API performs the only configuration write.
             // External daemons remain explicit.
             // Unknown ids and built-ins are refused.
             if (!canMutate) {
               return {
                 ok: false,
-                note: "I cannot change batteries in this read-only preview. Use the Batteries step to pick them.",
+                note: "I cannot change tools in this read-only preview. Open Tools included to review them.",
               };
             }
             if (canRun && !connected) {
               return {
                 ok: false,
-                note: "Connect to the Alfred runtime before installing batteries.",
+                note: "Connect to the Alfred runtime before changing tools.",
               };
             }
-            const ids = Array.isArray(action.args.batteries)
-              ? action.args.batteries.filter((id): id is string => typeof id === "string")
+            const enableIds = Array.isArray(action.args.enable)
+              ? action.args.enable.filter((id): id is string => typeof id === "string")
               : [];
-            if (!ids.length) {
+            const disableIds = Array.isArray(action.args.disable)
+              ? action.args.disable.filter((id): id is string => typeof id === "string")
+              : [];
+            const changes = [
+              ...enableIds.map((id) => ({ id, enabled: true })),
+              ...disableIds.map((id) => ({ id, enabled: false })),
+            ];
+            if (!changes.length) {
               return {
                 ok: false,
-                note: "No battery names came through. Which would you like: dense embeddings, headroom compression, or codebase memory?",
+                note: "No tool changes came through. Open Tools included to review them.",
               };
             }
-            const enabledNow: string[] = [];
+            const changed: Array<{ id: string; enabled: boolean }> = [];
             const failed: string[] = [];
-            for (const id of ids) {
+            for (const change of changes) {
               try {
-                if (canRun) {
+                if (change.enabled && canRun) {
                   const result = await onRunLocalAction({
                     action: "battery_install",
-                    target: id,
+                    target: change.id,
                     refreshAfter: false,
                   });
                   if (!result?.success) throw new Error("battery install failed");
                 }
-                await saveSetupBattery(baseUrl, id, true);
-                enabledNow.push(id);
+                await saveSetupBattery(baseUrl, change.id, change.enabled);
+                changed.push(change);
               } catch {
-                failed.push(id);
+                failed.push(change.id);
               }
             }
             await refreshStatus();
-            if (!enabledNow.length) {
+            if (!changed.length) {
               return {
                 ok: false,
-                note: "I could not turn those on. Open the Batteries step to pick them, or run `alfred batteries`.",
+                note: "I could not change those tools. Open Tools included to review them, or run `alfred batteries`.",
               };
             }
             onBatteriesDecision();
-            const tail = failed.length ? ` I could not turn on: ${failed.join(", ")}.` : "";
+            const enabled = changed.filter((item) => item.enabled).map((item) => item.id);
+            const disabled = changed.filter((item) => !item.enabled).map((item) => item.id);
+            const parts = [
+              enabled.length ? `Turned on ${enabled.join(", ")}.` : "",
+              disabled.length ? `Turned off ${disabled.join(", ")}.` : "",
+              failed.length ? `Could not change ${failed.join(", ")}.` : "",
+            ].filter(Boolean);
             return {
               ok: true,
-              note: `Installed or configured ${enabledNow.join(", ")}. External services remain marked until they are reachable.${tail}`,
+              note: parts.join(" "),
             };
           }
           case "skip_batteries":
             onBatteriesDecision();
-            return { ok: true, note: "Keeping the built-in batteries only." };
+            return { ok: true, note: "Keeping Alfred's included tools." };
           case "open_slack_setup":
             // Slack credentials never enter this action or the transcript. Move
             // to the existing token-gated local step, which owns Slack setup.

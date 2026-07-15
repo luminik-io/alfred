@@ -826,9 +826,9 @@ export type SetupSelectReposResponse = {
   keys: string[];
 };
 
-// One battery in the picker. Built-ins are always on ("included"); the rest are
-// opt-in enhancements the person turns on. Mirrors lib/batteries.py so the CLI
-// and the desktop app read one manifest.
+// One battery in the picker. Built-ins need no dependency, default_on tools are
+// part of a fresh install, and the rest are advanced integrations. Mirrors
+// lib/batteries.py so the CLI and desktop app read one manifest.
 export type SetupBattery = {
   id: string;
   name: string;

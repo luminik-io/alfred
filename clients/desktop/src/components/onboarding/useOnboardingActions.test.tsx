@@ -32,12 +32,12 @@ describe("useOnboardingActions", () => {
 
     const outcome = await result.current({
       tool: "set_batteries",
-      args: { batteries: ["code-memory-mcp"] },
+      args: { enable: ["code-memory-mcp"], disable: [] },
     });
 
     expect(outcome).toEqual({
       ok: false,
-      note: "Connect to the Alfred runtime before installing batteries.",
+      note: "Connect to the Alfred runtime before changing tools.",
     });
     expect(onRunLocalAction).not.toHaveBeenCalled();
   });
@@ -74,7 +74,7 @@ describe("useOnboardingActions", () => {
 
     const outcome = await result.current({
       tool: "set_batteries",
-      args: { batteries: ["code-memory-mcp"] },
+      args: { enable: ["code-memory-mcp"], disable: [] },
     });
 
     expect(onRunLocalAction).toHaveBeenCalledWith({
@@ -89,6 +89,47 @@ describe("useOnboardingActions", () => {
     );
     expect(outcome.ok).toBe(false);
     expect(onBatteriesDecision).not.toHaveBeenCalled();
+  });
+
+  it("disables an included battery without running an installer", async () => {
+    const save = vi.spyOn(api, "saveSetupBattery").mockResolvedValue({
+      ok: true,
+      battery: "code-memory-mcp",
+      configured: false,
+      enabled: false,
+      env_path: "/tmp/alfred/.env",
+      keys: ["ALFRED_CODE_MEMORY_ENABLED"],
+      manifest: { version: 1, summary: {}, batteries: [] },
+    });
+    const onRunLocalAction = vi.fn(async () => null);
+    const onBatteriesDecision = vi.fn();
+    const { result } = renderHook(() =>
+      useOnboardingActions({
+        baseUrl: "http://127.0.0.1:7010",
+        canMutate: true,
+        canRun: true,
+        connected: true,
+        githubConnected: false,
+        refreshStatus: vi.fn(async () => null),
+        startGithubAuthLogin: vi.fn(async () => false),
+        onRunLocalAction,
+        onOpenRepoSetup: vi.fn(),
+        onSaveCustomNames: vi.fn(async () => undefined),
+        onBatteriesDecision,
+        onSlackDecision: vi.fn(),
+        onOpenSlackSetup: vi.fn(),
+      }),
+    );
+
+    const outcome = await result.current({
+      tool: "set_batteries",
+      args: { enable: [], disable: ["code-memory-mcp"] },
+    });
+
+    expect(onRunLocalAction).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalledWith("http://127.0.0.1:7010", "code-memory-mcp", false);
+    expect(onBatteriesDecision).toHaveBeenCalledOnce();
+    expect(outcome).toEqual({ ok: true, note: "Turned off code-memory-mcp." });
   });
 
   it("does not finish conversational setup while required setup is missing", async () => {

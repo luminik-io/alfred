@@ -34,14 +34,66 @@ function statusBadge(battery: SetupBattery): { label: string; variant: "secondar
   }
 }
 
+function ConfigurableBatteryRow({
+  battery,
+  busy,
+  canMutate,
+  canRun,
+  connected,
+  onToggle,
+}: {
+  battery: SetupBattery;
+  busy: boolean;
+  canMutate: boolean;
+  canRun: boolean;
+  connected: boolean;
+  onToggle: (battery: SetupBattery, next: boolean) => void;
+}) {
+  const badge = statusBadge(battery);
+  return (
+    <div
+      className={cn(
+        "grid grid-cols-[1fr_auto] items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors",
+        battery.configured
+          ? "border-primary/25 bg-primary/5"
+          : "border-border/70 bg-background/55",
+      )}
+    >
+      <div className="min-w-0">
+        <span className="flex flex-wrap items-center gap-1.5">
+          <Package size={14} className="text-muted-foreground" aria-hidden="true" />
+          <strong className="font-medium text-foreground">{battery.name}</strong>
+          <Badge variant="outline" className="font-normal">
+            {battery.category}
+          </Badge>
+          <Badge variant={badge.variant} className="font-normal">
+            {badge.label}
+          </Badge>
+        </span>
+        <span className="mt-1 block text-xs text-muted-foreground">{battery.how_it_helps}</span>
+        <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+          <CircleDashed size={12} aria-hidden="true" />
+          <span>{requirementLabel(battery)}</span>
+          {battery.status === "not_installed" ? (
+            <span className="text-muted-foreground/80">· {battery.install_hint}</span>
+          ) : null}
+        </span>
+      </div>
+      <Switch
+        checked={battery.configured}
+        disabled={!canMutate || busy || (canRun && !connected)}
+        onCheckedChange={(next) => onToggle(battery, next)}
+        aria-label={`${battery.configured ? "Disable" : "Enable"} ${battery.name}`}
+      />
+    </div>
+  );
+}
+
 /**
- * Optional batteries step. Reads the shared manifest (GET /api/setup/batteries),
- * shows the always-on built-ins as "included, no setup", and lets the person
- * toggle each opt-in enhancement. Native onboarding runs the real battery CLI,
- * which installs local dependencies before enabling them; external daemons stay
- * explicitly marked until reachable. Browser-only setup can still persist the
- * configuration and shows the remaining requirement. Alfred works fully with
- * zero optional batteries, so this whole step is skippable.
+ * Included-tools step. Reads the shared manifest, shows built-ins and default-on
+ * local tools first, then offers advanced integrations. Native onboarding runs
+ * the real battery CLI before enabling a dependency. External daemons stay
+ * explicit and are never installed by Alfred.
  */
 export function BatteryPickerStep({
   baseUrl,
@@ -124,15 +176,16 @@ export function BatteryPickerStep({
   };
 
   const builtins = (manifest?.batteries ?? []).filter((b) => b.builtin);
-  const optIns = (manifest?.batteries ?? []).filter((b) => !b.builtin);
+  const includedTools = (manifest?.batteries ?? []).filter((b) => !b.builtin && b.default_on);
+  const advanced = (manifest?.batteries ?? []).filter((b) => !b.builtin && !b.default_on);
 
   return (
     <div className="grid gap-3">
       <Card size="sm" className="rounded-lg border-border/70 bg-muted/25 shadow-none">
         <CardContent className="px-3 py-2 text-sm text-muted-foreground">
-          Alfred works fully with none of these. The built-ins below are always on. The optional
-          batteries add better recall, more token savings, or a live code graph. Turn on what you
-          want; you can change this any time with <code>alfred batteries</code>.
+          Alfred includes local memory, compact context, code navigation, and codebase memory.
+          Advanced integrations are available when you need a different engine or external store.
+          Change these later with <code>alfred batteries</code>.
         </CardContent>
       </Card>
 
@@ -177,55 +230,41 @@ export function BatteryPickerStep({
         </section>
       ) : null}
 
-      {optIns.length ? (
-        <section aria-label="Optional batteries" className="grid gap-2">
+      {includedTools.length ? (
+        <section aria-label="Included by default" className="grid gap-2">
           <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Optional, off by default
+            Included by default
           </h3>
-          {optIns.map((battery) => {
-            const badge = statusBadge(battery);
-            const busy = pending === battery.id;
-            return (
-              <div
-                key={battery.id}
-                className={cn(
-                  "grid grid-cols-[1fr_auto] items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors",
-                  battery.configured
-                    ? "border-primary/25 bg-primary/5"
-                    : "border-border/70 bg-background/55",
-                )}
-              >
-                <div className="min-w-0">
-                  <span className="flex flex-wrap items-center gap-1.5">
-                    <Package size={14} className="text-muted-foreground" aria-hidden="true" />
-                    <strong className="font-medium text-foreground">{battery.name}</strong>
-                    <Badge variant="outline" className="font-normal">
-                      {battery.category}
-                    </Badge>
-                    <Badge variant={badge.variant} className="font-normal">
-                      {badge.label}
-                    </Badge>
-                  </span>
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    {battery.how_it_helps}
-                  </span>
-                  <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-                    <CircleDashed size={12} aria-hidden="true" />
-                    <span>{requirementLabel(battery)}</span>
-                    {battery.status === "not_installed" ? (
-                      <span className="text-muted-foreground/80">· {battery.install_hint}</span>
-                    ) : null}
-                  </span>
-                </div>
-                <Switch
-                  checked={battery.configured}
-                  disabled={!canMutate || busy || (canRun && !connected)}
-                  onCheckedChange={(next) => void toggle(battery, next)}
-                  aria-label={`${battery.configured ? "Disable" : "Enable"} ${battery.name}`}
-                />
-              </div>
-            );
-          })}
+          {includedTools.map((battery) => (
+            <ConfigurableBatteryRow
+              key={battery.id}
+              battery={battery}
+              busy={pending === battery.id}
+              canMutate={canMutate}
+              canRun={canRun}
+              connected={connected}
+              onToggle={(row, next) => void toggle(row, next)}
+            />
+          ))}
+        </section>
+      ) : null}
+
+      {advanced.length ? (
+        <section aria-label="Advanced integrations" className="grid gap-2">
+          <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Advanced integrations
+          </h3>
+          {advanced.map((battery) => (
+            <ConfigurableBatteryRow
+              key={battery.id}
+              battery={battery}
+              busy={pending === battery.id}
+              canMutate={canMutate}
+              canRun={canRun}
+              connected={connected}
+              onToggle={(row, next) => void toggle(row, next)}
+            />
+          ))}
         </section>
       ) : null}
 

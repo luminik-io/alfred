@@ -199,21 +199,24 @@ def test_optional_decision_actions_are_scoped_and_argless() -> None:
 
 def test_parse_turn_set_batteries_validates_and_bounds_ids() -> None:
     turn = ob.parse_turn(
-        '{"reply": "Turning those on.", "action": {"tool": "set_batteries", '
-        '"args": {"batteries": ["dense-embeddings", "code-memory-mcp", "not-a-battery", '
-        '"sqlite-memory"]}}}'
+        '{"reply": "Updating those.", "action": {"tool": "set_batteries", '
+        '"args": {"enable": ["dense-embeddings", "not-a-battery", "sqlite-memory"], '
+        '"disable": ["code-memory-mcp"]}}}'
     )
     assert turn is not None
     assert turn.action is not None
     assert turn.action.tool == "set_batteries"
-    # Unknown ids and always-on built-ins are dropped; only real opt-ins survive.
-    assert turn.action.args["batteries"] == ["dense-embeddings", "code-memory-mcp"]
+    # Unknown ids and always-on built-ins are dropped; real configurable changes survive.
+    assert turn.action.args == {
+        "enable": ["dense-embeddings"],
+        "disable": ["code-memory-mcp"],
+    }
 
 
 def test_parse_turn_set_batteries_rejects_two_primaries() -> None:
     turn = ob.parse_turn(
         '{"reply": "Which store?", "action": {"tool": "set_batteries", '
-        '"args": {"batteries": ["redis-ams", "pgvector"]}}}'
+        '"args": {"enable": ["redis-ams", "pgvector"], "disable": []}}}'
     )
     assert turn is not None
     # Two mutually-exclusive primaries degrade to no action; the reply stands.
@@ -223,7 +226,16 @@ def test_parse_turn_set_batteries_rejects_two_primaries() -> None:
 def test_parse_turn_set_batteries_empty_degrades_to_reply() -> None:
     turn = ob.parse_turn(
         '{"reply": "No batteries then.", "action": {"tool": "set_batteries", '
-        '"args": {"batteries": ["nonsense"]}}}'
+        '"args": {"enable": ["nonsense"], "disable": []}}}'
+    )
+    assert turn is not None
+    assert turn.action is None
+
+
+def test_parse_turn_set_batteries_rejects_conflicting_directions() -> None:
+    turn = ob.parse_turn(
+        '{"reply": "Updating memory.", "action": {"tool": "set_batteries", '
+        '"args": {"enable": ["code-memory-mcp"], "disable": ["code-memory-mcp"]}}}'
     )
     assert turn is not None
     assert turn.action is None

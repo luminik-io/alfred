@@ -2401,14 +2401,15 @@ def _battery_state(init_mod, tmp_path):
     )
 
 
-def test_non_interactive_keeps_builtins_only(init_mod, tmp_path):
+def test_non_interactive_keeps_included_defaults_without_redundant_env(init_mod, tmp_path):
     state = _battery_state(init_mod, tmp_path)
     init_mod.step_8c_batteries(state, non_interactive=True)
     assert state.batteries == []
     env = init_mod.env_assignments_for(state)
-    # No opt-in env flag written when the operator picked nothing.
+    # Included defaults do not need redundant env flags.
     assert "ALFRED_MEMORY_SQLITE_DENSE" not in env
     assert "ALFRED_MEMORY_PROVIDERS" not in env
+    assert "ALFRED_CODE_MEMORY_MCP" not in env
 
 
 def test_batteries_arg_selects_opt_ins(init_mod, tmp_path):
@@ -2427,6 +2428,10 @@ def test_batteries_arg_none_clears(init_mod, tmp_path):
     state.batteries = ["dense-embeddings"]
     init_mod.apply_batteries_arg(state, "none")
     assert state.batteries == []
+    assert state.battery_defaults_disabled is True
+    env = init_mod.env_assignments_for(state)
+    assert env["ALFRED_CODE_MEMORY_MCP"] == "0"
+    assert env["ALFRED_CODE_MEMORY_AUTOFETCH"] == "0"
 
 
 def test_batteries_arg_rejects_builtin_and_unknown(init_mod, tmp_path, capsys):
@@ -2465,7 +2470,7 @@ def test_interactive_skips_second_code_graph_engine(init_mod, tmp_path, monkeypa
     state.batteries = ["code-memory-mcp"]
     graphify = init_mod.batteries.battery_by_id("graphify")
     monkeypatch.setattr(init_mod.batteries, "builtin_batteries", lambda: ())
-    monkeypatch.setattr(init_mod.batteries, "opt_in_batteries", lambda: (graphify,))
+    monkeypatch.setattr(init_mod.batteries, "advanced_batteries", lambda: (graphify,))
     monkeypatch.setattr(init_mod, "ask_yes_no", lambda *args, **kwargs: True)
 
     init_mod.step_8c_batteries(state, non_interactive=False)

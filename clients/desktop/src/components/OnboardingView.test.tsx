@@ -1718,7 +1718,7 @@ describe("OnboardingView eight-step takeover", () => {
     renderOnboarding({ canRun: false });
     const user = userEvent.setup();
 
-    await gotoStep(user, /^batteries$/i);
+    await gotoStep(user, /^tools included$/i);
     await user.click(await screen.findByRole("switch", { name: /enable dense embeddings/i }));
 
     await waitFor(() =>
@@ -2130,7 +2130,7 @@ describe("OnboardingView conversational setup actions", () => {
     const user = userEvent.setup();
 
     await enterChatAndSend(user, "set up the optional services");
-    await approveStep(user, /skip batteries/i);
+    await approveStep(user, /keep included tools/i);
     await approveStep(user, /open slack setup/i);
 
     expect(await screen.findByText(/want approvals and questions in slack/i)).toBeInTheDocument();
@@ -2170,7 +2170,7 @@ describe("OnboardingView conversational setup actions", () => {
     const user = userEvent.setup();
 
     await enterChatAndSend(user, "keep the defaults");
-    await approveStep(user, /skip batteries/i);
+    await approveStep(user, /keep included tools/i);
     await approveStep(user, /skip slack/i);
     await user.click(await screen.findByRole("button", { name: /set up step by step/i }));
     expect(screen.getByLabelText(/onboarding steps complete/i)).toHaveTextContent(/2 of 8/i);

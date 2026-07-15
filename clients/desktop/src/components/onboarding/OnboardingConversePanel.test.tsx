@@ -191,7 +191,7 @@ describe("OnboardingConversePanel", () => {
     await waitFor(() => expect(converse).toHaveBeenCalledTimes(1));
     expect(onRunAction).not.toHaveBeenCalled();
     expect(onDone).not.toHaveBeenCalled();
-    expect(screen.getByText(/batteries still need a decision/i)).toBeInTheDocument();
+    expect(screen.getByText(/included tools still need a decision/i)).toBeInTheDocument();
   });
 
   it("does not count opening Slack setup as a completed Slack decision", async () => {
@@ -283,7 +283,9 @@ describe("OnboardingConversePanel", () => {
     );
 
     await sendMessage("start");
-    await userEvent.setup().click(await screen.findByRole("button", { name: /skip batteries/i }));
+    await userEvent.setup().click(
+      await screen.findByRole("button", { name: /keep included tools/i }),
+    );
     await userEvent.setup().click(await screen.findByRole("button", { name: /skip slack/i }));
     await userEvent.setup().click(await screen.findByRole("button", { name: /finish setup/i }));
 

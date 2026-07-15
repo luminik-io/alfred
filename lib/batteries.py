@@ -1,13 +1,11 @@
-"""Battery manifest, the single source of truth for Alfred's opt-in enhancements.
+"""Battery manifest, the single source of truth for Alfred's included tools.
 
-Alfred runs fully with ZERO batteries. The built-ins below (the embedded SQLite
-memory store, the tool-output compactor, skeleton/delta reads, and blast-radius)
-are always on and need no setup. The other entries are opt-in "batteries" a solo
-builder can switch on when they want more: better recall, more token savings, or
-a live code graph the agent can query. Each battery is honest about what it is,
-what it needs, and whether it depends on a service you have to run yourself
-(Redis, Postgres). Nothing here is installed or started without an explicit
-choice, and no daemon is ever started for you.
+Alfred ships with embedded memory, context compaction, structural reads,
+blast-radius checks, and local codebase memory enabled by default. The first
+four are built in. Codebase memory is a pinned, checksum-verified binary that
+the desktop installer fetches and verifies. The remaining entries are advanced
+integrations for operators who want a different graph engine, semantic recall,
+or an external memory service. No daemon is ever installed or started for you.
 
 This module is pure stdlib on purpose. It is the one manifest read by:
 
@@ -43,7 +41,8 @@ CATEGORY_MEMORY = "memory"
 CATEGORY_COMPRESSION = "compression"
 CATEGORY_CODE_GRAPH = "code-graph"
 
-# How a battery is obtained. "included" batteries ship on; the rest are opt-in.
+# How a battery is obtained. Built-ins need no install; other tools declare the
+# exact dependency path even when they are enabled by default.
 INSTALL_INCLUDED = "included"  # built-in, nothing to install
 INSTALL_PIP_EXTRA = "pip-extra"  # pip install "alfred-os[<extra>]"
 INSTALL_AUTOFETCH = "autofetch"  # a helper fetches a pinned binary on first use
@@ -80,7 +79,7 @@ STORE_PROVIDERS = frozenset({"sqlite", "sqlite_hybrid", "redis", "pgvector"})
 # --------------------------------------------------------------------------- #
 @dataclass(frozen=True)
 class Battery:
-    """One battery: a built-in that is always on, or an opt-in enhancement."""
+    """One battery: built in, included by default, or an advanced integration."""
 
     id: str
     name: str
@@ -89,7 +88,8 @@ class Battery:
     what: str
     # Plain, non-technical. What a solo builder gets by turning it on.
     how_it_helps: str
-    # Always-on built-in vs opt-in. Built-ins are shown as "included, no setup".
+    # Built-ins need no dependency. default_on tools are part of a fresh install
+    # but remain user-disableable.
     builtin: bool
     default_on: bool
     # Env flags written to $ALFRED_HOME/.env to enable / disable the battery.
@@ -117,8 +117,8 @@ class Battery:
 # --------------------------------------------------------------------------- #
 # The manifest
 # --------------------------------------------------------------------------- #
-# Built-ins first (included, no setup), then the opt-in batteries. Order here is
-# the order the CLI and GUI present them.
+# Built-ins first, then configurable tools. Order here is the order the CLI and
+# GUI present them.
 BATTERIES: tuple[Battery, ...] = (
     # ----- Always-on built-ins ------------------------------------------- #
     Battery(
@@ -177,7 +177,7 @@ BATTERIES: tuple[Battery, ...] = (
         install_kind=INSTALL_INCLUDED,
         docs="docs/CODE_MEMORY.md",
     ),
-    # ----- Opt-in batteries ---------------------------------------------- #
+    # ----- Configurable batteries ---------------------------------------- #
     Battery(
         id="dense-embeddings",
         name="Dense embeddings",
@@ -242,7 +242,7 @@ BATTERIES: tuple[Battery, ...] = (
             "of grepping and re-reading. Alfred fetches a pinned, checksum-verified binary on first use."
         ),
         builtin=False,
-        default_on=False,
+        default_on=True,
         enable_env={"ALFRED_CODE_MEMORY_MCP": "1", "ALFRED_CODE_MEMORY_AUTOFETCH": "1"},
         # Disabling must close the REAL runtime gate (ALFRED_CODE_MEMORY_MCP),
         # not just stop autofetch: the MCP defaults on and would still attach a
@@ -375,8 +375,19 @@ def builtin_batteries() -> tuple[Battery, ...]:
     return tuple(b for b in BATTERIES if b.builtin)
 
 
-def opt_in_batteries() -> tuple[Battery, ...]:
+def configurable_batteries() -> tuple[Battery, ...]:
+    """Dependency-backed tools that can be enabled or disabled."""
     return tuple(b for b in BATTERIES if not b.builtin)
+
+
+def default_batteries() -> tuple[Battery, ...]:
+    """Configurable tools that are enabled as part of a fresh install."""
+    return tuple(b for b in BATTERIES if not b.builtin and b.default_on)
+
+
+def advanced_batteries() -> tuple[Battery, ...]:
+    """Configurable integrations that remain off until explicitly enabled."""
+    return tuple(b for b in BATTERIES if not b.builtin and not b.default_on)
 
 
 def managed_env_keys() -> frozenset[str]:
@@ -506,6 +517,8 @@ def is_enabled(battery: Battery, env: Mapping[str, str]) -> bool:
     key, expected = battery.enable_flag
     if not key:
         return False
+    if key not in env:
+        return battery.default_on
     current = env.get(key, "")
     if expected == _ANY_TRUTHY:
         return truthy(current)
@@ -519,14 +532,18 @@ def _find_spec(name: str) -> bool:
         return False
 
 
+def _is_executable_file(path: Path) -> bool:
+    return path.is_file() and os.access(path, os.X_OK)
+
+
 def _code_memory_binary(env: Mapping[str, str]) -> bool:
     override = str(env.get("ALFRED_CODE_MEMORY_BIN", "")).strip()
-    if override and Path(override).expanduser().exists():
+    if override and _is_executable_file(Path(override).expanduser()):
         return True
     if shutil.which("codebase-memory-mcp"):
         return True
     fetched = _alfred_home(env) / "bin" / "codebase-memory-mcp"
-    return fetched.exists()
+    return _is_executable_file(fetched)
 
 
 def _graphify_available(env: Mapping[str, str]) -> bool:

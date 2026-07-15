@@ -246,43 +246,48 @@ def _validate_pick_agents(args: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _validate_set_batteries(args: dict[str, Any]) -> dict[str, Any] | None:
-    """Validate a ``set_batteries`` action into a bounded list of real opt-in ids.
+    """Validate explicit battery enable and disable requests.
 
-    Only ids of real OPT-IN batteries (from the shared ``batteries`` manifest)
-    survive: unknown ids and always-on built-ins are dropped, so the model can
-    never name something the client cannot enable. Two mutually-exclusive primary
-    memory stores (Redis and pgvector) are a conflict, so the action degrades to
-    ``None`` (the reply stands and asks the person to pick one) rather than
-    forwarding a selection that would collide. An empty result drops the action.
+    Unknown ids and non-configurable built-ins are dropped, so the model cannot
+    name something the client cannot change. The same battery cannot appear in
+    both directions. Mutually-exclusive primary stores or graph engines in the
+    enable set degrade to ``None`` instead of forwarding a collision.
     """
     import batteries
 
-    raw = args.get("batteries")
-    if raw is None:
-        raw = args.get("battery")
-    if isinstance(raw, str):
-        raw = [raw]
-    if not isinstance(raw, list):
+    configurable = {b.id for b in batteries.configurable_batteries()}
+    enable_raw = args.get("enable", [])
+    disable_raw = args.get("disable", [])
+    if not isinstance(enable_raw, list) or not isinstance(disable_raw, list):
         return None
-    valid_opt_ins = {b.id for b in batteries.opt_in_batteries()}
-    ids: list[str] = []
-    seen: set[str] = set()
-    for value in raw:
-        slug = _clean_slug(value)
-        if slug is None:
-            continue
-        key = slug.lower()
-        if key in seen or key not in valid_opt_ins:
-            continue
-        seen.add(key)
-        ids.append(key)
-        if len(ids) >= MAX_BATTERIES:
-            break
-    if not ids:
+
+    def validated_ids(raw: list[Any], remaining: int) -> list[str]:
+        if remaining <= 0:
+            return []
+        ids: list[str] = []
+        seen: set[str] = set()
+        for value in raw:
+            slug = _clean_slug(value)
+            if slug is None:
+                continue
+            key = slug.lower()
+            if key in seen or key not in configurable:
+                continue
+            seen.add(key)
+            ids.append(key)
+            if len(ids) >= remaining:
+                break
+        return ids
+
+    enable = validated_ids(enable_raw, MAX_BATTERIES)
+    disable = validated_ids(disable_raw, MAX_BATTERIES - len(enable))
+    if not enable and not disable:
         return None
-    if batteries.selection_conflict(ids):
+    if set(enable) & set(disable):
         return None
-    return {"batteries": ids}
+    if batteries.selection_conflict(enable):
+        return None
+    return {"enable": enable, "disable": disable}
 
 
 def _validate_set_schedule(args: dict[str, Any]) -> dict[str, Any] | None:

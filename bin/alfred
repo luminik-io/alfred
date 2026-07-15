@@ -2493,7 +2493,7 @@ def _print_battery_list(payload: dict[str, Any]) -> None:
         f"included {summary.get('included', 0)}  enabled {summary.get('enabled', 0)}  "
         f"available {summary.get('available', 0)}  not-installed {summary.get('not_installed', 0)}"
     )
-    print("Alfred runs fully with zero batteries; the built-ins are always on.")
+    print("Local memory, compaction, code navigation, and codebase memory are included by default.")
     for battery in payload.get("batteries", []):
         marker = _BATTERY_STATUS_LABEL.get(battery["status"], battery["status"].upper())
         daemon = f" (needs {battery['service']})" if battery.get("requires_daemon") else ""
@@ -2506,7 +2506,7 @@ def _print_battery_list(payload: dict[str, Any]) -> None:
 
 
 def cmd_batteries(args: argparse.Namespace) -> int:
-    """List, install, enable, or disable one opt-in battery.
+    """List, install, enable, or disable one configurable battery.
 
     Enabling writes the battery's env flag(s) to ``$ALFRED_HOME/.env``. For a
     battery with a pip extra or an autofetch binary, we ask before running the
