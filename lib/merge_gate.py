@@ -470,11 +470,23 @@ def collect_snapshot(
     review_decision = view.get("reviewDecision") if view.get("reviewDecision") else None
     reviews = _collect_reviews(repo, pr_number, gh_json=gh_json, errors=errors)
 
-    checks: list[CheckRun] = []
-    for entry in view.get("statusCheckRollup") or []:
+    latest_checks: dict[str, tuple[str, int, CheckRun]] = {}
+    for index, entry in enumerate(view.get("statusCheckRollup") or []):
         normalized = _normalize_check(entry)
-        if normalized is not None:
-            checks.append(normalized)
+        if normalized is None:
+            continue
+        timestamp = str(entry.get("startedAt") or entry.get("completedAt") or "")
+        previous = latest_checks.get(normalized.name)
+        if (
+            previous is None
+            or (timestamp and timestamp >= previous[0])
+            or (not timestamp and not previous[0])
+        ):
+            latest_checks[normalized.name] = (timestamp, index, normalized)
+    checks = [
+        item[2]
+        for item in sorted(latest_checks.values(), key=lambda item: item[1])
+    ]
 
     threads = _collect_review_threads(repo, pr_number, gh_json=gh_json, errors=errors)
     native_thread_resolution = _collect_native_thread_resolution(
@@ -538,30 +550,86 @@ def _collect_native_thread_resolution(
     gh_json: GhJson,
     errors: list[str],
 ) -> bool | None:
-    """Verify that GitHub will reject a late unresolved thread atomically."""
+    """Verify that GitHub will reject a late unresolved thread atomically.
+
+    Effective branch rules identify the ruleset that contributes the pull
+    request rule, but not whether the current merge identity can bypass it.
+    Fetch that ruleset and require GitHub to report that this identity can
+    never bypass it. Classic branch protection is accepted only when it
+    applies to admins and has no pull-request bypass allowances.
+    """
     if not base_ref:
         errors.append("could not identify the PR base branch")
         return None
+    missing = object()
     rules = gh_json(
         [
             "gh",
             "api",
             f"repos/{repo}/rules/branches/{quote(base_ref, safe='')}",
         ],
-        None,
+        missing,
     )
-    if not isinstance(rules, list):
-        errors.append("could not verify base branch conversation rules")
+    rules_readable = isinstance(rules, list)
+    ruleset_detail_unreadable = False
+    if rules_readable:
+        for rule in rules:
+            if not isinstance(rule, dict) or rule.get("type") != "pull_request":
+                continue
+            parameters = rule.get("parameters") or {}
+            if not (
+                isinstance(parameters, dict)
+                and parameters.get("required_review_thread_resolution") is True
+            ):
+                continue
+            ruleset_id = rule.get("ruleset_id")
+            if not isinstance(ruleset_id, int):
+                ruleset_detail_unreadable = True
+                continue
+            detail = gh_json(
+                ["gh", "api", f"repos/{repo}/rulesets/{ruleset_id}"],
+                missing,
+            )
+            if not isinstance(detail, dict):
+                ruleset_detail_unreadable = True
+                continue
+            if (
+                detail.get("enforcement") == "active"
+                and detail.get("current_user_can_bypass") == "never"
+            ):
+                return True
+
+    protection = gh_json(
+        [
+            "gh",
+            "api",
+            f"repos/{repo}/branches/{quote(base_ref, safe='')}/protection",
+        ],
+        missing,
+    )
+    if isinstance(protection, dict):
+        conversation = protection.get("required_conversation_resolution") or {}
+        enforce_admins = protection.get("enforce_admins") or {}
+        pull_requests = protection.get("required_pull_request_reviews") or {}
+        bypass = (
+            pull_requests.get("bypass_pull_request_allowances") or {}
+            if isinstance(pull_requests, dict)
+            else {}
+        )
+        bypass_is_empty = isinstance(bypass, dict) and not any(
+            bypass.get(kind) for kind in ("users", "teams", "apps")
+        )
+        return bool(
+            isinstance(conversation, dict)
+            and conversation.get("enabled") is True
+            and isinstance(enforce_admins, dict)
+            and enforce_admins.get("enabled") is True
+            and bypass_is_empty
+        )
+
+    if not rules_readable or ruleset_detail_unreadable:
+        errors.append("could not verify non-bypassable base branch conversation rules")
         return None
-    for rule in rules:
-        if not isinstance(rule, dict) or rule.get("type") != "pull_request":
-            continue
-        parameters = rule.get("parameters") or {}
-        if (
-            isinstance(parameters, dict)
-            and parameters.get("required_review_thread_resolution") is True
-        ):
-            return True
     return False
 
 

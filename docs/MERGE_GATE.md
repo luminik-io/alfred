@@ -54,7 +54,10 @@ status, or stale external review therefore blocks the merge. The second head
 must also equal the first head. Alfred then squash-merges with that commit
 (`gh pr merge --squash --match-head-commit <sha>`), so a push in the remaining
 mutation window is rejected by GitHub. The required base-branch conversation
-rule makes GitHub reject a thread opened in that same final window.
+rule makes GitHub reject a thread opened in that same final window. Alfred
+verifies that the policy applies to the merge identity: an active ruleset must
+report that the current user can never bypass it, or classic protection must
+enforce admins and have no pull-request bypass allowances.
 
 ## Policy knobs
 

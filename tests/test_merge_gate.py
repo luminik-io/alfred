@@ -457,10 +457,16 @@ def _fake_gh_json(
 
     def _runner(cmd, default):
         nonlocal review_page
+        if any("/rulesets/" in str(arg) for arg in cmd):
+            return {
+                "enforcement": "active",
+                "current_user_can_bypass": "never",
+            }
         if any("/rules/branches/" in str(arg) for arg in cmd):
             return [
                 {
                     "type": "pull_request",
+                    "ruleset_id": 42,
                     "parameters": {
                         "required_review_thread_resolution": native_thread_resolution,
                     },
@@ -554,6 +560,51 @@ def test_collect_snapshot_builds_from_gh():
     assert evaluate_gate(snap).mergeable is True
 
 
+def test_collect_snapshot_keeps_latest_run_for_duplicate_check_name():
+    view = {
+        "state": "OPEN",
+        "headRefOid": "b" * 40,
+        "reviewDecision": "APPROVED",
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "statusCheckRollup": [
+            {
+                "__typename": "CheckRun",
+                "name": "pytest",
+                "status": "COMPLETED",
+                "conclusion": "CANCELLED",
+                "startedAt": "2026-07-15T05:00:00Z",
+            },
+            {
+                "__typename": "CheckRun",
+                "name": "pytest",
+                "status": "COMPLETED",
+                "conclusion": "SUCCESS",
+                "startedAt": "2026-07-15T05:05:00Z",
+            },
+        ],
+    }
+    reviews = [
+        [
+            {
+                "user": {"login": "operator"},
+                "state": "APPROVED",
+                "submitted_at": "2026-07-11T10:00:00Z",
+                "commit_id": "b" * 40,
+            }
+        ]
+    ]
+
+    snap = collect_snapshot(
+        "acme/repo",
+        7,
+        gh_json=_fake_gh_json(view, [], reviews),
+    )
+
+    assert snap.checks == (CheckRun("pytest", "SUCCESS"),)
+    assert evaluate_gate(snap).mergeable is True
+
+
 def test_collect_snapshot_requires_native_thread_resolution():
     view = {
         "state": "OPEN",
@@ -588,6 +639,129 @@ def test_collect_snapshot_requires_native_thread_resolution():
 
     assert decision.mergeable is False
     assert "not required by the base branch rules" in decision.short_reason()
+
+
+def test_collect_snapshot_accepts_non_bypassable_classic_protection():
+    view = {
+        "state": "OPEN",
+        "headRefOid": "b" * 40,
+        "reviewDecision": "APPROVED",
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "statusCheckRollup": [],
+    }
+    reviews = [
+        [
+            {
+                "user": {"login": "operator"},
+                "state": "APPROVED",
+                "submitted_at": "2026-07-11T10:00:00Z",
+                "commit_id": "b" * 40,
+            }
+        ]
+    ]
+    base_runner = _fake_gh_json(
+        view,
+        [],
+        reviews,
+        native_thread_resolution=False,
+    )
+
+    def _runner(cmd, default):
+        if any("/branches/main/protection" in str(arg) for arg in cmd):
+            return {
+                "required_conversation_resolution": {"enabled": True},
+                "enforce_admins": {"enabled": True},
+                "required_pull_request_reviews": {},
+            }
+        return base_runner(cmd, default)
+
+    snap = collect_snapshot("acme/repo", 7, gh_json=_runner)
+
+    assert snap.native_thread_resolution is True
+    assert evaluate_gate(snap).mergeable is True
+
+
+def test_collect_snapshot_rejects_ruleset_current_user_can_bypass():
+    base_runner = _fake_gh_json(
+        {
+            "state": "OPEN",
+            "headRefOid": "b" * 40,
+            "reviewDecision": "APPROVED",
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "statusCheckRollup": [],
+        },
+        [],
+        [
+            [
+                {
+                    "user": {"login": "operator"},
+                    "state": "APPROVED",
+                    "submitted_at": "2026-07-11T10:00:00Z",
+                    "commit_id": "b" * 40,
+                }
+            ]
+        ],
+    )
+
+    def _runner(cmd, default):
+        if any("/rulesets/" in str(arg) for arg in cmd):
+            return {
+                "enforcement": "active",
+                "current_user_can_bypass": "always",
+            }
+        return base_runner(cmd, default)
+
+    snap = collect_snapshot("acme/repo", 7, gh_json=_runner)
+
+    assert snap.native_thread_resolution is False
+    assert evaluate_gate(snap).mergeable is False
+
+
+def test_collect_snapshot_rejects_bypassable_classic_protection():
+    base_runner = _fake_gh_json(
+        {
+            "state": "OPEN",
+            "headRefOid": "b" * 40,
+            "reviewDecision": "APPROVED",
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "statusCheckRollup": [],
+        },
+        [],
+        [
+            [
+                {
+                    "user": {"login": "operator"},
+                    "state": "APPROVED",
+                    "submitted_at": "2026-07-11T10:00:00Z",
+                    "commit_id": "b" * 40,
+                }
+            ]
+        ],
+        native_thread_resolution=False,
+    )
+
+    def _runner(cmd, default):
+        if any("/branches/main/protection" in str(arg) for arg in cmd):
+            return {
+                "required_conversation_resolution": {"enabled": True},
+                "enforce_admins": {"enabled": True},
+                "required_pull_request_reviews": {
+                    "bypass_pull_request_allowances": {
+                        "users": [{"login": "operator"}],
+                        "teams": [],
+                        "apps": [],
+                    }
+                },
+            }
+        return base_runner(cmd, default)
+
+    snap = collect_snapshot("acme/repo", 7, gh_json=_runner)
+
+    assert snap.native_thread_resolution is False
+    assert evaluate_gate(snap).mergeable is False
 
 
 def test_collect_snapshot_missing_view_fails_closed():
