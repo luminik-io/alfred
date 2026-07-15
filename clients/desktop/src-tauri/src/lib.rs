@@ -1016,6 +1016,7 @@ const CORE_INSTALL_TIMEOUT_S: u64 = 1_800;
 const CORE_SEED_TIMEOUT_S: u64 = 120;
 const CORE_DEPLOY_TIMEOUT_S: u64 = 300;
 const CORE_SKILLS_TIMEOUT_S: u64 = 120;
+#[cfg(test)]
 const DEFAULT_RUNTIME_PORT: u16 = 7010;
 const REQUIRED_CLI_INSTALL_TOOLS: [&str; 3] = ["alfred-install", "alfred-init", "alfred-deploy"];
 
