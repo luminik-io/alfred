@@ -349,6 +349,7 @@ describe("OnboardingView eight-step takeover", () => {
       "sr-only",
     );
     const shell = document.querySelector(".alfred-onboarding-shell");
+    expect(shell).toHaveClass("is-welcome");
     expect(shell?.firstElementChild).toBe(
       screen.getByRole("navigation", { name: /onboarding progress/i }),
     );

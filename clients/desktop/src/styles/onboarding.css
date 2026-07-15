@@ -133,6 +133,15 @@
     0 24px 64px var(--glass-shadow);
 }
 
+/* Welcome has no navigation footer and intentionally contains one short
+ * decision. Size that entry state to its content on desktop so it does not
+ * leave a large empty lower half. Later steps keep the stable full-height
+ * workspace above, and max-height preserves scrolling on short displays. */
+.alfred-onboarding-shell.is-welcome {
+  height: auto;
+  max-height: calc(100svh - 4rem);
+}
+
 /* The persistent progress indicator: numbered nodes joined by thin connectors,
  * with current / done / upcoming states. The one chrome element of the stepper,
  * deliberately quiet. */
@@ -434,6 +443,11 @@
     border-radius: 0;
     padding: 1.25rem;
     gap: 1.25rem;
+  }
+
+  .alfred-onboarding-shell.is-welcome {
+    height: 100svh;
+    max-height: none;
   }
 
 }
