@@ -117,6 +117,12 @@ def test_code_intelligence_validates_scope(
     missing_repo = client.get("/api/code-intelligence", params={"path": "src/api.ts"})
     assert missing_repo.status_code == 400
 
+    blank_repo = client.get(
+        "/api/code-intelligence",
+        params={"repo": "   ", "path": "src/api.ts"},
+    )
+    assert blank_repo.status_code == 400
+
     unknown_repo = client.get("/api/code-intelligence", params={"repo": "missing"})
     assert unknown_repo.status_code == 404
 

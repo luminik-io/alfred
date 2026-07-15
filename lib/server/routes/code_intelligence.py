@@ -62,6 +62,10 @@ async def api_code_intelligence(
 ) -> JSONResponse:
     """Summarize indexed repos or explain one file's bounded blast radius."""
 
+    repo = repo.strip() if repo else None
+    path = path.strip() if path else None
+    repo = repo or None
+    path = path or None
     if path and not repo:
         return JSONResponse(
             {"error": "Select a repository before analyzing a file."},
@@ -70,8 +74,8 @@ async def api_code_intelligence(
     try:
         payload = await run_in_threadpool(
             _code_intelligence_payload,
-            repo.strip() if repo else None,
-            path.strip() if path else None,
+            repo,
+            path,
             limit,
             views._state_root(request) / "code-map.json",
         )

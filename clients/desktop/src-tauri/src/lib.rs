@@ -812,18 +812,17 @@ fn validate_api_path<'a>(
     method: &Method,
 ) -> Result<(String, Option<&'a str>), String> {
     let trimmed = path.trim();
-    if !trimmed.starts_with("/api/") {
-        return Err("desktop client may only call Alfred JSON APIs".to_string());
-    }
-    if trimmed.contains("..") || trimmed.contains('\\') || trimmed.contains("//") {
-        return Err("invalid API path".to_string());
-    }
-
     let (path_part, query) = trimmed
         .split_once('?')
         .map_or((trimmed, None), |(path_part, query)| {
             (path_part, Some(query))
         });
+    if !path_part.starts_with("/api/") {
+        return Err("desktop client may only call Alfred JSON APIs".to_string());
+    }
+    if path_part.contains("..") || path_part.contains('\\') || path_part.contains("//") {
+        return Err("invalid API path".to_string());
+    }
     if !path_part
         .chars()
         .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '/' | '.' | '_' | '-' | ':'))
@@ -3707,6 +3706,18 @@ done"#;
         .expect("encoded code intelligence queries should be accepted for GET");
         assert_eq!(path, "/api/code-intelligence");
         assert_eq!(query, Some("repo=web&path=src%2Fapi+client.ts"));
+
+        let (path, query) = validate_api_path(
+            "/api/code-intelligence?repo=web&path=src/foo..bar.ts",
+            &Method::GET,
+        )
+        .expect("consecutive dots in query data should not be treated as route traversal");
+        assert_eq!(path, "/api/code-intelligence");
+        assert_eq!(query, Some("repo=web&path=src/foo..bar.ts"));
+
+        let err = validate_api_path("/api/../status?path=src/foo..bar.ts", &Method::GET)
+            .expect_err("route traversal must stay blocked");
+        assert!(err.contains("invalid API path"));
 
         let err = validate_api_path("/api/code-intelligence?path=src%2Gapi.ts", &Method::GET)
             .expect_err("malformed percent encoding must stay blocked");
