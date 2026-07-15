@@ -1,11 +1,11 @@
 # Merge gate
 
 Alfred merges a pull request only when GitHub itself says it is ready. There is
-one predicate, in [`lib/merge_gate.py`](../lib/merge_gate.py), and it reads
-GitHub's own machinery. By default the reviewers are whoever GitHub says
-approved the PR, with no reviewer names or review products hard-coded. When you
-configure named external reviews, the gate also checks those specific bots by
-their exact GitHub identities and looks for their exact clean-verdict text.
+one predicate, in [`lib/merge_gate.py`](../lib/merge_gate.py), and GitHub-native
+rules are its enforcement boundary. By default the reviewers are whoever
+GitHub says approved the PR. Named external reviewer adapters add exact-head
+evidence only when GitHub also has a non-bypassable native guard for that
+provider. A mutable bot comment is never sufficient by itself.
 
 ## The gate
 
@@ -17,14 +17,18 @@ A PR is mergeable by Alfred only when all of these hold:
    current head. On a protected repo, GitHub independently enforces any stricter
    branch rule or code-owner requirement.
 3. There are zero unresolved review threads, from any author.
-4. `mergeStateStatus` is `CLEAN` and `mergeable` is `MERGEABLE`. This is
+4. The effective rules for the PR's base branch require review-thread
+   resolution. This makes GitHub itself reject a thread opened in the final
+   recheck-to-mutation window. If Alfred cannot verify this rule, it fails closed.
+5. `mergeStateStatus` is `CLEAN` and `mergeable` is `MERGEABLE`. This is
    GitHub's own summary that required status checks passed and nothing is
    blocking the merge. `UNSTABLE`, `BLOCKED`, `DIRTY`, `BEHIND`, and `UNKNOWN`
    all fail the gate.
-5. No check run is in a failing conclusion.
-6. Every external review named in `ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS` has
-   posted a clean verdict on the exact current head. This is empty by default, so
-   the gate relies on GitHub's own review settings unless you set it.
+6. No check run is in a failing conclusion.
+7. Every external review named in `ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS` has
+   posted a clean verdict on the exact current head and has its provider-specific
+   native merge guard active. This is empty by default, so the gate relies on
+   GitHub's own review settings unless you set it.
 
 The gate fails closed. Any API error, any missing field, or any value it does
 not recognise makes it return "not mergeable" rather than guess.
@@ -45,11 +49,30 @@ blocks.
 
 ## The merge is SHA-guarded
 
-When the gate passes, Alfred squash-merges with the head commit captured during
-the check (`gh pr merge --squash --match-head-commit <sha>`). If the PR head
-moved between the check and the merge, for example a new push landed in that
-window, GitHub rejects the merge and the gate fails closed instead of merging
-unreviewed changes.
+When the first gate passes, Alfred immediately collects and evaluates a second
+complete snapshot before the mutation. A same-head review thread, changed
+status, or stale external review therefore blocks the merge. The second head
+must also equal the first head. Alfred then squash-merges with that commit
+(`gh pr merge --squash --match-head-commit <sha>`), so a push in the remaining
+mutation window is rejected by GitHub. The required base-branch conversation
+rule makes GitHub reject a thread opened in that same final window. Alfred
+verifies that the policy applies to the merge identity: an active ruleset must
+report that the current user can never bypass it, or classic protection must
+enforce admins and have no pull-request bypass allowances.
+
+External review summaries are mutable issue comments, and GitHub's merge API
+cannot condition the mutation on their contents. Alfred therefore supports an
+external reviewer only when its blocking state also reaches a native GitHub
+surface that the merge API enforces atomically:
+
+| Provider | Exact-head evidence | Required native guard |
+| --- | --- | --- |
+| Greptile | Clean `5/5` summary for the current head | Required `Greptile Review` check pinned to Greptile's GitHub App |
+| Codex | Clean Codex summary for the current head | Required review-thread resolution; blocking Codex feedback is thread-backed |
+
+An unknown adapter, an unpinned same-named check, or an unreadable/bypassable
+rule fails closed. Adding another reviewer requires a provider adapter and a
+native enforcement contract; comment parsing alone is intentionally rejected.
 
 ## Policy knobs
 
@@ -57,7 +80,7 @@ unreviewed changes.
 | --- | --- | --- |
 | `ALFRED_MERGE_REQUIRE_APPROVAL` | on | Require exact-head GitHub approvals. When off with external reviews configured, Alfred still uses every native gate but does not require a separate human approval. |
 | `ALFRED_MERGE_MIN_APPROVALS` | 1 | Distinct current-head approvals Alfred always requires. Must be an integer of at least 1; invalid values fail closed. GitHub branch protection may impose a stricter rule. |
-| `ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS` | empty | Comma-separated external review summaries that must be clean on the exact head. Empty means GitHub's native review settings only. |
+| `ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS` | empty | Comma-separated supported external reviewers that must be clean on the exact head and protected by their native merge guards. Empty means GitHub's native review settings only. |
 
 ## Command line
 

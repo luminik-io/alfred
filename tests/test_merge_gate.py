@@ -16,11 +16,12 @@ from merge_gate import (  # noqa: E402
     CheckRun,
     ExternalReviewEvidence,
     GateSnapshot,
+    RequiredCheck,
     Review,
     ReviewThread,
     collect_snapshot,
     evaluate_gate,
-    guarded_squash_merge,
+    rechecked_squash_merge,
 )
 
 
@@ -35,6 +36,8 @@ def _snapshot(**overrides) -> GateSnapshot:
         "merge_state_status": "CLEAN",
         "mergeable": "MERGEABLE",
         "checks": (CheckRun("ci", "SUCCESS"),),
+        "native_thread_resolution": True,
+        "required_checks": (RequiredCheck("Greptile Review", 867647),),
         "errors": (),
     }
     base.update(overrides)
@@ -180,6 +183,48 @@ def test_required_external_reviews_reject_spoofed_bot_login():
         )
     )
     assert not evaluate_gate(snap, required_external_reviews=("greptile",)).mergeable
+
+
+def test_required_external_reviews_require_native_provider_guards():
+    head = "a" * 40
+    greptile = ExternalReviewEvidence(
+        "greptile-apps[bot]",
+        "Confidence Score: 5/5\nNo blocking issues",
+        "2026-07-11T10:00:00Z",
+        head,
+    )
+    codex = ExternalReviewEvidence(
+        "chatgpt-codex-connector[bot]",
+        "Codex Review: Didn't find any major issues.",
+        "2026-07-11T10:01:00Z",
+        head,
+    )
+
+    no_check = _snapshot(external_reviews=(greptile,), required_checks=())
+    assert not evaluate_gate(no_check, required_external_reviews=("greptile",)).mergeable
+
+    unpinned_check = _snapshot(
+        external_reviews=(greptile,),
+        required_checks=(RequiredCheck("Greptile Review"),),
+    )
+    assert not evaluate_gate(unpinned_check, required_external_reviews=("greptile",)).mergeable
+
+    wrong_app = _snapshot(
+        external_reviews=(greptile,),
+        required_checks=(RequiredCheck("Greptile Review", 1234),),
+    )
+    assert not evaluate_gate(wrong_app, required_external_reviews=("greptile",)).mergeable
+
+    no_threads = _snapshot(
+        external_reviews=(codex,),
+        native_thread_resolution=False,
+    )
+    assert not evaluate_gate(no_threads, required_external_reviews=("codex",)).mergeable
+
+    unknown = _snapshot(external_reviews=(greptile,))
+    decision = evaluate_gate(unknown, required_external_reviews=("other-reviewer",))
+    assert not decision.mergeable
+    assert "missing native merge guard" in decision.short_reason()
 
 
 def test_codex_resolved_commit_must_equal_head_after_force_push():
@@ -445,11 +490,41 @@ def test_no_branch_protection_rejects_approval_for_stale_head():
 # --------------------------------------------------------------------------
 
 
-def _fake_gh_json(view_payload, threads_payload, reviews_payload=None):
+def _fake_gh_json(
+    view_payload,
+    threads_payload,
+    reviews_payload=None,
+    *,
+    native_thread_resolution=True,
+):
     review_page = 0
 
     def _runner(cmd, default):
         nonlocal review_page
+        if any("/rulesets/" in str(arg) for arg in cmd):
+            return {
+                "enforcement": "active",
+                "current_user_can_bypass": "never",
+            }
+        if any("/rules/branches/" in str(arg) for arg in cmd):
+            return [
+                {
+                    "type": "pull_request",
+                    "ruleset_id": 42,
+                    "parameters": {
+                        "required_review_thread_resolution": native_thread_resolution,
+                    },
+                },
+                {
+                    "type": "required_status_checks",
+                    "ruleset_id": 42,
+                    "parameters": {
+                        "required_status_checks": [
+                            {"context": "Greptile Review", "integration_id": 867647},
+                        ],
+                    },
+                },
+            ]
         if any("reviews(first:100" in str(arg) for arg in cmd):
             pages = reviews_payload if reviews_payload is not None else [[]]
             if review_page >= len(pages):
@@ -479,7 +554,9 @@ def _fake_gh_json(view_payload, threads_payload, reviews_payload=None):
                 "nodes": threads_payload,
                 "pageInfo": {"hasNextPage": False, "endCursor": None},
             }
-        return view_payload if view_payload is not None else default
+        if view_payload is None:
+            return default
+        return {"baseRefName": "main", **view_payload}
 
     return _runner
 
@@ -532,7 +609,312 @@ def test_collect_snapshot_builds_from_gh():
     assert snap.review_decision == "APPROVED"
     assert len(snap.reviews) == 1
     assert len(snap.checks) == 2
+    assert snap.native_thread_resolution is True
+    assert snap.required_checks == (RequiredCheck("Greptile Review", 867647),)
     assert evaluate_gate(snap).mergeable is True
+
+
+def test_collect_snapshot_keeps_latest_run_for_duplicate_check_name():
+    view = {
+        "state": "OPEN",
+        "headRefOid": "b" * 40,
+        "reviewDecision": "APPROVED",
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "statusCheckRollup": [
+            {
+                "__typename": "CheckRun",
+                "name": "pytest",
+                "checkSuite": {"workflowRun": {"workflow": {"name": "CI"}}},
+                "status": "COMPLETED",
+                "conclusion": "CANCELLED",
+                "startedAt": "2026-07-15T05:00:00Z",
+            },
+            {
+                "__typename": "CheckRun",
+                "name": "pytest",
+                "checkSuite": {"workflowRun": {"workflow": {"name": "CI"}}},
+                "status": "COMPLETED",
+                "conclusion": "SUCCESS",
+                "startedAt": "2026-07-15T05:05:00Z",
+            },
+        ],
+    }
+    reviews = [
+        [
+            {
+                "user": {"login": "operator"},
+                "state": "APPROVED",
+                "submitted_at": "2026-07-11T10:00:00Z",
+                "commit_id": "b" * 40,
+            }
+        ]
+    ]
+
+    snap = collect_snapshot(
+        "acme/repo",
+        7,
+        gh_json=_fake_gh_json(view, [], reviews),
+    )
+
+    assert snap.checks == (CheckRun("pytest", "SUCCESS"),)
+    assert evaluate_gate(snap).mergeable is True
+
+
+def test_collect_snapshot_preserves_same_named_checks_from_distinct_workflows():
+    view = {
+        "state": "OPEN",
+        "headRefOid": "b" * 40,
+        "reviewDecision": "APPROVED",
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "statusCheckRollup": [
+            {
+                "__typename": "CheckRun",
+                "name": "verify",
+                "workflowName": "Backend CI",
+                "status": "COMPLETED",
+                "conclusion": "FAILURE",
+                "startedAt": "2026-07-15T05:00:00Z",
+            },
+            {
+                "__typename": "CheckRun",
+                "name": "verify",
+                "workflowName": "Frontend CI",
+                "status": "COMPLETED",
+                "conclusion": "SUCCESS",
+                "startedAt": "2026-07-15T05:05:00Z",
+            },
+        ],
+    }
+    reviews = [
+        [
+            {
+                "user": {"login": "operator"},
+                "state": "APPROVED",
+                "submitted_at": "2026-07-11T10:00:00Z",
+                "commit_id": "b" * 40,
+            }
+        ]
+    ]
+
+    snap = collect_snapshot(
+        "acme/repo",
+        7,
+        gh_json=_fake_gh_json(view, [], reviews),
+    )
+
+    assert snap.checks == (
+        CheckRun("verify", "FAILURE"),
+        CheckRun("verify", "SUCCESS"),
+    )
+    assert evaluate_gate(snap).mergeable is False
+
+
+def test_collect_snapshot_requires_native_thread_resolution():
+    view = {
+        "state": "OPEN",
+        "headRefOid": "b" * 40,
+        "reviewDecision": "APPROVED",
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "statusCheckRollup": [],
+    }
+    reviews = [
+        [
+            {
+                "user": {"login": "operator"},
+                "state": "APPROVED",
+                "submitted_at": "2026-07-11T10:00:00Z",
+                "commit_id": "b" * 40,
+            }
+        ]
+    ]
+    snap = collect_snapshot(
+        "acme/repo",
+        7,
+        gh_json=_fake_gh_json(
+            view,
+            [],
+            reviews,
+            native_thread_resolution=False,
+        ),
+    )
+
+    decision = evaluate_gate(snap)
+
+    assert decision.mergeable is False
+    assert "not required by the base branch rules" in decision.short_reason()
+
+
+def test_collect_snapshot_reads_all_effective_rule_pages():
+    view = {
+        "state": "OPEN",
+        "headRefOid": "b" * 40,
+        "reviewDecision": "APPROVED",
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "statusCheckRollup": [],
+    }
+    reviews = [
+        [
+            {
+                "user": {"login": "operator"},
+                "state": "APPROVED",
+                "submitted_at": "2026-07-11T10:00:00Z",
+                "commit_id": "b" * 40,
+            }
+        ]
+    ]
+    base_runner = _fake_gh_json(view, [], reviews)
+
+    def _runner(cmd, default):
+        if any("/rules/branches/" in str(arg) for arg in cmd):
+            return [
+                [{"type": "deletion", "ruleset_id": 41}],
+                [
+                    {
+                        "type": "pull_request",
+                        "ruleset_id": 42,
+                        "parameters": {
+                            "required_review_thread_resolution": True,
+                        },
+                    }
+                ],
+            ]
+        return base_runner(cmd, default)
+
+    snap = collect_snapshot("acme/repo", 7, gh_json=_runner)
+
+    assert snap.native_thread_resolution is True
+    assert evaluate_gate(snap).mergeable is True
+
+
+def test_collect_snapshot_accepts_non_bypassable_classic_protection():
+    view = {
+        "state": "OPEN",
+        "headRefOid": "b" * 40,
+        "reviewDecision": "APPROVED",
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "statusCheckRollup": [],
+    }
+    reviews = [
+        [
+            {
+                "user": {"login": "operator"},
+                "state": "APPROVED",
+                "submitted_at": "2026-07-11T10:00:00Z",
+                "commit_id": "b" * 40,
+            }
+        ]
+    ]
+    base_runner = _fake_gh_json(
+        view,
+        [],
+        reviews,
+        native_thread_resolution=False,
+    )
+
+    def _runner(cmd, default):
+        if any("/branches/main/protection" in str(arg) for arg in cmd):
+            return {
+                "required_conversation_resolution": {"enabled": True},
+                "enforce_admins": {"enabled": True},
+                "required_pull_request_reviews": {},
+                "required_status_checks": {
+                    "checks": [{"context": "Greptile Review", "app_id": 867647}],
+                },
+            }
+        return base_runner(cmd, default)
+
+    snap = collect_snapshot("acme/repo", 7, gh_json=_runner)
+
+    assert snap.native_thread_resolution is True
+    assert snap.required_checks == (RequiredCheck("Greptile Review", 867647),)
+    assert evaluate_gate(snap).mergeable is True
+
+
+def test_collect_snapshot_rejects_ruleset_current_user_can_bypass():
+    base_runner = _fake_gh_json(
+        {
+            "state": "OPEN",
+            "headRefOid": "b" * 40,
+            "reviewDecision": "APPROVED",
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "statusCheckRollup": [],
+        },
+        [],
+        [
+            [
+                {
+                    "user": {"login": "operator"},
+                    "state": "APPROVED",
+                    "submitted_at": "2026-07-11T10:00:00Z",
+                    "commit_id": "b" * 40,
+                }
+            ]
+        ],
+    )
+
+    def _runner(cmd, default):
+        if any("/rulesets/" in str(arg) for arg in cmd):
+            return {
+                "enforcement": "active",
+                "current_user_can_bypass": "always",
+            }
+        return base_runner(cmd, default)
+
+    snap = collect_snapshot("acme/repo", 7, gh_json=_runner)
+
+    assert snap.native_thread_resolution is False
+    assert evaluate_gate(snap).mergeable is False
+
+
+def test_collect_snapshot_rejects_bypassable_classic_protection():
+    base_runner = _fake_gh_json(
+        {
+            "state": "OPEN",
+            "headRefOid": "b" * 40,
+            "reviewDecision": "APPROVED",
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "statusCheckRollup": [],
+        },
+        [],
+        [
+            [
+                {
+                    "user": {"login": "operator"},
+                    "state": "APPROVED",
+                    "submitted_at": "2026-07-11T10:00:00Z",
+                    "commit_id": "b" * 40,
+                }
+            ]
+        ],
+        native_thread_resolution=False,
+    )
+
+    def _runner(cmd, default):
+        if any("/branches/main/protection" in str(arg) for arg in cmd):
+            return {
+                "required_conversation_resolution": {"enabled": True},
+                "enforce_admins": {"enabled": True},
+                "required_pull_request_reviews": {
+                    "bypass_pull_request_allowances": {
+                        "users": [{"login": "operator"}],
+                        "teams": [],
+                        "apps": [],
+                    }
+                },
+            }
+        return base_runner(cmd, default)
+
+    snap = collect_snapshot("acme/repo", 7, gh_json=_runner)
+
+    assert snap.native_thread_resolution is False
+    assert evaluate_gate(snap).mergeable is False
 
 
 def test_collect_snapshot_missing_view_fails_closed():
@@ -669,6 +1051,7 @@ def test_collect_snapshot_paginates_all_review_threads():
     view = {
         "state": "OPEN",
         "headRefOid": "e" * 40,
+        "baseRefName": "main",
         "reviewDecision": "APPROVED",
         "mergeable": "MERGEABLE",
         "mergeStateStatus": "CLEAN",
@@ -677,6 +1060,19 @@ def test_collect_snapshot_paginates_all_review_threads():
     calls = []
 
     def _runner(cmd, default):
+        if any("/rules/branches/" in str(arg) for arg in cmd):
+            return [
+                {
+                    "type": "pull_request",
+                    "ruleset_id": 42,
+                    "parameters": {"required_review_thread_resolution": True},
+                }
+            ]
+        if any("/rulesets/42" in str(arg) for arg in cmd):
+            return {
+                "enforcement": "active",
+                "current_user_can_bypass": "never",
+            }
         if any("reviews(first:100" in str(arg) for arg in cmd):
             return {"nodes": [], "pageInfo": {"hasNextPage": False, "endCursor": None}}
         if "graphql" not in cmd:
@@ -780,46 +1176,107 @@ def test_collect_snapshot_bad_repo_slug_fails_closed():
 
 
 # --------------------------------------------------------------------------
-# guarded_squash_merge: SHA-guarded merge
+# rechecked_squash_merge: fresh gate plus SHA-guarded merge
 # --------------------------------------------------------------------------
 
 
-def test_guarded_merge_uses_match_head_commit():
+def test_rechecked_merge_uses_match_head_commit(monkeypatch):
     captured = {}
+    head = "f" * 40
+    snap = _snapshot(
+        head_sha=head,
+        reviews=(Review("operator", "APPROVED", "2026-07-11T10:00:00Z", head),),
+    )
+    monkeypatch.setattr(
+        merge_gate,
+        "gate_pull_request",
+        lambda *args, **kwargs: (snap, evaluate_gate(snap)),
+    )
 
     def _runner(cmd):
         captured["cmd"] = cmd
         return subprocess.CompletedProcess(cmd, 0, stdout="merged", stderr="")
 
-    ok, _msg = guarded_squash_merge("acme/repo", 7, "f" * 40, runner=_runner)
+    ok, _msg = rechecked_squash_merge("acme/repo", 7, head, runner=_runner)
     assert ok is True
     cmd = captured["cmd"]
     assert "--squash" in cmd
     assert "--match-head-commit" in cmd
-    assert cmd[cmd.index("--match-head-commit") + 1] == "f" * 40
+    assert cmd[cmd.index("--match-head-commit") + 1] == head
     assert "--delete-branch" in cmd
 
 
-def test_guarded_merge_refuses_without_head_sha():
+def test_rechecked_merge_refuses_without_head_sha():
     called = {"n": 0}
 
     def _runner(cmd):
         called["n"] += 1
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-    ok, msg = guarded_squash_merge("acme/repo", 7, "", runner=_runner)
+    ok, msg = rechecked_squash_merge("acme/repo", 7, "", runner=_runner)
     assert ok is False
     assert called["n"] == 0
     assert "head SHA" in msg
 
 
-def test_guarded_merge_reports_failure():
+def test_rechecked_merge_reports_mutation_failure(monkeypatch):
+    snap = _snapshot()
+    monkeypatch.setattr(
+        merge_gate,
+        "gate_pull_request",
+        lambda *args, **kwargs: (snap, evaluate_gate(snap)),
+    )
+
     def _runner(cmd):
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="head branch was modified")
 
-    ok, msg = guarded_squash_merge("acme/repo", 7, "a" * 40, runner=_runner)
+    ok, msg = rechecked_squash_merge("acme/repo", 7, "a" * 40, runner=_runner)
     assert ok is False
     assert "head branch was modified" in msg
+
+
+def test_rechecked_merge_blocks_late_review_thread(monkeypatch):
+    snap = _snapshot(review_threads=(ReviewThread(False, "x.py", "codex"),))
+    monkeypatch.setattr(
+        merge_gate,
+        "gate_pull_request",
+        lambda *args, **kwargs: (snap, evaluate_gate(snap)),
+    )
+    called = {"n": 0}
+
+    def _runner(cmd):
+        called["n"] += 1
+        return subprocess.CompletedProcess(cmd, 0, stdout="merged", stderr="")
+
+    ok, msg = rechecked_squash_merge("acme/repo", 7, "a" * 40, runner=_runner)
+
+    assert ok is False
+    assert called["n"] == 0
+    assert "unresolved review thread" in msg
+
+
+def test_rechecked_merge_blocks_head_change_even_when_new_head_is_clean(monkeypatch):
+    new_head = "b" * 40
+    snap = _snapshot(
+        head_sha=new_head,
+        reviews=(Review("operator", "APPROVED", "2026-07-11T10:00:00Z", new_head),),
+    )
+    monkeypatch.setattr(
+        merge_gate,
+        "gate_pull_request",
+        lambda *args, **kwargs: (snap, evaluate_gate(snap)),
+    )
+    called = {"n": 0}
+
+    def _runner(cmd):
+        called["n"] += 1
+        return subprocess.CompletedProcess(cmd, 0, stdout="merged", stderr="")
+
+    ok, msg = rechecked_squash_merge("acme/repo", 7, "a" * 40, runner=_runner)
+
+    assert ok is False
+    assert called["n"] == 0
+    assert "new head" in msg
 
 
 def test_gate_pull_request_end_to_end():

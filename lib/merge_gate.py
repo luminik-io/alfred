@@ -1,10 +1,10 @@
 """GitHub-native merge gate.
 
-A single, vendor-neutral predicate that decides whether Alfred may merge a
-pull request. It reads GitHub's own machinery and nothing else: the aggregate
-review decision, unresolved review threads, the merge state, and check runs.
-There are no hard-coded reviewer logins or review-product names anywhere in
-this module. The reviewers are whoever GitHub says approved the PR.
+A single predicate decides whether Alfred may merge a pull request. Native
+GitHub review state, unresolved threads, merge state, and check runs form the
+enforcement boundary. Optional external reviewer adapters may add exact-head
+evidence, but only when a non-bypassable GitHub rule guards that provider's
+blocking state through the final mutation window.
 
 A PR is mergeable-by-alfred only when ALL of the following hold:
 
@@ -13,16 +13,23 @@ A PR is mergeable-by-alfred only when ALL of the following hold:
    ``min_approvals`` distinct approvals target the exact current head. Branch
    protection remains an independent, potentially stricter policy.
 3. There are zero unresolved review threads, from any author.
-4. ``mergeStateStatus`` is ``CLEAN`` and ``mergeable`` is ``MERGEABLE``. This
+4. GitHub's effective base-branch rules require review-thread resolution, so a
+   thread opened in the final mutation window is rejected server-side.
+5. ``mergeStateStatus`` is ``CLEAN`` and ``mergeable`` is ``MERGEABLE``. This
    encodes required status checks and the absence of any blocking state.
-5. No check run is in a failing conclusion.
+6. No check run is in a failing conclusion.
+7. Every configured external reviewer has clean exact-head evidence and its
+   provider-specific native merge guard is active. Unsupported comment-only
+   reviewers fail closed.
 
 The design fails closed: any API error, missing field, or unrecognised value
 makes the gate return "not mergeable" rather than guessing.
 
 The evaluation is a pure function over a :class:`GateSnapshot`, so it is fully
-unit-testable without touching the network. Snapshot collection and the
-SHA-guarded merge are thin wrappers over ``gh`` that accept injectable runners.
+unit-testable without touching the network. Snapshot collection and the merge
+are thin wrappers over ``gh`` that accept injectable runners. Every merge
+rechecks the complete gate, requires the head to match the first snapshot, and
+uses GitHub's SHA guard for the final mutation.
 """
 
 from __future__ import annotations
@@ -33,8 +40,11 @@ import subprocess
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import quote
 
 MIN_APPROVALS_DEFAULT = 1
+_GREPTILE_REQUIRED_CHECK_CONTEXT = "Greptile Review"
+_GREPTILE_GITHUB_APP_ID = 867647
 
 # Check-run conclusions that block a merge. Anything not clearly successful is
 # treated as blocking so the gate fails closed.
@@ -109,6 +119,20 @@ class ExternalReviewEvidence:
     reviewed_sha: str = ""
 
 
+@dataclass(frozen=True, order=True)
+class RequiredCheck:
+    """A required status check and the GitHub App allowed to set it."""
+
+    context: str
+    integration_id: int | None = None
+
+
+_GREPTILE_REQUIRED_CHECK = RequiredCheck(
+    _GREPTILE_REQUIRED_CHECK_CONTEXT,
+    _GREPTILE_GITHUB_APP_ID,
+)
+
+
 @dataclass(frozen=True)
 class GateSnapshot:
     """Everything the gate needs, already fetched from GitHub."""
@@ -121,8 +145,18 @@ class GateSnapshot:
     merge_state_status: str
     mergeable: str
     checks: tuple[CheckRun, ...]
+    native_thread_resolution: bool | None = None
+    required_checks: tuple[RequiredCheck, ...] = ()
     external_reviews: tuple[ExternalReviewEvidence, ...] = ()
     errors: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class NativeMergePolicy:
+    """Server-enforced merge conditions that apply to the current identity."""
+
+    thread_resolution: bool | None
+    required_checks: tuple[RequiredCheck, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -276,6 +310,30 @@ def _threads_condition(snapshot: GateSnapshot) -> Condition:
     )
 
 
+def _native_thread_resolution_condition(snapshot: GateSnapshot) -> Condition:
+    label = "GitHub enforces thread resolution"
+    if snapshot.native_thread_resolution is True:
+        return Condition(
+            "native_threads",
+            label,
+            True,
+            "required by the base branch rules",
+        )
+    if snapshot.native_thread_resolution is False:
+        return Condition(
+            "native_threads",
+            label,
+            False,
+            "not required by the base branch rules",
+        )
+    return Condition(
+        "native_threads",
+        label,
+        False,
+        "base branch enforcement could not be verified",
+    )
+
+
 def _merge_state_condition(snapshot: GateSnapshot) -> Condition:
     label = "Branch is mergeable and clean"
     merge_state = (snapshot.merge_state_status or "").upper()
@@ -300,11 +358,15 @@ def _external_reviews_condition(snapshot: GateSnapshot, required: Sequence[str])
     if not required_names:
         return Condition("external_reviews", "Required bot reviews", True, "not configured")
     missing: list[str] = []
+    unguarded: list[str] = []
     for provider in required_names:
         aliases = {
             "codex": {"chatgpt-codex-connector", "chatgpt-codex-connector[bot]"},
             "greptile": {"greptile-apps", "greptile-apps[bot]"},
-        }.get(provider, {provider, f"{provider}[bot]"})
+        }.get(provider)
+        if aliases is None:
+            unguarded.append(provider)
+            continue
         matches = [item for item in snapshot.external_reviews if item.author.lower() in aliases]
         latest = max(matches, key=lambda item: item.updated_at or "", default=None)
         body = latest.body if latest else ""
@@ -315,18 +377,28 @@ def _external_reviews_condition(snapshot: GateSnapshot, required: Sequence[str])
         )
         if provider == "codex":
             clean = "didn't find any major issues" in body.lower()
+            guarded = snapshot.native_thread_resolution is True
         elif provider == "greptile":
             clean = "confidence score: 5/5" in body.lower() and "no blocking issues" in body.lower()
-        else:
-            clean = "no blocking issues" in body.lower() or "approved" in body.lower()
+            guarded = _GREPTILE_REQUIRED_CHECK in snapshot.required_checks
+        else:  # pragma: no cover - aliases rejects unknown adapters above
+            clean = False
+            guarded = False
+        if not guarded:
+            unguarded.append(provider)
         if not (latest and exact_head and clean):
             missing.append(provider)
-    if missing:
+    if missing or unguarded:
+        details: list[str] = []
+        if missing:
+            details.append("missing clean exact-head evidence: " + ", ".join(missing))
+        if unguarded:
+            details.append("missing native merge guard: " + ", ".join(unguarded))
         return Condition(
             "external_reviews",
             "Required bot reviews",
             False,
-            "missing clean exact-head evidence: " + ", ".join(missing),
+            "; ".join(details),
         )
     return Condition(
         "external_reviews",
@@ -365,6 +437,7 @@ def evaluate_gate(
     )
     conditions.append(_approval_condition(snapshot, min_approvals))
     conditions.append(_threads_condition(snapshot))
+    conditions.append(_native_thread_resolution_condition(snapshot))
     conditions.append(_merge_state_condition(snapshot))
     conditions.append(_checks_condition(snapshot))
     conditions.append(_external_reviews_condition(snapshot, required_external_reviews))
@@ -403,6 +476,24 @@ def _normalize_check(entry: dict) -> CheckRun | None:
     return CheckRun(str(name), mapping.get(state, "FAILURE" if state else ""))
 
 
+def _check_workflow_name(entry: dict[str, Any]) -> str:
+    """Return a GitHub Actions workflow name from CLI or GraphQL shapes."""
+
+    flat = entry.get("workflowName")
+    if flat:
+        return str(flat)
+    check_suite = entry.get("checkSuite")
+    if not isinstance(check_suite, dict):
+        return ""
+    workflow_run = check_suite.get("workflowRun")
+    if not isinstance(workflow_run, dict):
+        return ""
+    workflow = workflow_run.get("workflow")
+    if not isinstance(workflow, dict):
+        return ""
+    return str(workflow.get("name") or "")
+
+
 def collect_snapshot(
     repo: str,
     pr_number: int,
@@ -427,7 +518,8 @@ def collect_snapshot(
             "-R",
             repo,
             "--json",
-            "state,headRefOid,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup",
+            "state,headRefOid,baseRefName,reviewDecision,mergeable,mergeStateStatus,"
+            "statusCheckRollup",
         ],
         _MISSING,
     )
@@ -438,13 +530,42 @@ def collect_snapshot(
     review_decision = view.get("reviewDecision") if view.get("reviewDecision") else None
     reviews = _collect_reviews(repo, pr_number, gh_json=gh_json, errors=errors)
 
-    checks: list[CheckRun] = []
-    for entry in view.get("statusCheckRollup") or []:
+    latest_checks: dict[tuple[str, str, str], tuple[str, int, CheckRun]] = {}
+    for index, entry in enumerate(view.get("statusCheckRollup") or []):
         normalized = _normalize_check(entry)
-        if normalized is not None:
-            checks.append(normalized)
+        if normalized is None:
+            continue
+        kind = str(entry.get("__typename") or "")
+        workflow = _check_workflow_name(entry)
+        details_url = str(entry.get("detailsUrl") or "")
+        if kind == "StatusContext":
+            source = "commit-status"
+        elif workflow:
+            source = f"workflow:{workflow}"
+        elif details_url:
+            source = f"details:{details_url}"
+        else:
+            # With no provider or workflow identity, preserving the check is
+            # safer than allowing another same-named check to hide it.
+            source = f"unknown:{index}"
+        context = (kind, source, normalized.name)
+        timestamp = str(entry.get("startedAt") or entry.get("completedAt") or "")
+        previous = latest_checks.get(context)
+        if (
+            previous is None
+            or (timestamp and timestamp >= previous[0])
+            or (not timestamp and not previous[0])
+        ):
+            latest_checks[context] = (timestamp, index, normalized)
+    checks = [item[2] for item in sorted(latest_checks.values(), key=lambda item: item[1])]
 
     threads = _collect_review_threads(repo, pr_number, gh_json=gh_json, errors=errors)
+    native_policy = _collect_native_merge_policy(
+        repo,
+        str(view.get("baseRefName") or ""),
+        gh_json=gh_json,
+        errors=errors,
+    )
     external_reviews = (
         _collect_external_reviews(repo, pr_number, gh_json=gh_json, errors=errors)
         if collect_external_reviews
@@ -460,6 +581,8 @@ def collect_snapshot(
         merge_state_status=str(view.get("mergeStateStatus") or ""),
         mergeable=str(view.get("mergeable") or ""),
         checks=tuple(checks),
+        native_thread_resolution=native_policy.thread_resolution,
+        required_checks=native_policy.required_checks,
         external_reviews=tuple(external_reviews),
         errors=tuple(errors),
     )
@@ -490,6 +613,152 @@ _REVIEWS_QUERY = (
     " }"
     "}"
 )
+
+
+def _collect_native_merge_policy(
+    repo: str,
+    base_ref: str,
+    *,
+    gh_json: GhJson,
+    errors: list[str],
+) -> NativeMergePolicy:
+    """Collect non-bypassable GitHub conditions for the merge identity.
+
+    Effective branch rules identify the ruleset that contributes the pull
+    request rule, but not whether the current merge identity can bypass it.
+    Fetch that ruleset and require GitHub to report that this identity can
+    never bypass it. Classic branch protection is accepted only when it
+    applies to admins and has no pull-request bypass allowances.
+    """
+    if not base_ref:
+        errors.append("could not identify the PR base branch")
+        return NativeMergePolicy(None)
+    missing = object()
+    rules_payload = gh_json(
+        [
+            "gh",
+            "api",
+            f"repos/{repo}/rules/branches/{quote(base_ref, safe='')}",
+            "--paginate",
+            "--slurp",
+        ],
+        missing,
+    )
+    rules: list[Any] | None = None
+    if isinstance(rules_payload, list):
+        if all(isinstance(page, list) for page in rules_payload):
+            rules = [rule for page in rules_payload for rule in page]
+        elif all(isinstance(rule, dict) for rule in rules_payload):
+            # Injectable test runners may return the already-flattened result.
+            rules = rules_payload
+    rules_readable = rules is not None
+    ruleset_detail_unreadable = False
+    non_bypassable_rulesets: set[int] = set()
+    if rules_readable:
+        relevant_ids = {
+            rule.get("ruleset_id")
+            for rule in rules or []
+            if isinstance(rule, dict)
+            and rule.get("type") in {"pull_request", "required_status_checks"}
+            and isinstance(rule.get("ruleset_id"), int)
+        }
+        if any(
+            isinstance(rule, dict)
+            and rule.get("type") in {"pull_request", "required_status_checks"}
+            and not isinstance(rule.get("ruleset_id"), int)
+            for rule in rules or []
+        ):
+            ruleset_detail_unreadable = True
+        for ruleset_id in relevant_ids:
+            if not isinstance(ruleset_id, int):
+                continue
+            detail = gh_json(
+                ["gh", "api", f"repos/{repo}/rulesets/{ruleset_id}"],
+                missing,
+            )
+            if not isinstance(detail, dict):
+                ruleset_detail_unreadable = True
+                continue
+            if (
+                detail.get("enforcement") == "active"
+                and detail.get("current_user_can_bypass") == "never"
+            ):
+                non_bypassable_rulesets.add(ruleset_id)
+
+    thread_resolution = False
+    required_checks: set[RequiredCheck] = set()
+    for rule in rules or []:
+        if not isinstance(rule, dict) or rule.get("ruleset_id") not in non_bypassable_rulesets:
+            continue
+        parameters = rule.get("parameters") or {}
+        if not isinstance(parameters, dict):
+            continue
+        if (
+            rule.get("type") == "pull_request"
+            and parameters.get("required_review_thread_resolution") is True
+        ):
+            thread_resolution = True
+        if rule.get("type") == "required_status_checks":
+            for check in parameters.get("required_status_checks") or []:
+                if isinstance(check, dict) and str(check.get("context") or "").strip():
+                    integration_id = check.get("integration_id")
+                    required_checks.add(
+                        RequiredCheck(
+                            str(check["context"]).strip(),
+                            integration_id if isinstance(integration_id, int) else None,
+                        )
+                    )
+
+    protection = gh_json(
+        [
+            "gh",
+            "api",
+            f"repos/{repo}/branches/{quote(base_ref, safe='')}/protection",
+        ],
+        missing,
+    )
+    if isinstance(protection, dict):
+        conversation = protection.get("required_conversation_resolution") or {}
+        enforce_admins = protection.get("enforce_admins") or {}
+        pull_requests = protection.get("required_pull_request_reviews") or {}
+        bypass = (
+            pull_requests.get("bypass_pull_request_allowances") or {}
+            if isinstance(pull_requests, dict)
+            else {}
+        )
+        bypass_is_empty = isinstance(bypass, dict) and not any(
+            bypass.get(kind) for kind in ("users", "teams", "apps")
+        )
+        classic_is_non_bypassable = bool(
+            isinstance(conversation, dict)
+            and isinstance(enforce_admins, dict)
+            and enforce_admins.get("enabled") is True
+            and bypass_is_empty
+        )
+        if classic_is_non_bypassable:
+            if conversation.get("enabled") is True:
+                thread_resolution = True
+            status_checks = protection.get("required_status_checks") or {}
+            if isinstance(status_checks, dict):
+                for check in status_checks.get("checks") or []:
+                    if isinstance(check, dict) and str(check.get("context") or "").strip():
+                        app_id = check.get("app_id")
+                        required_checks.add(
+                            RequiredCheck(
+                                str(check["context"]).strip(),
+                                app_id if isinstance(app_id, int) else None,
+                            )
+                        )
+                required_checks.update(
+                    RequiredCheck(str(context).strip())
+                    for context in status_checks.get("contexts") or []
+                    if str(context).strip()
+                )
+
+    if not rules_readable or ruleset_detail_unreadable:
+        errors.append("could not verify non-bypassable base branch merge rules")
+        return NativeMergePolicy(None, tuple(sorted(required_checks)))
+    return NativeMergePolicy(thread_resolution, tuple(sorted(required_checks)))
 
 
 def _collect_external_reviews(
@@ -730,22 +999,38 @@ def _collect_review_threads(
         cursor = next_cursor
 
 
-def guarded_squash_merge(
+def rechecked_squash_merge(
     repo: str,
     pr_number: int,
-    head_sha: str,
+    expected_head_sha: str,
     *,
+    min_approvals: int = MIN_APPROVALS_DEFAULT,
+    required_external_reviews: Sequence[str] = (),
     delete_branch: bool = True,
+    gh_json: GhJson = _default_gh_json,
     runner: Runner = _default_run,
 ) -> tuple[bool, str]:
-    """Squash-merge, guarded on the head SHA captured during the gate snapshot.
+    """Recheck the complete gate, then squash-merge the unchanged head.
 
-    ``gh pr merge --match-head-commit`` makes GitHub reject the merge if the PR
-    head moved between the snapshot and the merge, so a race fails closed
-    instead of merging unreviewed changes.
+    The second snapshot catches same-head review threads or status changes that
+    arrived after the caller's first gate. The expected-head comparison and
+    ``gh pr merge --match-head-commit`` also reject a push anywhere in the
+    check-to-merge window.
     """
-    if not head_sha:
+    if not expected_head_sha:
         return False, "refusing to merge without a verified head SHA"
+    _snapshot, decision = gate_pull_request(
+        repo,
+        pr_number,
+        min_approvals=min_approvals,
+        gh_json=gh_json,
+        required_external_reviews=required_external_reviews,
+    )
+    if decision.head_sha != expected_head_sha:
+        actual = decision.head_sha[:12] or "unknown"
+        return False, f"gate recheck found a new head ({actual}); run the gate again"
+    if not decision.mergeable:
+        return False, f"gate recheck failed: {decision.short_reason()}"
     cmd = [
         "gh",
         "pr",
@@ -755,7 +1040,7 @@ def guarded_squash_merge(
         repo,
         "--squash",
         "--match-head-commit",
-        head_sha,
+        expected_head_sha,
     ]
     if delete_branch:
         cmd.append("--delete-branch")
