@@ -180,20 +180,20 @@ export function useOnboardingActions({
             return { ok: true, note: "Saved your team names." };
           }
           case "set_batteries": {
-            // Optional enhancements. Native setup prepares local dependencies,
+            // Configurable tools. Native setup prepares local dependencies,
             // then the live setup API performs the only configuration write.
             // External daemons remain explicit.
             // Unknown ids and built-ins are refused.
             if (!canMutate) {
               return {
                 ok: false,
-                note: "I cannot change batteries in this read-only preview. Use the Batteries step to pick them.",
+                note: "I cannot change tools in this read-only preview. Open Tools included to review them.",
               };
             }
             if (canRun && !connected) {
               return {
                 ok: false,
-                note: "Connect to the Alfred runtime before installing batteries.",
+                note: "Connect to the Alfred runtime before installing tools.",
               };
             }
             const ids = Array.isArray(action.args.batteries)
@@ -202,7 +202,7 @@ export function useOnboardingActions({
             if (!ids.length) {
               return {
                 ok: false,
-                note: "No battery names came through. Which would you like: dense embeddings, headroom compression, or codebase memory?",
+                note: "No tool names came through. Advanced options include dense embeddings, Headroom compression, and Graphify.",
               };
             }
             const enabledNow: string[] = [];
@@ -227,7 +227,7 @@ export function useOnboardingActions({
             if (!enabledNow.length) {
               return {
                 ok: false,
-                note: "I could not turn those on. Open the Batteries step to pick them, or run `alfred batteries`.",
+                note: "I could not turn those on. Open Tools included to review them, or run `alfred batteries`.",
               };
             }
             onBatteriesDecision();
@@ -239,7 +239,7 @@ export function useOnboardingActions({
           }
           case "skip_batteries":
             onBatteriesDecision();
-            return { ok: true, note: "Keeping the built-in batteries only." };
+            return { ok: true, note: "Keeping Alfred's included tools." };
           case "open_slack_setup":
             // Slack credentials never enter this action or the transcript. Move
             // to the existing token-gated local step, which owns Slack setup.

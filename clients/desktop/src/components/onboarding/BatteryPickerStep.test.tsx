@@ -52,9 +52,24 @@ const BUILTIN = battery({
   requires_daemon: false,
 });
 
+const INCLUDED_DEFAULT = battery({
+  id: "code-memory-mcp",
+  name: "Codebase memory (MCP)",
+  category: "code-graph",
+  default_on: true,
+  status: "enabled",
+  configured: true,
+  enabled: true,
+  installed: true,
+  install_kind: "autofetch",
+  pip_extra: "",
+});
+
 describe("BatteryPickerStep", () => {
-  it("shows built-ins as included and opt-ins as toggles", async () => {
-    vi.spyOn(api, "loadSetupBatteries").mockResolvedValue(manifest([BUILTIN, battery({})]));
+  it("separates built-ins, included defaults, and advanced integrations", async () => {
+    vi.spyOn(api, "loadSetupBatteries").mockResolvedValue(
+      manifest([BUILTIN, INCLUDED_DEFAULT, battery({})]),
+    );
 
     render(
       <BatteryPickerStep baseUrl="http://127.0.0.1:7010" canMutate setNotice={vi.fn()} />,
@@ -63,7 +78,14 @@ describe("BatteryPickerStep", () => {
     await waitFor(() => expect(screen.getByText("Built-in memory")).toBeInTheDocument());
     // Built-in reads as included and has no toggle.
     expect(screen.getByText(/included, no setup/i)).toBeInTheDocument();
-    // Opt-in has an enable switch.
+    expect(screen.getByText(/included by default/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", { name: /disable codebase memory/i }),
+    ).toBeChecked();
+    expect(
+      screen.getByRole("heading", { name: /advanced integrations/i }),
+    ).toBeInTheDocument();
+    // Advanced integration has an enable switch.
     expect(
       screen.getByRole("switch", { name: /enable dense embeddings/i }),
     ).toBeInTheDocument();

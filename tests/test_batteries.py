@@ -1,9 +1,7 @@
 """Tests for the shared battery manifest (lib/batteries.py).
 
-Covers manifest correctness, the truthful built-in vs opt-in split, status
-computation, and the idempotent .env writer that the CLI and wizard share.
-Alfred must remain fully functional with ZERO batteries, so the default env is
-exercised explicitly.
+Covers manifest correctness, included defaults, advanced integrations, status
+computation, and the idempotent .env writer shared by the CLI and wizard.
 """
 
 from __future__ import annotations
@@ -64,9 +62,9 @@ def test_builtins_are_always_on_with_no_install() -> None:
         assert battery.requires_daemon is False
 
 
-def test_opt_ins_are_off_by_default_and_declare_enable_disable() -> None:
-    opt_ins = batteries.opt_in_batteries()
-    assert {b.id for b in opt_ins} == {
+def test_configurable_batteries_declare_enable_disable() -> None:
+    configurable = batteries.configurable_batteries()
+    assert {b.id for b in configurable} == {
         "dense-embeddings",
         "headroom-compression",
         "code-memory-mcp",
@@ -74,11 +72,21 @@ def test_opt_ins_are_off_by_default_and_declare_enable_disable() -> None:
         "redis-ams",
         "pgvector",
     }
-    for battery in opt_ins:
-        assert battery.default_on is False
+    for battery in configurable:
         assert battery.enable_env, battery.id
         assert battery.disable_env, battery.id
         assert battery.install_kind != batteries.INSTALL_INCLUDED, battery.id
+
+
+def test_code_memory_is_the_only_default_on_configurable_battery() -> None:
+    assert {b.id for b in batteries.default_batteries()} == {"code-memory-mcp"}
+    assert {b.id for b in batteries.advanced_batteries()} == {
+        "dense-embeddings",
+        "headroom-compression",
+        "graphify",
+        "redis-ams",
+        "pgvector",
+    }
 
 
 def test_daemon_batteries_are_flagged_with_a_service() -> None:
@@ -182,6 +190,14 @@ def test_headroom_enabled_only_for_headroom_engine() -> None:
     assert batteries.is_enabled(headroom, {"ALFRED_COMPRESSION_ENGINE": "headroom"}) is True
     assert batteries.is_enabled(headroom, {"ALFRED_COMPRESSION_ENGINE": "builtin"}) is False
     assert batteries.is_enabled(headroom, {}) is False
+
+
+def test_default_on_code_memory_can_be_explicitly_disabled() -> None:
+    code_memory = batteries.battery_by_id("code-memory-mcp")
+    assert code_memory is not None
+    assert batteries.is_enabled(code_memory, {}) is True
+    assert batteries.is_enabled(code_memory, {"ALFRED_CODE_MEMORY_MCP": "0"}) is False
+    assert batteries.is_enabled(code_memory, {"ALFRED_CODE_MEMORY_MCP": "1"}) is True
 
 
 # --------------------------------------------------------------------------- #

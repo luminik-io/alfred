@@ -55,8 +55,8 @@ const ACTION_APPROVE_LABEL: Record<OnboardingActionTool, string> = {
   pick_agents: "Use these agents",
   propose_theme: "Preview team",
   save_theme: "Save team names",
-  set_batteries: "Turn on batteries",
-  skip_batteries: "Skip batteries",
+  set_batteries: "Configure tools",
+  skip_batteries: "Keep included tools",
   open_slack_setup: "Open Slack setup",
   skip_slack: "Skip Slack",
   set_schedule: "Set schedule",
@@ -167,7 +167,7 @@ export function OnboardingConversePanel({
       const decisions = decisionsRef.current;
       if (action.tool === "finish_setup" && (!decisions.batteries || !decisions.slack)) {
         const missing = [
-          !decisions.batteries ? "Batteries still need a decision" : null,
+          !decisions.batteries ? "Included tools still need a decision" : null,
           !decisions.slack ? "Slack still needs a decision" : null,
         ].filter(Boolean);
         const note = `${missing.join(". ")}. Choose an option before finishing setup.`;

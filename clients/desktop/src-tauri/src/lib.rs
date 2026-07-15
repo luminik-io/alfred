@@ -1141,25 +1141,29 @@ fn install_alfred_core_blocking(
         code_memory_doctor_timeout(),
     )?;
     append_step_output(&mut stdout, &mut stderr, "code-memory-doctor", &code_memory);
-    let code_memory_message = if code_memory.success {
-        "Code-memory doctor completed."
-    } else {
-        "Code-memory doctor needs attention; open Setup after install to retry."
-    };
+    if !code_memory.success {
+        return Ok(core_install_result(
+            preview,
+            stdout,
+            stderr,
+            code_memory.status,
+            false,
+            format!(
+                "Alfred core installed, deployed, and seeded, but included codebase memory setup failed from {}. Run Install or repair to retry.",
+                plan.source_label
+            ),
+        ));
+    }
 
     Ok(core_install_result(
         preview,
         stdout,
         stderr,
-        if code_memory.success {
-            code_memory.status
-        } else {
-            deploy.status
-        },
+        code_memory.status,
         true,
         format!(
-            "Alfred core installed, fleet seeded, deployed, and starter skills installed from {}. {}",
-            plan.source_label, code_memory_message
+            "Alfred core installed, fleet seeded, deployed, starter skills installed, and codebase memory verified from {}.",
+            plan.source_label
         ),
     ))
 }
@@ -1288,7 +1292,7 @@ fn terminal_core_install_command(plan: &CoreInstallPlan, runtime_port: u16) -> S
         shell_command(&plan.seed_program, &plan.seed_args),
         shell_command(&plan.deploy_program, &plan.deploy_args),
         shell_command(&plan.skills_program, &plan.skills_args),
-        optional_shell_command(&plan.code_memory_program, &plan.code_memory_args)
+        shell_command(&plan.code_memory_program, &plan.code_memory_args)
     ));
     parts.push(terminal_runtime_start_command(runtime_port));
     parts.push(format!(
@@ -1455,10 +1459,6 @@ fn shell_command(program: &str, args: &[String]) -> String {
     let mut command = vec![shell_quote(program)];
     command.extend(args.iter().map(|arg| shell_quote(arg)));
     command.join(" ")
-}
-
-fn optional_shell_command(program: &str, args: &[String]) -> String {
-    format!("({} || true)", shell_command(program, args))
 }
 
 fn shell_quote(value: &str) -> String {
@@ -3162,6 +3162,7 @@ mod tests {
         assert!(command.contains("'/tmp/alfred core/deploy.sh' --adopt-legacy-ams"));
         assert!(command.contains("alfred skills install --starter"));
         assert!(command.contains("alfred code-memory doctor"));
+        assert!(!command.contains("(alfred code-memory doctor || true)"));
         assert!(command.contains("nohup alfred serve --port 7123 --no-browser"));
         assert!(command.contains("Alfred CLI was not found after install"));
         assert!(command.contains("command -v python3"));

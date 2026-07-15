@@ -1375,9 +1375,9 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
             out["ALFRED_TELEMETRY_TOKEN"] = state.telemetry_token
     elif not state.telemetry_enabled:
         out["ALFRED_TELEMETRY_ENABLED"] = "0"
-    # Opt-in batteries the operator picked. Alfred works fully with none of these;
-    # each just sets its real env flag(s) from the shared manifest. Compose onto
-    # the existing config so a memory battery merges into the current provider
+    # Advanced batteries the operator picked. Included defaults need no explicit
+    # env value. Each selection sets its real flags from the shared manifest and
+    # composes onto the existing config so a memory battery merges into the current provider
     # chain (never clobbers it) and two batteries writing the same key (composed
     # sequentially) do not collide. Mutually-exclusive primaries are rejected
     # earlier in step_8c, so at most one provider battery reaches here.
@@ -2021,21 +2021,21 @@ def _battery_requirement_line(battery: batteries.Battery) -> str:
 
 
 def step_8c_batteries(state: WizardState, *, non_interactive: bool) -> None:
-    """Offer the optional batteries. Built-ins stay on; opt-ins are opt-in.
+    """Show included tools and offer advanced integrations.
 
-    Non-interactive keeps the built-ins only unless the operator named batteries
-    with ``--batteries`` (or ``--config``). Interactive shows each opt-in with a
-    plain "how it helps" and its requirement, and toggles it with a yes/no. This
-    only records the choice; ``step_9_generate`` writes the env flags, and the
-    install itself is left to `alfred batteries enable` so the wizard never runs
-    an installer or starts a daemon behind the operator's back.
+    Fresh installs keep the default-on local tools without writing redundant env
+    flags. Interactive setup only asks about advanced integrations. This records
+    choices; ``step_9_generate`` writes their flags, and `alfred batteries
+    enable` owns dependency installation. The wizard never starts a daemon.
     """
-    step("Batteries (optional enhancements)")
-    note("Alfred works fully with none of these. The built-ins below are always on:")
+    step("Included tools")
+    note("These local tools are part of Alfred and are on by default:")
     for battery in batteries.builtin_batteries():
         note(f"    included  {battery.name} ({battery.category})")
+    for battery in batteries.default_batteries():
+        note(f"    included  {battery.name} ({battery.category}; verified on first use)")
 
-    opt_ins = batteries.opt_in_batteries()
+    advanced = batteries.advanced_batteries()
     if non_interactive:
         # A pre-seeded selection (--batteries / --config) that names two
         # mutually-exclusive primaries (Redis and pgvector) is a hard error, not
@@ -2046,14 +2046,14 @@ def step_8c_batteries(state: WizardState, *, non_interactive: bool) -> None:
             sys.exit(1)
         if state.batteries:
             chosen = ", ".join(state.batteries)
-            ok(f"Batteries selected: {chosen}. Built-ins stay on regardless.")
+            ok(f"Advanced integrations selected: {chosen}. Included tools stay on.")
         else:
-            ok("Built-ins only. Add more later with `alfred batteries`.")
+            ok("Included tools ready. Add advanced integrations later with `alfred batteries`.")
         return
 
-    note("The optional batteries are off by default. Turn on any you want:")
+    note("Advanced integrations are off by default. Turn on any you need:")
     selected = list(state.batteries)
-    for battery in opt_ins:
+    for battery in advanced:
         print(f"  {STYLE.BLUE}{battery.name}{STYLE.OFF} ({battery.category})")
         print(f"    {battery.how_it_helps}")
         print(f"    {_battery_requirement_line(battery)}")
@@ -2074,9 +2074,9 @@ def step_8c_batteries(state: WizardState, *, non_interactive: bool) -> None:
             selected.remove(battery.id)
     state.batteries = selected
     if selected:
-        ok(f"Batteries selected: {', '.join(selected)}.")
+        ok(f"Advanced integrations selected: {', '.join(selected)}.")
     else:
-        ok("Built-ins only. Add more later with `alfred batteries`.")
+        ok("Included tools ready. Add advanced integrations later with `alfred batteries`.")
 
 
 def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:

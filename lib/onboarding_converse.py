@@ -246,14 +246,11 @@ def _validate_pick_agents(args: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _validate_set_batteries(args: dict[str, Any]) -> dict[str, Any] | None:
-    """Validate a ``set_batteries`` action into a bounded list of real opt-in ids.
+    """Validate a ``set_batteries`` action into real configurable tool ids.
 
-    Only ids of real OPT-IN batteries (from the shared ``batteries`` manifest)
-    survive: unknown ids and always-on built-ins are dropped, so the model can
-    never name something the client cannot enable. Two mutually-exclusive primary
-    memory stores (Redis and pgvector) are a conflict, so the action degrades to
-    ``None`` (the reply stands and asks the person to pick one) rather than
-    forwarding a selection that would collide. An empty result drops the action.
+    Unknown ids and non-configurable built-ins are dropped, so the model cannot
+    name something the client cannot change. Mutually-exclusive primary stores
+    or graph engines degrade to ``None`` instead of forwarding a collision.
     """
     import batteries
 
@@ -264,7 +261,7 @@ def _validate_set_batteries(args: dict[str, Any]) -> dict[str, Any] | None:
         raw = [raw]
     if not isinstance(raw, list):
         return None
-    valid_opt_ins = {b.id for b in batteries.opt_in_batteries()}
+    configurable = {b.id for b in batteries.configurable_batteries()}
     ids: list[str] = []
     seen: set[str] = set()
     for value in raw:
@@ -272,7 +269,7 @@ def _validate_set_batteries(args: dict[str, Any]) -> dict[str, Any] | None:
         if slug is None:
             continue
         key = slug.lower()
-        if key in seen or key not in valid_opt_ins:
+        if key in seen or key not in configurable:
             continue
         seen.add(key)
         ids.append(key)

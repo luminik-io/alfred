@@ -128,9 +128,9 @@ const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
   },
   batteries: {
     key: "batteries",
-    title: "Add batteries?",
-    stepperTitle: "Batteries",
-    blurb: "Optional local enhancements: better memory, more token savings, a live code graph. Off by default.",
+    title: "Your tools are included.",
+    stepperTitle: "Tools included",
+    blurb: "Local memory, compact context, code navigation, and a live code graph are ready. Review or add advanced integrations.",
     icon: BatteryCharging,
     optional: true,
   },
@@ -687,9 +687,9 @@ export function OnboardingView({
         case "repos":
           return reposReady;
         case "batteries":
-          // Batteries are optional; Alfred works with zero of them. The step
-          // reads satisfied once the user moves past it or skips it. We never
-          // require a battery to be enabled to continue.
+          // Included defaults need no decision. The step is satisfied once the
+          // user reviews it or keeps the defaults; advanced integrations remain
+          // optional.
           return batteriesTouched || skipped.has("batteries") || installInitialized;
         case "team":
           // The shipped Batman roster is already valid. Keeping the default is a
@@ -994,7 +994,7 @@ export function OnboardingView({
               ) : null}
 
               {stepKey === "batteries" ? (
-                <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb} accentLabel="Optional">
+                <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb} accentLabel="Included">
                   <BatteryPickerStep
                     baseUrl={baseUrl}
                     canMutate={canMutate}

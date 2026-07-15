@@ -37,7 +37,7 @@ describe("useOnboardingActions", () => {
 
     expect(outcome).toEqual({
       ok: false,
-      note: "Connect to the Alfred runtime before installing batteries.",
+      note: "Connect to the Alfred runtime before installing tools.",
     });
     expect(onRunLocalAction).not.toHaveBeenCalled();
   });
