@@ -1,10 +1,10 @@
 """GitHub-native merge gate.
 
-A single, vendor-neutral predicate that decides whether Alfred may merge a
-pull request. It reads GitHub's own machinery and nothing else: the aggregate
-review decision, unresolved review threads, the merge state, and check runs.
-There are no hard-coded reviewer logins or review-product names anywhere in
-this module. The reviewers are whoever GitHub says approved the PR.
+A single predicate decides whether Alfred may merge a pull request. Native
+GitHub review state, unresolved threads, merge state, and check runs form the
+enforcement boundary. Optional external reviewer adapters may add exact-head
+evidence, but only when a non-bypassable GitHub rule guards that provider's
+blocking state through the final mutation window.
 
 A PR is mergeable-by-alfred only when ALL of the following hold:
 
@@ -18,6 +18,9 @@ A PR is mergeable-by-alfred only when ALL of the following hold:
 5. ``mergeStateStatus`` is ``CLEAN`` and ``mergeable`` is ``MERGEABLE``. This
    encodes required status checks and the absence of any blocking state.
 6. No check run is in a failing conclusion.
+7. Every configured external reviewer has clean exact-head evidence and its
+   provider-specific native merge guard is active. Unsupported comment-only
+   reviewers fail closed.
 
 The design fails closed: any API error, missing field, or unrecognised value
 makes the gate return "not mergeable" rather than guessing.
@@ -40,6 +43,8 @@ from typing import Any
 from urllib.parse import quote
 
 MIN_APPROVALS_DEFAULT = 1
+_GREPTILE_REQUIRED_CHECK_CONTEXT = "Greptile Review"
+_GREPTILE_GITHUB_APP_ID = 867647
 
 # Check-run conclusions that block a merge. Anything not clearly successful is
 # treated as blocking so the gate fails closed.
@@ -114,6 +119,20 @@ class ExternalReviewEvidence:
     reviewed_sha: str = ""
 
 
+@dataclass(frozen=True, order=True)
+class RequiredCheck:
+    """A required status check and the GitHub App allowed to set it."""
+
+    context: str
+    integration_id: int | None = None
+
+
+_GREPTILE_REQUIRED_CHECK = RequiredCheck(
+    _GREPTILE_REQUIRED_CHECK_CONTEXT,
+    _GREPTILE_GITHUB_APP_ID,
+)
+
+
 @dataclass(frozen=True)
 class GateSnapshot:
     """Everything the gate needs, already fetched from GitHub."""
@@ -127,8 +146,17 @@ class GateSnapshot:
     mergeable: str
     checks: tuple[CheckRun, ...]
     native_thread_resolution: bool | None = None
+    required_checks: tuple[RequiredCheck, ...] = ()
     external_reviews: tuple[ExternalReviewEvidence, ...] = ()
     errors: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class NativeMergePolicy:
+    """Server-enforced merge conditions that apply to the current identity."""
+
+    thread_resolution: bool | None
+    required_checks: tuple[RequiredCheck, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -330,11 +358,15 @@ def _external_reviews_condition(snapshot: GateSnapshot, required: Sequence[str])
     if not required_names:
         return Condition("external_reviews", "Required bot reviews", True, "not configured")
     missing: list[str] = []
+    unguarded: list[str] = []
     for provider in required_names:
         aliases = {
             "codex": {"chatgpt-codex-connector", "chatgpt-codex-connector[bot]"},
             "greptile": {"greptile-apps", "greptile-apps[bot]"},
-        }.get(provider, {provider, f"{provider}[bot]"})
+        }.get(provider)
+        if aliases is None:
+            unguarded.append(provider)
+            continue
         matches = [item for item in snapshot.external_reviews if item.author.lower() in aliases]
         latest = max(matches, key=lambda item: item.updated_at or "", default=None)
         body = latest.body if latest else ""
@@ -345,18 +377,28 @@ def _external_reviews_condition(snapshot: GateSnapshot, required: Sequence[str])
         )
         if provider == "codex":
             clean = "didn't find any major issues" in body.lower()
+            guarded = snapshot.native_thread_resolution is True
         elif provider == "greptile":
             clean = "confidence score: 5/5" in body.lower() and "no blocking issues" in body.lower()
-        else:
-            clean = "no blocking issues" in body.lower() or "approved" in body.lower()
+            guarded = _GREPTILE_REQUIRED_CHECK in snapshot.required_checks
+        else:  # pragma: no cover - aliases rejects unknown adapters above
+            clean = False
+            guarded = False
+        if not guarded:
+            unguarded.append(provider)
         if not (latest and exact_head and clean):
             missing.append(provider)
-    if missing:
+    if missing or unguarded:
+        details: list[str] = []
+        if missing:
+            details.append("missing clean exact-head evidence: " + ", ".join(missing))
+        if unguarded:
+            details.append("missing native merge guard: " + ", ".join(unguarded))
         return Condition(
             "external_reviews",
             "Required bot reviews",
             False,
-            "missing clean exact-head evidence: " + ", ".join(missing),
+            "; ".join(details),
         )
     return Condition(
         "external_reviews",
@@ -518,7 +560,7 @@ def collect_snapshot(
     checks = [item[2] for item in sorted(latest_checks.values(), key=lambda item: item[1])]
 
     threads = _collect_review_threads(repo, pr_number, gh_json=gh_json, errors=errors)
-    native_thread_resolution = _collect_native_thread_resolution(
+    native_policy = _collect_native_merge_policy(
         repo,
         str(view.get("baseRefName") or ""),
         gh_json=gh_json,
@@ -539,7 +581,8 @@ def collect_snapshot(
         merge_state_status=str(view.get("mergeStateStatus") or ""),
         mergeable=str(view.get("mergeable") or ""),
         checks=tuple(checks),
-        native_thread_resolution=native_thread_resolution,
+        native_thread_resolution=native_policy.thread_resolution,
+        required_checks=native_policy.required_checks,
         external_reviews=tuple(external_reviews),
         errors=tuple(errors),
     )
@@ -572,14 +615,14 @@ _REVIEWS_QUERY = (
 )
 
 
-def _collect_native_thread_resolution(
+def _collect_native_merge_policy(
     repo: str,
     base_ref: str,
     *,
     gh_json: GhJson,
     errors: list[str],
-) -> bool | None:
-    """Verify that GitHub will reject a late unresolved thread atomically.
+) -> NativeMergePolicy:
+    """Collect non-bypassable GitHub conditions for the merge identity.
 
     Effective branch rules identify the ruleset that contributes the pull
     request rule, but not whether the current merge identity can bypass it.
@@ -589,7 +632,7 @@ def _collect_native_thread_resolution(
     """
     if not base_ref:
         errors.append("could not identify the PR base branch")
-        return None
+        return NativeMergePolicy(None)
     missing = object()
     rules_payload = gh_json(
         [
@@ -610,19 +653,24 @@ def _collect_native_thread_resolution(
             rules = rules_payload
     rules_readable = rules is not None
     ruleset_detail_unreadable = False
+    non_bypassable_rulesets: set[int] = set()
     if rules_readable:
-        for rule in rules or []:
-            if not isinstance(rule, dict) or rule.get("type") != "pull_request":
-                continue
-            parameters = rule.get("parameters") or {}
-            if not (
-                isinstance(parameters, dict)
-                and parameters.get("required_review_thread_resolution") is True
-            ):
-                continue
-            ruleset_id = rule.get("ruleset_id")
+        relevant_ids = {
+            rule.get("ruleset_id")
+            for rule in rules or []
+            if isinstance(rule, dict)
+            and rule.get("type") in {"pull_request", "required_status_checks"}
+            and isinstance(rule.get("ruleset_id"), int)
+        }
+        if any(
+            isinstance(rule, dict)
+            and rule.get("type") in {"pull_request", "required_status_checks"}
+            and not isinstance(rule.get("ruleset_id"), int)
+            for rule in rules or []
+        ):
+            ruleset_detail_unreadable = True
+        for ruleset_id in relevant_ids:
             if not isinstance(ruleset_id, int):
-                ruleset_detail_unreadable = True
                 continue
             detail = gh_json(
                 ["gh", "api", f"repos/{repo}/rulesets/{ruleset_id}"],
@@ -635,7 +683,31 @@ def _collect_native_thread_resolution(
                 detail.get("enforcement") == "active"
                 and detail.get("current_user_can_bypass") == "never"
             ):
-                return True
+                non_bypassable_rulesets.add(ruleset_id)
+
+    thread_resolution = False
+    required_checks: set[RequiredCheck] = set()
+    for rule in rules or []:
+        if not isinstance(rule, dict) or rule.get("ruleset_id") not in non_bypassable_rulesets:
+            continue
+        parameters = rule.get("parameters") or {}
+        if not isinstance(parameters, dict):
+            continue
+        if (
+            rule.get("type") == "pull_request"
+            and parameters.get("required_review_thread_resolution") is True
+        ):
+            thread_resolution = True
+        if rule.get("type") == "required_status_checks":
+            for check in parameters.get("required_status_checks") or []:
+                if isinstance(check, dict) and str(check.get("context") or "").strip():
+                    integration_id = check.get("integration_id")
+                    required_checks.add(
+                        RequiredCheck(
+                            str(check["context"]).strip(),
+                            integration_id if isinstance(integration_id, int) else None,
+                        )
+                    )
 
     protection = gh_json(
         [
@@ -657,18 +729,36 @@ def _collect_native_thread_resolution(
         bypass_is_empty = isinstance(bypass, dict) and not any(
             bypass.get(kind) for kind in ("users", "teams", "apps")
         )
-        return bool(
+        classic_is_non_bypassable = bool(
             isinstance(conversation, dict)
-            and conversation.get("enabled") is True
             and isinstance(enforce_admins, dict)
             and enforce_admins.get("enabled") is True
             and bypass_is_empty
         )
+        if classic_is_non_bypassable:
+            if conversation.get("enabled") is True:
+                thread_resolution = True
+            status_checks = protection.get("required_status_checks") or {}
+            if isinstance(status_checks, dict):
+                for check in status_checks.get("checks") or []:
+                    if isinstance(check, dict) and str(check.get("context") or "").strip():
+                        app_id = check.get("app_id")
+                        required_checks.add(
+                            RequiredCheck(
+                                str(check["context"]).strip(),
+                                app_id if isinstance(app_id, int) else None,
+                            )
+                        )
+                required_checks.update(
+                    RequiredCheck(str(context).strip())
+                    for context in status_checks.get("contexts") or []
+                    if str(context).strip()
+                )
 
     if not rules_readable or ruleset_detail_unreadable:
-        errors.append("could not verify non-bypassable base branch conversation rules")
-        return None
-    return False
+        errors.append("could not verify non-bypassable base branch merge rules")
+        return NativeMergePolicy(None, tuple(sorted(required_checks)))
+    return NativeMergePolicy(thread_resolution, tuple(sorted(required_checks)))
 
 
 def _collect_external_reviews(

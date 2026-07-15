@@ -16,6 +16,7 @@ from merge_gate import (  # noqa: E402
     CheckRun,
     ExternalReviewEvidence,
     GateSnapshot,
+    RequiredCheck,
     Review,
     ReviewThread,
     collect_snapshot,
@@ -36,6 +37,7 @@ def _snapshot(**overrides) -> GateSnapshot:
         "mergeable": "MERGEABLE",
         "checks": (CheckRun("ci", "SUCCESS"),),
         "native_thread_resolution": True,
+        "required_checks": (RequiredCheck("Greptile Review", 867647),),
         "errors": (),
     }
     base.update(overrides)
@@ -181,6 +183,48 @@ def test_required_external_reviews_reject_spoofed_bot_login():
         )
     )
     assert not evaluate_gate(snap, required_external_reviews=("greptile",)).mergeable
+
+
+def test_required_external_reviews_require_native_provider_guards():
+    head = "a" * 40
+    greptile = ExternalReviewEvidence(
+        "greptile-apps[bot]",
+        "Confidence Score: 5/5\nNo blocking issues",
+        "2026-07-11T10:00:00Z",
+        head,
+    )
+    codex = ExternalReviewEvidence(
+        "chatgpt-codex-connector[bot]",
+        "Codex Review: Didn't find any major issues.",
+        "2026-07-11T10:01:00Z",
+        head,
+    )
+
+    no_check = _snapshot(external_reviews=(greptile,), required_checks=())
+    assert not evaluate_gate(no_check, required_external_reviews=("greptile",)).mergeable
+
+    unpinned_check = _snapshot(
+        external_reviews=(greptile,),
+        required_checks=(RequiredCheck("Greptile Review"),),
+    )
+    assert not evaluate_gate(unpinned_check, required_external_reviews=("greptile",)).mergeable
+
+    wrong_app = _snapshot(
+        external_reviews=(greptile,),
+        required_checks=(RequiredCheck("Greptile Review", 1234),),
+    )
+    assert not evaluate_gate(wrong_app, required_external_reviews=("greptile",)).mergeable
+
+    no_threads = _snapshot(
+        external_reviews=(codex,),
+        native_thread_resolution=False,
+    )
+    assert not evaluate_gate(no_threads, required_external_reviews=("codex",)).mergeable
+
+    unknown = _snapshot(external_reviews=(greptile,))
+    decision = evaluate_gate(unknown, required_external_reviews=("other-reviewer",))
+    assert not decision.mergeable
+    assert "missing native merge guard" in decision.short_reason()
 
 
 def test_codex_resolved_commit_must_equal_head_after_force_push():
@@ -470,7 +514,16 @@ def _fake_gh_json(
                     "parameters": {
                         "required_review_thread_resolution": native_thread_resolution,
                     },
-                }
+                },
+                {
+                    "type": "required_status_checks",
+                    "ruleset_id": 42,
+                    "parameters": {
+                        "required_status_checks": [
+                            {"context": "Greptile Review", "integration_id": 867647},
+                        ],
+                    },
+                },
             ]
         if any("reviews(first:100" in str(arg) for arg in cmd):
             pages = reviews_payload if reviews_payload is not None else [[]]
@@ -557,6 +610,7 @@ def test_collect_snapshot_builds_from_gh():
     assert len(snap.reviews) == 1
     assert len(snap.checks) == 2
     assert snap.native_thread_resolution is True
+    assert snap.required_checks == (RequiredCheck("Greptile Review", 867647),)
     assert evaluate_gate(snap).mergeable is True
 
 
@@ -768,12 +822,16 @@ def test_collect_snapshot_accepts_non_bypassable_classic_protection():
                 "required_conversation_resolution": {"enabled": True},
                 "enforce_admins": {"enabled": True},
                 "required_pull_request_reviews": {},
+                "required_status_checks": {
+                    "checks": [{"context": "Greptile Review", "app_id": 867647}],
+                },
             }
         return base_runner(cmd, default)
 
     snap = collect_snapshot("acme/repo", 7, gh_json=_runner)
 
     assert snap.native_thread_resolution is True
+    assert snap.required_checks == (RequiredCheck("Greptile Review", 867647),)
     assert evaluate_gate(snap).mergeable is True
 
 
@@ -1006,9 +1064,15 @@ def test_collect_snapshot_paginates_all_review_threads():
             return [
                 {
                     "type": "pull_request",
+                    "ruleset_id": 42,
                     "parameters": {"required_review_thread_resolution": True},
                 }
             ]
+        if any("/rulesets/42" in str(arg) for arg in cmd):
+            return {
+                "enforcement": "active",
+                "current_user_can_bypass": "never",
+            }
         if any("reviews(first:100" in str(arg) for arg in cmd):
             return {"nodes": [], "pageInfo": {"hasNextPage": False, "endCursor": None}}
         if "graphql" not in cmd:
