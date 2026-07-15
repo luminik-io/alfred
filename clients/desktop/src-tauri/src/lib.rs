@@ -139,7 +139,7 @@ async fn run_alfred_action(
 
     let (program, args) = build_alfred_action(action_name, target.as_deref(), cadence.as_deref())?;
     if action_name == "code_memory_status" {
-        return run_native_command_with_timeout(program, args, code_memory_doctor_timeout()).await;
+        return run_native_command_with_timeout(program, args, code_memory_command_timeout()).await;
     }
     run_native_command(program, args).await
 }
@@ -382,7 +382,7 @@ fn read_server_token() -> Option<String> {
     }
 }
 
-fn code_memory_doctor_timeout() -> Duration {
+fn code_memory_command_timeout() -> Duration {
     let fetch_budget = code_memory_launcher_u64(
         "ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S",
         CODE_MEMORY_FETCH_TIMEOUT_DEFAULT_S,
@@ -1138,9 +1138,14 @@ fn install_alfred_core_blocking(
         &plan.code_memory_program,
         &plan.code_memory_args,
         plan.core_dir.as_deref(),
-        code_memory_doctor_timeout(),
+        code_memory_command_timeout(),
     )?;
-    append_step_output(&mut stdout, &mut stderr, "code-memory-doctor", &code_memory);
+    append_step_output(
+        &mut stdout,
+        &mut stderr,
+        "code-memory-install",
+        &code_memory,
+    );
     if !code_memory.success {
         return Ok(core_install_result(
             preview,
@@ -1535,7 +1540,12 @@ fn core_install_plan(app: &AppHandle) -> Result<CoreInstallPlan, String> {
                 "--starter".to_string(),
             ],
             code_memory_program: "alfred".to_string(),
-            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
+            code_memory_args: vec![
+                "batteries".to_string(),
+                "install".to_string(),
+                "code-memory-mcp".to_string(),
+                "--yes".to_string(),
+            ],
             source_label: "the bundled desktop runtime".to_string(),
             core_dir: Some(core_dir),
         });
@@ -1571,7 +1581,12 @@ fn core_install_plan(app: &AppHandle) -> Result<CoreInstallPlan, String> {
                 "--starter".to_string(),
             ],
             code_memory_program: "alfred".to_string(),
-            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
+            code_memory_args: vec![
+                "batteries".to_string(),
+                "install".to_string(),
+                "code-memory-mcp".to_string(),
+                "--yes".to_string(),
+            ],
             source_label: core_dir.to_string_lossy().into_owned(),
             core_dir: Some(core_dir),
         });
@@ -1599,7 +1614,12 @@ fn core_install_plan(app: &AppHandle) -> Result<CoreInstallPlan, String> {
                 "--starter".to_string(),
             ],
             code_memory_program: "alfred".to_string(),
-            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
+            code_memory_args: vec![
+                "batteries".to_string(),
+                "install".to_string(),
+                "code-memory-mcp".to_string(),
+                "--yes".to_string(),
+            ],
             source_label: "the installed Alfred CLI package".to_string(),
             core_dir: None,
         });
@@ -3070,7 +3090,12 @@ mod tests {
                 "--starter".to_string(),
             ],
             code_memory_program: "alfred".to_string(),
-            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
+            code_memory_args: vec![
+                "batteries".to_string(),
+                "install".to_string(),
+                "code-memory-mcp".to_string(),
+                "--yes".to_string(),
+            ],
             source_label: "bundled runtime".to_string(),
         };
 
@@ -3141,7 +3166,12 @@ mod tests {
                 "--starter".to_string(),
             ],
             code_memory_program: "alfred".to_string(),
-            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
+            code_memory_args: vec![
+                "batteries".to_string(),
+                "install".to_string(),
+                "code-memory-mcp".to_string(),
+                "--yes".to_string(),
+            ],
             source_label: "bundled runtime".to_string(),
         };
 
@@ -3161,8 +3191,7 @@ mod tests {
         ));
         assert!(command.contains("'/tmp/alfred core/deploy.sh' --adopt-legacy-ams"));
         assert!(command.contains("alfred skills install --starter"));
-        assert!(command.contains("alfred code-memory doctor"));
-        assert!(!command.contains("(alfred code-memory doctor || true)"));
+        assert!(command.contains("alfred batteries install code-memory-mcp --yes"));
         assert!(command.contains("nohup alfred serve --port 7123 --no-browser"));
         assert!(command.contains("Alfred CLI was not found after install"));
         assert!(command.contains("command -v python3"));
@@ -3235,13 +3264,13 @@ mod tests {
                 .find("alfred skills install --starter")
                 .expect("skills command should exist")
                 < command
-                    .find("alfred code-memory doctor")
-                    .expect("code-memory command should exist")
+                    .find("alfred batteries install code-memory-mcp --yes")
+                    .expect("code-memory install command should exist")
         );
         assert!(
             command
-                .find("alfred code-memory doctor")
-                .expect("code-memory command should exist")
+                .find("alfred batteries install code-memory-mcp --yes")
+                .expect("code-memory install command should exist")
                 < command
                     .find("socket.create_connection")
                     .expect("runtime preflight command should exist")
@@ -3330,7 +3359,12 @@ mod tests {
                 "--starter".to_string(),
             ],
             code_memory_program: "alfred".to_string(),
-            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
+            code_memory_args: vec![
+                "batteries".to_string(),
+                "install".to_string(),
+                "code-memory-mcp".to_string(),
+                "--yes".to_string(),
+            ],
             source_label: "installed CLI".to_string(),
         };
 
@@ -3371,7 +3405,12 @@ mod tests {
                 "--starter".to_string(),
             ],
             code_memory_program: "alfred".to_string(),
-            code_memory_args: vec!["code-memory".to_string(), "doctor".to_string()],
+            code_memory_args: vec![
+                "batteries".to_string(),
+                "install".to_string(),
+                "code-memory-mcp".to_string(),
+                "--yes".to_string(),
+            ],
             source_label: "installed CLI".to_string(),
         };
 
@@ -4128,7 +4167,7 @@ done"#;
     }
 
     #[test]
-    fn code_memory_doctor_timeout_uses_default_fetch_budget() {
+    fn code_memory_command_timeout_uses_default_fetch_budget() {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_home = std::env::var("HOME").ok();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
@@ -4142,7 +4181,7 @@ done"#;
         std::env::remove_var("ALFRED_HOME");
         std::env::remove_var("ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S");
 
-        assert_eq!(code_memory_doctor_timeout(), Duration::from_secs(150));
+        assert_eq!(code_memory_command_timeout(), Duration::from_secs(150));
 
         let _ = fs::remove_dir_all(root);
         restore_var("HOME", prev_home);
@@ -4151,7 +4190,7 @@ done"#;
     }
 
     #[test]
-    fn code_memory_doctor_timeout_reads_runtime_env_fetch_budget() {
+    fn code_memory_command_timeout_reads_runtime_env_fetch_budget() {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_home = std::env::var("HOME").ok();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
@@ -4172,7 +4211,7 @@ done"#;
         std::env::set_var("ALFRED_HOME", &runtime);
         std::env::remove_var("ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S");
 
-        assert_eq!(code_memory_doctor_timeout(), Duration::from_secs(270));
+        assert_eq!(code_memory_command_timeout(), Duration::from_secs(270));
 
         let _ = fs::remove_dir_all(root);
         restore_var("HOME", prev_home);
@@ -4181,7 +4220,7 @@ done"#;
     }
 
     #[test]
-    fn code_memory_doctor_timeout_ignores_legacy_alfredrc_budget() {
+    fn code_memory_command_timeout_ignores_legacy_alfredrc_budget() {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_home = std::env::var("HOME").ok();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
@@ -4200,7 +4239,7 @@ done"#;
         std::env::remove_var("ALFRED_HOME");
         std::env::remove_var("ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S");
 
-        assert_eq!(code_memory_doctor_timeout(), Duration::from_secs(150));
+        assert_eq!(code_memory_command_timeout(), Duration::from_secs(150));
 
         let _ = fs::remove_dir_all(root);
         restore_var("HOME", prev_home);

@@ -55,6 +55,20 @@ def test_install_prepares_dependency_without_enabling(
     assert not env_path.exists() or "ALFRED_MEMORY_SQLITE_DENSE=1" not in env_path.read_text()
 
 
+def test_install_fails_when_command_succeeds_but_dependency_is_still_missing(
+    cli, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import batteries
+
+    monkeypatch.setattr(batteries, "is_installed", lambda _battery, _env: False)
+    monkeypatch.setattr(cli, "_run_subcommand", lambda *_args, **_kwargs: 0)
+
+    assert cli.main(["batteries", "install", "code-memory-mcp", "--yes"]) == 1
+
+    env_path = tmp_path / ".alfred" / ".env"
+    assert not env_path.exists() or "ALFRED_CODE_MEMORY_MCP=1" not in env_path.read_text()
+
+
 def test_reenable_autofetch_battery_uses_prospective_env(
     cli, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
