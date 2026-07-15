@@ -24,11 +24,7 @@ def _operator_env_names() -> tuple[str, ...]:
     wildcard_names = tuple(
         name
         for name in tuple(os.environ)
-        if (
-            name == "AGENT_CODENAME"
-            or name.startswith("AGENT_CODENAME_")
-            or (name.startswith("ALFRED_") and name.endswith("_REPOS"))
-        )
+        if name == "AGENT_CODENAME" or (name.startswith("ALFRED_") and name.endswith("_REPOS"))
     )
     return (*wildcard_names, *_OPERATOR_ENV_NAMES)
 

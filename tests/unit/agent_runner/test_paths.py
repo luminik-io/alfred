@@ -274,33 +274,6 @@ def test_launcher_env_scrubs_setup_managed_scope_when_runtime_env_omits_it(
     assert "ALFRED_SPEC_PLANNER_REPOS" not in env
 
 
-def test_launcher_env_ignores_removed_role_identity_alias(
-    fresh_agent_runner, monkeypatch, tmp_path
-):
-    import agent_runner.paths as paths_mod
-
-    runtime = tmp_path / "runtime"
-    runtime.mkdir()
-    (runtime / ".env").write_text(
-        "# alfred-init, generated below this line. Safe to re-run.\n"
-        "AGENT_CODENAME_FEATURE_DEV=oracle\n"
-        "ALFRED_ORACLE_REPOS=org/runtime\n"
-        "ALFRED_ORACLE_AWS_PROFILE=runtime-profile\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("ALFRED_HOME", str(runtime))
-    monkeypatch.setenv("AGENT_CODENAME_FEATURE_DEV", "old-oracle")
-    monkeypatch.setenv("ALFRED_ORACLE_REPOS", "org/stale")
-    monkeypatch.setenv("ALFRED_ORACLE_AWS_PROFILE", "stale-profile")
-
-    env = paths_mod.launcher_env()
-
-    assert "AGENT_CODENAME_FEATURE_DEV" not in env
-    assert env["ALFRED_ORACLE_REPOS"] == "org/stale"
-    assert env["ALFRED_ORACLE_AWS_PROFILE"] == "stale-profile"
-
-
 def test_launcher_env_reloads_canonical_role_profile_from_managed_env(
     fresh_agent_runner, monkeypatch, tmp_path
 ):
@@ -373,32 +346,6 @@ def test_launcher_env_preserves_process_owned_aws_profile(
     env = paths_mod.launcher_env()
 
     assert env["ALFRED_BACKUP_AWS_PROFILE"] == "backup-profile"
-
-
-def test_launcher_env_does_not_infer_scope_from_removed_role_alias(
-    fresh_agent_runner, monkeypatch, tmp_path
-):
-    import agent_runner.paths as paths_mod
-
-    runtime = tmp_path / "runtime"
-    runtime.mkdir()
-    (runtime / ".env").write_text(
-        "# alfred-init, generated below this line. Safe to re-run.\n"
-        "AGENT_CODENAME_FEATURE_DEV=oracle\n"
-        "ALFRED_ORACLE_REPOS=org/runtime\n"
-        "CLAUDE_CODE_OAUTH_TOKEN=file-token\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("ALFRED_HOME", str(runtime))
-    monkeypatch.setenv("ALFRED_ORACLE_REPOS", "org/stale")
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "process-token")
-
-    env = paths_mod.launcher_env()
-
-    assert "AGENT_CODENAME_FEATURE_DEV" not in env
-    assert env["ALFRED_ORACLE_REPOS"] == "org/stale"
-    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "process-token"
 
 
 def test_launcher_env_preserves_code_memory_process_controls(

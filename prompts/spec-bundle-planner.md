@@ -9,7 +9,7 @@
 
   Runtime placeholders supported by load_prompt():
 
-    AGENT_CODENAME     display name (e.g. "spec-planner")
+    AGENT_CODENAME     runtime role slug ("spec-planner")
     GH_ORG             GitHub org or user
     ALFRED_HOME        runtime home (defaults to ~/.alfred)
     WORKSPACE_ROOT     parent dir of per-repo checkouts (defaults to ~/code)

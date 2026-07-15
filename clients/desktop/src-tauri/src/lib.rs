@@ -485,9 +485,7 @@ fn config_value(key: &str) -> Option<String> {
 }
 
 fn merged_alfred_env() -> HashMap<String, String> {
-    let mut env: HashMap<String, String> = std::env::vars()
-        .filter(|(key, _)| !key.starts_with("AGENT_CODENAME_"))
-        .collect();
+    let mut env: HashMap<String, String> = std::env::vars().collect();
     env.remove("ALFREDRC");
     if env
         .get("ALFRED_HOME")
@@ -667,9 +665,6 @@ fn load_config_file(
         };
         let key = name.trim();
         if !is_valid_env_key(key) {
-            continue;
-        }
-        if key.starts_with("AGENT_CODENAME_") {
             continue;
         }
         let clean = decode_config_value(strip_inline_comment(value), home)
@@ -4508,54 +4503,6 @@ done"#;
     }
 
     #[test]
-    fn native_subprocess_env_ignores_removed_role_identity_alias() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        let prev_home = std::env::var("HOME").ok();
-        let prev_alfred = std::env::var("ALFRED_HOME").ok();
-        let prev_codename = std::env::var("AGENT_CODENAME_FEATURE_DEV").ok();
-        let prev_oracle = std::env::var("ALFRED_ORACLE_REPOS").ok();
-        let prev_oracle_aws = std::env::var("ALFRED_ORACLE_AWS_PROFILE").ok();
-
-        let root = temp_root("alfred-custom-runtime-env-scrub");
-        let home = root.join("home");
-        let runtime = root.join("runtime");
-        fs::create_dir_all(&home).expect("create temp home");
-        fs::create_dir_all(&runtime).expect("create runtime");
-        std::fs::write(
-            runtime.join(".env"),
-            "# alfred-init, generated below this line. Safe to re-run.\n\
-             AGENT_CODENAME_FEATURE_DEV=oracle\n\
-             ALFRED_ORACLE_REPOS=org/runtime\n\
-             ALFRED_ORACLE_AWS_PROFILE=runtime-profile\n",
-        )
-        .expect("write runtime env");
-
-        std::env::set_var("HOME", &home);
-        std::env::set_var("ALFRED_HOME", &runtime);
-        std::env::set_var("AGENT_CODENAME_FEATURE_DEV", "old-oracle");
-        std::env::set_var("ALFRED_ORACLE_REPOS", "org/stale");
-        std::env::set_var("ALFRED_ORACLE_AWS_PROFILE", "stale-profile");
-
-        let env = merged_alfred_env();
-        assert!(!env.contains_key("AGENT_CODENAME_FEATURE_DEV"));
-        assert_eq!(
-            env.get("ALFRED_ORACLE_REPOS"),
-            Some(&"org/stale".to_string())
-        );
-        assert_eq!(
-            env.get("ALFRED_ORACLE_AWS_PROFILE"),
-            Some(&"stale-profile".to_string())
-        );
-
-        let _ = std::fs::remove_dir_all(&root);
-        restore_var("HOME", prev_home);
-        restore_var("ALFRED_HOME", prev_alfred);
-        restore_var("AGENT_CODENAME_FEATURE_DEV", prev_codename);
-        restore_var("ALFRED_ORACLE_REPOS", prev_oracle);
-        restore_var("ALFRED_ORACLE_AWS_PROFILE", prev_oracle_aws);
-    }
-
-    #[test]
     fn native_subprocess_env_preserves_process_owned_aws_profile() {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_home = std::env::var("HOME").ok();
@@ -4583,51 +4530,6 @@ done"#;
         restore_var("HOME", prev_home);
         restore_var("ALFRED_HOME", prev_alfred);
         restore_var("ALFRED_BACKUP_AWS_PROFILE", prev_backup);
-    }
-
-    #[test]
-    fn native_subprocess_env_does_not_infer_scope_from_removed_role_alias() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        let prev_home = std::env::var("HOME").ok();
-        let prev_alfred = std::env::var("ALFRED_HOME").ok();
-        let prev_oracle = std::env::var("ALFRED_ORACLE_REPOS").ok();
-        let prev_token = std::env::var("CLAUDE_CODE_OAUTH_TOKEN").ok();
-
-        let root = temp_root("alfred-managed-block-token");
-        let home = root.join("home");
-        let runtime = root.join("runtime");
-        fs::create_dir_all(&home).expect("create temp home");
-        fs::create_dir_all(&runtime).expect("create runtime");
-        std::fs::write(
-            runtime.join(".env"),
-            "# alfred-init, generated below this line. Safe to re-run.\n\
-             AGENT_CODENAME_FEATURE_DEV=oracle\n\
-             ALFRED_ORACLE_REPOS=org/runtime\n\
-             CLAUDE_CODE_OAUTH_TOKEN=file-token\n",
-        )
-        .expect("write runtime env");
-
-        std::env::set_var("HOME", &home);
-        std::env::set_var("ALFRED_HOME", &runtime);
-        std::env::set_var("ALFRED_ORACLE_REPOS", "org/stale");
-        std::env::set_var("CLAUDE_CODE_OAUTH_TOKEN", "process-token");
-
-        let env = merged_alfred_env();
-        assert!(!env.contains_key("AGENT_CODENAME_FEATURE_DEV"));
-        assert_eq!(
-            env.get("ALFRED_ORACLE_REPOS"),
-            Some(&"org/stale".to_string())
-        );
-        assert_eq!(
-            env.get("CLAUDE_CODE_OAUTH_TOKEN"),
-            Some(&"process-token".to_string())
-        );
-
-        let _ = std::fs::remove_dir_all(&root);
-        restore_var("HOME", prev_home);
-        restore_var("ALFRED_HOME", prev_alfred);
-        restore_var("ALFRED_ORACLE_REPOS", prev_oracle);
-        restore_var("CLAUDE_CODE_OAUTH_TOKEN", prev_token);
     }
 
     #[test]

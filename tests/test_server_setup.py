@@ -1188,33 +1188,6 @@ def test_generated_runtime_scope_preserves_process_only_custom_repo_scope(
     assert env["ALFRED_EXPERIMENTAL_REPOS"] == "external/only"
 
 
-def test_generated_runtime_scope_ignores_removed_role_identity_alias(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    home = tmp_path / "runtime"
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("ALFRED_HOME", str(home))
-    monkeypatch.setenv("ALFRED_SHERLOCK_REPOS", "old/repo")
-    home.mkdir(parents=True)
-    (home / ".env").write_text(
-        "\n".join(
-            [
-                "# alfred-init, generated below this line. Safe to re-run.",
-                "GH_ORG=acme",
-                "AGENT_CODENAME_FEATURE_DEV=sherlock",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
-    env = setup_mod._runtime_config_env()
-
-    assert "AGENT_CODENAME_FEATURE_DEV" not in env
-    assert env["ALFRED_SHERLOCK_REPOS"] == "old/repo"
-
-
 def test_selected_repos_honors_empty_runtime_board_scope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

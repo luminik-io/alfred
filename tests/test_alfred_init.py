@@ -17,7 +17,6 @@ Run via `pytest tests/test_alfred_init.py`.
 from __future__ import annotations
 
 import importlib.util
-import json
 import os
 import subprocess
 import sys
@@ -2034,15 +2033,14 @@ def test_noninteractive_single_repo_starter_main(monkeypatch, tmp_path, init_mod
             [
                 "GH_ORG=acme",
                 init_mod.ALFRED_ENV_BANNER,
-                "AGENT_CODENAME_FEATURE_DEV=fox",
-                "ALFRED_FOX_REPOS=palette",
-                "ALFRED_FOX_AWS_PROFILE=existing-profile",
+                "ALFRED_SENIOR_DEV_REPOS=palette",
+                "ALFRED_SENIOR_DEV_AWS_PROFILE=existing-profile",
                 "",
             ]
         )
     )
     (alfred_home / "state" / "_paused").mkdir(parents=True)
-    (alfred_home / "state" / "_paused" / "fox").write_text("operator pause\n")
+    (alfred_home / "state" / "_paused" / "senior-dev").write_text("operator pause\n")
     monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
     monkeypatch.delenv("GH_ORG", raising=False)
     monkeypatch.delenv("ALFRED_NONINTERACTIVE", raising=False)
@@ -2096,13 +2094,11 @@ def test_noninteractive_single_repo_starter_main(monkeypatch, tmp_path, init_mod
     assert "ALFRED_PLANNER_REPOS=palette\n" in generated_rc
     assert "ALFRED_REVIEWER_REPOS=palette\n" in generated_rc
     assert "ALFRED_SENIOR_DEV_AWS_PROFILE=existing-profile\n" in generated_rc
-    assert "ALFRED_FOX_AWS_PROFILE" not in generated_rc
     assert "acme/palette" in set(label_repos)
     assert (alfred_home / "prompts" / "senior-dev.md").exists()
     assert (alfred_home / "prompts" / "planner.md").exists()
     assert (alfred_home / "prompts" / "reviewer.md").exists()
     assert (alfred_home / "state" / "_paused" / "senior-dev").exists()
-    assert not (alfred_home / "state" / "_paused" / "fox").exists()
     assert any(cmd[0] == "bash" and cmd[1].endswith("deploy.sh") for cmd in subprocesses)
     assert any(cmd[0] == "bash" and cmd[1].endswith("doctor.sh") for cmd in subprocesses)
 
@@ -2171,7 +2167,7 @@ def test_seed_runtime_roster_writes_runtime_config_without_auth(monkeypatch, tmp
     assert (alfred_home / "prompts" / "architect.md").exists()
 
 
-def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
+def test_seed_runtime_roster_preserves_current_managed_env_on_repair(
     monkeypatch, tmp_path, init_mod
 ):
     repo_root = tmp_path / "repo"
@@ -2197,67 +2193,11 @@ def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
                 "ALFRED_TELEMETRY_ENABLED=1",
                 "ALFRED_TELEMETRY_URL=https://telemetry.example/ingest",
                 "ALFRED_PLANNER_REPOS=api",
-                "AGENT_CODENAME_PLANNER=planner",
-                "AGENT_CODENAME_FEATURE_DEV=fox",
-                "ALFRED_SENIOR_DEV_REPOS=stale-api",
-                "ALFRED_SENIOR_DEV_AWS_PROFILE=stale-profile",
-                "ALFRED_FOX_REPOS=legacy-api",
-                "ALFRED_FOX_AWS_PROFILE=legacy-profile",
+                "ALFRED_SENIOR_DEV_REPOS=api",
+                "ALFRED_SENIOR_DEV_AWS_PROFILE=senior-dev-profile",
                 "",
             ]
         )
-    )
-    (alfred_home / "prompts").mkdir()
-    (alfred_home / "prompts" / "fox.md").write_text("custom senior prompt\n")
-    (alfred_home / "prompts" / "senior-dev.md").write_text("partial canonical prompt\n")
-    (alfred_home / "agents").mkdir()
-    (alfred_home / "agents" / "fox.toml").write_text('[pre_push]\napi = "old-check"\n')
-    (alfred_home / "agents" / "senior-dev.toml").write_text('[pre_push]\napi = "partial-check"\n')
-    (alfred_home / "state" / "_paused").mkdir(parents=True)
-    (alfred_home / "state" / "_paused" / "fox").write_text("operator pause\n")
-    (alfred_home / "state" / "engines").mkdir()
-    (alfred_home / "state" / "engines" / "fox").write_text("codex\n")
-    (alfred_home / "state" / "fox").mkdir()
-    (alfred_home / "state" / "fox" / "spend-2026-07-12.json").write_text(
-        '{"firings_today":3,"fixes_landed":2,"merged_today":1,"hits_today":4,'
-        '"prs_opened_today":2,"triaged_today":3,"last_session_id_per_target":'
-        '{"shared":"legacy-session","legacy-only":"legacy-session"}}\n'
-    )
-    (alfred_home / "state" / "fox" / "checkpoint.json").write_text(
-        '{"cursor":"old","old_only":1}\n'
-    )
-    (alfred_home / "state" / "senior-dev").mkdir()
-    (alfred_home / "state" / "senior-dev" / "spend-2026-07-12.json").write_text(
-        '{"firings_today":2,"fixes_landed":1,"merged_today":2,"hits_today":3,'
-        '"prs_opened_today":4,"triaged_today":5,"last_session_id_per_target":'
-        '{"shared":"canonical-session","canonical-only":"canonical-session"}}\n'
-    )
-    (alfred_home / "state" / "senior-dev" / "checkpoint.json").write_text(
-        '{"cursor":"new","new_only":2}\n'
-    )
-    (alfred_home / "state" / "transcripts" / "fox").mkdir(parents=True)
-    (alfred_home / "state" / "transcripts" / "fox" / "run.jsonl").write_text('{"source":"old"}\n')
-    (alfred_home / "state" / "transcripts" / "senior-dev").mkdir()
-    (alfred_home / "state" / "transcripts" / "senior-dev" / "run.jsonl").write_text(
-        '{"source":"canonical"}\n'
-    )
-    (alfred_home / "state" / "codex" / "fox").mkdir(parents=True)
-    (alfred_home / "state" / "codex" / "fox" / "run.jsonl").write_text("{}\n")
-    (alfred_home / "state" / "memory-outbox").mkdir()
-    (alfred_home / "state" / "memory-outbox" / "fox.jsonl").write_text('{"lesson":"old"}\n')
-    (alfred_home / "state" / "roster-theme").mkdir()
-    (alfred_home / "state" / "roster-theme" / "roster-theme.json").write_text(
-        json.dumps(
-            {
-                "theme": "custom",
-                "custom_names": {"fox": "Maya", "senior-dev": "Canonical"},
-                "custom_roles": {"fox": "Builder"},
-            }
-        )
-    )
-    (alfred_home / "state" / "fleet").mkdir()
-    (alfred_home / "state" / "fleet" / "enabled.txt").write_text(
-        "# enabled roles\nfox # custom alias\narchitect\n"
     )
     monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
     monkeypatch.delenv("ALFRED_NONINTERACTIVE", raising=False)
@@ -2292,84 +2232,15 @@ def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
     assert "SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T000/B000/token\n" in env_text
     assert "ALFRED_TELEMETRY_ENABLED=1\n" in env_text
     assert "ALFRED_TELEMETRY_URL=https://telemetry.example/ingest\n" in env_text
-    assert "ALFRED_SENIOR_DEV_REPOS=legacy-api\n" in env_text
-    assert "ALFRED_SENIOR_DEV_AWS_PROFILE=legacy-profile\n" in env_text
+    assert "ALFRED_SENIOR_DEV_REPOS=api\n" in env_text
+    assert "ALFRED_SENIOR_DEV_AWS_PROFILE=senior-dev-profile\n" in env_text
     assert "ALFRED_PLANNER_REPOS=api\n" in env_text
     assert "AGENT_CODENAME_" not in env_text
-    assert "ALFRED_FOX_REPOS" not in env_text
-    assert "ALFRED_FOX_AWS_PROFILE" not in env_text
 
     conf = (alfred_home / "launchd" / "agents.conf").read_text()
     assert "alfred.senior-dev\tsenior-dev.py" in conf
-    assert "alfred.fox\t" not in conf
     assert "alfred.proof-telemetry\tproof-telemetry.py" in conf
     assert (alfred_home / "prompts" / "senior-dev.md").exists()
-    assert (alfred_home / "prompts" / "senior-dev.md").read_text() == "custom senior prompt\n"
-    assert (
-        alfred_home / "prompts" / "senior-dev.md.pre-stable-identity"
-    ).read_text() == "partial canonical prompt\n"
-    assert not (alfred_home / "prompts" / "fox.md").exists()
-    assert (alfred_home / "agents" / "senior-dev.toml").read_text() == (
-        '[pre_push]\napi = "old-check"\n'
-    )
-    assert (
-        alfred_home / "agents" / "senior-dev.toml.pre-stable-identity"
-    ).read_text() == '[pre_push]\napi = "partial-check"\n'
-    assert not (alfred_home / "agents" / "fox.toml").exists()
-    assert (alfred_home / "state" / "_paused" / "senior-dev").exists()
-    assert not (alfred_home / "state" / "_paused" / "fox").exists()
-    assert (alfred_home / "state" / "engines" / "senior-dev").read_text() == "codex\n"
-    assert not (alfred_home / "state" / "engines" / "fox").exists()
-    spend = json.loads((alfred_home / "state" / "senior-dev" / "spend-2026-07-12.json").read_text())
-    assert spend["firings_today"] == 5
-    assert spend["fixes_landed"] == 3
-    assert spend["merged_today"] == 3
-    assert spend["hits_today"] == 7
-    assert spend["prs_opened_today"] == 6
-    assert spend["triaged_today"] == 8
-    assert spend["last_session_id_per_target"] == {
-        "shared": "canonical-session",
-        "legacy-only": "legacy-session",
-        "canonical-only": "canonical-session",
-    }
-    checkpoint = json.loads((alfred_home / "state" / "senior-dev" / "checkpoint.json").read_text())
-    assert checkpoint == {"cursor": "new", "new_only": 2, "old_only": 1}
-    assert not (alfred_home / "state" / "fox").exists()
-    transcript = (alfred_home / "state" / "transcripts" / "senior-dev" / "run.jsonl").read_text()
-    assert '{"source":"canonical"}\n' in transcript
-    preserved_transcript = (
-        alfred_home / "state" / "transcripts" / "senior-dev" / "run.pre-stable-identity.jsonl"
-    )
-    assert preserved_transcript.read_text() == '{"source":"old"}\n'
-    assert not (alfred_home / "state" / "transcripts" / "fox").exists()
-    assert (alfred_home / "state" / "codex" / "senior-dev" / "run.jsonl").exists()
-    assert not (alfred_home / "state" / "codex" / "fox").exists()
-    assert (alfred_home / "state" / "memory-outbox" / "senior-dev.jsonl").read_text() == (
-        '{"lesson":"old"}\n'
-    )
-    roster = json.loads((alfred_home / "state" / "roster-theme" / "roster-theme.json").read_text())
-    assert roster["custom_names"] == {"senior-dev": "Canonical"}
-    assert roster["custom_roles"] == {"senior-dev": "Builder"}
-    enabled = (alfred_home / "state" / "fleet" / "enabled.txt").read_text()
-    assert "\nsenior-dev\n" in enabled
-    assert "\nfox\n" not in enabled
-
-
-def test_generated_env_cannot_clear_newly_migrated_scope(init_mod):
-    merged = init_mod._merge_generated_env(
-        {
-            "ALFRED_SENIOR_DEV_REPOS": "legacy-api",
-            "ALFRED_SENIOR_DEV_AWS_PROFILE": "legacy-profile",
-        },
-        {
-            "ALFRED_SENIOR_DEV_REPOS": "",
-            "ALFRED_SENIOR_DEV_AWS_PROFILE": "new-profile",
-        },
-        frozenset({"ALFRED_SENIOR_DEV_REPOS", "ALFRED_SENIOR_DEV_AWS_PROFILE"}),
-    )
-
-    assert merged["ALFRED_SENIOR_DEV_REPOS"] == "legacy-api"
-    assert merged["ALFRED_SENIOR_DEV_AWS_PROFILE"] == "new-profile"
 
 
 def test_starter_roles_and_agents_arg(init_mod):
@@ -2412,79 +2283,6 @@ def test_starter_roles_and_agents_arg(init_mod):
         "memory_auto_promote",
         "cross_repo_coordinator",
     ]
-
-
-def test_identity_migration_does_not_move_shared_state_namespace(init_mod, tmp_path):
-    alfred_home = tmp_path / "alfred"
-    shared = alfred_home / "state" / "transcripts"
-    shared.mkdir(parents=True)
-    (shared / "shared-index.json").write_text("{}\n")
-    state = init_mod.WizardState(
-        alfred_home=alfred_home,
-        env_file=alfred_home / ".env",
-        repo_root=tmp_path / "repo",
-    )
-
-    init_mod.migrate_legacy_role_identities(
-        state,
-        {"feature_dev": "transcripts"},
-        {},
-    )
-
-    assert (shared / "shared-index.json").exists()
-    assert not (alfred_home / "state" / "senior-dev" / "shared-index.json").exists()
-
-
-def test_identity_migration_moves_recovery_worktree_with_git(init_mod, tmp_path):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@example.com"],
-        cwd=repo,
-        check=True,
-    )
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "commit.gpgsign", "false"], cwd=repo, check=True)
-    (repo / "README.md").write_text("base\n")
-    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
-    subprocess.run(
-        ["git", "-c", "core.hooksPath=/dev/null", "commit", "-m", "base"],
-        cwd=repo,
-        check=True,
-        capture_output=True,
-    )
-
-    alfred_home = tmp_path / "alfred"
-    old_worktree = alfred_home / "worktrees" / "eng-fox-repo-42-1"
-    old_worktree.parent.mkdir(parents=True)
-    subprocess.run(
-        ["git", "worktree", "add", "-b", "fox/42", str(old_worktree)],
-        cwd=repo,
-        check=True,
-        capture_output=True,
-    )
-    (old_worktree / "recovery.txt").write_text("uncommitted recovery\n")
-    state = init_mod.WizardState(
-        alfred_home=alfred_home,
-        env_file=alfred_home / ".env",
-        repo_root=tmp_path / "alfred-repo",
-    )
-
-    init_mod.migrate_legacy_role_identities(state, {"feature_dev": "fox"}, {})
-
-    moved = alfred_home / "worktrees" / "eng-senior-dev-repo-42-1"
-    assert moved.is_dir()
-    assert (moved / "recovery.txt").read_text() == "uncommitted recovery\n"
-    assert not old_worktree.exists()
-    listed = subprocess.run(
-        ["git", "worktree", "list", "--porcelain"],
-        cwd=repo,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout
-    assert str(moved) in listed
 
 
 def test_seed_prompt_templates_does_not_overwrite(init_mod, tmp_path):

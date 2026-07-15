@@ -7,7 +7,7 @@
   Placeholder convention: load this template via agent_runner.load_prompt().
   Required vars at runtime:
 
-    AGENT_CODENAME               display name (e.g. "Gordon")
+    AGENT_CODENAME               runtime role slug (e.g. "ops-watch")
     GH_ORG                       github org for `gh` calls
     ALFRED_HOME                  runtime home (defaults to ~/.alfred)
     WORKSPACE_ROOT               parent dir of per-repo checkouts
