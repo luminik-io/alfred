@@ -571,6 +571,7 @@ def test_collect_snapshot_keeps_latest_run_for_duplicate_check_name():
             {
                 "__typename": "CheckRun",
                 "name": "pytest",
+                "workflowName": "CI",
                 "status": "COMPLETED",
                 "conclusion": "CANCELLED",
                 "startedAt": "2026-07-15T05:00:00Z",
@@ -578,6 +579,7 @@ def test_collect_snapshot_keeps_latest_run_for_duplicate_check_name():
             {
                 "__typename": "CheckRun",
                 "name": "pytest",
+                "workflowName": "CI",
                 "status": "COMPLETED",
                 "conclusion": "SUCCESS",
                 "startedAt": "2026-07-15T05:05:00Z",
@@ -603,6 +605,56 @@ def test_collect_snapshot_keeps_latest_run_for_duplicate_check_name():
 
     assert snap.checks == (CheckRun("pytest", "SUCCESS"),)
     assert evaluate_gate(snap).mergeable is True
+
+
+def test_collect_snapshot_preserves_same_named_checks_from_distinct_workflows():
+    view = {
+        "state": "OPEN",
+        "headRefOid": "b" * 40,
+        "reviewDecision": "APPROVED",
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "statusCheckRollup": [
+            {
+                "__typename": "CheckRun",
+                "name": "verify",
+                "workflowName": "Backend CI",
+                "status": "COMPLETED",
+                "conclusion": "FAILURE",
+                "startedAt": "2026-07-15T05:00:00Z",
+            },
+            {
+                "__typename": "CheckRun",
+                "name": "verify",
+                "workflowName": "Frontend CI",
+                "status": "COMPLETED",
+                "conclusion": "SUCCESS",
+                "startedAt": "2026-07-15T05:05:00Z",
+            },
+        ],
+    }
+    reviews = [
+        [
+            {
+                "user": {"login": "operator"},
+                "state": "APPROVED",
+                "submitted_at": "2026-07-11T10:00:00Z",
+                "commit_id": "b" * 40,
+            }
+        ]
+    ]
+
+    snap = collect_snapshot(
+        "acme/repo",
+        7,
+        gh_json=_fake_gh_json(view, [], reviews),
+    )
+
+    assert snap.checks == (
+        CheckRun("verify", "FAILURE"),
+        CheckRun("verify", "SUCCESS"),
+    )
+    assert evaluate_gate(snap).mergeable is False
 
 
 def test_collect_snapshot_requires_native_thread_resolution():
@@ -639,6 +691,49 @@ def test_collect_snapshot_requires_native_thread_resolution():
 
     assert decision.mergeable is False
     assert "not required by the base branch rules" in decision.short_reason()
+
+
+def test_collect_snapshot_reads_all_effective_rule_pages():
+    view = {
+        "state": "OPEN",
+        "headRefOid": "b" * 40,
+        "reviewDecision": "APPROVED",
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "statusCheckRollup": [],
+    }
+    reviews = [
+        [
+            {
+                "user": {"login": "operator"},
+                "state": "APPROVED",
+                "submitted_at": "2026-07-11T10:00:00Z",
+                "commit_id": "b" * 40,
+            }
+        ]
+    ]
+    base_runner = _fake_gh_json(view, [], reviews)
+
+    def _runner(cmd, default):
+        if any("/rules/branches/" in str(arg) for arg in cmd):
+            return [
+                [{"type": "deletion", "ruleset_id": 41}],
+                [
+                    {
+                        "type": "pull_request",
+                        "ruleset_id": 42,
+                        "parameters": {
+                            "required_review_thread_resolution": True,
+                        },
+                    }
+                ],
+            ]
+        return base_runner(cmd, default)
+
+    snap = collect_snapshot("acme/repo", 7, gh_json=_runner)
+
+    assert snap.native_thread_resolution is True
+    assert evaluate_gate(snap).mergeable is True
 
 
 def test_collect_snapshot_accepts_non_bypassable_classic_protection():

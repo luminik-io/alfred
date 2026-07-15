@@ -470,19 +470,33 @@ def collect_snapshot(
     review_decision = view.get("reviewDecision") if view.get("reviewDecision") else None
     reviews = _collect_reviews(repo, pr_number, gh_json=gh_json, errors=errors)
 
-    latest_checks: dict[str, tuple[str, int, CheckRun]] = {}
+    latest_checks: dict[tuple[str, str, str], tuple[str, int, CheckRun]] = {}
     for index, entry in enumerate(view.get("statusCheckRollup") or []):
         normalized = _normalize_check(entry)
         if normalized is None:
             continue
+        kind = str(entry.get("__typename") or "")
+        workflow = str(entry.get("workflowName") or "")
+        details_url = str(entry.get("detailsUrl") or "")
+        if kind == "StatusContext":
+            source = "commit-status"
+        elif workflow:
+            source = f"workflow:{workflow}"
+        elif details_url:
+            source = f"details:{details_url}"
+        else:
+            # With no provider or workflow identity, preserving the check is
+            # safer than allowing another same-named check to hide it.
+            source = f"unknown:{index}"
+        context = (kind, source, normalized.name)
         timestamp = str(entry.get("startedAt") or entry.get("completedAt") or "")
-        previous = latest_checks.get(normalized.name)
+        previous = latest_checks.get(context)
         if (
             previous is None
             or (timestamp and timestamp >= previous[0])
             or (not timestamp and not previous[0])
         ):
-            latest_checks[normalized.name] = (timestamp, index, normalized)
+            latest_checks[context] = (timestamp, index, normalized)
     checks = [item[2] for item in sorted(latest_checks.values(), key=lambda item: item[1])]
 
     threads = _collect_review_threads(repo, pr_number, gh_json=gh_json, errors=errors)
@@ -559,18 +573,27 @@ def _collect_native_thread_resolution(
         errors.append("could not identify the PR base branch")
         return None
     missing = object()
-    rules = gh_json(
+    rules_payload = gh_json(
         [
             "gh",
             "api",
             f"repos/{repo}/rules/branches/{quote(base_ref, safe='')}",
+            "--paginate",
+            "--slurp",
         ],
         missing,
     )
-    rules_readable = isinstance(rules, list)
+    rules: list[Any] | None = None
+    if isinstance(rules_payload, list):
+        if all(isinstance(page, list) for page in rules_payload):
+            rules = [rule for page in rules_payload for rule in page]
+        elif all(isinstance(rule, dict) for rule in rules_payload):
+            # Injectable test runners may return the already-flattened result.
+            rules = rules_payload
+    rules_readable = rules is not None
     ruleset_detail_unreadable = False
     if rules_readable:
-        for rule in rules:
+        for rule in rules or []:
             if not isinstance(rule, dict) or rule.get("type") != "pull_request":
                 continue
             parameters = rule.get("parameters") or {}
