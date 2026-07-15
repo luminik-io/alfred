@@ -1596,6 +1596,24 @@ def test_read_managed_env_file_ignores_later_token_block(tmp_path, init_mod):
     assert out == {"GH_ORG": "acme"}
 
 
+def test_read_managed_env_file_rejects_removed_role_alias(tmp_path, init_mod, capsys):
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        f"{init_mod.ALFRED_ENV_BANNER}\nAGENT_CODENAME_FEATURE_DEV=fox\nALFRED_FOX_REPOS=api\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit, match="2"):
+        init_mod.read_managed_env_file(env_file)
+
+    error = capsys.readouterr().err
+    assert "removed mutable role identities" in error
+    assert "reinstall" in error
+
+    with pytest.raises(SystemExit, match="2"):
+        init_mod.upsert_env_file(env_file, {"GH_ORG": "acme"})
+
+
 def test_upsert_env_file_quotes_shell_metacharacters(tmp_path, init_mod):
     rc = tmp_path / ".env"
     marker = tmp_path / "command-substitution-ran"

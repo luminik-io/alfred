@@ -638,6 +638,7 @@ def read_managed_env_file(path: Path) -> dict[str, str]:
     managed = ALFRED_ENV_BANNER_RE.search(raw)
     if not managed:
         return {}
+    reject_removed_role_aliases(path, raw, managed)
     return _parse_env_text(
         "\n".join(
             _managed_env_assignment_lines(
@@ -662,6 +663,11 @@ def upsert_env_file(path: Path, kvs: dict[str, str]) -> None:
     Idempotent: rewrites the marker block on every call so re-running
     the wizard doesn't accumulate dupes.
     """
+    if path.exists():
+        raw = path.read_text()
+        managed = ALFRED_ENV_BANNER_RE.search(raw)
+        if managed:
+            reject_removed_role_aliases(path, raw, managed)
     upsert_env_block(
         path,
         kvs,
@@ -680,6 +686,22 @@ def env_assignment_key(line: str) -> str | None:
 def _line_after_match(text: str, match: re.Match[str]) -> int:
     line_end = text.find("\n", match.end())
     return len(text) if line_end == -1 else line_end + 1
+
+
+def reject_removed_role_aliases(path: Path, text: str, match: re.Match[str]) -> None:
+    """Stop instead of guessing how to rewrite a retired mutable identity config."""
+    cursor = _line_after_match(text, match)
+    for line in text[cursor:].splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            break
+        key = env_assignment_key(stripped)
+        if key and key.startswith("AGENT_CODENAME_"):
+            fail(
+                f"{path} uses removed mutable role identities. "
+                "Remove the Alfred runtime directory and reinstall; built-in role slugs are fixed."
+            )
+            raise SystemExit(2)
 
 
 def _managed_env_assignment_lines(
