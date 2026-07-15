@@ -434,6 +434,24 @@ def _normalize_check(entry: dict) -> CheckRun | None:
     return CheckRun(str(name), mapping.get(state, "FAILURE" if state else ""))
 
 
+def _check_workflow_name(entry: dict[str, Any]) -> str:
+    """Return a GitHub Actions workflow name from CLI or GraphQL shapes."""
+
+    flat = entry.get("workflowName")
+    if flat:
+        return str(flat)
+    check_suite = entry.get("checkSuite")
+    if not isinstance(check_suite, dict):
+        return ""
+    workflow_run = check_suite.get("workflowRun")
+    if not isinstance(workflow_run, dict):
+        return ""
+    workflow = workflow_run.get("workflow")
+    if not isinstance(workflow, dict):
+        return ""
+    return str(workflow.get("name") or "")
+
+
 def collect_snapshot(
     repo: str,
     pr_number: int,
@@ -476,7 +494,7 @@ def collect_snapshot(
         if normalized is None:
             continue
         kind = str(entry.get("__typename") or "")
-        workflow = str(entry.get("workflowName") or "")
+        workflow = _check_workflow_name(entry)
         details_url = str(entry.get("detailsUrl") or "")
         if kind == "StatusContext":
             source = "commit-status"

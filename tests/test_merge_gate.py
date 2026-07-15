@@ -571,7 +571,7 @@ def test_collect_snapshot_keeps_latest_run_for_duplicate_check_name():
             {
                 "__typename": "CheckRun",
                 "name": "pytest",
-                "workflowName": "CI",
+                "checkSuite": {"workflowRun": {"workflow": {"name": "CI"}}},
                 "status": "COMPLETED",
                 "conclusion": "CANCELLED",
                 "startedAt": "2026-07-15T05:00:00Z",
@@ -579,7 +579,7 @@ def test_collect_snapshot_keeps_latest_run_for_duplicate_check_name():
             {
                 "__typename": "CheckRun",
                 "name": "pytest",
-                "workflowName": "CI",
+                "checkSuite": {"workflowRun": {"workflow": {"name": "CI"}}},
                 "status": "COMPLETED",
                 "conclusion": "SUCCESS",
                 "startedAt": "2026-07-15T05:05:00Z",
