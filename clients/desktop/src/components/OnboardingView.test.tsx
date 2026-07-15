@@ -2083,6 +2083,17 @@ describe("OnboardingView conversational setup actions", () => {
     await user.click(await screen.findByRole("button", { name: buttonName }));
   }
 
+  it("keeps the conversational workspace at its stable setup height", async () => {
+    renderOnboarding();
+    const user = userEvent.setup();
+
+    expect(document.querySelector(".alfred-onboarding-shell")).toHaveClass("is-welcome");
+    await user.click(await screen.findByRole("button", { name: /set it up by chatting/i }));
+
+    expect(await screen.findByLabelText(/message alfred to set up/i)).toBeInTheDocument();
+    expect(document.querySelector(".alfred-onboarding-shell")).not.toHaveClass("is-welcome");
+  });
+
   it("hands conversational repository selection to the local checkout step", async () => {
     const save = vi.spyOn(apiSetup, "saveSetupRepos").mockResolvedValue({
       ok: true,

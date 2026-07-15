@@ -866,7 +866,7 @@ export function OnboardingView({
       <div
         className={cn(
           "alfred-onboarding-shell alfred-glass",
-          stepKey === "welcome" && "is-welcome",
+          mode === "stepped" && stepKey === "welcome" && "is-welcome",
         )}
       >
         {mode === "chat" ? (
