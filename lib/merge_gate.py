@@ -483,10 +483,7 @@ def collect_snapshot(
             or (not timestamp and not previous[0])
         ):
             latest_checks[normalized.name] = (timestamp, index, normalized)
-    checks = [
-        item[2]
-        for item in sorted(latest_checks.values(), key=lambda item: item[1])
-    ]
+    checks = [item[2] for item in sorted(latest_checks.values(), key=lambda item: item[1])]
 
     threads = _collect_review_threads(repo, pr_number, gh_json=gh_json, errors=errors)
     native_thread_resolution = _collect_native_thread_resolution(
