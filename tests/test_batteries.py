@@ -112,6 +112,28 @@ def test_managed_env_keys_cover_all_enable_and_disable_keys() -> None:
         assert set(battery.disable_env) <= keys, battery.id
 
 
+@pytest.mark.parametrize("use_override", [True, False])
+def test_code_memory_detection_requires_an_executable_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    use_override: bool,
+) -> None:
+    monkeypatch.setattr(batteries.shutil, "which", lambda _name: None)
+    alfred_home = tmp_path / "alfred"
+    binary = tmp_path / "override" if use_override else alfred_home / "bin" / "codebase-memory-mcp"
+    binary.parent.mkdir(parents=True, exist_ok=True)
+    binary.write_text("not executable\n", encoding="utf-8")
+    binary.chmod(0o600)
+    env = {"ALFRED_HOME": str(alfred_home)}
+    if use_override:
+        env["ALFRED_CODE_MEMORY_BIN"] = str(binary)
+
+    assert batteries._code_memory_binary(env) is False
+
+    binary.chmod(0o700)
+    assert batteries._code_memory_binary(env) is True
+
+
 # --------------------------------------------------------------------------- #
 # Zero batteries: Alfred is fully functional with only built-ins
 # --------------------------------------------------------------------------- #

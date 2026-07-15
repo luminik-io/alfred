@@ -532,14 +532,18 @@ def _find_spec(name: str) -> bool:
         return False
 
 
+def _is_executable_file(path: Path) -> bool:
+    return path.is_file() and os.access(path, os.X_OK)
+
+
 def _code_memory_binary(env: Mapping[str, str]) -> bool:
     override = str(env.get("ALFRED_CODE_MEMORY_BIN", "")).strip()
-    if override and Path(override).expanduser().exists():
+    if override and _is_executable_file(Path(override).expanduser()):
         return True
     if shutil.which("codebase-memory-mcp"):
         return True
     fetched = _alfred_home(env) / "bin" / "codebase-memory-mcp"
-    return fetched.exists()
+    return _is_executable_file(fetched)
 
 
 def _graphify_available(env: Mapping[str, str]) -> bool:

@@ -2409,6 +2409,7 @@ def test_non_interactive_keeps_included_defaults_without_redundant_env(init_mod,
     # Included defaults do not need redundant env flags.
     assert "ALFRED_MEMORY_SQLITE_DENSE" not in env
     assert "ALFRED_MEMORY_PROVIDERS" not in env
+    assert "ALFRED_CODE_MEMORY_MCP" not in env
 
 
 def test_batteries_arg_selects_opt_ins(init_mod, tmp_path):
@@ -2427,6 +2428,10 @@ def test_batteries_arg_none_clears(init_mod, tmp_path):
     state.batteries = ["dense-embeddings"]
     init_mod.apply_batteries_arg(state, "none")
     assert state.batteries == []
+    assert state.battery_defaults_disabled is True
+    env = init_mod.env_assignments_for(state)
+    assert env["ALFRED_CODE_MEMORY_MCP"] == "0"
+    assert env["ALFRED_CODE_MEMORY_AUTOFETCH"] == "0"
 
 
 def test_batteries_arg_rejects_builtin_and_unknown(init_mod, tmp_path, capsys):

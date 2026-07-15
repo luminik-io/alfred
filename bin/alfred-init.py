@@ -501,6 +501,7 @@ class WizardState:
     telemetry_url: str = field(default_factory=default_telemetry_url)
     telemetry_token: str = ""  # optional shared ingest token (X-Ingest-Token)
     batteries: list[str] = field(default_factory=list)  # opt-in battery ids to enable
+    battery_defaults_disabled: bool = False  # explicit --batteries none/builtin choice
 
 
 # ---------------------------------------------------------------------------
@@ -1376,12 +1377,16 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
     elif not state.telemetry_enabled:
         out["ALFRED_TELEMETRY_ENABLED"] = "0"
     # Advanced batteries the operator picked. Included defaults need no explicit
-    # env value. Each selection sets its real flags from the shared manifest and
-    # composes onto the existing config so a memory battery merges into the current provider
-    # chain (never clobbers it) and two batteries writing the same key (composed
-    # sequentially) do not collide. Mutually-exclusive primaries are rejected
-    # earlier in step_8c, so at most one provider battery reaches here.
+    # env value unless the operator requested built-ins only. Each selection sets
+    # its real flags from the shared manifest and composes onto the existing
+    # config, so a memory battery merges into the current provider chain instead
+    # of clobbering it. Mutually-exclusive primaries are rejected in step_8c.
     compose_env = {**existing_effective_env, **out}
+    if state.battery_defaults_disabled:
+        for battery in batteries.default_batteries():
+            values = batteries.disable_values(battery)
+            out.update(values)
+            compose_env.update(values)
     for battery_id in state.batteries:
         battery = batteries.battery_by_id(battery_id)
         if battery is not None and not battery.builtin:
@@ -1990,6 +1995,7 @@ def apply_batteries_arg(state: WizardState, batteries_arg: str | None) -> None:
     raw = batteries_arg.strip().lower()
     if raw in {"", "none", "builtin", "built-in", "builtins"}:
         state.batteries = []
+        state.battery_defaults_disabled = True
         return
     selected: list[str] = list(state.batteries)
     for token in raw.split(","):
@@ -2044,7 +2050,9 @@ def step_8c_batteries(state: WizardState, *, non_interactive: bool) -> None:
         if conflict:
             fail(f"Battery selection conflict: {conflict}")
             sys.exit(1)
-        if state.batteries:
+        if state.battery_defaults_disabled:
+            ok("Built-ins only selected. Included configurable tools are disabled.")
+        elif state.batteries:
             chosen = ", ".join(state.batteries)
             ok(f"Advanced integrations selected: {chosen}. Included tools stay on.")
         else:
