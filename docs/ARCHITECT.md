@@ -322,7 +322,7 @@ alfred labels bootstrap my-org/specs
 | `ARCHITECT_AUTO_EXECUTE` | `0` | Controls the gate. Values: `0` (halt after plan, the safe default), `approval-gate` (require approval), `1` (execute without a gate). |
 | `ARCHITECT_PARENT_REPO` | (unset) | `owner/repo` the architect reads parent issues from. When unset, the architect exits cleanly without querying GitHub. |
 | `ARCHITECT_PICKER` | `oldest` | `oldest` (FIFO by `createdAt`) or `newest`. |
-| `ARCHITECT_ROLLOUT_ORDER` | `backend,frontend,mobile,agents,data-acquisition` | Comma-separated repo keys used when parent issues do not specify a rollout order. `alfred architect setup` writes this key so old `BATMAN_ROLLOUT_ORDER` values never act as runtime fallbacks. |
+| `ARCHITECT_ROLLOUT_ORDER` | `backend,frontend,mobile,agents,data-acquisition` | Comma-separated repo keys used when parent issues do not specify a rollout order. |
 | `ARCHITECT_BUNDLE_SLUG_PREFIX` | empty | Optional prefix prepended to the derived slug. Useful when several teams share a Slack channel and want their bundles distinguishable. |
 | `ARCHITECT_APPROVAL_TIMEOUT_S` | `86400` | Wall-clock seconds the gate will wait for a reaction. |
 | `ARCHITECT_APPROVAL_MODE` | `slack-or-file` | Approval surface when `ARCHITECT_AUTO_EXECUTE=approval-gate`. Values: `slack-or-file` (Slack reactions plus Alfred client approve/decline), `slack` (Slack only), `file` (Alfred client/file marker only). |
