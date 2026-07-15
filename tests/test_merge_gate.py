@@ -35,6 +35,7 @@ def _snapshot(**overrides) -> GateSnapshot:
         "merge_state_status": "CLEAN",
         "mergeable": "MERGEABLE",
         "checks": (CheckRun("ci", "SUCCESS"),),
+        "native_thread_resolution": True,
         "errors": (),
     }
     base.update(overrides)
@@ -445,11 +446,26 @@ def test_no_branch_protection_rejects_approval_for_stale_head():
 # --------------------------------------------------------------------------
 
 
-def _fake_gh_json(view_payload, threads_payload, reviews_payload=None):
+def _fake_gh_json(
+    view_payload,
+    threads_payload,
+    reviews_payload=None,
+    *,
+    native_thread_resolution=True,
+):
     review_page = 0
 
     def _runner(cmd, default):
         nonlocal review_page
+        if any("/rules/branches/" in str(arg) for arg in cmd):
+            return [
+                {
+                    "type": "pull_request",
+                    "parameters": {
+                        "required_review_thread_resolution": native_thread_resolution,
+                    },
+                }
+            ]
         if any("reviews(first:100" in str(arg) for arg in cmd):
             pages = reviews_payload if reviews_payload is not None else [[]]
             if review_page >= len(pages):
@@ -479,7 +495,9 @@ def _fake_gh_json(view_payload, threads_payload, reviews_payload=None):
                 "nodes": threads_payload,
                 "pageInfo": {"hasNextPage": False, "endCursor": None},
             }
-        return view_payload if view_payload is not None else default
+        if view_payload is None:
+            return default
+        return {"baseRefName": "main", **view_payload}
 
     return _runner
 
@@ -532,7 +550,44 @@ def test_collect_snapshot_builds_from_gh():
     assert snap.review_decision == "APPROVED"
     assert len(snap.reviews) == 1
     assert len(snap.checks) == 2
+    assert snap.native_thread_resolution is True
     assert evaluate_gate(snap).mergeable is True
+
+
+def test_collect_snapshot_requires_native_thread_resolution():
+    view = {
+        "state": "OPEN",
+        "headRefOid": "b" * 40,
+        "reviewDecision": "APPROVED",
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "statusCheckRollup": [],
+    }
+    reviews = [
+        [
+            {
+                "user": {"login": "operator"},
+                "state": "APPROVED",
+                "submitted_at": "2026-07-11T10:00:00Z",
+                "commit_id": "b" * 40,
+            }
+        ]
+    ]
+    snap = collect_snapshot(
+        "acme/repo",
+        7,
+        gh_json=_fake_gh_json(
+            view,
+            [],
+            reviews,
+            native_thread_resolution=False,
+        ),
+    )
+
+    decision = evaluate_gate(snap)
+
+    assert decision.mergeable is False
+    assert "not required by the base branch rules" in decision.short_reason()
 
 
 def test_collect_snapshot_missing_view_fails_closed():
@@ -669,6 +724,7 @@ def test_collect_snapshot_paginates_all_review_threads():
     view = {
         "state": "OPEN",
         "headRefOid": "e" * 40,
+        "baseRefName": "main",
         "reviewDecision": "APPROVED",
         "mergeable": "MERGEABLE",
         "mergeStateStatus": "CLEAN",
@@ -677,6 +733,13 @@ def test_collect_snapshot_paginates_all_review_threads():
     calls = []
 
     def _runner(cmd, default):
+        if any("/rules/branches/" in str(arg) for arg in cmd):
+            return [
+                {
+                    "type": "pull_request",
+                    "parameters": {"required_review_thread_resolution": True},
+                }
+            ]
         if any("reviews(first:100" in str(arg) for arg in cmd):
             return {"nodes": [], "pageInfo": {"hasNextPage": False, "endCursor": None}}
         if "graphql" not in cmd:

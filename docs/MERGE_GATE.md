@@ -17,12 +17,15 @@ A PR is mergeable by Alfred only when all of these hold:
    current head. On a protected repo, GitHub independently enforces any stricter
    branch rule or code-owner requirement.
 3. There are zero unresolved review threads, from any author.
-4. `mergeStateStatus` is `CLEAN` and `mergeable` is `MERGEABLE`. This is
+4. The effective rules for the PR's base branch require review-thread
+   resolution. This makes GitHub itself reject a thread opened in the final
+   recheck-to-mutation window. If Alfred cannot verify this rule, it fails closed.
+5. `mergeStateStatus` is `CLEAN` and `mergeable` is `MERGEABLE`. This is
    GitHub's own summary that required status checks passed and nothing is
    blocking the merge. `UNSTABLE`, `BLOCKED`, `DIRTY`, `BEHIND`, and `UNKNOWN`
    all fail the gate.
-5. No check run is in a failing conclusion.
-6. Every external review named in `ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS` has
+6. No check run is in a failing conclusion.
+7. Every external review named in `ALFRED_MERGE_REQUIRED_EXTERNAL_REVIEWS` has
    posted a clean verdict on the exact current head. This is empty by default, so
    the gate relies on GitHub's own review settings unless you set it.
 
@@ -50,7 +53,8 @@ complete snapshot before the mutation. A same-head review thread, changed
 status, or stale external review therefore blocks the merge. The second head
 must also equal the first head. Alfred then squash-merges with that commit
 (`gh pr merge --squash --match-head-commit <sha>`), so a push in the remaining
-mutation window is rejected by GitHub.
+mutation window is rejected by GitHub. The required base-branch conversation
+rule makes GitHub reject a thread opened in that same final window.
 
 ## Policy knobs
 

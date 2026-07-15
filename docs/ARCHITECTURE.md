@@ -45,7 +45,7 @@ flowchart TD
     automerge -->|not yet| pr
 ```
 
-The automerge gate is one fail-closed predicate in `lib/merge_gate.py`. It requires distinct approving reviews on the exact current head, no blocking GitHub review decision, zero unresolved review threads, a clean merge state, and no failing checks. Every review and thread page is fetched before deciding and fetched again immediately before merge. The first and second heads must match, and the merge is a SHA-guarded squash. Only `agent:authored` PRs in `ALFRED_AUTOMERGE_REPOS` are eligible. See [MERGE_GATE.md](MERGE_GATE.md) for the complete contract.
+The automerge gate is one fail-closed predicate in `lib/merge_gate.py`. It requires distinct approving reviews on the exact current head, no blocking GitHub review decision, zero unresolved review threads, server-side conversation resolution on the base branch, a clean merge state, and no failing checks. Every review and thread page is fetched before deciding and fetched again immediately before merge. The first and second heads must match, and the merge is a SHA-guarded squash. Only `agent:authored` PRs in `ALFRED_AUTOMERGE_REPOS` are eligible. See [MERGE_GATE.md](MERGE_GATE.md) for the complete contract.
 
 The claim is `release_issue`-symmetric: every claim comment is paired with a release comment carrying the same `codename`/`firing_id`. A crash that leaves a claim unpaired is recovered by `find_stale_claims` / `force_release_stale_claim` in the cleanup agent after `ALFRED_CLAIM_MAX_AGE_HOURS` (default 4).
 

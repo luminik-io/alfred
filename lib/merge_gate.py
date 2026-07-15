@@ -13,9 +13,11 @@ A PR is mergeable-by-alfred only when ALL of the following hold:
    ``min_approvals`` distinct approvals target the exact current head. Branch
    protection remains an independent, potentially stricter policy.
 3. There are zero unresolved review threads, from any author.
-4. ``mergeStateStatus`` is ``CLEAN`` and ``mergeable`` is ``MERGEABLE``. This
+4. GitHub's effective base-branch rules require review-thread resolution, so a
+   thread opened in the final mutation window is rejected server-side.
+5. ``mergeStateStatus`` is ``CLEAN`` and ``mergeable`` is ``MERGEABLE``. This
    encodes required status checks and the absence of any blocking state.
-5. No check run is in a failing conclusion.
+6. No check run is in a failing conclusion.
 
 The design fails closed: any API error, missing field, or unrecognised value
 makes the gate return "not mergeable" rather than guessing.
@@ -35,6 +37,7 @@ import subprocess
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import quote
 
 MIN_APPROVALS_DEFAULT = 1
 
@@ -123,6 +126,7 @@ class GateSnapshot:
     merge_state_status: str
     mergeable: str
     checks: tuple[CheckRun, ...]
+    native_thread_resolution: bool | None = None
     external_reviews: tuple[ExternalReviewEvidence, ...] = ()
     errors: tuple[str, ...] = ()
 
@@ -278,6 +282,30 @@ def _threads_condition(snapshot: GateSnapshot) -> Condition:
     )
 
 
+def _native_thread_resolution_condition(snapshot: GateSnapshot) -> Condition:
+    label = "GitHub enforces thread resolution"
+    if snapshot.native_thread_resolution is True:
+        return Condition(
+            "native_threads",
+            label,
+            True,
+            "required by the base branch rules",
+        )
+    if snapshot.native_thread_resolution is False:
+        return Condition(
+            "native_threads",
+            label,
+            False,
+            "not required by the base branch rules",
+        )
+    return Condition(
+        "native_threads",
+        label,
+        False,
+        "base branch enforcement could not be verified",
+    )
+
+
 def _merge_state_condition(snapshot: GateSnapshot) -> Condition:
     label = "Branch is mergeable and clean"
     merge_state = (snapshot.merge_state_status or "").upper()
@@ -367,6 +395,7 @@ def evaluate_gate(
     )
     conditions.append(_approval_condition(snapshot, min_approvals))
     conditions.append(_threads_condition(snapshot))
+    conditions.append(_native_thread_resolution_condition(snapshot))
     conditions.append(_merge_state_condition(snapshot))
     conditions.append(_checks_condition(snapshot))
     conditions.append(_external_reviews_condition(snapshot, required_external_reviews))
@@ -429,7 +458,8 @@ def collect_snapshot(
             "-R",
             repo,
             "--json",
-            "state,headRefOid,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup",
+            "state,headRefOid,baseRefName,reviewDecision,mergeable,mergeStateStatus,"
+            "statusCheckRollup",
         ],
         _MISSING,
     )
@@ -447,6 +477,12 @@ def collect_snapshot(
             checks.append(normalized)
 
     threads = _collect_review_threads(repo, pr_number, gh_json=gh_json, errors=errors)
+    native_thread_resolution = _collect_native_thread_resolution(
+        repo,
+        str(view.get("baseRefName") or ""),
+        gh_json=gh_json,
+        errors=errors,
+    )
     external_reviews = (
         _collect_external_reviews(repo, pr_number, gh_json=gh_json, errors=errors)
         if collect_external_reviews
@@ -462,6 +498,7 @@ def collect_snapshot(
         merge_state_status=str(view.get("mergeStateStatus") or ""),
         mergeable=str(view.get("mergeable") or ""),
         checks=tuple(checks),
+        native_thread_resolution=native_thread_resolution,
         external_reviews=tuple(external_reviews),
         errors=tuple(errors),
     )
@@ -492,6 +529,40 @@ _REVIEWS_QUERY = (
     " }"
     "}"
 )
+
+
+def _collect_native_thread_resolution(
+    repo: str,
+    base_ref: str,
+    *,
+    gh_json: GhJson,
+    errors: list[str],
+) -> bool | None:
+    """Verify that GitHub will reject a late unresolved thread atomically."""
+    if not base_ref:
+        errors.append("could not identify the PR base branch")
+        return None
+    rules = gh_json(
+        [
+            "gh",
+            "api",
+            f"repos/{repo}/rules/branches/{quote(base_ref, safe='')}",
+        ],
+        None,
+    )
+    if not isinstance(rules, list):
+        errors.append("could not verify base branch conversation rules")
+        return None
+    for rule in rules:
+        if not isinstance(rule, dict) or rule.get("type") != "pull_request":
+            continue
+        parameters = rule.get("parameters") or {}
+        if (
+            isinstance(parameters, dict)
+            and parameters.get("required_review_thread_resolution") is True
+        ):
+            return True
+    return False
 
 
 def _collect_external_reviews(

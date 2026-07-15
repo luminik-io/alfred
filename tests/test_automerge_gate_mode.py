@@ -104,6 +104,7 @@ def test_external_gate_honors_disabled_human_approval(monkeypatch):
         merge_state_status="CLEAN",
         mergeable="MERGEABLE",
         checks=(CheckRun("ci", "SUCCESS"),),
+        native_thread_resolution=True,
         errors=(),
         external_reviews=(
             ExternalReviewEvidence(
@@ -140,6 +141,7 @@ def test_merge_via_gate_merges_when_gate_passes(monkeypatch):
         merge_state_status="CLEAN",
         mergeable="MERGEABLE",
         checks=(CheckRun("ci", "SUCCESS"),),
+        native_thread_resolution=True,
         errors=(),
     )
     monkeypatch.setattr(automerge, "collect_snapshot", lambda slug, num: snap)
@@ -178,6 +180,7 @@ def test_merge_via_gate_skips_when_gate_fails(monkeypatch):
         merge_state_status="CLEAN",
         mergeable="MERGEABLE",
         checks=(),
+        native_thread_resolution=True,
         errors=(),
     )
     monkeypatch.setattr(automerge, "collect_snapshot", lambda slug, num: snap)

@@ -43,6 +43,7 @@ def _mergeable_snapshot(**overrides) -> GateSnapshot:
         "merge_state_status": "CLEAN",
         "mergeable": "MERGEABLE",
         "checks": (CheckRun("ci", "SUCCESS"),),
+        "native_thread_resolution": True,
         "errors": (),
     }
     base.update(overrides)
