@@ -505,50 +505,50 @@ def _planner_spend(sets, increments):
 
 def test_planner_preflight_cap_resets_streak_and_emits_canonical_sentinel(monkeypatch, capsys):
     monkeypatch.setenv("ALFRED_PLANNER_REPOS", "backend")
-    drake = load_bin_module("planner.py", monkeypatch)
+    planner = load_bin_module("planner.py", monkeypatch)
     sets: list[dict] = []
 
-    assert drake.DAILY_CAP_SENTINEL == "[DRAKE-DAILY-CAP-HIT]"
+    assert planner.DAILY_CAP_SENTINEL == "[PLANNER-DAILY-CAP-HIT]"
 
-    monkeypatch.setattr(drake, "with_lock", lambda a: None)
-    monkeypatch.setattr(drake, "PLANNER_REPOS", ["backend"])
-    monkeypatch.setattr(drake, "preflight", lambda s: None)
-    monkeypatch.setattr(drake, "doctor_mode", lambda: False)
-    monkeypatch.setattr(drake, "EventLog", _FakeEvents)
-    monkeypatch.setattr(drake, "is_globally_blocked", lambda: None)
-    monkeypatch.setattr(drake, "SpendState", _planner_spend(sets, []))
-    monkeypatch.setattr(drake, "_issues_authored_in_last_24h", lambda: 10**6)
-    monkeypatch.setattr(drake, "slack_post", lambda *a, **kw: None)
+    monkeypatch.setattr(planner, "with_lock", lambda a: None)
+    monkeypatch.setattr(planner, "PLANNER_REPOS", ["backend"])
+    monkeypatch.setattr(planner, "preflight", lambda s: None)
+    monkeypatch.setattr(planner, "doctor_mode", lambda: False)
+    monkeypatch.setattr(planner, "EventLog", _FakeEvents)
+    monkeypatch.setattr(planner, "is_globally_blocked", lambda: None)
+    monkeypatch.setattr(planner, "SpendState", _planner_spend(sets, []))
+    monkeypatch.setattr(planner, "_issues_authored_in_last_24h", lambda: 10**6)
+    monkeypatch.setattr(planner, "slack_post", lambda *a, **kw: None)
 
-    assert drake.main() == 0
+    assert planner.main() == 0
     # Cap hit resets the streak (healthy, done for the day) ...
     assert {"consecutive_failures": 0} in sets
     # ... and the runner emits the one canonical sentinel.
-    assert drake.DAILY_CAP_SENTINEL in capsys.readouterr().out
+    assert planner.DAILY_CAP_SENTINEL in capsys.readouterr().out
 
 
 def test_planner_in_prompt_cap_detected_via_same_sentinel(monkeypatch, tmp_path):
     monkeypatch.setenv("ALFRED_PLANNER_REPOS", "backend")
-    drake = load_bin_module("planner.py", monkeypatch)
+    planner = load_bin_module("planner.py", monkeypatch)
     sets: list[dict] = []
     increments: list[dict] = []
 
     prompt_file = tmp_path / "planner.md"
-    prompt_file.write_text("prompt")
+    prompt_file.write_text("\n".join(planner.RESULT_SENTINELS))
 
-    monkeypatch.setattr(drake, "with_lock", lambda a: None)
-    monkeypatch.setattr(drake, "PLANNER_REPOS", ["backend"])
-    monkeypatch.setattr(drake, "preflight", lambda s: None)
-    monkeypatch.setattr(drake, "doctor_mode", lambda: False)
-    monkeypatch.setattr(drake, "EventLog", _FakeEvents)
-    monkeypatch.setattr(drake, "is_globally_blocked", lambda: None)
-    monkeypatch.setattr(drake, "SpendState", _planner_spend(sets, increments))
-    monkeypatch.setattr(drake, "_issues_authored_in_last_24h", lambda: 0)
-    monkeypatch.setattr(drake, "PROMPT_PATH", prompt_file)
-    monkeypatch.setattr(drake, "build_prompt", lambda: "prompt")
-    monkeypatch.setattr(drake, "slack_post", lambda *a, **kw: None)
+    monkeypatch.setattr(planner, "with_lock", lambda a: None)
+    monkeypatch.setattr(planner, "PLANNER_REPOS", ["backend"])
+    monkeypatch.setattr(planner, "preflight", lambda s: None)
+    monkeypatch.setattr(planner, "doctor_mode", lambda: False)
+    monkeypatch.setattr(planner, "EventLog", _FakeEvents)
+    monkeypatch.setattr(planner, "is_globally_blocked", lambda: None)
+    monkeypatch.setattr(planner, "SpendState", _planner_spend(sets, increments))
+    monkeypatch.setattr(planner, "_issues_authored_in_last_24h", lambda: 0)
+    monkeypatch.setattr(planner, "PROMPT_PATH", prompt_file)
+    monkeypatch.setattr(planner, "build_prompt", lambda: "prompt")
+    monkeypatch.setattr(planner, "slack_post", lambda *a, **kw: None)
     monkeypatch.setattr(
-        drake,
+        planner,
         "invoke_agent_engine",
         lambda *a, **kw: (
             SimpleNamespace(
@@ -556,16 +556,56 @@ def test_planner_in_prompt_cap_detected_via_same_sentinel(monkeypatch, tmp_path)
                 subtype="success",
                 num_turns=1,
                 cost_usd=0.0,
-                result_text=f"work done {drake.DAILY_CAP_SENTINEL} stop",
+                result_text=f"work done {planner.DAILY_CAP_SENTINEL} stop",
             ),
             "codex",
         ),
     )
 
-    assert drake.main() == 0
+    assert planner.main() == 0
     # The in-prompt grep detects the same sentinel: healthy success + reset.
     assert {"successes_today": 1} in increments
     assert {"consecutive_failures": 0} in sets
+
+
+def test_planner_sentinel_contract_is_role_based(monkeypatch):
+    planner = load_bin_module("planner.py", monkeypatch)
+    prompt = (ROOT / "prompts" / "planner.md").read_text()
+    runner = (ROOT / "bin" / "planner.py").read_text()
+
+    assert all(sentinel in prompt for sentinel in planner.RESULT_SENTINELS)
+    assert "[DRAKE-" not in prompt
+    assert "[DRAKE-" not in runner
+
+
+def test_planner_rejects_stale_prompt_before_engine(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("ALFRED_PLANNER_REPOS", "backend")
+    planner = load_bin_module("planner.py", monkeypatch)
+    increments: list[dict] = []
+    prompt_file = tmp_path / "planner.md"
+    prompt_file.write_text("# Customized prompt without the current result protocol\n")
+
+    monkeypatch.setattr(planner, "with_lock", lambda a: None)
+    monkeypatch.setattr(planner, "PLANNER_REPOS", ["backend"])
+    monkeypatch.setattr(planner, "preflight", lambda s: None)
+    monkeypatch.setattr(planner, "doctor_mode", lambda: False)
+    monkeypatch.setattr(planner, "EventLog", _FakeEvents)
+    monkeypatch.setattr(planner, "is_globally_blocked", lambda: None)
+    monkeypatch.setattr(planner, "SpendState", _planner_spend([], increments))
+    monkeypatch.setattr(planner, "_issues_authored_in_last_24h", lambda: 0)
+    monkeypatch.setattr(planner, "PROMPT_PATH", prompt_file)
+    monkeypatch.setattr(planner, "slack_post", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        planner,
+        "invoke_agent_engine",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("engine must not run")),
+    )
+
+    assert planner.main() == 0
+    assert {"failures_today": 1, "consecutive_failures": 1} in increments
+    output = capsys.readouterr().out
+    assert "[PLANNER-CONFIG-STALE]" in output
+    assert planner.OK_SENTINEL in output
 
 
 # ---------------------------------------------------------------------------

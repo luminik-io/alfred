@@ -647,13 +647,13 @@ def test_lock_pid_identity_probe_failure_is_unknown(monkeypatch, tmp_path):
     assert ar.lock_pid_identity_matches(lock_dir, 12345) is False
 
 
-def test_drake_daily_cap_query_limit_tracks_configured_cap(monkeypatch):
-    drake = load_bin_module("planner.py", monkeypatch)
+def test_planner_daily_cap_query_limit_tracks_configured_cap(monkeypatch):
+    planner = load_bin_module("planner.py", monkeypatch)
     calls = []
-    monkeypatch.setattr(drake, "DAILY_ISSUE_CAP", 200)
-    monkeypatch.setattr(drake, "gh_json", lambda cmd, default=None: calls.append(cmd) or [])
+    monkeypatch.setattr(planner, "DAILY_ISSUE_CAP", 200)
+    monkeypatch.setattr(planner, "gh_json", lambda cmd, default=None: calls.append(cmd) or [])
 
-    assert drake._issues_authored_in_last_24h() == 0
+    assert planner._issues_authored_in_last_24h() == 0
 
     cmd = calls[0]
     assert cmd[cmd.index("--limit") + 1] == "250"
@@ -661,14 +661,14 @@ def test_drake_daily_cap_query_limit_tracks_configured_cap(monkeypatch):
 
 def test_planner_prompt_uses_stable_feature_dev_identity(monkeypatch, tmp_path):
     monkeypatch.setenv("GH_ORG", "luminik")
-    drake = load_bin_module("planner.py", monkeypatch)
+    planner = load_bin_module("planner.py", monkeypatch)
     prompt = tmp_path / "planner.md"
     prompt.write_text("${AGENT_CODENAME} ${GH_ORG} ${PLANNER_REPOS} ${FEATURE_DEV_CODENAME}")
-    monkeypatch.setattr(drake, "GH_ORG", "luminik")
-    monkeypatch.setattr(drake, "PROMPT_PATH", prompt)
-    monkeypatch.setattr(drake, "PLANNER_REPOS", ["backend", "frontend"])
-    monkeypatch.setattr(drake, "_build_state_machine_context", lambda: "\nstate-context")
-    text = drake.build_prompt()
+    monkeypatch.setattr(planner, "GH_ORG", "luminik")
+    monkeypatch.setattr(planner, "PROMPT_PATH", prompt)
+    monkeypatch.setattr(planner, "PLANNER_REPOS", ["backend", "frontend"])
+    monkeypatch.setattr(planner, "_build_state_machine_context", lambda: "\nstate-context")
+    text = planner.build_prompt()
 
     assert text == "Planner luminik backend,frontend Senior-Dev\nstate-context"
 
