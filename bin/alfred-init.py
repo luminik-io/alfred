@@ -1194,10 +1194,33 @@ def morning_brief_agents(state: WizardState) -> list[str]:
     ]
 
 
+def _seed_prompt_template(src: Path, dest: Path, created: list[Path]) -> None:
+    """Install a template or refresh untouched generated scaffolding."""
+    if not src.exists():
+        return
+    if dest.exists():
+        try:
+            with dest.open(encoding="utf-8") as installed:
+                first_line = installed.readline()
+        except OSError:
+            return
+        if "alfred:auto-seed" not in first_line:
+            return
+        try:
+            if src.read_bytes() == dest.read_bytes():
+                return
+        except OSError:
+            return
+    shutil.copyfile(src, dest)
+    created.append(dest)
+
+
 def seed_prompt_templates(state: WizardState) -> list[Path]:
     """Copy starter prompt templates into ALFRED_HOME for enabled agents.
 
-    Existing operator prompts are never overwritten.
+    Existing operator prompts are never overwritten. Files that retain the
+    ``alfred:auto-seed`` marker are generated scaffolding and refresh to the
+    current machine contract.
     """
     created: list[Path] = []
     prompt_root = state.alfred_home / "prompts"
@@ -1206,19 +1229,14 @@ def seed_prompt_templates(state: WizardState) -> list[Path]:
     for shared_name in ("spec-interrogator.md",):
         src = template_root / shared_name
         dest = prompt_root / shared_name
-        if src.exists() and not dest.exists():
-            shutil.copyfile(src, dest)
-            created.append(dest)
+        _seed_prompt_template(src, dest, created)
     for role in state.enabled_roles:
         template_name = PROMPT_TEMPLATE_BY_ROLE.get(role)
         if not template_name:
             continue
         src = template_root / template_name
         dest = prompt_root / f"{runtime_id_for_role(role)}.md"
-        if not src.exists() or dest.exists():
-            continue
-        shutil.copyfile(src, dest)
-        created.append(dest)
+        _seed_prompt_template(src, dest, created)
     return created
 
 

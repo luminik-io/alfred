@@ -2321,6 +2321,26 @@ def test_seed_prompt_templates_does_not_overwrite(init_mod, tmp_path):
     assert created[0].read_text() == "custom\n"
 
 
+def test_seed_prompt_templates_refreshes_untouched_generated_prompt(init_mod, tmp_path):
+    repo_root = tmp_path / "repo"
+    (repo_root / "prompts").mkdir(parents=True)
+    current = "<!-- alfred:auto-seed v1 -->\n[PLANNER-OK]\n"
+    (repo_root / "prompts" / "planner.md").write_text(current)
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        env_file=tmp_path / ".env",
+        repo_root=repo_root,
+    )
+    state.enabled_roles = ["planner"]
+    installed = state.alfred_home / "prompts" / "planner.md"
+    installed.parent.mkdir(parents=True)
+    installed.write_text("<!-- alfred:auto-seed v1 -->\nold generated contract\n")
+
+    assert init_mod.seed_prompt_templates(state) == [installed]
+    assert installed.read_text() == current
+    assert init_mod.seed_prompt_templates(state) == []
+
+
 def test_seed_prompt_templates_copies_shared_compose_prompt(init_mod, tmp_path):
     repo_root = tmp_path / "repo"
     (repo_root / "prompts").mkdir(parents=True)

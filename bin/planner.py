@@ -14,16 +14,16 @@ issues, AND this runner pre-fetches the state-machine snapshot
 (agent:in-flight / agent:pr-open / do-not-pickup / paused repos) so the
 prompt sees them as "already handled" without having to re-query GitHub.
 The same dedup primitives in lib/agent_runner.py (claim_issue, release_issue,
-list_paused_repos) gate the implement-side flow; Drake only needs to read.
+list_paused_repos) gate the implement-side flow; the planner only needs to read.
 
 Failure modes (sentinel-driven, parsed from result.result_text):
-  [DRAKE-OK]              -> success, issues created
-  [DRAKE-NOOP]            -> nothing to file (everything deduped, queue saturated)
-  [DRAKE-SCOPE-REJECTED]  -> candidate(s) failed the testable-acceptance-criteria gate;
-                             spec section needs operator scoping before Drake can plan
-  [DRAKE-DAILY-CAP-HIT]   -> rolling cap reached
-  [DRAKE-OVER-BUDGET]     -> tool-call budget exhausted, partial results
-  [DRAKE-ESCALATE]        -> gh auth dead / repo 404 / spec parse error
+  [PLANNER-OK]              -> success, issues created
+  [PLANNER-NOOP]            -> nothing to file (everything deduped, queue saturated)
+  [PLANNER-SCOPE-REJECTED]  -> candidate(s) failed the testable-acceptance-criteria gate;
+                               spec section needs operator scoping before planning
+  [PLANNER-DAILY-CAP-HIT]   -> rolling cap reached
+  [PLANNER-OVER-BUDGET]     -> tool-call budget exhausted, partial results
+  [PLANNER-ESCALATE]        -> gh auth dead / repo 404 / spec parse error
 """
 
 from __future__ import annotations
@@ -76,20 +76,30 @@ LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 # the machine identity or env-var contract.
 PLANNER_REPOS = agent_repos(AGENT)
 
-# Single canonical daily-cap sentinel. The runner's own pre-flight cap-hit log
-# and the in-prompt cap-hit detection MUST use the same string or cap-hit
-# detection silently never matches (a prior rename left the pre-flight emit as
-# [PLANNER-DAILY-CAP-HIT] while the grep looked for [DRAKE-DAILY-CAP-HIT]). The
-# [DRAKE-*] family is the LLM-output contract fixed in prompts/planner.md.
-DAILY_CAP_SENTINEL = "[DRAKE-DAILY-CAP-HIT]"
+# Stable role-based result protocol shared by the runner and seeded prompt.
+# Theme and custom display names must never leak into this machine contract.
+OK_SENTINEL = "[PLANNER-OK]"
+NOOP_SENTINEL = "[PLANNER-NOOP]"
+SCOPE_REJECTED_SENTINEL = "[PLANNER-SCOPE-REJECTED]"
+DAILY_CAP_SENTINEL = "[PLANNER-DAILY-CAP-HIT]"
+OVER_BUDGET_SENTINEL = "[PLANNER-OVER-BUDGET]"
+ESCALATE_SENTINEL = "[PLANNER-ESCALATE]"
+RESULT_SENTINELS = (
+    OK_SENTINEL,
+    NOOP_SENTINEL,
+    SCOPE_REJECTED_SENTINEL,
+    DAILY_CAP_SENTINEL,
+    OVER_BUDGET_SENTINEL,
+    ESCALATE_SENTINEL,
+)
 
 
 def _build_state_machine_context() -> str:
-    """Snapshot the issues already in the lifecycle so Drake can skip them.
+    """Snapshot lifecycle issues so the planner can skip them.
 
-    Drake's prompt does prose-style dedup against open issues, but it has no
+    The prompt does prose-style dedup against open issues, but it has no
     visibility into the agent:in-flight / agent:pr-open / do-not-pickup
-    state machine. Pre-fetch a structured snapshot and pass it in so Drake
+    state machine. Pre-fetch a structured snapshot and pass it in so the planner
     treats those issues as already-handled.
     """
     paused = list_paused_repos()
@@ -155,11 +165,21 @@ DAILY_ISSUE_CAP = env_int(
     minimum=20,
 )
 
+
+def _missing_prompt_sentinels() -> tuple[str, ...]:
+    """Return result sentinels absent from the installed planner prompt."""
+    try:
+        prompt = PROMPT_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return RESULT_SENTINELS
+    return tuple(sentinel for sentinel in RESULT_SENTINELS if sentinel not in prompt)
+
+
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
     bins=[*engine_preflight_bins(PLANNER_ENGINE), "gh", "git"],
     require_gh_auth=True,
-    # Drake reads across the entire workspace; missing checkouts are advisory only.
+    # The planner reads across the workspace; missing checkouts are advisory only.
     require_workspace_repos=PLANNER_REPOS,
 )
 
@@ -265,9 +285,21 @@ def main() -> int:
         spend.increment(failures_today=1, consecutive_failures=1)
         return 0
 
+    missing_sentinels = _missing_prompt_sentinels()
+    if missing_sentinels:
+        msg = (
+            f"[{AGENT.upper()}-CONFIG-STALE] prompt at {PROMPT_PATH} is missing required "
+            f"result sentinels: {', '.join(missing_sentinels)}. Rerun Alfred setup or update "
+            "the prompt before the next firing."
+        )
+        print(msg)
+        slack_post(msg, severity="alert")
+        spend.increment(failures_today=1, consecutive_failures=1)
+        return 0
+
     prompt = build_prompt()
 
-    # Drake works in the workspace root so it can read across all product repos
+    # The planner works in the workspace root so it can read across all product repos
     # without juggling paths. It only writes via gh; no file edits.
     def _on_engine_fallback(fallback_result):
         events.emit(
@@ -287,7 +319,7 @@ def main() -> int:
         agent=AGENT,
         firing_id=events.firing_id,
         claude_max_turns=optional_env_int("ALFRED_PLANNER_MAX_TURNS", minimum=40),
-        timeout=1800,  # 30 min cap; Drake reads + greps + creates, no compile
+        timeout=1800,  # 30 min cap; the planner reads + greps + creates, no compile
         codex_timeout=1800,
         codex_sandbox=codex_sandbox_for_agent(AGENT, default="workspace-write"),
         codex_bypass_approvals_and_sandbox=True,
@@ -363,23 +395,23 @@ def main() -> int:
         spend.increment(successes_today=1)
         return 0
 
-    if "[DRAKE-OVER-BUDGET]" in text:
+    if OVER_BUDGET_SENTINEL in text:
         spend.increment(failures_today=1, consecutive_failures=1)
         msg = f"⚠️ {AGENT.title()} hit prompt tool-call budget. {short(text[-400:], 400)}"
         print(msg)
         slack_post(msg, severity="warn")
         return 0
 
-    if "[DRAKE-ESCALATE]" in text:
+    if ESCALATE_SENTINEL in text:
         spend.increment(failures_today=1, consecutive_failures=1)
         msg = f"{AGENT.title()} escalating: {short(text[-500:], 500)}"
         print(msg)
         slack_post(msg, severity="alert")
         return 0
 
-    if "[DRAKE-SCOPE-REJECTED]" in text:
-        # Drake encountered a spec section too vague to plan against.
-        # Treat as a soft signal, not a failure, since Drake correctly
+    if SCOPE_REJECTED_SENTINEL in text:
+        # The planner encountered a spec section too vague to plan against.
+        # Treat as a soft signal, not a failure, since it correctly
         # refused to file a low-quality issue. Surface to Slack so the
         # operator sees which spec area needs sharpening.
         spend.set(consecutive_failures=0)
@@ -392,7 +424,7 @@ def main() -> int:
         slack_post(msg)
         return 0
 
-    if "[DRAKE-NOOP]" in text:
+    if NOOP_SENTINEL in text:
         # Healthy non-event: nothing to file this firing.
         events.emit("firing_complete", outcome="noop")
         print("[SILENT]")
@@ -400,12 +432,12 @@ def main() -> int:
         spend.increment(successes_today=1)
         return 0
 
-    if "[DRAKE-OK]" in text:
+    if OK_SENTINEL in text:
         spend.set(consecutive_failures=0)
         spend.increment(successes_today=1)
         # Surface the full closing report (issue URLs + counts) to Slack so the
         # operator can scan and click through.
-        report = text[text.find("[DRAKE-OK]") :]
+        report = text[text.find(OK_SENTINEL) :]
         events.emit(
             "firing_complete", outcome="ok", turns=result.num_turns, cost_usd=result.cost_usd
         )
@@ -418,7 +450,7 @@ def main() -> int:
     # prompt didn't follow its closing-line contract.
     spend.increment(failures_today=1, consecutive_failures=1)
     msg = (
-        f"⚠️ {AGENT.title()} returned success but emitted no [DRAKE-*] sentinel. "
+        f"⚠️ {AGENT.title()} returned success but emitted no [PLANNER-*] sentinel. "
         f"engine={engine_used} turns={result.num_turns}. Tail: {short(text[-400:], 400)}"
     )
     print(msg)
