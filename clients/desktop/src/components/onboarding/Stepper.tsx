@@ -71,6 +71,7 @@ export function Stepper({
               <button
                 type="button"
                 className="alfred-stepper__node"
+                data-onboarding-step={step.key}
                 onClick={() => onSelect(step.key)}
                 disabled={lockNavigation && !isActive}
                 aria-current={isActive ? "step" : undefined}
