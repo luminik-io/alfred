@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bane - test coverage agent. Adds tests for actively-changed undertested files.
+"""Test engineer. Adds tests for actively changed, undertested files.
 
 Per-repo configuration (slug, pre-push command, coverage hint) loads from
 $ALFRED_HOME/agents/<codename>.toml. TOML format:
@@ -69,6 +69,7 @@ from agent_runner import (
 from workflow_validation import validate_changed_workflows
 
 AGENT = os.environ.get("AGENT_CODENAME", "test-engineer")
+SILENT_SENTINEL = "[TEST-ENGINEER-SILENT]"
 TEST_ENGINEER_ENGINE = agent_engine(AGENT, default="hybrid")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 LAST_REPO_FILE = STATE_ROOT / AGENT / "last-repo.txt"
@@ -169,7 +170,7 @@ Your selection algorithm:
 1. Get coverage data per the hint above.
 2. Find files modified in the last 14 days: git log --since=14.days --name-only --pretty=format: | sort -u | grep source files only (no tests, no generated, no build artifacts).
 3. Join 14-day-changes with coverage. Rank ascending by line coverage. Take top 3.
-4. If all 3 candidates are >= 90% coverage already, print "[BANE-SILENT] all candidates already well-covered" and EXIT WITHOUT COMMITTING.
+4. If all 3 candidates are >= 90% coverage already, print "{SILENT_SENTINEL} all candidates already well-covered" and EXIT WITHOUT COMMITTING.
 5. Pick the lowest-coverage candidate. Read it + its existing test file (if any).
 
 Then write tests:
@@ -284,7 +285,7 @@ def main() -> int:
         codex_bypass_approvals_and_sandbox=True,
         on_fallback=_on_engine_fallback,
         memory_repo=f"{GH_ORG}/{repo}" if GH_ORG else repo,
-        # Bane has no issue; its scoped context is the coverage hint for this
+        # The test engineer has no issue; its scoped context is the coverage hint for this
         # repo. Recall lessons relevant to that focus area, not just recency.
         # None when the hint is empty preserves recency-only recall.
         memory_query=issue_memory_query(coverage_hint),
@@ -339,7 +340,7 @@ def main() -> int:
     text = result.result_text or ""
     head = text[:300]
 
-    if "[BANE-SILENT]" in head:
+    if SILENT_SENTINEL in head:
         remove_worktree(repo, wt)
         # Healthy outcome: the engine ran and found everything well-covered.
         # Clear the streak so a prior run of failures does not survive a

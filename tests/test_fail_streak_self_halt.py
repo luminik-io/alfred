@@ -632,8 +632,12 @@ def _drive_test_engineer_healthy(monkeypatch, tmp_path, result_text, extra=None)
     return spend
 
 
-def test_test_engineer_bane_silent_resets_streak(monkeypatch, tmp_path):
-    spend = _drive_test_engineer_healthy(monkeypatch, tmp_path, "[BANE-SILENT] all covered")
+def test_test_engineer_silent_resets_streak(monkeypatch, tmp_path):
+    spend = _drive_test_engineer_healthy(
+        monkeypatch,
+        tmp_path,
+        "[TEST-ENGINEER-SILENT] all covered",
+    )
     assert spend.state["consecutive_failures"] == 0
     assert {"consecutive_failures": 0} in spend.sets
 
