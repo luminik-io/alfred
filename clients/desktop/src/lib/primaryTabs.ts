@@ -1,6 +1,7 @@
 import {
   Bot,
   Bell,
+  GitFork,
   GitPullRequest,
   type LucideIcon,
   MessageSquare,
@@ -15,12 +16,14 @@ export type PrimaryTab = { key: TabKey; label: string; icon: LucideIcon };
 // Inbox: decisions, activity, and shipped PRs.
 // Ask: conversational request intake.
 // Work: plans, issue handoff, PR lifecycle, shipped evidence.
+// Code: local dependency, contract, and change-impact evidence.
 // Agents: roles, schedules, activity, lessons, and local controls.
 // Settings: runtime, collaborators, diagnostics, and appearance.
 export const PRIMARY_TABS: PrimaryTab[] = [
   { key: "home", label: "Inbox", icon: Bell },
   { key: "compose", label: "Ask", icon: MessageSquare },
   { key: "pipeline", label: "Work", icon: GitPullRequest },
+  { key: "code", label: "Code", icon: GitFork },
   { key: "fleet", label: "Agents", icon: Bot },
   { key: "settings", label: "Settings", icon: Settings2 },
 ];

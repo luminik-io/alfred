@@ -10,6 +10,7 @@ import {
   NativeResultPanel,
 } from "./components/atoms";
 import { CommandPalette, type Command } from "./components/CommandPalette";
+import { CodeIntelligenceView } from "./components/CodeIntelligenceView";
 import { ComposeView } from "./components/ComposeView";
 import { CustomAgentsPanel } from "./components/CustomAgentsPanel";
 import { FleetControlView } from "./components/FleetControlView";
@@ -419,6 +420,7 @@ function App() {
           onSwitch={goTo}
         />
       ) : null}
+      {tab === "code" ? <CodeIntelligenceView baseUrl={baseUrl} /> : null}
       {tab === "settings" ? (
         <SettingsView
           baseUrl={baseUrl}

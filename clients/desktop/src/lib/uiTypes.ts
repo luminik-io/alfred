@@ -4,6 +4,7 @@ import type { NativeAction } from "../types";
 //   home     -> Inbox: needs you, live activity, shipped PRs
 //   compose  -> Ask: conversational request intake
 //   pipeline -> Work: plans, queue, PR lifecycle, shipped evidence
+//   code     -> Code: local dependency and change-impact intelligence
 //   fleet    -> Agents: roster, schedules, activity, lessons
 //   lessons  -> Lessons: what the fleet learned, rendered inside Agents
 //   settings -> Settings: runtime, collaborators, diagnostics, appearance
@@ -12,6 +13,7 @@ export type TabKey =
   | "home"
   | "compose"
   | "pipeline"
+  | "code"
   | "fleet"
   | "lessons"
   | "settings"

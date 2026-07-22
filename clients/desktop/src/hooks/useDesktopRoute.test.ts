@@ -16,6 +16,7 @@ describe("desktop route parsing", () => {
     expect(parseDesktopRoute(loc("?tab=inbox")).tab).toBe("home");
     expect(parseDesktopRoute(loc("?tab=ask")).tab).toBe("compose");
     expect(parseDesktopRoute(loc("?tab=work")).tab).toBe("pipeline");
+    expect(parseDesktopRoute(loc("?tab=code")).tab).toBe("code");
     expect(parseDesktopRoute(loc("?tab=settings")).tab).toBe("settings");
   });
 
@@ -38,6 +39,7 @@ describe("desktop route parsing", () => {
   it("writes canonical product-facing search params", () => {
     expect(desktopRouteToSearch({ tab: "home", fleetTab: "fleet" })).toBe("?tab=inbox");
     expect(desktopRouteToSearch({ tab: "pipeline", fleetTab: "fleet" })).toBe("?tab=work");
+    expect(desktopRouteToSearch({ tab: "code", fleetTab: "fleet" })).toBe("?tab=code");
     expect(desktopRouteToSearch({ tab: "fleet", fleetTab: "lessons" })).toBe(
       "?tab=agents&subtab=lessons",
     );

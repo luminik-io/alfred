@@ -4,7 +4,7 @@ import type { TabKey } from "./uiTypes";
 
 export type AppMenuDestination = Extract<
   TabKey,
-  "home" | "compose" | "pipeline" | "fleet" | "settings"
+  "home" | "compose" | "pipeline" | "code" | "fleet" | "settings"
 >;
 
 export type AppMenuHandlers = {
@@ -19,6 +19,7 @@ const DESTINATIONS = new Set<AppMenuDestination>([
   "home",
   "compose",
   "pipeline",
+  "code",
   "fleet",
   "settings",
 ]);

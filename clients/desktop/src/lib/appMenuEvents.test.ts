@@ -46,13 +46,13 @@ describe("listenAppMenuEvents", () => {
       onCommandPalette,
       onRefresh,
     });
-    callbacks.get("app-menu://navigate")?.({ payload: "settings" });
+    callbacks.get("app-menu://navigate")?.({ payload: "code" });
     callbacks.get("app-menu://navigate")?.({ payload: "not-a-route" });
     callbacks.get("app-menu://command-palette")?.({ payload: "" });
     callbacks.get("app-menu://refresh")?.({ payload: "" });
 
     expect(onNavigate).toHaveBeenCalledOnce();
-    expect(onNavigate).toHaveBeenCalledWith("settings");
+    expect(onNavigate).toHaveBeenCalledWith("code");
     expect(onCommandPalette).toHaveBeenCalledOnce();
     expect(onRefresh).toHaveBeenCalledOnce();
 

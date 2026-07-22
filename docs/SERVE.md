@@ -157,6 +157,7 @@ GET /api/actions
 GET /api/shipped?days=14
 GET /api/usage             # served; backs the desktop capacity rail
 GET /api/usage/providers   # served; flat per-engine re-projection of /api/usage
+GET /api/code-intelligence?repo=<name>&path=<file> # local code-map summary and bounded impact
 GET /api/firings?codename=<name>&limit=50
 GET /api/firings/{firing_id}
 GET /api/firings/{firing_id}/tail

@@ -75,13 +75,13 @@ The cask installs alongside the `alfred-os` CLI formula, while direct DMG/AppIma
 Build from source (client development):
 
 ```sh
-alfred serve --port 7010 --no-browser       # or let Setup start it for you
+alfred serve --port 7010 --no-browser       # or let first-run onboarding start it
 cd clients/desktop
 npm install
 npm run tauri dev
 ```
 
-Inbox opens to the decision queue plus a capacity rail for Claude and Codex subscription headroom (read locally, no billing API; backed by the live `GET /api/usage` endpoint), and Agents defaults to a cinematic roster with a list toggle. Setup can install/repair core, start the local runtime, run `alfred status --json`, run auth checks, list agents, run the memory doctor, inspect code-memory readiness, install starter skills, and dry-run an agent through a narrow allowlist. Agents controls handle pause, resume, and run-once actions through the same native boundary. See [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) for the full client design and the API contract, and [`SERVE.md`](SERVE.md) for the `alfred serve` endpoints.
+Inbox opens to the decision queue plus a capacity rail for Claude and Codex subscription headroom (read locally, no billing API; backed by the live `GET /api/usage` endpoint), and Agents defaults to a cinematic roster with a list toggle. First-run onboarding installs or repairs core and starts the local runtime. Settings can run `alfred status --json`, run auth checks, list agents, run the memory doctor, inspect code-memory readiness, install starter skills, and dry-run an agent through a narrow allowlist. Agents controls handle pause, resume, and run-once actions through the same native boundary. See [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) for the full client design and the API contract, and [`SERVE.md`](SERVE.md) for the `alfred serve` endpoints.
 
 ## `slack`: the planning surface
 

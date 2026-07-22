@@ -9,7 +9,7 @@ Slack remains the primary collaboration UI: plans, replies, approvals, and
 post-PR follow-up belong in Slack threads.
 
 The Tauri client lives under `clients/desktop` and wraps the local Alfred
-runtime: Inbox, Ask, Work, Agents, Setup, install detection, dependency checks,
+runtime: Inbox, Ask, Work, Code, Agents, Settings, install detection, dependency checks,
 full-fleet roster seed, roster themes, custom display names, health signals,
 plans, firings, memory review, safe next actions, native core install/repair,
 runtime launch, and local follow-up handling.
@@ -28,8 +28,9 @@ The client is for trust and operations:
 
 1. Install Alfred Desktop from the signed macOS DMG or Linux package on
    [Download](/download/).
-2. Open Alfred Desktop. Setup detects an existing Alfred core install when one
-   is present, or installs/repairs bundled Alfred core on this machine.
+2. Open Alfred Desktop. First-run onboarding detects an existing Alfred core
+   install when one is present, or installs or repairs bundled Alfred core on
+   this machine.
 3. Connect GitHub and Claude or Codex, choose repos, configure the full fleet,
    check the local capability plane (code graph memory, Alfred's context
    governor, and engineering skills), pick a roster theme or custom display names, and
@@ -71,8 +72,9 @@ The core tabs are:
 | Inbox | See the decision queue, repeated failures, blocked plans, follow-ups, memory candidates, recent runs, shipped work, and capacity rail. |
 | Ask | Draft or refine work, open Slack thread context, inspect affected repos and PR chain, convert follow-ups into planning drafts, or mark them handled. |
 | Work | Manage queued work, active work, shipped cards, saved plans, and issue queue controls. |
+| Code | Inspect the local repository index, direct file relationships, contract drift, nearby tests, and checks to run before a change. |
 | Agents | Inspect roster state, activity, latest runs, memory candidates, safe dry-runs, pause, resume, and run-once actions. |
-| Setup | Install or repair the local runtime, seed and deploy the full built-in fleet, choose repo scope and roster naming, and run fleet/auth/agent/memory/capability/Slack checks in the command console. |
+| Settings | Repair the local runtime, change repo scope and roster naming, and run fleet/auth/agent/memory/capability/Slack checks after first-run onboarding. |
 
 Plans should show whether work started in the local form, a Slack DM, an app
 mention, or a registered thread. That keeps Slack as the collaboration trail

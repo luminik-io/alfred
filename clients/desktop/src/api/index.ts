@@ -90,3 +90,5 @@ export {
 } from "./slack";
 
 export { setQueuePickup } from "./queue";
+
+export { loadCodeIntelligence } from "./code";

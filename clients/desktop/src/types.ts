@@ -25,6 +25,72 @@ export type AgentSummary = {
   loaded?: boolean;
 };
 
+export type CodeGraphRepoSummary = {
+  name: string;
+  head_sha: string | null;
+  summary: {
+    files: number;
+    symbols: number;
+    imports: number;
+    languages: Record<string, number>;
+    truncated: boolean;
+  };
+  endpoint_count: number;
+  route_count: number;
+  api_call_count: number;
+  contract_drift_count: number;
+};
+
+export type CodeImpactBrief = {
+  kind: "impact-brief";
+  repo: string;
+  path: string;
+  matched_file: string | null;
+  match_status: "exact" | "suffix" | "ambiguous" | "not_found" | string;
+  head_sha: string | null;
+  language: string | null;
+  level: "low" | "medium" | "high" | string;
+  reasons: string[];
+  summary: string;
+  counts: {
+    symbols: number;
+    direct_dependents: number;
+    direct_dependencies: number;
+    contract_surfaces: number;
+    contract_drift: number;
+    nearby_files: number;
+  };
+  symbols: Array<{ name?: string; line?: number }>;
+  direct_dependents: Array<{ path: string; via: string; kind: string }>;
+  direct_dependencies: Array<{ path: string; via: string; kind: string }>;
+  contract_surfaces: Array<{
+    kind: string;
+    method: string | null;
+    path: string | null;
+    file: string | null;
+  }>;
+  contract_drift: Array<{
+    method: string | null;
+    path: string | null;
+    normalized: string | null;
+    file: string | null;
+  }>;
+  nearby_files: string[];
+  candidate_matches: string[];
+  next_checks: string[];
+};
+
+export type CodeIntelligenceResponse = {
+  schema: string;
+  generated_at: string | null;
+  repos: CodeGraphRepoSummary[];
+  repo_count: number;
+  contract_drift_count: number;
+  selected_repo: string | null;
+  query_path: string | null;
+  impact: CodeImpactBrief | null;
+};
+
 /** One render-ready line in a firing's expanded step timeline. */
 export type TimelineStep = {
   kind: string;
