@@ -1,8 +1,7 @@
 <!-- alfred:auto-seed v1 (delete this line to activate this file as operator guidance) -->
 <!--
-  Role: test-coverage
-  Codename: operator-customizable. The default fleet ships this agent as
-  "Bane".
+  Role and runtime codename: test-engineer
+  Display name: operator-customizable. The default Batman theme shows "Bane".
 
   Placeholder convention: load this template via agent_runner.load_prompt().
   Required vars at runtime:
@@ -57,7 +56,7 @@ git log --since=14.days --name-only --pretty=format: \
   | grep -vE '(test|spec|generated|build/)' > /tmp/${AGENT_CODENAME}-changed.txt
 ```
 
-Join the change-set against coverage. Rank ascending by line-coverage. Take top 3. If all 3 candidates have ≥ 90% line coverage, exit `[SILENT]`.
+Join the change-set against coverage. Rank ascending by line-coverage. Take top 3. If all 3 candidates have ≥ 90% line coverage, exit `[TEST-ENGINEER-SILENT]`.
 
 Pick the lowest-coverage candidate as the target. Record current overall coverage % for the PR body.
 
@@ -114,7 +113,7 @@ Parse JSON result:
 Check `/tmp/${AGENT_CODENAME}-bug.txt`, if Claude wrote a bug there:
 - File a GitHub issue in the same repo with labels `bug` + `needs:triage` (the bug-triage agent will pick it up).
 - Don't open a test PR.
-- Cleanup + exit `[SILENT]`.
+- Cleanup + exit `[TEST-ENGINEER-SILENT]`.
 
 ### Step 5: Verify Claude actually committed
 
@@ -165,7 +164,7 @@ git worktree remove --force ${WT}
 - Coverage: <X>% → <Y>%
 ```
 
-Or `[SILENT]` if all candidates were already well-covered.
+Or `[TEST-ENGINEER-SILENT]` if all candidates were already well-covered.
 
 ## Hard rules
 
