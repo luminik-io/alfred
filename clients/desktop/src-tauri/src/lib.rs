@@ -874,7 +874,10 @@ fn is_valid_api_query(query: &str) -> bool {
             continue;
         }
         if !(byte.is_ascii_alphanumeric()
-            || matches!(byte, b'&' | b'=' | b'.' | b'_' | b'-' | b':' | b'+' | b'/'))
+            || matches!(
+                byte,
+                b'&' | b'=' | b'.' | b'_' | b'-' | b':' | b'+' | b'/' | b'*'
+            ))
         {
             return false;
         }
@@ -3714,6 +3717,14 @@ done"#;
         .expect("consecutive dots in query data should not be treated as route traversal");
         assert_eq!(path, "/api/code-intelligence");
         assert_eq!(query, Some("repo=web&path=src/foo..bar.ts"));
+
+        let (path, query) = validate_api_path(
+            "/api/code-intelligence?repo=web&path=src%2F*%2Fx.ts",
+            &Method::GET,
+        )
+        .expect("URLSearchParams leaves valid asterisks unescaped");
+        assert_eq!(path, "/api/code-intelligence");
+        assert_eq!(query, Some("repo=web&path=src%2F*%2Fx.ts"));
 
         let err = validate_api_path("/api/../status?path=src/foo..bar.ts", &Method::GET)
             .expect_err("route traversal must stay blocked");
