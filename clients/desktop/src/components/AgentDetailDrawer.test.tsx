@@ -54,6 +54,11 @@ function DrawerHost() {
         // draft. This isolates the keying fix from the effect path.
         editableScheduleValue={() => "10m"}
         scheduleOptions={() => OPTIONS}
+        modelStatus={undefined}
+        modelsLoading={false}
+        modelBusy={null}
+        modelError={null}
+        onSaveModel={vi.fn()}
         onDispatch={vi.fn()}
         onViewLogs={vi.fn()}
       />

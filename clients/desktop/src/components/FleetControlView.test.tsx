@@ -1,10 +1,17 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FleetControlView } from "./FleetControlView";
 import { parseFleetServiceState } from "../lib/fleetControl";
 import type { AgentSummary, NativeCommandResult, ScheduledRun } from "../types";
+
+const agentApiMocks = vi.hoisted(() => ({
+  loadAgentModels: vi.fn(),
+  saveAgentModel: vi.fn(),
+}));
+
+vi.mock("../api/agents", () => agentApiMocks);
 
 // Render in the desktop-capable mode so the control buttons appear.
 vi.mock("../api/client", async (importOriginal) => ({
@@ -71,9 +78,19 @@ const SCHEDULE: ScheduledRun[] = [
   },
 ];
 
+const MODELS = {
+  agents: ["senior-dev", "test-engineer"].map((codename) => ({
+    agent: codename,
+    claude: { resolved: null, persisted: null, source: "provider-default" as const },
+    codex: { resolved: null, persisted: null, source: "provider-default" as const },
+  })),
+  count: 2,
+};
+
 function renderView(onRunLocalAction = vi.fn(), schedule: ScheduledRun[] = SCHEDULE) {
   render(
     <FleetControlView
+      baseUrl="http://127.0.0.1:7010"
       agents={[agent("senior-dev"), agent("test-engineer")]}
       schedule={schedule}
       service={SERVICE}
@@ -98,6 +115,9 @@ async function openDrawer(
 
 describe("FleetControlView", () => {
   beforeEach(() => {
+    agentApiMocks.loadAgentModels.mockReset();
+    agentApiMocks.saveAgentModel.mockReset();
+    agentApiMocks.loadAgentModels.mockResolvedValue(MODELS);
     // Roster view mode persists in localStorage; reset so each test starts on
     // the workflow default regardless of order.
     try {
@@ -146,6 +166,7 @@ describe("FleetControlView", () => {
   it("defaults selection to an llm-error agent before a running agent", async () => {
     render(
       <FleetControlView
+        baseUrl="http://127.0.0.1:7010"
         agents={[
           agent("senior-dev", { status: "live" }),
           agent("test-engineer", { status: "llm-error" }),
@@ -171,6 +192,7 @@ describe("FleetControlView", () => {
   it("reads paused state from the polled summary without a CLI service map", async () => {
     render(
       <FleetControlView
+        baseUrl="http://127.0.0.1:7010"
         agents={[
           agent("senior-dev", { paused: false, loaded: true }),
           agent("test-engineer", {
@@ -199,6 +221,7 @@ describe("FleetControlView", () => {
   it("renders the human agent role and purpose above the runtime codename", async () => {
     render(
       <FleetControlView
+        baseUrl="http://127.0.0.1:7010"
         agents={[
           agent("senior-dev", {
             display_name: "Lucius",
@@ -303,6 +326,7 @@ describe("FleetControlView", () => {
     const onViewLogs = vi.fn();
     render(
       <FleetControlView
+        baseUrl="http://127.0.0.1:7010"
         agents={[agent("senior-dev")]}
         schedule={[]}
         service={{}}
@@ -315,5 +339,31 @@ describe("FleetControlView", () => {
     await openDrawer(user, "lucius");
     await user.click(screen.getByRole("button", { name: /^Logs$/i }));
     expect(onViewLogs).toHaveBeenCalledWith("senior-dev");
+  });
+
+  it("saves a per-agent provider model from the detail drawer", async () => {
+    agentApiMocks.saveAgentModel.mockResolvedValue({
+      ok: true,
+      agent: "senior-dev",
+      provider: "claude",
+      selection: { resolved: "opus", persisted: "opus", source: "state" },
+    });
+    renderView();
+    const user = userEvent.setup();
+    await openDrawer(user, "lucius");
+
+    await waitFor(() => expect(agentApiMocks.loadAgentModels).toHaveBeenCalled());
+    await user.type(screen.getByLabelText("Claude"), "opus");
+    await user.click(
+      screen.getByRole("button", { name: /save claude model for senior-dev/i }),
+    );
+
+    expect(agentApiMocks.saveAgentModel).toHaveBeenCalledWith(
+      "http://127.0.0.1:7010",
+      "senior-dev",
+      "claude",
+      "opus",
+    );
+    await waitFor(() => expect(screen.getByText("Active: opus")).toBeInTheDocument());
   });
 });

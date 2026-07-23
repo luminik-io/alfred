@@ -243,6 +243,7 @@ def register_routes(app: FastAPI) -> None:
     fully-initialized ``server.views`` without a circular import.
     """
     from server.routes import (
+        agent_models,
         code_intelligence,
         conversation,
         converse,
@@ -266,6 +267,7 @@ def register_routes(app: FastAPI) -> None:
     app.include_router(roster.router)
     app.include_router(converse.router)
     app.include_router(custom_agents.router)
+    app.include_router(agent_models.router)
     app.include_router(conversation.router)
     app.include_router(memory.router)
     app.include_router(firings.router)

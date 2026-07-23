@@ -19,6 +19,7 @@ import {
   installAlfredCore,
   initialBaseUrl,
   isHostedBrowser,
+  loadAgentModels,
   loadCustomAgents,
   loadRosterTheme,
   loadShipped,
@@ -28,6 +29,7 @@ import {
   promoteMemoryCandidate,
   retireMemoryLesson,
   saveRosterTheme,
+  saveAgentModel,
   startLocalRuntime,
   streamComposeConverse,
   streamFiringTail,
@@ -1104,6 +1106,47 @@ describe("roster theme persistence", () => {
     await expect(
       saveRosterTheme(DEFAULT_BASE_URL, { theme: "not-real" }),
     ).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe("agent model API", () => {
+  it("reads and saves model state through the native JSON bridge", async () => {
+    window.__TAURI_INTERNALS__ = {};
+    invokeMock.mockImplementation(async (command: string, args: { body?: string }) => {
+      if (command === "fetch_alfred_json") {
+        return JSON.stringify({ agents: [], count: 0 });
+      }
+      expect(command).toBe("post_alfred_json");
+      expect(JSON.parse(args.body || "{}")).toEqual({
+        agent: "senior-dev",
+        provider: "codex",
+        model: "gpt-5-codex",
+      });
+      return JSON.stringify({
+        ok: true,
+        agent: "senior-dev",
+        provider: "codex",
+        selection: { resolved: "gpt-5-codex", persisted: "gpt-5-codex", source: "state" },
+      });
+    });
+
+    await expect(loadAgentModels(DEFAULT_BASE_URL)).resolves.toEqual({ agents: [], count: 0 });
+    const saved = await saveAgentModel(
+      DEFAULT_BASE_URL,
+      "senior-dev",
+      "codex",
+      "gpt-5-codex",
+    );
+
+    expect(saved.selection.resolved).toBe("gpt-5-codex");
+    expect(invokeMock).toHaveBeenCalledWith(
+      "fetch_alfred_json",
+      expect.objectContaining({ path: "/api/agent-models" }),
+    );
+    expect(invokeMock).toHaveBeenCalledWith(
+      "post_alfred_json",
+      expect.objectContaining({ path: "/api/agent-models" }),
+    );
   });
 });
 

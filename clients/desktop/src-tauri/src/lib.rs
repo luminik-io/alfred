@@ -839,6 +839,7 @@ fn validate_api_path<'a>(
             || is_allowed_onboarding_converse(path_part)
             || is_allowed_conversation_control(path_part)
             || is_allowed_custom_agents_write(path_part)
+            || is_allowed_agent_models_write(path_part)
             || is_allowed_roster_theme_action(path_part)
             || is_allowed_followup_action(path_part)
             || is_allowed_plan_decision(path_part)
@@ -889,7 +890,7 @@ fn is_valid_api_query(query: &str) -> bool {
 fn is_allowed_read_path(path: &str) -> bool {
     if matches!(
         path,
-        "/api/roster-theme" | "/api/custom-agents" | "/api/code-intelligence"
+        "/api/roster-theme" | "/api/custom-agents" | "/api/agent-models" | "/api/code-intelligence"
     ) {
         return true;
     }
@@ -971,6 +972,10 @@ fn is_allowed_roster_theme_action(path: &str) -> bool {
 
 fn is_allowed_custom_agents_write(path: &str) -> bool {
     path == "/api/custom-agents"
+}
+
+fn is_allowed_agent_models_write(path: &str) -> bool {
+    path == "/api/agent-models"
 }
 
 fn is_allowed_custom_agent_delete(path: &str) -> bool {
@@ -3794,6 +3799,23 @@ done"#;
         assert!(!is_allowed_custom_agent_delete("/api/custom-agents"));
         assert!(!is_allowed_custom_agent_delete(
             "/api/custom-agents/release-captain/extra"
+        ));
+    }
+
+    #[test]
+    fn agent_model_api_paths_are_allowlisted() {
+        let (path, query) = validate_api_path("/api/agent-models", &Method::GET)
+            .expect("agent model inventory should be accepted for GET");
+        assert_eq!(path, "/api/agent-models");
+        assert_eq!(query, None);
+
+        let (path, query) = validate_api_path("/api/agent-models", &Method::POST)
+            .expect("agent model save should be accepted for POST");
+        assert_eq!(path, "/api/agent-models");
+        assert_eq!(query, None);
+
+        assert!(!is_allowed_agent_models_write(
+            "/api/agent-models/senior-dev"
         ));
     }
 

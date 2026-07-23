@@ -54,6 +54,11 @@ alfred model set senior-dev codex gpt-5-codex
 alfred model clear senior-dev claude
 ```
 
+The same choices are available under **Agents** in Alfred Desktop. Open an
+agent, enter a Claude or Codex alias, and save it. The drawer shows when a
+per-agent or fleet environment variable is taking precedence over the saved
+choice.
+
 Model names are intentionally not hard-coded into Alfred. Claude Code and Codex
 change their available model aliases independently, so the provider CLI remains
 the source of truth. Alfred validates the alias as one safe command argument and

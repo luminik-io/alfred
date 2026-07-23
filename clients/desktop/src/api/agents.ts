@@ -1,12 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type {
+  AgentModelProvider,
+  AgentModelsResponse,
   CustomAgentsResponse,
   CustomAgentWrite,
   DeleteCustomAgentResponse,
   NativeAction,
   NativeCommandResult,
   SaveCustomAgentResponse,
+  SaveAgentModelResponse,
 } from "../types";
 import { deleteAlfredJson, isTauri, readAlfredJson, writeAlfredJson } from "./client";
 
@@ -35,6 +38,23 @@ export async function deleteCustomAgent(
     baseUrl,
     `/api/custom-agents/${encodeURIComponent(codename)}`,
   );
+}
+
+export async function loadAgentModels(baseUrl: string): Promise<AgentModelsResponse> {
+  return readAlfredJson<AgentModelsResponse>(baseUrl, "/api/agent-models");
+}
+
+export async function saveAgentModel(
+  baseUrl: string,
+  agent: string,
+  provider: AgentModelProvider,
+  model: string | null,
+): Promise<SaveAgentModelResponse> {
+  return writeAlfredJson<SaveAgentModelResponse>(baseUrl, "/api/agent-models", {
+    agent,
+    provider,
+    model,
+  });
 }
 
 export async function runNativeAction(

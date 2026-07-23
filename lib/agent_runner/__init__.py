@@ -80,6 +80,7 @@ from .agent_events import (
 # --------------------------------------------------------------------------
 from .config import (
     ENGINE_CHOICES,
+    MODEL_ENGINES,
     PROVIDER_LIMIT_SUBTYPES,
     _agent_env_slug,
     _env_present,
@@ -87,7 +88,10 @@ from .config import (
     _truthy_env,
     agent_engine,
     agent_model,
+    agent_model_selection,
+    agent_model_state_file,
     agent_repos,
+    clear_agent_model,
     codex_sandbox_for_agent,
     doctor_mode,
     doctor_requested,
@@ -98,6 +102,7 @@ from .config import (
     normalize_engine,
     normalize_model_name,
     optional_env_int,
+    persist_agent_model,
     reported_subtype,
     set_dry_run,
     truthy,

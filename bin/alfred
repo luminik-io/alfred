@@ -1747,26 +1747,7 @@ def cmd_engine_set(args: argparse.Namespace) -> int:
 
 
 def _model_state_file(agent: str, provider: str) -> Path:
-    return agent_runner.STATE_ROOT / "models" / agent / provider
-
-
-def _write_model_state(agent: str, provider: str, model: str) -> Path:
-    target = _model_state_file(agent, provider)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    fd, temp_name = tempfile.mkstemp(prefix=f".{provider}.", suffix=".tmp", dir=target.parent)
-    temp_path = Path(temp_name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(model + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temp_path, target)
-    finally:
-        with contextlib.suppress(OSError):
-            os.close(fd)
-        with contextlib.suppress(OSError):
-            temp_path.unlink()
-    return target
+    return agent_runner.agent_model_state_file(agent, provider)
 
 
 def _model_label(model: str | None) -> str:
@@ -1819,7 +1800,7 @@ def cmd_model_set(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    target = _write_model_state(agent, args.provider, model)
+    target = agent_runner.persist_agent_model(agent, args.provider, model)
     print(f"alfred: {agent} {args.provider} model set to {model}")
     print(f"alfred: wrote {target}")
     active = agent_runner.agent_model(agent, args.provider)
@@ -1834,10 +1815,7 @@ def cmd_model_clear(args: argparse.Namespace) -> int:
     except ValueError as e:
         print(f"alfred model: {e}", file=sys.stderr)
         return 2
-    target = _model_state_file(agent, args.provider)
-    target.unlink(missing_ok=True)
-    with contextlib.suppress(OSError):
-        target.parent.rmdir()
+    agent_runner.clear_agent_model(agent, args.provider)
     active = agent_runner.agent_model(agent, args.provider)
     print(f"alfred: {agent} {args.provider} model cleared")
     print(f"alfred: active model is {_model_label(active)}")

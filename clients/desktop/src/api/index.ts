@@ -62,9 +62,11 @@ export {
 export {
   deleteCustomAgent,
   installAlfredCore,
+  loadAgentModels,
   loadCustomAgents,
   runNativeAction,
   saveCustomAgent,
+  saveAgentModel,
   setTrayStatus,
   startLocalRuntime,
 } from "./agents";

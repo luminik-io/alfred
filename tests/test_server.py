@@ -4326,3 +4326,85 @@ def test_custom_agents_api_requires_token_and_valid_payload(tmp_path: Path) -> N
         },
     )
     assert bad_payload.status_code == 400
+
+
+def test_agent_models_api_reads_saves_overrides_and_clears(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    initial = client.get("/api/agent-models")
+    assert initial.status_code == 200
+    senior_dev = next(row for row in initial.json()["agents"] if row["agent"] == "senior-dev")
+    assert senior_dev["claude"] == {
+        "resolved": None,
+        "persisted": None,
+        "source": "provider-default",
+    }
+
+    denied = client.post(
+        "/api/agent-models",
+        json={"agent": "senior-dev", "provider": "claude", "model": "sonnet"},
+    )
+    assert denied.status_code == 403
+
+    saved = client.post(
+        "/api/agent-models",
+        headers=_auth_headers(state),
+        json={"agent": "senior-dev", "provider": "claude", "model": "sonnet"},
+    )
+    assert saved.status_code == 200
+    assert saved.json()["selection"] == {
+        "resolved": "sonnet",
+        "persisted": "sonnet",
+        "source": "state",
+    }
+
+    monkeypatch.setenv("ALFRED_CLAUDE_MODEL", "fleet-opus")
+    overridden = client.get("/api/agent-models").json()
+    senior_dev = next(row for row in overridden["agents"] if row["agent"] == "senior-dev")
+    assert senior_dev["claude"] == {
+        "resolved": "fleet-opus",
+        "persisted": "sonnet",
+        "source": "fleet-environment",
+    }
+
+    cleared = client.post(
+        "/api/agent-models",
+        headers=_auth_headers(state),
+        json={"agent": "senior-dev", "provider": "claude", "model": None},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["selection"] == {
+        "resolved": "fleet-opus",
+        "persisted": None,
+        "source": "fleet-environment",
+    }
+
+
+def test_agent_models_api_validates_agent_provider_and_model(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+    headers = _auth_headers(state)
+
+    unknown = client.post(
+        "/api/agent-models",
+        headers=headers,
+        json={"agent": "not-an-agent", "provider": "codex", "model": "gpt-5"},
+    )
+    assert unknown.status_code == 404
+
+    bad_provider = client.post(
+        "/api/agent-models",
+        headers=headers,
+        json={"agent": "senior-dev", "provider": "openrouter", "model": "glm"},
+    )
+    assert bad_provider.status_code == 400
+
+    bad_model = client.post(
+        "/api/agent-models",
+        headers=headers,
+        json={"agent": "senior-dev", "provider": "codex", "model": "--config"},
+    )
+    assert bad_model.status_code == 400

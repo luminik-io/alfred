@@ -2,6 +2,8 @@ import { Rows3, Workflow as WorkflowIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { supportsNativeActions } from "../api/client";
+import { loadAgentModels, saveAgentModel } from "../api/agents";
+import { errorDetail } from "../api/client";
 import { friendlyTime } from "../format";
 import { isErrorStatus } from "../lib/derive";
 import {
@@ -26,7 +28,13 @@ import {
 } from "../lib/agentThemes";
 import type { NativeActionRequest } from "../lib/uiTypes";
 import { type WorkflowNodeInput } from "../lib/workflowGraph";
-import type { AgentSummary, NativeAction, ScheduledRun } from "../types";
+import type {
+  AgentModelProvider,
+  AgentModelRecord,
+  AgentSummary,
+  NativeAction,
+  ScheduledRun,
+} from "../types";
 import { AgentDetailDrawer } from "./AgentDetailDrawer";
 import { WorkflowGraph } from "./WorkflowGraph";
 import { AlfredMetric, AlfredStatusDot, type AlfredTone } from "./ui/alfred";
@@ -69,6 +77,7 @@ function readRosterView(): RosterView {
 }
 
 export function FleetControlView({
+  baseUrl,
   agents,
   schedule,
   service,
@@ -78,6 +87,7 @@ export function FleetControlView({
   onRunLocalAction,
   onViewLogs,
 }: {
+  baseUrl: string;
   agents: AgentSummary[];
   schedule?: ScheduledRun[];
   service: FleetServiceState;
@@ -125,7 +135,69 @@ export function FleetControlView({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [pending, setPending] = useState<PendingAction>(null);
   const [viewMode, setViewMode] = useState<RosterView>(() => readRosterView());
+  const [modelRecords, setModelRecords] = useState<Record<string, AgentModelRecord>>({});
+  const [modelsLoading, setModelsLoading] = useState(true);
+  const [modelBusy, setModelBusy] = useState<string | null>(null);
+  const [modelError, setModelError] = useState<{ key: string; message: string } | null>(null);
   const affirmRef = useRef<HTMLButtonElement | null>(null);
+  const agentKey = rows.map((row) => row.codename).sort().join(",");
+
+  useEffect(() => {
+    let cancelled = false;
+    setModelsLoading(true);
+    setModelError(null);
+    void loadAgentModels(baseUrl)
+      .then((response) => {
+        if (cancelled) return;
+        setModelRecords(
+          Object.fromEntries(response.agents.map((record) => [record.agent, record])),
+        );
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setModelError({
+            key: "load",
+            message: errorDetail(err) || "Could not load agent models.",
+          });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setModelsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [baseUrl, agentKey]);
+
+  const updateAgentModel = useCallback(
+    async (agent: string, provider: AgentModelProvider, model: string | null) => {
+      const busyKey = `${agent}:${provider}`;
+      setModelBusy(busyKey);
+      setModelError(null);
+      try {
+        const response = await saveAgentModel(baseUrl, agent, provider, model);
+        setModelRecords((current) => {
+          const existing = current[agent] || {
+            agent,
+            claude: { resolved: null, persisted: null, source: "provider-default" as const },
+            codex: { resolved: null, persisted: null, source: "provider-default" as const },
+          };
+          return {
+            ...current,
+            [agent]: { ...existing, [provider]: response.selection },
+          };
+        });
+      } catch (err) {
+        setModelError({
+          key: busyKey,
+          message: errorDetail(err) || `Could not update the ${provider} model.`,
+        });
+      } finally {
+        setModelBusy(null);
+      }
+    },
+    [baseUrl],
+  );
 
   // Selecting an agent (canvas node or list row) opens the detail drawer.
   const selectAgent = (codename: string) => {
@@ -301,6 +373,16 @@ export function FleetControlView({
             scheduleCopy={scheduleCopy}
             editableScheduleValue={editableScheduleValue}
             scheduleOptions={scheduleOptions}
+            modelStatus={selectedRow ? modelRecords[selectedRow.codename] : undefined}
+            modelsLoading={modelsLoading}
+            modelBusy={modelBusy}
+            modelError={
+              modelError &&
+              (modelError.key === "load" || modelError.key.startsWith(`${selectedRow?.codename}:`))
+                ? modelError.message
+                : null
+            }
+            onSaveModel={updateAgentModel}
             onDispatch={dispatch}
             onViewLogs={onViewLogs}
           />

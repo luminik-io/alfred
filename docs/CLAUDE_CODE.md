@@ -257,4 +257,4 @@ That agent's max-turns budget is too tight for the work. Either widen the budget
 The framework writes `last_session_id_per_target` into the agent's spend file (`$ALFRED_HOME/state/<agent>/spend-YYYY-MM-DD.json`). If this is empty, resume isn't being attempted. Check the agent's prompt; it should pass `--resume <session_id>` when re-firing on the same issue after a max-turns event.
 
 **Different model than expected.**
-`claude -p` uses whatever model your account defaults to. To pin a model per agent, pass `--model claude-opus-4-7` (or your target) in the agent's `claude_invoke_streaming()` call. Don't pin it framework-wide. Different agents have different cost/quality tradeoffs.
+`claude -p` uses whatever model your account defaults to when Alfred has no override. Open the agent in Alfred Desktop or run `alfred model status <role>` to see the active source. Set a role-specific alias with `alfred model set <role> claude <model>` or the desktop control. `ALFRED_<ROLE>_CLAUDE_MODEL` and `ALFRED_CLAUDE_MODEL` take precedence over saved state, and the desktop drawer says when either is active.
