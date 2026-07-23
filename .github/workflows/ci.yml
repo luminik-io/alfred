@@ -28,11 +28,11 @@ jobs:
             pyproject.toml
             uv.lock
       - name: ruff check
-        run: uv run --frozen --extra dev ruff check .
+        run: uv run --with 'ruff==0.15.22' ruff check .
       - name: ruff format check
-        run: uv run --frozen --extra dev ruff format --check .
+        run: uv run --with 'ruff==0.15.22' ruff format --check .
       - name: mypy
-        run: uv run --frozen --extra dev mypy lib/
+        run: uv run --with 'mypy==2.3.0' mypy lib/
 
   test-python:
     name: pytest
