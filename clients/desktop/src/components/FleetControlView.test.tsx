@@ -1,10 +1,15 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FleetControlView } from "./FleetControlView";
 import { parseFleetServiceState } from "../lib/fleetControl";
-import type { AgentSummary, NativeCommandResult, ScheduledRun } from "../types";
+import type {
+  AgentSummary,
+  NativeCommandResult,
+  SaveAgentModelResponse,
+  ScheduledRun,
+} from "../types";
 
 const agentApiMocks = vi.hoisted(() => ({
   loadAgentModels: vi.fn(),
@@ -365,5 +370,59 @@ describe("FleetControlView", () => {
       "opus",
     );
     await waitFor(() => expect(screen.getByText("Active: opus")).toBeInTheDocument());
+  });
+
+  it("ignores a save response from a previously selected runtime", async () => {
+    let resolveSave!: (value: SaveAgentModelResponse) => void;
+    agentApiMocks.saveAgentModel.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSave = resolve;
+      }),
+    );
+    agentApiMocks.loadAgentModels
+      .mockResolvedValueOnce(MODELS)
+      .mockResolvedValueOnce({
+        agents: [
+          {
+            agent: "senior-dev",
+            claude: { resolved: "runtime-b", persisted: "runtime-b", source: "state" },
+            codex: { resolved: null, persisted: null, source: "provider-default" },
+          },
+        ],
+        count: 1,
+      });
+
+    const props = {
+      agents: [agent("senior-dev")],
+      schedule: SCHEDULE,
+      service: SERVICE,
+      nativeBusy: null,
+      onRunLocalAction: vi.fn(),
+      onViewLogs: vi.fn(),
+    };
+    const { rerender } = render(
+      <FleetControlView baseUrl="http://runtime-a" {...props} />,
+    );
+    const user = userEvent.setup();
+    await openDrawer(user, "lucius");
+    await user.type(screen.getByLabelText("Claude"), "runtime-a");
+    await user.click(
+      screen.getByRole("button", { name: /save claude model for senior-dev/i }),
+    );
+
+    rerender(<FleetControlView baseUrl="http://runtime-b" {...props} />);
+    await waitFor(() => expect(screen.getByText("Active: runtime-b")).toBeInTheDocument());
+
+    await act(async () => {
+      resolveSave({
+        ok: true,
+        agent: "senior-dev",
+        provider: "claude",
+        selection: { resolved: "runtime-a", persisted: "runtime-a", source: "state" },
+      });
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Active: runtime-b")).toBeInTheDocument();
+    expect(screen.queryByText("Active: runtime-a")).not.toBeInTheDocument();
   });
 });

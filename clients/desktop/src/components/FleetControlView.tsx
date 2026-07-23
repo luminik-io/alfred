@@ -139,22 +139,25 @@ export function FleetControlView({
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelBusy, setModelBusy] = useState<string | null>(null);
   const [modelError, setModelError] = useState<{ key: string; message: string } | null>(null);
+  const modelRuntimeEpoch = useRef(0);
   const affirmRef = useRef<HTMLButtonElement | null>(null);
   const agentKey = rows.map((row) => row.codename).sort().join(",");
 
   useEffect(() => {
+    const epoch = ++modelRuntimeEpoch.current;
     let cancelled = false;
     setModelsLoading(true);
+    setModelBusy(null);
     setModelError(null);
     void loadAgentModels(baseUrl)
       .then((response) => {
-        if (cancelled) return;
+        if (cancelled || epoch !== modelRuntimeEpoch.current) return;
         setModelRecords(
           Object.fromEntries(response.agents.map((record) => [record.agent, record])),
         );
       })
       .catch((err) => {
-        if (!cancelled) {
+        if (!cancelled && epoch === modelRuntimeEpoch.current) {
           setModelError({
             key: "load",
             message: errorDetail(err) || "Could not load agent models.",
@@ -162,7 +165,7 @@ export function FleetControlView({
         }
       })
       .finally(() => {
-        if (!cancelled) setModelsLoading(false);
+        if (!cancelled && epoch === modelRuntimeEpoch.current) setModelsLoading(false);
       });
     return () => {
       cancelled = true;
@@ -172,10 +175,12 @@ export function FleetControlView({
   const updateAgentModel = useCallback(
     async (agent: string, provider: AgentModelProvider, model: string | null) => {
       const busyKey = `${agent}:${provider}`;
+      const epoch = modelRuntimeEpoch.current;
       setModelBusy(busyKey);
       setModelError(null);
       try {
         const response = await saveAgentModel(baseUrl, agent, provider, model);
+        if (epoch !== modelRuntimeEpoch.current) return;
         setModelRecords((current) => {
           const existing = current[agent] || {
             agent,
@@ -188,12 +193,13 @@ export function FleetControlView({
           };
         });
       } catch (err) {
+        if (epoch !== modelRuntimeEpoch.current) return;
         setModelError({
           key: busyKey,
           message: errorDetail(err) || `Could not update the ${provider} model.`,
         });
       } finally {
-        setModelBusy(null);
+        if (epoch === modelRuntimeEpoch.current) setModelBusy(null);
       }
     },
     [baseUrl],
