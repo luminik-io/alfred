@@ -142,6 +142,7 @@ export function FleetControlView({
   const [modelBusy, setModelBusy] = useState<string | null>(null);
   const [modelError, setModelError] = useState<{ key: string; message: string } | null>(null);
   const modelRuntimeEpoch = useRef(0);
+  const modelMutationVersion = useRef(0);
   const affirmRef = useRef<HTMLButtonElement | null>(null);
   const agentKey = rows.map((row) => row.codename).sort().join(",");
 
@@ -155,18 +156,29 @@ export function FleetControlView({
 
   useEffect(() => {
     const epoch = modelRuntimeEpoch.current;
+    const mutationVersion = modelMutationVersion.current;
     let cancelled = false;
     setModelsLoading(true);
     setModelError(null);
     void loadAgentModels(baseUrl)
       .then((response) => {
-        if (cancelled || epoch !== modelRuntimeEpoch.current) return;
+        if (
+          cancelled ||
+          epoch !== modelRuntimeEpoch.current ||
+          mutationVersion !== modelMutationVersion.current
+        ) {
+          return;
+        }
         setModelRecords(
           Object.fromEntries(response.agents.map((record) => [record.agent, record])),
         );
       })
       .catch((err) => {
-        if (!cancelled && epoch === modelRuntimeEpoch.current) {
+        if (
+          !cancelled &&
+          epoch === modelRuntimeEpoch.current &&
+          mutationVersion === modelMutationVersion.current
+        ) {
           setModelError({
             key: "load",
             message: errorDetail(err) || "Could not load agent models.",
@@ -190,6 +202,7 @@ export function FleetControlView({
       try {
         const response = await saveAgentModel(baseUrl, agent, provider, model);
         if (epoch !== modelRuntimeEpoch.current) return;
+        modelMutationVersion.current += 1;
         setModelRecords((current) => {
           const existing = current[agent] || {
             agent,

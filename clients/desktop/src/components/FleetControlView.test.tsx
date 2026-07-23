@@ -432,6 +432,78 @@ describe("FleetControlView", () => {
     expect(screen.queryByText("Active: runtime-a")).not.toBeInTheDocument();
   });
 
+  it("does not let an older inventory refresh overwrite a completed save", async () => {
+    let resolveSave!: (value: SaveAgentModelResponse) => void;
+    let resolveRefresh!: (value: typeof MODELS) => void;
+    agentApiMocks.saveAgentModel.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSave = resolve;
+      }),
+    );
+    agentApiMocks.loadAgentModels
+      .mockResolvedValueOnce(MODELS)
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveRefresh = resolve;
+        }),
+      );
+
+    const props = {
+      baseUrl: "http://runtime-a",
+      agents: [agent("senior-dev")],
+      schedule: SCHEDULE,
+      service: SERVICE,
+      nativeBusy: null,
+      onRunLocalAction: vi.fn(),
+      onViewLogs: vi.fn(),
+    };
+    const { rerender } = render(
+      <FleetControlView modelRefreshVersion={1} {...props} />,
+    );
+    const user = userEvent.setup();
+    await openDrawer(user, "lucius");
+    await waitFor(() => expect(agentApiMocks.loadAgentModels).toHaveBeenCalledTimes(1));
+    await user.type(screen.getByLabelText("Claude"), "new-model");
+    await user.click(
+      screen.getByRole("button", { name: /save claude model for senior-dev/i }),
+    );
+
+    rerender(<FleetControlView modelRefreshVersion={2} {...props} />);
+    await waitFor(() => expect(agentApiMocks.loadAgentModels).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      resolveSave({
+        ok: true,
+        agent: "senior-dev",
+        provider: "claude",
+        selection: { resolved: "new-model", persisted: "new-model", source: "state" },
+      });
+      await Promise.resolve();
+    });
+    expect(await screen.findByText("Active: new-model")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveRefresh(MODELS);
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Active: new-model")).toBeInTheDocument();
+  });
+
+  it("does not carry an unsaved model draft to another agent", async () => {
+    renderView();
+    const user = userEvent.setup();
+    await openDrawer(user, "lucius");
+    await waitFor(() => expect(agentApiMocks.loadAgentModels).toHaveBeenCalled());
+    await user.type(screen.getByLabelText("Claude"), "unsaved-lucius-model");
+
+    await user.click(screen.getByRole("button", { name: /select bane/i }));
+
+    expect(screen.getByLabelText("Claude")).toHaveValue("");
+    expect(
+      screen.getByRole("button", { name: /save claude model for test-engineer/i }),
+    ).toBeDisabled();
+  });
+
   it("clears model inventory when the replacement runtime cannot load", async () => {
     agentApiMocks.loadAgentModels
       .mockResolvedValueOnce({

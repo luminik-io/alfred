@@ -432,7 +432,7 @@ function AgentModelControls({
       </div>
       {(["claude", "codex"] as const).map((provider) => (
         <AgentModelRow
-          key={provider}
+          key={`${agent}:${provider}`}
           agent={agent}
           provider={provider}
           selection={status?.[provider]}
@@ -472,7 +472,7 @@ function AgentModelRow({
 
   useEffect(() => {
     setDraft(selection?.persisted || "");
-  }, [selection?.persisted]);
+  }, [agent, selection?.persisted]);
 
   const trimmed = draft.trim();
   const valid = !trimmed || MODEL_NAME.test(trimmed);
