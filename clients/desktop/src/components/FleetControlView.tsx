@@ -1,5 +1,5 @@
 import { Rows3, Workflow as WorkflowIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { supportsNativeActions } from "../api/client";
 import { loadAgentModels, saveAgentModel } from "../api/agents";
@@ -143,12 +143,16 @@ export function FleetControlView({
   const affirmRef = useRef<HTMLButtonElement | null>(null);
   const agentKey = rows.map((row) => row.codename).sort().join(",");
 
-  useEffect(() => {
-    const epoch = ++modelRuntimeEpoch.current;
-    let cancelled = false;
-    setModelsLoading(true);
+  useLayoutEffect(() => {
+    modelRuntimeEpoch.current += 1;
     setModelBusy(null);
     setModelError(null);
+  }, [baseUrl, agentKey]);
+
+  useEffect(() => {
+    const epoch = modelRuntimeEpoch.current;
+    let cancelled = false;
+    setModelsLoading(true);
     void loadAgentModels(baseUrl)
       .then((response) => {
         if (cancelled || epoch !== modelRuntimeEpoch.current) return;
