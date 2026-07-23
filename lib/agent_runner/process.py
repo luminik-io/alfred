@@ -297,7 +297,7 @@ class _Unresolved:
 _UNRESOLVED = _Unresolved()
 
 
-def _memory_mcp_server(script: Path | None | _Unresolved = _UNRESOLVED) -> dict[str, Any] | None:
+def _memory_mcp_server(script: Path | _Unresolved | None = _UNRESOLVED) -> dict[str, Any] | None:
     """Return the ``mcpServers`` entry for the memory server, or ``None``.
 
     Split out from the args builder so memory and code-memory can share one
@@ -313,7 +313,7 @@ def _memory_mcp_server(script: Path | None | _Unresolved = _UNRESOLVED) -> dict[
 
 
 def _memory_mcp_args(
-    script: Path | None | _Unresolved = _UNRESOLVED, workdir: Path | None = None
+    script: Path | _Unresolved | None = _UNRESOLVED, workdir: Path | None = None
 ) -> list[str]:
     """``--mcp-config`` args attaching the read-only memory + code-memory
     servers, or ``[]``.
@@ -348,7 +348,7 @@ def _memory_tool_names() -> list[str]:
 
 def _with_memory_mcp_tools(
     allowed_tools: str,
-    script: Path | None | _Unresolved = _UNRESOLVED,
+    script: Path | _Unresolved | None = _UNRESOLVED,
     workdir: Path | None = None,
 ) -> str:
     """Append the read-only memory recall tools to an allowlist when enabled.

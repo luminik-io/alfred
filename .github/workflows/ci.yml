@@ -26,11 +26,11 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
       - name: ruff check
-        run: uv run --with 'ruff>=0.6' ruff check .
+        run: uv run --with 'ruff==0.15.22' ruff check .
       - name: ruff format check
-        run: uv run --with 'ruff>=0.6' ruff format --check .
+        run: uv run --with 'ruff==0.15.22' ruff format --check .
       - name: mypy
-        run: uv run --with 'mypy>=1.10' mypy lib/
+        run: uv run --with 'mypy==2.3.0' mypy lib/
 
   test-python:
     name: pytest

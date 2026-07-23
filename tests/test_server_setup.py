@@ -6,6 +6,9 @@ import json
 import os
 import subprocess
 import sys
+import threading
+import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -284,11 +287,57 @@ def test_list_owner_repos_marks_other_owners_unselectable_for_existing_scope(
         ],
     )
     monkeypatch.setattr(setup_mod, "_runtime_config_env", lambda: {})
-    monkeypatch.setattr(setup_mod, "_selected_repo_local_paths", lambda *_args: [])
+    monkeypatch.setattr(setup_mod, "_selected_repo_local_paths", lambda *_args, **_kwargs: [])
 
     result = setup_mod.list_owner_repos()
 
     assert [row["selectable"] for row in result["repos"]] == [True, False]
+
+
+def test_list_owner_repos_preserves_saved_path_when_github_slug_casing_differs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout = tmp_path / "custom" / "web"
+    _git_repo_with_origin(checkout, "Acme/Web")
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: ["acme/web"])
+    monkeypatch.setattr(
+        setup_mod,
+        "gh_auth_status",
+        lambda **_kwargs: {"ok": True, "account": "operator", "detail": ""},
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_gh_repo_list",
+        lambda _limit, **_kwargs: [{"nameWithOwner": "Acme/Web"}],
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {
+            "HOME": str(tmp_path),
+            "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+            "ALFRED_WORKSPACE_SUBDIR": "",
+            "ALFRED_REPO_LOCAL_MAP": f"acme/web={checkout}",
+        },
+    )
+
+    result = setup_mod.list_owner_repos()
+
+    assert result["repo_checkouts"] == [
+        {
+            "repo": "Acme/Web",
+            "path": str(checkout),
+            "source": "map",
+            "exists": True,
+            "is_git_repo": True,
+            "github_remote_name": "origin",
+            "github_remote_repo": "Acme/Web",
+            "identity_matches": True,
+            "ready": True,
+            "reason": None,
+        }
+    ]
 
 
 def test_list_owner_repos_shares_deadline_across_auth_and_discovery(
@@ -307,15 +356,25 @@ def test_list_owner_repos_shares_deadline_across_auth_and_discovery(
         deadlines["discovery"] = deadline
         return []
 
+    def fake_local_paths(
+        _repos: list[str],
+        _selected: set[str],
+        _env: dict[str, str],
+        *,
+        deadline: float,
+    ) -> list[dict[str, Any]]:
+        deadlines["local"] = deadline
+        return []
+
     monkeypatch.setattr(setup_mod, "gh_auth_status", fake_auth)
     monkeypatch.setattr(setup_mod, "_gh_repo_list", fake_repo_list)
     monkeypatch.setattr(setup_mod, "_runtime_config_env", lambda: {})
-    monkeypatch.setattr(setup_mod, "_selected_repo_local_paths", lambda *_args: [])
+    monkeypatch.setattr(setup_mod, "_repo_picker_local_paths", fake_local_paths)
 
     result = setup_mod.list_owner_repos()
 
     assert result["repos"] == []
-    assert deadlines == {"auth": 105.0, "discovery": 115.0}
+    assert deadlines == {"auth": 105.0, "discovery": 112.0, "local": 103.0}
 
 
 def test_gh_auth_status_uses_remaining_deadline_as_subprocess_timeout(
@@ -342,6 +401,511 @@ def test_gh_auth_status_uses_remaining_deadline_as_subprocess_timeout(
 
     assert result["ok"] is True
     assert timeouts == [5.0]
+
+
+def test_list_owner_repos_detects_nested_checkout_from_github_remote(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = workspace / "nested" / "web"
+    _git_repo_with_origin(workspace, "Acme/Parent")
+    _git_repo_with_origin(checkout, "Acme/Web")
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
+    monkeypatch.setattr(
+        setup_mod,
+        "gh_auth_status",
+        lambda **_kwargs: {"ok": True, "account": "operator", "detail": ""},
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_gh_repo_list",
+        lambda _limit, **_kwargs: [{"nameWithOwner": "Acme/Web"}],
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {
+            "HOME": str(tmp_path),
+            "WORKSPACE_ROOT": str(workspace),
+            "ALFRED_WORKSPACE_SUBDIR": "",
+        },
+    )
+
+    result = setup_mod.list_owner_repos()
+
+    assert result["repo_checkouts"] == [
+        {
+            "repo": "Acme/Web",
+            "path": str(checkout),
+            "source": "discovery",
+            "exists": True,
+            "is_git_repo": True,
+            "github_remote_name": "origin",
+            "github_remote_repo": "Acme/Web",
+            "identity_matches": True,
+            "ready": True,
+            "reason": None,
+        }
+    ]
+
+
+def test_list_owner_repos_detects_checkout_in_worktree_pool(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = workspace / ".worktrees" / "web"
+    _git_repo_with_origin(checkout, "Acme/Web")
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
+    monkeypatch.setattr(
+        setup_mod,
+        "gh_auth_status",
+        lambda **_kwargs: {"ok": True, "account": "operator", "detail": ""},
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_gh_repo_list",
+        lambda _limit, **_kwargs: [{"nameWithOwner": "Acme/Web"}],
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {
+            "HOME": str(tmp_path),
+            "WORKSPACE_ROOT": str(workspace),
+            "ALFRED_WORKSPACE_SUBDIR": "",
+        },
+    )
+
+    result = setup_mod.list_owner_repos()
+
+    assert result["repo_checkouts"] == [
+        {
+            "repo": "Acme/Web",
+            "path": str(checkout),
+            "source": "discovery",
+            "exists": True,
+            "is_git_repo": True,
+            "github_remote_name": "origin",
+            "github_remote_repo": "Acme/Web",
+            "identity_matches": True,
+            "ready": True,
+            "reason": None,
+        }
+    ]
+
+
+def test_nested_checkout_discovery_never_enters_git_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = workspace / "nested" / "web"
+    _git_repo_with_origin(workspace, "Acme/Parent")
+    _git_repo_with_origin(checkout, "Acme/Web")
+    (workspace / ".git" / "objects" / "nested").mkdir(parents=True)
+    inspected: list[Path] = []
+    is_git_repo = setup_mod._is_code_memory_git_repo
+
+    def record_inspection(path: Path) -> bool:
+        inspected.append(path)
+        return is_git_repo(path)
+
+    monkeypatch.setattr(setup_mod, "_is_code_memory_git_repo", record_inspection)
+
+    repos = list(
+        setup_mod._iter_workspace_git_repos(
+            {
+                "HOME": str(tmp_path),
+                "WORKSPACE_ROOT": str(workspace),
+                "ALFRED_WORKSPACE_SUBDIR": "",
+            },
+            include_nested=True,
+        )
+    )
+
+    assert repos == [workspace, checkout]
+    assert all(".git" not in path.relative_to(workspace).parts for path in inspected)
+
+
+def test_nested_checkout_discovery_stops_during_slow_directory_enumeration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    children = [workspace / f"repo-{index}" for index in range(5)]
+    consumed: list[Path] = []
+    original_iterdir = Path.iterdir
+    clock = iter((100.0, 100.1, 100.2, 100.31))
+
+    def slow_iterdir(path: Path) -> Iterator[Path]:
+        if path != workspace:
+            yield from original_iterdir(path)
+            return
+        for child in children:
+            consumed.append(child)
+            yield child
+
+    monkeypatch.setattr(Path, "iterdir", slow_iterdir)
+    monkeypatch.setattr(setup_mod.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(setup_mod, "_is_code_memory_git_repo", lambda _path: False)
+
+    repos = list(
+        setup_mod._iter_workspace_git_repos(
+            {
+                "HOME": str(tmp_path),
+                "WORKSPACE_ROOT": str(workspace),
+                "ALFRED_WORKSPACE_SUBDIR": "",
+            },
+            deadline=100.3,
+            include_nested=True,
+        )
+    )
+
+    assert repos == []
+    assert consumed == children[:3]
+
+
+def test_list_owner_repos_omits_nested_checkout_with_different_remote(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    _git_repo_with_origin(workspace / "nested" / "web", "Other/Web")
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
+    monkeypatch.setattr(
+        setup_mod,
+        "gh_auth_status",
+        lambda **_kwargs: {"ok": True, "account": "operator", "detail": ""},
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_gh_repo_list",
+        lambda _limit, **_kwargs: [{"nameWithOwner": "Acme/Web"}],
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {
+            "HOME": str(tmp_path),
+            "WORKSPACE_ROOT": str(workspace),
+            "ALFRED_WORKSPACE_SUBDIR": "",
+        },
+    )
+
+    result = setup_mod.list_owner_repos()
+
+    assert result["repo_checkouts"] == []
+
+
+def test_repo_picker_inspects_discovery_results_as_they_are_yielded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout = tmp_path / "web"
+    inspected = False
+
+    def iter_repos(*_args: object, **_kwargs: object) -> Iterator[Path]:
+        yield checkout
+        assert inspected, "discovery advanced before inspecting the yielded checkout"
+
+    def local_remotes(*_args: object, **_kwargs: object) -> list[tuple[str, str]]:
+        nonlocal inspected
+        inspected = True
+        return [("origin", "Acme/Web")]
+
+    monkeypatch.setattr(
+        setup_mod,
+        "_selected_repo_local_paths",
+        lambda *_args, **_kwargs: [
+            {
+                "repo": "Acme/Web",
+                "ready": False,
+            }
+        ],
+    )
+    monkeypatch.setattr(setup_mod, "_iter_workspace_git_repos", iter_repos)
+    monkeypatch.setattr(setup_mod, "_local_repo_github_remotes", local_remotes)
+    monkeypatch.setattr(
+        setup_mod,
+        "_inspect_repo_checkout",
+        lambda *_args, **_kwargs: {
+            "repo": "Acme/Web",
+            "path": str(checkout),
+            "source": "discovery",
+            "ready": True,
+        },
+    )
+
+    rows = setup_mod._repo_picker_local_paths(
+        ["Acme/Web"],
+        set(),
+        {},
+    )
+
+    assert inspected is True
+    assert rows == [
+        {
+            "repo": "Acme/Web",
+            "path": str(checkout),
+            "source": "discovery",
+            "ready": True,
+        }
+    ]
+
+
+def test_repo_picker_runs_deadline_bound_discovery_in_isolated_process(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = workspace / "Web"
+    _git_repo_with_origin(checkout, "Acme/Web")
+
+    rows = setup_mod._repo_picker_local_paths(
+        ["Acme/Web"],
+        set(),
+        {
+            "HOME": str(tmp_path),
+            "WORKSPACE_ROOT": str(workspace),
+            "ALFRED_WORKSPACE_SUBDIR": "",
+        },
+        deadline=time.monotonic() + 3,
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["repo"] == "Acme/Web"
+    assert rows[0]["path"] == str(checkout)
+    assert rows[0]["ready"] is True
+
+
+def test_repo_picker_reserves_time_to_handoff_discovery_results(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_deadline = 0.0
+
+    class CompleteWorker:
+        returncode = 0
+
+        def communicate(self, *, input: str, timeout: float) -> tuple[str, str]:
+            nonlocal captured_deadline
+            captured_deadline = float(json.loads(input)["deadline"])
+            assert timeout > 0
+            return "[]", ""
+
+        def poll(self) -> int:
+            return self.returncode
+
+    monkeypatch.setattr(setup_mod.subprocess, "Popen", lambda *_args, **_kwargs: CompleteWorker())
+    caller_deadline = time.monotonic() + 1
+
+    rows = setup_mod._repo_picker_local_paths(
+        ["Acme/Web"],
+        set(),
+        {},
+        deadline=caller_deadline,
+    )
+
+    assert rows == []
+    assert captured_deadline == pytest.approx(
+        caller_deadline - setup_mod._REPO_DISCOVERY_HANDOFF_SECONDS
+    )
+
+
+def test_repo_picker_kills_timed_out_worker_and_allows_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workers: list[TimedOutWorker | CompleteWorker] = []
+
+    class TimedOutWorker:
+        returncode: int | None = None
+        killed = False
+
+        def communicate(self, *, input: str, timeout: float) -> tuple[str, str]:
+            raise subprocess.TimeoutExpired("repo-discovery", timeout)
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def kill(self) -> None:
+            self.killed = True
+            self.returncode = -9
+
+        def wait(self, *, timeout: float) -> int:
+            return -9
+
+    class CompleteWorker:
+        returncode = 0
+
+        def communicate(self, *, input: str, timeout: float) -> tuple[str, str]:
+            return "[]", ""
+
+        def poll(self) -> int:
+            return self.returncode
+
+    def fake_popen(*_args: object, **_kwargs: object) -> TimedOutWorker | CompleteWorker:
+        worker: TimedOutWorker | CompleteWorker
+        worker = TimedOutWorker() if not workers else CompleteWorker()
+        workers.append(worker)
+        return worker
+
+    monkeypatch.setattr(setup_mod.subprocess, "Popen", fake_popen)
+
+    first = setup_mod._repo_picker_local_paths(
+        ["Acme/Web"],
+        set(),
+        {},
+        deadline=time.monotonic() + 0.03,
+    )
+    second = setup_mod._repo_picker_local_paths(
+        ["Acme/Web"],
+        set(),
+        {},
+        deadline=time.monotonic() + 0.03,
+    )
+
+    assert first == []
+    assert second == []
+    assert len(workers) == 2
+    assert isinstance(workers[0], TimedOutWorker)
+    assert workers[0].killed is True
+
+
+def test_repo_picker_keeps_slot_until_sigkill_resistant_worker_is_reaped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reaper_started = threading.Event()
+    release_reaper = threading.Event()
+    reaped = threading.Event()
+    workers: list[StubbornWorker | CompleteWorker] = []
+
+    class StubbornWorker:
+        returncode: int | None = None
+        killed = False
+
+        def communicate(self, *, input: str, timeout: float) -> tuple[str, str]:
+            raise subprocess.TimeoutExpired("repo-discovery", timeout)
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def kill(self) -> None:
+            self.killed = True
+
+        def wait(self, *, timeout: float | None = None) -> int:
+            assert timeout is None
+            reaper_started.set()
+            release_reaper.wait(timeout=1)
+            self.returncode = -9
+            reaped.set()
+            return -9
+
+    class CompleteWorker:
+        returncode = 0
+
+        def communicate(self, *, input: str, timeout: float) -> tuple[str, str]:
+            return "[]", ""
+
+        def poll(self) -> int:
+            return self.returncode
+
+    def fake_popen(*_args: object, **_kwargs: object) -> StubbornWorker | CompleteWorker:
+        worker: StubbornWorker | CompleteWorker
+        worker = StubbornWorker() if not workers else CompleteWorker()
+        workers.append(worker)
+        return worker
+
+    monkeypatch.setattr(setup_mod.subprocess, "Popen", fake_popen)
+    started_at = time.monotonic()
+
+    first = setup_mod._repo_picker_local_paths(
+        ["Acme/Web"],
+        set(),
+        {},
+        deadline=started_at + 0.03,
+    )
+    second = setup_mod._repo_picker_local_paths(
+        ["Acme/Web"],
+        set(),
+        {},
+        deadline=time.monotonic() + 0.03,
+    )
+
+    assert first == []
+    assert second == []
+    assert time.monotonic() - started_at < 0.15
+    assert reaper_started.wait(timeout=1)
+    assert len(workers) == 1
+    assert workers[0].killed is True
+
+    release_reaper.set()
+    assert reaped.wait(timeout=1)
+    for _ in range(100):
+        third = setup_mod._repo_picker_local_paths(
+            ["Acme/Web"],
+            set(),
+            {},
+            deadline=time.monotonic() + 0.03,
+        )
+        if len(workers) == 2:
+            break
+        time.sleep(0.01)
+
+    assert third == []
+    assert len(workers) == 2
+
+
+def test_repo_picker_recovers_after_real_worker_process_stalls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sleeper = tmp_path / "sleeping_repo_worker.py"
+    sleeper.write_text("import time\ntime.sleep(60)\n", encoding="utf-8")
+    original_process_env = setup_mod._repo_discovery_process_env
+
+    def process_env() -> dict[str, str]:
+        env = original_process_env()
+        env["PYTHONPATH"] = os.pathsep.join((str(tmp_path), env["PYTHONPATH"]))
+        return env
+
+    monkeypatch.setattr(setup_mod, "_repo_discovery_process_env", process_env)
+    monkeypatch.setattr(setup_mod, "_REPO_DISCOVERY_WORKER_MODULE", "sleeping_repo_worker")
+    started_at = time.monotonic()
+
+    timed_out = setup_mod._repo_picker_local_paths(
+        ["Acme/Web"],
+        set(),
+        {},
+        deadline=started_at + 0.2,
+    )
+
+    assert timed_out == []
+    assert time.monotonic() - started_at < 1
+
+    workspace = tmp_path / "workspace"
+    checkout = workspace / "Web"
+    _git_repo_with_origin(checkout, "Acme/Web")
+    monkeypatch.setattr(
+        setup_mod,
+        "_REPO_DISCOVERY_WORKER_MODULE",
+        "server.repo_discovery_worker",
+    )
+
+    recovered = setup_mod._repo_picker_local_paths(
+        ["Acme/Web"],
+        set(),
+        {
+            "HOME": str(tmp_path),
+            "WORKSPACE_ROOT": str(workspace),
+            "ALFRED_WORKSPACE_SUBDIR": "",
+        },
+        deadline=time.monotonic() + 3,
+    )
+
+    assert len(recovered) == 1
+    assert recovered[0]["path"] == str(checkout)
+    assert recovered[0]["ready"] is True
 
 
 def test_repo_selection_owner_allows_recovery_from_invalid_mixed_scope() -> None:

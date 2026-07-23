@@ -34,9 +34,11 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
+import threading
 import time
 import urllib.parse
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from contextlib import suppress
 from datetime import UTC, datetime
 from fnmatch import fnmatchcase
@@ -103,6 +105,9 @@ _GH_REPO_DISCOVERY_TIMEOUT_SECONDS = 15.0
 _GH_REPO_AUTH_TIMEOUT_SECONDS = 5.0
 _GH_REPO_PRIMARY_TIMEOUT_SECONDS = 10.0
 _GH_REPO_FALLBACK_RESERVE_SECONDS = 5.0
+_GH_REPO_LOCAL_RESERVE_SECONDS = 3.0
+_REPO_DISCOVERY_HANDOFF_SECONDS = 0.1
+_REPO_DISCOVERY_WORKER_MODULE = "server.repo_discovery_worker"
 
 
 class RepoCheckoutValidationError(ValueError):
@@ -125,7 +130,9 @@ _CODE_MEMORY_VERSION_RE = re.compile(
 )
 _CODE_MEMORY_REPO_RE = re.compile(r'^CODE_MEMORY_REPO="\$\{ALFRED_CODE_MEMORY_REPO:-([^}]+)\}"')
 _CODE_MEMORY_DISCOVERY_LIMIT = 25
+_REPO_DISCOVERY_SLOT = threading.Lock()
 _CODE_MEMORY_DISCOVERY_IGNORES = {
+    ".git",
     ".archive",
     ".cache",
     ".external",
@@ -1396,15 +1403,40 @@ def _code_memory_discovery_limit(env: dict[str, str]) -> int:
     return value if value > 0 else _CODE_MEMORY_DISCOVERY_LIMIT
 
 
-def _discover_code_memory_repos(env: dict[str, str]) -> list[str]:
+def _discover_code_memory_repos(
+    env: dict[str, str],
+    *,
+    deadline: float | None = None,
+) -> list[str]:
     workspace = _code_memory_workspace(env)
     limit = _code_memory_discovery_limit(env)
     found: list[str] = []
+    for repo in _iter_workspace_git_repos(env, deadline=deadline, include_nested=False):
+        found.append(str(repo.relative_to(workspace)))
+        if len(found) >= limit:
+            break
+    return found
+
+
+def _iter_workspace_git_repos(
+    env: dict[str, str],
+    *,
+    deadline: float | None = None,
+    include_nested: bool,
+) -> Iterator[Path]:
+    workspace = _code_memory_workspace(env)
     if not workspace.is_dir():
-        return found
+        return
+    ignored_names = (
+        _CODE_MEMORY_DISCOVERY_IGNORES - {".worktrees"}
+        if include_nested
+        else _CODE_MEMORY_DISCOVERY_IGNORES
+    )
     queue = [workspace]
     seen_real_paths: set[Path] = set()
     while queue:
+        if deadline is not None and time.monotonic() >= deadline:
+            break
         repo = queue.pop(0)
         try:
             real_repo = repo.resolve(strict=False)
@@ -1413,35 +1445,33 @@ def _discover_code_memory_repos(env: dict[str, str]) -> list[str]:
         if real_repo in seen_real_paths:
             continue
         seen_real_paths.add(real_repo)
-        try:
-            entries = list(repo.iterdir())
-        except OSError:
-            continue
         if _is_code_memory_git_repo(repo):
             try:
                 relative_parts = repo.relative_to(workspace).parts
             except ValueError:
                 continue
-            if any(part in _CODE_MEMORY_DISCOVERY_IGNORES for part in relative_parts):
+            if any(part in ignored_names for part in relative_parts):
                 continue
-            found.append(str(repo.relative_to(workspace)))
-            if len(found) >= limit:
-                break
+            yield repo
+            if not include_nested:
+                continue
+        children: list[Path] = []
+        try:
+            for entry in repo.iterdir():
+                if deadline is not None and time.monotonic() >= deadline:
+                    return
+                if not entry.is_dir() or entry.name in ignored_names:
+                    continue
+                try:
+                    relative_parts = entry.relative_to(workspace).parts
+                except ValueError:
+                    continue
+                if any(part in ignored_names for part in relative_parts):
+                    continue
+                children.append(entry)
+        except OSError:
             continue
-        children = sorted(
-            entry
-            for entry in entries
-            if entry.is_dir() and entry.name not in _CODE_MEMORY_DISCOVERY_IGNORES
-        )
-        for child in children:
-            try:
-                relative_parts = child.relative_to(workspace).parts
-            except ValueError:
-                continue
-            if any(part in _CODE_MEMORY_DISCOVERY_IGNORES for part in relative_parts):
-                continue
-            queue.append(child)
-    return found
+        queue.extend(sorted(children))
 
 
 def _existing_code_memory_configured_repos(env: dict[str, str], configured: list[str]) -> list[str]:
@@ -1527,7 +1557,8 @@ def _decode_repo_local_map_value(value: str) -> str:
 def _code_memory_configured_repo_path(
     env: dict[str, str], name: str, repo_map: dict[str, str] | None = None
 ) -> Path:
-    mapped = (repo_map if repo_map is not None else _code_memory_repo_map(env)).get(name, name)
+    mapping = repo_map if repo_map is not None else _code_memory_repo_map(env)
+    mapped = mapping.get(name, mapping.get(name.casefold(), name))
     path = Path(mapped)
     if path.is_absolute():
         return path
@@ -1907,7 +1938,173 @@ def _repo_local_paths_readiness_check(
     ) | {"detected": detected}
 
 
-def _selected_repo_local_paths(repos: list[str], env: dict[str, str]) -> list[dict[str, Any]]:
+def _repo_picker_local_paths(
+    repos: list[str],
+    selected: set[str],
+    env: dict[str, str],
+    *,
+    deadline: float | None = None,
+) -> list[dict[str, Any]]:
+    """Return checkout rows without letting filesystem calls block the route."""
+
+    if deadline is None:
+        return _repo_picker_local_paths_sync(repos, selected, env)
+    started_at = time.monotonic()
+    if started_at >= deadline:
+        return []
+    if not _REPO_DISCOVERY_SLOT.acquire(blocking=False):
+        return []
+
+    worker_deadline = max(started_at, deadline - _REPO_DISCOVERY_HANDOFF_SECONDS)
+    payload = json.dumps(
+        {
+            "repos": repos,
+            "selected": sorted(selected),
+            "env": _repo_discovery_config(env),
+            "deadline": worker_deadline,
+        }
+    )
+    worker: subprocess.Popen[str] | None = None
+    try:
+        worker = subprocess.Popen(
+            [sys.executable, "-m", _REPO_DISCOVERY_WORKER_MODULE],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=_repo_discovery_process_env(),
+        )
+        remaining = max(0.0, deadline - time.monotonic())
+        stdout, stderr = worker.communicate(input=payload, timeout=remaining)
+        if worker.returncode != 0:
+            logger.warning(
+                "Local repository discovery worker failed with exit code %s: %s",
+                worker.returncode,
+                stderr.strip(),
+            )
+            return []
+        result = json.loads(stdout)
+        if not isinstance(result, list) or not all(isinstance(row, dict) for row in result):
+            logger.warning("Local repository discovery worker returned an invalid payload")
+            return []
+        return result
+    except subprocess.TimeoutExpired:
+        logger.info("Local repository discovery reached its request deadline")
+        return []
+    except (OSError, ValueError):
+        logger.exception("Local repository discovery worker failed")
+        return []
+    finally:
+        release_slot = True
+        if worker is not None and worker.poll() is None:
+            release_slot = _stop_repo_discovery_worker(worker)
+        if release_slot:
+            _REPO_DISCOVERY_SLOT.release()
+
+
+def _repo_discovery_config(env: Mapping[str, str]) -> dict[str, str]:
+    """Return only the non-secret configuration needed by the scan worker."""
+
+    keys = (
+        "HOME",
+        "WORKSPACE_ROOT",
+        "ALFRED_WORKSPACE_SUBDIR",
+        "WORKSPACE_SUBDIR",
+        REPO_LOCAL_MAP_ENV,
+        "ALFRED_CODE_MEMORY_DISCOVERY_LIMIT",
+    )
+    return {key: env[key] for key in keys if key in env}
+
+
+def _repo_discovery_process_env() -> dict[str, str]:
+    env = dict(os.environ)
+    package_root = str(Path(__file__).resolve().parents[1])
+    env["PYTHONPATH"] = _join_search_path((package_root,), env.get("PYTHONPATH", ""))
+    return env
+
+
+def _stop_repo_discovery_worker(worker: subprocess.Popen[str]) -> bool:
+    """Kill a timed-out scan without extending the request deadline.
+
+    Returns ``True`` when the caller can release the single-flight slot. A
+    process still alive after ``kill`` is handed to one daemon reaper that owns
+    the slot until the process actually exits, preventing unreaped workers from
+    accumulating.
+    """
+
+    with suppress(OSError):
+        worker.kill()
+    if worker.poll() is not None:
+        return True
+    threading.Thread(
+        target=_reap_repo_discovery_worker,
+        args=(worker,),
+        name="alfred-repo-discovery-reaper",
+        daemon=True,
+    ).start()
+    return False
+
+
+def _reap_repo_discovery_worker(worker: subprocess.Popen[str]) -> None:
+    try:
+        worker.wait()
+    finally:
+        _REPO_DISCOVERY_SLOT.release()
+
+
+def _repo_picker_local_paths_sync(
+    repos: list[str],
+    selected: set[str],
+    env: dict[str, str],
+    *,
+    deadline: float | None = None,
+) -> list[dict[str, Any]]:
+    """Return verified paths for visible repos plus repair rows for selected repos."""
+
+    selected_keys = {slug.casefold() for slug in selected}
+    direct = _selected_repo_local_paths(repos, env, deadline=deadline)
+    rows_by_repo: dict[str, dict[str, Any]] = {}
+    missing: dict[str, str] = {}
+    for row in direct:
+        key = str(row["repo"]).casefold()
+        if row["ready"] or key in selected_keys:
+            rows_by_repo[key] = row
+        if not row["ready"]:
+            missing[key] = str(row["repo"])
+
+    discovered = (
+        _iter_workspace_git_repos(env, deadline=deadline, include_nested=True)
+        if missing
+        else iter(())
+    )
+    for path in discovered:
+        for remote in _local_repo_github_remotes(path, deadline=deadline):
+            key = remote[1].casefold()
+            slug = missing.get(key)
+            if slug is None:
+                continue
+            row = _inspect_repo_checkout(
+                slug,
+                path,
+                "discovery",
+                known_remote=remote,
+                deadline=deadline,
+            )
+            if row["ready"]:
+                rows_by_repo[key] = row
+                missing.pop(key, None)
+        if not missing:
+            break
+
+    return [rows_by_repo[slug.casefold()] for slug in repos if slug.casefold() in rows_by_repo]
+
+
+def _selected_repo_local_paths(
+    repos: list[str],
+    env: dict[str, str],
+    *,
+    deadline: float | None = None,
+) -> list[dict[str, Any]]:
     repo_map = _code_memory_repo_map(env)
     workspace = _code_memory_workspace(env)
     out: list[dict[str, Any]] = []
@@ -1915,7 +2112,7 @@ def _selected_repo_local_paths(repos: list[str], env: dict[str, str]) -> list[di
         local_name = slug.rsplit("/", 1)[-1]
         candidates: list[tuple[Path, str]] = []
         for key in (slug, local_name):
-            if key in repo_map:
+            if key in repo_map or key.casefold() in repo_map:
                 candidates.append((_code_memory_configured_repo_path(env, key, repo_map), "map"))
         if not candidates:
             candidates.append((workspace / local_name, "workspace"))
@@ -1926,19 +2123,34 @@ def _selected_repo_local_paths(repos: list[str], env: dict[str, str]) -> list[di
             if key not in seen:
                 unique.append((path, source))
                 seen.add(key)
-        inspected = [_inspect_repo_checkout(slug, path, source) for path, source in unique]
+        inspected = [
+            _inspect_repo_checkout(slug, path, source, deadline=deadline) for path, source in unique
+        ]
         out.append(next((row for row in inspected if row["ready"]), inspected[0]))
     return out
 
 
-def _inspect_repo_checkout(slug: str, path: Path, source: str) -> dict[str, Any]:
+def _inspect_repo_checkout(
+    slug: str,
+    path: Path,
+    source: str,
+    *,
+    known_remote: tuple[str, str] | None = None,
+    deadline: float | None = None,
+) -> dict[str, Any]:
     try:
         exists = path.is_dir()
     except OSError:
         exists = False
     is_git_repo = exists and _is_code_memory_git_repo(path)
     github_remote_name, github_remote_repo = (
-        _local_repo_github_remote(path, expected_slug=slug) if is_git_repo else ("", "")
+        known_remote
+        if is_git_repo and known_remote is not None
+        else (
+            _local_repo_github_remote(path, expected_slug=slug, deadline=deadline)
+            if is_git_repo
+            else ("", "")
+        )
     )
     identity_matches = bool(github_remote_repo) and github_remote_repo.casefold() == slug.casefold()
     if not exists:
@@ -2034,21 +2246,27 @@ def _github_slug_from_remote_url(raw: str) -> str:
     return f"{parts[-2]}/{parts[-1]}"
 
 
-def _local_repo_github_remote(path: Path, *, expected_slug: str) -> tuple[str, str]:
-    """Return the best GitHub remote, preferring an exact repository match."""
-
+def _local_repo_github_remotes(
+    path: Path, *, deadline: float | None = None
+) -> list[tuple[str, str]]:
+    timeout = 5.0
+    if deadline is not None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return []
+        timeout = min(timeout, remaining)
     try:
         proc = subprocess.run(
             ["git", "-C", str(path), "remote", "-v"],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=timeout,
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
-        return "", ""
+        return []
     if proc.returncode != 0:
-        return "", ""
+        return []
 
     remotes: list[tuple[str, str]] = []
     seen: set[tuple[str, str]] = set()
@@ -2061,6 +2279,15 @@ def _local_repo_github_remote(path: Path, *, expected_slug: str) -> tuple[str, s
         if remote_slug and candidate not in seen:
             remotes.append(candidate)
             seen.add(candidate)
+    return remotes
+
+
+def _local_repo_github_remote(
+    path: Path, *, expected_slug: str, deadline: float | None = None
+) -> tuple[str, str]:
+    """Return the best GitHub remote, preferring an exact repository match."""
+
+    remotes = _local_repo_github_remotes(path, deadline=deadline)
     if not remotes:
         return "", ""
 
@@ -2637,7 +2864,7 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
             "error": gh["detail"],
         }
     limit = max(1, min(int(limit), 200))
-    rows = _gh_repo_list(limit, deadline=deadline)
+    rows = _gh_repo_list(limit, deadline=deadline - _GH_REPO_LOCAL_RESERVE_SECONDS)
     if rows is None:
         return {
             "repos": [],
@@ -2681,10 +2908,19 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
             }
         )
     runtime_env = _runtime_config_env()
+    local_deadline = min(
+        deadline,
+        time.monotonic() + _GH_REPO_LOCAL_RESERVE_SECONDS,
+    )
     return {
         "repos": repos,
         "selected": sorted(selected),
-        "repo_checkouts": _selected_repo_local_paths(sorted(selected), runtime_env),
+        "repo_checkouts": _repo_picker_local_paths(
+            [str(row["name_with_owner"]) for row in repos],
+            selected,
+            runtime_env,
+            deadline=local_deadline,
+        ),
     }
 
 
