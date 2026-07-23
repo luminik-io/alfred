@@ -82,6 +82,7 @@ const COLOR_TOKEN_PREFIXES = [
 
 const css = readIndexCss();
 const baseTokens = declaredTokens(blockBody(css, ":root {"));
+const radixVariants = readFileSync(resolve(srcDir, "styles/radix-variants.css"), "utf8");
 
 // The color tokens the base defines (the canonical required set).
 const requiredColorTokens = [...baseTokens].filter((token) =>
@@ -130,5 +131,14 @@ describe("theme token completeness (do not revert)", () => {
     // The accent-glow emission primitives (not a color swap) must be present.
     expect(body).toMatch(/--accent-glow:/);
     expect(body).toMatch(/--accent-glow-soft:/);
+  });
+});
+
+describe("Radix state variants", () => {
+  it("matches both explicit and bare selected attributes", () => {
+    expect(radixVariants).toContain('&:where([data-selected="true"]),');
+    expect(radixVariants).toContain(
+      '&:where([data-selected]:not([data-selected="false"]))',
+    );
   });
 });

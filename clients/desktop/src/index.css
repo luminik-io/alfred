@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import "./styles/radix-variants.css";
 @import "@fontsource-variable/instrument-sans";
 @import "@fontsource-variable/quicksand";
 @import "@fontsource/fragment-mono";
