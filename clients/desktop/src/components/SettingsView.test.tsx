@@ -135,6 +135,35 @@ afterEach(() => {
 });
 
 describe("SettingsView", () => {
+  it("marks the surface ready only after runtime inventory settles", async () => {
+    const request = deferred<SetupStatus>();
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockReturnValue(request.promise);
+
+    render(renderSettings("http://127.0.0.1:7010"));
+
+    const settings = screen.getByRole("region", { name: "Settings" });
+    await waitFor(() => expect(settings).toHaveAttribute("data-ready", "false"));
+
+    request.resolve(setupStatus("/tmp/alfred-home"));
+    await waitFor(() => expect(settings).toHaveAttribute("data-ready", "true"));
+  });
+
+  it("keeps the surface unready when runtime inventory fails", async () => {
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockRejectedValue(
+      new Error("inventory unavailable"),
+    );
+
+    render(renderSettings("http://127.0.0.1:7010"));
+
+    expect(await screen.findByText(/inventory unavailable/i)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Settings" })).toHaveAttribute(
+      "data-ready",
+      "false",
+    );
+  });
+
   it("defaults diagnostics dry-run to the canonical senior-dev role", async () => {
     const user = userEvent.setup();
     const onRunLocalAction = vi.fn();

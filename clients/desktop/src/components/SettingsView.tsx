@@ -169,7 +169,13 @@ export function SettingsView({
   ];
 
   return (
-    <section className="panel animate-rise settings-view" aria-label="Settings">
+    <section
+      className="panel animate-rise settings-view"
+      aria-label="Settings"
+      data-ready={
+        !loading && !setupLoading && setupStatus !== null ? "true" : "false"
+      }
+    >
       <PanelHeader eyebrow="Alfred" title="Settings" />
       <Tabs
         tabs={tabs}
