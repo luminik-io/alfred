@@ -167,6 +167,12 @@ for candidate in (
             sys.path.remove(candidate_path)
         sys.path.insert(0, candidate_path)
 
+from agent_capabilities import (  # noqa: E402
+    CUSTOM_AGENT_SCRIPT,
+    ENGINE_AGENT_CODENAMES,
+    ENGINE_AGENT_SCRIPTS,
+)
+
 
 class _LazyModule:
     """Import a heavy helper module only for commands that actually use it."""
@@ -190,17 +196,8 @@ agent_runner = _LazyModule("agent_runner")
 scheduler = _LazyModule("scheduler")
 
 OPT_IN_AGENTS = {"architect", "spec-planner"}
-ENGINE_AGENTS = (
-    "architect",
-    "fixer",
-    "planner",
-    "reviewer",
-    "senior-dev",
-    "test-engineer",
-    "triage",
-)
-CUSTOM_AGENT_SCRIPT = "custom-agent.py"
-ENGINE_SCRIPTS = (*(f"{agent}.py" for agent in ENGINE_AGENTS), CUSTOM_AGENT_SCRIPT)
+ENGINE_AGENTS = ENGINE_AGENT_CODENAMES
+ENGINE_SCRIPTS = ENGINE_AGENT_SCRIPTS
 NATIVE_DRY_RUN_SCRIPTS = {"senior-dev.py", "hello.py", "echo_summarise.py"}
 
 

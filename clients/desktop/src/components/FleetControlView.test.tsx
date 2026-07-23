@@ -504,6 +504,22 @@ describe("FleetControlView", () => {
     ).toBeDisabled();
   });
 
+  it("hides model controls for an agent absent from engine inventory", async () => {
+    agentApiMocks.loadAgentModels.mockResolvedValue({
+      agents: [MODELS.agents[0]],
+      count: 1,
+    });
+    renderView();
+    const user = userEvent.setup();
+    await openDrawer(user, "lucius");
+    await waitFor(() => expect(screen.getByLabelText("Claude")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: /select bane/i }));
+
+    expect(screen.queryByRole("heading", { name: "Models" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Claude")).not.toBeInTheDocument();
+  });
+
   it("clears model inventory when the replacement runtime cannot load", async () => {
     agentApiMocks.loadAgentModels
       .mockResolvedValueOnce({

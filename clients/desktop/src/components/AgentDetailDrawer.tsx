@@ -390,14 +390,16 @@ function DrawerBody({
           </div>
         ) : null}
 
-        <AgentModelControls
-          agent={row.codename}
-          status={modelStatus}
-          loading={modelsLoading}
-          busy={modelBusy}
-          error={modelError}
-          onSave={onSaveModel}
-        />
+        {modelsLoading || modelStatus || modelError ? (
+          <AgentModelControls
+            agent={row.codename}
+            status={modelStatus}
+            loading={modelsLoading}
+            busy={modelBusy}
+            error={modelError}
+            onSave={onSaveModel}
+          />
+        ) : null}
       </div>
     </div>
   );

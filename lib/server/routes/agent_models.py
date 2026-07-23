@@ -2,25 +2,26 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
+from agent_capabilities import BUILTIN_ENGINE_SCRIPTS, ENGINE_AGENT_CODENAMES
 from custom_agents import CustomAgentStore
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
 from server import runtime_facade, views
-from server.agent_profiles import AGENT_PROFILES
 
 router = APIRouter()
 
 
 def _known_codenames(request: Request) -> list[str]:
-    built_in = [profile.codename for profile in AGENT_PROFILES]
+    built_in = list(ENGINE_AGENT_CODENAMES)
     custom = sorted(
         agent.codename
         for agent in CustomAgentStore.from_state_root(views._state_root(request)).load()
     )
-    runtime = [agent.codename for agent in request.app.state.reader.list_agents()]
+    runtime = _scheduled_engine_codenames(views._state_root(request))
     known: list[str] = []
     for agent in [*built_in, *custom, *runtime]:
         if agent in known:
@@ -31,6 +32,42 @@ def _known_codenames(request: Request) -> list[str]:
             continue
         known.append(agent)
     return known
+
+
+def _scheduled_engine_codenames(state_root: Path) -> list[str]:
+    """Return scheduled aliases backed by a built-in LLM runner script."""
+
+    runtime_home = state_root.parent
+    conf = next(
+        (
+            candidate
+            for candidate in (
+                runtime_home / "launchd" / "agents.conf",
+                runtime_home / "infra" / "agents" / "launchd" / "agents.conf",
+            )
+            if candidate.is_file()
+        ),
+        None,
+    )
+    if conf is None:
+        return []
+    try:
+        lines = conf.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+
+    codenames: list[str] = []
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        fields = raw.split("\t")
+        if len(fields) < 2 or Path(fields[1].strip()).name not in BUILTIN_ENGINE_SCRIPTS:
+            continue
+        codename = fields[0].strip().rsplit(".", 1)[-1]
+        if codename and codename not in codenames:
+            codenames.append(codename)
+    return codenames
 
 
 def _selection_payload(request: Request, agent: str, provider: str) -> dict[str, Any]:

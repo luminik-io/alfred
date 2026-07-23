@@ -4411,20 +4411,24 @@ def test_agent_models_api_validates_agent_provider_and_model(tmp_path: Path) -> 
     assert bad_model.json() == {"error": "model name is invalid"}
 
 
-def test_agent_models_api_accepts_agents_discovered_from_runtime_schedule(tmp_path: Path) -> None:
+def test_agent_models_api_only_accepts_engine_agents_from_runtime_schedule(tmp_path: Path) -> None:
     state = tmp_path / "state"
     conf = tmp_path / "launchd" / "agents.conf"
     conf.parent.mkdir(parents=True)
     conf.write_text(
-        "alfred.release-engineer\trelease-engineer.py\tinterval:3600\tno\t"
-        "alfred.release-engineer\trelease engineer\n",
+        "alfred.release-engineer\tsenior-dev.py\tinterval:3600\tno\t"
+        "alfred.release-engineer\trelease engineer\n"
+        "alfred.agent-cleanup\tagent-cleanup.py\tcron:3:00\tno\t"
+        "alfred.agent-cleanup\tcleanup\n",
         encoding="utf-8",
     )
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     initial = client.get("/api/agent-models")
     assert initial.status_code == 200
-    assert "release-engineer" in {row["agent"] for row in initial.json()["agents"]}
+    agents = {row["agent"] for row in initial.json()["agents"]}
+    assert "release-engineer" in agents
+    assert "agent-cleanup" not in agents
 
     saved = client.post(
         "/api/agent-models",
@@ -4437,3 +4441,10 @@ def test_agent_models_api_accepts_agents_discovered_from_runtime_schedule(tmp_pa
         "persisted": "gpt-5",
         "source": "state",
     }
+
+    utility = client.post(
+        "/api/agent-models",
+        headers=_auth_headers(state),
+        json={"agent": "agent-cleanup", "provider": "codex", "model": "gpt-5"},
+    )
+    assert utility.status_code == 404

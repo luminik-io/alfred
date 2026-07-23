@@ -30,8 +30,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from agent_capabilities import CUSTOM_AGENT_SCRIPT
+
 MANIFEST_VERSION = 1
-CUSTOM_AGENT_SCRIPT = "custom-agent.py"
 CUSTOM_AGENT_STATE_DIR = "custom-agents"
 CUSTOM_AGENT_STATE_FILE = "custom-agents.json"
 ENGINE_CHOICES = frozenset({"claude", "codex", "hybrid"})
