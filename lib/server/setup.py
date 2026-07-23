@@ -30,11 +30,11 @@ from __future__ import annotations
 import json
 import logging
 import os
-import queue
 import re
 import shlex
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import urllib.parse
@@ -107,6 +107,8 @@ _GH_REPO_PRIMARY_TIMEOUT_SECONDS = 10.0
 _GH_REPO_FALLBACK_RESERVE_SECONDS = 5.0
 _GH_REPO_LOCAL_RESERVE_SECONDS = 3.0
 _REPO_DISCOVERY_HANDOFF_SECONDS = 0.1
+_REPO_DISCOVERY_KILL_GRACE_SECONDS = 0.5
+_REPO_DISCOVERY_WORKER_MODULE = "server.repo_discovery_worker"
 
 
 class RepoCheckoutValidationError(ValueError):
@@ -1954,39 +1956,83 @@ def _repo_picker_local_paths(
     if not _REPO_DISCOVERY_SLOT.acquire(blocking=False):
         return []
 
-    result_queue: queue.Queue[list[dict[str, Any]]] = queue.Queue(maxsize=1)
-
-    def scan() -> None:
-        try:
-            try:
-                result = _repo_picker_local_paths_sync(
-                    repos,
-                    selected,
-                    env,
-                    deadline=max(started_at, deadline - _REPO_DISCOVERY_HANDOFF_SECONDS),
-                )
-            except Exception:
-                logger.exception("Local repository discovery failed")
-                result = []
-            result_queue.put(result)
-        finally:
-            _REPO_DISCOVERY_SLOT.release()
-
-    worker = threading.Thread(
-        target=scan,
-        name="alfred-repo-discovery",
-        daemon=True,
+    worker_deadline = max(started_at, deadline - _REPO_DISCOVERY_HANDOFF_SECONDS)
+    payload = json.dumps(
+        {
+            "repos": repos,
+            "selected": sorted(selected),
+            "env": _repo_discovery_config(env),
+            "deadline": worker_deadline,
+        }
     )
+    worker: subprocess.Popen[str] | None = None
     try:
-        worker.start()
-    except Exception:
-        _REPO_DISCOVERY_SLOT.release()
-        raise
-    remaining = max(0.0, deadline - time.monotonic())
-    try:
-        return result_queue.get(timeout=remaining)
-    except queue.Empty:
+        worker = subprocess.Popen(
+            [sys.executable, "-m", _REPO_DISCOVERY_WORKER_MODULE],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=_repo_discovery_process_env(),
+        )
+        remaining = max(0.0, deadline - time.monotonic())
+        stdout, stderr = worker.communicate(input=payload, timeout=remaining)
+        if worker.returncode != 0:
+            logger.warning(
+                "Local repository discovery worker failed with exit code %s: %s",
+                worker.returncode,
+                stderr.strip(),
+            )
+            return []
+        result = json.loads(stdout)
+        if not isinstance(result, list) or not all(isinstance(row, dict) for row in result):
+            logger.warning("Local repository discovery worker returned an invalid payload")
+            return []
+        return result
+    except subprocess.TimeoutExpired:
+        logger.info("Local repository discovery reached its request deadline")
         return []
+    except (OSError, ValueError):
+        logger.exception("Local repository discovery worker failed")
+        return []
+    finally:
+        if worker is not None and worker.poll() is None:
+            _stop_repo_discovery_worker(worker)
+        _REPO_DISCOVERY_SLOT.release()
+
+
+def _repo_discovery_config(env: Mapping[str, str]) -> dict[str, str]:
+    """Return only the non-secret configuration needed by the scan worker."""
+
+    keys = (
+        "HOME",
+        "WORKSPACE_ROOT",
+        "ALFRED_WORKSPACE_SUBDIR",
+        "WORKSPACE_SUBDIR",
+        REPO_LOCAL_MAP_ENV,
+        "ALFRED_CODE_MEMORY_DISCOVERY_LIMIT",
+    )
+    return {key: env[key] for key in keys if key in env}
+
+
+def _repo_discovery_process_env() -> dict[str, str]:
+    env = dict(os.environ)
+    package_root = str(Path(__file__).resolve().parents[1])
+    env["PYTHONPATH"] = _join_search_path((package_root,), env.get("PYTHONPATH", ""))
+    return env
+
+
+def _stop_repo_discovery_worker(worker: subprocess.Popen[str]) -> None:
+    """Kill and reap one timed-out scan so the single-flight slot can be reused."""
+
+    try:
+        worker.kill()
+    except OSError:
+        return
+    try:
+        worker.wait(timeout=_REPO_DISCOVERY_KILL_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        logger.error("Local repository discovery worker did not exit after SIGKILL")
 
 
 def _repo_picker_local_paths_sync(

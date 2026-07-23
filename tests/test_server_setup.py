@@ -6,7 +6,6 @@ import json
 import os
 import subprocess
 import sys
-import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -656,25 +655,12 @@ def test_repo_picker_inspects_discovery_results_as_they_are_yielded(
     ]
 
 
-def test_repo_picker_returns_before_blocked_metadata_call(
+def test_repo_picker_runs_deadline_bound_discovery_in_isolated_process(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    blocked_path = workspace / "Web"
-    original_is_dir = Path.is_dir
-    metadata_returned = threading.Event()
-
-    def slow_is_dir(path: Path) -> bool:
-        if path == blocked_path:
-            time.sleep(0.2)
-            metadata_returned.set()
-            return False
-        return original_is_dir(path)
-
-    monkeypatch.setattr(Path, "is_dir", slow_is_dir)
-    started_at = time.monotonic()
+    checkout = workspace / "Web"
+    _git_repo_with_origin(checkout, "Acme/Web")
 
     rows = setup_mod._repo_picker_local_paths(
         ["Acme/Web"],
@@ -684,17 +670,13 @@ def test_repo_picker_returns_before_blocked_metadata_call(
             "WORKSPACE_ROOT": str(workspace),
             "ALFRED_WORKSPACE_SUBDIR": "",
         },
-        deadline=started_at + 0.03,
+        deadline=time.monotonic() + 3,
     )
 
-    assert rows == []
-    assert time.monotonic() - started_at < 0.15
-    assert metadata_returned.wait(timeout=1)
-    for _ in range(100):
-        if not any(thread.name == "alfred-repo-discovery" for thread in threading.enumerate()):
-            break
-        time.sleep(0.01)
-    assert not any(thread.name == "alfred-repo-discovery" for thread in threading.enumerate())
+    assert len(rows) == 1
+    assert rows[0]["repo"] == "Acme/Web"
+    assert rows[0]["path"] == str(checkout)
+    assert rows[0]["ready"] is True
 
 
 def test_repo_picker_reserves_time_to_handoff_discovery_results(
@@ -702,16 +684,19 @@ def test_repo_picker_reserves_time_to_handoff_discovery_results(
 ) -> None:
     captured_deadline = 0.0
 
-    def complete_scan(
-        *_args: object,
-        deadline: float,
-        **_kwargs: object,
-    ) -> list[dict[str, Any]]:
-        nonlocal captured_deadline
-        captured_deadline = deadline
-        return []
+    class CompleteWorker:
+        returncode = 0
 
-    monkeypatch.setattr(setup_mod, "_repo_picker_local_paths_sync", complete_scan)
+        def communicate(self, *, input: str, timeout: float) -> tuple[str, str]:
+            nonlocal captured_deadline
+            captured_deadline = float(json.loads(input)["deadline"])
+            assert timeout > 0
+            return "[]", ""
+
+        def poll(self) -> int:
+            return self.returncode
+
+    monkeypatch.setattr(setup_mod.subprocess, "Popen", lambda *_args, **_kwargs: CompleteWorker())
     caller_deadline = time.monotonic() + 1
 
     rows = setup_mod._repo_picker_local_paths(
@@ -727,23 +712,46 @@ def test_repo_picker_reserves_time_to_handoff_discovery_results(
     )
 
 
-def test_repo_picker_allows_only_one_timed_out_discovery_worker(
+def test_repo_picker_kills_timed_out_worker_and_allows_retry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    started = threading.Event()
-    release = threading.Event()
-    finished = threading.Event()
-    calls = 0
+    workers: list[TimedOutWorker | CompleteWorker] = []
 
-    def blocked_scan(*_args: object, **_kwargs: object) -> list[dict[str, Any]]:
-        nonlocal calls
-        calls += 1
-        started.set()
-        release.wait(timeout=1)
-        finished.set()
-        return []
+    class TimedOutWorker:
+        returncode: int | None = None
+        killed = False
+        waited = False
 
-    monkeypatch.setattr(setup_mod, "_repo_picker_local_paths_sync", blocked_scan)
+        def communicate(self, *, input: str, timeout: float) -> tuple[str, str]:
+            raise subprocess.TimeoutExpired("repo-discovery", timeout)
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def kill(self) -> None:
+            self.killed = True
+            self.returncode = -9
+
+        def wait(self, *, timeout: float) -> int:
+            self.waited = True
+            return -9
+
+    class CompleteWorker:
+        returncode = 0
+
+        def communicate(self, *, input: str, timeout: float) -> tuple[str, str]:
+            return "[]", ""
+
+        def poll(self) -> int:
+            return self.returncode
+
+    def fake_popen(*_args: object, **_kwargs: object) -> TimedOutWorker | CompleteWorker:
+        worker: TimedOutWorker | CompleteWorker
+        worker = TimedOutWorker() if not workers else CompleteWorker()
+        workers.append(worker)
+        return worker
+
+    monkeypatch.setattr(setup_mod.subprocess, "Popen", fake_popen)
 
     first = setup_mod._repo_picker_local_paths(
         ["Acme/Web"],
@@ -751,8 +759,6 @@ def test_repo_picker_allows_only_one_timed_out_discovery_worker(
         {},
         deadline=time.monotonic() + 0.03,
     )
-    assert started.wait(timeout=1)
-    second_started_at = time.monotonic()
     second = setup_mod._repo_picker_local_paths(
         ["Acme/Web"],
         set(),
@@ -762,17 +768,62 @@ def test_repo_picker_allows_only_one_timed_out_discovery_worker(
 
     assert first == []
     assert second == []
-    assert time.monotonic() - second_started_at < 0.02
-    assert calls == 1
-    assert sum(thread.name == "alfred-repo-discovery" for thread in threading.enumerate()) == 1
+    assert len(workers) == 2
+    assert isinstance(workers[0], TimedOutWorker)
+    assert workers[0].killed is True
+    assert workers[0].waited is True
 
-    release.set()
-    assert finished.wait(timeout=1)
-    for _ in range(100):
-        if not any(thread.name == "alfred-repo-discovery" for thread in threading.enumerate()):
-            break
-        time.sleep(0.01)
-    assert not any(thread.name == "alfred-repo-discovery" for thread in threading.enumerate())
+
+def test_repo_picker_recovers_after_real_worker_process_stalls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sleeper = tmp_path / "sleeping_repo_worker.py"
+    sleeper.write_text("import time\ntime.sleep(60)\n", encoding="utf-8")
+    original_process_env = setup_mod._repo_discovery_process_env
+
+    def process_env() -> dict[str, str]:
+        env = original_process_env()
+        env["PYTHONPATH"] = os.pathsep.join((str(tmp_path), env["PYTHONPATH"]))
+        return env
+
+    monkeypatch.setattr(setup_mod, "_repo_discovery_process_env", process_env)
+    monkeypatch.setattr(setup_mod, "_REPO_DISCOVERY_WORKER_MODULE", "sleeping_repo_worker")
+    started_at = time.monotonic()
+
+    timed_out = setup_mod._repo_picker_local_paths(
+        ["Acme/Web"],
+        set(),
+        {},
+        deadline=started_at + 0.2,
+    )
+
+    assert timed_out == []
+    assert time.monotonic() - started_at < 1
+
+    workspace = tmp_path / "workspace"
+    checkout = workspace / "Web"
+    _git_repo_with_origin(checkout, "Acme/Web")
+    monkeypatch.setattr(
+        setup_mod,
+        "_REPO_DISCOVERY_WORKER_MODULE",
+        "server.repo_discovery_worker",
+    )
+
+    recovered = setup_mod._repo_picker_local_paths(
+        ["Acme/Web"],
+        set(),
+        {
+            "HOME": str(tmp_path),
+            "WORKSPACE_ROOT": str(workspace),
+            "ALFRED_WORKSPACE_SUBDIR": "",
+        },
+        deadline=time.monotonic() + 3,
+    )
+
+    assert len(recovered) == 1
+    assert recovered[0]["path"] == str(checkout)
+    assert recovered[0]["ready"] is True
 
 
 def test_repo_selection_owner_allows_recovery_from_invalid_mixed_scope() -> None:
