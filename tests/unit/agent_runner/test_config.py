@@ -95,6 +95,17 @@ def test_agent_model_rejects_unknown_engine(fresh_agent_runner):
         fresh_agent_runner.agent_model("senior-dev", "hybrid")
 
 
+def test_agent_model_ignores_removed_bare_codex_model_setting(fresh_agent_runner):
+    assert (
+        fresh_agent_runner.agent_model(
+            "senior-dev",
+            "codex",
+            environ={"CODEX_MODEL": "legacy-codex"},
+        )
+        is None
+    )
+
+
 def test_engine_preflight_bins_modes(fresh_agent_runner):
     """codex needs codex; hybrid defaults to claude-only; opt-in adds codex."""
     ar = fresh_agent_runner
