@@ -24,9 +24,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
+          cache-dependency-glob: "pyproject.toml"
       - name: ruff check
         run: uv run --with 'ruff==0.15.22' ruff check .
       - name: ruff format check
