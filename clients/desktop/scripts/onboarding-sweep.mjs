@@ -28,17 +28,6 @@ const STEPS = [
   "slack",
   "request",
 ];
-const RAIL_LABELS = {
-  welcome: "Welcome",
-  engine: "Tools",
-  github: "GitHub",
-  repos: "Repositories",
-  batteries: "Batteries",
-  team: "Team",
-  slack: "Slack",
-  request: "First request",
-};
-
 const PROBE = () => {
   const out = [];
   const srOnly = (el) => el.closest(".sr-only, .visually-hidden, [data-sr-only]") !== null;
@@ -132,9 +121,8 @@ async function applyTheme(page, theme) {
   );
 }
 
-async function gotoStep(page, label) {
-  const re = new RegExp(`^${label}$`, "i");
-  const btn = page.getByRole("button", { name: re }).first();
+async function gotoStep(page, step) {
+  const btn = page.locator(`[data-onboarding-step="${step}"]`).first();
   if (await btn.isDisabled()) {
     await page.getByRole("button", { name: /^I have a server running$/i }).click();
   }
@@ -171,7 +159,7 @@ async function run() {
       await page.waitForSelector(".alfred-onboarding-shell", { timeout: 5000 });
 
       for (const step of STEPS) {
-        await gotoStep(page, RAIL_LABELS[step]);
+        await gotoStep(page, step);
         const violations = await page.evaluate(PROBE);
         const shot = `${step}_${width}_${theme}.png`;
         try {
