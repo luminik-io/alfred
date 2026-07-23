@@ -117,6 +117,7 @@ class EventType(enum.StrEnum):
     RECOVERY_SKIPPED = "recovery_skipped"
 
     # -- review / triage ----------------------------------------------------
+    REVIEW_SENSOR_CONTEXT = "review_sensor_context"
     REVIEW_POSTED = "review_posted"
     TRIAGED = "triaged"
     TRIAGES_REJECTED = "triages_rejected"

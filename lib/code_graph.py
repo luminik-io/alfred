@@ -541,6 +541,21 @@ def render_blast_radius(blast_radius: dict[str, Any]) -> str:
             if part
         ),
     )
+    _append_brief_rows(
+        lines,
+        "Contract drift",
+        blast_radius.get("contract_drift"),
+        lambda row: " ".join(
+            str(part)
+            for part in (
+                row.get("changed_path"),
+                row.get("method"),
+                row.get("path"),
+                row.get("file"),
+            )
+            if part
+        ),
+    )
     checks = [str(item) for item in blast_radius.get("next_checks") or [] if str(item).strip()]
     if checks:
         lines.append("Next checks:")
