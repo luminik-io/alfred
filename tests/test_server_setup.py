@@ -350,6 +350,7 @@ def test_list_owner_repos_detects_nested_checkout_from_github_remote(
 ) -> None:
     workspace = tmp_path / "workspace"
     checkout = workspace / "nested" / "web"
+    _git_repo_with_origin(workspace, "Acme/Parent")
     _git_repo_with_origin(checkout, "Acme/Web")
     monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
     monkeypatch.setattr(

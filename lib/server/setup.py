@@ -1397,7 +1397,12 @@ def _code_memory_discovery_limit(env: dict[str, str]) -> int:
     return value if value > 0 else _CODE_MEMORY_DISCOVERY_LIMIT
 
 
-def _discover_code_memory_repos(env: dict[str, str], *, deadline: float | None = None) -> list[str]:
+def _discover_code_memory_repos(
+    env: dict[str, str],
+    *,
+    deadline: float | None = None,
+    include_nested: bool = False,
+) -> list[str]:
     workspace = _code_memory_workspace(env)
     limit = _code_memory_discovery_limit(env)
     found: list[str] = []
@@ -1428,9 +1433,10 @@ def _discover_code_memory_repos(env: dict[str, str], *, deadline: float | None =
             if any(part in _CODE_MEMORY_DISCOVERY_IGNORES for part in relative_parts):
                 continue
             found.append(str(repo.relative_to(workspace)))
-            if len(found) >= limit:
+            if len(found) >= limit and not include_nested:
                 break
-            continue
+            if not include_nested:
+                continue
         children = sorted(
             entry
             for entry in entries
@@ -1931,7 +1937,9 @@ def _repo_picker_local_paths(
             missing[key] = str(row["repo"])
 
     workspace = _code_memory_workspace(env)
-    discovered = _discover_code_memory_repos(env, deadline=deadline) if missing else []
+    discovered = (
+        _discover_code_memory_repos(env, deadline=deadline, include_nested=True) if missing else []
+    )
     for relative in discovered:
         path = workspace / relative
         for remote in _local_repo_github_remotes(path, deadline=deadline):
