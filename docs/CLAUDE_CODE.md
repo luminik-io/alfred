@@ -63,7 +63,7 @@ Environment overrides:
 
 ```sh
 CODEX_BIN=$HOME/.local/bin/codex
-CODEX_MODEL=<your-model-id>
+ALFRED_CODEX_MODEL=<your-model-id>
 CODEX_SANDBOX=read-only
 CODEX_APPROVAL_POLICY=never
 ```

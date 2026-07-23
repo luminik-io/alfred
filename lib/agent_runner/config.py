@@ -5,8 +5,8 @@ This module owns the 12-factor env-var contract:
 * ``env_int`` / ``optional_env_int`` for clamped integer knobs.
 * ``truthy``, ``_truthy_env``, ``_env_value_enabled``, ``_env_present`` for the
   three flavours of boolean env-var test.
-* Engine-selection helpers (``normalize_engine``, ``agent_engine``,
-  ``engine_preflight_bins``) and the engine-mode constants
+* Engine and model selection helpers (``normalize_engine``, ``agent_engine``,
+  ``normalize_model_name``, ``agent_model``, ``engine_preflight_bins``) and the engine-mode constants
   (``ENGINE_CHOICES``, ``PROVIDER_LIMIT_SUBTYPES``).
 * Codex sandbox resolution per agent (``codex_sandbox_for_agent``).
 * Doctor + dry-run mode flags (``doctor_mode``, ``is_dry_run``,
@@ -26,6 +26,7 @@ All values are computed at call time (no module-level caches), so tests can
 from __future__ import annotations
 
 import os
+import re
 import sys
 
 from envflags import FALSY_VALUES
@@ -39,6 +40,8 @@ truthy = _truthy
 # Engine vocabulary
 # --------------------------------------------------------------------------
 ENGINE_CHOICES: frozenset[str] = frozenset({"claude", "codex", "hybrid"})
+MODEL_ENGINES: frozenset[str] = frozenset({"claude", "codex"})
+_MODEL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
 
 PROVIDER_LIMIT_SUBTYPES: frozenset[str] = frozenset({"error_budget", "error_rate_limit"})
 """Subtypes that mean we hit a provider's quota / rate-limit wall."""
@@ -194,6 +197,52 @@ def agent_engine(
     if raw:
         return normalize_engine(raw, default=default)
     return normalize_engine(None, default=default)
+
+
+def normalize_model_name(raw: str | None) -> str | None:
+    """Validate one CLI model name, returning ``None`` for unsafe input."""
+
+    value = (raw or "").strip()
+    return value if _MODEL_NAME.fullmatch(value) else None
+
+
+def agent_model(
+    agent: str,
+    engine: str,
+    *,
+    environ: dict[str, str] | None = None,
+) -> str | None:
+    """Resolve one agent's model override for Claude Code or Codex.
+
+    Precedence:
+
+    1. ``ALFRED_<AGENT>_<ENGINE>_MODEL``
+    2. ``ALFRED_<ENGINE>_MODEL`` for a fleet-wide provider override
+    3. ``${ALFRED_HOME}/state/models/<agent>/<engine>``
+    4. ``None`` so the provider CLI keeps its own default
+
+    Invalid explicit env values disable lower-precedence model state instead
+    of forwarding untrusted text as a CLI argument.
+    """
+
+    provider = engine.strip().lower()
+    if provider not in MODEL_ENGINES:
+        raise ValueError(f"model engine must be one of: {', '.join(sorted(MODEL_ENGINES))}")
+    env = environ if environ is not None else os.environ
+    safe_agent = agent.strip().lower().replace("_", "-")
+    agent_key = f"ALFRED_{_agent_env_slug(safe_agent)}_{provider.upper()}_MODEL"
+    global_key = f"ALFRED_{provider.upper()}_MODEL"
+    for name in (agent_key, global_key):
+        raw = env.get(name, "")
+        if raw.strip():
+            return normalize_model_name(raw)
+
+    state_file = STATE_ROOT / "models" / safe_agent / provider
+    try:
+        raw = state_file.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return normalize_model_name(raw)
 
 
 def agent_repos(

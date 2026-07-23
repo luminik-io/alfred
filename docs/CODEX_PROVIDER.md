@@ -47,7 +47,9 @@ Resolution order:
 `lib/agent_runner/` owns the adapter.
 
 - Binary: `CODEX_BIN` or `codex` on PATH.
-- Model: `CODEX_MODEL`, or Codex CLI default.
+- Model: per-agent environment override, fleet-wide `ALFRED_CODEX_MODEL`, persisted
+  `alfred model set` state, then the Codex CLI default. See
+  [Engine routing](ENGINE_ROUTING.md#per-agent-model-overrides).
 - Default sandbox: `read-only`.
 - Default approval policy: `never`.
 - Artifacts: `$ALFRED_HOME/state/codex/<agent>/<YYYY-MM>/<firing-id>.{last.md,stdout.txt,stderr.txt}`.
@@ -62,8 +64,7 @@ Write-capable agents must opt in deliberately:
 - Verify git state and PR creation after the Codex call, just as Claude-backed
   agents do.
 
-Ra's al Ghul style review agents should stay read-only. Lucius/Bane/Drake style
-builder agents can use Codex, but their runner should own the write boundary,
+Reviewer roles should stay read-only. Builder roles can use Codex, but their runner should own the write boundary,
 commit check, PR creation, and cleanup.
 
 ## Billing Posture

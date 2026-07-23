@@ -129,7 +129,7 @@ an unknown model never inflates the budget past today's.
 
 | Variable | Default | What it does |
 |---|---|---|
-| `ALFRED_COMPACTION_MODEL` | (unset) | Override the model used to derive the budget (else `ALFRED_ACTIVE_MODEL` / `ANTHROPIC_MODEL`, or `CODEX_MODEL` on the codex engine). |
+| `ALFRED_COMPACTION_MODEL` | (unset) | Override the model used to derive the budget (else `ALFRED_ACTIVE_MODEL` / `ANTHROPIC_MODEL`, or `ALFRED_CODEX_MODEL` on the Codex engine). |
 | `ALFRED_COMPACTION_CONTEXT_TOKENS` | (unset) | Override the window directly, in tokens, bypassing the model table (for a model Alfred does not yet know, or for tuning). |
 
 The existing `ALFRED_OUTPUT_COMPACTOR_MIN_BYTES` / `ALFRED_OUTPUT_COMPACTOR_MAX_BYTES`

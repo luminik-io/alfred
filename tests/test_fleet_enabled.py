@@ -350,7 +350,7 @@ def test_cli_native_dry_run_all_reuses_launcher_env(monkeypatch, tmp_path):
     assert "WORKSPACE_ROOT" not in os.environ
 
 
-def test_cli_engine_set_supports_batman(tmp_path):
+def test_cli_engine_set_supports_architect(tmp_path):
     env = {
         "ALFRED_HOME": str(tmp_path / "alfred"),
         "WORKSPACE_ROOT": str(tmp_path / "workspace"),
@@ -384,6 +384,66 @@ def test_cli_engine_status_lists_known_agents(tmp_path):
         assert agent in res.stdout
     assert "Codex fallback only on capability gaps" in res.stdout
     assert "auth/limit/budget" not in res.stdout
+
+
+def test_cli_model_set_status_and_clear(tmp_path):
+    alfred = tmp_path / "alfred"
+    env = {
+        "ALFRED_HOME": str(alfred),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+    }
+
+    claude = _run_cli("model", "set", "architect", "claude", "opus", env_extra=env)
+    codex = _run_cli("model", "set", "architect", "codex", "gpt-5-codex", env_extra=env)
+
+    assert claude.returncode == 0, claude.stderr
+    assert codex.returncode == 0, codex.stderr
+    state_dir = alfred / "state" / "models" / "architect"
+    assert (state_dir / "claude").read_text() == "opus\n"
+    assert (state_dir / "codex").read_text() == "gpt-5-codex\n"
+
+    status = _run_cli("model", "status", "architect", env_extra=env)
+    assert status.returncode == 0, status.stderr
+    assert "architect Claude model: opus" in status.stdout
+    assert "architect Codex model: gpt-5-codex" in status.stdout
+
+    clear_claude = _run_cli("model", "clear", "architect", "claude", env_extra=env)
+    assert clear_claude.returncode == 0, clear_claude.stderr
+    assert not (state_dir / "claude").exists()
+    assert (state_dir / "codex").read_text() == "gpt-5-codex\n"
+
+    clear_codex = _run_cli("model", "clear", "architect", "codex", env_extra=env)
+    assert clear_codex.returncode == 0, clear_codex.stderr
+    assert not state_dir.exists()
+
+
+def test_cli_model_rejects_unsafe_name(tmp_path):
+    alfred = tmp_path / "alfred"
+    env = {
+        "ALFRED_HOME": str(alfred),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+    }
+
+    result = _run_cli("model", "set", "architect", "codex", "model with spaces", env_extra=env)
+
+    assert result.returncode == 2
+    assert "model names must start" in result.stderr
+    assert not (alfred / "state" / "models" / "architect").exists()
+
+
+def test_cli_model_set_reports_higher_precedence_environment_override(tmp_path):
+    alfred = tmp_path / "alfred"
+    env = {
+        "ALFRED_HOME": str(alfred),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+        "ALFRED_CODEX_MODEL": "fleet-codex",
+    }
+
+    result = _run_cli("model", "set", "architect", "codex", "agent-codex", env_extra=env)
+
+    assert result.returncode == 0, result.stderr
+    assert "active model remains fleet-codex (environment override)" in result.stdout
+    assert (alfred / "state" / "models" / "architect" / "codex").read_text() == "agent-codex\n"
 
 
 def test_cli_engine_status_uses_custom_agent_manifest_default(tmp_path):
@@ -906,7 +966,7 @@ def test_cli_engine_set_accepts_configured_runtime_codename(tmp_path):
     assert "marshall engine: codex" in status.stdout
 
 
-def test_cli_engine_set_rasalghul_uses_canonical_engine_state_only(tmp_path):
+def test_cli_engine_set_reviewer_uses_canonical_engine_state_only(tmp_path):
     alfred = tmp_path / "alfred"
     env = {
         "ALFRED_HOME": str(alfred),

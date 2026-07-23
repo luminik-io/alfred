@@ -7,8 +7,8 @@
 Every environment variable Alfred reads is declared once in the typed
 registry at `lib/alfred_config.py`. This page is generated from it.
 
-- Declared variables: **388**
-- Operator-facing (in `.env.example`): **69**
+- Declared variables: **390**
+- Operator-facing (in `.env.example`): **71**
 - Internal / experimental: **319**
 
 Operator-facing vars also appear, with their defaults, in
@@ -141,6 +141,8 @@ are experimental, deep-tuning, or set by Alfred itself at runtime.
 | Variable | Type | Default | Scope | Description |
 | --- | --- | --- | --- | --- |
 | `ALFRED_ENGINE` | enum (claude/codex/hybrid) | `hybrid` | operator | Fleet-wide engine override for testing (claude/codex/hybrid). |
+| `ALFRED_CLAUDE_MODEL` | str |  | operator | Fleet-wide Claude model environment override. |
+| `ALFRED_CODEX_MODEL` | str |  | operator | Fleet-wide Codex model environment override. |
 | `ALFRED_MAX_STEPS` | int | `200` | internal | Hard ceiling on lifecycle steps per firing (clamped 1..100000). |
 | `ALFRED_LOOP_DETECT` | bool | `1` | internal | Enable repeated-action loop detection; set 0 to disable. |
 | `ALFRED_LOOP_WINDOW` | int | `3` | internal | Window size for loop detection (clamped 2..50). |

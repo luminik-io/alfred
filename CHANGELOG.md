@@ -11,6 +11,10 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Changed
 
+- Model routing now reads only the namespaced `ALFRED_CLAUDE_MODEL` and
+  `ALFRED_CODEX_MODEL` fleet settings. The former bare `CODEX_MODEL` setting is
+  no longer read.
+
 ### Fixed
 
 - Conversational desktop onboarding now requires an explicit Batteries choice and a handled Slack choice before finishing. Slack setup opens the existing local, token-gated step so secrets and webhook URLs stay out of the model transcript.

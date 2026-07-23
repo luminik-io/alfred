@@ -33,7 +33,8 @@ For the local config template, see [`.env.example`](https://github.com/luminik-i
 | `CLAUDE_BIN` | `agent_runner.claude_invoke` | `claude` (PATH) |
 | `CLAUDE_CONFIG_DIR` | `claude` auth profile selection | Set by `alfred claude` for scheduled agents |
 | `CODEX_BIN` | `agent_runner.codex_invoke` | `codex` (PATH) |
-| `CODEX_MODEL` | optional model override for `codex exec` | (Codex default) |
+| `ALFRED_CLAUDE_MODEL` | fleet-wide Claude model override | (Claude default) |
+| `ALFRED_CODEX_MODEL` | fleet-wide Codex model override | (Codex default) |
 | `CODEX_SANDBOX` | `codex exec --sandbox` | `read-only` |
 | `CODEX_APPROVAL_POLICY` | `codex exec -c approval_policy=...` | `never` |
 
@@ -43,6 +44,7 @@ For the local config template, see [`.env.example`](https://github.com/luminik-i
 |---|---|---|
 | `ALFRED_<CODENAME>_ENGINE` | per-agent engine choice | runner default |
 | `ALFRED_ENGINE` | fleet-wide engine override | (none) |
+| `ALFRED_<CODENAME>_<CLAUDE_OR_CODEX>_MODEL` | per-agent provider model override | provider default |
 | `ALFRED_<CODENAME>_MAX_TURNS` | optional per-agent Claude turn cap | runner default |
 | `ALFRED_<CODENAME>_CODEX_SANDBOX` | per-agent Codex sandbox | `CODEX_SANDBOX` |
 | `ALFRED_<CODENAME>_CODEX_WRITE` | shortcut for `workspace-write` | `0` |
