@@ -128,6 +128,33 @@ def test_gh_repo_list_paginates_to_the_requested_limit(
     assert len(calls) == 2
 
 
+def test_gh_repo_list_replenishes_rows_filtered_from_a_full_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        page = int(next(arg.removeprefix("page=") for arg in cmd if arg.startswith("page=")))
+        rows = (
+            [
+                {"full_name": "acme/current", "updated_at": "2026-07-23T12:00:00Z"},
+                {"full_name": "acme/retired", "archived": True},
+            ]
+            if page == 1
+            else [{"full_name": "acme/next", "updated_at": "2026-07-22T12:00:00Z"}]
+        )
+        return subprocess.CompletedProcess(cmd, 0, json.dumps(rows), "")
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+
+    rows = setup_mod._gh_repo_list(2)
+
+    assert rows is not None
+    assert [row["nameWithOwner"] for row in rows] == ["acme/current", "acme/next"]
+    assert len(calls) == 2
+
+
 def test_gh_repo_list_falls_back_when_accessible_repo_query_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -163,6 +190,35 @@ def test_gh_repo_list_falls_back_when_accessible_repo_query_fails(
     assert rows[0]["nameWithOwner"] == "acme/api"
     assert rows[0]["isPrivate"] is True
     assert [call[1] for call in calls] == ["api", "repo"]
+
+
+def test_gh_repo_list_fallback_sorts_across_owners_before_truncating(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if cmd[1] == "api":
+            return subprocess.CompletedProcess(cmd, 1, "", "request failed")
+        owner = cmd[3] if len(cmd) > 3 and not cmd[3].startswith("-") else None
+        row = (
+            {
+                "nameWithOwner": "acme/recent",
+                "updatedAt": "2026-07-23T12:00:00Z",
+            }
+            if owner == "acme"
+            else {
+                "nameWithOwner": "personal/older",
+                "updatedAt": "2026-07-01T12:00:00Z",
+            }
+        )
+        return subprocess.CompletedProcess(cmd, 0, json.dumps([row]), "")
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: ["acme"])
+
+    rows = setup_mod._gh_repo_list(1)
+
+    assert rows is not None
+    assert [row["nameWithOwner"] for row in rows] == ["acme/recent"]
 
 
 def test_github_slug_accepts_ssh_over_443_remote() -> None:

@@ -573,7 +573,7 @@ def persist_selected_repos(
             os.environ[key] = values[key]
         else:
             os.environ.pop(key, None)
-    result = {
+    result: dict[str, Any] = {
         "repos": clean,
         "env_path": str(env_path),
         "keys": list(values),
@@ -2681,9 +2681,9 @@ def _gh_accessible_repo_list(limit: int) -> list[dict[str, Any]] | None:
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
     page_size = min(limit, 100)
-    page_count = (limit + page_size - 1) // page_size
+    page = 1
 
-    for page in range(1, page_count + 1):
+    while len(rows) < limit:
         cmd = [
             _gh_bin(),
             "api",
@@ -2713,6 +2713,7 @@ def _gh_accessible_repo_list(limit: int) -> list[dict[str, Any]] | None:
             rows.append(row)
         if len(data) < page_size:
             break
+        page += 1
     return rows[:limit]
 
 
@@ -2735,7 +2736,16 @@ def _gh_repo_list_fallback(limit: int) -> list[dict[str, Any]] | None:
                 continue
             seen.add(slug)
             rows.append(row)
-    return rows[:limit] if successes else None
+    if not successes:
+        return None
+    rows.sort(
+        key=lambda row: (
+            str(row.get("updatedAt") or ""),
+            str(row.get("nameWithOwner") or "").lower(),
+        ),
+        reverse=True,
+    )
+    return rows[:limit]
 
 
 def _run_gh_repo_list_command(cmd: list[str]) -> list[dict[str, Any]] | None:
