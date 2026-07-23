@@ -1435,10 +1435,6 @@ def _iter_workspace_git_repos(
         if real_repo in seen_real_paths:
             continue
         seen_real_paths.add(real_repo)
-        try:
-            entries = list(repo.iterdir())
-        except OSError:
-            continue
         if _is_code_memory_git_repo(repo):
             try:
                 relative_parts = repo.relative_to(workspace).parts
@@ -1449,19 +1445,23 @@ def _iter_workspace_git_repos(
             yield repo
             if not include_nested:
                 continue
-        children = sorted(
-            entry
-            for entry in entries
-            if entry.is_dir() and entry.name not in _CODE_MEMORY_DISCOVERY_IGNORES
-        )
-        for child in children:
-            try:
-                relative_parts = child.relative_to(workspace).parts
-            except ValueError:
-                continue
-            if any(part in _CODE_MEMORY_DISCOVERY_IGNORES for part in relative_parts):
-                continue
-            queue.append(child)
+        children: list[Path] = []
+        try:
+            for entry in repo.iterdir():
+                if deadline is not None and time.monotonic() >= deadline:
+                    return
+                if not entry.is_dir() or entry.name in _CODE_MEMORY_DISCOVERY_IGNORES:
+                    continue
+                try:
+                    relative_parts = entry.relative_to(workspace).parts
+                except ValueError:
+                    continue
+                if any(part in _CODE_MEMORY_DISCOVERY_IGNORES for part in relative_parts):
+                    continue
+                children.append(entry)
+        except OSError:
+            continue
+        queue.extend(sorted(children))
 
 
 def _existing_code_memory_configured_repos(env: dict[str, str], configured: list[str]) -> list[str]:

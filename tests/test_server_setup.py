@@ -481,6 +481,45 @@ def test_nested_checkout_discovery_never_enters_git_metadata(
     assert all(".git" not in path.relative_to(workspace).parts for path in inspected)
 
 
+def test_nested_checkout_discovery_stops_during_slow_directory_enumeration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    children = [workspace / f"repo-{index}" for index in range(5)]
+    consumed: list[Path] = []
+    original_iterdir = Path.iterdir
+    clock = iter((100.0, 100.1, 100.2, 100.31))
+
+    def slow_iterdir(path: Path) -> Iterator[Path]:
+        if path != workspace:
+            yield from original_iterdir(path)
+            return
+        for child in children:
+            consumed.append(child)
+            yield child
+
+    monkeypatch.setattr(Path, "iterdir", slow_iterdir)
+    monkeypatch.setattr(setup_mod.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(setup_mod, "_is_code_memory_git_repo", lambda _path: False)
+
+    repos = list(
+        setup_mod._iter_workspace_git_repos(
+            {
+                "HOME": str(tmp_path),
+                "WORKSPACE_ROOT": str(workspace),
+                "ALFRED_WORKSPACE_SUBDIR": "",
+            },
+            deadline=100.3,
+            include_nested=True,
+        )
+    )
+
+    assert repos == []
+    assert consumed == children[:3]
+
+
 def test_list_owner_repos_omits_nested_checkout_with_different_remote(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
