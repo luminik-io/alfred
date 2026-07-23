@@ -217,6 +217,28 @@ def test_reviewer_renders_operator_edited_guidance(monkeypatch, tmp_path: Path) 
     assert "alfred:operator-guidance" not in guidance
 
 
+def test_reviewer_preserves_unapproved_dollar_expressions(monkeypatch, tmp_path: Path) -> None:
+    reviewer = _load_reviewer(monkeypatch)
+    installed = tmp_path / "prompts/reviewer.md"
+    installed.parent.mkdir(parents=True)
+    installed.write_text(
+        "<!-- alfred:operator-guidance v1 -->\n"
+        "Run `echo $PATH`, keep ${PROCESS_ONLY_VALUE}, and tolerate ${BROKEN.\n"
+        "Review ${REPO_SLUG} PR ${PR_NUMBER}.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PROCESS_ONLY_VALUE", "SENTINEL_MUST_NOT_ENTER_PROMPT")
+    monkeypatch.setattr(reviewer, "PROMPT_PATH", installed)
+
+    guidance = reviewer._operator_prompt_guidance("web", 17, "Trace callers", tmp_path / "web")
+
+    assert "$PATH" in guidance
+    assert "${PROCESS_ONLY_VALUE}" in guidance
+    assert "${BROKEN" in guidance
+    assert "SENTINEL_MUST_NOT_ENTER_PROMPT" not in guidance
+    assert "Review web PR 17." in guidance
+
+
 def test_reviewer_passes_changed_paths_and_sensor_to_engine(monkeypatch, tmp_path: Path) -> None:
     reviewer = _load_reviewer(monkeypatch)
     captured: dict[str, object] = {}

@@ -38,7 +38,6 @@ from agent_runner import (
     is_globally_blocked,
     is_repo_paused,
     issue_memory_query,
-    load_prompt,
     local_repo_dir,
     maybe_halt_on_fail_streak,
     maybe_set_global_block_for_result,
@@ -60,6 +59,10 @@ REVIEWER_ENGINE = agent_engine(AGENT, default="hybrid")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 PROMPT_PATH = ALFRED_HOME / "prompts" / f"{AGENT}.md"
 OPERATOR_GUIDANCE_MARKER = "<!-- alfred:operator-guidance v1 -->"
+OPERATOR_GUIDANCE_PLACEHOLDER = re.compile(
+    r"\$\{(AGENT_CODENAME|GH_ORG|ALFRED_HOME|WORKSPACE_ROOT|REVIEW_REPOS|"
+    r"REPO_SLUG|PR_NUMBER|PR_TITLE|LOCAL_REPO)\}"
+)
 
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
@@ -285,15 +288,10 @@ def _strip_operator_guidance_marker(text: str) -> str:
     return text
 
 
-def _has_operator_guidance_marker(path: Path) -> bool:
-    """Return whether ``path`` explicitly opts into runtime prompt injection."""
+def _render_operator_guidance(text: str, values: dict[str, str]) -> str:
+    """Render only documented placeholders and preserve all other dollar text."""
 
-    try:
-        with path.open(encoding="utf-8") as prompt_file:
-            first_line = prompt_file.readline()
-    except OSError:
-        return False
-    return first_line.strip() == OPERATOR_GUIDANCE_MARKER
+    return OPERATOR_GUIDANCE_PLACEHOLDER.sub(lambda match: values[match.group(1)], text)
 
 
 def _operator_prompt_guidance(
@@ -304,22 +302,25 @@ def _operator_prompt_guidance(
 ) -> str:
     """Load operator-edited reviewer guidance without injecting the starter."""
 
-    if not PROMPT_PATH.exists() or not _has_operator_guidance_marker(PROMPT_PATH):
+    try:
+        raw_guidance = PROMPT_PATH.read_text(encoding="utf-8")
+    except OSError:
         return ""
-    guidance = load_prompt(
-        PROMPT_PATH,
-        extra_vars={
-            "AGENT_CODENAME": AGENT,
-            "GH_ORG": GH_ORG,
-            "ALFRED_HOME": str(ALFRED_HOME),
-            "WORKSPACE_ROOT": str(WORKSPACE_ROOT),
-            "REVIEW_REPOS": ",".join(REVIEW_REPOS),
-            "REPO_SLUG": repo,
-            "PR_NUMBER": str(pr_num),
-            "PR_TITLE": pr_title,
-            "LOCAL_REPO": str(local_path),
-        },
-    )
+    lines = raw_guidance.splitlines()
+    if not lines or lines[0].strip() != OPERATOR_GUIDANCE_MARKER:
+        return ""
+    values = {
+        "AGENT_CODENAME": AGENT,
+        "GH_ORG": GH_ORG,
+        "ALFRED_HOME": str(ALFRED_HOME),
+        "WORKSPACE_ROOT": str(WORKSPACE_ROOT),
+        "REVIEW_REPOS": ",".join(REVIEW_REPOS),
+        "REPO_SLUG": repo,
+        "PR_NUMBER": str(pr_num),
+        "PR_TITLE": pr_title,
+        "LOCAL_REPO": str(local_path),
+    }
+    guidance = _render_operator_guidance(raw_guidance, values)
     guidance = _strip_operator_guidance_marker(guidance).strip()
     if not guidance:
         return ""
