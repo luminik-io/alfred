@@ -425,4 +425,43 @@ describe("FleetControlView", () => {
     expect(screen.getByText("Active: runtime-b")).toBeInTheDocument();
     expect(screen.queryByText("Active: runtime-a")).not.toBeInTheDocument();
   });
+
+  it("clears model inventory when the replacement runtime cannot load", async () => {
+    agentApiMocks.loadAgentModels
+      .mockResolvedValueOnce({
+        agents: [
+          {
+            agent: "senior-dev",
+            claude: { resolved: "runtime-a", persisted: "runtime-a", source: "state" },
+            codex: { resolved: "codex-a", persisted: "codex-a", source: "state" },
+          },
+        ],
+        count: 1,
+      })
+      .mockRejectedValueOnce(new Error("runtime B inventory unavailable"));
+
+    const props = {
+      agents: [agent("senior-dev")],
+      schedule: SCHEDULE,
+      service: SERVICE,
+      nativeBusy: null,
+      onRunLocalAction: vi.fn(),
+      onViewLogs: vi.fn(),
+    };
+    const { rerender } = render(
+      <FleetControlView baseUrl="http://runtime-a" {...props} />,
+    );
+    const user = userEvent.setup();
+    await openDrawer(user, "lucius");
+    await waitFor(() => expect(screen.getByText("Active: runtime-a")).toBeInTheDocument());
+    expect(screen.getByText("Active: codex-a")).toBeInTheDocument();
+
+    rerender(<FleetControlView baseUrl="http://runtime-b" {...props} />);
+
+    expect(screen.queryByText("Active: runtime-a")).not.toBeInTheDocument();
+    expect(screen.queryByText("Active: codex-a")).not.toBeInTheDocument();
+    expect(await screen.findByText("runtime B inventory unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Active: runtime-a")).not.toBeInTheDocument();
+    expect(screen.queryByText("Active: codex-a")).not.toBeInTheDocument();
+  });
 });

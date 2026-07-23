@@ -145,6 +145,8 @@ export function FleetControlView({
 
   useLayoutEffect(() => {
     modelRuntimeEpoch.current += 1;
+    setModelRecords({});
+    setModelsLoading(true);
     setModelBusy(null);
     setModelError(null);
   }, [baseUrl, agentKey]);
