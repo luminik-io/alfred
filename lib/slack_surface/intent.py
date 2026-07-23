@@ -442,10 +442,8 @@ class RepoCatalog:
         gh_org = (os.environ.get("GH_ORG") or "").strip() or "example-org"
         try:
             from agent_runner.github import repo_to_local_map
-            from agent_runner.paths import GH_ORG as _ORG
 
             repo_to_local = repo_to_local_map()
-            gh_org = (_ORG or "").strip() or gh_org
         except Exception:
             repo_to_local = {}
 

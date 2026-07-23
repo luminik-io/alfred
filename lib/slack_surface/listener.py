@@ -388,15 +388,14 @@ class SlackPlanningListener:
         # previously-unrouted free-text case. When no engine is injected we
         # resolve one from env; it returns ``None`` unless the router is
         # explicitly enabled, so the listener keeps its exact prior behavior
-        # by default. The repo alias catalog is built once from the canonical
-        # repo map plus the env queue allowlist.
+        # by default. An injected catalog remains fixed for deterministic tests
+        # and custom callers. The production catalog is rebuilt for each intent
+        # so desktop onboarding changes take effect without restarting Slack.
         if intent_engine is not None:
             self._intent_engine: Callable[[str], str] | None = intent_engine
         else:
             self._intent_engine = default_intent_engine_invoke()
-        self._repo_catalog = (
-            repo_catalog if repo_catalog is not None else RepoCatalog.from_environment()
-        )
+        self._repo_catalog = repo_catalog
         # Bounded, in-process multi-turn context so follow-ups ("yes that one",
         # "do it") resolve against the previous turn's interpreted target. It is
         # never persisted and never authority for a mutation: every mutating
@@ -785,7 +784,7 @@ class SlackPlanningListener:
             issue = turn.issue
             candidates: list[str] = []
         else:
-            repo, candidates = self._repo_catalog.resolve(event.text)
+            repo, candidates = self._current_repo_catalog().resolve(event.text)
             issue, issue_repo = resolve_issue(event.text, repo=repo or turn.repo)
             if issue_repo and issue_repo != repo:
                 repo = issue_repo
@@ -1324,10 +1323,11 @@ class SlackPlanningListener:
         if self._intent_engine is None:
             return None
 
+        catalog = self._current_repo_catalog()
         intent = classify_intent(
             event.text,
             engine_invoke=self._intent_engine,
-            catalog=self._repo_catalog,
+            catalog=catalog,
             state_root=self.state_root,
         )
         intent = self._augment_intent_from_context(event, intent)
@@ -1369,6 +1369,11 @@ class SlackPlanningListener:
         # plan_request / unknown / anything low-confidence: fall through to the
         # safe planning default (no result), preserving prior behavior.
         return None
+
+    def _current_repo_catalog(self) -> RepoCatalog:
+        if self._repo_catalog is not None:
+            return self._repo_catalog
+        return RepoCatalog.from_environment()
 
     def _augment_intent_from_context(self, event: SlackInputEvent, intent: Intent) -> Intent:
         """Fill a mutating intent's missing target from recent conversation.

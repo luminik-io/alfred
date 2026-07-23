@@ -1389,7 +1389,13 @@ def _intent_engine(payload: dict):
     return _invoke
 
 
-def _intent_dm(text: str, *, event_id: str = "EvIntent", user: str = "U1") -> dict:
+def _intent_dm(
+    text: str,
+    *,
+    event_id: str = "EvIntent",
+    user: str = "U1",
+    ts: str = "1716480500.000001",
+) -> dict:
     return {
         "event_id": event_id,
         "event": {
@@ -1398,7 +1404,7 @@ def _intent_dm(text: str, *, event_id: str = "EvIntent", user: str = "U1") -> di
             "channel_type": "im",
             "user": user,
             "text": text,
-            "ts": "1716480500.000001",
+            "ts": ts,
         },
     }
 
@@ -1429,6 +1435,46 @@ def _intent_catalog():
         {"acme-frontend": "frontend", "acme-backend": "backend"},
         gh_org="acme-io",
     )
+
+
+def test_listener_refreshes_repo_catalog_after_onboarding_changes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("GH_ORG", "acme")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/frontend=/tmp/frontend")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "acme/frontend")
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine({"action": "queue_issue", "issue": 4, "confidence": 0.95}),
+    )
+
+    first = listener.handle_payload(
+        _intent_dm("queue frontend issue #4", event_id="EvLiveRepoFrontend")
+    )
+    assert first.action == "intent_confirmation_posted"
+
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/backend=/tmp/backend")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "acme/backend")
+    second = listener.handle_payload(
+        _intent_dm(
+            "queue backend issue #4",
+            event_id="EvLiveRepoBackend",
+            ts="1716480501.000001",
+        )
+    )
+    assert second.action == "intent_confirmation_posted"
+
+    cleared = listener.handle_payload(
+        _intent_dm(
+            "queue frontend issue #4",
+            event_id="EvClearedRepoFrontend",
+            ts="1716480502.000001",
+        )
+    )
+    assert cleared.action == "intent_clarify"
 
 
 def test_router_explicitly_disabled_falls_through_to_planning(tmp_path: Path, monkeypatch) -> None:

@@ -66,9 +66,7 @@ def _engine_returning(payload: dict) -> si.EngineInvoke:
 
 
 def test_repo_catalog_reads_runtime_onboarding_changes(monkeypatch) -> None:
-    import agent_runner.paths as runner_paths
-
-    monkeypatch.setattr(runner_paths, "GH_ORG", "acme")
+    monkeypatch.setenv("GH_ORG", "acme")
     monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/frontend=/tmp/frontend")
 
     first = RepoCatalog.from_environment()
@@ -79,6 +77,15 @@ def test_repo_catalog_reads_runtime_onboarding_changes(monkeypatch) -> None:
     second = RepoCatalog.from_environment()
     assert "acme/backend" in second.slugs()
     assert "acme/frontend" not in second.slugs()
+
+
+def test_repo_catalog_uses_live_owner_with_live_checkout_map(monkeypatch) -> None:
+    monkeypatch.setenv("GH_ORG", "new-owner")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "backend=/tmp/backend")
+
+    catalog = RepoCatalog.from_environment()
+
+    assert catalog.resolve("queue backend issue #4")[0] == "new-owner/backend"
 
 
 def _save_roster_theme(
