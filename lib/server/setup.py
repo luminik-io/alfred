@@ -103,6 +103,7 @@ _GH_REPO_DISCOVERY_TIMEOUT_SECONDS = 15.0
 _GH_REPO_AUTH_TIMEOUT_SECONDS = 5.0
 _GH_REPO_PRIMARY_TIMEOUT_SECONDS = 10.0
 _GH_REPO_FALLBACK_RESERVE_SECONDS = 5.0
+_GH_REPO_LOCAL_RESERVE_SECONDS = 3.0
 
 
 class RepoCheckoutValidationError(ValueError):
@@ -1396,7 +1397,7 @@ def _code_memory_discovery_limit(env: dict[str, str]) -> int:
     return value if value > 0 else _CODE_MEMORY_DISCOVERY_LIMIT
 
 
-def _discover_code_memory_repos(env: dict[str, str]) -> list[str]:
+def _discover_code_memory_repos(env: dict[str, str], *, deadline: float | None = None) -> list[str]:
     workspace = _code_memory_workspace(env)
     limit = _code_memory_discovery_limit(env)
     found: list[str] = []
@@ -1405,6 +1406,8 @@ def _discover_code_memory_repos(env: dict[str, str]) -> list[str]:
     queue = [workspace]
     seen_real_paths: set[Path] = set()
     while queue:
+        if deadline is not None and time.monotonic() >= deadline:
+            break
         repo = queue.pop(0)
         try:
             real_repo = repo.resolve(strict=False)
@@ -1907,7 +1910,57 @@ def _repo_local_paths_readiness_check(
     ) | {"detected": detected}
 
 
-def _selected_repo_local_paths(repos: list[str], env: dict[str, str]) -> list[dict[str, Any]]:
+def _repo_picker_local_paths(
+    repos: list[str],
+    selected: set[str],
+    env: dict[str, str],
+    *,
+    deadline: float | None = None,
+) -> list[dict[str, Any]]:
+    """Return verified paths for visible repos plus repair rows for selected repos."""
+
+    selected_keys = {slug.casefold() for slug in selected}
+    direct = _selected_repo_local_paths(repos, env, deadline=deadline)
+    rows_by_repo: dict[str, dict[str, Any]] = {}
+    missing: dict[str, str] = {}
+    for row in direct:
+        key = str(row["repo"]).casefold()
+        if row["ready"] or key in selected_keys:
+            rows_by_repo[key] = row
+        if not row["ready"]:
+            missing[key] = str(row["repo"])
+
+    workspace = _code_memory_workspace(env)
+    discovered = _discover_code_memory_repos(env, deadline=deadline) if missing else []
+    for relative in discovered:
+        path = workspace / relative
+        for remote in _local_repo_github_remotes(path, deadline=deadline):
+            key = remote[1].casefold()
+            slug = missing.get(key)
+            if slug is None:
+                continue
+            row = _inspect_repo_checkout(
+                slug,
+                path,
+                "discovery",
+                known_remote=remote,
+                deadline=deadline,
+            )
+            if row["ready"]:
+                rows_by_repo[key] = row
+                missing.pop(key, None)
+        if not missing:
+            break
+
+    return [rows_by_repo[slug.casefold()] for slug in repos if slug.casefold() in rows_by_repo]
+
+
+def _selected_repo_local_paths(
+    repos: list[str],
+    env: dict[str, str],
+    *,
+    deadline: float | None = None,
+) -> list[dict[str, Any]]:
     repo_map = _code_memory_repo_map(env)
     workspace = _code_memory_workspace(env)
     out: list[dict[str, Any]] = []
@@ -1926,19 +1979,34 @@ def _selected_repo_local_paths(repos: list[str], env: dict[str, str]) -> list[di
             if key not in seen:
                 unique.append((path, source))
                 seen.add(key)
-        inspected = [_inspect_repo_checkout(slug, path, source) for path, source in unique]
+        inspected = [
+            _inspect_repo_checkout(slug, path, source, deadline=deadline) for path, source in unique
+        ]
         out.append(next((row for row in inspected if row["ready"]), inspected[0]))
     return out
 
 
-def _inspect_repo_checkout(slug: str, path: Path, source: str) -> dict[str, Any]:
+def _inspect_repo_checkout(
+    slug: str,
+    path: Path,
+    source: str,
+    *,
+    known_remote: tuple[str, str] | None = None,
+    deadline: float | None = None,
+) -> dict[str, Any]:
     try:
         exists = path.is_dir()
     except OSError:
         exists = False
     is_git_repo = exists and _is_code_memory_git_repo(path)
     github_remote_name, github_remote_repo = (
-        _local_repo_github_remote(path, expected_slug=slug) if is_git_repo else ("", "")
+        known_remote
+        if is_git_repo and known_remote is not None
+        else (
+            _local_repo_github_remote(path, expected_slug=slug, deadline=deadline)
+            if is_git_repo
+            else ("", "")
+        )
     )
     identity_matches = bool(github_remote_repo) and github_remote_repo.casefold() == slug.casefold()
     if not exists:
@@ -2034,21 +2102,27 @@ def _github_slug_from_remote_url(raw: str) -> str:
     return f"{parts[-2]}/{parts[-1]}"
 
 
-def _local_repo_github_remote(path: Path, *, expected_slug: str) -> tuple[str, str]:
-    """Return the best GitHub remote, preferring an exact repository match."""
-
+def _local_repo_github_remotes(
+    path: Path, *, deadline: float | None = None
+) -> list[tuple[str, str]]:
+    timeout = 5.0
+    if deadline is not None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return []
+        timeout = min(timeout, remaining)
     try:
         proc = subprocess.run(
             ["git", "-C", str(path), "remote", "-v"],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=timeout,
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
-        return "", ""
+        return []
     if proc.returncode != 0:
-        return "", ""
+        return []
 
     remotes: list[tuple[str, str]] = []
     seen: set[tuple[str, str]] = set()
@@ -2061,6 +2135,15 @@ def _local_repo_github_remote(path: Path, *, expected_slug: str) -> tuple[str, s
         if remote_slug and candidate not in seen:
             remotes.append(candidate)
             seen.add(candidate)
+    return remotes
+
+
+def _local_repo_github_remote(
+    path: Path, *, expected_slug: str, deadline: float | None = None
+) -> tuple[str, str]:
+    """Return the best GitHub remote, preferring an exact repository match."""
+
+    remotes = _local_repo_github_remotes(path, deadline=deadline)
     if not remotes:
         return "", ""
 
@@ -2637,7 +2720,7 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
             "error": gh["detail"],
         }
     limit = max(1, min(int(limit), 200))
-    rows = _gh_repo_list(limit, deadline=deadline)
+    rows = _gh_repo_list(limit, deadline=deadline - _GH_REPO_LOCAL_RESERVE_SECONDS)
     if rows is None:
         return {
             "repos": [],
@@ -2684,7 +2767,12 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
     return {
         "repos": repos,
         "selected": sorted(selected),
-        "repo_checkouts": _selected_repo_local_paths(sorted(selected), runtime_env),
+        "repo_checkouts": _repo_picker_local_paths(
+            [str(row["name_with_owner"]) for row in repos],
+            selected,
+            runtime_env,
+            deadline=deadline,
+        ),
     }
 
 

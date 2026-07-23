@@ -284,7 +284,7 @@ def test_list_owner_repos_marks_other_owners_unselectable_for_existing_scope(
         ],
     )
     monkeypatch.setattr(setup_mod, "_runtime_config_env", lambda: {})
-    monkeypatch.setattr(setup_mod, "_selected_repo_local_paths", lambda *_args: [])
+    monkeypatch.setattr(setup_mod, "_selected_repo_local_paths", lambda *_args, **_kwargs: [])
 
     result = setup_mod.list_owner_repos()
 
@@ -310,12 +310,12 @@ def test_list_owner_repos_shares_deadline_across_auth_and_discovery(
     monkeypatch.setattr(setup_mod, "gh_auth_status", fake_auth)
     monkeypatch.setattr(setup_mod, "_gh_repo_list", fake_repo_list)
     monkeypatch.setattr(setup_mod, "_runtime_config_env", lambda: {})
-    monkeypatch.setattr(setup_mod, "_selected_repo_local_paths", lambda *_args: [])
+    monkeypatch.setattr(setup_mod, "_selected_repo_local_paths", lambda *_args, **_kwargs: [])
 
     result = setup_mod.list_owner_repos()
 
     assert result["repos"] == []
-    assert deadlines == {"auth": 105.0, "discovery": 115.0}
+    assert deadlines == {"auth": 105.0, "discovery": 112.0}
 
 
 def test_gh_auth_status_uses_remaining_deadline_as_subprocess_timeout(
@@ -342,6 +342,84 @@ def test_gh_auth_status_uses_remaining_deadline_as_subprocess_timeout(
 
     assert result["ok"] is True
     assert timeouts == [5.0]
+
+
+def test_list_owner_repos_detects_nested_checkout_from_github_remote(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = workspace / "nested" / "web"
+    _git_repo_with_origin(checkout, "Acme/Web")
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
+    monkeypatch.setattr(
+        setup_mod,
+        "gh_auth_status",
+        lambda **_kwargs: {"ok": True, "account": "operator", "detail": ""},
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_gh_repo_list",
+        lambda _limit, **_kwargs: [{"nameWithOwner": "Acme/Web"}],
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {
+            "HOME": str(tmp_path),
+            "WORKSPACE_ROOT": str(workspace),
+            "ALFRED_WORKSPACE_SUBDIR": "",
+        },
+    )
+
+    result = setup_mod.list_owner_repos()
+
+    assert result["repo_checkouts"] == [
+        {
+            "repo": "Acme/Web",
+            "path": str(checkout),
+            "source": "discovery",
+            "exists": True,
+            "is_git_repo": True,
+            "github_remote_name": "origin",
+            "github_remote_repo": "Acme/Web",
+            "identity_matches": True,
+            "ready": True,
+            "reason": None,
+        }
+    ]
+
+
+def test_list_owner_repos_omits_nested_checkout_with_different_remote(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    _git_repo_with_origin(workspace / "nested" / "web", "Other/Web")
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
+    monkeypatch.setattr(
+        setup_mod,
+        "gh_auth_status",
+        lambda **_kwargs: {"ok": True, "account": "operator", "detail": ""},
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_gh_repo_list",
+        lambda _limit, **_kwargs: [{"nameWithOwner": "Acme/Web"}],
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {
+            "HOME": str(tmp_path),
+            "WORKSPACE_ROOT": str(workspace),
+            "ALFRED_WORKSPACE_SUBDIR": "",
+        },
+    )
+
+    result = setup_mod.list_owner_repos()
+
+    assert result["repo_checkouts"] == []
 
 
 def test_repo_selection_owner_allows_recovery_from_invalid_mixed_scope() -> None:
