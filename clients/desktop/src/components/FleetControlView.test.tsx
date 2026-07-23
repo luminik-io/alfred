@@ -96,6 +96,7 @@ function renderView(onRunLocalAction = vi.fn(), schedule: ScheduledRun[] = SCHED
   render(
     <FleetControlView
       baseUrl="http://127.0.0.1:7010"
+      modelRefreshVersion={1}
       agents={[agent("senior-dev"), agent("test-engineer")]}
       schedule={schedule}
       service={SERVICE}
@@ -172,6 +173,7 @@ describe("FleetControlView", () => {
     render(
       <FleetControlView
         baseUrl="http://127.0.0.1:7010"
+        modelRefreshVersion={1}
         agents={[
           agent("senior-dev", { status: "live" }),
           agent("test-engineer", { status: "llm-error" }),
@@ -198,6 +200,7 @@ describe("FleetControlView", () => {
     render(
       <FleetControlView
         baseUrl="http://127.0.0.1:7010"
+        modelRefreshVersion={1}
         agents={[
           agent("senior-dev", { paused: false, loaded: true }),
           agent("test-engineer", {
@@ -227,6 +230,7 @@ describe("FleetControlView", () => {
     render(
       <FleetControlView
         baseUrl="http://127.0.0.1:7010"
+        modelRefreshVersion={1}
         agents={[
           agent("senior-dev", {
             display_name: "Lucius",
@@ -332,6 +336,7 @@ describe("FleetControlView", () => {
     render(
       <FleetControlView
         baseUrl="http://127.0.0.1:7010"
+        modelRefreshVersion={1}
         agents={[agent("senior-dev")]}
         schedule={[]}
         service={{}}
@@ -393,6 +398,7 @@ describe("FleetControlView", () => {
       });
 
     const props = {
+      modelRefreshVersion: 1,
       agents: [agent("senior-dev")],
       schedule: SCHEDULE,
       service: SERVICE,
@@ -441,6 +447,7 @@ describe("FleetControlView", () => {
       .mockRejectedValueOnce(new Error("runtime B inventory unavailable"));
 
     const props = {
+      modelRefreshVersion: 1,
       agents: [agent("senior-dev")],
       schedule: SCHEDULE,
       service: SERVICE,
@@ -463,5 +470,93 @@ describe("FleetControlView", () => {
     expect(await screen.findByText("runtime B inventory unavailable")).toBeInTheDocument();
     expect(screen.queryByText("Active: runtime-a")).not.toBeInTheDocument();
     expect(screen.queryByText("Active: codex-a")).not.toBeInTheDocument();
+  });
+
+  it("reloads model sources after a same-runtime snapshot refresh", async () => {
+    agentApiMocks.loadAgentModels
+      .mockResolvedValueOnce({
+        agents: [
+          {
+            agent: "senior-dev",
+            claude: { resolved: "runtime-a", persisted: "runtime-a", source: "state" },
+            codex: { resolved: null, persisted: null, source: "provider-default" },
+          },
+        ],
+        count: 1,
+      })
+      .mockResolvedValueOnce({
+        agents: [
+          {
+            agent: "senior-dev",
+            claude: {
+              resolved: "fleet-opus",
+              persisted: "runtime-a",
+              source: "fleet-environment",
+            },
+            codex: { resolved: null, persisted: null, source: "provider-default" },
+          },
+        ],
+        count: 1,
+      });
+
+    const props = {
+      baseUrl: "http://runtime-a",
+      agents: [agent("senior-dev")],
+      schedule: SCHEDULE,
+      service: SERVICE,
+      nativeBusy: null,
+      onRunLocalAction: vi.fn(),
+      onViewLogs: vi.fn(),
+    };
+    const { rerender } = render(
+      <FleetControlView modelRefreshVersion={1} {...props} />,
+    );
+    const user = userEvent.setup();
+    await openDrawer(user, "lucius");
+    await waitFor(() => expect(screen.getByText("Active: runtime-a")).toBeInTheDocument());
+
+    rerender(<FleetControlView modelRefreshVersion={2} {...props} />);
+
+    await waitFor(() => expect(agentApiMocks.loadAgentModels).toHaveBeenCalledTimes(2));
+    expect(
+      await screen.findByText("Fleet override: fleet-opus. Saved: runtime-a"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Active: runtime-a")).not.toBeInTheDocument();
+  });
+
+  it("clears a model load error after a successful same-runtime refresh", async () => {
+    agentApiMocks.loadAgentModels
+      .mockRejectedValueOnce(new Error("temporary model inventory failure"))
+      .mockResolvedValueOnce({
+        agents: [
+          {
+            agent: "senior-dev",
+            claude: { resolved: "recovered", persisted: "recovered", source: "state" },
+            codex: { resolved: null, persisted: null, source: "provider-default" },
+          },
+        ],
+        count: 1,
+      });
+
+    const props = {
+      baseUrl: "http://runtime-a",
+      agents: [agent("senior-dev")],
+      schedule: SCHEDULE,
+      service: SERVICE,
+      nativeBusy: null,
+      onRunLocalAction: vi.fn(),
+      onViewLogs: vi.fn(),
+    };
+    const { rerender } = render(
+      <FleetControlView modelRefreshVersion={1} {...props} />,
+    );
+    const user = userEvent.setup();
+    await openDrawer(user, "lucius");
+    expect(await screen.findByText("temporary model inventory failure")).toBeInTheDocument();
+
+    rerender(<FleetControlView modelRefreshVersion={2} {...props} />);
+
+    expect(await screen.findByText("Active: recovered")).toBeInTheDocument();
+    expect(screen.queryByText("temporary model inventory failure")).not.toBeInTheDocument();
   });
 });

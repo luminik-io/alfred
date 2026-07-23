@@ -78,6 +78,7 @@ function readRosterView(): RosterView {
 
 export function FleetControlView({
   baseUrl,
+  modelRefreshVersion,
   agents,
   schedule,
   service,
@@ -88,6 +89,7 @@ export function FleetControlView({
   onViewLogs,
 }: {
   baseUrl: string;
+  modelRefreshVersion: number;
   agents: AgentSummary[];
   schedule?: ScheduledRun[];
   service: FleetServiceState;
@@ -155,6 +157,7 @@ export function FleetControlView({
     const epoch = modelRuntimeEpoch.current;
     let cancelled = false;
     setModelsLoading(true);
+    setModelError(null);
     void loadAgentModels(baseUrl)
       .then((response) => {
         if (cancelled || epoch !== modelRuntimeEpoch.current) return;
@@ -176,7 +179,7 @@ export function FleetControlView({
     return () => {
       cancelled = true;
     };
-  }, [baseUrl, agentKey]);
+  }, [baseUrl, agentKey, modelRefreshVersion]);
 
   const updateAgentModel = useCallback(
     async (agent: string, provider: AgentModelProvider, model: string | null) => {
