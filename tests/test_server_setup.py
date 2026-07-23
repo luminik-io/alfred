@@ -155,7 +155,7 @@ def test_gh_repo_list_preserves_partial_api_rows_before_configured_owner_rows(
             {"nameWithOwner": "acme/two", "updatedAt": "2026-07-21"},
         ],
     )
-    monkeypatch.setattr(setup_mod, "_gh_repo_list_fallback", lambda _limit: [])
+    monkeypatch.setattr(setup_mod, "_gh_repo_list_fallback", lambda _limit, **_kwargs: [])
 
     rows = setup_mod._gh_repo_list(2)
 
@@ -164,6 +164,50 @@ def test_gh_repo_list_preserves_partial_api_rows_before_configured_owner_rows(
         "membership/preserved",
         "acme/one",
     ]
+
+
+def test_partial_repo_recovery_runs_configured_owner_search_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        if cmd[1] == "api":
+            page = int(next(arg.removeprefix("page=") for arg in cmd if arg.startswith("page=")))
+            if page == 1:
+                return subprocess.CompletedProcess(
+                    cmd,
+                    0,
+                    json.dumps(
+                        [
+                            {"full_name": "membership/preserved"},
+                            {"full_name": "membership/archived", "archived": True},
+                        ]
+                    ),
+                    "",
+                )
+            return subprocess.CompletedProcess(cmd, 1, "", "request failed")
+        if cmd[1:3] == ["search", "repos"]:
+            return subprocess.CompletedProcess(
+                cmd,
+                0,
+                json.dumps([{"fullName": "acme/configured"}]),
+                "",
+            )
+        raise AssertionError(f"unexpected fallback command: {cmd}")
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: ["acme"])
+
+    rows = setup_mod._gh_repo_list(2)
+
+    assert rows is not None
+    assert [row["nameWithOwner"] for row in rows] == [
+        "membership/preserved",
+        "acme/configured",
+    ]
+    assert sum(call[1:3] == ["search", "repos"] for call in calls) == 1
 
 
 def test_list_owner_repos_marks_other_owners_unselectable_for_existing_scope(

@@ -2676,9 +2676,11 @@ def _gh_repo_list(limit: int) -> list[dict[str, Any]] | None:
     if accessible is not None:
         configured = _gh_configured_owner_repo_list(limit)
         if partial:
-            fallback = _gh_repo_list_fallback(limit) or []
-            additions = _prioritize_gh_repo_rows(configured, fallback, limit=limit)
-            return _prioritize_gh_repo_rows(accessible, additions, limit=limit)
+            rows = _prioritize_gh_repo_rows(accessible, configured, limit=limit)
+            if len(rows) >= limit:
+                return rows
+            fallback = _gh_repo_list_fallback(limit, include_configured_owners=False) or []
+            return _prioritize_gh_repo_rows(rows, fallback, limit=limit)
         if configured:
             return _prioritize_gh_repo_rows(configured, accessible, limit=limit)
         return accessible
@@ -2796,12 +2798,17 @@ def _merge_gh_repo_rows(
     return rows[:limit]
 
 
-def _gh_repo_list_fallback(limit: int) -> list[dict[str, Any]] | None:
+def _gh_repo_list_fallback(
+    limit: int, *, include_configured_owners: bool = True
+) -> list[dict[str, Any]] | None:
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
     successes = 0
 
-    for cmd in _gh_repo_list_commands(limit):
+    commands = _gh_repo_list_commands(limit)
+    if not include_configured_owners:
+        commands = commands[:1]
+    for cmd in commands:
         data = _run_gh_repo_list_command(cmd)
         if data is None:
             continue
