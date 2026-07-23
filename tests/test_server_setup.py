@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -663,10 +664,12 @@ def test_repo_picker_returns_before_blocked_metadata_call(
     workspace.mkdir()
     blocked_path = workspace / "Web"
     original_is_dir = Path.is_dir
+    metadata_returned = threading.Event()
 
     def slow_is_dir(path: Path) -> bool:
         if path == blocked_path:
             time.sleep(0.2)
+            metadata_returned.set()
             return False
         return original_is_dir(path)
 
@@ -686,6 +689,60 @@ def test_repo_picker_returns_before_blocked_metadata_call(
 
     assert rows == []
     assert time.monotonic() - started_at < 0.15
+    assert metadata_returned.wait(timeout=1)
+    for _ in range(100):
+        if not any(thread.name == "alfred-repo-discovery" for thread in threading.enumerate()):
+            break
+        time.sleep(0.01)
+    assert not any(thread.name == "alfred-repo-discovery" for thread in threading.enumerate())
+
+
+def test_repo_picker_allows_only_one_timed_out_discovery_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+    calls = 0
+
+    def blocked_scan(*_args: object, **_kwargs: object) -> list[dict[str, Any]]:
+        nonlocal calls
+        calls += 1
+        started.set()
+        release.wait(timeout=1)
+        finished.set()
+        return []
+
+    monkeypatch.setattr(setup_mod, "_repo_picker_local_paths_sync", blocked_scan)
+
+    first = setup_mod._repo_picker_local_paths(
+        ["Acme/Web"],
+        set(),
+        {},
+        deadline=time.monotonic() + 0.03,
+    )
+    assert started.wait(timeout=1)
+    second_started_at = time.monotonic()
+    second = setup_mod._repo_picker_local_paths(
+        ["Acme/Web"],
+        set(),
+        {},
+        deadline=time.monotonic() + 0.03,
+    )
+
+    assert first == []
+    assert second == []
+    assert time.monotonic() - second_started_at < 0.02
+    assert calls == 1
+    assert sum(thread.name == "alfred-repo-discovery" for thread in threading.enumerate()) == 1
+
+    release.set()
+    assert finished.wait(timeout=1)
+    for _ in range(100):
+        if not any(thread.name == "alfred-repo-discovery" for thread in threading.enumerate()):
+            break
+        time.sleep(0.01)
+    assert not any(thread.name == "alfred-repo-discovery" for thread in threading.enumerate())
 
 
 def test_repo_selection_owner_allows_recovery_from_invalid_mixed_scope() -> None:

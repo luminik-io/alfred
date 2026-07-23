@@ -128,6 +128,7 @@ _CODE_MEMORY_VERSION_RE = re.compile(
 )
 _CODE_MEMORY_REPO_RE = re.compile(r'^CODE_MEMORY_REPO="\$\{ALFRED_CODE_MEMORY_REPO:-([^}]+)\}"')
 _CODE_MEMORY_DISCOVERY_LIMIT = 25
+_REPO_DISCOVERY_SLOT = threading.Lock()
 _CODE_MEMORY_DISCOVERY_IGNORES = {
     ".git",
     ".archive",
@@ -1948,27 +1949,37 @@ def _repo_picker_local_paths(
         return _repo_picker_local_paths_sync(repos, selected, env)
     if time.monotonic() >= deadline:
         return []
+    if not _REPO_DISCOVERY_SLOT.acquire(blocking=False):
+        return []
 
     result_queue: queue.Queue[list[dict[str, Any]]] = queue.Queue(maxsize=1)
 
     def scan() -> None:
         try:
-            result = _repo_picker_local_paths_sync(
-                repos,
-                selected,
-                env,
-                deadline=deadline,
-            )
-        except Exception:
-            logger.exception("Local repository discovery failed")
-            result = []
-        result_queue.put(result)
+            try:
+                result = _repo_picker_local_paths_sync(
+                    repos,
+                    selected,
+                    env,
+                    deadline=deadline,
+                )
+            except Exception:
+                logger.exception("Local repository discovery failed")
+                result = []
+            result_queue.put(result)
+        finally:
+            _REPO_DISCOVERY_SLOT.release()
 
-    threading.Thread(
+    worker = threading.Thread(
         target=scan,
         name="alfred-repo-discovery",
         daemon=True,
-    ).start()
+    )
+    try:
+        worker.start()
+    except Exception:
+        _REPO_DISCOVERY_SLOT.release()
+        raise
     remaining = max(0.0, deadline - time.monotonic())
     try:
         return result_queue.get(timeout=remaining)
