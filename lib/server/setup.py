@@ -30,10 +30,12 @@ from __future__ import annotations
 import json
 import logging
 import os
+import queue
 import re
 import shlex
 import shutil
 import subprocess
+import threading
 import time
 import urllib.parse
 from collections.abc import Iterator, Mapping
@@ -1422,6 +1424,11 @@ def _iter_workspace_git_repos(
     workspace = _code_memory_workspace(env)
     if not workspace.is_dir():
         return
+    ignored_names = (
+        _CODE_MEMORY_DISCOVERY_IGNORES - {".worktrees"}
+        if include_nested
+        else _CODE_MEMORY_DISCOVERY_IGNORES
+    )
     queue = [workspace]
     seen_real_paths: set[Path] = set()
     while queue:
@@ -1440,7 +1447,7 @@ def _iter_workspace_git_repos(
                 relative_parts = repo.relative_to(workspace).parts
             except ValueError:
                 continue
-            if any(part in _CODE_MEMORY_DISCOVERY_IGNORES for part in relative_parts):
+            if any(part in ignored_names for part in relative_parts):
                 continue
             yield repo
             if not include_nested:
@@ -1450,13 +1457,13 @@ def _iter_workspace_git_repos(
             for entry in repo.iterdir():
                 if deadline is not None and time.monotonic() >= deadline:
                     return
-                if not entry.is_dir() or entry.name in _CODE_MEMORY_DISCOVERY_IGNORES:
+                if not entry.is_dir() or entry.name in ignored_names:
                     continue
                 try:
                     relative_parts = entry.relative_to(workspace).parts
                 except ValueError:
                     continue
-                if any(part in _CODE_MEMORY_DISCOVERY_IGNORES for part in relative_parts):
+                if any(part in ignored_names for part in relative_parts):
                     continue
                 children.append(entry)
         except OSError:
@@ -1929,6 +1936,47 @@ def _repo_local_paths_readiness_check(
 
 
 def _repo_picker_local_paths(
+    repos: list[str],
+    selected: set[str],
+    env: dict[str, str],
+    *,
+    deadline: float | None = None,
+) -> list[dict[str, Any]]:
+    """Return checkout rows without letting filesystem calls block the route."""
+
+    if deadline is None:
+        return _repo_picker_local_paths_sync(repos, selected, env)
+    if time.monotonic() >= deadline:
+        return []
+
+    result_queue: queue.Queue[list[dict[str, Any]]] = queue.Queue(maxsize=1)
+
+    def scan() -> None:
+        try:
+            result = _repo_picker_local_paths_sync(
+                repos,
+                selected,
+                env,
+                deadline=deadline,
+            )
+        except Exception:
+            logger.exception("Local repository discovery failed")
+            result = []
+        result_queue.put(result)
+
+    threading.Thread(
+        target=scan,
+        name="alfred-repo-discovery",
+        daemon=True,
+    ).start()
+    remaining = max(0.0, deadline - time.monotonic())
+    try:
+        return result_queue.get(timeout=remaining)
+    except queue.Empty:
+        return []
+
+
+def _repo_picker_local_paths_sync(
     repos: list[str],
     selected: set[str],
     env: dict[str, str],

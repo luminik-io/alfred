@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -448,6 +449,52 @@ def test_list_owner_repos_detects_nested_checkout_from_github_remote(
     ]
 
 
+def test_list_owner_repos_detects_checkout_in_worktree_pool(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = workspace / ".worktrees" / "web"
+    _git_repo_with_origin(checkout, "Acme/Web")
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
+    monkeypatch.setattr(
+        setup_mod,
+        "gh_auth_status",
+        lambda **_kwargs: {"ok": True, "account": "operator", "detail": ""},
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_gh_repo_list",
+        lambda _limit, **_kwargs: [{"nameWithOwner": "Acme/Web"}],
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {
+            "HOME": str(tmp_path),
+            "WORKSPACE_ROOT": str(workspace),
+            "ALFRED_WORKSPACE_SUBDIR": "",
+        },
+    )
+
+    result = setup_mod.list_owner_repos()
+
+    assert result["repo_checkouts"] == [
+        {
+            "repo": "Acme/Web",
+            "path": str(checkout),
+            "source": "discovery",
+            "exists": True,
+            "is_git_repo": True,
+            "github_remote_name": "origin",
+            "github_remote_repo": "Acme/Web",
+            "identity_matches": True,
+            "ready": True,
+            "reason": None,
+        }
+    ]
+
+
 def test_nested_checkout_discovery_never_enters_git_metadata(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -595,7 +642,6 @@ def test_repo_picker_inspects_discovery_results_as_they_are_yielded(
         ["Acme/Web"],
         set(),
         {},
-        deadline=100.0,
     )
 
     assert inspected is True
@@ -607,6 +653,39 @@ def test_repo_picker_inspects_discovery_results_as_they_are_yielded(
             "ready": True,
         }
     ]
+
+
+def test_repo_picker_returns_before_blocked_metadata_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    blocked_path = workspace / "Web"
+    original_is_dir = Path.is_dir
+
+    def slow_is_dir(path: Path) -> bool:
+        if path == blocked_path:
+            time.sleep(0.2)
+            return False
+        return original_is_dir(path)
+
+    monkeypatch.setattr(Path, "is_dir", slow_is_dir)
+    started_at = time.monotonic()
+
+    rows = setup_mod._repo_picker_local_paths(
+        ["Acme/Web"],
+        set(),
+        {
+            "HOME": str(tmp_path),
+            "WORKSPACE_ROOT": str(workspace),
+            "ALFRED_WORKSPACE_SUBDIR": "",
+        },
+        deadline=started_at + 0.03,
+    )
+
+    assert rows == []
+    assert time.monotonic() - started_at < 0.15
 
 
 def test_repo_selection_owner_allows_recovery_from_invalid_mixed_scope() -> None:
