@@ -20,7 +20,17 @@ def _known_codenames(request: Request) -> list[str]:
         agent.codename
         for agent in CustomAgentStore.from_state_root(views._state_root(request)).load()
     )
-    return [*built_in, *custom]
+    runtime = [agent.codename for agent in request.app.state.reader.list_agents()]
+    known: list[str] = []
+    for agent in [*built_in, *custom, *runtime]:
+        if agent in known:
+            continue
+        try:
+            _selection_payload(request, agent, "claude")
+        except ValueError:
+            continue
+        known.append(agent)
+    return known
 
 
 def _selection_payload(request: Request, agent: str, provider: str) -> dict[str, Any]:
