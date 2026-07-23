@@ -610,6 +610,8 @@ def test_render_blast_radius_is_prompt_ready() -> None:
     assert "Level: high" in text
     assert "Changed paths:" in text
     assert "- src/Widget.tsx depends on src/api.ts via ./api" in text
+    assert "Contract drift:" in text
+    assert "- src/api.ts GET /api/v1/things src/api.ts:9" in text
     assert "Next checks:" in text
 
 

@@ -77,18 +77,27 @@ fi
 gh api /repos/${GH_ORG}/${SLUG}/pulls/${PR_NUM}/comments --jq '[.[] | select(.user.login == "coderabbitai[bot]" or (.user.login | test("codex|chatgpt"; "i"))) | {user: .user.login, body, path, line}]' > ${TMPDIR}/prior-reviews.json
 ```
 
-### Step 3.5: Compute contract drift for this PR (if your fleet runs a code map)
+### Step 3.5: Compute deterministic impact evidence (if your fleet runs a code map)
 
-Before delegating to Claude, dump the cross-repo code map plus a per-PR drift slice:
+The live reviewer reads the PR's changed-file list and Alfred's local code map,
+then computes a bounded blast-radius brief. The brief names mapped and unmapped
+paths, direct dependents, contract surfaces, contract drift, and concrete next
+checks. Pass that rendered brief to Claude with the diff.
 
-```
-CODE_MAP="${ALFRED_HOME}/state/code-map.json"
-cp "$CODE_MAP" "${TMPDIR}/code-map.json" 2>/dev/null || echo "{}" > "${TMPDIR}/code-map.json"
-```
+Use the brief to prioritize files and contracts that need direct inspection. It
+is deterministic but heuristic: an absent edge is missing evidence, not proof
+that no coupling exists. Claude must still read the changed code and relevant
+surrounding implementation.
 
-Pass `${TMPDIR}/code-map.json` to Claude in the delegation prompt. Claude must check, for any client API call introduced by this PR (`apiClient.<method>` / `fetch` / `axiosInstance.<method>`), whether the server has a matching `(method, path)` in the code map (after path normalization: `/api/v1/X` ↔ `/v1/X`, template params ↔ `{*}`). When the PR adds a client call with no matching server entry, **flag it as P0 contract drift**.
+For every client HTTP or API call added or changed in the diff, verify its
+method and path against the brief's mapped server-contract catalog and the
+server implementation under `${WORKSPACE_ROOT}`. If the catalog is missing or
+truncated, grep the server code directly. Flag a confirmed mismatch; never
+treat an absent catalog entry as proof that the call is safe.
 
-If the code-map file is missing or older than 24h, note `code-map stale, contract drift not verified this run` in the review's preface and proceed.
+If the code-map file is missing or older than 24h, the live prompt marks the
+sensor unavailable or stale. Proceed with direct inspection; never block a
+review because optional graph evidence is absent.
 
 ### Step 4: Delegate to Claude Code
 

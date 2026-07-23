@@ -8,7 +8,7 @@ import os
 import re
 import sys
 import tempfile
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(
@@ -46,6 +46,12 @@ from agent_runner import (
     slack_post,
     with_lock,
 )
+from code_graph import (
+    blast_radius_for_paths,
+    default_code_map_path,
+    load_code_map,
+    render_blast_radius,
+)
 
 AGENT = os.environ.get("AGENT_CODENAME", "reviewer")
 REVIEWER_ENGINE = agent_engine(AGENT, default="hybrid")
@@ -79,6 +85,169 @@ REVIEWED_HEAD_SHA = re.compile(
     r"^Reviewed-head-sha:\s*([0-9a-f]{7,40})\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
+CODE_MAP_MAX_AGE = timedelta(hours=24)
+CODE_MAP_MAX_FUTURE_SKEW = timedelta(minutes=5)
+CODE_SENSOR_MAX_PATHS = 50
+CODE_SENSOR_MAX_SERVER_CONTRACTS = 100
+
+
+def _parse_code_map_timestamp(raw: object) -> datetime | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except (OverflowError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    try:
+        return parsed.astimezone(UTC)
+    except OverflowError:
+        return None
+
+
+def _code_map_repo_key(code_map: dict, repo: str) -> str | None:
+    repos = code_map.get("repos")
+    if not isinstance(repos, dict):
+        return None
+    candidates = (repo, local_repo_dir(repo), repo.rsplit("/", 1)[-1])
+    for candidate in candidates:
+        if candidate in repos:
+            return candidate
+    by_lower = {str(key).lower(): str(key) for key in repos}
+    for candidate in candidates:
+        if candidate.lower() in by_lower:
+            return by_lower[candidate.lower()]
+    return None
+
+
+def _changed_paths_from_file_pages(payload: object) -> list[str]:
+    if not isinstance(payload, list):
+        return []
+    rows: list[object] = []
+    for page in payload:
+        if isinstance(page, list):
+            rows.extend(page)
+        else:
+            rows.append(page)
+    paths: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        for key in ("filename", "previous_filename"):
+            path = str(row.get(key) or (row.get("path") if key == "filename" else "")).strip()
+            if path:
+                paths.append(path)
+    return list(dict.fromkeys(paths))
+
+
+def _render_server_contract_catalog(code_map: dict) -> str:
+    """Render a bounded cross-repo server-contract index for diff validation."""
+
+    repos = code_map.get("repos")
+    if not isinstance(repos, dict):
+        return "Known server contracts: unavailable. Inspect server code directly."
+    contracts: list[tuple[str, str, str, str]] = []
+    for repo_name, repo_data in repos.items():
+        if not isinstance(repo_data, dict):
+            continue
+        for kind in ("endpoints", "routes"):
+            rows = repo_data.get(kind)
+            if not isinstance(rows, list):
+                continue
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                method = str(row.get("method") or "").strip().upper()
+                path = str(row.get("path") or "").strip()
+                if method and path:
+                    contracts.append((str(repo_name), kind[:-1], method, path))
+    if not contracts:
+        return "Known server contracts: unavailable. Inspect server code directly."
+    visible = contracts[:CODE_SENSOR_MAX_SERVER_CONTRACTS]
+    lines = [
+        "Known server contracts from the mapped base branch (validate PR additions against these):"
+    ]
+    lines.extend(f"- {repo} {kind} {method} {path}" for repo, kind, method, path in visible)
+    omitted = len(contracts) - len(visible)
+    if omitted:
+        lines.append(f"Known server contracts omitted by sensor limit: {omitted}")
+    return "\n".join(lines)
+
+
+def build_review_sensor_context(
+    repo: str,
+    changed_paths: list[str],
+    *,
+    code_map_path: Path | None = None,
+    now: datetime | None = None,
+) -> tuple[str, str]:
+    """Build bounded, deterministic impact evidence for a PR review prompt."""
+
+    resolved = code_map_path or default_code_map_path()
+    if not resolved.exists():
+        return (
+            "unavailable",
+            "Code-map sensor: unavailable. Review the diff and surrounding code directly.",
+        )
+    try:
+        code_map = load_code_map(resolved)
+    except (OSError, ValueError):
+        return (
+            "unavailable",
+            "Code-map sensor: unreadable. Review the diff and surrounding code directly.",
+        )
+
+    generated_at = _parse_code_map_timestamp(code_map.get("generated_at"))
+    current = (now or datetime.now(UTC)).astimezone(UTC)
+    if (
+        generated_at is None
+        or generated_at - current > CODE_MAP_MAX_FUTURE_SKEW
+        or current - generated_at > CODE_MAP_MAX_AGE
+    ):
+        return (
+            "stale",
+            "Code-map sensor: stale. Do not rely on it; inspect changed paths and contracts directly.",
+        )
+
+    repo_key = _code_map_repo_key(code_map, repo)
+    if repo_key is None:
+        return (
+            "unavailable",
+            "Code-map sensor: this repository is not mapped. Inspect changed paths and contracts directly.",
+        )
+
+    unique_paths = list(dict.fromkeys(path.strip() for path in changed_paths if path.strip()))
+    if not unique_paths:
+        return (
+            "unavailable",
+            "Code-map sensor: the PR metadata has no changed paths. Inspect the diff directly.",
+        )
+    selected_paths = unique_paths[:CODE_SENSOR_MAX_PATHS]
+    try:
+        blast_radius = blast_radius_for_paths(
+            code_map,
+            repo=repo_key,
+            paths=selected_paths,
+            limit=50,
+        )
+    except (KeyError, TypeError, ValueError):
+        return (
+            "unavailable",
+            "Code-map sensor: impact evidence could not be computed. Inspect the diff directly.",
+        )
+
+    rendered = render_blast_radius(blast_radius)
+    omitted = len(unique_paths) - len(selected_paths)
+    if omitted:
+        rendered += f"\nChanged paths omitted by sensor limit: {omitted}"
+    rendered += f"\n{_render_server_contract_catalog(code_map)}"
+    rendered += (
+        "\nSensor rule: use these signals to prioritize inspection, not as proof of correctness. "
+        "Absence of a dependency or contract is missing evidence, not evidence of absence."
+    )
+    return "ready", rendered
 
 
 def _extract_section(text: str, header: str) -> list[str]:
@@ -339,6 +508,24 @@ def main() -> int:
     pr_title = meta.get("title", "")
     pr_body = meta.get("body", "") or ""
     head_sha = (meta.get("headRefOid") or head_sha).strip().lower()
+    file_pages = gh_json(
+        [
+            "gh",
+            "api",
+            "--paginate",
+            "--slurp",
+            f"/repos/{GH_ORG}/{repo}/pulls/{pr_num}/files?per_page=100",
+        ],
+        default=[],
+    )
+    changed_paths = _changed_paths_from_file_pages(file_pages)
+    sensor_status, sensor_context = build_review_sensor_context(repo, changed_paths)
+    events.emit(
+        "review_sensor_context",
+        repo=f"{GH_ORG}/{repo}",
+        status=sensor_status,
+        changed_paths=len(changed_paths),
+    )
 
     # Prior reviewer comments from known bot reviewers
     prior_comments = gh_json(
@@ -376,6 +563,15 @@ Body:
 The diff is at {tmp}/diff.patch, read it.
 Working directory: {local_path} (you can grep the surrounding repo for context).
 Workspace root for cross-repo grep: {WORKSPACE_ROOT}
+
+Deterministic code-map evidence:
+{sensor_context}
+
+Contract verification rule: for every client HTTP or API call added or changed
+in the diff, verify its method and path against the mapped server contracts and
+the server implementation under {WORKSPACE_ROOT}. If the catalog is missing or
+truncated, grep the server code directly. Flag a confirmed mismatch; never treat
+an absent catalog entry as proof that the call is safe.
 
 Specs review axes (priority order):
 1. Internal consistency - does spec N contradict spec M? Cross-references valid?
@@ -429,6 +625,15 @@ Body:
 The diff is at {tmp}/diff.patch - read it.
 Existing bot-reviewer comments at {tmp}/prior-reviews.json - read them. DO NOT duplicate their findings.
 Working directory: {local_path}.
+
+Deterministic code-map evidence:
+{sensor_context}
+
+Contract verification rule: for every client HTTP or API call added or changed
+in the diff, verify its method and path against the mapped server contracts and
+the server implementation under {WORKSPACE_ROOT}. If the catalog is missing or
+truncated, grep the server code directly. Flag a confirmed mismatch; never treat
+an absent catalog entry as proof that the call is safe.
 
 Review axes (priority order):
 1. Correctness - does it do what the title and body say? Edge cases?
