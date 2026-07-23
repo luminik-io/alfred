@@ -2782,6 +2782,10 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
             }
         )
     runtime_env = _runtime_config_env()
+    local_deadline = min(
+        deadline,
+        time.monotonic() + _GH_REPO_LOCAL_RESERVE_SECONDS,
+    )
     return {
         "repos": repos,
         "selected": sorted(selected),
@@ -2789,7 +2793,7 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
             [str(row["name_with_owner"]) for row in repos],
             selected,
             runtime_env,
-            deadline=deadline,
+            deadline=local_deadline,
         ),
     }
 

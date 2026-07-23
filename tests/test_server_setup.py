@@ -308,15 +308,25 @@ def test_list_owner_repos_shares_deadline_across_auth_and_discovery(
         deadlines["discovery"] = deadline
         return []
 
+    def fake_local_paths(
+        _repos: list[str],
+        _selected: set[str],
+        _env: dict[str, str],
+        *,
+        deadline: float,
+    ) -> list[dict[str, Any]]:
+        deadlines["local"] = deadline
+        return []
+
     monkeypatch.setattr(setup_mod, "gh_auth_status", fake_auth)
     monkeypatch.setattr(setup_mod, "_gh_repo_list", fake_repo_list)
     monkeypatch.setattr(setup_mod, "_runtime_config_env", lambda: {})
-    monkeypatch.setattr(setup_mod, "_selected_repo_local_paths", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(setup_mod, "_repo_picker_local_paths", fake_local_paths)
 
     result = setup_mod.list_owner_repos()
 
     assert result["repos"] == []
-    assert deadlines == {"auth": 105.0, "discovery": 112.0}
+    assert deadlines == {"auth": 105.0, "discovery": 112.0, "local": 103.0}
 
 
 def test_gh_auth_status_uses_remaining_deadline_as_subprocess_timeout(
