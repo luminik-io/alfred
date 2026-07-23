@@ -155,6 +155,56 @@ def test_gh_repo_list_replenishes_rows_filtered_from_a_full_page(
     assert len(calls) == 2
 
 
+def test_gh_repo_list_preserves_rows_when_a_later_api_page_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if cmd[1] == "api":
+            page = int(next(arg.removeprefix("page=") for arg in cmd if arg.startswith("page=")))
+            if page == 1:
+                return subprocess.CompletedProcess(
+                    cmd,
+                    0,
+                    json.dumps(
+                        [
+                            {
+                                "full_name": "outside-org/member-repo",
+                                "updated_at": "2026-07-23T12:00:00Z",
+                            },
+                            {"full_name": "outside-org/retired", "archived": True},
+                        ]
+                    ),
+                    "",
+                )
+            return subprocess.CompletedProcess(cmd, 1, "", "request failed")
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            json.dumps(
+                [
+                    {
+                        "nameWithOwner": "personal/fallback-only",
+                        "updatedAt": "2026-07-22T12:00:00Z",
+                    }
+                ]
+            ),
+            "",
+        )
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: [])
+
+    rows = setup_mod._gh_repo_list(2)
+
+    assert rows is not None
+    assert [row["nameWithOwner"] for row in rows] == [
+        "outside-org/member-repo",
+        "personal/fallback-only",
+    ]
+    assert "page 2 failed after 1 accepted rows" in caplog.text
+
+
 def test_gh_repo_list_falls_back_when_accessible_repo_query_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

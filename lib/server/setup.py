@@ -2701,6 +2701,15 @@ def _gh_accessible_repo_list(limit: int) -> list[dict[str, Any]] | None:
         ]
         data = _run_gh_repo_list_command(cmd)
         if data is None:
+            if rows:
+                logger.warning(
+                    "GitHub repository discovery page %d failed after %d accepted rows; "
+                    "supplementing with command fallback",
+                    page,
+                    len(rows),
+                )
+                fallback = _gh_repo_list_fallback(limit)
+                return _merge_gh_repo_rows(rows, fallback or [], limit=limit)
             return None
         for raw_row in data:
             row = _normalize_gh_repo_row(raw_row)
@@ -2714,6 +2723,30 @@ def _gh_accessible_repo_list(limit: int) -> list[dict[str, Any]] | None:
         if len(data) < page_size:
             break
         page += 1
+    return rows[:limit]
+
+
+def _merge_gh_repo_rows(
+    primary: list[dict[str, Any]],
+    additions: list[dict[str, Any]],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in (*primary, *additions):
+        slug = str(row.get("nameWithOwner") or "").strip().lower()
+        if not slug or slug in seen:
+            continue
+        seen.add(slug)
+        rows.append(row)
+    rows.sort(
+        key=lambda row: (
+            str(row.get("updatedAt") or ""),
+            str(row.get("nameWithOwner") or "").lower(),
+        ),
+        reverse=True,
+    )
     return rows[:limit]
 
 
@@ -2738,14 +2771,7 @@ def _gh_repo_list_fallback(limit: int) -> list[dict[str, Any]] | None:
             rows.append(row)
     if not successes:
         return None
-    rows.sort(
-        key=lambda row: (
-            str(row.get("updatedAt") or ""),
-            str(row.get("nameWithOwner") or "").lower(),
-        ),
-        reverse=True,
-    )
-    return rows[:limit]
+    return _merge_gh_repo_rows(rows, [], limit=limit)
 
 
 def _run_gh_repo_list_command(cmd: list[str]) -> list[dict[str, Any]] | None:
