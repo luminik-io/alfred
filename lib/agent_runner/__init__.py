@@ -82,6 +82,7 @@ from .config import (
     ENGINE_CHOICES,
     MODEL_ENGINES,
     PROVIDER_LIMIT_SUBTYPES,
+    AgentModelSelection,
     _agent_env_slug,
     _env_present,
     _env_value_enabled,

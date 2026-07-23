@@ -404,8 +404,8 @@ def test_cli_model_set_status_and_clear(tmp_path):
 
     status = _run_cli("model", "status", "architect", env_extra=env)
     assert status.returncode == 0, status.stderr
-    assert "architect Claude model: opus" in status.stdout
-    assert "architect Codex model: gpt-5-codex" in status.stdout
+    assert "architect Claude model: opus [state]" in status.stdout
+    assert "architect Codex model: gpt-5-codex [state]" in status.stdout
 
     clear_claude = _run_cli("model", "clear", "architect", "claude", env_extra=env)
     assert clear_claude.returncode == 0, clear_claude.stderr
@@ -444,6 +444,13 @@ def test_cli_model_set_reports_higher_precedence_environment_override(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "active model remains fleet-codex (environment override)" in result.stdout
     assert (alfred / "state" / "models" / "architect" / "codex").read_text() == "agent-codex\n"
+
+    status = _run_cli("model", "status", "architect", env_extra=env)
+    assert status.returncode == 0, status.stderr
+    assert (
+        "architect Codex model: fleet-codex [fleet-environment] (saved: agent-codex)"
+        in status.stdout
+    )
 
 
 def test_cli_engine_status_uses_custom_agent_manifest_default(tmp_path):

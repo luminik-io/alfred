@@ -1754,6 +1754,13 @@ def _model_label(model: str | None) -> str:
     return model or "(CLI default)"
 
 
+def _model_status_label(selection: agent_runner.AgentModelSelection) -> str:
+    label = f"{_model_label(selection.model)} [{selection.source}]"
+    if selection.persisted and selection.persisted != selection.model:
+        label += f" (saved: {selection.persisted})"
+    return label
+
+
 def cmd_model_status(args: argparse.Namespace) -> int:
     if args.agent:
         try:
@@ -1761,17 +1768,19 @@ def cmd_model_status(args: argparse.Namespace) -> int:
         except ValueError as e:
             print(f"alfred model: {e}", file=sys.stderr)
             return 2
-        print(f"{agent} Claude model: {_model_label(agent_runner.agent_model(agent, 'claude'))}")
-        print(f"{agent} Codex model: {_model_label(agent_runner.agent_model(agent, 'codex'))}")
+        claude = agent_runner.agent_model_selection(agent, "claude")
+        codex = agent_runner.agent_model_selection(agent, "codex")
+        print(f"{agent} Claude model: {_model_status_label(claude)}")
+        print(f"{agent} Codex model: {_model_status_label(codex)}")
         print(f"state directory: {agent_runner.STATE_ROOT / 'models' / agent}")
         return 0
 
-    headers = ("agent", "Claude model", "Codex model")
+    headers = ("agent", "Claude model [source]", "Codex model [source]")
     rows = [
         (
             agent,
-            _model_label(agent_runner.agent_model(agent, "claude")),
-            _model_label(agent_runner.agent_model(agent, "codex")),
+            _model_status_label(agent_runner.agent_model_selection(agent, "claude")),
+            _model_status_label(agent_runner.agent_model_selection(agent, "codex")),
         )
         for agent in _engine_agent_codenames()
     ]
