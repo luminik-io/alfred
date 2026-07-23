@@ -60,6 +60,111 @@ def _git_repo_with_origin(path: Path, slug: str) -> None:
     )
 
 
+def test_gh_repo_list_includes_accessible_organization_repos(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            json.dumps(
+                [
+                    {
+                        "full_name": "luminik-io/alfred",
+                        "description": "Autonomous engineering fleet",
+                        "private": False,
+                        "fork": False,
+                        "updated_at": "2026-07-23T12:00:00Z",
+                    },
+                    {
+                        "full_name": "luminik-io/retired",
+                        "archived": True,
+                    },
+                ]
+            ),
+            "",
+        )
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+
+    rows = setup_mod._gh_repo_list(100)
+
+    assert rows == [
+        {
+            "nameWithOwner": "luminik-io/alfred",
+            "description": "Autonomous engineering fleet",
+            "isPrivate": False,
+            "isFork": False,
+            "updatedAt": "2026-07-23T12:00:00Z",
+        }
+    ]
+    assert calls[0][1:5] == ["api", "-X", "GET", "user/repos"]
+    assert "affiliation=owner,collaborator,organization_member" in calls[0]
+
+
+def test_gh_repo_list_paginates_to_the_requested_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        page = int(next(arg.removeprefix("page=") for arg in cmd if arg.startswith("page=")))
+        count = 100 if page == 1 else 50
+        start = 0 if page == 1 else 100
+        rows = [{"full_name": f"acme/repo-{index}"} for index in range(start, start + count)]
+        return subprocess.CompletedProcess(cmd, 0, json.dumps(rows), "")
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+
+    rows = setup_mod._gh_repo_list(150)
+
+    assert rows is not None
+    assert len(rows) == 150
+    assert rows[-1]["nameWithOwner"] == "acme/repo-149"
+    assert len(calls) == 2
+
+
+def test_gh_repo_list_falls_back_when_accessible_repo_query_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        if cmd[1] == "api":
+            return subprocess.CompletedProcess(cmd, 1, "", "request failed")
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            json.dumps(
+                [
+                    {
+                        "nameWithOwner": "acme/api",
+                        "description": None,
+                        "isPrivate": True,
+                        "isFork": False,
+                        "updatedAt": "2026-07-22T10:00:00Z",
+                    }
+                ]
+            ),
+            "",
+        )
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: [])
+
+    rows = setup_mod._gh_repo_list(100)
+
+    assert rows is not None
+    assert rows[0]["nameWithOwner"] == "acme/api"
+    assert rows[0]["isPrivate"] is True
+    assert [call[1] for call in calls] == ["api", "repo"]
+
+
 def test_github_slug_accepts_ssh_over_443_remote() -> None:
     assert (
         setup_mod._github_slug_from_remote_url("ssh://git@ssh.github.com:443/octocat/example.git")

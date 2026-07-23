@@ -6,9 +6,9 @@ zero to a working fleet without a terminal:
 * :func:`bootstrap_status`  - what is connected vs missing (gh auth, engine
   CLIs, watched repos, runtime). One read the client turns into a clear
   next-action per row.
-* :func:`list_owner_repos`  - the operator's own GitHub repos via
-  ``gh repo list`` plus the repos already selected, so the client can render a
-  checklist with the current selection ticked.
+* :func:`list_owner_repos`  - every GitHub repo the operator can access plus
+  the repos already selected, so the client can render a checklist with the
+  current selection ticked.
 * :func:`persist_selected_repos`  - write the chosen repo allowlist to
   ``$ALFRED_HOME/.env`` for boards, queue mutations, scheduled agents, and
   code-memory indexing, so the choice survives a restart and scopes everything
@@ -2603,8 +2603,8 @@ def _has_config_key(env: dict[str, str], key: str) -> bool:
 def list_owner_repos(limit: int = 100) -> dict[str, Any]:
     """List the operator's GitHub repos for the repo-pick checklist.
 
-    Runs ``gh repo list --json nameWithOwner,...`` for the authenticated user
-    (no org argument: the owner's own + accessible repos). Returns
+    Queries the authenticated user's owner, collaborator, and organization
+    memberships through ``gh api``. Returns
     ``{repos: [{name_with_owner, description, is_private, is_fork, updated_at,
     selected}], selected, error?}``. Never raises: a gh/auth failure returns an
     ``error`` string with an empty repo list so the client shows a clear "sign
@@ -2668,39 +2668,111 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
 
 
 def _gh_repo_list(limit: int) -> list[dict[str, Any]] | None:
+    accessible = _gh_accessible_repo_list(limit)
+    if accessible is not None:
+        return accessible
+
+    return _gh_repo_list_fallback(limit)
+
+
+def _gh_accessible_repo_list(limit: int) -> list[dict[str, Any]] | None:
+    """Return the authenticated account's recently updated accessible repos."""
+
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    page_size = min(limit, 100)
+    page_count = (limit + page_size - 1) // page_size
+
+    for page in range(1, page_count + 1):
+        cmd = [
+            _gh_bin(),
+            "api",
+            "-X",
+            "GET",
+            "user/repos",
+            "-f",
+            "affiliation=owner,collaborator,organization_member",
+            "-f",
+            "sort=updated",
+            "-f",
+            f"per_page={page_size}",
+            "-f",
+            f"page={page}",
+        ]
+        data = _run_gh_repo_list_command(cmd)
+        if data is None:
+            return None
+        for raw_row in data:
+            row = _normalize_gh_repo_row(raw_row)
+            if row is None:
+                continue
+            slug = row["nameWithOwner"].lower()
+            if slug in seen:
+                continue
+            seen.add(slug)
+            rows.append(row)
+        if len(data) < page_size:
+            break
+    return rows[:limit]
+
+
+def _gh_repo_list_fallback(limit: int) -> list[dict[str, Any]] | None:
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
     successes = 0
 
     for cmd in _gh_repo_list_commands(limit):
-        try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30,
-                env=_gh_subprocess_env(),
-            )
-        except (OSError, subprocess.SubprocessError):
-            continue
-        if proc.returncode != 0 or not proc.stdout.strip():
-            continue
-        try:
-            data = json.loads(proc.stdout)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(data, list):
+        data = _run_gh_repo_list_command(cmd)
+        if data is None:
             continue
         successes += 1
-        for row in data:
-            if not isinstance(row, dict):
+        for raw_row in data:
+            row = _normalize_gh_repo_row(raw_row)
+            if row is None:
                 continue
-            slug = str(row.get("nameWithOwner") or "").strip().lower()
-            if not slug or slug in seen:
+            slug = row["nameWithOwner"].lower()
+            if slug in seen:
                 continue
             seen.add(slug)
             rows.append(row)
-    return rows if successes else None
+    return rows[:limit] if successes else None
+
+
+def _run_gh_repo_list_command(cmd: list[str]) -> list[dict[str, Any]] | None:
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=_gh_subprocess_env(),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, list):
+        return None
+    return [row for row in data if isinstance(row, dict)]
+
+
+def _normalize_gh_repo_row(row: dict[str, Any]) -> dict[str, Any] | None:
+    if bool(row.get("isArchived", row.get("archived", False))):
+        return None
+    slug = str(row.get("nameWithOwner") or row.get("full_name") or "").strip()
+    if not slug:
+        return None
+    return {
+        "nameWithOwner": slug,
+        "description": row.get("description"),
+        "isPrivate": bool(row.get("isPrivate", row.get("private", False))),
+        "isFork": bool(row.get("isFork", row.get("fork", False))),
+        "updatedAt": row.get("updatedAt") or row.get("updated_at"),
+    }
 
 
 def _gh_repo_list_commands(limit: int) -> list[list[str]]:
