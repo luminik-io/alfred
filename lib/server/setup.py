@@ -127,6 +127,7 @@ _CODE_MEMORY_VERSION_RE = re.compile(
 _CODE_MEMORY_REPO_RE = re.compile(r'^CODE_MEMORY_REPO="\$\{ALFRED_CODE_MEMORY_REPO:-([^}]+)\}"')
 _CODE_MEMORY_DISCOVERY_LIMIT = 25
 _CODE_MEMORY_DISCOVERY_IGNORES = {
+    ".git",
     ".archive",
     ".cache",
     ".external",

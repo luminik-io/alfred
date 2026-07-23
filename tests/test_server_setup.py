@@ -402,6 +402,39 @@ def test_list_owner_repos_detects_nested_checkout_from_github_remote(
     ]
 
 
+def test_nested_checkout_discovery_never_enters_git_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = workspace / "nested" / "web"
+    _git_repo_with_origin(workspace, "Acme/Parent")
+    _git_repo_with_origin(checkout, "Acme/Web")
+    (workspace / ".git" / "objects" / "nested").mkdir(parents=True)
+    inspected: list[Path] = []
+    is_git_repo = setup_mod._is_code_memory_git_repo
+
+    def record_inspection(path: Path) -> bool:
+        inspected.append(path)
+        return is_git_repo(path)
+
+    monkeypatch.setattr(setup_mod, "_is_code_memory_git_repo", record_inspection)
+
+    repos = list(
+        setup_mod._iter_workspace_git_repos(
+            {
+                "HOME": str(tmp_path),
+                "WORKSPACE_ROOT": str(workspace),
+                "ALFRED_WORKSPACE_SUBDIR": "",
+            },
+            include_nested=True,
+        )
+    )
+
+    assert repos == [workspace, checkout]
+    assert all(".git" not in path.relative_to(workspace).parts for path in inspected)
+
+
 def test_list_owner_repos_omits_nested_checkout_with_different_remote(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
