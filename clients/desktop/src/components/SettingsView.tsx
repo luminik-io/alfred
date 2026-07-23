@@ -173,9 +173,7 @@ export function SettingsView({
       className="panel animate-rise settings-view"
       aria-label="Settings"
       data-ready={
-        !loading && !setupLoading && (setupStatus !== null || setupError !== null)
-          ? "true"
-          : "false"
+        !loading && !setupLoading && setupStatus !== null ? "true" : "false"
       }
     >
       <PanelHeader eyebrow="Alfred" title="Settings" />

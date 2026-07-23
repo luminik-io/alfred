@@ -20,6 +20,13 @@ const WIDTHS = [375, 768, 1024, 1280, 1680];
 const THEMES = ["dark", "light"];
 const HEIGHT = 900;
 const ROUTE_TIMEOUT_MS = parsePositiveInt(process.env.SWEEP_ROUTE_TIMEOUT_MS, 20000);
+const NAVIGATION_ATTEMPTS = 2;
+const SCREENSHOT_TIMEOUT_MS = 8000;
+// The outer watchdog covers two possible navigations, the independent surface
+// readiness wait, the screenshot, and short settle delays. It must never consume
+// the same budget that an inner operation was promised.
+const RENDER_TIMEOUT_MS =
+  ROUTE_TIMEOUT_MS * (NAVIGATION_ATTEMPTS + 1) + SCREENSHOT_TIMEOUT_MS + 3000;
 const THEME_NAME_STORAGE_KEY = "alfred-theme-name";
 const THEME_MODE_STORAGE_KEY = "alfred-theme";
 
@@ -222,12 +229,12 @@ async function renderRoute(browser, { theme, width, route }) {
 
     const url = `${BASE}/?${route.q}`;
     let navOk = false;
-    for (let attempt = 0; attempt < 2 && !navOk; attempt++) {
+    for (let attempt = 0; attempt < NAVIGATION_ATTEMPTS && !navOk; attempt++) {
       try {
         await page.goto(url, { waitUntil: "domcontentloaded", timeout: ROUTE_TIMEOUT_MS });
         navOk = true;
       } catch (err) {
-        if (attempt === 1) throw err;
+        if (attempt === NAVIGATION_ATTEMPTS - 1) throw err;
         await page.waitForTimeout(500);
       }
     }
@@ -242,7 +249,11 @@ async function renderRoute(browser, { theme, width, route }) {
     const violations = await page.evaluate(PROBE);
     const shot = `${route.id}_${width}_${theme}.png`;
     try {
-      await page.screenshot({ path: join(OUT_DIR, shot), fullPage: false, timeout: 8000 });
+      await page.screenshot({
+        path: join(OUT_DIR, shot),
+        fullPage: false,
+        timeout: SCREENSHOT_TIMEOUT_MS,
+      });
     } catch {}
     return { route: route.id, width, theme, violations, shot };
   } finally {
@@ -262,7 +273,7 @@ async function run() {
         for (const route of ROUTES) {
           const result = await withTimeout(
             renderRoute(browser, { theme, width, route }),
-            ROUTE_TIMEOUT_MS,
+            RENDER_TIMEOUT_MS,
             `${route.id} ${width} ${theme}`,
           );
           total += result.violations.length;
