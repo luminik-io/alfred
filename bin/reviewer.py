@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ras al Ghul - PR review agent. Read-only review delegated to claude -p."""
+"""Read-only pull-request reviewer with provider-independent engine routing."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ sys.path.insert(
     (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib",
 )
 from agent_runner import (
+    ALFRED_HOME,
     GH_ORG,
     WORKSPACE,
     WORKSPACE_ROOT,
@@ -37,6 +38,7 @@ from agent_runner import (
     is_globally_blocked,
     is_repo_paused,
     issue_memory_query,
+    load_prompt,
     local_repo_dir,
     maybe_halt_on_fail_streak,
     maybe_set_global_block_for_result,
@@ -56,6 +58,8 @@ from code_graph import (
 AGENT = os.environ.get("AGENT_CODENAME", "reviewer")
 REVIEWER_ENGINE = agent_engine(AGENT, default="hybrid")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
+PROMPT_PATH = ALFRED_HOME / "prompts" / f"{AGENT}.md"
+OPERATOR_GUIDANCE_MARKER = "<!-- alfred:operator-guidance v1 -->"
 
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
@@ -270,6 +274,61 @@ def _extract_section(text: str, header: str) -> list[str]:
                 continue
             out.append(item)
     return out
+
+
+def _strip_operator_guidance_marker(text: str) -> str:
+    """Drop the explicit operator-guidance marker line, if present."""
+
+    lines = text.splitlines()
+    if lines and lines[0].strip() == OPERATOR_GUIDANCE_MARKER:
+        return "\n".join(lines[1:])
+    return text
+
+
+def _has_operator_guidance_marker(path: Path) -> bool:
+    """Return whether ``path`` explicitly opts into runtime prompt injection."""
+
+    try:
+        with path.open(encoding="utf-8") as prompt_file:
+            first_line = prompt_file.readline()
+    except OSError:
+        return False
+    return first_line.strip() == OPERATOR_GUIDANCE_MARKER
+
+
+def _operator_prompt_guidance(
+    repo: str,
+    pr_num: int,
+    pr_title: str,
+    local_path: Path,
+) -> str:
+    """Load operator-edited reviewer guidance without injecting the starter."""
+
+    if not PROMPT_PATH.exists() or not _has_operator_guidance_marker(PROMPT_PATH):
+        return ""
+    guidance = load_prompt(
+        PROMPT_PATH,
+        extra_vars={
+            "AGENT_CODENAME": AGENT,
+            "GH_ORG": GH_ORG,
+            "ALFRED_HOME": str(ALFRED_HOME),
+            "WORKSPACE_ROOT": str(WORKSPACE_ROOT),
+            "REVIEW_REPOS": ",".join(REVIEW_REPOS),
+            "REPO_SLUG": repo,
+            "PR_NUMBER": str(pr_num),
+            "PR_TITLE": pr_title,
+            "LOCAL_REPO": str(local_path),
+        },
+    )
+    guidance = _strip_operator_guidance_marker(guidance).strip()
+    if not guidance:
+        return ""
+    return f"""
+Operator-supplied review guidance from {PROMPT_PATH}:
+---
+{guidance}
+---
+"""
 
 
 def reviewed_head_sha(review_body: str) -> str | None:
@@ -550,6 +609,7 @@ def main() -> int:
         or "chatgpt" in c.get("user", {}).get("login", "").lower()
     ]
     (tmp / "prior-reviews.json").write_text(json.dumps(prior, indent=2))
+    operator_guidance = _operator_prompt_guidance(repo, pr_num, pr_title, local_path)
 
     if is_specs:
         prompt = f"""You are {AGENT.title()} reviewing a SPECS pull request (markdown documentation, not code).
@@ -572,6 +632,7 @@ in the diff, verify its method and path against the mapped server contracts and
 the server implementation under {WORKSPACE_ROOT}. If the catalog is missing or
 truncated, grep the server code directly. Flag a confirmed mismatch; never treat
 an absent catalog entry as proof that the call is safe.
+{operator_guidance}
 
 Specs review axes (priority order):
 1. Internal consistency - does spec N contradict spec M? Cross-references valid?
@@ -634,6 +695,7 @@ in the diff, verify its method and path against the mapped server contracts and
 the server implementation under {WORKSPACE_ROOT}. If the catalog is missing or
 truncated, grep the server code directly. Flag a confirmed mismatch; never treat
 an absent catalog entry as proof that the call is safe.
+{operator_guidance}
 
 Review axes (priority order):
 1. Correctness - does it do what the title and body say? Edge cases?
@@ -701,10 +763,8 @@ Ship-ready: yes / no - <one sentence>
         codex_add_dirs=[tmp, WORKSPACE_ROOT],
         on_fallback=_on_engine_fallback,
         memory_repo=f"{GH_ORG}/{repo}" if GH_ORG else repo,
-        # Rasalghul reviews a PR; recall lessons relevant to what this PR is
-        # about (its title + body) so review hints match the change under
-        # review, not just repo/codename recency. None when both are empty
-        # preserves recency-only recall.
+        # Recall lessons relevant to this PR's title and body, not just recent
+        # lessons for the repository and reviewer role.
         memory_query=issue_memory_query(pr_title, pr_body),
     )
     spend.increment(firings_today=1, turns_today=result.num_turns, cost_usd_today=result.cost_usd)
@@ -790,8 +850,7 @@ Ship-ready: yes / no - <one sentence>
         return 0
 
     # Split P0/P1 findings into per-finding sub-comments so the review-to-fix
-    # agent (default: Nightwing) can address each one independently, it dedups
-    # by comment-id.
+    # agent can address each one independently; it deduplicates by comment ID.
     p0_findings = _extract_section(text, "## Blockers (P0)")
     p1_findings = _extract_section(text, "## Should fix before merge (P1)")
     posted_split = 0

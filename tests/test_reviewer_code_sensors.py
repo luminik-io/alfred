@@ -11,6 +11,7 @@ import pytest
 from agent_runner import EventLog
 
 ROOT = Path(__file__).resolve().parent.parent
+REVIEWER_TEMPLATE = ROOT / "prompts/code-review.md"
 
 
 def _load_reviewer(monkeypatch: pytest.MonkeyPatch):
@@ -139,6 +140,83 @@ def test_review_sensor_event_is_registered(tmp_path: Path) -> None:
     assert record["status"] == "ready"
 
 
+def test_reviewer_ignores_unmodified_seeded_guidance(monkeypatch, tmp_path: Path) -> None:
+    reviewer = _load_reviewer(monkeypatch)
+    installed = tmp_path / "prompts/reviewer.md"
+    installed.parent.mkdir(parents=True)
+    installed.write_text(REVIEWER_TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(reviewer, "PROMPT_PATH", installed)
+
+    guidance = reviewer._operator_prompt_guidance("web", 17, "Trace callers", tmp_path / "web")
+
+    assert guidance == ""
+
+
+def test_reviewer_ignores_generated_guidance_from_an_older_release(
+    monkeypatch, tmp_path: Path
+) -> None:
+    reviewer = _load_reviewer(monkeypatch)
+    installed = tmp_path / "prompts/reviewer.md"
+    installed.parent.mkdir(parents=True)
+    installed.write_text(
+        "<!-- alfred:auto-seed v0 -->\nObsolete provider-specific generated workflow.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(reviewer, "PROMPT_PATH", installed)
+
+    guidance = reviewer._operator_prompt_guidance("web", 17, "Trace callers", tmp_path / "web")
+
+    assert guidance == ""
+
+
+def test_reviewer_ignores_ambiguous_markerless_legacy_guidance(monkeypatch, tmp_path: Path) -> None:
+    reviewer = _load_reviewer(monkeypatch)
+    installed = tmp_path / "prompts/reviewer.md"
+    installed.parent.mkdir(parents=True)
+    installed.write_text(
+        "Obsolete provider-specific generated workflow without a marker.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(reviewer, "PROMPT_PATH", installed)
+
+    guidance = reviewer._operator_prompt_guidance("web", 17, "Trace callers", tmp_path / "web")
+
+    assert guidance == ""
+
+
+def test_reviewer_requires_the_exact_operator_guidance_marker(monkeypatch, tmp_path: Path) -> None:
+    reviewer = _load_reviewer(monkeypatch)
+    installed = tmp_path / "prompts/reviewer.md"
+    installed.parent.mkdir(parents=True)
+    installed.write_text(
+        "<!-- not alfred:operator-guidance v1 -->\nDo not activate this file.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(reviewer, "PROMPT_PATH", installed)
+
+    guidance = reviewer._operator_prompt_guidance("web", 17, "Trace callers", tmp_path / "web")
+
+    assert guidance == ""
+
+
+def test_reviewer_renders_operator_edited_guidance(monkeypatch, tmp_path: Path) -> None:
+    reviewer = _load_reviewer(monkeypatch)
+    installed = tmp_path / "prompts/reviewer.md"
+    installed.parent.mkdir(parents=True)
+    installed.write_text(
+        "<!-- alfred:operator-guidance v1 -->\n"
+        "Check ${REPO_SLUG} PR ${PR_NUMBER}: ${PR_TITLE}. Scope: ${REVIEW_REPOS}.",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(reviewer, "PROMPT_PATH", installed)
+
+    guidance = reviewer._operator_prompt_guidance("web", 17, "Trace callers", tmp_path / "web")
+
+    assert "Check web PR 17: Trace callers. Scope: web." in guidance
+    assert str(installed) in guidance
+    assert "alfred:operator-guidance" not in guidance
+
+
 def test_reviewer_passes_changed_paths_and_sensor_to_engine(monkeypatch, tmp_path: Path) -> None:
     reviewer = _load_reviewer(monkeypatch)
     captured: dict[str, object] = {}
@@ -213,6 +291,13 @@ def test_reviewer_passes_changed_paths_and_sensor_to_engine(monkeypatch, tmp_pat
     monkeypatch.setattr(reviewer, "build_review_sensor_context", fake_sensor)
     monkeypatch.setattr(reviewer, "invoke_agent_engine", fake_invoke)
     monkeypatch.setattr(reviewer, "WORKSPACE", tmp_path)
+    operator_prompt = tmp_path / "reviewer-operator.md"
+    operator_prompt.write_text(
+        "<!-- alfred:operator-guidance v1 -->\n"
+        "Inspect the ${REPO_SLUG} compatibility ledger for PR ${PR_NUMBER}.",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(reviewer, "PROMPT_PATH", operator_prompt)
 
     with pytest.raises(_StopAfterInvoke):
         reviewer.main()
@@ -225,3 +310,4 @@ def test_reviewer_passes_changed_paths_and_sensor_to_engine(monkeypatch, tmp_pat
     ]
     assert "Deterministic code-map evidence:\nSENSOR EVIDENCE" in str(captured["prompt"])
     assert "for every client HTTP or API call added or changed" in str(captured["prompt"])
+    assert "Inspect the web compatibility ledger for PR 17." in str(captured["prompt"])
