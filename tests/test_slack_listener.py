@@ -1458,11 +1458,21 @@ def test_listener_refreshes_repo_catalog_after_onboarding_changes(
 
     monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/backend=/tmp/backend")
     monkeypatch.setenv("ALFRED_QUEUE_REPOS", "acme/backend")
+
+    stale_followup = listener.handle_payload(
+        _intent_dm(
+            "do it",
+            event_id="EvRemovedRepoFollowup",
+            ts="1716480501.000001",
+        )
+    )
+    assert stale_followup.action == "intent_clarify"
+
     second = listener.handle_payload(
         _intent_dm(
             "queue backend issue #4",
             event_id="EvLiveRepoBackend",
-            ts="1716480501.000001",
+            ts="1716480502.000001",
         )
     )
     assert second.action == "intent_confirmation_posted"
@@ -1471,7 +1481,7 @@ def test_listener_refreshes_repo_catalog_after_onboarding_changes(
         _intent_dm(
             "queue frontend issue #4",
             event_id="EvClearedRepoFrontend",
-            ts="1716480502.000001",
+            ts="1716480503.000001",
         )
     )
     assert cleared.action == "intent_clarify"

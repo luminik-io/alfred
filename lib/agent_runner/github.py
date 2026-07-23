@@ -156,7 +156,8 @@ def _decode_repo_local_map_value(value: str) -> str:
     return value
 
 
-GH_REPO_TO_LOCAL.update(_repo_local_map_from_env())
+_IMPORTED_REPO_LOCAL_MAP = _repo_local_map_from_env()
+GH_REPO_TO_LOCAL.update(_IMPORTED_REPO_LOCAL_MAP)
 
 
 def repo_to_local_map() -> dict[str, str]:
@@ -165,12 +166,19 @@ def repo_to_local_map() -> dict[str, str]:
     The desktop setup flow updates ``ALFRED_REPO_LOCAL_MAP`` without restarting
     the local server. When that key is present, parse it on every read instead
     of returning the import-time ``GH_REPO_TO_LOCAL`` snapshot. An explicitly
-    empty value is therefore an authoritative empty map. When the key is absent,
-    retain support for a Python fleet overlay that mutates ``GH_REPO_TO_LOCAL``.
+    empty value clears setup-derived entries while retaining paths added by a
+    Python fleet overlay. When the key is absent, return the complete import-time
+    map.
     """
 
     if "ALFRED_REPO_LOCAL_MAP" in os.environ:
-        return _repo_local_map_from_env()
+        overlay_map = {
+            key: value
+            for key, value in GH_REPO_TO_LOCAL.items()
+            if key not in _IMPORTED_REPO_LOCAL_MAP or value != _IMPORTED_REPO_LOCAL_MAP[key]
+        }
+        overlay_map.update(_repo_local_map_from_env())
+        return overlay_map
     return dict(GH_REPO_TO_LOCAL)
 
 

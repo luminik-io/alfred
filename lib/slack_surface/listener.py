@@ -1330,7 +1330,7 @@ class SlackPlanningListener:
             catalog=catalog,
             state_root=self.state_root,
         )
-        intent = self._augment_intent_from_context(event, intent)
+        intent = self._augment_intent_from_context(event, intent, catalog=catalog)
 
         if intent.action == ACTION_STATUS:
             self._conversation.record(
@@ -1375,7 +1375,13 @@ class SlackPlanningListener:
             return self._repo_catalog
         return RepoCatalog.from_environment()
 
-    def _augment_intent_from_context(self, event: SlackInputEvent, intent: Intent) -> Intent:
+    def _augment_intent_from_context(
+        self,
+        event: SlackInputEvent,
+        intent: Intent,
+        *,
+        catalog: RepoCatalog,
+    ) -> Intent:
         """Fill a mutating intent's missing target from recent conversation.
 
         Only triggers when (a) the intent is mutating, (b) it resolved no repo
@@ -1393,6 +1399,8 @@ class SlackPlanningListener:
             return intent
         prev_repo, prev_issue = self._conversation.last_target(event.conversation_id)
         if not prev_repo:
+            return intent
+        if prev_repo.casefold() not in {slug.casefold() for slug in catalog.slugs()}:
             return intent
         params = dict(intent.params or {})
         params["context_repo"] = prev_repo

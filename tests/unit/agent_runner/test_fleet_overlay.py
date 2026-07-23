@@ -189,6 +189,32 @@ def test_explicit_empty_runtime_repo_map_clears_import_snapshot(overlay_root, mo
     assert agent_runner.local_repo_dir("api") == "api"
 
 
+def test_live_repo_map_preserves_overlay_only_entries(overlay_root, monkeypatch):
+    (overlay_root / "mapped_fleet.py").write_text(
+        textwrap.dedent(
+            """
+            from agent_runner import GH_REPO_TO_LOCAL
+            GH_REPO_TO_LOCAL.update({"private/ops": "/tmp/private-ops"})
+            """
+        ).lstrip()
+    )
+    monkeypatch.setenv("ALFRED_FLEET_OVERLAY", "mapped_fleet")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "public/app=/tmp/old-app")
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "public/app=/tmp/new-app")
+
+    assert agent_runner.repo_to_local_map()["private/ops"] == "/tmp/private-ops"
+    assert agent_runner.local_repo_dir("public/app") == "/tmp/new-app"
+
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "")
+
+    assert agent_runner.repo_to_local_map() == {"private/ops": "/tmp/private-ops"}
+    assert agent_runner.local_repo_dir("public/app") == "public/app"
+
+
 def test_overlay_named_via_env_loads_and_mutates(overlay_root, monkeypatch):
     """A custom overlay module pointed at by ``ALFRED_FLEET_OVERLAY``
     runs its module-level side effects during ``agent_runner`` init."""
