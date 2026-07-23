@@ -292,6 +292,52 @@ def test_list_owner_repos_marks_other_owners_unselectable_for_existing_scope(
     assert [row["selectable"] for row in result["repos"]] == [True, False]
 
 
+def test_list_owner_repos_preserves_saved_path_when_github_slug_casing_differs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout = tmp_path / "custom" / "web"
+    _git_repo_with_origin(checkout, "Acme/Web")
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: ["acme/web"])
+    monkeypatch.setattr(
+        setup_mod,
+        "gh_auth_status",
+        lambda **_kwargs: {"ok": True, "account": "operator", "detail": ""},
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_gh_repo_list",
+        lambda _limit, **_kwargs: [{"nameWithOwner": "Acme/Web"}],
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {
+            "HOME": str(tmp_path),
+            "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+            "ALFRED_WORKSPACE_SUBDIR": "",
+            "ALFRED_REPO_LOCAL_MAP": f"acme/web={checkout}",
+        },
+    )
+
+    result = setup_mod.list_owner_repos()
+
+    assert result["repo_checkouts"] == [
+        {
+            "repo": "Acme/Web",
+            "path": str(checkout),
+            "source": "map",
+            "exists": True,
+            "is_git_repo": True,
+            "github_remote_name": "origin",
+            "github_remote_repo": "Acme/Web",
+            "identity_matches": True,
+            "ready": True,
+            "reason": None,
+        }
+    ]
+
+
 def test_list_owner_repos_shares_deadline_across_auth_and_discovery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -1547,7 +1547,8 @@ def _decode_repo_local_map_value(value: str) -> str:
 def _code_memory_configured_repo_path(
     env: dict[str, str], name: str, repo_map: dict[str, str] | None = None
 ) -> Path:
-    mapped = (repo_map if repo_map is not None else _code_memory_repo_map(env)).get(name, name)
+    mapping = repo_map if repo_map is not None else _code_memory_repo_map(env)
+    mapped = mapping.get(name, mapping.get(name.casefold(), name))
     path = Path(mapped)
     if path.is_absolute():
         return path
@@ -1987,7 +1988,7 @@ def _selected_repo_local_paths(
         local_name = slug.rsplit("/", 1)[-1]
         candidates: list[tuple[Path, str]] = []
         for key in (slug, local_name):
-            if key in repo_map:
+            if key in repo_map or key.casefold() in repo_map:
                 candidates.append((_code_memory_configured_repo_path(env, key, repo_map), "map"))
         if not candidates:
             candidates.append((workspace / local_name, "workspace"))
