@@ -235,6 +235,36 @@ def test_gh_repo_list_returns_accessible_rows_when_owner_search_budget_is_spent(
     assert command_calls == []
 
 
+def test_gh_repo_list_reserves_time_for_fallback_after_api_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    timeouts: list[float] = []
+    clock = iter((100.0, 100.0, 110.0))
+    monkeypatch.setattr(setup_mod.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: [])
+
+    def fake_run(
+        cmd: list[str], *, timeout: float, **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        timeouts.append(timeout)
+        if cmd[1] == "api":
+            raise subprocess.TimeoutExpired(cmd, timeout)
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            json.dumps([{"nameWithOwner": "personal/fallback"}]),
+            "",
+        )
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+
+    rows = setup_mod._gh_repo_list(1)
+
+    assert rows is not None
+    assert [row["nameWithOwner"] for row in rows] == ["personal/fallback"]
+    assert timeouts == [10.0, 5.0]
+
+
 def test_list_owner_repos_marks_other_owners_unselectable_for_existing_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

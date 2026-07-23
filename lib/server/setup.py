@@ -100,6 +100,7 @@ _REPO_LOCAL_MAP_COMMA_BOUNDARY_RE = re.compile(
     r",\s*(?=[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=(?:/|~|\.{1,2}/))"
 )
 _GH_REPO_DISCOVERY_TIMEOUT_SECONDS = 15.0
+_GH_REPO_PRIMARY_TIMEOUT_SECONDS = 10.0
 
 
 class RepoCheckoutValidationError(ValueError):
@@ -2674,8 +2675,12 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
 
 
 def _gh_repo_list(limit: int) -> list[dict[str, Any]] | None:
-    deadline = time.monotonic() + _GH_REPO_DISCOVERY_TIMEOUT_SECONDS
-    accessible, partial = _gh_accessible_repo_list(limit, deadline=deadline)
+    started_at = time.monotonic()
+    deadline = started_at + _GH_REPO_DISCOVERY_TIMEOUT_SECONDS
+    accessible, partial = _gh_accessible_repo_list(
+        limit,
+        deadline=min(deadline, started_at + _GH_REPO_PRIMARY_TIMEOUT_SECONDS),
+    )
     if accessible is not None:
         configured = _gh_configured_owner_repo_list(limit, deadline=deadline)
         if partial:
