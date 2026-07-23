@@ -36,7 +36,7 @@ import shutil
 import subprocess
 import time
 import urllib.parse
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from contextlib import suppress
 from datetime import UTC, datetime
 from fnmatch import fnmatchcase
@@ -1401,13 +1401,26 @@ def _discover_code_memory_repos(
     env: dict[str, str],
     *,
     deadline: float | None = None,
-    include_nested: bool = False,
 ) -> list[str]:
     workspace = _code_memory_workspace(env)
     limit = _code_memory_discovery_limit(env)
     found: list[str] = []
+    for repo in _iter_workspace_git_repos(env, deadline=deadline, include_nested=False):
+        found.append(str(repo.relative_to(workspace)))
+        if len(found) >= limit:
+            break
+    return found
+
+
+def _iter_workspace_git_repos(
+    env: dict[str, str],
+    *,
+    deadline: float | None = None,
+    include_nested: bool,
+) -> Iterator[Path]:
+    workspace = _code_memory_workspace(env)
     if not workspace.is_dir():
-        return found
+        return
     queue = [workspace]
     seen_real_paths: set[Path] = set()
     while queue:
@@ -1432,9 +1445,7 @@ def _discover_code_memory_repos(
                 continue
             if any(part in _CODE_MEMORY_DISCOVERY_IGNORES for part in relative_parts):
                 continue
-            found.append(str(repo.relative_to(workspace)))
-            if len(found) >= limit and not include_nested:
-                break
+            yield repo
             if not include_nested:
                 continue
         children = sorted(
@@ -1450,7 +1461,6 @@ def _discover_code_memory_repos(
             if any(part in _CODE_MEMORY_DISCOVERY_IGNORES for part in relative_parts):
                 continue
             queue.append(child)
-    return found
 
 
 def _existing_code_memory_configured_repos(env: dict[str, str], configured: list[str]) -> list[str]:
@@ -1936,12 +1946,12 @@ def _repo_picker_local_paths(
         if not row["ready"]:
             missing[key] = str(row["repo"])
 
-    workspace = _code_memory_workspace(env)
     discovered = (
-        _discover_code_memory_repos(env, deadline=deadline, include_nested=True) if missing else []
+        _iter_workspace_git_repos(env, deadline=deadline, include_nested=True)
+        if missing
+        else iter(())
     )
-    for relative in discovered:
-        path = workspace / relative
+    for path in discovered:
         for remote in _local_repo_github_remotes(path, deadline=deadline):
             key = remote[1].casefold()
             slug = missing.get(key)

@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -421,6 +422,63 @@ def test_list_owner_repos_omits_nested_checkout_with_different_remote(
     result = setup_mod.list_owner_repos()
 
     assert result["repo_checkouts"] == []
+
+
+def test_repo_picker_inspects_discovery_results_as_they_are_yielded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout = tmp_path / "web"
+    inspected = False
+
+    def iter_repos(*_args: object, **_kwargs: object) -> Iterator[Path]:
+        yield checkout
+        assert inspected, "discovery advanced before inspecting the yielded checkout"
+
+    def local_remotes(*_args: object, **_kwargs: object) -> list[tuple[str, str]]:
+        nonlocal inspected
+        inspected = True
+        return [("origin", "Acme/Web")]
+
+    monkeypatch.setattr(
+        setup_mod,
+        "_selected_repo_local_paths",
+        lambda *_args, **_kwargs: [
+            {
+                "repo": "Acme/Web",
+                "ready": False,
+            }
+        ],
+    )
+    monkeypatch.setattr(setup_mod, "_iter_workspace_git_repos", iter_repos)
+    monkeypatch.setattr(setup_mod, "_local_repo_github_remotes", local_remotes)
+    monkeypatch.setattr(
+        setup_mod,
+        "_inspect_repo_checkout",
+        lambda *_args, **_kwargs: {
+            "repo": "Acme/Web",
+            "path": str(checkout),
+            "source": "discovery",
+            "ready": True,
+        },
+    )
+
+    rows = setup_mod._repo_picker_local_paths(
+        ["Acme/Web"],
+        set(),
+        {},
+        deadline=100.0,
+    )
+
+    assert inspected is True
+    assert rows == [
+        {
+            "repo": "Acme/Web",
+            "path": str(checkout),
+            "source": "discovery",
+            "ready": True,
+        }
+    ]
 
 
 def test_repo_selection_owner_allows_recovery_from_invalid_mixed_scope() -> None:
