@@ -78,8 +78,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   padding: 0;
   color: var(--foreground);
   background: color-mix(in oklch, var(--card), transparent 12%);
@@ -291,6 +291,8 @@
 }
 
 .workflow-graph .react-flow__controls-button {
+  width: 36px;
+  height: 36px;
   background: var(--card);
   border-bottom-color: var(--border);
   color: var(--foreground);
@@ -308,6 +310,20 @@
   background: transparent;
   font-size: 0.58rem;
   opacity: 0.45;
+}
+
+/* Keep React Flow's MIT-project attribution visible while giving its tiny link
+   a real touch target without making the badge visually louder. */
+.workflow-graph .react-flow__attribution a {
+  position: relative;
+}
+
+@media (max-width: 480px), (pointer: coarse) {
+  .workflow-graph .react-flow__attribution a::after {
+    position: absolute;
+    inset: -13px -4px;
+    content: "";
+  }
 }
 
 /* Minimap: a quiet glass overview pinned bottom-right, mirroring the canvas
@@ -670,4 +686,3 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-

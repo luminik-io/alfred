@@ -602,6 +602,7 @@
 .agents-deck__viewtoggle button {
   display: inline-flex;
   align-items: center;
+  min-height: 36px;
   gap: 0.4rem;
   border: 0;
   border-radius: 0;
@@ -636,4 +637,3 @@
   flex: 1 1 auto;
   gap: 0.75rem;
 }
-

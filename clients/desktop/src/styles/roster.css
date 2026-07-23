@@ -165,6 +165,8 @@
 /* Roster theme picker: sits in the Agents header, aligned with the title row. */
 .roster-theme-picker {
   display: inline-flex;
+  max-width: 100%;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
   flex: 0 0 auto;

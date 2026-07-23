@@ -24,13 +24,13 @@ const THEME_NAME_STORAGE_KEY = "alfred-theme-name";
 const THEME_MODE_STORAGE_KEY = "alfred-theme";
 
 const ROUTES = [
-  { id: "home", q: "tab=inbox", ready: "main, [aria-label='Lessons'], .ask, .board-page, .command-center, section" },
+  { id: "home", q: "tab=inbox", ready: ".command-center" },
   { id: "ask", q: "tab=ask", ready: ".ask" },
   { id: "pipeline", q: "tab=work", ready: ".board-page" },
   { id: "fleet-roster", q: "tab=agents", ready: "[aria-label='Agents']" },
   { id: "fleet-activity", q: "tab=agents&subtab=activity", ready: "[aria-label='Agents']" },
   { id: "lessons", q: "tab=agents&subtab=lessons", ready: "[aria-label='Lessons']" },
-  { id: "settings", q: "tab=settings", ready: "section, .settings-view, .alfred-onboarding" },
+  { id: "settings", q: "tab=settings", ready: '.settings-view[data-ready="true"]' },
 ];
 
 const PROBE = () => {
@@ -233,7 +233,10 @@ async function renderRoute(browser, { theme, width, route }) {
     }
     await applyTheme(page, theme);
     await page.waitForTimeout(700);
-    await page.waitForSelector(route.ready, { timeout: 4000, state: "attached" });
+    await page.waitForSelector(route.ready, {
+      timeout: ROUTE_TIMEOUT_MS,
+      state: "attached",
+    });
     await page.waitForTimeout(300);
 
     const violations = await page.evaluate(PROBE);
