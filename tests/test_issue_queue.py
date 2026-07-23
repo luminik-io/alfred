@@ -286,7 +286,7 @@ def test_allowed_queue_repos_ignores_default_alfredrc_home_without_process_home(
     assert iq.allowed_queue_repos() == set()
 
 
-def test_allowed_queue_repos_matches_connected_runtime_precedence(tmp_path: Path, monkeypatch):
+def test_allowed_queue_repos_prefers_persisted_managed_scope(tmp_path: Path, monkeypatch):
     home = tmp_path / "runtime"
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("ALFRED_HOME", str(home))
@@ -301,7 +301,19 @@ def test_allowed_queue_repos_matches_connected_runtime_precedence(tmp_path: Path
     env_path.parent.mkdir(parents=True)
     env_path.write_text("ALFRED_QUEUE_REPOS=org/env\n", encoding="utf-8")
 
-    assert iq.allowed_queue_repos() == {"org/process"}
+    assert iq.allowed_queue_repos() == {"org/env"}
+
+
+def test_allowed_queue_repos_does_not_restore_stale_process_scope(
+    tmp_path: Path, monkeypatch
+) -> None:
+    home = tmp_path / "runtime"
+    home.mkdir()
+    (home / ".env").write_text("GH_ORG=org\n", encoding="utf-8")
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "stale/repo")
+
+    assert iq.allowed_queue_repos() == set()
 
 
 def test_close_issue_runs_gh_issue_close(monkeypatch):

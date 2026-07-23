@@ -38,14 +38,36 @@ from compose_converse import (  # noqa: E402
 from spec_helper import IssueDraft  # noqa: E402
 
 
-def test_repo_map_reads_runtime_onboarding_changes(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/frontend=/tmp/current-frontend")
+def test_repo_map_reads_persisted_onboarding_changes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    env_path = runtime / ".env"
+    env_path.write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "ALFRED_REPO_LOCAL_MAP=acme/frontend=/tmp/current-frontend\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "stale/frontend=/tmp/stale-frontend")
 
     assert sc._repo_to_local()["acme/frontend"] == "/tmp/current-frontend"
 
-    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/frontend=/tmp/new-frontend")
+    env_path.write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "ALFRED_REPO_LOCAL_MAP=acme/frontend=/tmp/new-frontend\n",
+        encoding="utf-8",
+    )
 
     assert sc._repo_to_local()["frontend"] == "/tmp/new-frontend"
+
+    env_path.write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\nALFRED_REPO_LOCAL_MAP=\n",
+        encoding="utf-8",
+    )
+
+    assert "acme/frontend" not in sc._repo_to_local()
 
 
 # ---------------------------------------------------------------------------

@@ -70,8 +70,9 @@ def repo_to_local() -> dict[str, str]:
     """
     try:
         from agent_runner.github import repo_to_local_map
+        from agent_runner.paths import launcher_env
 
-        return repo_to_local_map()
+        return repo_to_local_map(launcher_env())
     except Exception:  # pragma: no cover - defensive
         return {}
 

@@ -21,10 +21,8 @@ import logging
 import os
 import re
 import subprocess
-from pathlib import Path
 
-from agent_runner.paths import decode_env_value
-from agent_runner.paths import runtime_home as agent_runtime_home
+from agent_runner.paths import launcher_env, runtime_home
 from labels import DO_NOT_PICKUP, IMPLEMENT, PLAN_PENDING_APPROVAL
 from shipped_board import _gh_bin, _gh_subprocess_env
 
@@ -38,58 +36,15 @@ QUEUE_ACTIONS = ("queue", "hold", "done")
 _ALLOWLIST_ENV = ("ALFRED_QUEUE_REPOS",)
 
 
-def _strip_inline_comment(value: str) -> str:
-    quote = ""
-    escaped = False
-    previous = ""
-    for index, char in enumerate(value):
-        if escaped:
-            escaped = False
-            previous = char
-            continue
-        if char == "\\" and quote != "'":
-            escaped = True
-            previous = char
-            continue
-        if quote:
-            if char == quote:
-                quote = ""
-            previous = char
-            continue
-        if char in ("'", '"'):
-            quote = char
-            previous = char
-            continue
-        if char == "#" and previous and previous.isspace():
-            return value[:index]
-        previous = char
-    return value
-
-
 def _runtime_config_entry(key: str) -> tuple[bool, str]:
-    """Return ``(present, value)`` from process env / active runtime .env."""
+    """Return the value a newly launched Alfred runtime would receive."""
 
-    if key in os.environ:
+    env = launcher_env()
+    if key in env:
+        return True, env.get(key, "").strip()
+    if not (runtime_home() / ".env").is_file() and key in os.environ:
         return True, os.environ.get(key, "").strip()
-    home = _runtime_home()
-    try:
-        for raw_line in (home / ".env").read_text(encoding="utf-8").splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            if line.startswith("export "):
-                line = line.removeprefix("export ").strip()
-            name, _, raw_value = line.partition("=")
-            if name.strip() == key:
-                value = _strip_inline_comment(raw_value).strip()
-                return True, decode_env_value(value).strip()
-    except OSError:
-        pass
     return False, ""
-
-
-def _runtime_home() -> Path:
-    return agent_runtime_home()
 
 
 def parse_issue_ref(text: str) -> tuple[str, int] | None:

@@ -2490,7 +2490,15 @@ def test_compose_converse_uses_checkout_map_saved_after_runtime_import(
     checkout = tmp_path / "new checkout"
     checkout.mkdir()
     (checkout / "CLAUDE.md").write_text("Live checkout instructions", encoding="utf-8")
-    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", f"acme/frontend={checkout}")
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        f"ALFRED_REPO_LOCAL_MAP=acme/frontend={checkout}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "stale/frontend=/tmp/stale-frontend")
     capture: dict = {}
     _stub_converse_turn(monkeypatch, reply="Grounded.", capture=capture)
 

@@ -439,11 +439,19 @@ class RepoCatalog:
         minimal installs.
         """
         repo_to_local: dict[str, str] = {}
-        gh_org = (os.environ.get("GH_ORG") or "").strip() or "example-org"
+        runtime_env: dict[str, str] = dict(os.environ)
+        try:
+            from agent_runner.paths import launcher_env
+
+            runtime_env = launcher_env()
+        except Exception:
+            runtime_env = dict(os.environ)
+
+        gh_org = (runtime_env.get("GH_ORG") or "").strip() or "example-org"
         try:
             from agent_runner.github import repo_to_local_map
 
-            repo_to_local = repo_to_local_map()
+            repo_to_local = repo_to_local_map(runtime_env)
         except Exception:
             repo_to_local = {}
 
@@ -495,6 +503,12 @@ class RepoCatalog:
 
     def slugs(self) -> list[str]:
         return sorted(self.aliases)
+
+    def contains(self, slug: str) -> bool:
+        """Return whether ``slug`` remains in the active repository scope."""
+
+        target = slug.strip().casefold()
+        return bool(target) and any(candidate.casefold() == target for candidate in self.aliases)
 
     def resolve(self, text: str) -> tuple[str, list[str]]:
         """Resolve a repo from free text.

@@ -789,4 +789,10 @@ _overlay_name = _os.environ.get("ALFRED_FLEET_OVERLAY", "fleet_overlay")
 # exception from ``import_module`` after a spec was found is the broken
 # case, and we let it propagate.
 if _importlib_util.find_spec(_overlay_name) is not None:
-    _importlib.import_module(_overlay_name)
+    from . import github as _github_module
+
+    _github_module._begin_repo_overlay_capture()
+    try:
+        _importlib.import_module(_overlay_name)
+    finally:
+        _github_module._end_repo_overlay_capture()
