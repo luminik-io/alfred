@@ -697,6 +697,36 @@ def test_repo_picker_returns_before_blocked_metadata_call(
     assert not any(thread.name == "alfred-repo-discovery" for thread in threading.enumerate())
 
 
+def test_repo_picker_reserves_time_to_handoff_discovery_results(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_deadline = 0.0
+
+    def complete_scan(
+        *_args: object,
+        deadline: float,
+        **_kwargs: object,
+    ) -> list[dict[str, Any]]:
+        nonlocal captured_deadline
+        captured_deadline = deadline
+        return []
+
+    monkeypatch.setattr(setup_mod, "_repo_picker_local_paths_sync", complete_scan)
+    caller_deadline = time.monotonic() + 1
+
+    rows = setup_mod._repo_picker_local_paths(
+        ["Acme/Web"],
+        set(),
+        {},
+        deadline=caller_deadline,
+    )
+
+    assert rows == []
+    assert captured_deadline == pytest.approx(
+        caller_deadline - setup_mod._REPO_DISCOVERY_HANDOFF_SECONDS
+    )
+
+
 def test_repo_picker_allows_only_one_timed_out_discovery_worker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -106,6 +106,7 @@ _GH_REPO_AUTH_TIMEOUT_SECONDS = 5.0
 _GH_REPO_PRIMARY_TIMEOUT_SECONDS = 10.0
 _GH_REPO_FALLBACK_RESERVE_SECONDS = 5.0
 _GH_REPO_LOCAL_RESERVE_SECONDS = 3.0
+_REPO_DISCOVERY_HANDOFF_SECONDS = 0.1
 
 
 class RepoCheckoutValidationError(ValueError):
@@ -1947,7 +1948,8 @@ def _repo_picker_local_paths(
 
     if deadline is None:
         return _repo_picker_local_paths_sync(repos, selected, env)
-    if time.monotonic() >= deadline:
+    started_at = time.monotonic()
+    if started_at >= deadline:
         return []
     if not _REPO_DISCOVERY_SLOT.acquire(blocking=False):
         return []
@@ -1961,7 +1963,7 @@ def _repo_picker_local_paths(
                     repos,
                     selected,
                     env,
-                    deadline=deadline,
+                    deadline=max(started_at, deadline - _REPO_DISCOVERY_HANDOFF_SECONDS),
                 )
             except Exception:
                 logger.exception("Local repository discovery failed")
