@@ -111,7 +111,7 @@ def test_gh_repo_list_reserves_configured_owner_rows_when_accessible_results_are
     monkeypatch.setattr(
         setup_mod,
         "_gh_accessible_repo_list",
-        lambda _limit: (
+        lambda _limit, **_kwargs: (
             [{"nameWithOwner": "personal/recent", "updatedAt": "2026-07-23T12:00:00Z"}],
             False,
         ),
@@ -120,7 +120,7 @@ def test_gh_repo_list_reserves_configured_owner_rows_when_accessible_results_are
     monkeypatch.setattr(
         setup_mod,
         "_run_gh_repo_list_command",
-        lambda _cmd: [{"fullName": "acme/older", "updatedAt": "2026-06-01T12:00:00Z"}],
+        lambda _cmd, **_kwargs: [{"fullName": "acme/older", "updatedAt": "2026-06-01T12:00:00Z"}],
     )
 
     rows = setup_mod._gh_repo_list(1)
@@ -142,7 +142,7 @@ def test_gh_repo_list_preserves_partial_api_rows_before_configured_owner_rows(
     monkeypatch.setattr(
         setup_mod,
         "_gh_accessible_repo_list",
-        lambda _limit: (
+        lambda _limit, **_kwargs: (
             [{"nameWithOwner": "membership/preserved", "updatedAt": "2026-07-23"}],
             True,
         ),
@@ -150,7 +150,7 @@ def test_gh_repo_list_preserves_partial_api_rows_before_configured_owner_rows(
     monkeypatch.setattr(
         setup_mod,
         "_gh_configured_owner_repo_list",
-        lambda _limit: [
+        lambda _limit, **_kwargs: [
             {"nameWithOwner": "acme/one", "updatedAt": "2026-07-22"},
             {"nameWithOwner": "acme/two", "updatedAt": "2026-07-21"},
         ],
@@ -208,6 +208,31 @@ def test_partial_repo_recovery_runs_configured_owner_search_once(
         "acme/configured",
     ]
     assert sum(call[1:3] == ["search", "repos"] for call in calls) == 1
+
+
+def test_gh_repo_list_returns_accessible_rows_when_owner_search_budget_is_spent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    accessible = [{"nameWithOwner": "personal/recent", "updatedAt": "2026-07-23"}]
+    command_calls: list[list[str]] = []
+    clock = iter((100.0, 116.0))
+    monkeypatch.setattr(setup_mod.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(
+        setup_mod,
+        "_gh_accessible_repo_list",
+        lambda _limit, **_kwargs: (accessible, False),
+    )
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: ["acme"])
+    monkeypatch.setattr(
+        setup_mod.subprocess,
+        "run",
+        lambda cmd, **_kwargs: command_calls.append(cmd),
+    )
+
+    rows = setup_mod._gh_repo_list(1)
+
+    assert rows == accessible
+    assert command_calls == []
 
 
 def test_list_owner_repos_marks_other_owners_unselectable_for_existing_scope(

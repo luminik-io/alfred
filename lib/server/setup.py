@@ -34,6 +34,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import time
 import urllib.parse
 from collections.abc import Mapping
 from contextlib import suppress
@@ -98,6 +99,7 @@ _REPO_LOCAL_MAP_KEY_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=")
 _REPO_LOCAL_MAP_COMMA_BOUNDARY_RE = re.compile(
     r",\s*(?=[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=(?:/|~|\.{1,2}/))"
 )
+_GH_REPO_DISCOVERY_TIMEOUT_SECONDS = 15.0
 
 
 class RepoCheckoutValidationError(ValueError):
@@ -2672,26 +2674,36 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
 
 
 def _gh_repo_list(limit: int) -> list[dict[str, Any]] | None:
-    accessible, partial = _gh_accessible_repo_list(limit)
+    deadline = time.monotonic() + _GH_REPO_DISCOVERY_TIMEOUT_SECONDS
+    accessible, partial = _gh_accessible_repo_list(limit, deadline=deadline)
     if accessible is not None:
-        configured = _gh_configured_owner_repo_list(limit)
+        configured = _gh_configured_owner_repo_list(limit, deadline=deadline)
         if partial:
             rows = _prioritize_gh_repo_rows(accessible, configured, limit=limit)
             if len(rows) >= limit:
                 return rows
-            fallback = _gh_repo_list_fallback(limit, include_configured_owners=False) or []
+            fallback = (
+                _gh_repo_list_fallback(
+                    limit,
+                    include_configured_owners=False,
+                    deadline=deadline,
+                )
+                or []
+            )
             return _prioritize_gh_repo_rows(rows, fallback, limit=limit)
         if configured:
             return _prioritize_gh_repo_rows(configured, accessible, limit=limit)
         return accessible
 
-    return _gh_repo_list_fallback(limit)
+    return _gh_repo_list_fallback(limit, deadline=deadline)
 
 
-def _gh_configured_owner_repo_list(limit: int) -> list[dict[str, Any]]:
+def _gh_configured_owner_repo_list(
+    limit: int, *, deadline: float | None = None
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for cmd in _gh_owner_repo_list_commands(limit):
-        data = _run_gh_repo_list_command(cmd)
+        data = _run_gh_repo_list_command(cmd, deadline=deadline)
         if data is None:
             continue
         for raw_row in data:
@@ -2724,6 +2736,8 @@ def _prioritize_gh_repo_rows(
 
 def _gh_accessible_repo_list(
     limit: int,
+    *,
+    deadline: float | None = None,
 ) -> tuple[list[dict[str, Any]] | None, bool]:
     """Return accessible repos and whether a later API page failed."""
 
@@ -2748,7 +2762,7 @@ def _gh_accessible_repo_list(
             "-f",
             f"page={page}",
         ]
-        data = _run_gh_repo_list_command(cmd)
+        data = _run_gh_repo_list_command(cmd, deadline=deadline)
         if data is None:
             if rows:
                 logger.warning(
@@ -2799,7 +2813,10 @@ def _merge_gh_repo_rows(
 
 
 def _gh_repo_list_fallback(
-    limit: int, *, include_configured_owners: bool = True
+    limit: int,
+    *,
+    include_configured_owners: bool = True,
+    deadline: float | None = None,
 ) -> list[dict[str, Any]] | None:
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -2809,7 +2826,7 @@ def _gh_repo_list_fallback(
     if not include_configured_owners:
         commands = commands[:1]
     for cmd in commands:
-        data = _run_gh_repo_list_command(cmd)
+        data = _run_gh_repo_list_command(cmd, deadline=deadline)
         if data is None:
             continue
         successes += 1
@@ -2827,13 +2844,21 @@ def _gh_repo_list_fallback(
     return _merge_gh_repo_rows(rows, [], limit=limit)
 
 
-def _run_gh_repo_list_command(cmd: list[str]) -> list[dict[str, Any]] | None:
+def _run_gh_repo_list_command(
+    cmd: list[str], *, deadline: float | None = None
+) -> list[dict[str, Any]] | None:
+    timeout = 30.0
+    if deadline is not None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        timeout = min(timeout, remaining)
     try:
         proc = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=timeout,
             env=_gh_subprocess_env(),
         )
     except (OSError, subprocess.SubprocessError):
