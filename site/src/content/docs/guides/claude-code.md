@@ -102,7 +102,7 @@ Set `CODEX_BIN` if `codex` is not on the host scheduler PATH. `codex_invoke()` d
 
 ```sh
 CODEX_BIN=$HOME/.local/bin/codex
-CODEX_MODEL=gpt-5.4
+ALFRED_CODEX_MODEL=gpt-5.4
 CODEX_SANDBOX=read-only
 CODEX_APPROVAL_POLICY=never
 ```

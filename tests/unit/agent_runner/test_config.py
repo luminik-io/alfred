@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 
 def test_env_int_clamps_to_range(fresh_agent_runner, monkeypatch):
     """env_int clamps both the env value and the fallback to the range."""
@@ -43,10 +45,54 @@ def test_agent_engine_env_precedence(fresh_agent_runner, monkeypatch):
 
 
 def test_agent_engine_ignores_removed_review_engine_alias(fresh_agent_runner, monkeypatch):
-    """Ra's al Ghul uses the same canonical engine keys as every other agent."""
+    """The reviewer uses the same canonical engine keys as every other agent."""
     ar = fresh_agent_runner
     monkeypatch.setenv("ALFRED_REVIEW_ENGINE", "codex")
-    assert ar.agent_engine("rasalghul", default="claude") == "claude"
+    assert ar.agent_engine("reviewer", default="claude") == "claude"
+
+
+def test_normalize_model_name_accepts_cli_aliases_and_rejects_unsafe_values(
+    fresh_agent_runner,
+):
+    ar = fresh_agent_runner
+    assert ar.normalize_model_name("claude-opus-4-8") == "claude-opus-4-8"
+    assert ar.normalize_model_name("provider/model:v2") == "provider/model:v2"
+    assert ar.normalize_model_name("--config") is None
+    assert ar.normalize_model_name("model with spaces") is None
+    assert ar.normalize_model_name("x" * 129) is None
+
+
+def test_agent_model_precedence_and_state(fresh_agent_runner, monkeypatch):
+    ar = fresh_agent_runner
+    state_dir = ar.STATE_ROOT / "models" / "senior-dev"
+    state_dir.mkdir(parents=True)
+    (state_dir / "claude").write_text("state-sonnet\n", encoding="utf-8")
+    (state_dir / "codex").write_text("state-codex\n", encoding="utf-8")
+
+    assert ar.agent_model("senior-dev", "claude", environ={}) == "state-sonnet"
+    assert ar.agent_model("senior-dev", "codex", environ={}) == "state-codex"
+    assert (
+        ar.agent_model(
+            "senior-dev",
+            "codex",
+            environ={
+                "ALFRED_CODEX_MODEL": "fleet-codex",
+                "ALFRED_SENIOR_DEV_CODEX_MODEL": "agent-codex",
+            },
+        )
+        == "agent-codex"
+    )
+    assert (
+        ar.agent_model("senior-dev", "claude", environ={"ALFRED_CLAUDE_MODEL": "fleet"}) == "fleet"
+    )
+
+    monkeypatch.setenv("ALFRED_SENIOR_DEV_CLAUDE_MODEL", "not a model")
+    assert ar.agent_model("senior-dev", "claude") is None
+
+
+def test_agent_model_rejects_unknown_engine(fresh_agent_runner):
+    with pytest.raises(ValueError, match="model engine"):
+        fresh_agent_runner.agent_model("senior-dev", "hybrid")
 
 
 def test_engine_preflight_bins_modes(fresh_agent_runner):

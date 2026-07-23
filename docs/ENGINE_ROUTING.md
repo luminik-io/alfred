@@ -39,6 +39,36 @@ alfred auth status                   # auth-surface check across both engines
 
 Set the env-var form in `$ALFRED_HOME/.env` when you want the override to follow the operator's shell. Set the state-file form when you want the override to follow the host scheduler (it survives a `deploy.sh` re-render).
 
+## Per-agent model overrides
+
+Engine mode and model choice are separate. An agent can stay on `hybrid` while
+using one Claude model for the first attempt and one Codex model for a fallback.
+When no model override exists, Alfred omits `--model` and lets the authenticated
+provider CLI choose its current default.
+
+```sh
+alfred model status
+alfred model status senior-dev
+alfred model set senior-dev claude opus
+alfred model set senior-dev codex gpt-5-codex
+alfred model clear senior-dev claude
+```
+
+Model names are intentionally not hard-coded into Alfred. Claude Code and Codex
+change their available model aliases independently, so the provider CLI remains
+the source of truth. Alfred validates the alias as one safe command argument and
+passes it only to the matching provider.
+
+Resolution is per provider. The first configured value wins:
+
+1. `ALFRED_<ROLE>_<ENGINE>_MODEL`, such as `ALFRED_REVIEWER_CODEX_MODEL`.
+2. `ALFRED_<ENGINE>_MODEL`, such as `ALFRED_CLAUDE_MODEL`, for a fleet-wide provider default.
+3. `$ALFRED_HOME/state/models/<role>/<engine>`, written atomically by `alfred model set`.
+4. The provider CLI default.
+
+`alfred model clear` removes only the named provider. Claude and Codex use separate
+state files, so simultaneous updates cannot overwrite each other.
+
 ## Hybrid fallback behavior
 
 Hybrid mode tries Claude first. Every invocation outcome is run through one classifier (`classify_result`) that maps it to one of three failure classes, and the class decides what happens next:

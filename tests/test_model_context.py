@@ -73,7 +73,7 @@ def test_detect_uses_anthropic_model_for_claude_engine() -> None:
 
 
 def test_detect_uses_codex_model_for_codex_engine() -> None:
-    env = {"ALFRED_ACTIVE_ENGINE": "codex", "CODEX_MODEL": "gpt-5-codex"}
+    env = {"ALFRED_ACTIVE_ENGINE": "codex", "ALFRED_CODEX_MODEL": "gpt-5-codex"}
     ctx = mc.detect(env)
     assert ctx.engine == "codex"
     assert ctx.context_tokens == 400_000

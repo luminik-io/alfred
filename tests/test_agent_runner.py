@@ -621,6 +621,95 @@ def test_invoke_agent_engine_codex_skips_claude():
     assert calls == ["codex"]
 
 
+def test_invoke_agent_engine_resolves_per_agent_models(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setenv("ALFRED_ARCHITECT_CLAUDE_MODEL", "opus")
+    monkeypatch.setenv("ALFRED_ARCHITECT_CODEX_MODEL", "gpt-5-codex")
+    models: list[tuple[str, str | None]] = []
+
+    def fake_claude(*args, **kwargs):
+        models.append(("claude", kwargs["model"]))
+        return ar.ClaudeResult(
+            success=False,
+            subtype="error_max_turns",
+            num_turns=1,
+            cost_usd=0.0,
+            session_id="claude-session",
+            result_text="no result",
+            raw={},
+            stop_reason="max_turns",
+            error_message="max turns",
+        )
+
+    def fake_codex(*args, **kwargs):
+        models.append(("codex", kwargs["model"]))
+        return ar.ClaudeResult(
+            success=True,
+            subtype="success",
+            num_turns=1,
+            cost_usd=0.0,
+            session_id="codex-session",
+            result_text="done",
+            raw={},
+            stop_reason="end_turn",
+            error_message=None,
+        )
+
+    out, engine_used = ar.invoke_agent_engine(
+        "hi",
+        engine="hybrid",
+        agent="architect",
+        firing_id="models-1",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        claude_fn=fake_claude,
+        codex_fn=fake_codex,
+    )
+
+    assert out.success is True
+    assert engine_used == "codex-fallback"
+    assert models == [("claude", "opus"), ("codex", "gpt-5-codex")]
+
+
+def test_invoke_agent_engine_explicit_model_wins_over_configuration(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setenv("ALFRED_ARCHITECT_CODEX_MODEL", "configured-model")
+    models: list[str | None] = []
+
+    def fake_codex(*args, **kwargs):
+        models.append(kwargs["model"])
+        return ar.ClaudeResult(
+            success=True,
+            subtype="success",
+            num_turns=1,
+            cost_usd=0.0,
+            session_id="codex-session",
+            result_text="done",
+            raw={},
+            stop_reason="end_turn",
+            error_message=None,
+        )
+
+    out, engine_used = ar.invoke_agent_engine(
+        "hi",
+        engine="codex",
+        agent="architect",
+        firing_id="models-2",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        codex_model="explicit-model",
+        codex_fn=fake_codex,
+    )
+
+    assert out.success is True
+    assert engine_used == "codex"
+    assert models == ["explicit-model"]
+
+
 def test_invoke_agent_engine_hybrid_transient_retries_claude_no_fallback(monkeypatch):
     """A provider rate-limit is TRANSIENT: retry the SAME engine, never
     burn the codex fallback. This is the core behavior change of the
@@ -966,6 +1055,7 @@ def test_codex_invoke_reads_last_message_and_writes_artifacts(tmp_path, monkeypa
 
     monkeypatch.setattr(ar, "CODEX_TRANSCRIPTS_ROOT", root)
     monkeypatch.setattr(process_mod, "_popen_run_text", fake_run)
+    monkeypatch.setenv("ALFRED_REVIEWER_CODEX_MODEL", "review-model")
 
     out = ar.codex_invoke(
         "review",
@@ -984,6 +1074,7 @@ def test_codex_invoke_reads_last_message_and_writes_artifacts(tmp_path, monkeypa
     assert Path(out.raw["stdout_path"]).read_text().startswith("session id:")
     assert out.raw["last_message_path"].endswith("fire-1.last.md")
     assert "--skip-git-repo-check" in commands[0]
+    assert commands[0][commands[0].index("--model") + 1] == "review-model"
 
 
 def test_codex_invoke_can_bypass_approvals_and_sandbox(tmp_path, monkeypatch):

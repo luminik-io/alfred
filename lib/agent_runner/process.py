@@ -46,10 +46,12 @@ from envflags import FALSY_VALUES, truthy
 from . import memory_ranking
 from .config import (
     _truthy_env,
+    agent_model,
     dry_run_log,
     env_int,
     is_dry_run,
     normalize_engine,
+    normalize_model_name,
 )
 from .context_governor import govern_prompt_context
 from .memory_runtime import (
@@ -65,7 +67,6 @@ from .paths import (
     CLAUDE_BIN,
     CODEX_APPROVAL_POLICY,
     CODEX_BIN,
-    CODEX_DEFAULT_MODEL,
     CODEX_DEFAULT_SANDBOX,
 )
 from .reliability import (
@@ -744,13 +745,16 @@ def claude_invoke(
             so the CLI's hidden 40-turn default never bites.
         timeout: wall-clock seconds.
         resume_session: optional ``--resume`` session ID.
-        model: optional ``--model`` alias forwarded to the CLI.
+        model: optional ``--model`` alias forwarded to the CLI. When omitted,
+            ``ALFRED_CLAUDE_MODEL`` supplies the fleet-wide default.
 
     Returns:
         A :class:`ClaudeResult` with both legacy (``success`` /
         ``subtype`` / ``num_turns`` / ``cost_usd`` / ``result_text``)
         and additive (``stop_reason`` / ``error_message``) fields.
     """
+    if model is None:
+        model = normalize_model_name(os.environ.get("ALFRED_CLAUDE_MODEL"))
     if is_dry_run():
         dry_run_log(
             "llm",
@@ -884,6 +888,8 @@ def claude_invoke_streaming(
     :class:`ClaudeResult` shape as :func:`claude_invoke`, so existing callers
     keep their return contract while live log/compose views can tail the JSONL.
     """
+    if model is None:
+        model = agent_model(agent, "claude")
     if is_dry_run():
         dry_run_log(
             "llm",
@@ -1155,11 +1161,13 @@ def codex_invoke(
     of implying they were enforced. Default posture is review-safe:
     read-only sandbox and no approval prompts.
     """
+    if model is None:
+        model = agent_model(agent, "codex")
     if is_dry_run():
         dry_run_log(
             "llm",
             f"would invoke codex with prompt of {len(prompt)} chars, "
-            f"model={model or CODEX_DEFAULT_MODEL or '(cli-default)'}, "
+            f"model={model or '(cli-default)'}, "
             f"sandbox={sandbox or CODEX_DEFAULT_SANDBOX}",
         )
         return dry_run_claude_result(prompt, model=model, engine="codex")
@@ -1213,9 +1221,8 @@ def codex_invoke(
             ]
         )
     cmd.extend(["--output-last-message", str(paths["last_message"])])
-    chosen_model = model or CODEX_DEFAULT_MODEL
-    if chosen_model:
-        cmd.extend(["--model", chosen_model])
+    if model:
+        cmd.extend(["--model", model])
     for directory in add_dirs or []:
         cmd.extend(["--add-dir", str(directory)])
     cmd.append("-")
@@ -1264,7 +1271,7 @@ def codex_invoke(
                 "stderr_path": str(paths["stderr"]),
                 "last_message_path": str(paths["last_message"]),
                 "tokens_used": _extract_codex_tokens(combined),
-                "model": chosen_model,
+                "model": model,
                 "sandbox": resolved_sandbox,
                 "bypass_approvals_and_sandbox": bypass_approvals_and_sandbox,
                 "timeout": timeout,
@@ -1295,7 +1302,7 @@ def codex_invoke(
         "stderr_path": str(paths["stderr"]),
         "last_message_path": str(paths["last_message"]),
         "tokens_used": _extract_codex_tokens(combined),
-        "model": chosen_model,
+        "model": model,
         "sandbox": resolved_sandbox,
         "bypass_approvals_and_sandbox": bypass_approvals_and_sandbox,
     }
@@ -1704,6 +1711,10 @@ def invoke_agent_engine(
     treating binary presence as proof that Claude is usable. Scheduled agents
     keep the stricter default and surface those failures directly.
 
+    When a provider-specific model argument is omitted, Alfred resolves that
+    provider's per-agent model configuration. An explicit caller argument
+    always wins. With no configured model, the provider CLI keeps its default.
+
     ``role`` is the firing's agent role (feature-dev, pr-review, planner, ...).
     It is an OPTIONAL override: when omitted (as every production caller does
     today), the role is derived from the agent ``codename`` via the canonical
@@ -1733,6 +1744,10 @@ def invoke_agent_engine(
     byte-identical.
     """
     mode = normalize_engine(engine)
+    if claude_model is None:
+        claude_model = agent_model(agent, "claude")
+    if codex_model is None:
+        codex_model = agent_model(agent, "codex")
     claude_call = claude_fn or claude_invoke_streaming
     codex_call = codex_fn or codex_invoke
     memory_provider = load_runtime_memory() if memory_repo else None

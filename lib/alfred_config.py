@@ -149,6 +149,22 @@ _VARS: tuple[ConfigVar, ...] = (
         choices=("claude", "codex", "hybrid"),
     ),
     V(
+        "ALFRED_CLAUDE_MODEL",
+        "str",
+        None,
+        "engine",
+        "Fleet-wide Claude model environment override.",
+        operator=True,
+    ),
+    V(
+        "ALFRED_CODEX_MODEL",
+        "str",
+        None,
+        "engine",
+        "Fleet-wide Codex model environment override.",
+        operator=True,
+    ),
+    V(
         "ALFRED_DRY_RUN",
         "bool",
         "0",

@@ -242,6 +242,38 @@ def test_claude_invoke_timeout_returns_error_timeout(fresh_agent_runner, monkeyp
     assert "5s" in (out.error_message or "")
 
 
+def test_claude_invoke_uses_fleet_model_when_caller_omits_one(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    ar = fresh_agent_runner
+    import agent_runner.process as proc
+
+    captured: dict[str, object] = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["env"] = kwargs["env"]
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout=json.dumps({"subtype": "success", "stop_reason": "end_turn", "result": "ok"}),
+            stderr="",
+        )
+
+    monkeypatch.setattr(proc, "run", fake_run)
+    monkeypatch.setenv("ALFRED_CLAUDE_MODEL", "fleet-sonnet")
+
+    out = ar.claude_invoke(prompt="hi", workdir=tmp_path, allowed_tools="Read")
+
+    cmd = captured["cmd"]
+    assert isinstance(cmd, list)
+    assert cmd[cmd.index("--model") + 1] == "fleet-sonnet"
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert env["ALFRED_ACTIVE_MODEL"] == "fleet-sonnet"
+    assert out.success is True
+
+
 # --------------------------------------------------------------------------
 # Reliability wiring in process.py
 # --------------------------------------------------------------------------

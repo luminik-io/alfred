@@ -132,12 +132,12 @@ def _detect_model(env: Mapping[str, str], engine: str) -> str | None:
 
     Priority: an explicit compaction override, then the runner-exported active
     model, then the engine-native model var (``ANTHROPIC_MODEL`` for Claude,
-    ``CODEX_MODEL`` for codex). Returns ``None`` when nothing is set, so the
+    ``ALFRED_CODEX_MODEL`` for Codex). Returns ``None`` when nothing is set, so the
     caller falls back to the engine/global default window.
     """
     ordered = ["ALFRED_COMPACTION_MODEL", "ALFRED_ACTIVE_MODEL"]
     if engine == "codex":
-        ordered.append("CODEX_MODEL")
+        ordered.append("ALFRED_CODEX_MODEL")
     else:
         ordered.append("ANTHROPIC_MODEL")
     for key in ordered:

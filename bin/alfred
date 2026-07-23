@@ -40,6 +40,12 @@ Subcommands today:
                               Persist an engine override in
                               $ALFRED_HOME/state/engines/<agent>.
                               Alias: provider.
+  alfred model status [agent] Show resolved Claude and Codex model overrides.
+  alfred model set <agent> <claude|codex> <model>
+                              Persist a provider-specific model for one agent.
+  alfred model clear <agent> <claude|codex>
+                              Clear persisted state and use the next configured
+                              model source.
   alfred codex [status|probe] Show Codex CLI availability and run a tiny
                               non-interactive probe.
   alfred auth [status|probe]  Check Claude Code and Codex CLI auth surfaces.
@@ -1737,6 +1743,104 @@ def cmd_engine_set(args: argparse.Namespace) -> int:
     target.write_text(mode + "\n", encoding="utf-8")
     print(f"alfred: {agent} engine set to {mode}")
     print(f"alfred: wrote {target}")
+    return 0
+
+
+def _model_state_file(agent: str, provider: str) -> Path:
+    return agent_runner.STATE_ROOT / "models" / agent / provider
+
+
+def _write_model_state(agent: str, provider: str, model: str) -> Path:
+    target = _model_state_file(agent, provider)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix=f".{provider}.", suffix=".tmp", dir=target.parent)
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(model + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, target)
+    finally:
+        with contextlib.suppress(OSError):
+            os.close(fd)
+        with contextlib.suppress(OSError):
+            temp_path.unlink()
+    return target
+
+
+def _model_label(model: str | None) -> str:
+    return model or "(CLI default)"
+
+
+def cmd_model_status(args: argparse.Namespace) -> int:
+    if args.agent:
+        try:
+            agent = _require_engine_agent(args.agent)
+        except ValueError as e:
+            print(f"alfred model: {e}", file=sys.stderr)
+            return 2
+        print(f"{agent} Claude model: {_model_label(agent_runner.agent_model(agent, 'claude'))}")
+        print(f"{agent} Codex model: {_model_label(agent_runner.agent_model(agent, 'codex'))}")
+        print(f"state directory: {agent_runner.STATE_ROOT / 'models' / agent}")
+        return 0
+
+    headers = ("agent", "Claude model", "Codex model")
+    rows = [
+        (
+            agent,
+            _model_label(agent_runner.agent_model(agent, "claude")),
+            _model_label(agent_runner.agent_model(agent, "codex")),
+        )
+        for agent in _engine_agent_codenames()
+    ]
+    widths = [
+        max(len(h), max((len(row[i]) for row in rows), default=0)) for i, h in enumerate(headers)
+    ]
+    fmt = "  ".join(f"{{:<{width}}}" for width in widths)
+    print(fmt.format(*headers))
+    print(fmt.format(*("-" * width for width in widths)))
+    for row in rows:
+        print(fmt.format(*row))
+    return 0
+
+
+def cmd_model_set(args: argparse.Namespace) -> int:
+    try:
+        agent = _require_engine_agent(args.agent)
+    except ValueError as e:
+        print(f"alfred model: {e}", file=sys.stderr)
+        return 2
+    model = agent_runner.normalize_model_name(args.model)
+    if not model:
+        print(
+            "alfred model: model names must start with a letter or digit and use only "
+            "letters, digits, '.', '_', ':', '/', or '-' (max 128 characters)",
+            file=sys.stderr,
+        )
+        return 2
+    target = _write_model_state(agent, args.provider, model)
+    print(f"alfred: {agent} {args.provider} model set to {model}")
+    print(f"alfred: wrote {target}")
+    active = agent_runner.agent_model(agent, args.provider)
+    if active != model:
+        print(f"alfred: active model remains {_model_label(active)} (environment override)")
+    return 0
+
+
+def cmd_model_clear(args: argparse.Namespace) -> int:
+    try:
+        agent = _require_engine_agent(args.agent)
+    except ValueError as e:
+        print(f"alfred model: {e}", file=sys.stderr)
+        return 2
+    target = _model_state_file(agent, args.provider)
+    target.unlink(missing_ok=True)
+    with contextlib.suppress(OSError):
+        target.parent.rmdir()
+    active = agent_runner.agent_model(agent, args.provider)
+    print(f"alfred: {agent} {args.provider} model cleared")
+    print(f"alfred: active model is {_model_label(active)}")
     return 0
 
 
@@ -3863,6 +3967,21 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_engine_set.add_argument("agent")
     p_engine_set.add_argument("mode", choices=["claude", "codex", "hybrid"])
     p_engine_set.set_defaults(func=cmd_engine_set)
+
+    p_model = sub.add_parser("model", help="manage per-agent model overrides")
+    model_sub = p_model.add_subparsers(dest="model_command", required=True)
+    p_model_status = model_sub.add_parser("status", help="show resolved model overrides")
+    p_model_status.add_argument("agent", nargs="?")
+    p_model_status.set_defaults(func=cmd_model_status)
+    p_model_set = model_sub.add_parser("set", help="set one agent's provider model")
+    p_model_set.add_argument("agent")
+    p_model_set.add_argument("provider", choices=["claude", "codex"])
+    p_model_set.add_argument("model")
+    p_model_set.set_defaults(func=cmd_model_set)
+    p_model_clear = model_sub.add_parser("clear", help="clear one persisted model override")
+    p_model_clear.add_argument("agent")
+    p_model_clear.add_argument("provider", choices=["claude", "codex"])
+    p_model_clear.set_defaults(func=cmd_model_clear)
 
     p_claude = sub.add_parser("claude", help="manage Claude Code account routing")
     p_claude.add_argument(
