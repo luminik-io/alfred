@@ -2891,6 +2891,8 @@ def _gh_owner_repo_list_commands(limit: int) -> list[list[str]]:
                 "--owner",
                 owner,
                 "--archived=false",
+                "--include-forks",
+                "true",
                 "--sort",
                 "updated",
                 "--order",

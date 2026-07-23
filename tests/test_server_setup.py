@@ -416,6 +416,7 @@ def test_gh_repo_list_fallback_explicitly_orders_each_owner_by_updated_at(
     owner_command = commands[1]
 
     assert owner_command[1:5] == ["search", "repos", "--owner", "acme"]
+    assert owner_command[owner_command.index("--include-forks") + 1] == "true"
     assert owner_command[owner_command.index("--sort") + 1] == "updated"
     assert owner_command[owner_command.index("--order") + 1] == "desc"
     assert owner_command[owner_command.index("--limit") + 1] == "25"
