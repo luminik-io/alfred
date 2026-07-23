@@ -72,8 +72,8 @@ async def api_save_agent_model(request: Request) -> JSONResponse:
             runtime_facade.save_agent_model(
                 agent, provider, model, state_root=views._state_root(request)
             )
-    except ValueError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=400)
+    except ValueError:
+        return JSONResponse({"error": "model name is invalid"}, status_code=400)
 
     return JSONResponse(
         {

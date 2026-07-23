@@ -4408,3 +4408,4 @@ def test_agent_models_api_validates_agent_provider_and_model(tmp_path: Path) -> 
         json={"agent": "senior-dev", "provider": "codex", "model": "--config"},
     )
     assert bad_model.status_code == 400
+    assert bad_model.json() == {"error": "model name is invalid"}
