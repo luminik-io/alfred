@@ -22,6 +22,18 @@ function repoShortName(slug: string): string {
   return slash === -1 ? slug : slug.slice(slash + 1);
 }
 
+function repoOwner(slug: string): string {
+  return slug.split("/", 1)[0]?.toLowerCase() || "";
+}
+
+function repoSelectionOwner(slugs: Iterable<string>): string | null {
+  for (const slug of slugs) {
+    const owner = repoOwner(slug);
+    if (owner) return owner;
+  }
+  return null;
+}
+
 function checkoutMessage(checkout: SetupRepoCheckout | undefined): string | null {
   if (!checkout) return null;
   if (checkout.ready) return "GitHub repository verified";
@@ -150,6 +162,7 @@ export function ReposStep({
     );
     return Array.from(picked).map((slug) => names.get(slug) || slug);
   }, [picked, repos]);
+  const selectionOwner = useMemo(() => repoSelectionOwner(picked), [picked]);
   const missingPaths = selectedRepos.filter((repo) => !paths.get(repo.toLowerCase())?.trim());
   const canSave =
     canMutate &&
@@ -268,6 +281,8 @@ export function ReposStep({
             {visibleRepos.map((repo) => {
               const key = repo.name_with_owner.toLowerCase();
               const selected = picked.has(key);
+              const sameOwner = !selectionOwner || repoOwner(key) === selectionOwner;
+              const selectable = selected || (repo.selectable !== false && sameOwner);
               const checkout = checkouts.get(key);
               const checkoutStatus = checkoutMessage(checkout);
               return (
@@ -275,12 +290,17 @@ export function ReposStep({
                   className="grid gap-2 rounded-lg border border-border/70 bg-background/55 px-3 py-2"
                   key={repo.name_with_owner}
                 >
-                  <label className="grid cursor-pointer grid-cols-[auto_1fr_auto] gap-2">
+                  <label
+                    className={`grid grid-cols-[auto_1fr_auto] gap-2 ${
+                      selectable ? "cursor-pointer" : "cursor-not-allowed opacity-55"
+                    }`}
+                  >
                     <input
                       className="mt-1 size-4 accent-primary"
                       type="checkbox"
                       checked={selected}
                       onChange={() => toggle(repo.name_with_owner)}
+                      disabled={!selectable}
                     />
                     <span className="grid min-w-0 gap-0.5">
                       <span className="truncate text-sm font-medium text-foreground">
@@ -298,6 +318,7 @@ export function ReposStep({
                     <span className="flex flex-wrap justify-end gap-1">
                       {repo.is_private ? <Badge variant="outline">private</Badge> : null}
                       {repo.listed === false ? <Badge variant="secondary">saved</Badge> : null}
+                      {!selectable ? <Badge variant="secondary">different owner</Badge> : null}
                     </span>
                   </label>
 

@@ -105,6 +105,59 @@ def test_gh_repo_list_includes_accessible_organization_repos(
     assert "affiliation=owner,collaborator,organization_member" in calls[0]
 
 
+def test_gh_repo_list_reserves_configured_owner_rows_when_accessible_results_are_capped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        setup_mod,
+        "_gh_accessible_repo_list",
+        lambda _limit: [{"nameWithOwner": "personal/recent", "updatedAt": "2026-07-23T12:00:00Z"}],
+    )
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: ["acme"])
+    monkeypatch.setattr(
+        setup_mod,
+        "_run_gh_repo_list_command",
+        lambda _cmd: [{"fullName": "acme/older", "updatedAt": "2026-06-01T12:00:00Z"}],
+    )
+
+    rows = setup_mod._gh_repo_list(1)
+
+    assert rows == [
+        {
+            "nameWithOwner": "acme/older",
+            "description": None,
+            "isPrivate": False,
+            "isFork": False,
+            "updatedAt": "2026-06-01T12:00:00Z",
+        }
+    ]
+
+
+def test_list_owner_repos_marks_other_owners_unselectable_for_existing_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: ["acme/api"])
+    monkeypatch.setattr(
+        setup_mod,
+        "gh_auth_status",
+        lambda: {"ok": True, "account": "operator", "detail": ""},
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_gh_repo_list",
+        lambda _limit: [
+            {"nameWithOwner": "acme/api"},
+            {"nameWithOwner": "personal/site"},
+        ],
+    )
+    monkeypatch.setattr(setup_mod, "_runtime_config_env", lambda: {})
+    monkeypatch.setattr(setup_mod, "_selected_repo_local_paths", lambda *_args: [])
+
+    result = setup_mod.list_owner_repos()
+
+    assert [row["selectable"] for row in result["repos"]] == [True, False]
+
+
 def test_gh_repo_list_paginates_to_the_requested_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -119,6 +172,7 @@ def test_gh_repo_list_paginates_to_the_requested_limit(
         return subprocess.CompletedProcess(cmd, 0, json.dumps(rows), "")
 
     monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: [])
 
     rows = setup_mod._gh_repo_list(150)
 
@@ -147,6 +201,7 @@ def test_gh_repo_list_replenishes_rows_filtered_from_a_full_page(
         return subprocess.CompletedProcess(cmd, 0, json.dumps(rows), "")
 
     monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: [])
 
     rows = setup_mod._gh_repo_list(2)
 

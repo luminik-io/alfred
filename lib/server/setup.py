@@ -2628,6 +2628,7 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
             "repo_checkouts": [],
             "error": "Could not list your GitHub repos. Check gh auth status.",
         }
+    selection_owner = _repo_selection_owner(selected)
     repos: list[dict[str, Any]] = []
     visible: set[str] = set()
     for row in rows:
@@ -2645,6 +2646,8 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
                 "updated_at": row.get("updatedAt"),
                 "selected": normalized in selected,
                 "listed": True,
+                "selectable": selection_owner is None
+                or normalized.partition("/")[0] == selection_owner,
             }
         )
     for slug in sorted(selected - visible):
@@ -2657,6 +2660,7 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
                 "updated_at": None,
                 "selected": True,
                 "listed": False,
+                "selectable": True,
             }
         )
     runtime_env = _runtime_config_env()
@@ -2670,9 +2674,46 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
 def _gh_repo_list(limit: int) -> list[dict[str, Any]] | None:
     accessible = _gh_accessible_repo_list(limit)
     if accessible is not None:
+        configured = _gh_configured_owner_repo_list(limit)
+        if configured:
+            return _prioritize_gh_repo_rows(configured, accessible, limit=limit)
         return accessible
 
     return _gh_repo_list_fallback(limit)
+
+
+def _gh_configured_owner_repo_list(limit: int) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for cmd in _gh_owner_repo_list_commands(limit):
+        data = _run_gh_repo_list_command(cmd)
+        if data is None:
+            continue
+        for raw_row in data:
+            row = _normalize_gh_repo_row(raw_row)
+            if row is not None:
+                rows.append(row)
+    return _merge_gh_repo_rows(rows, [], limit=limit)
+
+
+def _prioritize_gh_repo_rows(
+    preferred: list[dict[str, Any]],
+    additions: list[dict[str, Any]],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Fill a capped result with preferred rows before general discovery rows."""
+
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in (*preferred, *additions):
+        slug = str(row.get("nameWithOwner") or "").strip().lower()
+        if not slug or slug in seen:
+            continue
+        seen.add(slug)
+        rows.append(row)
+        if len(rows) == limit:
+            break
+    return rows
 
 
 def _gh_accessible_repo_list(limit: int) -> list[dict[str, Any]] | None:
@@ -2824,7 +2865,11 @@ def _gh_repo_list_commands(limit: int) -> list[list[str]]:
         "--json",
         "nameWithOwner,description,isPrivate,isFork,updatedAt",
     ]
-    commands = [base]
+    return [base, *_gh_owner_repo_list_commands(limit)]
+
+
+def _gh_owner_repo_list_commands(limit: int) -> list[list[str]]:
+    commands: list[list[str]] = []
     for owner in _repo_list_owners():
         commands.append(
             [
@@ -2845,6 +2890,15 @@ def _gh_repo_list_commands(limit: int) -> list[list[str]]:
             ]
         )
     return commands
+
+
+def _repo_selection_owner(selected: set[str]) -> str | None:
+    if selected:
+        return _repo_scope_owner(sorted(selected))
+    configured = (_setup_config_value(GH_ORG_ENV) or "").strip().lower()
+    if re.fullmatch(r"[a-z0-9_.-]+", configured):
+        return configured
+    return None
 
 
 def _repo_list_owners() -> list[str]:
