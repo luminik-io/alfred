@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -58,6 +59,476 @@ def _git_repo_with_origin(path: Path, slug: str) -> None:
         ["git", "-C", str(path), "remote", "add", "origin", f"git@github.com:{slug}.git"],
         check=True,
     )
+
+
+def test_gh_repo_list_includes_accessible_organization_repos(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            json.dumps(
+                [
+                    {
+                        "full_name": "luminik-io/alfred",
+                        "description": "Autonomous engineering fleet",
+                        "private": False,
+                        "fork": False,
+                        "updated_at": "2026-07-23T12:00:00Z",
+                    },
+                    {
+                        "full_name": "luminik-io/retired",
+                        "archived": True,
+                    },
+                ]
+            ),
+            "",
+        )
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+
+    rows = setup_mod._gh_repo_list(100)
+
+    assert rows == [
+        {
+            "nameWithOwner": "luminik-io/alfred",
+            "description": "Autonomous engineering fleet",
+            "isPrivate": False,
+            "isFork": False,
+            "updatedAt": "2026-07-23T12:00:00Z",
+        }
+    ]
+    assert calls[0][1:5] == ["api", "-X", "GET", "user/repos"]
+    assert "affiliation=owner,collaborator,organization_member" in calls[0]
+
+
+def test_gh_repo_list_reserves_configured_owner_rows_when_accessible_results_are_capped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        setup_mod,
+        "_gh_accessible_repo_list",
+        lambda _limit, **_kwargs: (
+            [{"nameWithOwner": "personal/recent", "updatedAt": "2026-07-23T12:00:00Z"}],
+            False,
+        ),
+    )
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: ["acme"])
+    monkeypatch.setattr(
+        setup_mod,
+        "_run_gh_repo_list_command",
+        lambda _cmd, **_kwargs: [{"fullName": "acme/older", "updatedAt": "2026-06-01T12:00:00Z"}],
+    )
+
+    rows = setup_mod._gh_repo_list(1)
+
+    assert rows == [
+        {
+            "nameWithOwner": "acme/older",
+            "description": None,
+            "isPrivate": False,
+            "isFork": False,
+            "updatedAt": "2026-06-01T12:00:00Z",
+        }
+    ]
+
+
+def test_gh_repo_list_preserves_partial_api_rows_before_configured_owner_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        setup_mod,
+        "_gh_accessible_repo_list",
+        lambda _limit, **_kwargs: (
+            [{"nameWithOwner": "membership/preserved", "updatedAt": "2026-07-23"}],
+            True,
+        ),
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_gh_configured_owner_repo_list",
+        lambda _limit, **_kwargs: [
+            {"nameWithOwner": "acme/one", "updatedAt": "2026-07-22"},
+            {"nameWithOwner": "acme/two", "updatedAt": "2026-07-21"},
+        ],
+    )
+    monkeypatch.setattr(setup_mod, "_gh_repo_list_fallback", lambda _limit, **_kwargs: [])
+
+    rows = setup_mod._gh_repo_list(2)
+
+    assert rows is not None
+    assert [row["nameWithOwner"] for row in rows] == [
+        "membership/preserved",
+        "acme/one",
+    ]
+
+
+def test_partial_repo_recovery_runs_configured_owner_search_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        if cmd[1] == "api":
+            page = int(next(arg.removeprefix("page=") for arg in cmd if arg.startswith("page=")))
+            if page == 1:
+                return subprocess.CompletedProcess(
+                    cmd,
+                    0,
+                    json.dumps(
+                        [
+                            {"full_name": "membership/preserved"},
+                            {"full_name": "membership/archived", "archived": True},
+                        ]
+                    ),
+                    "",
+                )
+            return subprocess.CompletedProcess(cmd, 1, "", "request failed")
+        if cmd[1:3] == ["search", "repos"]:
+            return subprocess.CompletedProcess(
+                cmd,
+                0,
+                json.dumps([{"fullName": "acme/configured"}]),
+                "",
+            )
+        raise AssertionError(f"unexpected fallback command: {cmd}")
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: ["acme"])
+
+    rows = setup_mod._gh_repo_list(2)
+
+    assert rows is not None
+    assert [row["nameWithOwner"] for row in rows] == [
+        "membership/preserved",
+        "acme/configured",
+    ]
+    assert sum(call[1:3] == ["search", "repos"] for call in calls) == 1
+
+
+def test_gh_repo_list_returns_accessible_rows_when_owner_search_budget_is_spent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    accessible = [{"nameWithOwner": "personal/recent", "updatedAt": "2026-07-23"}]
+    command_calls: list[list[str]] = []
+    clock = iter((100.0, 116.0))
+    monkeypatch.setattr(setup_mod.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(
+        setup_mod,
+        "_gh_accessible_repo_list",
+        lambda _limit, **_kwargs: (accessible, False),
+    )
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: ["acme"])
+    monkeypatch.setattr(
+        setup_mod.subprocess,
+        "run",
+        lambda cmd, **_kwargs: command_calls.append(cmd),
+    )
+
+    rows = setup_mod._gh_repo_list(1)
+
+    assert rows == accessible
+    assert command_calls == []
+
+
+def test_gh_repo_list_reserves_time_for_fallback_after_api_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    timeouts: list[float] = []
+    clock = iter((100.0, 100.0, 110.0))
+    monkeypatch.setattr(setup_mod.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: [])
+
+    def fake_run(
+        cmd: list[str], *, timeout: float, **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        timeouts.append(timeout)
+        if cmd[1] == "api":
+            raise subprocess.TimeoutExpired(cmd, timeout)
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            json.dumps([{"nameWithOwner": "personal/fallback"}]),
+            "",
+        )
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+
+    rows = setup_mod._gh_repo_list(1)
+
+    assert rows is not None
+    assert [row["nameWithOwner"] for row in rows] == ["personal/fallback"]
+    assert timeouts == [10.0, 5.0]
+
+
+def test_list_owner_repos_marks_other_owners_unselectable_for_existing_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: ["acme/api"])
+    monkeypatch.setattr(
+        setup_mod,
+        "gh_auth_status",
+        lambda **_kwargs: {"ok": True, "account": "operator", "detail": ""},
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_gh_repo_list",
+        lambda _limit, **_kwargs: [
+            {"nameWithOwner": "acme/api"},
+            {"nameWithOwner": "personal/site"},
+        ],
+    )
+    monkeypatch.setattr(setup_mod, "_runtime_config_env", lambda: {})
+    monkeypatch.setattr(setup_mod, "_selected_repo_local_paths", lambda *_args: [])
+
+    result = setup_mod.list_owner_repos()
+
+    assert [row["selectable"] for row in result["repos"]] == [True, False]
+
+
+def test_list_owner_repos_shares_deadline_across_auth_and_discovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deadlines: dict[str, float] = {}
+    monkeypatch.setattr(setup_mod.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
+
+    def fake_auth(*, deadline: float) -> dict[str, Any]:
+        deadlines["auth"] = deadline
+        return {"ok": True, "account": "operator", "detail": ""}
+
+    def fake_repo_list(limit: int, *, deadline: float) -> list[dict[str, Any]]:
+        assert limit == 100
+        deadlines["discovery"] = deadline
+        return []
+
+    monkeypatch.setattr(setup_mod, "gh_auth_status", fake_auth)
+    monkeypatch.setattr(setup_mod, "_gh_repo_list", fake_repo_list)
+    monkeypatch.setattr(setup_mod, "_runtime_config_env", lambda: {})
+    monkeypatch.setattr(setup_mod, "_selected_repo_local_paths", lambda *_args: [])
+
+    result = setup_mod.list_owner_repos()
+
+    assert result["repos"] == []
+    assert deadlines == {"auth": 105.0, "discovery": 115.0}
+
+
+def test_gh_auth_status_uses_remaining_deadline_as_subprocess_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    timeouts: list[float] = []
+    monkeypatch.setattr(setup_mod.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: "/usr/bin/gh")
+
+    def fake_run(
+        cmd: list[str], *, timeout: float, **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        timeouts.append(timeout)
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            "github.com\n  Logged in to github.com account operator (keyring)",
+            "",
+        )
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+
+    result = setup_mod.gh_auth_status(deadline=105.0)
+
+    assert result["ok"] is True
+    assert timeouts == [5.0]
+
+
+def test_repo_selection_owner_allows_recovery_from_invalid_mixed_scope() -> None:
+    assert setup_mod._repo_selection_owner({"acme/api", "personal/site"}) is None
+
+
+def test_gh_repo_list_paginates_to_the_requested_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        page = int(next(arg.removeprefix("page=") for arg in cmd if arg.startswith("page=")))
+        count = 100 if page == 1 else 50
+        start = 0 if page == 1 else 100
+        rows = [{"full_name": f"acme/repo-{index}"} for index in range(start, start + count)]
+        return subprocess.CompletedProcess(cmd, 0, json.dumps(rows), "")
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: [])
+
+    rows = setup_mod._gh_repo_list(150)
+
+    assert rows is not None
+    assert len(rows) == 150
+    assert rows[-1]["nameWithOwner"] == "acme/repo-149"
+    assert len(calls) == 2
+
+
+def test_gh_repo_list_replenishes_rows_filtered_from_a_full_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        page = int(next(arg.removeprefix("page=") for arg in cmd if arg.startswith("page=")))
+        rows = (
+            [
+                {"full_name": "acme/current", "updated_at": "2026-07-23T12:00:00Z"},
+                {"full_name": "acme/retired", "archived": True},
+            ]
+            if page == 1
+            else [{"full_name": "acme/next", "updated_at": "2026-07-22T12:00:00Z"}]
+        )
+        return subprocess.CompletedProcess(cmd, 0, json.dumps(rows), "")
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: [])
+
+    rows = setup_mod._gh_repo_list(2)
+
+    assert rows is not None
+    assert [row["nameWithOwner"] for row in rows] == ["acme/current", "acme/next"]
+    assert len(calls) == 2
+
+
+def test_gh_repo_list_preserves_rows_when_a_later_api_page_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if cmd[1] == "api":
+            page = int(next(arg.removeprefix("page=") for arg in cmd if arg.startswith("page=")))
+            if page == 1:
+                return subprocess.CompletedProcess(
+                    cmd,
+                    0,
+                    json.dumps(
+                        [
+                            {
+                                "full_name": "outside-org/member-repo",
+                                "updated_at": "2026-07-23T12:00:00Z",
+                            },
+                            {"full_name": "outside-org/retired", "archived": True},
+                        ]
+                    ),
+                    "",
+                )
+            return subprocess.CompletedProcess(cmd, 1, "", "request failed")
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            json.dumps(
+                [
+                    {
+                        "nameWithOwner": "personal/fallback-only",
+                        "updatedAt": "2026-07-22T12:00:00Z",
+                    }
+                ]
+            ),
+            "",
+        )
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: [])
+
+    rows = setup_mod._gh_repo_list(2)
+
+    assert rows is not None
+    assert [row["nameWithOwner"] for row in rows] == [
+        "outside-org/member-repo",
+        "personal/fallback-only",
+    ]
+    assert "page 2 failed after 1 accepted rows" in caplog.text
+
+
+def test_gh_repo_list_falls_back_when_accessible_repo_query_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        if cmd[1] == "api":
+            return subprocess.CompletedProcess(cmd, 1, "", "request failed")
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            json.dumps(
+                [
+                    {
+                        "nameWithOwner": "acme/api",
+                        "description": None,
+                        "isPrivate": True,
+                        "isFork": False,
+                        "updatedAt": "2026-07-22T10:00:00Z",
+                    }
+                ]
+            ),
+            "",
+        )
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: [])
+
+    rows = setup_mod._gh_repo_list(100)
+
+    assert rows is not None
+    assert rows[0]["nameWithOwner"] == "acme/api"
+    assert rows[0]["isPrivate"] is True
+    assert [call[1] for call in calls] == ["api", "repo"]
+
+
+def test_gh_repo_list_fallback_sorts_across_owners_before_truncating(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if cmd[1] == "api":
+            return subprocess.CompletedProcess(cmd, 1, "", "request failed")
+        owner = cmd[4] if cmd[1:3] == ["search", "repos"] else None
+        row = (
+            {
+                "fullName": "acme/recent",
+                "updatedAt": "2026-07-23T12:00:00Z",
+            }
+            if owner == "acme"
+            else {
+                "nameWithOwner": "personal/older",
+                "updatedAt": "2026-07-01T12:00:00Z",
+            }
+        )
+        return subprocess.CompletedProcess(cmd, 0, json.dumps([row]), "")
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: ["acme"])
+
+    rows = setup_mod._gh_repo_list(1)
+
+    assert rows is not None
+    assert [row["nameWithOwner"] for row in rows] == ["acme/recent"]
+
+
+def test_gh_repo_list_fallback_explicitly_orders_each_owner_by_updated_at(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: ["acme"])
+
+    commands = setup_mod._gh_repo_list_commands(25)
+    owner_command = commands[1]
+
+    assert owner_command[1:5] == ["search", "repos", "--owner", "acme"]
+    assert owner_command[owner_command.index("--include-forks") + 1] == "true"
+    assert owner_command[owner_command.index("--sort") + 1] == "updated"
+    assert owner_command[owner_command.index("--order") + 1] == "desc"
+    assert owner_command[owner_command.index("--limit") + 1] == "25"
 
 
 def test_github_slug_accepts_ssh_over_443_remote() -> None:

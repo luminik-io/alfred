@@ -892,6 +892,7 @@ export type SetupRepo = {
   updated_at: string | null;
   selected: boolean;
   listed?: boolean;
+  selectable?: boolean;
 };
 
 export type SetupRepoCheckoutInput = {

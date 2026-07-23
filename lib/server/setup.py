@@ -6,9 +6,9 @@ zero to a working fleet without a terminal:
 * :func:`bootstrap_status`  - what is connected vs missing (gh auth, engine
   CLIs, watched repos, runtime). One read the client turns into a clear
   next-action per row.
-* :func:`list_owner_repos`  - the operator's own GitHub repos via
-  ``gh repo list`` plus the repos already selected, so the client can render a
-  checklist with the current selection ticked.
+* :func:`list_owner_repos`  - every GitHub repo the operator can access plus
+  the repos already selected, so the client can render a checklist with the
+  current selection ticked.
 * :func:`persist_selected_repos`  - write the chosen repo allowlist to
   ``$ALFRED_HOME/.env`` for boards, queue mutations, scheduled agents, and
   code-memory indexing, so the choice survives a restart and scopes everything
@@ -34,6 +34,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import time
 import urllib.parse
 from collections.abc import Mapping
 from contextlib import suppress
@@ -98,6 +99,10 @@ _REPO_LOCAL_MAP_KEY_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=")
 _REPO_LOCAL_MAP_COMMA_BOUNDARY_RE = re.compile(
     r",\s*(?=[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=(?:/|~|\.{1,2}/))"
 )
+_GH_REPO_DISCOVERY_TIMEOUT_SECONDS = 15.0
+_GH_REPO_AUTH_TIMEOUT_SECONDS = 5.0
+_GH_REPO_PRIMARY_TIMEOUT_SECONDS = 10.0
+_GH_REPO_FALLBACK_RESERVE_SECONDS = 5.0
 
 
 class RepoCheckoutValidationError(ValueError):
@@ -573,7 +578,7 @@ def persist_selected_repos(
             os.environ[key] = values[key]
         else:
             os.environ.pop(key, None)
-    result = {
+    result: dict[str, Any] = {
         "repos": clean,
         "env_path": str(env_path),
         "keys": list(values),
@@ -666,7 +671,7 @@ def _effective_queue_scope_for_save(runtime_env: dict[str, str]) -> tuple[bool, 
 # --------------------------------------------------------------------------- #
 # gh + engine detection
 # --------------------------------------------------------------------------- #
-def gh_auth_status() -> dict[str, Any]:
+def gh_auth_status(*, deadline: float | None = None) -> dict[str, Any]:
     """Probe ``gh auth status`` and report a plain-language verdict.
 
     Returns ``{ok, account, detail}``. ``ok`` is True when ``gh`` is installed
@@ -682,12 +687,22 @@ def gh_auth_status() -> dict[str, Any]:
             "account": None,
             "detail": "GitHub CLI (gh) is not installed.",
         }
+    timeout = 15.0
+    if deadline is not None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return {
+                "ok": False,
+                "account": None,
+                "detail": "GitHub authentication check timed out.",
+            }
+        timeout = min(timeout, remaining)
     try:
         proc = subprocess.run(
             [gh, "auth", "status"],
             capture_output=True,
             text=True,
-            timeout=15,
+            timeout=timeout,
             env=gh_env,
         )
     except (OSError, subprocess.SubprocessError) as exc:
@@ -2603,15 +2618,17 @@ def _has_config_key(env: dict[str, str], key: str) -> bool:
 def list_owner_repos(limit: int = 100) -> dict[str, Any]:
     """List the operator's GitHub repos for the repo-pick checklist.
 
-    Runs ``gh repo list --json nameWithOwner,...`` for the authenticated user
-    (no org argument: the owner's own + accessible repos). Returns
+    Queries the authenticated user's owner, collaborator, and organization
+    memberships through ``gh api``. Returns
     ``{repos: [{name_with_owner, description, is_private, is_fork, updated_at,
     selected}], selected, error?}``. Never raises: a gh/auth failure returns an
     ``error`` string with an empty repo list so the client shows a clear "sign
     in to GitHub first" state instead of crashing.
     """
     selected = set(selected_repos())
-    gh = gh_auth_status()
+    started_at = time.monotonic()
+    deadline = started_at + _GH_REPO_DISCOVERY_TIMEOUT_SECONDS
+    gh = gh_auth_status(deadline=min(deadline, started_at + _GH_REPO_AUTH_TIMEOUT_SECONDS))
     if not gh["ok"]:
         return {
             "repos": [],
@@ -2620,7 +2637,7 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
             "error": gh["detail"],
         }
     limit = max(1, min(int(limit), 200))
-    rows = _gh_repo_list(limit)
+    rows = _gh_repo_list(limit, deadline=deadline)
     if rows is None:
         return {
             "repos": [],
@@ -2628,6 +2645,7 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
             "repo_checkouts": [],
             "error": "Could not list your GitHub repos. Check gh auth status.",
         }
+    selection_owner = _repo_selection_owner(selected)
     repos: list[dict[str, Any]] = []
     visible: set[str] = set()
     for row in rows:
@@ -2645,6 +2663,8 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
                 "updated_at": row.get("updatedAt"),
                 "selected": normalized in selected,
                 "listed": True,
+                "selectable": selection_owner is None
+                or normalized.partition("/")[0] == selection_owner,
             }
         )
     for slug in sorted(selected - visible):
@@ -2657,6 +2677,7 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
                 "updated_at": None,
                 "selected": True,
                 "listed": False,
+                "selectable": True,
             }
         )
     runtime_env = _runtime_config_env()
@@ -2667,40 +2688,230 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
     }
 
 
-def _gh_repo_list(limit: int) -> list[dict[str, Any]] | None:
+def _gh_repo_list(limit: int, *, deadline: float | None = None) -> list[dict[str, Any]] | None:
+    started_at = time.monotonic()
+    if deadline is None:
+        deadline = started_at + _GH_REPO_DISCOVERY_TIMEOUT_SECONDS
+    accessible, partial = _gh_accessible_repo_list(
+        limit,
+        deadline=min(
+            deadline - _GH_REPO_FALLBACK_RESERVE_SECONDS,
+            started_at + _GH_REPO_PRIMARY_TIMEOUT_SECONDS,
+        ),
+    )
+    if accessible is not None:
+        configured = _gh_configured_owner_repo_list(limit, deadline=deadline)
+        if partial:
+            rows = _prioritize_gh_repo_rows(accessible, configured, limit=limit)
+            if len(rows) >= limit:
+                return rows
+            fallback = (
+                _gh_repo_list_fallback(
+                    limit,
+                    include_configured_owners=False,
+                    deadline=deadline,
+                )
+                or []
+            )
+            return _prioritize_gh_repo_rows(rows, fallback, limit=limit)
+        if configured:
+            return _prioritize_gh_repo_rows(configured, accessible, limit=limit)
+        return accessible
+
+    return _gh_repo_list_fallback(limit, deadline=deadline)
+
+
+def _gh_configured_owner_repo_list(
+    limit: int, *, deadline: float | None = None
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for cmd in _gh_owner_repo_list_commands(limit):
+        data = _run_gh_repo_list_command(cmd, deadline=deadline)
+        if data is None:
+            continue
+        for raw_row in data:
+            row = _normalize_gh_repo_row(raw_row)
+            if row is not None:
+                rows.append(row)
+    return _merge_gh_repo_rows(rows, [], limit=limit)
+
+
+def _prioritize_gh_repo_rows(
+    preferred: list[dict[str, Any]],
+    additions: list[dict[str, Any]],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Fill a capped result with preferred rows before general discovery rows."""
+
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in (*preferred, *additions):
+        slug = str(row.get("nameWithOwner") or "").strip().lower()
+        if not slug or slug in seen:
+            continue
+        seen.add(slug)
+        rows.append(row)
+        if len(rows) == limit:
+            break
+    return rows
+
+
+def _gh_accessible_repo_list(
+    limit: int,
+    *,
+    deadline: float | None = None,
+) -> tuple[list[dict[str, Any]] | None, bool]:
+    """Return accessible repos and whether a later API page failed."""
+
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    page_size = min(limit, 100)
+    page = 1
+
+    while len(rows) < limit:
+        cmd = [
+            _gh_bin(),
+            "api",
+            "-X",
+            "GET",
+            "user/repos",
+            "-f",
+            "affiliation=owner,collaborator,organization_member",
+            "-f",
+            "sort=updated",
+            "-f",
+            f"per_page={page_size}",
+            "-f",
+            f"page={page}",
+        ]
+        data = _run_gh_repo_list_command(cmd, deadline=deadline)
+        if data is None:
+            if rows:
+                logger.warning(
+                    "GitHub repository discovery page %d failed after %d accepted rows; "
+                    "preserving them before command fallback",
+                    page,
+                    len(rows),
+                )
+                return rows, True
+            return None, False
+        for raw_row in data:
+            row = _normalize_gh_repo_row(raw_row)
+            if row is None:
+                continue
+            slug = row["nameWithOwner"].lower()
+            if slug in seen:
+                continue
+            seen.add(slug)
+            rows.append(row)
+        if len(data) < page_size:
+            break
+        page += 1
+    return rows[:limit], False
+
+
+def _merge_gh_repo_rows(
+    primary: list[dict[str, Any]],
+    additions: list[dict[str, Any]],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in (*primary, *additions):
+        slug = str(row.get("nameWithOwner") or "").strip().lower()
+        if not slug or slug in seen:
+            continue
+        seen.add(slug)
+        rows.append(row)
+    rows.sort(
+        key=lambda row: (
+            str(row.get("updatedAt") or ""),
+            str(row.get("nameWithOwner") or "").lower(),
+        ),
+        reverse=True,
+    )
+    return rows[:limit]
+
+
+def _gh_repo_list_fallback(
+    limit: int,
+    *,
+    include_configured_owners: bool = True,
+    deadline: float | None = None,
+) -> list[dict[str, Any]] | None:
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
     successes = 0
 
-    for cmd in _gh_repo_list_commands(limit):
-        try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30,
-                env=_gh_subprocess_env(),
-            )
-        except (OSError, subprocess.SubprocessError):
-            continue
-        if proc.returncode != 0 or not proc.stdout.strip():
-            continue
-        try:
-            data = json.loads(proc.stdout)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(data, list):
+    commands = _gh_repo_list_commands(limit)
+    if not include_configured_owners:
+        commands = commands[:1]
+    for cmd in commands:
+        data = _run_gh_repo_list_command(cmd, deadline=deadline)
+        if data is None:
             continue
         successes += 1
-        for row in data:
-            if not isinstance(row, dict):
+        for raw_row in data:
+            row = _normalize_gh_repo_row(raw_row)
+            if row is None:
                 continue
-            slug = str(row.get("nameWithOwner") or "").strip().lower()
-            if not slug or slug in seen:
+            slug = row["nameWithOwner"].lower()
+            if slug in seen:
                 continue
             seen.add(slug)
             rows.append(row)
-    return rows if successes else None
+    if not successes:
+        return None
+    return _merge_gh_repo_rows(rows, [], limit=limit)
+
+
+def _run_gh_repo_list_command(
+    cmd: list[str], *, deadline: float | None = None
+) -> list[dict[str, Any]] | None:
+    timeout = 30.0
+    if deadline is not None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        timeout = min(timeout, remaining)
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=_gh_subprocess_env(),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, list):
+        return None
+    return [row for row in data if isinstance(row, dict)]
+
+
+def _normalize_gh_repo_row(row: dict[str, Any]) -> dict[str, Any] | None:
+    if bool(row.get("isArchived", row.get("archived", False))):
+        return None
+    slug = str(
+        row.get("nameWithOwner") or row.get("full_name") or row.get("fullName") or ""
+    ).strip()
+    if not slug:
+        return None
+    return {
+        "nameWithOwner": slug,
+        "description": row.get("description"),
+        "isPrivate": bool(row.get("isPrivate", row.get("private", False))),
+        "isFork": bool(row.get("isFork", row.get("fork", False))),
+        "updatedAt": row.get("updatedAt") or row.get("updated_at"),
+    }
 
 
 def _gh_repo_list_commands(limit: int) -> list[list[str]]:
@@ -2714,10 +2925,46 @@ def _gh_repo_list_commands(limit: int) -> list[list[str]]:
         "--json",
         "nameWithOwner,description,isPrivate,isFork,updatedAt",
     ]
-    commands = [base]
+    return [base, *_gh_owner_repo_list_commands(limit)]
+
+
+def _gh_owner_repo_list_commands(limit: int) -> list[list[str]]:
+    commands: list[list[str]] = []
     for owner in _repo_list_owners():
-        commands.append([_gh_bin(), "repo", "list", owner, *base[3:]])
+        commands.append(
+            [
+                _gh_bin(),
+                "search",
+                "repos",
+                "--owner",
+                owner,
+                "--archived=false",
+                "--include-forks",
+                "true",
+                "--sort",
+                "updated",
+                "--order",
+                "desc",
+                "--limit",
+                str(limit),
+                "--json",
+                "fullName,description,isPrivate,isFork,updatedAt",
+            ]
+        )
     return commands
+
+
+def _repo_selection_owner(selected: set[str]) -> str | None:
+    if selected:
+        try:
+            return _repo_scope_owner(sorted(selected))
+        except ValueError:
+            # Keep the read surface available so an invalid manual edit can be cleared.
+            return None
+    configured = (_setup_config_value(GH_ORG_ENV) or "").strip().lower()
+    if re.fullmatch(r"[a-z0-9_.-]+", configured):
+        return configured
+    return None
 
 
 def _repo_list_owners() -> list[str]:
