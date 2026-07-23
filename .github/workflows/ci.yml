@@ -24,13 +24,15 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
       - name: ruff check
-        run: uv run --with 'ruff>=0.6' ruff check .
+        run: uv run --frozen --extra dev ruff check .
       - name: ruff format check
-        run: uv run --with 'ruff>=0.6' ruff format --check .
+        run: uv run --frozen --extra dev ruff format --check .
       - name: mypy
-        run: uv run --with 'mypy>=1.10' mypy lib/
+        run: uv run --frozen --extra dev mypy lib/
 
   test-python:
     name: pytest
