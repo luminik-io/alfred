@@ -2899,7 +2899,11 @@ def _gh_owner_repo_list_commands(limit: int) -> list[list[str]]:
 
 def _repo_selection_owner(selected: set[str]) -> str | None:
     if selected:
-        return _repo_scope_owner(sorted(selected))
+        try:
+            return _repo_scope_owner(sorted(selected))
+        except ValueError:
+            # Keep the read surface available so an invalid manual edit can be cleared.
+            return None
     configured = (_setup_config_value(GH_ORG_ENV) or "").strip().lower()
     if re.fullmatch(r"[a-z0-9_.-]+", configured):
         return configured

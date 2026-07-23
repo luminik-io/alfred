@@ -191,6 +191,10 @@ def test_list_owner_repos_marks_other_owners_unselectable_for_existing_scope(
     assert [row["selectable"] for row in result["repos"]] == [True, False]
 
 
+def test_repo_selection_owner_allows_recovery_from_invalid_mixed_scope() -> None:
+    assert setup_mod._repo_selection_owner({"acme/api", "personal/site"}) is None
+
+
 def test_gh_repo_list_paginates_to_the_requested_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
