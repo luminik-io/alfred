@@ -100,7 +100,9 @@ _REPO_LOCAL_MAP_COMMA_BOUNDARY_RE = re.compile(
     r",\s*(?=[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=(?:/|~|\.{1,2}/))"
 )
 _GH_REPO_DISCOVERY_TIMEOUT_SECONDS = 15.0
+_GH_REPO_AUTH_TIMEOUT_SECONDS = 5.0
 _GH_REPO_PRIMARY_TIMEOUT_SECONDS = 10.0
+_GH_REPO_FALLBACK_RESERVE_SECONDS = 5.0
 
 
 class RepoCheckoutValidationError(ValueError):
@@ -669,7 +671,7 @@ def _effective_queue_scope_for_save(runtime_env: dict[str, str]) -> tuple[bool, 
 # --------------------------------------------------------------------------- #
 # gh + engine detection
 # --------------------------------------------------------------------------- #
-def gh_auth_status() -> dict[str, Any]:
+def gh_auth_status(*, deadline: float | None = None) -> dict[str, Any]:
     """Probe ``gh auth status`` and report a plain-language verdict.
 
     Returns ``{ok, account, detail}``. ``ok`` is True when ``gh`` is installed
@@ -685,12 +687,22 @@ def gh_auth_status() -> dict[str, Any]:
             "account": None,
             "detail": "GitHub CLI (gh) is not installed.",
         }
+    timeout = 15.0
+    if deadline is not None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return {
+                "ok": False,
+                "account": None,
+                "detail": "GitHub authentication check timed out.",
+            }
+        timeout = min(timeout, remaining)
     try:
         proc = subprocess.run(
             [gh, "auth", "status"],
             capture_output=True,
             text=True,
-            timeout=15,
+            timeout=timeout,
             env=gh_env,
         )
     except (OSError, subprocess.SubprocessError) as exc:
@@ -2614,7 +2626,9 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
     in to GitHub first" state instead of crashing.
     """
     selected = set(selected_repos())
-    gh = gh_auth_status()
+    started_at = time.monotonic()
+    deadline = started_at + _GH_REPO_DISCOVERY_TIMEOUT_SECONDS
+    gh = gh_auth_status(deadline=min(deadline, started_at + _GH_REPO_AUTH_TIMEOUT_SECONDS))
     if not gh["ok"]:
         return {
             "repos": [],
@@ -2623,7 +2637,7 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
             "error": gh["detail"],
         }
     limit = max(1, min(int(limit), 200))
-    rows = _gh_repo_list(limit)
+    rows = _gh_repo_list(limit, deadline=deadline)
     if rows is None:
         return {
             "repos": [],
@@ -2674,12 +2688,16 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
     }
 
 
-def _gh_repo_list(limit: int) -> list[dict[str, Any]] | None:
+def _gh_repo_list(limit: int, *, deadline: float | None = None) -> list[dict[str, Any]] | None:
     started_at = time.monotonic()
-    deadline = started_at + _GH_REPO_DISCOVERY_TIMEOUT_SECONDS
+    if deadline is None:
+        deadline = started_at + _GH_REPO_DISCOVERY_TIMEOUT_SECONDS
     accessible, partial = _gh_accessible_repo_list(
         limit,
-        deadline=min(deadline, started_at + _GH_REPO_PRIMARY_TIMEOUT_SECONDS),
+        deadline=min(
+            deadline - _GH_REPO_FALLBACK_RESERVE_SECONDS,
+            started_at + _GH_REPO_PRIMARY_TIMEOUT_SECONDS,
+        ),
     )
     if accessible is not None:
         configured = _gh_configured_owner_repo_list(limit, deadline=deadline)

@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -272,12 +273,12 @@ def test_list_owner_repos_marks_other_owners_unselectable_for_existing_scope(
     monkeypatch.setattr(
         setup_mod,
         "gh_auth_status",
-        lambda: {"ok": True, "account": "operator", "detail": ""},
+        lambda **_kwargs: {"ok": True, "account": "operator", "detail": ""},
     )
     monkeypatch.setattr(
         setup_mod,
         "_gh_repo_list",
-        lambda _limit: [
+        lambda _limit, **_kwargs: [
             {"nameWithOwner": "acme/api"},
             {"nameWithOwner": "personal/site"},
         ],
@@ -288,6 +289,59 @@ def test_list_owner_repos_marks_other_owners_unselectable_for_existing_scope(
     result = setup_mod.list_owner_repos()
 
     assert [row["selectable"] for row in result["repos"]] == [True, False]
+
+
+def test_list_owner_repos_shares_deadline_across_auth_and_discovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deadlines: dict[str, float] = {}
+    monkeypatch.setattr(setup_mod.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
+
+    def fake_auth(*, deadline: float) -> dict[str, Any]:
+        deadlines["auth"] = deadline
+        return {"ok": True, "account": "operator", "detail": ""}
+
+    def fake_repo_list(limit: int, *, deadline: float) -> list[dict[str, Any]]:
+        assert limit == 100
+        deadlines["discovery"] = deadline
+        return []
+
+    monkeypatch.setattr(setup_mod, "gh_auth_status", fake_auth)
+    monkeypatch.setattr(setup_mod, "_gh_repo_list", fake_repo_list)
+    monkeypatch.setattr(setup_mod, "_runtime_config_env", lambda: {})
+    monkeypatch.setattr(setup_mod, "_selected_repo_local_paths", lambda *_args: [])
+
+    result = setup_mod.list_owner_repos()
+
+    assert result["repos"] == []
+    assert deadlines == {"auth": 105.0, "discovery": 115.0}
+
+
+def test_gh_auth_status_uses_remaining_deadline_as_subprocess_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    timeouts: list[float] = []
+    monkeypatch.setattr(setup_mod.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: "/usr/bin/gh")
+
+    def fake_run(
+        cmd: list[str], *, timeout: float, **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        timeouts.append(timeout)
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            "github.com\n  Logged in to github.com account operator (keyring)",
+            "",
+        )
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+
+    result = setup_mod.gh_auth_status(deadline=105.0)
+
+    assert result["ok"] is True
+    assert timeouts == [5.0]
 
 
 def test_repo_selection_owner_allows_recovery_from_invalid_mixed_scope() -> None:
