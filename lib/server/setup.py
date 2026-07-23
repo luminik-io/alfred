@@ -107,7 +107,6 @@ _GH_REPO_PRIMARY_TIMEOUT_SECONDS = 10.0
 _GH_REPO_FALLBACK_RESERVE_SECONDS = 5.0
 _GH_REPO_LOCAL_RESERVE_SECONDS = 3.0
 _REPO_DISCOVERY_HANDOFF_SECONDS = 0.1
-_REPO_DISCOVERY_KILL_GRACE_SECONDS = 0.5
 _REPO_DISCOVERY_WORKER_MODULE = "server.repo_discovery_worker"
 
 
@@ -1996,9 +1995,11 @@ def _repo_picker_local_paths(
         logger.exception("Local repository discovery worker failed")
         return []
     finally:
+        release_slot = True
         if worker is not None and worker.poll() is None:
-            _stop_repo_discovery_worker(worker)
-        _REPO_DISCOVERY_SLOT.release()
+            release_slot = _stop_repo_discovery_worker(worker)
+        if release_slot:
+            _REPO_DISCOVERY_SLOT.release()
 
 
 def _repo_discovery_config(env: Mapping[str, str]) -> dict[str, str]:
@@ -2022,17 +2023,33 @@ def _repo_discovery_process_env() -> dict[str, str]:
     return env
 
 
-def _stop_repo_discovery_worker(worker: subprocess.Popen[str]) -> None:
-    """Kill and reap one timed-out scan so the single-flight slot can be reused."""
+def _stop_repo_discovery_worker(worker: subprocess.Popen[str]) -> bool:
+    """Kill a timed-out scan without extending the request deadline.
 
-    try:
+    Returns ``True`` when the caller can release the single-flight slot. A
+    process still alive after ``kill`` is handed to one daemon reaper that owns
+    the slot until the process actually exits, preventing unreaped workers from
+    accumulating.
+    """
+
+    with suppress(OSError):
         worker.kill()
-    except OSError:
-        return
+    if worker.poll() is not None:
+        return True
+    threading.Thread(
+        target=_reap_repo_discovery_worker,
+        args=(worker,),
+        name="alfred-repo-discovery-reaper",
+        daemon=True,
+    ).start()
+    return False
+
+
+def _reap_repo_discovery_worker(worker: subprocess.Popen[str]) -> None:
     try:
-        worker.wait(timeout=_REPO_DISCOVERY_KILL_GRACE_SECONDS)
-    except subprocess.TimeoutExpired:
-        logger.error("Local repository discovery worker did not exit after SIGKILL")
+        worker.wait()
+    finally:
+        _REPO_DISCOVERY_SLOT.release()
 
 
 def _repo_picker_local_paths_sync(

@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -720,7 +721,6 @@ def test_repo_picker_kills_timed_out_worker_and_allows_retry(
     class TimedOutWorker:
         returncode: int | None = None
         killed = False
-        waited = False
 
         def communicate(self, *, input: str, timeout: float) -> tuple[str, str]:
             raise subprocess.TimeoutExpired("repo-discovery", timeout)
@@ -733,7 +733,6 @@ def test_repo_picker_kills_timed_out_worker_and_allows_retry(
             self.returncode = -9
 
         def wait(self, *, timeout: float) -> int:
-            self.waited = True
             return -9
 
     class CompleteWorker:
@@ -771,7 +770,90 @@ def test_repo_picker_kills_timed_out_worker_and_allows_retry(
     assert len(workers) == 2
     assert isinstance(workers[0], TimedOutWorker)
     assert workers[0].killed is True
-    assert workers[0].waited is True
+
+
+def test_repo_picker_keeps_slot_until_sigkill_resistant_worker_is_reaped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reaper_started = threading.Event()
+    release_reaper = threading.Event()
+    reaped = threading.Event()
+    workers: list[StubbornWorker | CompleteWorker] = []
+
+    class StubbornWorker:
+        returncode: int | None = None
+        killed = False
+
+        def communicate(self, *, input: str, timeout: float) -> tuple[str, str]:
+            raise subprocess.TimeoutExpired("repo-discovery", timeout)
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def kill(self) -> None:
+            self.killed = True
+
+        def wait(self, *, timeout: float | None = None) -> int:
+            assert timeout is None
+            reaper_started.set()
+            release_reaper.wait(timeout=1)
+            self.returncode = -9
+            reaped.set()
+            return -9
+
+    class CompleteWorker:
+        returncode = 0
+
+        def communicate(self, *, input: str, timeout: float) -> tuple[str, str]:
+            return "[]", ""
+
+        def poll(self) -> int:
+            return self.returncode
+
+    def fake_popen(*_args: object, **_kwargs: object) -> StubbornWorker | CompleteWorker:
+        worker: StubbornWorker | CompleteWorker
+        worker = StubbornWorker() if not workers else CompleteWorker()
+        workers.append(worker)
+        return worker
+
+    monkeypatch.setattr(setup_mod.subprocess, "Popen", fake_popen)
+    started_at = time.monotonic()
+
+    first = setup_mod._repo_picker_local_paths(
+        ["Acme/Web"],
+        set(),
+        {},
+        deadline=started_at + 0.03,
+    )
+    second = setup_mod._repo_picker_local_paths(
+        ["Acme/Web"],
+        set(),
+        {},
+        deadline=time.monotonic() + 0.03,
+    )
+
+    assert first == []
+    assert second == []
+    assert time.monotonic() - started_at < 0.15
+    assert reaper_started.wait(timeout=1)
+    assert len(workers) == 1
+    assert workers[0].killed is True
+
+    release_reaper.set()
+    assert reaped.wait(timeout=1)
+    for _ in range(100):
+        third = setup_mod._repo_picker_local_paths(
+            ["Acme/Web"],
+            set(),
+            {},
+            deadline=time.monotonic() + 0.03,
+        )
+        if len(workers) == 2:
+            break
+        time.sleep(0.01)
+
+    assert third == []
+    assert len(workers) == 2
 
 
 def test_repo_picker_recovers_after_real_worker_process_stalls(
