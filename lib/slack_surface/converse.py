@@ -1065,9 +1065,9 @@ def _workspace_root() -> Path:
 
 def _repo_to_local() -> dict[str, str]:
     try:
-        from agent_runner.github import GH_REPO_TO_LOCAL
+        from agent_runner.github import repo_to_local_map
 
-        return dict(GH_REPO_TO_LOCAL)
+        return repo_to_local_map()
     except Exception:  # pragma: no cover - defensive
         return {}
 

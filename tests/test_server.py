@@ -2482,6 +2482,35 @@ def test_compose_converse_defaults_single_setup_repo_as_scope(
     assert payload["draft"]["repos"] == ["acme/frontend"]
 
 
+def test_compose_converse_uses_checkout_map_saved_after_runtime_import(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ALFRED_COMPOSE_CONVERSE_ENGINE", "claude")
+    _use_interrogator_prompt(monkeypatch)
+    checkout = tmp_path / "new checkout"
+    checkout.mkdir()
+    (checkout / "CLAUDE.md").write_text("Live checkout instructions", encoding="utf-8")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", f"acme/frontend={checkout}")
+    capture: dict = {}
+    _stub_converse_turn(monkeypatch, reply="Grounded.", capture=capture)
+
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/compose/converse",
+        json={
+            "repos": ["acme/frontend"],
+            "messages": [{"role": "user", "content": "What should we change?"}],
+        },
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    assert "Live checkout instructions" in capture["repo_grounding"]
+
+
 def test_setup_repo_selection_requires_local_checkouts(tmp_path: Path) -> None:
     state = tmp_path / "state"
     state.mkdir()

@@ -421,7 +421,7 @@ def looks_like_followup_reference(text: str) -> bool:
 class RepoCatalog:
     """Maps natural-language repo references to ``owner/repo`` slugs.
 
-    Built from the canonical ``GH_REPO_TO_LOCAL`` mapping plus the env-based
+    Built from the canonical live repository mapping plus the env-based
     queue allowlist, so the catalog stays in step with what the fleet actually
     watches and what ``queue`` / ``hold`` are even allowed to mutate. Aliases
     are deliberately conservative: a phrase resolves only when a known alias
@@ -441,10 +441,10 @@ class RepoCatalog:
         repo_to_local: dict[str, str] = {}
         gh_org = (os.environ.get("GH_ORG") or "").strip() or "example-org"
         try:
-            from agent_runner.github import GH_REPO_TO_LOCAL as _MAP
+            from agent_runner.github import repo_to_local_map
             from agent_runner.paths import GH_ORG as _ORG
 
-            repo_to_local = dict(_MAP)
+            repo_to_local = repo_to_local_map()
             gh_org = (_ORG or "").strip() or gh_org
         except Exception:
             repo_to_local = {}

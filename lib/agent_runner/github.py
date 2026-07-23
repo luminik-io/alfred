@@ -158,6 +158,22 @@ def _decode_repo_local_map_value(value: str) -> str:
 
 GH_REPO_TO_LOCAL.update(_repo_local_map_from_env())
 
+
+def repo_to_local_map() -> dict[str, str]:
+    """Return the checkout map that is authoritative for this process now.
+
+    The desktop setup flow updates ``ALFRED_REPO_LOCAL_MAP`` without restarting
+    the local server. When that key is present, parse it on every read instead
+    of returning the import-time ``GH_REPO_TO_LOCAL`` snapshot. An explicitly
+    empty value is therefore an authoritative empty map. When the key is absent,
+    retain support for a Python fleet overlay that mutates ``GH_REPO_TO_LOCAL``.
+    """
+
+    if "ALFRED_REPO_LOCAL_MAP" in os.environ:
+        return _repo_local_map_from_env()
+    return dict(GH_REPO_TO_LOCAL)
+
+
 # Per-process cache for ``ensure_labels``: ``{repo_slug: {label_name, ...}}``.
 # Keyed on repo *and* the set of labels already created on it: the previous
 # `set[str]` shape cached on repo only, so a first call with ``LIFECYCLE_LABELS``
@@ -183,7 +199,8 @@ def local_repo_dir(repo_slug: str) -> str:
         from agent_runner import WORKSPACE, local_repo_dir
         local = WORKSPACE / local_repo_dir(repo_slug)
     """
-    return GH_REPO_TO_LOCAL.get(repo_slug, repo_slug)
+    repo_map = repo_to_local_map()
+    return repo_map.get(repo_slug, repo_map.get(repo_slug.casefold(), repo_slug))
 
 
 def _full_repo(slug: str) -> str:

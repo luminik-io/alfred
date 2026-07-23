@@ -163,6 +163,32 @@ def test_repo_local_map_env_preserves_decoded_space_paths(overlay_root, monkeypa
     assert agent_runner.local_repo_dir("test-org/web") == "/tmp/web"
 
 
+def test_repo_local_map_updates_after_runtime_import(overlay_root, monkeypatch):
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "test-org/api=/tmp/old-api")
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    assert agent_runner.local_repo_dir("api") == "/tmp/old-api"
+
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "test-org/api=/tmp/new-api")
+
+    assert agent_runner.repo_to_local_map()["test-org/api"] == "/tmp/new-api"
+    assert agent_runner.local_repo_dir("api") == "/tmp/new-api"
+
+
+def test_explicit_empty_runtime_repo_map_clears_import_snapshot(overlay_root, monkeypatch):
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "test-org/api=/tmp/api")
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "")
+
+    assert agent_runner.repo_to_local_map() == {}
+    assert agent_runner.local_repo_dir("api") == "api"
+
+
 def test_overlay_named_via_env_loads_and_mutates(overlay_root, monkeypatch):
     """A custom overlay module pointed at by ``ALFRED_FLEET_OVERLAY``
     runs its module-level side effects during ``agent_runner`` init."""

@@ -65,6 +65,22 @@ def _engine_returning(payload: dict) -> si.EngineInvoke:
     return _invoke
 
 
+def test_repo_catalog_reads_runtime_onboarding_changes(monkeypatch) -> None:
+    import agent_runner.paths as runner_paths
+
+    monkeypatch.setattr(runner_paths, "GH_ORG", "acme")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/frontend=/tmp/frontend")
+
+    first = RepoCatalog.from_environment()
+    assert "acme/frontend" in first.slugs()
+
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/backend=/tmp/backend")
+
+    second = RepoCatalog.from_environment()
+    assert "acme/backend" in second.slugs()
+    assert "acme/frontend" not in second.slugs()
+
+
 def _save_roster_theme(
     monkeypatch,
     tmp_path: Path,

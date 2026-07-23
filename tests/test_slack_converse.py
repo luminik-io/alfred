@@ -37,6 +37,17 @@ from compose_converse import (  # noqa: E402
 )
 from spec_helper import IssueDraft  # noqa: E402
 
+
+def test_repo_map_reads_runtime_onboarding_changes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/frontend=/tmp/current-frontend")
+
+    assert sc._repo_to_local()["acme/frontend"] == "/tmp/current-frontend"
+
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/frontend=/tmp/new-frontend")
+
+    assert sc._repo_to_local()["frontend"] == "/tmp/new-frontend"
+
+
 # ---------------------------------------------------------------------------
 # Fakes
 # ---------------------------------------------------------------------------

@@ -62,16 +62,16 @@ def workspace_root() -> Path:
 
 
 def repo_to_local() -> dict[str, str]:
-    """Return a copy of the GitHub-slug to local-path map.
+    """Return the live GitHub-slug to local-path map.
 
-    Mirrors ``agent_runner.github.GH_REPO_TO_LOCAL``. Returns an empty map when
-    the runtime package is not importable. A copy is returned so callers cannot
-    mutate the runtime's shared map.
+    Reads through the runtime accessor so checkout changes saved during desktop
+    onboarding are visible to native Ask immediately. Returns an empty map when
+    the runtime package is not importable.
     """
     try:
-        from agent_runner.github import GH_REPO_TO_LOCAL
+        from agent_runner.github import repo_to_local_map
 
-        return dict(GH_REPO_TO_LOCAL)
+        return repo_to_local_map()
     except Exception:  # pragma: no cover - defensive
         return {}
 
