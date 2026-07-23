@@ -25,9 +25,13 @@ All values are computed at call time (no module-level caches), so tests can
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import sys
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
 
 from envflags import FALSY_VALUES
 from envflags import truthy as _truthy
@@ -42,6 +46,7 @@ truthy = _truthy
 ENGINE_CHOICES: frozenset[str] = frozenset({"claude", "codex", "hybrid"})
 MODEL_ENGINES: frozenset[str] = frozenset({"claude", "codex"})
 _MODEL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
+_AGENT_CODENAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
 PROVIDER_LIMIT_SUBTYPES: frozenset[str] = frozenset({"error_budget", "error_rate_limit"})
 """Subtypes that mean we hit a provider's quota / rate-limit wall."""
@@ -206,6 +211,125 @@ def normalize_model_name(raw: str | None) -> str | None:
     return value if _MODEL_NAME.fullmatch(value) else None
 
 
+@dataclass(frozen=True)
+class AgentModelSelection:
+    """Resolved model state for one agent and provider."""
+
+    model: str | None
+    source: str
+    persisted: str | None
+
+
+def _model_provider(engine: str) -> str:
+    provider = engine.strip().lower()
+    if provider not in MODEL_ENGINES:
+        raise ValueError(f"model engine must be one of: {', '.join(sorted(MODEL_ENGINES))}")
+    return provider
+
+
+def _model_agent(agent: str) -> str:
+    codename = agent.strip().lower().replace("_", "-")
+    if not _AGENT_CODENAME.fullmatch(codename):
+        raise ValueError("agent codename must use lowercase letters, digits, and hyphens")
+    return codename
+
+
+def agent_model_state_file(
+    agent: str,
+    engine: str,
+    *,
+    state_root: Path | None = None,
+) -> Path:
+    """Return the isolated state file for one agent/provider pair."""
+
+    root = Path(state_root) if state_root is not None else STATE_ROOT
+    return root / "models" / _model_agent(agent) / _model_provider(engine)
+
+
+def agent_model_selection(
+    agent: str,
+    engine: str,
+    *,
+    environ: dict[str, str] | None = None,
+    state_root: Path | None = None,
+) -> AgentModelSelection:
+    """Resolve a model and report both its winning source and saved value."""
+
+    provider = _model_provider(engine)
+    safe_agent = _model_agent(agent)
+    env = environ if environ is not None else os.environ
+    state_file = agent_model_state_file(safe_agent, provider, state_root=state_root)
+    try:
+        persisted = normalize_model_name(state_file.read_text(encoding="utf-8"))
+    except OSError:
+        persisted = None
+
+    agent_key = f"ALFRED_{_agent_env_slug(safe_agent)}_{provider.upper()}_MODEL"
+    global_key = f"ALFRED_{provider.upper()}_MODEL"
+    for name, source in (
+        (agent_key, "agent-environment"),
+        (global_key, "fleet-environment"),
+    ):
+        raw = env.get(name, "")
+        if raw.strip():
+            return AgentModelSelection(
+                model=normalize_model_name(raw),
+                source=source,
+                persisted=persisted,
+            )
+    if persisted:
+        return AgentModelSelection(model=persisted, source="state", persisted=persisted)
+    return AgentModelSelection(model=None, source="provider-default", persisted=None)
+
+
+def persist_agent_model(
+    agent: str,
+    engine: str,
+    model: str,
+    *,
+    state_root: Path | None = None,
+) -> Path:
+    """Atomically persist a validated model choice."""
+
+    normalized = normalize_model_name(model)
+    if normalized is None:
+        raise ValueError(
+            "model names must start with a letter or digit and use only letters, "
+            "digits, '.', '_', ':', '/', or '-' (max 128 characters)"
+        )
+    target = agent_model_state_file(agent, engine, state_root=state_root)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(normalized + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, target)
+    finally:
+        with contextlib.suppress(OSError):
+            os.close(fd)
+        with contextlib.suppress(OSError):
+            temp_path.unlink()
+    return target
+
+
+def clear_agent_model(
+    agent: str,
+    engine: str,
+    *,
+    state_root: Path | None = None,
+) -> Path:
+    """Remove one persisted model choice without changing environment overrides."""
+
+    target = agent_model_state_file(agent, engine, state_root=state_root)
+    target.unlink(missing_ok=True)
+    with contextlib.suppress(OSError):
+        target.parent.rmdir()
+    return target
+
+
 def agent_model(
     agent: str,
     engine: str,
@@ -225,24 +349,7 @@ def agent_model(
     of forwarding untrusted text as a CLI argument.
     """
 
-    provider = engine.strip().lower()
-    if provider not in MODEL_ENGINES:
-        raise ValueError(f"model engine must be one of: {', '.join(sorted(MODEL_ENGINES))}")
-    env = environ if environ is not None else os.environ
-    safe_agent = agent.strip().lower().replace("_", "-")
-    agent_key = f"ALFRED_{_agent_env_slug(safe_agent)}_{provider.upper()}_MODEL"
-    global_key = f"ALFRED_{provider.upper()}_MODEL"
-    for name in (agent_key, global_key):
-        raw = env.get(name, "")
-        if raw.strip():
-            return normalize_model_name(raw)
-
-    state_file = STATE_ROOT / "models" / safe_agent / provider
-    try:
-        raw = state_file.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    return normalize_model_name(raw)
+    return agent_model_selection(agent, engine, environ=environ).model
 
 
 def agent_repos(

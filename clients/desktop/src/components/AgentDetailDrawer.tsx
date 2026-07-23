@@ -1,12 +1,29 @@
-import { Clock3, Pause, Play, RotateCw, ScrollText, Square } from "lucide-react";
+import {
+  Clock3,
+  LoaderCircle,
+  Pause,
+  Play,
+  RotateCcw,
+  RotateCw,
+  Save,
+  ScrollText,
+  Square,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { exactTime, friendlyTime } from "../format";
 import type { FleetControlRow } from "../lib/fleetControl";
-import type { NativeAction, ScheduledRun } from "../types";
+import type {
+  AgentModelProvider,
+  AgentModelRecord,
+  AgentModelSelection,
+  NativeAction,
+  ScheduledRun,
+} from "../types";
 import { AlfredMetric, AlfredStatusDot } from "./ui/alfred";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import {
   Select,
@@ -41,6 +58,11 @@ export function AgentDetailDrawer({
   scheduleCopy,
   editableScheduleValue,
   scheduleOptions,
+  modelStatus,
+  modelsLoading,
+  modelBusy,
+  modelError,
+  onSaveModel,
   onDispatch,
   onViewLogs,
 }: {
@@ -68,6 +90,15 @@ export function AgentDetailDrawer({
   scheduleCopy: (row: FleetControlRow, schedule?: ScheduledRun) => string;
   editableScheduleValue: (schedule?: ScheduledRun) => string;
   scheduleOptions: (current: string) => Array<{ value: string; label: string }>;
+  modelStatus?: AgentModelRecord;
+  modelsLoading: boolean;
+  modelBusy: string | null;
+  modelError: string | null;
+  onSaveModel: (
+    agent: string,
+    provider: AgentModelProvider,
+    model: string | null,
+  ) => Promise<void>;
   onDispatch: (
     action: NativeAction,
     codename: string,
@@ -114,6 +145,11 @@ export function AgentDetailDrawer({
             scheduleCopy={scheduleCopy}
             editableScheduleValue={editableScheduleValue}
             scheduleOptions={scheduleOptions}
+            modelStatus={modelStatus}
+            modelsLoading={modelsLoading}
+            modelBusy={modelBusy}
+            modelError={modelError}
+            onSaveModel={onSaveModel}
             onDispatch={onDispatch}
             onViewLogs={onViewLogs}
           />
@@ -134,6 +170,11 @@ function DrawerBody({
   scheduleCopy,
   editableScheduleValue,
   scheduleOptions,
+  modelStatus,
+  modelsLoading,
+  modelBusy,
+  modelError,
+  onSaveModel,
   onDispatch,
   onViewLogs,
 }: {
@@ -159,6 +200,15 @@ function DrawerBody({
   scheduleCopy: (row: FleetControlRow, schedule?: ScheduledRun) => string;
   editableScheduleValue: (schedule?: ScheduledRun) => string;
   scheduleOptions: (current: string) => Array<{ value: string; label: string }>;
+  modelStatus?: AgentModelRecord;
+  modelsLoading: boolean;
+  modelBusy: string | null;
+  modelError: string | null;
+  onSaveModel: (
+    agent: string,
+    provider: AgentModelProvider,
+    model: string | null,
+  ) => Promise<void>;
   onDispatch: (
     action: NativeAction,
     codename: string,
@@ -339,9 +389,157 @@ function DrawerBody({
             </Button>
           </div>
         ) : null}
+
+        {modelsLoading || modelStatus || modelError ? (
+          <AgentModelControls
+            agent={row.codename}
+            status={modelStatus}
+            loading={modelsLoading}
+            busy={modelBusy}
+            error={modelError}
+            onSave={onSaveModel}
+          />
+        ) : null}
       </div>
     </div>
   );
+}
+
+const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
+
+function AgentModelControls({
+  agent,
+  status,
+  loading,
+  busy,
+  error,
+  onSave,
+}: {
+  agent: string;
+  status?: AgentModelRecord;
+  loading: boolean;
+  busy: string | null;
+  error: string | null;
+  onSave: (
+    agent: string,
+    provider: AgentModelProvider,
+    model: string | null,
+  ) => Promise<void>;
+}) {
+  return (
+    <section className="agent-drawer__models" aria-labelledby={`models-${agent}`}>
+      <div className="agent-drawer__models-head">
+        <h3 id={`models-${agent}`}>Models</h3>
+        {loading ? <LoaderCircle className="size-3.5 spin" aria-label="Loading models" /> : null}
+      </div>
+      {(["claude", "codex"] as const).map((provider) => (
+        <AgentModelRow
+          key={`${agent}:${provider}`}
+          agent={agent}
+          provider={provider}
+          selection={status?.[provider]}
+          loading={loading}
+          disabled={busy !== null}
+          busy={busy === `${agent}:${provider}`}
+          onSave={onSave}
+        />
+      ))}
+      {error ? <p className="agent-drawer__model-error" role="alert">{error}</p> : null}
+    </section>
+  );
+}
+
+function AgentModelRow({
+  agent,
+  provider,
+  selection,
+  loading,
+  disabled,
+  busy,
+  onSave,
+}: {
+  agent: string;
+  provider: AgentModelProvider;
+  selection?: AgentModelSelection;
+  loading: boolean;
+  disabled: boolean;
+  busy: boolean;
+  onSave: (
+    agent: string,
+    provider: AgentModelProvider,
+    model: string | null,
+  ) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState(selection?.persisted || "");
+
+  useEffect(() => {
+    setDraft(selection?.persisted || "");
+  }, [agent, selection?.persisted]);
+
+  const trimmed = draft.trim();
+  const valid = !trimmed || MODEL_NAME.test(trimmed);
+  const changed = trimmed !== (selection?.persisted || "");
+  const label = provider === "claude" ? "Claude" : "Codex";
+  const sourceLabel = modelSourceLabel(selection);
+
+  return (
+    <div className="agent-drawer__model-row">
+      <div className="agent-drawer__model-label">
+        <Label htmlFor={`model-${agent}-${provider}`}>{label}</Label>
+        <span title={sourceLabel}>{sourceLabel}</span>
+      </div>
+      <div className="agent-drawer__model-input">
+        <Input
+          id={`model-${agent}-${provider}`}
+          value={draft}
+          placeholder="Provider default"
+          disabled={loading || disabled}
+          aria-invalid={!valid}
+          onChange={(event) => setDraft(event.target.value)}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          title={`Save ${label} model`}
+          aria-label={`Save ${label} model for ${agent}`}
+          disabled={loading || disabled || !valid || !trimmed || !changed}
+          aria-busy={busy}
+          onClick={() => void onSave(agent, provider, trimmed)}
+        >
+          {busy ? <LoaderCircle className="spin" aria-hidden="true" /> : <Save aria-hidden="true" />}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          title={`Use ${label} default`}
+          aria-label={`Clear ${label} model for ${agent}`}
+          disabled={loading || disabled || !selection?.persisted}
+          onClick={() => void onSave(agent, provider, null)}
+        >
+          <RotateCcw aria-hidden="true" />
+        </Button>
+      </div>
+      {!valid ? <p className="agent-drawer__model-error">Use a provider model name or alias.</p> : null}
+    </div>
+  );
+}
+
+function modelSourceLabel(selection?: AgentModelSelection): string {
+  if (!selection) return "Not loaded";
+  if (selection.source === "agent-environment") {
+    return selection.persisted
+      ? `Agent override: ${selection.resolved || "invalid"}. Saved: ${selection.persisted}`
+      : `Agent override: ${selection.resolved || "invalid"}`;
+  }
+  if (selection.source === "fleet-environment") {
+    return selection.persisted
+      ? `Fleet override: ${selection.resolved || "invalid"}. Saved: ${selection.persisted}`
+      : `Fleet override: ${selection.resolved || "invalid"}`;
+  }
+  if (selection.source === "state") return `Active: ${selection.resolved}`;
+  return "Provider default";
 }
 
 function MetaItem({

@@ -167,6 +167,12 @@ for candidate in (
             sys.path.remove(candidate_path)
         sys.path.insert(0, candidate_path)
 
+from agent_capabilities import (  # noqa: E402
+    CUSTOM_AGENT_SCRIPT,
+    ENGINE_AGENT_CODENAMES,
+    ENGINE_AGENT_SCRIPTS,
+)
+
 
 class _LazyModule:
     """Import a heavy helper module only for commands that actually use it."""
@@ -190,17 +196,8 @@ agent_runner = _LazyModule("agent_runner")
 scheduler = _LazyModule("scheduler")
 
 OPT_IN_AGENTS = {"architect", "spec-planner"}
-ENGINE_AGENTS = (
-    "architect",
-    "fixer",
-    "planner",
-    "reviewer",
-    "senior-dev",
-    "test-engineer",
-    "triage",
-)
-CUSTOM_AGENT_SCRIPT = "custom-agent.py"
-ENGINE_SCRIPTS = (*(f"{agent}.py" for agent in ENGINE_AGENTS), CUSTOM_AGENT_SCRIPT)
+ENGINE_AGENTS = ENGINE_AGENT_CODENAMES
+ENGINE_SCRIPTS = ENGINE_AGENT_SCRIPTS
 NATIVE_DRY_RUN_SCRIPTS = {"senior-dev.py", "hello.py", "echo_summarise.py"}
 
 
@@ -1747,30 +1744,18 @@ def cmd_engine_set(args: argparse.Namespace) -> int:
 
 
 def _model_state_file(agent: str, provider: str) -> Path:
-    return agent_runner.STATE_ROOT / "models" / agent / provider
-
-
-def _write_model_state(agent: str, provider: str, model: str) -> Path:
-    target = _model_state_file(agent, provider)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    fd, temp_name = tempfile.mkstemp(prefix=f".{provider}.", suffix=".tmp", dir=target.parent)
-    temp_path = Path(temp_name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(model + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temp_path, target)
-    finally:
-        with contextlib.suppress(OSError):
-            os.close(fd)
-        with contextlib.suppress(OSError):
-            temp_path.unlink()
-    return target
+    return agent_runner.agent_model_state_file(agent, provider)
 
 
 def _model_label(model: str | None) -> str:
     return model or "(CLI default)"
+
+
+def _model_status_label(selection: agent_runner.AgentModelSelection) -> str:
+    label = f"{_model_label(selection.model)} [{selection.source}]"
+    if selection.persisted and selection.persisted != selection.model:
+        label += f" (saved: {selection.persisted})"
+    return label
 
 
 def cmd_model_status(args: argparse.Namespace) -> int:
@@ -1780,17 +1765,19 @@ def cmd_model_status(args: argparse.Namespace) -> int:
         except ValueError as e:
             print(f"alfred model: {e}", file=sys.stderr)
             return 2
-        print(f"{agent} Claude model: {_model_label(agent_runner.agent_model(agent, 'claude'))}")
-        print(f"{agent} Codex model: {_model_label(agent_runner.agent_model(agent, 'codex'))}")
+        claude = agent_runner.agent_model_selection(agent, "claude")
+        codex = agent_runner.agent_model_selection(agent, "codex")
+        print(f"{agent} Claude model: {_model_status_label(claude)}")
+        print(f"{agent} Codex model: {_model_status_label(codex)}")
         print(f"state directory: {agent_runner.STATE_ROOT / 'models' / agent}")
         return 0
 
-    headers = ("agent", "Claude model", "Codex model")
+    headers = ("agent", "Claude model [source]", "Codex model [source]")
     rows = [
         (
             agent,
-            _model_label(agent_runner.agent_model(agent, "claude")),
-            _model_label(agent_runner.agent_model(agent, "codex")),
+            _model_status_label(agent_runner.agent_model_selection(agent, "claude")),
+            _model_status_label(agent_runner.agent_model_selection(agent, "codex")),
         )
         for agent in _engine_agent_codenames()
     ]
@@ -1819,7 +1806,7 @@ def cmd_model_set(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    target = _write_model_state(agent, args.provider, model)
+    target = agent_runner.persist_agent_model(agent, args.provider, model)
     print(f"alfred: {agent} {args.provider} model set to {model}")
     print(f"alfred: wrote {target}")
     active = agent_runner.agent_model(agent, args.provider)
@@ -1834,10 +1821,7 @@ def cmd_model_clear(args: argparse.Namespace) -> int:
     except ValueError as e:
         print(f"alfred model: {e}", file=sys.stderr)
         return 2
-    target = _model_state_file(agent, args.provider)
-    target.unlink(missing_ok=True)
-    with contextlib.suppress(OSError):
-        target.parent.rmdir()
+    agent_runner.clear_agent_model(agent, args.provider)
     active = agent_runner.agent_model(agent, args.provider)
     print(f"alfred: {agent} {args.provider} model cleared")
     print(f"alfred: active model is {_model_label(active)}")

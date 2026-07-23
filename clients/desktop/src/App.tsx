@@ -76,6 +76,7 @@ function App() {
   const {
     baseUrl,
     snapshot,
+    snapshotRevision,
     error,
     errorRaw,
     loading,
@@ -483,6 +484,8 @@ function App() {
             <div className="space-y-4 motion-fade" key="fleet-roster">
               <CustomAgentsPanel baseUrl={baseUrl} onChanged={() => void refresh()} />
               <FleetControlView
+                baseUrl={baseUrl}
+                modelRefreshVersion={snapshotRevision}
                 agents={snapshot?.status.agents || []}
                 schedule={snapshot?.schedule || []}
                 service={fleetService}

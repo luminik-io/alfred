@@ -204,6 +204,20 @@ afterEach(() => {
 });
 
 describe("useAlfred refresh race", () => {
+  it("advances the snapshot revision after a successful same-URL refresh", async () => {
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("senior-dev")]));
+
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshotRevision).toBe(1));
+
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("senior-dev")]));
+    await act(async () => {
+      await result.current.refresh(DEFAULT_BASE_URL);
+    });
+
+    expect(result.current.snapshotRevision).toBe(2);
+  });
+
   it("ignores a stale in-flight refresh that resolves after a newer one", async () => {
     // First (slow) refresh shows senior-dev running; second (fast) refresh shows
     // senior-dev paused. The slow one resolves LAST and must not clobber the fast

@@ -283,6 +283,39 @@ export type DeleteCustomAgentResponse = {
   error?: string;
 };
 
+export type AgentModelProvider = "claude" | "codex";
+
+export type AgentModelSource =
+  | "agent-environment"
+  | "fleet-environment"
+  | "state"
+  | "provider-default";
+
+export type AgentModelSelection = {
+  resolved: string | null;
+  persisted: string | null;
+  source: AgentModelSource;
+};
+
+export type AgentModelRecord = {
+  agent: string;
+  claude: AgentModelSelection;
+  codex: AgentModelSelection;
+};
+
+export type AgentModelsResponse = {
+  agents: AgentModelRecord[];
+  count: number;
+};
+
+export type SaveAgentModelResponse = {
+  ok: boolean;
+  agent: string;
+  provider: AgentModelProvider;
+  selection: AgentModelSelection;
+  error?: string;
+};
+
 export type ActionsResponse = {
   status: string;
   actions: ReliabilitySignal[];

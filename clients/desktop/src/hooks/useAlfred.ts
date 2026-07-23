@@ -114,6 +114,7 @@ function localRuntimeUrl(port: number): string {
 export function useAlfred() {
   const [baseUrl, setBaseUrl] = useState(initialBaseUrl);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [snapshotRevision, setSnapshotRevision] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [errorRaw, setErrorRaw] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -172,6 +173,7 @@ export function useAlfred() {
         }
         const id = ++reqRef.current;
         setSnapshot(next);
+        setSnapshotRevision((current) => current + 1);
         setBaseUrl(targetBaseUrl);
         rememberBaseUrl(targetBaseUrl);
         setError(null);
@@ -199,6 +201,7 @@ export function useAlfred() {
         const next = await loadSnapshot(targetBaseUrl);
         if (id !== reqRef.current) return false;
         setSnapshot(next);
+        setSnapshotRevision((current) => current + 1);
         setBaseUrl(targetBaseUrl);
         rememberBaseUrl(targetBaseUrl);
         return true;
@@ -801,6 +804,7 @@ export function useAlfred() {
   return {
     baseUrl,
     snapshot,
+    snapshotRevision,
     error,
     errorRaw,
     loading,

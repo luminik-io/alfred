@@ -74,3 +74,40 @@ def repo_to_local() -> dict[str, str]:
         return dict(GH_REPO_TO_LOCAL)
     except Exception:  # pragma: no cover - defensive
         return {}
+
+
+def model_providers() -> frozenset[str]:
+    """Return the provider names accepted by the runtime model router."""
+
+    from agent_runner.config import MODEL_ENGINES
+
+    return MODEL_ENGINES
+
+
+def model_selection(agent: str, provider: str, *, state_root: Path) -> dict[str, str | None]:
+    """Return the resolved and persisted model state for one provider."""
+
+    from agent_runner.config import agent_model_selection
+
+    selection = agent_model_selection(agent, provider, state_root=state_root)
+    return {
+        "resolved": selection.model,
+        "persisted": selection.persisted,
+        "source": selection.source,
+    }
+
+
+def save_agent_model(agent: str, provider: str, model: str, *, state_root: Path) -> None:
+    """Persist one validated per-agent provider model."""
+
+    from agent_runner.config import persist_agent_model
+
+    persist_agent_model(agent, provider, model, state_root=state_root)
+
+
+def clear_agent_model(agent: str, provider: str, *, state_root: Path) -> None:
+    """Clear one persisted per-agent provider model."""
+
+    from agent_runner.config import clear_agent_model as clear
+
+    clear(agent, provider, state_root=state_root)

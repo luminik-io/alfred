@@ -106,6 +106,37 @@ def test_agent_model_ignores_removed_bare_codex_model_setting(fresh_agent_runner
     )
 
 
+def test_agent_model_persistence_reports_winning_source(fresh_agent_runner):
+    ar = fresh_agent_runner
+    target = ar.persist_agent_model("senior-dev", "claude", "claude-sonnet-4-5")
+
+    assert target.read_text(encoding="utf-8") == "claude-sonnet-4-5\n"
+    saved = ar.agent_model_selection("senior-dev", "claude", environ={})
+    assert saved.model == "claude-sonnet-4-5"
+    assert saved.persisted == "claude-sonnet-4-5"
+    assert saved.source == "state"
+
+    overridden = ar.agent_model_selection(
+        "senior-dev",
+        "claude",
+        environ={"ALFRED_CLAUDE_MODEL": "fleet-opus"},
+    )
+    assert overridden.model == "fleet-opus"
+    assert overridden.persisted == "claude-sonnet-4-5"
+    assert overridden.source == "fleet-environment"
+
+    ar.clear_agent_model("senior-dev", "claude")
+    cleared = ar.agent_model_selection("senior-dev", "claude", environ={})
+    assert cleared.model is None
+    assert cleared.persisted is None
+    assert cleared.source == "provider-default"
+
+
+def test_agent_model_state_rejects_unsafe_codename(fresh_agent_runner):
+    with pytest.raises(ValueError, match="agent codename"):
+        fresh_agent_runner.persist_agent_model("../../outside", "codex", "gpt-5-codex")
+
+
 def test_engine_preflight_bins_modes(fresh_agent_runner):
     """codex needs codex; hybrid defaults to claude-only; opt-in adds codex."""
     ar = fresh_agent_runner

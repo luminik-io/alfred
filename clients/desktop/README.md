@@ -62,7 +62,8 @@ submission refines the same draft. The plain-mode spec coach is the default when
 the runtime starts with `ALFRED_INTAKE_PROFILE=plain`.
 
 **Agents** is the detailed control page, organized as in-page tabs. **Roster**
-carries pause, resume, run-once, and dry-run controls per codename.
+carries pause, resume, run-once, dry-run, cadence, and per-provider model
+controls for each stable role.
 **Activity** has the live feed plus a latest-run view that shows one agent's
 most recent captured run, refreshed on the dashboard poll. **Learnings** shows
 reviewable memory candidates with promote / reject and failure-pattern harvest.
