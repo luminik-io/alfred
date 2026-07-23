@@ -185,6 +185,9 @@ export function ReposStep({
       }));
       const result = await saveSetupRepos(baseUrl, selectedRepos, repoCheckouts);
       setSavedRepos(result.repos);
+      if (result.repos.length === 0) {
+        setRepos((previous) => previous.map((repo) => ({ ...repo, selectable: true })));
+      }
       setCheckouts(
         new Map(result.repo_checkouts.map((row) => [row.repo.toLowerCase(), row] as const)),
       );

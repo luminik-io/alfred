@@ -2672,9 +2672,13 @@ def list_owner_repos(limit: int = 100) -> dict[str, Any]:
 
 
 def _gh_repo_list(limit: int) -> list[dict[str, Any]] | None:
-    accessible = _gh_accessible_repo_list(limit)
+    accessible, partial = _gh_accessible_repo_list(limit)
     if accessible is not None:
         configured = _gh_configured_owner_repo_list(limit)
+        if partial:
+            fallback = _gh_repo_list_fallback(limit) or []
+            additions = _prioritize_gh_repo_rows(configured, fallback, limit=limit)
+            return _prioritize_gh_repo_rows(accessible, additions, limit=limit)
         if configured:
             return _prioritize_gh_repo_rows(configured, accessible, limit=limit)
         return accessible
@@ -2716,8 +2720,10 @@ def _prioritize_gh_repo_rows(
     return rows
 
 
-def _gh_accessible_repo_list(limit: int) -> list[dict[str, Any]] | None:
-    """Return the authenticated account's recently updated accessible repos."""
+def _gh_accessible_repo_list(
+    limit: int,
+) -> tuple[list[dict[str, Any]] | None, bool]:
+    """Return accessible repos and whether a later API page failed."""
 
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -2745,13 +2751,12 @@ def _gh_accessible_repo_list(limit: int) -> list[dict[str, Any]] | None:
             if rows:
                 logger.warning(
                     "GitHub repository discovery page %d failed after %d accepted rows; "
-                    "supplementing with command fallback",
+                    "preserving them before command fallback",
                     page,
                     len(rows),
                 )
-                fallback = _gh_repo_list_fallback(limit)
-                return _merge_gh_repo_rows(rows, fallback or [], limit=limit)
-            return None
+                return rows, True
+            return None, False
         for raw_row in data:
             row = _normalize_gh_repo_row(raw_row)
             if row is None:
@@ -2764,7 +2769,7 @@ def _gh_accessible_repo_list(limit: int) -> list[dict[str, Any]] | None:
         if len(data) < page_size:
             break
         page += 1
-    return rows[:limit]
+    return rows[:limit], False
 
 
 def _merge_gh_repo_rows(

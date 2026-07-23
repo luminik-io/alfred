@@ -111,7 +111,10 @@ def test_gh_repo_list_reserves_configured_owner_rows_when_accessible_results_are
     monkeypatch.setattr(
         setup_mod,
         "_gh_accessible_repo_list",
-        lambda _limit: [{"nameWithOwner": "personal/recent", "updatedAt": "2026-07-23T12:00:00Z"}],
+        lambda _limit: (
+            [{"nameWithOwner": "personal/recent", "updatedAt": "2026-07-23T12:00:00Z"}],
+            False,
+        ),
     )
     monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: ["acme"])
     monkeypatch.setattr(
@@ -130,6 +133,36 @@ def test_gh_repo_list_reserves_configured_owner_rows_when_accessible_results_are
             "isFork": False,
             "updatedAt": "2026-06-01T12:00:00Z",
         }
+    ]
+
+
+def test_gh_repo_list_preserves_partial_api_rows_before_configured_owner_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        setup_mod,
+        "_gh_accessible_repo_list",
+        lambda _limit: (
+            [{"nameWithOwner": "membership/preserved", "updatedAt": "2026-07-23"}],
+            True,
+        ),
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_gh_configured_owner_repo_list",
+        lambda _limit: [
+            {"nameWithOwner": "acme/one", "updatedAt": "2026-07-22"},
+            {"nameWithOwner": "acme/two", "updatedAt": "2026-07-21"},
+        ],
+    )
+    monkeypatch.setattr(setup_mod, "_gh_repo_list_fallback", lambda _limit: [])
+
+    rows = setup_mod._gh_repo_list(2)
+
+    assert rows is not None
+    assert [row["nameWithOwner"] for row in rows] == [
+        "membership/preserved",
+        "acme/one",
     ]
 
 
