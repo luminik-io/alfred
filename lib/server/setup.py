@@ -2799,7 +2799,9 @@ def _run_gh_repo_list_command(cmd: list[str]) -> list[dict[str, Any]] | None:
 def _normalize_gh_repo_row(row: dict[str, Any]) -> dict[str, Any] | None:
     if bool(row.get("isArchived", row.get("archived", False))):
         return None
-    slug = str(row.get("nameWithOwner") or row.get("full_name") or "").strip()
+    slug = str(
+        row.get("nameWithOwner") or row.get("full_name") or row.get("fullName") or ""
+    ).strip()
     if not slug:
         return None
     return {
@@ -2824,7 +2826,24 @@ def _gh_repo_list_commands(limit: int) -> list[list[str]]:
     ]
     commands = [base]
     for owner in _repo_list_owners():
-        commands.append([_gh_bin(), "repo", "list", owner, *base[3:]])
+        commands.append(
+            [
+                _gh_bin(),
+                "search",
+                "repos",
+                "--owner",
+                owner,
+                "--archived=false",
+                "--sort",
+                "updated",
+                "--order",
+                "desc",
+                "--limit",
+                str(limit),
+                "--json",
+                "fullName,description,isPrivate,isFork,updatedAt",
+            ]
+        )
     return commands
 
 

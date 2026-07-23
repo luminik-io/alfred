@@ -248,10 +248,10 @@ def test_gh_repo_list_fallback_sorts_across_owners_before_truncating(
     def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         if cmd[1] == "api":
             return subprocess.CompletedProcess(cmd, 1, "", "request failed")
-        owner = cmd[3] if len(cmd) > 3 and not cmd[3].startswith("-") else None
+        owner = cmd[4] if cmd[1:3] == ["search", "repos"] else None
         row = (
             {
-                "nameWithOwner": "acme/recent",
+                "fullName": "acme/recent",
                 "updatedAt": "2026-07-23T12:00:00Z",
             }
             if owner == "acme"
@@ -269,6 +269,20 @@ def test_gh_repo_list_fallback_sorts_across_owners_before_truncating(
 
     assert rows is not None
     assert [row["nameWithOwner"] for row in rows] == ["acme/recent"]
+
+
+def test_gh_repo_list_fallback_explicitly_orders_each_owner_by_updated_at(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(setup_mod, "_repo_list_owners", lambda: ["acme"])
+
+    commands = setup_mod._gh_repo_list_commands(25)
+    owner_command = commands[1]
+
+    assert owner_command[1:5] == ["search", "repos", "--owner", "acme"]
+    assert owner_command[owner_command.index("--sort") + 1] == "updated"
+    assert owner_command[owner_command.index("--order") + 1] == "desc"
+    assert owner_command[owner_command.index("--limit") + 1] == "25"
 
 
 def test_github_slug_accepts_ssh_over_443_remote() -> None:
