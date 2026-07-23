@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FleetControlView } from "./FleetControlView";
 import { parseFleetServiceState } from "../lib/fleetControl";
 import type {
+  AgentModelsResponse,
   AgentSummary,
   NativeCommandResult,
   SaveAgentModelResponse,
@@ -487,6 +488,83 @@ describe("FleetControlView", () => {
       await Promise.resolve();
     });
     expect(screen.getByText("Active: new-model")).toBeInTheDocument();
+  });
+
+  it("only commits the newest overlapping inventory refresh", async () => {
+    let resolveOldest!: (value: AgentModelsResponse) => void;
+    let resolveMiddle!: (value: AgentModelsResponse) => void;
+    let resolveNewest!: (value: AgentModelsResponse) => void;
+    const inventory = (model: string): AgentModelsResponse => ({
+      agents: [
+        {
+          agent: "senior-dev",
+          claude: { resolved: model, persisted: model, source: "state" as const },
+          codex: { resolved: null, persisted: null, source: "provider-default" as const },
+        },
+      ],
+      count: 1,
+    });
+    agentApiMocks.loadAgentModels
+      .mockResolvedValueOnce(inventory("initial"))
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveOldest = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveMiddle = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveNewest = resolve;
+        }),
+      );
+
+    const props = {
+      baseUrl: "http://runtime-a",
+      agents: [agent("senior-dev")],
+      schedule: SCHEDULE,
+      service: SERVICE,
+      nativeBusy: null,
+      onRunLocalAction: vi.fn(),
+      onViewLogs: vi.fn(),
+    };
+    const { rerender } = render(
+      <FleetControlView modelRefreshVersion={1} {...props} />,
+    );
+    const user = userEvent.setup();
+    await openDrawer(user, "lucius");
+    expect(await screen.findByText("Active: initial")).toBeInTheDocument();
+
+    rerender(<FleetControlView modelRefreshVersion={2} {...props} />);
+    await waitFor(() => expect(agentApiMocks.loadAgentModels).toHaveBeenCalledTimes(2));
+    rerender(<FleetControlView modelRefreshVersion={3} {...props} />);
+    await waitFor(() => expect(agentApiMocks.loadAgentModels).toHaveBeenCalledTimes(3));
+    rerender(<FleetControlView modelRefreshVersion={4} {...props} />);
+    await waitFor(() => expect(agentApiMocks.loadAgentModels).toHaveBeenCalledTimes(4));
+
+    await act(async () => {
+      resolveMiddle(inventory("middle"));
+      await Promise.resolve();
+    });
+    expect(screen.getByLabelText("Loading models")).toBeInTheDocument();
+    expect(screen.getByText("Active: initial")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveNewest(inventory("newest"));
+      await Promise.resolve();
+    });
+    expect(await screen.findByText("Active: newest")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Loading models")).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveOldest(inventory("oldest"));
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Active: newest")).toBeInTheDocument();
+    expect(screen.queryByText("Active: oldest")).not.toBeInTheDocument();
   });
 
   it("does not carry an unsaved model draft to another agent", async () => {

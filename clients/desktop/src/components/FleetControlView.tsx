@@ -142,12 +142,14 @@ export function FleetControlView({
   const [modelBusy, setModelBusy] = useState<string | null>(null);
   const [modelError, setModelError] = useState<{ key: string; message: string } | null>(null);
   const modelRuntimeEpoch = useRef(0);
+  const modelLoadVersion = useRef(0);
   const modelMutationVersion = useRef(0);
   const affirmRef = useRef<HTMLButtonElement | null>(null);
   const agentKey = rows.map((row) => row.codename).sort().join(",");
 
   useLayoutEffect(() => {
     modelRuntimeEpoch.current += 1;
+    modelLoadVersion.current += 1;
     setModelRecords({});
     setModelsLoading(true);
     setModelBusy(null);
@@ -156,6 +158,7 @@ export function FleetControlView({
 
   useEffect(() => {
     const epoch = modelRuntimeEpoch.current;
+    const loadVersion = ++modelLoadVersion.current;
     const mutationVersion = modelMutationVersion.current;
     let cancelled = false;
     setModelsLoading(true);
@@ -165,6 +168,7 @@ export function FleetControlView({
         if (
           cancelled ||
           epoch !== modelRuntimeEpoch.current ||
+          loadVersion !== modelLoadVersion.current ||
           mutationVersion !== modelMutationVersion.current
         ) {
           return;
@@ -177,6 +181,7 @@ export function FleetControlView({
         if (
           !cancelled &&
           epoch === modelRuntimeEpoch.current &&
+          loadVersion === modelLoadVersion.current &&
           mutationVersion === modelMutationVersion.current
         ) {
           setModelError({
@@ -186,7 +191,13 @@ export function FleetControlView({
         }
       })
       .finally(() => {
-        if (!cancelled && epoch === modelRuntimeEpoch.current) setModelsLoading(false);
+        if (
+          !cancelled &&
+          epoch === modelRuntimeEpoch.current &&
+          loadVersion === modelLoadVersion.current
+        ) {
+          setModelsLoading(false);
+        }
       });
     return () => {
       cancelled = true;
