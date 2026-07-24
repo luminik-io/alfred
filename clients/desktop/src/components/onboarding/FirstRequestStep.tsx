@@ -16,15 +16,15 @@ import type { OnboardingNotice } from "./types";
  * Step 5: First request (the payoff). The journey always ends on a populated
  * Inbox, never an empty one.
  *
- *  - Maya path: starter specs as plain cards (GET /api/setup/playbooks).
+ *  - Guided path: starter specs as plain cards (GET /api/setup/playbooks).
  *    Selecting one drafts a real first Request (POST /api/setup/playbook) and
- *    lands her on Ask to refine it in plain words.
+ *    opens Ask so the request can be refined in plain words.
  *  - Demo path: "Show me a sample first" seeds a labelled demo lifecycle
  *    (POST /api/setup/demo) so Home / Pipeline render populated and clearly
  *    "Sample". The step then keeps a "Clear sample data" control
  *    (POST /api/setup/demo/clear) next to "Open Home" so the sample is never a
  *    one-way door.
- *  - Dev shortcut: skip straight to writing a brief in Ask.
+ *  - Operator shortcut: skip straight to writing a brief in Ask.
  */
 export function FirstRequestStep({
   baseUrl,

@@ -1655,7 +1655,7 @@ def _available_engine_clis() -> dict[str, str]:
     return {
         str(item.get("name") or "").strip().lower(): str(item.get("path") or "").strip()
         for item in engine_clis()
-        if item.get("installed")
+        if item.get("ready")
     }
 
 

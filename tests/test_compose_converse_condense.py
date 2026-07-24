@@ -98,18 +98,35 @@ def test_converse_engine_detects_installed_subscription_clis(monkeypatch) -> Non
     assert cc.converse_engine_from_env() == ""
 
 
-def test_converse_engine_honors_configured_binary_override(monkeypatch) -> None:
+def test_converse_engine_honors_configured_binary_override(monkeypatch, tmp_path: Path) -> None:
     import server.setup as setup
 
+    claude = tmp_path / "claude"
+    claude.write_text(
+        """#!/bin/sh
+case "$*" in
+  --version) printf 'Claude Code 2.1.0\n' ;;
+  --help) printf '%s\n' '--output-format --permission-mode --allowedTools' ;;
+  'auth status') exit 0 ;;
+  *) exit 1 ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
     monkeypatch.delenv(cc.ENGINE_ENV, raising=False)
     monkeypatch.delenv(cc.FALLBACK_ENGINE_ENV, raising=False)
     monkeypatch.delenv("ALFRED_ENGINE", raising=False)
-    monkeypatch.setenv("CLAUDE_BIN", "/opt/alfred/bin/claude")
-    monkeypatch.delenv("CODEX_BIN", raising=False)
-    monkeypatch.setattr(setup.shutil, "which", lambda *_args, **_kwargs: None)
+    monkeypatch.setenv("CLAUDE_BIN", str(claude))
+    monkeypatch.setenv("CODEX_BIN", str(tmp_path / "missing-codex"))
+    monkeypatch.setattr(
+        setup,
+        "_engine_search_path",
+        lambda _env: str(tmp_path),
+    )
 
     assert cc.converse_engine_from_env() == "claude"
-    assert cc.os.environ["CLAUDE_BIN"] == "/opt/alfred/bin/claude"
+    assert cc.os.environ["CLAUDE_BIN"] == str(claude)
 
 
 def _messages(n: int) -> list[cc.ConverseMessage]:

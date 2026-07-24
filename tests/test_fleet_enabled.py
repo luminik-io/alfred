@@ -201,6 +201,8 @@ def _run_cli(*argv: str, env_extra: dict[str, str] | None = None) -> subprocess.
             "GH_ORG",
             "OPERATOR_NAME",
             "WORKSPACE_ROOT",
+            "CLAUDE_BIN",
+            "CODEX_BIN",
         }:
             full_env.pop(key, None)
     full_env.update(env_extra or {})

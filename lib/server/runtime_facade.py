@@ -21,8 +21,9 @@ private fleet mounted.
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import Any
 
 # A prompt loader reads a prompt file and renders its ``${VAR}`` placeholders.
 # Signature: ``(path, *, extra_vars=None) -> str`` (see
@@ -75,6 +76,16 @@ def repo_to_local() -> dict[str, str]:
         return repo_to_local_map(launcher_env())
     except Exception:  # pragma: no cover - defensive
         return {}
+
+
+def engine_inventory(
+    *, environ: Mapping[str, str], search_path: str | None
+) -> list[dict[str, Any]]:
+    """Return the runtime's protocol-checked coding-engine inventory."""
+
+    from agent_runner.engine_registry import DEFAULT_ENGINE_REGISTRY
+
+    return DEFAULT_ENGINE_REGISTRY.inventory(environ=environ, search_path=search_path)
 
 
 def model_providers() -> frozenset[str]:

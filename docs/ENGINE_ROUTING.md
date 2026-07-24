@@ -6,6 +6,20 @@ Alfred is the scheduler and guardrail layer. The actual LLM work is done by the 
 
 This page covers the three modes, the precedence chain, the fallback behavior, the default routing matrix for the shipped fleet, and where the multi-engine roadmap is going.
 
+## Readiness is a verified contract
+
+Finding an executable on `PATH` is not enough. Alfred calls an engine ready only
+after bounded local probes verify the CLI version, the non-interactive flags the
+runtime depends on, and a signed-in account. Probe output is discarded so account
+details cannot leak into setup status or logs. A changed or expired CLI fails
+closed and onboarding tells the operator what needs attention.
+
+The desktop app may detect additional harnesses under **Advanced: engine probe**.
+OpenCode and Cline are visible there as candidates, but Alfred does not dispatch
+autonomous work to either one yet. Each must pass a hermetic temporary-worktree
+mutation, cancellation, permissions, and structured-output suite before its
+descriptor can become dispatchable. Detection is not advertised as support.
+
 ## Three modes
 
 | Mode | Behavior |
@@ -144,17 +158,24 @@ Alfred's default posture is to use the local CLI subscription auth you have alre
 
 The shipped fleet is designed to run on subscriptions you already have. No double billing. If you want to add API-key fallback for redundancy, set the env vars deliberately and document what you did in `$ALFRED_HOME/.env`.
 
-## Multi-engine roadmap
+## Multi-engine contract
 
-The current engine surface is two: Claude Code and Codex. The runtime contract is engine-agnostic. `AgentResult` carries `success`, `subtype`, `num_turns`, `cost_usd`, `session_id`, and `result_text` regardless of which engine produced it. Adding a third engine means writing a new `<engine>_invoke()` that returns the same shape.
+Claude Code and Codex are dispatchable today. The registry also knows how to
+identify OpenCode and Cline without pretending they are ready. `AgentResult`
+carries `success`, `subtype`, `num_turns`, `cost_usd`, `session_id`, and
+`result_text` regardless of which engine produced it.
 
-On the roadmap:
+A new engine needs all of the following before it can join a fleet:
 
-- **Gemini CLI**: when Google ships a stable non-interactive `gemini -p` equivalent with a structured result. Useful as a third independent reviewer or as a hedge against Anthropic and OpenAI both being down at once.
-- **Ollama and other local engines**: for operators who want every firing on-host with no provider call at all. Trade-off is model quality; reasonable for utility roles.
-- **Anthropic native agents**: when the upstream Agent Teams or Memory Tool primitives stabilize, Alfred will lean on them rather than re-implementing them.
+1. A stable, deterministic, non-interactive command with structured output.
+2. Explicit repository read and worktree write boundaries.
+3. A bounded cancellation contract and a reliable process exit code.
+4. Auth and model-selection probes that do not expose credentials.
+5. Hermetic mutation tests plus one opt-in live smoke test.
+6. Failure mappings for retry, breaker, and fallback classification.
 
-Each new engine needs three things to land: a CLI binary on PATH, a deterministic non-interactive prompt mode that returns structured results, and subtype entries in the `classify_result` table so the retry/breaker/fallback policy knows how to treat its failures.
+This registry is the extension point for OpenCode, Cline, Gemini CLI, and local
+model harnesses. Alfred enables them by proven capabilities, not by brand name.
 
 ## See also
 

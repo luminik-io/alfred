@@ -123,6 +123,17 @@ from .disk import (
     DiskPressure,
     disk_pressure_status,
 )
+from .engine_registry import (
+    DEFAULT_ENGINE_REGISTRY,
+    ENGINE_DESCRIPTORS,
+    EngineCapability,
+    EngineDescriptor,
+    EngineProbeResult,
+    EngineRegistry,
+    ProbeCommand,
+    clear_engine_probe_cache,
+    probe_engine,
+)
 
 # --------------------------------------------------------------------------
 # GitHub (labels, PRs, issues, claim/release, worktrees, paused repos)
@@ -465,6 +476,16 @@ __all__ = [
     "ContextGovernance",
     "context_governor_enabled",
     "govern_prompt_context",
+    # engine registry
+    "DEFAULT_ENGINE_REGISTRY",
+    "ENGINE_DESCRIPTORS",
+    "EngineCapability",
+    "EngineDescriptor",
+    "EngineProbeResult",
+    "EngineRegistry",
+    "ProbeCommand",
+    "clear_engine_probe_cache",
+    "probe_engine",
     # reliability
     "BreakerStatus",
     "CircuitBreaker",
@@ -687,6 +708,9 @@ from . import (
     disk as _sub_disk,
 )
 from . import (
+    engine_registry as _sub_engine_registry,
+)
+from . import (
     github as _sub_github,
 )
 from . import (
@@ -720,6 +744,7 @@ from . import (
 _SUBMODULE_OBJS: tuple[_ModuleType, ...] = (
     _sub_paths,
     _sub_config,
+    _sub_engine_registry,
     _sub_disk,
     _sub_process,
     _sub_result,

@@ -27,7 +27,15 @@ def _stub_common(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         setup_mod,
         "engine_clis",
-        lambda: [{"name": "codex", "installed": True, "path": "/usr/local/bin/codex"}],
+        lambda: [
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "path": "/usr/local/bin/codex",
+            }
+        ],
     )
     monkeypatch.setattr(setup_mod, "selected_repos", lambda: ["octocat/web"])
     monkeypatch.setattr(setup_mod, "load_demo_cards", lambda: {})
@@ -47,6 +55,40 @@ def _isolate_launcher_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     monkeypatch.delenv("ARCHITECT_AUTO_EXECUTE", raising=False)
     monkeypatch.delenv("ARCHITECT_PARENT_REPO", raising=False)
     monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
+
+
+def test_bootstrap_rejects_detected_candidate_engine(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        setup_mod,
+        "engine_clis",
+        lambda: [
+            {
+                "name": "opencode",
+                "display_name": "OpenCode",
+                "installed": True,
+                "protocol_compatible": True,
+                "ready": False,
+                "dispatchable": False,
+                "state": "needs_validation",
+                "detail": "OpenCode still needs a deep permission probe.",
+                "path": "/usr/local/bin/opencode",
+                "version": "opencode 2.0.0",
+                "capabilities": ["text"],
+                "failures": ["deep_probe_required"],
+            }
+        ],
+    )
+
+    payload = setup_mod.bootstrap_status()
+    checks = {row["key"]: row for row in payload["first_run"]["checks"]}
+
+    assert payload["engine_ready"] is False
+    assert checks["engine_clis"]["ready"] is False
+    assert checks["engine_clis"]["detail"] == "Detected but not ready: OpenCode."
 
 
 def _git_repo_with_origin(path: Path, slug: str) -> None:
@@ -513,19 +555,24 @@ def test_setup_config_prefers_process_env_over_runtime_env_file(
         encoding="utf-8",
     )
     monkeypatch.setenv("ALFRED_HOME", str(runtime))
-    monkeypatch.setenv("CLAUDE_BIN", "/env/claude")
-    monkeypatch.setenv("CODEX_BIN", "/env/codex")
+    claude_bin = tmp_path / "env-claude"
+    codex_bin = tmp_path / "env-codex"
+    for binary in (claude_bin, codex_bin):
+        binary.write_text("#!/bin/sh\n", encoding="utf-8")
+        binary.chmod(0o755)
+    monkeypatch.setenv("CLAUDE_BIN", str(claude_bin))
+    monkeypatch.setenv("CODEX_BIN", str(codex_bin))
     monkeypatch.setenv("GH_ORG", "env-org")
     monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
 
     launcher_env = setup_mod._code_memory_launcher_env()
     engines = {item["name"]: item for item in setup_mod.engine_clis()}
 
-    assert launcher_env["CLAUDE_BIN"] == "/env/claude"
-    assert launcher_env["CODEX_BIN"] == "/env/codex"
+    assert launcher_env["CLAUDE_BIN"] == str(claude_bin)
+    assert launcher_env["CODEX_BIN"] == str(codex_bin)
     assert launcher_env["GH_ORG"] == "env-org"
-    assert engines["claude"]["path"] == "/env/claude"
-    assert engines["codex"]["path"] == "/env/codex"
+    assert engines["claude"]["path"] == str(claude_bin)
+    assert engines["codex"]["path"] == str(codex_bin)
     assert setup_mod._repo_list_owners() == ["env-org"]
 
 
@@ -550,27 +597,37 @@ def test_setup_config_reads_runtime_env_file_but_not_legacy_alfredrc(
     (runtime / ".env").write_text(
         "\n".join(
             [
-                "CODEX_BIN=/runtime/codex",
+                f"CODEX_BIN={tmp_path / 'runtime-codex'}",
                 "GH_ORG=runtime-org",
             ]
         ),
         encoding="utf-8",
     )
+    runtime_codex = tmp_path / "runtime-codex"
+    runtime_codex.write_text("#!/bin/sh\n", encoding="utf-8")
+    runtime_codex.chmod(0o755)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("ALFRED_HOME", str(runtime))
     monkeypatch.delenv("CLAUDE_BIN", raising=False)
     monkeypatch.delenv("CODEX_BIN", raising=False)
     monkeypatch.delenv("GH_BIN", raising=False)
     monkeypatch.delenv("GH_ORG", raising=False)
-    monkeypatch.setattr(setup_mod.shutil, "which", lambda *args, **kwargs: None)
     monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "engine_inventory",
+        lambda **kwargs: [
+            {"name": "claude", "path": None},
+            {"name": "codex", "path": kwargs["environ"]["CODEX_BIN"]},
+        ],
+    )
 
     engines = {item["name"]: item for item in setup_mod.engine_clis()}
 
-    assert setup_mod._setup_config_value("CODEX_BIN") == "/runtime/codex"
+    assert setup_mod._setup_config_value("CODEX_BIN") == str(runtime_codex)
     assert setup_mod._setup_config_value("CLAUDE_BIN") == ""
     assert setup_mod._gh_bin() == "gh"
-    assert engines["codex"]["path"] == "/runtime/codex"
+    assert engines["codex"]["path"] == str(runtime_codex)
     assert engines["claude"]["path"] is None
     assert setup_mod._repo_list_owners() == ["runtime-org"]
 
@@ -1455,7 +1512,15 @@ def test_bootstrap_status_demo_fallback_survives_unresolvable_home(
     monkeypatch.setattr(
         setup_mod,
         "engine_clis",
-        lambda: [{"name": "codex", "installed": True, "path": "/usr/local/bin/codex"}],
+        lambda: [
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "path": "/usr/local/bin/codex",
+            }
+        ],
     )
     monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
@@ -1525,7 +1590,17 @@ def test_bootstrap_status_avoids_home_dependent_runtime_imports(
     )
     gh_bin.chmod(0o755)
     codex_bin = tmp_path / "codex"
-    codex_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    codex_bin.write_text(
+        """#!/bin/sh
+case "$*" in
+  --version) printf 'codex-cli 1.2.3\n' ;;
+  'exec --help') printf '%s\n' '--output-last-message --sandbox --cd' ;;
+  'login status') exit 0 ;;
+  *) exit 1 ;;
+esac
+""",
+        encoding="utf-8",
+    )
     codex_bin.chmod(0o755)
 
     monkeypatch.delenv("HOME", raising=False)

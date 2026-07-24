@@ -48,8 +48,34 @@ function makeStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
   return {
     github: { ok: true, account: "octocat", detail: "Signed in to GitHub as octocat." },
     engines: [
-      { name: "claude", installed: true, path: "/opt/homebrew/bin/claude" },
-      { name: "codex", installed: false, path: null },
+      {
+        name: "claude",
+        display_name: "Claude Code",
+        installed: true,
+        protocol_compatible: true,
+        ready: true,
+        dispatchable: true,
+        state: "ready",
+        detail: "Claude Code is compatible and signed in.",
+        path: "/opt/homebrew/bin/claude",
+        version: "Claude Code 2.1.0",
+        capabilities: ["text", "worktree-write"],
+        failures: [],
+      },
+      {
+        name: "codex",
+        display_name: "Codex",
+        installed: false,
+        protocol_compatible: false,
+        ready: false,
+        dispatchable: true,
+        state: "missing",
+        detail: "Codex is not installed.",
+        path: null,
+        version: null,
+        capabilities: ["text", "worktree-write"],
+        failures: ["missing_binary"],
+      },
     ],
     engine_ready: true,
     code_memory: {
@@ -902,7 +928,9 @@ describe("OnboardingView eight-step takeover", () => {
     expect(screen.getByText(/0 of 1 ready/i)).toBeInTheDocument();
     expect(screen.getByText(/^optional$/i)).toBeInTheDocument();
     expect(screen.getByText(/set ALFRED_CONTEXT_GOVERNOR=1/i)).toBeInTheDocument();
-    expect(screen.queryByText(/^ready$/i)).not.toBeInTheDocument();
+    const capabilityCard = screen.getByText(/local capabilities/i).closest('[data-slot="card"]');
+    expect(capabilityCard).not.toBeNull();
+    expect(within(capabilityCard as HTMLElement).queryByText(/^ready$/i)).not.toBeInTheDocument();
   });
 
   it("handles older code-memory payloads without repo metadata", async () => {
@@ -938,14 +966,33 @@ describe("OnboardingView eight-step takeover", () => {
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         engine_ready: false,
+        engines: [],
         github: { ok: false, account: null, detail: "Not signed in to GitHub." },
       }),
     );
     renderOnboarding();
     const user = userEvent.setup();
     await gotoStep(user, /^tools$/i);
-    expect(await screen.findByText(/no engine found yet/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no coding engine is installed/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /install claude code/i })).toBeInTheDocument();
+  });
+
+  it("fails an incomplete engine result visibly instead of crashing onboarding", async () => {
+    const incompleteEngine = {
+      name: "claude",
+      installed: true,
+      path: "/opt/homebrew/bin/claude",
+    } as SetupStatus["engines"][number];
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      makeStatus({ engine_ready: false, engines: [incompleteEngine] }),
+    );
+    renderOnboarding();
+    const user = userEvent.setup();
+    await gotoStep(user, /^tools$/i);
+    await user.click(await screen.findByText(/advanced: engine probe/i));
+
+    expect(screen.getByText(/incomplete readiness result/i)).toBeInTheDocument();
+    expect(screen.getByText(/^unknown$/i)).toBeInTheDocument();
   });
 
   it("shows 'Signed in' on the GitHub step and never asks for a token paste", async () => {
@@ -2310,16 +2357,28 @@ describe("OnboardingView conversational setup actions", () => {
     expect(note?.content).toContain("set_schedule completed");
   });
 
-  it("reports engine-present from fresh status on check_engine (Codex P2)", async () => {
+  it("reports a ready engine from fresh status on check_engine", async () => {
     // check_engine must read the FRESH status the refresh fetched, not the stale
-    // closure. Seed a fresh status that has an installed engine and assert the
+    // closure. Seed a fresh status that has a ready engine and assert the
     // outcome threaded to the model reports it found the engine.
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         engine_ready: true,
         engines: [
-          { name: "claude", installed: true, path: "/opt/homebrew/bin/claude" },
-          { name: "codex", installed: false, path: null },
+          {
+            name: "claude",
+            display_name: "Claude Code",
+            installed: true,
+            protocol_compatible: true,
+            ready: true,
+            dispatchable: true,
+            state: "ready",
+            detail: "Claude Code is compatible and signed in.",
+            path: "/opt/homebrew/bin/claude",
+            version: "Claude Code 2.1.0",
+            capabilities: ["text", "worktree-write"],
+            failures: [],
+          },
         ],
       }),
     );
@@ -2344,6 +2403,6 @@ describe("OnboardingView conversational setup actions", () => {
     await waitFor(() => expect(converse).toHaveBeenCalledTimes(2));
     const note = secondTurnMessages.find((m) => m.content.includes("[setup] check_engine"));
     expect(note?.content).toContain("check_engine completed");
-    expect(note?.content).toContain("claude");
+    expect(note?.content).toContain("Claude Code");
   });
 });
