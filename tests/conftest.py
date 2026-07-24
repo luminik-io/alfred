@@ -77,12 +77,15 @@ def isolate_external_operator_env(
         # These modules replace the work subprocess and exercise command,
         # timeout, and MCP wiring behavior. Give them an explicit ready engine
         # boundary so clean CI does not depend on installed CLIs or credentials.
-        import agent_runner
-        import agent_runner.process as process
+        # Patch the function object imported by the test module itself. Some
+        # isolation tests intentionally reload ``agent_runner``; patching the
+        # latest module in ``sys.modules`` can therefore miss this older, still
+        # valid function object when the full suite runs in collection order.
+        test_agent_runner = request.node.module.agent_runner
 
         def ready_probe(engine: str):
-            descriptor = agent_runner.DEFAULT_ENGINE_REGISTRY.descriptor(engine)
-            return agent_runner.EngineProbeResult(
+            descriptor = test_agent_runner.DEFAULT_ENGINE_REGISTRY.descriptor(engine)
+            return test_agent_runner.EngineProbeResult(
                 descriptor=descriptor,
                 installed=True,
                 protocol_compatible=True,
@@ -93,4 +96,8 @@ def isolate_external_operator_env(
                 version="test",
             )
 
-        monkeypatch.setattr(process, "_probe_dispatch_engine", ready_probe)
+        monkeypatch.setitem(
+            test_agent_runner.claude_invoke.__globals__,
+            "_probe_dispatch_engine",
+            ready_probe,
+        )
