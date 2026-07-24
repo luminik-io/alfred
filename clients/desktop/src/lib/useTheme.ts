@@ -4,19 +4,19 @@ import { useCallback, useEffect, useState } from "react";
 // the light/dark twin within that theme. They are independent dimensions:
 // data-theme on :root selects the theme; the .dark/.light class selects the
 // mode. See docs/THEME_SYSTEM.md.
-export type ThemeName = "alfred" | "linear";
+export type ThemeName = "mineral" | "carbon";
 export type ThemeMode = "dark" | "light";
 
-export const THEME_NAMES: ThemeName[] = ["alfred", "linear"];
+export const THEME_NAMES: ThemeName[] = ["mineral", "carbon"];
 
 export const THEME_META: Record<ThemeName, { label: string; blurb: string }> = {
-  alfred: {
-    label: "Alfred",
-    blurb: "Near-black steel-violet identity with floating glass chrome.",
+  mineral: {
+    label: "Mineral",
+    blurb: "Cool graphite, clear glass, and a restrained cyan signal.",
   },
-  linear: {
-    label: "Linear Crisp",
-    blurb: "Flatter and denser. Less glass, tighter spacing, maximum density.",
+  carbon: {
+    label: "Carbon",
+    blurb: "Dense neutral surfaces with a warm operational accent.",
   },
 };
 
@@ -24,7 +24,7 @@ const THEME_KEY = "alfred-theme-name";
 const MODE_KEY = "alfred-theme";
 
 function isThemeName(value: string | null): value is ThemeName {
-  return value === "alfred" || value === "linear";
+  return value === "mineral" || value === "carbon";
 }
 
 function isThemeMode(value: string | null): value is ThemeMode {
@@ -38,7 +38,7 @@ function initialThemeName(): ThemeName {
   } catch {
     // localStorage may be unavailable; fall back to the default.
   }
-  return "alfred";
+  return "mineral";
 }
 
 function initialMode(): ThemeMode {

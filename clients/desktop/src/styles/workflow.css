@@ -34,10 +34,10 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background:
-    radial-gradient(
-      120% 90% at 50% 0%,
-      color-mix(in oklch, var(--primary), transparent 94%),
-      transparent 60%
+    linear-gradient(
+      155deg,
+      color-mix(in oklch, var(--primary), transparent 96%),
+      transparent 48%
     ),
     color-mix(in oklch, var(--card), var(--background) 12%);
   overflow: hidden;
@@ -62,10 +62,10 @@
   border-radius: 0;
   /* Opaque ground so the dimmed page never bleeds through the canvas gaps. */
   background:
-    radial-gradient(
-      120% 90% at 50% 0%,
-      color-mix(in oklch, var(--primary), transparent 92%),
-      transparent 55%
+    linear-gradient(
+      155deg,
+      color-mix(in oklch, var(--primary), transparent 95%),
+      transparent 46%
     ),
     var(--background);
 }
@@ -168,16 +168,13 @@
   border: 1px solid
     color-mix(in oklch, var(--accent) 26%, color-mix(in oklch, var(--border), white 12%));
   border-radius: var(--radius-lg);
-  /* A hair more opaque than hero glass: the legend overlays busy canvas, so its
-     fill must stay legible while still reading as frosted brand glass. A faint
-     ember corner wash + a defined outer shadow make it register as a distinct
-     panel even over an empty near-black region of the canvas. */
+  /* Slightly stronger than hero glass because the legend overlays the canvas. */
   background:
     linear-gradient(180deg, var(--glass-highlight), transparent 34%),
-    radial-gradient(
-      120% 120% at 100% 0%,
-      color-mix(in oklch, var(--accent), transparent 82%),
-      transparent 60%
+    linear-gradient(
+      225deg,
+      color-mix(in oklch, var(--accent), transparent 92%),
+      transparent 48%
     ),
     var(--popover);
   box-shadow:
@@ -566,10 +563,10 @@
   position: absolute;
   inset: -40% 25% auto -12%;
   height: 70%;
-  background: radial-gradient(
-    60% 60% at 30% 0%,
-    color-mix(in oklch, var(--agent-accent), transparent 68%),
-    transparent 70%
+  background: linear-gradient(
+    145deg,
+    color-mix(in oklch, var(--agent-accent), transparent 78%),
+    transparent 58%
   );
   opacity: 0.35;
   pointer-events: none;

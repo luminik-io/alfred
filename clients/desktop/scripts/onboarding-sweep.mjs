@@ -1,6 +1,5 @@
-// Onboarding-stepper visual + invariant sweep. Walks every step of the first-run
-// stepper at verification widths in dark and light themes, screenshots each,
-// and runs the same hard layout invariants the pixel-sweep enforces.
+// Onboarding-stepper visual + invariant sweep. Walks every first-run step across
+// named palettes, light/dark modes, and verification widths.
 //
 //   node scripts/onboarding-sweep.mjs
 //   SWEEP_BASE=http://localhost:5294 node scripts/onboarding-sweep.mjs
@@ -15,8 +14,27 @@ const BASE = process.env.SWEEP_BASE || "http://localhost:5294";
 const THEME_NAME_STORAGE_KEY = "alfred-theme-name";
 const THEME_MODE_STORAGE_KEY = "alfred-theme";
 
-const WIDTHS = [375, 390, 768, 1024, 1280, 1680];
-const THEMES = ["dark", "light"];
+function parseWidths(value) {
+  const widths = value.split(",").map((entry) => Number(entry.trim()));
+  if (widths.length === 0 || widths.some((width) => !Number.isInteger(width) || width <= 0)) {
+    throw new Error(`SWEEP_WIDTHS must be a comma-separated list of positive integers: ${value}`);
+  }
+  return [...new Set(widths)];
+}
+
+function parsePalettes(value) {
+  const supported = new Set(["mineral", "carbon"]);
+  const palettes = value.split(",").map((entry) => entry.trim());
+  const invalid = palettes.filter((palette) => !supported.has(palette));
+  if (palettes.length === 0 || invalid.length > 0) {
+    throw new Error(`SWEEP_PALETTES must contain only mineral or carbon: ${value}`);
+  }
+  return [...new Set(palettes)];
+}
+
+const WIDTHS = parseWidths(process.env.SWEEP_WIDTHS || "375,390,768,1024,1280,1680");
+const PALETTES = parsePalettes(process.env.SWEEP_PALETTES || "mineral,carbon");
+const MODES = ["dark", "light"];
 const HEIGHT = 900;
 const STEPS = [
   "welcome",
@@ -105,19 +123,24 @@ const PROBE = () => {
   return out;
 };
 
-async function applyTheme(page, theme) {
+async function applyTheme(page, palette, mode) {
   await page.evaluate(
-    ({ t, nameKey, modeKey }) => {
+    ({ paletteName, themeMode, nameKey, modeKey }) => {
       const root = document.documentElement;
-      root.classList.toggle("dark", t === "dark");
-      root.classList.toggle("light", t !== "dark");
-      root.setAttribute("data-theme", "alfred");
+      root.classList.toggle("dark", themeMode === "dark");
+      root.classList.toggle("light", themeMode === "light");
+      root.setAttribute("data-theme", paletteName);
       try {
-        localStorage.setItem(nameKey, "alfred");
-        localStorage.setItem(modeKey, t);
+        localStorage.setItem(nameKey, paletteName);
+        localStorage.setItem(modeKey, themeMode);
       } catch {}
     },
-    { t: theme, nameKey: THEME_NAME_STORAGE_KEY, modeKey: THEME_MODE_STORAGE_KEY },
+    {
+      paletteName: palette,
+      themeMode: mode,
+      nameKey: THEME_NAME_STORAGE_KEY,
+      modeKey: THEME_MODE_STORAGE_KEY,
+    },
   );
 }
 
@@ -136,39 +159,76 @@ async function run() {
   const results = [];
   let total = 0;
 
-  for (const theme of THEMES) {
-    for (const width of WIDTHS) {
-      const context = await browser.newContext({
-        viewport: { width, height: HEIGHT },
-        deviceScaleFactor: 1,
-        colorScheme: theme === "dark" ? "dark" : "light",
-      });
-      const page = await context.newPage();
-      await page.addInitScript(
-        ({ t, nameKey, modeKey }) => {
-          try {
-            localStorage.setItem(nameKey, "alfred");
-            localStorage.setItem(modeKey, t);
-          } catch {}
-        },
-        { t: theme, nameKey: THEME_NAME_STORAGE_KEY, modeKey: THEME_MODE_STORAGE_KEY },
-      );
-      await page.goto(`${BASE}/?tab=settings`, { waitUntil: "domcontentloaded", timeout: 30000 });
-      await applyTheme(page, theme);
-      await page.waitForTimeout(600);
-      await page.waitForSelector(".alfred-onboarding-shell", { timeout: 5000 });
+  for (const palette of PALETTES) {
+    for (const mode of MODES) {
+      for (const width of WIDTHS) {
+        const context = await browser.newContext({
+          viewport: { width, height: HEIGHT },
+          deviceScaleFactor: 1,
+          colorScheme: mode,
+        });
+        const page = await context.newPage();
+        const runtimeViolations = [];
+        let runtimeViolationCursor = 0;
+        page.on("console", (message) => {
+          if (message.type() === "error" || message.type() === "warning") {
+            runtimeViolations.push({
+              kind: `console-${message.type()}`,
+              detail: message.text().slice(0, 240),
+            });
+          }
+        });
+        page.on("pageerror", (error) => {
+          runtimeViolations.push({
+            kind: "page-error",
+            detail: error.message.slice(0, 240),
+          });
+        });
+        // Keep the developer installation intact while deterministically
+        // exercising first run. Preserve the live inventory response and only
+        // lower the canonical boot gate for this browser context.
+        await page.route("**/alfred-api/api/setup/status", async (route) => {
+          const response = await route.fetch();
+          const status = await response.json();
+          status.first_run = { ...status.first_run, ready: false };
+          await route.fulfill({ response, json: status });
+        });
+        await page.addInitScript(
+          ({ paletteName, themeMode, nameKey, modeKey }) => {
+            try {
+              localStorage.setItem(nameKey, paletteName);
+              localStorage.setItem(modeKey, themeMode);
+            } catch {}
+          },
+          {
+            paletteName: palette,
+            themeMode: mode,
+            nameKey: THEME_NAME_STORAGE_KEY,
+            modeKey: THEME_MODE_STORAGE_KEY,
+          },
+        );
+        await page.goto(`${BASE}/?tab=settings`, {
+          waitUntil: "domcontentloaded",
+          timeout: 30000,
+        });
+        await applyTheme(page, palette, mode);
+        await page.waitForTimeout(600);
+        await page.waitForSelector(".alfred-onboarding-shell", { timeout: 5000 });
 
-      for (const step of STEPS) {
-        await gotoStep(page, step);
-        const violations = await page.evaluate(PROBE);
-        const shot = `${step}_${width}_${theme}.png`;
-        try {
-          await page.screenshot({ path: join(OUT_DIR, shot), fullPage: false, timeout: 8000 });
-        } catch {}
-        total += violations.length;
-        results.push({ step, width, theme, violations });
+        for (const step of STEPS) {
+          await gotoStep(page, step);
+          const runtime = runtimeViolations.slice(runtimeViolationCursor);
+          runtimeViolationCursor = runtimeViolations.length;
+          const violations = [...(await page.evaluate(PROBE)), ...runtime];
+          const shot = `${step}_${width}_${palette}_${mode}.png`;
+          try {
+            await page.screenshot({ path: join(OUT_DIR, shot), fullPage: false, timeout: 8000 });
+          } catch {}
+          total += violations.length;
+          results.push({ step, width, palette, mode, violations });
+        }
+        await context.close();
       }
-      await context.close();
     }
   }
   await browser.close();
@@ -176,13 +236,15 @@ async function run() {
   const byKind = {};
   for (const r of results) {
     for (const v of r.violations) {
-      (byKind[v.kind] = byKind[v.kind] || []).push(`[${r.step} ${r.width} ${r.theme}] ${v.detail}`);
+      (byKind[v.kind] = byKind[v.kind] || []).push(
+        `[${r.step} ${r.width} ${r.palette} ${r.mode}] ${v.detail}`,
+      );
     }
   }
   console.log(`\n=== ONBOARDING SWEEP: ${results.length} step renders, ${total} violations ===\n`);
   const kinds = Object.keys(byKind).sort();
   if (!kinds.length) {
-    console.log("CLEAN: no violations across all steps / widths / themes.");
+    console.log("CLEAN: no violations across all steps / widths / palettes / modes.");
   } else {
     for (const k of kinds) {
       console.log(`## ${k} (${byKind[k].length})`);
