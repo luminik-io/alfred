@@ -36,6 +36,27 @@ def _isolated_alfred_home(tmp_path, monkeypatch):
     yield
 
 
+@pytest.fixture()
+def ready_engine_probe(monkeypatch):
+    import agent_runner
+    import agent_runner.process as process
+
+    def ready_probe(engine: str):
+        descriptor = agent_runner.DEFAULT_ENGINE_REGISTRY.descriptor(engine)
+        return agent_runner.EngineProbeResult(
+            descriptor=descriptor,
+            installed=True,
+            protocol_compatible=True,
+            ready=True,
+            state="ready",
+            detail="ready",
+            binary=descriptor.default_binary,
+            version="test",
+        )
+
+    monkeypatch.setattr(process, "_probe_dispatch_engine", ready_probe)
+
+
 def test_preflight_passes_when_env_and_bins_resolve(monkeypatch):
     import agent_runner as ar
 
@@ -1014,7 +1035,7 @@ def test_invoke_agent_engine_hybrid_can_fallback_on_provider_failure(subtype):
     assert calls == ["claude", "codex"]
 
 
-def test_codex_invoke_rejects_unsupported_claude_controls():
+def test_codex_invoke_rejects_unsupported_claude_controls(ready_engine_probe):
     import agent_runner as ar
 
     out = ar.codex_invoke(
@@ -1034,7 +1055,9 @@ def test_codex_invoke_rejects_unsupported_claude_controls():
     assert "resume_session" in msg
 
 
-def test_codex_invoke_reads_last_message_and_writes_artifacts(tmp_path, monkeypatch):
+def test_codex_invoke_reads_last_message_and_writes_artifacts(
+    tmp_path, monkeypatch, ready_engine_probe
+):
     import agent_runner as ar
     from agent_runner import process as process_mod
 
@@ -1077,7 +1100,7 @@ def test_codex_invoke_reads_last_message_and_writes_artifacts(tmp_path, monkeypa
     assert commands[0][commands[0].index("--model") + 1] == "review-model"
 
 
-def test_codex_invoke_can_bypass_approvals_and_sandbox(tmp_path, monkeypatch):
+def test_codex_invoke_can_bypass_approvals_and_sandbox(tmp_path, monkeypatch, ready_engine_probe):
     import agent_runner as ar
     from agent_runner import process as process_mod
 
@@ -1112,7 +1135,9 @@ def test_codex_invoke_can_bypass_approvals_and_sandbox(tmp_path, monkeypatch):
     assert "--sandbox" not in cmd
 
 
-def test_codex_invoke_usage_limit_gets_quota_exhausted_subtype(tmp_path, monkeypatch):
+def test_codex_invoke_usage_limit_gets_quota_exhausted_subtype(
+    tmp_path, monkeypatch, ready_engine_probe
+):
     """A hard "hit your usage limit" wall is a credit exhaustion, not a
     transient 429. It classifies distinctly as ``error_quota_exhausted`` so
     the scheduler parks codex until its window resets instead of retrying into
@@ -1153,7 +1178,9 @@ def test_codex_invoke_usage_limit_gets_quota_exhausted_subtype(tmp_path, monkeyp
         '{"type":"error","message":"rate_limit_exceeded"}',
     ],
 )
-def test_codex_invoke_provider_limits_get_rate_limit_subtype(tmp_path, monkeypatch, stderr):
+def test_codex_invoke_provider_limits_get_rate_limit_subtype(
+    tmp_path, monkeypatch, stderr, ready_engine_probe
+):
     import agent_runner as ar
     from agent_runner import process as process_mod
 
@@ -1170,7 +1197,9 @@ def test_codex_invoke_provider_limits_get_rate_limit_subtype(tmp_path, monkeypat
     assert out.stop_reason == "error"
 
 
-def test_codex_invoke_timeout_preserves_partial_artifacts(tmp_path, monkeypatch):
+def test_codex_invoke_timeout_preserves_partial_artifacts(
+    tmp_path, monkeypatch, ready_engine_probe
+):
     import agent_runner as ar
     from agent_runner import process as process_mod
 

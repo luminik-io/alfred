@@ -27,6 +27,7 @@ def fresh_agent_runner(tmp_path, monkeypatch):
             del sys.modules[mod]
     sys.path.insert(0, str(_LIB))
     import agent_runner
+    import agent_runner.process as process
 
     def ready_probe(engine: str):
         descriptor = agent_runner.DEFAULT_ENGINE_REGISTRY.descriptor(engine)
@@ -41,6 +42,6 @@ def fresh_agent_runner(tmp_path, monkeypatch):
             version="test",
         )
 
-    monkeypatch.setattr(agent_runner.process, "_probe_dispatch_engine", ready_probe)
+    monkeypatch.setattr(process, "_probe_dispatch_engine", ready_probe)
 
     return agent_runner

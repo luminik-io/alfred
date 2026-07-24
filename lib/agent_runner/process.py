@@ -1238,10 +1238,6 @@ def codex_invoke(
         )
         return dry_run_claude_result(prompt, model=model, engine="codex")
 
-    readiness_failure = _direct_engine_readiness_failure("codex")
-    if readiness_failure is not None:
-        return readiness_failure
-
     unsupported = {
         "allowed_tools": allowed_tools,
         "max_turns": max_turns,
@@ -1264,6 +1260,10 @@ def codex_invoke(
                 + ". Use sandbox/approval controls, or route this prompt to Claude."
             ),
         )
+
+    readiness_failure = _direct_engine_readiness_failure("codex")
+    if readiness_failure is not None:
+        return readiness_failure
 
     if firing_id is None:
         stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
