@@ -1827,7 +1827,10 @@ def invoke_agent_engine(
     """
     if engine == DISABLED_ENGINE:
         return _disabled_engine_result(), DISABLED_ENGINE
-    mode = normalize_engine(engine)
+    try:
+        mode = normalize_engine(engine)
+    except ValueError:
+        return _disabled_engine_result(), DISABLED_ENGINE
     if claude_model is None:
         claude_model = agent_model(agent, "claude")
     if codex_model is None:

@@ -198,7 +198,13 @@ ENGINE_DESCRIPTORS: tuple[EngineDescriptor, ...] = (
             ProbeCommand(("--version",), reason="version_failed"),
             ProbeCommand(
                 ("exec", "--help"),
-                markers=("--output-last-message", "--sandbox", "--cd"),
+                markers=(
+                    "--output-last-message",
+                    "--sandbox",
+                    "--cd",
+                    "--skip-git-repo-check",
+                    "-c",
+                ),
             ),
         ),
         auth_command=ProbeCommand(
@@ -359,6 +365,14 @@ def _semantic_version(output: str) -> tuple[int, int, int] | None:
     )
 
 
+def _has_protocol_marker(output: str, marker: str) -> bool:
+    """Match CLI options as complete tokens and prose markers as substrings."""
+
+    if not marker.startswith("-"):
+        return marker.lower() in output.lower()
+    return re.search(rf"(?<![\w-]){re.escape(marker)}(?![\w-])", output) is not None
+
+
 def _run_probe(
     command: list[str],
     *,
@@ -440,8 +454,7 @@ def probe_engine(
                 ):
                     failure = "unsupported_version"
                     break
-            normalized = combined.lower()
-            if any(marker.lower() not in normalized for marker in requirement.markers):
+            if any(not _has_protocol_marker(combined, marker) for marker in requirement.markers):
                 failure = requirement.reason
                 break
 

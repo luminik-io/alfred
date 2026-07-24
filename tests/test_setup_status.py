@@ -1594,7 +1594,7 @@ def test_bootstrap_status_avoids_home_dependent_runtime_imports(
         """#!/bin/sh
 case "$*" in
   --version) printf 'codex-cli 1.2.3\n' ;;
-  'exec --help') printf '%s\n' '--output-last-message --sandbox --cd' ;;
+  'exec --help') printf '%s\n' '--output-last-message --sandbox --cd --skip-git-repo-check -c' ;;
   'login status') exit 0 ;;
   *) exit 1 ;;
 esac

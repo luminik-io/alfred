@@ -640,3 +640,25 @@ def test_invalid_engine_configuration_returns_without_dispatch(fresh_agent_runne
     assert engine_used == "disabled"
     assert result.subtype == "error_configuration"
     assert result.raw["engine_readiness"] == "invalid_configuration"
+
+
+def test_raw_invalid_engine_configuration_returns_without_dispatch(fresh_agent_runner):
+    ar = fresh_agent_runner
+    calls: list[str] = []
+
+    result, engine_used = ar.invoke_agent_engine(
+        "hi",
+        engine="bogus",
+        agent="planning-assistant",
+        firing_id="f-invalid-raw-config",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        claude_fn=lambda *args, **kwargs: calls.append("claude"),
+        codex_fn=lambda *args, **kwargs: calls.append("codex"),
+    )
+
+    assert calls == []
+    assert engine_used == "disabled"
+    assert result.subtype == "error_configuration"
+    assert result.raw["engine_readiness"] == "invalid_configuration"

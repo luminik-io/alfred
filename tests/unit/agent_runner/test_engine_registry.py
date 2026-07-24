@@ -137,7 +137,7 @@ def test_probe_process_receives_only_non_secret_runtime_context(fresh_agent_runn
         args = tuple(command[1:])
         outputs = {
             ("--version",): "codex 1.2.3\n",
-            ("exec", "--help"): "--output-last-message --sandbox --cd\n",
+            ("exec", "--help"): ("--output-last-message --sandbox --cd --skip-git-repo-check -c\n"),
             ("login", "status"): "signed in\n",
         }
         return subprocess.CompletedProcess(command, 0, outputs[args], "")
@@ -202,7 +202,7 @@ def test_codex_api_key_never_bypasses_cli_auth_probe(fresh_agent_runner, tmp_pat
         calls.append(args)
         outputs = {
             ("--version",): "codex 1.2.3\n",
-            ("exec", "--help"): "--output-last-message --sandbox --cd\n",
+            ("exec", "--help"): ("--output-last-message --sandbox --cd --skip-git-repo-check -c\n"),
             ("login", "status"): "signed in\n",
         }
         return subprocess.CompletedProcess(command, 0, outputs[args], "")
@@ -232,7 +232,11 @@ def test_invalid_codex_api_key_cannot_make_engine_ready(fresh_agent_runner, tmp_
         args = tuple(command[1:])
         outputs = {
             ("--version",): (0, "codex 1.2.3\n", ""),
-            ("exec", "--help"): (0, "--output-last-message --sandbox --cd\n", ""),
+            ("exec", "--help"): (
+                0,
+                "--output-last-message --sandbox --cd --skip-git-repo-check -c\n",
+                "",
+            ),
             ("login", "status"): (1, "", "not signed in"),
         }
         returncode, stdout, stderr = outputs[args]
@@ -314,13 +318,90 @@ def test_probe_fails_closed_on_protocol_drift(fresh_agent_runner, tmp_path: Path
     assert ("login", "status") not in calls
 
 
+@pytest.mark.parametrize(
+    "missing_marker",
+    (
+        "--output-last-message",
+        "--sandbox",
+        "--cd",
+        "--skip-git-repo-check",
+        "-c",
+    ),
+)
+def test_codex_probe_requires_every_dispatch_flag(
+    fresh_agent_runner,
+    tmp_path: Path,
+    missing_marker: str,
+):
+    ar = fresh_agent_runner
+    binary = _executable(tmp_path / "codex")
+    dispatch_flags = {
+        "--output-last-message",
+        "--sandbox",
+        "--cd",
+        "--skip-git-repo-check",
+        "-c",
+    }
+    help_output = " ".join(sorted(dispatch_flags - {missing_marker}))
+    runner, calls = _runner(
+        {
+            ("--version",): (0, "codex 1.2.3\n", ""),
+            ("exec", "--help"): (0, help_output, ""),
+        }
+    )
+
+    result = ar.probe_engine(
+        ar.DEFAULT_ENGINE_REGISTRY.descriptor("codex"),
+        environ={"CODEX_BIN": str(binary), "PATH": ""},
+        runner=runner,
+        use_cache=False,
+    )
+
+    assert result.state == "incompatible"
+    assert result.failures == ("protocol_mismatch",)
+    assert ("login", "status") not in calls
+
+
+def test_codex_probe_does_not_treat_other_config_or_directory_flags_as_short_config(
+    fresh_agent_runner,
+    tmp_path: Path,
+):
+    ar = fresh_agent_runner
+    binary = _executable(tmp_path / "codex")
+    runner, calls = _runner(
+        {
+            ("--version",): (0, "codex 1.2.3\n", ""),
+            ("exec", "--help"): (
+                0,
+                "--output-last-message --sandbox -C --cd --skip-git-repo-check --strict-config\n",
+                "",
+            ),
+        }
+    )
+
+    result = ar.probe_engine(
+        ar.DEFAULT_ENGINE_REGISTRY.descriptor("codex"),
+        environ={"CODEX_BIN": str(binary), "PATH": ""},
+        runner=runner,
+        use_cache=False,
+    )
+
+    assert result.state == "incompatible"
+    assert result.failures == ("protocol_mismatch",)
+    assert ("login", "status") not in calls
+
+
 def test_probe_reports_auth_required_without_leaking_output(fresh_agent_runner, tmp_path: Path):
     ar = fresh_agent_runner
     binary = _executable(tmp_path / "codex")
     runner, _calls = _runner(
         {
             ("--version",): (0, "codex 1.2.3\n", ""),
-            ("exec", "--help"): (0, "--output-last-message --sandbox --cd\n", ""),
+            ("exec", "--help"): (
+                0,
+                "--output-last-message --sandbox --cd --skip-git-repo-check -c\n",
+                "",
+            ),
             ("login", "status"): (1, "private account details", "expired token"),
         }
     )
@@ -425,7 +506,7 @@ def test_cached_protocol_still_rechecks_auth(fresh_agent_runner, tmp_path: Path)
             return subprocess.CompletedProcess(
                 command,
                 0,
-                "--output-last-message --sandbox --cd\n",
+                "--output-last-message --sandbox --cd --skip-git-repo-check -c\n",
                 "",
             )
         if args == ("login", "status"):
