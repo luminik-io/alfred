@@ -22,6 +22,7 @@ import logging
 import os
 import re
 import secrets
+from collections.abc import Iterable
 from contextlib import suppress
 from dataclasses import asdict, is_dataclass, replace
 from datetime import UTC, datetime
@@ -669,6 +670,7 @@ def _converse_memory_grounding(
     *,
     messages: list[Any],
     base_draft: IssueDraft,
+    context_repos: Iterable[str] = (),
 ) -> str:
     """Recall relevant fleet lessons for a converse turn, gated on build intent.
 
@@ -689,7 +691,13 @@ def _converse_memory_grounding(
     # Reuse the single last-user-message extraction so this gate and the turn
     # parser always classify against identical input.
     last_user = cc.last_user_message(messages)
-    intent = cc.resolve_intent(None, last_user_message=last_user, draft=base_draft, done=False)
+    intent = cc.resolve_intent(
+        None,
+        last_user_message=last_user,
+        draft=base_draft,
+        done=False,
+        context_repos=context_repos,
+    )
     if intent != cc.INTENT_BUILD:
         return ""
 
@@ -1082,7 +1090,12 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
     )
     # Recall fleet lessons only when this turn looks like real work (gated, not
     # always-on), and append them to the grounding as advisory context.
-    repo_grounding += _converse_memory_grounding(request, messages=messages, base_draft=base_draft)
+    repo_grounding += _converse_memory_grounding(
+        request,
+        messages=messages,
+        base_draft=base_draft,
+        context_repos=repos,
+    )
     code_map = cc.load_code_map(_compose_code_map_path())
     # Plain mode is per-request: the client toggle wins when present, and the
     # ALFRED_INTAKE_PROFILE server env is only the default when the body omits
@@ -1129,6 +1142,7 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
         code_map=code_map,
         intake_guidance=intake_guidance,
         base_draft=base_draft,
+        context_repos=repos,
         engine=engine,
         workdir=_planning_workdir(request),
         on_condense=_converse_condense_recorder(request, draft_id=draft_id),
@@ -1217,7 +1231,12 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
     )
     # Recall fleet lessons only when this turn looks like real work (gated, not
     # always-on), and append them to the grounding as advisory context.
-    repo_grounding += _converse_memory_grounding(request, messages=messages, base_draft=base_draft)
+    repo_grounding += _converse_memory_grounding(
+        request,
+        messages=messages,
+        base_draft=base_draft,
+        context_repos=repos,
+    )
     code_map = cc.load_code_map(_compose_code_map_path())
     # Plain mode is per-request: the client toggle wins when present, and the
     # ALFRED_INTAKE_PROFILE server env is only the default when the body omits
@@ -1274,6 +1293,7 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
             code_map=code_map,
             intake_guidance=intake_guidance,
             base_draft=base_draft,
+            context_repos=repos,
             engine=engine,
             workdir=workdir,
             firing_id=firing_id,
@@ -1744,7 +1764,12 @@ def _plain_compose_title(text: str) -> str:
     return title[:1].upper() + title[1:] if title else "Plan Alfred work"
 
 
-def _compose_question_intent(text: str, base_draft: IssueDraft) -> bool:
+def _compose_question_intent(
+    text: str,
+    base_draft: IssueDraft,
+    *,
+    context_repos: Iterable[str] = (),
+) -> bool:
     """True when ``text`` is a plain question, not a change request.
 
     Thin wrapper over the shared, deterministic
@@ -1755,7 +1780,14 @@ def _compose_question_intent(text: str, base_draft: IssueDraft) -> bool:
     """
     import compose_converse as cc
 
-    return cc.classify_message_intent(text, draft=base_draft) == cc.INTENT_CONVERSATION
+    return (
+        cc.classify_message_intent(
+            text,
+            draft=base_draft,
+            context_repos=context_repos,
+        )
+        == cc.INTENT_CONVERSATION
+    )
 
 
 def _compose_question_reply(draft_id: str | None) -> dict[str, Any]:

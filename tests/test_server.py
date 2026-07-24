@@ -966,6 +966,67 @@ def test_compose_draft_read_only_setup_summary_stays_conversational(
     assert saved == []
 
 
+def test_compose_draft_repo_scoped_question_does_not_create_plan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A repository prefix is grounding, not evidence that a question is work."""
+    monkeypatch.delenv("ALFRED_PLANNING_ASSISTANT_ENGINE", raising=False)
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/plans/draft",
+        headers=_auth_headers(state),
+        json={
+            "text": (
+                "In luminik-io/alfred, explain how the current engine readiness gate prevents "
+                "an unauthenticated coding engine from dispatching. "
+                "Do not change code or create an issue."
+            ),
+            "draft": {"repos": ["luminik-io/alfred"]},
+            "context_repos": ["luminik-io/alfred"],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["intent"] == "conversation"
+    assert payload["draft_id"] == ""
+    assert payload["saved_path"] == ""
+    assert not payload["title"]
+    drafts_dir = state / "planning-drafts"
+    saved = list(drafts_dir.glob("compose-*.json")) if drafts_dir.is_dir() else []
+    assert saved == []
+
+
+def test_repo_scoped_read_only_question_skips_planning_memory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_provider(_request: object) -> object:
+        raise AssertionError("read-only questions must not recall planning memory")
+
+    monkeypatch.setattr(server_views, "_planning_memory_provider", fail_provider)
+    messages = [
+        cc.ConverseMessage(
+            role="user",
+            content=(
+                "In luminik-io/alfred, explain how the engine gate works. Do not change code."
+            ),
+        )
+    ]
+
+    assert (
+        server_views._converse_memory_grounding(
+            SimpleNamespace(),
+            messages=messages,
+            base_draft=IssueDraft(title=""),
+            context_repos=["luminik-io/alfred"],
+        )
+        == ""
+    )
+
+
 def test_compose_draft_still_drafts_a_change_request(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

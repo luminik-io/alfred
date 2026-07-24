@@ -918,13 +918,19 @@ def _default_build_turn(
     except Exception:
         return None
 
-    repos = _context_repos(messages)
+    repo_to_local = _repo_to_local()
+    grounding_repos = _context_repos(messages)
     try:
         workspace_root = _workspace_root()
-        repo_grounding = cc.build_repo_grounding(
-            repos,
+        intent_repos = _validated_context_repos(
+            messages,
+            repo_to_local,
             workspace_root=workspace_root,
-            repo_to_local=_repo_to_local(),
+        )
+        repo_grounding = cc.build_repo_grounding(
+            grounding_repos,
+            workspace_root=workspace_root,
+            repo_to_local=repo_to_local,
         )
         code_map = cc.load_code_map(_code_map_path())
         intake_guidance = cc.intake_guidance_for(os.environ.get("ALFRED_INTAKE_PROFILE") or "")
@@ -955,6 +961,7 @@ def _default_build_turn(
         code_map=code_map,
         intake_guidance=intake_guidance,
         base_draft=IssueDraft(title=""),
+        context_repos=intent_repos,
         engine=engine,
         workdir=workdir,
         timeout=timeout,
@@ -1051,6 +1058,31 @@ def _context_repos(messages: Iterable[ConverseMessage]) -> list[str]:
                 seen.add(match)
                 out.append(match)
     return out
+
+
+def _validated_context_repos(
+    messages: Iterable[ConverseMessage],
+    repo_to_local: dict[str, str],
+    *,
+    workspace_root: Path | None = None,
+) -> list[str]:
+    """Return mentioned slugs that Alfred can resolve to local code."""
+    configured = {key.lower().removesuffix(".git") for key in repo_to_local}
+    validated: list[str] = []
+    for repo in _context_repos(messages):
+        canonical = repo[:-4] if repo.lower().endswith(".git") else repo
+        normalized = canonical.lower()
+        bare = normalized.rsplit("/", 1)[-1]
+        bare_checkout = canonical.rsplit("/", 1)[-1]
+        workspace_checkout = (
+            workspace_root is not None
+            and bare_checkout not in {".", ".."}
+            and Path(bare_checkout).name == bare_checkout
+            and (workspace_root / bare_checkout).is_dir()
+        )
+        if normalized in configured or bare in configured or workspace_checkout:
+            validated.append(canonical)
+    return validated
 
 
 def _workspace_root() -> Path:

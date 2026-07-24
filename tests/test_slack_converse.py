@@ -38,6 +38,409 @@ from compose_converse import (  # noqa: E402
 from spec_helper import IssueDraft  # noqa: E402
 
 
+def test_default_build_turn_passes_repo_context_to_intent_guard(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import compose_converse as cc
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(sc, "_context_repos", lambda _messages: ["luminik-io/alfred"])
+    monkeypatch.setattr(sc, "_workspace_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        sc,
+        "_repo_to_local",
+        lambda: {"luminik-io/alfred": str(tmp_path)},
+    )
+    monkeypatch.setattr(sc, "_code_map_path", lambda: tmp_path / "code-map.json")
+    monkeypatch.setattr(sc, "_interrogator_prompt_path", lambda: tmp_path / "prompt.md")
+    monkeypatch.setattr(sc, "_operational_grounding", lambda: "")
+    monkeypatch.setattr(cc, "build_repo_grounding", lambda *args, **kwargs: "")
+    monkeypatch.setattr(cc, "load_code_map", lambda _path: "")
+    monkeypatch.setattr(cc, "render_system_prompt", lambda **kwargs: "prompt")
+
+    def capture_run_turn(**kwargs: object) -> ConverseTurn:
+        captured.update(kwargs)
+        return _turn("The gate checks authentication.", INTENT_CONVERSATION)
+
+    monkeypatch.setattr(cc, "run_turn", capture_run_turn)
+
+    result = sc._default_build_turn(
+        messages=[
+            ConverseMessage(
+                role="user",
+                content=(
+                    "In luminik-io/alfred, explain how the engine gate works. Do not change code."
+                ),
+            )
+        ],
+        engine="claude",
+        timeout=30,
+        firing_id="test-firing",
+        workdir=tmp_path,
+    )
+
+    assert result is not None
+    assert captured["context_repos"] == ["luminik-io/alfred"]
+
+
+def test_default_build_turn_canonicalizes_dot_git_for_grounding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import compose_converse as cc
+
+    captured: dict[str, object] = {}
+    checkout = tmp_path / "frontend"
+    checkout.mkdir()
+    (checkout / "CLAUDE.md").write_text("Frontend repository canon.\n")
+    monkeypatch.setattr(sc, "_workspace_root", lambda: tmp_path)
+    monkeypatch.setattr(sc, "_repo_to_local", lambda: {"acme/frontend.git": str(checkout)})
+    monkeypatch.setattr(sc, "_code_map_path", lambda: tmp_path / "code-map.json")
+    monkeypatch.setattr(sc, "_interrogator_prompt_path", lambda: tmp_path / "prompt.md")
+    monkeypatch.setattr(sc, "_operational_grounding", lambda: "")
+
+    monkeypatch.setattr(cc, "load_code_map", lambda _path: "")
+
+    def capture_prompt(**kwargs: object) -> str:
+        captured.update(kwargs)
+        return "prompt"
+
+    monkeypatch.setattr(cc, "render_system_prompt", capture_prompt)
+    monkeypatch.setattr(
+        cc,
+        "run_turn",
+        lambda **kwargs: _turn("The gate is ready.", INTENT_CONVERSATION),
+    )
+
+    result = sc._default_build_turn(
+        messages=[
+            ConverseMessage(
+                role="user",
+                content="In acme/frontend.git, explain the engine status. Do not change code.",
+            )
+        ],
+        engine="claude",
+        timeout=30,
+        firing_id="test-firing",
+        workdir=tmp_path,
+    )
+
+    assert result is not None
+    assert "Frontend repository canon." in str(captured["repo_grounding"])
+
+
+def test_repo_grounding_canonicalizes_case_insensitive_dot_git(tmp_path: Path) -> None:
+    import compose_converse as cc
+
+    checkout = tmp_path / "frontend"
+    checkout.mkdir()
+    (checkout / "CLAUDE.md").write_text("Canonical checkout.\n")
+
+    for repo in ("acme/frontend.GIT", "acme/frontend.GiT"):
+        grounding = cc.build_repo_grounding(
+            [repo],
+            workspace_root=tmp_path,
+            repo_to_local={"acme/frontend": str(checkout)},
+        )
+        assert "Canonical checkout." in grounding, repo
+
+
+def test_workspace_repo_grounding_canonicalizes_case_insensitive_dot_git(tmp_path: Path) -> None:
+    import compose_converse as cc
+
+    checkout = tmp_path / "frontend"
+    checkout.mkdir()
+    (checkout / "CLAUDE.md").write_text("Workspace checkout.\n")
+
+    for repo in ("acme/frontend.GIT", "acme/frontend.GiT"):
+        grounding = cc.build_repo_grounding([repo], workspace_root=tmp_path)
+        assert "Workspace checkout." in grounding, repo
+
+
+def test_repo_grounding_rejects_unsafe_canonical_dot_git_names(tmp_path: Path) -> None:
+    import compose_converse as cc
+
+    (tmp_path / "CLAUDE.md").write_text("Workspace root must stay private.\n")
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "CLAUDE.md").write_text("Git metadata must stay private.\n")
+
+    unsafe = ["acme/.git", "acme/.GIT", "acme/..git", "acme/...git", "acme/.git.git"]
+    assert cc.normalize_repos(unsafe) == []
+    for repo in unsafe:
+        grounding = cc.build_repo_grounding([repo], workspace_root=tmp_path)
+        assert "Workspace root must stay private." not in grounding, repo
+        assert "Git metadata must stay private." not in grounding, repo
+
+
+def test_repo_grounding_prefers_exact_key_before_casefold_alias(tmp_path: Path) -> None:
+    import compose_converse as cc
+
+    alias_checkout = tmp_path / "alias"
+    exact_checkout = tmp_path / "exact"
+    alias_checkout.mkdir()
+    exact_checkout.mkdir()
+    (alias_checkout / "CLAUDE.md").write_text("Case-folded alias.\n")
+    (exact_checkout / "CLAUDE.md").write_text("Exact checkout.\n")
+
+    entries = [
+        ("ACME/FRONTEND", str(alias_checkout)),
+        ("acme/frontend", str(exact_checkout)),
+    ]
+    for ordered_entries in (entries, list(reversed(entries))):
+        grounding = cc.build_repo_grounding(
+            ["acme/frontend"],
+            workspace_root=tmp_path,
+            repo_to_local=dict(ordered_entries),
+        )
+        assert "Exact checkout." in grounding
+        assert "Case-folded alias." not in grounding
+
+
+def test_repo_grounding_prefers_casefolded_full_slug_before_exact_bare(tmp_path: Path) -> None:
+    import compose_converse as cc
+
+    full_checkout = tmp_path / "full"
+    bare_checkout = tmp_path / "bare"
+    full_checkout.mkdir()
+    bare_checkout.mkdir()
+    (full_checkout / "CLAUDE.md").write_text("Full slug checkout.\n")
+    (bare_checkout / "CLAUDE.md").write_text("Bare checkout.\n")
+
+    grounding = cc.build_repo_grounding(
+        ["ACME/Frontend"],
+        workspace_root=tmp_path,
+        repo_to_local={
+            "acme/frontend": str(full_checkout),
+            "Frontend": str(bare_checkout),
+        },
+    )
+
+    assert "Full slug checkout." in grounding
+    assert "Bare checkout." not in grounding
+
+
+def test_default_build_turn_prefers_exact_dot_git_mapping(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import compose_converse as cc
+
+    captured: dict[str, object] = {}
+    canonical_checkout = tmp_path / "canonical"
+    dot_git_checkout = tmp_path / "dot-git"
+    canonical_checkout.mkdir()
+    dot_git_checkout.mkdir()
+    (canonical_checkout / "CLAUDE.md").write_text("Canonical checkout.\n")
+    (dot_git_checkout / "CLAUDE.md").write_text("Exact dot-git checkout.\n")
+    monkeypatch.setattr(sc, "_workspace_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        sc,
+        "_repo_to_local",
+        lambda: {
+            "acme/frontend": str(canonical_checkout),
+            "acme/frontend.git": str(dot_git_checkout),
+        },
+    )
+    monkeypatch.setattr(sc, "_code_map_path", lambda: tmp_path / "code-map.json")
+    monkeypatch.setattr(sc, "_interrogator_prompt_path", lambda: tmp_path / "prompt.md")
+    monkeypatch.setattr(sc, "_operational_grounding", lambda: "")
+    monkeypatch.setattr(cc, "load_code_map", lambda _path: "")
+
+    def capture_prompt(**kwargs: object) -> str:
+        captured.update(kwargs)
+        return "prompt"
+
+    monkeypatch.setattr(cc, "render_system_prompt", capture_prompt)
+    monkeypatch.setattr(
+        cc,
+        "run_turn",
+        lambda **kwargs: _turn("The gate is ready.", INTENT_CONVERSATION),
+    )
+
+    result = sc._default_build_turn(
+        messages=[
+            ConverseMessage(
+                role="user",
+                content="In acme/frontend.git, explain the engine status. Do not change code.",
+            )
+        ],
+        engine="claude",
+        timeout=30,
+        firing_id="test-firing",
+        workdir=tmp_path,
+    )
+
+    assert result is not None
+    assert "Exact dot-git checkout." in str(captured["repo_grounding"])
+    assert "Canonical checkout." not in str(captured["repo_grounding"])
+
+
+def test_default_build_turn_prefers_explicit_bare_dot_git_mapping(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import compose_converse as cc
+
+    captured: dict[str, object] = {}
+    canonical_checkout = tmp_path / "canonical"
+    dot_git_checkout = tmp_path / "dot-git"
+    canonical_checkout.mkdir()
+    dot_git_checkout.mkdir()
+    (canonical_checkout / "CLAUDE.md").write_text("Canonical checkout.\n")
+    (dot_git_checkout / "CLAUDE.md").write_text("Explicit bare dot-git checkout.\n")
+    monkeypatch.setattr(sc, "_workspace_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        sc,
+        "_repo_to_local",
+        lambda: {
+            "acme/frontend": str(canonical_checkout),
+            "frontend.git": str(dot_git_checkout),
+        },
+    )
+    monkeypatch.setattr(sc, "_code_map_path", lambda: tmp_path / "code-map.json")
+    monkeypatch.setattr(sc, "_interrogator_prompt_path", lambda: tmp_path / "prompt.md")
+    monkeypatch.setattr(sc, "_operational_grounding", lambda: "")
+    monkeypatch.setattr(cc, "load_code_map", lambda _path: "")
+
+    def capture_prompt(**kwargs: object) -> str:
+        captured.update(kwargs)
+        return "prompt"
+
+    monkeypatch.setattr(cc, "render_system_prompt", capture_prompt)
+    monkeypatch.setattr(
+        cc,
+        "run_turn",
+        lambda **kwargs: _turn("The gate is ready.", INTENT_CONVERSATION),
+    )
+
+    result = sc._default_build_turn(
+        messages=[
+            ConverseMessage(
+                role="user",
+                content="In acme/frontend.git, explain the engine status. Do not change code.",
+            )
+        ],
+        engine="claude",
+        timeout=30,
+        firing_id="test-firing",
+        workdir=tmp_path,
+    )
+
+    assert result is not None
+    assert "Explicit bare dot-git checkout." in str(captured["repo_grounding"])
+    assert "Canonical checkout." not in str(captured["repo_grounding"])
+
+
+def test_default_build_turn_preserves_unmapped_repo_for_workspace_grounding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import compose_converse as cc
+
+    captured: dict[str, object] = {}
+    (tmp_path / "widgets").mkdir()
+    monkeypatch.setattr(sc, "_workspace_root", lambda: tmp_path)
+    monkeypatch.setattr(sc, "_repo_to_local", lambda: {})
+    monkeypatch.setattr(sc, "_code_map_path", lambda: tmp_path / "code-map.json")
+    monkeypatch.setattr(sc, "_interrogator_prompt_path", lambda: tmp_path / "prompt.md")
+    monkeypatch.setattr(sc, "_operational_grounding", lambda: "")
+
+    def capture_grounding(repos: object, **_kwargs: object) -> str:
+        captured["grounding_repos"] = list(repos)  # type: ignore[arg-type]
+        return "repo grounding"
+
+    monkeypatch.setattr(cc, "build_repo_grounding", capture_grounding)
+    monkeypatch.setattr(cc, "load_code_map", lambda _path: "")
+    monkeypatch.setattr(cc, "render_system_prompt", lambda **kwargs: "prompt")
+
+    def capture_run_turn(**kwargs: object) -> ConverseTurn:
+        captured.update(kwargs)
+        return _turn("The workspace checkout explains the gate.", INTENT_CONVERSATION)
+
+    monkeypatch.setattr(cc, "run_turn", capture_run_turn)
+
+    result = sc._default_build_turn(
+        messages=[
+            ConverseMessage(
+                role="user",
+                content="In acme/widgets, explain how the gate works. Do not change code.",
+            )
+        ],
+        engine="claude",
+        timeout=30,
+        firing_id="test-firing",
+        workdir=tmp_path,
+    )
+
+    assert result is not None
+    assert captured["grounding_repos"] == ["acme/widgets"]
+    assert captured["context_repos"] == ["acme/widgets"]
+
+
+def test_slack_repo_context_rejects_unconfigured_path() -> None:
+    messages = [
+        ConverseMessage(
+            role="user",
+            content="In ui/dashboard, show the engine status. Do not change navigation.",
+        )
+    ]
+
+    assert (
+        sc._validated_context_repos(
+            messages,
+            {"luminik-io/alfred": "/code/alfred"},
+        )
+        == []
+    )
+
+
+def test_slack_repo_context_accepts_configured_bare_alias() -> None:
+    for slug in ("acme/frontend", "acme/frontend.git"):
+        messages = [
+            ConverseMessage(
+                role="user",
+                content=f"In {slug}, explain the engine status. Do not change code.",
+            )
+        ]
+
+        assert sc._validated_context_repos(messages, {"frontend": "/code/frontend"}) == [
+            "acme/frontend"
+        ]
+
+
+def test_slack_repo_context_accepts_existing_workspace_checkout(tmp_path: Path) -> None:
+    (tmp_path / "widgets").mkdir()
+    messages = [
+        ConverseMessage(
+            role="user",
+            content="In acme/widgets, explain the engine status. Do not change code.",
+        )
+    ]
+
+    assert sc._validated_context_repos(
+        messages,
+        {},
+        workspace_root=tmp_path,
+    ) == ["acme/widgets"]
+
+
+def test_slack_repo_context_preserves_case_for_workspace_checkout(tmp_path: Path) -> None:
+    (tmp_path / "Frontend").mkdir()
+    messages = [
+        ConverseMessage(
+            role="user",
+            content="In acme/Frontend, explain the engine status. Do not change code.",
+        )
+    ]
+
+    assert sc._validated_context_repos(
+        messages,
+        {},
+        workspace_root=tmp_path,
+    ) == ["acme/Frontend"]
+
+
 def test_repo_map_reads_persisted_onboarding_changes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

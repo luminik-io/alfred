@@ -222,6 +222,7 @@ async def api_compose_draft(request: Request) -> JSONResponse:
     draft_id = views._safe_compose_draft_id(body.get("draft_id"))
     prior_payload, prior_path = views._read_compose_draft_payload(request, draft_id)
     base_draft = views._compose_base_draft(body, prior_payload)
+    context_repos = views._compose_context_repos(body, base_draft=base_draft)
 
     # A question must get an answer, not a fabricated plan. This one-shot
     # endpoint is the reliable fallback the Ask surface drops to when no live
@@ -243,7 +244,11 @@ async def api_compose_draft(request: Request) -> JSONResponse:
         text
         and prior_payload is None
         and not views._draft_has_signal(content_draft)
-        and views._compose_question_intent(text, content_draft)
+        and views._compose_question_intent(
+            text,
+            content_draft,
+            context_repos=context_repos,
+        )
     ):
         return JSONResponse(views._compose_question_reply(draft_id))
 

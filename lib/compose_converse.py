@@ -30,6 +30,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -309,6 +310,9 @@ def _valid_repo_slug(slug: str) -> bool:
     # the intended tree. "." and ".." are never valid GitHub owner/repo names.
     if owner in {".", ".."} or name in {".", ".."}:
         return False
+    canonical_name = _strip_dot_git_suffix(name)
+    if canonical_name in {"", ".", "..", ".git"}:
+        return False
     allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
     return all(ch in allowed for ch in owner + name)
 
@@ -376,10 +380,19 @@ def _configured_checkout(repo_to_local: dict[str, str], keys: tuple[str, ...]) -
     usable while no request text can reach a filesystem read.
     """
     for key in keys:
+        cfg_path = repo_to_local.get(key)
+        if cfg_path:
+            return cfg_path
+        folded_key = key.casefold()
         for cfg_key, cfg_path in repo_to_local.items():
-            if cfg_key == key and cfg_path:
+            if cfg_key.casefold() == folded_key and cfg_path:
                 return cfg_path
     return None
+
+
+def _strip_dot_git_suffix(repo: str) -> str:
+    """Return a repository slug without a case-insensitive ``.git`` suffix."""
+    return repo[:-4] if repo.casefold().endswith(".git") else repo
 
 
 def build_repo_grounding(
@@ -404,7 +417,7 @@ def build_repo_grounding(
     becoming an arbitrary-file-read sink (py/path-injection).
     """
     repo_to_local = repo_to_local or {}
-    repos = [repo for repo in repos if repo]
+    repos = [str(repo).strip() for repo in repos if str(repo).strip()]
     if not repos:
         return (
             "No repository was named yet. Ask which surface or repo the change "
@@ -412,13 +425,28 @@ def build_repo_grounding(
         )
     blocks: list[str] = []
     for repo in repos:
+        if not _valid_repo_slug(repo):
+            # Keep an invalid selection distinguishable from "no repo selected",
+            # but never use untrusted text in config lookup, path resolution, or
+            # the prompt label.
+            blocks.append(
+                "### `invalid repository`\n\nNo local checkout or CLAUDE.md available "
+                "for this repo. Ground questions in what the person tells you and "
+                "ask before assuming what already exists."
+            )
+            continue
         # GH_REPO_TO_LOCAL is keyed by the bare repo name (``frontend``), but a
         # caller passes a full ``owner/repo`` slug. Try the full slug, then the
         # bare name against the mapping. Without the bare-name lookup a
         # production-shaped slug like ``acme-io/acme-frontend`` would miss its
         # ``frontend`` mapping and silently drop the repo's real CLAUDE.md.
         bare = repo.split("/", 1)[-1]
-        mapped = _configured_checkout(repo_to_local, (repo, bare))
+        canonical_repo = _strip_dot_git_suffix(repo)
+        canonical_bare = _strip_dot_git_suffix(bare)
+        mapped = _configured_checkout(
+            repo_to_local,
+            (repo, bare, canonical_repo, canonical_bare),
+        )
         header = f"### `{repo}`"
         if mapped:
             # TRUSTED operator config. The configured checkout may legitimately
@@ -429,7 +457,9 @@ def build_repo_grounding(
             # UNTRUSTED: the request slug's bare name as a directory under the
             # workspace. Contain it so a traversal slug cannot escape; an escape
             # degrades to the same safe fallback a missing checkout gets.
-            repo_dir = _contained_repo_dir(workspace_root, bare)
+            repo_dir = (
+                _contained_repo_dir(workspace_root, canonical_bare) if canonical_bare else None
+            )
         if repo_dir is None:
             blocks.append(
                 f"{header}\n\nNo local checkout or CLAUDE.md available for this "
@@ -647,6 +677,7 @@ def parse_turn(
     *,
     base_draft: IssueDraft,
     last_user_message: str = "",
+    context_repos: Iterable[str] = (),
 ) -> ConverseTurn | None:
     """Parse the interrogator's JSON output into a structured turn.
 
@@ -673,23 +704,33 @@ def parse_turn(
     base_content_draft = replace(base_draft, repos=[]) if base_draft.repos else base_draft
     model_content_draft = replace(draft, repos=[]) if draft.repos else draft
     action = parse_action(obj.get("action"))
+    context_repo_list = list(context_repos)
+    repo_context = [*base_draft.repos, *context_repo_list]
     read_only_override = not _draft_has_content(
         base_content_draft
-    ) and looks_like_read_only_info_request(last_user_message)
+    ) and looks_like_read_only_info_request(
+        last_user_message,
+        context_repos=repo_context,
+    )
     model_claimed_build = (
         isinstance(raw_intent, str)
         and bool(raw_intent.strip())
         and raw_intent.strip().lower() != INTENT_CONVERSATION
     )
+    reply_claimed_action = _reply_claims_plan_or_action(reply)
     force_read_only_scrub = read_only_override and (
-        model_claimed_build or _draft_has_content(model_content_draft) or done or action is not None
+        model_claimed_build
+        or _draft_has_content(model_content_draft)
+        or done
+        or action is not None
+        or reply_claimed_action
     )
     if force_read_only_scrub:
         # The model may still invent a draft/title, request an action, or mark
         # the turn done while answering an explicit no-action status ask. Scrub
         # those artifacts, but preserve already-clean conversational answers so
         # status replies stay useful instead of becoming a generic refusal.
-        if not reply or _reply_claims_plan_or_action(reply):
+        if not reply or reply_claimed_action:
             reply = READ_ONLY_OVERRIDE_REPLY
         draft = base_content_draft
         readiness = ConverseReadiness(score=0, ready=False)
@@ -700,8 +741,9 @@ def parse_turn(
         intent = resolve_intent(
             raw_intent,
             last_user_message=last_user_message,
-            draft=base_content_draft,
+            draft=base_draft,
             done=done,
+            context_repos=context_repo_list,
         )
     return ConverseTurn(
         reply=reply,
@@ -742,6 +784,7 @@ def resolve_intent(
     last_user_message: str,
     draft: IssueDraft,
     done: bool,
+    context_repos: Iterable[str] = (),
 ) -> str:
     """Resolve the turn intent: explicit read-only asks, then model/backstop.
 
@@ -758,8 +801,10 @@ def resolve_intent(
     to ``build`` so genuine work is never misread as chatter.
     """
     content_draft = replace(draft, repos=[]) if draft.repos else draft
+    repo_context = [*draft.repos, *context_repos]
     if not _draft_has_content(content_draft) and looks_like_read_only_info_request(
-        last_user_message
+        last_user_message,
+        context_repos=repo_context,
     ):
         return INTENT_CONVERSATION
 
@@ -871,6 +916,14 @@ _BUILD_VERB_HINTS = (
     "support",
     "enable",
     "disable",
+    "archive",
+    "deploy",
+    "execute",
+    "process",
+    "restart",
+    "retry",
+    "start",
+    "stop",
     # Common feature-request verbs ("can you show/include/surface X?"). These
     # keep "can you <verb>" requests on the build path; communication verbs
     # ("explain", "tell", "describe", "clarify") are deliberately absent so
@@ -939,6 +992,35 @@ def looks_like_question(text: str) -> bool:
     if not tokens:
         return False
     first = tokens[0]
+    separator_tokens: list[str] | None = None
+    if (
+        cleaned.endswith("?")
+        and len(tokens) == 1
+        and tokens[0]
+        in {
+            *_READ_ONLY_STATUS_WORDS,
+            *_READ_ONLY_SUBJECT_WORDS,
+        }
+    ):
+        return True
+    if cleaned.endswith("?") and _looks_like_terse_noun_question(tokens):
+        separator_tokens = _separator_aware_build_tokens(lowered)
+        return not (
+            _has_followup_build_clause(separator_tokens)
+            or _has_later_modal_requirement_clause(separator_tokens, command=first)
+        )
+    if cleaned.endswith("?") and _looks_like_actor_capability_question(tokens):
+        return True
+    if cleaned.endswith("?") and _clause_starts_direct_object_command(
+        tokens, 0, assume_bare_object=True
+    ):
+        # A question mark does not turn a direct imperative into an information
+        # request ("Reboot the host?"). The noun-question guard above keeps
+        # ambiguous fragments such as "Retry scheduling?" conversational.
+        return False
+    if _recommendation_predicate_index(tokens, 0) is not None:
+        question_tokens = separator_tokens or _separator_aware_build_tokens(lowered)
+        return not _has_followup_build_clause(question_tokens)
     if first in _MODAL_OPENERS:
         # Modal-opener messages are change requests by default ("can we show
         # X", "should we retry failed firings", "could the dashboard include a
@@ -950,6 +1032,18 @@ def looks_like_question(text: str) -> bool:
         #     -> a status question, not a change request.
         second = tokens[1] if len(tokens) > 1 else ""
         if second != "you":
+            subject_index = 1
+            if subject_index < len(tokens) and tokens[subject_index] in {"a", "an", "the"}:
+                subject_index += 1
+            capability_subject = subject_index < len(tokens) and tokens[subject_index] in {
+                *_READ_ONLY_SUBJECT_WORDS,
+                "alfred",
+                "worker",
+                "workers",
+            }
+            if first in {"can", "may", "might"} and capability_subject:
+                question_tokens = separator_tokens or _separator_aware_build_tokens(lowered)
+                return not _has_followup_build_clause(question_tokens)
             # A first-person subject asking with an information verb and no build
             # verb is a status question ("can I see the fleet status?"). Anything
             # else with a non-"you" subject is a change request: a build verb wins
@@ -970,32 +1064,42 @@ def looks_like_question(text: str) -> bool:
         # through to the verb check below.
         second = tokens[1] if len(tokens) > 1 else ""
         if second != "about":
-            return True
+            question_tokens = separator_tokens or _separator_aware_build_tokens(lowered)
+            return not (
+                _has_followup_build_clause(question_tokens)
+                or _has_later_modal_requirement_clause(question_tokens, command=first)
+            )
     elif not (cleaned.endswith("?") or first in _QUESTION_OPENERS):
+        return False
+    question_tokens = separator_tokens or _separator_aware_build_tokens(lowered)
+    if _has_later_modal_requirement_clause(question_tokens, command=first):
         return False
     # A build verb in VERB position ("can you add ...?", "is it possible to
     # add ...?") marks work phrased as a question. Position matters: several
     # hints are also common nouns ("what support options are available?",
     # "what changes landed?"), and a noun use must not suppress the question.
-    return not _has_build_verb_in_verb_position(tokens)
+    return not _has_build_verb_in_verb_position(question_tokens)
 
 
 # Tokens that put a following build-verb hint into verb position: subject
 # pronouns ("can we add ..."), the infinitive marker ("is it possible to
 # add ..."), and politeness/chaining openers ("please add ...", "and then
 # remove ...").
+_CLAUSE_BOUNDARY_TOKEN = "__alfred_clause_boundary__"
+
 _VERB_POSITION_PRECEDERS = (
     "we",
     "you",
     "i",
-    "it",
-    "they",
     "alfred",
     "to",
     "please",
+    "kindly",
     "and",
+    "but",
     "then",
     "just",
+    _CLAUSE_BOUNDARY_TOKEN,
     # Helper phrasings keep the following verb in verb position:
     # "can you help me add ...", "help us fix ...", "help add ...".
     "help",
@@ -1005,6 +1109,210 @@ _VERB_POSITION_PRECEDERS = (
     # "what about adding search?".
     "about",
 )
+
+_NOUN_CAPABLE_BUILD_WORDS = frozenset(
+    {
+        "archive",
+        "build",
+        "change",
+        "deploy",
+        "display",
+        "execute",
+        "file",
+        "filter",
+        "fix",
+        "group",
+        "highlight",
+        "open",
+        "process",
+        "render",
+        "restart",
+        "retry",
+        "show",
+        "sort",
+        "start",
+        "stop",
+        "support",
+        "toggle",
+        "update",
+    }
+)
+
+_DIRECT_OBJECT_PRONOUNS = frozenset({"her", "him", "it", "them"})
+_DIRECT_OBJECT_OPENERS = frozenset(
+    {
+        "a",
+        "an",
+        "her",
+        "him",
+        "it",
+        "my",
+        "our",
+        "that",
+        "the",
+        "them",
+        "these",
+        "this",
+        "those",
+        "your",
+    }
+)
+
+_NOUN_QUESTION_OBJECTS = frozenset(
+    {
+        "details",
+        "failures",
+        "health",
+        "history",
+        "issues",
+        "jobs",
+        "list",
+        "lists",
+        "log",
+        "logs",
+        "matrix",
+        "notes",
+        "options",
+        "output",
+        "outputs",
+        "artifact",
+        "artifacts",
+        "pull",
+        "scheduling",
+        "state",
+        "states",
+        "status",
+        "statuses",
+        "queue",
+        "queues",
+        "tickets",
+        "version",
+        "versions",
+    }
+)
+
+_UNAMBIGUOUS_BARE_IMPERATIVE_VERBS = frozenset(
+    {
+        "clear",
+        "flush",
+        "investigate",
+        "invalidate",
+        "notify",
+        "purge",
+        "reboot",
+        "regenerate",
+        "reschedule",
+        "rotate",
+    }
+)
+
+
+def _looks_like_build_word_noun_question(tokens: list[str]) -> bool:
+    """Recognize terse noun questions whose first word can also be a command.
+
+    ``Build logs?`` and ``Open issues?`` are noun phrases, while ``Add a retry
+    button?`` is an imperative. For an ambiguous fragment, Ask should answer
+    rather than fabricate a plan; users can express work unambiguously with a
+    command sentence or a modal request such as ``Can you open an issue?``.
+    """
+    if len(tokens) < 2 or tokens[0] not in _NOUN_CAPABLE_BUILD_WORDS:
+        return False
+    if tokens[1] == "pull":
+        return len(tokens) > 2 and tokens[2] in {"request", "requests"}
+    return tokens[1] in _NOUN_QUESTION_OBJECTS
+
+
+_TERSE_NOUN_FRAGMENT_TAILS = frozenset(
+    {
+        "architecture",
+        "authentication",
+        "behavior",
+        "deploy",
+        "design",
+        "flow",
+        "graph",
+        "green",
+        "map",
+        "scheduling",
+        "startup",
+    }
+)
+
+_TERSE_NOUN_MODIFIER_SUFFIXES = (
+    "al",
+    "ance",
+    "ence",
+    "ical",
+    "ion",
+    "ity",
+    "ment",
+    "ness",
+    "ous",
+    "ship",
+)
+
+
+def _looks_like_terse_noun_question(tokens: list[str]) -> bool:
+    """Recognize compact noun-fragment questions before bare-command fallback."""
+    if _looks_like_build_word_noun_question(tokens):
+        return True
+    if len(tokens) < 2:
+        return False
+    first, second = tokens[0], tokens[1]
+    if _is_build_verb_form(first) or first in _UNAMBIGUOUS_BARE_IMPERATIVE_VERBS:
+        return False
+    if second in _NOUN_QUESTION_OBJECTS:
+        return True
+    return second in _TERSE_NOUN_FRAGMENT_TAILS or first.endswith(_TERSE_NOUN_MODIFIER_SUFFIXES)
+
+
+def _looks_like_actor_capability_question(tokens: list[str]) -> bool:
+    """Recognize declarative capability questions about runtime actors."""
+    actor_words = {
+        "alfred",
+        "agent",
+        "agents",
+        "engine",
+        "engines",
+        "runtime",
+        "runtimes",
+        "worker",
+        "workers",
+    }
+    modal_index = next(
+        (index for index, token in enumerate(tokens[:5]) if token in {"can", "may", "might"}),
+        -1,
+    )
+    if modal_index > 0 and bool(set(tokens[:modal_index]) & actor_words):
+        return True
+
+    # Capability questions are also commonly phrased with a copula and
+    # ``able``/``capable`` rather than a modal: ``Are workers able to retry?``
+    # or ``The agents are capable of retrying?``. Keep the actor near the start
+    # so a UI request such as ``Dashboard workers are able to retry?`` does not
+    # masquerade as a question about an Alfred runtime actor.
+    actor_index = next(
+        (index for index, token in enumerate(tokens[:3]) if token in actor_words), -1
+    )
+    if actor_index < 0:
+        return False
+    actor_prefix = tokens[:actor_index]
+    if any(
+        token not in {"a", "an", "are", "is", "the", "these", "this", "those", "was", "were"}
+        for token in actor_prefix
+    ):
+        return False
+    qualifier_index = next(
+        (
+            index
+            for index, token in enumerate(tokens[actor_index + 1 :], actor_index + 1)
+            if token in {"able", "capable"}
+        ),
+        -1,
+    )
+    if qualifier_index < 0:
+        return False
+    return any(token in {"are", "is", "was", "were"} for token in tokens[:qualifier_index])
 
 
 def _is_build_verb_form(token: str) -> bool:
@@ -1051,7 +1359,7 @@ _READ_ONLY_COMMAND_VERBS = (
     "display",
 )
 
-_READ_ONLY_COMMAND_PREFIXES = ("alfred", "please", "just")
+_READ_ONLY_COMMAND_PREFIXES = ("alfred", "please", "just", "kindly")
 
 _READ_ONLY_FORMAT_PREFIXES = (
     ("in", "one", "short", "sentence"),
@@ -1061,36 +1369,20 @@ _READ_ONLY_FORMAT_PREFIXES = (
     ("briefly",),
 )
 
+# Ask prompts often ground a question before the command itself:
+# "In owner/repo, explain how review works." The captured slug is validated
+# against the selected repo context before it is removed, so an arbitrary path
+# such as "In ui/dashboard, show status" stays on the build path.
+_REPO_CONTEXT_PREFIX = re.compile(
+    r"^in\s+`?(?P<repo>[a-z0-9_.-]+/[a-z0-9_.-]+?)`?"
+    r"(?:\s*[,;:]\s*|\.\s+|\s+)(?=\S)",
+    re.IGNORECASE,
+)
+
 _READ_ONLY_SHOW_VERBS = ("show", "display")
 
 _READ_ONLY_MODAL_OPENERS = ("can", "could", "would", "will")
 _READ_ONLY_MODAL_SUBJECTS = ("you", "alfred")
-
-_READ_ONLY_PLAN_CLAIM_PHRASES = (
-    "created a plan",
-    "created an issue",
-    "created a pull request",
-    "i created",
-    "i drafted",
-    "i filed",
-    "i have created",
-    "i have drafted",
-    "i have filed",
-    "i have opened",
-    "i opened",
-    "i saved",
-    "i started",
-    "i've created",
-    "i've drafted",
-    "i've filed",
-    "i've opened",
-    "opened a plan",
-    "opened a pull request",
-    "ready to file",
-    "saved a plan",
-    "saved a starter plan",
-    "started a plan",
-)
 
 _READ_ONLY_TARGET_SURFACE_WORDS = frozenset(
     {
@@ -1178,6 +1470,7 @@ _READ_ONLY_STATUS_WORDS = frozenset(
         "installation",
         "logs",
         "queue",
+        "queues",
         "repo",
         "repos",
         "repositories",
@@ -1224,6 +1517,7 @@ _READ_ONLY_SUBJECT_WORDS = frozenset(
         "mac",
         "machine",
         "queue",
+        "queues",
         "repo",
         "repos",
         "repositories",
@@ -1285,6 +1579,11 @@ _EXPLICIT_READ_ONLY_PHRASES = (
     "don't open",
     "do not start a plan",
     "don't start a plan",
+    "do not make changes",
+    "don't make changes",
+    "make no change",
+    "make no changes",
+    "make no plan",
     "no plan",
     "no changes",
     "read only",
@@ -1294,6 +1593,27 @@ _EXPLICIT_READ_ONLY_PHRASES = (
     "without filing",
     "without starting a plan",
 )
+
+_NEGATED_IMPERATIVE = re.compile(
+    r"\b(?:do\s+not|don't|never)\s+(?:(?:ever|just|please)\s+){0,2}[a-z][a-z'-]*\b",
+    re.IGNORECASE,
+)
+
+
+def _explicit_read_only_position(text: str) -> int:
+    """Return the first explicit no-action instruction, or ``-1``.
+
+    The fixed phrases cover idioms such as ``read only`` and ``no changes``.
+    The grammar-shaped matcher handles the open-ended imperative vocabulary in
+    ``do not restart/delete/deploy ...`` without pretending to enumerate every
+    operation an engine or integration may expose.
+    """
+    positions = [
+        position for phrase in _EXPLICIT_READ_ONLY_PHRASES if (position := text.find(phrase)) >= 0
+    ]
+    if match := _NEGATED_IMPERATIVE.search(text):
+        positions.append(match.start())
+    return min(positions, default=-1)
 
 
 def _has_info_verb_in_verb_position(tokens: list[str]) -> bool:
@@ -1314,7 +1634,11 @@ def _has_info_verb_in_verb_position(tokens: list[str]) -> bool:
     return False
 
 
-def _has_build_verb_in_verb_position(tokens: list[str], *, ignore_index: int | None = None) -> bool:
+def _has_build_verb_in_verb_position(
+    tokens: list[str],
+    *,
+    ignore_indices: frozenset[int] = frozenset(),
+) -> bool:
     """True when a build-verb hint is used as a verb, not as a noun.
 
     A hint counts only when it opens the message ("Add a CSV export") or
@@ -1323,16 +1647,574 @@ def _has_build_verb_in_verb_position(tokens: list[str], *, ignore_index: int | N
     to add retries?", "please update the docs"). "What support options are
     available?" leaves "support" in noun position and stays a question.
     """
+    clause_start = 0
     for index, token in enumerate(tokens):
-        if index == ignore_index:
+        if token in {_CLAUSE_BOUNDARY_TOKEN, "and", "but", "then"}:
+            clause_start = index + 1
             continue
-        if not _is_build_verb_form(token):
+        if index in ignore_indices:
             continue
-        if index == 0:
-            return True
-        if tokens[index - 1] in _VERB_POSITION_PRECEDERS:
+        if _build_verb_is_in_position(tokens, index, clause_start=clause_start):
             return True
     return False
+
+
+def _build_verb_is_in_position(
+    tokens: list[str],
+    index: int,
+    *,
+    clause_start: int = 0,
+) -> bool:
+    """Return whether one token is a build verb used as a command."""
+    if not _is_build_verb_form(tokens[index]):
+        return False
+    if _build_verb_starts_noun_clause(tokens, index):
+        return False
+    if index == 0:
+        return True
+    previous = tokens[index - 1]
+    if previous in _VERB_POSITION_PRECEDERS:
+        return True
+    if previous == "also":
+        before_also = tokens[index - 2] if index >= 2 else ""
+        if index == 1 or before_also in {
+            _CLAUSE_BOUNDARY_TOKEN,
+            "alfred",
+            "and",
+            "but",
+            "i",
+            "please",
+            "then",
+            "we",
+            "you",
+        }:
+            return True
+    if index >= 4 and tokens[index - 4 : index] in (
+        ["while", "i", "am", "there"],
+        ["while", "we", "are", "there"],
+        ["while", "you", "are", "there"],
+    ):
+        return True
+    if previous in {"must", "shall", "should"}:
+        return clause_start < index - 1
+    if index >= 2 and previous in _MODAL_OPENERS:
+        subject_index = index - 2
+        if subject_index < clause_start:
+            return False
+        if subject_index < clause_start:
+            return False
+        single_it_subject = subject_index == clause_start and tokens[subject_index] == "it"
+        return not (single_it_subject and previous in {"can", "may", "might"})
+    return False
+
+
+def _build_verb_starts_noun_clause(tokens: list[str], index: int) -> bool:
+    """Reject clause-leading build words used as nouns, not commands."""
+    previous = tokens[index - 1] if index else ""
+    if index and previous not in {
+        _CLAUSE_BOUNDARY_TOKEN,
+        "also",
+        "and",
+        "but",
+        "then",
+    }:
+        return False
+    following = tokens[index + 1] if index + 1 < len(tokens) else ""
+    if following in {"a", "an", "that", "the", "these", "this", "those"}:
+        return False
+    if tokens[index] in _NOUN_CAPABLE_BUILD_WORDS and following in _NOUN_QUESTION_OBJECTS:
+        return True
+    if following in _DECLARATIVE_PREDICATES:
+        return True
+    predicate = tokens[index + 2] if index + 2 < len(tokens) else ""
+    if (
+        following not in _DIRECT_OBJECT_OPENERS
+        and not following.endswith(("ed", "ing"))
+        and predicate in _DECLARATIVE_PREDICATES
+    ):
+        return True
+    for token in tokens[index + 1 : min(len(tokens), index + 7)]:
+        if token == _CLAUSE_BOUNDARY_TOKEN:
+            break
+        if token in {"because", "if", "that", "when", "while", "which", "who"}:
+            return False
+        if token in {"am", "are", "has", "have", "is", "was", "were"}:
+            return True
+    return False
+
+
+def _followup_clause_is_guidance(tokens: list[str], start: int) -> bool:
+    """Return whether a later clause is another question, not a command."""
+    while start < len(tokens) and tokens[start] in {"also", "and", "but", "then"}:
+        start += 1
+    if start >= len(tokens):
+        return False
+    first = tokens[start]
+    if first in {*_WH_OPENERS, "whether"}:
+        return True
+    recommendation_index = _recommendation_predicate_index(tokens, start)
+    if recommendation_index is not None:
+        return True
+    if first not in _MODAL_OPENERS or start + 1 >= len(tokens):
+        return False
+    subject = tokens[start + 1]
+    if subject == "i":
+        return True
+    if subject != "you" or start + 2 >= len(tokens):
+        return False
+    return tokens[start + 2] in _READ_ONLY_COMMAND_VERBS
+
+
+_NON_COMMAND_CLAUSE_OPENERS = frozenset(
+    {
+        *_WH_OPENERS,
+        *_MODAL_OPENERS,
+        "a",
+        "an",
+        "at",
+        "by",
+        "did",
+        "do",
+        "does",
+        "for",
+        "from",
+        "he",
+        "i",
+        "in",
+        "it",
+        "no",
+        "not",
+        "of",
+        "on",
+        "or",
+        "she",
+        "that",
+        "the",
+        "these",
+        "they",
+        "this",
+        "those",
+        "we",
+        "whether",
+        "with",
+        "without",
+        "you",
+    }
+)
+
+_DECLARATIVE_PREDICATES = frozenset(
+    {
+        "appeared",
+        "appears",
+        "contained",
+        "contains",
+        "failed",
+        "fails",
+        "handled",
+        "handles",
+        "included",
+        "includes",
+        "looked",
+        "looks",
+        "needed",
+        "needs",
+        "passed",
+        "passes",
+        "remained",
+        "remains",
+        "seemed",
+        "seems",
+        "stayed",
+        "stays",
+        "used",
+        "uses",
+        "worked",
+        "works",
+    }
+)
+
+_NON_COMMAND_ADVERBS = frozenset(
+    {
+        "apparently",
+        "currently",
+        "generally",
+        "likely",
+        "possibly",
+        "potentially",
+        "probably",
+        "recently",
+    }
+)
+
+
+def _clause_starts_direct_object_command(
+    tokens: list[str], start: int, *, assume_bare_object: bool = False
+) -> bool:
+    """Detect an imperative clause whose verb is outside the build allowlist.
+
+    In a follow-up clause, an unknown first word followed by a direct-object
+    determiner or pronoun is command-shaped (``archive the logs``, ``retry it``).
+    This catches the long tail without treating arbitrary nouns elsewhere in a
+    question as work.
+    """
+    while start < len(tokens) and tokens[start] in {
+        *_READ_ONLY_COMMAND_PREFIXES,
+        "also",
+        "and",
+        "but",
+        "then",
+    }:
+        start += 1
+    if start >= len(tokens):
+        return False
+    first = tokens[start]
+    if first in _NON_COMMAND_CLAUSE_OPENERS:
+        return False
+    if first.endswith("ly"):
+        if not assume_bare_object or first in _NON_COMMAND_ADVERBS:
+            return False
+        start += 1
+        if start >= len(tokens):
+            return False
+        first = tokens[start]
+    if start + 1 >= len(tokens) or tokens[start + 1] == _CLAUSE_BOUNDARY_TOKEN:
+        return not first.endswith(("ing", "s"))
+    second = tokens[start + 1]
+    if first == "have" and second in _DIRECT_OBJECT_OPENERS:
+        return True
+    clause_end = min(len(tokens), start + 7)
+    if any(
+        token in {"am", "are", "has", "have", "is", "was", "were"}
+        for token in tokens[start:clause_end]
+    ):
+        return False
+    if first in _NOUN_CAPABLE_BUILD_WORDS and second in _NOUN_QUESTION_OBJECTS:
+        return False
+    third = tokens[start + 2] if start + 2 < len(tokens) else ""
+    if second not in _DIRECT_OBJECT_OPENERS and third in _DECLARATIVE_PREDICATES:
+        return False
+    if second in _DECLARATIVE_PREDICATES:
+        return False
+    if _is_build_verb_form(first):
+        return True
+    return second in _DIRECT_OBJECT_OPENERS or assume_bare_object
+
+
+def _recommendation_predicate_index(tokens: list[str], start: int) -> int | None:
+    """Return the recommendation verb in a polite assistant-directed question."""
+    while start < len(tokens) and tokens[start] in {"also", "and", "but", "then"}:
+        start += 1
+    end = start
+    while end < len(tokens) and tokens[end] != _CLAUSE_BOUNDARY_TOKEN:
+        end += 1
+    for predicate in range(start, min(end, start + 8)):
+        if tokens[predicate] not in {"advise", "recommend", "suggest"}:
+            continue
+        window = tokens[start:predicate]
+        if "you" not in window:
+            continue
+        if any(token in {*_MODAL_OPENERS, "did", "do", "does"} for token in window):
+            return predicate
+    return None
+
+
+def _recommendation_embeds_build(tokens: list[str], start: int) -> bool:
+    """True when a recommendation clause asks about work rather than doing it."""
+    predicate = _recommendation_predicate_index(tokens, start)
+    if predicate is None or predicate + 1 >= len(tokens):
+        return False
+    complement = tokens[predicate + 1]
+    if complement in {"how", "that", "whether", "we"} or complement.endswith("ing"):
+        return True
+    return (
+        complement == "for"
+        and predicate + 2 < len(tokens)
+        and tokens[predicate + 2].endswith("ing")
+    )
+
+
+def _is_compound_noun_question(tokens: list[str]) -> bool:
+    """Return whether every command-shaped item is a terse noun phrase."""
+    if len(tokens) < 2 or not _looks_like_build_word_noun_question(tokens):
+        return False
+    candidate_start = True
+    for index, token in enumerate(tokens):
+        if token == _CLAUSE_BOUNDARY_TOKEN or token in {"and", "or"}:
+            candidate_start = True
+            continue
+        if not candidate_start:
+            continue
+        if token in {"also", "but"}:
+            continue
+        if token in {"alfred", "please", "then", "you"}:
+            return False
+        candidate_start = False
+        if not _is_build_verb_form(token):
+            if index + 1 < len(tokens) and tokens[index + 1] in _DIRECT_OBJECT_OPENERS:
+                return False
+            continue
+        if token not in _NOUN_CAPABLE_BUILD_WORDS or index + 1 >= len(tokens):
+            return False
+        following = tokens[index + 1]
+        if following == "pull":
+            if index + 2 >= len(tokens) or tokens[index + 2] not in {"request", "requests"}:
+                return False
+        elif following not in _NOUN_QUESTION_OBJECTS:
+            return False
+    return True
+
+
+def _has_followup_build_clause(tokens: list[str]) -> bool:
+    """True when a question is followed by a distinct work request.
+
+    A build verb inside the question itself is guidance (``How do I add a
+    repo?``). A build verb after punctuation or a conjunction is commissioned
+    work (``What is the status, and add retry logging``). Coordinated guidance
+    such as ``How do I add and remove a repo?`` remains a question.
+    """
+    if _is_compound_noun_question(tokens):
+        return False
+
+    earlier_build = False
+    clause_start = 0
+    clause_is_guidance = True
+    clause_has_copula = False
+    last_conjunction = -1
+    verb_clause_start = 0
+    initial_noun_question = (
+        len(tokens) >= 2
+        and tokens[0] in _NOUN_CAPABLE_BUILD_WORDS
+        and tokens[1]
+        not in {"a", "an", "me", "my", "our", "that", "the", "these", "this", "those", "us"}
+    )
+    initial_how_guidance = bool(tokens and tokens[0] == "how")
+    explanatory_indices = _explanatory_build_verb_indices(tokens)
+    capability_indices = _capability_modal_build_verb_indices(tokens)
+    explicit_followup_start = -1
+    clause_recommendation = _recommendation_embeds_build(tokens, clause_start)
+    for index, token in enumerate(tokens):
+        if token == _CLAUSE_BOUNDARY_TOKEN:
+            clause_start = index + 1
+            verb_clause_start = index + 1
+            earlier_build = False
+            clause_is_guidance = _followup_clause_is_guidance(tokens, clause_start)
+            if not clause_is_guidance and _clause_starts_direct_object_command(
+                tokens, clause_start
+            ):
+                return True
+            clause_has_copula = False
+            last_conjunction = -1
+            explicit_followup_start = -1
+            clause_recommendation = _recommendation_embeds_build(tokens, clause_start)
+            continue
+        if token in {"am", "are", "has", "have", "is", "was", "were"}:
+            clause_has_copula = True
+        if token in {"also", "and", "but", "then"}:
+            leading_conjunction = index == clause_start
+            if (
+                index == 0 or not _is_build_verb_form(tokens[index - 1])
+            ) and not leading_conjunction:
+                last_conjunction = index
+            if token in {"and", "but", "then"}:
+                verb_clause_start = index + 1
+                candidate_start = verb_clause_start
+                while candidate_start < len(tokens) and tokens[candidate_start] in {
+                    "also",
+                    "then",
+                }:
+                    candidate_start += 1
+                if candidate_start >= len(tokens) or tokens[candidate_start] in {
+                    "and",
+                    "but",
+                }:
+                    continue
+                explicit_followup = candidate_start < len(tokens) and tokens[candidate_start] in {
+                    *_READ_ONLY_COMMAND_PREFIXES,
+                    "you",
+                }
+                if explicit_followup:
+                    explicit_followup_start = candidate_start
+                if (
+                    not leading_conjunction
+                    and (not initial_how_guidance or explicit_followup)
+                    and candidate_start not in explanatory_indices
+                    and not clause_recommendation
+                    and not (
+                        clause_is_guidance
+                        and clause_has_copula
+                        and candidate_start < len(tokens)
+                        and not _is_build_verb_form(tokens[candidate_start])
+                    )
+                    and _clause_starts_direct_object_command(tokens, candidate_start)
+                ):
+                    return True
+            continue
+        if (
+            clause_is_guidance
+            and clause_has_copula
+            and last_conjunction >= clause_start
+            and token in _NOUN_CAPABLE_BUILD_WORDS
+        ):
+            continue
+        if index == 0 and initial_noun_question:
+            continue
+        if index in explanatory_indices:
+            continue
+        if index in capability_indices:
+            continue
+        if not _build_verb_is_in_position(tokens, index, clause_start=verb_clause_start):
+            continue
+        if _predicate_follows_capability_modal(tokens, index, clause_start):
+            continue
+        has_boundary = clause_start > 0
+        guidance_work = (
+            clause_is_guidance and last_conjunction >= clause_start and not clause_recommendation
+        )
+        if (has_boundary and (not clause_is_guidance or guidance_work)) or (
+            not has_boundary
+            and (not initial_how_guidance or explicit_followup_start >= clause_start)
+            and (not clause_recommendation or explicit_followup_start >= clause_start)
+            and last_conjunction >= clause_start
+            and (not earlier_build or explicit_followup_start >= clause_start)
+        ):
+            return True
+        earlier_build = True
+    return False
+
+
+def _predicate_follows_capability_modal(
+    tokens: list[str], predicate_index: int, clause_start: int
+) -> bool:
+    """True for noun-subject capability predicates such as ``worker can retry``."""
+    modal_index = predicate_index - 1
+    if modal_index >= clause_start and tokens[modal_index] == "not":
+        modal_index -= 1
+    if modal_index < clause_start or tokens[modal_index] not in {"can", "may", "might"}:
+        return False
+    if modal_index == clause_start:
+        subject_index = modal_index + 1
+    else:
+        subject_index = modal_index - 1
+    if subject_index >= len(tokens):
+        return False
+    return tokens[subject_index] not in {"alfred", "i", "we", "you"}
+
+
+def _capability_modal_build_verb_indices(tokens: list[str]) -> frozenset[int]:
+    """Return build-word predicates used as capability statements."""
+    ignored: set[int] = set()
+    clause_start = 0
+    capability_active = False
+    for index, token in enumerate(tokens):
+        if token == _CLAUSE_BOUNDARY_TOKEN:
+            clause_start = index + 1
+            capability_active = False
+            continue
+        if token in {"can", "may", "might"}:
+            if index == clause_start:
+                subject_index = index + 1
+            else:
+                subject_index = index - 1
+            capability_active = subject_index < len(tokens) and tokens[subject_index] not in {
+                "alfred",
+                "i",
+                "we",
+                "you",
+            }
+            continue
+        if capability_active and _is_build_verb_form(token):
+            ignored.add(index)
+    return frozenset(ignored)
+
+
+def _explanatory_build_verb_indices(tokens: list[str]) -> frozenset[int]:
+    """Return coordinated build verbs inside a ``how to`` explanation.
+
+    ``Explain how to fix the gate`` asks for existing-system guidance, while
+    ``Explain the gate. Then fix it`` commissions work. Ignore the first
+    ``how to`` verb and coordinated verbs in that same clause, stopping at the
+    explicit punctuation marker emitted by ``_separator_aware_build_tokens``.
+    """
+    ignored: set[int] = set()
+    in_how_to_clause = False
+    index = 0
+    while index < len(tokens):
+        if tokens[index] == _CLAUSE_BOUNDARY_TOKEN:
+            in_how_to_clause = False
+            index += 1
+            continue
+        if index + 2 < len(tokens) and tokens[index : index + 2] == ["how", "to"]:
+            candidate = index + 2
+            if tokens[candidate] == "also" and candidate + 1 < len(tokens):
+                candidate += 1
+            if _is_build_verb_form(tokens[candidate]):
+                ignored.add(candidate)
+                in_how_to_clause = True
+                index = candidate + 1
+                continue
+        if in_how_to_clause and _is_build_verb_form(tokens[index]):
+            previous = tokens[index - 1] if index else ""
+            coordinated = previous in {"and", "or", "then"} or (
+                previous == "also" and index >= 2 and tokens[index - 2] in {"and", "or"}
+            )
+            if coordinated:
+                ignored.add(index)
+        index += 1
+    return frozenset(ignored)
+
+
+def _information_command_build_verb_indices(
+    tokens: list[str],
+    *,
+    command_index: int,
+) -> frozenset[int]:
+    """Return build words embedded in a leading information command's subject."""
+    subject_index = command_index + 1
+    while subject_index < len(tokens) and tokens[subject_index] in {"me", "us"}:
+        subject_index += 1
+    if subject_index >= len(tokens) or tokens[subject_index] not in {
+        *_WH_OPENERS,
+        "whether",
+    }:
+        return frozenset()
+    ignored: set[int] = set()
+    for index in range(subject_index + 1, len(tokens)):
+        if tokens[index] == _CLAUSE_BOUNDARY_TOKEN:
+            break
+        if _is_build_verb_form(tokens[index]):
+            ignored.add(index)
+    return frozenset(ignored)
+
+
+def _guidance_clause_build_verb_indices(tokens: list[str]) -> frozenset[int]:
+    """Return build words embedded inside later recommendation questions."""
+    ignored: set[int] = set()
+    clause_start = 0
+    clause_is_guidance = False
+    guidance_embeds_build = False
+    for index, token in enumerate(tokens):
+        if token == _CLAUSE_BOUNDARY_TOKEN:
+            clause_start = index + 1
+            clause_is_guidance = _followup_clause_is_guidance(tokens, clause_start)
+            guidance_start = clause_start
+            while guidance_start < len(tokens) and tokens[guidance_start] in {
+                "also",
+                "and",
+                "but",
+                "then",
+            }:
+                guidance_start += 1
+            wh_guidance = guidance_start < len(tokens) and tokens[guidance_start] in {
+                *_WH_OPENERS,
+                "whether",
+            }
+            guidance_embeds_build = wh_guidance or _recommendation_embeds_build(
+                tokens, clause_start
+            )
+            continue
+        if clause_is_guidance and guidance_embeds_build and _is_build_verb_form(token):
+            ignored.add(index)
+    return frozenset(ignored)
 
 
 def _separator_aware_build_tokens(text: str) -> list[str]:
@@ -1341,9 +2223,9 @@ def _separator_aware_build_tokens(text: str) -> list[str]:
     ``Show me status; add retry logging`` should be read as two clauses: a
     status ask, then a build request. The normal whitespace tokenizer strips the
     semicolon and leaves ``add`` after ``status``, where it looks noun-ish. When
-    a separator is immediately followed by a build verb, insert the existing
-    chaining token ``and`` so the shared verb-position detector sees the second
-    clause as work. Address prefixes such as ``Alfred, show ...`` are excluded
+    a separator ends a clause, insert an internal boundary token so the shared
+    verb-position detector sees a following command as distinct work. Address
+    prefixes such as ``Alfred, show ...`` are excluded
     so their punctuation does not make the leading ``show`` command look like a
     feature request.
     """
@@ -1351,27 +2233,212 @@ def _separator_aware_build_tokens(text: str) -> list[str]:
     tokens: list[str] = []
     separators = (",", ".", ";", ":", "?", "!")
     strip_chars = ",.;:!?\"'`()[]"
+    segment_has_how_to = False
+    segment_has_copula = False
+    segment_starts_guidance = False
+    segment_previous_token = ""
+    raw_openers = [token.strip(strip_chars) for token in raw_tokens[:2]]
+    suffix_has_list_separator = [False] * (len(raw_tokens) + 1)
+    has_list_separator = False
+    for suffix_index in range(len(raw_tokens) - 1, -1, -1):
+        suffix_token = raw_tokens[suffix_index]
+        has_list_separator = has_list_separator or suffix_token.rstrip().endswith(",")
+        has_list_separator = has_list_separator or suffix_token.strip(strip_chars) in {
+            "and",
+            "or",
+        }
+        suffix_has_list_separator[suffix_index] = has_list_separator
+    starts_personal_how_question = (
+        len(raw_openers) >= 2
+        and raw_openers[0] == "how"
+        and raw_openers[1] in {"can", "could", "did", "do", "should", "would"}
+    )
+
+    def comma_is_soft_coordination(index: int) -> bool:
+        if not (segment_has_how_to or segment_starts_guidance) or index + 1 >= len(raw_tokens):
+            return False
+        next_token = raw_tokens[index + 1].strip(strip_chars)
+        if starts_personal_how_question and next_token == "then" and index + 2 < len(raw_tokens):
+            return True
+        if segment_starts_guidance:
+            noun_candidate = next_token
+            if noun_candidate in {"and", "or"} and index + 2 < len(raw_tokens):
+                noun_candidate = raw_tokens[index + 2].strip(strip_chars)
+            candidate_index = index + 1
+            if next_token in {"and", "or"}:
+                candidate_index += 1
+            following = (
+                raw_tokens[candidate_index + 1].strip(strip_chars)
+                if candidate_index + 1 < len(raw_tokens)
+                else ""
+            )
+            has_later_list_separator = suffix_has_list_separator[index + 1]
+            if following in _DIRECT_OBJECT_OPENERS:
+                return False
+            if noun_candidate in _NOUN_CAPABLE_BUILD_WORDS:
+                return (
+                    next_token in {"and", "or"}
+                    or has_later_list_separator
+                    or following in _NOUN_QUESTION_OBJECTS
+                )
+            if next_token in {"and", "or"} or has_later_list_separator:
+                return True
+            if segment_has_copula and (
+                has_later_list_separator or raw_openers[:2] == ["what", "are"]
+            ):
+                return True
+        current_token = raw_tokens[index].strip(strip_chars)
+        if not current_token and index > 0:
+            current_token = raw_tokens[index - 1].strip(strip_chars)
+        if not _is_build_verb_form(current_token):
+            return False
+        if _is_build_verb_form(next_token):
+            return True
+        return (
+            next_token in {"and", "or"}
+            and index + 2 < len(raw_tokens)
+            and _is_build_verb_form(raw_tokens[index + 2].strip(strip_chars))
+        )
+
+    def append_boundary(index: int, raw: str) -> None:
+        nonlocal segment_has_copula, segment_has_how_to, segment_starts_guidance
+        nonlocal segment_previous_token
+        if index + 1 >= len(raw_tokens):
+            return
+        next_token = raw_tokens[index + 1].strip(strip_chars)
+        if (
+            segment_starts_guidance
+            and suffix_has_list_separator[index + 1]
+            and next_token.endswith("s")
+            and not _is_build_verb_form(next_token)
+        ):
+            return
+        if "," in raw and comma_is_soft_coordination(index):
+            return
+        tokens.append(_CLAUSE_BOUNDARY_TOKEN)
+        segment_has_how_to = False
+        segment_has_copula = False
+        segment_starts_guidance = False
+        segment_previous_token = ""
+
+    def append_token(token: str) -> None:
+        nonlocal segment_has_copula, segment_has_how_to, segment_starts_guidance
+        nonlocal segment_previous_token
+        if not segment_previous_token:
+            segment_starts_guidance = token in _WH_OPENERS
+        if segment_previous_token == "how" and token == "to":
+            segment_has_how_to = True
+        if token in {"am", "are", "has", "have", "is", "was", "were"}:
+            segment_has_copula = True
+        tokens.append(token)
+        segment_previous_token = token
+
     for index, raw in enumerate(raw_tokens):
         token = raw.strip(strip_chars)
         is_separator_token = not token and any(char in raw for char in separators)
         if is_separator_token and tokens and tokens[-1] not in _READ_ONLY_COMMAND_PREFIXES:
-            if index + 1 < len(raw_tokens):
-                next_token = raw_tokens[index + 1].strip(strip_chars)
-                if _is_build_verb_form(next_token):
-                    tokens.append("and")
+            append_boundary(index, raw)
             continue
         if token:
-            tokens.append(token)
+            append_token(token)
         if not token or token in _READ_ONLY_COMMAND_PREFIXES:
             continue
         if not raw.rstrip().endswith(separators):
             continue
-        if index + 1 >= len(raw_tokens):
-            continue
-        next_token = raw_tokens[index + 1].strip(strip_chars)
-        if _is_build_verb_form(next_token):
-            tokens.append("and")
+        append_boundary(index, raw)
     return [token for token in tokens if token]
+
+
+def _requirement_action_index(tokens: list[str], marker_index: int) -> int:
+    """Return the action predicate after a non-modal requirement marker."""
+    marker = tokens[marker_index]
+    if marker_index > 0 and tokens[marker_index - 1] in {"can", "may", "might"}:
+        # ``The worker may need/have to restart`` describes capability or a
+        # possibility; the surrounding capability modal owns the predicate.
+        return -1
+    predicate_index = marker_index + 1
+    if marker in {"had", "has", "have"}:
+        if predicate_index >= len(tokens) or tokens[predicate_index] != "to":
+            return -1
+    elif marker in {"are", "is", "was", "were"}:
+        if predicate_index >= len(tokens) or tokens[predicate_index] not in {
+            "expected",
+            "required",
+            "supposed",
+        }:
+            return -1
+        predicate_index += 1
+    elif marker not in {"need", "needed", "needs", "require", "required", "requires"}:
+        return -1
+
+    while predicate_index < len(tokens) and tokens[predicate_index] in {
+        "a",
+        "an",
+        "be",
+        "been",
+        "get",
+        "getting",
+        "the",
+        "to",
+    }:
+        predicate_index += 1
+    if predicate_index >= len(tokens) or any(
+        token in {"never", "no", "not", "without"}
+        for token in tokens[marker_index + 1 : predicate_index + 1]
+    ):
+        return -1
+    return predicate_index
+
+
+def _has_later_modal_requirement_clause(tokens: list[str], *, command: str) -> bool:
+    """Detect a distinct modal or non-modal work requirement clause."""
+    clause_start = 0
+    later_clause = False
+    saw_command = False
+    clause_is_guidance = False
+    for index, token in enumerate(tokens):
+        if not saw_command:
+            saw_command = token == command
+            continue
+        if token == _CLAUSE_BOUNDARY_TOKEN:
+            clause_start = index + 1
+            later_clause = True
+            clause_is_guidance = _followup_clause_is_guidance(tokens, clause_start)
+            continue
+        if not later_clause and token in {"and", "but", "then"}:
+            clause_start = index + 1
+            later_clause = True
+            clause_is_guidance = _followup_clause_is_guidance(tokens, clause_start)
+            continue
+        if not later_clause or clause_is_guidance:
+            continue
+        requirement_action = _requirement_action_index(tokens, index)
+        if requirement_action >= 0 and _is_mutating_action_form(tokens[requirement_action]):
+            return True
+        if token not in _MODAL_OPENERS:
+            continue
+        if index == clause_start:
+            subject_index = index + 1
+            predicate_index = index + 2
+        else:
+            subject_index = index - 1
+            predicate_index = index + 1
+        if subject_index >= len(tokens) or predicate_index >= len(tokens):
+            continue
+        predicate = tokens[predicate_index]
+        if predicate == "not" and predicate_index + 1 < len(tokens):
+            predicate_index += 1
+            predicate = tokens[predicate_index]
+        if predicate == _CLAUSE_BOUNDARY_TOKEN:
+            continue
+        if token in {"can", "may", "might"} and _predicate_follows_capability_modal(
+            tokens, predicate_index, clause_start
+        ):
+            # A noun-subject modal describes capability or possibility ("the
+            # worker can retry"), while "can you retry" asks Alfred to act.
+            continue
+        return True
+    return False
 
 
 def _has_unknown_surface_placement(tokens: list[str]) -> bool:
@@ -1396,10 +2463,245 @@ def _has_unknown_surface_placement(tokens: list[str]) -> bool:
 def _reply_claims_plan_or_action(reply: str) -> bool:
     """True when a read-only reply claims Alfred created/planned work."""
     lowered = " ".join(str(reply or "").lower().split())
-    return any(phrase in lowered for phrase in _READ_ONLY_PLAN_CLAIM_PHRASES)
+    words = re.findall(r"[a-z]+(?:'[a-z]+)?|[.,;!?]", lowered)
+    subjects = {
+        "alfred",
+        "artifact",
+        "artifacts",
+        "branch",
+        "branches",
+        "change",
+        "changes",
+        "commit",
+        "commits",
+        "file",
+        "files",
+        "i",
+        "i'll",
+        "i'm",
+        "i've",
+        "issue",
+        "issues",
+        "plan",
+        "plans",
+        "request",
+        "requests",
+        "service",
+        "services",
+        "task",
+        "tasks",
+        "ticket",
+        "tickets",
+        "we",
+        "we'll",
+        "we're",
+        "we've",
+        "worker",
+        "workers",
+        "work",
+    }
+    auxiliaries = {
+        "am",
+        "are",
+        "already",
+        "currently",
+        "did",
+        "do",
+        "going",
+        "had",
+        "has",
+        "have",
+        "been",
+        "being",
+        "getting",
+        "is",
+        "just",
+        "now",
+        "successfully",
+        "to",
+        "was",
+        "were",
+        "will",
+    }
+    capability_modals = {"can", "can't", "cannot", "could", "may", "might"}
+    negations = {
+        "can't",
+        "cannot",
+        "didn't",
+        "haven't",
+        "never",
+        "no",
+        "not",
+        "wasn't",
+        "weren't",
+        "without",
+    }
+    stative_predicates = {
+        "describe",
+        "describes",
+        "discuss",
+        "discusses",
+        "explain",
+        "explains",
+        "recommend",
+        "recommends",
+        "support",
+        "supports",
+    }
+    connectors = {",", "and", "but", "then"}
+    sentence_boundaries = {".", ";", "!", "?"}
+
+    def positive_action_at(predicate: int, negated: bool) -> bool:
+        if negated or predicate >= len(words):
+            return False
+        following_negation = predicate + 1 < len(words) and words[predicate + 1] in {
+            "no",
+            "none",
+            "not",
+        }
+        return not following_negation and _is_mutating_action_form(words[predicate])
+
+    active_subject = False
+    awaiting_predicate = False
+    negated = False
+    capability_scope = False
+    stative_scope = False
+    for index, word in enumerate(words):
+        if word in sentence_boundaries:
+            active_subject = False
+            awaiting_predicate = False
+            negated = False
+            capability_scope = False
+            stative_scope = False
+            continue
+        sentence_start = index == 0 or words[index - 1] in sentence_boundaries
+        if sentence_start and word.endswith("ing") and _is_mutating_action_form(word):
+            return True
+        if word in subjects:
+            active_subject = True
+            awaiting_predicate = True
+            negated = any(candidate in negations for candidate in words[max(0, index - 3) : index])
+            capability_scope = False
+            stative_scope = False
+            continue
+        if not active_subject:
+            continue
+        if word in connectors:
+            if capability_scope or (word == "and" and stative_scope):
+                continue
+            awaiting_predicate = True
+            negated = False
+            stative_scope = False
+            continue
+        if not awaiting_predicate:
+            continue
+        if word in negations:
+            negated = True
+            if word in capability_modals:
+                capability_scope = True
+            continue
+        if word in capability_modals:
+            capability_scope = True
+            continue
+        if word in auxiliaries or word.endswith("ly"):
+            continue
+        if not capability_scope and positive_action_at(index, negated):
+            return True
+        stative_scope = word in stative_predicates
+        awaiting_predicate = False
+    return False
 
 
-def looks_like_read_only_info_request(text: str) -> bool:
+def _is_mutating_action_form(token: str) -> bool:
+    """Match a build verb in base, gerund, past, or third-person form."""
+    action_verbs = {
+        "add",
+        "archive",
+        "apply",
+        "approve",
+        "build",
+        "change",
+        "close",
+        "commit",
+        "create",
+        "delete",
+        "deploy",
+        "disable",
+        "draft",
+        "enable",
+        "execute",
+        "file",
+        "fix",
+        "implement",
+        "make",
+        "migrate",
+        "merge",
+        "open",
+        "plan",
+        "process",
+        "publish",
+        "push",
+        "queue",
+        "reboot",
+        "refactor",
+        "remove",
+        "rename",
+        "restart",
+        "retry",
+        "rotate",
+        "save",
+        "ship",
+        "start",
+        "stop",
+        "submit",
+        "trigger",
+        "update",
+        "wire",
+        "write",
+    }
+    irregular = {
+        "applied": "apply",
+        "built": "build",
+        "made": "make",
+        "written": "write",
+        "wrote": "write",
+    }
+    if token in action_verbs or irregular.get(token) in action_verbs:
+        return True
+    candidates: set[str] = set()
+    if len(token) > 4 and token.endswith("ing"):
+        stem = token[:-3]
+        candidates.update({stem, stem + "e"})
+        if len(stem) > 1 and stem[-1] == stem[-2]:
+            candidates.add(stem[:-1])
+    if len(token) > 3 and token.endswith("ed"):
+        stem = token[:-2]
+        candidates.update({stem, stem + "e"})
+        if len(stem) > 1 and stem[-1] == stem[-2]:
+            candidates.add(stem[:-1])
+    if len(token) > 3 and token.endswith("s"):
+        candidates.add(token[:-1])
+        if token.endswith("es"):
+            candidates.add(token[:-2])
+    return bool(candidates & action_verbs)
+
+
+def _strip_known_repo_context_prefix(text: str, context_repos: Iterable[str]) -> str:
+    """Strip a leading repo scope only when it matches selected context."""
+    match = _REPO_CONTEXT_PREFIX.match(text)
+    if match is None:
+        return text
+    known = {str(repo).strip().lower().removesuffix(".git") for repo in context_repos}
+    if match.group("repo").lower().removesuffix(".git") not in known:
+        return text
+    return text[match.end() :]
+
+
+def looks_like_read_only_info_request(
+    text: str,
+    *,
+    context_repos: Iterable[str] = (),
+) -> bool:
     """True when an imperative turn asks Alfred to observe, not make a plan.
 
     ``looks_like_question`` covers "what is the fleet status?" and modal
@@ -1420,16 +2722,52 @@ def looks_like_read_only_info_request(text: str) -> bool:
     if not cleaned:
         return False
     lowered = cleaned.lower()
-    tokens = [token.strip(",.;:!?\"'`()[]") for token in lowered.split()]
+    command_text = _strip_known_repo_context_prefix(lowered, context_repos)
+    tokens = [token.strip(",.;:!?\"'`()[]") for token in command_text.split()]
     tokens = [token for token in tokens if token]
     if not tokens:
         return False
+
+    explicit_position = _explicit_read_only_position(command_text)
+    explicit_read_only = explicit_position >= 0
+    question_prefix = (
+        command_text[:explicit_position].rstrip(" ,.;:") if explicit_position > 0 else ""
+    )
+    prefix_tokens = [token.strip(",.;:!?\"'`()[]") for token in question_prefix.split()]
+    prefix_tokens = [token for token in prefix_tokens if token]
+    prefix_is_plain_question = bool(prefix_tokens) and looks_like_question(question_prefix)
+    if prefix_is_plain_question:
+        prefix_is_plain_question = not _has_followup_build_clause(
+            _separator_aware_build_tokens(question_prefix)
+        )
+    explicit_suffix_has_work = explicit_position >= 0 and _has_followup_build_clause(
+        _separator_aware_build_tokens(command_text[explicit_position:])
+    )
+    if (
+        explicit_read_only
+        and not explicit_suffix_has_work
+        and (looks_like_question(command_text) or prefix_is_plain_question)
+    ):
+        # WH/status questions do not begin with an information command, but an
+        # explicit no-action instruction must still scrub a model-invented plan
+        # or action. ``looks_like_question`` rejects mixed prompts that also
+        # contain a real imperative.
+        return True
 
     command_index = 0
     for prefix in _READ_ONLY_FORMAT_PREFIXES:
         if tuple(tokens[: len(prefix)]) == prefix:
             command_index = len(prefix)
             break
+    while command_index < len(tokens) and tokens[command_index] in _READ_ONLY_COMMAND_PREFIXES:
+        command_index += 1
+    if command_index + 1 < len(tokens) and tokens[command_index : command_index + 2] == [
+        "read",
+        "only",
+    ]:
+        command_index += 2
+    elif command_index < len(tokens) and tokens[command_index] in {"read-only", "readonly"}:
+        command_index += 1
     while command_index < len(tokens) and tokens[command_index] in _READ_ONLY_COMMAND_PREFIXES:
         command_index += 1
     if command_index >= len(tokens):
@@ -1439,14 +2777,22 @@ def looks_like_read_only_info_request(text: str) -> bool:
         command in _READ_ONLY_MODAL_OPENERS
         and command_index + 2 < len(tokens)
         and tokens[command_index + 1] in _READ_ONLY_MODAL_SUBJECTS
-        and tokens[command_index + 2] in _READ_ONLY_COMMAND_VERBS
     ):
-        command_index += 2
-        command = tokens[command_index]
+        modal_command_index = command_index + 2
+        while modal_command_index < len(tokens) and tokens[modal_command_index] in {
+            *_READ_ONLY_COMMAND_PREFIXES,
+            "also",
+        }:
+            modal_command_index += 1
+        if (
+            modal_command_index < len(tokens)
+            and tokens[modal_command_index] in _READ_ONLY_COMMAND_VERBS
+        ):
+            command_index = modal_command_index
+            command = tokens[command_index]
     if command not in _READ_ONLY_COMMAND_VERBS:
         return False
 
-    explicit_read_only = any(phrase in lowered for phrase in _EXPLICIT_READ_ONLY_PHRASES)
     subject_hint = any(token in _READ_ONLY_SUBJECT_WORDS for token in tokens) or any(
         phrase in lowered for phrase in _READ_ONLY_SUBJECT_PHRASES
     )
@@ -1456,7 +2802,11 @@ def looks_like_read_only_info_request(text: str) -> bool:
     target_tokens = tokens[:command_index] + tokens[command_index + 1 :]
     target_surface = any(token in _READ_ONLY_TARGET_SURFACE_WORDS for token in target_tokens)
     has_status_word = any(token in _READ_ONLY_STATUS_WORDS for token in tokens)
-    if target_surface and not (explicit_read_only and has_status_word):
+    if (
+        target_surface
+        and command not in {"describe", "explain", "tell"}
+        and not (explicit_read_only and has_status_word)
+    ):
         return False
     if (
         command in _READ_ONLY_SHOW_VERBS
@@ -1468,15 +2818,42 @@ def looks_like_read_only_info_request(text: str) -> bool:
     status_shape = explicit_read_only or has_status_word
     if command in _READ_ONLY_SHOW_VERBS and not status_shape:
         return False
-    build_tokens = _separator_aware_build_tokens(lowered)
-    ignore_build_verb_index = command_index if command in _READ_ONLY_SHOW_VERBS else None
+    build_tokens = _separator_aware_build_tokens(command_text)
+    command_token_index = next(
+        (index for index, token in enumerate(build_tokens) if token == command),
+        0,
+    )
+    build_tokens = build_tokens[command_token_index:]
+    if _has_followup_build_clause(build_tokens):
+        return False
+    if _has_later_modal_requirement_clause(build_tokens, command=command):
+        return False
+    ignored_build_verbs = _explanatory_build_verb_indices(build_tokens)
+    ignored_build_verbs |= _guidance_clause_build_verb_indices(build_tokens)
+    ignored_build_verbs |= _capability_modal_build_verb_indices(build_tokens)
+    ignored_build_verbs |= _information_command_build_verb_indices(
+        build_tokens,
+        command_index=0,
+    )
+    if command in _READ_ONLY_SHOW_VERBS:
+        show_index = next(
+            (index for index, token in enumerate(build_tokens) if token == command),
+            -1,
+        )
+        if show_index >= 0:
+            ignored_build_verbs = ignored_build_verbs | {show_index}
     return not _has_build_verb_in_verb_position(
         build_tokens,
-        ignore_index=ignore_build_verb_index,
+        ignore_indices=frozenset(ignored_build_verbs),
     )
 
 
-def classify_message_intent(text: str, *, draft: IssueDraft) -> str:
+def classify_message_intent(
+    text: str,
+    *,
+    draft: IssueDraft,
+    context_repos: Iterable[str] = (),
+) -> str:
     """Classify one plain message as ``conversation`` or ``build`` with no model.
 
     This is the shared, deterministic backstop the no-engine surfaces use so a
@@ -1496,14 +2873,23 @@ def classify_message_intent(text: str, *, draft: IssueDraft) -> str:
     path runs through ``resolve_intent`` with the model's own verdict); this only
     strengthens the deterministic fallback both surfaces share.
     """
+    context_repo_list = list(context_repos)
     content_draft = replace(draft, repos=[]) if draft.repos else draft
     if _draft_has_content(content_draft):
         return INTENT_BUILD
-    if looks_like_read_only_info_request(text):
+    repo_context = [*draft.repos, *context_repo_list]
+    if looks_like_read_only_info_request(text, context_repos=repo_context):
         return INTENT_CONVERSATION
-    if looks_like_question(text):
+    question_text = _strip_known_repo_context_prefix(text, repo_context)
+    if looks_like_question(question_text):
         return INTENT_CONVERSATION
-    return resolve_intent(None, last_user_message=text, draft=content_draft, done=False)
+    return resolve_intent(
+        None,
+        last_user_message=text,
+        draft=draft,
+        done=False,
+        context_repos=context_repo_list,
+    )
 
 
 def _draft_has_content(draft: IssueDraft) -> bool:
@@ -1738,6 +3124,7 @@ def run_turn(
     code_map: str,
     intake_guidance: str,
     base_draft: IssueDraft,
+    context_repos: Iterable[str] = (),
     engine: str,
     workdir: Path,
     timeout: int = DEFAULT_TIMEOUT,
@@ -1850,6 +3237,7 @@ def run_turn(
         result.result_text,
         base_draft=base_draft,
         last_user_message=latest_user_message,
+        context_repos=context_repos,
     )
 
 
