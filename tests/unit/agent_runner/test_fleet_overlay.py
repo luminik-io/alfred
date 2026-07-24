@@ -235,6 +235,34 @@ def test_live_repo_map_preserves_overlay_write_matching_setup_value(overlay_root
     assert agent_runner.repo_to_local_map() == {"private/ops": "/tmp/private-ops"}
 
 
+@pytest.mark.parametrize(
+    ("module_name", "mutation"),
+    [
+        (
+            "setdefault_fleet",
+            'GH_REPO_TO_LOCAL.setdefault("private/ops", "/tmp/private-ops")',
+        ),
+        ("union_fleet", 'GH_REPO_TO_LOCAL |= {"private/ops": "/tmp/private-ops"}'),
+    ],
+)
+def test_live_repo_map_captures_standard_overlay_mutators(
+    overlay_root, monkeypatch, module_name: str, mutation: str
+):
+    (overlay_root / f"{module_name}.py").write_text(
+        "from agent_runner import GH_REPO_TO_LOCAL\n" + mutation + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_FLEET_OVERLAY", module_name)
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "private/ops=/tmp/private-ops")
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "")
+
+    assert agent_runner.repo_to_local_map() == {"private/ops": "/tmp/private-ops"}
+
+
 def test_overlay_named_via_env_loads_and_mutates(overlay_root, monkeypatch):
     """A custom overlay module pointed at by ``ALFRED_FLEET_OVERLAY``
     runs its module-level side effects during ``agent_runner`` init."""

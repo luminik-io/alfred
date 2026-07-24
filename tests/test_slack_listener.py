@@ -4063,6 +4063,72 @@ def test_confirm_reaction_from_operator_executes_action(tmp_path: Path, monkeypa
     assert calls == [{"repo": "acme-io/acme-frontend", "number": 12, "hold": False}]
 
 
+def test_confirm_reaction_rejects_repo_removed_after_card_posted(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UFOUNDER")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UFOUNDER")
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    env_path = runtime / ".env"
+
+    def write_scope(repo: str) -> None:
+        local_name = repo.rsplit("/", 1)[-1]
+        env_path.write_text(
+            "# alfred-init, generated below this line. Safe to re-run.\n"
+            "GH_ORG=acme\n"
+            f"ALFRED_REPO_LOCAL_MAP={repo}=/tmp/{local_name}\n"
+            f"ALFRED_QUEUE_REPOS={repo}\n",
+            encoding="utf-8",
+        )
+
+    write_scope("acme/frontend")
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/frontend=/tmp/frontend")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "acme/frontend")
+
+    import issue_assignment
+
+    calls: list[tuple[str, int, str]] = []
+
+    def capture_assignment(repo, number, *, target_agent):
+        calls.append((repo, number, target_agent))
+        return SimpleNamespace(ok=True, detail="assigned", error="")
+
+    monkeypatch.setattr(issue_assignment, "assign_issue", capture_assignment)
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path / "state",
+        poster=poster,
+        intent_engine=_intent_engine(
+            {
+                "action": "assign_issue",
+                "repo": "acme/frontend",
+                "issue": 4,
+                "agent": "architect",
+                "confidence": 0.95,
+            }
+        ),
+    )
+    posted = listener.handle_payload(
+        _intent_dm("assign acme/frontend#4 to the architect", user="UFOUNDER")
+    )
+    assert posted.action == "intent_confirmation_posted"
+
+    write_scope("acme/backend")
+    confirmed = listener.handle_payload(
+        _reaction(
+            reaction="white_check_mark",
+            ts=poster.card_ts(),
+            user="UFOUNDER",
+        )
+    )
+
+    assert confirmed.action == "intent_scope_changed"
+    assert calls == []
+    assert "no longer selected" in poster.messages[-1]["text"]
+
+
 def test_confirm_reaction_from_non_operator_does_not_execute(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UFOUNDER")
     monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UFOUNDER UTEAM")

@@ -1724,6 +1724,20 @@ class SlackPlanningListener:
             )
             return ListenerResult(False, "intent_invalid", "confirmed action missing repo/issue")
 
+        if not self._current_repo_catalog().contains(repo):
+            self.registry.mark_status(record, "scope_changed")
+            self._post_thread_ack(
+                event.channel,
+                record.thread_ts,
+                "*Could not run that.* The repository is no longer selected in Alfred; "
+                "nothing changed.",
+            )
+            return ListenerResult(
+                True,
+                "intent_scope_changed",
+                f"{repo} is no longer in the active repository scope",
+            )
+
         if action == ACTION_ASSIGN:
             target_agent = str(metadata.get("agent") or "").strip()
             assignment = assign_issue(repo, issue, target_agent=target_agent)
