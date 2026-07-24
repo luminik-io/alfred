@@ -65,6 +65,52 @@ def _engine_returning(payload: dict) -> si.EngineInvoke:
     return _invoke
 
 
+def test_repo_catalog_reads_runtime_onboarding_changes(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    monkeypatch.setenv("GH_ORG", "acme")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/frontend=/tmp/frontend")
+
+    first = RepoCatalog.from_environment()
+    assert "acme/frontend" in first.slugs()
+
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/backend=/tmp/backend")
+
+    second = RepoCatalog.from_environment()
+    assert "acme/backend" in second.slugs()
+    assert "acme/frontend" not in second.slugs()
+
+
+def test_repo_catalog_uses_live_owner_with_live_checkout_map(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    monkeypatch.setenv("GH_ORG", "new-owner")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "backend=/tmp/backend")
+
+    catalog = RepoCatalog.from_environment()
+
+    assert catalog.resolve("queue backend issue #4")[0] == "new-owner/backend"
+
+
+def test_repo_catalog_reloads_setup_config_across_processes(monkeypatch, tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "GH_ORG=acme\n"
+        "ALFRED_REPO_LOCAL_MAP=acme/backend=/tmp/backend\n"
+        "ALFRED_QUEUE_REPOS=acme/backend\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("GH_ORG", "stale-owner")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "stale-owner/frontend=/tmp/frontend")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "stale-owner/frontend")
+
+    catalog = RepoCatalog.from_environment()
+
+    assert catalog.resolve("queue backend issue #4")[0] == "acme/backend"
+    assert "stale-owner/frontend" not in catalog.slugs()
+
+
 def _save_roster_theme(
     monkeypatch,
     tmp_path: Path,

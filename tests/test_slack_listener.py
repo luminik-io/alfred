@@ -1389,7 +1389,13 @@ def _intent_engine(payload: dict):
     return _invoke
 
 
-def _intent_dm(text: str, *, event_id: str = "EvIntent", user: str = "U1") -> dict:
+def _intent_dm(
+    text: str,
+    *,
+    event_id: str = "EvIntent",
+    user: str = "U1",
+    ts: str = "1716480500.000001",
+) -> dict:
     return {
         "event_id": event_id,
         "event": {
@@ -1398,7 +1404,7 @@ def _intent_dm(text: str, *, event_id: str = "EvIntent", user: str = "U1") -> di
             "channel_type": "im",
             "user": user,
             "text": text,
-            "ts": "1716480500.000001",
+            "ts": ts,
         },
     }
 
@@ -1429,6 +1435,259 @@ def _intent_catalog():
         {"acme-frontend": "frontend", "acme-backend": "backend"},
         gh_org="acme-io",
     )
+
+
+def test_listener_refreshes_repo_catalog_after_onboarding_changes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "runtime"))
+    monkeypatch.setenv("GH_ORG", "acme")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/frontend=/tmp/frontend")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "acme/frontend")
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine({"action": "queue_issue", "issue": 4, "confidence": 0.95}),
+    )
+
+    first = listener.handle_payload(
+        _intent_dm("queue frontend issue #4", event_id="EvLiveRepoFrontend")
+    )
+    assert first.action == "intent_confirmation_posted"
+
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/backend=/tmp/backend")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "acme/backend")
+
+    stale_followup = listener.handle_payload(
+        _intent_dm(
+            "do it",
+            event_id="EvRemovedRepoFollowup",
+            ts="1716480501.000001",
+        )
+    )
+    assert stale_followup.action == "intent_clarify"
+
+    second = listener.handle_payload(
+        _intent_dm(
+            "queue backend issue #4",
+            event_id="EvLiveRepoBackend",
+            ts="1716480502.000001",
+        )
+    )
+    assert second.action == "intent_confirmation_posted"
+
+    cleared = listener.handle_payload(
+        _intent_dm(
+            "queue frontend issue #4",
+            event_id="EvClearedRepoFrontend",
+            ts="1716480503.000001",
+        )
+    )
+    assert cleared.action == "intent_clarify"
+
+
+def test_listener_reloads_persisted_repo_catalog_without_process_restart(
+    tmp_path: Path, monkeypatch
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+
+    def write_scope(repo: str) -> None:
+        local_name = repo.rsplit("/", 1)[-1]
+        (runtime / ".env").write_text(
+            "# alfred-init, generated below this line. Safe to re-run.\n"
+            "GH_ORG=acme\n"
+            f"ALFRED_REPO_LOCAL_MAP={repo}=/tmp/{local_name}\n"
+            f"ALFRED_QUEUE_REPOS={repo}\n",
+            encoding="utf-8",
+        )
+
+    write_scope("acme/frontend")
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("GH_ORG", "acme")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/frontend=/tmp/frontend")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "acme/frontend")
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path / "state",
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine({"action": "queue_issue", "issue": 4, "confidence": 0.95}),
+    )
+
+    first = listener.handle_payload(
+        _intent_dm("queue frontend issue #4", event_id="EvPersistedRepoFrontend")
+    )
+    assert first.action == "intent_confirmation_posted"
+
+    write_scope("acme/backend")
+
+    removed = listener.handle_payload(
+        _intent_dm(
+            "queue frontend issue #4",
+            event_id="EvPersistedRepoRemoved",
+            ts="1716480504.000001",
+        )
+    )
+    assert removed.action == "intent_clarify"
+
+    added = listener.handle_payload(
+        _intent_dm(
+            "queue backend issue #4",
+            event_id="EvPersistedRepoAdded",
+            ts="1716480505.000001",
+        )
+    )
+    assert added.action == "intent_confirmation_posted"
+
+
+def test_clarification_does_not_restore_repo_removed_from_persisted_scope(
+    tmp_path: Path, monkeypatch
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+
+    def write_scope(repo: str) -> None:
+        local_name = repo.rsplit("/", 1)[-1]
+        (runtime / ".env").write_text(
+            "# alfred-init, generated below this line. Safe to re-run.\n"
+            "GH_ORG=acme\n"
+            f"ALFRED_REPO_LOCAL_MAP={repo}=/tmp/{local_name}\n"
+            f"ALFRED_QUEUE_REPOS={repo}\n",
+            encoding="utf-8",
+        )
+
+    write_scope("acme/frontend")
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("GH_ORG", "acme")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/frontend=/tmp/frontend")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "acme/frontend")
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path / "state",
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine({"action": "queue_issue", "confidence": 0.95}),
+        bot_user_id="UALFRED",
+    )
+    root = listener.handle_payload(
+        {
+            "event_id": "EvRemovedClarificationRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> queue frontend",
+                "ts": "1716480506.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    write_scope("acme/backend")
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    reply = listener.handle_payload(
+        {
+            "event_id": "EvRemovedClarificationReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "issue #4",
+                "ts": "1716480507.000001",
+                "thread_ts": "1716480506.000001",
+            },
+        }
+    )
+
+    assert reply.action == "intent_clarify"
+    assert "acme/frontend#4" not in poster.messages[-1]["text"]
+
+
+def test_replacement_repo_does_not_inherit_removed_repo_issue(tmp_path: Path, monkeypatch) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    env_path = runtime / ".env"
+
+    def write_scope(repo: str) -> None:
+        local_name = repo.rsplit("/", 1)[-1]
+        env_path.write_text(
+            "# alfred-init, generated below this line. Safe to re-run.\n"
+            "GH_ORG=acme\n"
+            f"ALFRED_REPO_LOCAL_MAP={repo}=/tmp/{local_name}\n"
+            f"ALFRED_QUEUE_REPOS={repo}\n",
+            encoding="utf-8",
+        )
+
+    write_scope("acme/frontend")
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/frontend=/tmp/frontend")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "acme/frontend")
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path / "state",
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine(
+            {
+                "action": "assign_issue",
+                "confidence": 0.95,
+            }
+        ),
+        bot_user_id="UALFRED",
+    )
+    root = listener.handle_payload(
+        {
+            "event_id": "EvReplacementIssueRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> assign acme/frontend#47 to Nightwing",
+                "ts": "1716480508.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    write_scope("acme/backend")
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    reply = listener.handle_payload(
+        {
+            "event_id": "EvReplacementIssueReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "acme/backend to the architect",
+                "ts": "1716480509.000001",
+                "thread_ts": "1716480508.000001",
+            },
+        }
+    )
+
+    assert reply.action == "intent_clarify"
+    assert "acme/backend#47" not in poster.messages[-1]["text"]
+    assert "which issue" in poster.messages[-1]["text"].lower()
+    recorded = listener._conversation.recent("thread:C1:1716480508.000001")[-1]
+    assert recorded.repo == "acme/backend"
+    assert recorded.issue is None
 
 
 def test_router_explicitly_disabled_falls_through_to_planning(tmp_path: Path, monkeypatch) -> None:
@@ -3879,6 +4138,72 @@ def test_confirm_reaction_from_operator_executes_action(tmp_path: Path, monkeypa
     assert confirmed.handled is True
     assert confirmed.action == "intent_queue_issue"
     assert calls == [{"repo": "acme-io/acme-frontend", "number": 12, "hold": False}]
+
+
+def test_confirm_reaction_rejects_repo_removed_after_card_posted(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UFOUNDER")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UFOUNDER")
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    env_path = runtime / ".env"
+
+    def write_scope(repo: str) -> None:
+        local_name = repo.rsplit("/", 1)[-1]
+        env_path.write_text(
+            "# alfred-init, generated below this line. Safe to re-run.\n"
+            "GH_ORG=acme\n"
+            f"ALFRED_REPO_LOCAL_MAP={repo}=/tmp/{local_name}\n"
+            f"ALFRED_QUEUE_REPOS={repo}\n",
+            encoding="utf-8",
+        )
+
+    write_scope("acme/frontend")
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/frontend=/tmp/frontend")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "acme/frontend")
+
+    import issue_assignment
+
+    calls: list[tuple[str, int, str]] = []
+
+    def capture_assignment(repo, number, *, target_agent):
+        calls.append((repo, number, target_agent))
+        return SimpleNamespace(ok=True, detail="assigned", error="")
+
+    monkeypatch.setattr(issue_assignment, "assign_issue", capture_assignment)
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path / "state",
+        poster=poster,
+        intent_engine=_intent_engine(
+            {
+                "action": "assign_issue",
+                "repo": "acme/frontend",
+                "issue": 4,
+                "agent": "architect",
+                "confidence": 0.95,
+            }
+        ),
+    )
+    posted = listener.handle_payload(
+        _intent_dm("assign acme/frontend#4 to the architect", user="UFOUNDER")
+    )
+    assert posted.action == "intent_confirmation_posted"
+
+    write_scope("acme/backend")
+    confirmed = listener.handle_payload(
+        _reaction(
+            reaction="white_check_mark",
+            ts=poster.card_ts(),
+            user="UFOUNDER",
+        )
+    )
+
+    assert confirmed.action == "intent_scope_changed"
+    assert calls == []
+    assert "no longer selected" in poster.messages[-1]["text"]
 
 
 def test_confirm_reaction_from_non_operator_does_not_execute(tmp_path: Path, monkeypatch) -> None:

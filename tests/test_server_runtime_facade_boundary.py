@@ -17,6 +17,7 @@ fine; only actual ``import`` statements are forbidden.
 from __future__ import annotations
 
 import ast
+import os
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -66,3 +67,30 @@ def test_runtime_facade_is_the_single_boundary() -> None:
     # importing agent_runner, either the facade was gutted or the runtime moved,
     # and this guard would be vacuously true, so pin the expectation explicitly.
     assert _imports_agent_runner(FACADE.read_text(encoding="utf-8"))
+
+
+def test_runtime_facade_reads_persisted_repo_map_without_restart(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from server.runtime_facade import repo_to_local
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    env_path = runtime / ".env"
+    env_path.write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\n"
+        "ALFRED_REPO_LOCAL_MAP=acme/frontend=/tmp/current-frontend\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "stale/frontend=/tmp/stale-frontend")
+
+    assert repo_to_local()["acme/frontend"] == "/tmp/current-frontend"
+
+    env_path.write_text(
+        "# alfred-init, generated below this line. Safe to re-run.\nALFRED_REPO_LOCAL_MAP=\n",
+        encoding="utf-8",
+    )
+
+    assert "acme/frontend" not in repo_to_local()
+    assert os.environ["ALFRED_REPO_LOCAL_MAP"] == "stale/frontend=/tmp/stale-frontend"

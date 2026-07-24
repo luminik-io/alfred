@@ -1849,6 +1849,22 @@ def test_persist_selected_repos_atomically_saves_verified_checkout_map(
     assert os.environ[setup_mod.REPO_LOCAL_MAP_ENV] == encoded
 
 
+def test_persist_selected_repos_keeps_an_empty_live_checkout_map_authoritative(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv(setup_mod.REPO_LOCAL_MAP_ENV, "acme/web=/tmp/stale-web")
+    home.mkdir(parents=True)
+
+    setup_mod.persist_selected_repos([], queue_repos=[], repo_checkouts=[])
+
+    assert os.environ[setup_mod.REPO_LOCAL_MAP_ENV] == ""
+    assert f"{setup_mod.REPO_LOCAL_MAP_ENV}=\n" in (home / ".env").read_text(encoding="utf-8")
+
+
 def test_persist_selected_repos_accepts_matching_non_origin_remote(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

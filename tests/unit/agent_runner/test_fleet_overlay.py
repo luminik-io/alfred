@@ -163,6 +163,128 @@ def test_repo_local_map_env_preserves_decoded_space_paths(overlay_root, monkeypa
     assert agent_runner.local_repo_dir("test-org/web") == "/tmp/web"
 
 
+def test_repo_local_map_updates_after_runtime_import(overlay_root, monkeypatch):
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "test-org/api=/tmp/old-api")
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    assert agent_runner.local_repo_dir("api") == "/tmp/old-api"
+
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "test-org/api=/tmp/new-api")
+
+    assert agent_runner.repo_to_local_map()["test-org/api"] == "/tmp/new-api"
+    assert agent_runner.local_repo_dir("api") == "/tmp/new-api"
+
+
+def test_explicit_empty_runtime_repo_map_clears_import_snapshot(overlay_root, monkeypatch):
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "test-org/api=/tmp/api")
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "")
+
+    assert agent_runner.repo_to_local_map() == {}
+    assert agent_runner.local_repo_dir("api") == "api"
+
+
+def test_live_repo_map_preserves_overlay_only_entries(overlay_root, monkeypatch):
+    (overlay_root / "mapped_fleet.py").write_text(
+        textwrap.dedent(
+            """
+            from agent_runner import GH_REPO_TO_LOCAL
+            GH_REPO_TO_LOCAL.update({"private/ops": "/tmp/private-ops"})
+            """
+        ).lstrip()
+    )
+    monkeypatch.setenv("ALFRED_FLEET_OVERLAY", "mapped_fleet")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "public/app=/tmp/old-app")
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "public/app=/tmp/new-app")
+
+    assert agent_runner.repo_to_local_map()["private/ops"] == "/tmp/private-ops"
+    assert agent_runner.local_repo_dir("public/app") == "/tmp/new-app"
+
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "")
+
+    assert agent_runner.repo_to_local_map() == {"private/ops": "/tmp/private-ops"}
+    assert agent_runner.local_repo_dir("public/app") == "public/app"
+
+
+def test_live_repo_map_preserves_overlay_write_matching_setup_value(overlay_root, monkeypatch):
+    (overlay_root / "matching_fleet.py").write_text(
+        textwrap.dedent(
+            """
+            from agent_runner import GH_REPO_TO_LOCAL
+            GH_REPO_TO_LOCAL.update({"private/ops": "/tmp/private-ops"})
+            """
+        ).lstrip()
+    )
+    monkeypatch.setenv("ALFRED_FLEET_OVERLAY", "matching_fleet")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "private/ops=/tmp/private-ops")
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "")
+
+    assert agent_runner.repo_to_local_map() == {"private/ops": "/tmp/private-ops"}
+
+
+@pytest.mark.parametrize(
+    ("module_name", "initial_map", "mutation"),
+    [
+        (
+            "setdefault_fleet",
+            "public/app=/tmp/public-app",
+            'GH_REPO_TO_LOCAL.setdefault("private/ops", "/tmp/private-ops")',
+        ),
+        (
+            "union_fleet",
+            "private/ops=/tmp/private-ops",
+            'GH_REPO_TO_LOCAL |= {"private/ops": "/tmp/private-ops"}',
+        ),
+    ],
+)
+def test_live_repo_map_captures_standard_overlay_mutators(
+    overlay_root, monkeypatch, module_name: str, initial_map: str, mutation: str
+):
+    (overlay_root / f"{module_name}.py").write_text(
+        "from agent_runner import GH_REPO_TO_LOCAL\n" + mutation + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_FLEET_OVERLAY", module_name)
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", initial_map)
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "")
+
+    assert agent_runner.repo_to_local_map() == {"private/ops": "/tmp/private-ops"}
+
+
+def test_overlay_setdefault_does_not_claim_existing_setup_path(overlay_root, monkeypatch):
+    (overlay_root / "default_fleet.py").write_text(
+        "from agent_runner import GH_REPO_TO_LOCAL\n"
+        'GH_REPO_TO_LOCAL.setdefault("private/ops", "/tmp/overlay-default")\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_FLEET_OVERLAY", "default_fleet")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "private/ops=/tmp/setup-path")
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "")
+
+    assert agent_runner.repo_to_local_map() == {}
+
+
 def test_overlay_named_via_env_loads_and_mutates(overlay_root, monkeypatch):
     """A custom overlay module pointed at by ``ALFRED_FLEET_OVERLAY``
     runs its module-level side effects during ``agent_runner`` init."""

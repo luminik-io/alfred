@@ -579,9 +579,9 @@ def persist_selected_repos(
     env_path = write_env_values(values)
     for key in values:
         # Mirror into the live process so the new scope is effective now. An
-        # empty selection clears the override so the resolver falls back to the
-        # .env value (also empty), which is the honest "nothing scoped" state.
-        if values[key]:
+        # Keep an empty checkout map explicit so import-time paths cannot become
+        # active again after the user clears their repository selection.
+        if key == REPO_LOCAL_MAP_ENV or values[key]:
             os.environ[key] = values[key]
         else:
             os.environ.pop(key, None)

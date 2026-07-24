@@ -388,15 +388,14 @@ class SlackPlanningListener:
         # previously-unrouted free-text case. When no engine is injected we
         # resolve one from env; it returns ``None`` unless the router is
         # explicitly enabled, so the listener keeps its exact prior behavior
-        # by default. The repo alias catalog is built once from the canonical
-        # repo map plus the env queue allowlist.
+        # by default. An injected catalog remains fixed for deterministic tests
+        # and custom callers. The production catalog is rebuilt for each intent
+        # so desktop onboarding changes take effect without restarting Slack.
         if intent_engine is not None:
             self._intent_engine: Callable[[str], str] | None = intent_engine
         else:
             self._intent_engine = default_intent_engine_invoke()
-        self._repo_catalog = (
-            repo_catalog if repo_catalog is not None else RepoCatalog.from_environment()
-        )
+        self._repo_catalog = repo_catalog
         # Bounded, in-process multi-turn context so follow-ups ("yes that one",
         # "do it") resolve against the previous turn's interpreted target. It is
         # never persisted and never authority for a mutation: every mutating
@@ -772,7 +771,11 @@ class SlackPlanningListener:
         event: SlackInputEvent,
         turn,
     ) -> ListenerResult | None:
-        if turn.repo and turn.issue is not None:
+        catalog = self._current_repo_catalog()
+        turn_repo = turn.repo if catalog.contains(turn.repo) else ""
+        removed_turn_repo = bool(turn.repo) and not turn_repo
+        turn_issue = None if removed_turn_repo else turn.issue
+        if turn_repo and turn_issue is not None:
             if turn.action != ACTION_ASSIGN or turn.agent:
                 return None
             agent, unsupported_assignment_agent = resolve_assignment_agent(
@@ -781,22 +784,22 @@ class SlackPlanningListener:
             )
             if not agent and not unsupported_assignment_agent:
                 return None
-            repo = turn.repo
-            issue = turn.issue
+            repo = turn_repo
+            issue = turn_issue
             candidates: list[str] = []
         else:
-            repo, candidates = self._repo_catalog.resolve(event.text)
-            issue, issue_repo = resolve_issue(event.text, repo=repo or turn.repo)
+            repo, candidates = catalog.resolve(event.text)
+            issue, issue_repo = resolve_issue(event.text, repo=repo or turn_repo)
             if issue_repo and issue_repo != repo:
                 repo = issue_repo
                 candidates = []
-            repo = repo or turn.repo
-            if repo and issue is None and turn.issue is None:
+            repo = repo or turn_repo
+            if repo and issue is None and turn_issue is None and not removed_turn_repo:
                 issue, issue_repo = resolve_issue(turn.text, repo=repo)
                 if issue_repo and issue_repo != repo:
                     repo = issue_repo
                     candidates = []
-            issue = issue if issue is not None else turn.issue
+            issue = issue if issue is not None else turn_issue
             agent = turn.agent
             unsupported_assignment_agent = ""
             if turn.action == ACTION_ASSIGN and not agent:
@@ -809,6 +812,11 @@ class SlackPlanningListener:
                         turn.text,
                         state_root=self.state_root,
                     )
+
+        if repo and not catalog.contains(repo):
+            repo = ""
+            issue = None
+            candidates = []
 
         params = {
             "raw_text": event.text.strip(),
@@ -1324,13 +1332,14 @@ class SlackPlanningListener:
         if self._intent_engine is None:
             return None
 
+        catalog = self._current_repo_catalog()
         intent = classify_intent(
             event.text,
             engine_invoke=self._intent_engine,
-            catalog=self._repo_catalog,
+            catalog=catalog,
             state_root=self.state_root,
         )
-        intent = self._augment_intent_from_context(event, intent)
+        intent = self._augment_intent_from_context(event, intent, catalog=catalog)
 
         if intent.action == ACTION_STATUS:
             self._conversation.record(
@@ -1370,7 +1379,18 @@ class SlackPlanningListener:
         # safe planning default (no result), preserving prior behavior.
         return None
 
-    def _augment_intent_from_context(self, event: SlackInputEvent, intent: Intent) -> Intent:
+    def _current_repo_catalog(self) -> RepoCatalog:
+        if self._repo_catalog is not None:
+            return self._repo_catalog
+        return RepoCatalog.from_environment()
+
+    def _augment_intent_from_context(
+        self,
+        event: SlackInputEvent,
+        intent: Intent,
+        *,
+        catalog: RepoCatalog,
+    ) -> Intent:
         """Fill a mutating intent's missing target from recent conversation.
 
         Only triggers when (a) the intent is mutating, (b) it resolved no repo
@@ -1388,6 +1408,8 @@ class SlackPlanningListener:
             return intent
         prev_repo, prev_issue = self._conversation.last_target(event.conversation_id)
         if not prev_repo:
+            return intent
+        if prev_repo.casefold() not in {slug.casefold() for slug in catalog.slugs()}:
             return intent
         params = dict(intent.params or {})
         params["context_repo"] = prev_repo
@@ -1704,6 +1726,20 @@ class SlackPlanningListener:
                 "*Could not run that.* The confirmed action was incomplete; nothing changed.",
             )
             return ListenerResult(False, "intent_invalid", "confirmed action missing repo/issue")
+
+        if not self._current_repo_catalog().contains(repo):
+            self.registry.mark_status(record, "scope_changed")
+            self._post_thread_ack(
+                event.channel,
+                record.thread_ts,
+                "*Could not run that.* The repository is no longer selected in Alfred; "
+                "nothing changed.",
+            )
+            return ListenerResult(
+                True,
+                "intent_scope_changed",
+                f"{repo} is no longer in the active repository scope",
+            )
 
         if action == ACTION_ASSIGN:
             target_agent = str(metadata.get("agent") or "").strip()

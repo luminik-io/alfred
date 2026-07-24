@@ -38,6 +38,7 @@ import sys
 import tempfile
 import time
 import urllib.parse
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -59,10 +60,48 @@ _REPO_LOCAL_MAP_COMMA_BOUNDARY_RE = re.compile(
     r",\s*(?=[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?=(?:/|~|\.{1,2}/))"
 )
 
+
+class _RepoLocalMap(dict[str, str]):
+    """Repository map that records writes made while a fleet overlay loads."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._capturing_overlay = False
+        self._overlay_values: dict[str, str] = {}
+
+    def __setitem__(self, key: str, value: str) -> None:
+        super().__setitem__(key, value)
+        if self._capturing_overlay:
+            self._overlay_values[key] = value
+
+    def update(self, *args: object, **kwargs: str) -> None:
+        values: dict[str, str] = dict(*args, **kwargs)
+        for key, value in values.items():
+            self[key] = value
+
+    def setdefault(self, key: str, default: str = "") -> str:
+        if key not in self:
+            self[key] = default
+        return self[key]
+
+    def __ior__(self, other: object) -> _RepoLocalMap:  # type: ignore[override,misc]
+        self.update(other)
+        return self
+
+    def begin_overlay_capture(self) -> None:
+        self._capturing_overlay = True
+
+    def end_overlay_capture(self) -> None:
+        self._capturing_overlay = False
+
+    def overlay_values(self) -> dict[str, str]:
+        return {key: value for key, value in self._overlay_values.items() if self.get(key) == value}
+
+
 # --------------------------------------------------------------------------
 # Repo slug map + helper
 # --------------------------------------------------------------------------
-GH_REPO_TO_LOCAL: dict[str, str] = {}
+GH_REPO_TO_LOCAL: dict[str, str] = _RepoLocalMap()
 """Maps GitHub repo slug -> local checkout directory under WORKSPACE_ROOT.
 
 Empty by default; consumers populate it for their fleet::
@@ -75,7 +114,7 @@ Empty by default; consumers populate it for their fleet::
 """
 
 
-def _repo_local_map_from_env() -> dict[str, str]:
+def _repo_local_map_from_env(env: Mapping[str, str] | None = None) -> dict[str, str]:
     """Parse ALFRED_REPO_LOCAL_MAP into the runtime slug map.
 
     The setup UI and ``alfred-init`` persist checkout overrides in
@@ -87,7 +126,8 @@ def _repo_local_map_from_env() -> dict[str, str]:
     """
 
     out: dict[str, str] = {}
-    raw = os.environ.get("ALFRED_REPO_LOCAL_MAP", "")
+    source = os.environ if env is None else env
+    raw = source.get("ALFRED_REPO_LOCAL_MAP", "")
     for piece in _repo_local_map_entries(raw):
         if "=" not in piece:
             continue
@@ -156,7 +196,44 @@ def _decode_repo_local_map_value(value: str) -> str:
     return value
 
 
-GH_REPO_TO_LOCAL.update(_repo_local_map_from_env())
+_IMPORTED_REPO_LOCAL_MAP = _repo_local_map_from_env()
+GH_REPO_TO_LOCAL.update(_IMPORTED_REPO_LOCAL_MAP)
+
+
+def _begin_repo_overlay_capture() -> None:
+    if isinstance(GH_REPO_TO_LOCAL, _RepoLocalMap):
+        GH_REPO_TO_LOCAL.begin_overlay_capture()
+
+
+def _end_repo_overlay_capture() -> None:
+    if isinstance(GH_REPO_TO_LOCAL, _RepoLocalMap):
+        GH_REPO_TO_LOCAL.end_overlay_capture()
+
+
+def _repo_overlay_values() -> dict[str, str]:
+    if isinstance(GH_REPO_TO_LOCAL, _RepoLocalMap):
+        return GH_REPO_TO_LOCAL.overlay_values()
+    return {}
+
+
+def repo_to_local_map(env: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Return the checkout map that is authoritative for this process now.
+
+    The desktop setup flow updates ``ALFRED_REPO_LOCAL_MAP`` without restarting
+    the local server. When that key is present, parse it on every read instead
+    of returning the import-time ``GH_REPO_TO_LOCAL`` snapshot. An explicitly
+    empty value clears setup-derived entries while retaining paths added by a
+    Python fleet overlay. When the key is absent, return the complete import-time
+    map.
+    """
+
+    source = os.environ if env is None else env
+    if "ALFRED_REPO_LOCAL_MAP" in source:
+        overlay_map = _repo_overlay_values()
+        overlay_map.update(_repo_local_map_from_env(source))
+        return overlay_map
+    return dict(GH_REPO_TO_LOCAL)
+
 
 # Per-process cache for ``ensure_labels``: ``{repo_slug: {label_name, ...}}``.
 # Keyed on repo *and* the set of labels already created on it: the previous
@@ -183,7 +260,8 @@ def local_repo_dir(repo_slug: str) -> str:
         from agent_runner import WORKSPACE, local_repo_dir
         local = WORKSPACE / local_repo_dir(repo_slug)
     """
-    return GH_REPO_TO_LOCAL.get(repo_slug, repo_slug)
+    repo_map = repo_to_local_map()
+    return repo_map.get(repo_slug, repo_map.get(repo_slug.casefold(), repo_slug))
 
 
 def _full_repo(slug: str) -> str:
