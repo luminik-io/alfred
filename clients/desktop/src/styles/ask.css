@@ -734,7 +734,7 @@
 /* The composer is the hero: a large, bordered, generously-padded glass input.
  * Glass is appropriate here (it is the primary overlay control, not a flat data
  * card). It carries strong presence via a slightly heavier border and a focus
- * ring that lands on the steel-violet accent. */
+ * ring that lands on the active theme accent. */
 .ask__composer {
   position: relative;
   display: grid;
@@ -1360,4 +1360,3 @@
   border: 1px solid color-mix(in oklch, var(--primary), transparent 74%);
   background: color-mix(in oklch, var(--primary), var(--black) 88%);
 }
-

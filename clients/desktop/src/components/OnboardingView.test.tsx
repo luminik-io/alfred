@@ -350,6 +350,7 @@ describe("OnboardingView eight-step takeover", () => {
     );
     const shell = document.querySelector(".alfred-onboarding-shell");
     expect(shell).toHaveClass("is-welcome");
+    expect(screen.queryByLabelText(/onboarding navigation/i)).not.toBeInTheDocument();
     expect(shell?.firstElementChild).toBe(
       screen.getByRole("navigation", { name: /onboarding progress/i }),
     );
@@ -2032,7 +2033,7 @@ describe("OnboardingView eight-step takeover", () => {
     );
   });
 
-  it("moves Back and Continue through the footer", async () => {
+  it("shows navigation only after the welcome decision", async () => {
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         engine_ready: false,
@@ -2041,14 +2042,14 @@ describe("OnboardingView eight-step takeover", () => {
     );
     renderOnboarding();
     const user = userEvent.setup();
-    // From Welcome, Continue advances to Tools.
-    await user.click(await screen.findByRole("button", { name: /^continue$/i }));
+    expect(screen.queryByLabelText(/onboarding navigation/i)).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: /^get started$/i }));
     expect(screen.getByRole("button", { name: /check my tools/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^continue$/i })).toBeInTheDocument();
     // Back returns to Welcome.
     await user.click(screen.getByRole("button", { name: /^back$/i }));
     expect(screen.getByText(/let's get you set up/i)).toBeInTheDocument();
-    // Back is disabled on the first step.
-    expect(screen.getByRole("button", { name: /^back$/i })).toBeDisabled();
+    expect(screen.queryByLabelText(/onboarding navigation/i)).not.toBeInTheDocument();
   });
 });
 

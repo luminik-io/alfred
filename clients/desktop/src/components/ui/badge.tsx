@@ -10,7 +10,7 @@ const badgeVariants = cva(
     variants: {
       variant: {
         default:
-          "border-primary/25 bg-[linear-gradient(135deg,var(--primary),var(--accent))] text-primary-foreground shadow-[0_8px_20px_color-mix(in_oklch,var(--primary),transparent_78%)] [a]:hover:brightness-110",
+          "border-primary/25 bg-[linear-gradient(135deg,var(--primary),color-mix(in_oklch,var(--primary),black_18%))] text-primary-foreground shadow-[0_8px_20px_color-mix(in_oklch,var(--primary),transparent_78%)] [a]:hover:brightness-110",
         secondary:
           "border-border/55 bg-secondary/75 text-secondary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl [a]:hover:bg-secondary/90",
         destructive:

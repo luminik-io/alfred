@@ -1080,7 +1080,7 @@ export function OnboardingView({
               ) : null}
             </div>
 
-            {!welcomeRequiresRuntimeChoice ? (
+            {stepKey !== "welcome" ? (
               <footer className="alfred-onboarding-shell__footer" aria-label="Onboarding navigation">
                 <Button
                   variant="outline"

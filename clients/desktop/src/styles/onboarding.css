@@ -5,7 +5,7 @@
  * first-run journey. One GLASS shell floats over the ambient base; a persistent
  * minimal numbered Stepper sits at the top, the active step lives in a centered
  * column with generous whitespace, and a Back / Continue footer closes it. Only
- * the single primary CTA per step carries the steel-violet accent; every data
+ * the single primary CTA per step carries the theme accent; every data
  * surface inside a step (repo list, engine probe) stays flat. Appended last so
  * it overrides nothing above and is easy to lift out if onboarding ever moves.
  * --------------------------------------------------------------------------- */
@@ -86,10 +86,7 @@
   padding: 2rem;
 }
 
-/* Onboarding is the one place we lean into spectacle: amp the same painted
- * atmosphere ~1.4x with a bright accent bloom rising behind the shell, so the
- * takeover reads as a product intro, not a form floating in a void. GPU-cheap
- * (static radial gradients on one layer), behind the shell, no pointer events. */
+/* A quiet linear light field separates first run from the regular app shell. */
 .alfred-onboarding::before {
   content: "";
   position: fixed;
@@ -97,20 +94,15 @@
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(
-      70% 55% at 50% 8%,
-      color-mix(in oklch, var(--accent), transparent 74%),
-      transparent 62%
+    linear-gradient(
+      145deg,
+      color-mix(in oklch, var(--primary), transparent 82%),
+      transparent 42%
     ),
-    radial-gradient(
-      60% 60% at 88% 4%,
-      color-mix(in oklch, var(--brand-teal), transparent 82%),
-      transparent 60%
-    ),
-    radial-gradient(
-      55% 60% at 8% 100%,
-      color-mix(in oklch, var(--accent-2), transparent 86%),
-      transparent 60%
+    linear-gradient(
+      325deg,
+      color-mix(in oklch, var(--brand-teal), transparent 90%),
+      transparent 48%
     );
 }
 
@@ -376,7 +368,7 @@
 
 /* The trust differentiator, a quiet pill under the welcome heading: the
  * can't-miss "no API keys, runs on the subscriptions you already pay for" point.
- * A bordered steel-violet chip, not buried fine print. */
+ * A bordered signal chip, not buried fine print. */
 .alfred-onboarding-welcome__trust {
   display: inline-flex;
   align-items: center;

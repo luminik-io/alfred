@@ -41,7 +41,7 @@ for (const vp of VIEWPORTS) {
       ([m]) => {
         try {
           localStorage.setItem("alfred-desktop.base-url", "http://127.0.0.1:7010");
-          localStorage.setItem("alfred-theme-name", "alfred");
+          localStorage.setItem("alfred-theme-name", "mineral");
           localStorage.setItem("alfred-theme", m);
         } catch {}
       },

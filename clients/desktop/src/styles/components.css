@@ -261,24 +261,24 @@
   border-radius: 0;
 }
 
-.appearance__swatch[data-theme-preview="alfred"] .appearance__swatch-bg {
-  background: oklch(0.145 0.017 268);
+.appearance__swatch[data-theme-preview="mineral"] .appearance__swatch-bg {
+  background: oklch(0.145 0.008 235);
 }
-.appearance__swatch[data-theme-preview="alfred"] .appearance__swatch-card {
-  background: oklch(0.20 0.019 270);
+.appearance__swatch[data-theme-preview="mineral"] .appearance__swatch-card {
+  background: oklch(0.22 0.011 235 / 88%);
 }
-.appearance__swatch[data-theme-preview="alfred"] .appearance__swatch-accent {
-  background: oklch(0.64 0.19 262);
+.appearance__swatch[data-theme-preview="mineral"] .appearance__swatch-accent {
+  background: oklch(0.70 0.12 215);
 }
 
-.appearance__swatch[data-theme-preview="linear"] .appearance__swatch-bg {
-  background: oklch(0.155 0.008 275);
+.appearance__swatch[data-theme-preview="carbon"] .appearance__swatch-bg {
+  background: oklch(0.135 0.004 70);
 }
-.appearance__swatch[data-theme-preview="linear"] .appearance__swatch-card {
-  background: oklch(0.205 0.009 275);
+.appearance__swatch[data-theme-preview="carbon"] .appearance__swatch-card {
+  background: oklch(0.20 0.006 70 / 92%);
 }
-.appearance__swatch[data-theme-preview="linear"] .appearance__swatch-accent {
-  background: oklch(0.64 0.15 262);
+.appearance__swatch[data-theme-preview="carbon"] .appearance__swatch-accent {
+  background: oklch(0.72 0.13 70);
 }
 
 .appearance__segment {

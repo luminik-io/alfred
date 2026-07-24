@@ -94,8 +94,7 @@
   border: 1px solid
     color-mix(in oklch, var(--accent) 20%, color-mix(in oklch, var(--border), white 10%));
   border-radius: var(--radius-lg);
-  /* Prismatic ember -> amber 1px top edge, a specular wash, an ember corner
-     glow, then the translucent card fill. */
+  /* A restrained top signal and specular wash over translucent card glass. */
   background:
     linear-gradient(
       90deg,
@@ -104,10 +103,10 @@
       color-mix(in oklch, var(--brand-teal), transparent 52%),
       transparent
     ) top / 100% 1px no-repeat,
-    radial-gradient(
-      120% 150% at 0% 0%,
-      color-mix(in oklch, var(--accent), transparent 84%),
-      transparent 52%
+    linear-gradient(
+      145deg,
+      color-mix(in oklch, var(--accent), transparent 90%),
+      transparent 46%
     ),
     linear-gradient(180deg, var(--glass-highlight), transparent 30%),
     color-mix(in oklch, var(--card), transparent 16%);
@@ -174,7 +173,7 @@
     0 16px 42px rgba(0, 0, 0, 0.22);
 }
 
-/* The Home hero: a GLASS banner (blur + specular + ambient steel-violet wash).
+/* The Home hero: a glass banner with a restrained ambient wash.
  * Now a two-column morning-after summary plus a single primary CTA. The Ask
  * prompt is gone (Ask is in the sidebar). */
 .command-center__top {
@@ -187,10 +186,10 @@
   overflow: hidden;
   padding: 1.15rem 1.25rem;
   background:
-    radial-gradient(
-      90% 140% at 0% 0%,
-      color-mix(in oklch, var(--primary), transparent 85%),
-      transparent 55%
+    linear-gradient(
+      145deg,
+      color-mix(in oklch, var(--primary), transparent 90%),
+      transparent 52%
     ),
     linear-gradient(180deg, var(--glass-highlight), transparent 31%),
     var(--glass);

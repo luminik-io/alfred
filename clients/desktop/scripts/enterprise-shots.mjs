@@ -63,7 +63,7 @@ async function shoot(browser, { surface, width, theme }) {
   const p = await ctx.newPage();
   await p.addInitScript((seed) => {
     try {
-      localStorage.setItem("alfred-theme-name", "alfred");
+      localStorage.setItem("alfred-theme-name", "mineral");
       localStorage.setItem("alfred-theme", seed.theme);
       localStorage.setItem("alfred.rosterView", seed.rosterView);
     } catch {}
