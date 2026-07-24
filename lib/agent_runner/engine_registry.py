@@ -69,7 +69,6 @@ class ProbeCommand:
     markers: tuple[str, ...] = ()
     reason: str = "protocol_mismatch"
     env_vars: frozenset[str] = frozenset()
-    satisfying_env_vars: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -196,7 +195,6 @@ ENGINE_DESCRIPTORS: tuple[EngineDescriptor, ...] = (
             ("login", "status"),
             reason="auth_required",
             env_vars=frozenset({"CODEX_HOME"}),
-            satisfying_env_vars=frozenset({"OPENAI_API_KEY"}),
         ),
         dispatchable=True,
     ),
@@ -441,9 +439,6 @@ def probe_engine(
         )
     else:
         auth = descriptor.auth_command
-        auth_satisfied_by_env = bool(
-            auth and any(env.get(name, "").strip() for name in auth.satisfying_env_vars)
-        )
         completed = (
             _run_probe(
                 [binary, *auth.args],
@@ -451,10 +446,10 @@ def probe_engine(
                 runner=runner,
                 extra_env_vars=auth.env_vars,
             )
-            if auth and not auth_satisfied_by_env
+            if auth
             else None
         )
-        if auth and not auth_satisfied_by_env and (completed is None or completed.returncode != 0):
+        if auth and (completed is None or completed.returncode != 0):
             result = EngineProbeResult(
                 descriptor=descriptor,
                 installed=True,

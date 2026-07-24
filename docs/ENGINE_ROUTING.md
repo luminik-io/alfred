@@ -153,10 +153,10 @@ These are starting points, not laws. If you have a Claude Max plan and abundant 
 Alfred's default posture is to use the local CLI subscription auth you have already paid for. It does not need API keys for normal operation.
 
 - Claude Code with a Pro or Max plan: keep `ANTHROPIC_API_KEY` unset. Claude Code gives env-var API keys priority over subscription auth, which silently moves a firing onto API billing.
-- Codex with a ChatGPT plan: sign in through the Codex CLI with your ChatGPT account. Keep `OPENAI_API_KEY` unset unless you intentionally want API-key billing.
+- Codex with a ChatGPT plan: sign in through the Codex CLI with your ChatGPT account. Keep `OPENAI_API_KEY` unset. Alfred never treats a generic SDK key as proof that the Codex CLI can run.
 - AWS: only used when an agent needs Secrets Manager, and only with per-agent IAM (see [AWS setup](./AWS_SETUP.md)).
 
-The shipped fleet is designed to run on subscriptions you already have. No double billing. If you want to add API-key fallback for redundancy, set the env vars deliberately and document what you did in `$ALFRED_HOME/.env`.
+The shipped fleet is designed to run on subscriptions you already have. No double billing. An API-billed Codex CLI must be authenticated through Codex's own login flow so `codex login status` can verify it; placing a key in Alfred's environment is not an authentication contract.
 
 ## Multi-engine contract
 

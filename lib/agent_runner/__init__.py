@@ -79,6 +79,7 @@ from .agent_events import (
 # Config (env, engine, dry-run, doctor)
 # --------------------------------------------------------------------------
 from .config import (
+    DISABLED_ENGINE,
     ENGINE_CHOICES,
     MODEL_ENGINES,
     PROVIDER_LIMIT_SUBTYPES,
@@ -457,6 +458,7 @@ __all__ = [
     "now_iso",
     "today_str",
     # config
+    "DISABLED_ENGINE",
     "ENGINE_CHOICES",
     "PROVIDER_LIMIT_SUBTYPES",
     "agent_engine",

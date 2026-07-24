@@ -43,7 +43,7 @@ Rules:
 - Do not enable every discovered repo. Configure only the repos listed in REPOS.
 - Keep Slack skipped unless I paste a webhook.
 - Keep AWS optional; do not create IAM users or profiles during this install.
-- Keep ANTHROPIC_API_KEY and OPENAI_API_KEY unset unless I explicitly ask for API billing.
+- Keep `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` unset. Use the Claude Code and Codex CLI login flows.
 - Use the full engineering fleet: `planner` (Drake), `architect` (Batman),
   `senior-dev` (Lucius), `reviewer` (Ra's al Ghul), `test-engineer` (Bane),
   `fixer` (Nightwing), `triage` (Robin), `e2e-runner` (Huntress),

@@ -132,6 +132,12 @@ def test_probe_process_receives_only_non_secret_runtime_context(fresh_agent_runn
             "HOME": str(tmp_path),
             "TERM": "xterm-256color",
         },
+        {
+            "CODEX_HOME": str(tmp_path / "codex-home"),
+            "PATH": "/usr/bin:/bin",
+            "HOME": str(tmp_path),
+            "TERM": "xterm-256color",
+        },
     ]
     for child_env in received_environments:
         assert "GITHUB_TOKEN" not in child_env
@@ -140,9 +146,7 @@ def test_probe_process_receives_only_non_secret_runtime_context(fresh_agent_runn
         assert "OPENAI_API_KEY" not in child_env
 
 
-def test_codex_api_key_satisfies_auth_without_crossing_probe_boundary(
-    fresh_agent_runner, tmp_path: Path
-):
+def test_codex_api_key_never_bypasses_cli_auth_probe(fresh_agent_runner, tmp_path: Path):
     ar = fresh_agent_runner
     binary = _executable(tmp_path / "codex")
     calls: list[tuple[str, ...]] = []
@@ -154,6 +158,7 @@ def test_codex_api_key_satisfies_auth_without_crossing_probe_boundary(
         outputs = {
             ("--version",): "codex 1.2.3\n",
             ("exec", "--help"): "--output-last-message --sandbox --cd\n",
+            ("login", "status"): "signed in\n",
         }
         return subprocess.CompletedProcess(command, 0, outputs[args], "")
 
@@ -170,7 +175,38 @@ def test_codex_api_key_satisfies_auth_without_crossing_probe_boundary(
     )
 
     assert result.ready is True
-    assert calls == [("--version",), ("exec", "--help")]
+    assert calls == [("--version",), ("exec", "--help"), ("login", "status")]
+
+
+def test_invalid_codex_api_key_cannot_make_engine_ready(fresh_agent_runner, tmp_path: Path):
+    ar = fresh_agent_runner
+    binary = _executable(tmp_path / "codex")
+
+    def runner(command, **kwargs):
+        assert "OPENAI_API_KEY" not in kwargs["env"]
+        args = tuple(command[1:])
+        outputs = {
+            ("--version",): (0, "codex 1.2.3\n", ""),
+            ("exec", "--help"): (0, "--output-last-message --sandbox --cd\n", ""),
+            ("login", "status"): (1, "", "not signed in"),
+        }
+        returncode, stdout, stderr = outputs[args]
+        return subprocess.CompletedProcess(command, returncode, stdout, stderr)
+
+    result = ar.probe_engine(
+        ar.DEFAULT_ENGINE_REGISTRY.descriptor("codex"),
+        environ={
+            "CODEX_BIN": str(binary),
+            "OPENAI_API_KEY": "invalid-or-revoked-key",
+            "PATH": "/usr/bin:/bin",
+            "HOME": str(tmp_path),
+        },
+        runner=runner,
+        use_cache=False,
+    )
+
+    assert result.ready is False
+    assert result.state == "auth_required"
 
 
 def test_claude_auth_probe_receives_only_claude_auth_context(fresh_agent_runner, tmp_path: Path):

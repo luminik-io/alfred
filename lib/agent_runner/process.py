@@ -45,6 +45,7 @@ from envflags import FALSY_VALUES, truthy
 
 from . import memory_ranking
 from .config import (
+    DISABLED_ENGINE,
     _truthy_env,
     agent_model,
     dry_run_log,
@@ -54,6 +55,7 @@ from .config import (
     normalize_model_name,
 )
 from .context_governor import govern_prompt_context
+from .engine_registry import DEFAULT_ENGINE_REGISTRY, EngineProbeResult, probe_engine
 from .memory_runtime import (
     BEGIN_MARKER,
     load_runtime_memory,
@@ -106,6 +108,53 @@ _LOG = logging.getLogger(__name__)
 # caller's value if given, otherwise this effectively-unlimited number.
 # The per-firing wall-clock ``timeout`` becomes the real ceiling.
 _CLAUDE_UNLIMITED_TURNS: int = 999
+
+
+def _probe_dispatch_engine(engine: str) -> EngineProbeResult:
+    """Verify the real CLI contract immediately before autonomous dispatch."""
+
+    return probe_engine(DEFAULT_ENGINE_REGISTRY.descriptor(engine))
+
+
+def _engine_not_ready_result(engine: str, readiness: EngineProbeResult) -> ClaudeResult:
+    """Return a scrubbed failure without crossing an unready engine boundary."""
+
+    subtype = (
+        "error_authentication" if readiness.state == "auth_required" else "error_engine_unavailable"
+    )
+    return ClaudeResult(
+        success=False,
+        subtype=subtype,
+        num_turns=0,
+        cost_usd=0.0,
+        session_id=None,
+        result_text=(
+            f"{readiness.descriptor.display_name} is not ready for autonomous dispatch "
+            f"({readiness.state}). Run `alfred doctor` after fixing the engine setup."
+        ),
+        raw={"engine": engine, "engine_readiness": readiness.state},
+        stop_reason="error",
+        error_message=f"{engine} engine is not ready ({readiness.state})",
+    )
+
+
+def _disabled_engine_result() -> ClaudeResult:
+    """Return a clean failure for invalid operator-controlled engine state."""
+
+    return ClaudeResult(
+        success=False,
+        subtype="error_configuration",
+        num_turns=0,
+        cost_usd=0.0,
+        session_id=None,
+        result_text=(
+            "The configured engine is invalid. Choose claude, codex, or hybrid, "
+            "then run `alfred doctor`."
+        ),
+        raw={"engine": DISABLED_ENGINE, "engine_readiness": "invalid_configuration"},
+        stop_reason="error",
+        error_message="invalid engine configuration",
+    )
 
 
 def _runtime_cli_bin(env_name: str, imported_default: str) -> str:
@@ -1699,6 +1748,7 @@ def invoke_agent_engine(
     rubric: str | None = None,
     rubric_grader_engine: str | None = None,
     rubric_grader_fn: Callable[[str], str] | None = None,
+    engine_probe_fn: Callable[[str], EngineProbeResult] | None = None,
 ) -> tuple[ClaudeResult, str]:
     """Invoke a prompt through Claude, Codex, or Claude-first hybrid.
 
@@ -1743,6 +1793,8 @@ def invoke_agent_engine(
     edit-target. Off by default and a no-op when unset, so existing callers are
     byte-identical.
     """
+    if engine == DISABLED_ENGINE:
+        return _disabled_engine_result(), DISABLED_ENGINE
     mode = normalize_engine(engine)
     if claude_model is None:
         claude_model = agent_model(agent, "claude")
@@ -1750,6 +1802,14 @@ def invoke_agent_engine(
         codex_model = agent_model(agent, "codex")
     claude_call = claude_fn or claude_invoke_streaming
     codex_call = codex_fn or codex_invoke
+    claude_probe = engine_probe_fn or (
+        _probe_dispatch_engine
+        if claude_call in {claude_invoke, claude_invoke_streaming} and not is_dry_run()
+        else None
+    )
+    codex_probe = engine_probe_fn or (
+        _probe_dispatch_engine if codex_call is codex_invoke and not is_dry_run() else None
+    )
     memory_provider = load_runtime_memory() if memory_repo else None
     # Arm the cleanup BEFORE the firing's delta state can exist. with_memory_prompt
     # records injected lessons for this firing, and govern_prompt_context runs
@@ -1791,6 +1851,10 @@ def invoke_agent_engine(
             return result
 
         def _invoke_claude() -> ClaudeResult:
+            if claude_probe is not None:
+                readiness = claude_probe("claude")
+                if not readiness.ready:
+                    return _engine_not_ready_result("claude", readiness)
             return claude_call(
                 prompt_for_engine,
                 workdir=workdir,
@@ -1803,6 +1867,10 @@ def invoke_agent_engine(
             )
 
         def _invoke_codex() -> ClaudeResult:
+            if codex_probe is not None:
+                readiness = codex_probe("codex")
+                if not readiness.ready:
+                    return _engine_not_ready_result("codex", readiness)
             return codex_call(
                 prompt_for_engine,
                 workdir=workdir,

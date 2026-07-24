@@ -48,6 +48,13 @@ def test_agent_engine_env_precedence(fresh_agent_runner, monkeypatch):
     assert ar.agent_engine("senior-dev") == "claude"
 
 
+def test_agent_engine_invalid_operator_value_disables_dispatch(fresh_agent_runner):
+    ar = fresh_agent_runner
+
+    assert ar.agent_engine("triage", environ={"ALFRED_TRIAGE_ENGINE": "removed"}) == "disabled"
+    assert ar.engine_preflight_bins("disabled") == []
+
+
 def test_agent_engine_ignores_removed_review_engine_alias(fresh_agent_runner, monkeypatch):
     """The reviewer uses the same canonical engine keys as every other agent."""
     ar = fresh_agent_runner
