@@ -34,7 +34,7 @@ from typing import Any
 
 import alfred_config
 
-from .config import _env_present, _env_value_enabled
+from .config import INVALID_ENGINE_PREFLIGHT_MARKER, _env_present, _env_value_enabled
 from .disk import disk_pressure_status
 from .notify import slack_post
 from .paths import SHARED_AGENT, WORKSPACE
@@ -228,7 +228,9 @@ def preflight(spec: PreflightSpec) -> None:
 
     # 2. Required CLI binaries on PATH (or absolute paths that are executable).
     for binname in spec.bins:
-        if "/" in binname:
+        if binname == INVALID_ENGINE_PREFLIGHT_MARKER:
+            misses.append("engine configuration is invalid (choose claude, codex, or hybrid)")
+        elif "/" in binname:
             if not Path(binname).is_file() or not os.access(binname, os.X_OK):
                 misses.append(f"binary `{binname}` is not an executable file")
         elif not shutil.which(binname):

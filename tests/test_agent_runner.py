@@ -94,6 +94,20 @@ def test_preflight_raises_on_missing_binary(monkeypatch):
     assert posted == []
 
 
+def test_preflight_rejects_invalid_engine_configuration(monkeypatch, capsys):
+    import agent_runner as ar
+
+    monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: None)
+    spec = ar.PreflightSpec(agent="test", bins=ar.engine_preflight_bins("disabled"))
+
+    with pytest.raises(ar.PreflightFailed):
+        ar.preflight(spec)
+
+    out = capsys.readouterr().out
+    assert "engine configuration is invalid" in out
+    assert "DOCTOR-OK" not in out
+
+
 def test_preflight_requires_claude_credential_when_unreachable(monkeypatch, capsys):
     """With require_claude_credential set and no token in env or
     $ALFRED_HOME/.env, preflight must fail and name authentication as the

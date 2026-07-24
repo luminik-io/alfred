@@ -46,6 +46,7 @@ truthy = _truthy
 # --------------------------------------------------------------------------
 ENGINE_CHOICES: frozenset[str] = DEFAULT_ENGINE_REGISTRY.dispatchable_ids | {"hybrid"}
 DISABLED_ENGINE = "disabled"
+INVALID_ENGINE_PREFLIGHT_MARKER = "__alfred_invalid_engine_configuration__"
 MODEL_ENGINES: frozenset[str] = frozenset(
     descriptor.id
     for descriptor in DEFAULT_ENGINE_REGISTRY.supporting({EngineCapability.MODEL_SELECTION})
@@ -399,7 +400,10 @@ def engine_preflight_bins(engine: str, *, hybrid_requires_codex: bool = False) -
     Codex even in hybrid mode pass ``hybrid_requires_codex=True``.
     """
     if engine == DISABLED_ENGINE:
-        return []
+        # Keep invalid configuration visible to every runner that spreads this
+        # result into PreflightSpec.bins. An empty list incorrectly means that
+        # no engine is required and lets doctor mode report a healthy firing.
+        return [INVALID_ENGINE_PREFLIGHT_MARKER]
     mode = normalize_engine(engine)
     if mode != "hybrid":
         descriptor = DEFAULT_ENGINE_REGISTRY.descriptor(mode)
