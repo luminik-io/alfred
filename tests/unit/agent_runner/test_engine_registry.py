@@ -64,11 +64,6 @@ def test_dispatchable_probe_requires_protocol_and_auth(fresh_agent_runner, tmp_p
     runner, calls = _runner(
         {
             ("--version",): (0, "Claude Code 2.1.0\n", ""),
-            ("--help",): (
-                0,
-                "--output-format --permission-mode --allowedTools\n",
-                "",
-            ),
             ("auth", "status"): (0, "private account details", ""),
         }
     )
@@ -83,9 +78,53 @@ def test_dispatchable_probe_requires_protocol_and_auth(fresh_agent_runner, tmp_p
     assert result.ready is True
     assert result.state == "ready"
     assert result.version == "Claude Code 2.1.0"
+    assert result.as_dict()["minimum_version"] == "2.0.0"
     assert result.failures == ()
-    assert calls == [("--version",), ("--help",), ("auth", "status")]
+    assert calls == [("--version",), ("auth", "status")]
     assert "private account" not in str(result.as_dict())
+
+
+def test_claude_probe_does_not_depend_on_incomplete_help(fresh_agent_runner, tmp_path: Path):
+    ar = fresh_agent_runner
+    binary = _executable(tmp_path / "claude")
+    calls: list[tuple[str, ...]] = []
+
+    def runner(command, **_kwargs):
+        args = tuple(command[1:])
+        calls.append(args)
+        if args == ("--version",):
+            return subprocess.CompletedProcess(command, 0, "2.1.0 (Claude Code)\n", "")
+        if args == ("auth", "status"):
+            return subprocess.CompletedProcess(command, 0, "signed in\n", "")
+        raise AssertionError(f"help output must not gate Claude readiness: {args}")
+
+    result = ar.probe_engine(
+        ar.DEFAULT_ENGINE_REGISTRY.descriptor("claude"),
+        environ={"CLAUDE_BIN": str(binary), "PATH": ""},
+        runner=runner,
+        use_cache=False,
+    )
+
+    assert result.ready is True
+    assert calls == [("--version",), ("auth", "status")]
+
+
+def test_claude_probe_rejects_unsupported_major_version(fresh_agent_runner, tmp_path: Path):
+    ar = fresh_agent_runner
+    binary = _executable(tmp_path / "claude")
+    runner, calls = _runner({("--version",): (0, "Claude Code 1.9.9\n", "")})
+
+    result = ar.probe_engine(
+        ar.DEFAULT_ENGINE_REGISTRY.descriptor("claude"),
+        environ={"CLAUDE_BIN": str(binary), "PATH": ""},
+        runner=runner,
+        use_cache=False,
+    )
+
+    assert result.ready is False
+    assert result.state == "incompatible"
+    assert result.failures == ("unsupported_version",)
+    assert calls == [("--version",)]
 
 
 def test_probe_process_receives_only_non_secret_runtime_context(fresh_agent_runner, tmp_path: Path):
@@ -108,6 +147,9 @@ def test_probe_process_receives_only_non_secret_runtime_context(fresh_agent_runn
         environ={
             "CODEX_BIN": str(binary),
             "CODEX_HOME": str(tmp_path / "codex-home"),
+            "CODEX_ACCESS_TOKEN": "codex-automation-token",
+            "CODEX_CA_CERTIFICATE": str(tmp_path / "codex-ca.pem"),
+            "SSL_CERT_FILE": str(tmp_path / "corporate-ca.pem"),
             "GITHUB_TOKEN": "must-not-cross-probe-boundary",
             "SLACK_BOT_TOKEN": "must-not-cross-probe-boundary",
             "AWS_SECRET_ACCESS_KEY": "must-not-cross-probe-boundary",
@@ -133,7 +175,10 @@ def test_probe_process_receives_only_non_secret_runtime_context(fresh_agent_runn
             "TERM": "xterm-256color",
         },
         {
+            "CODEX_ACCESS_TOKEN": "codex-automation-token",
+            "CODEX_CA_CERTIFICATE": str(tmp_path / "codex-ca.pem"),
             "CODEX_HOME": str(tmp_path / "codex-home"),
+            "SSL_CERT_FILE": str(tmp_path / "corporate-ca.pem"),
             "PATH": "/usr/bin:/bin",
             "HOME": str(tmp_path),
             "TERM": "xterm-256color",
@@ -219,7 +264,6 @@ def test_claude_auth_probe_receives_only_claude_auth_context(fresh_agent_runner,
         args = tuple(command[1:])
         outputs = {
             ("--version",): "Claude Code 2.1.0\n",
-            ("--help",): "--output-format --permission-mode --allowedTools\n",
             ("auth", "status"): "signed in\n",
         }
         return subprocess.CompletedProcess(command, 0, outputs[args], "")
@@ -240,9 +284,8 @@ def test_claude_auth_probe_receives_only_claude_auth_context(fresh_agent_runner,
 
     assert result.ready is True
     assert "CLAUDE_CONFIG_DIR" not in received_environments[0]
-    assert "CLAUDE_CODE_OAUTH_TOKEN" not in received_environments[1]
-    assert received_environments[2]["CLAUDE_CONFIG_DIR"] == str(tmp_path / "claude-profile")
-    assert received_environments[2]["CLAUDE_CODE_OAUTH_TOKEN"] == "claude-auth-token"
+    assert received_environments[1]["CLAUDE_CONFIG_DIR"] == str(tmp_path / "claude-profile")
+    assert received_environments[1]["CLAUDE_CODE_OAUTH_TOKEN"] == "claude-auth-token"
     assert all("OPENAI_API_KEY" not in child_env for child_env in received_environments)
 
 
@@ -295,6 +338,30 @@ def test_probe_reports_auth_required_without_leaking_output(fresh_agent_runner, 
     assert result.failures == ("auth_required",)
     assert "private account" not in str(result.as_dict())
     assert "expired token" not in str(result.as_dict())
+
+
+def test_auth_probe_transport_failure_is_not_reported_as_signed_out(
+    fresh_agent_runner, tmp_path: Path
+):
+    ar = fresh_agent_runner
+    binary = _executable(tmp_path / "claude")
+
+    def runner(command, **_kwargs):
+        args = tuple(command[1:])
+        if args == ("--version",):
+            return subprocess.CompletedProcess(command, 0, "Claude Code 2.1.0\n", "")
+        raise subprocess.TimeoutExpired(command, timeout=4)
+
+    result = ar.probe_engine(
+        ar.DEFAULT_ENGINE_REGISTRY.descriptor("claude"),
+        environ={"CLAUDE_BIN": str(binary), "PATH": ""},
+        runner=runner,
+        use_cache=False,
+    )
+
+    assert result.ready is False
+    assert result.state == "probe_failed"
+    assert result.failures == ("auth_probe_failed",)
 
 
 def test_candidate_probe_never_claims_dispatch_readiness(fresh_agent_runner, tmp_path: Path):

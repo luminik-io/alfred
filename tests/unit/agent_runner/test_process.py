@@ -138,11 +138,71 @@ def test_direct_claude_dispatch_refuses_unready_engine(fresh_agent_runner, monke
             AssertionError("unready Claude subprocess must not start")
         ),
     )
+    monkeypatch.setattr(proc, "_claude_credentials_file", lambda: Path("/missing/credentials"))
 
     result = ar.claude_invoke("judge", workdir=Path("/tmp"), allowed_tools="")
 
     assert result.subtype == "error_authentication"
     assert result.raw == {"engine": "claude", "engine_readiness": "auth_required"}
+
+
+def test_direct_claude_dispatch_allows_classified_repair_for_disk_credentials(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    ar = fresh_agent_runner
+    import agent_runner.process as proc
+
+    descriptor = ar.DEFAULT_ENGINE_REGISTRY.descriptor("claude")
+    readiness = ar.EngineProbeResult(
+        descriptor=descriptor,
+        installed=True,
+        protocol_compatible=True,
+        ready=False,
+        state="auth_required",
+        detail="signed out",
+        binary="claude",
+        version="test",
+        failures=("auth_required",),
+    )
+    credentials = tmp_path / ".credentials.json"
+    credentials.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(proc, "_probe_dispatch_engine", lambda _engine: readiness)
+    monkeypatch.setattr(proc, "_claude_credentials_file", lambda: credentials)
+
+    assert proc._direct_engine_readiness_failure("claude") is None
+
+
+def test_direct_claude_dispatch_never_mutates_auth_on_probe_failure(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    ar = fresh_agent_runner
+    import agent_runner.process as proc
+
+    descriptor = ar.DEFAULT_ENGINE_REGISTRY.descriptor("claude")
+    credentials = tmp_path / ".credentials.json"
+    credentials.write_text("valid", encoding="utf-8")
+    monkeypatch.setattr(proc, "_claude_credentials_file", lambda: credentials)
+    monkeypatch.setattr(
+        proc,
+        "_probe_dispatch_engine",
+        lambda _engine: ar.EngineProbeResult(
+            descriptor=descriptor,
+            installed=True,
+            protocol_compatible=True,
+            ready=False,
+            state="probe_failed",
+            detail="probe timed out",
+            binary="claude",
+            version="test",
+            failures=("auth_probe_failed",),
+        ),
+    )
+
+    failure = proc._direct_engine_readiness_failure("claude")
+
+    assert failure is not None
+    assert failure.subtype == "error_engine_unavailable"
+    assert credentials.read_text(encoding="utf-8") == "valid"
 
 
 def test_direct_codex_dispatch_refuses_unready_engine(fresh_agent_runner, monkeypatch):

@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 const engineStateLabel: Record<string, string> = {
   ready: "ready",
   auth_required: "sign in",
+  probe_failed: "check failed",
   needs_validation: "needs validation",
   incompatible: "incompatible",
   missing: "not installed",

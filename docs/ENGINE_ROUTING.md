@@ -156,7 +156,7 @@ Alfred's default posture is to use the local CLI subscription auth you have alre
 - Codex with a ChatGPT plan: sign in through the Codex CLI with your ChatGPT account. Keep `OPENAI_API_KEY` unset. Alfred never treats a generic SDK key as proof that the Codex CLI can run.
 - AWS: only used when an agent needs Secrets Manager, and only with per-agent IAM (see [AWS setup](./AWS_SETUP.md)).
 
-The shipped fleet is designed to run on subscriptions you already have. No double billing. An API-billed Codex CLI must be authenticated through Codex's own login flow so `codex login status` can verify it; placing a key in Alfred's environment is not an authentication contract.
+The shipped fleet is designed to run on subscriptions you already have. No double billing. Alfred accepts Codex's own login state or its documented `CODEX_ACCESS_TOKEN` automation context. A generic `OPENAI_API_KEY` value alone is not an authentication contract and never makes the engine ready.
 
 ## Multi-engine contract
 
@@ -164,6 +164,10 @@ Claude Code and Codex are dispatchable today. The registry also knows how to
 identify OpenCode and Cline without pretending they are ready. `AgentResult`
 carries `success`, `subtype`, `num_turns`, `cost_usd`, `session_id`, and
 `result_text` regardless of which engine produced it.
+
+Claude Code 2.0.0 or newer is required. Alfred uses its stable version command
+for the runtime contract because Claude's top-level help is intentionally
+incomplete and cannot prove that a documented flag is absent.
 
 A new engine needs all of the following before it can join a fleet:
 

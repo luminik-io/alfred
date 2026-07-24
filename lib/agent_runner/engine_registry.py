@@ -22,6 +22,7 @@ from typing import Any
 
 _ENGINE_ID = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_SEMVER = re.compile(r"\b(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)\b")
 _PROBE_TIMEOUT_SECONDS = 4.0
 _CACHE_TTL_SECONDS = 15.0
 _SAFE_PROBE_ENV_VARS = frozenset(
@@ -81,6 +82,7 @@ class EngineDescriptor:
     default_binary: str
     capabilities: frozenset[EngineCapability]
     protocol_commands: tuple[ProbeCommand, ...]
+    minimum_version: tuple[int, int, int] | None = None
     auth_command: ProbeCommand | None = None
     dispatchable: bool = False
 
@@ -91,6 +93,8 @@ class EngineDescriptor:
             raise ValueError("engine display name must not be blank")
         if not self.binary_env.strip() or not self.default_binary.strip():
             raise ValueError("engine binary contract must not be blank")
+        if self.minimum_version is not None and any(part < 0 for part in self.minimum_version):
+            raise ValueError("minimum engine version must not be negative")
 
 
 @dataclass(frozen=True)
@@ -119,6 +123,11 @@ class EngineProbeResult:
             "detail": self.detail,
             "path": self.binary,
             "version": self.version,
+            "minimum_version": (
+                ".".join(str(part) for part in self.descriptor.minimum_version)
+                if self.descriptor.minimum_version
+                else None
+            ),
             "capabilities": sorted(capability.value for capability in self.descriptor.capabilities),
             "failures": list(self.failures),
         }
@@ -159,12 +168,13 @@ ENGINE_DESCRIPTORS: tuple[EngineDescriptor, ...] = (
         default_binary="claude",
         capabilities=_CLAUDE_CAPABILITIES,
         protocol_commands=(
-            ProbeCommand(("--version",), reason="version_failed"),
-            ProbeCommand(
-                ("--help",),
-                markers=("--output-format", "--permission-mode", "--allowedtools"),
-            ),
+            # Claude documents that top-level help is intentionally incomplete,
+            # so missing flag text cannot be used as a compatibility signal.
+            # The stable version command proves the executable boundary and the
+            # supported major version owns Alfred's invocation contract.
+            ProbeCommand(("--version",), markers=("claude",), reason="version_failed"),
         ),
+        minimum_version=(2, 0, 0),
         auth_command=ProbeCommand(
             ("auth", "status"),
             reason="auth_required",
@@ -194,7 +204,15 @@ ENGINE_DESCRIPTORS: tuple[EngineDescriptor, ...] = (
         auth_command=ProbeCommand(
             ("login", "status"),
             reason="auth_required",
-            env_vars=frozenset({"CODEX_HOME"}),
+            env_vars=frozenset(
+                {
+                    "CODEX_ACCESS_TOKEN",
+                    "CODEX_CA_CERTIFICATE",
+                    "CODEX_HOME",
+                    "SSL_CERT_DIR",
+                    "SSL_CERT_FILE",
+                }
+            ),
         ),
         dispatchable=True,
     ),
@@ -330,6 +348,17 @@ def _safe_version(output: str) -> str | None:
     return None
 
 
+def _semantic_version(output: str) -> tuple[int, int, int] | None:
+    match = _SEMVER.search(output)
+    if match is None:
+        return None
+    return (
+        int(match.group("major")),
+        int(match.group("minor")),
+        int(match.group("patch")),
+    )
+
+
 def _run_probe(
     command: list[str],
     *,
@@ -405,6 +434,12 @@ def probe_engine(
             combined = f"{completed.stdout or ''}\n{completed.stderr or ''}"
             if index == 0:
                 version = _safe_version(combined)
+                parsed_version = _semantic_version(version or "")
+                if descriptor.minimum_version is not None and (
+                    parsed_version is None or parsed_version < descriptor.minimum_version
+                ):
+                    failure = "unsupported_version"
+                    break
             normalized = combined.lower()
             if any(marker.lower() not in normalized for marker in requirement.markers):
                 failure = requirement.reason
@@ -449,7 +484,19 @@ def probe_engine(
             if auth
             else None
         )
-        if auth and (completed is None or completed.returncode != 0):
+        if auth and completed is None:
+            result = EngineProbeResult(
+                descriptor=descriptor,
+                installed=True,
+                protocol_compatible=True,
+                ready=False,
+                state="probe_failed",
+                detail=f"Alfred could not verify {descriptor.display_name} authentication.",
+                binary=binary,
+                version=version,
+                failures=("auth_probe_failed",),
+            )
+        elif auth is not None and completed is not None and completed.returncode != 0:
             result = EngineProbeResult(
                 descriptor=descriptor,
                 installed=True,

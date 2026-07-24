@@ -84,6 +84,7 @@ from .result import (
     _RATE_LIMIT_RESULT_RE,
     ClaudeResult,
     _build_claude_result,
+    _claude_credentials_file,
     _should_retry_claude_auth,
     dry_run_claude_result,
     looks_quota_exhausted,
@@ -142,6 +143,16 @@ def _direct_engine_readiness_failure(engine: str) -> ClaudeResult | None:
     """Gate every real CLI adapter call on the canonical readiness probe."""
 
     readiness = _probe_dispatch_engine(engine)
+    if (
+        engine == "claude"
+        and readiness.state == "auth_required"
+        and not _truthy_env("ALFRED_DISABLE_CLAUDE_AUTH_REPAIR")
+        and _claude_credentials_file().is_file()
+    ):
+        # Let one real invocation reach the existing result classifier. Only a
+        # confirmed authentication response may quarantine the disk credential
+        # and retry; a transient readiness-probe failure never mutates auth.
+        return None
     if readiness.ready:
         return None
     return _engine_not_ready_result(engine, readiness)
