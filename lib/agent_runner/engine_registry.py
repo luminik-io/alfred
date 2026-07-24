@@ -174,7 +174,7 @@ ENGINE_DESCRIPTORS: tuple[EngineDescriptor, ...] = (
             # supported major version owns Alfred's invocation contract.
             ProbeCommand(("--version",), markers=("claude",), reason="version_failed"),
         ),
-        minimum_version=(2, 0, 0),
+        minimum_version=(2, 1, 41),
         auth_command=ProbeCommand(
             ("auth", "status"),
             reason="auth_required",

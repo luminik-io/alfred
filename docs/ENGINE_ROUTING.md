@@ -165,9 +165,10 @@ identify OpenCode and Cline without pretending they are ready. `AgentResult`
 carries `success`, `subtype`, `num_turns`, `cost_usd`, `session_id`, and
 `result_text` regardless of which engine produced it.
 
-Claude Code 2.0.0 or newer is required. Alfred uses its stable version command
-for the runtime contract because Claude's top-level help is intentionally
-incomplete and cannot prove that a documented flag is absent.
+Claude Code 2.1.41 or newer is required because Alfred's readiness contract
+uses `claude auth status`, introduced in that release. Alfred uses the stable
+version command for compatibility because Claude's top-level help is
+intentionally incomplete and cannot prove that a documented flag is absent.
 
 A new engine needs all of the following before it can join a fleet:
 

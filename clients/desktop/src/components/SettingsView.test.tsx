@@ -21,7 +21,7 @@ function setupStatus(home: string, overrides: Partial<SetupStatus> = {}): SetupS
         state: "ready",
         detail: "Claude Code is compatible and signed in.",
         path: "/opt/homebrew/bin/claude",
-        version: "Claude Code 2.1.0",
+        version: "Claude Code 2.1.41",
         capabilities: ["text", "worktree-write"],
         failures: [],
       },

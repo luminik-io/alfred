@@ -105,7 +105,7 @@ def test_converse_engine_honors_configured_binary_override(monkeypatch, tmp_path
     claude.write_text(
         """#!/bin/sh
 case "$*" in
-  --version) printf 'Claude Code 2.1.0\n' ;;
+  --version) printf 'Claude Code 2.1.41\n' ;;
   --help) printf '%s\n' '--output-format --permission-mode --allowedTools' ;;
   'auth status') exit 0 ;;
   *) exit 1 ;;
