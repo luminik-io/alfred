@@ -707,6 +707,7 @@ def test_deploy_linux_fails_when_custom_agent_manifest_is_malformed(tmp_path):
     shutil.copy(REPO / "systemd" / "_template.service", src / "systemd" / "_template.service")
     shutil.copy(REPO / "systemd" / "_template.timer", src / "systemd" / "_template.timer")
     shutil.copy(REPO / "lib" / "custom_agents.py", src / "lib" / "custom_agents.py")
+    shutil.copy(REPO / "lib" / "agent_capabilities.py", src / "lib" / "agent_capabilities.py")
     (src / "lib" / "dummy.py").write_text("# dummy\n")
     for pkg in ("agent_runner", "connectors", "fleet_brain", "memory", "server"):
         (src / "lib" / pkg).mkdir()
@@ -836,6 +837,7 @@ def test_deploy_linux_custom_only_reaps_only_previous_managed_units(tmp_path):
     shutil.copy(REPO / "systemd" / "_template.service", src / "systemd" / "_template.service")
     shutil.copy(REPO / "systemd" / "_template.timer", src / "systemd" / "_template.timer")
     shutil.copy(REPO / "lib" / "custom_agents.py", src / "lib" / "custom_agents.py")
+    shutil.copy(REPO / "lib" / "agent_capabilities.py", src / "lib" / "agent_capabilities.py")
     shutil.copy(REPO / "bin" / "agent-launch", src / "bin" / "agent-launch")
     shutil.copy(REPO / "bin" / "custom-agent.py", src / "bin" / "custom-agent.py")
     (src / "lib" / "dummy.py").write_text("# dummy\n")
@@ -930,6 +932,7 @@ def test_deploy_linux_migrates_existing_alfred_units_without_ledger(tmp_path):
     shutil.copy(REPO / "systemd" / "_template.service", src / "systemd" / "_template.service")
     shutil.copy(REPO / "systemd" / "_template.timer", src / "systemd" / "_template.timer")
     shutil.copy(REPO / "lib" / "custom_agents.py", src / "lib" / "custom_agents.py")
+    shutil.copy(REPO / "lib" / "agent_capabilities.py", src / "lib" / "agent_capabilities.py")
     shutil.copy(REPO / "bin" / "agent-launch", src / "bin" / "agent-launch")
     shutil.copy(REPO / "bin" / "custom-agent.py", src / "bin" / "custom-agent.py")
     (src / "lib" / "dummy.py").write_text("# dummy\n")

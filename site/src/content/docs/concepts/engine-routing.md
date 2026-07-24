@@ -86,22 +86,27 @@ These are starting points, not laws. If you have a Claude Max plan and abundant 
 Alfred's default posture is to use the local CLI subscription auth you have already paid for. It does not need API keys for normal operation.
 
 - Claude Code with a Pro or Max plan: keep `ANTHROPIC_API_KEY` unset. Claude Code gives env-var API keys priority over subscription auth, which silently moves a firing onto API billing.
-- Codex with a ChatGPT plan: sign in through the Codex CLI with your ChatGPT account. Keep `OPENAI_API_KEY` unset unless you intentionally want API-key billing.
+- Codex with a ChatGPT plan: sign in through the Codex CLI with your ChatGPT account. Keep `OPENAI_API_KEY` unset. Alfred never treats a generic SDK key as proof that the Codex CLI can run.
 - AWS: only used when an agent needs Secrets Manager, and only with per-agent IAM (see [AWS setup](/guides/aws/)).
 
-The shipped fleet is designed to run on subscriptions you already have. No double billing. If you want to add API-key fallback for redundancy, set the env vars deliberately and document what you did in `$ALFRED_HOME/.env`.
+The shipped fleet is designed to run on subscriptions you already have. No double billing. Alfred accepts Codex's own login state or its documented `CODEX_ACCESS_TOKEN` automation context. A generic `OPENAI_API_KEY` value alone is not an authentication contract and never makes the engine ready.
 
-## Multi-engine roadmap
+## Multi-engine contract
 
-The current engine surface is two: Claude Code and Codex. The runtime contract is engine-agnostic. `AgentResult` carries `success`, `subtype`, `num_turns`, `cost_usd`, `session_id`, and `result_text` regardless of which engine produced it. Adding a third engine means writing a new `<engine>_invoke()` that returns the same shape.
+Claude Code and Codex are dispatchable today. The registry also knows how to identify OpenCode and Cline without pretending they are ready. `AgentResult` carries `success`, `subtype`, `num_turns`, `cost_usd`, `session_id`, and `result_text` regardless of which engine produced it.
 
-On the roadmap:
+Claude Code 2.1.41 or newer is required because Alfred's readiness contract uses `claude auth status`, introduced in that release. Alfred uses the stable version command for compatibility because Claude's top-level help is intentionally incomplete and cannot prove that a documented flag is absent.
 
-- **Gemini CLI**: when Google ships a stable non-interactive `gemini -p` equivalent with a structured result. Useful as a third independent reviewer or as a hedge against Anthropic and OpenAI both being down at once.
-- **Ollama and other local engines**: for teams that want every firing on-host with no provider call at all. Trade-off is model quality; reasonable for utility roles.
-- **Anthropic native agents**: when the upstream Agent Teams or Memory Tool primitives stabilize, Alfred will lean on them rather than re-implementing them.
+A new engine needs all of the following before it can join a fleet:
 
-Each new engine needs three things to land: a CLI binary on PATH, a deterministic non-interactive prompt mode that returns structured results, and classifier coverage so retry, breaker, and fallback policy treat failures honestly.
+1. A stable, deterministic, non-interactive command with structured output.
+2. Explicit repository read and worktree write boundaries.
+3. A bounded cancellation contract and a reliable process exit code.
+4. Auth and model-selection probes that do not expose credentials.
+5. Hermetic mutation tests plus one opt-in live smoke test.
+6. Failure mappings for retry, breaker, and fallback classification.
+
+This registry is the extension point for OpenCode, Cline, Gemini CLI, and local model harnesses. Alfred enables them by proven capabilities, not by brand name.
 
 ## See also
 

@@ -124,21 +124,20 @@ def build_engine_grounding(
     Setup owns engine detection, so conversation surfaces should use its result
     when answering capability questions. The selected conversation route is a
     separate fact: hybrid means Claude first with Codex fallback, while an
-    installed CLI may still be available to scheduled roles even when this turn
+    ready CLI may still be available to scheduled roles even when this turn
     uses the other engine.
     """
-    installed: list[str] = []
+    ready: list[str] = []
     seen: set[str] = set()
-    labels = {"claude": "Claude Code", "codex": "Codex"}
     for engine in engines:
-        if not engine.get("installed"):
+        if not engine.get("ready"):
             continue
         name = str(engine.get("name") or "").strip().lower()
         if not name or name in seen:
             continue
         seen.add(name)
-        installed.append(labels.get(name, name))
-    if not installed:
+        ready.append(str(engine.get("display_name") or name))
+    if not ready:
         return ""
 
     route = (conversation_engine or "").strip().lower()
@@ -147,12 +146,12 @@ def build_engine_grounding(
         "claude": "Claude Code",
         "codex": "Codex",
     }.get(route, route or "not reported")
-    available = ", ".join(installed)
+    available = ", ".join(ready)
     return (
         "### Coding engines (live)\n\n"
-        f"- Installed and available to Alfred: {available}.\n"
+        f"- Compatible, signed in, and available to Alfred: {available}.\n"
         f"- This conversation route: {route_label}.\n"
-        "- Scheduled roles may choose either installed engine independently. "
+        "- Scheduled roles may choose any ready engine independently. "
         "Do not invent a model name or version that is not listed here."
     )
 

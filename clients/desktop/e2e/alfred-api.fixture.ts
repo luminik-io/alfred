@@ -381,8 +381,36 @@ export class AlfredApiFixture {
         detail: ready ? "Signed in" : "Sign in required",
       },
       engines: [
-        { name: "claude", installed: ready, path: ready ? "/usr/local/bin/claude" : null },
-        { name: "codex", installed: ready, path: ready ? "/usr/local/bin/codex" : null },
+        {
+          name: "claude",
+          display_name: "Claude Code",
+          installed: ready,
+          protocol_compatible: ready,
+          ready,
+          dispatchable: true,
+          state: ready ? "ready" : "missing",
+          detail: ready
+            ? "Claude Code is compatible and signed in."
+            : "Claude Code is not installed.",
+          path: ready ? "/usr/local/bin/claude" : null,
+          version: ready ? "Claude Code 2.1.0" : null,
+          capabilities: ["text", "worktree-write"],
+          failures: ready ? [] : ["missing_binary"],
+        },
+        {
+          name: "codex",
+          display_name: "Codex",
+          installed: ready,
+          protocol_compatible: ready,
+          ready,
+          dispatchable: true,
+          state: ready ? "ready" : "missing",
+          detail: ready ? "Codex is compatible and signed in." : "Codex is not installed.",
+          path: ready ? "/usr/local/bin/codex" : null,
+          version: ready ? "codex-cli 1.2.3" : null,
+          capabilities: ["text", "worktree-write"],
+          failures: ready ? [] : ["missing_binary"],
+        },
       ],
       engine_ready: ready,
       repos: {

@@ -28,12 +28,16 @@ def test_optional_env_int_returns_none_when_unset(fresh_agent_runner, monkeypatc
 
 
 def test_normalize_engine_accepts_only_current_names(fresh_agent_runner):
-    """Unknown engine names fall back instead of carrying legacy aliases."""
+    """Unknown engine names fail closed instead of selecting another engine."""
     ar = fresh_agent_runner
-    assert ar.normalize_engine("both", default="codex") == "codex"
     assert ar.normalize_engine("CODEX") == "codex"
-    assert ar.normalize_engine("garbage", default="codex") == "codex"
     assert ar.normalize_engine(None) == "hybrid"
+    with pytest.raises(ValueError, match="unknown engine"):
+        ar.normalize_engine("both", default="codex")
+    with pytest.raises(ValueError, match="unknown engine"):
+        ar.normalize_engine("garbage", default="codex")
+    with pytest.raises(ValueError, match="unknown default engine"):
+        ar.normalize_engine(None, default="removed")
 
 
 def test_agent_engine_env_precedence(fresh_agent_runner, monkeypatch):
@@ -42,6 +46,13 @@ def test_agent_engine_env_precedence(fresh_agent_runner, monkeypatch):
     monkeypatch.setenv("ALFRED_ENGINE", "codex")
     monkeypatch.setenv("ALFRED_SENIOR_DEV_ENGINE", "claude")
     assert ar.agent_engine("senior-dev") == "claude"
+
+
+def test_agent_engine_invalid_operator_value_disables_dispatch(fresh_agent_runner):
+    ar = fresh_agent_runner
+
+    assert ar.agent_engine("triage", environ={"ALFRED_TRIAGE_ENGINE": "removed"}) == "disabled"
+    assert ar.engine_preflight_bins("disabled")
 
 
 def test_agent_engine_ignores_removed_review_engine_alias(fresh_agent_runner, monkeypatch):

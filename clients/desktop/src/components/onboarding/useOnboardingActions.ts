@@ -93,15 +93,15 @@ export function useOnboardingActions({
             // updates and would report stale "no engine" on a first run).
             const fresh = await refreshStatus();
             const engines = (fresh?.engines ?? [])
-              .filter((engine) => engine.installed)
-              .map((engine) => engine.name);
+              .filter((engine) => engine.ready)
+              .map((engine) => engine.display_name);
             if (Boolean(fresh?.engine_ready) || engines.length > 0) {
               const list = engines.length ? engines.join(" and ") : "a coding engine";
               return { ok: true, note: `Found ${list} on this Mac.` };
             }
             return {
               ok: false,
-              note: "No coding engine detected yet. Install Claude Code or Codex, then say so.",
+              note: "No compatible coding engine is ready. Install or sign in to Claude Code or Codex, then try again.",
             };
           }
           case "connect_github": {

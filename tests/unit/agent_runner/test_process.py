@@ -111,6 +111,134 @@ def test_claude_invoke_dry_run_short_circuits(fresh_agent_runner, monkeypatch):
         ar.set_dry_run(False)
 
 
+def test_direct_claude_dispatch_refuses_unready_engine(fresh_agent_runner, monkeypatch):
+    ar = fresh_agent_runner
+    import agent_runner.process as proc
+
+    descriptor = ar.DEFAULT_ENGINE_REGISTRY.descriptor("claude")
+    monkeypatch.setattr(
+        proc,
+        "_probe_dispatch_engine",
+        lambda _engine: ar.EngineProbeResult(
+            descriptor=descriptor,
+            installed=True,
+            protocol_compatible=True,
+            ready=False,
+            state="auth_required",
+            detail="signed out",
+            binary="claude",
+            version="test",
+            failures=("auth_required",),
+        ),
+    )
+    monkeypatch.setattr(
+        proc,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("unready Claude subprocess must not start")
+        ),
+    )
+    monkeypatch.setattr(proc, "_claude_credentials_file", lambda: Path("/missing/credentials"))
+
+    result = ar.claude_invoke("judge", workdir=Path("/tmp"), allowed_tools="")
+
+    assert result.subtype == "error_authentication"
+    assert result.raw == {"engine": "claude", "engine_readiness": "auth_required"}
+
+
+def test_direct_claude_dispatch_allows_classified_repair_for_disk_credentials(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    ar = fresh_agent_runner
+    import agent_runner.process as proc
+
+    descriptor = ar.DEFAULT_ENGINE_REGISTRY.descriptor("claude")
+    readiness = ar.EngineProbeResult(
+        descriptor=descriptor,
+        installed=True,
+        protocol_compatible=True,
+        ready=False,
+        state="auth_required",
+        detail="signed out",
+        binary="claude",
+        version="test",
+        failures=("auth_required",),
+    )
+    credentials = tmp_path / ".credentials.json"
+    credentials.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(proc, "_probe_dispatch_engine", lambda _engine: readiness)
+    monkeypatch.setattr(proc, "_claude_credentials_file", lambda: credentials)
+
+    assert proc._direct_engine_readiness_failure("claude") is None
+
+
+def test_direct_claude_dispatch_never_mutates_auth_on_probe_failure(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    ar = fresh_agent_runner
+    import agent_runner.process as proc
+
+    descriptor = ar.DEFAULT_ENGINE_REGISTRY.descriptor("claude")
+    credentials = tmp_path / ".credentials.json"
+    credentials.write_text("valid", encoding="utf-8")
+    monkeypatch.setattr(proc, "_claude_credentials_file", lambda: credentials)
+    monkeypatch.setattr(
+        proc,
+        "_probe_dispatch_engine",
+        lambda _engine: ar.EngineProbeResult(
+            descriptor=descriptor,
+            installed=True,
+            protocol_compatible=True,
+            ready=False,
+            state="probe_failed",
+            detail="probe timed out",
+            binary="claude",
+            version="test",
+            failures=("auth_probe_failed",),
+        ),
+    )
+
+    failure = proc._direct_engine_readiness_failure("claude")
+
+    assert failure is not None
+    assert failure.subtype == "error_engine_unavailable"
+    assert credentials.read_text(encoding="utf-8") == "valid"
+
+
+def test_direct_codex_dispatch_refuses_unready_engine(fresh_agent_runner, monkeypatch):
+    ar = fresh_agent_runner
+    import agent_runner.process as proc
+
+    descriptor = ar.DEFAULT_ENGINE_REGISTRY.descriptor("codex")
+    monkeypatch.setattr(
+        proc,
+        "_probe_dispatch_engine",
+        lambda _engine: ar.EngineProbeResult(
+            descriptor=descriptor,
+            installed=True,
+            protocol_compatible=False,
+            ready=False,
+            state="incompatible",
+            detail="unsupported protocol",
+            binary="codex",
+            version="test",
+            failures=("protocol_incompatible",),
+        ),
+    )
+    monkeypatch.setattr(
+        proc.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("unready Codex subprocess must not start")
+        ),
+    )
+
+    result = ar.codex_invoke("grade", workdir=Path("/tmp"), agent="reviewer")
+
+    assert result.subtype == "error_engine_unavailable"
+    assert result.raw == {"engine": "codex", "engine_readiness": "incompatible"}
+
+
 def test_claude_invoke_streaming_writes_transcript(fresh_agent_runner, monkeypatch):
     """Streaming Claude writes stream-json lines and parses the final result."""
     ar = fresh_agent_runner
@@ -396,3 +524,119 @@ def test_dispatch_short_circuits_when_breaker_open(fresh_agent_runner, monkeypat
     assert out.success is False
     assert out.raw.get("breaker_open") is True
     assert engine_used == "claude"
+
+
+def test_dispatch_refuses_unready_engine_before_adapter_call(fresh_agent_runner):
+    ar = fresh_agent_runner
+    calls: list[str] = []
+    descriptor = ar.DEFAULT_ENGINE_REGISTRY.descriptor("codex")
+    unready = ar.EngineProbeResult(
+        descriptor=descriptor,
+        installed=True,
+        protocol_compatible=True,
+        ready=False,
+        state="auth_required",
+        detail="private probe detail must not be copied",
+        binary="/private/path/codex",
+        version="codex 1.2.3",
+        failures=("auth_required",),
+    )
+
+    result, engine_used = ar.invoke_agent_engine(
+        "hi",
+        engine="codex",
+        agent="senior-dev",
+        firing_id="f-readiness",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        codex_fn=lambda *args, **kwargs: calls.append("codex"),
+        engine_probe_fn=lambda engine: unready,
+    )
+
+    assert calls == []
+    assert engine_used == "codex"
+    assert result.success is False
+    assert result.subtype == "error_authentication"
+    assert result.raw == {"engine": "codex", "engine_readiness": "auth_required"}
+    assert "private" not in str(result.raw)
+
+
+def test_hybrid_readiness_gap_can_use_verified_fallback(fresh_agent_runner):
+    ar = fresh_agent_runner
+    calls: list[str] = []
+
+    def readiness(engine: str):
+        descriptor = ar.DEFAULT_ENGINE_REGISTRY.descriptor(engine)
+        if engine == "claude":
+            return ar.EngineProbeResult(
+                descriptor=descriptor,
+                installed=False,
+                protocol_compatible=False,
+                ready=False,
+                state="missing",
+                detail="missing",
+                binary=None,
+                version=None,
+                failures=("missing_binary",),
+            )
+        return ar.EngineProbeResult(
+            descriptor=descriptor,
+            installed=True,
+            protocol_compatible=True,
+            ready=True,
+            state="ready",
+            detail="ready",
+            binary="codex",
+            version="codex 1.2.3",
+        )
+
+    success = ar.ClaudeResult(
+        success=True,
+        subtype="success",
+        num_turns=1,
+        cost_usd=0.0,
+        session_id=None,
+        result_text="done",
+        raw={},
+        stop_reason="end_turn",
+    )
+    result, engine_used = ar.invoke_agent_engine(
+        "hi",
+        engine="hybrid",
+        agent="senior-dev",
+        firing_id="f-fallback-readiness",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        claude_fn=lambda *args, **kwargs: calls.append("claude"),
+        codex_fn=lambda *args, **kwargs: calls.append("codex") or success,
+        engine_probe_fn=readiness,
+    )
+
+    assert calls == ["codex"]
+    assert result.success is True
+    assert result.fallback_from_subtype == "error_engine_unavailable"
+    assert engine_used == "codex-fallback"
+
+
+def test_invalid_engine_configuration_returns_without_dispatch(fresh_agent_runner):
+    ar = fresh_agent_runner
+    calls: list[str] = []
+
+    result, engine_used = ar.invoke_agent_engine(
+        "hi",
+        engine=ar.DISABLED_ENGINE,
+        agent="triage",
+        firing_id="f-invalid-config",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        claude_fn=lambda *args, **kwargs: calls.append("claude"),
+        codex_fn=lambda *args, **kwargs: calls.append("codex"),
+    )
+
+    assert calls == []
+    assert engine_used == "disabled"
+    assert result.subtype == "error_configuration"
+    assert result.raw["engine_readiness"] == "invalid_configuration"

@@ -36,6 +36,7 @@ from pathlib import Path
 from envflags import FALSY_VALUES
 from envflags import truthy as _truthy
 
+from .engine_registry import DEFAULT_ENGINE_REGISTRY, EngineCapability
 from .paths import CLAUDE_BIN, CODEX_BIN, STATE_ROOT
 
 truthy = _truthy
@@ -43,8 +44,14 @@ truthy = _truthy
 # --------------------------------------------------------------------------
 # Engine vocabulary
 # --------------------------------------------------------------------------
-ENGINE_CHOICES: frozenset[str] = frozenset({"claude", "codex", "hybrid"})
-MODEL_ENGINES: frozenset[str] = frozenset({"claude", "codex"})
+ENGINE_CHOICES: frozenset[str] = DEFAULT_ENGINE_REGISTRY.dispatchable_ids | {"hybrid"}
+DISABLED_ENGINE = "disabled"
+INVALID_ENGINE_PREFLIGHT_MARKER = "__alfred_invalid_engine_configuration__"
+MODEL_ENGINES: frozenset[str] = frozenset(
+    descriptor.id
+    for descriptor in DEFAULT_ENGINE_REGISTRY.supporting({EngineCapability.MODEL_SELECTION})
+    if descriptor.dispatchable
+)
 _MODEL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
 _AGENT_CODENAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
@@ -153,15 +160,19 @@ def optional_env_int(name: str, *, minimum: int = 1, maximum: int | None = None)
 
 
 def normalize_engine(raw: str | None, *, default: str = "hybrid") -> str:
-    """Coerce an engine-mode string to one of ``ENGINE_CHOICES``.
+    """Return one canonical engine mode, rejecting unknown values."""
 
-    Anything outside the allow-list falls back to ``default``.
-    """
     value = (raw or "").strip().lower()
-    if value in ENGINE_CHOICES:
-        return value
     fallback = (default or "hybrid").strip().lower()
-    return fallback if fallback in ENGINE_CHOICES else "hybrid"
+    if fallback not in ENGINE_CHOICES:
+        raise ValueError(f"unknown default engine: {default!r}")
+    if not value:
+        return fallback
+    if value not in ENGINE_CHOICES:
+        raise ValueError(
+            f"unknown engine {raw!r}; choose one of: {', '.join(sorted(ENGINE_CHOICES))}"
+        )
+    return value
 
 
 def agent_engine(
@@ -185,14 +196,20 @@ def agent_engine(
         environ: env mapping override (defaults to ``os.environ``).
 
     Returns:
-        A value in ``ENGINE_CHOICES``.
+        A value in ``ENGINE_CHOICES`` or the internal ``disabled`` sentinel
+        when operator-controlled configuration is invalid. The sentinel keeps
+        imports and scheduled runners alive while the invocation boundary
+        refuses to dispatch any engine.
     """
     env = environ if environ is not None else os.environ
     safe_agent = agent.strip().lower().replace("_", "-")
     env_name = f"ALFRED_{_agent_env_slug(safe_agent)}_ENGINE"
     for name in (env_name, "ALFRED_ENGINE"):
         if name and env.get(name, "").strip():
-            return normalize_engine(env.get(name), default=default)
+            try:
+                return normalize_engine(env.get(name), default=default)
+            except ValueError:
+                return DISABLED_ENGINE
 
     state_file = STATE_ROOT / "engines" / safe_agent
     try:
@@ -200,7 +217,10 @@ def agent_engine(
     except OSError:
         raw = ""
     if raw:
-        return normalize_engine(raw, default=default)
+        try:
+            return normalize_engine(raw, default=default)
+        except ValueError:
+            return DISABLED_ENGINE
     return normalize_engine(None, default=default)
 
 
@@ -379,9 +399,16 @@ def engine_preflight_bins(engine: str, *, hybrid_requires_codex: bool = False) -
     fallback does not stop ordinary scheduled work. Callers that require
     Codex even in hybrid mode pass ``hybrid_requires_codex=True``.
     """
+    if engine == DISABLED_ENGINE:
+        # Keep invalid configuration visible to every runner that spreads this
+        # result into PreflightSpec.bins. An empty list incorrectly means that
+        # no engine is required and lets doctor mode report a healthy firing.
+        return [INVALID_ENGINE_PREFLIGHT_MARKER]
     mode = normalize_engine(engine)
-    if mode == "codex":
-        return [CODEX_BIN]
+    if mode != "hybrid":
+        descriptor = DEFAULT_ENGINE_REGISTRY.descriptor(mode)
+        configured = os.environ.get(descriptor.binary_env, "").strip()
+        return [configured or descriptor.default_binary]
     if mode == "hybrid" and hybrid_requires_codex:
         return [CLAUDE_BIN, CODEX_BIN]
     return [CLAUDE_BIN]

@@ -138,7 +138,17 @@ def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path)
         "fi\n"
         "exit 0\n",
     )
-    _write_executable(fake_bin / "codex", "#!/bin/sh\necho 'codex scratch'\n")
+    _write_executable(
+        fake_bin / "codex",
+        """#!/bin/sh
+case "$*" in
+  --version) printf 'codex scratch\n' ;;
+  'exec --help') printf '%s\n' '--output-last-message --sandbox --cd' ;;
+  'login status') exit 0 ;;
+  *) exit 1 ;;
+esac
+""",
+    )
     scheduler_stub = (
         '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "${ALFRED_TEST_SCHEDULER_LOG:?}"\nexit 0\n'
     )
@@ -152,6 +162,7 @@ def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path)
         "ALFRED_HOME": str(runtime),
         "WORKSPACE_ROOT": str(workspace),
         "PATH": f"{fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
+        "CLAUDE_BIN": str(tmp_path / "missing-claude"),
         "ALFRED_DEPLOY_SKIP_UI": "1",
         "ALFRED_SYSTEMD_USER_DIR": str(home / ".config" / "systemd" / "user"),
         "ALFRED_TEST_SCHEDULER_LOG": str(scheduler_log),

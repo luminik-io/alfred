@@ -1684,6 +1684,8 @@ def _engine_default(agent: str) -> str:
 
 
 def _engine_behavior(mode: str) -> str:
+    if mode == agent_runner.DISABLED_ENGINE:
+        return "Disabled: invalid engine configuration"
     resolved = agent_runner.normalize_engine(mode)
     if resolved == "claude":
         return "Claude Code only"
@@ -1835,36 +1837,30 @@ def _print_engine_roster() -> None:
 
 
 def _codex_status() -> int:
-    binary = agent_runner.CODEX_BIN
-    binary_path = Path(binary)
-    resolved = str(binary_path) if binary_path.is_absolute() and binary_path.exists() else None
-    if not resolved and not binary_path.is_absolute():
-        resolved = shutil.which(binary)
-    if not resolved:
-        print(f"codex: not found on PATH ({binary})", file=sys.stderr)
+    probe_env = dict(os.environ)
+    probe_env["CODEX_BIN"] = agent_runner.CODEX_BIN
+    readiness = agent_runner.probe_engine(
+        agent_runner.DEFAULT_ENGINE_REGISTRY.descriptor("codex"),
+        environ=probe_env,
+        use_cache=False,
+    )
+    if not readiness.installed:
+        print(f"codex: not found on PATH ({agent_runner.CODEX_BIN})", file=sys.stderr)
         print(
             "Set CODEX_BIN in $ALFRED_HOME/.env or install/sign in to Codex CLI.", file=sys.stderr
         )
         return 1
 
-    print(f"codex binary: {resolved}")
-    result = subprocess.run(
-        [resolved, "--version"],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    version = (result.stdout or result.stderr).strip()
-    if version:
-        print(f"codex version: {version}")
-    else:
-        print(f"codex version: unavailable (exit {result.returncode})")
+    print(f"codex binary: {readiness.binary}")
+    print(f"codex version: {readiness.version or 'unavailable'}")
+    print(f"codex readiness: {readiness.state}")
+    if not readiness.ready:
+        print(f"codex: {readiness.detail}", file=sys.stderr)
     print("")
     _print_engine_roster()
     print("")
     print("Probe with: alfred codex probe")
-    return 0 if result.returncode == 0 else result.returncode
+    return 0 if readiness.ready else 1
 
 
 def _probe_codex() -> int:

@@ -5,12 +5,16 @@ import type { SetupStatus } from "../../types";
 import { Badge, Button, Card, CardContent } from "../ui";
 import { cn } from "@/lib/utils";
 
-/**
- * Step 1: Connect Claude / Codex. The Maya path is a single "Check my tools"
- * button that runs the native auth_status action and shows a plain result; the
- * raw engine probe table (SetupStatus.engines) is one disclosure away for Dev.
- * No API keys, said explicitly.
- */
+const engineStateLabel: Record<string, string> = {
+  ready: "ready",
+  auth_required: "sign in",
+  probe_failed: "check failed",
+  needs_validation: "needs validation",
+  incompatible: "incompatible",
+  missing: "not installed",
+};
+
+/** Show the supported golden path first and keep raw harness probes one disclosure away. */
 export function EngineStep({
   status,
   engineReady,
@@ -29,7 +33,8 @@ export function EngineStep({
   onRecheck: () => void;
 }) {
   const engines = status?.engines ?? [];
-  const readyEngine = engines.find((engine) => engine.installed);
+  const readyEngine = engines.find((engine) => engine.ready);
+  const detectedEngine = engines.find((engine) => engine.installed);
   const codeMemory = status?.code_memory;
   const capabilityPlane = status?.capability_plane;
   const capabilityBadgeLabel = capabilityPlane
@@ -73,8 +78,8 @@ export function EngineStep({
           <CardContent className="flex items-center gap-2 px-3 text-sm">
             <CheckCircle2 size={15} aria-hidden="true" />
             <span>
-              {readyEngine?.name === "codex" ? "Codex" : "Claude Code"} is ready. Alfred can run work
-              on this Mac.
+              {readyEngine?.display_name ?? "A coding engine"} is ready. Alfred can run work on this
+              Mac.
             </span>
           </CardContent>
         </Card>
@@ -82,8 +87,12 @@ export function EngineStep({
         <Card size="sm" className="rounded-lg border-border/70 bg-muted/35 shadow-none">
           <CardContent className="grid gap-2 px-3 text-sm text-muted-foreground">
             <span>
-              <strong className="block text-foreground">No engine found yet.</strong>
-              Alfred needs Claude Code or Codex installed on this Mac.
+              <strong className="block text-foreground">
+                {detectedEngine ? "No compatible engine is ready." : "No coding engine is installed."}
+              </strong>
+              {detectedEngine
+                ? "Sign in or update the detected CLI, then check again."
+                : "Install and sign in to Claude Code or Codex, then check again."}
             </span>
             <a
               className="inline-flex w-fit min-h-9 items-center gap-1 rounded-md border border-border/70 bg-background/55 px-2.5 py-1.5 text-sm font-medium text-foreground underline-offset-2 hover:bg-muted/45 hover:underline"
@@ -259,26 +268,43 @@ export function EngineStep({
                   </span>
                 </span>
               </summary>
-              <ul className="mt-3 grid gap-2" aria-label="Installed developer tools">
-                {engines.map((engine) => (
-                  <li
-                    key={engine.name}
-                    className="flex items-center gap-2 rounded-md border border-border/60 bg-card/60 px-2.5 py-2 text-sm"
-                  >
-                    {engine.installed ? (
-                      <CheckCircle2 size={15} aria-hidden="true" className="text-primary" />
-                    ) : (
-                      <XCircle size={15} aria-hidden="true" className="text-muted-foreground" />
-                    )}
-                    <code className="font-mono text-xs">{engine.name}</code>
-                    <Badge
-                      variant={engine.installed ? "secondary" : "outline"}
-                      className={cn("ml-auto")}
+              <ul className="mt-3 grid gap-2" aria-label="Coding engine probes">
+                {engines.map((engine) => {
+                  const state = engine.state?.trim() || "unknown";
+                  return (
+                    <li
+                      key={engine.name}
+                      className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 rounded-md border border-border/60 bg-card/60 px-2.5 py-2 text-sm"
                     >
-                      {engine.installed ? "installed" : "not found"}
-                    </Badge>
-                  </li>
-                ))}
+                      {engine.ready ? (
+                        <CheckCircle2 size={15} aria-hidden="true" className="mt-0.5 text-primary" />
+                      ) : engine.installed ? (
+                        <Wrench size={15} aria-hidden="true" className="mt-0.5 text-muted-foreground" />
+                      ) : (
+                        <XCircle size={15} aria-hidden="true" className="mt-0.5 text-muted-foreground" />
+                      )}
+                      <span className="min-w-0">
+                        <strong className="block font-medium text-foreground">
+                          {engine.display_name || engine.name}
+                        </strong>
+                        <span className="block text-xs text-muted-foreground">
+                          {engine.detail || "This engine returned an incomplete readiness result."}
+                        </span>
+                        {engine.version ? (
+                          <code className="mt-1 block truncate font-mono text-[11px] text-muted-foreground">
+                            {engine.version}
+                          </code>
+                        ) : null}
+                      </span>
+                      <Badge
+                        variant={engine.ready ? "secondary" : "outline"}
+                        className={cn("ml-auto")}
+                      >
+                        {engineStateLabel[state] ?? state.replace(/_/g, " ")}
+                      </Badge>
+                    </li>
+                  );
+                })}
               </ul>
             </details>
           </CardContent>

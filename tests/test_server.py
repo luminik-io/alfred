@@ -2732,8 +2732,20 @@ def test_converse_grounding_includes_live_engine_inventory(monkeypatch) -> None:
         setup_mod,
         "engine_clis",
         lambda: [
-            {"name": "claude", "installed": True, "path": "/bin/claude"},
-            {"name": "codex", "installed": True, "path": "/bin/codex"},
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": True,
+                "ready": True,
+                "path": "/bin/claude",
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "path": "/bin/codex",
+            },
         ],
     )
     request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(reader=None)))
@@ -2743,7 +2755,7 @@ def test_converse_grounding_includes_live_engine_inventory(monkeypatch) -> None:
         conversation_engine="hybrid",
     )
 
-    assert "Installed and available to Alfred: Claude Code, Codex." in grounding
+    assert "Compatible, signed in, and available to Alfred: Claude Code, Codex." in grounding
     assert "hybrid (Claude Code first, Codex fallback)" in grounding
 
 

@@ -21,7 +21,7 @@ router = APIRouter()
 async def api_setup_status(request: Request) -> JSONResponse:
     """First-run bootstrap status for the Set up tab.
 
-    Read-only. Surfaces GitHub auth, installed engine CLIs (claude/codex),
+    Read-only. Surfaces GitHub auth and protocol-checked coding engines,
     the watched-repo selection, whether a demo is seeded, and a ``ready``
     golden-path flag: gh authed + an engine + a repo, with no AWS or Slack
     requirement.

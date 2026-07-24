@@ -49,6 +49,8 @@ import batteries
 import skill_packs
 from envflags import FALSY_VALUES
 
+from server import runtime_facade
+
 logger = logging.getLogger(__name__)
 
 # The watched-repo allowlists the rest of the fleet reads. Board and queue
@@ -118,10 +120,6 @@ class RepoCheckoutValidationError(ValueError):
         self.rows = rows
 
 
-# Engine CLIs Alfred rides. Detected by presence on PATH only (no version
-# spawn): the golden path needs at least one of these signed-in subscription
-# CLIs, never an API key paste.
-_ENGINE_BINS = ("claude", "codex")
 _FALSEY = FALSY_VALUES | {""}
 _CODE_MEMORY_BIN_NAME = "codebase-memory-mcp"
 _CODE_MEMORY_LAUNCHER = Path(__file__).resolve().parents[2] / "bin" / "code-memory-mcp"
@@ -746,31 +744,14 @@ def _parse_gh_account(text: str) -> str | None:
 
 
 def engine_clis() -> list[dict[str, Any]]:
-    """Detect the engine CLIs Alfred rides (claude / codex) on PATH.
+    """Return protocol- and auth-checked inventory for every known harness."""
 
-    Server-side detection: presence-only via the augmented search path the gh
-    resolver uses, so a launchd-bare-PATH server still finds Homebrew installs.
-    The native client may also probe deeper (``alfred auth status``); this is
-    the in-browser-capable fallback so the runtime checks work without Tauri.
-    Honours ``CLAUDE_BIN`` / ``CODEX_BIN`` overrides via config.
-    """
-    search = _join_search_path(_engine_search_path(os.environ), os.environ.get("PATH", ""))
-    out: list[dict[str, Any]] = []
-    for name in _ENGINE_BINS:
-        configured = _setup_config_value(f"{name.upper()}_BIN")
-        resolved = (
-            configured
-            if configured and (os.path.isabs(configured) or shutil.which(configured, path=search))
-            else shutil.which(name, path=search)
-        )
-        out.append(
-            {
-                "name": name,
-                "installed": bool(resolved),
-                "path": resolved,
-            }
-        )
-    return out
+    runtime_env = _runtime_config_env()
+    search = _join_search_path(_engine_search_path(runtime_env), runtime_env.get("PATH", ""))
+    probe_env = dict(os.environ)
+    probe_env.update(runtime_env)
+    probe_env["PATH"] = search
+    return runtime_facade.engine_inventory(environ=probe_env, search_path=search)
 
 
 def code_memory_status(env: dict[str, str] | None = None) -> dict[str, Any]:
@@ -1705,7 +1686,7 @@ def bootstrap_status() -> dict[str, Any]:
     queue_repos = _setup_queue_repos_for_status(runtime_env)
     queue_missing = sorted(set(repos) - queue_repos)
     queue_covers_selected = bool(repos) and not queue_missing
-    any_engine = any(e["installed"] for e in engines)
+    any_engine = any(e["ready"] for e in engines)
     repo_checkouts = _selected_repo_local_paths(repos, runtime_env)
     code_memory = code_memory_status(runtime_env)
     code_memory_coverage = _code_memory_coverage(
@@ -1854,19 +1835,32 @@ def _github_readiness_check(gh: dict[str, Any]) -> dict[str, Any]:
 
 
 def _engine_readiness_check(engines: list[dict[str, Any]]) -> dict[str, Any]:
-    installed = [str(engine.get("name")) for engine in engines if engine.get("installed")]
+    ready = [
+        str(engine.get("display_name") or engine.get("name"))
+        for engine in engines
+        if engine.get("ready")
+    ]
+    detected = [
+        str(engine.get("display_name") or engine.get("name"))
+        for engine in engines
+        if engine.get("installed") and not engine.get("ready")
+    ]
     return _readiness_check(
         "engine_clis",
-        "Claude or Codex CLI",
+        "Coding engine",
         category="engines",
         tier="required",
-        ready=bool(installed),
+        ready=bool(ready),
         detail=(
-            f"Found {', '.join(installed)}."
-            if installed
-            else "No Claude or Codex CLI was found on PATH."
+            f"Ready: {', '.join(ready)}."
+            if ready
+            else (
+                f"Detected but not ready: {', '.join(detected)}."
+                if detected
+                else "No compatible coding engine was found."
+            )
         ),
-        action="Install and sign in to Claude Code or Codex CLI, then recheck setup.",
+        action="Install and sign in to a supported coding engine, then recheck setup.",
     )
 
 

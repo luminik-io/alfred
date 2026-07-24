@@ -201,6 +201,8 @@ def _run_cli(*argv: str, env_extra: dict[str, str] | None = None) -> subprocess.
             "GH_ORG",
             "OPERATOR_NAME",
             "WORKSPACE_ROOT",
+            "CLAUDE_BIN",
+            "CODEX_BIN",
         }:
             full_env.pop(key, None)
     full_env.update(env_extra or {})
@@ -386,6 +388,21 @@ def test_cli_engine_status_lists_known_agents(tmp_path):
     assert "auth/limit/budget" not in res.stdout
 
 
+def test_cli_engine_status_explains_invalid_configuration(tmp_path):
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred"),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+        "ALFRED_ENGINE": "removed-engine",
+    }
+
+    result = _run_cli("engine", "status", "architect", env_extra=env)
+
+    assert result.returncode == 0, result.stderr
+    assert "architect engine: disabled" in result.stdout
+    assert "Disabled: invalid engine configuration" in result.stdout
+    assert "Traceback" not in result.stderr
+
+
 def test_cli_model_set_status_and_clear(tmp_path):
     alfred = tmp_path / "alfred"
     env = {
@@ -502,7 +519,15 @@ def test_cli_codex_status_reports_binary_and_engines(tmp_path):
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     codex = fake_bin / "codex"
-    codex.write_text('#!/bin/sh\nif [ "$1" = "--version" ]; then echo codex-test; exit 0; fi\n')
+    codex.write_text(
+        "#!/bin/sh\n"
+        'case "${1:-} ${2:-}" in\n'
+        '  "--version ") echo codex-test ;;\n'
+        '  "exec --help") echo "--output-last-message --sandbox --cd" ;;\n'
+        '  "login status") echo "signed in" ;;\n'
+        "  *) exit 1 ;;\n"
+        "esac\n"
+    )
     codex.chmod(0o755)
     env = {
         "ALFRED_HOME": str(tmp_path / "alfred"),
@@ -514,6 +539,7 @@ def test_cli_codex_status_reports_binary_and_engines(tmp_path):
 
     assert res.returncode == 0, res.stderr
     assert "codex version: codex-test" in res.stdout
+    assert "codex readiness: ready" in res.stdout
     assert "engine senior-dev:" in res.stdout
     assert "Probe with: alfred codex probe" in res.stdout
 
@@ -529,6 +555,33 @@ def test_cli_codex_status_fails_when_binary_missing(tmp_path):
 
     assert res.returncode == 1
     assert "codex: not found" in res.stderr
+
+
+def test_cli_codex_status_fails_when_cli_is_signed_out(tmp_path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    codex = fake_bin / "codex"
+    codex.write_text(
+        "#!/bin/sh\n"
+        'case "${1:-} ${2:-}" in\n'
+        '  "--version ") echo codex-test ;;\n'
+        '  "exec --help") echo "--output-last-message --sandbox --cd" ;;\n'
+        '  "login status") exit 1 ;;\n'
+        "  *) exit 1 ;;\n"
+        "esac\n"
+    )
+    codex.chmod(0o755)
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred"),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+        "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+    }
+
+    res = _run_cli("codex", "status", env_extra=env)
+
+    assert res.returncode == 1
+    assert "codex readiness: auth_required" in res.stdout
+    assert "not signed in" in res.stderr
 
 
 def test_claude_routing_reads_systemd_environment(monkeypatch, tmp_path):

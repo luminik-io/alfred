@@ -6,7 +6,22 @@ import { isSetupComplete } from "./setupCompletion";
 function makeStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
   return {
     github: { ok: true, account: "octocat", detail: "Signed in to GitHub as octocat." },
-    engines: [{ name: "claude", installed: true, path: "/opt/homebrew/bin/claude" }],
+    engines: [
+      {
+        name: "claude",
+        display_name: "Claude Code",
+        installed: true,
+        protocol_compatible: true,
+        ready: true,
+        dispatchable: true,
+        state: "ready",
+        detail: "Claude Code is compatible and signed in.",
+        path: "/opt/homebrew/bin/claude",
+        version: "Claude Code 2.1.41",
+        capabilities: ["text", "worktree-write"],
+        failures: [],
+      },
+    ],
     engine_ready: true,
     repos: {
       selected: ["acme-org/api"],
