@@ -773,7 +773,9 @@ class SlackPlanningListener:
     ) -> ListenerResult | None:
         catalog = self._current_repo_catalog()
         turn_repo = turn.repo if catalog.contains(turn.repo) else ""
-        if turn_repo and turn.issue is not None:
+        removed_turn_repo = bool(turn.repo) and not turn_repo
+        turn_issue = None if removed_turn_repo else turn.issue
+        if turn_repo and turn_issue is not None:
             if turn.action != ACTION_ASSIGN or turn.agent:
                 return None
             agent, unsupported_assignment_agent = resolve_assignment_agent(
@@ -783,7 +785,7 @@ class SlackPlanningListener:
             if not agent and not unsupported_assignment_agent:
                 return None
             repo = turn_repo
-            issue = turn.issue
+            issue = turn_issue
             candidates: list[str] = []
         else:
             repo, candidates = catalog.resolve(event.text)
@@ -792,12 +794,12 @@ class SlackPlanningListener:
                 repo = issue_repo
                 candidates = []
             repo = repo or turn_repo
-            if repo and issue is None and turn.issue is None:
+            if repo and issue is None and turn_issue is None and not removed_turn_repo:
                 issue, issue_repo = resolve_issue(turn.text, repo=repo)
                 if issue_repo and issue_repo != repo:
                     repo = issue_repo
                     candidates = []
-            issue = issue if issue is not None else turn.issue
+            issue = issue if issue is not None else turn_issue
             agent = turn.agent
             unsupported_assignment_agent = ""
             if turn.action == ACTION_ASSIGN and not agent:
@@ -813,6 +815,7 @@ class SlackPlanningListener:
 
         if repo and not catalog.contains(repo):
             repo = ""
+            issue = None
             candidates = []
 
         params = {

@@ -236,24 +236,29 @@ def test_live_repo_map_preserves_overlay_write_matching_setup_value(overlay_root
 
 
 @pytest.mark.parametrize(
-    ("module_name", "mutation"),
+    ("module_name", "initial_map", "mutation"),
     [
         (
             "setdefault_fleet",
+            "public/app=/tmp/public-app",
             'GH_REPO_TO_LOCAL.setdefault("private/ops", "/tmp/private-ops")',
         ),
-        ("union_fleet", 'GH_REPO_TO_LOCAL |= {"private/ops": "/tmp/private-ops"}'),
+        (
+            "union_fleet",
+            "private/ops=/tmp/private-ops",
+            'GH_REPO_TO_LOCAL |= {"private/ops": "/tmp/private-ops"}',
+        ),
     ],
 )
 def test_live_repo_map_captures_standard_overlay_mutators(
-    overlay_root, monkeypatch, module_name: str, mutation: str
+    overlay_root, monkeypatch, module_name: str, initial_map: str, mutation: str
 ):
     (overlay_root / f"{module_name}.py").write_text(
         "from agent_runner import GH_REPO_TO_LOCAL\n" + mutation + "\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("ALFRED_FLEET_OVERLAY", module_name)
-    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "private/ops=/tmp/private-ops")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", initial_map)
     _wipe_agent_runner_modules()
 
     import agent_runner
@@ -261,6 +266,23 @@ def test_live_repo_map_captures_standard_overlay_mutators(
     monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "")
 
     assert agent_runner.repo_to_local_map() == {"private/ops": "/tmp/private-ops"}
+
+
+def test_overlay_setdefault_does_not_claim_existing_setup_path(overlay_root, monkeypatch):
+    (overlay_root / "default_fleet.py").write_text(
+        "from agent_runner import GH_REPO_TO_LOCAL\n"
+        'GH_REPO_TO_LOCAL.setdefault("private/ops", "/tmp/overlay-default")\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_FLEET_OVERLAY", "default_fleet")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "private/ops=/tmp/setup-path")
+    _wipe_agent_runner_modules()
+
+    import agent_runner
+
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "")
+
+    assert agent_runner.repo_to_local_map() == {}
 
 
 def test_overlay_named_via_env_loads_and_mutates(overlay_root, monkeypatch):

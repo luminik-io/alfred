@@ -82,8 +82,6 @@ class _RepoLocalMap(dict[str, str]):
     def setdefault(self, key: str, default: str = "") -> str:
         if key not in self:
             self[key] = default
-        elif self._capturing_overlay:
-            self._overlay_values[key] = self[key]
         return self[key]
 
     def __ior__(self, other: object) -> _RepoLocalMap:  # type: ignore[override,misc]

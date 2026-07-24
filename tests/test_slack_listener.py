@@ -1613,6 +1613,83 @@ def test_clarification_does_not_restore_repo_removed_from_persisted_scope(
     assert "acme/frontend#4" not in poster.messages[-1]["text"]
 
 
+def test_replacement_repo_does_not_inherit_removed_repo_issue(tmp_path: Path, monkeypatch) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    env_path = runtime / ".env"
+
+    def write_scope(repo: str) -> None:
+        local_name = repo.rsplit("/", 1)[-1]
+        env_path.write_text(
+            "# alfred-init, generated below this line. Safe to re-run.\n"
+            "GH_ORG=acme\n"
+            f"ALFRED_REPO_LOCAL_MAP={repo}=/tmp/{local_name}\n"
+            f"ALFRED_QUEUE_REPOS={repo}\n",
+            encoding="utf-8",
+        )
+
+    write_scope("acme/frontend")
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "acme/frontend=/tmp/frontend")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "acme/frontend")
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path / "state",
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine(
+            {
+                "action": "assign_issue",
+                "confidence": 0.95,
+            }
+        ),
+        bot_user_id="UALFRED",
+    )
+    root = listener.handle_payload(
+        {
+            "event_id": "EvReplacementIssueRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> assign acme/frontend#47 to Nightwing",
+                "ts": "1716480508.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    write_scope("acme/backend")
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    reply = listener.handle_payload(
+        {
+            "event_id": "EvReplacementIssueReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "acme/backend to the architect",
+                "ts": "1716480509.000001",
+                "thread_ts": "1716480508.000001",
+            },
+        }
+    )
+
+    assert reply.action == "intent_clarify"
+    assert "acme/backend#47" not in poster.messages[-1]["text"]
+    assert "which issue" in poster.messages[-1]["text"].lower()
+    recorded = listener._conversation.recent("thread:C1:1716480508.000001")[-1]
+    assert recorded.repo == "acme/backend"
+    assert recorded.issue is None
+
+
 def test_router_explicitly_disabled_falls_through_to_planning(tmp_path: Path, monkeypatch) -> None:
     # The router is ON by default in production, but ALFRED_INTENT_ROUTER_ENABLED=0
     # explicitly disables it. With no intent_engine injected and the flag off,
