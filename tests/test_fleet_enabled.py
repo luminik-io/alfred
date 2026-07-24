@@ -388,6 +388,21 @@ def test_cli_engine_status_lists_known_agents(tmp_path):
     assert "auth/limit/budget" not in res.stdout
 
 
+def test_cli_engine_status_explains_invalid_configuration(tmp_path):
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred"),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+        "ALFRED_ENGINE": "removed-engine",
+    }
+
+    result = _run_cli("engine", "status", "architect", env_extra=env)
+
+    assert result.returncode == 0, result.stderr
+    assert "architect engine: disabled" in result.stdout
+    assert "Disabled: invalid engine configuration" in result.stdout
+    assert "Traceback" not in result.stderr
+
+
 def test_cli_model_set_status_and_clear(tmp_path):
     alfred = tmp_path / "alfred"
     env = {

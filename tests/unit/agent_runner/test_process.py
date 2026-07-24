@@ -111,6 +111,74 @@ def test_claude_invoke_dry_run_short_circuits(fresh_agent_runner, monkeypatch):
         ar.set_dry_run(False)
 
 
+def test_direct_claude_dispatch_refuses_unready_engine(fresh_agent_runner, monkeypatch):
+    ar = fresh_agent_runner
+    import agent_runner.process as proc
+
+    descriptor = ar.DEFAULT_ENGINE_REGISTRY.descriptor("claude")
+    monkeypatch.setattr(
+        proc,
+        "_probe_dispatch_engine",
+        lambda _engine: ar.EngineProbeResult(
+            descriptor=descriptor,
+            installed=True,
+            protocol_compatible=True,
+            ready=False,
+            state="auth_required",
+            detail="signed out",
+            binary="claude",
+            version="test",
+            failures=("auth_required",),
+        ),
+    )
+    monkeypatch.setattr(
+        proc,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("unready Claude subprocess must not start")
+        ),
+    )
+
+    result = ar.claude_invoke("judge", workdir=Path("/tmp"), allowed_tools="")
+
+    assert result.subtype == "error_authentication"
+    assert result.raw == {"engine": "claude", "engine_readiness": "auth_required"}
+
+
+def test_direct_codex_dispatch_refuses_unready_engine(fresh_agent_runner, monkeypatch):
+    ar = fresh_agent_runner
+    import agent_runner.process as proc
+
+    descriptor = ar.DEFAULT_ENGINE_REGISTRY.descriptor("codex")
+    monkeypatch.setattr(
+        proc,
+        "_probe_dispatch_engine",
+        lambda _engine: ar.EngineProbeResult(
+            descriptor=descriptor,
+            installed=True,
+            protocol_compatible=False,
+            ready=False,
+            state="incompatible",
+            detail="unsupported protocol",
+            binary="codex",
+            version="test",
+            failures=("protocol_incompatible",),
+        ),
+    )
+    monkeypatch.setattr(
+        proc.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("unready Codex subprocess must not start")
+        ),
+    )
+
+    result = ar.codex_invoke("grade", workdir=Path("/tmp"), agent="reviewer")
+
+    assert result.subtype == "error_engine_unavailable"
+    assert result.raw == {"engine": "codex", "engine_readiness": "incompatible"}
+
+
 def test_claude_invoke_streaming_writes_transcript(fresh_agent_runner, monkeypatch):
     """Streaming Claude writes stream-json lines and parses the final result."""
     ar = fresh_agent_runner

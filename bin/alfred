@@ -1684,6 +1684,8 @@ def _engine_default(agent: str) -> str:
 
 
 def _engine_behavior(mode: str) -> str:
+    if mode == agent_runner.DISABLED_ENGINE:
+        return "Disabled: invalid engine configuration"
     resolved = agent_runner.normalize_engine(mode)
     if resolved == "claude":
         return "Claude Code only"

@@ -138,6 +138,15 @@ def _engine_not_ready_result(engine: str, readiness: EngineProbeResult) -> Claud
     )
 
 
+def _direct_engine_readiness_failure(engine: str) -> ClaudeResult | None:
+    """Gate every real CLI adapter call on the canonical readiness probe."""
+
+    readiness = _probe_dispatch_engine(engine)
+    if readiness.ready:
+        return None
+    return _engine_not_ready_result(engine, readiness)
+
+
 def _disabled_engine_result() -> ClaudeResult:
     """Return a clean failure for invalid operator-controlled engine state."""
 
@@ -813,6 +822,10 @@ def claude_invoke(
         )
         return dry_run_claude_result(prompt, model=model, engine="claude")
 
+    readiness_failure = _direct_engine_readiness_failure("claude")
+    if readiness_failure is not None:
+        return readiness_failure
+
     effective_max_turns = max_turns if max_turns is not None else _CLAUDE_UNLIMITED_TURNS
     # Resolve the memory-MCP server path ONCE so the allowlist augmentation and
     # the --mcp-config attachment below always agree (no TOCTOU between two
@@ -946,6 +959,10 @@ def claude_invoke_streaming(
             f"agent={agent}, firing_id={firing_id}, model={model or '(cli-default)'}",
         )
         return dry_run_claude_result(prompt, model=model, engine="claude")
+
+    readiness_failure = _direct_engine_readiness_failure("claude")
+    if readiness_failure is not None:
+        return readiness_failure
 
     if max_turns is None:
         max_turns = _CLAUDE_UNLIMITED_TURNS
@@ -1220,6 +1237,10 @@ def codex_invoke(
             f"sandbox={sandbox or CODEX_DEFAULT_SANDBOX}",
         )
         return dry_run_claude_result(prompt, model=model, engine="codex")
+
+    readiness_failure = _direct_engine_readiness_failure("codex")
+    if readiness_failure is not None:
+        return readiness_failure
 
     unsupported = {
         "allowed_tools": allowed_tools,
@@ -1802,14 +1823,11 @@ def invoke_agent_engine(
         codex_model = agent_model(agent, "codex")
     claude_call = claude_fn or claude_invoke_streaming
     codex_call = codex_fn or codex_invoke
-    claude_probe = engine_probe_fn or (
-        _probe_dispatch_engine
-        if claude_call in {claude_invoke, claude_invoke_streaming} and not is_dry_run()
-        else None
-    )
-    codex_probe = engine_probe_fn or (
-        _probe_dispatch_engine if codex_call is codex_invoke and not is_dry_run() else None
-    )
+    # Real adapters enforce readiness at their own subprocess boundary, which
+    # also protects direct graders, judges, and utility callers. An injected
+    # probe remains available for tests and injected adapters.
+    claude_probe = engine_probe_fn
+    codex_probe = engine_probe_fn
     memory_provider = load_runtime_memory() if memory_repo else None
     # Arm the cleanup BEFORE the firing's delta state can exist. with_memory_prompt
     # records injected lessons for this firing, and govern_prompt_context runs
