@@ -86,6 +86,10 @@ const radixVariants = readFileSync(resolve(srcDir, "styles/radix-variants.css"),
 const atmosphereStyles = ["base.css", "onboarding.css", "shell.css"]
   .map((file) => readFileSync(resolve(srcDir, "styles", file), "utf8"))
   .join("\n");
+const foregroundVariants = [
+  readFileSync(resolve(srcDir, "components/ui/button.tsx"), "utf8"),
+  readFileSync(resolve(srcDir, "components/ui/badge.tsx"), "utf8"),
+].join("\n");
 
 // The color tokens the base defines (the canonical required set).
 const requiredColorTokens = [...baseTokens].filter((token) =>
@@ -132,6 +136,11 @@ describe("theme token completeness (do not revert)", () => {
 
   it("does not use decorative radial blooms in app chrome", () => {
     expect(atmosphereStyles).not.toContain("radial-gradient(");
+  });
+
+  it("keeps light accent colors out of white-text fills", () => {
+    expect(foregroundVariants).not.toContain("var(--accent)");
+    expect(foregroundVariants).toContain("color-mix(in_oklch,var(--primary),black_18%)");
   });
 });
 
