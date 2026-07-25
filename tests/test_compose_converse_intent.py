@@ -1379,6 +1379,34 @@ def test_parse_turn_repo_scoped_read_only_question_scrubs_model_plan() -> None:
     assert turn.done is False
 
 
+def test_parse_turn_preserves_dated_work_history_while_scrubbing_plan_state() -> None:
+    reply = "The fleet merged pull request 42 this morning. The worker restarted at 10:00 UTC."
+    raw = json.dumps(
+        {
+            "intent": "build",
+            "reply": reply,
+            "draft": {
+                "title": "Report recent work",
+                "acceptance_criteria": ["List completed fleet activity."],
+            },
+            "readiness": {"score": 90, "ready": True, "missing": []},
+            "done": True,
+        }
+    )
+
+    turn = cc.parse_turn(
+        raw,
+        base_draft=_empty_draft(),
+        last_user_message="What shipped this morning? Do not change anything.",
+    )
+
+    assert turn is not None
+    assert turn.intent == cc.INTENT_CONVERSATION
+    assert turn.reply == reply
+    assert turn.draft == _empty_draft()
+    assert turn.done is False
+
+
 # --- classify_message_intent: shared no-engine backstop ---------------------
 
 
@@ -1985,6 +2013,10 @@ def test_read_only_capability_answers_are_not_action_claims() -> None:
         "The fleet queue is healthy.",
         "The system updates are available.",
         "The system processes run hourly.",
+        "The fleet merged pull request 42 this morning.",
+        "The worker restarted at 10:00 UTC.",
+        "Alfred opened issue 42 yesterday.",
+        "The branch was pushed last Friday.",
     ):
         assert not cc._reply_claims_plan_or_action(reply), reply
 
@@ -1997,6 +2029,11 @@ def test_read_only_capability_answers_are_not_action_claims() -> None:
         "The system updates configuration.",
         "The agent queues work.",
         "The fleet processes requests.",
+        "The fleet merged pull request 42 now.",
+        "The worker restarted the service.",
+        "We merged pull request 42 yesterday.",
+        "I restarted at 10:00 UTC.",
+        "The worker will restart at 10:00 UTC.",
     ):
         assert cc._reply_claims_plan_or_action(reply), reply
 

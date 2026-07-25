@@ -2937,6 +2937,38 @@ def _reply_claims_plan_or_action(reply: str) -> bool:
         "show",
         "shows",
     }
+    historical_time_words = {
+        "earlier",
+        "previously",
+        "recently",
+        "today",
+        "yesterday",
+    }
+    historical_time_periods = {
+        "afternoon",
+        "day",
+        "days",
+        "evening",
+        "friday",
+        "hour",
+        "hours",
+        "minute",
+        "minutes",
+        "monday",
+        "month",
+        "months",
+        "morning",
+        "night",
+        "saturday",
+        "sunday",
+        "thursday",
+        "tuesday",
+        "wednesday",
+        "week",
+        "weeks",
+        "year",
+        "years",
+    }
     clause_lookahead = 64
 
     def positive_action_at(predicate: int, negated: bool) -> bool:
@@ -3020,6 +3052,44 @@ def _reply_claims_plan_or_action(reply: str) -> bool:
             or token in capability_modals
             or token in participial_predicates
         )
+
+    def historical_third_party_action_at(predicate: int, subject: str) -> bool:
+        """Recognize dated status facts without excusing current self-claims."""
+        action = words[predicate]
+        if subject in {"i", "i'll", "i'm", "i've", "we", "we'll", "we're", "we've"}:
+            return False
+        if not (action.endswith("ed") or action in {"built", "made", "written", "wrote"}):
+            return False
+        clause_end = next(
+            (
+                candidate
+                for candidate in range(predicate + 1, len(words))
+                if words[candidate] in {*sentence_boundaries, *connectors}
+            ),
+            len(words),
+        )
+        tail = words[predicate + 1 : clause_end]
+        if any(token in historical_time_words or token == "ago" for token in tail):
+            return True
+        if any(
+            tail[index] in {"last", "previous", "this"}
+            and tail[index + 1] in historical_time_periods
+            for index in range(len(tail) - 1)
+        ):
+            return True
+        for index, token in enumerate(tail[:-1]):
+            if token not in {"at", "on"}:
+                continue
+            dated_tail = tail[index + 1 :]
+            if any(
+                item.isdigit()
+                or item in historical_time_periods
+                or item in temporal_metadata_words - {"just", "now"}
+                or re.fullmatch(r"\d{4}-\d{1,2}-\d{1,2}", item)
+                for item in dated_tail
+            ):
+                return True
+        return False
 
     active_subject = False
     awaiting_predicate = False
@@ -3498,7 +3568,11 @@ def _reply_claims_plan_or_action(reply: str) -> bool:
         ):
             awaiting_predicate = False
             continue
-        if not capability_scope and positive_action_at(index, negated):
+        if (
+            not capability_scope
+            and positive_action_at(index, negated)
+            and not historical_third_party_action_at(index, active_subject_word)
+        ):
             return True
         stative_scope = word in stative_predicates
         awaiting_predicate = False
