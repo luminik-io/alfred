@@ -1111,6 +1111,8 @@ def test_codex_invoke_reads_last_message_and_writes_artifacts(
     assert Path(out.raw["stdout_path"]).read_text().startswith("session id:")
     assert out.raw["last_message_path"].endswith("fire-1.last.md")
     assert "--skip-git-repo-check" in commands[0]
+    assert "--ignore-user-config" in commands[0]
+    assert "--ephemeral" in commands[0]
     assert commands[0][commands[0].index("--model") + 1] == "review-model"
 
 
@@ -1146,6 +1148,8 @@ def test_codex_invoke_can_bypass_approvals_and_sandbox(tmp_path, monkeypatch, re
     assert out.raw["sandbox"] == "danger-full-access"
     assert out.raw["bypass_approvals_and_sandbox"] is True
     assert "--dangerously-bypass-approvals-and-sandbox" in cmd
+    assert "--ignore-user-config" in cmd
+    assert "--ephemeral" in cmd
     assert "--sandbox" not in cmd
 
 

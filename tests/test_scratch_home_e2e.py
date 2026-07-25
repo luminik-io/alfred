@@ -143,7 +143,7 @@ def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path)
         """#!/bin/sh
 case "$*" in
   --version) printf 'codex scratch\n' ;;
-  'exec --help') printf '%s\n' '--output-last-message --sandbox --cd --skip-git-repo-check -c' ;;
+  'exec --help') printf '%s\n' '--output-last-message --sandbox --cd --skip-git-repo-check --ignore-user-config --ephemeral -c' ;;
   'login status') exit 0 ;;
   *) exit 1 ;;
 esac

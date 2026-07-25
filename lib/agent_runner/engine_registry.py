@@ -203,6 +203,8 @@ ENGINE_DESCRIPTORS: tuple[EngineDescriptor, ...] = (
                     "--sandbox",
                     "--cd",
                     "--skip-git-repo-check",
+                    "--ignore-user-config",
+                    "--ephemeral",
                     "-c",
                 ),
             ),

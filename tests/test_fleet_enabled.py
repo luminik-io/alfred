@@ -524,7 +524,7 @@ def test_cli_codex_status_reports_binary_and_engines(tmp_path):
         'case "${1:-} ${2:-}" in\n'
         '  "--version ") echo codex-test ;;\n'
         '  "exec --help") echo "--output-last-message --sandbox --cd '
-        '--skip-git-repo-check -c" ;;\n'
+        '--skip-git-repo-check --ignore-user-config --ephemeral -c" ;;\n'
         '  "login status") echo "signed in" ;;\n'
         "  *) exit 1 ;;\n"
         "esac\n"
@@ -567,7 +567,7 @@ def test_cli_codex_status_fails_when_cli_is_signed_out(tmp_path):
         'case "${1:-} ${2:-}" in\n'
         '  "--version ") echo codex-test ;;\n'
         '  "exec --help") echo "--output-last-message --sandbox --cd '
-        '--skip-git-repo-check -c" ;;\n'
+        '--skip-git-repo-check --ignore-user-config --ephemeral -c" ;;\n'
         '  "login status") exit 1 ;;\n'
         "  *) exit 1 ;;\n"
         "esac\n"

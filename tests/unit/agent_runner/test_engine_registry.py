@@ -137,7 +137,10 @@ def test_probe_process_receives_only_non_secret_runtime_context(fresh_agent_runn
         args = tuple(command[1:])
         outputs = {
             ("--version",): "codex 1.2.3\n",
-            ("exec", "--help"): ("--output-last-message --sandbox --cd --skip-git-repo-check -c\n"),
+            ("exec", "--help"): (
+                "--output-last-message --sandbox --cd --skip-git-repo-check "
+                "--ignore-user-config --ephemeral -c\n"
+            ),
             ("login", "status"): "signed in\n",
         }
         return subprocess.CompletedProcess(command, 0, outputs[args], "")
@@ -202,7 +205,10 @@ def test_codex_api_key_never_bypasses_cli_auth_probe(fresh_agent_runner, tmp_pat
         calls.append(args)
         outputs = {
             ("--version",): "codex 1.2.3\n",
-            ("exec", "--help"): ("--output-last-message --sandbox --cd --skip-git-repo-check -c\n"),
+            ("exec", "--help"): (
+                "--output-last-message --sandbox --cd --skip-git-repo-check "
+                "--ignore-user-config --ephemeral -c\n"
+            ),
             ("login", "status"): "signed in\n",
         }
         return subprocess.CompletedProcess(command, 0, outputs[args], "")
@@ -234,7 +240,8 @@ def test_invalid_codex_api_key_cannot_make_engine_ready(fresh_agent_runner, tmp_
             ("--version",): (0, "codex 1.2.3\n", ""),
             ("exec", "--help"): (
                 0,
-                "--output-last-message --sandbox --cd --skip-git-repo-check -c\n",
+                "--output-last-message --sandbox --cd --skip-git-repo-check "
+                "--ignore-user-config --ephemeral -c\n",
                 "",
             ),
             ("login", "status"): (1, "", "not signed in"),
@@ -325,6 +332,8 @@ def test_probe_fails_closed_on_protocol_drift(fresh_agent_runner, tmp_path: Path
         "--sandbox",
         "--cd",
         "--skip-git-repo-check",
+        "--ignore-user-config",
+        "--ephemeral",
         "-c",
     ),
 )
@@ -340,6 +349,8 @@ def test_codex_probe_requires_every_dispatch_flag(
         "--sandbox",
         "--cd",
         "--skip-git-repo-check",
+        "--ignore-user-config",
+        "--ephemeral",
         "-c",
     }
     help_output = " ".join(sorted(dispatch_flags - {missing_marker}))
@@ -373,7 +384,8 @@ def test_codex_probe_does_not_treat_other_config_or_directory_flags_as_short_con
             ("--version",): (0, "codex 1.2.3\n", ""),
             ("exec", "--help"): (
                 0,
-                "--output-last-message --sandbox -C --cd --skip-git-repo-check --strict-config\n",
+                "--output-last-message --sandbox -C --cd --skip-git-repo-check "
+                "--ignore-user-config --ephemeral --strict-config\n",
                 "",
             ),
         }
@@ -399,7 +411,8 @@ def test_probe_reports_auth_required_without_leaking_output(fresh_agent_runner, 
             ("--version",): (0, "codex 1.2.3\n", ""),
             ("exec", "--help"): (
                 0,
-                "--output-last-message --sandbox --cd --skip-git-repo-check -c\n",
+                "--output-last-message --sandbox --cd --skip-git-repo-check "
+                "--ignore-user-config --ephemeral -c\n",
                 "",
             ),
             ("login", "status"): (1, "private account details", "expired token"),
@@ -506,7 +519,8 @@ def test_cached_protocol_still_rechecks_auth(fresh_agent_runner, tmp_path: Path)
             return subprocess.CompletedProcess(
                 command,
                 0,
-                "--output-last-message --sandbox --cd --skip-git-repo-check -c\n",
+                "--output-last-message --sandbox --cd --skip-git-repo-check "
+                "--ignore-user-config --ephemeral -c\n",
                 "",
             )
         if args == ("login", "status"):

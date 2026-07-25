@@ -1287,6 +1287,8 @@ def codex_invoke(
         "--skip-git-repo-check",
         "--cd",
         str(workdir),
+        "--ignore-user-config",
+        "--ephemeral",
     ]
     resolved_sandbox = sandbox or CODEX_DEFAULT_SANDBOX
     if bypass_approvals_and_sandbox:
