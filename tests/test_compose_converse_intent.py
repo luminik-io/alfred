@@ -1245,6 +1245,17 @@ def test_read_only_info_request_rejects_status_plus_chained_work() -> None:
     )
 
 
+def test_read_only_info_request_keeps_coordinated_noun_objects_read_only() -> None:
+    for message in (
+        "List build artifacts and deploy status.",
+        "Check release status and update history.",
+    ):
+        assert cc.looks_like_read_only_info_request(message), message
+        assert (
+            cc.classify_message_intent(message, draft=_empty_draft()) == cc.INTENT_CONVERSATION
+        ), message
+
+
 def test_read_only_info_request_ignores_space_padded_prefix_punctuation() -> None:
     assert cc.looks_like_read_only_info_request("Alfred , show me the current fleet status.")
 
@@ -2150,6 +2161,18 @@ def test_conjunction_heavy_question_classifier_scales_near_linearly() -> None:
         durations.append(time.perf_counter() - started)
 
     assert durations[-1] < max(0.08, durations[0] * 7)
+
+
+def test_information_clause_scan_scales_near_linearly() -> None:
+    durations: list[float] = []
+    for repeated in (2_000, 4_000, 8_000):
+        message = "Check status. " * repeated
+        tokens = cc._separator_aware_build_tokens(message)
+        started = time.perf_counter()
+        cc._has_followup_build_clause(tokens)
+        durations.append(time.perf_counter() - started)
+
+    assert durations[-1] < max(0.5, durations[0] * 7)
 
 
 def test_leading_conjunction_run_scales_near_linearly() -> None:

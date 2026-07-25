@@ -1193,6 +1193,23 @@ _NOUN_QUESTION_OBJECTS = frozenset(
     }
 )
 
+# Some verb/noun pairs remain genuine mutations even though each word can be a
+# noun in another sentence. Keep this list intentionally narrow: outside an
+# information command, the normal imperative detector still handles the full
+# build vocabulary. These are only the ambiguous coordinated tails in requests
+# such as ``check status and fix failures``.
+_COORDINATED_MUTATION_OBJECTS: dict[str, frozenset[str]] = {
+    "execute": frozenset({"jobs"}),
+    "file": frozenset({"issues", "tickets"}),
+    "fix": frozenset({"failures", "issues", "tickets"}),
+    "process": frozenset({"jobs", "queues"}),
+    "restart": frozenset({"jobs"}),
+    "retry": frozenset({"failures", "jobs"}),
+    "start": frozenset({"jobs"}),
+    "stop": frozenset({"jobs"}),
+    "update": frozenset({"issues", "tickets"}),
+}
+
 _UNAMBIGUOUS_BARE_IMPERATIVE_VERBS = frozenset(
     {
         "clear",
@@ -1916,7 +1933,7 @@ def _clause_starts_direct_object_command(
     ):
         return False
     if first in _NOUN_CAPABLE_BUILD_WORDS and second in _NOUN_QUESTION_OBJECTS:
-        return not allow_noun_fragment
+        return not allow_noun_fragment and second in _COORDINATED_MUTATION_OBJECTS.get(first, ())
     third = tokens[start + 2] if start + 2 < len(tokens) else ""
     if second not in _DIRECT_OBJECT_OPENERS and third in _DECLARATIVE_PREDICATES:
         return False
@@ -1991,6 +2008,13 @@ def _is_compound_noun_question(tokens: list[str]) -> bool:
     return True
 
 
+def _clause_starts_information_command(tokens: list[str], start: int) -> bool:
+    """Return whether a clause opens with Alfred's bounded read-only vocabulary."""
+    while start < len(tokens) and tokens[start] in _READ_ONLY_COMMAND_PREFIXES:
+        start += 1
+    return start < len(tokens) and tokens[start] in _READ_ONLY_COMMAND_VERBS
+
+
 def _has_followup_build_clause(tokens: list[str]) -> bool:
     """True when a question is followed by a distinct work request.
 
@@ -2018,13 +2042,7 @@ def _has_followup_build_clause(tokens: list[str]) -> bool:
     explanatory_indices = _explanatory_build_verb_indices(tokens)
     capability_indices = _capability_modal_build_verb_indices(tokens)
     explicit_followup_start = -1
-    information_command = (
-        next(
-            (token for token in tokens[clause_start:] if token not in _READ_ONLY_COMMAND_PREFIXES),
-            "",
-        )
-        in _READ_ONLY_COMMAND_VERBS
-    )
+    information_command = _clause_starts_information_command(tokens, clause_start)
     clause_recommendation = _recommendation_embeds_build(tokens, clause_start)
     for index, token in enumerate(tokens):
         if token == _CLAUSE_BOUNDARY_TOKEN:
@@ -2039,17 +2057,7 @@ def _has_followup_build_clause(tokens: list[str]) -> bool:
             clause_has_copula = False
             last_conjunction = -1
             explicit_followup_start = -1
-            information_command = (
-                next(
-                    (
-                        item
-                        for item in tokens[clause_start:]
-                        if item not in _READ_ONLY_COMMAND_PREFIXES
-                    ),
-                    "",
-                )
-                in _READ_ONLY_COMMAND_VERBS
-            )
+            information_command = _clause_starts_information_command(tokens, clause_start)
             clause_recommendation = _recommendation_embeds_build(tokens, clause_start)
             continue
         if token in {"am", "are", "has", "have", "is", "was", "were"}:
