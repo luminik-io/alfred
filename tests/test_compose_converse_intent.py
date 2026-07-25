@@ -1231,6 +1231,8 @@ def test_read_only_info_request_rejects_status_plus_chained_work() -> None:
         "Review the current Alfred setup status and file an issue for any bug.",
         "Check repository status and fix failures.",
         "List runs and retry jobs.",
+        "Check repository status and then archive logs.",
+        "Check repository status and then deploy artifacts.",
         "Explain the engine status. Kindly update the docs. Do not change the API.",
         "What is the status? Kindly restart the worker.",
     ):

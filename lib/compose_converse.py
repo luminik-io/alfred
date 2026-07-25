@@ -1893,6 +1893,7 @@ def _clause_starts_direct_object_command(
     *,
     assume_bare_object: bool = False,
     allow_noun_fragment: bool = True,
+    force_noun_command: bool = False,
 ) -> bool:
     """Detect an imperative clause whose verb is outside the build allowlist.
 
@@ -1933,7 +1934,9 @@ def _clause_starts_direct_object_command(
     ):
         return False
     if first in _NOUN_CAPABLE_BUILD_WORDS and second in _NOUN_QUESTION_OBJECTS:
-        return not allow_noun_fragment and second in _COORDINATED_MUTATION_OBJECTS.get(first, ())
+        return not allow_noun_fragment and (
+            force_noun_command or second in _COORDINATED_MUTATION_OBJECTS.get(first, ())
+        )
     third = tokens[start + 2] if start + 2 < len(tokens) else ""
     if second not in _DIRECT_OBJECT_OPENERS and third in _DECLARATIVE_PREDICATES:
         return False
@@ -2102,6 +2105,8 @@ def _has_followup_build_clause(tokens: list[str]) -> bool:
                         tokens,
                         candidate_start,
                         allow_noun_fragment=not information_command,
+                        force_noun_command=token == "then"
+                        or (index + 1 < len(tokens) and tokens[index + 1] == "then"),
                     )
                 ):
                     return True
