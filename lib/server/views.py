@@ -1086,7 +1086,7 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
     # Recall fleet lessons only when this turn looks like real work (gated, not
     # always-on), and append them to the grounding as advisory context.
     repo_grounding += _converse_memory_grounding(request, messages=messages, base_draft=base_draft)
-    code_map = cc.load_code_map(_compose_code_map_path())
+    code_map = cc.load_code_map(_compose_code_map_path(), repos=grounding_repos)
     # Plain mode is per-request: the client toggle wins when present, and the
     # ALFRED_INTAKE_PROFILE server env is only the default when the body omits
     # the flag. This lets a non-developer flip jargon-free coaching on/off in
@@ -1227,7 +1227,7 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
     # Recall fleet lessons only when this turn looks like real work (gated, not
     # always-on), and append them to the grounding as advisory context.
     repo_grounding += _converse_memory_grounding(request, messages=messages, base_draft=base_draft)
-    code_map = cc.load_code_map(_compose_code_map_path())
+    code_map = cc.load_code_map(_compose_code_map_path(), repos=grounding_repos)
     # Plain mode is per-request: the client toggle wins when present, and the
     # ALFRED_INTAKE_PROFILE server env is only the default when the body omits
     # the flag. This lets a non-developer flip jargon-free coaching on/off in
@@ -2663,23 +2663,26 @@ def _planning_workdir(request: Request) -> Path:
 
 
 def _explicit_conversation_repo(repos: list[str], messages: Iterable[Any]) -> str:
-    """Return one selected repo explicitly named in the latest relevant turn."""
+    """Return one selected repo explicitly named in the latest user turn."""
 
+    text = ""
     for message in reversed(list(messages)):
-        if str(getattr(message, "role", "") or "") != "user":
-            continue
-        text = str(getattr(message, "content", "") or "")
-        matches = [
-            repo
-            for repo in repos
-            if re.search(
-                rf"(?<![A-Za-z0-9_.-]){re.escape(repo)}(?![A-Za-z0-9_.-])",
-                text,
-                re.IGNORECASE,
-            )
-        ]
-        if matches:
-            return matches[0] if len(matches) == 1 else ""
+        if str(getattr(message, "role", "") or "") == "user":
+            text = str(getattr(message, "content", "") or "")
+            break
+    if not text or re.search(r"\b(compare|comparison|versus|vs\.?|between)\b", text, re.IGNORECASE):
+        return ""
+    matches = [
+        repo
+        for repo in repos
+        if re.search(
+            rf"(?<![A-Za-z0-9_.-]){re.escape(repo)}(?![A-Za-z0-9_.-])",
+            text,
+            re.IGNORECASE,
+        )
+    ]
+    if matches:
+        return matches[0] if len(matches) == 1 else ""
     return ""
 
 

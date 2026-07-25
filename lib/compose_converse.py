@@ -485,7 +485,11 @@ def _file_tree_summary(repo_dir: Path, *, limit: int = 80) -> str:
     return "\n".join(lines)
 
 
-def load_code_map(code_map_path: Path | None) -> str:
+def load_code_map(
+    code_map_path: Path | None,
+    *,
+    repos: Iterable[str] | None = None,
+) -> str:
     """Render the code-map-refresh JSON as compact grounding, if present.
 
     Reuses whatever ``code-map-refresh`` last wrote (per-repo endpoints, client
@@ -500,6 +504,17 @@ def load_code_map(code_map_path: Path | None) -> str:
         return "A code map exists but could not be read; rely on the repo docs above."
     if not isinstance(data, dict):
         return "A code map exists but is malformed; rely on the repo docs above."
+    repo_filter = {str(repo).strip().casefold() for repo in repos or () if str(repo).strip()}
+    repo_filter_names = {repo.rsplit("/", 1)[-1] for repo in repo_filter}
+
+    def matches_repo_filter(value: object) -> bool:
+        if not repo_filter:
+            return True
+        normalized = str(value or "").strip().casefold()
+        if "/" in normalized:
+            return normalized in repo_filter
+        return normalized in repo_filter_names
+
     lines: list[str] = []
     generated = str(data.get("generated_at") or "").strip()
     if generated:
@@ -508,6 +523,8 @@ def load_code_map(code_map_path: Path | None) -> str:
     if isinstance(repos, dict):
         for slug, info in repos.items():
             if not isinstance(info, dict):
+                continue
+            if not matches_repo_filter(slug):
                 continue
             endpoints = info.get("endpoints") or []
             routes = info.get("routes") or []
@@ -545,7 +562,13 @@ def load_code_map(code_map_path: Path | None) -> str:
                 lines.append(f"- `{slug}`: " + ", ".join(counts))
     drift = data.get("contract_drift")
     if isinstance(drift, list) and drift:
-        lines.append(f"Contract drift entries: {len(drift)} (advisory).")
+        filtered_drift = [
+            item
+            for item in drift
+            if isinstance(item, dict) and matches_repo_filter(item.get("caller"))
+        ]
+        if filtered_drift:
+            lines.append(f"Contract drift entries: {len(filtered_drift)} (advisory).")
     return "\n".join(lines) or "Code map present but empty."
 
 
@@ -1042,6 +1065,7 @@ _READ_ONLY_COMMAND_VERBS = (
     "report",
     "check",
     "confirm",
+    "identify",
     "inspect",
     "read",
     "review",
@@ -1426,6 +1450,12 @@ def looks_like_read_only_info_request(text: str) -> bool:
         return False
 
     command_index = 0
+    if len(tokens) > 2 and tokens[0] == "in" and "/" in tokens[1]:
+        # Desktop Ask commonly scopes a repository before the actual command:
+        # "In owner/repo, identify where X is checked." Treat only the canonical
+        # owner/repo shape as a prefix; ordinary placement requests such as
+        # "in settings, add a button" must stay build work.
+        command_index = 2
     for prefix in _READ_ONLY_FORMAT_PREFIXES:
         if tuple(tokens[: len(prefix)]) == prefix:
             command_index = len(prefix)
@@ -1717,9 +1747,12 @@ def _build_summarizer(
                 timeout=CONDENSER_TIMEOUT,
                 claude_max_turns=CONDENSER_MAX_TURNS,
                 claude_model=model,
+                claude_read_only_isolation=True,
                 codex_model=model,
                 codex_timeout=CONDENSER_TIMEOUT,
                 codex_sandbox="read-only",
+                codex_ignore_user_config=True,
+                codex_ephemeral=True,
                 hybrid_fallback_on_provider_failure=True,
             )
         except Exception:
@@ -1847,11 +1880,35 @@ def run_turn(
         return None
     if not getattr(result, "success", False) or not getattr(result, "result_text", ""):
         return None
-    return parse_turn(
+    turn = parse_turn(
         result.result_text,
         base_draft=base_draft,
         last_user_message=latest_user_message,
     )
+    if turn is not None:
+        return turn
+
+    # A live engine can occasionally answer a plain read-only question correctly
+    # while omitting the requested JSON envelope. Preserve that useful answer
+    # only when the deterministic classifier independently says this is a
+    # conversation and no structured draft exists. Malformed build output still
+    # fails closed so prose can never become an executable plan by accident.
+    content_draft = replace(base_draft, repos=[]) if base_draft.repos else base_draft
+    if (
+        not _draft_has_content(content_draft)
+        and classify_message_intent(latest_user_message, draft=content_draft) == INTENT_CONVERSATION
+    ):
+        reply = str(result.result_text or "").strip()
+        if reply and not _reply_claims_plan_or_action(reply):
+            return ConverseTurn(
+                reply=reply,
+                draft=content_draft,
+                readiness=ConverseReadiness(score=0, ready=False),
+                done=False,
+                intent=INTENT_CONVERSATION,
+                action=None,
+            )
+    return None
 
 
 def _condensed_converse_messages(
@@ -1899,6 +1956,7 @@ def _invoke_converse(
             claude_allowed_tools="Read,Grep,Glob",
             timeout=timeout,
             claude_max_turns=DEFAULT_MAX_TURNS,
+            claude_read_only_isolation=True,
             codex_timeout=timeout,
             codex_sandbox="read-only",
             codex_ignore_user_config=True,

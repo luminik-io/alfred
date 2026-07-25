@@ -947,7 +947,7 @@ _VARS: tuple[ConfigVar, ...] = (
         "path",
         "graphify-out/graph.json",
         "memory",
-        "Path to the graphify graph JSON.",
+        "Checkout-relative path to the graphify graph JSON.",
         operator=True,
     ),
     V(

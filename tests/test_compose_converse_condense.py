@@ -135,6 +135,7 @@ class _EngineSpy:
                 "agent": agent,
                 "firing_id": kwargs.get("firing_id"),
                 "provider_failover": kwargs.get("hybrid_fallback_on_provider_failure"),
+                "claude_read_only_isolation": kwargs.get("claude_read_only_isolation"),
                 "codex_sandbox": kwargs.get("codex_sandbox"),
                 "codex_ignore_user_config": kwargs.get("codex_ignore_user_config"),
                 "codex_ephemeral": kwargs.get("codex_ephemeral"),
@@ -181,10 +182,43 @@ def test_short_conversation_runs_once_without_condensing() -> None:
     assert spy.condenser_calls == []  # no summarizer call
     assert len(spy.interrogator_calls) == 1
     assert spy.interrogator_calls[0]["provider_failover"] is True
+    assert spy.interrogator_calls[0]["claude_read_only_isolation"] is True
     assert spy.interrogator_calls[0]["codex_sandbox"] == "read-only"
     assert spy.interrogator_calls[0]["codex_ignore_user_config"] is True
     assert spy.interrogator_calls[0]["codex_ephemeral"] is True
     assert records == []
+
+
+def test_read_only_conversation_preserves_plain_engine_answer() -> None:
+    plain_answer = "The dispatch gate is in `process.py`. No code was changed."
+    spy = _EngineSpy(interrogator_results=[_Result(success=True, result_text=plain_answer)])
+    messages = [
+        cc.ConverseMessage(
+            role="user",
+            content="In acme/alfred, identify where dispatch readiness is checked. Do not change code.",
+        )
+    ]
+
+    turn = _run(spy, messages)
+
+    assert turn is not None
+    assert turn.intent == cc.INTENT_CONVERSATION
+    assert turn.reply == plain_answer
+    assert turn.draft == IssueDraft(title="")
+    assert turn.action is None
+
+
+def test_build_turn_rejects_plain_engine_answer() -> None:
+    spy = _EngineSpy(
+        interrogator_results=[_Result(success=True, result_text="I will add the feature.")]
+    )
+
+    turn = _run(
+        spy,
+        [cc.ConverseMessage(role="user", content="Add a dark mode toggle to settings.")],
+    )
+
+    assert turn is None
 
 
 def test_long_conversation_condenses_prompt_proactively() -> None:
@@ -198,7 +232,10 @@ def test_long_conversation_condenses_prompt_proactively() -> None:
     assert turn is not None
     # Summarizer fired exactly once.
     assert len(spy.condenser_calls) == 1
+    assert spy.condenser_calls[0]["claude_read_only_isolation"] is True
     assert spy.condenser_calls[0]["codex_sandbox"] == "read-only"
+    assert spy.condenser_calls[0]["codex_ignore_user_config"] is True
+    assert spy.condenser_calls[0]["codex_ephemeral"] is True
     # The interrogator prompt carries the injected summary block, not every turn.
     interrogator_prompt = spy.interrogator_calls[0]["prompt"]
     assert "COMPACT SUMMARY of older turns" in interrogator_prompt
@@ -234,6 +271,9 @@ def test_reactive_condense_and_retry_on_overflow() -> None:
     assert len(spy.interrogator_calls) == 2
     # Exactly one summarizer call (the reactive condensation).
     assert len(spy.condenser_calls) == 1
+    assert spy.condenser_calls[0]["claude_read_only_isolation"] is True
+    assert spy.condenser_calls[0]["codex_ignore_user_config"] is True
+    assert spy.condenser_calls[0]["codex_ephemeral"] is True
     # The retry prompt is the condensed one.
     retry_prompt = spy.interrogator_calls[1]["prompt"]
     assert "COMPACT SUMMARY of older turns" in retry_prompt

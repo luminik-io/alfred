@@ -394,5 +394,26 @@ def assistant_text_fragments(transcript_path: Path) -> list[str]:
                 continue
             value = block.get("text")
             if isinstance(value, str) and value:
-                fragments.append(value)
+                fragments.append(_visible_converse_text(value))
     return fragments
+
+
+def _visible_converse_text(value: str) -> str:
+    """Hide the model's structured turn envelope from live chat rendering."""
+
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(value):
+        if char != "{":
+            continue
+        try:
+            obj, _end = decoder.raw_decode(value[index:])
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        if not {"reply", "draft", "readiness"}.issubset(obj):
+            continue
+        reply = obj.get("reply")
+        if isinstance(reply, str) and reply.strip():
+            return reply.strip()
+    return value

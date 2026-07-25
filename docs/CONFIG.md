@@ -126,7 +126,7 @@ are experimental, deep-tuning, or set by Alfred itself at runtime.
 | `ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S` | int | `120` | internal | Fetch timeout in seconds for the code-memory server. |
 | `ALFRED_GRAPHIFY_MCP` | bool | `0` | operator | Expose the graphify MCP server. |
 | `ALFRED_GRAPHIFY_BIN` | path |  | operator | Path override for the graphify binary. |
-| `ALFRED_GRAPHIFY_GRAPH` | path | `graphify-out/graph.json` | operator | Path to the graphify graph JSON. |
+| `ALFRED_GRAPHIFY_GRAPH` | path | `graphify-out/graph.json` | operator | Checkout-relative path to the graphify graph JSON. |
 | `ALFRED_GRAPHIFY_FALLBACK` | str |  | operator | Fallback provider when graphify is unavailable (e.g. code-memory). |
 | `ALFRED_GRAPH_DENSIFY` | bool | `1` | internal | Enable graph densification projection; on by default. |
 | `ALFRED_GBRAIN_BIN` | path |  | internal | Path to an external graph-brain binary. |

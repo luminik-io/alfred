@@ -2636,6 +2636,54 @@ def test_compose_converse_keeps_multi_repo_questions_in_fallback_workdir(
     ) == server_views._planning_workdir(request)
 
 
+def test_compose_converse_does_not_reuse_stale_repo_scope_for_followup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    request = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(reader=FilesystemReader(state_root=state)))
+    )
+    selected = ["acme/frontend", "acme/backend"]
+    monkeypatch.setattr(server_views, "_selected_setup_repos", lambda: selected)
+    messages = [
+        SimpleNamespace(role="user", content="In acme/frontend, how does login work?"),
+        SimpleNamespace(role="assistant", content="It uses the session provider."),
+        SimpleNamespace(role="user", content="What is the fleet doing now?"),
+    ]
+
+    assert server_views._explicit_conversation_repo(selected, messages) == ""
+    assert server_views._compose_read_only_workdir(
+        request,
+        repos=selected,
+        messages=messages,
+    ) == server_views._planning_workdir(request)
+
+
+def test_compose_converse_keeps_implicit_comparison_multi_repo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    request = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(reader=FilesystemReader(state_root=state)))
+    )
+    selected = ["acme/frontend", "acme/backend"]
+    monkeypatch.setattr(server_views, "_selected_setup_repos", lambda: selected)
+    messages = [
+        SimpleNamespace(role="user", content="In acme/frontend, how does login work?"),
+        SimpleNamespace(role="assistant", content="It uses the session provider."),
+        SimpleNamespace(role="user", content="Compare it with acme/backend."),
+    ]
+
+    assert server_views._explicit_conversation_repo(selected, messages) == ""
+    assert server_views._compose_read_only_workdir(
+        request,
+        repos=selected,
+        messages=messages,
+    ) == server_views._planning_workdir(request)
+
+
 def test_compose_converse_rejects_bare_or_unselected_workdir_mappings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

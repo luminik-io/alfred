@@ -139,6 +139,35 @@ def test_assistant_text_fragments_in_order(tmp_path: Path) -> None:
     assert streaming.assistant_text_fragments(transcript) == ["Reading ", "the code."]
 
 
+def test_assistant_text_fragments_hides_structured_turn_envelope(tmp_path: Path) -> None:
+    transcript = tmp_path / "turn.jsonl"
+    structured = {
+        "intent": "conversation",
+        "reply": "The readiness gate is in process.py.",
+        "draft": {},
+        "readiness": {"score": 0, "ready": False},
+    }
+    transcript.write_text(
+        _assistant_line("I inspected the checkout.\n\n```json\n" + json.dumps(structured) + "\n```")
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert streaming.assistant_text_fragments(transcript) == [
+        "The readiness gate is in process.py."
+    ]
+
+
+def test_assistant_text_fragments_preserves_plain_answer_with_code_braces(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / "plain.jsonl"
+    answer = 'The parser accepts objects such as {"status": "ready"}.'
+    transcript.write_text(_assistant_line(answer) + "\n", encoding="utf-8")
+
+    assert streaming.assistant_text_fragments(transcript) == [answer]
+
+
 def test_tail_offset_poll_fallback_returns_json_snapshot(tmp_path: Path) -> None:
     state = tmp_path / "state"
     transcript = _transcript_for(state, "lucius", "poll-1")

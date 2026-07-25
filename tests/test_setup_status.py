@@ -151,9 +151,9 @@ def test_graphify_coverage_is_scoped_to_remote_verified_checkouts(tmp_path: Path
     )
 
     assert coverage["ready"] is False
-    assert coverage["covered"] == ["acme/api"]
-    assert coverage["missing"] == ["acme/web"]
-    assert coverage["detected"][0]["graph_within_checkout"] is True
+    assert coverage["covered"] == []
+    assert coverage["missing"] == ["acme/api", "acme/web"]
+    assert coverage["detected"][0]["graph_within_checkout"] is False
     assert coverage["detected"][1]["graph_within_checkout"] is False
 
 

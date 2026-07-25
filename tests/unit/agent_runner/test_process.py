@@ -183,6 +183,66 @@ def test_claude_invoke_streaming_writes_transcript(fresh_agent_runner, monkeypat
     assert transcript.read_text(encoding="utf-8") == stream
 
 
+def test_claude_invoke_streaming_can_enforce_read_only_isolation(fresh_agent_runner, monkeypatch):
+    """Compose exposes only read tools and ignores repository customizations."""
+    ar = fresh_agent_runner
+    import agent_runner.process as proc
+
+    captured: dict[str, object] = {}
+    final = {
+        "type": "result",
+        "subtype": "success",
+        "result": "ok",
+        "num_turns": 1,
+        "total_cost_usd": 0.0,
+        "session_id": "isolated",
+        "stop_reason": "end_turn",
+    }
+
+    class FakeProc:
+        returncode = 0
+        stdout = io.StringIO(json.dumps(final) + "\n")
+        stderr = io.StringIO("")
+
+        def wait(self, timeout: int) -> int:
+            return self.returncode
+
+        def kill(self) -> None:
+            self.returncode = -9
+
+    def fake_popen(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return FakeProc()
+
+    monkeypatch.setattr(proc.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(
+        proc,
+        "_memory_mcp_script",
+        lambda: (_ for _ in ()).throw(AssertionError("memory MCP must stay disabled")),
+    )
+
+    result = ar.claude_invoke_streaming(
+        prompt="inspect",
+        workdir=Path("/tmp"),
+        allowed_tools="Read,Grep,Glob",
+        agent="compose-interrogator",
+        firing_id="isolated-read",
+        read_only_isolation=True,
+    )
+
+    assert result.success is True
+    cmd = captured["cmd"]
+    assert cmd[cmd.index("--tools") + 1] == "Read,Grep,Glob"
+    assert cmd[cmd.index("--allowedTools") + 1] == "Read,Grep,Glob"
+    assert cmd[cmd.index("--permission-mode") + 1] == "dontAsk"
+    assert "--safe-mode" in cmd
+    assert "--strict-mcp-config" in cmd
+    assert cmd[cmd.index("--mcp-config") + 1] == '{"mcpServers":{}}'
+    assert "--no-session-persistence" in cmd
+    assert "--dangerously-skip-permissions" not in cmd
+    assert "mcp__alfred_memory" not in " ".join(cmd)
+
+
 def test_claude_invoke_streaming_surfaces_popen_oserror(fresh_agent_runner, monkeypatch):
     ar = fresh_agent_runner
     from pathlib import Path

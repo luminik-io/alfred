@@ -2399,9 +2399,10 @@ def _graphify_coverage(
         try:
             checkout = checkout.resolve(strict=True)
             graph = graph.resolve(strict=True)
-            graph.relative_to(checkout)
-            contained = True
-            graph_present = graph.is_file()
+            if not configured.is_absolute():
+                graph.relative_to(checkout)
+                contained = True
+                graph_present = graph.is_file()
         except (OSError, RuntimeError, ValueError):
             pass
         ready = (

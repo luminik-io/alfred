@@ -185,6 +185,60 @@ def test_load_code_map_summarizes_repo_graph(tmp_path: Path) -> None:
     assert "Contract drift entries: 1" in summary
 
 
+def test_load_code_map_filters_unselected_repositories(tmp_path: Path) -> None:
+    from compose_converse import load_code_map
+
+    path = tmp_path / "code-map.json"
+    path.write_text(
+        json.dumps(
+            {
+                "repos": {
+                    "acme/frontend": {"routes": [{"path": "/"}]},
+                    "acme/backend": {"endpoints": [{"method": "GET", "path": "/health"}]},
+                },
+                "contract_drift": [
+                    {"caller": "acme/frontend", "path": "/missing"},
+                    {"caller": "acme/backend", "path": "/other"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary = load_code_map(path, repos=["acme/frontend"])
+
+    assert "`acme/frontend`: 1 routes" in summary
+    assert "acme/backend" not in summary
+    assert "Contract drift entries: 1" in summary
+
+
+def test_load_code_map_matches_selected_slug_to_production_repo_key(tmp_path: Path) -> None:
+    from compose_converse import load_code_map
+
+    path = tmp_path / "code-map.json"
+    path.write_text(
+        json.dumps(
+            {
+                "repos": {
+                    "frontend": {"routes": [{"path": "/"}]},
+                    "backend": {"endpoints": [{"method": "GET", "path": "/health"}]},
+                },
+                "contract_drift": [
+                    {"caller": "frontend", "path": "/missing"},
+                    {"caller": "backend", "path": "/other"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary = load_code_map(path, repos=["acme/frontend"])
+
+    assert "`frontend`: 1 routes" in summary
+    assert "backend" not in summary
+    assert "Contract drift entries: 1" in summary
+
+
 def test_load_code_map_skips_malformed_graph_counts(tmp_path: Path) -> None:
     from compose_converse import load_code_map
 

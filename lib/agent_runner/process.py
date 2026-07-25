@@ -518,16 +518,20 @@ def _graphify_mcp_server(workdir: Path | None = None) -> dict[str, Any] | None:
     cmd, prefix = invocation
     graph = os.environ.get("ALFRED_GRAPHIFY_GRAPH", "").strip() or "graphify-out/graph.json"
     graph_path = Path(graph).expanduser()
-    resolved_graph = (
-        graph_path if graph_path.is_absolute() else (workdir / graph_path if workdir else None)
-    )
-    if resolved_graph is not None and not resolved_graph.is_file():
+    if workdir is None or graph_path.is_absolute():
         return None
-    graph_arg = str(resolved_graph) if resolved_graph is not None else str(graph_path)
+    try:
+        checkout = workdir.resolve(strict=True)
+        resolved_graph = (checkout / graph_path).resolve(strict=True)
+        resolved_graph.relative_to(checkout)
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if not resolved_graph.is_file():
+        return None
     return {
         GRAPHIFY_MCP_SERVER: {
             "command": cmd,
-            "args": [*prefix, graph_arg, "--transport", "stdio"],
+            "args": [*prefix, str(resolved_graph), "--transport", "stdio"],
         }
     }
 
@@ -871,6 +875,7 @@ def claude_invoke_streaming(
     timeout: int = 1200,
     resume_session: str | None = None,
     model: str | None = None,
+    read_only_isolation: bool = False,
     _auth_retry: bool = False,
 ) -> ClaudeResult:
     """Streaming counterpart of :func:`claude_invoke`. Same return shape.
@@ -901,23 +906,45 @@ def claude_invoke_streaming(
     if max_turns is None:
         max_turns = _CLAUDE_UNLIMITED_TURNS
 
-    memory_script = _memory_mcp_script()
+    memory_script = None if read_only_isolation else _memory_mcp_script()
+    resolved_tools = (
+        allowed_tools
+        if read_only_isolation
+        else _with_memory_mcp_tools(allowed_tools, memory_script, workdir)
+    )
     cmd = [
         _runtime_cli_bin("CLAUDE_BIN", CLAUDE_BIN),
         "-p",
         prompt,
-        "--allowedTools",
-        _with_memory_mcp_tools(allowed_tools, memory_script, workdir),
-        "--max-turns",
-        str(max_turns),
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        "--permission-mode",
-        "bypassPermissions",
     ]
+    if read_only_isolation:
+        cmd.extend(["--tools", resolved_tools])
+    cmd.extend(
+        [
+            "--allowedTools",
+            resolved_tools,
+            "--max-turns",
+            str(max_turns),
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--permission-mode",
+            "dontAsk" if read_only_isolation else "bypassPermissions",
+        ]
+    )
+    if read_only_isolation:
+        cmd.extend(
+            [
+                "--safe-mode",
+                "--strict-mcp-config",
+                "--mcp-config",
+                '{"mcpServers":{}}',
+                "--no-session-persistence",
+            ]
+        )
     cmd.extend(_agent_settings_args())
-    cmd.extend(_memory_mcp_args(memory_script, workdir))
+    if memory_script is not None:
+        cmd.extend(_memory_mcp_args(memory_script, workdir))
     if model:
         cmd.extend(["--model", model])
     if resume_session:
@@ -1065,6 +1092,7 @@ def claude_invoke_streaming(
             timeout=timeout,
             resume_session=resume_session,
             model=model,
+            read_only_isolation=read_only_isolation,
             _auth_retry=True,
         )
     return result
@@ -1696,6 +1724,7 @@ def invoke_agent_engine(
     codex_bypass_approvals_and_sandbox: bool = False,
     codex_ignore_user_config: bool = False,
     codex_ephemeral: bool = False,
+    claude_read_only_isolation: bool = False,
     claude_fn: Callable[..., ClaudeResult] | None = None,
     codex_fn: Callable[..., ClaudeResult] | None = None,
     on_fallback: Callable[[ClaudeResult], None] | None = None,
@@ -1808,6 +1837,7 @@ def invoke_agent_engine(
                 max_turns=claude_max_turns,
                 timeout=timeout,
                 model=claude_model,
+                read_only_isolation=claude_read_only_isolation,
             )
 
         def _invoke_codex() -> ClaudeResult:

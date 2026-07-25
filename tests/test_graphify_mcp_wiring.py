@@ -188,7 +188,7 @@ def test_graphify_never_resolves_packages_during_a_firing(monkeypatch, tmp_path:
     assert server is None
 
 
-def test_graphify_expands_home_relative_graph_path(monkeypatch, tmp_path: Path) -> None:
+def test_graphify_rejects_absolute_graph_path(monkeypatch, tmp_path: Path) -> None:
     home = tmp_path / "home"
     graph = home / "graphs" / "repo.json"
     graph.parent.mkdir(parents=True)
@@ -205,8 +205,24 @@ def test_graphify_expands_home_relative_graph_path(monkeypatch, tmp_path: Path) 
 
     server = _proc._graphify_mcp_server(tmp_path)
 
-    assert server is not None
-    assert server["graphify"]["args"][0] == str(graph)
+    assert server is None
+
+
+def test_graphify_rejects_graph_path_that_escapes_checkout(monkeypatch, tmp_path: Path) -> None:
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    graph = tmp_path / "graph.json"
+    graph.write_text('{"nodes": [], "links": []}', encoding="utf-8")
+    monkeypatch.setenv("ALFRED_GRAPHIFY_MCP", "1")
+    monkeypatch.setenv("ALFRED_GRAPHIFY_GRAPH", "../graph.json")
+    monkeypatch.setattr(
+        _proc.shutil,
+        "which",
+        lambda name: "/usr/local/bin/graphify-mcp" if name == "graphify-mcp" else None,
+    )
+    monkeypatch.setattr(_proc, "_graphify_entrypoint_works", lambda command: True)
+
+    assert _proc._graphify_mcp_server(checkout) is None
 
 
 def test_graphify_tool_names_use_server_prefix() -> None:
