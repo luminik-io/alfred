@@ -1210,6 +1210,51 @@ def test_ready_code_memory_wins_while_graphify_is_not_usable(
     )
 
 
+def test_missing_graphify_uses_ready_fallback_for_selected_repo_coverage(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    checkout = tmp_path / "web"
+    _git_repo_with_origin(checkout, "octocat/web")
+    resolved = [setup_mod._inspect_repo_checkout("octocat/web", checkout, "map")]
+    monkeypatch.setattr(
+        setup_mod.batteries,
+        "manifest",
+        lambda _env: {
+            "batteries": [
+                {
+                    "id": "graphify",
+                    "configured": True,
+                    "enabled": False,
+                    "installed": False,
+                }
+            ]
+        },
+    )
+    code_memory = {
+        "enabled": False,
+        "binary": {"resolved": True},
+        "index_present": True,
+        "repos": {"selected": ["octocat/web"]},
+        "detail": "Fallback index is ready.",
+    }
+    env = {"ALFRED_GRAPHIFY_FALLBACK": "code-memory"}
+    plane = setup_mod.capability_status(code_memory, launcher_env=env)
+    code_graph = next(item for item in plane["capabilities"] if item["key"] == "code_graph")
+
+    coverage = setup_mod._selected_code_graph_coverage(
+        ["octocat/web"],
+        env,
+        code_memory=code_memory,
+        code_graph=code_graph,
+        resolved=resolved,
+    )
+
+    assert code_graph["source"]["source"] == "DeusData/codebase-memory-mcp"
+    assert code_graph["enabled"] is True
+    assert coverage["ready"] is True
+    assert coverage["covered"] == ["octocat/web"]
+
+
 def test_relative_graph_is_not_probed_against_setup_server_cwd(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1233,6 +1278,106 @@ def test_relative_graph_is_not_probed_against_setup_server_cwd(
     code_graph = next(item for item in payload["capabilities"] if item["key"] == "code_graph")
     assert code_graph["state"] == "needs_index"
     assert code_graph["detected"]["graph_present"] is False
+
+
+def test_relative_graph_keeps_graphify_selected_when_fallback_is_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        setup_mod.batteries,
+        "manifest",
+        lambda _env: {
+            "batteries": [
+                {
+                    "id": "graphify",
+                    "configured": True,
+                    "enabled": True,
+                    "installed": True,
+                }
+            ]
+        },
+    )
+    code_memory = {
+        "enabled": False,
+        "binary": {"resolved": True},
+        "index_present": True,
+        "detail": "Fallback index is ready.",
+    }
+
+    payload = setup_mod.capability_status(
+        code_memory,
+        launcher_env={
+            "ALFRED_GRAPHIFY_GRAPH": "graphify-out/graph.json",
+            "ALFRED_GRAPHIFY_FALLBACK": "code-memory",
+        },
+    )
+    code_graph = next(item for item in payload["capabilities"] if item["key"] == "code_graph")
+
+    assert code_graph["state"] == "needs_index"
+    assert code_graph["detected"]["engine"] == "graphify"
+    assert code_graph["detected"]["fallback"] == "code-memory"
+
+
+def test_selected_graphify_coverage_wins_over_missing_fallback_index(tmp_path: Path) -> None:
+    checkout = tmp_path / "web"
+    _git_repo_with_origin(checkout, "octocat/web")
+    graph = checkout / "graphify-out" / "graph.json"
+    graph.parent.mkdir()
+    graph.write_text("{}", encoding="utf-8")
+    resolved = [setup_mod._inspect_repo_checkout("octocat/web", checkout, "map")]
+    code_graph = {
+        "enabled": True,
+        "installed": True,
+        "detected": {"engine": "graphify", "fallback": "code-memory"},
+    }
+    code_memory = {
+        "enabled": False,
+        "binary": {"resolved": True},
+        "index_present": True,
+        "repos": {"selected": []},
+    }
+
+    coverage = setup_mod._selected_code_graph_coverage(
+        ["octocat/web"],
+        {"ALFRED_GRAPHIFY_GRAPH": "graphify-out/graph.json"},
+        code_memory=code_memory,
+        code_graph=code_graph,
+        resolved=resolved,
+    )
+
+    assert coverage["ready"] is True
+    assert coverage["covered"] == ["octocat/web"]
+    assert coverage["missing"] == []
+    assert coverage["detected"][0]["provider"] == "graphify"
+
+
+def test_selected_graphify_coverage_uses_explicit_fallback_per_repo(tmp_path: Path) -> None:
+    checkout = tmp_path / "web"
+    _git_repo_with_origin(checkout, "octocat/web")
+    resolved = [setup_mod._inspect_repo_checkout("octocat/web", checkout, "map")]
+    code_graph = {
+        "enabled": True,
+        "installed": True,
+        "detected": {"engine": "graphify", "fallback": "code-memory"},
+    }
+    code_memory = {
+        "enabled": False,
+        "binary": {"resolved": True},
+        "index_present": True,
+        "repos": {"selected": ["octocat/web"]},
+    }
+
+    coverage = setup_mod._selected_code_graph_coverage(
+        ["octocat/web"],
+        {"ALFRED_GRAPHIFY_GRAPH": "graphify-out/graph.json"},
+        code_memory=code_memory,
+        code_graph=code_graph,
+        resolved=resolved,
+    )
+
+    assert coverage["ready"] is True
+    assert coverage["covered"] == ["octocat/web"]
+    assert coverage["detected"][0]["provider"] == "code-memory"
 
 
 def test_capability_plane_reports_builtin_context_governor_with_headroom_detected(

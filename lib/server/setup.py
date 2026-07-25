@@ -1008,14 +1008,12 @@ def _code_graph_capability(
     if graphify and bool(graphify.get("configured")):
         installed = bool(graphify.get("installed"))
         graph_present = bool(graphify.get("graph_present"))
-        if code_ready and not (installed and graph_present):
+        if not installed and code_ready:
             if fallback_enabled and not code_memory.get("enabled"):
                 code_memory = dict(code_memory)
                 code_memory["enabled"] = True
                 code_memory["detail"] = (
-                    "Code-memory fallback is ready while Graphify awaits a per-repo graph."
-                    if installed
-                    else "Code-memory fallback is ready while Graphify is not installed."
+                    "Code-memory fallback is ready while Graphify is not installed."
                 )
             graphify = None
         else:
@@ -1040,6 +1038,7 @@ def _code_graph_capability(
                 "docs": graphify.get("docs"),
                 "graph_path": graphify.get("graph_path"),
                 "graph_present": graph_present,
+                "fallback": graphify.get("fallback"),
             },
             install_hint=(
                 ""
@@ -1710,18 +1709,13 @@ def bootstrap_status() -> dict[str, Any]:
     code_memory = code_memory_status(runtime_env)
     capability_plane = capability_status(code_memory, launcher_env=runtime_env)
     code_graph = _capability_by_key(capability_plane, "code_graph")
-    code_graph_engine = str((code_graph.get("detected") or {}).get("engine") or "")
-    if code_graph_engine == "graphify":
-        code_memory_coverage = _graphify_coverage(
-            repos,
-            runtime_env,
-            provider_ready=bool(code_graph.get("enabled")) and bool(code_graph.get("installed")),
-            resolved=repo_checkouts,
-        )
-    else:
-        code_memory_coverage = _code_memory_coverage(
-            repos, code_memory, runtime_env, resolved=repo_checkouts
-        )
+    code_memory_coverage = _selected_code_graph_coverage(
+        repos,
+        runtime_env,
+        code_memory=code_memory,
+        code_graph=code_graph,
+        resolved=repo_checkouts,
+    )
     install = install_inventory(repos=repos, env=runtime_env)
     first_run = first_run_readiness_status(
         gh=gh,
@@ -2429,6 +2423,71 @@ def _graphify_coverage(
         "covered": covered,
         "missing": missing,
         "detected": detected,
+    }
+
+
+def _selected_code_graph_coverage(
+    repos: list[str],
+    env: dict[str, str],
+    *,
+    code_memory: dict[str, Any],
+    code_graph: dict[str, Any],
+    resolved: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Verify each repo against the provider Alfred will actually attach."""
+
+    detected = code_graph.get("detected") or {}
+    if str(detected.get("engine") or "") != "graphify":
+        effective_code_memory = dict(code_memory)
+        effective_code_memory["enabled"] = bool(code_graph.get("enabled"))
+        return _code_memory_coverage(repos, effective_code_memory, env, resolved=resolved)
+
+    graphify = _graphify_coverage(
+        repos,
+        env,
+        provider_ready=bool(code_graph.get("enabled")) and bool(code_graph.get("installed")),
+        resolved=resolved,
+    )
+    if str(detected.get("fallback") or "") != "code-memory":
+        return graphify
+
+    fallback_status = dict(code_memory)
+    fallback_status["enabled"] = True
+    fallback = _code_memory_coverage(repos, fallback_status, env, resolved=resolved)
+    graphify_rows = {
+        str(row.get("repo") or "").strip().lower(): row for row in graphify["detected"]
+    }
+    fallback_rows = {
+        str(row.get("repo") or "").strip().lower(): row for row in fallback["detected"]
+    }
+    graphify_covered = set(graphify["covered"])
+    fallback_covered = set(fallback["covered"])
+    covered: list[str] = []
+    combined: list[dict[str, Any]] = []
+    for repo in repos:
+        slug = repo.strip().lower()
+        provider = (
+            "graphify"
+            if slug in graphify_covered
+            else ("code-memory" if slug in fallback_covered else None)
+        )
+        if provider:
+            covered.append(slug)
+        combined.append(
+            {
+                "repo": slug,
+                "covered": bool(provider),
+                "provider": provider,
+                "graphify": graphify_rows.get(slug),
+                "fallback": fallback_rows.get(slug),
+            }
+        )
+    missing = [repo for repo in repos if repo.strip().lower() not in set(covered)]
+    return {
+        "ready": bool(repos) and not missing,
+        "covered": covered,
+        "missing": missing,
+        "detected": combined,
     }
 
 

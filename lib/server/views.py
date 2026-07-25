@@ -2697,6 +2697,8 @@ _EXPLICIT_OPERATIONAL_QUERY_RE = re.compile(
     r"\bwhy\s+(?:did|does|is|are|was|were)\b.*\b(?:fail|failed|failing|stuck|paused)\b|"
     r"\bwhat\s+(?:did|has|have)\b.*\b(?:ship|shipped|merge|merged)\b|"
     r"\b(?:ship|shipped|merge|merged)\b.*\b(?:today|recently|latest)\b|"
+    r"\bwhen\s+(?:did|was)\b.*\b(?:last\s+)?(?:run|ran|firing)\b|"
+    r"\bdid\b.*\b(?:run|runs|ran)\b.*\b(?:today|yesterday|recently|last)\b|"
     r"\bwhat(?:'s| is| are)\b.*\b(?:doing|live|running|stuck|paused)\b|"
     r"\b(?:current|live|latest|recent)\b.*\b(?:activity|firings?|runs?|state|status)\b",
     re.IGNORECASE,

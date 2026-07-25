@@ -2734,9 +2734,13 @@ def test_compose_converse_keeps_implicit_comparison_multi_repo(
     [
         ("Why did acme/frontend run fail?", True),
         ("What did acme/frontend ship today?", True),
+        ("When did acme/frontend last run?", True),
+        ("Did acme/frontend run yesterday?", True),
         ("In acme/frontend, identify where readiness is checked.", False),
         ("Where is the status endpoint implemented?", False),
         ("Why does the status endpoint fail?", False),
+        ("When does the nightly workflow run?", False),
+        ("When does cron cleanup run?", False),
         ("Where is queued-job code handled?", False),
         ("How does the workflow runner start?", False),
     ],
