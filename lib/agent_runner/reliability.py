@@ -112,6 +112,7 @@ _SUBTYPE_CLASS: dict[str, FailureClass] = {
     "error_overloaded": FailureClass.TRANSIENT,
     "error_timeout": FailureClass.TRANSIENT,
     "error_api": FailureClass.TRANSIENT,
+    "error_engine_probe": FailureClass.TRANSIENT,
     # Auth is fatal here: the one-shot stale-credential repair already
     # ran upstream in result.py before we ever classify, so a surviving
     # error_authentication means real bad credentials. Surface, do not

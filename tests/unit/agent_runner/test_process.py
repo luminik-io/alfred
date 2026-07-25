@@ -201,7 +201,8 @@ def test_direct_claude_dispatch_never_mutates_auth_on_probe_failure(
     failure = proc._direct_engine_readiness_failure("claude")
 
     assert failure is not None
-    assert failure.subtype == "error_engine_unavailable"
+    assert failure.subtype == "error_engine_probe"
+    assert ar.classify_result(failure) is ar.FailureClass.TRANSIENT
     assert credentials.read_text(encoding="utf-8") == "valid"
 
 
@@ -618,6 +619,78 @@ def test_hybrid_readiness_gap_can_use_verified_fallback(fresh_agent_runner):
     assert result.success is True
     assert result.fallback_from_subtype == "error_engine_unavailable"
     assert engine_used == "codex-fallback"
+
+
+def test_hybrid_probe_failure_retries_same_engine_before_fallback(
+    fresh_agent_runner,
+    monkeypatch,
+):
+    ar = fresh_agent_runner
+    import agent_runner.process as proc
+
+    calls: list[str] = []
+    probes = 0
+
+    def readiness(engine: str):
+        nonlocal probes
+        probes += 1
+        descriptor = ar.DEFAULT_ENGINE_REGISTRY.descriptor(engine)
+        if probes == 1:
+            return ar.EngineProbeResult(
+                descriptor=descriptor,
+                installed=True,
+                protocol_compatible=True,
+                ready=False,
+                state="probe_failed",
+                detail="probe timed out",
+                binary="claude",
+                version="test",
+                failures=("auth_probe_failed",),
+            )
+        return ar.EngineProbeResult(
+            descriptor=descriptor,
+            installed=True,
+            protocol_compatible=True,
+            ready=True,
+            state="ready",
+            detail="ready",
+            binary="claude",
+            version="test",
+        )
+
+    success = ar.ClaudeResult(
+        success=True,
+        subtype="success",
+        num_turns=1,
+        cost_usd=0.0,
+        session_id=None,
+        result_text="done",
+        raw={},
+        stop_reason="end_turn",
+    )
+    retry = proc.retry_with_backoff
+
+    def retry_without_sleep(invoke, **kwargs):
+        return retry(invoke, sleep=lambda _delay: None, **kwargs)
+
+    monkeypatch.setattr(proc, "retry_with_backoff", retry_without_sleep)
+    result, engine_used = ar.invoke_agent_engine(
+        "hi",
+        engine="hybrid",
+        agent="senior-dev",
+        firing_id="f-probe-retry",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        claude_fn=lambda *args, **kwargs: calls.append("claude") or success,
+        codex_fn=lambda *args, **kwargs: calls.append("codex") or success,
+        engine_probe_fn=readiness,
+    )
+
+    assert probes == 2
+    assert calls == ["claude"]
+    assert result.success is True
+    assert engine_used == "claude"
 
 
 def test_invalid_engine_configuration_returns_without_dispatch(fresh_agent_runner):

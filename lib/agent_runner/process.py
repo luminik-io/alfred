@@ -120,9 +120,12 @@ def _probe_dispatch_engine(engine: str) -> EngineProbeResult:
 def _engine_not_ready_result(engine: str, readiness: EngineProbeResult) -> ClaudeResult:
     """Return a scrubbed failure without crossing an unready engine boundary."""
 
-    subtype = (
-        "error_authentication" if readiness.state == "auth_required" else "error_engine_unavailable"
-    )
+    if readiness.state == "auth_required":
+        subtype = "error_authentication"
+    elif readiness.state == "probe_failed":
+        subtype = "error_engine_probe"
+    else:
+        subtype = "error_engine_unavailable"
     return ClaudeResult(
         success=False,
         subtype=subtype,

@@ -53,6 +53,7 @@ def _result(
         ("error_overloaded", "TRANSIENT"),
         ("error_timeout", "TRANSIENT"),
         ("error_api", "TRANSIENT"),
+        ("error_engine_probe", "TRANSIENT"),
         ("error_authentication", "FATAL"),
         ("error_budget", "FATAL"),
         ("error_max_turns", "CAPABILITY"),
