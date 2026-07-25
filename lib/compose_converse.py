@@ -1901,6 +1901,8 @@ def _invoke_converse(
             claude_max_turns=DEFAULT_MAX_TURNS,
             codex_timeout=timeout,
             codex_sandbox="read-only",
+            codex_ignore_user_config=True,
+            codex_ephemeral=True,
             hybrid_fallback_on_provider_failure=True,
         )
     except Exception:

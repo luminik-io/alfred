@@ -1149,6 +1149,8 @@ def codex_invoke(
     sandbox: str | None = None,
     approval_policy: str | None = None,
     bypass_approvals_and_sandbox: bool = False,
+    ignore_user_config: bool = False,
+    ephemeral: bool = False,
     add_dirs: list[Path] | None = None,
     allowed_tools: str | None = None,
     max_turns: int | None = None,
@@ -1207,6 +1209,10 @@ def codex_invoke(
         "--cd",
         str(workdir),
     ]
+    if ignore_user_config:
+        cmd.append("--ignore-user-config")
+    if ephemeral:
+        cmd.append("--ephemeral")
     resolved_sandbox = sandbox or CODEX_DEFAULT_SANDBOX
     if bypass_approvals_and_sandbox:
         cmd.append("--dangerously-bypass-approvals-and-sandbox")
@@ -1688,6 +1694,8 @@ def invoke_agent_engine(
     codex_add_dirs: list[Path] | None = None,
     codex_approval_policy: str | None = None,
     codex_bypass_approvals_and_sandbox: bool = False,
+    codex_ignore_user_config: bool = False,
+    codex_ephemeral: bool = False,
     claude_fn: Callable[..., ClaudeResult] | None = None,
     codex_fn: Callable[..., ClaudeResult] | None = None,
     on_fallback: Callable[[ClaudeResult], None] | None = None,
@@ -1813,6 +1821,8 @@ def invoke_agent_engine(
                 sandbox=codex_sandbox,
                 approval_policy=codex_approval_policy,
                 bypass_approvals_and_sandbox=codex_bypass_approvals_and_sandbox,
+                ignore_user_config=codex_ignore_user_config,
+                ephemeral=codex_ephemeral,
                 add_dirs=codex_add_dirs,
             )
 

@@ -2559,6 +2559,83 @@ def test_compose_converse_runs_from_single_selected_mapped_checkout(
     assert capture["workdir"] == checkout.resolve()
 
 
+def test_compose_converse_uses_explicit_repo_from_multi_repo_context(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ALFRED_COMPOSE_CONVERSE_ENGINE", "claude")
+    _use_interrogator_prompt(monkeypatch)
+    frontend = tmp_path / "frontend"
+    backend = tmp_path / "backend"
+    (frontend / ".git").mkdir(parents=True)
+    (backend / ".git").mkdir(parents=True)
+    (frontend / "CLAUDE.md").write_text("Frontend instructions", encoding="utf-8")
+    (backend / "CLAUDE.md").write_text("Backend instructions", encoding="utf-8")
+    selected = ["acme/frontend", "acme/backend"]
+    monkeypatch.setattr(server_views, "_selected_setup_repos", lambda: selected)
+    monkeypatch.setattr(
+        server_views.runtime_facade,
+        "repo_to_local",
+        lambda: {
+            "acme/frontend": str(frontend),
+            "acme/backend": str(backend),
+        },
+    )
+    monkeypatch.setattr(
+        server_setup,
+        "local_repo_matches_github_slug",
+        lambda path, slug: path == frontend.resolve() and slug == "acme/frontend",
+    )
+    capture: dict = {}
+    _stub_converse_turn(monkeypatch, reply="Grounded.", capture=capture)
+
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/compose/converse",
+        json={
+            "context_repos": selected,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "In acme/frontend, how does login work?",
+                }
+            ],
+        },
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    assert capture["workdir"] == frontend.resolve()
+    assert "Frontend instructions" in capture["repo_grounding"]
+    assert "Backend instructions" not in capture["repo_grounding"]
+
+
+def test_compose_converse_keeps_multi_repo_questions_in_fallback_workdir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    request = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(reader=FilesystemReader(state_root=state)))
+    )
+    selected = ["acme/frontend", "acme/backend"]
+    monkeypatch.setattr(server_views, "_selected_setup_repos", lambda: selected)
+    messages = [
+        SimpleNamespace(
+            role="user",
+            content="Compare acme/frontend with acme/backend.",
+        )
+    ]
+
+    assert server_views._compose_read_only_workdir(
+        request,
+        repos=selected,
+        messages=messages,
+    ) == server_views._planning_workdir(request)
+
+
 def test_compose_converse_rejects_bare_or_unselected_workdir_mappings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

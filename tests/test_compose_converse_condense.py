@@ -136,6 +136,8 @@ class _EngineSpy:
                 "firing_id": kwargs.get("firing_id"),
                 "provider_failover": kwargs.get("hybrid_fallback_on_provider_failure"),
                 "codex_sandbox": kwargs.get("codex_sandbox"),
+                "codex_ignore_user_config": kwargs.get("codex_ignore_user_config"),
+                "codex_ephemeral": kwargs.get("codex_ephemeral"),
             }
         )
         if agent == cc.CONDENSER_AGENT:
@@ -180,6 +182,8 @@ def test_short_conversation_runs_once_without_condensing() -> None:
     assert len(spy.interrogator_calls) == 1
     assert spy.interrogator_calls[0]["provider_failover"] is True
     assert spy.interrogator_calls[0]["codex_sandbox"] == "read-only"
+    assert spy.interrogator_calls[0]["codex_ignore_user_config"] is True
+    assert spy.interrogator_calls[0]["codex_ephemeral"] is True
     assert records == []
 
 

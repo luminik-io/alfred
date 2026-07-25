@@ -22,6 +22,7 @@ import logging
 import os
 import re
 import secrets
+from collections.abc import Iterable
 from contextlib import suppress
 from dataclasses import asdict, is_dataclass, replace
 from datetime import UTC, datetime
@@ -1075,8 +1076,10 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
     base_draft = _draft_with_selected_setup_scope(base_draft)
 
     repos = _compose_context_repos(body, base_draft=base_draft)
+    explicit_repo = _explicit_conversation_repo(repos, messages)
+    grounding_repos = [explicit_repo] if explicit_repo else repos
     repo_grounding = cc.build_repo_grounding(
-        repos,
+        grounding_repos,
         workspace_root=_compose_workspace_root(),
         repo_to_local=_compose_repo_to_local(),
     )
@@ -1089,9 +1092,13 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
     # the flag. This lets a non-developer flip jargon-free coaching on/off in
     # the app without restarting the runtime.
     intake_guidance = cc.intake_guidance_for(_resolve_intake_profile_name(body))
-    operational_grounding = _converse_operational_grounding(
-        request,
-        conversation_engine=engine,
+    operational_grounding = (
+        ""
+        if explicit_repo
+        else _converse_operational_grounding(
+            request,
+            conversation_engine=engine,
+        )
     )
 
     loader = runtime_facade.prompt_loader()
@@ -1130,7 +1137,7 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
         intake_guidance=intake_guidance,
         base_draft=base_draft,
         engine=engine,
-        workdir=_compose_read_only_workdir(request, repos=repos),
+        workdir=_compose_read_only_workdir(request, repos=repos, messages=messages),
         on_condense=_converse_condense_recorder(request, draft_id=draft_id),
     )
     if turn is None:
@@ -1210,8 +1217,10 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
     base_draft = _draft_with_selected_setup_scope(base_draft)
 
     repos = _compose_context_repos(body, base_draft=base_draft)
+    explicit_repo = _explicit_conversation_repo(repos, messages)
+    grounding_repos = [explicit_repo] if explicit_repo else repos
     repo_grounding = cc.build_repo_grounding(
-        repos,
+        grounding_repos,
         workspace_root=_compose_workspace_root(),
         repo_to_local=_compose_repo_to_local(),
     )
@@ -1224,9 +1233,13 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
     # the flag. This lets a non-developer flip jargon-free coaching on/off in
     # the app without restarting the runtime.
     intake_guidance = cc.intake_guidance_for(_resolve_intake_profile_name(body))
-    operational_grounding = _converse_operational_grounding(
-        request,
-        conversation_engine=engine,
+    operational_grounding = (
+        ""
+        if explicit_repo
+        else _converse_operational_grounding(
+            request,
+            conversation_engine=engine,
+        )
     )
 
     loader = runtime_facade.prompt_loader()
@@ -1262,7 +1275,7 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
     # Pre-mint the firing id so we can tail its transcript while the model runs.
     firing_id = cc.converse_firing_id()
     transcript = _converse_transcript_path(request, firing_id)
-    workdir = _compose_read_only_workdir(request, repos=repos)
+    workdir = _compose_read_only_workdir(request, repos=repos, messages=messages)
 
     on_condense = _converse_condense_recorder(request, draft_id=draft_id)
 
@@ -2649,14 +2662,40 @@ def _planning_workdir(request: Request) -> Path:
     return Path(base)
 
 
-def _compose_read_only_workdir(request: Request, *, repos: list[str]) -> Path:
+def _explicit_conversation_repo(repos: list[str], messages: Iterable[Any]) -> str:
+    """Return one selected repo explicitly named in the latest relevant turn."""
+
+    for message in reversed(list(messages)):
+        if str(getattr(message, "role", "") or "") != "user":
+            continue
+        text = str(getattr(message, "content", "") or "")
+        matches = [
+            repo
+            for repo in repos
+            if re.search(
+                rf"(?<![A-Za-z0-9_.-]){re.escape(repo)}(?![A-Za-z0-9_.-])",
+                text,
+                re.IGNORECASE,
+            )
+        ]
+        if matches:
+            return matches[0] if len(matches) == 1 else ""
+    return ""
+
+
+def _compose_read_only_workdir(
+    request: Request,
+    *,
+    repos: list[str],
+    messages: Iterable[Any] = (),
+) -> Path:
     """Use one selected, explicitly mapped Git checkout for read-only Ask turns."""
 
     fallback = _planning_workdir(request)
-    if len(repos) != 1:
+    repo = repos[0].strip() if len(repos) == 1 else _explicit_conversation_repo(repos, messages)
+    if not repo:
         return fallback
 
-    repo = repos[0].strip()
     if "/" not in repo:
         return fallback
     selected = {item.casefold() for item in _selected_setup_repos()}

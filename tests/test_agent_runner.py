@@ -1077,6 +1077,37 @@ def test_codex_invoke_reads_last_message_and_writes_artifacts(tmp_path, monkeypa
     assert commands[0][commands[0].index("--model") + 1] == "review-model"
 
 
+def test_codex_invoke_can_isolate_an_ephemeral_turn(tmp_path, monkeypatch):
+    import agent_runner as ar
+    from agent_runner import process as process_mod
+
+    root = tmp_path / "codex"
+    commands = []
+
+    def fake_run(cmd, *, cwd=None, timeout=None, capture=None, env=None, input_text=None):
+        commands.append(cmd)
+        last_path = Path(cmd[cmd.index("--output-last-message") + 1])
+        last_path.parent.mkdir(parents=True, exist_ok=True)
+        last_path.write_text("Grounded answer")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(ar, "CODEX_TRANSCRIPTS_ROOT", root)
+    monkeypatch.setattr(process_mod, "_popen_run_text", fake_run)
+
+    out = ar.codex_invoke(
+        "inspect",
+        workdir=tmp_path,
+        agent="compose-interrogator",
+        firing_id="fire-1",
+        ignore_user_config=True,
+        ephemeral=True,
+    )
+
+    assert out.success is True
+    assert "--ignore-user-config" in commands[0]
+    assert "--ephemeral" in commands[0]
+
+
 def test_codex_invoke_can_bypass_approvals_and_sandbox(tmp_path, monkeypatch):
     import agent_runner as ar
     from agent_runner import process as process_mod

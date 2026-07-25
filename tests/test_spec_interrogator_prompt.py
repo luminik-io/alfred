@@ -39,6 +39,14 @@ def test_prompt_keeps_status_answers_tight() -> None:
     assert "not a per-agent roll call" in text
 
 
+def test_prompt_requires_read_only_code_inspection_for_repo_questions() -> None:
+    text = " ".join(_text().split())
+    assert "read-only `Read`, `Grep`, and `Glob` tools" in text
+    assert "answer from code, not from filenames or assumptions" in text
+    assert "do not ask them to point you at a file or approve a read-only lookup" in text
+    assert "Never edit files or run mutating commands in this flow" in text
+
+
 def test_prompt_keeps_voice_rules() -> None:
     # The brevity edits must not drop the existing voice rules.
     text = _text()
