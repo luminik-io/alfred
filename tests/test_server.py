@@ -20,6 +20,7 @@ if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
 import compose_converse as cc  # noqa: E402
+import server.setup as server_setup  # noqa: E402
 import server.views as server_views  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from fleet_brain import Lesson  # noqa: E402
@@ -2533,6 +2534,11 @@ def test_compose_converse_runs_from_single_selected_mapped_checkout(
         "repo_to_local",
         lambda: {"acme/frontend": str(checkout)},
     )
+    monkeypatch.setattr(
+        server_setup,
+        "local_repo_matches_github_slug",
+        lambda path, slug: path == checkout.resolve() and slug == "acme/frontend",
+    )
     capture: dict = {}
     _stub_converse_turn(monkeypatch, reply="Grounded.", capture=capture)
 
@@ -2574,6 +2580,33 @@ def test_compose_converse_rejects_bare_or_unselected_workdir_mappings(
 
     assert server_views._compose_read_only_workdir(request, repos=["acme/frontend"]) == fallback
     assert server_views._compose_read_only_workdir(request, repos=["other/frontend"]) == fallback
+
+
+def test_compose_converse_rejects_mapped_checkout_with_wrong_remote(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkout = tmp_path / "frontend"
+    (checkout / ".git").mkdir(parents=True)
+    state = tmp_path / "state"
+    state.mkdir()
+    request = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(reader=FilesystemReader(state_root=state)))
+    )
+    monkeypatch.setattr(server_views, "_selected_setup_repos", lambda: ["acme/frontend"])
+    monkeypatch.setattr(
+        server_views.runtime_facade,
+        "repo_to_local",
+        lambda: {"acme/frontend": str(checkout)},
+    )
+    monkeypatch.setattr(
+        server_setup,
+        "local_repo_matches_github_slug",
+        lambda _path, _slug: False,
+    )
+
+    assert server_views._compose_read_only_workdir(
+        request, repos=["acme/frontend"]
+    ) == server_views._planning_workdir(request)
 
 
 def test_setup_repo_selection_requires_local_checkouts(tmp_path: Path) -> None:

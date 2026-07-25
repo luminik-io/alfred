@@ -130,6 +130,59 @@ def test_code_graph_readiness_requires_selected_repo_coverage() -> None:
     }
 
 
+def test_graphify_coverage_is_scoped_to_remote_verified_checkouts(tmp_path: Path) -> None:
+    api = tmp_path / "api"
+    web = tmp_path / "web"
+    _git_repo_with_origin(api, "acme/api")
+    _git_repo_with_origin(web, "acme/web")
+    graph = api / "graphify-out" / "graph.json"
+    graph.parent.mkdir()
+    graph.write_text("{}", encoding="utf-8")
+    rows = [
+        setup_mod._inspect_repo_checkout("acme/api", api, "map"),
+        setup_mod._inspect_repo_checkout("acme/web", web, "map"),
+    ]
+
+    coverage = setup_mod._graphify_coverage(
+        ["acme/api", "acme/web"],
+        {"ALFRED_GRAPHIFY_GRAPH": str(graph)},
+        provider_ready=True,
+        resolved=rows,
+    )
+
+    assert coverage["ready"] is False
+    assert coverage["covered"] == ["acme/api"]
+    assert coverage["missing"] == ["acme/web"]
+    assert coverage["detected"][0]["graph_within_checkout"] is True
+    assert coverage["detected"][1]["graph_within_checkout"] is False
+
+
+def test_graphify_readiness_requires_selected_repo_coverage() -> None:
+    capability_plane = {
+        "capabilities": [
+            {
+                "key": "code_graph",
+                "state": "ready",
+                "enabled": True,
+                "installed": True,
+                "detail": "Graphify is installed.",
+                "detected": {"engine": "graphify"},
+            }
+        ]
+    }
+
+    readiness = setup_mod._code_graph_readiness_check(
+        capability_plane,
+        {},
+        coverage={"ready": False, "covered": ["acme/api"], "missing": ["acme/web"]},
+    )
+
+    assert readiness["ready"] is False
+    assert readiness["state"] == "actionable"
+    assert readiness["detected"]["coverage_ready"] is False
+    assert readiness["detected"]["missing"] == ["acme/web"]
+
+
 def test_bootstrap_status_reports_code_memory_defaults(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

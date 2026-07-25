@@ -1708,10 +1708,20 @@ def bootstrap_status() -> dict[str, Any]:
     any_engine = any(e["installed"] for e in engines)
     repo_checkouts = _selected_repo_local_paths(repos, runtime_env)
     code_memory = code_memory_status(runtime_env)
-    code_memory_coverage = _code_memory_coverage(
-        repos, code_memory, runtime_env, resolved=repo_checkouts
-    )
     capability_plane = capability_status(code_memory, launcher_env=runtime_env)
+    code_graph = _capability_by_key(capability_plane, "code_graph")
+    code_graph_engine = str((code_graph.get("detected") or {}).get("engine") or "")
+    if code_graph_engine == "graphify":
+        code_memory_coverage = _graphify_coverage(
+            repos,
+            runtime_env,
+            provider_ready=bool(code_graph.get("enabled")) and bool(code_graph.get("installed")),
+            resolved=repo_checkouts,
+        )
+    else:
+        code_memory_coverage = _code_memory_coverage(
+            repos, code_memory, runtime_env, resolved=repo_checkouts
+        )
     install = install_inventory(repos=repos, env=runtime_env)
     first_run = first_run_readiness_status(
         gh=gh,
@@ -2304,6 +2314,17 @@ def _local_repo_github_remote(
     return next((remote for remote in remotes if remote[0] == "origin"), remotes[0])
 
 
+def local_repo_matches_github_slug(path: Path, expected_slug: str) -> bool:
+    """Return whether a checkout exposes a GitHub remote for the exact slug."""
+
+    _, remote_slug = _local_repo_github_remote(
+        path,
+        expected_slug=expected_slug,
+        deadline=time.monotonic() + 5.0,
+    )
+    return bool(remote_slug) and remote_slug.casefold() == expected_slug.casefold()
+
+
 def _code_memory_coverage(
     repos: list[str],
     code_memory: dict[str, Any],
@@ -2344,6 +2365,60 @@ def _code_memory_coverage(
                 "github_remote_repo": github_remote_repo or None,
                 "scope_selected": scope_selected,
                 "identity_matches": identity_matches,
+                "covered": ready,
+            }
+        )
+    missing = [repo for repo in repos if repo.strip().lower() not in set(covered)]
+    return {
+        "ready": bool(repos) and not missing,
+        "covered": covered,
+        "missing": missing,
+        "detected": detected,
+    }
+
+
+def _graphify_coverage(
+    repos: list[str],
+    env: dict[str, str],
+    *,
+    provider_ready: bool,
+    resolved: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Prove that every selected checkout owns the Graphify graph it will serve."""
+
+    configured = Path(env.get("ALFRED_GRAPHIFY_GRAPH") or "graphify-out/graph.json").expanduser()
+    covered: list[str] = []
+    detected: list[dict[str, Any]] = []
+    rows = resolved if resolved is not None else _selected_repo_local_paths(repos, env)
+    for row in rows:
+        slug = str(row["repo"]).strip().lower()
+        checkout = Path(str(row.get("path") or "")).expanduser()
+        graph = configured if configured.is_absolute() else checkout / configured
+        contained = False
+        graph_present = False
+        try:
+            checkout = checkout.resolve(strict=True)
+            graph = graph.resolve(strict=True)
+            graph.relative_to(checkout)
+            contained = True
+            graph_present = graph.is_file()
+        except (OSError, RuntimeError, ValueError):
+            pass
+        ready = (
+            provider_ready
+            and bool(row.get("ready"))
+            and bool(row.get("identity_matches"))
+            and contained
+            and graph_present
+        )
+        if ready:
+            covered.append(slug)
+        detected.append(
+            {
+                **row,
+                "graph_path": str(graph),
+                "graph_within_checkout": contained,
+                "graph_present": graph_present,
                 "covered": ready,
             }
         )
@@ -2421,11 +2496,12 @@ def _code_graph_readiness_check(
     capability = _capability_by_key(capability_plane, "code_graph")
     capability_state = str(capability.get("state") or "")
     engine = (capability.get("detected") or {}).get("engine")
-    coverage_required = (
-        coverage is not None and engine != "graphify" and capability_state != "disabled"
-    )
+    coverage_required = coverage is not None and capability_state != "disabled"
     coverage_ready = bool(coverage and coverage.get("ready"))
-    ready = capability_state == "ready" and (not coverage_required or coverage_ready)
+    provider_ready = capability_state == "ready" or (
+        engine == "graphify" and capability_state == "needs_index" and coverage_ready
+    )
+    ready = provider_ready and (not coverage_required or coverage_ready)
     disabled = capability_state == "disabled"
     missing = [str(repo) for repo in (coverage or {}).get("missing", []) if str(repo)]
     if capability_state == "ready" and coverage_required and not coverage_ready:

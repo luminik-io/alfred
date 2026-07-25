@@ -2683,6 +2683,10 @@ def _compose_read_only_workdir(request: Request, *, repos: list[str]) -> Path:
             return fallback
     except (OSError, RuntimeError):
         return fallback
+    from server import setup as setup_mod
+
+    if not setup_mod.local_repo_matches_github_slug(candidate, repo):
+        return fallback
     return candidate
 
 
