@@ -2329,6 +2329,7 @@ def _stub_converse_turn(
             capture["repo_grounding"] = repo_grounding
             capture["code_map"] = code_map
             capture["workdir"] = _kw.get("workdir")
+            capture["system_prompt"] = _kw.get("system_prompt")
         draft = base_draft
         if draft_overrides:
             from dataclasses import replace
@@ -2612,6 +2613,50 @@ def test_compose_converse_uses_explicit_repo_from_multi_repo_context(
     assert "Backend instructions" not in capture["repo_grounding"]
 
 
+@pytest.mark.parametrize(
+    ("message", "expects_operational"),
+    [
+        ("Why did acme/frontend run fail?", True),
+        ("In acme/frontend, identify where login is checked.", False),
+        ("Where is the acme/frontend status endpoint implemented?", False),
+        ("Where is queued-job code handled in acme/frontend?", False),
+        ("How does the acme/frontend workflow runner start?", False),
+    ],
+)
+def test_compose_converse_adds_live_state_only_to_repo_operational_questions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    message: str,
+    expects_operational: bool,
+) -> None:
+    monkeypatch.setenv("ALFRED_COMPOSE_CONVERSE_ENGINE", "claude")
+    _use_interrogator_prompt(monkeypatch)
+    selected = ["acme/frontend", "acme/backend"]
+    monkeypatch.setattr(server_views, "_selected_setup_repos", lambda: selected)
+    monkeypatch.setattr(
+        server_views,
+        "_converse_operational_grounding",
+        lambda *_args, **_kwargs: "LIVE RUN DATA",
+    )
+    capture: dict = {}
+    _stub_converse_turn(monkeypatch, reply="Grounded.", capture=capture)
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/compose/converse",
+        json={
+            "context_repos": selected,
+            "messages": [{"role": "user", "content": message}],
+        },
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    assert ("LIVE RUN DATA" in capture["system_prompt"]) is expects_operational
+
+
 def test_compose_converse_keeps_multi_repo_questions_in_fallback_workdir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2682,6 +2727,31 @@ def test_compose_converse_keeps_implicit_comparison_multi_repo(
         repos=selected,
         messages=messages,
     ) == server_views._planning_workdir(request)
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("Why did acme/frontend run fail?", True),
+        ("What did acme/frontend ship today?", True),
+        ("In acme/frontend, identify where readiness is checked.", False),
+        ("Where is the status endpoint implemented?", False),
+        ("Why does the status endpoint fail?", False),
+        ("Where is queued-job code handled?", False),
+        ("How does the workflow runner start?", False),
+    ],
+)
+def test_converse_operational_grounding_gate_uses_latest_turn(
+    message: str,
+    expected: bool,
+) -> None:
+    messages = [
+        SimpleNamespace(role="user", content="What is the fleet doing?"),
+        SimpleNamespace(role="assistant", content="Two agents are live."),
+        SimpleNamespace(role="user", content=message),
+    ]
+
+    assert server_views._conversation_needs_operational_grounding(messages) is expected
 
 
 def test_compose_converse_rejects_bare_or_unselected_workdir_mappings(

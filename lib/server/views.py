@@ -1093,12 +1093,12 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
     # the app without restarting the runtime.
     intake_guidance = cc.intake_guidance_for(_resolve_intake_profile_name(body))
     operational_grounding = (
-        ""
-        if explicit_repo
-        else _converse_operational_grounding(
+        _converse_operational_grounding(
             request,
             conversation_engine=engine,
         )
+        if not explicit_repo or _conversation_needs_operational_grounding(messages)
+        else ""
     )
 
     loader = runtime_facade.prompt_loader()
@@ -1234,12 +1234,12 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
     # the app without restarting the runtime.
     intake_guidance = cc.intake_guidance_for(_resolve_intake_profile_name(body))
     operational_grounding = (
-        ""
-        if explicit_repo
-        else _converse_operational_grounding(
+        _converse_operational_grounding(
             request,
             conversation_engine=engine,
         )
+        if not explicit_repo or _conversation_needs_operational_grounding(messages)
+        else ""
     )
 
     loader = runtime_facade.prompt_loader()
@@ -2684,6 +2684,45 @@ def _explicit_conversation_repo(repos: list[str], messages: Iterable[Any]) -> st
     if matches:
         return matches[0] if len(matches) == 1 else ""
     return ""
+
+
+_CODE_QUESTION_RE = re.compile(
+    r"\b("
+    r"class|code|definition|endpoint|field|function|handler|implementation|implemented|"
+    r"module|runner|symbol"
+    r")\b",
+    re.IGNORECASE,
+)
+_EXPLICIT_OPERATIONAL_QUERY_RE = re.compile(
+    r"\bwhy\s+(?:did|does|is|are|was|were)\b.*\b(?:fail|failed|failing|stuck|paused)\b|"
+    r"\bwhat\s+(?:did|has|have)\b.*\b(?:ship|shipped|merge|merged)\b|"
+    r"\b(?:ship|shipped|merge|merged)\b.*\b(?:today|recently|latest)\b|"
+    r"\bwhat(?:'s| is| are)\b.*\b(?:doing|live|running|stuck|paused)\b|"
+    r"\b(?:current|live|latest|recent)\b.*\b(?:activity|firings?|runs?|state|status)\b",
+    re.IGNORECASE,
+)
+_OPERATIONAL_QUERY_RE = re.compile(
+    r"\b(?:agent|agents|fleet|firing|firings)\b|"
+    r"\b(?:doing|failed|failing|failure|live|paused|running|stuck)\b|"
+    r"\bstatus\b|"
+    r"\b(?:ship|shipped|merge|merged)\b.*\b(?:today|recently|latest)\b",
+    re.IGNORECASE,
+)
+
+
+def _conversation_needs_operational_grounding(messages: Iterable[Any]) -> bool:
+    """True when the latest user turn asks about live fleet or run state."""
+
+    for message in reversed(list(messages)):
+        if str(getattr(message, "role", "") or "") != "user":
+            continue
+        text = str(getattr(message, "content", "") or "")
+        if _CODE_QUESTION_RE.search(text):
+            return False
+        if _EXPLICIT_OPERATIONAL_QUERY_RE.search(text):
+            return True
+        return bool(_OPERATIONAL_QUERY_RE.search(text))
+    return False
 
 
 def _compose_read_only_workdir(
