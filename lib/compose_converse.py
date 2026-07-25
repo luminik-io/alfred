@@ -1012,7 +1012,7 @@ def looks_like_question(text: str) -> bool:
             or _has_later_modal_requirement_clause(separator_tokens, command=first)
         )
     if cleaned.endswith("?") and _looks_like_actor_capability_question(tokens):
-        return True
+        return not _looks_like_polite_actor_build_request(tokens)
     if cleaned.endswith("?") and _clause_starts_direct_object_command(
         tokens, 0, assume_bare_object=True
     ):
@@ -1045,7 +1045,10 @@ def looks_like_question(text: str) -> bool:
             }
             if first in {"can", "may", "might"} and capability_subject:
                 question_tokens = separator_tokens or _separator_aware_build_tokens(lowered)
-                return not _has_followup_build_clause(question_tokens)
+                return not (
+                    _looks_like_polite_actor_build_request(tokens)
+                    or _has_followup_build_clause(question_tokens)
+                )
             # A first-person subject asking with an information verb and no build
             # verb is a status question ("can I see the fleet status?"). Anything
             # else with a non-"you" subject is a change request: a build verb wins
@@ -1353,6 +1356,33 @@ def _looks_like_actor_capability_question(tokens: list[str]) -> bool:
     if qualifier_index < 0:
         return False
     return any(token in {"are", "is", "was", "were"} for token in tokens[:qualifier_index])
+
+
+def _looks_like_polite_actor_build_request(tokens: list[str]) -> bool:
+    """Recognize an explicit polite mutation directed through a runtime actor."""
+
+    actor_words = {"alfred", "agent", "agents", "engine", "engines", "worker", "workers"}
+    actor_index = next(
+        (index for index, token in enumerate(tokens[:4]) if token in actor_words), -1
+    )
+    if actor_index < 0:
+        return False
+    marker_index = next(
+        (
+            index
+            for index, token in enumerate(
+                tokens[actor_index + 1 : actor_index + 5], actor_index + 1
+            )
+            if token in {"kindly", "please"}
+        ),
+        -1,
+    )
+    if marker_index < 0:
+        return False
+    return any(
+        _is_build_verb_form(token) and token not in _READ_ONLY_COMMAND_VERBS
+        for token in tokens[marker_index + 1 :]
+    )
 
 
 def _is_build_verb_form(token: str) -> bool:

@@ -1822,6 +1822,23 @@ def test_declarative_actor_capability_questions_stay_conversational() -> None:
     )
 
 
+def test_polite_actor_mutation_requests_take_the_build_path() -> None:
+    for message in (
+        "Can Alfred please add a retry button?",
+        "Can the worker please restart now?",
+        "Alfred can kindly deploy the service?",
+    ):
+        assert not cc.looks_like_question(message), message
+        assert cc.classify_message_intent(message, draft=_empty_draft()) == cc.INTENT_BUILD
+
+    for message in (
+        "Can Alfred deploy?",
+        "Can Alfred please explain the current status?",
+    ):
+        assert cc.looks_like_question(message), message
+        assert cc.classify_message_intent(message, draft=_empty_draft()) == cc.INTENT_CONVERSATION
+
+
 def test_read_only_capability_answers_are_not_action_claims() -> None:
     for reply in (
         "I support Claude and Codex.",
