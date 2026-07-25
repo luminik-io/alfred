@@ -1004,6 +1004,8 @@ def looks_like_question(text: str) -> bool:
     ):
         return True
     if cleaned.endswith("?") and _looks_like_terse_noun_question(tokens):
+        if _looks_like_coordinated_status_question(tokens):
+            return True
         separator_tokens = _separator_aware_build_tokens(lowered)
         return not (
             _has_followup_build_clause(separator_tokens)
@@ -1252,12 +1254,33 @@ _TERSE_NOUN_MODIFIER_SUFFIXES = (
 )
 
 
+def _looks_like_coordinated_status_question(tokens: list[str]) -> bool:
+    """Recognize alternating status nouns joined only by ``and`` or ``or``."""
+    return bool(
+        len(tokens) >= 3
+        and len(tokens) % 2 == 1
+        and all(
+            token in {"and", "or"}
+            if index % 2
+            else token
+            in {
+                *_NOUN_QUESTION_OBJECTS,
+                *_READ_ONLY_STATUS_WORDS,
+                *_READ_ONLY_SUBJECT_WORDS,
+            }
+            for index, token in enumerate(tokens)
+        )
+    )
+
+
 def _looks_like_terse_noun_question(tokens: list[str]) -> bool:
     """Recognize compact noun-fragment questions before bare-command fallback."""
     if _looks_like_build_word_noun_question(tokens):
         return True
     if len(tokens) < 2:
         return False
+    if _looks_like_coordinated_status_question(tokens):
+        return True
     first, second = tokens[0], tokens[1]
     if _is_build_verb_form(first) or first in _UNAMBIGUOUS_BARE_IMPERATIVE_VERBS:
         return False
@@ -2463,8 +2486,13 @@ def _has_unknown_surface_placement(tokens: list[str]) -> bool:
 def _reply_claims_plan_or_action(reply: str) -> bool:
     """True when a read-only reply claims Alfred created/planned work."""
     lowered = " ".join(str(reply or "").lower().split())
-    words = re.findall(r"[a-z]+(?:'[a-z]+)?|[.,;!?]", lowered)
+    words = re.findall(
+        r"(?:[a-z]+|\d+)(?:-(?:[a-z]+|\d+))+|[a-z]+(?:'[a-z]+)?|\d+|[:,.;!?]",
+        lowered,
+    )
     subjects = {
+        "agent",
+        "agents",
         "alfred",
         "artifact",
         "artifacts",
@@ -2476,6 +2504,7 @@ def _reply_claims_plan_or_action(reply: str) -> bool:
         "commits",
         "file",
         "files",
+        "fleet",
         "i",
         "i'll",
         "i'm",
@@ -2488,6 +2517,7 @@ def _reply_claims_plan_or_action(reply: str) -> bool:
         "requests",
         "service",
         "services",
+        "system",
         "task",
         "tasks",
         "ticket",
@@ -2541,6 +2571,8 @@ def _reply_claims_plan_or_action(reply: str) -> bool:
         "describes",
         "discuss",
         "discusses",
+        "expose",
+        "exposes",
         "explain",
         "explains",
         "recommend",
@@ -2548,37 +2580,886 @@ def _reply_claims_plan_or_action(reply: str) -> bool:
         "support",
         "supports",
     }
-    connectors = {",", "and", "but", "then"}
+    connectors = {",", "and", "but", "plus", "then", "together"}
     sentence_boundaries = {".", ";", "!", "?"}
+    clause_action_prefixes = {
+        "already",
+        "currently",
+        "just",
+        "later",
+        "now",
+        "recently",
+        "successfully",
+        "today",
+        "yesterday",
+    }
+    relative_clause_markers = {"that", "which", "who", "whom", "whose"}
+    zero_count_qualifiers = {"approximately", "exactly", "only", "precisely", "roughly"}
+    descriptive_fragment_prepositions = {"by", "with"}
+    attributed_action_subjects = {
+        "agent",
+        "agents",
+        "alfred",
+        "fleet",
+        "i",
+        "system",
+        "we",
+        "worker",
+        "workers",
+    }
+    descriptive_with_action_forms = {"built", "created", "made", "opened", "written", "wrote"}
+    action_summary_headings = {
+        ("action",),
+        ("actions",),
+        ("actions", "taken"),
+        ("changes",),
+        ("changes", "made"),
+        ("result",),
+        ("results",),
+        ("summary",),
+        ("work",),
+        ("work", "completed"),
+    }
+    temporal_metadata_labels = {"at", "date", "on", "time", "timestamp", "version"}
+    zero_count_followers = {
+        *connectors,
+        *relative_clause_markers,
+        *sentence_boundaries,
+        ":",
+        "about",
+        "at",
+        "by",
+        "for",
+        "from",
+        "in",
+        "into",
+        "of",
+        "on",
+        "over",
+        "through",
+        "to",
+        "under",
+        "with",
+        "without",
+    }
+    zero_non_count_modifiers = {"trust"}
+    zero_count_objects = {
+        "artifact",
+        "artifacts",
+        "branch",
+        "branches",
+        "bug",
+        "bugs",
+        "change",
+        "changes",
+        "commit",
+        "commits",
+        "file",
+        "files",
+        "issue",
+        "issues",
+        "plan",
+        "plans",
+        "report",
+        "reports",
+        "request",
+        "requests",
+        "service",
+        "services",
+        "task",
+        "tasks",
+        "test",
+        "tests",
+        "ticket",
+        "tickets",
+    }
+    reduced_relative_modifiers = {
+        "adapted",
+        "assigned",
+        "based",
+        "called",
+        "configured",
+        "containing",
+        "designed",
+        "focused",
+        "intended",
+        "marked",
+        "meant",
+        "named",
+        "needed",
+        "prepared",
+        "ready",
+        "related",
+        "requested",
+        "tailored",
+        "titled",
+        "using",
+    }
+    new_clause_subjects = {
+        "all",
+        "everything",
+        "fleet",
+        "i",
+        "it",
+        "nothing",
+        "queue",
+        "runtime",
+        "state",
+        "status",
+        "system",
+        "they",
+        "we",
+    }
+    temporal_metadata_words = {
+        "a",
+        "ago",
+        "april",
+        "august",
+        "date",
+        "december",
+        "earlier",
+        "february",
+        "friday",
+        "january",
+        "july",
+        "june",
+        "just",
+        "last",
+        "march",
+        "may",
+        "monday",
+        "midnight",
+        "noon",
+        "november",
+        "now",
+        "october",
+        "recently",
+        "saturday",
+        "september",
+        "sunday",
+        "thursday",
+        "time",
+        "today",
+        "tuesday",
+        "wednesday",
+        "yesterday",
+    }
+    adverbial_phrase_openers = {
+        "about",
+        "according",
+        "across",
+        "after",
+        "against",
+        "alongside",
+        "although",
+        "around",
+        "as",
+        "at",
+        "because",
+        "before",
+        "beside",
+        "beyond",
+        "by",
+        "despite",
+        "during",
+        "for",
+        "from",
+        "if",
+        "in",
+        "into",
+        "like",
+        "near",
+        "of",
+        "on",
+        "outside",
+        "over",
+        "past",
+        "per",
+        "since",
+        "through",
+        "to",
+        "under",
+        "upon",
+        "via",
+        "when",
+        "where",
+        "while",
+        "with",
+        "without",
+    }
+    temporal_metadata_units = {
+        "am",
+        "day",
+        "days",
+        "hour",
+        "hours",
+        "minute",
+        "minutes",
+        "month",
+        "months",
+        "pm",
+        "second",
+        "seconds",
+        "week",
+        "weeks",
+        "year",
+        "years",
+    }
+    direct_object_modifiers = {
+        "another",
+        "both",
+        "dozen",
+        "dozens",
+        "each",
+        "eight",
+        "either",
+        "enough",
+        "every",
+        "few",
+        "five",
+        "four",
+        "hundred",
+        "many",
+        "million",
+        "more",
+        "most",
+        "multiple",
+        "new",
+        "nine",
+        "one",
+        "several",
+        "seven",
+        "six",
+        "some",
+        "ten",
+        "thousand",
+        "three",
+        "two",
+        "various",
+    }
+    nominal_modifier_suffixes = (
+        "able",
+        "al",
+        "ary",
+        "ed",
+        "ful",
+        "ible",
+        "ic",
+        "ing",
+        "ive",
+        "less",
+        "ory",
+        "ous",
+    )
+    participial_predicates = {
+        *_DECLARATIVE_PREDICATES,
+        *stative_predicates,
+        "contain",
+        "describe",
+        "discuss",
+        "equal",
+        "equals",
+        "exceed",
+        "exceeds",
+        "exist",
+        "exists",
+        "help",
+        "helps",
+        "include",
+        "list",
+        "lists",
+        "occupies",
+        "occupy",
+        "appear",
+        "belong",
+        "caused",
+        "cover",
+        "differ",
+        "fail",
+        "govern",
+        "handle",
+        "increase",
+        "increased",
+        "introduce",
+        "look",
+        "need",
+        "number",
+        "pass",
+        "pose",
+        "remain",
+        "rise",
+        "rose",
+        "seem",
+        "show",
+        "shows",
+        "stay",
+        "support",
+        "supports",
+        "total",
+        "totals",
+        "use",
+        "work",
+    }
+    finite_auxiliaries = {
+        "am",
+        "are",
+        "did",
+        "do",
+        "had",
+        "has",
+        "have",
+        "is",
+        "was",
+        "were",
+        "will",
+    }
+    ambiguous_actor_noun_heads = {
+        "process",
+        "processes",
+        "queue",
+        "queues",
+        "update",
+        "updates",
+    }
+    actor_noun_predicates = {
+        *finite_auxiliaries,
+        *capability_modals,
+        "appear",
+        "appears",
+        "look",
+        "looks",
+        "remain",
+        "remains",
+        "run",
+        "runs",
+        "seem",
+        "seems",
+        "show",
+        "shows",
+    }
+    clause_lookahead = 64
 
     def positive_action_at(predicate: int, negated: bool) -> bool:
         if negated or predicate >= len(words):
             return False
-        following_negation = predicate + 1 < len(words) and words[predicate + 1] in {
+        count_index = predicate + 1
+        if words[count_index : count_index + 3] == ["a", "total", "of"]:
+            count_index += 3
+        while count_index < len(words) and words[count_index] in zero_count_qualifiers:
+            count_index += 1
+        following_token = words[count_index] if count_index < len(words) else ""
+        following_negation = following_token in {
+            "neither",
             "no",
             "none",
             "not",
+            "nothing",
         }
+        if following_token == "nothing" and words[count_index + 1 : count_index + 2] == ["but"]:
+            following_negation = False
+        if following_token in {"0", "zero"}:
+            scan_end = min(len(words), count_index + 6)
+            object_index = next(
+                (
+                    candidate
+                    for candidate in range(count_index + 1, scan_end)
+                    if words[candidate] in zero_count_objects
+                ),
+                -1,
+            )
+            if object_index >= 0:
+                after_object = words[object_index + 1] if object_index + 1 < len(words) else ""
+                lexical_zero_modifier = words[count_index + 1 : count_index + 2]
+                following_negation = (
+                    not lexical_zero_modifier
+                    or lexical_zero_modifier[0] not in zero_non_count_modifiers
+                ) and (not after_object or after_object in zero_count_followers)
+                if after_object in connectors:
+                    remainder_end = min(len(words), object_index + 8)
+                    remainder = words[object_index + 2 : remainder_end]
+                    first_remainder = remainder[0] if remainder else ""
+                    explicit_nonzero_remainder = (
+                        (first_remainder.isdigit() and first_remainder != "0")
+                        or first_remainder in {"a", "an"}
+                        or first_remainder in direct_object_modifiers
+                    )
+                    if explicit_nonzero_remainder:
+                        following_negation = False
+                    remainder_object = next(
+                        (
+                            candidate
+                            for candidate, token in enumerate(remainder)
+                            if token in zero_count_objects
+                        ),
+                        -1,
+                    )
+                    if remainder_object >= 0:
+                        remainder_count = remainder[:remainder_object]
+                        has_explicit_nonzero_count = any(
+                            (token.isdigit() and token != "0")
+                            or token in {"a", "an"}
+                            or token in direct_object_modifiers
+                            for token in remainder_count
+                        )
+                        if has_explicit_nonzero_count and not any(
+                            token in {"0", "neither", "no", "none", "not", "nothing", "zero"}
+                            for token in remainder_count
+                        ):
+                            following_negation = False
+        if following_token == "not" and words[count_index + 1 : count_index + 2] == ["only"]:
+            following_negation = False
         return not following_negation and _is_mutating_action_form(words[predicate])
+
+    def looks_like_participial_predicate(tail: list[str], candidate: int) -> bool:
+        token = tail[candidate]
+        previous = tail[candidate - 1] if candidate else ""
+        if previous in {"for", "to"}:
+            return False
+        return (
+            token in finite_auxiliaries
+            or token in capability_modals
+            or token in participial_predicates
+        )
 
     active_subject = False
     awaiting_predicate = False
     negated = False
     capability_scope = False
     stative_scope = False
+    subjectless_sentence = False
+    active_subject_word = ""
     for index, word in enumerate(words):
         if word in sentence_boundaries:
             active_subject = False
+            active_subject_word = ""
             awaiting_predicate = False
             negated = False
             capability_scope = False
             stative_scope = False
+            subjectless_sentence = False
             continue
-        sentence_start = index == 0 or words[index - 1] in sentence_boundaries
-        if sentence_start and word.endswith("ing") and _is_mutating_action_form(word):
+        if word == ":" and active_subject and words[index - 1] in {"alfred", "i", "we"}:
+            continue
+        colon_summary = False
+        if index > 0 and words[index - 1] == ":":
+            heading_start = index - 2
+            while heading_start > 0 and words[heading_start - 1] not in {
+                *sentence_boundaries,
+                ":",
+            }:
+                heading_start -= 1
+            colon_summary = tuple(words[heading_start : index - 1]) in action_summary_headings
+        sentence_start = index == 0 or words[index - 1] in sentence_boundaries or colon_summary
+        clause_start = sentence_start or words[index - 1] in connectors
+        claim_index = index
+        while (
+            clause_start
+            and claim_index < len(words)
+            and (words[claim_index].endswith("ly") or words[claim_index] in clause_action_prefixes)
+        ):
+            claim_index += 1
+        claim_word = words[claim_index] if claim_index < len(words) else ""
+        passive_action_summary = bool(
+            sentence_start
+            and word in zero_count_objects
+            and index + 1 < len(words)
+            and _is_mutating_action_form(words[index + 1])
+            and not (
+                words[index + 2 : index + 3] == [":"]
+                and words[index + 3 : index + 4]
+                and words[index + 3] in {"0", "none", "zero"}
+            )
+        )
+        if passive_action_summary:
             return True
+        if sentence_start and claim_word.endswith("ing") and _is_mutating_action_form(claim_word):
+            return True
+        if clause_start and (
+            claim_word.endswith("ed")
+            or claim_word in {"applied", "built", "made", "written", "wrote"}
+        ):
+            if sentence_start and _is_mutating_action_form(claim_word):
+                subjectless_sentence = True
+            scan_end = min(len(words), claim_index + clause_lookahead + 1)
+            clause_end = next(
+                (
+                    boundary
+                    for boundary in range(claim_index + 1, scan_end)
+                    if words[boundary] in sentence_boundaries
+                ),
+                scan_end,
+            )
+            following = words[claim_index + 1 : clause_end]
+            colon_index = following.index(":") if ":" in following else -1
+            colon_label = following[:colon_index] if colon_index >= 0 else []
+            colon_value = following[colon_index + 1 :] if colon_index >= 0 else []
+            iso_date = re.compile(r"\d{4}-\d{1,2}-\d{1,2}")
+            labeled_metadata = bool(colon_label) and all(
+                token in temporal_metadata_labels for token in colon_label
+            )
+            temporal_prefix_metadata = bool(colon_label) and all(
+                token.isdigit()
+                or token in {","}
+                or token in temporal_metadata_words
+                or token in temporal_metadata_units
+                or iso_date.fullmatch(token)
+                for token in colon_label
+            )
+            temporal_colon_metadata = bool(
+                colon_value
+                and (
+                    labeled_metadata
+                    or temporal_prefix_metadata
+                    or (
+                        not colon_label
+                        and any(
+                            token in temporal_metadata_words
+                            or token in temporal_metadata_units
+                            or iso_date.fullmatch(token)
+                            for token in colon_value
+                        )
+                        and all(
+                            token.isdigit()
+                            or token in {",", ":"}
+                            or token in temporal_metadata_words
+                            or token in temporal_metadata_units
+                            or iso_date.fullmatch(token)
+                            for token in colon_value
+                        )
+                    )
+                )
+            )
+            temporal_prepositional_metadata = bool(
+                len(following) > 1
+                and following[0] in {"at", "on"}
+                and any(
+                    token in temporal_metadata_words
+                    or token in temporal_metadata_units
+                    or iso_date.fullmatch(token)
+                    for token in following[1:]
+                )
+                and all(
+                    token.isdigit()
+                    or token in {",", ":"}
+                    or token in temporal_metadata_words
+                    or token in temporal_metadata_units
+                    or iso_date.fullmatch(token)
+                    for token in following[1:]
+                )
+            )
+            trailing_status_clause = any(
+                following[candidate] == ","
+                and candidate + 1 < len(following)
+                and (
+                    following[candidate + 1] in {*new_clause_subjects, *subjects}
+                    or (
+                        following[candidate + 1] == "the"
+                        and candidate + 2 < len(following)
+                        and following[candidate + 2]
+                        in {
+                            *new_clause_subjects,
+                            *subjects,
+                            *_READ_ONLY_STATUS_WORDS,
+                            *_READ_ONLY_SUBJECT_WORDS,
+                        }
+                    )
+                )
+                for candidate in range(len(following))
+            )
+            descriptive_prepositional_fragment = bool(
+                following
+                and (
+                    (following[0] == "with" and claim_word in descriptive_with_action_forms)
+                    or (
+                        following[0] == "by"
+                        and (len(following) < 2 or following[1] not in attributed_action_subjects)
+                    )
+                )
+            )
+            descriptive_fragment = bool(
+                following
+                and (
+                    temporal_colon_metadata
+                    or temporal_prepositional_metadata
+                    or (
+                        following[0] in descriptive_fragment_prepositions
+                        and descriptive_prepositional_fragment
+                    )
+                    or (following[0] in adverbial_phrase_openers and trailing_status_clause)
+                )
+            )
+            contrastive_action = following[:2] == ["not", "only"]
+            modifier_count = 0
+            while modifier_count < len(following) and (
+                following[modifier_count] in direct_object_modifiers
+                or following[modifier_count].isdigit()
+                or (
+                    following[modifier_count].endswith(nominal_modifier_suffixes)
+                    and not (
+                        modifier_count + 1 < len(following)
+                        and looks_like_participial_predicate(following, modifier_count + 1)
+                    )
+                )
+                or following[modifier_count].endswith("ly")
+            ):
+                modifier_count += 1
+            subject_index = modifier_count
+            noun_phrase_start = subject_index
+            noun_phrase_end = min(len(following), subject_index + 4)
+            found_known_object = False
+            for candidate in range(subject_index, noun_phrase_end):
+                token = following[candidate]
+                if token in {
+                    *adverbial_phrase_openers,
+                    *connectors,
+                    *relative_clause_markers,
+                    ":",
+                }:
+                    break
+                if token in zero_count_objects:
+                    subject_index = candidate
+                    found_known_object = True
+                    continue
+                if candidate > noun_phrase_start and (
+                    looks_like_participial_predicate(following, candidate)
+                    or (
+                        following[candidate - 1].endswith("s")
+                        and _is_mutating_action_form(token)
+                        and not token.endswith(("ed", "ing"))
+                        and token not in {"applied", "built", "made", "written", "wrote"}
+                        and candidate + 1 < len(following)
+                    )
+                    or (
+                        found_known_object
+                        and token.endswith("s")
+                        and candidate + 1 < len(following)
+                        and following[candidate + 1] not in adverbial_phrase_openers
+                    )
+                ):
+                    break
+            subject_head = bool(
+                subject_index < len(following)
+                and following[subject_index] not in _DIRECT_OBJECT_OPENERS
+            )
+            subject_span = (
+                subject_index + 2
+                if len(following) > subject_index + 1
+                and following[subject_index] == "pull"
+                and following[subject_index + 1] in {"request", "requests"}
+                else subject_index + 1
+            )
+            counted_subject = bool(
+                subject_head
+                and (
+                    following[subject_index].endswith("s")
+                    or (
+                        subject_span == subject_index + 2
+                        and following[subject_index + 1] == "requests"
+                    )
+                )
+            )
+            connector_index = next(
+                (
+                    candidate
+                    for candidate in range(subject_span, len(following))
+                    if following[candidate] in connectors
+                    and candidate + 1 < len(following)
+                    and (
+                        following[candidate + 1] in new_clause_subjects
+                        or (
+                            following[candidate + 1] == "the"
+                            and candidate + 2 < len(following)
+                            and following[candidate + 2]
+                            in {*_READ_ONLY_STATUS_WORDS, *_READ_ONLY_SUBJECT_WORDS}
+                        )
+                    )
+                ),
+                -1,
+            )
+            predicate_end = len(following)
+            if colon_index >= subject_span:
+                predicate_end = min(predicate_end, colon_index)
+            if connector_index >= subject_span:
+                predicate_end = min(predicate_end, connector_index)
+            predicate_tail = following[subject_span:predicate_end]
+            if predicate_tail and predicate_tail[0] in adverbial_phrase_openers:
+                predicate_start = next(
+                    (
+                        candidate
+                        for candidate in range(1, len(predicate_tail))
+                        if predicate_tail[candidate - 1] not in {"for", "to"}
+                        and (
+                            looks_like_participial_predicate(predicate_tail, candidate)
+                            or (
+                                predicate_tail[candidate].endswith("s")
+                                and predicate_tail[candidate] not in zero_count_objects
+                                and candidate + 1 < len(predicate_tail)
+                                and predicate_tail[candidate + 1] not in adverbial_phrase_openers
+                            )
+                        )
+                    ),
+                    -1,
+                )
+                if predicate_start > 0:
+                    predicate_tail = predicate_tail[predicate_start:]
+            relative_index = next(
+                (
+                    candidate
+                    for candidate, token in enumerate(predicate_tail)
+                    if token in relative_clause_markers
+                ),
+                -1,
+            )
+            predicate_positions = [
+                candidate
+                for candidate in range(len(predicate_tail))
+                if looks_like_participial_predicate(predicate_tail, candidate)
+            ]
+            first_predicate_token = predicate_tail[0] if predicate_tail else ""
+            recognized_subject = bool(
+                subject_head and following[subject_index] in zero_count_objects
+            )
+            explicit_subject_predicate = bool(
+                subject_head
+                and first_predicate_token
+                and (
+                    first_predicate_token in finite_auxiliaries
+                    or first_predicate_token in capability_modals
+                    or first_predicate_token in participial_predicates
+                    or (
+                        first_predicate_token.endswith("s")
+                        and first_predicate_token not in zero_count_objects
+                        and len(predicate_tail) > 1
+                        and predicate_tail[1] not in adverbial_phrase_openers
+                    )
+                )
+            )
+            finite_mutating_predicate = bool(
+                _is_mutating_action_form(first_predicate_token)
+                and (
+                    (
+                        counted_subject
+                        and not first_predicate_token.endswith(("ed", "ing"))
+                        and first_predicate_token
+                        not in {"applied", "built", "made", "written", "wrote"}
+                    )
+                    or (
+                        (recognized_subject or explicit_subject_predicate)
+                        and first_predicate_token.endswith("s")
+                    )
+                )
+            )
+            generic_plural_predicate = bool(
+                (counted_subject or recognized_subject or explicit_subject_predicate)
+                and first_predicate_token
+                and first_predicate_token not in reduced_relative_modifiers
+                and first_predicate_token not in relative_clause_markers
+                and first_predicate_token not in zero_count_followers
+                and first_predicate_token not in temporal_metadata_words
+                and first_predicate_token not in temporal_metadata_units
+                and first_predicate_token not in adverbial_phrase_openers
+                and not first_predicate_token.isdigit()
+                and not first_predicate_token.endswith("ing")
+                and (not first_predicate_token.endswith("ly") or finite_mutating_predicate)
+                and (
+                    first_predicate_token in stative_predicates
+                    or finite_mutating_predicate
+                    or not _is_mutating_action_form(first_predicate_token)
+                )
+            )
+            has_main_predicate = bool(
+                generic_plural_predicate
+                or (
+                    predicate_positions
+                    and (
+                        relative_index < 0
+                        or any(candidate < relative_index for candidate in predicate_positions)
+                        or any(candidate > relative_index + 1 for candidate in predicate_positions)
+                    )
+                )
+            )
+            zero_count_summary = bool(
+                counted_subject
+                and colon_index > 0
+                and colon_index + 1 < len(following)
+                and (
+                    following[colon_index + 1] == "0"
+                    or following[colon_index + 1] in {"none", "zero"}
+                )
+            )
+            participial_subject = subject_head and (has_main_predicate or zero_count_summary)
+            if (
+                not descriptive_fragment
+                and (contrastive_action or not participial_subject)
+                and positive_action_at(claim_index, negated=False)
+            ):
+                return True
+        if subjectless_sentence:
+            elliptical_action_index = index + 1
+            while (
+                word in connectors
+                and elliptical_action_index < len(words)
+                and (
+                    words[elliptical_action_index].endswith("ly")
+                    or words[elliptical_action_index] in clause_action_prefixes
+                )
+            ):
+                elliptical_action_index += 1
+            elliptical_action_word = (
+                words[elliptical_action_index] if elliptical_action_index < len(words) else ""
+            )
+            elliptical_next_word = (
+                words[elliptical_action_index + 1]
+                if elliptical_action_index + 1 < len(words)
+                else ""
+            )
+            noun_list_item = bool(
+                elliptical_action_word in zero_count_objects
+                and (
+                    not elliptical_next_word
+                    or elliptical_next_word in connectors
+                    or elliptical_next_word in sentence_boundaries
+                )
+            )
+            if (
+                word in connectors
+                and not noun_list_item
+                and positive_action_at(elliptical_action_index, negated=False)
+            ):
+                elliptical_end = next(
+                    (
+                        candidate
+                        for candidate in range(elliptical_action_index + 1, len(words))
+                        if words[candidate] in sentence_boundaries
+                    ),
+                    len(words),
+                )
+                elliptical_tail = words[elliptical_action_index + 1 : elliptical_end]
+                elliptical_description = any(
+                    looks_like_participial_predicate(elliptical_tail, candidate)
+                    for candidate in range(1, len(elliptical_tail))
+                )
+                if not elliptical_description:
+                    return True
+            explicit_subject_follows = bool(
+                (word in connectors or word == ":")
+                and index + 1 < len(words)
+                and (
+                    words[index + 1] in subjects
+                    or (
+                        words[index + 1] in {"a", "an", "the"}
+                        and index + 2 < len(words)
+                        and words[index + 2] in subjects
+                    )
+                )
+            )
+            if explicit_subject_follows:
+                subjectless_sentence = False
+            else:
+                continue
         if word in subjects:
             active_subject = True
+            active_subject_word = word
             awaiting_predicate = True
             negated = any(candidate in negations for candidate in words[max(0, index - 3) : index])
             capability_scope = False
@@ -2603,7 +3484,19 @@ def _reply_claims_plan_or_action(reply: str) -> bool:
         if word in capability_modals:
             capability_scope = True
             continue
-        if word in auxiliaries or word.endswith("ly"):
+        if word.isdigit() or word in auxiliaries or word.endswith("ly"):
+            continue
+        following_word = words[index + 1] if index + 1 < len(words) else ""
+        if (
+            active_subject_word in attributed_action_subjects
+            and word in ambiguous_actor_noun_heads
+            and (
+                not following_word
+                or following_word in sentence_boundaries
+                or following_word in actor_noun_predicates
+            )
+        ):
+            awaiting_predicate = False
             continue
         if not capability_scope and positive_action_at(index, negated):
             return True
