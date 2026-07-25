@@ -437,6 +437,7 @@ def probe_engine(
 
     version = cached_result.version if cached_result else None
     failure: str | None = None
+    probe_failed = False
     if cached_result is None:
         for index, requirement in enumerate(descriptor.protocol_commands):
             completed = _run_probe(
@@ -444,7 +445,10 @@ def probe_engine(
                 environ=env,
                 runner=runner,
             )
-            if completed is None or completed.returncode != 0:
+            if completed is None:
+                probe_failed = True
+                break
+            if completed.returncode != 0:
                 failure = requirement.reason
                 break
             combined = f"{completed.stdout or ''}\n{completed.stderr or ''}"
@@ -460,7 +464,19 @@ def probe_engine(
                 failure = requirement.reason
                 break
 
-    if failure:
+    if probe_failed:
+        result = EngineProbeResult(
+            descriptor=descriptor,
+            installed=True,
+            protocol_compatible=False,
+            ready=False,
+            state="probe_failed",
+            detail=f"Alfred could not verify {descriptor.display_name}'s required CLI protocol.",
+            binary=binary,
+            version=version,
+            failures=("protocol_probe_failed",),
+        )
+    elif failure:
         result = EngineProbeResult(
             descriptor=descriptor,
             installed=True,
@@ -535,6 +551,6 @@ def probe_engine(
                 version=version,
             )
 
-    if use_cache:
+    if use_cache and result.state != "probe_failed":
         _probe_cache[cache_key] = (time.monotonic() + _CACHE_TTL_SECONDS, result)
     return result

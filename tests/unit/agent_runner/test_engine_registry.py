@@ -325,6 +325,47 @@ def test_probe_fails_closed_on_protocol_drift(fresh_agent_runner, tmp_path: Path
     assert ("login", "status") not in calls
 
 
+def test_protocol_probe_transport_failure_is_retryable_and_not_cached(
+    fresh_agent_runner, tmp_path: Path
+):
+    ar = fresh_agent_runner
+    binary = _executable(tmp_path / "codex")
+    calls = 0
+
+    def runner(command, **_kwargs):
+        nonlocal calls
+        calls += 1
+        args = tuple(command[1:])
+        if calls == 1:
+            raise subprocess.TimeoutExpired(command, timeout=4)
+        outputs = {
+            ("--version",): "codex 1.2.3\n",
+            ("exec", "--help"): (
+                "--output-last-message --sandbox --cd --skip-git-repo-check "
+                "--ignore-user-config --ephemeral -c\n"
+            ),
+            ("login", "status"): "signed in\n",
+        }
+        return subprocess.CompletedProcess(command, 0, outputs[args], "")
+
+    failed = ar.probe_engine(
+        ar.DEFAULT_ENGINE_REGISTRY.descriptor("codex"),
+        environ={"CODEX_BIN": str(binary), "PATH": ""},
+        runner=runner,
+    )
+    ready = ar.probe_engine(
+        ar.DEFAULT_ENGINE_REGISTRY.descriptor("codex"),
+        environ={"CODEX_BIN": str(binary), "PATH": ""},
+        runner=runner,
+    )
+
+    assert failed.ready is False
+    assert failed.state == "probe_failed"
+    assert failed.failures == ("protocol_probe_failed",)
+    assert ready.ready is True
+    assert calls == 4
+
+
 @pytest.mark.parametrize(
     "missing_marker",
     (
