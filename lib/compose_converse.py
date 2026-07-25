@@ -1719,6 +1719,7 @@ def _build_summarizer(
                 claude_model=model,
                 codex_model=model,
                 codex_timeout=CONDENSER_TIMEOUT,
+                codex_sandbox="read-only",
                 hybrid_fallback_on_provider_failure=True,
             )
         except Exception:
@@ -1899,6 +1900,7 @@ def _invoke_converse(
             timeout=timeout,
             claude_max_turns=DEFAULT_MAX_TURNS,
             codex_timeout=timeout,
+            codex_sandbox="read-only",
             hybrid_fallback_on_provider_failure=True,
         )
     except Exception:

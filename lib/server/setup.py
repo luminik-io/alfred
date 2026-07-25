@@ -1721,6 +1721,7 @@ def bootstrap_status() -> dict[str, Any]:
         queue_missing=queue_missing,
         install=install,
         code_memory=code_memory,
+        code_memory_coverage=code_memory_coverage,
         capability_plane=capability_plane,
         runtime_env=runtime_env,
         repo_checkouts=repo_checkouts,
@@ -1764,6 +1765,7 @@ def first_run_readiness_status(
     queue_missing: list[str],
     install: dict[str, Any],
     code_memory: dict[str, Any],
+    code_memory_coverage: dict[str, Any],
     capability_plane: dict[str, Any],
     runtime_env: dict[str, str],
     repo_checkouts: list[dict[str, Any]],
@@ -1778,7 +1780,11 @@ def first_run_readiness_status(
         _repo_local_paths_readiness_check(repos, runtime_env, resolved=repo_checkouts),
         _scheduled_fleet_readiness_check(install),
         _desktop_token_readiness_check(install),
-        _code_graph_readiness_check(capability_plane, code_memory),
+        _code_graph_readiness_check(
+            capability_plane,
+            code_memory,
+            coverage=code_memory_coverage,
+        ),
         _context_compression_readiness_check(capability_plane),
         _engineering_skills_readiness_check(capability_plane),
         _architect_parent_repo_readiness_check(runtime_env),
@@ -2407,19 +2413,36 @@ def _desktop_token_readiness_check(install: dict[str, Any]) -> dict[str, Any]:
 
 
 def _code_graph_readiness_check(
-    capability_plane: dict[str, Any], code_memory: dict[str, Any]
+    capability_plane: dict[str, Any],
+    code_memory: dict[str, Any],
+    *,
+    coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     capability = _capability_by_key(capability_plane, "code_graph")
     capability_state = str(capability.get("state") or "")
-    ready = capability_state == "ready"
+    engine = (capability.get("detected") or {}).get("engine")
+    coverage_required = (
+        coverage is not None and engine != "graphify" and capability_state != "disabled"
+    )
+    coverage_ready = bool(coverage and coverage.get("ready"))
+    ready = capability_state == "ready" and (not coverage_required or coverage_ready)
     disabled = capability_state == "disabled"
+    missing = [str(repo) for repo in (coverage or {}).get("missing", []) if str(repo)]
+    if capability_state == "ready" and coverage_required and not coverage_ready:
+        detail = (
+            f"Code graph is installed, but it does not cover selected repositories: {', '.join(missing)}."
+            if missing
+            else "Code graph is installed, but selected repository coverage is not verified."
+        )
+    else:
+        detail = str(capability.get("detail") or code_memory.get("detail") or "")
     row = _readiness_check(
         "code_graph",
         "Code graph memory",
         category="memory",
         tier="optional" if disabled else "recommended",
         ready=ready,
-        detail=str(capability.get("detail") or code_memory.get("detail") or ""),
+        detail=detail,
         action=""
         if disabled
         else str(capability.get("install_hint") or "Run `alfred code-memory doctor`."),
@@ -2431,9 +2454,12 @@ def _code_graph_readiness_check(
         "capability_state": capability_state,
         "enabled": bool(capability.get("enabled")),
     }
-    engine = (capability.get("detected") or {}).get("engine")
     if engine:
         detected["engine"] = engine
+    if coverage_required:
+        detected["coverage_ready"] = coverage_ready
+        detected["covered"] = list((coverage or {}).get("covered", []))
+        detected["missing"] = missing
     return row | {"detected": detected}
 
 

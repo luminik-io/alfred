@@ -135,6 +135,7 @@ class _EngineSpy:
                 "agent": agent,
                 "firing_id": kwargs.get("firing_id"),
                 "provider_failover": kwargs.get("hybrid_fallback_on_provider_failure"),
+                "codex_sandbox": kwargs.get("codex_sandbox"),
             }
         )
         if agent == cc.CONDENSER_AGENT:
@@ -178,6 +179,7 @@ def test_short_conversation_runs_once_without_condensing() -> None:
     assert spy.condenser_calls == []  # no summarizer call
     assert len(spy.interrogator_calls) == 1
     assert spy.interrogator_calls[0]["provider_failover"] is True
+    assert spy.interrogator_calls[0]["codex_sandbox"] == "read-only"
     assert records == []
 
 
@@ -192,6 +194,7 @@ def test_long_conversation_condenses_prompt_proactively() -> None:
     assert turn is not None
     # Summarizer fired exactly once.
     assert len(spy.condenser_calls) == 1
+    assert spy.condenser_calls[0]["codex_sandbox"] == "read-only"
     # The interrogator prompt carries the injected summary block, not every turn.
     interrogator_prompt = spy.interrogator_calls[0]["prompt"]
     assert "COMPACT SUMMARY of older turns" in interrogator_prompt

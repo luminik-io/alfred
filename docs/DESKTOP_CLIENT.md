@@ -58,6 +58,12 @@ The top row should feel like an operations status strip, not a dashboard full of
 
 Ask owns plain-language intake and the planning inbox. Plan cards show:
 
+When one selected repository is in scope and its full GitHub slug maps to a
+verified local checkout, Ask runs its interrogator from that checkout. Claude
+may only read, grep, and glob, and Codex is pinned to its read-only sandbox. A
+missing, bare-name, unselected, or multi-repository mapping falls back to
+Alfred's state directory instead of granting filesystem scope by guesswork.
+
 - parent issue and Slack thread
 - readiness verdict
 - affected repos and rollout order

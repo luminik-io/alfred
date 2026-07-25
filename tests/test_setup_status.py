@@ -91,6 +91,45 @@ def test_code_memory_coverage_requires_exact_github_identity(tmp_path: Path) -> 
     assert missing_binary["ready"] is False
 
 
+def test_code_graph_readiness_requires_selected_repo_coverage() -> None:
+    capability_plane = {
+        "capabilities": [
+            {
+                "key": "code_graph",
+                "state": "ready",
+                "enabled": True,
+                "detail": "A graph exists.",
+                "install_hint": "Run `alfred code-memory index`.",
+                "detected": {},
+            }
+        ]
+    }
+    code_memory = {"graph_dir": "/tmp/code-memory", "detail": "A graph exists."}
+
+    readiness = setup_mod._code_graph_readiness_check(
+        capability_plane,
+        code_memory,
+        coverage={
+            "ready": False,
+            "covered": ["acme/api"],
+            "missing": ["acme/web"],
+        },
+    )
+
+    assert readiness["ready"] is False
+    assert readiness["state"] == "actionable"
+    assert readiness["detail"] == (
+        "Code graph is installed, but it does not cover selected repositories: acme/web."
+    )
+    assert readiness["detected"] == {
+        "capability_state": "ready",
+        "enabled": True,
+        "coverage_ready": False,
+        "covered": ["acme/api"],
+        "missing": ["acme/web"],
+    }
+
+
 def test_bootstrap_status_reports_code_memory_defaults(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

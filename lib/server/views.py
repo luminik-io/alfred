@@ -1130,7 +1130,7 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
         intake_guidance=intake_guidance,
         base_draft=base_draft,
         engine=engine,
-        workdir=_planning_workdir(request),
+        workdir=_compose_read_only_workdir(request, repos=repos),
         on_condense=_converse_condense_recorder(request, draft_id=draft_id),
     )
     if turn is None:
@@ -1262,7 +1262,7 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
     # Pre-mint the firing id so we can tail its transcript while the model runs.
     firing_id = cc.converse_firing_id()
     transcript = _converse_transcript_path(request, firing_id)
-    workdir = _planning_workdir(request)
+    workdir = _compose_read_only_workdir(request, repos=repos)
 
     on_condense = _converse_condense_recorder(request, draft_id=draft_id)
 
@@ -2647,6 +2647,43 @@ def _planning_workdir(request: Request) -> Path:
         return state_root.parent
     base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
     return Path(base)
+
+
+def _compose_read_only_workdir(request: Request, *, repos: list[str]) -> Path:
+    """Use one selected, explicitly mapped Git checkout for read-only Ask turns."""
+
+    fallback = _planning_workdir(request)
+    if len(repos) != 1:
+        return fallback
+
+    repo = repos[0].strip()
+    if "/" not in repo:
+        return fallback
+    selected = {item.casefold() for item in _selected_setup_repos()}
+    if repo.casefold() not in selected:
+        return fallback
+
+    mapped = next(
+        (
+            path
+            for slug, path in _compose_repo_to_local().items()
+            if "/" in slug and slug.casefold() == repo.casefold() and path
+        ),
+        None,
+    )
+    if not mapped:
+        return fallback
+
+    candidate = Path(mapped).expanduser()
+    if not candidate.is_absolute():
+        candidate = _compose_workspace_root() / candidate
+    try:
+        candidate = candidate.resolve(strict=True)
+        if not candidate.is_dir() or not (candidate / ".git").exists():
+            return fallback
+    except (OSError, RuntimeError):
+        return fallback
+    return candidate
 
 
 def _repo_from_github_url(url: str) -> str:

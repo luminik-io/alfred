@@ -2327,6 +2327,7 @@ def _stub_converse_turn(
             capture["messages"] = list(messages)
             capture["repo_grounding"] = repo_grounding
             capture["code_map"] = code_map
+            capture["workdir"] = _kw.get("workdir")
         draft = base_draft
         if draft_overrides:
             from dataclasses import replace
@@ -2517,6 +2518,62 @@ def test_compose_converse_uses_checkout_map_saved_after_runtime_import(
 
     assert response.status_code == 200
     assert "Live checkout instructions" in capture["repo_grounding"]
+
+
+def test_compose_converse_runs_from_single_selected_mapped_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ALFRED_COMPOSE_CONVERSE_ENGINE", "claude")
+    _use_interrogator_prompt(monkeypatch)
+    checkout = tmp_path / "frontend"
+    (checkout / ".git").mkdir(parents=True)
+    monkeypatch.setattr(server_views, "_selected_setup_repos", lambda: ["acme/frontend"])
+    monkeypatch.setattr(
+        server_views.runtime_facade,
+        "repo_to_local",
+        lambda: {"acme/frontend": str(checkout)},
+    )
+    capture: dict = {}
+    _stub_converse_turn(monkeypatch, reply="Grounded.", capture=capture)
+
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/compose/converse",
+        json={
+            "repos": ["acme/frontend"],
+            "messages": [{"role": "user", "content": "How does login work?"}],
+        },
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    assert capture["workdir"] == checkout.resolve()
+
+
+def test_compose_converse_rejects_bare_or_unselected_workdir_mappings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkout = tmp_path / "frontend"
+    (checkout / ".git").mkdir(parents=True)
+    state = tmp_path / "state"
+    state.mkdir()
+    request = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(reader=FilesystemReader(state_root=state)))
+    )
+    monkeypatch.setattr(server_views, "_selected_setup_repos", lambda: ["acme/frontend"])
+    monkeypatch.setattr(
+        server_views.runtime_facade,
+        "repo_to_local",
+        lambda: {"frontend": str(checkout), "other/frontend": str(checkout)},
+    )
+
+    fallback = server_views._planning_workdir(request)
+
+    assert server_views._compose_read_only_workdir(request, repos=["acme/frontend"]) == fallback
+    assert server_views._compose_read_only_workdir(request, repos=["other/frontend"]) == fallback
 
 
 def test_setup_repo_selection_requires_local_checkouts(tmp_path: Path) -> None:
