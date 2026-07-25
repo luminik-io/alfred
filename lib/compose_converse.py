@@ -1751,13 +1751,21 @@ def _build_verb_is_in_position(
 def _build_verb_starts_noun_clause(tokens: list[str], index: int) -> bool:
     """Reject clause-leading build words used as nouns, not commands."""
     previous = tokens[index - 1] if index else ""
-    if index and previous not in {
-        _CLAUSE_BOUNDARY_TOKEN,
-        "also",
-        "and",
-        "but",
-        "then",
-    }:
+    follows_read_only_command = (
+        index >= 2 and previous == "me" and tokens[index - 2] in _READ_ONLY_COMMAND_VERBS
+    )
+    if (
+        index
+        and previous
+        not in {
+            _CLAUSE_BOUNDARY_TOKEN,
+            "also",
+            "and",
+            "but",
+            "then",
+        }
+        and not follows_read_only_command
+    ):
         return False
     following = tokens[index + 1] if index + 1 < len(tokens) else ""
     if following in {"a", "an", "that", "the", "these", "this", "those"}:

@@ -1251,11 +1251,23 @@ def test_read_only_info_request_keeps_coordinated_noun_objects_read_only() -> No
     for message in (
         "List build artifacts and deploy status.",
         "Check release status and update history.",
+        "Show me deploy status.",
+        "Tell me deploy status.",
     ):
         assert cc.looks_like_read_only_info_request(message), message
         assert (
             cc.classify_message_intent(message, draft=_empty_draft()) == cc.INTENT_CONVERSATION
         ), message
+
+
+def test_read_only_deploy_status_keeps_mutation_commands_on_build_path() -> None:
+    for message in (
+        "Deploy the service.",
+        "Show me the current status and then deploy artifacts.",
+        "Help me deploy artifacts.",
+    ):
+        assert not cc.looks_like_read_only_info_request(message), message
+        assert cc.classify_message_intent(message, draft=_empty_draft()) == cc.INTENT_BUILD
 
 
 def test_read_only_info_request_ignores_space_padded_prefix_punctuation() -> None:
