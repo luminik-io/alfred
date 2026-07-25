@@ -1871,7 +1871,11 @@ _NON_COMMAND_ADVERBS = frozenset(
 
 
 def _clause_starts_direct_object_command(
-    tokens: list[str], start: int, *, assume_bare_object: bool = False
+    tokens: list[str],
+    start: int,
+    *,
+    assume_bare_object: bool = False,
+    allow_noun_fragment: bool = True,
 ) -> bool:
     """Detect an imperative clause whose verb is outside the build allowlist.
 
@@ -1912,7 +1916,7 @@ def _clause_starts_direct_object_command(
     ):
         return False
     if first in _NOUN_CAPABLE_BUILD_WORDS and second in _NOUN_QUESTION_OBJECTS:
-        return False
+        return not allow_noun_fragment
     third = tokens[start + 2] if start + 2 < len(tokens) else ""
     if second not in _DIRECT_OBJECT_OPENERS and third in _DECLARATIVE_PREDICATES:
         return False
@@ -2014,6 +2018,13 @@ def _has_followup_build_clause(tokens: list[str]) -> bool:
     explanatory_indices = _explanatory_build_verb_indices(tokens)
     capability_indices = _capability_modal_build_verb_indices(tokens)
     explicit_followup_start = -1
+    information_command = (
+        next(
+            (token for token in tokens[clause_start:] if token not in _READ_ONLY_COMMAND_PREFIXES),
+            "",
+        )
+        in _READ_ONLY_COMMAND_VERBS
+    )
     clause_recommendation = _recommendation_embeds_build(tokens, clause_start)
     for index, token in enumerate(tokens):
         if token == _CLAUSE_BOUNDARY_TOKEN:
@@ -2028,6 +2039,17 @@ def _has_followup_build_clause(tokens: list[str]) -> bool:
             clause_has_copula = False
             last_conjunction = -1
             explicit_followup_start = -1
+            information_command = (
+                next(
+                    (
+                        item
+                        for item in tokens[clause_start:]
+                        if item not in _READ_ONLY_COMMAND_PREFIXES
+                    ),
+                    "",
+                )
+                in _READ_ONLY_COMMAND_VERBS
+            )
             clause_recommendation = _recommendation_embeds_build(tokens, clause_start)
             continue
         if token in {"am", "are", "has", "have", "is", "was", "were"}:
@@ -2068,7 +2090,11 @@ def _has_followup_build_clause(tokens: list[str]) -> bool:
                         and candidate_start < len(tokens)
                         and not _is_build_verb_form(tokens[candidate_start])
                     )
-                    and _clause_starts_direct_object_command(tokens, candidate_start)
+                    and _clause_starts_direct_object_command(
+                        tokens,
+                        candidate_start,
+                        allow_noun_fragment=not information_command,
+                    )
                 ):
                     return True
             continue

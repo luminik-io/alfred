@@ -1229,6 +1229,8 @@ def test_read_only_info_request_rejects_status_plus_chained_work() -> None:
         "Show me the current fleet status , then add retry logging.",
         "Inspect the repo and file an issue for the bug.",
         "Review the current Alfred setup status and file an issue for any bug.",
+        "Check repository status and fix failures.",
+        "List runs and retry jobs.",
         "Explain the engine status. Kindly update the docs. Do not change the API.",
         "What is the status? Kindly restart the worker.",
     ):
@@ -1271,6 +1273,38 @@ def test_parse_turn_status_plus_chained_work_preserves_model_draft() -> None:
     assert turn.draft.acceptance_criteria == [
         "Retry logging appears in the fleet status run output."
     ]
+
+
+@pytest.mark.parametrize(
+    "message",
+    (
+        "Check repository status and fix failures.",
+        "List runs and retry jobs.",
+    ),
+)
+def test_parse_turn_coordinated_mutation_preserves_model_draft(message: str) -> None:
+    raw = json.dumps(
+        {
+            "intent": "build",
+            "reply": "I drafted the requested work.",
+            "draft": {
+                "title": "Repair failed work",
+                "acceptance_criteria": ["The failed work is repaired."],
+            },
+            "readiness": {"score": 60, "ready": False, "missing": []},
+            "done": False,
+        }
+    )
+
+    turn = cc.parse_turn(
+        raw,
+        base_draft=_empty_draft(),
+        last_user_message=message,
+    )
+
+    assert turn is not None
+    assert turn.intent == cc.INTENT_BUILD
+    assert turn.draft.title == "Repair failed work"
 
 
 def test_parse_turn_preserves_mixed_imperative_and_modal_work() -> None:
