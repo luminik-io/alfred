@@ -1825,6 +1825,11 @@ def test_declarative_actor_capability_questions_stay_conversational() -> None:
 def test_polite_actor_mutation_requests_take_the_build_path() -> None:
     for message in (
         "Can Alfred please add a retry button?",
+        "Can Alfred please display a button?",
+        "Can Alfred please show a pause button?",
+        "Can Alfred restart now, please?",
+        "Can the runtime please restart now?",
+        "Can the runtimes please restart now?",
         "Can the worker please restart now?",
         "Alfred can kindly deploy the service?",
     ):
@@ -1834,6 +1839,7 @@ def test_polite_actor_mutation_requests_take_the_build_path() -> None:
     for message in (
         "Can Alfred deploy?",
         "Can Alfred please explain the current status?",
+        "Can Alfred please show the current status?",
     ):
         assert cc.looks_like_question(message), message
         assert cc.classify_message_intent(message, draft=_empty_draft()) == cc.INTENT_CONVERSATION

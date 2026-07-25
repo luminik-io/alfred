@@ -1361,28 +1361,35 @@ def _looks_like_actor_capability_question(tokens: list[str]) -> bool:
 def _looks_like_polite_actor_build_request(tokens: list[str]) -> bool:
     """Recognize an explicit polite mutation directed through a runtime actor."""
 
-    actor_words = {"alfred", "agent", "agents", "engine", "engines", "worker", "workers"}
+    actor_words = {
+        "alfred",
+        "agent",
+        "agents",
+        "engine",
+        "engines",
+        "runtime",
+        "runtimes",
+        "worker",
+        "workers",
+    }
     actor_index = next(
         (index for index, token in enumerate(tokens[:4]) if token in actor_words), -1
     )
     if actor_index < 0:
         return False
-    marker_index = next(
-        (
-            index
-            for index, token in enumerate(
-                tokens[actor_index + 1 : actor_index + 5], actor_index + 1
-            )
-            if token in {"kindly", "please"}
-        ),
-        -1,
-    )
-    if marker_index < 0:
+    if not any(token in {"kindly", "please"} for token in tokens):
         return False
-    return any(
-        _is_build_verb_form(token) and token not in _READ_ONLY_COMMAND_VERBS
-        for token in tokens[marker_index + 1 :]
-    )
+
+    for token in tokens[actor_index + 1 :]:
+        if not _is_build_verb_form(token):
+            continue
+        if token not in _READ_ONLY_COMMAND_VERBS:
+            return True
+        if token in _READ_ONLY_SHOW_VERBS and any(
+            candidate in _READ_ONLY_TARGET_SURFACE_WORDS for candidate in tokens[actor_index + 1 :]
+        ):
+            return True
+    return False
 
 
 def _is_build_verb_form(token: str) -> bool:
