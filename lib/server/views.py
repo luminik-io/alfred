@@ -22,8 +22,9 @@ import logging
 import os
 import re
 import secrets
-from collections.abc import Iterable
-from contextlib import suppress
+import threading
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import asdict, is_dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -1211,46 +1212,73 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
             ),
         )
 
-    draft_id = _safe_compose_draft_id(body.get("draft_id"))
-    prior_payload, prior_path = _read_compose_draft_payload(request, draft_id)
-    base_draft = _converse_base_draft(body, prior_payload)
-    base_draft = _draft_with_selected_setup_scope(base_draft)
+    # Pre-mint the firing id so we can tail its transcript while the model runs.
+    firing_id = cc.converse_firing_id()
+    transcript = _converse_transcript_path(request, firing_id)
 
-    repos = _compose_context_repos(body, base_draft=base_draft)
-    explicit_repo = _explicit_conversation_repo(repos, messages)
-    grounding_repos = [explicit_repo] if explicit_repo else repos
-    repo_grounding = cc.build_repo_grounding(
-        grounding_repos,
-        workspace_root=_compose_workspace_root(),
-        repo_to_local=_compose_repo_to_local(),
-    )
-    # Recall fleet lessons only when this turn looks like real work (gated, not
-    # always-on), and append them to the grounding as advisory context.
-    repo_grounding += _converse_memory_grounding(request, messages=messages, base_draft=base_draft)
-    code_map = cc.load_code_map(_compose_code_map_path(), repos=grounding_repos)
-    # Plain mode is per-request: the client toggle wins when present, and the
-    # ALFRED_INTAKE_PROFILE server env is only the default when the body omits
-    # the flag. This lets a non-developer flip jargon-free coaching on/off in
-    # the app without restarting the runtime.
-    intake_guidance = cc.intake_guidance_for(_resolve_intake_profile_name(body))
-    operational_grounding = (
-        _converse_operational_grounding(
+    generator = streaming.stream_converse_turn(
+        run_and_reconcile=lambda: _run_stream_compose_converse(
             request,
-            conversation_engine=engine,
-        )
-        if not explicit_repo or _conversation_needs_operational_grounding(messages)
-        else ""
+            body,
+            messages=messages,
+            engine=engine,
+            firing_id=firing_id,
+        ),
+        extract_tokens=streaming.assistant_text_fragments,
+        transcript_path=transcript,
+    )
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers=_streaming_cors_headers(
+            request,
+            {
+                "Cache-Control": "no-cache, no-transform",
+                "X-Accel-Buffering": "no",
+            },
+        ),
     )
 
-    loader = runtime_facade.prompt_loader()
-    if loader is None:  # pragma: no cover - loader is always importable
-        return JSONResponse(
-            {"error": "compose interrogator prompt loader unavailable"},
-            status_code=503,
-            headers=cors,
-        )
 
-    try:
+def _run_stream_compose_converse(
+    request: Request,
+    body: dict[str, Any],
+    *,
+    messages: list[Any],
+    engine: str,
+    firing_id: str,
+) -> dict[str, Any] | None:
+    """Run, reconcile, and persist one streaming turn under one worker-owned lock."""
+
+    import compose_converse as cc
+
+    draft_id = _safe_compose_draft_id(body.get("draft_id"))
+    with _compose_turn_guard(request, draft_id):
+        prior_payload, prior_path = _read_compose_draft_payload(request, draft_id)
+        base_draft = _draft_with_selected_setup_scope(_converse_base_draft(body, prior_payload))
+        repos = _compose_context_repos(body, base_draft=base_draft)
+        explicit_repo = _explicit_conversation_repo(repos, messages)
+        grounding_repos = [explicit_repo] if explicit_repo else repos
+        repo_grounding = cc.build_repo_grounding(
+            grounding_repos,
+            workspace_root=_compose_workspace_root(),
+            repo_to_local=_compose_repo_to_local(),
+        )
+        repo_grounding += _converse_memory_grounding(
+            request,
+            messages=messages,
+            base_draft=base_draft,
+        )
+        code_map = cc.load_code_map(_compose_code_map_path(), repos=grounding_repos)
+        intake_guidance = cc.intake_guidance_for(_resolve_intake_profile_name(body))
+        operational_grounding = (
+            _converse_operational_grounding(request, conversation_engine=engine)
+            if not explicit_repo or _conversation_needs_operational_grounding(messages)
+            else ""
+        )
+        loader = runtime_facade.prompt_loader()
+        if loader is None:  # pragma: no cover - loader is always importable
+            raise RuntimeError("compose interrogator prompt loader unavailable")
         system_prompt = cc.render_system_prompt(
             prompt_path=_compose_interrogator_prompt_path(),
             repo_grounding=repo_grounding,
@@ -1259,28 +1287,7 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
             loader=loader,
             operational_grounding=operational_grounding,
         )
-    except OSError:
-        return JSONResponse(
-            {
-                "error": "live_session_unavailable",
-                "detail": (
-                    "The spec-interrogator prompt could not be loaded. Check the "
-                    "runtime deploy, or use the one-shot plan form."
-                ),
-            },
-            status_code=503,
-            headers=cors,
-        )
-
-    # Pre-mint the firing id so we can tail its transcript while the model runs.
-    firing_id = cc.converse_firing_id()
-    transcript = _converse_transcript_path(request, firing_id)
-    workdir = _compose_read_only_workdir(request, repos=repos, messages=messages)
-
-    on_condense = _converse_condense_recorder(request, draft_id=draft_id)
-
-    def _run() -> Any:
-        return cc.run_turn(
+        turn = cc.run_turn(
             system_prompt=system_prompt,
             messages=messages,
             repo_grounding=repo_grounding,
@@ -1288,12 +1295,12 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
             intake_guidance=intake_guidance,
             base_draft=base_draft,
             engine=engine,
-            workdir=workdir,
+            workdir=_compose_read_only_workdir(request, repos=repos, messages=messages),
             firing_id=firing_id,
-            on_condense=on_condense,
+            on_condense=_converse_condense_recorder(request, draft_id=draft_id),
         )
-
-    def _reconcile(turn: Any) -> dict[str, Any]:
+        if turn is None:
+            return None
         content_draft = replace(turn.draft, repos=[]) if turn.draft.repos else turn.draft
         if (
             getattr(turn, "intent", "build") == cc.INTENT_CONVERSATION
@@ -1310,24 +1317,6 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
             prior_payload=prior_payload,
         )
         return _converse_turn_payload(turn, draft_id=saved_id, saved_path=saved_path)
-
-    generator = streaming.stream_converse_turn(
-        run_turn=_run,
-        extract_tokens=streaming.assistant_text_fragments,
-        transcript_path=transcript,
-        reconcile=_reconcile,
-    )
-    return StreamingResponse(
-        generator,
-        media_type="text/event-stream",
-        headers=_streaming_cors_headers(
-            request,
-            {
-                "Cache-Control": "no-cache, no-transform",
-                "X-Accel-Buffering": "no",
-            },
-        ),
-    )
 
 
 def _compose_stream_unavailable(request: Request, *, message: str) -> StreamingResponse:
@@ -1463,9 +1452,7 @@ def _save_converse_draft(
     root = _state_planning_root(request)
     root.mkdir(parents=True, exist_ok=True)
     if draft_path is None:
-        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-        draft_id = f"{_COMPOSE_PREFIX}{stamp}-{_slug(turn.draft.title)}"
-        draft_path = root / f"{draft_id}.json"
+        draft_path, draft_id = _new_compose_draft_path(root, turn.draft.title)
     elif draft_id is None:
         draft_id = draft_path.stem
     created_at = (
@@ -1501,9 +1488,7 @@ def _save_converse_draft(
         "revision_count": len(conversation),
         "revisions": [message["content"] for message in conversation],
     }
-    tmp = draft_path.with_name(f"{draft_path.name}.tmp")
-    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    tmp.replace(draft_path)
+    _write_json_atomically(draft_path, payload)
     return draft_path, draft_id
 
 
@@ -1550,6 +1535,44 @@ def _save_issue_draft(request: Request, draft: IssueDraft, body: str) -> Path:
 
 
 _COMPOSE_PREFIX = "compose-"
+_COMPOSE_STATE_LOCKS = tuple(threading.RLock() for _ in range(64))
+
+
+def _compose_turn_lock(request: Request, draft_id: str | None) -> Any:
+    """Return the bounded state lock shared by every planning-draft mutation."""
+
+    del draft_id
+    key = str(_state_planning_root(request).resolve())
+    return _COMPOSE_STATE_LOCKS[hash(key) % len(_COMPOSE_STATE_LOCKS)]
+
+
+@contextmanager
+def _compose_turn_guard(request: Request, draft_id: str | None) -> Iterator[None]:
+    """Acquire and release one planning-state lock on the calling worker thread."""
+
+    lock = _compose_turn_lock(request, draft_id)
+    with lock:
+        yield
+
+
+def _new_compose_draft_path(root: Path, title: str) -> tuple[Path, str]:
+    """Mint a collision-resistant id for a new Compose draft."""
+
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
+    draft_id = f"{_COMPOSE_PREFIX}{stamp}-{secrets.token_hex(3)}-{_slug(title)}"
+    return root / f"{draft_id}.json", draft_id
+
+
+def _write_json_atomically(path: Path, payload: dict[str, Any]) -> None:
+    """Replace one JSON file without sharing a temporary path with another writer."""
+
+    tmp = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+    try:
+        tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        tmp.replace(path)
+    finally:
+        with suppress(FileNotFoundError):
+            tmp.unlink()
 
 
 def _safe_compose_draft_id(raw: Any) -> str | None:
@@ -1968,9 +1991,7 @@ def _save_compose_draft(
     root = _state_planning_root(request)
     root.mkdir(parents=True, exist_ok=True)
     if draft_path is None:
-        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-        draft_id = f"{_COMPOSE_PREFIX}{stamp}-{_slug(draft.title)}"
-        draft_path = root / f"{draft_id}.json"
+        draft_path, draft_id = _new_compose_draft_path(root, draft.title)
     elif draft_id is None:
         draft_id = draft_path.stem
     created_at = (
@@ -1992,9 +2013,7 @@ def _save_compose_draft(
         "revision_count": len(revisions),
         "revisions": revisions,
     }
-    tmp = draft_path.with_name(f"{draft_path.name}.tmp")
-    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    tmp.replace(draft_path)
+    _write_json_atomically(draft_path, payload)
     return draft_path, draft_id
 
 
@@ -2128,9 +2147,7 @@ def _file_planning_draft_issue(state_root: Path, plan_id: str) -> dict[str, Any]
         "source": "native-client",
     }
     payload["updated_at"] = now
-    tmp = path.with_name(f"{path.name}.tmp")
-    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    tmp.replace(path)
+    _write_json_atomically(path, payload)
     return {
         "ok": True,
         "status": "filed",

@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,12 +24,16 @@ if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
 import compose_converse as cc  # noqa: E402
+import server.routes.converse as converse_routes  # noqa: E402
+import server.routes.plans as plan_routes  # noqa: E402
 import server.setup as server_setup  # noqa: E402
 import server.views as server_views  # noqa: E402
+from fastapi.responses import JSONResponse, StreamingResponse  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from fleet_brain import Lesson  # noqa: E402
 from server import FilesystemReader, create_app  # noqa: E402
 from spec_helper import IssueDraft  # noqa: E402
+from starlette.requests import Request  # noqa: E402
 
 
 def _write_jsonl(path: Path, records: list[dict]) -> None:
@@ -48,6 +56,113 @@ def _auth_headers(state: Path, **extra: str) -> dict[str, str]:
     }
     headers.update(extra)
     return headers
+
+
+@pytest.mark.parametrize(
+    ("path", "runner_name", "response"),
+    [
+        (
+            "/api/theme-builder/converse",
+            "_run_theme_builder_converse",
+            {"reply": "Choose a theme.", "action": None},
+        ),
+        (
+            "/api/onboarding/converse",
+            "_run_onboarding_converse",
+            {"reply": "Connect GitHub.", "action": None, "done": False},
+        ),
+        (
+            "/api/compose/converse",
+            "_run_compose_converse",
+            {
+                "reply": "What should change?",
+                "draft": {},
+                "readiness": {"score": 0, "ready": False, "missing": []},
+                "done": False,
+            },
+        ),
+    ],
+)
+def test_buffered_conversation_routes_offload_blocking_engine_turns(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    runner_name: str,
+    response: dict[str, object],
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    calls: list[tuple[object, tuple[object, ...]]] = []
+
+    def runner(*_args: object) -> JSONResponse:
+        return JSONResponse(response)
+
+    async def offload(function: object, *args: object) -> JSONResponse:
+        calls.append((function, args))
+        return function(*args)  # type: ignore[operator]
+
+    monkeypatch.setattr(server_views, runner_name, runner)
+    monkeypatch.setattr(converse_routes, "run_in_threadpool", offload)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    result = client.post(
+        path,
+        json={"messages": [{"role": "user", "content": "Hello"}]},
+        headers=_auth_headers(state),
+    )
+
+    assert result.status_code == 200
+    assert result.json() == response
+    offloaded_function = (
+        converse_routes._run_compose_converse_guarded if path == "/api/compose/converse" else runner
+    )
+    runner_calls = [(function, args) for function, args in calls if function is offloaded_function]
+    assert len(runner_calls) == 1
+    _function, args = runner_calls[0]
+    assert len(args) == 2
+    assert args[1] == {"messages": [{"role": "user", "content": "Hello"}]}
+
+
+def test_compose_conversation_keeps_status_responsive_during_engine_turn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_turn(*_args: object) -> JSONResponse:
+        started.set()
+        release.wait(timeout=3)
+        return JSONResponse(
+            {
+                "reply": "Done.",
+                "draft": {},
+                "readiness": {"score": 0, "ready": False, "missing": []},
+                "done": False,
+            }
+        )
+
+    monkeypatch.setattr(server_views, "_run_compose_converse", slow_turn)
+    app = create_app(FilesystemReader(state_root=state))
+    with TestClient(app) as client, ThreadPoolExecutor(max_workers=2) as executor:
+        turn = executor.submit(
+            client.post,
+            "/api/compose/converse",
+            json={"messages": [{"role": "user", "content": "Hello"}]},
+            headers=_auth_headers(state),
+        )
+        assert started.wait(timeout=1)
+        status_request = executor.submit(client.get, "/api/status")
+        try:
+            status = status_request.result(timeout=2)
+        finally:
+            release.set()
+        response = turn.result(timeout=2)
+
+    assert status.status_code == 200
+    assert response.status_code == 200
 
 
 def test_json_api_status_firings_and_plans(tmp_path: Path) -> None:
@@ -2915,6 +3030,273 @@ def test_compose_converse_iterates_on_same_draft_id(
     assert capture["base_draft"].title == "Export attendees"
     drafts = client.get("/api/plans/drafts").json()["rows"]
     assert sum(1 for row in drafts if row["draft_id"] == draft_id) == 1
+
+
+def test_compose_converse_serializes_retries_for_the_same_draft(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ALFRED_COMPOSE_CONVERSE_ENGINE", "claude")
+    _use_interrogator_prompt(monkeypatch)
+    state = tmp_path / "state"
+    state.mkdir()
+
+    _stub_converse_turn(
+        monkeypatch,
+        reply="What should happen on failure?",
+        draft_overrides={"title": "Reliable export"},
+    )
+    app = create_app(FilesystemReader(state_root=state))
+    with TestClient(app) as client:
+        first = client.post(
+            "/api/compose/converse",
+            json={"messages": [{"role": "user", "content": "Make export reliable"}]},
+            headers=_auth_headers(state),
+        ).json()
+        draft_id = first["draft_id"]
+
+        entered = [threading.Event(), threading.Event()]
+        release_first = threading.Event()
+        call_guard = threading.Lock()
+        base_drafts: list[IssueDraft] = []
+
+        def concurrent_turn(*, base_draft: IssueDraft, **_kwargs: object):
+            with call_guard:
+                call_index = len(base_drafts)
+                base_drafts.append(base_draft)
+            entered[call_index].set()
+            if call_index == 0:
+                release_first.wait(timeout=3)
+                draft = replace(base_draft, problem="Exports can fail silently.")
+            else:
+                draft = replace(base_draft, desired_behavior="Failed exports can be retried.")
+            return cc.ConverseTurn(
+                reply="Captured.",
+                draft=draft,
+                readiness=cc.ConverseReadiness(score=60, ready=False, missing=()),
+                done=False,
+            )
+
+        monkeypatch.setattr(cc, "run_turn", concurrent_turn)
+        request_body = {
+            "draft_id": draft_id,
+            "messages": [{"role": "user", "content": "Capture this retry detail"}],
+        }
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            one = executor.submit(
+                client.post,
+                "/api/compose/converse",
+                json=request_body,
+                headers=_auth_headers(state),
+            )
+            assert entered[0].wait(timeout=1)
+            two = executor.submit(
+                client.post,
+                "/api/compose/converse",
+                json=request_body,
+                headers=_auth_headers(state),
+            )
+            assert not entered[1].wait(timeout=0.2)
+            release_first.set()
+            first_retry = one.result(timeout=2)
+            second_retry = two.result(timeout=2)
+
+    assert first_retry.status_code == 200
+    assert second_retry.status_code == 200
+    assert entered[1].is_set()
+    assert base_drafts[1].problem == "Exports can fail silently."
+    saved = json.loads(Path(second_retry.json()["saved_path"]).read_text(encoding="utf-8"))
+    assert saved["draft"]["problem"] == "Exports can fail silently."
+    assert saved["draft"]["desired_behavior"] == "Failed exports can be retried."
+
+
+def test_compose_converse_creates_distinct_drafts_under_concurrency(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ALFRED_COMPOSE_CONVERSE_ENGINE", "claude")
+    _use_interrogator_prompt(monkeypatch)
+    state = tmp_path / "state"
+    state.mkdir()
+    _stub_converse_turn(
+        monkeypatch,
+        reply="Captured.",
+        draft_overrides={"title": "Concurrent request"},
+    )
+    app = create_app(FilesystemReader(state_root=state))
+
+    with TestClient(app) as client, ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [
+            executor.submit(
+                client.post,
+                "/api/compose/converse",
+                json={"messages": [{"role": "user", "content": f"Request {index}"}]},
+                headers=_auth_headers(state),
+            )
+            for index in range(8)
+        ]
+        responses = [future.result(timeout=4) for future in futures]
+
+    assert all(response.status_code == 200 for response in responses)
+    draft_ids = {response.json()["draft_id"] for response in responses}
+    assert len(draft_ids) == len(responses)
+    assert len(list((state / "planning-drafts").glob("compose-*.json"))) == len(responses)
+
+
+def test_compose_stream_persists_after_client_disconnect(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ALFRED_COMPOSE_CONVERSE_ENGINE", "claude")
+    _use_interrogator_prompt(monkeypatch)
+    state = tmp_path / "state"
+    state.mkdir()
+    app = create_app(FilesystemReader(state_root=state))
+    request = Request(
+        {
+            "type": "http",
+            "app": app,
+            "method": "POST",
+            "path": "/api/compose/converse/stream",
+            "query_string": b"",
+            "headers": [],
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "client": ("testclient", 50000),
+        }
+    )
+    started = threading.Event()
+    release = threading.Event()
+
+    def delayed_turn(*, base_draft: IssueDraft, **_kwargs: object):
+        started.set()
+        release.wait(timeout=3)
+        return cc.ConverseTurn(
+            reply="Captured.",
+            draft=replace(base_draft, title="Persist disconnected turn"),
+            readiness=cc.ConverseReadiness(score=50, ready=False, missing=()),
+            done=False,
+        )
+
+    monkeypatch.setattr(cc, "run_turn", delayed_turn)
+    response = server_views._stream_compose_converse(
+        request,
+        {"messages": [{"role": "user", "content": "Persist this work"}]},
+    )
+    assert isinstance(response, StreamingResponse)
+
+    async def disconnect_after_open() -> None:
+        iterator = response.body_iterator
+        first = await anext(iterator)
+        assert first.startswith(b"event: open")
+        assert started.wait(timeout=1)
+        await iterator.aclose()
+
+    asyncio.run(disconnect_after_open())
+    release.set()
+    deadline = threading.Event()
+    for _ in range(100):
+        if list((state / "planning-drafts").glob("compose-*.json")):
+            break
+        deadline.wait(0.02)
+    saved = list((state / "planning-drafts").glob("compose-*.json"))
+    assert len(saved) == 1
+    payload = json.loads(saved[0].read_text(encoding="utf-8"))
+    assert payload["draft"]["title"] == "Persist disconnected turn"
+
+
+def test_planning_state_lock_covers_deduplicated_sibling_drafts(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    app = create_app(FilesystemReader(state_root=state))
+    request = SimpleNamespace(app=app)
+
+    first = server_views._compose_turn_lock(request, "compose-first")
+    sibling = server_views._compose_turn_lock(request, "compose-sibling")
+
+    assert first is sibling
+
+
+def test_compose_converse_serializes_with_one_shot_draft_refinement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ALFRED_COMPOSE_CONVERSE_ENGINE", "claude")
+    _use_interrogator_prompt(monkeypatch)
+    state = tmp_path / "state"
+    state.mkdir()
+    app = create_app(FilesystemReader(state_root=state))
+
+    _stub_converse_turn(
+        monkeypatch,
+        reply="What fails today?",
+        draft_overrides={"title": "Shared planning draft"},
+    )
+    with TestClient(app) as client:
+        seeded = client.post(
+            "/api/compose/converse",
+            json={"messages": [{"role": "user", "content": "Improve retries"}]},
+            headers=_auth_headers(state),
+        ).json()
+        draft_id = seeded["draft_id"]
+
+        converse_entered = threading.Event()
+        release_converse = threading.Event()
+
+        def blocked_turn(*, base_draft: IssueDraft, **_kwargs: object):
+            converse_entered.set()
+            release_converse.wait(timeout=3)
+            return cc.ConverseTurn(
+                reply="Captured.",
+                draft=replace(base_draft, problem="Retries can lose queued work."),
+                readiness=cc.ConverseReadiness(score=50, ready=False, missing=()),
+                done=False,
+            )
+
+        original_refine = plan_routes.refine_issue_draft
+        plan_entered = threading.Event()
+        plan_bases: list[IssueDraft] = []
+
+        def tracked_refine(base_draft: IssueDraft, *args: object, **kwargs: object):
+            plan_bases.append(base_draft)
+            plan_entered.set()
+            return original_refine(base_draft, *args, **kwargs)
+
+        monkeypatch.setattr(cc, "run_turn", blocked_turn)
+        monkeypatch.setattr(plan_routes, "engine_refiner_from_env", lambda **_kwargs: None)
+        monkeypatch.setattr(plan_routes, "refine_issue_draft", tracked_refine)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            converse = executor.submit(
+                client.post,
+                "/api/compose/converse",
+                json={
+                    "draft_id": draft_id,
+                    "messages": [{"role": "user", "content": "Retries lose queued work"}],
+                },
+                headers=_auth_headers(state),
+            )
+            assert converse_entered.wait(timeout=1)
+            one_shot = executor.submit(
+                client.post,
+                "/api/plans/draft",
+                json={
+                    "draft_id": draft_id,
+                    "text": "desired behavior: failed work remains retryable",
+                },
+                headers=_auth_headers(state),
+            )
+            assert not plan_entered.wait(timeout=0.2)
+            release_converse.set()
+            converse_response = converse.result(timeout=2)
+            one_shot_response = one_shot.result(timeout=2)
+
+    assert converse_response.status_code == 200
+    assert one_shot_response.status_code == 200
+    assert plan_entered.is_set()
+    assert plan_bases[0].problem == "Retries can lose queued work."
+    saved = json.loads(Path(one_shot_response.json()["saved_path"]).read_text(encoding="utf-8"))
+    assert saved["draft"]["problem"] == "Retries can lose queued work."
 
 
 def _capture_intake_guidance(monkeypatch: pytest.MonkeyPatch, capture: dict) -> None:

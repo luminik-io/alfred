@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import replace
+from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
@@ -27,6 +28,18 @@ logger = logging.getLogger(__name__)
 
 
 router = APIRouter()
+
+
+def _run_planning_mutation(
+    request: Request,
+    draft_id: str,
+    function: Any,
+    *args: Any,
+) -> Any:
+    """Run one planning mutation with lock ownership confined to this worker."""
+
+    with views._compose_turn_guard(request, draft_id):
+        return function(*args)
 
 
 @router.get("/api/plans", response_class=JSONResponse)
@@ -97,6 +110,9 @@ async def api_discard_plan(request: Request, plan_id: str) -> JSONResponse:
         return JSONResponse({"error": "plan not found"}, status_code=404)
     try:
         result = await run_in_threadpool(
+            _run_planning_mutation,
+            request,
+            draft_id,
             views._discard_planning_draft_group,
             views._state_root(request),
             draft_id,
@@ -176,11 +192,17 @@ async def api_file_plan_issue(request: Request, plan_id: str) -> JSONResponse:
     same-origin and token-gated like other local mutations, and it is
     idempotent via the saved draft's ``bridge.issue_url`` field.
     """
+    draft_id = views._safe_planning_draft_id(plan_id)
+    if draft_id is None:
+        return JSONResponse({"error": "plan not found"}, status_code=404)
     try:
         result = await run_in_threadpool(
+            _run_planning_mutation,
+            request,
+            draft_id,
             views._file_planning_draft_issue,
             views._state_root(request),
-            plan_id,
+            draft_id,
         )
     except FileNotFoundError:
         return JSONResponse({"error": "plan not found"}, status_code=404)
@@ -205,21 +227,14 @@ async def api_file_plan_issue(request: Request, plan_id: str) -> JSONResponse:
     return JSONResponse(result)
 
 
-@router.post(
-    "/api/plans/draft",
-    response_class=JSONResponse,
-    dependencies=[Depends(views.require_mutation_token)],
-)
-async def api_compose_draft(request: Request) -> JSONResponse:
-    try:
-        body = json.loads((await request.body()).decode("utf-8") or "{}")
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return JSONResponse({"error": "request body must be JSON"}, status_code=400)
-    if not isinstance(body, dict):
-        return JSONResponse({"error": "request body must be a JSON object"}, status_code=400)
+def _run_compose_draft(
+    request: Request,
+    body: dict[str, Any],
+    draft_id: str | None,
+) -> JSONResponse:
+    """Run one blocking draft refinement while its shared draft lock is held."""
 
     text = str(body.get("text") or "").strip()
-    draft_id = views._safe_compose_draft_id(body.get("draft_id"))
     prior_payload, prior_path = views._read_compose_draft_payload(request, draft_id)
     base_draft = views._compose_base_draft(body, prior_payload)
 
@@ -322,3 +337,29 @@ async def api_compose_draft(request: Request) -> JSONResponse:
             },
         }
     )
+
+
+def _run_compose_draft_guarded(
+    request: Request,
+    body: dict[str, Any],
+    draft_id: str | None,
+) -> JSONResponse:
+    with views._compose_turn_guard(request, draft_id):
+        return _run_compose_draft(request, body, draft_id)
+
+
+@router.post(
+    "/api/plans/draft",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
+async def api_compose_draft(request: Request) -> JSONResponse:
+    try:
+        body = json.loads((await request.body()).decode("utf-8") or "{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JSONResponse({"error": "request body must be JSON"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "request body must be a JSON object"}, status_code=400)
+
+    draft_id = views._safe_compose_draft_id(body.get("draft_id"))
+    return await run_in_threadpool(_run_compose_draft_guarded, request, body, draft_id)

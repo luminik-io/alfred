@@ -7,10 +7,22 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from server import views
 
 router = APIRouter()
+
+
+def _run_compose_converse_guarded(
+    request: Request,
+    body: dict[str, Any],
+) -> JSONResponse:
+    """Keep lock ownership and the complete buffered mutation on one worker."""
+
+    draft_id = views._safe_compose_draft_id(body.get("draft_id"))
+    with views._compose_turn_guard(request, draft_id):
+        return views._run_compose_converse(request, body)
 
 
 @router.post(
@@ -42,7 +54,7 @@ async def api_theme_builder_converse(request: Request) -> JSONResponse:
         return JSONResponse({"error": "request body must be JSON"}, status_code=400)
     if not isinstance(body, dict):
         return JSONResponse({"error": "request body must be a JSON object"}, status_code=400)
-    return views._run_theme_builder_converse(request, body)
+    return await run_in_threadpool(views._run_theme_builder_converse, request, body)
 
 
 @router.post(
@@ -74,7 +86,7 @@ async def api_onboarding_converse(request: Request) -> JSONResponse:
         return JSONResponse({"error": "request body must be JSON"}, status_code=400)
     if not isinstance(body, dict):
         return JSONResponse({"error": "request body must be a JSON object"}, status_code=400)
-    return views._run_onboarding_converse(request, body)
+    return await run_in_threadpool(views._run_onboarding_converse, request, body)
 
 
 @router.post(
@@ -104,7 +116,7 @@ async def api_compose_converse(request: Request) -> JSONResponse:
         return JSONResponse({"error": "request body must be JSON"}, status_code=400)
     if not isinstance(body, dict):
         return JSONResponse({"error": "request body must be a JSON object"}, status_code=400)
-    return views._run_compose_converse(request, body)
+    return await run_in_threadpool(_run_compose_converse_guarded, request, body)
 
 
 @router.post("/api/compose/converse/stream")

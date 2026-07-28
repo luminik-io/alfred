@@ -9,6 +9,7 @@ read-only tools land in the allowlist. No Claude invocation, no graphify install
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -223,6 +224,87 @@ def test_graphify_rejects_graph_path_that_escapes_checkout(monkeypatch, tmp_path
     monkeypatch.setattr(_proc, "_graphify_entrypoint_works", lambda command: True)
 
     assert _proc._graphify_mcp_server(checkout) is None
+
+
+def test_graphify_uses_verified_checkout_graph_from_firing_worktree(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "source"
+    firing = tmp_path / "firing"
+    source.mkdir()
+    firing.mkdir()
+    graph = source / "graphify-out" / "graph.json"
+    graph.parent.mkdir()
+    graph.write_text('{"nodes": [], "links": []}', encoding="utf-8")
+    shared_git = tmp_path / "shared.git"
+    monkeypatch.setenv("ALFRED_GRAPHIFY_MCP", "1")
+    monkeypatch.setenv("ALFRED_GRAPHIFY_GRAPH", "graphify-out/graph.json")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", f"acme/repo={source}")
+    monkeypatch.setattr(
+        _proc,
+        "_git_common_dir",
+        lambda path: shared_git if path in {source, firing} else None,
+    )
+    monkeypatch.setattr(
+        _proc.shutil,
+        "which",
+        lambda name: "/usr/local/bin/graphify-mcp" if name == "graphify-mcp" else None,
+    )
+    monkeypatch.setattr(_proc, "_graphify_entrypoint_works", lambda command: True)
+
+    server = _proc._graphify_mcp_server(firing)
+
+    assert server is not None
+    assert server["graphify"]["args"] == [str(graph), "--transport", "stdio"]
+
+
+def test_git_common_dir_matches_linked_firing_worktree(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    firing = tmp_path / "firing"
+    source.mkdir()
+    subprocess.run(["git", "init", "-q", str(source)], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(source),
+            "worktree",
+            "add",
+            "--orphan",
+            "-b",
+            "firing",
+            str(firing),
+        ],
+        check=True,
+    )
+
+    assert _proc._git_common_dir(source) == _proc._git_common_dir(firing)
+
+
+def test_graphify_ignores_checkout_map_from_another_repository(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    firing = tmp_path / "firing"
+    source.mkdir()
+    firing.mkdir()
+    graph = source / "graphify-out" / "graph.json"
+    graph.parent.mkdir()
+    graph.write_text('{"nodes": [], "links": []}', encoding="utf-8")
+    monkeypatch.setenv("ALFRED_GRAPHIFY_MCP", "1")
+    monkeypatch.setenv("ALFRED_GRAPHIFY_GRAPH", "graphify-out/graph.json")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", f"other/repo={source}")
+    monkeypatch.setattr(
+        _proc,
+        "_git_common_dir",
+        lambda path: tmp_path / ("source.git" if path == source else "firing.git"),
+    )
+    monkeypatch.setattr(
+        _proc.shutil,
+        "which",
+        lambda name: "/usr/local/bin/graphify-mcp" if name == "graphify-mcp" else None,
+    )
+    monkeypatch.setattr(_proc, "_graphify_entrypoint_works", lambda command: True)
+
+    assert _proc._graphify_mcp_server(firing) is None
 
 
 def test_graphify_tool_names_use_server_prefix() -> None:

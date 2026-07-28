@@ -148,8 +148,7 @@ def test_assistant_text_fragments_hides_structured_turn_envelope(tmp_path: Path)
         "readiness": {"score": 0, "ready": False},
     }
     transcript.write_text(
-        _assistant_line("I inspected the checkout.\n\n```json\n" + json.dumps(structured) + "\n```")
-        + "\n",
+        _assistant_line("```json\n" + json.dumps(structured) + "\n```") + "\n",
         encoding="utf-8",
     )
 
@@ -163,6 +162,21 @@ def test_assistant_text_fragments_preserves_plain_answer_with_code_braces(
 ) -> None:
     transcript = tmp_path / "plain.jsonl"
     answer = 'The parser accepts objects such as {"status": "ready"}.'
+    transcript.write_text(_assistant_line(answer) + "\n", encoding="utf-8")
+
+    assert streaming.assistant_text_fragments(transcript) == [answer]
+
+
+def test_assistant_text_fragments_preserves_embedded_envelope_example(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / "example.jsonl"
+    envelope = {
+        "reply": "Only this sample reply",
+        "draft": {},
+        "readiness": {"score": 0, "ready": False},
+    }
+    answer = "The API returns this example:\n```json\n" + json.dumps(envelope) + "\n```\nUse it."
     transcript.write_text(_assistant_line(answer) + "\n", encoding="utf-8")
 
     assert streaming.assistant_text_fragments(transcript) == [answer]
@@ -251,10 +265,9 @@ def test_stream_converse_turn_primitive_orders_tokens_before_result(tmp_path: Pa
     async def _collect() -> str:
         frames = []
         async for frame in streaming.stream_converse_turn(
-            run_turn=run_turn,
+            run_and_reconcile=run_turn,
             extract_tokens=streaming.assistant_text_fragments,
             transcript_path=transcript,
-            reconcile=lambda turn: {"reply": turn["reply"]},
             poll_seconds=0.02,
         ):
             frames.append(frame.decode("utf-8"))
@@ -266,6 +279,30 @@ def test_stream_converse_turn_primitive_orders_tokens_before_result(tmp_path: Pa
     assert names[-1] == "result"
     tokens = [data["text"] for name, data in events if name == "token"]
     assert "".join(tokens) == "hello world"
+
+
+def test_stream_converse_turn_does_not_expose_worker_exception_text(tmp_path: Path) -> None:
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text("", encoding="utf-8")
+    private_sentinel = "/private/operator/workspace/secret.py"
+
+    def fail() -> dict[str, str]:
+        raise RuntimeError(private_sentinel)
+
+    async def _collect() -> str:
+        frames = []
+        async for frame in streaming.stream_converse_turn(
+            run_and_reconcile=fail,
+            extract_tokens=streaming.assistant_text_fragments,
+            transcript_path=transcript,
+            poll_seconds=0.01,
+        ):
+            frames.append(frame.decode("utf-8"))
+        return "".join(frames)
+
+    body = asyncio.run(_collect())
+    assert private_sentinel not in body
+    assert "live_session_unavailable" in body
 
 
 def test_stream_converse_turn_emits_heartbeat_while_idle(tmp_path: Path) -> None:
@@ -281,10 +318,9 @@ def test_stream_converse_turn_emits_heartbeat_while_idle(tmp_path: Path) -> None
     async def _collect() -> str:
         frames = []
         async for frame in streaming.stream_converse_turn(
-            run_turn=run_turn,
+            run_and_reconcile=run_turn,
             extract_tokens=streaming.assistant_text_fragments,
             transcript_path=transcript,
-            reconcile=lambda turn: {"reply": turn["reply"]},
             poll_seconds=0.02,
             heartbeat_seconds=0.05,
         ):
@@ -313,10 +349,9 @@ def test_stream_converse_turn_heartbeat_disabled_with_zero(tmp_path: Path) -> No
     async def _collect() -> str:
         frames = []
         async for frame in streaming.stream_converse_turn(
-            run_turn=run_turn,
+            run_and_reconcile=run_turn,
             extract_tokens=streaming.assistant_text_fragments,
             transcript_path=transcript,
-            reconcile=lambda turn: {"reply": turn["reply"]},
             poll_seconds=0.02,
             heartbeat_seconds=0,
         ):

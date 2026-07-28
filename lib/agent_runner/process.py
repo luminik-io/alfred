@@ -68,6 +68,7 @@ from .paths import (
     CODEX_APPROVAL_POLICY,
     CODEX_BIN,
     CODEX_DEFAULT_SANDBOX,
+    WORKSPACE,
 )
 from .reliability import (
     CircuitBreaker,
@@ -502,6 +503,85 @@ def _graphify_entrypoint_works(command: str) -> bool:
         return False
 
 
+def _git_common_dir(checkout: Path) -> Path | None:
+    """Return the shared Git directory for a checkout or linked worktree."""
+
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(checkout), "rev-parse", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+            env={
+                key: value
+                for key, value in os.environ.items()
+                if key in {"HOME", "PATH", "TMPDIR", "SYSTEMROOT"}
+            },
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode != 0:
+        return None
+    raw = (completed.stdout or "").strip()
+    if not raw:
+        return None
+    common = Path(raw).expanduser()
+    if not common.is_absolute():
+        common = checkout / common
+    try:
+        return common.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return None
+
+
+def _graphify_checkout_roots(workdir: Path) -> list[Path]:
+    """Prefer the configured checkout that owns this firing worktree."""
+
+    try:
+        checkout = workdir.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return []
+    roots: list[Path] = []
+    try:
+        from .github import repo_to_local_map
+
+        mappings = repo_to_local_map(os.environ)
+    except Exception:
+        mappings = {}
+    if mappings:
+        common = _git_common_dir(checkout)
+        if common is not None:
+            for raw in mappings.values():
+                candidate = Path(str(raw)).expanduser()
+                if not candidate.is_absolute():
+                    candidate = WORKSPACE / candidate
+                try:
+                    candidate = candidate.resolve(strict=True)
+                except (OSError, RuntimeError):
+                    continue
+                if candidate in roots or _git_common_dir(candidate) != common:
+                    continue
+                roots.append(candidate)
+    if checkout not in roots:
+        roots.append(checkout)
+    return roots
+
+
+def _graphify_graph_path(workdir: Path, graph_path: Path) -> Path | None:
+    """Resolve one checkout-relative graph without crossing repo boundaries."""
+
+    for root in _graphify_checkout_roots(workdir):
+        try:
+            resolved = (root / graph_path).resolve(strict=True)
+            resolved.relative_to(root)
+        except (OSError, RuntimeError, ValueError):
+            continue
+        if resolved.is_file():
+            return resolved
+    return None
+
+
 def _graphify_mcp_server(workdir: Path | None = None) -> dict[str, Any] | None:
     """Return the ``mcpServers`` entry for graphify, or ``None`` when disabled
     or the command is not on PATH.
@@ -520,13 +600,8 @@ def _graphify_mcp_server(workdir: Path | None = None) -> dict[str, Any] | None:
     graph_path = Path(graph).expanduser()
     if workdir is None or graph_path.is_absolute():
         return None
-    try:
-        checkout = workdir.resolve(strict=True)
-        resolved_graph = (checkout / graph_path).resolve(strict=True)
-        resolved_graph.relative_to(checkout)
-    except (OSError, RuntimeError, ValueError):
-        return None
-    if not resolved_graph.is_file():
+    resolved_graph = _graphify_graph_path(workdir, graph_path)
+    if resolved_graph is None:
         return None
     return {
         GRAPHIFY_MCP_SERVER: {

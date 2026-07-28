@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import threading
 from collections.abc import AsyncIterator, Callable, Iterable
@@ -36,6 +37,8 @@ from pathlib import Path
 from typing import Any
 
 from starlette.concurrency import run_in_threadpool
+
+logger = logging.getLogger(__name__)
 
 
 def _env_float(name: str, default: float) -> float:
@@ -286,22 +289,19 @@ async def tail_transcript_sse(
 
 async def stream_converse_turn(
     *,
-    run_turn: Callable[[], Any],
+    run_and_reconcile: Callable[[], dict[str, Any] | None],
     extract_tokens: Callable[[Path], list[str]],
     transcript_path: Path,
-    reconcile: Callable[[Any], dict[str, Any]],
     poll_seconds: float = CONVERSE_POLL_SECONDS,
     heartbeat_seconds: float = HEARTBEAT_SECONDS,
 ) -> AsyncIterator[bytes]:
     """Stream a Compose converse turn token by token, then reconcile.
 
-    ``run_turn`` is the blocking call that runs one interrogator turn. It tees
-    assistant text to ``transcript_path`` via ``claude_invoke_streaming`` and
-    runs on a worker thread so the event loop stays free. While it runs, this
-    helper tails ``transcript_path`` with ``extract_tokens`` and emits each
-    newly seen assistant text fragment as a ``token`` SSE event. When the turn
-    returns, it emits a single ``result`` event with ``reconcile(turn)``, or an
-    ``error`` event when the engine returned nothing usable.
+    ``run_and_reconcile`` owns the complete blocking mutation: it runs one
+    interrogator turn, persists the result, and returns the response payload.
+    It continues on its worker even when the SSE consumer disconnects. While
+    it runs, this helper tails ``transcript_path`` with ``extract_tokens`` and
+    emits newly seen assistant text fragments as ``token`` events.
     """
     loop = asyncio.get_event_loop()
     result_box: dict[str, Any] = {}
@@ -309,9 +309,10 @@ async def stream_converse_turn(
 
     def _worker() -> None:
         try:
-            result_box["turn"] = run_turn()
-        except Exception as exc:
-            result_box["error"] = str(exc) or exc.__class__.__name__
+            result_box["result"] = run_and_reconcile()
+        except Exception:
+            logger.exception("streaming Compose turn failed")
+            result_box["error"] = True
         finally:
             done_event.set()
 
@@ -344,13 +345,13 @@ async def stream_converse_turn(
     await loop.run_in_executor(None, worker.join, 1.0)
 
     if "error" in result_box:
-        yield _sse("error", {"detail": result_box["error"]})
-        return
-    turn = result_box.get("turn")
-    if turn is None:
         yield _sse("error", {"detail": "live_session_unavailable"})
         return
-    yield _sse("result", reconcile(turn))
+    result = result_box.get("result")
+    if not isinstance(result, dict):
+        yield _sse("error", {"detail": "live_session_unavailable"})
+        return
+    yield _sse("result", result)
 
 
 def _safe_extract(extract_tokens: Callable[[Path], list[str]], transcript_path: Path) -> list[str]:
@@ -401,19 +402,22 @@ def assistant_text_fragments(transcript_path: Path) -> list[str]:
 def _visible_converse_text(value: str) -> str:
     """Hide the model's structured turn envelope from live chat rendering."""
 
+    candidate = value.strip()
+    if candidate.startswith("```") and candidate.endswith("```"):
+        first_newline = candidate.find("\n")
+        if first_newline == -1:
+            return value
+        candidate = candidate[first_newline + 1 : -3].strip()
     decoder = json.JSONDecoder()
-    for index, char in enumerate(value):
-        if char != "{":
-            continue
-        try:
-            obj, _end = decoder.raw_decode(value[index:])
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(obj, dict):
-            continue
-        if not {"reply", "draft", "readiness"}.issubset(obj):
-            continue
-        reply = obj.get("reply")
-        if isinstance(reply, str) and reply.strip():
-            return reply.strip()
+    try:
+        obj, end = decoder.raw_decode(candidate)
+    except json.JSONDecodeError:
+        return value
+    if candidate[end:].strip():
+        return value
+    if not isinstance(obj, dict) or not {"reply", "draft", "readiness"}.issubset(obj):
+        return value
+    reply = obj.get("reply")
+    if isinstance(reply, str) and reply.strip():
+        return reply.strip()
     return value
